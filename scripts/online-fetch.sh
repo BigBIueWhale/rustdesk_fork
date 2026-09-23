@@ -4547,7 +4547,6 @@ maintenance_promote_apple_check_image_candidate() {
     if [ -f "$candidate" ] && [ ! -L "$candidate" ] \
        && [ ! -e "$final" ] && [ ! -L "$final" ]; then
         online_image_provenance verify-archive \
-            --publication-index-runtime \
             --archive "$candidate" \
             --archive-sha "$SHA256_APPLE_CHECK_IMAGE_ARCHIVE" \
             --archive-size "$SIZE_APPLE_CHECK_IMAGE_ARCHIVE" \

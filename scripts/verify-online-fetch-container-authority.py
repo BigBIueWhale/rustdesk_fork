@@ -100,6 +100,17 @@ def validate(repo: pathlib.Path) -> None:
         "\n}\n\nprepare_dart_audit_build_context()",
         "Apple online promotion",
     )
+    apple_promotion_archive_check = extract(
+        apple_promotion,
+        "online_image_provenance verify-archive \\\n",
+        '|| die "Apple check candidate differs from the final pins"',
+        "Apple promotion archive verification",
+    )
+    forbid(
+        apple_promotion_archive_check,
+        "--publication-index-runtime",
+        "runtime-image selector on archive-only Apple verification",
+    )
     for source, label in (
         (devcheck_load, "devcheck load"),
         (devcheck_promotion, "devcheck promotion"),

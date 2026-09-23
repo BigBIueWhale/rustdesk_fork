@@ -294,11 +294,11 @@ case "$REQUEST" in
     --maintenance-build-devcheck-image-candidate|\
     --maintenance-promote-devcheck-image-candidate|\
     --maintenance-build-apple-check-image-candidate|\
+    --maintenance-promote-apple-check-image-candidate|\
     --maintenance-build-dart-audit-image-candidate|\
     --maintenance-promote-dart-audit-image-candidate|\
     --maintenance-build-rust-audit-image-candidate|\
     --maintenance-promote-rust-audit-image-candidate|\
-    --maintenance-capture-apple-check-image|\
     --devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|\
     --maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|\
     --maintenance-reproduce-vcpkg-x64|\

@@ -73,37 +73,65 @@ def validate(repo: pathlib.Path) -> None:
     apple_load = extract(
         online,
         "verify_or_load_apple_check_image() {",
-        "\n}\n\nmaintenance_capture_apple_check_image()",
+        "\n}\n\ndart_audit_contract_spec_args()",
         "Apple online load",
     )
-    apple_capture = extract(
+    apple_builder = extract(
         online,
-        "maintenance_capture_apple_check_image() {",
-        "\n}\n\ndart_audit_contract_spec_args()",
-        "Apple online capture",
+        "build_apple_check_image() {",
+        "\n}\n\nmaintenance_build_apple_check_image_candidate()",
+        "Apple online builder",
     )
     apple_build = extract(
         online,
         "maintenance_build_apple_check_image_candidate() {",
-        "\n}\n\nprepare_dart_audit_build_context()",
+        "\n}\n\ncapture_apple_check_rebuild()",
         "Apple online candidate build",
+    )
+    apple_capture = extract(
+        online,
+        "capture_apple_check_rebuild() {",
+        "\n}\n\nmaintenance_promote_apple_check_image_candidate()",
+        "Apple online candidate capture",
+    )
+    apple_promotion = extract(
+        online,
+        "maintenance_promote_apple_check_image_candidate() {",
+        "\n}\n\nprepare_dart_audit_build_context()",
+        "Apple online promotion",
     )
     for source, label in (
         (devcheck_load, "devcheck load"),
         (devcheck_promotion, "devcheck promotion"),
         (apple_load, "Apple load"),
         (apple_capture, "Apple capture"),
+        (apple_promotion, "Apple promotion"),
     ):
         require(
             source,
             "--publication-index-runtime",
             f"explicit containerd publication identity for {label}",
         )
-    if apple_build.count("--publication-index-runtime") != 2:
+    if apple_build.count('build_apple_check_image "$context" "$base_layout" "$tag"') != 2:
         raise AuthorityError(
-            "Apple candidate verification and capture must both select the "
-            "containerd publication identity"
+            "Apple candidate transaction must perform two independent builds"
         )
+    if apple_build.count("capture_apple_check_rebuild") != 2:
+        raise AuthorityError(
+            "Apple candidate transaction must capture both independent builds"
+        )
+    for token, label in (
+        ("--network=default --pull=false --no-cache", "no-cache networked build"),
+        ("--provenance=mode=max", "max provenance"),
+        ("oci-layout://${base_layout}@${DEV_CHECK_IMAGE_MANIFEST_ID}", "local exact base"),
+    ):
+        require(apple_builder, token, f"Apple builder {label}")
+    for token, label in (
+        ('[ "$first_manifest:$first_config" = "$second_manifest:$second_config" ]', "runtime reproduction"),
+        ('--source "$second_archive" --destination "$candidate"', "no-replace candidate publication"),
+        ('/usr/bin/rm -f -- "$first_archive"', "first rebuild retirement"),
+    ):
+        require(apple_build, token, f"Apple candidate {label}")
 
     dispatch = 'if [ "${RUSTDESK_ONLINE_FETCH_VM_GUEST:-}" != 1 ]; then'
     require(online, dispatch, "outer VM dispatch")
@@ -251,12 +279,21 @@ def validate(repo: pathlib.Path) -> None:
     for operation in bootstrap_operations:
         require(outer, f"1:{operation}", f"outer {operation} admission")
         require(guest, operation, f"guest {operation} admission")
+    for operation in (
+        "--maintenance-build-apple-check-image-candidate",
+        "--maintenance-promote-apple-check-image-candidate",
+    ):
+        require(online, operation, f"inner {operation} admission")
+        require(outer, f"1:{operation}", f"outer {operation} admission")
+        require(guest, operation, f"guest {operation} admission")
     for retired in (
         "--maintenance-build-image-candidates",
         "--maintenance-capture-deb-builder-bootstrap-image",
         "--maintenance-capture-android-builder-bootstrap-image",
         "--maintenance-capture-win-helper-bootstrap-image",
+        "--maintenance-capture-apple-check-image",
     ):
+        forbid(online, retired, f"retired inner operation {retired}")
         forbid(outer, retired, f"retired outer operation {retired}")
         forbid(guest, retired, f"retired guest operation {retired}")
     require(library, 'ONLINE_STATE_ROOT="$REPO_ROOT/online"', "online state root")

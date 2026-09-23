@@ -39,6 +39,7 @@ not a claim that every target OS has executed them.
 | Exact-current Linux filesystem regressions (`76cc2fefc6470aeaeb76b50d34b4dc377b39ba49`) | A zero-NIC VM and networkless guest-only container executed all 57 `hbb_common::fs` tests on pinned Rust 1.75, including retained-directory, symlink-parent, path-swap, bounded-depth, create, remove, and rename authority cases. This is Linux library behavior, not Windows junction/handle, installed peer, end-to-end transfer, or release-artifact evidence. |
 | Exact clean Flutter model transaction (`5c2fbfc9f78c8953a945283ef3c0cbef7f981064`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 12 focused suites and 103 tests on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. This is exact Dart/model and generated-bridge evidence, not native renderer, focus/background, device/service lifecycle, installed artifact, latency, soak, or cross-version evidence. |
 | Exact Android owner states (`c02e795b71809eaa86e4b294c7cd45b74fcf788e`) | A zero-NIC VM and networkless guest-only container compiled seven exact production Kotlin state classes with pinned Kotlin 2.0.21 and passed 15 scenarios with 293 assertions over closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation. This is pure owner-state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, JNI, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
+| Exact Android listener Rust lifecycle (`9bd2eed71cb2ce0ee9668243217c3feb435f5c79`) | A zero-NIC VM and networkless guest-only container compiled the complete Linux-host Rust library with the certified devcheck image and executed four exact production tests for generation/rebuild refusal, startup/stop/convergence edges, exhaustion/thread-start rollback, and parent cancellation joining every accepted child. The offline canary, read-only source/vendor inputs, unchanged host listeners, and joined cleanup passed. This is Linux-target Rust behavior, not Android-target, JNI, Service/Activity, socket/peer, APK/device, task-swipe, Force Stop, or presentation evidence. |
 | Named Windows native/installed transactions | The recorded native-suite/package pass, installed LocalSystem CM transaction, and SCM credential transaction establish only their exact commits and scenarios. No current full RustDesk peer, native focus/minimize recovery, cold A==B build, or sustained resource/latency result exists. |
 | Named Android package transactions | Real JNI/APK assembly and stable-signature byte equality were demonstrated for the named older source parents. No current APK installation, Activity/foreground-service lifecycle, task swipe/reopen/Force Stop, real peer, presentation, or device result exists. |
 | Apple and iOS checks | Source/portable checks only. No signed installed macOS or current iOS package/device result exists. |
@@ -606,9 +607,12 @@ Activation is not released until the worker is registered; stop cancels only the
 replacement is refused until exit and convergence; and zero, stale, wrong-phase, or exhausted rebuilds
 cannot alter replacement state. Kotlin publishes the exact positive generation cross-thread, JNI proves
 the exact retained `MainService` object, and the listener observes only an active exact-generation epoch
-snapshot. The three executable Rust state-machine tests cover stale replacement callbacks, registration
-and convergence ordering, invalid/exhausted edges, and thread-start failure. These tests prove the pure
-native owner model only—not JNI/Android lifecycle, socket cleanup, reconnect, or device behavior. Current
+snapshot. At exact pushed commit `9bd2eed71cb2ce0ee9668243217c3feb435f5c79`, the no-NIC verifier VM
+compiled the complete Linux-host Rust library and passed the three production lifecycle tests plus the
+production listener-child cancellation/drain test. They cover stale replacement callbacks, registration and
+convergence ordering, invalid/exhausted edges, thread-start failure, child isolation, parent cancellation,
+complete join, and an empty postcondition. This proves those Linux-target Rust owner/drain behaviors only—not
+Android-target compilation, JNI/Android lifecycle, real socket cleanup, reconnect, or device behavior. Current
 APK installation and network-change/Stop/task-swipe/Force-Stop/reopen/replacement/resource testing remain
 open under the global matrix. R-S11el and Appendix C #293 own the product contract.
 
@@ -9762,13 +9766,16 @@ authority, notification, and cleanup plan while blocking replacement; task
 removal does not stop the foreground service and Force Stop is not a recovery
 mechanism.
 
-**Evidence.** The unchanged dependency-free production lifecycle module's three
-Rust 1.75 regressions previously exercised start-before-registration refusal,
-stop-request versus inactivity, terminal convergence before replacement, stale
-generation refusal, rebuild exhaustion, and thread-creation rollback in a
-numeric-nonroot networkless container. The new production `JoinSet` drain test
-proves parent-to-child cancellation, child isolation, complete join, and empty
-postcondition in code and is wired into `scripts/verify.sh`, but it has **not run**.
+**Evidence.** Exact pushed commit `9bd2eed71cb2ce0ee9668243217c3feb435f5c79`, tree
+`39ebe398f7410905b025abe931e1390cc9782cc8`, compiled the complete Linux-host Rust library and passed all four
+focused production tests in 236 seconds. The three lifecycle regressions exercise start-before-registration
+refusal, stop-request versus inactivity, terminal convergence before replacement, stale-generation refusal,
+rebuild exhaustion, and thread-creation rollback. The `JoinSet` regression executes parent-to-child
+cancellation, child isolation, complete join, and the empty postcondition. The ordinary-user QEMU VM had
+`-nic none`; its guest-only Docker container used `--network=none`, a read-only root and source, no capabilities,
+no-new-privileges, AppArmor, the pinned Rust 1.75 devcheck image and Cargo vendor closure, and an active offline
+build canary. The outer receipt proves unchanged host listeners and joined cleanup. This is current Linux-target
+Rust execution, not Android-target, JNI, framework, worker-thread, socket, peer, package, or device execution.
 Exact pushed commit `c02e795b71809eaa86e4b294c7cd45b74fcf788e` additionally compiled and executed
 the production Kotlin `MainServiceGenerationOwner` in the no-NIC owner-state VM. Its cases require complete-only
 commit ordering; phase-specific, stable retirement plans; stale completion refusal; replacement blocking until
@@ -9790,21 +9797,16 @@ JNI bridge, callback worker, listener, or cleanup path. The former global mutati
 deleted after its last bounded run produced no verdict before exit 137; it never
 supplied Android lifecycle, product, or native evidence.
 
-Two bounded, network-disabled, numeric-nonroot compilation attempts used only
-the read-only repository/toolchain/cache plus three ephemeral crates whose bytes
-matched the exact `Cargo.lock` SHA-256 values. Linux stopped at the generic
-image's missing `gdk-3.0` development metadata; Windows checking stopped at the
-absent MSVC `lib.exe`. Neither reached the RustDesk crate, so neither is compile
-or test evidence. The roughly 1 GB target and all three temporary archives were
-removed. No current JNI, Android framework, emulator, device, or accepted-socket
-runtime execution exists yet.
+Earlier generic-image Linux and incomplete-MSVC Windows attempts did not reach the RustDesk crate and remain
+non-evidence in Git/audit history. No current Android-target, JNI, Android framework, emulator, device, or real
+accepted-socket runtime execution exists yet.
 
 **Open evidence.** Build and install the exact current APK with the pinned
 Kotlin/Gradle/NDK closure, inject every startup and retirement failure, and run
 task-swipe/reopen/Service-recreation/Force-Stop, reconnect, file, display,
 control, capture, port-forward, and audio cases on Android, including stop during
-pre-key authentication and each authenticated mode. First run the new Rust test
-and compile every affected target. Then prove listener/task/thread/handle/memory/
+pre-key authentication and each authenticated mode. Compile every affected Android target, then prove
+listener/task/thread/handle/memory/
 queue/CPU/latency finality—including stop with live blocking filesystem work—on
 the real runtime. Sustained soak, desktop shutdown behavior, cross-version
 behavior, signed artifacts, cold R-B2/R-B10 equality, independent reproduction,

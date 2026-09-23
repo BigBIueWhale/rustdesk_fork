@@ -10,6 +10,9 @@ case "$#:${8:-}" in
     12:--hbb-common-fs)
         MODE=hbb-common-fs
         ;;
+    12:--android-listener-rust-tests)
+        MODE=android-listener-rust-tests
+        ;;
     12:--flutter-model-tests)
         MODE=flutter-model-tests
         ;;
@@ -33,7 +36,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-listener-rust-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -46,10 +49,10 @@ readonly EXPECTED_SHA256=$5
 readonly EXPECTED_KERNEL_RELEASE=$6
 readonly EXPECTED_ROOT_UUID=$7
 readonly MODE FLUTTER_PEER_CANDIDATE
-readonly HBB_SOURCE_ARCHIVE=${9:-}
-readonly HBB_SOURCE_COMMIT=${10:-}
-readonly HBB_SOURCE_TREE=${11:-}
-readonly HBB_SOURCE_ARCHIVE_SHA256=${12:-}
+readonly RUST_TEST_SOURCE_ARCHIVE=${9:-}
+readonly RUST_TEST_SOURCE_COMMIT=${10:-}
+readonly RUST_TEST_SOURCE_TREE=${11:-}
+readonly RUST_TEST_SOURCE_ARCHIVE_SHA256=${12:-}
 readonly FLUTTER_SOURCE_ARCHIVE=${9:-}
 readonly FLUTTER_SOURCE_COMMIT=${10:-}
 readonly FLUTTER_SOURCE_TREE=${11:-}
@@ -767,65 +770,100 @@ run_rust_audit() {
         "$lock_sha" "$policy_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1"
 }
 
-run_hbb_common_fs() {
+run_focused_rust_tests() {
     local inputs=/mnt/rustdesk-sealed-inputs
-    local source_root=$ROOT/hbb-common-fs-source
-    local output=$ROOT/hbb-common-fs.out
+    local source_root=$ROOT/focused-rust-test-source
+    local target_root=$ROOT/focused-rust-test-target
+    local output=$ROOT/focused-rust-tests.out
     local rust_archive=$inputs/rust-1.75.tar.xz
     local vendor=$inputs/cargo-vendor
     local vendor_config=$inputs/cargo-vendor-config.toml
     local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
-    local load_output container_status=0 inspect namespace_inspect result_line tests_passed
+    local load_output container_status=0 inspect namespace_inspect result_line passed tests_passed=0
+    local container_name memory memory_bytes tmpfs_size source_fingerprints
     local source_archive_sha source_before input_mount_options
-    local -a required_tests=(
-        r_s11hm_remove_empty_directory_tree_removes_the_complete_empty_tree
-        r_s11hm_remove_empty_directory_tree_reports_a_nonempty_tree
-        r_s11hm_nonrecursive_directory_removal_uses_empty_only_finality
-        r_s11hm_remove_empty_directory_tree_refuses_a_directory_symlink_root
-        r_s11hm_remove_empty_directory_tree_unlinks_nested_symlink_without_traversal
-        r_s11hm_retained_directory_refuses_a_replacement_root_edge
-        r_s11hm_remove_empty_directory_tree_enforces_depth_bound
-        r_s11hm_remove_file_refuses_a_symlinked_parent
-        remove_file_rejects_empty_path
-        remove_file_rejects_null_byte_path
-        create_dir_rejects_empty_path
-        create_dir_rejects_null_byte_path
-        create_dir_creates_a_legitimate_nested_tree_idempotently
-        create_dir_rejects_parent_traversal_before_any_component_is_created
-        create_dir_refuses_a_symlink_parent_without_mutating_its_target
-        rename_file_rejects_invalid_new_name
-        rename_file_accepts_valid_new_name
-        rename_file_replaces_a_symlink_leaf_without_touching_its_target
-        rename_file_refuses_a_symlink_parent_without_mutating_its_target
-        rename_admitted_entry_refuses_a_replaced_source_name
-        rename_admitted_entry_stays_with_its_retained_parent_after_path_swap
-    )
+    local -a required_tests result_lines
 
-    [[ "$HBB_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+    if [ "$MODE" = hbb-common-fs ]; then
+        container_name=rustdesk-hbb-common-fs
+        memory=8g
+        memory_bytes=8589934592
+        tmpfs_size=3g
+        source_fingerprints=(Cargo.lock libs/hbb_common/src/fs.rs)
+        required_tests=(
+            fs::tests::r_s11hm_remove_empty_directory_tree_removes_the_complete_empty_tree
+            fs::tests::r_s11hm_remove_empty_directory_tree_reports_a_nonempty_tree
+            fs::tests::r_s11hm_nonrecursive_directory_removal_uses_empty_only_finality
+            fs::tests::r_s11hm_remove_empty_directory_tree_refuses_a_directory_symlink_root
+            fs::tests::r_s11hm_remove_empty_directory_tree_unlinks_nested_symlink_without_traversal
+            fs::tests::r_s11hm_retained_directory_refuses_a_replacement_root_edge
+            fs::tests::r_s11hm_remove_empty_directory_tree_enforces_depth_bound
+            fs::tests::r_s11hm_remove_file_refuses_a_symlinked_parent
+            fs::tests::remove_file_rejects_empty_path
+            fs::tests::remove_file_rejects_null_byte_path
+            fs::tests::create_dir_rejects_empty_path
+            fs::tests::create_dir_rejects_null_byte_path
+            fs::tests::create_dir_creates_a_legitimate_nested_tree_idempotently
+            fs::tests::create_dir_rejects_parent_traversal_before_any_component_is_created
+            fs::tests::create_dir_refuses_a_symlink_parent_without_mutating_its_target
+            fs::tests::rename_file_rejects_invalid_new_name
+            fs::tests::rename_file_accepts_valid_new_name
+            fs::tests::rename_file_replaces_a_symlink_leaf_without_touching_its_target
+            fs::tests::rename_file_refuses_a_symlink_parent_without_mutating_its_target
+            fs::tests::rename_admitted_entry_refuses_a_replaced_source_name
+            fs::tests::rename_admitted_entry_stays_with_its_retained_parent_after_path_swap
+        )
+    else
+        [ "$MODE" = android-listener-rust-tests ] \
+            || fail "unknown focused Rust-test mode: $MODE"
+        container_name=rustdesk-android-listener-rust-tests
+        memory=12g
+        memory_bytes=12884901888
+        tmpfs_size=3g
+        source_fingerprints=(
+            Cargo.lock
+            src/lib.rs
+            src/android_listener_lifecycle.rs
+            src/direct_service.rs
+        )
+        required_tests=(
+            android_listener_lifecycle::tests::stale_network_callback_cannot_advance_replacement_generation_epoch
+            android_listener_lifecycle::tests::worker_must_be_registered_and_converged_before_replacement
+            android_listener_lifecycle::tests::invalid_exhausted_and_thread_creation_failure_edges_fail_closed
+            direct_service::direct_connection_task_tests::parent_cancellation_converges_every_owned_child_before_listener_completion
+        )
+    fi
+
+    [[ "$RUST_TEST_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         || fail 'focused Rust-test source commit is malformed'
-    [[ "$HBB_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
+    [[ "$RUST_TEST_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
         || fail 'focused Rust-test source tree is malformed'
-    [[ "$HBB_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+    [[ "$RUST_TEST_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
         || fail 'focused Rust-test source archive digest is malformed'
-    [ -f "$HBB_SOURCE_ARCHIVE" ] && [ ! -L "$HBB_SOURCE_ARCHIVE" ] \
-        && [ "$(stat -c '%u:%g:%a:%h' -- "$HBB_SOURCE_ARCHIVE")" = 4000:4000:400:1 ] \
+    [ -f "$RUST_TEST_SOURCE_ARCHIVE" ] && [ ! -L "$RUST_TEST_SOURCE_ARCHIVE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$RUST_TEST_SOURCE_ARCHIVE")" = 4000:4000:400:1 ] \
         || fail 'focused Rust-test source archive metadata differs'
-    source_archive_sha="$(sha256sum "$HBB_SOURCE_ARCHIVE" | awk '{ print $1 }')"
-    [ "$source_archive_sha" = "$HBB_SOURCE_ARCHIVE_SHA256" ] \
+    source_archive_sha="$(sha256sum "$RUST_TEST_SOURCE_ARCHIVE" | awk '{ print $1 }')"
+    [ "$source_archive_sha" = "$RUST_TEST_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'focused Rust-test source archive digest differs'
 
     rm -rf -- "$source_root"
     mkdir "$source_root"
-    tar -xf "$HBB_SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
+    tar -xf "$RUST_TEST_SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
         -C "$source_root" \
         || fail 'cannot extract the exact focused-test source archive'
     chown -R 1000:1000 "$source_root"
+    mkdir "$target_root"
+    chown 1000:1000 "$target_root"
+    chmod 0700 "$target_root"
     [ "$(sha256sum "$source_root/scripts/smoke-verifier-vm-authority-guest.sh" \
               | awk '{ print $1 }')" = \
       "$(sha256sum "${BASH_SOURCE[0]}" | awk '{ print $1 }')" ] \
         || fail 'focused-test source archive differs from its guest bootstrap'
-    source_before="$source_archive_sha:$(sha256sum "$source_root/Cargo.lock" \
-        "$source_root/libs/hbb_common/src/fs.rs")"
+    source_before="$source_archive_sha:$(
+        cd "$source_root"
+        sha256sum "${source_fingerprints[@]}"
+    )"
 
     mkdir "$inputs"
     mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
@@ -887,13 +925,13 @@ run_hbb_common_fs() {
 
     CONTAINER_ID="$(
         "$CLIENT" --host "unix://$SOCK" create \
-            --name rustdesk-hbb-common-fs \
+            --name "$container_name" \
             --pull=never \
             --network=none \
             --read-only \
             --pids-limit=1024 \
-            --memory=8g \
-            --memory-swap=8g \
+            --memory="$memory" \
+            --memory-swap="$memory" \
             --cpus=4 \
             --ulimit nofile=4096:4096 \
             --ulimit core=0:0 \
@@ -901,11 +939,14 @@ run_hbb_common_fs() {
             --security-opt=no-new-privileges \
             --security-opt=apparmor=docker-default \
             --user 1000:1000 \
-            --mount "type=bind,source=$source_root,target=/source" \
+            --env "RUST_TEST_MODE=$MODE" \
+            --env RUSTDESK_CANARY_OFFLINE=1 \
+            --mount "type=bind,source=$source_root,target=/source,readonly" \
+            --mount "type=bind,source=$target_root,target=/cargo-target" \
             --mount "type=bind,source=$vendor,target=/vendor,readonly" \
             --mount "type=bind,source=$vendor_config,target=/inputs/config.toml,readonly" \
             --mount "type=bind,source=$rust_archive,target=/inputs/rust.tar.xz,readonly" \
-            --tmpfs /tmp:rw,exec,nosuid,nodev,size=10g,mode=700,uid=1000,gid=1000 \
+            --tmpfs "/tmp:rw,exec,nosuid,nodev,size=$tmpfs_size,mode=700,uid=1000,gid=1000" \
             --workdir /source \
             "$DEB_BUILDER_CONFIG_ID" /bin/bash --noprofile --norc -euo pipefail -c '
                 set -- /sys/class/net/*
@@ -928,7 +969,7 @@ run_hbb_common_fs() {
                 [ "$seccomp" = 2 ]
                 IFS= read -r apparmor </proc/self/attr/current
                 case "$apparmor" in docker-default\ *) ;; *) exit 92 ;; esac
-                mkdir /tmp/toolchain /tmp/rust /tmp/home /tmp/cargo-home /tmp/cargo-target
+                mkdir /tmp/toolchain /tmp/rust /tmp/home /tmp/cargo-home
                 tar -C /tmp/toolchain -xf /inputs/rust.tar.xz
                 /tmp/toolchain/rust-1.75.0-x86_64-unknown-linux-gnu/install.sh \
                     --prefix=/tmp/rust --disable-ldconfig >/dev/null
@@ -936,13 +977,24 @@ run_hbb_common_fs() {
                     /inputs/config.toml >/tmp/cargo-home/config.toml
                 [ "$(grep -Fc '\''directory = "/vendor"'\'' /tmp/cargo-home/config.toml)" -eq 1 ]
                 export HOME=/tmp/home CARGO_HOME=/tmp/cargo-home \
-                    CARGO_TARGET_DIR=/tmp/cargo-target RUSTUP_HOME=/nonexistent \
+                    CARGO_TARGET_DIR=/cargo-target RUSTUP_HOME=/nonexistent \
                     RUSTUP_TOOLCHAIN= PATH=/tmp/rust/bin:/usr/bin:/bin \
                     LANG=C LC_ALL=C CARGO_NET_OFFLINE=true
                 [ "$(rustc --version)" = "rustc 1.75.0 (82e1608df 2023-12-21)" ]
                 [ "$(cargo --version)" = "cargo 1.75.0 (1d8b05cdd 2023-11-20)" ]
-                cargo test --offline --locked -p hbb_common --lib \
-                    fs::tests:: --color never -- --test-threads=1
+                case "$RUST_TEST_MODE" in
+                    hbb-common-fs)
+                        cargo test --offline --locked -p hbb_common --lib \
+                            fs::tests:: --color never -- --test-threads=1
+                        ;;
+                    android-listener-rust-tests)
+                        cargo test --offline --locked --lib --features linux-pkg-config \
+                            android_listener_lifecycle::tests:: --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config \
+                            direct_service::direct_connection_task_tests:: --color never -- --test-threads=1
+                        ;;
+                    *) exit 93 ;;
+                esac
             '
     )"
     [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] \
@@ -951,7 +1003,7 @@ run_hbb_common_fs() {
         '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' \
         "$CONTAINER_ID")"
     [ "$inspect" = \
-      'none|true|1000:1000|8589934592|8589934592|4000000000|1024|["ALL"]|["no-new-privileges","apparmor=docker-default"]' ] \
+      "none|true|1000:1000|$memory_bytes|$memory_bytes|4000000000|1024|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]" ] \
         || fail "focused Rust-test container authority differs: $inspect"
     namespace_inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' \
@@ -964,14 +1016,29 @@ run_hbb_common_fs() {
         || { tail -n 200 "$output" >&2; fail "focused Rust tests exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
         || fail 'focused Rust-test output exceeds its bound'
-    result_line="$(grep -E '^test result: ok\. [1-9][0-9]* passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output")" \
-        || { tail -n 200 "$output" >&2; fail 'focused Rust-test success summary is absent'; }
-    [ "$(grep -Ec '^test result: ' "$output")" -eq 1 ] \
-        || fail 'focused Rust-test result summary is duplicated'
-    tests_passed="$(printf '%s\n' "$result_line" | sed -E 's/^test result: ok\. ([0-9]+) passed;.*/\1/')"
+    if [ "$MODE" = android-listener-rust-tests ]; then
+        grep -Fq 'R-B10 canary: build confirmed network-isolated (offline compile stage).' "$output" \
+            || { tail -n 200 "$output" >&2; fail 'focused Rust build did not execute its offline network canary'; }
+    fi
+    mapfile -t result_lines < <(
+        grep -E '^test result: ok\. [1-9][0-9]* passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output"
+    )
+    if [ "$MODE" = hbb-common-fs ]; then
+        [ "${#result_lines[@]}" -eq 1 ] \
+            || { tail -n 200 "$output" >&2; fail 'focused filesystem test summary count differs'; }
+    else
+        [ "${#result_lines[@]}" -eq 2 ] \
+            || { tail -n 200 "$output" >&2; fail 'Android listener Rust-test summary count differs'; }
+    fi
+    [ "$(grep -Ec '^test result: ' "$output")" -eq "${#result_lines[@]}" ] \
+        || fail 'focused Rust-test output contains a non-success result summary'
+    for result_line in "${result_lines[@]}"; do
+        passed="$(printf '%s\n' "$result_line" | sed -E 's/^test result: ok\. ([0-9]+) passed;.*/\1/')"
+        tests_passed=$((tests_passed + passed))
+    done
     for test_name in "${required_tests[@]}"; do
-        grep -Fxq "test fs::tests::$test_name ... ok" "$output" \
-            || { tail -n 200 "$output" >&2; fail "load-bearing filesystem test did not pass: $test_name"; }
+        grep -Fxq "test $test_name ... ok" "$output" \
+            || { tail -n 200 "$output" >&2; fail "load-bearing Rust test did not pass: $test_name"; }
     done
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'focused Rust-test container did not exit cleanly'
@@ -979,17 +1046,28 @@ run_hbb_common_fs() {
     CONTAINER_ID=
     "$CLIENT" --host "unix://$SOCK" image rm "$DEB_BUILDER_CONFIG_ID" >/dev/null
     [ "$source_before" = \
-      "$source_archive_sha:$(sha256sum "$source_root/Cargo.lock" \
-          "$source_root/libs/hbb_common/src/fs.rs")" ] \
+      "$source_archive_sha:$(
+          cd "$source_root"
+          sha256sum "${source_fingerprints[@]}"
+      )" ] \
         || fail 'focused Rust-test source inputs changed during execution'
     stop_docker_authority
     umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
     SEALED_INPUTS_MOUNTED=0
-    printf '%s\n' "$result_line"
-    printf 'HBB_COMMON_FS_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
-        "$HBB_SOURCE_COMMIT" "$HBB_SOURCE_TREE" "$tests_passed" \
-        "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
-        "$DEB_BUILDER_CONFIG_ID"
+    printf '%s\n' "${result_lines[@]}"
+    if [ "$MODE" = hbb-common-fs ]; then
+        printf 'HBB_COMMON_FS_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+            "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
+            "$DEB_BUILDER_CONFIG_ID"
+    else
+        [ "$tests_passed" -eq 4 ] \
+            || fail "Android listener Rust-test count differs: $tests_passed"
+        printf 'ANDROID_LISTENER_RUST_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=android-listener-generation-and-child-convergence rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+            "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
+            "$DEB_BUILDER_CONFIG_ID"
+    fi
 }
 
 stage_android_owner_kotlin_jar() {
@@ -2147,7 +2225,8 @@ done
 [ "$server_version" = "$EXPECTED_VERSION" ] || fail 'Docker server version differs'
 [ "$(<"$PIDFILE")" = "$DAEMON_PID" ] || fail 'Docker daemon PID file differs'
 docker_socket_gid=4000
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = flutter-model-tests ] \
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-listener-rust-tests ] \
+   || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = flutter-peer-presentation ] \
    || [ "$MODE" = rust-audit ]; then
@@ -2196,7 +2275,12 @@ if [ "$MODE" = rust-audit ]; then
 fi
 
 if [ "$MODE" = hbb-common-fs ]; then
-    run_hbb_common_fs
+    run_focused_rust_tests
+    exit 0
+fi
+
+if [ "$MODE" = android-listener-rust-tests ]; then
+    run_focused_rust_tests
     exit 0
 fi
 

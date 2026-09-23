@@ -4685,14 +4685,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c) R-S11bp/R-S11eh outgoing voice-call bounded exact-owner lifecycle =="
-if python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test; then
-  note "ok  R-S11bp/R-S11eh macOS/shared outgoing voice-call capture is bounded, event-driven, direct-writer, and exact-subscription-owned"
-else
-  echo "  FAIL R-S11bp/R-S11eh macOS/shared outgoing voice-call capture regained polling, detached subscription lifecycle, or intermediate unbounded audio"
-  rc=1
-fi
-
 echo "== (2g-c2-0) R-S11hi bounded format-first peer-audio decoder mailbox =="
 if python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test; then
   note "ok  R-S11hi Apple/shared peer-audio decode admission is bounded, format-first, fresh, and exact-owner final"

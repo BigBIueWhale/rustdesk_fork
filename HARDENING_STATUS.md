@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-3dd0c6d9535442c9dd80629e8c9da32c49123b72038774761f24b008dc373f09  requirements.html
+76759465ea848a9425b56062b9f32ddcee48749dbd117a56e20afa73be19766a  requirements.html
 ```
 
 ## Current Verdict
@@ -2006,81 +2006,24 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   installed service, exact release artifact, or end-to-end helper connection is claimed, and those
   evidence obligations remain R-R2/R-B2.
 - **R-S11bp/R-S11e-82 — outgoing voice-call capture is event-driven and exact-subscription-owned —
-  SOURCE IMPLEMENTED/GATED 2026-07-22; FINAL DATA-PLANE SHAPE SUPERSEDED BY R-S11eh 2026-07-27;
-  EXACT NATIVE/APK/DEVICE/ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: the shared non-iOS
-  outgoing viewer (Android plus desktop; iOS has no local audio-service voice capture). Endpoint/action:
-  an accepted outgoing voice call subscribes one synthetic `ConnInner` to the process-local audio
-  service and sends its audio through that exact viewer round. The imported worker hot-polled separate
-  stop and audio channels and did not own subscription revocation. The first R-S11bp closure made the
-  worker block and gave it exact subscription/stop/handle ownership. R-S11eh's later end-to-end audit
-  proved that the worker still drained into the viewer's unbounded general `Data` queue, so it moved
-  rather than closed real-time resource accumulation.
-
-  The final topology has no voice worker. `VoiceCallAudio` owns the exact synthetic subscription,
-  non-cloneable input lease, and R-S11eh bounded receiver. The connection round's existing Tokio select
-  waits on that receiver and its sole peer-stream writer sends the message directly. Normal stop,
-  reconnect/final shutdown, and hard `Drop` all unsubscribe the exact synthetic connection before
-  releasing the exact lease. No voice stop flag/channel, polling or blocking loop, nested runtime,
-  intermediate `Data::Message` forwarding, detached handle, or voice-specific completion-pool handoff
-  remains. This does not change Android's persistent `MainService` or incoming controlled-service
-  lifetime.
-
-  The updated `scripts/verify-viewer-voice-call-worker.py` binds the exact composite owner,
-  unsubscribe-before-lease-release, event-driven direct-select consumption, sole-writer send,
-  R-S11eh mailbox use, retired worker/stop/intermediate-queue absence, R-S11bp, Appendix C #209/#287,
-  this row, and shared/Apple gate wiring while retaining its independent R-S11bq input-lease checks.
-  The R-S11eh focused behavior and semantic gates supply the mailbox/resource proof. No current APK,
-  native Android/desktop voice-call session, real device, exact release artifact, or R-B2/R-B10
-  transaction is claimed here.
-- **R-S11bq/R-S11e-83 — voice-call input selection has exact concurrent owners — SOURCE, FOCUSED RUST,
-  SOURCE GATE, AND MUTATION VERIFIED; EXACT NATIVE/APK/DEVICE/ARTIFACT EVIDENCE REMAIN OPEN.** Platforms: the shared Rust audio service used by
-  non-iOS outgoing viewers and
-  controlled Remote/ViewCamera connections on Android and desktop. Endpoint/action: selecting and restarting
-  the one process-wide physical voice-call input while independently owned calls start, stop, reconnect, close,
-  or are cancelled. Boundary: each exact call owner ↔ the shared audio-input selection and capture-service
-  restart. The inherited `VOICE_CALL_INPUT_DEVICE: Option<String>` exposed one
-  `set_voice_call_input_device(device, set_if_present)` function for both selection and ownership. Every
-  outgoing worker and accepted controlled connection selected that global, while independent worker-exit,
-  explicit-close, asynchronous-close, and `Connection::Drop` paths unconditionally wrote `None`. The controlled
-  connection separately carried `voice_calling: bool`. Multiple outgoing sessions and multiple controlled
-  connection IDs are valid process state; no source invariant serialized them. One call could therefore clear
-  and restart input still required by another, and the boolean, worker, and global selection could diverge. This
-  is a source-proven shared resource-availability/lifecycle defect. It is not evidence of host RustDesk
-  modification, a public listener, firewall change, Docker privilege, exploitation, or compromise, and it is
-  not a device reproduction or proved cause of the reported one-host screen-control symptom.
-
-  `VoiceCallInputState` now owns the selected device plus a checked active-owner count. Only
-  `acquire_voice_call_input()` can construct the private, non-cloneable `VoiceCallInputLease`: the first owner
-  installs its default only when no selection exists, later owners share the one physical stream, and operator
-  device selection changes that stream without changing ownership; the public selection API accepts only a
-  concrete device, so it cannot clear the lease-owned state. Releasing a non-final lease does nothing to
-  the selection; final release alone clears it and requests restart. Acquisition overflow returns failure without
-  mutation, while impossible release underflow logs the invariant failure and aborts instead of silently
-  continuing with corrupt accounting. The obsolete `set_if_present` API is deleted.
-
-  `VoiceCallAudio` now owns its lease alongside the exact subscription and R-S11eh bounded receiver.
-  Stop removes the exact subscription and then drops only that lease; no intermediate worker has
-  global-`None` cleanup authority, so lexical owner drop supplies exact rollback.
-  Controlled `Connection` stores `Option<VoiceCallInputLease>` instead of `voice_calling`, acquires before its
-  first response await, reports refusal if acquisition fails, derives overlap/audio admission from lease
-  presence, and takes only its exact lease during explicit close, asynchronous close before its first cleanup
-  await, and hard `Drop`.
-
-  Layer boundary: this Rust ownership slice did not by itself make the separate Android native recorder
-  state machine correct. Its source tracing found that `MainService.rustSetByName("update_voice_call_state")`
-  receives an exact controlled connection ID but switches the process-wide `AudioRecordHandle` directly for
-  each individual state event; a false event can switch out while another ID remains active, and ordinary
-  connection removal does not send an exact native owner-retirement event. Outgoing activity voice-call events
-  likewise reached `MainActivity` without a native Activity-session owner and could cross the activity/service
-  recorder handoff. R-S11br/R-S11e-84 independently closes that Android source topology; both layers remain
-  required and neither substitutes for the other. No
-  current APK, native Android/desktop voice-call transaction, real-device sequence, exact release artifact, or
-  R-B2/R-B10 transaction is claimed here.
-
-  The named source slice compiled exact Rust 1.75 locked/offline library tests against the pinned read-only
-  Cargo-vendor closure and passed its two ownership regressions. That establishes only the Rust ownership model at
-  that source state. Current packaged desktop/Android voice-call behavior, complete native lifecycles, and release
-  artifacts remain open under the global matrix; deleted workspace-catalog results are not carried forward.
+  SOURCE IMPLEMENTED; NATIVE/APK/DEVICE/ARTIFACT EVIDENCE OPEN.** On non-iOS targets, one
+  `VoiceCallAudio` owns the synthetic audio-service subscription, non-cloneable input lease, and R-S11eh
+  bounded receiver. The owning connection round awaits that receiver in its existing Tokio select and its sole
+  peer writer sends the audio directly. Stop, reconnect/final shutdown, and hard `Drop` unsubscribe the exact
+  connection before releasing the lease; there is no polling worker, stop channel, nested runtime, detached
+  handle, or intermediate general queue. The retained R-S11eh Rust tests exercise bounded mailbox behavior,
+  not this complete subscription/native lifecycle. The former 748-line Python source/document mutation catalog
+  and its shared/Apple wrapper calls are deleted because they executed no voice behavior. Exact packaged
+  Android/desktop voice calls, reconnect/close/drop ordering, CPU/queue bounds, and resource cleanup remain open.
+- **R-S11bq/R-S11e-83 — voice-call input selection has exact concurrent owners — SOURCE AND TWO
+  FOCUSED RUST STATE TESTS; NATIVE/APK/DEVICE/ARTIFACT EVIDENCE OPEN.** `VoiceCallInputState` owns
+  the selected device and checked active-owner count. Successful acquisition alone creates a private,
+  non-cloneable `VoiceCallInputLease`; non-final release preserves capture, final release clears and restarts it,
+  overflow refuses without mutation, and underflow fails stop. `VoiceCallAudio` and each controlled connection
+  retain and release only their exact lease; no parallel call Boolean or ambient global-clear path owns input.
+  The two `r_s11e83_` Rust tests exercise concurrent-owner retention/final release and owner-count failure. They
+  do not prove native capture, Android recorder aggregation, Activity/service handoff, reconnect, cancellation,
+  or packaged cleanup; R-S11br and the global native matrix retain those obligations.
 - **R-S11br/R-S11e-84 — Android native voice-call capture has exact process-wide owners — SOURCE
   IMPLEMENTED; EXACT-CURRENT PACKAGED NATIVE/DEVICE EVIDENCE OPEN.** One serialized
   `VoiceCallAudioCoordinator` owns the process-wide `AudioRecordHandle`. Controlled owners are

@@ -1381,14 +1381,8 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a01) Voice-call bounded audio and exact input ownership (R-S11bp/R-S11bq/R-S11eh/R-S11e-82/R-S11e-83/R-S11e-152) =="
+echo "== (3b-iii-a1a01) Voice-call exact input ownership (R-S11bq/R-S11e-83) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e83_ --color never
-if python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test; then
-  echo "  ok  R-S11e-82/R-S11e-83/R-S11e-152 voice-call capture uses bounded direct audio and tears down through exact subscription and input owners"
-else
-  echo "  FAIL R-S11e-82/R-S11e-83/R-S11e-152 voice-call capture regained polling, detached subscription lifecycle, intermediate unbounded audio, or ambient input ownership"
-  rc=1
-fi
 
 if python3 scripts/verify-session-stream-generation.py --repo . --self-test; then
   echo "  ok  R-S11e-287 outgoing Flutter event streams reserve exact consumer generations before native replacement"

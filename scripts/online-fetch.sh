@@ -441,6 +441,14 @@ readonly -a ANDROID_EMULATOR_FIXED_ARCHIVE_ARGS=(
     "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
     "dl.google.com"
 )
+readonly -a RUST_ANDROID_X86_FIXED_ARCHIVE_ARGS=(
+    --entry
+    "rust-std-${RUST_VERSION}-x86_64-linux-android.tar.xz"
+    "https://static.rust-lang.org/dist/2023-12-28/rust-std-${RUST_VERSION}.0-x86_64-linux-android.tar.xz"
+    "$SIZE_RUST_STD_ANDROID_X86_64_1_75"
+    "$SHA256_RUST_STD_ANDROID_X86_64_1_75"
+    "static.rust-lang.org"
+)
 readonly -a ANDROID_BUILD_FIXED_ARCHIVE_ARGS=(
     --entry
     "android-cmdline-tools.zip"
@@ -1989,6 +1997,7 @@ archive_bundle_tool() {
         flutter-peer) archive_args=("${FLUTTER_PEER_FIXED_ARCHIVE_ARGS[@]}") ;;
         flutter-presentation-candidate) archive_args=("${FLUTTER_PRESENTATION_CANDIDATE_FIXED_ARCHIVE_ARGS[@]}") ;;
         flutter-test) archive_args=("${FLUTTER_TEST_FIXED_ARCHIVE_ARGS[@]}") ;;
+        rust-android-x86) archive_args=("${RUST_ANDROID_X86_FIXED_ARCHIVE_ARGS[@]}") ;;
         rust-test) archive_args=("${RUST_TEST_FIXED_ARCHIVE_ARGS[@]}") ;;
         systemd) archive_args=("${SYSTEMD_SMOKE_IMAGE_ARGS[@]}") ;;
         toolchain) archive_args=("${FIXED_ARCHIVE_ARGS[@]}") ;;
@@ -2165,8 +2174,8 @@ stage_flutter_presentation_candidate() {
         "$ANDROID_BUILDER_CONFIG_ID" android-builder
 }
 
-stage_android_emulator_inputs_candidate() {
-    local directory obsolete
+prepare_android_emulator_candidate_root() {
+    local directory
     for directory in "$ONLINE_CANDIDATE_ROOT" "$ANDROID_EMULATOR_CANDIDATE_ROOT"; do
         if [ -e "$directory" ] || [ -L "$directory" ]; then
             [ -d "$directory" ] && [ ! -L "$directory" ] \
@@ -2181,6 +2190,11 @@ stage_android_emulator_inputs_candidate() {
           = "$(/usr/bin/stat -c '%d' -- "$ONLINE_DIR")" ] \
             || die "Android Emulator candidate root is not on the online-state filesystem: $directory"
     done
+}
+
+stage_android_emulator_inputs_candidate() {
+    local obsolete
+    prepare_android_emulator_candidate_root
     stage_archive_bundle android-emulator "$ANDROID_EMULATOR_CANDIDATE_ROOT" \
         .rustdesk-android-emulator-archives \
         "pinned Android Emulator runtime candidate archives" \
@@ -2198,6 +2212,14 @@ stage_android_emulator_inputs_candidate() {
             || die "obsolete ARM64 emulator candidate remains after retirement"
         log "retired the exact obsolete ARM64 emulator candidate after x86_64 publication"
     fi
+}
+
+stage_rust_android_x86_input_candidate() {
+    prepare_android_emulator_candidate_root
+    stage_archive_bundle rust-android-x86 "$ANDROID_EMULATOR_CANDIDATE_ROOT" \
+        .rustdesk-rust-android-x86-archive \
+        "pinned Rust x86_64 Android emulator-test archive" \
+        "$ANDROID_BUILDER_CONFIG_ID" android-builder
 }
 
 produce_flutter_presentation_pub_discovery() {
@@ -8055,6 +8077,12 @@ main() {
             stage_android_emulator_inputs_candidate
             return 0
             ;;
+        --maintenance-stage-rust-android-x86-input)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-stage-rust-android-x86-input takes no arguments"
+            stage_rust_android_x86_input_candidate
+            return 0
+            ;;
         --maintenance-stage-flutter-presentation-candidate)
             [ "$#" -eq 1 ] \
                 || die "--maintenance-stage-flutter-presentation-candidate takes no arguments"
@@ -8160,7 +8188,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-discover-rust-android-x86-input|--maintenance-stage-android-emulator-inputs|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-promote-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-discover-rust-android-x86-input|--maintenance-stage-android-emulator-inputs|--maintenance-stage-rust-android-x86-input|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-promote-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

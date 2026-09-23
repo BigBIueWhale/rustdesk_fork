@@ -23,7 +23,7 @@ case "$#:${1:-}" in
         MODE=authority-smoke
         REQUEST=__authority_smoke__
         ;;
-    1:--rust-test-inputs|1:--flutter-test-inputs|1:--flutter-peer-inputs|1:--android-build-inputs|1:--libvpx-distfiles|1:--wix-nuget-packages|1:--dart-audit-inputs|1:--maintenance-discover-osv-pub-database|1:--maintenance-discover-android-emulator-inputs|1:--maintenance-discover-rust-android-x86-input|1:--maintenance-stage-android-emulator-inputs|1:--maintenance-stage-flutter-presentation-candidate|1:--maintenance-discover-flutter-presentation-pub|\
+    1:--rust-test-inputs|1:--flutter-test-inputs|1:--flutter-peer-inputs|1:--android-build-inputs|1:--libvpx-distfiles|1:--wix-nuget-packages|1:--dart-audit-inputs|1:--maintenance-discover-osv-pub-database|1:--maintenance-discover-android-emulator-inputs|1:--maintenance-discover-rust-android-x86-input|1:--maintenance-stage-android-emulator-inputs|1:--maintenance-stage-rust-android-x86-input|1:--maintenance-stage-flutter-presentation-candidate|1:--maintenance-discover-flutter-presentation-pub|\
     1:--maintenance-build-deb-builder-bootstrap-candidate|\
     1:--maintenance-build-android-builder-bootstrap-candidate|\
     1:--maintenance-build-win-helper-bootstrap-candidate|\

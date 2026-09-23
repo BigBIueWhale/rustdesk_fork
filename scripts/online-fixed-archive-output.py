@@ -205,6 +205,7 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
                 "flutter-3.24.5.tar.xz",
                 "flutter-3.47.5.tar.xz",
                 "rust-1.75.tar.xz",
+                "rust-std-1.75-x86_64-linux-android.tar.xz",
             )
         ):
             fail("the one-entry fixed-archive manifest has a noncanonical destination")
@@ -1576,6 +1577,22 @@ def test_flutter_model_archive_specs() -> tuple[ArchiveSpec, ...]:
     return parse_specs(records)
 
 
+def test_rust_android_x86_archive_specs() -> tuple[ArchiveSpec, ...]:
+    name = "rust-std-1.75-x86_64-linux-android.tar.xz"
+    payload = b"rust-android-x86-fixture"
+    return parse_specs(
+        [
+            [
+                name,
+                f"https://example.invalid/{name}",
+                str(len(payload)),
+                hashlib.sha256(payload).hexdigest(),
+                "example.invalid",
+            ]
+        ]
+    )
+
+
 def test_android_build_archive_specs() -> tuple[ArchiveSpec, ...]:
     records: list[list[str]] = []
     for name in (
@@ -1868,6 +1885,7 @@ def self_test() -> None:
         flutter_specs = test_flutter_archive_specs()
         flutter_candidate_specs = test_flutter_candidate_archive_specs()
         flutter_model_specs = test_flutter_model_archive_specs()
+        rust_android_x86_specs = test_rust_android_x86_archive_specs()
         android_build_specs = test_android_build_archive_specs()
         if download_timeout_seconds(systemd_specs[0]) != 300:
             fail("systemd-image self-test lost its bounded large-image timeout")
@@ -1877,6 +1895,8 @@ def self_test() -> None:
             fail("Flutter-candidate self-test widened the ordinary download timeout")
         if len(flutter_model_specs) != 3:
             fail("Flutter model-test self-test lost its exact toolchain manifest")
+        if len(rust_android_x86_specs) != 1:
+            fail("Rust Android x86 self-test lost its exact archive manifest")
         if len(android_build_specs) != 7:
             fail("Android build self-test lost its exact toolchain manifest")
         substituted_android_specs = [

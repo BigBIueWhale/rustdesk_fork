@@ -929,6 +929,19 @@ installed lifecycle evidence cannot presently be completed from the retained loc
 those inputs must preserve R-B2 and R-B10's single complete canonical closure and must not introduce a partial-cache
 fallback.
 
+The first exact Android emulator-input discovery now passes at clean pushed commit `5bdca38a`. In the existing
+outbound-only acquisition VM, a numeric-nonroot guest-only container selected and fully inspected Google's current
+stable Linux emulator 37.1.11 archive (SHA-256
+`95771e0ae431897b2a4bd2d97fa095f29a8b0624a7b216baf529f9306161c266`) and Android 34 default ARM64 system
+image revision 4 (SHA-256 `1447958a4c6747c44390ac5f5f4c894be6d1dfce93868a0385a95c5f0ae4c339`). Publisher sizes/SHA-1 values,
+computed SHA-256 values, complete CRC reads, bounded archive shapes, exact roots, and zero symlinks passed; the
+57-second run had no host forwarding, unchanged host listeners, guest-only Docker/BuildKit, and joined cleanup.
+This maintenance request deliberately published nothing: the values are reviewable first-pin candidates, not a
+canonical-input promotion, APK, emulator boot, app install, stable-signing result, peer/lifecycle/presentation
+test, or device evidence. Review and bind the exact official archives before offline emulator provisioning; then
+exercise the current APK's outgoing-viewer and controlled-service lifecycles in that disposable emulator, with a
+physical device retained where Android platform behavior cannot be established faithfully by emulation.
+
 Pub-cache and Gradle replacement cleanup is now one recoverable, acquisition-identity-owned transaction. A
 replacement refuses an existing root unless it is owned by the acquisition UID/GID and sealed mode 0500; the old
 root is made writable only for the cross-parent directory move required by `renameat2(2)`, is immediately resealed,

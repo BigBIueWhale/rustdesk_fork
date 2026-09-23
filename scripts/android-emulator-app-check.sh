@@ -46,6 +46,57 @@ readonly X86_STD=$CANDIDATE_ROOT/rust-std-1.75-x86_64-linux-android.tar.xz
 readonly X86_VCPKG=$CANDIDATE_ROOT/vcpkg/installed/x64-android
 readonly ADB=$ONLINE_DIR/android-sdk/platform-tools/adb
 
+verify_android_online_inputs() {
+    [ -d "$ONLINE_DIR" ] && [ ! -L "$ONLINE_DIR" ] \
+        || die 'Android online input root is absent or ambiguous'
+    verify_online_shas \
+        "rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75" \
+        "flutter-${FLUTTER_VERSION}.tar.xz" "$SHA256_FLUTTER_3_24_5" \
+        "llvm-${LLVM_VERSION}.tar.xz" "$SHA256_LLVM_15_0_6" \
+        "android-ndk-${ANDROID_NDK_VERSION}.zip" "$SHA256_ANDROID_NDK_R28C" \
+        android-cmdline-tools.zip "$SHA256_ANDROID_CMDLINE_TOOLS" \
+        cargo-vendor-config.toml "$SHA256_CARGO_VENDOR_CONFIG"
+    python3 -I -S "$SCRIPT_DIR/online-input-provenance.py" verify-subtree \
+        --tree "$ONLINE_DIR/cargo-vendor" \
+        --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"
+    python3 -I -S "$SCRIPT_DIR/online-input-provenance.py" verify-subtree \
+        --tree "$ONLINE_DIR/pub-cache" \
+        --expected "$SHA256_PUB_CACHE_CLOSURE_V1"
+    python3 -I -S "$SCRIPT_DIR/online-cargo-tool-output.py" check-complete \
+        --online "$ONLINE_DIR" --uid "$BUILD_UID" --gid "$BUILD_GID" \
+        --kind frb --tool-version "$FLUTTER_RUST_BRIDGE_VERSION" \
+        --rust-version "$RUST_VERSION"
+    python3 -I -S "$SCRIPT_DIR/online-cargo-tool-output.py" check-complete \
+        --online "$ONLINE_DIR" --uid "$BUILD_UID" --gid "$BUILD_GID" \
+        --kind cargo-ndk --tool-version "$CARGO_NDK_VERSION" \
+        --rust-version "$RUST_VERSION"
+    python3 -I -S "$SCRIPT_DIR/online-android-ndk-output.py" check-complete \
+        --online "$ONLINE_DIR" \
+        --archive "$ONLINE_DIR/android-ndk-${ANDROID_NDK_VERSION}.zip" \
+        --uid "$BUILD_UID" --gid "$BUILD_GID" \
+        --version "$ANDROID_NDK_VERSION" --sha256 "$SHA256_ANDROID_NDK_R28C" \
+        --builder "$ANDROID_BUILDER_CONFIG_ID"
+    python3 -I -S "$SCRIPT_DIR/online-android-sdk-output.py" check-complete \
+        --online "$ONLINE_DIR" \
+        --cmdline-archive "$ONLINE_DIR/android-cmdline-tools.zip" \
+        --uid "$BUILD_UID" --gid "$BUILD_GID" \
+        --builder "$ANDROID_BUILDER_CONFIG_ID" \
+        --package-pin "cmdline-tools=$SHA256_ANDROID_CMDLINE_TOOLS" \
+        --package-pin "platform-tools=$SHA256_ANDROID_PLATFORM_TOOLS_37_0_1" \
+        --package-pin "build-tools-30.0.3=$SHA256_ANDROID_BUILD_TOOLS_30_0_3" \
+        --package-pin "build-tools-34.0.0=$SHA256_ANDROID_BUILD_TOOLS_34_0_0" \
+        --package-pin "platform-31=$SHA256_ANDROID_PLATFORM_31" \
+        --package-pin "platform-32=$SHA256_ANDROID_PLATFORM_32" \
+        --package-pin "platform-33=$SHA256_ANDROID_PLATFORM_33" \
+        --package-pin "platform-34=$SHA256_ANDROID_PLATFORM_34"
+    python3 -I -S "$SCRIPT_DIR/online-gradle-output.py" check-complete \
+        --online "$ONLINE_DIR" --uid "$BUILD_UID" --gid "$BUILD_GID" \
+        --gradle-version "$ANDROID_GRADLE_WRAPPER" \
+        --gradle-sha256 "$SHA256_ANDROID_GRADLE_WRAPPER_ALL" \
+        --build-tools "$ANDROID_BUILD_TOOLS" \
+        --compile-sdk "$ANDROID_COMPILE_SDK"
+}
+
 vm_docker() {
     local status=0
     /bin/bash "$ENTRY_PREFLIGHT" >/dev/null || return 1
@@ -139,7 +190,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-require_online_complete
+verify_android_online_inputs
 verify_sha256 "$X86_STD" "$SHA256_RUST_STD_ANDROID_X86_64_1_75"
 python3 -I -S "$SCRIPT_DIR/online-input-provenance.py" verify-subtree \
     --tree "$X86_VCPKG" \
@@ -317,7 +368,7 @@ python3 -I -S "$SOURCE_AUTHORITY/scripts/verify-android-build-source.py" \
     || die 'source archive changed during app execution'
 [ "$(sha256sum "$APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
     || die 'private runtime-test APK changed after execution'
-require_online_complete
+verify_android_online_inputs
 verify_sha256 "$X86_STD" "$SHA256_RUST_STD_ANDROID_X86_64_1_75"
 python3 -I -S "$SCRIPT_DIR/online-input-provenance.py" verify-subtree \
     --tree "$X86_VCPKG" \

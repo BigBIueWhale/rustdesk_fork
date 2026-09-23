@@ -35,7 +35,7 @@ not a claim that every target OS has executed them.
 | Retained evidence | What it establishes—and does not establish |
 | --- | --- |
 | Portable Linux server transaction (`250e775b9a88a62a980937e1f278ad053f2d9d58`) | Real nonroot parked/listening, CPace, Remote/FileTransfer admission, capacity/refusal, and joined-shutdown behavior in confinement. It is not an installed root service or current release artifact. |
-| Exact-current Linux full-peer presentation (`76d8a32c2775f0d13c0c05a9fbc8d82939ad866e`) | Real password-prompt authentication, capture-to-X11-pixel delivery, a bounded focus-loss cycle, stable-connection recovery, and joined teardown on Linux software rendering. It is not Windows/Android/Apple, repeated reconnect/soak, or installed-service evidence. |
+| Exact-current Linux full-peer presentation (`5f4c4bd4b5d22bfff04cfea49b598c9ac93a5a67`) | Six uninstrumented lifecycles from one exact Flutter 3.47.5 bundle each exercised the real password prompt, capture-to-X11-pixel delivery, 2/6/12-second focus-loss cycles, same-connection recovery, three server-generation reconnects, bounded resources, and joined viewer/server teardown. It is not Windows/Android/Apple, sustained soak, cross-version, installed-service, or release-artifact evidence. |
 | Exact-current Linux filesystem regressions (`76cc2fefc6470aeaeb76b50d34b4dc377b39ba49`) | A zero-NIC VM and networkless guest-only container executed all 57 `hbb_common::fs` tests on pinned Rust 1.75, including retained-directory, symlink-parent, path-swap, bounded-depth, create, remove, and rename authority cases. This is Linux library behavior, not Windows junction/handle, installed peer, end-to-end transfer, or release-artifact evidence. |
 | Exact clean Flutter model transaction (`5c2fbfc9f78c8953a945283ef3c0cbef7f981064`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 12 focused suites and 103 tests on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. This is exact Dart/model and generated-bridge evidence, not native renderer, focus/background, device/service lifecycle, installed artifact, latency, soak, or cross-version evidence. |
 | Named Windows native/installed transactions | The recorded native-suite/package pass, installed LocalSystem CM transaction, and SCM credential transaction establish only their exact commits and scenarios. No current full RustDesk peer, native focus/minimize recovery, cold A==B build, or sustained resource/latency result exists. |
@@ -10706,18 +10706,24 @@ cleanup. Its log orders main-engine shutdown before manager-owned secondary dest
 implicit-view removal and GLib mutex abort. Thus even the signal-only preload can mask this timing-sensitive race;
 the diagnostic and its instrumented acceptance cycles are deleted rather than retained as apparent coverage.
 
-**Current candidate source correction; native rerun required.** Linux's ordinary `close` method acknowledged only
+**Exact-current Linux source and isolated native closure; broader evidence remains open.** Linux's ordinary `close` method acknowledged only
 `gtk_window_close()` initiation. `closeAllSubWindows()` treated that response as final and closed the main Flutter
 engine while the secondary engine's response-bound Dart `onDestroy` and later native destruction were still in
-flight. The manager also destroyed the secondary `FlutterWindow` while holding its map write lock. The candidate
+flight. The manager also destroyed the secondary `FlutterWindow` while holding its map write lock. The correction
 adds one main-engine-only close-and-wait operation, one bounded terminal owner per subwindow, and one Dart
 single-flight process-shutdown transaction. Native finalization moves the exact window out under the lock, destroys
 it after releasing the lock, and only then responds to the still-live main engine. Ordinary/self-close initiation
-semantics remain separate because a dying engine cannot observe a post-destruction response. All six runtime
-repetitions are now uninstrumented. This is source reasoning, not a pass: the exact current no-NIC full-peer build,
-six close cycles, terminal receipts, listener invariance, and joined cleanup must pass before the close-path
-STOP-SHIP item can be retired; Android, Windows, Apple, installed, cross-version, soak, and release obligations stay
-open regardless.
+semantics remain separate because a dying engine cannot observe a post-destruction response. Exact no-NIC run
+`run.8QOhb67WtU` built pushed commit `5f4c4bd4b5d22bfff04cfea49b598c9ac93a5a67` (tree
+`6781d84c67f0299752e10a83b03f2bf651286b0f`) once with Flutter 3.47.5 and passed all six uninstrumented
+server/viewer lifecycles from those bytes. Each cycle passed the real password, actual X11 pixels across all
+focus-loss intervals, same-TCP recovery, three server-generation reconnects, resource bounds, clean viewer exit,
+clean server exit, and exact container retirement. The outer receipt passed after 1,278 seconds with `-nic none`,
+guest-only Docker, read-only Landlocked inputs, unchanged host listeners, and joined QEMU/virtiofsd cleanup; the
+successful private run root was automatically retired. This closes the reproduced Linux X11 close-path defect for
+that exact current source and environment. It does **not** establish the cause or correction of the reported older
+Android persistent-process hang or Windows focus/display delay, nor Windows, Android, Apple, installed Linux,
+cross-version, sustained-soak, signed-artifact, reproducibility, or release closure; all remain open as listed above.
 
 **Open evidence.** Run the exact current generated bridge and native Windows and
 macOS plugins, plus installed Linux, through focus/minimize, display-switch, window-transfer,

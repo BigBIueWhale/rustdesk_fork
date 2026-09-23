@@ -7802,6 +7802,12 @@ def create_verifier_fixture_archive(
     with path.open("wb") as raw:
         with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
             with tarfile.open(fileobj=compressed, mode="w|") as archive:
+                for name in ("blobs/", "blobs/sha256/"):
+                    info = tarfile.TarInfo(name)
+                    info.type = tarfile.DIRTYPE
+                    info.mode = 0o755
+                    info.mtime = 0
+                    archive.addfile(info)
                 for name, content in sorted(members.items()):
                     info = tarfile.TarInfo(name)
                     info.size = len(content)

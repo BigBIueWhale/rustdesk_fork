@@ -1056,8 +1056,8 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
-| Full verification infrastructure | R-S11bg now has pin-bound recoverable devcheck and Apple verifier images. For each image, two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. Current confined product/source workloads and fresh independently administered rebuilds remain required; these infrastructure results supply no product or native evidence. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES, THE EXACT-CURRENT LINUX FILESYSTEM SUITE, ONLINE ACQUISITION, CURRENT DART/RUST ADVISORY VERDICTS, AND THE CURRENT ANDROID, DEBIAN, AND WINDOWS-HELPER CERTIFICATION TRANSACTIONS ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; focused entries refuse applicable root/foreign callers and execute bounded guest containers. The `76cc2fe` focused transaction executed 57 real Rust tests in 137 seconds and, in a fresh daemon, distinguished the certified OCI-index identity from Docker's runnable config identity before use. R-S11cj separately executes acquisition in ordinary-user QEMU with rootless exact virtiofs exports, TCP-only guest/container egress, no host forwarding, unchanged host listeners, and joined finality. `run.dODxMdeH1n` built and captured the real Android bootstrap; `run.wn6nrHxpyi` reviewed and no-clobber promoted it. Current `run.61vb0nCRcV` then completed exact networkless certification, normalization, guest-only load, and runtime verification in 99 seconds, and pin-bound `run.phE39wA0oN` repeated full candidate verification, no-clobber promotion, and final load/runtime verification in 38 seconds. Their receipts bind the exact source, guest-only Docker/BuildKit, no host forwarding, listener invariance, and joined cleanup. Current `run.52py3CWymM` executed the real Android Rust, Gradle/Kotlin, warm-APK, and Gradle-seed publication path at `a73040d`, while its outer verdict was invalidated solely by disappearance of a pre-existing listener; clean `run.hutLn5juYg` then passed exact seed reuse, unchanged listeners, and joined finality. Android signing and retained release artifacts, installation/device lifecycle, future advisory refreshes, Apple source work, full-peer presentation, Debian/Windows product workloads, cold artifacts, complete prepared verifier inputs, fresh independent reproduction, and external review remain open. A library test run, entry gates, and a builder runtime fingerprint are not product, artifact, scanner, native-platform, or full-release evidence. |
+| Full verification infrastructure | R-S11bg now has pin-bound recoverable devcheck and Apple verifier images. For each image, two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. The complete current Apple three-target source-conformance workload is now green in the no-NIC verifier VM; current product/native workloads and fresh independently administered rebuilds remain required, and the image-infrastructure result itself supplies no product or native evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES, THE EXACT-CURRENT LINUX FILESYSTEM SUITE, ONLINE ACQUISITION, CURRENT DART/RUST ADVISORY VERDICTS, THE COMPLETE CURRENT APPLE SOURCE-CONFORMANCE TRANSACTION, AND THE CURRENT ANDROID, DEBIAN, AND WINDOWS-HELPER CERTIFICATION TRANSACTIONS ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; focused entries refuse applicable root/foreign callers and execute bounded guest containers. The `76cc2fe` focused transaction executed 57 real Rust tests in 137 seconds and, in a fresh daemon, distinguished the certified OCI-index identity from Docker's runnable config identity before use. R-S11cj separately executes acquisition in ordinary-user QEMU with rootless exact virtiofs exports, TCP-only guest/container egress, no host forwarding, unchanged host listeners, and joined finality. `run.dODxMdeH1n` built and captured the real Android bootstrap; `run.wn6nrHxpyi` reviewed and no-clobber promoted it. Current `run.61vb0nCRcV` then completed exact networkless certification, normalization, guest-only load, and runtime verification in 99 seconds, and pin-bound `run.phE39wA0oN` repeated full candidate verification, no-clobber promotion, and final load/runtime verification in 38 seconds. Their receipts bind the exact source, guest-only Docker/BuildKit, no host forwarding, listener invariance, and joined cleanup. Current `run.52py3CWymM` executed the real Android Rust, Gradle/Kotlin, warm-APK, and Gradle-seed publication path at `a73040d`, while its outer verdict was invalidated solely by disappearance of a pre-existing listener; clean `run.hutLn5juYg` then passed exact seed reuse, unchanged listeners, and joined finality. Android signing and retained release artifacts, installation/device lifecycle, future advisory refreshes, native Apple build/sign/install/runtime behavior, full-peer presentation, Debian/Windows product workloads, cold artifacts, complete prepared verifier inputs, fresh independent reproduction, and external review remain open. A source-conformance run, library test run, entry gates, and a builder runtime fingerprint are not product, artifact, scanner, native-platform, or full-release evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
@@ -2943,7 +2943,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   libguestfs, golden inspection, Windows provisioning/building, cold artifacts, native behavior,
   independent reproduction, and external review remain open.
 - **R-S11ci/R-S11e-101 — Apple conformance verifier authority — VM-ONLY SOURCE PATH
-  IMPLEMENTED; REAL AUTHORITY ENTRY GREEN; CURRENT APPLE WORKLOAD AND NATIVE APPLE EVIDENCE OPEN.**
+  IMPLEMENTED; REAL AUTHORITY ENTRY AND COMPLETE CURRENT THREE-TARGET SOURCE TRANSACTION GREEN;
+  NATIVE APPLE EVIDENCE OPEN.**
   `scripts/apple-conform-check.sh` now refuses UID or primary GID 0 and authenticates R-S11dh before
   sourcing repository helpers or admitting product inputs. Caller Docker endpoint/context/configuration/TLS,
   target-matrix, and SDK-path state is rejected. The only Docker authority is the fixed guest client,
@@ -2959,7 +2960,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   checker is a compact architecture invariant; the duplicate Apple verifier-of-verifier block in
   `verify-verifier-workspace.py` is deleted.
 
-  The current fast no-NIC QEMU run behaviorally refused VM root, UID/GID 4001, caller `DOCKER_HOST`, and caller
+  The earlier fast no-NIC QEMU authority run behaviorally refused VM root, UID/GID 4001, caller `DOCKER_HOST`, and caller
   `APPLE_TARGET`; admitted UID/GID 4000; and completed a real Docker 27.5.1 client/server request over the guest Unix channel with pre/post generation
   replay. The outer harness authenticated its qcow2, Docker bundle, kernel, and initramfs, observed no host
   listener change, and joined residue-free teardown in under 50 seconds. Its receipt deliberately says
@@ -2981,9 +2982,29 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   loaded, and ran the final 981,362,321-byte archive with SHA-256
   `cab82041a9cde0492170885773d6ed084f87887bf1b5057ddaeefdf87f14d334`. Both transactions used guest-only
   Docker/BuildKit, no host forwarding, unchanged host listeners, and joined cleanup. This is verifier-image
-  infrastructure evidence only: the current complete macOS-arm64, macOS-x86_64, and iOS-arm64 source transaction
-  has not run. Native macOS/iOS compilation, signing, installation, helper/launchd behavior, runtime, packages,
-  cold release, fresh independent reproduction, and external review remain open.
+  infrastructure evidence only.
+
+  The complete current source transaction is now green at exact clean pushed commit
+  `98d3c4312e58e8924f6d9cf4fefaeeffe4fc4b90`, tree
+  `ddc8466fe7ccfc321e124cf05c182941b492f773`. A fresh ordinary-user QEMU guest with `-nic none` reconstructed that
+  exact tree, mounted the pinned vendor closure read-only, verified the 981,362,321-byte Apple image archive and
+  its OCI index/manifest/config provenance, loaded Docker's runnable config identity, refused root, foreign-principal,
+  and caller-selected Docker/target authority, and executed the full `apple-conform-check.sh`. All three exact
+  `hbb_common` anchors compiled for `aarch64-apple-darwin`, `x86_64-apple-darwin`, and `aarch64-apple-ios`; each
+  broader root-crate check reached only the expected missing-Apple-SDK/header boundary with no Rust compiler error.
+  The gate then reverified the vendor closure, source tree, image identity, empty container/image inventory, daemon
+  retirement, mounts, QEMU, and private Unix channels. The listener receipt reported
+  `VERIFIER_VM_HOST_LISTENER_AUDIT=pass`, `complete_snapshots=before,during,after`,
+  `harness_additions=none`, and `preexisting_process_drift=1`. The outer receipt reported
+  `APPLE_CONFORM_VM_OUTER=pass`, `network=none`, `listeners=no-harness-addition`,
+  `evidence=source-conformance-not-native`, `cleanup=joined`, and `elapsed_seconds=1987`.
+  The one global host-socket drift observation belonged to the same pre-run ordinary-user Firefox
+  PID/start-time/executable generation; no QEMU, virtiofsd, capture-helper, Docker, or RustDesk host process owned an
+  added INET socket. The successful private run root retired automatically.
+
+  This closes the current complete three-target **source-conformance** workload only. Native builds on Apple SDKs
+  and hardware, signing, installation, privileged-helper/launchd behavior, runtime/UI/device behavior, packages,
+  cold release equality, fresh independent reproduction, and external review remain open.
 - **R-S11cj/R-S11e-102 — isolated online-acquisition VM and non-root producer authority — SOURCE,
   FOCUSED AUTHORITY, AND PRIVATE-WORKSPACE FAILURE FINALITY VERIFIED; FULL CACHE/PRODUCERS, COLD RELEASE,
   INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW OPEN.** Platform/boundary: one ordinary-user Linux

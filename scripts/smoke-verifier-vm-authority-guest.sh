@@ -22,6 +22,9 @@ case "$#:${8:-}" in
     12:--android-owner-tests)
         MODE=android-owner-tests
         ;;
+    12:--apple-conform)
+        MODE=apple-conform
+        ;;
     12:--flutter-peer-presentation)
         MODE=flutter-peer-presentation
         ;;
@@ -39,7 +42,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -64,6 +67,10 @@ readonly ANDROID_OWNER_SOURCE_ARCHIVE=${9:-}
 readonly ANDROID_OWNER_SOURCE_COMMIT=${10:-}
 readonly ANDROID_OWNER_SOURCE_TREE=${11:-}
 readonly ANDROID_OWNER_SOURCE_ARCHIVE_SHA256=${12:-}
+readonly APPLE_SOURCE_ARCHIVE=${9:-}
+readonly APPLE_SOURCE_COMMIT=${10:-}
+readonly APPLE_SOURCE_TREE=${11:-}
+readonly APPLE_SOURCE_ARCHIVE_SHA256=${12:-}
 readonly FLUTTER_PEER_SOURCE_ARCHIVE=${9:-}
 readonly FLUTTER_PEER_SOURCE_COMMIT=${10:-}
 readonly FLUTTER_PEER_SOURCE_TREE=${11:-}
@@ -133,6 +140,7 @@ CONTAINER_ID=
 LIFECYCLE_LIBS_MOUNTED=0
 SEALED_INPUTS_MOUNTED=0
 RUST_AUDIT_VENDOR_MOUNTED=0
+APPLE_VENDOR_MOUNTED=0
 ANDROID_RUST_ONLINE_MOUNTED=0
 FLUTTER_PEER_SOURCE_MOUNTED=0
 FLUTTER_PEER_ONLINE_MOUNTED=0
@@ -774,6 +782,275 @@ run_rust_audit() {
         "$RUST_AUDIT_SOURCE_COMMIT" "$RUST_AUDIT_SOURCE_TREE" \
         "$RUST_AUDIT_IMAGE_ID" "$RUST_AUDIT_IMAGE_CONFIG_ID" \
         "$lock_sha" "$policy_sha" "$SHA256_CARGO_VENDOR_CLOSURE_V1"
+}
+
+run_apple_conform() {
+    local inputs=/mnt/rustdesk-sealed-inputs
+    local source_root=$ROOT/apple-conform-source
+    local vendor=$inputs/cargo-vendor
+    local vendor_config=$inputs/cargo-vendor-config.toml
+    local image_archive=$inputs/verifier-images/apple-check.docker.tar.gz
+    local private_vendor_parent=$ROOT/apple-conform-vendor
+    local private_vendor=$private_vendor_parent/subtree
+    local private_image=$ROOT/apple-check.docker.tar.gz
+    local projected_vendor=$source_root/online/cargo-vendor
+    local projected_config=$source_root/online/cargo-vendor-config.toml
+    local output=$ROOT/apple-conform.out
+    local source_archive_sha source_tree_after input_mount_options vendor_mount_options
+    local image_before load_output entry_output architecture_output conform_status=0
+    local expected_entry="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root"
+    local -a image_spec
+
+    [[ "$APPLE_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'Apple-conformance source commit is malformed'
+    [[ "$APPLE_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'Apple-conformance source tree is malformed'
+    [[ "$APPLE_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'Apple-conformance source archive digest is malformed'
+    [ -f "$APPLE_SOURCE_ARCHIVE" ] && [ ! -L "$APPLE_SOURCE_ARCHIVE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$APPLE_SOURCE_ARCHIVE")" = \
+             4000:4000:400:1 ] \
+        || fail 'Apple-conformance source archive metadata differs'
+    source_archive_sha="$(sha256sum "$APPLE_SOURCE_ARCHIVE" | awk '{ print $1 }')"
+    [ "$source_archive_sha" = "$APPLE_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'Apple-conformance source archive digest differs'
+
+    rm -rf -- "$source_root" "$private_vendor_parent" "$private_image"
+    mkdir "$source_root"
+    tar -xf "$APPLE_SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
+        -C "$source_root" \
+        || fail 'cannot extract the exact Apple-conformance source archive'
+    [ -z "$(find "$source_root" -mindepth 1 ! -type d ! -type f ! -type l -print -quit)" ] \
+        || fail 'Apple-conformance source archive contains a special entry'
+    /usr/bin/git -c init.defaultBranch=master -C "$source_root" init -q \
+        || fail 'cannot create the sealed Apple-conformance source index'
+    /usr/bin/git -C "$source_root" add -f -- . \
+        || fail 'cannot index the exact Apple-conformance source'
+    [ "$(/usr/bin/git -C "$source_root" write-tree)" = "$APPLE_SOURCE_TREE" ] \
+        || fail 'Apple-conformance source archive tree differs from pushed master'
+    mkdir -p "$projected_vendor"
+    install -o 0 -g 0 -m 0444 -- "$vendor_config" "$projected_config" 2>/dev/null \
+        && fail 'sealed Apple inputs became reachable before their authority mount'
+    [ "$(sha256sum "$source_root/scripts/smoke-verifier-vm-authority-guest.sh" \
+              | awk '{ print $1 }')" = \
+      "$(sha256sum "${BASH_SOURCE[0]}" | awk '{ print $1 }')" ] \
+        || fail 'Apple-conformance source archive differs from its guest bootstrap'
+    chmod -R a-w "$source_root" \
+        || fail 'cannot seal the Apple-conformance source as read-only input'
+    [ -z "$(find "$source_root" -mindepth 1 \
+        \( -uid 4000 -o -gid 4000 -o -perm /022 \) -print -quit)" ] \
+        || fail 'Apple-conformance source is writable by the verifier principal'
+
+    mkdir "$inputs"
+    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
+        || fail 'cannot mount the sealed Apple-conformance input authority'
+    SEALED_INPUTS_MOUNTED=1
+    input_mount_options="$(findmnt -n -o OPTIONS --target "$inputs")" \
+        || fail 'sealed Apple-conformance input mount is absent'
+    case ",$input_mount_options," in *,ro,*) ;; *) fail 'sealed Apple inputs are writable' ;; esac
+    case ",$input_mount_options," in *,nodev,*) ;; *) fail 'sealed Apple inputs permit devices' ;; esac
+    case ",$input_mount_options," in *,nosuid,*) ;; *) fail 'sealed Apple inputs permit set-user-ID execution' ;; esac
+    case ",$input_mount_options," in *,noexec,*) ;; *) fail 'sealed Apple inputs permit direct execution' ;; esac
+    [ -d "$vendor" ] && [ ! -L "$vendor" ] \
+        && [ "$(stat -c '%u:%g:%a' -- "$vendor")" = 1000:1000:500 ] \
+        || fail 'sealed Apple Cargo vendor root metadata differs'
+    [ -f "$vendor_config" ] && [ ! -L "$vendor_config" ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$vendor_config")" = \
+             "1000:1000:400:1:$SIZE_CARGO_VENDOR_CONFIG" ] \
+        && [ "$(sha256sum "$vendor_config" | awk '{ print $1 }')" = \
+             "$SHA256_CARGO_VENDOR_CONFIG" ] \
+        || fail 'sealed Apple Cargo vendor configuration differs'
+    [ -f "$image_archive" ] && [ ! -L "$image_archive" ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$image_archive")" = \
+             "1000:1000:400:1:$SIZE_APPLE_CHECK_IMAGE_ARCHIVE" ] \
+        && [ "$(sha256sum "$image_archive" | awk '{ print $1 }')" = \
+             "$SHA256_APPLE_CHECK_IMAGE_ARCHIVE" ] \
+        || fail 'sealed Apple verifier image archive differs'
+    image_before="$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$image_archive"):$(sha256sum "$image_archive")"
+
+    python3 -I -S "$source_root/scripts/online-input-provenance.py" \
+        snapshot-subtree-create \
+        --source "$vendor" --destination "$private_vendor_parent" \
+        --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+        || fail 'cannot create the verifier-owned Apple Cargo vendor snapshot'
+    chown -R 4000:4000 "$private_vendor_parent" \
+        || fail 'cannot assign the Apple Cargo vendor snapshot to the verifier principal'
+    [ "$(stat -c '%u:%g:%a' -- "$private_vendor_parent" "$private_vendor")" = \
+      $'4000:4000:700\n4000:4000:500' ] \
+        || fail 'private Apple Cargo vendor snapshot metadata differs'
+    python3 -I -S "$source_root/scripts/online-input-provenance.py" verify-subtree \
+        --tree "$private_vendor" --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+        || fail 'private Apple Cargo vendor snapshot differs'
+    install -o 0 -g 0 -m 0444 -- "$vendor_config" "$projected_config" \
+        || fail 'cannot stage the immutable Apple Cargo vendor configuration'
+    mount --bind "$private_vendor" "$projected_vendor" \
+        || fail 'cannot project the private Apple Cargo vendor snapshot'
+    APPLE_VENDOR_MOUNTED=1
+    mount -o remount,bind,ro,nodev,nosuid,noexec "$projected_vendor" \
+        || fail 'cannot seal the projected Apple Cargo vendor snapshot'
+    vendor_mount_options="$(findmnt -n -o OPTIONS --target "$projected_vendor")" \
+        || fail 'projected Apple Cargo vendor mount is absent'
+    case ",$vendor_mount_options," in *,ro,*) ;; *) fail 'projected Apple Cargo vendor is writable' ;; esac
+    case ",$vendor_mount_options," in *,nodev,*) ;; *) fail 'projected Apple Cargo vendor permits devices' ;; esac
+    case ",$vendor_mount_options," in *,nosuid,*) ;; *) fail 'projected Apple Cargo vendor permits set-user-ID execution' ;; esac
+    case ",$vendor_mount_options," in *,noexec,*) ;; *) fail 'projected Apple Cargo vendor permits execution' ;; esac
+    install -o 4000 -g 4000 -m 0400 -- "$image_archive" "$private_image" \
+        || fail 'cannot stage the verifier-owned Apple image archive'
+    [ "$(sha256sum "$private_image" | awk '{ print $1 }')" = \
+      "$SHA256_APPLE_CHECK_IMAGE_ARCHIVE" ] \
+        || fail 'private Apple image archive differs after staging'
+
+    entry_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            /bin/bash "$source_root/scripts/verify-vm-entry-preflight.sh"
+    )" || fail 'Apple-conformance pre-load VM authority check failed'
+    [ "$entry_output" = "$expected_entry" ] \
+        || fail "Apple-conformance pre-load authority receipt differs: $entry_output"
+    image_spec=(
+        --role apple-check
+        --expected-id "$APPLE_CHECK_IMAGE_ID"
+        --base "rd-devcheck@${DEV_CHECK_IMAGE_ID}"
+        --base-manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID"
+        --devcheck-base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}"
+        --devcheck-dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE"
+        --devcheck-debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT"
+        --devcheck-security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT"
+        --devcheck-source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH"
+        --dockerfile-sha "$SHA256_APPLE_CHECK_DOCKERFILE"
+        --source-date-epoch "$APPLE_CHECK_SOURCE_DATE_EPOCH"
+        --release-helper-sha "$SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER"
+        --provenance-helper-sha "$SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER"
+        --rust-version "$APPLE_RUST_RELEASE_VERSION"
+        --release-date "$APPLE_RUST_RELEASE_DATE"
+        --signing-fingerprint "$APPLE_RUST_RELEASE_SIGNING_FINGERPRINT"
+        --release-public-key-sha "$SHA256_APPLE_RUST_RELEASE_PUBLIC_KEY"
+        --release-manifest-sha "$SHA256_APPLE_RUST_RELEASE_MANIFEST"
+        --release-manifest-signature-sha "$SHA256_APPLE_RUST_RELEASE_MANIFEST_SIGNATURE"
+        --rustc-host-sha "$SHA256_APPLE_RUSTC_HOST_COMPONENT"
+        --cargo-host-sha "$SHA256_APPLE_CARGO_HOST_COMPONENT"
+        --rust-std-host-sha "$SHA256_APPLE_RUST_STD_HOST_COMPONENT"
+        --rust-std-aarch64-darwin-sha "$SHA256_APPLE_RUST_STD_AARCH64_DARWIN_COMPONENT"
+        --rust-std-x86-64-darwin-sha "$SHA256_APPLE_RUST_STD_X86_64_DARWIN_COMPONENT"
+        --rust-std-aarch64-ios-sha "$SHA256_APPLE_RUST_STD_AARCH64_IOS_COMPONENT"
+        --cargo-sha "$SHA256_APPLE_CHECK_CARGO"
+        --rustc-sha "$SHA256_APPLE_CHECK_RUSTC"
+        --dpkg-sha "$SHA256_APPLE_CHECK_DPKG_MANIFEST"
+        --toolchain-tree-sha "$APPLE_TOOLCHAIN_TREE_SHA256"
+        --toolchain-files "$APPLE_TOOLCHAIN_FILES"
+        --toolchain-directories "$APPLE_TOOLCHAIN_DIRECTORIES"
+        --toolchain-content-bytes "$APPLE_TOOLCHAIN_CONTENT_BYTES"
+        --config-id "$APPLE_CHECK_IMAGE_CONFIG_ID"
+        --manifest-id "$APPLE_CHECK_IMAGE_MANIFEST_ID"
+    )
+    load_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$source_root/scripts/offline-image-provenance.py" \
+                verify-load --publication-index-runtime \
+                --archive "$private_image" \
+                --archive-sha "$SHA256_APPLE_CHECK_IMAGE_ARCHIVE" \
+                --archive-size "$SIZE_APPLE_CHECK_IMAGE_ARCHIVE" \
+                "${image_spec[@]}"
+    )" || fail 'Apple verifier image verification/load failed'
+    [ "$load_output" = "loaded and verified apple-check $APPLE_CHECK_IMAGE_ID" ] \
+        || fail "Apple verifier image load receipt differs: $load_output"
+    architecture_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            python3 -I -S "$source_root/scripts/verify-apple-verifier-authority.py" \
+                --repo "$source_root"
+    )" || fail 'Apple verifier authority architecture check failed'
+    [ "$architecture_output" = \
+      'Apple verifier authority architecture: PASS (VM-only Docker path; exact-image/three-target shape; full workload has an isolated mode)' ] \
+        || fail "Apple verifier authority architecture receipt differs: $architecture_output"
+
+    if /bin/bash "$source_root/scripts/apple-conform-check.sh" \
+        >"$ROOT/root-apple-conform.out" 2>"$ROOT/root-apple-conform.err"; then
+        fail 'VM root passed the Apple-conformance entry'
+    fi
+    [ ! -s "$ROOT/root-apple-conform.out" ] \
+        || fail 'root Apple-conformance refusal produced standard output'
+    [ "$(<"$ROOT/root-apple-conform.err")" = \
+      'apple-conform-check refuses host or container-root execution' ] \
+        || fail 'root Apple-conformance refusal diagnostic differs'
+    if setpriv --reuid=4001 --regid=4001 --clear-groups \
+        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+        /bin/bash "$source_root/scripts/apple-conform-check.sh" \
+        >"$ROOT/foreign-apple-conform.out" 2>"$ROOT/foreign-apple-conform.err"; then
+        fail 'foreign principal passed the Apple-conformance entry'
+    fi
+    [ ! -s "$ROOT/foreign-apple-conform.out" ] \
+        || fail 'foreign Apple-conformance refusal produced standard output'
+    [ "$(<"$ROOT/foreign-apple-conform.err")" = \
+      'verifier-VM entry preflight: VM Docker channel metadata differs' ] \
+        || fail 'foreign Apple-conformance refusal diagnostic differs'
+    if setpriv --reuid=4000 --regid=4000 --clear-groups \
+        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+        DOCKER_HOST=unix:///tmp/forbidden-docker.sock \
+        /bin/bash "$source_root/scripts/apple-conform-check.sh" \
+        >"$ROOT/caller-apple-conform.out" 2>"$ROOT/caller-apple-conform.err"; then
+        fail 'caller Docker authority passed the Apple-conformance entry'
+    fi
+    [ ! -s "$ROOT/caller-apple-conform.out" ] \
+        || fail 'caller-authority Apple-conformance refusal produced standard output'
+    [ "$(<"$ROOT/caller-apple-conform.err")" = \
+      'FATAL: caller DOCKER_HOST authority is forbidden' ] \
+        || fail 'caller-authority Apple-conformance refusal diagnostic differs'
+
+    set +e
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+        /bin/bash "$source_root/scripts/apple-conform-check.sh" \
+        >"$output" 2>&1
+    conform_status=$?
+    set -e
+    [ "$(stat -c '%s' -- "$output")" -le 6291456 ] \
+        || fail 'Apple-conformance output exceeds its bound'
+    [ "$conform_status" -eq 0 ] \
+        || { tail -n 240 "$output" >&2; fail "Apple conformance exited with status $conform_status"; }
+    [ "$(grep -Fxc '== apple-conform-check PASS ==' "$output")" -eq 1 ] \
+        || { tail -n 240 "$output" >&2; fail 'Apple-conformance pass verdict is absent or duplicated'; }
+    [ "$(grep -Fxc '  targets: aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios' "$output")" -eq 1 ] \
+        || fail 'Apple-conformance target matrix receipt differs'
+    [ "$(grep -Fc 'hbb_common workspace anchor compiled cleanly' "$output")" -eq 3 ] \
+        || { tail -n 240 "$output" >&2; fail 'Apple-conformance workspace-anchor receipts differ'; }
+    [ "$(grep -Fxc "$expected_entry" "$output")" -eq 1 ] \
+        || fail 'Apple-conformance VM authority receipt is absent or duplicated'
+
+    source_tree_after="$(/usr/bin/git -c "safe.directory=$source_root" \
+        -C "$source_root" write-tree)" \
+        || fail 'cannot re-evaluate the Apple-conformance source tree'
+    [ "$source_tree_after" = "$APPLE_SOURCE_TREE" ] \
+        && /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \
+             diff-files --quiet --ignore-submodules -- \
+        || fail 'Apple-conformance source changed during execution'
+    [ "$image_before" = \
+      "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$image_archive"):$(sha256sum "$image_archive")" ] \
+        || fail 'sealed Apple image archive changed during execution'
+    [ "$(sha256sum "$private_image" | awk '{ print $1 }')" = \
+      "$SHA256_APPLE_CHECK_IMAGE_ARCHIVE" ] \
+        || fail 'private Apple image archive changed during execution'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        || fail 'Apple conformance left a container behind'
+    "$CLIENT" --host "unix://$SOCK" image rm "$APPLE_CHECK_IMAGE_CONFIG_ID" >/dev/null \
+        || fail 'cannot retire the Apple verifier image'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'Apple conformance left a Docker image behind'
+    stop_docker_authority
+    umount "$projected_vendor" \
+        || fail 'cannot retire the projected Apple Cargo vendor snapshot'
+    APPLE_VENDOR_MOUNTED=0
+    umount "$inputs" || fail 'cannot retire the sealed Apple input mount'
+    SEALED_INPUTS_MOUNTED=0
+    printf '%s\n' "$load_output"
+    printf '%s\n' "$architecture_output"
+    cat "$output"
+    printf 'APPLE_CONFORM_VM=pass commit=%s tree=%s targets=3 image=%s runtime=%s vendor=%s uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=source-conformance-not-native cleanup=joined\n' \
+        "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
+        "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" \
+        "$SHA256_CARGO_VENDOR_CLOSURE_V1"
 }
 
 generate_focused_rust_flutter_bridge() {
@@ -2577,6 +2854,10 @@ cleanup() {
         umount "$ROOT/rust-audit-source/online/cargo-vendor" 2>/dev/null || status=1
         RUST_AUDIT_VENDOR_MOUNTED=0
     fi
+    if [ "$APPLE_VENDOR_MOUNTED" -eq 1 ]; then
+        umount "$ROOT/apple-conform-source/online/cargo-vendor" 2>/dev/null || status=1
+        APPLE_VENDOR_MOUNTED=0
+    fi
     if [ "$ANDROID_RUST_ONLINE_MOUNTED" -eq 1 ]; then
         umount "$ROOT/android-rust-target-source/online/inputs" 2>/dev/null || status=1
         ANDROID_RUST_ONLINE_MOUNTED=0
@@ -2862,6 +3143,11 @@ fi
 
 if [ "$MODE" = rust-audit ]; then
     run_rust_audit
+    exit 0
+fi
+
+if [ "$MODE" = apple-conform ]; then
+    run_apple_conform
     exit 0
 fi
 

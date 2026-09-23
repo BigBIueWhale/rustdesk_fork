@@ -56,6 +56,12 @@ case "$#:${1:-}" in
             || { echo 'focused Android owner-state input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-owner-tests
         ;;
+    1:--apple-conform)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Apple conformance input/run overrides are forbidden' >&2; exit 2; }
+        MODE=apple-conform
+        ;;
     1:--dart-audit)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -95,7 +101,7 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
-        printf 'usage: %s [--hbb-common-fs | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
@@ -127,6 +133,7 @@ readonly CARGO_VENDOR_CONFIG="$ONLINE_INPUTS/cargo-vendor-config.toml"
 readonly DEB_BUILDER_ARCHIVE="$ONLINE_INPUTS/build-images/deb-builder.docker.tar.gz"
 readonly ANDROID_BUILDER_ARCHIVE="$ONLINE_INPUTS/build-images/android-builder.docker.tar.gz"
 readonly DEV_CHECK_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/devcheck.docker.tar.gz"
+readonly APPLE_CHECK_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/apple-check.docker.tar.gz"
 readonly DART_AUDIT_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/dart-audit.docker.tar.gz"
 readonly RUST_AUDIT_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/rust-audit.docker.tar.gz"
 FLUTTER_PEER_FLUTTER_VERSION=$FLUTTER_VERSION
@@ -252,6 +259,10 @@ elif [ "$MODE" = android-owner-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
+elif [ "$MODE" = apple-conform ]; then
+    readonly VM_TIMEOUT_SECONDS=3600
+    readonly OVERLAY_SIZE=40G
+    readonly VM_MEMORY=16384
 elif [ "$MODE" = flutter-peer-presentation ]; then
     readonly VM_TIMEOUT_SECONDS=7200
     readonly OVERLAY_SIZE=48G
@@ -679,6 +690,36 @@ if [ "$MODE" = hbb-common-fs ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Cargo vendor root metadata differs'
+elif [ "$MODE" = apple-conform ]; then
+    [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'sealed Apple-conformance input root metadata differs'
+    for input in \
+        "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG" \
+        "$APPLE_CHECK_IMAGE_ARCHIVE:$SIZE_APPLE_CHECK_IMAGE_ARCHIVE:$SHA256_APPLE_CHECK_IMAGE_ARCHIVE" \
+        "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
+        path=${input%%:*}
+        remainder=${input#*:}
+        size=${remainder%%:*}
+        digest=${remainder#*:}
+        [ -f "$path" ] && [ ! -L "$path" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" = \
+                 "$HOST_UID:$HOST_GID:400:1:$size" ] \
+            || fail "sealed Apple-conformance input metadata differs: $path"
+        verify_sha256 "$path" "$digest"
+    done
+    verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
+    [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Package)" = virtiofsd ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Version)" = \
+             "$VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION" ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Architecture)" = amd64 ] \
+        || fail 'authenticated virtiofsd package identity differs'
+    [ -d "$CARGO_VENDOR_ROOT" ] && [ ! -L "$CARGO_VENDOR_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
+             "$HOST_UID:$HOST_GID:500" ] \
+        || fail 'sealed Apple-conformance Cargo vendor root metadata differs'
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
@@ -1058,6 +1099,27 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
         || fail 'Git replacement refs are forbidden'
 fi
 
+APPLE_SOURCE_COMMIT=
+APPLE_SOURCE_TREE=
+APPLE_SOURCE_ARCHIVE_SHA256=
+if [ "$MODE" = apple-conform ]; then
+    [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
+        || fail 'Apple conformance requires the one checked-out master authority'
+    APPLE_SOURCE_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
+        || fail 'cannot resolve Apple-conformance source commit'
+    APPLE_SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
+        || fail 'cannot resolve Apple-conformance source tree'
+    [ "$APPLE_SOURCE_COMMIT" = \
+      "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/heads/master)" ] \
+        && [ "$APPLE_SOURCE_COMMIT" = \
+             "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/remotes/origin/master)" ] \
+        || fail 'Apple-conformance source differs from pushed master'
+    [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'Apple conformance requires a clean source tree'
+    [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
+        || fail 'Git replacement refs are forbidden'
+fi
+
 FLUTTER_SOURCE_COMMIT=
 FLUTTER_SOURCE_TREE=
 FLUTTER_SOURCE_ARCHIVE_SHA256=
@@ -1248,6 +1310,7 @@ readonly LISTENERS_AFTER=$RUN/listeners.after
 readonly NEW_DURING=$RUN/listeners.new-during
 readonly NEW_AFTER=$RUN/listeners.new-after
 readonly RUST_TEST_SOURCE_ARCHIVE=$RUN/source.tar
+readonly APPLE_SOURCE_ARCHIVE=$RUN/apple-source.tar
 readonly FLUTTER_SOURCE_ARCHIVE=$RUN/flutter-source.tar
 readonly ANDROID_OWNER_SOURCE_ARCHIVE=$RUN/android-owner-source.tar
 readonly FLUTTER_PEER_SOURCE_ARCHIVE=$RUN/flutter-peer-source.tar
@@ -1272,6 +1335,14 @@ if [ "$MODE" = hbb-common-fs ]; then
             "$VIRTIOFSD_PACKAGE"
         /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" \
             "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+    )"
+elif [ "$MODE" = apple-conform ]; then
+    focused_inputs_before="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+            "$CARGO_VENDOR_CONFIG" "$APPLE_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+        /usr/bin/sha256sum -- \
+            "$CARGO_VENDOR_CONFIG" "$APPLE_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
     )"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     focused_inputs_before="$(
@@ -1337,6 +1408,27 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
         || fail 'focused Rust-workload source archive metadata differs'
     RUST_TEST_SOURCE_ARCHIVE_SHA256="$(
         /usr/bin/sha256sum "$RUST_TEST_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }'
+    )"
+    /usr/bin/install -d -m 0700 -- "$RUN/virtiofsd-package"
+    /usr/bin/dpkg-deb --extract "$VIRTIOFSD_PACKAGE" "$RUN/virtiofsd-package" \
+        || fail 'cannot extract the authenticated virtiofsd package privately'
+    VIRTIOFSD_BINARY="$RUN/virtiofsd-package/usr/libexec/virtiofsd"
+    [ -f "$VIRTIOFSD_BINARY" ] && [ ! -L "$VIRTIOFSD_BINARY" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%h:%s' -- "$VIRTIOFSD_BINARY")" = \
+             "$HOST_UID:$HOST_GID:1:$SIZE_VERIFIER_VM_VIRTIOFSD_BINARY" ] \
+        || fail 'extracted virtiofsd binary is absent or ambiguous'
+    /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
+    verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
+elif [ "$MODE" = apple-conform ]; then
+    git_closed -C "$REPO_ROOT" archive --format=tar "$APPLE_SOURCE_COMMIT" \
+        >"$APPLE_SOURCE_ARCHIVE" \
+        || fail 'cannot create the exact Apple-conformance source archive'
+    /usr/bin/chmod 0400 "$APPLE_SOURCE_ARCHIVE"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$APPLE_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        || fail 'Apple-conformance source archive metadata differs'
+    APPLE_SOURCE_ARCHIVE_SHA256="$(
+        /usr/bin/sha256sum "$APPLE_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }'
     )"
     /usr/bin/install -d -m 0700 -- "$RUN/virtiofsd-package"
     /usr/bin/dpkg-deb --extract "$VIRTIOFSD_PACKAGE" "$RUN/virtiofsd-package" \
@@ -1457,6 +1549,9 @@ elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$RUST_TEST_SOURCE_ARCHIVE")
+elif [ "$MODE" = apple-conform ]; then
+    payload_identity=(-uid 4000 -gid 4000)
+    lifecycle_payload_grafts=("source.tar=$APPLE_SOURCE_ARCHIVE")
 elif [ "$MODE" = flutter-model-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$FLUTTER_SOURCE_ARCHIVE")
@@ -1578,6 +1673,8 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     guest_invocation+=" --android-rust-lifecycle-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-rust-target-check ]; then
     guest_invocation+=" --android-rust-target-check /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
+elif [ "$MODE" = apple-conform ]; then
+    guest_invocation+=" --apple-conform /mnt/rustdesk-verifier-inputs/source.tar $APPLE_SOURCE_COMMIT $APPLE_SOURCE_TREE $APPLE_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = flutter-model-tests ]; then
     guest_invocation+=" --flutter-model-tests /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_SOURCE_COMMIT $FLUTTER_SOURCE_TREE $FLUTTER_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-owner-tests ]; then
@@ -1640,6 +1737,7 @@ memory_args=(-m "$VM_MEMORY")
 focused_qemu_args=()
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ] \
+   || [ "$MODE" = apple-conform ] \
    || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = flutter-peer-presentation ] \
@@ -1713,6 +1811,7 @@ VM_PID="$(<"$QEMU_PIDFILE")"
 VM_START="$(process_start_time "$VM_PID")" || fail 'cannot record QEMU process identity'
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ] \
+   || [ "$MODE" = apple-conform ] \
    || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = flutter-peer-presentation ] \
@@ -1793,6 +1892,7 @@ reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'
 reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ] \
+   || [ "$MODE" = apple-conform ] \
    || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = flutter-peer-presentation ] \
@@ -2033,6 +2133,22 @@ elif [ "$MODE" = android-rust-target-check ]; then
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'Android Rust target-check cloud-init completion marker'
+elif [ "$MODE" = apple-conform ]; then
+    require_exact_fixed_receipt \
+        "loaded and verified apple-check $APPLE_CHECK_IMAGE_ID" \
+        'Apple verifier image load receipt'
+    require_exact_fixed_receipt \
+        'Apple verifier authority architecture: PASS (VM-only Docker path; exact-image/three-target shape; full workload has an isolated mode)' \
+        'Apple verifier authority architecture receipt'
+    require_exact_fixed_receipt \
+        '== apple-conform-check PASS ==' \
+        'Apple source-conformance verdict'
+    require_exact_fixed_receipt \
+        "APPLE_CONFORM_VM=pass commit=$APPLE_SOURCE_COMMIT tree=$APPLE_SOURCE_TREE targets=3 image=$APPLE_CHECK_IMAGE_ID runtime=$APPLE_CHECK_IMAGE_CONFIG_ID vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=source-conformance-not-native cleanup=joined" \
+        'Apple-conformance VM receipt'
+    require_exact_fixed_receipt \
+        'VERIFIER_VM_CLOUD_INIT=pass' \
+        'Apple-conformance cloud-init completion marker'
 elif [ "$MODE" = android-owner-tests ]; then
     require_exact_fixed_receipt \
         "ANDROID_OWNER_STATE_VM=pass commit=$ANDROID_OWNER_SOURCE_COMMIT tree=$ANDROID_OWNER_SOURCE_TREE classes=7 scenarios=15 assertions=293 kotlin=$ANDROID_KOTLIN_VERSION builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none compiler_inputs=verified-copy-readonly root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
@@ -2127,6 +2243,21 @@ if [ "$MODE" = hbb-common-fs ]; then
         && [ "$(/usr/bin/sha256sum "$RUST_TEST_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
              "$RUST_TEST_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'focused Rust-test source archive changed during execution'
+elif [ "$MODE" = apple-conform ]; then
+    focused_inputs_after="$(
+        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+            "$CARGO_VENDOR_CONFIG" "$APPLE_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+        /usr/bin/sha256sum -- \
+            "$CARGO_VENDOR_CONFIG" "$APPLE_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+    )"
+    [ "$focused_inputs_after" = "$focused_inputs_before" ] \
+        || fail 'sealed Apple-conformance inputs changed during execution'
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$APPLE_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        && [ "$(/usr/bin/sha256sum "$APPLE_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
+             "$APPLE_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'Apple-conformance source archive changed during execution'
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     focused_inputs_after="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
@@ -2253,6 +2384,11 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
 elif [ "$MODE" = android-rust-target-check ]; then
     printf 'ANDROID_RUST_TARGET_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=aarch64-linux-android profile=release-check network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only evidence=production-cargo-ndk-check cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+        "$vm_elapsed_seconds"
+elif [ "$MODE" = apple-conform ]; then
+    printf 'APPLE_CONFORM_VM_OUTER=pass host_uid=%s commit=%s tree=%s targets=3 image=%s runtime=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only evidence=source-conformance-not-native cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
+        "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = android-owner-tests ]; then
     printf 'ANDROID_OWNER_STATE_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked compiler_inputs=verified-copy-readonly docker=guest-only evidence=compiled-production-state-machines cleanup=joined elapsed_seconds=%s\n' \

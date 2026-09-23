@@ -310,12 +310,20 @@ def validate(repo: Path) -> None:
     forbid(verify, "verify-apple-verifier-authority.py --repo . --self-test", "mutation-catalog invocation")
     for value in (
         'readonly APPLE_CHECK_SOURCE="$SCRIPT_DIR/apple-conform-check.sh"',
+        'readonly APPLE_CHECK_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/apple-check.docker.tar.gz"',
+        "1:--apple-conform)",
+        'guest_invocation+=" --apple-conform /mnt/rustdesk-verifier-inputs/source.tar',
         '"repo/scripts/apple-conform-check.sh=$APPLE_CHECK_SOURCE"',
         "VERIFIER_VM_APPLE_CHECK_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused caller=refused",
+        "APPLE_CONFORM_VM_OUTER=pass host_uid=%s commit=%s tree=%s targets=3",
     ):
         require(outer, value, "outer VM Apple-check probe")
     for value in (
         'readonly APPLE_CHECK_SCRIPT="$VERIFY_REPO/scripts/apple-conform-check.sh"',
+        "12:--apple-conform)",
+        "run_apple_conform() {",
+        "verify-load --publication-index-runtime",
+        '/bin/bash "$source_root/scripts/apple-conform-check.sh"',
         '/bin/bash "$APPLE_CHECK_SCRIPT" --self-test-vm-authority',
         "setpriv --reuid=4001 --regid=4001 --clear-groups",
         "setpriv --reuid=4000 --regid=4000 --clear-groups",
@@ -323,6 +331,7 @@ def validate(repo: Path) -> None:
         'APPLE_TARGET|aarch64-apple-ios|FATAL: caller APPLE_TARGET authority is forbidden',
         "APPLE_CHECK_VM_AUTHORITY=pass uid=4000 gid=4000",
         "VERIFIER_VM_APPLE_CHECK_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused caller=refused",
+        "APPLE_CONFORM_VM=pass commit=%s tree=%s targets=3",
     ):
         require(guest, value, "guest VM Apple-check probe")
 
@@ -337,7 +346,7 @@ def main() -> None:
         raise SystemExit(f"Apple verifier authority: FAIL: {error}") from error
     print(
         "Apple verifier authority architecture: PASS "
-        "(VM-only Docker path; exact-image/three-target shape; workload=unexecuted)"
+        "(VM-only Docker path; exact-image/three-target shape; full workload has an isolated mode)"
     )
 
 

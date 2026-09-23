@@ -159,7 +159,8 @@ fi
 verify_scan_self_test "$APPLE_CHECK_TMP"
 
 archive_current_source() {
-  /usr/bin/git -C "$REPO" ls-files -z --cached --others --exclude-standard \
+  /usr/bin/git -c "safe.directory=$REPO" -C "$REPO" \
+    ls-files -z --cached --others --exclude-standard \
     | /usr/bin/python3 -c '
 import os
 import sys

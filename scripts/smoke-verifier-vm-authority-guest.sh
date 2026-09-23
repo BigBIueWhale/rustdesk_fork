@@ -2177,7 +2177,7 @@ run_android_emulator_boot() {
     local emulator_archive=$inputs/candidates/android-emulator/emulator-linux_x64-${ANDROID_EMULATOR_ARCHIVE_BUILD}.zip
     local system_archive=$inputs/candidates/android-emulator/arm64-v8a-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip
     local adb=$inputs/inputs/android-sdk/platform-tools/adb
-    local builder_archive=$inputs/inputs/build-images/android-builder.docker.tar.gz
+    local runtime_archive=$inputs/inputs/verifier-images/devcheck.docker.tar.gz
     local source_archive_sha source_before inputs_before input_mount_options
     local load_output inspect namespace_inspect container_status=0 result_line
     local -a result_lines=()
@@ -2251,14 +2251,14 @@ run_android_emulator_boot() {
         && [ "$(sha256sum "$adb" | awk '{ print $1 }')" = \
              "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1" ] \
         || fail 'sealed Android adb executable differs'
-    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$builder_archive")" = \
-      "1000:1000:400:1:$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
-        && [ "$(sha256sum "$builder_archive" | awk '{ print $1 }')" = \
-             "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" ] \
-        || fail 'sealed Android-builder image archive differs'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$runtime_archive")" = \
+      "1000:1000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        && [ "$(sha256sum "$runtime_archive" | awk '{ print $1 }')" = \
+             "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        || fail 'sealed emulator runtime image archive differs'
     inputs_before="$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-        "$emulator_archive" "$system_archive" "$adb" "$builder_archive"):$({ \
-        sha256sum "$emulator_archive" "$system_archive" "$adb" "$builder_archive"; \
+        "$emulator_archive" "$system_archive" "$adb" "$runtime_archive"):$({ \
+        sha256sum "$emulator_archive" "$system_archive" "$adb" "$runtime_archive"; \
     })"
 
     load_output="$(
@@ -2266,23 +2266,22 @@ run_android_emulator_boot() {
             env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
             DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
             python3 -I -S "$OFFLINE_IMAGE_PROVENANCE" verify-load \
-                --archive "$builder_archive" \
-                --archive-sha "$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE" \
-                --archive-size "$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE" \
-                --role android-builder \
-                --expected-id "$ANDROID_BUILDER_IMAGE_ID" \
-                --base "ubuntu:24.04@${SHA256_BASEIMAGE_UBUNTU_2404}" \
-                --dockerfile-sha "$SHA256_ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" \
-                --recipe-sha "$SHA256_ANDROID_BUILDER_DOCKERFILE" \
-                --dpkg-sha "$SHA256_ANDROID_BUILDER_DPKG_MANIFEST" \
-                --bootstrap-image-id "$ANDROID_BUILDER_BOOTSTRAP_IMAGE_ID" \
-                --bootstrap-manifest-id "$ANDROID_BUILDER_BOOTSTRAP_MANIFEST_ID" \
-                --source-date-epoch "$SOURCE_DATE_EPOCH_PIN" \
-                --config-id "$ANDROID_BUILDER_CONFIG_ID" \
-                --manifest-id "$ANDROID_BUILDER_MANIFEST_ID"
-    )" || fail 'certified Android-builder image verification/load failed'
-    [ "$load_output" = "loaded and verified android-builder $ANDROID_BUILDER_IMAGE_ID" ] \
-        || fail "Android-builder image receipt differs: $load_output"
+                --archive "$runtime_archive" \
+                --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+                --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" \
+                --role devcheck \
+                --expected-id "$DEV_CHECK_IMAGE_ID" \
+                --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+                --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" \
+                --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+                --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" \
+                --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
+                --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" \
+                --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" \
+                --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID"
+    )" || fail 'certified emulator runtime image verification/load failed'
+    [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
+        || fail "emulator runtime image receipt differs: $load_output"
 
     CONTAINER_ID="$(
         "$CLIENT" --host "unix://$SOCK" create \
@@ -2307,7 +2306,7 @@ run_android_emulator_boot() {
             --mount "type=bind,source=$adb,target=/inputs/adb,readonly" \
             --tmpfs /tmp:rw,exec,nosuid,nodev,size=10g,mode=700,uid=1000,gid=1000 \
             --workdir /source \
-            "$ANDROID_BUILDER_CONFIG_ID" \
+            "$DEV_CHECK_IMAGE_CONFIG_ID" \
             /bin/bash --noprofile --norc \
                 /source/scripts/smoke-android-emulator-boot.sh \
                 /inputs/emulator.zip /inputs/system-image.zip /inputs/adb \
@@ -2343,7 +2342,7 @@ run_android_emulator_boot() {
         || fail 'Android emulator boot container did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
     CONTAINER_ID=
-    "$CLIENT" --host "unix://$SOCK" image rm "$ANDROID_BUILDER_CONFIG_ID" >/dev/null
+    "$CLIENT" --host "unix://$SOCK" image rm "$DEV_CHECK_IMAGE_CONFIG_ID" >/dev/null
 
     [ "$source_before" = \
       "$source_archive_sha:$(sha256sum \
@@ -2355,18 +2354,18 @@ run_android_emulator_boot() {
         || fail 'Android emulator boot source archive changed during execution'
     [ "$inputs_before" = \
       "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-          "$emulator_archive" "$system_archive" "$adb" "$builder_archive"):$({ \
-          sha256sum "$emulator_archive" "$system_archive" "$adb" "$builder_archive"; \
+          "$emulator_archive" "$system_archive" "$adb" "$runtime_archive"):$({ \
+          sha256sum "$emulator_archive" "$system_archive" "$adb" "$runtime_archive"; \
       })" ] \
         || fail 'sealed Android emulator inputs changed during execution'
     stop_docker_authority
     umount "$inputs" || fail 'cannot retire the sealed Android emulator input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$result_line"
-    printf 'ANDROID_EMULATOR_BOOT_VM=pass commit=%s tree=%s emulator=%s api=%s abi=arm64-v8a acceleration=software builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+    printf 'ANDROID_EMULATOR_BOOT_VM=pass commit=%s tree=%s emulator=%s api=%s abi=arm64-v8a acceleration=software runtime_index=%s runtime_config=%s uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
         "$ANDROID_EMULATOR_VERSION" "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" \
-        "$ANDROID_BUILDER_IMAGE_ID" "$ANDROID_BUILDER_CONFIG_ID"
+        "$DEV_CHECK_IMAGE_ID" "$DEV_CHECK_IMAGE_CONFIG_ID"
 }
 
 run_flutter_model_tests() {

@@ -1903,6 +1903,8 @@ fi
 require_exact_fixed_receipt \
     'VERIFIER_VM_GIT_RUNTIME=pass source=pinned-deb version=2.39.5 root=vm-ephemeral network=none' \
     'authenticated verifier-VM Git runtime marker'
+[ "$(/usr/bin/grep -Ec 'VERIFIER_VM_CLOUD_INIT=fail status=[1-9][0-9]*' "$SERIAL_LOG")" -eq 0 ] \
+    || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'guest workload reported failure'; }
 
 if [ "$MODE" = debian-systemd-lifecycle ]; then
     /usr/bin/grep -Eq \

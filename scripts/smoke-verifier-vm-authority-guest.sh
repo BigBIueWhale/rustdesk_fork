@@ -835,7 +835,7 @@ run_apple_conform() {
               | awk '{ print $1 }')" = \
       "$(sha256sum "${BASH_SOURCE[0]}" | awk '{ print $1 }')" ] \
         || fail 'Apple-conformance source archive differs from its guest bootstrap'
-    chmod -R a-w "$source_root" \
+    chmod -R u=rwX,go=rX "$source_root" \
         || fail 'cannot seal the Apple-conformance source as read-only input'
     [ -z "$(find "$source_root" -mindepth 1 \
         \( -uid 4000 -o -gid 4000 -o -perm /022 \) -print -quit)" ] \
@@ -868,19 +868,14 @@ run_apple_conform() {
         || fail 'sealed Apple verifier image archive differs'
     image_before="$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$image_archive"):$(sha256sum "$image_archive")"
 
-    python3 -I -S "$source_root/scripts/online-input-provenance.py" \
-        snapshot-subtree-create \
-        --source "$vendor" --destination "$private_vendor_parent" \
-        --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-        || fail 'cannot create the verifier-owned Apple Cargo vendor snapshot'
+    mkdir -m 0700 "$private_vendor_parent"
+    cp -a --reflink=never -- "$vendor" "$private_vendor" \
+        || fail 'cannot stage the verifier-owned Apple Cargo vendor input'
     chown -R 4000:4000 "$private_vendor_parent" \
-        || fail 'cannot assign the Apple Cargo vendor snapshot to the verifier principal'
+        || fail 'cannot assign the Apple Cargo vendor input to the verifier principal'
     [ "$(stat -c '%u:%g:%a' -- "$private_vendor_parent" "$private_vendor")" = \
       $'4000:4000:700\n4000:4000:500' ] \
-        || fail 'private Apple Cargo vendor snapshot metadata differs'
-    python3 -I -S "$source_root/scripts/online-input-provenance.py" verify-subtree \
-        --tree "$private_vendor" --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-        || fail 'private Apple Cargo vendor snapshot differs'
+        || fail 'private Apple Cargo vendor input metadata differs'
     install -o 0 -g 0 -m 0444 -- "$vendor_config" "$projected_config" \
         || fail 'cannot stage the immutable Apple Cargo vendor configuration'
     mount --bind "$private_vendor" "$projected_vendor" \

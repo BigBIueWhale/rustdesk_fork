@@ -116,7 +116,7 @@ def validate(repo: pathlib.Path) -> None:
         raise AuthorityError(
             "Apple candidate transaction must perform two independent builds"
         )
-    if apple_build.count("capture_apple_check_rebuild") != 2:
+    if apple_build.count('capture_apple_check_rebuild "$') != 2:
         raise AuthorityError(
             "Apple candidate transaction must capture both independent builds"
         )
@@ -494,7 +494,7 @@ def validate(repo: pathlib.Path) -> None:
         ("rustdesk-systemd-cache virtiofs noexec", "systemd-cache virtiofs proof"),
         ("rustdesk-result virtiofs noexec", "bounded-result virtiofs proof"),
         (
-            "active and retired cache roots do not share one atomic-rename filesystem",
+            "active and auxiliary cache roots do not share one atomic-rename filesystem",
             "same-mount replacement proof",
         ),
         ("admitted source identity changed", "source replay proof"),

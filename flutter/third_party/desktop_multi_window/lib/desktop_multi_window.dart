@@ -98,6 +98,17 @@ class DesktopMultiWindow {
     }
   }
 
+  /// Closes one Linux secondary window and completes only after its native
+  /// Flutter engine owner has been destroyed. The main engine is the sole
+  /// caller because a secondary engine cannot observe its own destruction.
+  static Future<void> closeWindowAndWaitForNativeDestroy(int windowId) {
+    assert(windowId > 0, 'id must be greater than 0');
+    return miltiWindowChannel.invokeMethod<void>(
+      'closeWindowAndWaitForNativeDestroy',
+      windowId,
+    );
+  }
+
   static final ObserverList<MultiWindowListener> _listeners =
       ObserverList<MultiWindowListener>();
 

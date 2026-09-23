@@ -18,6 +18,16 @@ subwindow engine may disappear. Native code therefore also waits for the method
 response before scheduling the idle erase. Both the Dart cleanup and the
 method-response callback have returned before destruction begins.
 
+The Linux plugin records which Flutter engine owns each plugin registration.
+RustDesk's main-engine shutdown coordinator uses one explicit close-and-wait
+operation that rejects any other caller and retains its method result until the
+exact secondary owner has been removed and destroyed outside the manager lock.
+This makes that returned Dart future a real destruction barrier before the main
+engine may shut down. Ordinary and self-issued close requests keep their
+initiation semantics; a secondary engine cannot receive a result after its own
+destruction, and its existing response-bound `onDestroy` transaction remains
+the owner of terminal destruction.
+
 The imported Linux source also installed process-global GTK button-press and
 button-release emission hooks with the subwindow object as callback data, but
 retained and removed only the press-hook ID. The vendored correction owns both

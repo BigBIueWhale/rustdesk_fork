@@ -10698,14 +10698,26 @@ pinned Linux embedder and secondary-engine disposal before changing lifetime or 
 source-occlusion false positive is resolved for this run; graceful viewer teardown and all original cross-platform
 delay/correctness/performance obligations remain open.
 
-A follow-up exact no-NIC run at `5fe510e4` loaded a temporary diagnostic `g_mutex_clear` interposer into only the
-guest viewer. It again passed the real password, focus/background, three reconnect, and resource transactions,
-and this time the viewer exited normally with joined cleanup and unchanged host listeners. No invalid-mutex trace
-was emitted. The successful run's workspace was automatically retired; only its terminal receipt, not its raw
-serial log, was retained. Because the interposer changes timing and a prior uninstrumented run aborted, this is
-**not** proof that the teardown defect is fixed or absent. The diagnostic was removed from the normal verifier;
-an uninstrumented repeatable close/cleanup probe with a source-bound reusable bundle and actionable native crash
-trace remains necessary before this STOP-SHIP item can close.
+A follow-up exact no-NIC run at `5fe510e4` loaded a temporary `g_mutex_clear` interposer into only the guest viewer
+and exited cleanly, so it could not negate the uninstrumented abort. The repeated one-bundle transaction at
+`ab43f313` made the perturbation decisive: cycles one through three, each with only a SIGABRT-handler preload,
+completed cleanly; the first uninstrumented cycle then reproduced exit 134 immediately after secondary-window
+cleanup. Its log orders main-engine shutdown before manager-owned secondary destruction, followed by the invalid
+implicit-view removal and GLib mutex abort. Thus even the signal-only preload can mask this timing-sensitive race;
+the diagnostic and its instrumented acceptance cycles are deleted rather than retained as apparent coverage.
+
+**Current candidate source correction; native rerun required.** Linux's ordinary `close` method acknowledged only
+`gtk_window_close()` initiation. `closeAllSubWindows()` treated that response as final and closed the main Flutter
+engine while the secondary engine's response-bound Dart `onDestroy` and later native destruction were still in
+flight. The manager also destroyed the secondary `FlutterWindow` while holding its map write lock. The candidate
+adds one main-engine-only close-and-wait operation, one bounded terminal owner per subwindow, and one Dart
+single-flight process-shutdown transaction. Native finalization moves the exact window out under the lock, destroys
+it after releasing the lock, and only then responds to the still-live main engine. Ordinary/self-close initiation
+semantics remain separate because a dying engine cannot observe a post-destruction response. All six runtime
+repetitions are now uninstrumented. This is source reasoning, not a pass: the exact current no-NIC full-peer build,
+six close cycles, terminal receipts, listener invariance, and joined cleanup must pass before the close-path
+STOP-SHIP item can be retired; Android, Windows, Apple, installed, cross-version, soak, and release obligations stay
+open regardless.
 
 **Open evidence.** Run the exact current generated bridge and native Windows and
 macOS plugins, plus installed Linux, through focus/minimize, display-switch, window-transfer,

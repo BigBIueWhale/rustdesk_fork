@@ -462,8 +462,13 @@ class RustDeskMultiWindowManager {
         }
       }
       try {
-        await WindowController.fromWindowId(wId).setPreventClose(false);
-        await WindowController.fromWindowId(wId).close();
+        final controller = WindowController.fromWindowId(wId);
+        await controller.setPreventClose(false);
+        if (isLinux) {
+          await DesktopMultiWindow.closeWindowAndWaitForNativeDestroy(wId);
+        } else {
+          await controller.close();
+        }
         _activeWindows.remove(wId);
       } catch (e) {
         debugPrint("$e");

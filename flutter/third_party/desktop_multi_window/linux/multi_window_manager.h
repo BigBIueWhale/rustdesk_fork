@@ -6,6 +6,7 @@
 #define DESKTOP_MULTI_WINDOW_WINDOWS_MULTI_WINDOW_MANAGER_H_
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <map>
 #include <cmath>
@@ -37,6 +38,10 @@ class MultiWindowManager : public std::enable_shared_from_this<MultiWindowManage
   void Focus(int64_t id);
 
   void Close(int64_t id);
+
+  using CloseCompletion = std::function<void()>;
+
+  bool CloseAndWait(int64_t id, CloseCompletion completion);
 
   bool IsFullScreen(int64_t id);
 
@@ -79,6 +84,7 @@ class MultiWindowManager : public std::enable_shared_from_this<MultiWindowManage
 
 private:
   std::map<int64_t, std::unique_ptr<BaseFlutterWindow>> windows_;
+  std::map<int64_t, CloseCompletion> close_completions_;
   pthread_rwlock_t windows_map_lock_;
 
   void HandleMethodCall(int64_t from_window_id,

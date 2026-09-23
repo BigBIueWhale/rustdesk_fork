@@ -1592,16 +1592,11 @@ run_flutter_peer_presentation() {
       "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_RUNTIME_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace" \
       "$output")" -eq 1 ] \
         || fail 'Flutter full-peer product verdict is absent or duplicated'
-    [ "$(grep -Fxc 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=6 traced=3 baseline=3' "$output")" -eq 1 ] \
+    [ "$(grep -Fxc 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=6 instrumentation=none' "$output")" -eq 1 ] \
         || fail 'Flutter full-peer repeated lifecycle verdict is absent or duplicated'
     for cycle in 1 2 3 4 5 6; do
-        if [ "$cycle" -le 3 ]; then
-            trace_abort=1
-        else
-            trace_abort=0
-        fi
         [ "$(grep -Fxc \
-          "FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=$cycle abort_trace=$trace_abort viewer=joined server=joined" \
+          "FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=$cycle instrumentation=none viewer=joined server=joined" \
           "$output")" -eq 1 ] \
             || fail "Flutter full-peer lifecycle cycle $cycle is absent or duplicated"
     done

@@ -158,6 +158,24 @@ void MultiWindowManager::Close(int64_t id) {
   UNLOCK_WINDOW;
 }
 
+bool MultiWindowManager::CloseAndWait(int64_t id, CloseCompletion completion) {
+  WLOCK_WINDOW;
+  auto window = windows_.find(id);
+  if (window == windows_.end()) {
+    UNLOCK_WINDOW;
+    completion();
+    return true;
+  }
+  if (close_completions_.count(id) != 0) {
+    UNLOCK_WINDOW;
+    return false;
+  }
+  close_completions_.emplace(id, std::move(completion));
+  window->second->Close();
+  UNLOCK_WINDOW;
+  return true;
+}
+
 void MultiWindowManager::SetFullscreen(int64_t id, bool fullscreen) {
   RLOCK_WINDOW;
   auto window = windows_.find(id);
@@ -289,10 +307,30 @@ void MultiWindowManager::ShowTitlebar(int64_t id, bool show) {
 void MultiWindowManager::OnWindowClose(int64_t id) {}
 
 void MultiWindowManager::OnWindowDestroy(int64_t id) {
-  std::cout << "destory id " << id << std::endl;
+  std::unique_ptr<BaseFlutterWindow> destroyed_window;
+  CloseCompletion completion;
   WLOCK_WINDOW;
-  windows_.erase(id);
+  auto window = windows_.find(id);
+  if (window != windows_.end()) {
+    destroyed_window = std::move(window->second);
+    windows_.erase(window);
+  }
+  auto pending = close_completions_.find(id);
+  if (pending != close_completions_.end()) {
+    completion = std::move(pending->second);
+    close_completions_.erase(pending);
+  }
   UNLOCK_WINDOW;
+
+  // FlutterWindow destruction tears down GTK, the secondary Flutter engine,
+  // and its method channels. Never perform that work while the manager lock is
+  // held, and never let an owning engine treat close as terminal before it has
+  // completed.
+  destroyed_window.reset();
+  std::cout << "destroyed id " << id << std::endl;
+  if (completion) {
+    completion();
+  }
 }
 
 void MultiWindowManager::StartResizing(int64_t id, FlValue *value) {

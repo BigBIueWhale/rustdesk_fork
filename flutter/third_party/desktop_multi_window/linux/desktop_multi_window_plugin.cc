@@ -16,6 +16,7 @@ extern bool rustdesk_is_subwindow;
 
 struct _DesktopMultiWindowPlugin {
   GObject parent_instance;
+  int64_t window_id;
 };
 
 G_DEFINE_TYPE(DesktopMultiWindowPlugin, desktop_multi_window_plugin, g_object_get_type())
@@ -54,6 +55,31 @@ static void desktop_multi_window_plugin_handle_method_call(
     auto window_id = fl_value_get_int(args);
     MultiWindowManager::Instance()->Close(window_id);
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+  } else if (g_strcmp0(method, "closeWindowAndWaitForNativeDestroy") == 0) {
+    auto *args = fl_method_call_get_args(method_call);
+    auto window_id = fl_value_get_int(args);
+    if (self->window_id != 0 || window_id <= 0) {
+      response = FL_METHOD_RESPONSE(fl_method_error_response_new(
+          "invalid-close-owner",
+          "only the main engine may await secondary-window destruction",
+          nullptr));
+    } else {
+      auto *retained_call =
+          static_cast<FlMethodCall *>(g_object_ref(method_call));
+      if (MultiWindowManager::Instance()->CloseAndWait(
+          window_id, [retained_call]() {
+            g_autoptr(FlMethodResponse) close_response = FL_METHOD_RESPONSE(
+                fl_method_success_response_new(nullptr));
+            fl_method_call_respond(retained_call, close_response, nullptr);
+            g_object_unref(retained_call);
+          })) {
+        return;
+      }
+      g_object_unref(retained_call);
+      response = FL_METHOD_RESPONSE(fl_method_error_response_new(
+          "close-already-pending",
+          "secondary-window destruction already has an owner", nullptr));
+    }
   } else if (g_strcmp0(method, "center") == 0) {
     auto *args = fl_method_call_get_args(method_call);
     auto window_id = fl_value_get_int(args);
@@ -184,9 +210,11 @@ static void method_call_cb(FlMethodChannel *channel, FlMethodCall *method_call,
   desktop_multi_window_plugin_handle_method_call(plugin, method_call);
 }
 
-void desktop_multi_window_plugin_register_with_registrar_internal(FlPluginRegistrar *registrar) {
+void desktop_multi_window_plugin_register_with_registrar_internal(
+    FlPluginRegistrar *registrar, int64_t window_id) {
   DesktopMultiWindowPlugin *plugin = DESKTOP_MULTI_WINDOW_PLUGIN(
       g_object_new(desktop_multi_window_plugin_get_type(), nullptr));
+  plugin->window_id = window_id;
 
   g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
   g_autoptr(FlMethodChannel) channel =
@@ -205,7 +233,7 @@ void desktop_multi_window_plugin_register_with_registrar(FlPluginRegistrar *regi
     g_info("[rustdesk multi-window plugin] subwindow opened, skipping desktop_multi_window_plugin_register_with_registrar");
     return;
   }
-  desktop_multi_window_plugin_register_with_registrar_internal(registrar);
+  desktop_multi_window_plugin_register_with_registrar_internal(registrar, 0);
   auto view = fl_plugin_registrar_get_view(registrar);
   auto window = gtk_widget_get_toplevel(GTK_WIDGET(view));
   if (GTK_IS_WINDOW(window)) {

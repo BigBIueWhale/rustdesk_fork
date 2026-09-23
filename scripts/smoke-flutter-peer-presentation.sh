@@ -695,12 +695,7 @@ SERVER_CID_FILE="$WORKSPACE/server.$cycle.cid"
 VIEWER_CID_FILE="$WORKSPACE/viewer.$cycle.cid"
 SERVER_LOG="$WORKSPACE/server.$cycle.log"
 VIEWER_LOG="$WORKSPACE/viewer.$cycle.log"
-if [ "$cycle" -le 3 ]; then
-  trace_abort=1
-else
-  trace_abort=0
-fi
-printf '== peer runtime cycle %s/6, abort_trace=%s, network=none ==\n' "$cycle" "$trace_abort"
+printf '== peer runtime cycle %s/6, instrumentation=none, network=none ==\n' "$cycle"
 CID_FILES+=("$SERVER_CID_FILE")
 peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
   --pull=never --network=none --read-only \
@@ -764,7 +759,6 @@ peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
   --env XDG_RUNTIME_DIR=/tmp/viewer-runtime \
   --env XDG_DATA_DIRS=/atspi-root/usr/share:/usr/local/share:/usr/share \
   --env RUSTDESK_PRESENTATION_TRACE=1 \
-  --env "RUSTDESK_ABORT_TRACE=$trace_abort" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-private-atspi-session.sh viewer \
   > "$VIEWER_LOG" 2>&1
@@ -821,10 +815,10 @@ grep -q '^FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joined
   || die 'server result receipt differs'
 cleanup_container "$VIEWER_CID_FILE"
 cleanup_container "$SERVER_CID_FILE"
-printf 'FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=%s abort_trace=%s viewer=joined server=joined\n' \
-  "$cycle" "$trace_abort"
+printf 'FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=%s instrumentation=none viewer=joined server=joined\n' \
+  "$cycle"
 done
-echo 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=6 traced=3 baseline=3'
+echo 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=6 instrumentation=none'
 
 echo '== independently reverify every persistent build input after runtime =='
 run_input_check "$WORKSPACE/input-post.cid"

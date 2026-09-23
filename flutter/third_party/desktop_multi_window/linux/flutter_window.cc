@@ -152,7 +152,8 @@ FlutterWindow::FlutterWindow(
   g_autoptr(FlPluginRegistrar)
       desktop_multi_window_registrar =
           fl_plugin_registry_get_registrar_for_plugin(FL_PLUGIN_REGISTRY(fl_view), "DesktopMultiWindowPlugin");
-  desktop_multi_window_plugin_register_with_registrar_internal(desktop_multi_window_registrar);
+  desktop_multi_window_plugin_register_with_registrar_internal(
+      desktop_multi_window_registrar, id_);
 
   window_channel_ = WindowChannel::RegisterWithRegistrar(desktop_multi_window_registrar, id_);
 

@@ -1056,7 +1056,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
 | Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained, while iOS has no controlled-side root IPC surface. This does not prove mobile behavior: exact current packages must be installed and exercised for persistent-service/task-swipe/Force-Stop/reopen, reconnect, capture/decode/presentation, background/focus, stale generation refusal, and bounded resource cleanup. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
-| Full verification infrastructure | R-S11bg now has a pin-bound recoverable verifier image: two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. A current confined full product/source gate and a fresh independent-environment rebuild remain required; this infrastructure result supplies no product or native evidence. |
+| Full verification infrastructure | R-S11bg now has pin-bound recoverable devcheck and Apple verifier images. For each image, two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. Current confined product/source workloads and fresh independently administered rebuilds remain required; these infrastructure results supply no product or native evidence. |
 | Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES, THE EXACT-CURRENT LINUX FILESYSTEM SUITE, ONLINE ACQUISITION, CURRENT DART/RUST ADVISORY VERDICTS, AND THE CURRENT ANDROID, DEBIAN, AND WINDOWS-HELPER CERTIFICATION TRANSACTIONS ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; focused entries refuse applicable root/foreign callers and execute bounded guest containers. The `76cc2fe` focused transaction executed 57 real Rust tests in 137 seconds and, in a fresh daemon, distinguished the certified OCI-index identity from Docker's runnable config identity before use. R-S11cj separately executes acquisition in ordinary-user QEMU with rootless exact virtiofs exports, TCP-only guest/container egress, no host forwarding, unchanged host listeners, and joined finality. `run.dODxMdeH1n` built and captured the real Android bootstrap; `run.wn6nrHxpyi` reviewed and no-clobber promoted it. Current `run.61vb0nCRcV` then completed exact networkless certification, normalization, guest-only load, and runtime verification in 99 seconds, and pin-bound `run.phE39wA0oN` repeated full candidate verification, no-clobber promotion, and final load/runtime verification in 38 seconds. Their receipts bind the exact source, guest-only Docker/BuildKit, no host forwarding, listener invariance, and joined cleanup. Current `run.52py3CWymM` executed the real Android Rust, Gradle/Kotlin, warm-APK, and Gradle-seed publication path at `a73040d`, while its outer verdict was invalidated solely by disappearance of a pre-existing listener; clean `run.hutLn5juYg` then passed exact seed reuse, unchanged listeners, and joined finality. Android signing and retained release artifacts, installation/device lifecycle, future advisory refreshes, Apple source work, full-peer presentation, Debian/Windows product workloads, cold artifacts, complete prepared verifier inputs, fresh independent reproduction, and external review remain open. A library test run, entry gates, and a builder runtime fingerprint are not product, artifact, scanner, native-platform, or full-release evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
@@ -2965,11 +2965,25 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   listener change, and joined residue-free teardown in under 50 seconds. Its receipt deliberately says
   `workload=unexecuted`.
 
-  The local `online/` closure is absent, including the pinned 1,122,604,778-byte Apple image archive and Cargo
-  vendor tree, so the current complete three-target source transaction was not run. A historical full source
-  pass predates this VM-only entry and is not current-tree evidence. Native macOS/iOS compilation, signing,
-  installation, helper/launchd behavior, runtime, packages, cold release, independent reproduction, and
-  external review remain open.
+  The Apple verifier-image reconstruction and distribution gap is now closed for the current pins. At exact
+  source `59832538ac7c1dd3c576653780de67da73836293`, two no-cache builds from the authenticated three-file context
+  and the exact OCI-layout devcheck base reproduced runtime manifest
+  `sha256:735542810db12e0d87ba81e4a35573242808b44c2e6136bd28422774fb0f13d3` and config
+  `sha256:d7b83421b9ec591c231cf120c4e63cb0951619f6e774c6d8d875ba2bfbeebf04`. The verifier binds BuildKit 0.18.2's
+  actual SLSA v0.2 statement, exact OCI material and invocation context, source nodes, signed Rust release
+  manifest/key, six components, installed-package manifest, toolchain tree, users, network modes, and all nine
+  LLB operations. Per-invocation attestation metadata is not mislabeled as reproducible; the final reviewed OCI
+  index `sha256:d347f852505afb044fc840ad1477ca361ed741f6b00e9c7d887f59f4db19f0f8` pins that envelope around the reproduced
+  runtime identity.
+
+  Acquisition receipt `run.1kvClFLWWU` published the private candidate, and fresh promotion receipt
+  `run.t8TJxzLRax` at exact source `a4062e73064cda7d52a1318e392fbbb27e5655c3` verified, no-clobber promoted,
+  loaded, and ran the final 981,362,321-byte archive with SHA-256
+  `cab82041a9cde0492170885773d6ed084f87887bf1b5057ddaeefdf87f14d334`. Both transactions used guest-only
+  Docker/BuildKit, no host forwarding, unchanged host listeners, and joined cleanup. This is verifier-image
+  infrastructure evidence only: the current complete macOS-arm64, macOS-x86_64, and iOS-arm64 source transaction
+  has not run. Native macOS/iOS compilation, signing, installation, helper/launchd behavior, runtime, packages,
+  cold release, fresh independent reproduction, and external review remain open.
 - **R-S11cj/R-S11e-102 — isolated online-acquisition VM and non-root producer authority — SOURCE,
   FOCUSED AUTHORITY, AND PRIVATE-WORKSPACE FAILURE FINALITY VERIFIED; FULL CACHE/PRODUCERS, COLD RELEASE,
   INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW OPEN.** Platform/boundary: one ordinary-user Linux

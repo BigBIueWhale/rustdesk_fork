@@ -63,7 +63,7 @@ mkdir -m 0700 -p -- "$SDK_ROOT" "$HOME_ROOT" "$AVD_HOME" "$SYSTEM_ROOT" \
 # The archives are exact-hash inputs, but extraction still rejects every archive
 # shape that could escape or alias the destination.  File modes are derived here,
 # never trusted from ZIP metadata.
-python3 -I -S - "$EMULATOR_ZIP" "$SDK_ROOT" emulator/ \
+python3 -I -S - "$EMULATOR_ZIP" "$SDK_ROOT/emulator" emulator/ \
     "$SYSTEM_IMAGE_ZIP" "$SYSTEM_ROOT" arm64-v8a/ <<'PY'
 import os
 import stat

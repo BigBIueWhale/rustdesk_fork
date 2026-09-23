@@ -306,7 +306,7 @@ def validate_contract(repo):
             'guest_invocation+=" --dart-audit ',
             "-nic none",
             "DART_AUDIT_VM_OUTER=pass",
-            "listeners=unchanged",
+            "listeners=no-harness-addition",
             "docker=guest-only",
             "cleanup=joined",
         ),

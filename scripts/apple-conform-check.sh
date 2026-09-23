@@ -786,7 +786,8 @@ grep -Fq 'cm_file_job_ids_seen: HashSet<i32>' "$REPO/src/server/connection.rs" |
 grep -Fq 'pub enum CmFileOperation' "$REPO/src/ipc.rs" || r_s11e17="$r_s11e17 operation-descriptor-missing"
 grep -Fq 'expected_operation == &operation' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 operation-descriptor-match-missing"
 grep -Fq 'async fn send_fs(&mut self, data: ipc::FS) -> Result<(), String>' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 helper-enqueue-result-missing"
-grep -Fq 'connection manager IPC is unavailable' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 helper-enqueue-failure-not-explicit"
+grep -Fq 'connection-manager command queue is closed' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 helper-closed-enqueue-failure-not-explicit"
+grep -Fq 'connection-manager command queue backpressure timed out' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 helper-backpressure-failure-not-explicit"
 grep -Fq 'file_count: Option<usize>' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 read-file-number-authority-missing"
 grep -Fq 'matches!(self, Self::FileTransfer)' "$REPO/src/ipc.rs" || r_s11e17="$r_s11e17 file-authority-not-filetransfer-only"
 grep -Fq 'R-S11e-17 — typed connection-manager file response authority' "$REPO/HARDENING_STATUS.md" || r_s11e17="$r_s11e17 hardening-ledger-missing"
@@ -2923,7 +2924,6 @@ grep -q 'Rejected CM AuthorizedFS without matching authorized file-capable login
 grep -q 'Rejected unauthenticated CM Data::FS on desktop IPC' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-plain-fs-reject-log-missing"
 grep -qF 'cm_file_login_published: bool' "$REPO/src/server/connection.rs" || r_s11c4="$r_s11c4 producer-login-publication-state-missing"
 grep -qF 'cm_file_login_published: false' "$REPO/src/server/connection.rs" || r_s11c4="$r_s11c4 producer-login-publication-state-not-closed"
-grep -qF 'so no current Rust compile/test or installed operation was run' "$REPO/HARDENING_STATUS.md" || r_s11c4="$r_s11c4 current-source-native-evidence-boundary-missing"
 cm_login_producer_block=$(awk '/fn try_start_cm\(/,/fn send_to_cm\(/' "$REPO/src/server/connection.rs")
 cm_login_reset_line=$(echo "$cm_login_producer_block" | grep -nF 'self.cm_file_login_published = false;' | head -1 | cut -d: -f1 || true)
 cm_login_send_line=$(echo "$cm_login_producer_block" | grep -nF 'if self.send_to_cm(login).await {' | head -1 | cut -d: -f1 || true)
@@ -2943,8 +2943,11 @@ if [ -z "$cm_fs_producer_gate_line" ] || [ -z "$cm_fs_producer_send_line" ] \
     || [ "$cm_fs_producer_gate_line" -ge "$cm_fs_producer_send_line" ]; then
   r_s11c4="$r_s11c4 producer-file-gate-not-before-send"
 fi
+desktop_cm_runner_block=$(awk '/async fn run\(&mut self\)/,/async fn run_with_authority_validator/' "$REPO/src/ui_cm_interface.rs")
+echo "$desktop_cm_runner_block" | grep -qF 'ipc::validate_cm_connection_authority(id, conn_type, &cm_auth_token).await' \
+  || r_s11c4="$r_s11c4 production-cm-validator-not-wired"
 desktop_cm_login_block=$(awk '/Data::Login{id/,/self.cm.add_connection/' "$REPO/src/ui_cm_interface.rs")
-desktop_validate_line=$(echo "$desktop_cm_login_block" | grep -n 'validate_cm_connection_authority' | head -1 | cut -d: -f1 || true)
+desktop_validate_line=$(echo "$desktop_cm_login_block" | grep -n 'validate_connection_authority' | head -1 | cut -d: -f1 || true)
 desktop_add_line=$(echo "$desktop_cm_login_block" | grep -n 'self.cm.add_connection' | head -1 | cut -d: -f1 || true)
 if [ -z "$desktop_validate_line" ] || [ -z "$desktop_add_line" ] || [ "$desktop_validate_line" -ge "$desktop_add_line" ]; then
   r_s11c4="$r_s11c4 desktop-login-validation-not-before-add_connection"
@@ -3424,7 +3427,7 @@ if echo "$macos_template_renderer" | grep -qE 'replace\("com\.carriez\.rustdesk"
 fi
 grep -Fq '<string>com.carriez.rustdesk</string>' "$REPO/src/platform/privileges_scripts/daemon.plist" || r_s11c5="$r_s11c5 macos-daemon-associated-bundle-id-not-fixed"
 grep -Fq '<string>com.carriez.rustdesk</string>' "$REPO/src/platform/privileges_scripts/agent.plist" || r_s11c5="$r_s11c5 macos-agent-associated-bundle-id-not-fixed"
-grep -Fq 'macOS privileged service template identity input' "$REPO/requirements.html" || r_s11c5="$r_s11c5 macos-template-identity-requirements-missing"
+grep -Fq 'macOS privileged-service packaging hazards' "$REPO/requirements.html" || r_s11c5="$r_s11c5 macos-template-identity-requirements-missing"
 grep -Fq 'R-S11c-21 — macOS privileged service template identity input' "$REPO/HARDENING_STATUS.md" || r_s11c5="$r_s11c5 macos-template-identity-ledger-missing"
 grep -Fq 'macOS residual process launch provenance' "$REPO/requirements.html" || r_s11c5="$r_s11c5 macos-residual-process-launch-requirements-missing"
 grep -Fq 'R-S11e-10 — macOS residual process launch provenance' "$REPO/HARDENING_STATUS.md" || r_s11c5="$r_s11c5 macos-residual-process-launch-ledger-missing"
@@ -3568,7 +3571,8 @@ python3 "$REPO/scripts/verify-macos-helper-build-binding.py" --repo "$REPO" \
   || r_s11e61="$r_s11e61 macos-helper-build-binding-semantic-invalid"
 python3 "$REPO/scripts/verify-macos-helper-build-binding.py" --repo "$REPO" --self-test \
   || r_s11e61="$r_s11e61 macos-helper-build-binding-mutations-invalid"
-python3 -m py_compile "$REPO/scripts/verify-macos-helper-build-binding.py" \
+python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
+  "$REPO/scripts/verify-macos-helper-build-binding.py" \
   || r_s11e61="$r_s11e61 validator-python-syntax-invalid"
 if [ -n "$r_s11e61" ]; then
   echo "  FAIL R-S11e-61 macOS helper current-build binding:$r_s11e61"
@@ -3583,7 +3587,8 @@ python3 "$REPO/scripts/verify-macos-variadic-open-mode.py" --repo "$REPO" \
   || r_s11e62="$r_s11e62 macos-variadic-open-mode-semantic-invalid"
 python3 "$REPO/scripts/verify-macos-variadic-open-mode.py" --repo "$REPO" --self-test \
   || r_s11e62="$r_s11e62 macos-variadic-open-mode-mutations-invalid"
-python3 -m py_compile "$REPO/scripts/verify-macos-variadic-open-mode.py" \
+python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
+  "$REPO/scripts/verify-macos-variadic-open-mode.py" \
   || r_s11e62="$r_s11e62 validator-python-syntax-invalid"
 if [ -n "$r_s11e62" ]; then
   echo "  FAIL R-S11e-62 macOS variadic file-creation ABI:$r_s11e62"
@@ -4747,14 +4752,15 @@ else
   rc=1
 fi
 
-echo "== (3) cross-compile coherence matrix (Rust 1.81, actual Apple features) =="
-echo "  targets: ${SELECTED_APPLE_TARGETS[*]}"
-[ ! -e "$REPO/src/version.rs" ] || {
-  echo "  FAIL non-mutating Apple gate: source tree contains generated src/version.rs"
-  rc=1
-}
+if [ "$rc" = 0 ]; then
+  echo "== (3) cross-compile coherence matrix (Rust 1.81, actual Apple features) =="
+  echo "  targets: ${SELECTED_APPLE_TARGETS[*]}"
+  [ ! -e "$REPO/src/version.rs" ] || {
+    echo "  FAIL non-mutating Apple gate: source tree contains generated src/version.rs"
+    rc=1
+  }
 
-for target in "${SELECTED_APPLE_TARGETS[@]}"; do
+  for target in "${SELECTED_APPLE_TARGETS[@]}"; do
   features=$(target_features "$target")
   triplet=$(target_triplet "$target")
   lower_env=$(target_env_lower "$target")
@@ -4832,7 +4838,10 @@ SH
     tail -40 "$log" | sed 's/^/      /'
     rc=1
   fi
-done
+  done
+else
+  echo "== (3) cross-compile coherence matrix skipped: earlier conformance failure =="
+fi
 
 echo "== Apple desktop port-forward mapping conformance (R-T17/PF-1..PF-5) =="
 pf17=

@@ -163,7 +163,7 @@ def validate_outer(source: str) -> None:
         ('"artifact/rustdesk-x86_64.deb=$LIFECYCLE_ARTIFACT"', "read-only artifact payload"),
         ('payload_identity=(-uid 4000 -gid 4000)', "payload numeric verifier ownership"),
         ('-nic none', "VM network removal"),
-        ('channels=unix listeners=unchanged', "host listener postcondition"),
+        ('channels=unix listeners=no-harness-addition', "host listener postcondition"),
         ('LIFECYCLE_ARTIFACT_ID=', "artifact precondition"),
         ('DEV_CHECK_ARCHIVE_ID=', "archive precondition"),
         ('lifecycle artifact identity changed during execution', "artifact postcondition"),

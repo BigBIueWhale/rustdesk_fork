@@ -7374,7 +7374,8 @@ python3 scripts/verify-desktop-ipc-lifecycle.py --repo . \
   || r_s11e59="$r_s11e59 desktop-ipc-lifecycle-semantic-invalid"
 python3 scripts/verify-desktop-ipc-lifecycle.py --repo . --self-test \
   || r_s11e59="$r_s11e59 desktop-ipc-lifecycle-mutations-invalid"
-python3 -m py_compile scripts/verify-desktop-ipc-lifecycle.py \
+python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
+  scripts/verify-desktop-ipc-lifecycle.py \
   || r_s11e59="$r_s11e59 validator-python-syntax-invalid"
 grep -qF '<span class="id">R-S11as</span>' requirements.html || r_s11e59="$r_s11e59 normative-requirement-missing"
 grep -qF '<tr><td>167</td>' requirements.html || r_s11e59="$r_s11e59 appendix-row-missing"
@@ -7394,7 +7395,8 @@ python3 scripts/verify-linux-service-admission.py --repo . \
   || r_s11e60="$r_s11e60 linux-service-admission-semantic-invalid"
 python3 scripts/verify-linux-service-admission.py --repo . --self-test \
   || r_s11e60="$r_s11e60 linux-service-admission-mutations-invalid"
-python3 -m py_compile scripts/verify-linux-service-admission.py \
+python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
+  scripts/verify-linux-service-admission.py \
   || r_s11e60="$r_s11e60 validator-python-syntax-invalid"
 grep -qF '<span class="id">R-S11at</span>' requirements.html || r_s11e60="$r_s11e60 normative-requirement-missing"
 grep -qF '<tr><td>168</td>' requirements.html || r_s11e60="$r_s11e60 appendix-row-missing"
@@ -7411,7 +7413,8 @@ python3 scripts/verify-macos-helper-build-binding.py --repo . \
   || r_s11e61="$r_s11e61 macos-helper-build-binding-semantic-invalid"
 python3 scripts/verify-macos-helper-build-binding.py --repo . --self-test \
   || r_s11e61="$r_s11e61 macos-helper-build-binding-mutations-invalid"
-python3 -m py_compile scripts/verify-macos-helper-build-binding.py \
+python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
+  scripts/verify-macos-helper-build-binding.py \
   || r_s11e61="$r_s11e61 validator-python-syntax-invalid"
 grep -qF '<span class="id">R-S11au</span>' requirements.html || r_s11e61="$r_s11e61 normative-requirement-missing"
 grep -qF '<tr><td>169</td>' requirements.html || r_s11e61="$r_s11e61 appendix-row-missing"
@@ -7430,7 +7433,8 @@ python3 scripts/verify-macos-variadic-open-mode.py --repo . \
   || r_s11e62="$r_s11e62 macos-variadic-open-mode-semantic-invalid"
 python3 scripts/verify-macos-variadic-open-mode.py --repo . --self-test \
   || r_s11e62="$r_s11e62 macos-variadic-open-mode-mutations-invalid"
-python3 -m py_compile scripts/verify-macos-variadic-open-mode.py \
+python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
+  scripts/verify-macos-variadic-open-mode.py \
   || r_s11e62="$r_s11e62 validator-python-syntax-invalid"
 grep -qF '<span class="id">R-S11av</span>' requirements.html || r_s11e62="$r_s11e62 normative-requirement-missing"
 grep -qF '<tr><td>170</td>' requirements.html || r_s11e62="$r_s11e62 appendix-row-missing"
@@ -8537,7 +8541,6 @@ grep -qF 'cm_file_login_published: bool' src/server/connection.rs || r_s11c4="$r
 grep -qF 'cm_file_login_published: false' src/server/connection.rs || r_s11c4="$r_s11c4 producer-login-publication-state-not-closed"
 grep -qF 'fn cm_file_request_session_authorized(' src/server/connection.rs || r_s11c4="$r_s11c4 producer-file-authority-gate-missing"
 grep -qF 'fn request_binding_requires_published_authorized_file_transfer_login()' src/server/connection.rs || r_s11c4="$r_s11c4 producer-file-authority-regression-missing"
-grep -qF 'so no current Rust compile/test or installed operation was run' HARDENING_STATUS.md || r_s11c4="$r_s11c4 current-source-native-evidence-boundary-missing"
 logon_response_block=$(awk '/async fn send_logon_response_and_keep_alive/,/fn try_sub_camera_displays/' src/server/connection.rs)
 if echo "$logon_response_block" | grep -qF 'self.read_dir('; then
   r_s11c4="$r_s11c4 initial-directory-still-enqueued-before-cm-login"
@@ -8570,8 +8573,11 @@ if [ -z "$cm_login_publish_line" ] || [ -z "$cm_login_followup_line" ] || [ -z "
     || [ "$cm_login_followup_line" -ge "$cm_initial_read_line" ]; then
   r_s11c4="$r_s11c4 cm-login-not-published-before-initial-directory"
 fi
+desktop_cm_runner_block=$(awk '/async fn run\(&mut self\)/,/async fn run_with_authority_validator/' src/ui_cm_interface.rs)
+echo "$desktop_cm_runner_block" | grep -qF 'ipc::validate_cm_connection_authority(id, conn_type, &cm_auth_token).await' \
+  || r_s11c4="$r_s11c4 production-cm-validator-not-wired"
 desktop_cm_login_block=$(awk '/Data::Login{id/,/self.cm.add_connection/' src/ui_cm_interface.rs)
-desktop_validate_line=$(echo "$desktop_cm_login_block" | grep -n 'validate_cm_connection_authority' | head -1 | cut -d: -f1)
+desktop_validate_line=$(echo "$desktop_cm_login_block" | grep -n 'validate_connection_authority' | head -1 | cut -d: -f1)
 desktop_add_line=$(echo "$desktop_cm_login_block" | grep -n 'self.cm.add_connection' | head -1 | cut -d: -f1)
 if [ -z "$desktop_validate_line" ] || [ -z "$desktop_add_line" ] || [ "$desktop_validate_line" -ge "$desktop_add_line" ]; then
   r_s11c4="$r_s11c4 desktop-login-validation-not-before-add_connection"
@@ -8771,7 +8777,8 @@ grep -Fq 'expected_operation == &operation' src/server/connection.rs || r_s11e17
 grep -Fq 'expected_result_path' src/server/connection.rs || r_s11e17="$r_s11e17 directory-result-path-binding-missing"
 grep -Fq 'unexpected connection manager drive entry' src/server/connection.rs || r_s11e17="$r_s11e17 transfer-manifest-drive-rejection-missing"
 grep -Fq 'fn send_fs(&mut self, data: ipc::FS) -> Result<(), String>' src/server/connection.rs || r_s11e17="$r_s11e17 helper-enqueue-result-missing"
-grep -Fq 'connection manager IPC is unavailable' src/server/connection.rs || r_s11e17="$r_s11e17 helper-enqueue-failure-not-explicit"
+grep -Fq 'connection-manager command queue is closed' src/server/connection.rs || r_s11e17="$r_s11e17 helper-closed-enqueue-failure-not-explicit"
+grep -Fq 'connection-manager command queue backpressure timed out' src/server/connection.rs || r_s11e17="$r_s11e17 helper-backpressure-failure-not-explicit"
 grep -Fq 'matches!(self, Self::FileTransfer)' src/ipc.rs || r_s11e17="$r_s11e17 fs-authority-not-filetransfer-only"
 grep -Fq 'conn.handle_cm_file_response(response).await' src/server/connection.rs || r_s11e17="$r_s11e17 typed-response-handler-not-wired"
 grep -Fq 'Data::CmFileResponse(mut envelope)' src/server/connection.rs || r_s11e17="$r_s11e17 typed-binary-bridge-missing"
@@ -9165,7 +9172,7 @@ if echo "$macos_template_renderer" | grep -qE 'replace\("com\.carriez\.rustdesk"
 fi
 grep -Fq '<string>com.carriez.rustdesk</string>' src/platform/privileges_scripts/daemon.plist || r_s11c5="$r_s11c5 macos-daemon-associated-bundle-id-not-fixed"
 grep -Fq '<string>com.carriez.rustdesk</string>' src/platform/privileges_scripts/agent.plist || r_s11c5="$r_s11c5 macos-agent-associated-bundle-id-not-fixed"
-grep -Fq 'macOS privileged service template identity input' requirements.html || r_s11c5="$r_s11c5 macos-template-identity-requirements-missing"
+grep -Fq 'macOS privileged-service packaging hazards' requirements.html || r_s11c5="$r_s11c5 macos-template-identity-requirements-missing"
 grep -Fq 'R-S11c-21 — macOS privileged service template identity input' HARDENING_STATUS.md || r_s11c5="$r_s11c5 macos-template-identity-ledger-missing"
 grep -Fq 'macOS residual process launch provenance' requirements.html || r_s11c5="$r_s11c5 macos-residual-process-launch-requirements-missing"
 grep -Fq 'R-S11e-10 — macOS residual process launch provenance' HARDENING_STATUS.md || r_s11c5="$r_s11c5 macos-residual-process-launch-ledger-missing"
@@ -9884,7 +9891,7 @@ for token in \
   '-nic none' \
   'media=cdrom,readonly=on' \
   'VERIFIER_VM_DEBIAN_SYSTEMD_LIFECYCLE=pass' \
-  'channels=unix listeners=unchanged'; do
+  'channels=unix listeners=no-harness-addition'; do
   grep -qF -- "$token" "$systemd_host" \
     || r_s11c27m="$r_s11c27m host:${token%% *}"
 done

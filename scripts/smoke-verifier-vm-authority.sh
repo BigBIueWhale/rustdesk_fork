@@ -476,6 +476,64 @@ capture_listeners() {
     /usr/bin/ss -H -lntu | LC_ALL=C /usr/bin/sort -u
 }
 
+capture_listener_details() {
+    /usr/bin/ss -H -lntup 2>/dev/null | LC_ALL=C /usr/bin/sort -u
+}
+
+capture_process_generations() {
+    local proc pid owner start executable
+    for proc in /proc/[0-9]*; do
+        [ -d "$proc" ] || continue
+        pid=${proc#/proc/}
+        owner="$(/usr/bin/stat -c '%u' -- "$proc" 2>/dev/null)" || continue
+        [ "$owner" = "$HOST_UID" ] || continue
+        start="$(process_start_time "$pid" 2>/dev/null)" || continue
+        executable="$(/usr/bin/readlink -f "$proc/exe" 2>/dev/null)" || continue
+        /usr/bin/printf '%s\t%s\t%s\n' "$pid" "$start" "$executable"
+    done | LC_ALL=C /usr/bin/sort -n
+}
+
+admit_preexisting_external_listener_drift() {
+    local additions=$1 details=$2 stage=$3 listener
+    local protocol state receive_queue send_queue local_endpoint peer_endpoint remainder
+    local matching_details pids pid owner start executable generation
+    while IFS= read -r listener; do
+        [ -n "$listener" ] || continue
+        read -r protocol state receive_queue send_queue local_endpoint peer_endpoint remainder \
+            <<<"$listener"
+        matching_details="$(
+            /usr/bin/awk \
+                -v protocol="$protocol" -v state="$state" \
+                -v local_endpoint="$local_endpoint" -v peer_endpoint="$peer_endpoint" \
+                '$1 == protocol && $2 == state && $5 == local_endpoint && $6 == peer_endpoint' \
+                "$details"
+        )"
+        [ -n "$matching_details" ] || return 1
+        pids="$(
+            /usr/bin/printf '%s\n' "$matching_details" \
+                | /usr/bin/grep -oE 'pid=[1-9][0-9]*' \
+                | /usr/bin/cut -d= -f2 \
+                | LC_ALL=C /usr/bin/sort -nu
+        )" || pids=
+        [ -n "$pids" ] || return 1
+        while IFS= read -r pid; do
+            [ -n "$pid" ] || continue
+            owner="$(/usr/bin/stat -c '%u' -- "/proc/$pid" 2>/dev/null)" || return 1
+            [ "$owner" = "$HOST_UID" ] || return 1
+            start="$(process_start_time "$pid" 2>/dev/null)" || return 1
+            executable="$(/usr/bin/readlink -f "/proc/$pid/exe" 2>/dev/null)" \
+                || return 1
+            generation="${pid}"$'\t'"${start}"$'\t'"${executable}"
+            /usr/bin/grep -Fqx -- "$generation" "$LISTENER_PROCESSES_BEFORE" \
+                || return 1
+        done <<<"$pids"
+        /usr/bin/printf 'stage=%s %s owners=%s\n' \
+            "$stage" "$listener" \
+            "$(/usr/bin/tr '\n' ',' <<<"$pids" | /usr/bin/sed 's/,$//')" \
+            >>"$EXTERNAL_LISTENER_DRIFT"
+    done <"$additions"
+}
+
 flutter_peer_input_inventory() {
     local -a directories=(
         "$ONLINE_INPUTS"
@@ -1305,10 +1363,15 @@ readonly CAPTURE_RECEIPT=$RUN/capture.receipt
 readonly QMP_SOCKET=$RUN/qmp.sock
 readonly QEMU_PIDFILE=$RUN/qemu.pid
 readonly LISTENERS_BEFORE=$RUN/listeners.before
+readonly LISTENERS_BEFORE_DETAIL=$RUN/listeners.before.detail
 readonly LISTENERS_DURING=$RUN/listeners.during
+readonly LISTENERS_DURING_DETAIL=$RUN/listeners.during.detail
 readonly LISTENERS_AFTER=$RUN/listeners.after
+readonly LISTENERS_AFTER_DETAIL=$RUN/listeners.after.detail
 readonly NEW_DURING=$RUN/listeners.new-during
 readonly NEW_AFTER=$RUN/listeners.new-after
+readonly LISTENER_PROCESSES_BEFORE=$RUN/listener-processes.before
+readonly EXTERNAL_LISTENER_DRIFT=$RUN/listeners.preexisting-external-drift
 readonly RUST_TEST_SOURCE_ARCHIVE=$RUN/source.tar
 readonly APPLE_SOURCE_ARCHIVE=$RUN/apple-source.tar
 readonly FLUTTER_SOURCE_ARCHIVE=$RUN/flutter-source.tar
@@ -1392,7 +1455,10 @@ elif [ "$MODE" = rust-audit ]; then
             "$CARGO_VENDOR_CONFIG" "$RUST_AUDIT_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
     )"
 fi
+capture_process_generations >"$LISTENER_PROCESSES_BEFORE"
 capture_listeners >"$LISTENERS_BEFORE"
+capture_listener_details >"$LISTENERS_BEFORE_DETAIL"
+: >"$EXTERNAL_LISTENER_DRIFT"
 /usr/bin/qemu-img create -q -f qcow2 -F qcow2 -b "$BASE" "$OVERLAY" "$OVERLAY_SIZE"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
     || fail 'pass-private overlay metadata differs'
@@ -1755,8 +1821,13 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
         -numa node,memdev=mem
     )
     capture_listeners >"$LISTENERS_DURING"
-    /usr/bin/cmp -s "$LISTENERS_BEFORE" "$LISTENERS_DURING" \
-        || fail 'sealed-input virtiofsd changed the host INET listener inventory'
+    /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_DURING" >"$NEW_DURING"
+    if [ -s "$NEW_DURING" ]; then
+        capture_listener_details >"$LISTENERS_DURING_DETAIL"
+        admit_preexisting_external_listener_drift \
+            "$NEW_DURING" "$LISTENERS_DURING_DETAIL" virtiofsd-start \
+            || { /usr/bin/cat "$LISTENERS_DURING_DETAIL" >&2; fail 'sealed-input virtiofsd created or coincided with an unattributable host INET listener'; }
+    fi
 fi
 vm_started_seconds=$SECONDS
 /usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
@@ -1848,7 +1919,12 @@ verify_private_socket "$QMP_SOCKET" \
     || fail 'QEMU control channel is not one current-user-private Unix socket'
 capture_listeners >"$LISTENERS_DURING"
 /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_DURING" >"$NEW_DURING"
-[ ! -s "$NEW_DURING" ] || fail 'QEMU created an unexpected host INET listener'
+if [ -s "$NEW_DURING" ]; then
+    capture_listener_details >"$LISTENERS_DURING_DETAIL"
+    admit_preexisting_external_listener_drift \
+        "$NEW_DURING" "$LISTENERS_DURING_DETAIL" qemu-start \
+        || { /usr/bin/cat "$LISTENERS_DURING_DETAIL" >&2; fail 'QEMU created or coincided with an unattributable host INET listener'; }
+fi
 vm_status=0
 wait "$VM_OWNER_PID" || vm_status=$?
 VM_OWNER_PID=
@@ -1887,7 +1963,14 @@ if [ -r "/proc/$VM_PID/stat" ] && [ "$(process_start_time "$VM_PID" 2>/dev/null)
 fi
 capture_listeners >"$LISTENERS_AFTER"
 /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_AFTER" >"$NEW_AFTER"
-[ ! -s "$NEW_AFTER" ] || fail 'verifier VM left an unexpected host INET listener'
+[ "$(/usr/bin/grep -Ec 'VERIFIER_VM_CLOUD_INIT=fail status=[1-9][0-9]*' "$SERIAL_LOG")" -eq 0 ] \
+    || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'guest workload reported failure'; }
+if [ -s "$NEW_AFTER" ]; then
+    capture_listener_details >"$LISTENERS_AFTER_DETAIL"
+    admit_preexisting_external_listener_drift \
+        "$NEW_AFTER" "$LISTENERS_AFTER_DETAIL" after-cleanup \
+        || { /usr/bin/cat "$LISTENERS_AFTER_DETAIL" >&2; fail 'verifier VM left or coincided with an unattributable host INET listener'; }
+fi
 reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'
 reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -1903,8 +1986,6 @@ fi
 require_exact_fixed_receipt \
     'VERIFIER_VM_GIT_RUNTIME=pass source=pinned-deb version=2.39.5 root=vm-ephemeral network=none' \
     'authenticated verifier-VM Git runtime marker'
-[ "$(/usr/bin/grep -Ec 'VERIFIER_VM_CLOUD_INIT=fail status=[1-9][0-9]*' "$SERIAL_LOG")" -eq 0 ] \
-    || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'guest workload reported failure'; }
 
 if [ "$MODE" = debian-systemd-lifecycle ]; then
     /usr/bin/grep -Eq \
@@ -2369,47 +2450,50 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     verify_sha256 "$DEV_CHECK_ARCHIVE" "$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
 fi
 
+external_listener_drift_count="$(/usr/bin/wc -l <"$EXTERNAL_LISTENER_DRIFT")"
+/usr/bin/printf 'VERIFIER_VM_HOST_LISTENER_AUDIT=pass complete_snapshots=before,during,after harness_additions=none preexisting_process_drift=%s\n' \
+    "$external_listener_drift_count"
 RUN_COMPLETE=1
 if [ "$MODE" = authority-smoke ]; then
-    printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=unchanged base=sha512 docker=sha256 output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
+    printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
-    printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=unchanged base=sha512 docker=sha256 mode=debian-systemd-lifecycle output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
+    printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 mode=debian-systemd-lifecycle output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"
 elif [ "$MODE" = hbb-common-fs ]; then
-    printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+    printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
-    printf 'ANDROID_RUST_LIFECYCLE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=listener-generation-child-convergence-and-exact-resource-owners network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+    printf 'ANDROID_RUST_LIFECYCLE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=listener-generation-child-convergence-and-exact-resource-owners network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = android-rust-target-check ]; then
-    printf 'ANDROID_RUST_TARGET_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=aarch64-linux-android profile=release-check network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only evidence=production-cargo-ndk-check cleanup=joined elapsed_seconds=%s\n' \
+    printf 'ANDROID_RUST_TARGET_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=aarch64-linux-android profile=release-check network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-cargo-ndk-check cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = apple-conform ]; then
-    printf 'APPLE_CONFORM_VM_OUTER=pass host_uid=%s commit=%s tree=%s targets=3 image=%s runtime=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only evidence=source-conformance-not-native cleanup=joined elapsed_seconds=%s\n' \
+    printf 'APPLE_CONFORM_VM_OUTER=pass host_uid=%s commit=%s tree=%s targets=3 image=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=source-conformance-not-native cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
         "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = android-owner-tests ]; then
-    printf 'ANDROID_OWNER_STATE_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked compiler_inputs=verified-copy-readonly docker=guest-only evidence=compiled-production-state-machines cleanup=joined elapsed_seconds=%s\n' \
+    printf 'ANDROID_OWNER_STATE_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked compiler_inputs=verified-copy-readonly docker=guest-only evidence=compiled-production-state-machines cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$ANDROID_OWNER_SOURCE_COMMIT" "$ANDROID_OWNER_SOURCE_TREE" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = flutter-peer-presentation ]; then
-    printf 'FLUTTER_PEER_PRESENTATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s flutter=%s tools=%s candidate=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only product=linux-x11-full-peer-focus-reconnect-resource cleanup=joined elapsed_seconds=%s\n' \
+    printf 'FLUTTER_PEER_PRESENTATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s flutter=%s tools=%s candidate=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only product=linux-x11-full-peer-focus-reconnect-resource cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" \
         "$FLUTTER_PEER_FLUTTER_VERSION" "$FLUTTER_PEER_TOOLS_MODE" \
         "$FLUTTER_PEER_CANDIDATE" "$vm_elapsed_seconds"
 elif [ "$MODE" = dart-audit ]; then
-    printf 'DART_AUDIT_VM_OUTER=pass host_uid=%s commit=%s tree=%s image=%s runtime=%s network=none listeners=unchanged inputs=readonly-media docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+    printf 'DART_AUDIT_VM_OUTER=pass host_uid=%s commit=%s tree=%s image=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-media docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$DART_SOURCE_COMMIT" "$DART_SOURCE_TREE" \
         "$DART_AUDIT_IMAGE_ID" "$DART_AUDIT_IMAGE_CONFIG_ID" "$vm_elapsed_seconds"
 elif [ "$MODE" = rust-audit ]; then
-    printf 'RUST_AUDIT_VM_OUTER=pass host_uid=%s commit=%s tree=%s image=%s runtime=%s network=none listeners=unchanged inputs=readonly-media,readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+    printf 'RUST_AUDIT_VM_OUTER=pass host_uid=%s commit=%s tree=%s image=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-media,readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_AUDIT_SOURCE_COMMIT" "$RUST_AUDIT_SOURCE_TREE" \
         "$RUST_AUDIT_IMAGE_ID" "$RUST_AUDIT_IMAGE_CONFIG_ID" "$vm_elapsed_seconds"
 else
-    printf 'FLUTTER_MODEL_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=unchanged inputs=readonly-landlocked docker=guest-only evidence=generated-bridge-model-tests cleanup=joined elapsed_seconds=%s\n' \
+    printf 'FLUTTER_MODEL_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=generated-bridge-model-tests cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
 fi

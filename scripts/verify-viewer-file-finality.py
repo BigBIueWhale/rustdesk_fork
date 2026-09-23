@@ -217,10 +217,19 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "explicit event-path future ownership",
     )
-    require(
+    session_listener = extract_rust_item(
         sources["dart_model"],
-        "_observeSessionTask(cb(decoded), activeSessionId, 'Session event');",
-        "session-event observation dispatch",
+        "void _listenToSessionStream(",
+        "Dart session stream listener",
+    )
+    require_order(
+        session_listener,
+        (
+            "final task = cb(decoded);",
+            "if (task != null)",
+            "_observeSessionTask(task, activeSessionId, 'Session event');",
+        ),
+        "nullable session-event observation dispatch",
     )
 
     for needle, label in (
@@ -573,7 +582,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter_ffi", "pub fn session_cancel_job(session_id: SessionID, act_id: i32) -> Result<()> {", "pub fn session_cancel_job(session_id: SessionID, act_id: i32) {", "fallible Flutter FFI"),
     ("dart_file", "await _requests.sendFiles(selectedSessionId, jobID,", "_requests.sendFiles(selectedSessionId, jobID,", "awaited send admission"),
     ("dart_file", "await _requests.resumeJob(selectedSessionId, actionId, isRemote);", "_requests.resumeJob(selectedSessionId, actionId, isRemote);", "awaited resume admission"),
-    ("dart_model", "_observeSessionTask(cb(decoded), activeSessionId, 'Session event');", "cb(decoded);", "owned event future"),
+    ("dart_model", "_observeSessionTask(task, activeSessionId, 'Session event');", "unawaited(task);", "owned event future"),
     ("io_loop", "const MAX_PENDING_VIEWER_FILE_WRITES: usize = 256;", "const MAX_PENDING_VIEWER_FILE_WRITES: usize = 4096;", "receipt count bound"),
     ("io_loop", "const MAX_PENDING_VIEWER_FILE_WRITE_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2;", "const MAX_PENDING_VIEWER_FILE_WRITE_BYTES: usize = usize::MAX;", "receipt byte bound"),
     ("io_loop", "const VIEWER_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);", "const VIEWER_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(300);", "receipt deadline"),

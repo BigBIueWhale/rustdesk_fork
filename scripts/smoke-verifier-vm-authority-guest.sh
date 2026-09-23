@@ -2175,7 +2175,7 @@ run_android_emulator_boot() {
     local source_root=$ROOT/android-emulator-source
     local output=$ROOT/android-emulator-boot.out
     local emulator_archive=$inputs/candidates/android-emulator/emulator-linux_x64-${ANDROID_EMULATOR_ARCHIVE_BUILD}.zip
-    local system_archive=$inputs/candidates/android-emulator/arm64-v8a-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip
+    local system_archive=$inputs/candidates/android-emulator/x86_64-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip
     local adb=$inputs/inputs/android-sdk/platform-tools/adb
     local runtime_archive=$inputs/inputs/verifier-images/devcheck.docker.tar.gz
     local source_archive_sha source_before inputs_before input_mount_options
@@ -2242,9 +2242,9 @@ run_android_emulator_boot() {
              "$SHA256_ANDROID_EMULATOR_LINUX_X64" ] \
         || fail 'sealed Android emulator archive differs'
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$system_archive")" = \
-      "1000:1000:400:1:$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_ARM64" ] \
+      "1000:1000:400:1:$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64" ] \
         && [ "$(sha256sum "$system_archive" | awk '{ print $1 }')" = \
-             "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_ARM64" ] \
+             "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64" ] \
         || fail 'sealed Android system-image archive differs'
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$adb")" = \
       "1000:1000:555:1:$SIZE_ANDROID_PLATFORM_TOOLS_ADB_37_0_1" ] \
@@ -2334,7 +2334,7 @@ run_android_emulator_boot() {
     [ "$(stat -c '%s' -- "$output")" -le 262144 ] \
         || fail 'Android emulator boot output exceeds its bound'
     mapfile -t result_lines < <(grep -E \
-        '^ANDROID_EMULATOR_BOOT=pass emulator=37\.1\.11 api=34 abi=arm64-v8a acceleration=software framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
+        '^ANDROID_EMULATOR_BOOT=pass emulator=37\.1\.11 api=34 abi=x86_64 acceleration=software framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
         "$output" || true)
     [ "${#result_lines[@]}" -eq 1 ] \
         || { tail -n 200 "$output" >&2; fail 'Android emulator boot receipt is absent or duplicated'; }
@@ -2364,7 +2364,7 @@ run_android_emulator_boot() {
     umount "$inputs" || fail 'cannot retire the sealed Android emulator input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$result_line"
-    printf 'ANDROID_EMULATOR_BOOT_VM=pass commit=%s tree=%s emulator=%s api=%s abi=arm64-v8a acceleration=software runtime_index=%s runtime_config=%s uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+    printf 'ANDROID_EMULATOR_BOOT_VM=pass commit=%s tree=%s emulator=%s api=%s abi=x86_64 acceleration=software runtime_index=%s runtime_config=%s uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
         "$ANDROID_EMULATOR_VERSION" "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" \
         "$DEV_CHECK_IMAGE_ID" "$DEV_CHECK_IMAGE_CONFIG_ID"

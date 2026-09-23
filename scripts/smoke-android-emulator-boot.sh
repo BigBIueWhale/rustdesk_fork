@@ -41,8 +41,8 @@ verify_regular_input \
     "$EMULATOR_ZIP" 400 "$SIZE_ANDROID_EMULATOR_LINUX_X64" \
     "$SHA256_ANDROID_EMULATOR_LINUX_X64" 'Android emulator archive'
 verify_regular_input \
-    "$SYSTEM_IMAGE_ZIP" 400 "$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_ARM64" \
-    "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_ARM64" 'Android system-image archive'
+    "$SYSTEM_IMAGE_ZIP" 400 "$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64" \
+    "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64" 'Android system-image archive'
 verify_regular_input \
     "$INPUT_ADB" 555 "$SIZE_ANDROID_PLATFORM_TOOLS_ADB_37_0_1" \
     "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1" 'Android adb executable'
@@ -51,7 +51,7 @@ mkdir -m 0700 -- "$WORK_ROOT"
 readonly SDK_ROOT=$WORK_ROOT/sdk
 readonly HOME_ROOT=$WORK_ROOT/home
 readonly AVD_HOME=$HOME_ROOT/.android/avd
-readonly SYSTEM_ROOT=$SDK_ROOT/system-images/android-34/default/arm64-v8a
+readonly SYSTEM_ROOT=$SDK_ROOT/system-images/android-34/default/x86_64
 readonly EMULATOR=$SDK_ROOT/emulator/emulator
 readonly ADB=$SDK_ROOT/platform-tools/adb
 readonly EMULATOR_LOG=$WORK_ROOT/emulator.log
@@ -64,7 +64,7 @@ mkdir -m 0700 -p -- "$SDK_ROOT" "$HOME_ROOT" "$AVD_HOME" "$SYSTEM_ROOT" \
 # shape that could escape or alias the destination.  File modes are derived here,
 # never trusted from ZIP metadata.
 python3 -I -S - "$EMULATOR_ZIP" "$SDK_ROOT/emulator" emulator/ \
-    "$SYSTEM_IMAGE_ZIP" "$SYSTEM_ROOT" arm64-v8a/ <<'PY'
+    "$SYSTEM_IMAGE_ZIP" "$SYSTEM_ROOT" x86_64/ <<'PY'
 import os
 import stat
 import sys
@@ -146,7 +146,7 @@ mkdir -m 0700 -- "$AVD_HOME/rustdesk.avd"
 cat >"$AVD_HOME/rustdesk.avd/config.ini" <<EOF
 AvdId=rustdesk
 PlayStore.enabled=false
-abi.type=arm64-v8a
+abi.type=x86_64
 avd.ini.displayname=RustDesk isolated Android 34
 disk.dataPartition.size=2G
 fastboot.forceColdBoot=yes
@@ -158,7 +158,7 @@ hw.audioOutput=no
 hw.battery=yes
 hw.camera.back=none
 hw.camera.front=none
-hw.cpu.arch=arm64
+hw.cpu.arch=x86_64
 hw.cpu.ncore=2
 hw.dPad=no
 hw.gps=no
@@ -356,7 +356,7 @@ readonly API="$(adb_shell_value getprop ro.build.version.sdk)"
 readonly ABI="$(adb_shell_value getprop ro.product.cpu.abi)"
 readonly SELINUX="$(adb_shell_value getenforce)"
 [ "$API" = 34 ] || fail "booted Android API differs: $API"
-[ "$ABI" = arm64-v8a ] || fail "booted Android ABI differs: $ABI"
+[ "$ABI" = x86_64 ] || fail "booted Android ABI differs: $ABI"
 [ "$SELINUX" = Enforcing ] || fail "booted Android SELinux mode differs: $SELINUX"
 
 timeout --signal=TERM --kill-after=2s 20s \
@@ -388,7 +388,7 @@ esac
 
 stop_emulator || fail 'Android emulator or adb did not stop within the bounded teardown'
 [ -z "$(find /proc -maxdepth 2 -path '*/comm' -readable -exec \
-    awk '$0 == "qemu-system-aar" { print FILENAME }' {} + 2>/dev/null)" ] \
+    awk '$0 == "qemu-system-x86" { print FILENAME }' {} + 2>/dev/null)" ] \
     || fail 'an Android emulator process survived bounded teardown'
 printf 'ANDROID_EMULATOR_BOOT=pass emulator=%s api=%s abi=%s acceleration=software framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
     "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$framebuffer_dimensions" "$SELINUX"

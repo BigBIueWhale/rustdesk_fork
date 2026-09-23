@@ -127,7 +127,7 @@ readonly VIRTIOFSD_LAUNCHER="$SCRIPT_DIR/launch-landlocked-virtiofsd.py"
 readonly ONLINE_INPUTS="$REPO_ROOT/online/inputs"
 readonly ANDROID_EMULATOR_CANDIDATE_ROOT="$REPO_ROOT/online/candidates/android-emulator"
 readonly ANDROID_EMULATOR_ARCHIVE="$ANDROID_EMULATOR_CANDIDATE_ROOT/emulator-linux_x64-${ANDROID_EMULATOR_ARCHIVE_BUILD}.zip"
-readonly ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE="$ANDROID_EMULATOR_CANDIDATE_ROOT/arm64-v8a-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip"
+readonly ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE="$ANDROID_EMULATOR_CANDIDATE_ROOT/x86_64-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip"
 readonly ANDROID_EMULATOR_ADB="$ONLINE_INPUTS/android-sdk/platform-tools/adb"
 readonly FLUTTER_PEER_CANDIDATE_ROOT="$REPO_ROOT/online/candidates/flutter-presentation"
 readonly FLUTTER_PEER_CANDIDATE_ARCHIVE="$FLUTTER_PEER_CANDIDATE_ROOT/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz"
@@ -972,7 +972,7 @@ elif [ "$MODE" = android-emulator-boot ]; then
             "$ANDROID_EMULATOR_CANDIDATE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
         && [ "$(/usr/bin/find "$ANDROID_EMULATOR_CANDIDATE_ROOT" \
             -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = \
-             $'arm64-v8a-'"${ANDROID_EMULATOR_SYSTEM_IMAGE_API}"'_r'"${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}"$'.zip\nemulator-linux_x64-'"${ANDROID_EMULATOR_ARCHIVE_BUILD}"'.zip' ] \
+             $'emulator-linux_x64-'"${ANDROID_EMULATOR_ARCHIVE_BUILD}"$'.zip\nx86_64-'"${ANDROID_EMULATOR_SYSTEM_IMAGE_API}"'_r'"${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}"'.zip' ] \
         || fail 'Android emulator candidate closure namespace differs'
     [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
@@ -991,7 +991,7 @@ elif [ "$MODE" = android-emulator-boot ]; then
         || fail 'sealed Android platform-tools directory metadata differs'
     for input in \
         "$ANDROID_EMULATOR_ARCHIVE:$SIZE_ANDROID_EMULATOR_LINUX_X64:$SHA256_ANDROID_EMULATOR_LINUX_X64:400" \
-        "$ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE:$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_ARM64:$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_ARM64:400" \
+        "$ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE:$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64:$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64:400" \
         "$ANDROID_EMULATOR_ADB:$SIZE_ANDROID_PLATFORM_TOOLS_ADB_37_0_1:$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1:555" \
         "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE:400" \
         "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE:400"; do
@@ -2386,7 +2386,7 @@ elif [ "$MODE" = android-owner-tests ]; then
         'focused Android owner-state cloud-init completion marker'
 elif [ "$MODE" = android-emulator-boot ]; then
     require_exact_fixed_receipt \
-        "ANDROID_EMULATOR_BOOT_VM=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE emulator=$ANDROID_EMULATOR_VERSION api=$ANDROID_EMULATOR_SYSTEM_IMAGE_API abi=arm64-v8a acceleration=software runtime_index=$DEV_CHECK_IMAGE_ID runtime_config=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "ANDROID_EMULATOR_BOOT_VM=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE emulator=$ANDROID_EMULATOR_VERSION api=$ANDROID_EMULATOR_SYSTEM_IMAGE_API abi=x86_64 acceleration=software runtime_index=$DEV_CHECK_IMAGE_ID runtime_config=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'Android emulator boot VM receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
@@ -2643,7 +2643,7 @@ elif [ "$MODE" = android-owner-tests ]; then
         "$HOST_UID" "$ANDROID_OWNER_SOURCE_COMMIT" "$ANDROID_OWNER_SOURCE_TREE" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = android-emulator-boot ]; then
-    printf 'ANDROID_EMULATOR_BOOT_VM_OUTER=pass host_uid=%s commit=%s tree=%s emulator=%s api=%s abi=arm64-v8a acceleration=software runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only product=android-framework-boot-and-framebuffer cleanup=joined elapsed_seconds=%s\n' \
+    printf 'ANDROID_EMULATOR_BOOT_VM_OUTER=pass host_uid=%s commit=%s tree=%s emulator=%s api=%s abi=x86_64 acceleration=software runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only product=android-framework-boot-and-framebuffer cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$ANDROID_EMULATOR_SOURCE_COMMIT" \
         "$ANDROID_EMULATOR_SOURCE_TREE" "$ANDROID_EMULATOR_VERSION" \
         "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" "$DEV_CHECK_IMAGE_CONFIG_ID" \

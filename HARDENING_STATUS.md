@@ -40,6 +40,7 @@ not a claim that every target OS has executed them.
 | Exact clean Flutter model transaction (`2403bef449d67778cc89a580c34840d2cd029cc3`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 13 focused suites and 107 tests on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. This is exact Dart/model and generated-bridge evidence, not native renderer, focus/background, device/service lifecycle, installed artifact, latency, soak, or cross-version evidence. |
 | Exact Android owner states (`a2cbbbd27228aa053994a2f65ee075baf7e88f68`) | A zero-NIC VM and networkless guest-only container compiled seven exact production Kotlin state classes with pinned Kotlin 2.0.21 and passed 15 scenarios with 293 assertions over closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation. This is pure owner-state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, JNI, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
 | Exact Android/CM Rust lifecycles (`ceec168e8a25d231156e59c25b08365a29fef5d7`) | A zero-NIC VM freshly generated the Flutter bridge, compiled the complete Linux-host Rust library with `linux-pkg-config,flutter`, and executed 24 exact production tests in a networkless guest-only container. Four cover listener generation and owned-child convergence; 20 cover exact CM registry/file-log/Android-child ownership, privacy activation/retirement, final-Remote cleanup, and resolution restoration. The offline canary, pinned sub-closures, read-only source/generated bindings, unchanged host listeners, and joined cleanup passed. This is Linux-target Rust behavior, not Android-target, JNI, Service/Activity, real socket/peer, APK/device, task-swipe, Force Stop, rendered presentation, or native Windows evidence. |
+| Isolated Android 14 framework boot (`a38441110283a0b6cd7875cc28c69dc0668996a2`) | The exact pinned Emulator 37.1.11 and Android 34 default x86_64 image booted in 284 seconds inside a networkless guest-only container in a zero-NIC VM. API 34, x86_64 ABI, enforcing SELinux, framework readiness, a real framebuffer PNG, bounded teardown, automatic run-root retirement, and complete host listener invariance passed. This establishes the disposable Android runtime path only; no RustDesk APK, Activity/service/JNI/peer/session/task-swipe/Force Stop behavior, signing, or app presentation was exercised. |
 | Named Windows native/installed transactions | The recorded native-suite/package pass, installed LocalSystem CM transaction, and SCM credential transaction establish only their exact commits and scenarios. No current full RustDesk peer, native focus/minimize recovery, cold A==B build, or sustained resource/latency result exists. |
 | Named Android package transactions | Real JNI/APK assembly and stable-signature byte equality were demonstrated for the named older source parents. No current APK installation, Activity/foreground-service lifecycle, task swipe/reopen/Force Stop, real peer, presentation, or device result exists. |
 | Apple and iOS checks | Source/portable checks only. No signed installed macOS or current iOS package/device result exists. |
@@ -929,18 +930,26 @@ installed lifecycle evidence cannot presently be completed from the retained loc
 those inputs must preserve R-B2 and R-B10's single complete canonical closure and must not introduce a partial-cache
 fallback.
 
-The first exact Android emulator-input discovery now passes at clean pushed commit `5bdca38a`. In the existing
-outbound-only acquisition VM, a numeric-nonroot guest-only container selected and fully inspected Google's current
-stable Linux emulator 37.1.11 archive (SHA-256
-`95771e0ae431897b2a4bd2d97fa095f29a8b0624a7b216baf529f9306161c266`) and Android 34 default ARM64 system
-image revision 4 (SHA-256 `1447958a4c6747c44390ac5f5f4c894be6d1dfce93868a0385a95c5f0ae4c339`). Publisher sizes/SHA-1 values,
-computed SHA-256 values, complete CRC reads, bounded archive shapes, exact roots, and zero symlinks passed; the
-57-second run had no host forwarding, unchanged host listeners, guest-only Docker/BuildKit, and joined cleanup.
-This maintenance request deliberately published nothing: the values are reviewable first-pin candidates, not a
-canonical-input promotion, APK, emulator boot, app install, stable-signing result, peer/lifecycle/presentation
-test, or device evidence. Review and bind the exact official archives before offline emulator provisioning; then
-exercise the current APK's outgoing-viewer and controlled-service lifecycles in that disposable emulator, with a
-physical device retained where Android platform behavior cannot be established faithfully by emulation.
+The Android runtime harness is now real rather than source-simulated. The first ARM64 launch reached the actual
+Emulator 37.1.11 architecture check and failed closed because current QEMU2 rejects an ARM64 AVD on an x86_64
+host even with `-accel off`. Clean pushed commits `125074b0`, `e00705e1`, and `a3844111` then selected, inspected,
+and staged Google's Android 34 default x86_64 revision-4 image (`x86_64-34_r04.zip`, 720,747,116 bytes, publisher
+SHA-1 `5f6a249f9bc3b1b4c459b13ce2eb646c9680bed1`, SHA-256
+`b57f6386af25b0fe5488e77196b43c03778c6760e6f4311611d090391b9cb2b3`) through the outbound-only acquisition
+VM. Complete CRC/layout inspection found 23 entries, 1,764,599,215 expanded bytes, root `x86_64`, and zero
+symlinks. Transactional publication completed before the exact-hash old ARM64 candidate was retired.
+
+At exact clean commit `a38441110283a0b6cd7875cc28c69dc0668996a2`, the pinned x86_64 image and Emulator
+37.1.11 booted in 284 seconds inside a numeric-nonroot, networkless, read-only-root guest-only container in the
+zero-NIC verifier VM. Android reported API 34, ABI x86_64, and enforcing SELinux; both framework readiness
+properties and stopped boot animation converged; a structurally valid 480x800/800x480 framebuffer PNG was read
+through exact pinned ADB; emulator/ADB/Docker/QEMU/virtiofsd teardown joined; the successful private run root
+retired automatically; and complete before/during/after host snapshots found no listener addition or process
+drift. This proves only the disposable Android framework/emulator path. No RustDesk APK was built, signed,
+installed, or executed, so Activity/foreground-service/JNI/MediaProjection/Accessibility, outgoing viewer,
+controlled-side persistence, peer/session replacement, task swipe/reopen, Force Stop, presentation latency,
+resource/soak, physical-device, current artifact, cold R-B2/R-B10, independent-reproduction, and external-review
+obligations remain open.
 
 Pub-cache and Gradle replacement cleanup is now one recoverable, acquisition-identity-owned transaction. A
 replacement refuses an existing root unless it is owned by the acquisition UID/GID and sealed mode 0500; the old

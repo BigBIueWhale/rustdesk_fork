@@ -2484,16 +2484,35 @@ def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> 
                 "the eight-layer contract"
             )
         history = config_json.get("history")
-        if not isinstance(history, list) \
-           or len(history) != 38 \
-           or any(not isinstance(item, dict) for item in history) \
-           or any(
-               item.get("created") != "2024-09-05T15:39:27Z"
-               for item in history[7:]
-           ):
+        if not isinstance(history, list):
             fail(
-                "Docker archive Apple check history differs from "
-                "the reviewed reproducible build topology"
+                "Docker archive Apple check history is not a list"
+            )
+        if len(history) != 47:
+            fail(
+                "Docker archive Apple check history has "
+                f"{len(history)} entries, expected 47"
+            )
+        malformed_history = [
+            str(position)
+            for position, item in enumerate(history)
+            if not isinstance(item, dict)
+        ]
+        if malformed_history:
+            fail(
+                "Docker archive Apple check history has non-object entries "
+                "at positions " + ", ".join(malformed_history)
+            )
+        expected_created = "2024-09-05T15:39:27Z"
+        wrong_created = [
+            f"{position}={item.get('created')!r}"
+            for position, item in enumerate(history[4:], start=4)
+            if item.get("created") != expected_created
+        ]
+        if wrong_created:
+            fail(
+                "Docker archive Apple check rewritten history epochs differ "
+                f"from {expected_created}: " + ", ".join(wrong_created)
             )
         return
     if isinstance(spec, RustAuditSpec):
@@ -8052,12 +8071,12 @@ def create_apple_check_fixture_archive(
                 {
                     "created": (
                         "2024-01-10T18:59:53Z"
-                        if position < 7
+                        if position < 4
                         else history_epoch
                     ),
                     "created_by": f"fixture {position}",
                 }
-                for position in range(38)
+                for position in range(47)
             ],
             "os": "linux",
             "rootfs": {

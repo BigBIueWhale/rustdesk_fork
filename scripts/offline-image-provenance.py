@@ -5555,8 +5555,17 @@ def materialize_oci_layout(
     spec: ImageSpec,
     output: Path,
 ) -> str:
-    if not isinstance(spec, Spec):
-        fail("OCI layout materialization accepts a bootstrap image only")
+    materializable = isinstance(spec, Spec) or (
+        isinstance(spec, VerifierSpec)
+        and spec.role == "devcheck"
+        and spec.config_id is not None
+        and spec.manifest_id is not None
+    )
+    if not materializable:
+        fail(
+            "OCI layout materialization accepts only a bootstrap image or "
+            "the fully pinned final devcheck image"
+        )
     output_fd = open_private_directory(
         output,
         0o700,
@@ -5584,7 +5593,7 @@ def materialize_oci_layout(
            or stat.S_IMODE(before.st_mode) != 0o400 \
            or before.st_size != expected_archive_size:
             fail(
-                "bootstrap image archive must be current-user-owned mode "
+                "OCI source image archive must be current-user-owned mode "
                 "0400 at its exact pinned size"
             )
         root_fd = open_private_directory(
@@ -11957,6 +11966,48 @@ def self_test() -> None:
             "devcheck archive hardlink",
         )
         verifier_link.unlink()
+        verifier_layout = Path(temporary) / "devcheck-image.oci"
+        verifier_layout.mkdir(mode=0o700)
+        try:
+            verifier_layout_sha = materialize_oci_layout(
+                verifier_archive,
+                verifier_sha,
+                verifier_size,
+                verifier_spec,
+                verifier_layout,
+            )
+            if verify_oci_layout(
+                verifier_layout,
+                verifier_layout_sha,
+            ) != verifier_layout_sha:
+                fail("materialized devcheck OCI layout identity differs")
+            verifier_checks += 1
+        finally:
+            for directory in (
+                verifier_layout / "blobs" / "sha256",
+                verifier_layout / "blobs",
+            ):
+                try:
+                    directory.chmod(0o700)
+                except FileNotFoundError:
+                    pass
+        unpinned_verifier_layout = Path(temporary) / "unpinned-devcheck-image.oci"
+        unpinned_verifier_layout.mkdir(mode=0o700)
+        verifier_failure(
+            lambda: materialize_oci_layout(
+                verifier_archive,
+                verifier_sha,
+                verifier_size,
+                replace(
+                    verifier_spec,
+                    role="devcheck-candidate",
+                    config_id=None,
+                    manifest_id=None,
+                ),
+                unpinned_verifier_layout,
+            ),
+            "unpinned devcheck OCI materialization",
+        )
         tagged_archive = Path(temporary) / "tagged-devcheck-image.tar.gz"
         tagged_spec = create_verifier_fixture_archive(
             tagged_archive, ["rd-devcheck:latest"]
@@ -11993,7 +12044,7 @@ def self_test() -> None:
             fail("no-replace collision changed archive bytes")
         verify_archive(verifier_archive, verifier_sha, verifier_spec, verifier_size)
         verifier_checks += 1
-        if verifier_checks != 17:
+        if verifier_checks != 19:
             fail(f"devcheck image self-test count differs: {verifier_checks}")
 
         apple_archive = Path(temporary) / "apple-check-image.tar.gz"

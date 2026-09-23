@@ -2274,6 +2274,7 @@ run_android_emulator_boot() {
                 --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
                 --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" \
                 --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+                --cargo-sha "$SHA256_DEV_CHECK_CARGO" \
                 --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" \
                 --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
                 --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" \

@@ -3497,14 +3497,15 @@ def validate_apple_check_attestation(
         "metadata",
     }
     base_digest = spec.base_image_id
+    base_manifest_digest = spec.base_manifest_id.removeprefix("sha256:")
     expected_materials = [
         {
             "uri": (
-                "pkg:docker/rd-devcheck?"
-                f"digest={base_digest}&platform=linux%2Famd64"
+                "pkg:oci/rd-devcheck?"
+                f"digest={spec.base_manifest_id}&platform=linux%2Famd64"
             ),
             "digest": {
-                "sha256": base_digest.removeprefix("sha256:")
+                "sha256": base_manifest_digest
             },
         }
     ]
@@ -3534,6 +3535,33 @@ def validate_apple_check_attestation(
             f"materials={diagnostic_value(expected_materials)}; "
             f"actual={diagnostic_value(actual_summary)}"
         )
+    invocation = predicate.get("invocation")
+    parameters = (
+        invocation.get("parameters")
+        if isinstance(invocation, dict)
+        else None
+    )
+    arguments = (
+        parameters.get("args")
+        if isinstance(parameters, dict)
+        else None
+    )
+    context_key = "context:" + spec.base
+    context_argument = (
+        arguments.get(context_key)
+        if isinstance(arguments, dict)
+        else None
+    )
+    context_match = re.fullmatch(
+        r"oci-layout://([a-z0-9]{20,64}):latest@"
+        + re.escape(spec.base_manifest_id),
+        context_argument or "",
+    )
+    if context_match is None:
+        fail(
+            "Docker archive Apple check provenance has an unbound devcheck "
+            f"OCI-layout context: {context_argument!r}"
+        )
     expected_args = {
         "build-arg:APPLE_CHECK_DOCKERFILE_SHA256": spec.dockerfile_sha256,
         "build-arg:APPLE_CHECK_DPKG_MANIFEST_SHA256": spec.dpkg_sha256,
@@ -3557,6 +3585,8 @@ def validate_apple_check_attestation(
         "build-arg:DEV_CHECK_IMAGE_MANIFEST_ID": spec.base_manifest_id,
         "build-arg:DEV_CHECK_IMAGE_REF": spec.base,
         "build-arg:SOURCE_DATE_EPOCH": str(spec.source_date_epoch),
+        context_key: context_argument,
+        "frontend.caps": "moby.buildkit.frontend.contexts+forward",
         "no-cache": "",
     }
     expected_parameters = {
@@ -3569,12 +3599,12 @@ def validate_apple_check_attestation(
         "parameters": expected_parameters,
         "environment": {"platform": "linux/amd64"},
     }
-    if predicate.get("invocation") != expected_invocation:
+    if invocation != expected_invocation:
         fail(
             "Docker archive Apple check provenance does not bind the "
             "reviewed private recipe: expected="
             f"{diagnostic_value(expected_invocation)}, actual="
-            f"{diagnostic_value(predicate.get('invocation'))}"
+            f"{diagnostic_value(invocation)}"
         )
     build_config = predicate.get("buildConfig")
     digest_mapping = (
@@ -8126,6 +8156,11 @@ def create_apple_check_fixture_archive(
         "application/vnd.oci.image.manifest.v1+json",
         platform={"architecture": "amd64", "os": "linux"},
     )
+    context_key = "context:" + preliminary.base
+    context_value = (
+        "oci-layout://applefixturestore00000000:latest@"
+        f"{preliminary.base_manifest_id}"
+    )
     build_args = {
         "build-arg:APPLE_CHECK_DOCKERFILE_SHA256": (
             preliminary.dockerfile_sha256
@@ -8159,6 +8194,8 @@ def create_apple_check_fixture_archive(
         "build-arg:SOURCE_DATE_EPOCH": str(
             preliminary.source_date_epoch
         ),
+        context_key: context_value,
+        "frontend.caps": "moby.buildkit.frontend.contexts+forward",
         "no-cache": "",
     }
     if add_vcs:
@@ -8518,11 +8555,15 @@ def create_apple_check_fixture_archive(
                 "materials": [
                     {
                         "uri": (
-                            "pkg:docker/rd-devcheck?"
-                            f"digest={preliminary.base_image_id}"
+                            "pkg:oci/rd-devcheck?"
+                            f"digest={preliminary.base_manifest_id}"
                             "&platform=linux%2Famd64"
                         ),
-                        "digest": {"sha256": base_digest},
+                        "digest": {
+                            "sha256": preliminary.base_manifest_id.removeprefix(
+                                "sha256:"
+                            )
+                        },
                     }
                 ],
                 "invocation": {

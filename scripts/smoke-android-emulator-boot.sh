@@ -514,6 +514,38 @@ print_mobile_storage_key_log() {
     fi
 }
 
+print_native_password_log() {
+    local log_dir=/storage/emulated/0/RustDesk/Logs
+    local listing= latest= filename= native_log= password_log=
+    listing="$(adb_shell_value ls -1t "$log_dir" 2>/dev/null || true)"
+    [ "${#listing}" -le 32768 ] \
+        || fail 'the bounded Android native-log inventory exceeds 32 KiB'
+    while IFS= read -r filename; do
+        [[ "$filename" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || continue
+        latest=$filename
+        break
+    done <<<"$listing"
+    if [ -z "$latest" ]; then
+        printf 'Android native password diagnostic: no release log file\n' >&2
+        return
+    fi
+    native_log="$(timeout --signal=TERM --kill-after=2s 20s \
+        "$ADB" -s "$SERIAL" exec-out tail -c 65536 "$log_dir/$latest" \
+        2>/dev/null | tr -d '\r' || true)"
+    [ "${#native_log}" -le 65536 ] \
+        || fail 'the bounded Android native password diagnostic exceeds 64 KiB'
+    password_log="$(printf '%s\n' "$native_log" \
+        | grep -Ei 'permanent password|at-rest storage key|config durability' \
+        || true)"
+    if [ -n "$password_log" ]; then
+        printf 'Android native password diagnostic (%s):\n%s\n' \
+            "$latest" "$password_log" >&2
+    else
+        printf 'Android native password diagnostic (%s): no matching records\n' \
+            "$latest" >&2
+    fi
+}
+
 wait_ui_center() {
     local kind=$1
     shift
@@ -780,6 +812,7 @@ PY
         tap_ui resource android:id/button1 \
             || {
                 print_mobile_storage_key_log
+                print_native_password_log
                 capture_ui_hierarchy \
                     || fail 'cannot inspect the missing MediaProjection consent'
                 ! grep -Fq "$TEST_PASSWORD" "$UI_XML" \

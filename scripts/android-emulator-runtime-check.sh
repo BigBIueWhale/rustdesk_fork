@@ -410,7 +410,7 @@ case "${lifecycle_receipts[0]}" in
     *) die 'Android lifecycle runtime reported a different APK digest' ;;
 esac
 mapfile -t peer_receipts < <(grep -E \
-    '^ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=10\.0\.2\.2:21118 service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_recovery_ms=[0-9]+ background_recovery_ms=[0-9]+ task_recovery_max_ms=[0-9]+ recovery_limit_ms=8000 freshness_max_ms=[0-9]+ freshness_limit_ms=2000 distinct_frames=([89]|[1-9][0-9]+) force_stop=baseline apk_sha256=[0-9a-f]{64} vm_network=none container_network=none server_listener=127\.0\.0\.1:21118 x11=unix-only cleanup=joined$' \
+    '^ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127\.0\.0\.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_recovery_ms=[0-9]+ background_recovery_ms=[0-9]+ task_recovery_max_ms=[0-9]+ recovery_limit_ms=8000 freshness_max_ms=[0-9]+ freshness_limit_ms=2000 distinct_frames=([89]|[1-9][0-9]+) force_stop=baseline apk_sha256=[0-9a-f]{64} vm_network=none container_network=none server_listener=127\.0\.0\.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined$' \
     "$RUNTIME_LOG" || true)
 [ "${#peer_receipts[@]}" -eq 1 ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android real-peer lifecycle receipt is absent or duplicated'; }

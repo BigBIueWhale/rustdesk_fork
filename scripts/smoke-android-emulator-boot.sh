@@ -584,6 +584,9 @@ adb_shell_value() {
 
 readonly APP_PACKAGE=com.carriez.flutter_hbb
 readonly APP_ACTIVITY=$APP_PACKAGE/.MainActivity
+readonly PEER_VIEW_ADDRESS=127.0.0.1:22118
+readonly PEER_REVERSE_DEVICE_SPEC=tcp:22118
+readonly PEER_REVERSE_CONTAINER_SPEC=tcp:21118
 readonly UI_XML=$WORK_ROOT/window.xml
 readonly FRAMEWORK_ANR_MARKER=$WORK_ROOT/framework-anr.waited
 readonly IMMERSIVE_CLING_MARKER=$WORK_ROOT/immersive-cling.dismissed
@@ -1122,8 +1125,8 @@ open_peer_connection() {
     sleep 0.5
     "$ADB" -s "$SERIAL" shell input keycombination \
         KEYCODE_CTRL_LEFT KEYCODE_A >/dev/null || return 1
-    "$ADB" -s "$SERIAL" shell input text '10.0.2.2:21118' >/dev/null || return 1
-    wait_ui_center address-field '10.0.2.2:21118' >/dev/null \
+    "$ADB" -s "$SERIAL" shell input text "$PEER_VIEW_ADDRESS" >/dev/null || return 1
+    wait_ui_center address-field "$PEER_VIEW_ADDRESS" >/dev/null \
         || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
     "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_ENTER >/dev/null || return 1
     if [ "$expect_password" -eq 1 ]; then
@@ -1180,6 +1183,29 @@ readonly SELINUX="$(adb_shell_value getenforce)"
 [ "$API" = 34 ] || fail "booted Android API differs: $API"
 [ "$ABI" = x86_64 ] || fail "booted Android ABI differs: $ABI"
 [ "$SELINUX" = Enforcing ] || fail "booted Android SELinux mode differs: $SELINUX"
+
+PEER_REVERSE_READY=0
+if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+    peer_reverse_listing="$(timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" reverse --list | tr -d '\r')" \
+        || fail 'cannot inspect the initial Android reverse table'
+    [ -z "$peer_reverse_listing" ] \
+        || fail 'the clean Android emulator has a pre-existing reverse mapping'
+    peer_reverse_output="$(timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" reverse --no-rebind \
+        "$PEER_REVERSE_DEVICE_SPEC" "$PEER_REVERSE_CONTAINER_SPEC" \
+        | tr -d '\r')" \
+        || fail 'cannot create the private Android peer reverse mapping'
+    [ -z "$peer_reverse_output" ] \
+        || fail 'the Android peer reverse command returned unexpected output'
+    peer_reverse_listing="$(timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" reverse --list | tr -d '\r')" \
+        || fail 'cannot verify the private Android peer reverse mapping'
+    [ "$peer_reverse_listing" = \
+      "$SERIAL $PEER_REVERSE_DEVICE_SPEC $PEER_REVERSE_CONTAINER_SPEC" ] \
+        || fail "the private Android peer reverse mapping differs: $peer_reverse_listing"
+    PEER_REVERSE_READY=1
+fi
 
 APP_PID=
 LIFECYCLE_RECEIPT_READY=0
@@ -1557,6 +1583,29 @@ case "$framebuffer_dimensions" in
     *) fail "booted Android framebuffer dimensions differ: $framebuffer_dimensions" ;;
 esac
 
+if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+    [ "$PEER_REVERSE_READY" -eq 1 ] \
+        || fail 'the private Android peer reverse mapping was not established'
+    peer_reverse_listing="$(timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" reverse --list | tr -d '\r')" \
+        || fail 'cannot recheck the private Android peer reverse mapping'
+    [ "$peer_reverse_listing" = \
+      "$SERIAL $PEER_REVERSE_DEVICE_SPEC $PEER_REVERSE_CONTAINER_SPEC" ] \
+        || fail 'the private Android peer reverse mapping changed during execution'
+    peer_reverse_output="$(timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" reverse --remove "$PEER_REVERSE_DEVICE_SPEC" \
+        | tr -d '\r')" \
+        || fail 'cannot remove the private Android peer reverse mapping'
+    [ -z "$peer_reverse_output" ] \
+        || fail 'removing the Android peer reverse mapping returned unexpected output'
+    peer_reverse_listing="$(timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" reverse --list | tr -d '\r')" \
+        || fail 'cannot verify Android peer reverse-mapping closure'
+    [ -z "$peer_reverse_listing" ] \
+        || fail 'the Android peer reverse mapping survived explicit removal'
+    PEER_REVERSE_READY=0
+fi
+
 stop_emulator || fail 'Android emulator or adb did not stop within the bounded teardown'
 [ -z "$(find /proc -maxdepth 2 -path '*/comm' -readable -exec \
     awk '$0 == "qemu-system-x86" { print FILENAME }' {} + 2>/dev/null)" ] \
@@ -1609,7 +1658,9 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
         if [ "$WORKLOAD" = app-peer-lifecycle ]; then
             [ "$PEER_RECEIPT_READY" -eq 1 ] \
                 || fail 'the Android real-peer lifecycle receipt is not ready'
-            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=10.0.2.2:21118 service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 x11=unix-only cleanup=joined\n' \
+            [ "$PEER_REVERSE_READY" -eq 0 ] \
+                || fail 'the Android peer reverse mapping remained live at receipt time'
+            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
                 "$PEER_INITIAL_RECOVERY_MS" "$PEER_BACKGROUND_RECOVERY_MS" "$PEER_TASK_RECOVERY_MAX_MS" \
                 "$PEER_RECOVERY_LIMIT_MS" \
                 "$PEER_FRESHNESS_MAX_MS" "$PEER_FRESHNESS_LIMIT_MS" \

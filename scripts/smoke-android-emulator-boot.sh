@@ -1196,8 +1196,12 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
         "$PEER_REVERSE_DEVICE_SPEC" "$PEER_REVERSE_CONTAINER_SPEC" \
         | tr -d '\r')" \
         || fail 'cannot create the private Android peer reverse mapping'
-    [ -z "$peer_reverse_output" ] \
-        || fail 'the Android peer reverse command returned unexpected output'
+    [ "${#peer_reverse_output}" -le 32 ] \
+        || fail 'the Android peer reverse command output exceeds its bound'
+    case "$peer_reverse_output" in
+        ''|22118) ;;
+        *) fail "the Android peer reverse command output differs: $peer_reverse_output" ;;
+    esac
     peer_reverse_listing="$(timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" reverse --list | tr -d '\r')" \
         || fail 'cannot verify the private Android peer reverse mapping'

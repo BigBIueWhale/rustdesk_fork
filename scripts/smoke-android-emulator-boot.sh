@@ -499,6 +499,21 @@ for node in ET.parse(sys.argv[1]).getroot().iter("node"):
 PY
 }
 
+print_mobile_storage_key_log() {
+    local storage_log
+    storage_log="$(timeout --signal=TERM --kill-after=2s 20s \
+        "$ADB" -s "$SERIAL" logcat -d -v brief \
+        'MainApplication:D' 'MobileAtRestStorageKey:D' '*:S' \
+        2>/dev/null || true)"
+    [ "${#storage_log}" -le 65536 ] \
+        || fail 'the bounded Android storage-key diagnostic exceeds 64 KiB'
+    if [ -n "$storage_log" ]; then
+        printf 'Android storage-key diagnostic:\n%s\n' "$storage_log" >&2
+    else
+        printf 'Android storage-key diagnostic: no matching log records\n' >&2
+    fi
+}
+
 wait_ui_center() {
     local kind=$1
     shift
@@ -764,6 +779,7 @@ PY
             || fail 'cannot submit the disposable permanent password'
         tap_ui resource android:id/button1 \
             || {
+                print_mobile_storage_key_log
                 capture_ui_hierarchy \
                     || fail 'cannot inspect the missing MediaProjection consent'
                 ! grep -Fq "$TEST_PASSWORD" "$UI_XML" \

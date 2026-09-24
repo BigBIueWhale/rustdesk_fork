@@ -1185,6 +1185,7 @@ readonly SELINUX="$(adb_shell_value getenforce)"
 [ "$SELINUX" = Enforcing ] || fail "booted Android SELinux mode differs: $SELINUX"
 
 PEER_REVERSE_READY=0
+PEER_REVERSE_LISTING=
 if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     peer_reverse_listing="$(timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" reverse --list | tr -d '\r')" \
@@ -1205,9 +1206,18 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     peer_reverse_listing="$(timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" reverse --list | tr -d '\r')" \
         || fail 'cannot verify the private Android peer reverse mapping'
-    [ "$peer_reverse_listing" = \
-      "$SERIAL $PEER_REVERSE_DEVICE_SPEC $PEER_REVERSE_CONTAINER_SPEC" ] \
+    [ "${#peer_reverse_listing}" -le 256 ] \
+        && [[ "$peer_reverse_listing" != *$'\n'* ]] \
+        || fail 'the private Android peer reverse listing exceeds its bound'
+    read -r peer_reverse_identity peer_reverse_device peer_reverse_container \
+        peer_reverse_extra <<<"$peer_reverse_listing"
+    [ -n "$peer_reverse_identity" ] && [ "${#peer_reverse_identity}" -le 128 ] \
+        && [[ "$peer_reverse_identity" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]*$ ]] \
+        && [ "$peer_reverse_device" = "$PEER_REVERSE_DEVICE_SPEC" ] \
+        && [ "$peer_reverse_container" = "$PEER_REVERSE_CONTAINER_SPEC" ] \
+        && [ -z "$peer_reverse_extra" ] \
         || fail "the private Android peer reverse mapping differs: $peer_reverse_listing"
+    PEER_REVERSE_LISTING=$peer_reverse_listing
     PEER_REVERSE_READY=1
 fi
 
@@ -1593,8 +1603,7 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     peer_reverse_listing="$(timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" reverse --list | tr -d '\r')" \
         || fail 'cannot recheck the private Android peer reverse mapping'
-    [ "$peer_reverse_listing" = \
-      "$SERIAL $PEER_REVERSE_DEVICE_SPEC $PEER_REVERSE_CONTAINER_SPEC" ] \
+    [ "$peer_reverse_listing" = "$PEER_REVERSE_LISTING" ] \
         || fail 'the private Android peer reverse mapping changed during execution'
     peer_reverse_output="$(timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" reverse --remove "$PEER_REVERSE_DEVICE_SPEC" \
@@ -1608,6 +1617,7 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     [ -z "$peer_reverse_listing" ] \
         || fail 'the Android peer reverse mapping survived explicit removal'
     PEER_REVERSE_READY=0
+    PEER_REVERSE_LISTING=
 fi
 
 stop_emulator || fail 'Android emulator or adb did not stop within the bounded teardown'

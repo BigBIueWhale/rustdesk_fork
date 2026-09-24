@@ -65,8 +65,21 @@ ANDROID_ARM64 = ArtifactContract(
     pending_pattern=re.compile(r"^\.android-output-pending-[0-9a-f]{64}$"),
     checksum_line_pattern=re.compile(rb"^([0-9a-f]{64})  rustdesk-arm64\.apk\n$"),
 )
+ANDROID_X86_64_TEST = ArtifactContract(
+    kind="android-x86_64-test",
+    artifact="rustdesk-x86_64-runtime-test.apk",
+    checksum="rustdesk-x86_64-runtime-test.apk.sha256",
+    pending_prefix=".android-x86_64-test-output-pending-",
+    pending_pattern=re.compile(
+        r"^\.android-x86_64-test-output-pending-[0-9a-f]{64}$"
+    ),
+    checksum_line_pattern=re.compile(
+        rb"^([0-9a-f]{64})  rustdesk-x86_64-runtime-test\.apk\n$"
+    ),
+)
 CONTRACTS = {
-    contract.kind: contract for contract in (DEBIAN_X86_64, ANDROID_ARM64)
+    contract.kind: contract
+    for contract in (DEBIAN_X86_64, ANDROID_ARM64, ANDROID_X86_64_TEST)
 }
 
 

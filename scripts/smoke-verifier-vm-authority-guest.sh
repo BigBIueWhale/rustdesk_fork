@@ -156,6 +156,7 @@ RUST_AUDIT_VENDOR_MOUNTED=0
 APPLE_VENDOR_MOUNTED=0
 ANDROID_RUST_ONLINE_MOUNTED=0
 ANDROID_EMULATOR_ONLINE_MOUNTED=0
+ANDROID_ARTIFACT_OUTPUT_MOUNTED=0
 FLUTTER_PEER_SOURCE_MOUNTED=0
 FLUTTER_PEER_ONLINE_MOUNTED=0
 
@@ -2378,6 +2379,8 @@ run_android_emulator_boot() {
 
 run_android_emulator_app() {
     local inputs=/mnt/rustdesk-sealed-inputs
+    local artifact_output=/mnt/rustdesk-android-artifact-output
+    local artifact_destination=android-x86_64-test
     local source_root=$ROOT/android-emulator-app-source
     local source_copy=$ROOT/android-emulator-app-exact-source.tar
     local online_mount=$source_root/online
@@ -2389,9 +2392,9 @@ run_android_emulator_app() {
     local adb=$inputs/inputs/android-sdk/platform-tools/adb
     local builder_archive=$inputs/inputs/build-images/android-builder.docker.tar.gz
     local runtime_archive=$inputs/inputs/verifier-images/devcheck.docker.tar.gz
-    local source_archive_sha input_mount_options online_mount_options
+    local source_archive_sha input_mount_options online_mount_options artifact_mount_options
     local builder_load runtime_load workload_status=0 source_before
-    local apk_receipt runtime_receipt check_receipt
+    local apk_receipt runtime_receipt prepared_receipt check_receipt apk_sha256
     local -a git_builder=(
         setpriv --reuid=1000 --regid=1000 --clear-groups
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
@@ -2437,15 +2440,17 @@ run_android_emulator_app() {
         "$source_root/scripts/android-emulator-app-check.sh" \
         "$source_root/scripts/android-apk-build.sh" \
         "$source_root/scripts/smoke-android-emulator-boot.sh" \
-        "$source_root/scripts/verify-android-emulator-apk.py")" = \
-      $'1000:1000:700:1\n1000:1000:700:1\n1000:1000:700:1\n1000:1000:700:1' ] \
+        "$source_root/scripts/verify-android-emulator-apk.py" \
+        "$source_root/scripts/publish-artifact-result.py")" = \
+      $'1000:1000:700:1\n1000:1000:700:1\n1000:1000:700:1\n1000:1000:700:1\n1000:1000:700:1' ] \
         || fail 'Android emulator app workload metadata differs'
     source_before="$source_archive_sha:$(sha256sum \
         "$source_root/scripts/pins.env" \
         "$source_root/scripts/android-emulator-app-check.sh" \
         "$source_root/scripts/android-apk-build.sh" \
         "$source_root/scripts/smoke-android-emulator-boot.sh" \
-        "$source_root/scripts/verify-android-emulator-apk.py")"
+        "$source_root/scripts/verify-android-emulator-apk.py" \
+        "$source_root/scripts/publish-artifact-result.py")"
 
     install -o 1000 -g 1000 -m 0400 -- \
         "$ANDROID_EMULATOR_SOURCE_ARCHIVE" "$source_copy"
@@ -2464,6 +2469,23 @@ run_android_emulator_app() {
     case ",$input_mount_options," in
         *,noexec,*) fail 'sealed Android emulator app build inputs unexpectedly forbid the authenticated toolchain' ;;
     esac
+
+    mkdir "$artifact_output"
+    chown 1000:1000 "$artifact_output"
+    mount -t virtiofs -o rw,nodev,nosuid,noexec \
+        rustdesk-android-artifact-output "$artifact_output" \
+        || fail 'cannot mount the writable Android artifact output authority'
+    ANDROID_ARTIFACT_OUTPUT_MOUNTED=1
+    artifact_mount_options="$(findmnt -n -o OPTIONS --target "$artifact_output")" \
+        || fail 'Android artifact output mount is absent'
+    case ",$artifact_mount_options," in *,rw,*) ;; *) fail 'Android artifact output is read-only' ;; esac
+    case ",$artifact_mount_options," in *,nodev,*) ;; *) fail 'Android artifact output permits devices' ;; esac
+    case ",$artifact_mount_options," in *,nosuid,*) ;; *) fail 'Android artifact output permits set-user-ID execution' ;; esac
+    case ",$artifact_mount_options," in *,noexec,*) ;; *) fail 'Android artifact output permits direct execution' ;; esac
+    [ "$(stat -c '%u:%g:%a' -- "$artifact_output")" = 1000:1000:700 ] \
+        || fail 'Android artifact output metadata differs'
+    [ -z "$(find "$artifact_output" -mindepth 1 -maxdepth 1 -print -quit)" ] \
+        || fail 'Android artifact output was not empty at handoff'
 
     mkdir "$online_mount"
     chown 1000:1000 "$online_mount"
@@ -2566,7 +2588,8 @@ run_android_emulator_app() {
     setpriv --reuid=1000 --regid=1000 --clear-groups \
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
         /bin/bash "$source_root/scripts/android-emulator-app-check.sh" \
-        "$source_copy" "$source_archive_sha" >"$output" 2>&1
+        "$source_copy" "$source_archive_sha" \
+        "$artifact_output" "$artifact_destination" >"$output" 2>&1
     workload_status=$?
     set -e
     [ "$workload_status" -eq 0 ] \
@@ -2585,12 +2608,25 @@ run_android_emulator_app() {
         || { tail -n 320 "$output" >&2; fail 'Android emulator app runtime receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APP=' "$output")" -eq 1 ] \
         || fail 'Android emulator app runtime receipt is duplicated'
+    prepared_receipt="$(grep -E \
+        '^ANDROID_EMULATOR_ARTIFACT_PREPARED=pass pending=\.android-x86_64-test-output-pending-[0-9a-f]{64} destination=android-x86_64-test apk_sha256=[0-9a-f]{64} signing=test-only publication=atomic-no-clobber$' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android emulator artifact preparation receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_ARTIFACT_PREPARED=' "$output")" -eq 1 ] \
+        || fail 'Android emulator artifact preparation receipt is duplicated'
     check_receipt="$(grep -E \
-        '^ANDROID_EMULATOR_APP_CHECK=pass apk_sha256=[0-9a-f]{64} artifact=ephemeral-test-only source=exact-archive target=x86_64-linux-android builder=sha256:[0-9a-f]{64} runtime=sha256:[0-9a-f]{64} vm_network=none container_network=none inputs=readonly cleanup=joined$' \
+        '^ANDROID_EMULATOR_APP_CHECK=pass apk_sha256=[0-9a-f]{64} artifact=prepared-test-only source=exact-archive target=x86_64-linux-android builder=sha256:[0-9a-f]{64} runtime=sha256:[0-9a-f]{64} vm_network=none container_network=none inputs=readonly cleanup=joined$' \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android emulator app-check receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APP_CHECK=' "$output")" -eq 1 ] \
         || fail 'Android emulator app-check receipt is duplicated'
+    [[ "$apk_receipt" =~ sha256=([0-9a-f]{64}) ]] \
+        || fail 'Android emulator APK receipt digest is malformed'
+    apk_sha256=${BASH_REMATCH[1]}
+    case "$runtime_receipt|$prepared_receipt|$check_receipt" in
+        *"apk_sha256=$apk_sha256"*"apk_sha256=$apk_sha256"*"apk_sha256=$apk_sha256"*) ;;
+        *) fail 'Android emulator app receipts do not identify one APK digest' ;;
+    esac
 
     "$CLIENT" --host "unix://$SOCK" image rm "$ANDROID_BUILDER_CONFIG_ID" >/dev/null \
         || fail 'Android app builder image could not be retired'
@@ -2605,7 +2641,8 @@ run_android_emulator_app() {
           "$source_root/scripts/android-emulator-app-check.sh" \
           "$source_root/scripts/android-apk-build.sh" \
           "$source_root/scripts/smoke-android-emulator-boot.sh" \
-          "$source_root/scripts/verify-android-emulator-apk.py")" ] \
+          "$source_root/scripts/verify-android-emulator-apk.py" \
+          "$source_root/scripts/publish-artifact-result.py")" ] \
         || fail 'Android emulator app source inputs changed during execution'
     [ "$(sha256sum "$ANDROID_EMULATOR_SOURCE_ARCHIVE" | awk '{ print $1 }')" = \
       "$source_archive_sha" ] \
@@ -2620,12 +2657,15 @@ run_android_emulator_app() {
     umount "$inputs" \
         || fail 'cannot retire the sealed Android emulator app input mount'
     SEALED_INPUTS_MOUNTED=0
-    printf '%s\n' "$apk_receipt" "$runtime_receipt" "$check_receipt"
-    printf 'ANDROID_EMULATOR_APP_VM=pass commit=%s tree=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s signing=test-only artifact=ephemeral uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked source=exact-pushed cleanup=joined\n' \
+    umount "$artifact_output" \
+        || fail 'cannot retire the Android artifact output mount'
+    ANDROID_ARTIFACT_OUTPUT_MOUNTED=0
+    printf '%s\n' "$apk_receipt" "$runtime_receipt" "$prepared_receipt" "$check_receipt"
+    printf 'ANDROID_EMULATOR_APP_VM=pass commit=%s tree=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s apk_sha256=%s signing=test-only artifact=prepared-test-only output=writable-landlocked uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked source=exact-pushed cleanup=joined\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
         "$ANDROID_EMULATOR_VERSION" "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" \
         "$ANDROID_BUILDER_IMAGE_ID" "$ANDROID_BUILDER_CONFIG_ID" \
-        "$DEV_CHECK_IMAGE_ID" "$DEV_CHECK_IMAGE_CONFIG_ID"
+        "$DEV_CHECK_IMAGE_ID" "$DEV_CHECK_IMAGE_CONFIG_ID" "$apk_sha256"
 }
 
 run_flutter_model_tests() {
@@ -3327,6 +3367,10 @@ cleanup() {
         umount "$ROOT/android-emulator-app-source/online" 2>/dev/null || status=1
         ANDROID_EMULATOR_ONLINE_MOUNTED=0
     fi
+    if [ "$ANDROID_ARTIFACT_OUTPUT_MOUNTED" -eq 1 ]; then
+        umount /mnt/rustdesk-android-artifact-output 2>/dev/null || status=1
+        ANDROID_ARTIFACT_OUTPUT_MOUNTED=0
+    fi
     if [ "$SEALED_INPUTS_MOUNTED" -eq 1 ]; then
         umount /mnt/rustdesk-sealed-inputs 2>/dev/null || status=1
         SEALED_INPUTS_MOUNTED=0
@@ -3410,7 +3454,7 @@ for verify_source in verify.sh verify-release.sh build-release.sh \
     verify-online-fetch-gradle-output-authority.py android-gradle-cache.py \
     android-rust-check.sh \
     smoke-android-emulator-boot.sh android-emulator-app-check.sh \
-    verify-android-emulator-apk.py \
+    verify-android-emulator-apk.py publish-artifact-result.py \
     dart-audit.sh dart-audit-result.py \
     verify-dart-verifier-authority.py verify-dart-audit-authority.py \
     smoke-verifier-vm-authority.sh smoke-verifier-vm-authority-guest.sh \

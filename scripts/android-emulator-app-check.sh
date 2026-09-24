@@ -8,10 +8,12 @@ die() {
     exit 1
 }
 
-[ "$#" -eq 2 ] \
-    || die 'usage: android-emulator-app-check.sh EXACT_SOURCE_ARCHIVE SOURCE_ARCHIVE_SHA256'
+[ "$#" -eq 4 ] \
+    || die 'usage: android-emulator-app-check.sh EXACT_SOURCE_ARCHIVE SOURCE_ARCHIVE_SHA256 OUTPUT_PARENT OUTPUT_DESTINATION'
 readonly SOURCE_ARCHIVE=$1
 readonly SOURCE_ARCHIVE_SHA256=$2
+readonly OUTPUT_PARENT=$3
+readonly OUTPUT_DESTINATION=$4
 readonly BUILD_UID="$(id -u)"
 readonly BUILD_GID="$(id -g)"
 [ "$BUILD_UID:$BUILD_GID" = 1000:1000 ] \
@@ -26,6 +28,12 @@ readonly BUILD_GID="$(id -g)"
 [ "$(sha256sum "$SOURCE_ARCHIVE" | awk '{ print $1 }')" = \
   "$SOURCE_ARCHIVE_SHA256" ] \
     || die 'source archive digest differs'
+[ "$OUTPUT_PARENT" = "$(readlink -f -- "$OUTPUT_PARENT")" ] \
+    && [ -d "$OUTPUT_PARENT" ] && [ ! -L "$OUTPUT_PARENT" ] \
+    && [ "$(stat -c '%u:%g:%a' -- "$OUTPUT_PARENT")" = 1000:1000:700 ] \
+    || die 'artifact output parent metadata differs'
+[ "$OUTPUT_DESTINATION" = android-x86_64-test ] \
+    || die 'artifact output destination differs'
 
 readonly SCRIPT_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh
@@ -553,6 +561,27 @@ verify_sha256 "$X86_STD" "$SHA256_RUST_STD_ANDROID_X86_64_1_75"
 python3 -I -S "$SCRIPT_DIR/online-input-provenance.py" verify-subtree \
     --tree "$X86_VCPKG" \
     --expected "$SHA256_ANDROID_EMULATOR_VCPKG_X64_ANDROID_CLOSURE_V1"
+readonly OUTPUT_PARENT_ID="$(stat -c '%d:%i' -- "$OUTPUT_PARENT")"
+readonly APK_ID="$(stat -c '%d:%i' -- "$APK")"
+publication_authority="$(
+    env -i PATH=/usr/bin:/bin LC_ALL=C \
+        python3 -I -S "$SOURCE_AUTHORITY/scripts/publish-artifact-result.py" \
+            --prepare \
+            --artifact-kind android-x86_64-test \
+            --source "$APK" \
+            --source-identity "$APK_ID" \
+            --source-sha256 "$APK_SHA256" \
+            --output-parent "$OUTPUT_PARENT" \
+            --output-parent-identity "$OUTPUT_PARENT_ID" \
+            --destination "$OUTPUT_DESTINATION"
+)" || die 'runtime-test APK publication preparation failed'
+read -r pending_result pending_identity publication_extra <<<"$publication_authority"
+[[ "$pending_result" =~ ^\.android-x86_64-test-output-pending-[0-9a-f]{64}$ ]] \
+    && [[ "$pending_identity" =~ ^(0|[1-9][0-9]*):[1-9][0-9]*$ ]] \
+    && [ -z "$publication_extra" ] \
+    || die 'runtime-test APK pending publication authority is malformed'
 printf '%s\n' "${apk_receipts[0]}" "${runtime_receipts[0]}"
-printf 'ANDROID_EMULATOR_APP_CHECK=pass apk_sha256=%s artifact=ephemeral-test-only source=exact-archive target=x86_64-linux-android builder=%s runtime=%s vm_network=none container_network=none inputs=readonly cleanup=joined\n' \
+printf 'ANDROID_EMULATOR_ARTIFACT_PREPARED=pass pending=%s destination=%s apk_sha256=%s signing=test-only publication=atomic-no-clobber\n' \
+    "$pending_result" "$OUTPUT_DESTINATION" "$APK_SHA256"
+printf 'ANDROID_EMULATOR_APP_CHECK=pass apk_sha256=%s artifact=prepared-test-only source=exact-archive target=x86_64-linux-android builder=%s runtime=%s vm_network=none container_network=none inputs=readonly cleanup=joined\n' \
     "$APK_SHA256" "$ANDROID_BUILDER_CONFIG_ID" "$DEV_CHECK_IMAGE_CONFIG_ID"

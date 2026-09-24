@@ -240,6 +240,9 @@ readonly ANDROID_RUST_SOURCE="$SCRIPT_DIR/android-rust-check.sh"
 readonly ANDROID_EMULATOR_BOOT_SOURCE="$SCRIPT_DIR/smoke-android-emulator-boot.sh"
 readonly ANDROID_EMULATOR_APP_SOURCE="$SCRIPT_DIR/android-emulator-app-check.sh"
 readonly ANDROID_EMULATOR_APK_VERIFIER="$SCRIPT_DIR/verify-android-emulator-apk.py"
+readonly ARTIFACT_RESULT_PUBLISHER_SOURCE="$SCRIPT_DIR/publish-artifact-result.py"
+readonly ANDROID_ARTIFACT_STATE_ROOT="$REPO_ROOT/.harness-state/android-emulator-artifacts"
+readonly ANDROID_ARTIFACT_DESTINATION=android-x86_64-test
 readonly OFFLINE_IMAGE_PROVENANCE_SOURCE="$SCRIPT_DIR/offline-image-provenance.py"
 readonly ONLINE_FETCH_SOURCE="$SCRIPT_DIR/online-fetch.sh"
 readonly ONLINE_FETCH_VM_SOURCE="$SCRIPT_DIR/online-fetch-vm.sh"
@@ -328,9 +331,19 @@ CAPTURE_PID=
 CAPTURE_START=
 KERNEL_FD=
 INITRD_FD=
-VIRTIOFSD_PID=
-VIRTIOFSD_START=
+VIRTIOFSD_PIDS=()
+VIRTIOFSD_STARTS=()
+VIRTIOFSD_LOGS=()
+VIRTIOFS_SOCKETS=()
 VIRTIOFSD_BINARY=
+ARTIFACT_OUTPUT_FD=
+ARTIFACT_OUTPUT_PARENT=
+ARTIFACT_OUTPUT_PARENT_ID=
+ARTIFACT_PUBLISHED=0
+ARTIFACT_STATE_ROOT_CREATED=0
+ARTIFACT_STATE_ROOT_ID=
+ANDROID_ARTIFACT_PENDING=
+ANDROID_ARTIFACT_SHA256=
 RUN_COMPLETE=0
 
 fail() {
@@ -402,33 +415,37 @@ is_exact_capture_process() {
 }
 
 is_exact_virtiofsd_process() {
-    [ -n "$VIRTIOFSD_PID" ] && [ -n "$VIRTIOFSD_START" ] \
+    [ "$#" -eq 2 ] || return 1
+    local pid=$1 start=$2
+    [ -n "$pid" ] && [ -n "$start" ] \
         && [ -n "$VIRTIOFSD_BINARY" ] \
-        && [ -r "/proc/$VIRTIOFSD_PID/stat" ] \
-        && [ "$(process_start_time "$VIRTIOFSD_PID" 2>/dev/null)" = "$VIRTIOFSD_START" ] \
-        && [ "$(/usr/bin/readlink -f "/proc/$VIRTIOFSD_PID/exe" 2>/dev/null)" = \
+        && [ -r "/proc/$pid/stat" ] \
+        && [ "$(process_start_time "$pid" 2>/dev/null)" = "$start" ] \
+        && [ "$(/usr/bin/readlink -f "/proc/$pid/exe" 2>/dev/null)" = \
              "$VIRTIOFSD_BINARY" ] \
-        && [ "$(/usr/bin/awk '{ print $3 }' "/proc/$VIRTIOFSD_PID/stat" 2>/dev/null)" != Z ]
+        && [ "$(/usr/bin/awk '{ print $3 }' "/proc/$pid/stat" 2>/dev/null)" != Z ]
 }
 
 is_owned_virtiofsd_generation() {
-    local executable
-    [ -n "$VIRTIOFSD_PID" ] && [ -n "$VIRTIOFSD_START" ] \
+    [ "$#" -eq 2 ] || return 1
+    local pid=$1 start=$2 executable
+    [ -n "$pid" ] && [ -n "$start" ] \
         && [ -n "$VIRTIOFSD_BINARY" ] \
-        && [ -r "/proc/$VIRTIOFSD_PID/stat" ] \
-        && [ "$(process_start_time "$VIRTIOFSD_PID" 2>/dev/null)" = "$VIRTIOFSD_START" ] \
-        && [ "$(/usr/bin/awk '{ print $3 }' "/proc/$VIRTIOFSD_PID/stat" 2>/dev/null)" != Z ] \
+        && [ -r "/proc/$pid/stat" ] \
+        && [ "$(process_start_time "$pid" 2>/dev/null)" = "$start" ] \
+        && [ "$(/usr/bin/awk '{ print $3 }' "/proc/$pid/stat" 2>/dev/null)" != Z ] \
         || return 1
-    executable="$(/usr/bin/readlink -f "/proc/$VIRTIOFSD_PID/exe" 2>/dev/null)" \
+    executable="$(/usr/bin/readlink -f "/proc/$pid/exe" 2>/dev/null)" \
         || return 1
     [ "$executable" = "$VIRTIOFSD_BINARY" ] \
         || [ "$executable" = "$(/usr/bin/readlink -f /usr/bin/python3)" ]
 }
 
 virtiofsd_seccomp_enforced() {
-    local task_status task_count=0
-    is_exact_virtiofsd_process || return 1
-    for task_status in /proc/"$VIRTIOFSD_PID"/task/[0-9]*/status; do
+    [ "$#" -eq 2 ] || return 1
+    local pid=$1 start=$2 task_status task_count=0
+    is_exact_virtiofsd_process "$pid" "$start" || return 1
+    for task_status in /proc/"$pid"/task/[0-9]*/status; do
         [ -r "$task_status" ] || return 1
         [ "$(/usr/bin/awk '/^Seccomp:/ { print $2 }' "$task_status" 2>/dev/null)" = 2 ] \
             || return 1
@@ -438,62 +455,71 @@ virtiofsd_seccomp_enforced() {
 }
 
 terminate_owned_virtiofsd_generation() {
-    local signal attempt
-    [ -r "/proc/$VIRTIOFSD_PID/stat" ] || return 0
-    [ "$(process_start_time "$VIRTIOFSD_PID" 2>/dev/null)" = "$VIRTIOFSD_START" ] \
+    [ "$#" -eq 2 ] || return 1
+    local pid=$1 start=$2 signal attempt
+    [ -r "/proc/$pid/stat" ] || return 0
+    [ "$(process_start_time "$pid" 2>/dev/null)" = "$start" ] \
         || return 0
-    [ "$(/usr/bin/awk '{ print $3 }' "/proc/$VIRTIOFSD_PID/stat" 2>/dev/null)" != Z ] \
+    [ "$(/usr/bin/awk '{ print $3 }' "/proc/$pid/stat" 2>/dev/null)" != Z ] \
         || return 0
-    is_owned_virtiofsd_generation || return 1
+    is_owned_virtiofsd_generation "$pid" "$start" || return 1
     for signal in TERM KILL; do
-        /usr/bin/kill -"$signal" "$VIRTIOFSD_PID" 2>/dev/null || return 1
+        /usr/bin/kill -"$signal" "$pid" 2>/dev/null || return 1
         for attempt in $(/usr/bin/seq 1 100); do
-            [ -r "/proc/$VIRTIOFSD_PID/stat" ] || return 0
-            [ "$(process_start_time "$VIRTIOFSD_PID" 2>/dev/null)" = "$VIRTIOFSD_START" ] \
+            [ -r "/proc/$pid/stat" ] || return 0
+            [ "$(process_start_time "$pid" 2>/dev/null)" = "$start" ] \
                 || return 0
-            [ "$(/usr/bin/awk '{ print $3 }' "/proc/$VIRTIOFSD_PID/stat" 2>/dev/null)" != Z ] \
+            [ "$(/usr/bin/awk '{ print $3 }' "/proc/$pid/stat" 2>/dev/null)" != Z ] \
                 || return 0
-            is_owned_virtiofsd_generation || return 1
+            is_owned_virtiofsd_generation "$pid" "$start" || return 1
             /usr/bin/sleep 0.01
         done
     done
     return 1
 }
 
-start_sealed_input_virtiofsd() {
-    local socket=$1 log=$2 shared_identity=$3 receipt ready=0
+start_virtiofsd() {
+    [ "$#" -eq 5 ] || fail 'internal virtiofsd launch argument count differs'
+    local authority=$1 shared_dir=$2 shared_identity=$3 socket=$4 log=$5
+    local index pid start receipt ready=0
     /usr/bin/python3 -I -S "$VIRTIOFSD_LAUNCHER" \
         --binary "$VIRTIOFSD_BINARY" \
         --binary-sha256 "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY" \
-        --authority sealed-input \
-        --shared-dir "$SEALED_INPUT_ROOT" --shared-identity "$shared_identity" \
+        --authority "$authority" \
+        --shared-dir "$shared_dir" --shared-identity "$shared_identity" \
         --socket "$socket" --uid "$HOST_UID" --gid "$HOST_GID" \
         >"$log" 2>&1 &
-    VIRTIOFSD_PID=$!
-    VIRTIOFSD_START="$(process_start_time "$VIRTIOFSD_PID")" \
-        || fail 'cannot record sealed-input virtiofsd generation'
+    pid=$!
+    index=${#VIRTIOFSD_PIDS[@]}
+    VIRTIOFSD_PIDS[index]=$pid
+    VIRTIOFSD_STARTS[index]=
+    VIRTIOFSD_LOGS[index]=$log
+    VIRTIOFS_SOCKETS[index]=$socket
+    start="$(process_start_time "$pid")" \
+        || fail "cannot record the $authority virtiofsd generation"
+    VIRTIOFSD_STARTS[index]=$start
     for _ in $(/usr/bin/seq 1 600); do
-        if is_exact_virtiofsd_process \
+        if is_exact_virtiofsd_process "$pid" "$start" \
            && verify_private_socket "$socket" \
-           && [ "$(/usr/bin/awk '/^NoNewPrivs:/ { print $2 }' "/proc/$VIRTIOFSD_PID/status")" = 1 ]; then
+           && [ "$(/usr/bin/awk '/^NoNewPrivs:/ { print $2 }' "/proc/$pid/status")" = 1 ]; then
             ready=1
             break
         fi
-        is_owned_virtiofsd_generation || break
+        is_owned_virtiofsd_generation "$pid" "$start" || break
         /usr/bin/sleep 0.05
     done
     [ "$ready" -eq 1 ] \
-        || { /usr/bin/tail -n 120 "$log" >&2; fail 'sealed-input virtiofsd did not become ready'; }
-    [ "$(/usr/bin/awk '/^Uid:/ { print $2":"$3":"$4":"$5 }' "/proc/$VIRTIOFSD_PID/status")" = \
+        || { /usr/bin/tail -n 120 "$log" >&2; fail "$authority virtiofsd did not become ready"; }
+    [ "$(/usr/bin/awk '/^Uid:/ { print $2":"$3":"$4":"$5 }' "/proc/$pid/status")" = \
       "$HOST_UID:$HOST_UID:$HOST_UID:$HOST_UID" ] \
-        && [ "$(/usr/bin/awk '/^Gid:/ { print $2":"$3":"$4":"$5 }' "/proc/$VIRTIOFSD_PID/status")" = \
+        && [ "$(/usr/bin/awk '/^Gid:/ { print $2":"$3":"$4":"$5 }' "/proc/$pid/status")" = \
              "$HOST_GID:$HOST_GID:$HOST_GID:$HOST_GID" ] \
-        || fail 'sealed-input virtiofsd process identity differs'
+        || fail "$authority virtiofsd process identity differs"
     receipt="$(/usr/bin/grep '^VIRTIOFSD_LANDLOCK=' "$log")" \
-        || fail 'sealed-input virtiofsd Landlock receipt is absent'
-    [[ "$receipt" =~ ^VIRTIOFSD_LANDLOCK=pass\ abi=([0-9]+)\ uid=$HOST_UID\ gid=$HOST_GID\ filesystem=sealed-input-only\ tcp=denied\ socket=prebound\ seccomp=kill$ ]] \
+        || fail "$authority virtiofsd Landlock receipt is absent"
+    [[ "$receipt" =~ ^VIRTIOFSD_LANDLOCK=pass\ abi=([0-9]+)\ uid=$HOST_UID\ gid=$HOST_GID\ filesystem=$authority-only\ tcp=denied\ socket=prebound\ seccomp=kill$ ]] \
         && [ "${BASH_REMATCH[1]}" -ge 8 ] \
-        || fail 'sealed-input virtiofsd Landlock receipt differs'
+        || fail "$authority virtiofsd Landlock receipt differs"
 }
 
 terminate_exact_vm_process() {
@@ -664,6 +690,63 @@ require_exact_fixed_receipt() {
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail "$label is absent or duplicated"; }
 }
 
+publish_android_runtime_artifact() {
+    local pending_path pending_id destination artifact checksum checksum_line
+    [ "$MODE" = android-emulator-app ] \
+        && [ -n "$ANDROID_ARTIFACT_PENDING" ] \
+        && [ -n "$ANDROID_ARTIFACT_SHA256" ] \
+        && [ -n "$ARTIFACT_OUTPUT_PARENT" ] \
+        || fail 'Android artifact publication authority is incomplete'
+    [ -d "$ARTIFACT_OUTPUT_PARENT" ] && [ ! -L "$ARTIFACT_OUTPUT_PARENT" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ARTIFACT_OUTPUT_PARENT")" = \
+             "$ARTIFACT_OUTPUT_PARENT_ID:$HOST_UID:$HOST_GID:700" ] \
+        && [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$ARTIFACT_OUTPUT_FD")" = \
+             "$ARTIFACT_OUTPUT_PARENT_ID" ] \
+        || fail 'commit-bound Android artifact output authority changed'
+    [ "$ANDROID_ARTIFACT_PENDING" != "$ANDROID_ARTIFACT_DESTINATION" ] \
+        || fail 'Android artifact pending and destination names collide'
+    pending_path="$ARTIFACT_OUTPUT_PARENT/$ANDROID_ARTIFACT_PENDING"
+    [ -d "$pending_path" ] && [ ! -L "$pending_path" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$pending_path")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'prepared Android artifact output metadata differs'
+    pending_id="$(/usr/bin/stat -c '%d:%i' -- "$pending_path")"
+    /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C \
+        /usr/bin/python3 -I -S "$ARTIFACT_RESULT_PUBLISHER_SOURCE" \
+            --commit \
+            --artifact-kind android-x86_64-test \
+            --output-parent "$ARTIFACT_OUTPUT_PARENT" \
+            --output-parent-identity "$ARTIFACT_OUTPUT_PARENT_ID" \
+            --pending "$ANDROID_ARTIFACT_PENDING" \
+            --pending-identity "$pending_id" \
+            --destination "$ANDROID_ARTIFACT_DESTINATION" \
+        || fail 'prepared Android artifact could not be committed'
+    destination="$ARTIFACT_OUTPUT_PARENT/$ANDROID_ARTIFACT_DESTINATION"
+    artifact="$destination/rustdesk-x86_64-runtime-test.apk"
+    checksum="$artifact.sha256"
+    [ -d "$destination" ] && [ ! -L "$destination" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$destination")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        && [ "$(/usr/bin/find "$ARTIFACT_OUTPUT_PARENT" -mindepth 1 -maxdepth 1 -printf '%f\n')" = \
+             "$ANDROID_ARTIFACT_DESTINATION" ] \
+        && [ "$(/usr/bin/find "$destination" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = \
+             $'rustdesk-x86_64-runtime-test.apk\nrustdesk-x86_64-runtime-test.apk.sha256' ] \
+        || fail 'published Android artifact inventory differs'
+    for file in "$artifact" "$checksum"; do
+        [ -f "$file" ] && [ ! -L "$file" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$file")" = \
+                 "$HOST_UID:$HOST_GID:400:1" ] \
+            || fail 'published Android artifact file metadata differs'
+    done
+    checksum_line="$(<"$checksum")"
+    [ "$checksum_line" = \
+      "$ANDROID_ARTIFACT_SHA256  rustdesk-x86_64-runtime-test.apk" ] \
+        && [ "$(/usr/bin/sha256sum "$artifact" | /usr/bin/awk '{ print $1 }')" = \
+             "$ANDROID_ARTIFACT_SHA256" ] \
+        || fail 'published Android artifact digest differs'
+    ARTIFACT_PUBLISHED=1
+}
+
 reconcile_socket() {
     local path=$1
     if [ -e "$path" ] || [ -L "$path" ]; then
@@ -682,7 +765,7 @@ verify_private_socket() {
 }
 
 cleanup() {
-    local status=$? cleanup_failed=0
+    local status=$? cleanup_failed=0 index pid start socket
     trap - EXIT HUP INT TERM
     if [ -n "$VM_OWNER_PID" ]; then
         if is_exact_vm_owner_process; then
@@ -695,15 +778,17 @@ cleanup() {
     terminate_exact_vm_process || cleanup_failed=1
     VM_PID=
     VM_START=
-    if [ -n "$VIRTIOFSD_PID" ]; then
-        if terminate_owned_virtiofsd_generation; then
-            wait "$VIRTIOFSD_PID" 2>/dev/null || true
+    for index in "${!VIRTIOFSD_PIDS[@]}"; do
+        pid=${VIRTIOFSD_PIDS[index]}
+        start=${VIRTIOFSD_STARTS[index]}
+        if terminate_owned_virtiofsd_generation "$pid" "$start"; then
+            wait "$pid" 2>/dev/null || true
         else
             cleanup_failed=1
         fi
-        VIRTIOFSD_PID=
-        VIRTIOFSD_START=
-    fi
+    done
+    VIRTIOFSD_PIDS=()
+    VIRTIOFSD_STARTS=()
     if [ -n "$CAPTURE_PID" ]; then
         if is_exact_capture_process; then
             kill -TERM "$CAPTURE_PID" 2>/dev/null || cleanup_failed=1
@@ -720,11 +805,17 @@ cleanup() {
         exec {INITRD_FD}<&- || cleanup_failed=1
         INITRD_FD=
     fi
+    if [ -n "$ARTIFACT_OUTPUT_FD" ]; then
+        exec {ARTIFACT_OUTPUT_FD}<&- || cleanup_failed=1
+        ARTIFACT_OUTPUT_FD=
+    fi
     if [ -n "$RUN" ] && [ -d "$RUN" ] && [ ! -L "$RUN" ] \
        && [ "$(/usr/bin/stat -c '%d:%i' -- "$RUN" 2>/dev/null)" = "$RUN_ID" ]; then
         reconcile_socket "$RUN/serial.sock" || cleanup_failed=1
         reconcile_socket "$RUN/qmp.sock" || cleanup_failed=1
-        reconcile_socket "$RUN/vfs-input.sock" || cleanup_failed=1
+        for socket in "${VIRTIOFS_SOCKETS[@]}"; do
+            reconcile_socket "$socket" || cleanup_failed=1
+        done
         if [ "$RUN_COMPLETE" -eq 1 ] && [ "$status" -eq 0 ] && [ "$cleanup_failed" -eq 0 ]; then
             /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
                 --remove-private-root "$RUN" --expected-identity "$RUN_ID" \
@@ -736,6 +827,25 @@ cleanup() {
     elif [ -n "$RUN" ]; then
         cleanup_failed=1
     fi
+    if [ "$ARTIFACT_PUBLISHED" -eq 0 ] && [ -n "$ARTIFACT_OUTPUT_PARENT" ]; then
+        if [ -d "$ARTIFACT_OUTPUT_PARENT" ] && [ ! -L "$ARTIFACT_OUTPUT_PARENT" ] \
+           && [ "$(/usr/bin/stat -c '%d:%i' -- "$ARTIFACT_OUTPUT_PARENT" 2>/dev/null)" = \
+                "$ARTIFACT_OUTPUT_PARENT_ID" ]; then
+            /usr/bin/python3 -I -S "$CLEANUP_HELPER" \
+                --remove-private-root "$ARTIFACT_OUTPUT_PARENT" \
+                --expected-identity "$ARTIFACT_OUTPUT_PARENT_ID" \
+                || cleanup_failed=1
+        else
+            cleanup_failed=1
+        fi
+    fi
+    if [ "$ARTIFACT_PUBLISHED" -eq 0 ] \
+       && [ "$ARTIFACT_STATE_ROOT_CREATED" -eq 1 ]; then
+        /usr/bin/python3 -I -S "$CLEANUP_HELPER" \
+            --remove-empty-private-root "$ANDROID_ARTIFACT_STATE_ROOT" \
+            --expected-identity "$ARTIFACT_STATE_ROOT_ID" \
+            || cleanup_failed=1
+    fi
     [ "$cleanup_failed" -eq 0 ] || [ "$status" -ne 0 ] || status=1
     exit "$status"
 }
@@ -746,11 +856,12 @@ trap 'exit 143' TERM
 
 [ "$(/usr/bin/uname -s):$(/usr/bin/uname -m)" = Linux:x86_64 ] \
     || fail 'verifier VM requires a Linux x86_64 orchestration host'
-for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/cmp /usr/bin/comm /usr/bin/find \
+for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/cmp /usr/bin/comm /usr/bin/env \
+    /usr/bin/find /usr/bin/findmnt /usr/bin/install \
     /usr/bin/dpkg-deb /usr/bin/git /usr/bin/grep /usr/bin/id /usr/bin/mkdir /usr/bin/mktemp /usr/bin/python3 \
     /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 /usr/bin/readlink /usr/bin/rm \
     /usr/bin/seq /usr/bin/sha256sum /usr/bin/sha512sum /usr/bin/sleep /usr/bin/sort \
-    /usr/bin/ss /usr/bin/stat /usr/bin/tail /usr/bin/timeout /usr/bin/uname \
+    /usr/bin/ss /usr/bin/stat /usr/bin/tail /usr/bin/timeout /usr/bin/uname /usr/bin/wc \
     /usr/bin/xorriso; do
     resolved="$(/usr/bin/readlink -f -- "$tool" 2>/dev/null)" \
         || fail "cannot resolve fixed host orchestration tool: $tool"
@@ -1245,7 +1356,10 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" \
     "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" \
     "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" \
-    "$ANDROID_RUST_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" \
+    "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" \
+    "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_APK_VERIFIER" \
+    "$ARTIFACT_RESULT_PUBLISHER_SOURCE" \
+    "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" \
     "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" \
     "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" \
     "$ONLINE_FETCH_RENAME_CHECKER" \
@@ -1571,6 +1685,39 @@ readonly DART_SOURCE_ARCHIVE=$RUN/dart-source.tar
 readonly RUST_AUDIT_SOURCE_ARCHIVE=$RUN/rust-audit-source.tar
 readonly VIRTIOFS_SOCKET=$RUN/vfs-input.sock
 readonly VIRTIOFSD_LOG=$RUN/virtiofsd-input.log
+readonly ARTIFACT_VIRTIOFS_SOCKET=$RUN/vfs-artifact.sock
+readonly ARTIFACT_VIRTIOFSD_LOG=$RUN/virtiofsd-artifact.log
+
+if [ "$MODE" = android-emulator-app ]; then
+    if [ -e "$ANDROID_ARTIFACT_STATE_ROOT" ] \
+       || [ -L "$ANDROID_ARTIFACT_STATE_ROOT" ]; then
+        [ -d "$ANDROID_ARTIFACT_STATE_ROOT" ] \
+            && [ ! -L "$ANDROID_ARTIFACT_STATE_ROOT" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ANDROID_ARTIFACT_STATE_ROOT")" = \
+                 "$HOST_UID:$HOST_GID:700" ] \
+            || fail 'Android artifact state root metadata differs'
+    else
+        /usr/bin/install -d -m 0700 -- "$ANDROID_ARTIFACT_STATE_ROOT"
+        ARTIFACT_STATE_ROOT_CREATED=1
+    fi
+    ARTIFACT_STATE_ROOT_ID="$(/usr/bin/stat -c '%d:%i' -- "$ANDROID_ARTIFACT_STATE_ROOT")"
+    [ -z "$(/usr/bin/findmnt -rn -o TARGET --submounts "$ANDROID_ARTIFACT_STATE_ROOT")" ] \
+        || fail 'Android artifact state root contains a descendant mount'
+    ARTIFACT_OUTPUT_PARENT="$ANDROID_ARTIFACT_STATE_ROOT/$ANDROID_EMULATOR_SOURCE_COMMIT"
+    [ ! -e "$ARTIFACT_OUTPUT_PARENT" ] && [ ! -L "$ARTIFACT_OUTPUT_PARENT" ] \
+        || fail 'commit-bound Android artifact output already exists'
+    /usr/bin/install -d -m 0700 -- "$ARTIFACT_OUTPUT_PARENT"
+    ARTIFACT_OUTPUT_PARENT_ID="$(/usr/bin/stat -c '%d:%i' -- "$ARTIFACT_OUTPUT_PARENT")"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ARTIFACT_OUTPUT_PARENT")" = \
+      "$HOST_UID:$HOST_GID:700" ] \
+        && [ -z "$(/usr/bin/find "$ARTIFACT_OUTPUT_PARENT" -mindepth 1 -print -quit)" ] \
+        || fail 'commit-bound Android artifact output metadata differs'
+    exec {ARTIFACT_OUTPUT_FD}<"$ARTIFACT_OUTPUT_PARENT" \
+        || fail 'cannot retain the commit-bound Android artifact output'
+    [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$ARTIFACT_OUTPUT_FD")" = \
+      "$ARTIFACT_OUTPUT_PARENT_ID" ] \
+        || fail 'retained Android artifact output identity differs'
+fi
 
 base_before="$(/usr/bin/sha512sum "$BASE")"
 docker_before="$(/usr/bin/sha256sum "$DOCKER_BUNDLE")"
@@ -1578,7 +1725,7 @@ git_package_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$GIT_PACKAGE")
 boot_root_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$BOOT_ROOT")"
 kernel_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$KERNEL"):$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")"
-sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_APK_VERIFIER" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")"
+sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_APK_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")"
 focused_inputs_before=
 if [ "$MODE" = hbb-common-fs ]; then
     focused_inputs_before="$(
@@ -1914,6 +2061,7 @@ fi
     "repo/scripts/smoke-android-emulator-boot.sh=$ANDROID_EMULATOR_BOOT_SOURCE" \
     "repo/scripts/android-emulator-app-check.sh=$ANDROID_EMULATOR_APP_SOURCE" \
     "repo/scripts/verify-android-emulator-apk.py=$ANDROID_EMULATOR_APK_VERIFIER" \
+    "repo/scripts/publish-artifact-result.py=$ARTIFACT_RESULT_PUBLISHER_SOURCE" \
     "repo/scripts/offline-image-provenance.py=$OFFLINE_IMAGE_PROVENANCE_SOURCE" \
     "repo/scripts/online-fetch.sh=$ONLINE_FETCH_SOURCE" \
     "repo/scripts/online-fetch-vm.sh=$ONLINE_FETCH_VM_SOURCE" \
@@ -2034,13 +2182,22 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-emulator-app ] \
    || [ "$MODE" = flutter-peer-presentation ] \
    || [ "$MODE" = rust-audit ]; then
-    start_sealed_input_virtiofsd \
-        "$VIRTIOFS_SOCKET" "$VIRTIOFSD_LOG" \
-        "$(/usr/bin/stat -c '%d:%i' -- "$SEALED_INPUT_ROOT")"
+    start_virtiofsd sealed-input "$SEALED_INPUT_ROOT" \
+        "$(/usr/bin/stat -c '%d:%i' -- "$SEALED_INPUT_ROOT")" \
+        "$VIRTIOFS_SOCKET" "$VIRTIOFSD_LOG"
     focused_qemu_args=(
         -chardev "socket,id=sealed-input,path=$VIRTIOFS_SOCKET"
         -device "vhost-user-fs-pci,chardev=sealed-input,tag=rustdesk-sealed-inputs,queue-size=1024"
     )
+    if [ "$MODE" = android-emulator-app ]; then
+        start_virtiofsd bounded-result "$ARTIFACT_OUTPUT_PARENT" \
+            "$ARTIFACT_OUTPUT_PARENT_ID" \
+            "$ARTIFACT_VIRTIOFS_SOCKET" "$ARTIFACT_VIRTIOFSD_LOG"
+        focused_qemu_args+=(
+            -chardev "socket,id=artifact-output,path=$ARTIFACT_VIRTIOFS_SOCKET"
+            -device "vhost-user-fs-pci,chardev=artifact-output,tag=rustdesk-android-artifact-output,queue-size=1024"
+        )
+    fi
     memory_args=(
         -m "$VM_MEMORY"
         -object "memory-backend-memfd,id=mem,size=${VM_MEMORY}M,share=on"
@@ -2106,26 +2263,23 @@ VM_PID="$(<"$QEMU_PIDFILE")"
 [ "$(/usr/bin/readlink -f "/proc/$VM_PID/exe")" = /usr/bin/qemu-system-x86_64 ] \
     || fail 'QEMU PID does not identify the fixed hypervisor'
 VM_START="$(process_start_time "$VM_PID")" || fail 'cannot record QEMU process identity'
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
-   || [ "$MODE" = android-rust-target-check ] \
-   || [ "$MODE" = apple-conform ] \
-   || [ "$MODE" = flutter-model-tests ] \
-   || [ "$MODE" = android-owner-tests ] \
-   || [ "$MODE" = flutter-peer-presentation ] \
-   || [ "$MODE" = rust-audit ]; then
+for index in "${!VIRTIOFSD_PIDS[@]}"; do
+    virtiofsd_pid=${VIRTIOFSD_PIDS[index]}
+    virtiofsd_start=${VIRTIOFSD_STARTS[index]}
+    virtiofsd_log=${VIRTIOFSD_LOGS[index]}
     virtiofsd_seccomp_ready=0
     for _ in $(/usr/bin/seq 1 1000); do
-        if virtiofsd_seccomp_enforced; then
+        if virtiofsd_seccomp_enforced "$virtiofsd_pid" "$virtiofsd_start"; then
             virtiofsd_seccomp_ready=1
             break
         fi
-        is_exact_virtiofsd_process \
-            || { /usr/bin/tail -n 120 "$VIRTIOFSD_LOG" >&2; fail 'sealed-input virtiofsd exited during QEMU startup'; }
+        is_exact_virtiofsd_process "$virtiofsd_pid" "$virtiofsd_start" \
+            || { /usr/bin/tail -n 120 "$virtiofsd_log" >&2; fail 'virtiofsd exited during QEMU startup'; }
         /usr/bin/sleep 0.01
     done
     [ "$virtiofsd_seccomp_ready" -eq 1 ] \
-        || { /usr/bin/tail -n 120 "$VIRTIOFSD_LOG" >&2; fail 'sealed-input virtiofsd did not enforce seccomp after QEMU connected'; }
-fi
+        || { /usr/bin/tail -n 120 "$virtiofsd_log" >&2; fail 'virtiofsd did not enforce seccomp after QEMU connected'; }
+done
 
 /usr/bin/python3 -I -S "$CAPTURE_HELPER" \
     --socket "$SERIAL_SOCKET" --output "$SERIAL_LOG" --max-bytes "$SERIAL_LIMIT" \
@@ -2162,26 +2316,29 @@ CAPTURE_PID=
 CAPTURE_START=
 [ "$vm_status" -eq 0 ] || { tail -n 240 "$SERIAL_LOG" >&2; fail "networkless verifier VM exited with status $vm_status"; }
 [ "$capture_status" -eq 0 ] || fail "bounded serial capture exited with status $capture_status"
-if [ -n "$VIRTIOFSD_PID" ]; then
+for index in "${!VIRTIOFSD_PIDS[@]}"; do
+    virtiofsd_pid=${VIRTIOFSD_PIDS[index]}
+    virtiofsd_start=${VIRTIOFSD_STARTS[index]}
+    virtiofsd_log=${VIRTIOFSD_LOGS[index]}
     for _ in $(/usr/bin/seq 1 1000); do
-        [ -r "/proc/$VIRTIOFSD_PID/stat" ] || break
-        [ "$(process_start_time "$VIRTIOFSD_PID" 2>/dev/null)" = "$VIRTIOFSD_START" ] \
+        [ -r "/proc/$virtiofsd_pid/stat" ] || break
+        [ "$(process_start_time "$virtiofsd_pid" 2>/dev/null)" = "$virtiofsd_start" ] \
             || break
-        [ "$(/usr/bin/awk '{ print $3 }' "/proc/$VIRTIOFSD_PID/stat" 2>/dev/null)" != Z ] \
+        [ "$(/usr/bin/awk '{ print $3 }' "/proc/$virtiofsd_pid/stat" 2>/dev/null)" != Z ] \
             || break
-        is_exact_virtiofsd_process \
-            || { /usr/bin/tail -n 120 "$VIRTIOFSD_LOG" >&2; fail 'sealed-input virtiofsd executable identity changed'; }
+        is_exact_virtiofsd_process "$virtiofsd_pid" "$virtiofsd_start" \
+            || { /usr/bin/tail -n 120 "$virtiofsd_log" >&2; fail 'virtiofsd executable identity changed'; }
         /usr/bin/sleep 0.01
     done
-    is_owned_virtiofsd_generation \
-        && { /usr/bin/tail -n 120 "$VIRTIOFSD_LOG" >&2; fail 'sealed-input virtiofsd did not retire after QEMU disconnected'; }
+    is_owned_virtiofsd_generation "$virtiofsd_pid" "$virtiofsd_start" \
+        && { /usr/bin/tail -n 120 "$virtiofsd_log" >&2; fail 'virtiofsd did not retire after QEMU disconnected'; }
     virtiofsd_status=0
-    wait "$VIRTIOFSD_PID" || virtiofsd_status=$?
+    wait "$virtiofsd_pid" || virtiofsd_status=$?
     [ "$virtiofsd_status" -eq 0 ] \
-        || { /usr/bin/tail -n 120 "$VIRTIOFSD_LOG" >&2; fail "sealed-input virtiofsd exited with status $virtiofsd_status"; }
-    VIRTIOFSD_PID=
-    VIRTIOFSD_START=
-fi
+        || { /usr/bin/tail -n 120 "$virtiofsd_log" >&2; fail "virtiofsd exited with status $virtiofsd_status"; }
+done
+VIRTIOFSD_PIDS=()
+VIRTIOFSD_STARTS=()
 grep -Fxq "bounded-unix-stream-capture: PASS bytes=$(stat -c '%s' "$SERIAL_LOG")" "$CAPTURE_RECEIPT" \
     || fail 'bounded serial-capture receipt differs'
 if [ -r "/proc/$VM_PID/stat" ] && [ "$(process_start_time "$VM_PID" 2>/dev/null)" = "$VM_START" ]; then
@@ -2199,16 +2356,10 @@ if [ -s "$NEW_AFTER" ]; then
 fi
 reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'
 reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
-   || [ "$MODE" = android-rust-target-check ] \
-   || [ "$MODE" = apple-conform ] \
-   || [ "$MODE" = flutter-model-tests ] \
-   || [ "$MODE" = android-owner-tests ] \
-   || [ "$MODE" = flutter-peer-presentation ] \
-   || [ "$MODE" = rust-audit ]; then
-    reconcile_socket "$VIRTIOFS_SOCKET" \
-        || fail 'sealed-input virtiofsd channel cleanup is ambiguous'
-fi
+for socket in "${VIRTIOFS_SOCKETS[@]}"; do
+    reconcile_socket "$socket" \
+        || fail 'virtiofsd channel cleanup is ambiguous'
+done
 require_exact_fixed_receipt \
     'VERIFIER_VM_GIT_RUNTIME=pass source=pinned-deb version=2.39.5 root=vm-ephemeral network=none' \
     'authenticated verifier-VM Git runtime marker'
@@ -2473,8 +2624,22 @@ elif [ "$MODE" = android-emulator-boot ]; then
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'Android emulator boot cloud-init completion marker'
 elif [ "$MODE" = android-emulator-app ]; then
+    mapfile -t android_artifact_receipts < <(
+        /usr/bin/grep -E \
+            '^ANDROID_EMULATOR_ARTIFACT_PREPARED=pass pending=\.android-x86_64-test-output-pending-[0-9a-f]{64} destination=android-x86_64-test apk_sha256=[0-9a-f]{64} signing=test-only publication=atomic-no-clobber$' \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#android_artifact_receipts[@]}" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android artifact preparation receipt is absent or duplicated'; }
+    [[ "${android_artifact_receipts[0]}" =~ ^ANDROID_EMULATOR_ARTIFACT_PREPARED=pass\ pending=(\.android-x86_64-test-output-pending-[0-9a-f]{64})\ destination=android-x86_64-test\ apk_sha256=([0-9a-f]{64})\ signing=test-only\ publication=atomic-no-clobber$ ]] \
+        || fail 'Android artifact preparation receipt is malformed'
+    ANDROID_ARTIFACT_PENDING=${BASH_REMATCH[1]}
+    ANDROID_ARTIFACT_SHA256=${BASH_REMATCH[2]}
     require_exact_fixed_receipt \
-        "ANDROID_EMULATOR_APP_VM=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE target=x86_64-linux-android emulator=$ANDROID_EMULATOR_VERSION api=$ANDROID_EMULATOR_SYSTEM_IMAGE_API builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID runtime_index=$DEV_CHECK_IMAGE_ID runtime_config=$DEV_CHECK_IMAGE_CONFIG_ID signing=test-only artifact=ephemeral uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked source=exact-pushed cleanup=joined" \
+        "ANDROID_EMULATOR_APP_CHECK=pass apk_sha256=$ANDROID_ARTIFACT_SHA256 artifact=prepared-test-only source=exact-archive target=x86_64-linux-android builder=$ANDROID_BUILDER_CONFIG_ID runtime=$DEV_CHECK_IMAGE_CONFIG_ID vm_network=none container_network=none inputs=readonly cleanup=joined" \
+        'Android emulator app-check receipt'
+    require_exact_fixed_receipt \
+        "ANDROID_EMULATOR_APP_VM=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE target=x86_64-linux-android emulator=$ANDROID_EMULATOR_VERSION api=$ANDROID_EMULATOR_SYSTEM_IMAGE_API builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID runtime_index=$DEV_CHECK_IMAGE_ID runtime_config=$DEV_CHECK_IMAGE_CONFIG_ID apk_sha256=$ANDROID_ARTIFACT_SHA256 signing=test-only artifact=prepared-test-only output=writable-landlocked uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked source=exact-pushed cleanup=joined" \
         'Android emulator app VM receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
@@ -2548,7 +2713,7 @@ fi
     || fail 'direct-boot kernel changed during execution'
 [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")" = "$initrd_before" ] \
     || fail 'direct-boot initramfs changed during execution'
-[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_APK_VERIFIER" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
+[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_APK_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
     || fail 'verifier-VM harness source changed during execution'
 if [ "$MODE" = hbb-common-fs ]; then
     focused_inputs_after="$(
@@ -2700,6 +2865,9 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     verify_sha256 "$DEV_CHECK_ARCHIVE" "$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
 fi
 
+if [ "$MODE" = android-emulator-app ]; then
+    publish_android_runtime_artifact
+fi
 external_listener_drift_count="$(/usr/bin/wc -l <"$EXTERNAL_LISTENER_DRIFT")"
 /usr/bin/printf 'VERIFIER_VM_HOST_LISTENER_AUDIT=pass complete_snapshots=before,during,after harness_additions=none preexisting_process_drift=%s\n' \
     "$external_listener_drift_count"
@@ -2737,11 +2905,13 @@ elif [ "$MODE" = android-emulator-boot ]; then
         "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" "$DEV_CHECK_IMAGE_CONFIG_ID" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = android-emulator-app ]; then
-    printf 'ANDROID_EMULATOR_APP_VM_OUTER=pass host_uid=%s commit=%s tree=%s emulator=%s api=%s abi=x86_64 builder=%s runtime=%s signing=test-only artifact=ephemeral network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only product=real-apk-install-launch-render cleanup=joined elapsed_seconds=%s\n' \
+    printf 'ANDROID_EMULATOR_APP_VM_OUTER=pass host_uid=%s commit=%s tree=%s emulator=%s api=%s abi=x86_64 builder=%s runtime=%s apk_sha256=%s signing=test-only artifact=published-test-only destination=%s/%s network=none listeners=no-harness-addition inputs=readonly-landlocked output=writable-landlocked docker=guest-only product=real-apk-install-launch-render cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$ANDROID_EMULATOR_SOURCE_COMMIT" \
         "$ANDROID_EMULATOR_SOURCE_TREE" "$ANDROID_EMULATOR_VERSION" \
         "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" "$ANDROID_BUILDER_CONFIG_ID" \
-        "$DEV_CHECK_IMAGE_CONFIG_ID" "$vm_elapsed_seconds"
+        "$DEV_CHECK_IMAGE_CONFIG_ID" "$ANDROID_ARTIFACT_SHA256" \
+        "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_ARTIFACT_DESTINATION" \
+        "$vm_elapsed_seconds"
 elif [ "$MODE" = flutter-peer-presentation ]; then
     printf 'FLUTTER_PEER_PRESENTATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s flutter=%s tools=%s candidate=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only product=linux-x11-full-peer-focus-reconnect-resource cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" \

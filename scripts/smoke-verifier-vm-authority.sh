@@ -1873,10 +1873,21 @@ readonly VIRTIOFS_SOCKET=$RUN/vfs-input.sock
 readonly VIRTIOFSD_LOG=$RUN/virtiofsd-input.log
 readonly FLUTTER_CANDIDATE_VIRTIOFS_SOCKET=$RUN/vfs-flutter-candidate.sock
 readonly FLUTTER_CANDIDATE_VIRTIOFSD_LOG=$RUN/virtiofsd-flutter-candidate.log
+readonly FLUTTER_FAILURE_ROOT=$RUN/flutter-peer-failure
+readonly FLUTTER_FAILURE_VIRTIOFS_SOCKET=$RUN/vfs-flutter-failure.sock
+readonly FLUTTER_FAILURE_VIRTIOFSD_LOG=$RUN/virtiofsd-flutter-failure.log
 readonly ARTIFACT_VIRTIOFS_SOCKET=$RUN/vfs-artifact.sock
 readonly ARTIFACT_VIRTIOFSD_LOG=$RUN/virtiofsd-artifact.log
 readonly ARTIFACT_INPUT_VIRTIOFS_SOCKET=$RUN/vfs-artifact-input.sock
 readonly ARTIFACT_INPUT_VIRTIOFSD_LOG=$RUN/virtiofsd-artifact-input.log
+
+if [ "$MODE" = flutter-peer-presentation ]; then
+    /usr/bin/install -d -m 0700 -- "$FLUTTER_FAILURE_ROOT"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$FLUTTER_FAILURE_ROOT")" = \
+      "$HOST_UID:$HOST_GID:700" ] \
+        && [ -z "$(/usr/bin/find "$FLUTTER_FAILURE_ROOT" -mindepth 1 -print -quit)" ] \
+        || fail 'Flutter peer failure-output authority metadata differs'
+fi
 
 if [ "$MODE" = android-emulator-app ]; then
     if [ -e "$ANDROID_ARTIFACT_STATE_ROOT" ] \
@@ -2397,6 +2408,15 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
         focused_qemu_args+=(
             -chardev "socket,id=flutter-candidate-input,path=$FLUTTER_CANDIDATE_VIRTIOFS_SOCKET"
             -device "vhost-user-fs-pci,chardev=flutter-candidate-input,tag=rustdesk-flutter-candidate-input,queue-size=1024"
+        )
+    fi
+    if [ "$MODE" = flutter-peer-presentation ]; then
+        start_virtiofsd bounded-result "$FLUTTER_FAILURE_ROOT" \
+            "$(/usr/bin/stat -c '%d:%i' -- "$FLUTTER_FAILURE_ROOT")" \
+            "$FLUTTER_FAILURE_VIRTIOFS_SOCKET" "$FLUTTER_FAILURE_VIRTIOFSD_LOG"
+        focused_qemu_args+=(
+            -chardev "socket,id=flutter-failure-output,path=$FLUTTER_FAILURE_VIRTIOFS_SOCKET"
+            -device "vhost-user-fs-pci,chardev=flutter-failure-output,tag=rustdesk-flutter-failure-output,queue-size=1024"
         )
     elif [ "$MODE" = android-emulator-app ]; then
         start_virtiofsd bounded-result "$ARTIFACT_OUTPUT_PARENT" \

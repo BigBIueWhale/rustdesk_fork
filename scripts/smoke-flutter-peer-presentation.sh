@@ -103,6 +103,16 @@ if [ "$PEER_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
   exit 0
 fi
 
+FAILURE_ARTIFACT_DIR=${RUSTDESK_FAILURE_ARTIFACT_DIR:-}
+[ "$FAILURE_ARTIFACT_DIR" = /mnt/rustdesk-flutter-peer-failure ] \
+  && [ "$FAILURE_ARTIFACT_DIR" = "$(readlink -f -- "$FAILURE_ARTIFACT_DIR" 2>/dev/null)" ] \
+  && [ -d "$FAILURE_ARTIFACT_DIR" ] && [ ! -L "$FAILURE_ARTIFACT_DIR" ] \
+  && [ "$(stat -c '%u:%g:%a' -- "$FAILURE_ARTIFACT_DIR")" = \
+    "$HOST_UID:$HOST_GID:700" ] \
+  && [ -z "$(find "$FAILURE_ARTIFACT_DIR" -mindepth 1 -print -quit)" ] \
+  || die 'bounded Flutter peer failure-output authority differs'
+readonly FAILURE_ARTIFACT_DIR
+
 EVIDENCE_PUB_CACHE="$ONLINE_DIR/pub-cache"
 EVIDENCE_PUB_CACHE_SHA256="$SHA256_PUB_CACHE_CLOSURE_V1"
 BUILD_PROJECT_LOCK_MODE=source-current
@@ -150,7 +160,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-require_cmd git tar sha256sum stat find chmod readlink
+require_cmd git tar sha256sum stat find chmod readlink cp du
 SOURCE_COMMIT=
 SOURCE_TREE=
 if [ "$SOURCE_AUTHORITY" = git ]; then
@@ -366,7 +376,7 @@ inspect_container_contract() {
   local record_kind source destination writable extra
   local network ipc pid uts privileged read_only user ports devices caps security
   local source_mounts=0 output_mounts=0 xvfb_root_mounts=0 xkbcomp_mounts=0 coord_mounts=0
-  local passwd_mounts=0 machine_id_mounts=0
+  local passwd_mounts=0 machine_id_mounts=0 diagnostic_mounts=0
   local atspi_root_mounts=0 atspi_launcher_mounts=0 atspi_registry_mounts=0
   local atspi_defaults_mounts=0 atspi_services_mounts=0
   local receipt_ends=0
@@ -447,6 +457,12 @@ inspect_container_contract() {
           || die "$label coordination mount contract differs"
         coord_mounts=$((coord_mounts + 1))
         ;;
+      /diagnostic)
+        [ "$label" = viewer ] && [ "$source" = "$FAILURE_ARTIFACT_DIR" ] \
+          && [ "$writable" = true ] \
+          || die "$label failure-diagnostic mount contract differs"
+        diagnostic_mounts=$((diagnostic_mounts + 1))
+        ;;
       /atspi-root)
         [ "$source" = "$ATSPI_ROOT" ] && [ "$writable" = false ] \
           || die "$label AT-SPI root mount contract differs"
@@ -496,9 +512,11 @@ inspect_container_contract() {
     && [ "$machine_id_mounts" -eq 1 ] \
     || die "$label runtime mount cardinality differs"
   if [ -n "$expected_passwd_source" ]; then
-    [ "$passwd_mounts" -eq 1 ] || die 'viewer passwd witness mount cardinality differs'
+    [ "$passwd_mounts" -eq 1 ] && [ "$diagnostic_mounts" -eq 1 ] \
+      || die 'viewer passwd or failure-diagnostic mount cardinality differs'
   else
-    [ "$passwd_mounts" -eq 0 ] || die 'non-viewer container received a passwd witness mount'
+    [ "$passwd_mounts" -eq 0 ] && [ "$diagnostic_mounts" -eq 0 ] \
+      || die 'non-viewer container received a viewer-only mount'
   fi
   [ "$atspi_root_mounts" -eq "$expected_atspi_mounts" ] \
     && [ "$atspi_launcher_mounts" -eq "$expected_atspi_mounts" ] \
@@ -506,6 +524,39 @@ inspect_container_contract() {
     && [ "$atspi_defaults_mounts" -eq "$expected_atspi_mounts" ] \
     && [ "$atspi_services_mounts" -eq "$expected_atspi_mounts" ] \
     || die "$label AT-SPI mount cardinality differs"
+}
+
+capture_viewer_failure() {
+  local cycle=$1 viewer_status=$2 viewer_log=$3 destination total_bytes
+  local -a core_files=()
+  destination="$FAILURE_ARTIFACT_DIR/cycle.$cycle"
+  [ ! -e "$destination" ] && [ ! -L "$destination" ] \
+    || die 'Flutter peer failure destination was not freshly absent'
+  mapfile -d '' -t core_files < <(find "$FAILURE_ARTIFACT_DIR" \
+    -mindepth 1 -maxdepth 1 -type f -name 'core.*' -print0)
+  [ "${#core_files[@]}" -eq 1 ] \
+    || die "expected one bounded viewer core, found ${#core_files[@]}"
+  mkdir -m 0700 -- "$destination" "$destination/bundle" "$destination/bundle/lib"
+  mv -- "${core_files[0]}" "$destination/core"
+  cp -a -- "$BUILD_OUTPUT/bundle/rustdesk" "$destination/bundle/rustdesk"
+  cp -a -- "$BUILD_OUTPUT/bundle/lib/." "$destination/bundle/lib/"
+  cp -- "$viewer_log" "$destination/viewer.log"
+  printf 'cycle=%s\nviewer_status=%s\nsource_commit=%s\nsource_tree=%s\nflutter=%s\ncore_pattern=/diagnostic/core.%%p\n' \
+    "$cycle" "$viewer_status" "$SOURCE_COMMIT" "$SOURCE_TREE" \
+    "$BUILD_FLUTTER_VERSION" > "$destination/identity"
+  (
+    cd "$destination"
+    find . -type f ! -name SHA256SUMS -print0 \
+      | LC_ALL=C sort -z \
+      | xargs -0 sha256sum > SHA256SUMS
+  )
+  total_bytes="$(du -sb -- "$destination" | awk '{print $1}')"
+  [[ "$total_bytes" =~ ^[0-9]+$ ]] && [ "$total_bytes" -le 1610612736 ] \
+    || die 'Flutter peer failure evidence exceeds its 1.5 GiB bound'
+  find "$destination" -type f -exec chmod 0400 -- {} +
+  find "$destination" -type d -exec chmod 0500 -- {} +
+  printf 'FLUTTER_PEER_FAILURE_CAPTURED cycle=%s viewer_status=%s core=kernel bundle=exact bytes=%s\n' \
+    "$cycle" "$viewer_status" "$total_bytes"
 }
 
 run_input_check() {
@@ -740,13 +791,15 @@ peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
   --user "$HOST_UID:$HOST_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=384 --memory=4g --memory-swap=4g --cpus=2 \
-  --ulimit nofile=4096:4096 --ulimit fsize=268435456:268435456 \
+  --ulimit nofile=4096:4096 --ulimit fsize=1073741824:1073741824 \
+  --ulimit core=1073741824:1073741824 \
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g \
   --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$BUILD_OUTPUT,target=/out,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
+  --mount "type=bind,source=$FAILURE_ARTIFACT_DIR,target=/diagnostic,bind-recursive=disabled" \
   --mount "type=bind,source=$ATSPI_ROOT,target=/atspi-root,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$ATSPI_ROOT/usr/libexec/at-spi-bus-launcher,target=/usr/libexec/at-spi-bus-launcher,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$ATSPI_ROOT/usr/libexec/at-spi2-registryd,target=/usr/libexec/at-spi2-registryd,readonly,bind-recursive=disabled" \
@@ -782,6 +835,9 @@ inspect_container_contract "$VIEWER_CID" "container:$SERVER_CID" viewer
   )" = "$ATSPI_ROOT_ID" ] \
   || die 'sealed AT-SPI runtime identity changed during runtime'
 cat "$VIEWER_LOG"
+if [ "$viewer_status" -ne 0 ]; then
+  capture_viewer_failure "$cycle" "$viewer_status" "$VIEWER_LOG"
+fi
 if [ ! -f "$COORD/stop" ] && [ ! -L "$COORD/stop" ]; then
   printf 'outer-retirement-after-viewer-status=%s\n' "$viewer_status" > "$COORD/stop.tmp"
   mv "$COORD/stop.tmp" "$COORD/stop"

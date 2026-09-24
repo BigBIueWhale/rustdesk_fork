@@ -168,6 +168,7 @@ ANDROID_ARTIFACT_INPUT_MOUNTED=0
 FLUTTER_PEER_SOURCE_MOUNTED=0
 FLUTTER_PEER_ONLINE_MOUNTED=0
 FLUTTER_PEER_CANDIDATE_MOUNTED=0
+FLUTTER_PEER_FAILURE_MOUNTED=0
 
 fail() {
     printf 'verifier-VM guest: %s\n' "$*" >&2
@@ -3443,6 +3444,7 @@ run_flutter_model_tests() {
 run_flutter_peer_presentation() {
     local sealed_root=/mnt/rustdesk-sealed-inputs
     local candidate_root=/mnt/rustdesk-flutter-candidate-input
+    local failure_root=/mnt/rustdesk-flutter-peer-failure
     local inputs=$sealed_root
     local source_root=$ROOT/flutter-peer-source
     local peer_script=$source_root/scripts/smoke-flutter-peer-presentation.sh
@@ -3477,6 +3479,24 @@ run_flutter_peer_presentation() {
 
     [ "$(stat -c '%u:%g:%a' -- "$sealed_root")" = 1000:1000:700 ] \
         || fail 'sealed Flutter-peer authority root metadata differs'
+    mkdir "$failure_root"
+    mount -t virtiofs -o rw,nodev,nosuid,noexec \
+        rustdesk-flutter-failure-output "$failure_root" \
+        || fail 'cannot mount the bounded Flutter peer failure-output authority'
+    FLUTTER_PEER_FAILURE_MOUNTED=1
+    mount_options="$(findmnt -n -o OPTIONS --target "$failure_root")" \
+        || fail 'Flutter peer failure-output mount is absent'
+    case ",$mount_options," in *,rw,*) ;; *) fail 'Flutter peer failure-output authority is not writable' ;; esac
+    case ",$mount_options," in *,nodev,*) ;; *) fail 'Flutter peer failure-output authority permits devices' ;; esac
+    case ",$mount_options," in *,nosuid,*) ;; *) fail 'Flutter peer failure-output authority permits set-user-ID execution' ;; esac
+    case ",$mount_options," in *,noexec,*) ;; *) fail 'Flutter peer failure-output authority permits direct execution' ;; esac
+    [ "$(stat -c '%u:%g:%a' -- "$failure_root")" = 1000:1000:700 ] \
+        && [ -z "$(find "$failure_root" -mindepth 1 -print -quit)" ] \
+        || fail 'Flutter peer failure-output authority metadata differs'
+    printf '/diagnostic/core.%%p\n' > /proc/sys/kernel/core_pattern \
+        || fail 'cannot establish the VM-local bounded Flutter core pattern'
+    [ "$(cat /proc/sys/kernel/core_pattern)" = '/diagnostic/core.%p' ] \
+        || fail 'VM-local Flutter core pattern differs'
     if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
         mkdir "$candidate_root"
         mount -t virtiofs -o ro,nodev,nosuid,noexec \
@@ -3650,6 +3670,7 @@ run_flutter_peer_presentation() {
     set +e
     setpriv --reuid=1000 --regid=1000 --clear-groups \
         env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        RUSTDESK_FAILURE_ARTIFACT_DIR="$failure_root" \
         /bin/bash "$peer_script" "${peer_args[@]}" \
         2>&1 | tee "$output"
     peer_status=${PIPESTATUS[0]}
@@ -3704,6 +3725,9 @@ run_flutter_peer_presentation() {
         umount "$candidate_root" || fail 'cannot retire the sealed Flutter candidate mount'
         FLUTTER_PEER_CANDIDATE_MOUNTED=0
     fi
+    umount "$failure_root" \
+        || fail 'cannot retire the Flutter peer failure-output mount'
+    FLUTTER_PEER_FAILURE_MOUNTED=0
     umount "$sealed_root" || fail 'cannot retire the sealed Flutter-peer input mount'
     SEALED_INPUTS_MOUNTED=0
     printf 'FLUTTER_PEER_PRESENTATION_VM=pass commit=%s tree=%s archive=%s flutter=%s tools=%s candidate=%s devcheck_index=%s devcheck_runtime=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 nofile=524544 root=refused foreign=refused caller=refused vm_network=none container_network=owned-none-namespace inputs=readonly-landlocked cleanup=joined\n' \
@@ -3745,6 +3769,10 @@ cleanup() {
     if [ "$FLUTTER_PEER_CANDIDATE_MOUNTED" -eq 1 ]; then
         umount /mnt/rustdesk-flutter-candidate-input 2>/dev/null || status=1
         FLUTTER_PEER_CANDIDATE_MOUNTED=0
+    fi
+    if [ "$FLUTTER_PEER_FAILURE_MOUNTED" -eq 1 ]; then
+        umount /mnt/rustdesk-flutter-peer-failure 2>/dev/null || status=1
+        FLUTTER_PEER_FAILURE_MOUNTED=0
     fi
     if [ "$RUST_AUDIT_VENDOR_MOUNTED" -eq 1 ]; then
         umount "$ROOT/rust-audit-source/online/cargo-vendor" 2>/dev/null || status=1

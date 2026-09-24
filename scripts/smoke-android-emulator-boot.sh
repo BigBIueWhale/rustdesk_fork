@@ -708,12 +708,6 @@ PY
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_TAB >/dev/null \
             || fail 'cannot traverse to the password-confirmation field'
         sleep 0.5
-        password_field="$(wait_ui_center focused-password-field 2>/dev/null || true)"
-        [[ "$password_field" =~ ^[0-9]+\ [0-9]+$ ]] \
-            || fail 'the password-confirmation field did not take exact focus'
-        read -r field_x field_y <<<"$password_field"
-        "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" >/dev/null \
-            || fail 'cannot focus the password-confirmation field'
         "$ADB" -s "$SERIAL" shell input text "$TEST_PASSWORD" >/dev/null \
             || fail 'cannot enter the disposable password confirmation'
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null \

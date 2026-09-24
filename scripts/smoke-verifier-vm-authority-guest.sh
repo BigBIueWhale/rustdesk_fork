@@ -2833,11 +2833,11 @@ run_android_emulator_runtime() {
         "$apk" "$checksum")"
     [ ! -e "$staged_apk" ] && [ ! -L "$staged_apk" ] \
         || fail 'Android runtime execution-copy destination already exists'
-    install -o 0 -g 0 -m 0444 -- "$apk" "$staged_apk" \
+    install -o 1000 -g 1000 -m 0400 -- "$apk" "$staged_apk" \
         || fail 'cannot stage the authenticated APK on the disposable guest disk'
     [ -f "$staged_apk" ] && [ ! -L "$staged_apk" ] \
         && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$staged_apk")" = \
-             "0:0:444:1:$(stat -c '%s' -- "$apk")" ] \
+             "1000:1000:400:1:$(stat -c '%s' -- "$apk")" ] \
         && [ "$(sha256sum "$staged_apk" | awk '{ print $1 }')" = \
              "$ANDROID_RUNTIME_APK_SHA256" ] \
         || fail 'Android runtime execution copy differs from the authenticated artifact'

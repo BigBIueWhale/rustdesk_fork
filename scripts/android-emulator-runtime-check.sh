@@ -24,7 +24,7 @@ readonly RUN_GID="$(id -g)"
 [ "$APK" = "$(readlink -f -- "$APK")" ] \
     || die 'APK path is not absolute and canonical'
 [ -f "$APK" ] && [ ! -L "$APK" ] \
-    && [ "$(stat -c '%u:%g:%a:%h' -- "$APK")" = 0:0:444:1 ] \
+    && [ "$(stat -c '%u:%g:%a:%h' -- "$APK")" = 1000:1000:400:1 ] \
     || die 'guest-staged APK metadata differs'
 [ "$(sha256sum "$APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
     || die 'APK digest differs'

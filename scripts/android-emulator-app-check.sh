@@ -44,6 +44,7 @@ readonly EMULATOR_ZIP=$CANDIDATE_ROOT/emulator-linux_x64-${ANDROID_EMULATOR_ARCH
 readonly SYSTEM_IMAGE_ZIP=$CANDIDATE_ROOT/x86_64-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip
 readonly X86_STD=$CANDIDATE_ROOT/rust-std-1.75-x86_64-linux-android.tar.xz
 readonly X86_VCPKG=$CANDIDATE_ROOT/vcpkg/installed/x64-android
+readonly FLUTTER_MAVEN_SOURCE=$CANDIDATE_ROOT/flutter-maven
 readonly ADB=$ONLINE_DIR/android-sdk/platform-tools/adb
 ANDROID_PUB_CACHE_RECEIPT=
 
@@ -76,6 +77,42 @@ verify_gradle_maven_projection() {
         --uid "$BUILD_UID" --gid "$BUILD_GID" \
         --source-device "$source_device" --source-inode "$source_inode" \
         --projection-device "$projection_device" --projection-inode "$projection_inode"
+}
+
+verify_flutter_maven_root() {
+    [ "$#" -eq 1 ] || die 'internal Flutter Maven verifier argument mismatch'
+    local root=$1 version=$FLUTTER_ANDROID_MAVEN_VERSION
+    local artifact extension expected_size expected_sha256 input specification
+    [ -d "$root" ] && [ ! -L "$root" ] \
+        || die 'Flutter Maven root is absent or ambiguous'
+    [ -z "$(find "$root" -xdev \( ! -type d -a ! -type f \) -print -quit)" ] \
+        || die 'Flutter Maven root contains a non-file entry'
+    [ "$(find "$root" -xdev -mindepth 1 -type d -print | wc -l)" -eq 7 ] \
+        && [ "$(find "$root" -xdev -type f -print | wc -l)" -eq 4 ] \
+        || die 'Flutter Maven root inventory cardinality differs'
+    [ -z "$(find "$root" -xdev \
+        \( ! -uid "$BUILD_UID" -o ! -gid "$BUILD_GID" \) -print -quit)" ] \
+        || die 'Flutter Maven root ownership differs'
+    [ -z "$(find "$root" -xdev -type d \
+        \( ! -perm 0500 -o -perm /0277 \) -print -quit)" ] \
+        && [ -z "$(find "$root" -xdev -type f \
+        \( ! -perm 0400 -o -perm /0377 \) -print -quit)" ] \
+        || die 'Flutter Maven root modes differ'
+    for specification in \
+        "flutter_embedding_release:jar:$SIZE_FLUTTER_ANDROID_EMBEDDING_RELEASE_JAR:$SHA256_FLUTTER_ANDROID_EMBEDDING_RELEASE_JAR" \
+        "flutter_embedding_release:pom:$SIZE_FLUTTER_ANDROID_EMBEDDING_RELEASE_POM:$SHA256_FLUTTER_ANDROID_EMBEDDING_RELEASE_POM" \
+        "x86_64_release:jar:$SIZE_FLUTTER_ANDROID_X86_64_RELEASE_JAR:$SHA256_FLUTTER_ANDROID_X86_64_RELEASE_JAR" \
+        "x86_64_release:pom:$SIZE_FLUTTER_ANDROID_X86_64_RELEASE_POM:$SHA256_FLUTTER_ANDROID_X86_64_RELEASE_POM"
+    do
+        IFS=: read -r artifact extension expected_size expected_sha256 \
+            <<<"$specification"
+        input="$root/download.flutter.io/io/flutter/$artifact/$version/$artifact-$version.$extension"
+        [ -f "$input" ] && [ ! -L "$input" ] \
+            && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$input")" = \
+                 "$BUILD_UID:$BUILD_GID:400:1:$expected_size" ] \
+            || die "Flutter Maven input metadata differs: $artifact.$extension"
+        verify_sha256 "$input" "$expected_sha256"
+    done
 }
 
 verify_android_online_inputs() {
@@ -229,6 +266,7 @@ python3 -I -S "$SCRIPT_DIR/online-input-provenance.py" verify-subtree \
 verify_sha256 "$EMULATOR_ZIP" "$SHA256_ANDROID_EMULATOR_LINUX_X64"
 verify_sha256 "$SYSTEM_IMAGE_ZIP" "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
 verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
+verify_flutter_maven_root "$FLUTTER_MAVEN_SOURCE"
 verify_image android-builder "$ANDROID_BUILDER_CONFIG_ID"
 verify_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"
 
@@ -249,6 +287,8 @@ readonly GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE=$GRADLE_SDK_PROJECTION_ROOT/androi
 readonly GRADLE_MAVEN_SOURCE=$ONLINE_DIR/cargo-vendor/rustls-platform-verifier-android-0.1.1/maven
 readonly GRADLE_MAVEN_PROJECTION_ROOT=$WORKSPACE/gradle-maven-projection
 readonly GRADLE_MAVEN_PROJECTION=$GRADLE_MAVEN_PROJECTION_ROOT/maven
+readonly FLUTTER_MAVEN_PROJECTION_ROOT=$WORKSPACE/flutter-maven-projection
+readonly FLUTTER_MAVEN_PROJECTION=$FLUTTER_MAVEN_PROJECTION_ROOT/flutter-maven
 mkdir "$SOURCE_AUTHORITY" "$BUILD_SOURCE"
 tar -xf "$SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
     -C "$SOURCE_AUTHORITY"
@@ -262,7 +302,8 @@ chmod -R u=rwX,go=rX "$BUILD_SOURCE"
 python3 -I -S "$SOURCE_AUTHORITY/scripts/verify-android-build-source.py" \
     --reference "$SOURCE_AUTHORITY" --candidate "$BUILD_SOURCE"
 
-mkdir "$GRADLE_SDK_PROJECTION_ROOT" "$GRADLE_MAVEN_PROJECTION_ROOT"
+mkdir "$GRADLE_SDK_PROJECTION_ROOT" "$GRADLE_MAVEN_PROJECTION_ROOT" \
+    "$FLUTTER_MAVEN_PROJECTION_ROOT"
 /usr/bin/cp --recursive --no-dereference --preserve=mode,timestamps \
     --no-preserve=ownership,xattr \
     -- "$ONLINE_DIR/android-sdk" "$GRADLE_SDK_PROJECTION" \
@@ -276,24 +317,34 @@ mkdir "$GRADLE_SDK_PROJECTION_ROOT" "$GRADLE_MAVEN_PROJECTION_ROOT"
     --no-preserve=ownership,xattr \
     -- "$GRADLE_MAVEN_SOURCE" "$GRADLE_MAVEN_PROJECTION" \
     || die 'cannot project the exact Android Maven repository onto guest-local storage'
+/usr/bin/cp --recursive --no-dereference --preserve=mode,timestamps \
+    --no-preserve=ownership,xattr \
+    -- "$FLUTTER_MAVEN_SOURCE" "$FLUTTER_MAVEN_PROJECTION" \
+    || die 'cannot project the exact Flutter Maven repository onto guest-local storage'
 GRADLE_MAVEN_SOURCE_ID="$(stat -c '%d:%i' -- "$GRADLE_MAVEN_SOURCE")" \
     || die 'cannot identify the canonical Android Maven repository'
+FLUTTER_MAVEN_SOURCE_ID="$(stat -c '%d:%i' -- "$FLUTTER_MAVEN_SOURCE")" \
+    || die 'cannot identify the canonical Flutter Maven repository'
 GRADLE_SDK_PROJECTION_ID="$(stat -c '%d:%i' -- "$GRADLE_SDK_PROJECTION")" \
     || die 'cannot identify the guest-local Android SDK projection'
 GRADLE_MAVEN_PROJECTION_ID="$(stat -c '%d:%i' -- "$GRADLE_MAVEN_PROJECTION")" \
     || die 'cannot identify the guest-local Android Maven projection'
+FLUTTER_MAVEN_PROJECTION_ID="$(stat -c '%d:%i' -- "$FLUTTER_MAVEN_PROJECTION")" \
+    || die 'cannot identify the guest-local Flutter Maven projection'
 ONLINE_DEVICE="$(stat -c '%d' -- "$ONLINE_DIR")" \
     || die 'cannot identify the canonical online-input filesystem'
-readonly GRADLE_MAVEN_SOURCE_ID GRADLE_SDK_PROJECTION_ID \
-    GRADLE_MAVEN_PROJECTION_ID ONLINE_DEVICE
+readonly GRADLE_MAVEN_SOURCE_ID FLUTTER_MAVEN_SOURCE_ID GRADLE_SDK_PROJECTION_ID \
+    GRADLE_MAVEN_PROJECTION_ID FLUTTER_MAVEN_PROJECTION_ID ONLINE_DEVICE
 [ "${GRADLE_SDK_PROJECTION_ID%%:*}" != "$ONLINE_DEVICE" ] \
     && [ "${GRADLE_MAVEN_PROJECTION_ID%%:*}" != "$ONLINE_DEVICE" ] \
+    && [ "${FLUTTER_MAVEN_PROJECTION_ID%%:*}" != "$ONLINE_DEVICE" ] \
     || die 'Gradle JVM input projection is not guest-local storage'
 verify_android_sdk_root \
     "$GRADLE_SDK_PROJECTION_ROOT" "$GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE"
 verify_gradle_maven_projection \
     "$GRADLE_MAVEN_SOURCE" "$GRADLE_MAVEN_PROJECTION" \
     "$GRADLE_MAVEN_SOURCE_ID" "$GRADLE_MAVEN_PROJECTION_ID"
+verify_flutter_maven_root "$FLUTTER_MAVEN_PROJECTION"
 
 BUILD_CONTAINER="$(vm_docker create \
     --name rustdesk-android-emulator-app-build \
@@ -312,11 +363,23 @@ BUILD_CONTAINER="$(vm_docker create \
     --env "RUSTDESK_ANDROID_X86_STD_SIZE=$SIZE_RUST_STD_ANDROID_X86_64_1_75" \
     --env "RUSTDESK_ANDROID_X86_STD_SHA256=$SHA256_RUST_STD_ANDROID_X86_64_1_75" \
     --env "RUSTDESK_ANDROID_X86_VCPKG_SHA256=$SHA256_ANDROID_EMULATOR_VCPKG_X64_ANDROID_CLOSURE_V1" \
+    --env "RUSTDESK_FLUTTER_ANDROID_ENGINE_REVISION=$FLUTTER_ANDROID_ENGINE_REVISION" \
+    --env "RUSTDESK_FLUTTER_ANDROID_MAVEN_VERSION=$FLUTTER_ANDROID_MAVEN_VERSION" \
+    --env "RUSTDESK_FLUTTER_ANDROID_EMBEDDING_JAR_SIZE=$SIZE_FLUTTER_ANDROID_EMBEDDING_RELEASE_JAR" \
+    --env "RUSTDESK_FLUTTER_ANDROID_EMBEDDING_JAR_SHA256=$SHA256_FLUTTER_ANDROID_EMBEDDING_RELEASE_JAR" \
+    --env "RUSTDESK_FLUTTER_ANDROID_EMBEDDING_POM_SIZE=$SIZE_FLUTTER_ANDROID_EMBEDDING_RELEASE_POM" \
+    --env "RUSTDESK_FLUTTER_ANDROID_EMBEDDING_POM_SHA256=$SHA256_FLUTTER_ANDROID_EMBEDDING_RELEASE_POM" \
+    --env "RUSTDESK_FLUTTER_ANDROID_X86_64_JAR_SIZE=$SIZE_FLUTTER_ANDROID_X86_64_RELEASE_JAR" \
+    --env "RUSTDESK_FLUTTER_ANDROID_X86_64_JAR_SHA256=$SHA256_FLUTTER_ANDROID_X86_64_RELEASE_JAR" \
+    --env "RUSTDESK_FLUTTER_ANDROID_X86_64_POM_SIZE=$SIZE_FLUTTER_ANDROID_X86_64_RELEASE_POM" \
+    --env "RUSTDESK_FLUTTER_ANDROID_X86_64_POM_SHA256=$SHA256_FLUTTER_ANDROID_X86_64_RELEASE_POM" \
+    --env FLUTTER_STORAGE_BASE_URL=file:///flutter-storage \
     --mount "type=bind,source=$BUILD_SOURCE,target=/src,bind-recursive=disabled" \
     --mount "type=bind,source=$SOURCE_AUTHORITY/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$GRADLE_SDK_PROJECTION,target=/online/android-sdk,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$GRADLE_MAVEN_PROJECTION,target=/online/cargo-vendor/rustls-platform-verifier-android-0.1.1/maven,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$FLUTTER_MAVEN_PROJECTION,target=/flutter-storage,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$CANDIDATE_ROOT,target=/android-candidate,readonly,bind-recursive=disabled" \
     --workdir /src \
     "$ANDROID_BUILDER_CONFIG_ID" \
@@ -343,6 +406,11 @@ verify_android_sdk_root \
 verify_gradle_maven_projection \
     "$GRADLE_MAVEN_SOURCE" "$GRADLE_MAVEN_PROJECTION" \
     "$GRADLE_MAVEN_SOURCE_ID" "$GRADLE_MAVEN_PROJECTION_ID" >/dev/null
+verify_flutter_maven_root "$FLUTTER_MAVEN_SOURCE"
+verify_flutter_maven_root "$FLUTTER_MAVEN_PROJECTION"
+[ "$(stat -c '%d:%i' -- "$FLUTTER_MAVEN_SOURCE")" = \
+  "$FLUTTER_MAVEN_SOURCE_ID" ] \
+    || die 'canonical Flutter Maven source identity changed during app build'
 mapfile -t built_apks < <(find \
     "$BUILD_SOURCE/flutter/build/app/outputs/flutter-apk" \
     -maxdepth 1 -type f -name '*x86_64*release*.apk' -print | LC_ALL=C sort)

@@ -69,6 +69,26 @@ if [ "$APK_MODE" = emulator-test ]; then
     python3 -I -S /src/scripts/online-input-provenance.py verify-subtree \
         --tree /android-candidate/vcpkg/installed/x64-android \
         --expected "${RUSTDESK_ANDROID_X86_VCPKG_SHA256:?}"
+    [ "${FLUTTER_STORAGE_BASE_URL:-}" = file:///flutter-storage ] \
+        || { echo "[FATAL] x86_64 runtime build must use the exact local Flutter storage root" >&2; exit 1; }
+    flutter_maven=/flutter-storage/download.flutter.io/io/flutter
+    flutter_version="${RUSTDESK_FLUTTER_ANDROID_MAVEN_VERSION:?}"
+    for specification in \
+        "flutter_embedding_release:jar:${RUSTDESK_FLUTTER_ANDROID_EMBEDDING_JAR_SIZE:?}:${RUSTDESK_FLUTTER_ANDROID_EMBEDDING_JAR_SHA256:?}" \
+        "flutter_embedding_release:pom:${RUSTDESK_FLUTTER_ANDROID_EMBEDDING_POM_SIZE:?}:${RUSTDESK_FLUTTER_ANDROID_EMBEDDING_POM_SHA256:?}" \
+        "x86_64_release:jar:${RUSTDESK_FLUTTER_ANDROID_X86_64_JAR_SIZE:?}:${RUSTDESK_FLUTTER_ANDROID_X86_64_JAR_SHA256:?}" \
+        "x86_64_release:pom:${RUSTDESK_FLUTTER_ANDROID_X86_64_POM_SIZE:?}:${RUSTDESK_FLUTTER_ANDROID_X86_64_POM_SHA256:?}"
+    do
+        IFS=: read -r artifact extension expected_size expected_sha256 \
+            <<<"$specification"
+        input="$flutter_maven/$artifact/$flutter_version/$artifact-$flutter_version.$extension"
+        [ -f "$input" ] && [ ! -L "$input" ] \
+            && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$input")" = \
+                 "$(id -u):$(id -g):400:1:$expected_size" ] \
+            || { echo "[FATAL] local Flutter Maven input metadata differs: $artifact.$extension" >&2; exit 1; }
+        [ "$(sha256sum "$input" | awk '{ print $1 }')" = "$expected_sha256" ] \
+            || { echo "[FATAL] local Flutter Maven input digest differs: $artifact.$extension" >&2; exit 1; }
+    done
     ANDROID_RUST_TARGET=x86_64-linux-android
     ANDROID_JNI_ABI=x86_64
     ANDROID_CLANG_TARGET=x86_64-linux-android21
@@ -77,6 +97,10 @@ if [ "$APK_MODE" = emulator-test ]; then
     ANDROID_STD_ARCHIVE=/android-candidate/rust-std-1.75-x86_64-linux-android.tar.xz
     ANDROID_STD_INSTALLER_NAME=rust-std-1.75.0-x86_64-linux-android
     ANDROID_VCPKG_ROOT=/android-candidate/vcpkg
+fi
+if [ "$APK_MODE" != emulator-test ]; then
+    [ -z "${FLUTTER_STORAGE_BASE_URL+x}" ] \
+        || { echo "[FATAL] non-emulator builds may not redirect Flutter storage" >&2; exit 1; }
 fi
 readonly ANDROID_RUST_TARGET ANDROID_JNI_ABI ANDROID_CLANG_TARGET \
     ANDROID_NDK_LIB_TRIPLE FLUTTER_TARGET_PLATFORM ANDROID_STD_ARCHIVE \
@@ -139,6 +163,13 @@ tar -C "$TC" -xf /online/llvm-15.0.6.tar.xz
 LLVM_ROOT="$TC/clang+llvm-15.0.6-x86_64-linux-gnu-ubuntu-18.04"
 [ -d "$TC/flutter" ] && [ -d "$LLVM_ROOT" ] \
     || { echo "[FATAL] pinned Flutter or LLVM extraction is incomplete" >&2; exit 1; }
+if [ "$APK_MODE" = emulator-test ]; then
+    [ -f "$TC/flutter/bin/internal/engine.version" ] \
+        && [ ! -L "$TC/flutter/bin/internal/engine.version" ] \
+        && [ "$(tr -d '\n' <"$TC/flutter/bin/internal/engine.version")" = \
+             "${RUSTDESK_FLUTTER_ANDROID_ENGINE_REVISION:?}" ] \
+        || { echo "[FATAL] Flutter SDK engine revision differs from the local Maven closure" >&2; exit 1; }
+fi
 export LIBCLANG_PATH="$LLVM_ROOT/lib"
 export ANDROID_NDK_HOME=/online/android-ndk
 # bindgen (scrap) must parse the NDK android sysroot, not the host glibc headers.

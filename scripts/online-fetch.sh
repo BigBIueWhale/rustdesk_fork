@@ -441,6 +441,30 @@ readonly -a ANDROID_EMULATOR_FIXED_ARCHIVE_ARGS=(
     "$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
     "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
     "dl.google.com"
+    --entry
+    "flutter-maven/download.flutter.io/io/flutter/flutter_embedding_release/${FLUTTER_ANDROID_MAVEN_VERSION}/flutter_embedding_release-${FLUTTER_ANDROID_MAVEN_VERSION}.jar"
+    "https://storage.googleapis.com/download.flutter.io/io/flutter/flutter_embedding_release/${FLUTTER_ANDROID_MAVEN_VERSION}/flutter_embedding_release-${FLUTTER_ANDROID_MAVEN_VERSION}.jar"
+    "$SIZE_FLUTTER_ANDROID_EMBEDDING_RELEASE_JAR"
+    "$SHA256_FLUTTER_ANDROID_EMBEDDING_RELEASE_JAR"
+    "storage.googleapis.com"
+    --entry
+    "flutter-maven/download.flutter.io/io/flutter/flutter_embedding_release/${FLUTTER_ANDROID_MAVEN_VERSION}/flutter_embedding_release-${FLUTTER_ANDROID_MAVEN_VERSION}.pom"
+    "https://storage.googleapis.com/download.flutter.io/io/flutter/flutter_embedding_release/${FLUTTER_ANDROID_MAVEN_VERSION}/flutter_embedding_release-${FLUTTER_ANDROID_MAVEN_VERSION}.pom"
+    "$SIZE_FLUTTER_ANDROID_EMBEDDING_RELEASE_POM"
+    "$SHA256_FLUTTER_ANDROID_EMBEDDING_RELEASE_POM"
+    "storage.googleapis.com"
+    --entry
+    "flutter-maven/download.flutter.io/io/flutter/x86_64_release/${FLUTTER_ANDROID_MAVEN_VERSION}/x86_64_release-${FLUTTER_ANDROID_MAVEN_VERSION}.jar"
+    "https://storage.googleapis.com/download.flutter.io/io/flutter/x86_64_release/${FLUTTER_ANDROID_MAVEN_VERSION}/x86_64_release-${FLUTTER_ANDROID_MAVEN_VERSION}.jar"
+    "$SIZE_FLUTTER_ANDROID_X86_64_RELEASE_JAR"
+    "$SHA256_FLUTTER_ANDROID_X86_64_RELEASE_JAR"
+    "storage.googleapis.com"
+    --entry
+    "flutter-maven/download.flutter.io/io/flutter/x86_64_release/${FLUTTER_ANDROID_MAVEN_VERSION}/x86_64_release-${FLUTTER_ANDROID_MAVEN_VERSION}.pom"
+    "https://storage.googleapis.com/download.flutter.io/io/flutter/x86_64_release/${FLUTTER_ANDROID_MAVEN_VERSION}/x86_64_release-${FLUTTER_ANDROID_MAVEN_VERSION}.pom"
+    "$SIZE_FLUTTER_ANDROID_X86_64_RELEASE_POM"
+    "$SHA256_FLUTTER_ANDROID_X86_64_RELEASE_POM"
+    "storage.googleapis.com"
 )
 readonly -a RUST_ANDROID_X86_FIXED_ARCHIVE_ARGS=(
     --entry

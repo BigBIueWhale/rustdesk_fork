@@ -2391,7 +2391,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
     )
     if [ "$MODE" = flutter-peer-presentation ] \
        && [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
-        start_virtiofsd flutter-candidate-input "$FLUTTER_PEER_CANDIDATE_ROOT" \
+        start_virtiofsd sealed-input "$FLUTTER_PEER_CANDIDATE_ROOT" \
             "$(/usr/bin/stat -c '%d:%i' -- "$FLUTTER_PEER_CANDIDATE_ROOT")" \
             "$FLUTTER_CANDIDATE_VIRTIOFS_SOCKET" "$FLUTTER_CANDIDATE_VIRTIOFSD_LOG"
         focused_qemu_args+=(

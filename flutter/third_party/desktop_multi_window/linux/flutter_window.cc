@@ -71,6 +71,65 @@ namespace
     g_list_free(children);
   }
 
+  GtkWidget *findFlutterRenderer(GtkWidget *widget)
+  {
+    if (g_strcmp0(G_OBJECT_TYPE_NAME(widget), "FlViewRenderer") == 0)
+    {
+      return widget;
+    }
+    if (!GTK_IS_CONTAINER(widget))
+    {
+      return nullptr;
+    }
+
+    GList *children = gtk_container_get_children(GTK_CONTAINER(widget));
+    for (GList *child = children; child != nullptr; child = child->next)
+    {
+      GtkWidget *renderer = findFlutterRenderer(GTK_WIDGET(child->data));
+      if (renderer != nullptr)
+      {
+        g_list_free(children);
+        return renderer;
+      }
+    }
+    g_list_free(children);
+    return nullptr;
+  }
+
+  gboolean releaseFlutterRendererWhenIdle(gpointer)
+  {
+    return G_SOURCE_REMOVE;
+  }
+
+  void releaseFlutterRendererAfterEngine(gpointer renderer, GObject *)
+  {
+    g_idle_add_full(G_PRIORITY_DEFAULT_IDLE,
+                    releaseFlutterRendererWhenIdle,
+                    renderer,
+                    g_object_unref);
+  }
+
+  void retainFlutterRendererUntilEngineRetires(GtkWidget *window)
+  {
+    GtkWidget *view = gtk_bin_get_child(GTK_BIN(window));
+    if (!FL_IS_VIEW(view))
+    {
+      return;
+    }
+
+    GtkWidget *renderer = findFlutterRenderer(view);
+    FlEngine *engine = fl_view_get_engine(FL_VIEW(view));
+    if (renderer == nullptr || engine == nullptr)
+    {
+      return;
+    }
+
+    g_object_ref(renderer);
+    g_object_weak_ref(G_OBJECT(engine),
+                      releaseFlutterRendererAfterEngine,
+                      renderer);
+  }
+
 }
 
 gboolean DrawCallback(GtkWidget* widget, cairo_t* cr, gpointer data) {
@@ -233,6 +292,10 @@ FlutterWindow::~FlutterWindow()
   }
   if (this->window_)
   {
+    // GTK destroys child widgets before the FlView releases its engine. Keep
+    // the renderer (and its compositor) alive until engine finalization has
+    // retired raster-thread presentation callbacks that may still use it.
+    retainFlutterRendererUntilEngineRetires(this->window_);
     gtk_widget_destroy(this->window_);
     this->window_ = nullptr;
   }

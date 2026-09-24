@@ -167,6 +167,7 @@ ANDROID_ARTIFACT_OUTPUT_MOUNTED=0
 ANDROID_ARTIFACT_INPUT_MOUNTED=0
 FLUTTER_PEER_SOURCE_MOUNTED=0
 FLUTTER_PEER_ONLINE_MOUNTED=0
+FLUTTER_PEER_CANDIDATE_MOUNTED=0
 
 fail() {
     printf 'verifier-VM guest: %s\n' "$*" >&2
@@ -3441,7 +3442,8 @@ run_flutter_model_tests() {
 
 run_flutter_peer_presentation() {
     local sealed_root=/mnt/rustdesk-sealed-inputs
-    local inputs=
+    local candidate_root=/mnt/rustdesk-flutter-candidate-input
+    local inputs=$sealed_root
     local source_root=$ROOT/flutter-peer-source
     local peer_script=$source_root/scripts/smoke-flutter-peer-presentation.sh
     local provenance=$source_root/scripts/offline-image-provenance.py
@@ -3476,24 +3478,25 @@ run_flutter_peer_presentation() {
     [ "$(stat -c '%u:%g:%a' -- "$sealed_root")" = 1000:1000:700 ] \
         || fail 'sealed Flutter-peer authority root metadata differs'
     if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
-        [ "$(find "$sealed_root" -mindepth 1 -maxdepth 1 -printf '%f\n' \
-            | LC_ALL=C sort)" = $'candidates\ninputs' ] \
-            || fail 'candidate Flutter-peer authority root inventory differs'
-        [ "$(stat -c '%u:%g:%a' -- "$sealed_root/inputs")" = 1000:1000:700 ] \
-            && [ "$(stat -c '%u:%g:%a' -- "$sealed_root/candidates")" = \
-                 1000:1000:700 ] \
-            && [ "$(find "$sealed_root/candidates" -mindepth 1 -maxdepth 1 \
-                -printf '%f\n' | LC_ALL=C sort)" = flutter-presentation ] \
-            || fail 'candidate Flutter-peer namespace differs'
-        [ "$(stat -c '%u:%g:%a' -- \
-            "$sealed_root/candidates/flutter-presentation")" = 1000:1000:700 ] \
-            && [ "$(find "$sealed_root/candidates/flutter-presentation" \
-                -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)" = \
+        mkdir "$candidate_root"
+        mount -t virtiofs -o ro,nodev,nosuid,noexec \
+            rustdesk-flutter-candidate-input "$candidate_root" \
+            || fail 'cannot mount the sealed Flutter candidate authority'
+        FLUTTER_PEER_CANDIDATE_MOUNTED=1
+        mount_options="$(findmnt -n -o OPTIONS --target "$candidate_root")" \
+            || fail 'sealed Flutter candidate mount is absent'
+        case ",$mount_options," in *,ro,*) ;; *) fail 'sealed Flutter candidate is writable' ;; esac
+        case ",$mount_options," in *,nodev,*) ;; *) fail 'sealed Flutter candidate permits devices' ;; esac
+        case ",$mount_options," in *,nosuid,*) ;; *) fail 'sealed Flutter candidate permits set-user-ID execution' ;; esac
+        case ",$mount_options," in *,noexec,*) ;; *) fail 'sealed Flutter candidate permits direct execution' ;; esac
+        [ "$(stat -c '%u:%g:%a' -- "$candidate_root")" = 1000:1000:700 ] \
+            && [ "$(find "$candidate_root" -mindepth 1 -maxdepth 1 \
+                -printf '%f\n' | LC_ALL=C sort)" = \
                  $'flutter-'"${FLUTTER_PRESENTATION_CANDIDATE_VERSION}"$'.tar.xz\npub-cache\npubspec.lock.discovery' ] \
             || fail 'candidate Flutter-peer closure namespace differs'
-        candidate_archive="$sealed_root/candidates/flutter-presentation/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz"
-        candidate_lock="$sealed_root/candidates/flutter-presentation/pubspec.lock.discovery"
-        candidate_pub_cache="$sealed_root/candidates/flutter-presentation/pub-cache"
+        candidate_archive="$candidate_root/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz"
+        candidate_lock="$candidate_root/pubspec.lock.discovery"
+        candidate_pub_cache="$candidate_root/pub-cache"
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$candidate_archive")" = \
           "1000:1000:400:1:$SIZE_FLUTTER_PRESENTATION_CANDIDATE" ] \
             && [ "$(sha256sum "$candidate_archive" | awk '{ print $1 }')" = \
@@ -3509,9 +3512,6 @@ run_flutter_peer_presentation() {
             && [ "$(stat -c '%u:%g:%a' -- "$candidate_pub_cache")" = \
                  1000:1000:500 ] \
             || fail 'candidate Flutter Pub cache metadata differs'
-        inputs=$sealed_root/inputs
-    else
-        inputs=$sealed_root
     fi
     devcheck_archive=$inputs/verifier-images/devcheck.docker.tar.gz
     builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
@@ -3700,6 +3700,10 @@ run_flutter_peer_presentation() {
     FLUTTER_PEER_ONLINE_MOUNTED=0
     umount "$source_root" || fail 'cannot retire the read-only Flutter-peer source mount'
     FLUTTER_PEER_SOURCE_MOUNTED=0
+    if [ "$FLUTTER_PEER_CANDIDATE_MOUNTED" -eq 1 ]; then
+        umount "$candidate_root" || fail 'cannot retire the sealed Flutter candidate mount'
+        FLUTTER_PEER_CANDIDATE_MOUNTED=0
+    fi
     umount "$sealed_root" || fail 'cannot retire the sealed Flutter-peer input mount'
     SEALED_INPUTS_MOUNTED=0
     printf 'FLUTTER_PEER_PRESENTATION_VM=pass commit=%s tree=%s archive=%s flutter=%s tools=%s candidate=%s devcheck_index=%s devcheck_runtime=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 nofile=524544 root=refused foreign=refused caller=refused vm_network=none container_network=owned-none-namespace inputs=readonly-landlocked cleanup=joined\n' \
@@ -3737,6 +3741,10 @@ cleanup() {
     if [ "$FLUTTER_PEER_SOURCE_MOUNTED" -eq 1 ]; then
         umount "$ROOT/flutter-peer-source" 2>/dev/null || status=1
         FLUTTER_PEER_SOURCE_MOUNTED=0
+    fi
+    if [ "$FLUTTER_PEER_CANDIDATE_MOUNTED" -eq 1 ]; then
+        umount /mnt/rustdesk-flutter-candidate-input 2>/dev/null || status=1
+        FLUTTER_PEER_CANDIDATE_MOUNTED=0
     fi
     if [ "$RUST_AUDIT_VENDOR_MOUNTED" -eq 1 ]; then
         umount "$ROOT/rust-audit-source/online/cargo-vendor" 2>/dev/null || status=1

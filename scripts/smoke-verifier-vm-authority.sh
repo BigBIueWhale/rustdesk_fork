@@ -185,7 +185,6 @@ if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
     FLUTTER_PEER_FLUTTER_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE
     FLUTTER_PEER_FLUTTER_SIZE=$SIZE_FLUTTER_PRESENTATION_CANDIDATE
     FLUTTER_PEER_PUB_CACHE_ROOT=$FLUTTER_PEER_CANDIDATE_PUB_CACHE
-    SEALED_INPUT_ROOT=$REPO_ROOT/online
 fi
 if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
    || [ "$MODE" = android-emulator-runtime ]; then
@@ -640,8 +639,6 @@ flutter_peer_input_inventory() {
     )
     if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
         directories=(
-            "$SEALED_INPUT_ROOT"
-            "$REPO_ROOT/online/candidates"
             "$FLUTTER_PEER_CANDIDATE_ROOT"
             "${directories[@]}"
         )
@@ -1340,17 +1337,6 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
              "$HOST_UID:$HOST_GID:700" ] \
         || fail 'sealed Flutter-peer input root metadata differs'
     if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
-        [ "$(/usr/bin/find "$SEALED_INPUT_ROOT" -mindepth 1 -maxdepth 1 \
-            -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = $'candidates\ninputs' ] \
-            || fail 'candidate Flutter-peer authority root inventory differs'
-        [ -d "$REPO_ROOT/online/candidates" ] \
-            && [ ! -L "$REPO_ROOT/online/candidates" ] \
-            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- \
-                "$REPO_ROOT/online/candidates")" = "$HOST_UID:$HOST_GID:700" ] \
-            && [ "$(/usr/bin/find "$REPO_ROOT/online/candidates" \
-                -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = \
-                 flutter-presentation ] \
-            || fail 'candidate Flutter-peer namespace differs'
         [ -d "$FLUTTER_PEER_CANDIDATE_ROOT" ] \
             && [ ! -L "$FLUTTER_PEER_CANDIDATE_ROOT" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a' -- \
@@ -1885,6 +1871,8 @@ readonly DART_SOURCE_ARCHIVE=$RUN/dart-source.tar
 readonly RUST_AUDIT_SOURCE_ARCHIVE=$RUN/rust-audit-source.tar
 readonly VIRTIOFS_SOCKET=$RUN/vfs-input.sock
 readonly VIRTIOFSD_LOG=$RUN/virtiofsd-input.log
+readonly FLUTTER_CANDIDATE_VIRTIOFS_SOCKET=$RUN/vfs-flutter-candidate.sock
+readonly FLUTTER_CANDIDATE_VIRTIOFSD_LOG=$RUN/virtiofsd-flutter-candidate.log
 readonly ARTIFACT_VIRTIOFS_SOCKET=$RUN/vfs-artifact.sock
 readonly ARTIFACT_VIRTIOFSD_LOG=$RUN/virtiofsd-artifact.log
 readonly ARTIFACT_INPUT_VIRTIOFS_SOCKET=$RUN/vfs-artifact-input.sock
@@ -2401,7 +2389,16 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
         -chardev "socket,id=sealed-input,path=$VIRTIOFS_SOCKET"
         -device "vhost-user-fs-pci,chardev=sealed-input,tag=rustdesk-sealed-inputs,queue-size=1024"
     )
-    if [ "$MODE" = android-emulator-app ]; then
+    if [ "$MODE" = flutter-peer-presentation ] \
+       && [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+        start_virtiofsd flutter-candidate-input "$FLUTTER_PEER_CANDIDATE_ROOT" \
+            "$(/usr/bin/stat -c '%d:%i' -- "$FLUTTER_PEER_CANDIDATE_ROOT")" \
+            "$FLUTTER_CANDIDATE_VIRTIOFS_SOCKET" "$FLUTTER_CANDIDATE_VIRTIOFSD_LOG"
+        focused_qemu_args+=(
+            -chardev "socket,id=flutter-candidate-input,path=$FLUTTER_CANDIDATE_VIRTIOFS_SOCKET"
+            -device "vhost-user-fs-pci,chardev=flutter-candidate-input,tag=rustdesk-flutter-candidate-input,queue-size=1024"
+        )
+    elif [ "$MODE" = android-emulator-app ]; then
         start_virtiofsd bounded-result "$ARTIFACT_OUTPUT_PARENT" \
             "$ARTIFACT_OUTPUT_PARENT_ID" \
             "$ARTIFACT_VIRTIOFS_SOCKET" "$ARTIFACT_VIRTIOFSD_LOG"

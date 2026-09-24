@@ -9,21 +9,23 @@ fail() {
 }
 
 [ "$#" -eq 4 ] || [ "$#" -eq 5 ] || [ "$#" -eq 6 ] \
-    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [lifecycle]]'
+    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [lifecycle|peer-lifecycle]]'
 readonly EMULATOR_ZIP=$1
 readonly SYSTEM_IMAGE_ZIP=$2
 readonly INPUT_ADB=$3
 readonly WORK_ROOT=$4
 readonly RUNTIME_TEST_APK=${5:-}
 readonly APP_SCENARIO=${6:-launch}
-if [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = lifecycle ]; then
+if [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = peer-lifecycle ]; then
+    readonly WORKLOAD=app-peer-lifecycle
+elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = lifecycle ]; then
     readonly WORKLOAD=app-lifecycle
 elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = launch ]; then
     readonly WORKLOAD=app
 elif [ -z "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = launch ]; then
     readonly WORKLOAD=boot
 else
-    fail 'the Android app scenario differs from launch or lifecycle'
+    fail 'the Android app scenario differs from launch, lifecycle, or peer-lifecycle'
 fi
 readonly SCRIPT_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/pins.env
@@ -33,7 +35,8 @@ readonly RUN_UID="$(id -u)"
 readonly RUN_GID="$(id -g)"
 [ "$RUN_UID:$RUN_GID" = 1000:1000 ] \
     || fail 'the emulator workload requires numeric uid/gid 1000:1000'
-if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ]; then
+if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
+   || [ "$WORKLOAD" = app-peer-lifecycle ]; then
     [ "$WORK_ROOT" = /tmp/android-emulator-app ] \
         || fail 'the emulator app work root differs from the fixed private tmpfs path'
 else
@@ -63,7 +66,8 @@ verify_regular_input \
     "$INPUT_ADB" 555 "$SIZE_ANDROID_PLATFORM_TOOLS_ADB_37_0_1" \
     "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1" 'Android adb executable'
 APK_SHA256=
-if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ]; then
+if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
+   || [ "$WORKLOAD" = app-peer-lifecycle ]; then
     [ -f "$RUNTIME_TEST_APK" ] && [ ! -L "$RUNTIME_TEST_APK" ] \
         || fail 'runtime-test APK is absent or ambiguous'
     apk_size="$(stat -c '%s' -- "$RUNTIME_TEST_APK")"
@@ -229,6 +233,28 @@ readonly SERIAL=emulator-5554
 EMULATOR_PID=
 ADB_PID=
 ADB_STARTED=0
+XVFB_PID=
+XVFB_START=
+SOURCE_PID=
+SOURCE_START=
+SERVER_PID=
+SERVER_START=
+PEER_DISTINCT_FRAMES=0
+PEER_FRESHNESS_MAX_MS=0
+PEER_INITIAL_RECOVERY_MS=0
+PEER_BACKGROUND_RECOVERY_MS=0
+PEER_TASK_RECOVERY_MAX_MS=0
+readonly PEER_RECOVERY_LIMIT_MS=8000
+readonly PEER_FRESHNESS_LIMIT_MS=2000
+
+monotonic_millis() {
+    local uptime ignored whole fraction
+    read -r uptime ignored < /proc/uptime || return 1
+    [[ "$uptime" =~ ^([0-9]+)\.([0-9]+)$ ]] || return 1
+    whole=${BASH_REMATCH[1]}
+    fraction=${BASH_REMATCH[2]}000
+    printf '%s\n' "$((10#$whole * 1000 + 10#${fraction:0:3}))"
+}
 
 process_start_time() {
     local pid=$1
@@ -249,6 +275,61 @@ is_exact_adb_process() {
     [ -n "$ADB_PID" ] && [ -n "$ADB_START" ] \
         && [ -r "/proc/$ADB_PID/stat" ] \
         && [ "$(process_start_time "$ADB_PID" 2>/dev/null)" = "$ADB_START" ]
+}
+
+is_exact_peer_process() {
+    local pid=$1 start=$2
+    [ -n "$pid" ] && [ -n "$start" ] && [ -r "/proc/$pid/stat" ] \
+        && [ "$(process_start_time "$pid" 2>/dev/null)" = "$start" ]
+}
+
+peer_server_established_count() {
+    awk 'FNR > 1 && $4 == "01" && $2 == "0100007F:527E" { count++ }
+         END { print count + 0 }' /proc/net/tcp
+}
+
+wait_peer_server_connections() {
+    local expected=$1 comparison=$2 count
+    for _ in $(seq 1 120); do
+        count="$(peer_server_established_count)"
+        case "$comparison" in
+            at-least) [ "$count" -ge "$expected" ] && return 0 ;;
+            exact) [ "$count" -eq "$expected" ] && return 0 ;;
+            *) return 2 ;;
+        esac
+        sleep 0.25
+    done
+    return 1
+}
+
+stop_peer_infrastructure() {
+    local status=0
+    if [ -n "$SERVER_PID" ]; then
+        if is_exact_peer_process "$SERVER_PID" "$SERVER_START"; then
+            "$PEER_READY" --terminate-server \
+                "$SERVER_PID" "$SERVER_START" "$PEER_SERVER_LOG" || status=1
+        fi
+        wait "$SERVER_PID" 2>/dev/null || status=1
+        SERVER_PID=
+        SERVER_START=
+    fi
+    if [ -n "$SOURCE_PID" ]; then
+        if is_exact_peer_process "$SOURCE_PID" "$SOURCE_START"; then
+            "$PEER_READY" --stop "$SOURCE_PID" "$SOURCE_START" || status=1
+        fi
+        wait "$SOURCE_PID" 2>/dev/null || status=1
+        SOURCE_PID=
+        SOURCE_START=
+    fi
+    if [ -n "$XVFB_PID" ]; then
+        if is_exact_peer_process "$XVFB_PID" "$XVFB_START"; then
+            "$PEER_READY" --stop "$XVFB_PID" "$XVFB_START" || status=1
+        fi
+        wait "$XVFB_PID" 2>/dev/null || true
+        XVFB_PID=
+        XVFB_START=
+    fi
+    return "$status"
 }
 
 stop_emulator() {
@@ -311,9 +392,16 @@ cleanup() {
     local status=$? cleanup_status=0
     trap - EXIT HUP INT TERM
     stop_emulator || cleanup_status=1
+    stop_peer_infrastructure || cleanup_status=1
     if [ "$status" -ne 0 ]; then
         tail -n 160 "$EMULATOR_LOG" >&2 2>/dev/null || true
         tail -n 80 "$ADB_LOG" >&2 2>/dev/null || true
+        [ -z "${PEER_SERVER_LOG:-}" ] \
+            || tail -n 120 "$PEER_SERVER_LOG" >&2 2>/dev/null || true
+        [ -z "${PEER_SOURCE_LOG:-}" ] \
+            || tail -n 80 "$PEER_SOURCE_LOG" >&2 2>/dev/null || true
+        [ -z "${PEER_XVFB_LOG:-}" ] \
+            || tail -n 80 "$PEER_XVFB_LOG" >&2 2>/dev/null || true
     fi
     [ "$cleanup_status" -eq 0 ] || [ "$status" -ne 0 ] || status=1
     exit "$status"
@@ -322,6 +410,107 @@ trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+    readonly PEER_TARGET=/smoke-target
+    readonly PEER_XVFB_ROOT=/xvfb-root
+    readonly PEER_XVFB_MANIFEST=$SCRIPT_DIR/smoke-xvfb-files.tsv
+    readonly PEER_READY=$SCRIPT_DIR/smoke-ready.sh
+    readonly PEER_PASSWORD=RuntimePeer1x
+    readonly PEER_SOURCE_LOG=$WORK_ROOT/peer-source.log
+    readonly PEER_SERVER_LOG=$WORK_ROOT/peer-server.log
+    readonly PEER_XVFB_LOG=$WORK_ROOT/peer-xvfb.log
+    [ "$(find /sys/class/net -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)" = lo ] \
+        || fail 'the real-peer runtime container has a non-loopback interface'
+    [ -f "$PEER_TARGET/android-peer-manifest.sha256" ] \
+        && [ ! -L "$PEER_TARGET/android-peer-manifest.sha256" ] \
+        || fail 'the Android peer runtime manifest is absent or ambiguous'
+    (cd "$PEER_TARGET" \
+        && sha256sum --check --strict android-peer-manifest.sha256 >/dev/null) \
+        || fail 'the Android peer runtime bundle differs from its manifest'
+    [ -f "$PEER_XVFB_MANIFEST" ] && [ ! -L "$PEER_XVFB_MANIFEST" ] \
+        || fail 'the Android peer Xvfb file manifest is absent or ambiguous'
+    xvfb_file_count=0
+    while IFS=$'\t' read -r relative size mode digest extra \
+          || [ -n "${relative:-}" ]; do
+        [ -n "${relative:-}" ] || continue
+        [[ "$relative" == \#* ]] && continue
+        [ -z "${extra:-}" ] \
+            && [[ "$relative" =~ ^[A-Za-z0-9._+/-]+$ ]] \
+            && [[ "$relative" != /* ]] \
+            && [[ "$relative" != ../* ]] \
+            && [[ "$relative" != */../* ]] \
+            && [[ "$size" =~ ^[1-9][0-9]*$ ]] \
+            && [[ "$mode" =~ ^(644|755)$ ]] \
+            && [[ "$digest" =~ ^[0-9a-f]{64}$ ]] \
+            || fail 'the Android peer Xvfb file manifest is malformed'
+        xvfb_file="$PEER_XVFB_ROOT/$relative"
+        [ -f "$xvfb_file" ] && [ ! -L "$xvfb_file" ] \
+            && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$xvfb_file")" = \
+                 "$RUN_UID:$RUN_GID:$mode:1:$size" ] \
+            && [ "$(sha256sum "$xvfb_file" | awk '{ print $1 }')" = "$digest" ] \
+            || fail "the Android peer Xvfb closure differs: $relative"
+        xvfb_file_count=$((xvfb_file_count + 1))
+    done < "$PEER_XVFB_MANIFEST"
+    [ "$xvfb_file_count" -eq 5 ] \
+        || fail 'the Android peer Xvfb file cardinality differs'
+    for executable in \
+        "$PEER_TARGET/debug/rustdesk" \
+        "$PEER_TARGET/debug/examples/seed_password" \
+        "$PEER_TARGET/debug/examples/smoke_readiness" \
+        "$PEER_TARGET/flutter-peer-source-x11" \
+        "$PEER_TARGET/smoke-bind-loopback.so" \
+        "$PEER_TARGET/smoke-server-launcher" \
+        "$PEER_XVFB_ROOT/usr/bin/Xvfb" /usr/bin/xkbcomp "$PEER_READY"; do
+        [ -f "$executable" ] && [ ! -L "$executable" ] && [ -x "$executable" ] \
+            || fail "the Android peer runtime executable is absent or ambiguous: $executable"
+    done
+    export DISPLAY=:99
+    LD_LIBRARY_PATH="$PEER_XVFB_ROOT/usr/lib/x86_64-linux-gnu" \
+        "$PEER_XVFB_ROOT/usr/bin/Xvfb" :99 -screen 0 640x480x24 \
+        -nolisten tcp -ac -noreset >"$PEER_XVFB_LOG" 2>&1 &
+    XVFB_PID=$!
+    XVFB_START="$(process_start_time "$XVFB_PID")" \
+        || fail 'cannot bind the Android peer Xvfb generation'
+    for _ in $(seq 1 100); do
+        [ -S /tmp/.X11-unix/X99 ] && break
+        is_exact_peer_process "$XVFB_PID" "$XVFB_START" \
+            || fail 'Android peer Xvfb exited before readiness'
+        sleep 0.1
+    done
+    [ -S /tmp/.X11-unix/X99 ] && [ ! -L /tmp/.X11-unix/X99 ] \
+        || fail 'Android peer Xvfb Unix socket did not become ready'
+    RUSTDESK_PRESENTATION_TRACE=1 "$PEER_TARGET/flutter-peer-source-x11" \
+        >"$PEER_SOURCE_LOG" 2>&1 &
+    SOURCE_PID=$!
+    SOURCE_START="$(process_start_time "$SOURCE_PID")" \
+        || fail 'cannot bind the Android peer source generation'
+    "$PEER_READY" --wait-log "$SOURCE_PID" "$SOURCE_START" "$PEER_SOURCE_LOG" \
+        'FLUTTER_PEER_SOURCE_READY display=:99 dimensions=640x480 interval_ms=250 states=256' \
+        'Android peer changing-source readiness'
+    install -d -m 0700 -- /tmp/android-peer-server-home
+    HOME=/tmp/android-peer-server-home \
+        "$PEER_TARGET/debug/examples/seed_password" "$PEER_PASSWORD" >/dev/null 2>&1 \
+        || fail 'cannot provision the Android peer test password'
+    HOME=/tmp/android-peer-server-home DISPLAY=:99 \
+        LD_PRELOAD="$PEER_TARGET/smoke-bind-loopback.so" \
+        "$PEER_TARGET/smoke-server-launcher" "$PEER_TARGET/debug/rustdesk" \
+        >"$PEER_SERVER_LOG" 2>&1 &
+    SERVER_PID=$!
+    SERVER_START="$(process_start_time "$SERVER_PID")" \
+        || fail 'cannot bind the controlled Android peer server generation'
+    "$PEER_READY" --wait-server "$SERVER_PID" "$SERVER_START" \
+        "$PEER_SERVER_LOG" "$PEER_TARGET/debug/examples/smoke_readiness" "$RUN_UID"
+    [ "$(awk 'FNR > 1 && $4 == "0A" { count++ } END { print count + 0 }' \
+        /proc/net/tcp)" -eq 1 ] \
+        && awk 'FNR > 1 && $4 == "0A" && $2 == "0100007F:527E" { count++ }
+            END { exit count == 1 ? 0 : 1 }' /proc/net/tcp \
+        || fail 'the controlled Android peer is not one exact 127.0.0.1:21118 listener'
+    [ "$(awk 'FNR > 1 { count++ } END { print count + 0 }' \
+        /proc/net/udp)" -eq 0 ] \
+        || fail 'the controlled Android peer opened a UDP socket'
+    printf 'ANDROID_PEER_INFRASTRUCTURE=ready server=production auth=cpace listener=127.0.0.1:21118 source=changing-x11 x11=unix-only container_network=none\n'
+fi
 
 "$ADB" server nodaemon >"$ADB_LOG" 2>&1 &
 ADB_PID=$!
@@ -712,6 +901,248 @@ assert_no_main_service() {
     ! grep -qF "$APP_PACKAGE/.MainService" <<<"$state"
 }
 
+peer_source_state() {
+    awk '/^RUSTDESK_PRESENTATION_TRACE stage=source-publish / {
+            for (i = 1; i <= NF; i++) {
+                if ($i ~ /^state=[0-9]+$/) {
+                    split($i, value, "="); state = value[2]
+                }
+            }
+         }
+         END { if (state != "") print state; else exit 1 }' "$PEER_SOURCE_LOG"
+}
+
+decode_peer_screenshot() {
+    local screenshot=$1 source_state=$2
+    python3 -I -S - "$screenshot" "$source_state" <<'PY'
+import collections
+import struct
+import sys
+import zlib
+
+path = sys.argv[1]
+source_state = int(sys.argv[2])
+palette = (
+    (232, 36, 36), (36, 224, 48), (36, 64, 232), (232, 220, 36),
+    (224, 36, 220), (36, 220, 220), (240, 120, 24), (128, 40, 232),
+    (24, 132, 232), (232, 40, 128), (132, 232, 24), (24, 232, 132),
+    (196, 92, 44), (44, 196, 92), (92, 44, 196), (196, 196, 196),
+)
+
+data = open(path, "rb").read()
+if len(data) > 8 * 1024 * 1024 or not data.startswith(b"\x89PNG\r\n\x1a\n"):
+    raise SystemExit(1)
+offset = 8
+idat = bytearray()
+width = height = depth = color_type = interlace = None
+while offset + 12 <= len(data):
+    length = struct.unpack(">I", data[offset:offset + 4])[0]
+    kind = data[offset + 4:offset + 8]
+    payload = data[offset + 8:offset + 8 + length]
+    if offset + 12 + length > len(data):
+        raise SystemExit(1)
+    if kind == b"IHDR":
+        width, height, depth, color_type, compression, filtering, interlace = \
+            struct.unpack(">IIBBBBB", payload)
+        if compression != 0 or filtering != 0:
+            raise SystemExit(1)
+    elif kind == b"IDAT":
+        idat.extend(payload)
+    elif kind == b"IEND":
+        break
+    offset += 12 + length
+if depth != 8 or color_type not in (2, 6) or interlace != 0:
+    raise SystemExit(1)
+channels = 3 if color_type == 2 else 4
+raw = zlib.decompress(bytes(idat))
+stride = width * channels
+if len(raw) != height * (stride + 1):
+    raise SystemExit(1)
+rows = []
+previous = bytearray(stride)
+cursor = 0
+for _ in range(height):
+    filter_type = raw[cursor]
+    scanline = bytearray(raw[cursor + 1:cursor + 1 + stride])
+    cursor += stride + 1
+    for index in range(stride):
+        left = scanline[index - channels] if index >= channels else 0
+        above = previous[index]
+        upper_left = previous[index - channels] if index >= channels else 0
+        if filter_type == 1:
+            scanline[index] = (scanline[index] + left) & 0xff
+        elif filter_type == 2:
+            scanline[index] = (scanline[index] + above) & 0xff
+        elif filter_type == 3:
+            scanline[index] = (scanline[index] + ((left + above) >> 1)) & 0xff
+        elif filter_type == 4:
+            estimate = left + above - upper_left
+            pa = abs(estimate - left)
+            pb = abs(estimate - above)
+            pc = abs(estimate - upper_left)
+            predictor = left if pa <= pb and pa <= pc else above if pb <= pc else upper_left
+            scanline[index] = (scanline[index] + predictor) & 0xff
+        elif filter_type != 0:
+            raise SystemExit(1)
+    rows.append(scanline)
+    previous = scanline
+
+regions = {
+    "left-right": (collections.Counter(), collections.Counter()),
+    "top-bottom": (collections.Counter(), collections.Counter()),
+}
+sample_count = 0
+for y in range(0, height, 2):
+    row = rows[y]
+    for x in range(0, width, 2):
+        base = x * channels
+        rgb = row[base], row[base + 1], row[base + 2]
+        distances = [sum((rgb[i] - color[i]) ** 2 for i in range(3)) for color in palette]
+        nearest = min(range(len(palette)), key=distances.__getitem__)
+        if distances[nearest] > 55 * 55:
+            continue
+        regions["left-right"][0 if x < width // 2 else 1][nearest] += 1
+        regions["top-bottom"][0 if y < height // 2 else 1][nearest] += 1
+        sample_count += 1
+
+candidates = []
+for layout, (first, second) in regions.items():
+    if not first or not second:
+        continue
+    low, low_count = first.most_common(1)[0]
+    high, high_count = second.most_common(1)[0]
+    state = high * 16 + low
+    age = (source_state - state) % 256
+    score = min(low_count, high_count)
+    candidates.append((age <= 8, score, -age, state, age, layout,
+                       low_count + high_count))
+valid = [candidate for candidate in candidates if candidate[0]]
+if not valid:
+    raise SystemExit(1)
+chosen = max(valid)
+_, score, _, state, age, layout, matched = chosen
+minimum = max(300, (width * height) // 40)
+if score < minimum or matched < minimum * 2:
+    raise SystemExit(1)
+print(f"{state} {age} {score} {matched} {layout}")
+PY
+}
+
+PEER_LAST_RECOVERY_MS=0
+capture_peer_freshness() {
+    local phase=$1 started_ms now_ms source_state screenshot decoded
+    local state age score matched layout max_age=0
+    local -A seen=()
+    started_ms="$(monotonic_millis)" \
+        || fail "cannot read the monotonic clock for $phase"
+    for attempt in $(seq 1 30); do
+        now_ms="$(monotonic_millis)" \
+            || fail "cannot reread the monotonic clock for $phase"
+        [ "$((now_ms - started_ms))" -le "$PEER_RECOVERY_LIMIT_MS" ] \
+            || break
+        screenshot="$WORK_ROOT/peer-$phase-$attempt.png"
+        timeout --signal=TERM --kill-after=2s 20s \
+            "$ADB" -s "$SERIAL" exec-out screencap -p >"$screenshot" \
+            || fail "cannot capture Android peer framebuffer for $phase"
+        source_state="$(peer_source_state 2>/dev/null || true)"
+        decoded=
+        if [[ "$source_state" =~ ^([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$ ]]; then
+            decoded="$(decode_peer_screenshot "$screenshot" "$source_state" 2>/dev/null || true)"
+        fi
+        rm -f -- "$screenshot"
+        if [[ "$decoded" =~ ^([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)\ (left-right|top-bottom)$ ]]; then
+            state=${BASH_REMATCH[1]}
+            age=${BASH_REMATCH[2]}
+            score=${BASH_REMATCH[3]}
+            matched=${BASH_REMATCH[4]}
+            layout=${BASH_REMATCH[5]}
+            seen[$state]=1
+            [ "$age" -le "$max_age" ] || max_age=$age
+            if [ "${#seen[@]}" -ge 2 ]; then
+                now_ms="$(monotonic_millis)" \
+                    || fail "cannot finish the monotonic measurement for $phase"
+                PEER_LAST_RECOVERY_MS=$((now_ms - started_ms))
+                [ "$PEER_LAST_RECOVERY_MS" -le "$PEER_RECOVERY_LIMIT_MS" ] \
+                    || break
+                PEER_DISTINCT_FRAMES=$((PEER_DISTINCT_FRAMES + ${#seen[@]}))
+                [ "$((max_age * 250))" -le "$PEER_FRESHNESS_MAX_MS" ] \
+                    || PEER_FRESHNESS_MAX_MS=$((max_age * 250))
+                printf 'ANDROID_PEER_FRESHNESS=pass phase=%s recovery_ms=%s max_age_ms=%s distinct=%s score=%s matched=%s layout=%s\n' \
+                    "$phase" "$PEER_LAST_RECOVERY_MS" "$((max_age * 250))" \
+                    "${#seen[@]}" "$score" "$matched" "$layout"
+                return 0
+            fi
+        fi
+        sleep 0.5
+    done
+    capture_ui_hierarchy complete && print_initial_ui_semantics
+    fail "Android peer display did not become fresh and changing for $phase"
+}
+
+open_peer_connection() {
+    local generation=$1 expect_password=$2 center x y
+    if ! wait_ui_center text 'Direct address' >/dev/null 2>&1; then
+        tap_ui text 'Connection' \
+            || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
+    fi
+    center="$(wait_ui_center text 'Direct address')" || return 1
+    read -r x y <<<"$center"
+    "$ADB" -s "$SERIAL" shell input tap "$x" "$y" >/dev/null || return 1
+    sleep 0.5
+    "$ADB" -s "$SERIAL" shell input keycombination \
+        KEYCODE_CTRL_LEFT KEYCODE_A >/dev/null || return 1
+    "$ADB" -s "$SERIAL" shell input text '10.0.2.2:21118' >/dev/null || return 1
+    wait_ui_center text '10.0.2.2:21118' >/dev/null \
+        || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
+    "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_ENTER >/dev/null || return 1
+    if [ "$expect_password" -eq 1 ]; then
+        wait_ui_center text 'Password Required' >/dev/null \
+            || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
+        capture_ui_hierarchy || return 1
+        center="$(ui_center focused-password-field 2>/dev/null || true)"
+        [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+        read -r x y <<<"$center"
+        "$ADB" -s "$SERIAL" shell input tap "$x" "$y" >/dev/null || return 1
+        "$ADB" -s "$SERIAL" shell input text "$PEER_PASSWORD" >/dev/null || return 1
+        "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null || return 1
+        capture_ui_hierarchy || return 1
+        ! grep -Fq "$PEER_PASSWORD" "$UI_XML" || return 1
+        tap_ui text 'Remember password' || return 1
+        tap_ui text 'OK' || return 1
+    else
+        sleep 1
+        if capture_ui_hierarchy \
+           && ui_center text 'Password Required' >/dev/null 2>&1; then
+            print_initial_ui_semantics
+            return 1
+        fi
+    fi
+    wait_peer_server_connections 1 exact || return 1
+    capture_peer_freshness "$generation"
+    wait_peer_server_connections 1 exact
+}
+
+exercise_peer_background_resume() {
+    local pid_before=$1
+    "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_HOME >/dev/null \
+        || fail 'cannot background the Android peer Activity'
+    sleep 4
+    [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$pid_before" ] \
+        || fail 'backgrounding replaced the MainService process'
+    wait_peer_server_connections 1 exact \
+        || fail 'backgrounding retired the live Android peer connection'
+    timeout --signal=TERM --kill-after=2s 60s \
+        "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" >/dev/null \
+        || fail 'cannot resume the backgrounded Android peer Activity'
+    wait_resumed_activity || fail 'backgrounded Android peer Activity did not resume'
+    [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$pid_before" ] \
+        || fail 'resuming replaced the MainService process'
+    capture_peer_freshness background-resume
+    wait_peer_server_connections 1 exact \
+        || fail 'background resume duplicated or retired the Android peer connection'
+    PEER_BACKGROUND_RECOVERY_MS=$PEER_LAST_RECOVERY_MS
+}
+
 readonly API="$(adb_shell_value getprop ro.build.version.sdk)"
 readonly ABI="$(adb_shell_value getprop ro.product.cpu.abi)"
 readonly SELINUX="$(adb_shell_value getenforce)"
@@ -721,7 +1152,9 @@ readonly SELINUX="$(adb_shell_value getenforce)"
 
 APP_PID=
 LIFECYCLE_RECEIPT_READY=0
-if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ]; then
+PEER_RECEIPT_READY=0
+if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
+   || [ "$WORKLOAD" = app-peer-lifecycle ]; then
     install_output="$(timeout --signal=TERM --kill-after=2s 180s \
         "$ADB" -s "$SERIAL" install --no-streaming --no-incremental \
         "$RUNTIME_TEST_APK")" \
@@ -734,7 +1167,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ]; then
         com.carriez.flutter_hbb)"
     [ "$resolved_activity" = com.carriez.flutter_hbb/.MainActivity ] \
         || fail "runtime-test launcher activity differs: $resolved_activity"
-    if [ "$WORKLOAD" = app-lifecycle ]; then
+    if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then
         timeout --signal=TERM --kill-after=2s 10s \
             "$ADB" -s "$SERIAL" shell pm grant "$APP_PACKAGE" \
             android.permission.POST_NOTIFICATIONS >/dev/null \
@@ -815,7 +1248,7 @@ PY
     wait_resumed_activity \
         || fail 'runtime-test MainActivity is not the resumed activity'
 
-    if [ "$WORKLOAD" = app-lifecycle ]; then
+    if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then
         share_command=
         for _ in $(seq 1 3); do
             tap_ui text 'Share screen' \
@@ -924,6 +1357,15 @@ PY
             <<<"$lifecycle_log" \
             || fail 'the initial lifecycle log contains a fatal ownership failure'
 
+        if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+            tap_ui text 'Connection' \
+                || fail 'cannot return to the production Connection page'
+            open_peer_connection initial 1 \
+                || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'the initial authenticated Android peer connection failed'; }
+            PEER_INITIAL_RECOVERY_MS=$PEER_LAST_RECOVERY_MS
+            exercise_peer_background_resume "$APP_PID"
+        fi
+
         for lifecycle_cycle in 1 2; do
             task_id="$(current_app_task_id 2>/dev/null || true)"
             [[ "$task_id" =~ ^[1-9][0-9]*$ ]] \
@@ -948,6 +1390,10 @@ PY
                 || fail "task removal $lifecycle_cycle killed or replaced the service process"
             assert_main_service \
                 || fail "task removal $lifecycle_cycle did not preserve MainService"
+            if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+                wait_peer_server_connections 0 exact \
+                    || fail "task removal $lifecycle_cycle retained the obsolete Android peer connection"
+            fi
             timeout --signal=TERM --kill-after=2s 60s \
                 "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" \
                 >/dev/null \
@@ -973,6 +1419,14 @@ PY
             ! grep -Eq 'FATAL EXCEPTION|Failed to resume Android client session ownership|MainService destruction retained incomplete generation authority' \
                 <<<"$lifecycle_log" \
                 || fail "relaunch $lifecycle_cycle logged a fatal ownership failure"
+            if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+                tap_ui text 'Connection' \
+                    || fail "relaunch $lifecycle_cycle cannot select Connection"
+                open_peer_connection "task-relaunch-$lifecycle_cycle" 0 \
+                    || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail "relaunch $lifecycle_cycle did not establish a fresh cached-credential peer session"; }
+                [ "$PEER_LAST_RECOVERY_MS" -le "$PEER_TASK_RECOVERY_MAX_MS" ] \
+                    || PEER_TASK_RECOVERY_MAX_MS=$PEER_LAST_RECOVERY_MS
+            fi
         done
 
         readonly PRE_FORCE_PID=$APP_PID
@@ -990,6 +1444,10 @@ PY
         done
         [ "$force_stopped" -eq 1 ] \
             || fail 'Force Stop did not remove both the process and MainService'
+        if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+            wait_peer_server_connections 0 exact \
+                || fail 'Force Stop retained the Android peer connection'
+        fi
         package_state="$(adb_shell_value dumpsys package "$APP_PACKAGE")"
         grep -Eq 'stopped=true' <<<"$package_state" \
             || fail 'Android did not record the package Force Stop state'
@@ -1024,6 +1482,19 @@ PY
         lifecycle_log="$(adb_shell_value logcat -d -v brief)"
         ! grep -Eq 'FATAL EXCEPTION' <<<"$lifecycle_log" \
             || fail 'the completed lifecycle logged a fatal exception'
+        if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+            retired_session_events="$(printf '%s\n' "$lifecycle_log" \
+                | grep -Ec 'Retired [1-9][0-9]* outgoing client peer session\(s\)' || true)"
+            [ "$retired_session_events" -eq 2 ] \
+                || fail 'the two removed tasks did not report exact outgoing-session retirement'
+            [ "$PEER_INITIAL_RECOVERY_MS" -le "$PEER_RECOVERY_LIMIT_MS" ] \
+                && [ "$PEER_BACKGROUND_RECOVERY_MS" -le "$PEER_RECOVERY_LIMIT_MS" ] \
+                && [ "$PEER_TASK_RECOVERY_MAX_MS" -le "$PEER_RECOVERY_LIMIT_MS" ] \
+                && [ "$PEER_FRESHNESS_MAX_MS" -le "$PEER_FRESHNESS_LIMIT_MS" ] \
+                && [ "$PEER_DISTINCT_FRAMES" -ge 8 ] \
+                || fail 'the Android peer display exceeded its recovery or freshness bounds'
+            PEER_RECEIPT_READY=1
+        fi
         LIFECYCLE_RECEIPT_READY=1
     fi
 fi
@@ -1059,13 +1530,27 @@ stop_emulator || fail 'Android emulator or adb did not stop within the bounded t
 [ -z "$(find /proc -maxdepth 2 -path '*/comm' -readable -exec \
     awk '$0 == "qemu-system-x86" { print FILENAME }' {} + 2>/dev/null)" ] \
     || fail 'an Android emulator process survived bounded teardown'
-if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ]; then
+if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+    stop_peer_infrastructure \
+        || fail 'the controlled Android peer infrastructure did not join'
+    grep -Eq '^FLUTTER_PEER_SOURCE_COMPLETE frames=[0-9]+$' "$PEER_SOURCE_LOG" \
+        || { tail -n 80 "$PEER_SOURCE_LOG" >&2; fail 'the changing X11 source did not close exactly'; }
+    [ "$(stat -c '%s' -- "$PEER_SOURCE_LOG")" -le 2097152 ] \
+        && [ "$(stat -c '%s' -- "$PEER_SERVER_LOG")" -le 2097152 ] \
+        && [ ! -s "$PEER_XVFB_LOG" ] \
+        || fail 'the controlled Android peer logs differ from their finite bounds'
+    [ "$(awk 'FNR > 1 && $2 == "0100007F:527E" { count++ }
+        END { print count + 0 }' /proc/net/tcp)" -eq 0 ] \
+        || fail 'the controlled Android peer listener survived teardown'
+fi
+if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
+   || [ "$WORKLOAD" = app-peer-lifecycle ]; then
     [ "$(sha256sum "$RUNTIME_TEST_APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
         || fail 'runtime-test APK changed during emulator execution'
     printf 'ANDROID_EMULATOR_APP=pass emulator=%s api=%s abi=%s package=com.carriez.flutter_hbb activity=MainActivity launch_wait=%s state=resumed process=stable-five-seconds apk_sha256=%s signing=test-only acceleration=software framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
         "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$LAUNCH_WAIT_STATUS" "$APK_SHA256" \
         "$framebuffer_dimensions" "$SELINUX"
-    if [ "$WORKLOAD" = app-lifecycle ]; then
+    if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then
         [ "$LIFECYCLE_RECEIPT_READY" -eq 1 ] \
             || fail 'the Android lifecycle receipt is not ready'
         framework_anr=absent
@@ -1080,6 +1565,15 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ]; then
         fi
         printf 'ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=%s apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
             "$framework_anr" "$APK_SHA256"
+        if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+            [ "$PEER_RECEIPT_READY" -eq 1 ] \
+                || fail 'the Android real-peer lifecycle receipt is not ready'
+            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=10.0.2.2:21118 service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 x11=unix-only cleanup=joined\n' \
+                "$PEER_INITIAL_RECOVERY_MS" "$PEER_BACKGROUND_RECOVERY_MS" "$PEER_TASK_RECOVERY_MAX_MS" \
+                "$PEER_RECOVERY_LIMIT_MS" \
+                "$PEER_FRESHNESS_MAX_MS" "$PEER_FRESHNESS_LIMIT_MS" \
+                "$PEER_DISTINCT_FRAMES" "$APK_SHA256"
+        fi
     fi
 else
     printf 'ANDROID_EMULATOR_BOOT=pass emulator=%s api=%s abi=%s acceleration=software framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \

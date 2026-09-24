@@ -87,6 +87,37 @@ start_server() {
 }
 
 case "$1" in
+  android-peer-build)
+    # Build only the controlled peer and the exact fixtures consumed by the native Android
+    # lifecycle transaction.  The broad server smoke builds many unrelated probes and test
+    # executables; keeping this target narrow makes retained-APK iteration bounded without
+    # replacing the production server or authentication path with a model.
+    verify_smoke_build_inputs
+    prepare_smoke_cargo_home
+    cargo build --locked --offline --features linux-pkg-config \
+      --bin rustdesk --example seed_password --example smoke_readiness --color never
+    verify_smoke_build_postconditions
+    chmod 0755 /smoke-target/debug/rustdesk \
+      /smoke-target/debug/examples/seed_password \
+      /smoke-target/debug/examples/smoke_readiness
+    cc -std=c11 -O2 -Wall -Wextra -Werror \
+      scripts/flutter-peer-source-x11.c $(pkg-config --cflags --libs x11) \
+      -o /smoke-target/flutter-peer-source-x11
+    cc -shared -fPIC -O2 -Wall -Wextra -Werror \
+      -o /smoke-target/smoke-bind-loopback.so scripts/smoke-bind-loopback.c -ldl
+    cc -O2 -Wall -Wextra -Werror \
+      -o /smoke-target/smoke-server-launcher scripts/smoke-server-launcher.c
+    chmod 0555 /smoke-target/flutter-peer-source-x11 \
+      /smoke-target/smoke-bind-loopback.so /smoke-target/smoke-server-launcher
+    (
+      cd /smoke-target
+      sha256sum debug/rustdesk debug/examples/seed_password \
+        debug/examples/smoke_readiness flutter-peer-source-x11 \
+        smoke-bind-loopback.so smoke-server-launcher > android-peer-manifest.sha256
+    )
+    chmod 0444 /smoke-target/android-peer-manifest.sha256
+    printf 'ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=6 network=none\n'
+    ;;
   build)
     verify_smoke_build_inputs
     prepare_smoke_cargo_home

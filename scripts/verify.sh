@@ -7625,7 +7625,7 @@ grep -qF 'cargo build --locked --offline --features linux-pkg-config' scripts/sm
   || r_s11e64="$r_s11e64 locked-offline-cargo-build-missing"
 grep -qF '/usr/bin/python3 -I -S "$CARGO_VENDOR_PROVENANCE" verify-subtree' scripts/smoke-server-stage.sh \
   || r_s11e64="$r_s11e64 vendor-provenance-verification-missing"
-[ "$(grep -Fc 'verify_smoke_build_inputs' scripts/smoke-server-stage.sh)" -eq 3 ] \
+[ "$(grep -Fc 'verify_smoke_build_inputs' scripts/smoke-server-stage.sh)" -eq 4 ] \
   || r_s11e64="$r_s11e64 vendor-pre-post-verification-cardinality-invalid"
 grep -qF 'SMOKE_CARGO_CONFIG_SHA256=$(/usr/bin/sha256sum -- "$CARGO_HOME/config.toml"' scripts/smoke-server-stage.sh \
   || r_s11e64="$r_s11e64 private-cargo-config-identity-missing"

@@ -322,9 +322,9 @@ elif [ "$MODE" = android-emulator-app ]; then
     readonly OVERLAY_SIZE=64G
     readonly VM_MEMORY=24576
 elif [ "$MODE" = android-emulator-runtime ]; then
-    readonly VM_TIMEOUT_SECONDS=900
-    readonly OVERLAY_SIZE=24G
-    readonly VM_MEMORY=16384
+    readonly VM_TIMEOUT_SECONDS=7200
+    readonly OVERLAY_SIZE=48G
+    readonly VM_MEMORY=24576
 elif [ "$MODE" = apple-conform ]; then
     readonly VM_TIMEOUT_SECONDS=3600
     readonly OVERLAY_SIZE=40G
@@ -708,15 +708,16 @@ android_emulator_runtime_input_inventory() {
     /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
         "$SEALED_INPUT_ROOT" "$REPO_ROOT/online/candidates" \
         "$ANDROID_EMULATOR_CANDIDATE_ROOT" "$ONLINE_INPUTS" \
-        "$ONLINE_INPUTS/android-sdk" "$ONLINE_INPUTS/android-sdk/platform-tools"
+        "$ONLINE_INPUTS/android-sdk" "$ONLINE_INPUTS/android-sdk/platform-tools" \
+        "$CARGO_VENDOR_ROOT" "$ONLINE_INPUTS/xvfb-debs"
     /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
         "$ANDROID_EMULATOR_ARCHIVE" "$ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE" \
         "$ANDROID_EMULATOR_ADB" "$DEV_CHECK_IMAGE_ARCHIVE" \
-        "$ANDROID_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+        "$ANDROID_BUILDER_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$VIRTIOFSD_PACKAGE"
     /usr/bin/sha256sum -- \
         "$ANDROID_EMULATOR_ARCHIVE" "$ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE" \
         "$ANDROID_EMULATOR_ADB" "$DEV_CHECK_IMAGE_ARCHIVE" \
-        "$ANDROID_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+        "$ANDROID_BUILDER_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$VIRTIOFSD_PACKAGE"
 }
 
 android_runtime_artifact_inventory() {
@@ -1205,12 +1206,21 @@ elif [ "$MODE" = android-emulator-runtime ]; then
             "$ONLINE_INPUTS/android-sdk/platform-tools")" = \
              "$HOST_UID:$HOST_GID:555" ] \
         || fail 'sealed Android runtime SDK directory metadata differs'
+    [ -d "$CARGO_VENDOR_ROOT" ] && [ ! -L "$CARGO_VENDOR_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
+             "$HOST_UID:$HOST_GID:500" ] \
+        && [ -d "$ONLINE_INPUTS/xvfb-debs" ] \
+        && [ ! -L "$ONLINE_INPUTS/xvfb-debs" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- \
+            "$ONLINE_INPUTS/xvfb-debs")" = "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'sealed Android peer build/runtime directories differ'
     for input in \
         "$ANDROID_EMULATOR_ARCHIVE:$SIZE_ANDROID_EMULATOR_LINUX_X64:$SHA256_ANDROID_EMULATOR_LINUX_X64:400" \
         "$ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE:$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64:$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64:400" \
         "$ANDROID_EMULATOR_ADB:$SIZE_ANDROID_PLATFORM_TOOLS_ADB_37_0_1:$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1:555" \
         "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE:400" \
         "$ANDROID_BUILDER_ARCHIVE:$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE:400" \
+        "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG:400" \
         "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE:400"; do
         path=${input%%:*}
         remainder=${input#*:}
@@ -2906,11 +2916,18 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     )
     [ "${#android_lifecycle_receipts[@]}" -eq 1 ] \
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android lifecycle runtime receipt is absent or duplicated'; }
+    mapfile -t android_peer_lifecycle_receipts < <(
+        /usr/bin/grep -Eo \
+            "ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=10\\.0\\.2\\.2:21118 service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_recovery_ms=[0-9]+ background_recovery_ms=[0-9]+ task_recovery_max_ms=[0-9]+ recovery_limit_ms=8000 freshness_max_ms=[0-9]+ freshness_limit_ms=2000 distinct_frames=([89]|[1-9][0-9]+) force_stop=baseline apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none server_listener=127\\.0\\.0\\.1:21118 x11=unix-only cleanup=joined" \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#android_peer_lifecycle_receipts[@]}" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android real-peer lifecycle receipt is absent or duplicated'; }
     require_exact_fixed_receipt \
-        "ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=$ANDROID_BUILDER_CONFIG_ID runtime=$DEV_CHECK_IMAGE_CONFIG_ID vm_network=none container_network=none inputs=readonly cleanup=joined" \
+        "ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=$ANDROID_BUILDER_CONFIG_ID runtime=$DEV_CHECK_IMAGE_CONFIG_ID peer=production-loopback-cpace-changing-display vm_network=none container_network=none inputs=readonly cleanup=joined" \
         'Android emulator runtime-check receipt'
     require_exact_fixed_receipt \
-        "ANDROID_EMULATOR_RUNTIME_VM=pass harness_commit=$ANDROID_EMULATOR_SOURCE_COMMIT harness_tree=$ANDROID_EMULATOR_SOURCE_TREE artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT artifact_tree=$ANDROID_RUNTIME_ARTIFACT_TREE apk_sha256=$ANDROID_RUNTIME_APK_SHA256 target=x86_64-linux-android emulator=$ANDROID_EMULATOR_VERSION api=$ANDROID_EMULATOR_SYSTEM_IMAGE_API builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID runtime_index=$DEV_CHECK_IMAGE_ID runtime_config=$DEV_CHECK_IMAGE_CONFIG_ID signing=test-only uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked artifact=readonly-landlocked source=exact-pushed cleanup=joined" \
+        "ANDROID_EMULATOR_RUNTIME_VM=pass harness_commit=$ANDROID_EMULATOR_SOURCE_COMMIT harness_tree=$ANDROID_EMULATOR_SOURCE_TREE artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT artifact_tree=$ANDROID_RUNTIME_ARTIFACT_TREE apk_sha256=$ANDROID_RUNTIME_APK_SHA256 target=x86_64-linux-android emulator=$ANDROID_EMULATOR_VERSION api=$ANDROID_EMULATOR_SYSTEM_IMAGE_API builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID runtime_index=$DEV_CHECK_IMAGE_ID runtime_config=$DEV_CHECK_IMAGE_CONFIG_ID signing=test-only peer=production-loopback-cpace-changing-display uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked artifact=readonly-landlocked source=exact-pushed cleanup=joined" \
         'Android emulator runtime VM receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
@@ -3199,7 +3216,7 @@ elif [ "$MODE" = android-emulator-app ]; then
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_ARTIFACT_DESTINATION" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = android-emulator-runtime ]; then
-    printf 'ANDROID_EMULATOR_RUNTIME_VM_OUTER=pass host_uid=%s harness_commit=%s harness_tree=%s artifact_commit=%s artifact_tree=%s apk_sha256=%s signing=test-only emulator=%s api=%s abi=x86_64 builder=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked artifact=readonly-landlocked docker=guest-only product=real-retained-apk-install-launch-render-task-remove-relaunch-force-stop cleanup=joined elapsed_seconds=%s\n' \
+    printf 'ANDROID_EMULATOR_RUNTIME_VM_OUTER=pass host_uid=%s harness_commit=%s harness_tree=%s artifact_commit=%s artifact_tree=%s apk_sha256=%s signing=test-only emulator=%s api=%s abi=x86_64 builder=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked artifact=readonly-landlocked docker=guest-only product=real-retained-apk-production-peer-cpace-changing-display-background-task-remove-relaunch-force-stop cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$ANDROID_EMULATOR_SOURCE_COMMIT" \
         "$ANDROID_EMULATOR_SOURCE_TREE" "$ANDROID_RUNTIME_ARTIFACT_COMMIT" \
         "$ANDROID_RUNTIME_ARTIFACT_TREE" "$ANDROID_RUNTIME_APK_SHA256" \

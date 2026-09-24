@@ -2706,7 +2706,7 @@ run_android_emulator_runtime() {
     local source_archive_sha input_mount_options artifact_mount_options online_mount_options
     local builder_load runtime_load workload_status=0 source_before inputs_before artifact_before
     local staged_apk_before
-    local entry_receipt apk_receipt runtime_receipt lifecycle_receipt check_receipt checksum_line
+    local entry_receipt apk_receipt runtime_receipt lifecycle_receipt peer_receipt check_receipt checksum_line
     local -a git_builder=(
         setpriv --reuid=1000 --regid=1000 --clear-groups
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
@@ -2757,6 +2757,10 @@ run_android_emulator_runtime() {
     for workload in \
         android-emulator-runtime-check.sh \
         smoke-android-emulator-boot.sh \
+        smoke-server-stage.sh \
+        smoke-xvfb-prepare.sh \
+        smoke-ready.sh \
+        online-input-provenance.py \
         verify-android-emulator-apk.py \
         verify-android-apk-manifest.py \
         offline-image-provenance.py \
@@ -2767,7 +2771,10 @@ run_android_emulator_runtime() {
                 "$source_root/scripts/$workload")" = 1000:1000:700:1 ] \
             || fail "Android emulator runtime workload metadata differs: $workload"
     done
-    for workload in pins.env lib.sh online-android-sdk-output.py; do
+    for workload in pins.env lib.sh online-android-sdk-output.py \
+        flutter-peer-source-x11.c \
+        smoke-bind-loopback.c smoke-server-launcher.c \
+        smoke-xvfb-files.tsv smoke-xvfb-packages.tsv; do
         [ -f "$source_root/scripts/$workload" ] \
             && [ ! -L "$source_root/scripts/$workload" ] \
             && [ "$(stat -c '%u:%g:%a:%h' -- \
@@ -2783,6 +2790,15 @@ run_android_emulator_runtime() {
         "$source_root/scripts/lib.sh" \
         "$source_root/scripts/android-emulator-runtime-check.sh" \
         "$source_root/scripts/smoke-android-emulator-boot.sh" \
+        "$source_root/scripts/smoke-server-stage.sh" \
+        "$source_root/scripts/smoke-xvfb-prepare.sh" \
+        "$source_root/scripts/smoke-ready.sh" \
+        "$source_root/scripts/online-input-provenance.py" \
+        "$source_root/scripts/flutter-peer-source-x11.c" \
+        "$source_root/scripts/smoke-bind-loopback.c" \
+        "$source_root/scripts/smoke-server-launcher.c" \
+        "$source_root/scripts/smoke-xvfb-files.tsv" \
+        "$source_root/scripts/smoke-xvfb-packages.tsv" \
         "$source_root/scripts/verify-android-emulator-apk.py" \
         "$source_root/scripts/verify-android-apk-manifest.py" \
         "$source_root/scripts/online-android-sdk-output.py" \
@@ -2983,8 +2999,14 @@ run_android_emulator_runtime() {
         || { tail -n 320 "$output" >&2; fail 'Android lifecycle runtime receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_LIFECYCLE=' "$output")" -eq 1 ] \
         || fail 'Android lifecycle runtime receipt is duplicated'
+    peer_receipt="$(grep -E \
+        "^ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=10\\.0\\.2\\.2:21118 service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_recovery_ms=[0-9]+ background_recovery_ms=[0-9]+ task_recovery_max_ms=[0-9]+ recovery_limit_ms=8000 freshness_max_ms=[0-9]+ freshness_limit_ms=2000 distinct_frames=([89]|[1-9][0-9]+) force_stop=baseline apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none server_listener=127\\.0\\.0\\.1:21118 x11=unix-only cleanup=joined$" \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android real-peer lifecycle receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_PEER_LIFECYCLE=' "$output")" -eq 1 ] \
+        || fail 'Android real-peer lifecycle receipt is duplicated'
     check_receipt="$(grep -Fx \
-        "ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=$ANDROID_BUILDER_CONFIG_ID runtime=$DEV_CHECK_IMAGE_CONFIG_ID vm_network=none container_network=none inputs=readonly cleanup=joined" \
+        "ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=$ANDROID_BUILDER_CONFIG_ID runtime=$DEV_CHECK_IMAGE_CONFIG_ID peer=production-loopback-cpace-changing-display vm_network=none container_network=none inputs=readonly cleanup=joined" \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android emulator runtime-check receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_RUNTIME_CHECK=' "$output")" -eq 1 ] \
@@ -3005,6 +3027,15 @@ run_android_emulator_runtime() {
           "$source_root/scripts/lib.sh" \
           "$source_root/scripts/android-emulator-runtime-check.sh" \
           "$source_root/scripts/smoke-android-emulator-boot.sh" \
+          "$source_root/scripts/smoke-server-stage.sh" \
+          "$source_root/scripts/smoke-xvfb-prepare.sh" \
+          "$source_root/scripts/smoke-ready.sh" \
+          "$source_root/scripts/online-input-provenance.py" \
+          "$source_root/scripts/flutter-peer-source-x11.c" \
+          "$source_root/scripts/smoke-bind-loopback.c" \
+          "$source_root/scripts/smoke-server-launcher.c" \
+          "$source_root/scripts/smoke-xvfb-files.tsv" \
+          "$source_root/scripts/smoke-xvfb-packages.tsv" \
           "$source_root/scripts/verify-android-emulator-apk.py" \
           "$source_root/scripts/verify-android-apk-manifest.py" \
           "$source_root/scripts/online-android-sdk-output.py" \
@@ -3047,8 +3078,8 @@ run_android_emulator_runtime() {
         || fail 'cannot retire the sealed Android runtime input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$entry_receipt" "$apk_receipt" "$runtime_receipt" \
-        "$lifecycle_receipt" "$check_receipt"
-    printf 'ANDROID_EMULATOR_RUNTIME_VM=pass harness_commit=%s harness_tree=%s artifact_commit=%s artifact_tree=%s apk_sha256=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s signing=test-only uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked artifact=readonly-landlocked source=exact-pushed cleanup=joined\n' \
+        "$lifecycle_receipt" "$peer_receipt" "$check_receipt"
+    printf 'ANDROID_EMULATOR_RUNTIME_VM=pass harness_commit=%s harness_tree=%s artifact_commit=%s artifact_tree=%s apk_sha256=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s signing=test-only peer=production-loopback-cpace-changing-display uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked artifact=readonly-landlocked source=exact-pushed cleanup=joined\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
         "$ANDROID_RUNTIME_ARTIFACT_COMMIT" "$ANDROID_RUNTIME_ARTIFACT_TREE" \
         "$ANDROID_RUNTIME_APK_SHA256" "$ANDROID_EMULATOR_VERSION" \

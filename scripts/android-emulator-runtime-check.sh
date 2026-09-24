@@ -127,11 +127,14 @@ verify_image() {
 WORKSPACE=
 WORKSPACE_ID=
 VERIFY_CONTAINER=
+BUILD_CONTAINER=
+XVFB_CONTAINER=
 RUNTIME_CONTAINER=
 cleanup() {
     local status=$? cleanup_status=0 container
     trap - EXIT HUP INT TERM
-    for container in "$RUNTIME_CONTAINER" "$VERIFY_CONTAINER"; do
+    for container in "$RUNTIME_CONTAINER" "$XVFB_CONTAINER" "$BUILD_CONTAINER" \
+        "$VERIFY_CONTAINER"; do
         [ -n "$container" ] || continue
         vm_docker rm -f "$container" >/dev/null 2>&1 || cleanup_status=1
     done
@@ -158,6 +161,11 @@ verify_android_sdk_root
 verify_sha256 "$EMULATOR_ZIP" "$SHA256_ANDROID_EMULATOR_LINUX_X64"
 verify_sha256 "$SYSTEM_IMAGE_ZIP" "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
 verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
+[ -d "$ONLINE_DIR/cargo-vendor" ] && [ ! -L "$ONLINE_DIR/cargo-vendor" ] \
+    || die 'sealed Cargo vendor input is absent or ambiguous'
+[ -d "$ONLINE_DIR/xvfb-debs" ] && [ ! -L "$ONLINE_DIR/xvfb-debs" ] \
+    || die 'sealed Xvfb package input is absent or ambiguous'
+verify_sha256 "$ONLINE_DIR/cargo-vendor-config.toml" "$SHA256_CARGO_VENDOR_CONFIG"
 verify_image android-builder "$ANDROID_BUILDER_CONFIG_ID"
 verify_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"
 
@@ -168,7 +176,13 @@ WORKSPACE_ID="$(stat -c '%d:%i' -- "$WORKSPACE")"
 [ "$(stat -c '%u:%g:%a' -- "$WORKSPACE")" = 1000:1000:700 ] \
     || die 'private runtime-check workspace metadata differs'
 readonly VERIFY_LOG=$WORKSPACE/verify.log
+readonly BUILD_LOG=$WORKSPACE/build.log
+readonly XVFB_LOG=$WORKSPACE/xvfb.log
 readonly RUNTIME_LOG=$WORKSPACE/runtime.log
+readonly SERVER_TARGET=$WORKSPACE/server-target
+readonly XVFB_DEBS=$WORKSPACE/xvfb-debs
+readonly XVFB_ROOT=$WORKSPACE/xvfb-root
+install -d -m 0700 -- "$SERVER_TARGET" "$XVFB_DEBS" "$XVFB_ROOT"
 
 VERIFY_CONTAINER="$(vm_docker create \
     --name rustdesk-android-emulator-runtime-verify \
@@ -227,11 +241,98 @@ esac
 vm_docker rm "$VERIFY_CONTAINER" >/dev/null
 VERIFY_CONTAINER=
 
+BUILD_CONTAINER="$(vm_docker create \
+    --name rustdesk-android-emulator-peer-build \
+    --pull=never --network=none --read-only \
+    --user 1000:1000 \
+    --pids-limit=1024 --memory=12g --memory-swap=12g --cpus=4 \
+    --ulimit nofile=8192:8192 --ulimit core=0:0 \
+    --cap-drop=ALL --security-opt=no-new-privileges \
+    --security-opt=apparmor=docker-default \
+    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g \
+    --env HOME=/tmp/android-peer-build \
+    --env CARGO_HOME=/tmp/smoke-cargo-home \
+    --env CARGO_TARGET_DIR=/smoke-target \
+    --env CARGO_INCREMENTAL=0 \
+    --env CARGO_NET_OFFLINE=true \
+    --env CARGO_NET_RETRY=0 \
+    --env "RUSTUP_TOOLCHAIN=${RUST_VERSION}.0-x86_64-unknown-linux-gnu" \
+    --env "SMOKE_EXPECTED_RUSTUP_TOOLCHAIN=${RUST_VERSION}.0-x86_64-unknown-linux-gnu" \
+    --env "SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256=$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+    --env "SMOKE_EXPECTED_VENDOR_CONFIG_SHA256=$SHA256_CARGO_VENDOR_CONFIG" \
+    --mount "type=bind,source=$REPO_ROOT,target=/work,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$SERVER_TARGET,target=/smoke-target,bind-recursive=disabled" \
+    --workdir /work \
+    "$DEV_CHECK_IMAGE_CONFIG_ID" \
+    /bin/bash --noprofile --norc \
+        /work/scripts/smoke-server-stage.sh android-peer-build)"
+[[ "$BUILD_CONTAINER" =~ ^[0-9a-f]{64}$ ]] \
+    || die 'Android peer build container ID is malformed'
+build_authority="$(vm_docker inspect --format \
+    '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}' \
+    "$BUILD_CONTAINER")"
+[ "$build_authority" = \
+  'none|true|1000:1000|12884901888|12884901888|4000000000|1024|["ALL"]|["no-new-privileges","apparmor=docker-default"]|{}|[]' ] \
+    || die "Android peer build authority differs: $build_authority"
+build_status=0
+vm_docker start --attach "$BUILD_CONTAINER" >"$BUILD_LOG" 2>&1 || build_status=$?
+[ "$build_status" -eq 0 ] \
+    || { tail -n 240 "$BUILD_LOG" >&2; die "Android peer build exited with status $build_status"; }
+[ "$(stat -c '%s' -- "$BUILD_LOG")" -le 4194304 ] \
+    || die 'Android peer build output exceeds its bound'
+[ "$(grep -c '^ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=6 network=none$' \
+    "$BUILD_LOG" || true)" -eq 1 ] \
+    || { tail -n 240 "$BUILD_LOG" >&2; die 'Android peer build receipt is absent or duplicated'; }
+[ "$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' \
+    "$BUILD_CONTAINER")" = exited:0 ] \
+    || die 'Android peer build container did not exit cleanly'
+vm_docker rm "$BUILD_CONTAINER" >/dev/null
+BUILD_CONTAINER=
+
+XVFB_CONTAINER="$(vm_docker create \
+    --name rustdesk-android-emulator-xvfb-prepare \
+    --pull=never --network=none --read-only \
+    --user 1000:1000 \
+    --pids-limit=64 --memory=512m --memory-swap=512m --cpus=1 \
+    --ulimit nofile=1024:1024 --ulimit core=0:0 \
+    --cap-drop=ALL --security-opt=no-new-privileges \
+    --security-opt=apparmor=docker-default \
+    --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=64m \
+    --mount "type=bind,source=$REPO_ROOT,target=/work,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$ONLINE_DIR/xvfb-debs,target=/xvfb-inputs,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$XVFB_DEBS,target=/xvfb-debs,bind-recursive=disabled" \
+    --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,bind-recursive=disabled" \
+    --workdir /work \
+    "$DEV_CHECK_IMAGE_CONFIG_ID" \
+    /bin/bash --noprofile --norc /work/scripts/smoke-xvfb-prepare.sh)"
+[[ "$XVFB_CONTAINER" =~ ^[0-9a-f]{64}$ ]] \
+    || die 'Android peer Xvfb preparation container ID is malformed'
+xvfb_authority="$(vm_docker inspect --format \
+    '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}' \
+    "$XVFB_CONTAINER")"
+[ "$xvfb_authority" = \
+  'none|true|1000:1000|536870912|536870912|1000000000|64|["ALL"]|["no-new-privileges","apparmor=docker-default"]|{}|[]' ] \
+    || die "Android peer Xvfb preparation authority differs: $xvfb_authority"
+xvfb_status=0
+vm_docker start --attach "$XVFB_CONTAINER" >"$XVFB_LOG" 2>&1 || xvfb_status=$?
+[ "$xvfb_status" -eq 0 ] \
+    || { tail -n 160 "$XVFB_LOG" >&2; die "Android peer Xvfb preparation exited with status $xvfb_status"; }
+[ "$(grep -c '^XVFB_PACKAGE_OK ' "$XVFB_LOG" || true)" -eq 5 ] \
+    && grep -Eq '^XVFB_TOOL_CLOSURE_OK packages=5 xvfb_sha256=[0-9a-f]{64} xkbcomp_sha256=[0-9a-f]{64}$' \
+        "$XVFB_LOG" \
+    || { tail -n 160 "$XVFB_LOG" >&2; die 'Android peer Xvfb preparation receipt differs'; }
+[ "$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' \
+    "$XVFB_CONTAINER")" = exited:0 ] \
+    || die 'Android peer Xvfb preparation container did not exit cleanly'
+vm_docker rm "$XVFB_CONTAINER" >/dev/null
+XVFB_CONTAINER=
+
 RUNTIME_CONTAINER="$(vm_docker create \
     --name rustdesk-android-emulator-runtime \
     --pull=never --network=none --read-only \
     --user 1000:1000 \
-    --pids-limit=768 --memory=12g --memory-swap=12g --cpus=4 \
+    --pids-limit=1024 --memory=12g --memory-swap=12g --cpus=4 \
     --shm-size=1g --ulimit nofile=8192:8192 --ulimit core=0:0 \
     --cap-drop=ALL --security-opt=no-new-privileges \
     --security-opt=apparmor=docker-default \
@@ -240,20 +341,24 @@ RUNTIME_CONTAINER="$(vm_docker create \
     --mount "type=bind,source=$SYSTEM_IMAGE_ZIP,target=/inputs/system-image.zip,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$ADB,target=/inputs/adb,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$APK,target=/inputs/app.apk,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$SERVER_TARGET,target=/smoke-target,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
     --tmpfs /tmp:rw,exec,nosuid,nodev,size=10g,mode=700,uid=1000,gid=1000 \
+    --tmpfs /tmp/.X11-unix:rw,noexec,nosuid,nodev,size=1m,mode=1777 \
     --workdir /source \
     "$DEV_CHECK_IMAGE_CONFIG_ID" \
     /bin/bash --noprofile --norc \
         /source/scripts/smoke-android-emulator-boot.sh \
         /inputs/emulator.zip /inputs/system-image.zip /inputs/adb \
-        /tmp/android-emulator-app /inputs/app.apk lifecycle)"
+        /tmp/android-emulator-app /inputs/app.apk peer-lifecycle)"
 [[ "$RUNTIME_CONTAINER" =~ ^[0-9a-f]{64}$ ]] \
     || die 'Android runtime container ID is malformed'
 runtime_authority="$(vm_docker inspect --format \
     '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{.HostConfig.ShmSize}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}' \
     "$RUNTIME_CONTAINER")"
 [ "$runtime_authority" = \
-  'none|true|1000:1000|12884901888|12884901888|4000000000|768|1073741824|["ALL"]|["no-new-privileges","apparmor=docker-default"]|{}|[]' ] \
+  'none|true|1000:1000|12884901888|12884901888|4000000000|1024|1073741824|["ALL"]|["no-new-privileges","apparmor=docker-default"]|{}|[]' ] \
     || die "Android runtime container authority differs: $runtime_authority"
 runtime_namespace="$(vm_docker inspect --format \
     '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}' \
@@ -284,6 +389,15 @@ case "${lifecycle_receipts[0]}" in
     *"apk_sha256=$APK_SHA256"*) ;;
     *) die 'Android lifecycle runtime reported a different APK digest' ;;
 esac
+mapfile -t peer_receipts < <(grep -E \
+    '^ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=10\.0\.2\.2:21118 service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_recovery_ms=[0-9]+ background_recovery_ms=[0-9]+ task_recovery_max_ms=[0-9]+ recovery_limit_ms=8000 freshness_max_ms=[0-9]+ freshness_limit_ms=2000 distinct_frames=([89]|[1-9][0-9]+) force_stop=baseline apk_sha256=[0-9a-f]{64} vm_network=none container_network=none server_listener=127\.0\.0\.1:21118 x11=unix-only cleanup=joined$' \
+    "$RUNTIME_LOG" || true)
+[ "${#peer_receipts[@]}" -eq 1 ] \
+    || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android real-peer lifecycle receipt is absent or duplicated'; }
+case "${peer_receipts[0]}" in
+    *"apk_sha256=$APK_SHA256"*) ;;
+    *) die 'Android real-peer lifecycle reported a different APK digest' ;;
+esac
 [ "$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' \
     "$RUNTIME_CONTAINER")" = exited:0 ] \
     || die 'Android runtime container did not exit cleanly'
@@ -299,10 +413,11 @@ verify_android_sdk_root
 verify_sha256 "$EMULATOR_ZIP" "$SHA256_ANDROID_EMULATOR_LINUX_X64"
 verify_sha256 "$SYSTEM_IMAGE_ZIP" "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
 verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
+verify_sha256 "$ONLINE_DIR/cargo-vendor-config.toml" "$SHA256_CARGO_VENDOR_CONFIG"
 verify_image android-builder "$ANDROID_BUILDER_CONFIG_ID"
 verify_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"
 printf '%s\n' "${apk_receipts[0]}" "${runtime_receipts[0]}" \
-    "${lifecycle_receipts[0]}"
-printf 'ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=%s apk_sha256=%s signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=%s runtime=%s vm_network=none container_network=none inputs=readonly cleanup=joined\n' \
+    "${lifecycle_receipts[0]}" "${peer_receipts[0]}"
+printf 'ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=%s apk_sha256=%s signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=%s runtime=%s peer=production-loopback-cpace-changing-display vm_network=none container_network=none inputs=readonly cleanup=joined\n' \
     "$ARTIFACT_SOURCE_COMMIT" "$APK_SHA256" \
     "$ANDROID_BUILDER_CONFIG_ID" "$DEV_CHECK_IMAGE_CONFIG_ID"

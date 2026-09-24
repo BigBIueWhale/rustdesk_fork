@@ -2625,8 +2625,8 @@ elif [ "$MODE" = android-emulator-boot ]; then
         'Android emulator boot cloud-init completion marker'
 elif [ "$MODE" = android-emulator-app ]; then
     mapfile -t android_artifact_receipts < <(
-        /usr/bin/grep -E \
-            '^ANDROID_EMULATOR_ARTIFACT_PREPARED=pass pending=\.android-x86_64-test-output-pending-[0-9a-f]{64} destination=android-x86_64-test apk_sha256=[0-9a-f]{64} signing=test-only publication=atomic-no-clobber$' \
+        /usr/bin/grep -Eo \
+            'ANDROID_EMULATOR_ARTIFACT_PREPARED=pass pending=\.android-x86_64-test-output-pending-[0-9a-f]{64} destination=android-x86_64-test apk_sha256=[0-9a-f]{64} signing=test-only publication=atomic-no-clobber' \
             "$SERIAL_LOG" || true
     )
     [ "${#android_artifact_receipts[@]}" -eq 1 ] \

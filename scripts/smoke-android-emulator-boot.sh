@@ -471,11 +471,15 @@ for node in ET.parse(sys.argv[1]).getroot().iter("node"):
         value = attributes.get(key, "").strip()
         if value:
             values.append(f"{key}={value[:240]!r}")
-    if not values:
+    if not values and attributes.get("class") != "android.widget.EditText":
         continue
     print("Android initial UI:", " ".join(values),
           f"class={attributes.get('class', '')!r}",
-          f"bounds={attributes.get('bounds', '')!r}")
+          f"bounds={attributes.get('bounds', '')!r}",
+          f"focusable={attributes.get('focusable', '')!r}",
+          f"focused={attributes.get('focused', '')!r}",
+          f"enabled={attributes.get('enabled', '')!r}",
+          f"password={attributes.get('password', '')!r}")
     shown += 1
     if shown == 80:
         break
@@ -688,7 +692,7 @@ PY
             || fail 'cannot inspect the permanent-password dialog'
         mapfile -t password_fields < <(ui_center field 2>/dev/null || true)
         [ "${#password_fields[@]}" -eq 2 ] \
-            || fail 'the permanent-password dialog does not expose two exact fields'
+            || { print_initial_ui_semantics; fail 'the permanent-password dialog does not expose two exact fields'; }
         readonly TEST_PASSWORD=Runtime1x
         read -r field_x field_y <<<"${password_fields[0]}"
         "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" >/dev/null \

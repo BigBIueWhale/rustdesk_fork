@@ -624,7 +624,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 path, kind, *wanted = sys.argv[1:]
-if kind not in ("focused-password-field", "password-fields") and not wanted:
+if kind not in ("address-field", "focused-password-field", "password-fields") and not wanted:
     raise SystemExit(2)
 nodes = ET.parse(path).getroot().iter("node")
 centers = set()
@@ -640,6 +640,14 @@ for node in nodes:
         matched = any(value in semantic_tokens for value in wanted)
     elif kind == "resource":
         matched = attributes.get("resource-id") in wanted
+    elif kind == "address-field":
+        matched = (
+            attributes.get("class") == "android.widget.EditText"
+            and attributes.get("focusable") == "true"
+            and attributes.get("enabled") == "true"
+            and attributes.get("password") == "false"
+            and (not wanted or attributes.get("text") in wanted)
+        )
     elif kind == "focused-password-field":
         matched = (
             attributes.get("class") == "android.widget.EditText"
@@ -1089,18 +1097,18 @@ capture_peer_freshness() {
 
 open_peer_connection() {
     local generation=$1 expect_password=$2 center x y
-    if ! wait_ui_center text 'Direct address' >/dev/null 2>&1; then
+    if ! wait_ui_center address-field >/dev/null 2>&1; then
         tap_ui text 'Connection' \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
     fi
-    center="$(wait_ui_center text 'Direct address')" || return 1
+    center="$(wait_ui_center address-field)" || return 1
     read -r x y <<<"$center"
     "$ADB" -s "$SERIAL" shell input tap "$x" "$y" >/dev/null || return 1
     sleep 0.5
     "$ADB" -s "$SERIAL" shell input keycombination \
         KEYCODE_CTRL_LEFT KEYCODE_A >/dev/null || return 1
     "$ADB" -s "$SERIAL" shell input text '10.0.2.2:21118' >/dev/null || return 1
-    wait_ui_center text '10.0.2.2:21118' >/dev/null \
+    wait_ui_center address-field '10.0.2.2:21118' >/dev/null \
         || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
     "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_ENTER >/dev/null || return 1
     if [ "$expect_password" -eq 1 ]; then

@@ -571,7 +571,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ]; then
         grep -Eq 'MANAGE_EXTERNAL_STORAGE: allow' <<<"$appops_state" \
             || fail 'the storage prerequisite is not granted'
         idle_state="$(adb_shell_value dumpsys deviceidle whitelist)"
-        grep -Eq "(^|,)$APP_PACKAGE$" <<<"$idle_state" \
+        grep -Eq "(^|,)$APP_PACKAGE(,|$)" <<<"$idle_state" \
             || fail 'the battery prerequisite is not granted'
     fi
     "$ADB" -s "$SERIAL" logcat -c \

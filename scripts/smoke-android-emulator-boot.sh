@@ -587,6 +587,7 @@ readonly APP_ACTIVITY=$APP_PACKAGE/.MainActivity
 readonly PEER_VIEW_ADDRESS=127.0.0.1:22118
 readonly PEER_REVERSE_DEVICE_SPEC=tcp:22118
 readonly PEER_REVERSE_CONTAINER_SPEC=tcp:21118
+readonly SERVICE_START_WARNING_TEXT='Turning on "Screen Capture" will automatically start the service, allowing other devices to request a connection to your device.'
 readonly UI_XML=$WORK_ROOT/window.xml
 readonly FRAMEWORK_ANR_MARKER=$WORK_ROOT/framework-anr.waited
 readonly IMMERSIVE_CLING_MARKER=$WORK_ROOT/immersive-cling.dismissed
@@ -1334,9 +1335,33 @@ PY
             "$ADB" -s "$SERIAL" shell input tap "$share_x" "$share_y" \
             >/dev/null \
             || fail 'cannot invoke the production screen-sharing command'
-        tap_ui text 'OK' \
-            || { print_initial_ui_semantics; fail 'cannot accept the production service-start warning'; }
-        wait_ui_center text 'Set password' >/dev/null \
+        service_warning_accepted=0
+        for service_start_attempt in $(seq 1 3); do
+            warning_title="$(wait_ui_center text 'Warning' 2>/dev/null || true)"
+            if [[ "$warning_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
+                capture_ui_hierarchy complete \
+                    || fail 'cannot inspect the production service-start warning'
+                warning_content="$(ui_center text \
+                    "$SERVICE_START_WARNING_TEXT" 2>/dev/null || true)"
+                [[ "$warning_content" =~ ^[0-9]+\ [0-9]+$ ]] \
+                    || { print_initial_ui_semantics; fail 'the production service-start warning text differs'; }
+                tap_ui text 'OK' \
+                    || { print_initial_ui_semantics; fail 'cannot accept the production service-start warning'; }
+                service_warning_accepted=1
+                break
+            fi
+            [ "$service_start_attempt" -lt 3 ] || break
+            share_command="$(wait_ui_center text 'Start screen sharing' 2>/dev/null || true)"
+            [[ "$share_command" =~ ^[0-9]+\ [0-9]+$ ]] || break
+            read -r share_x share_y <<<"$share_command"
+            timeout --signal=TERM --kill-after=2s 10s \
+                "$ADB" -s "$SERIAL" shell input tap "$share_x" "$share_y" \
+                >/dev/null \
+                || fail 'cannot retry the production screen-sharing command'
+        done
+        [ "$service_warning_accepted" -eq 1 ] \
+            || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'cannot observe the production service-start warning'; }
+        wait_ui_center text 'Set Password' >/dev/null \
             || { print_initial_ui_semantics; fail 'the production permanent-password dialog did not open'; }
         capture_ui_hierarchy \
             || fail 'cannot inspect the permanent-password dialog'

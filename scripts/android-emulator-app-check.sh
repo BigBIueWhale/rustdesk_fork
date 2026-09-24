@@ -99,11 +99,18 @@ verify_flutter_maven_root() {
     [ -z "$(find "$root" -xdev \
         \( ! -uid "$BUILD_UID" -o ! -gid "$BUILD_GID" \) -print -quit)" ] \
         || die 'Flutter Maven root ownership differs'
-    [ -z "$(find "$root" -xdev -type d \
-        \( ! -perm 0500 -o -perm /0277 \) -print -quit)" ] \
-        && [ -z "$(find "$root" -xdev -type f \
+    if [ "$layout" = flat ]; then
+        [ "$(stat -c '%u:%g:%a' -- "$root")" = \
+          "$BUILD_UID:$BUILD_GID:700" ] \
+            || die 'Flutter Maven publication root is not current-user-private mode 0700'
+    else
+        [ -z "$(find "$root" -xdev -type d \
+            \( ! -perm 0500 -o -perm /0277 \) -print -quit)" ] \
+            || die 'Flutter Maven projection directory modes differ'
+    fi
+    [ -z "$(find "$root" -xdev -type f \
         \( ! -perm 0400 -o -perm /0377 \) -print -quit)" ] \
-        || die 'Flutter Maven root modes differ'
+        || die 'Flutter Maven input modes differ'
     for specification in \
         "flutter_embedding_release:jar:$SIZE_FLUTTER_ANDROID_EMBEDDING_RELEASE_JAR:$SHA256_FLUTTER_ANDROID_EMBEDDING_RELEASE_JAR" \
         "flutter_embedding_release:pom:$SIZE_FLUTTER_ANDROID_EMBEDDING_RELEASE_POM:$SHA256_FLUTTER_ANDROID_EMBEDDING_RELEASE_POM" \

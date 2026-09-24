@@ -741,10 +741,20 @@ PY
         || fail 'runtime-test MainActivity is not the resumed activity'
 
     if [ "$WORKLOAD" = app-lifecycle ]; then
-        tap_ui text 'Share screen' \
-            || { print_initial_ui_semantics; fail 'cannot select the production Share screen page'; }
-        tap_ui text 'Start screen sharing' \
-            || { print_initial_ui_semantics; fail 'cannot invoke the production screen-sharing command'; }
+        share_command=
+        for _ in $(seq 1 3); do
+            tap_ui text 'Share screen' \
+                || { print_initial_ui_semantics; fail 'cannot select the production Share screen page'; }
+            share_command="$(wait_ui_center text 'Start screen sharing' 2>/dev/null || true)"
+            [[ "$share_command" =~ ^[0-9]+\ [0-9]+$ ]] && break
+        done
+        [[ "$share_command" =~ ^[0-9]+\ [0-9]+$ ]] \
+            || { print_initial_ui_semantics; fail 'cannot observe the production screen-sharing command'; }
+        read -r share_x share_y <<<"$share_command"
+        timeout --signal=TERM --kill-after=2s 10s \
+            "$ADB" -s "$SERIAL" shell input tap "$share_x" "$share_y" \
+            >/dev/null \
+            || fail 'cannot invoke the production screen-sharing command'
         tap_ui text 'OK' \
             || { print_initial_ui_semantics; fail 'cannot accept the production service-start warning'; }
         wait_ui_center text 'Set password' >/dev/null \

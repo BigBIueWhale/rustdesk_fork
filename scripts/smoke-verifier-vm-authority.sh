@@ -283,6 +283,13 @@ readonly CLEANUP_HELPER="$SCRIPT_DIR/verify-private-tree-closure.py"
 readonly LIB_SOURCE="$SCRIPT_DIR/lib.sh"
 readonly PIN_SOURCE="$SCRIPT_DIR/pins.env"
 readonly SERIAL_LIMIT=8388608
+if [ "$MODE" = android-emulator-boot ] \
+   || [ "$MODE" = android-emulator-app ] \
+   || [ "$MODE" = android-emulator-runtime ]; then
+    readonly VM_CPUS=8
+else
+    readonly VM_CPUS=4
+fi
 if [ "$MODE" = debian-systemd-lifecycle ]; then
     readonly VM_TIMEOUT_SECONDS=480
     readonly OVERLAY_SIZE=8G
@@ -2433,7 +2440,7 @@ vm_started_seconds=$SECONDS
         -accel kvm \
         -cpu host \
         "${memory_args[@]}" \
-        -smp 4 \
+        -smp "$VM_CPUS" \
         -no-reboot \
         -no-user-config \
         -nodefaults \

@@ -20,6 +20,8 @@ LIFECYCLE_ARTIFACT_SHA256=
 LIFECYCLE_COMMIT=
 DEV_CHECK_ARCHIVE=
 FLUTTER_PEER_CANDIDATE=0
+ANDROID_RUNTIME_ARTIFACT_COMMIT=
+ANDROID_RUNTIME_APK_SHA256=
 case "$#:${1:-}" in
     0:)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -68,6 +70,16 @@ case "$#:${1:-}" in
             || { echo 'Android emulator app input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-emulator-app
         ;;
+    5:--android-emulator-runtime)
+        [ "$2" = --artifact-commit ] && [ "$4" = --apk-sha256 ] \
+            || { echo 'invalid Android emulator runtime argument order' >&2; exit 2; }
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Android emulator runtime input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-emulator-runtime
+        ANDROID_RUNTIME_ARTIFACT_COMMIT=$3
+        ANDROID_RUNTIME_APK_SHA256=$5
+        ;;
     1:--apple-conform)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -113,12 +125,13 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
-        printf 'usage: %s [--hbb-common-fs | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-emulator-boot | --android-emulator-app | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
 readonly MODE LIFECYCLE_ARTIFACT LIFECYCLE_ARTIFACT_SHA256 LIFECYCLE_COMMIT \
-    DEV_CHECK_ARCHIVE FLUTTER_PEER_CANDIDATE
+    DEV_CHECK_ARCHIVE FLUTTER_PEER_CANDIDATE ANDROID_RUNTIME_ARTIFACT_COMMIT \
+    ANDROID_RUNTIME_APK_SHA256
 readonly INPUT_ROOT="${VERIFIER_VM_INPUT_ROOT:-$REPO_ROOT/.harness-state/verifier-vm}"
 readonly RUN_ROOT="${VERIFIER_VM_RUN_ROOT:-$INPUT_ROOT}"
 readonly IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
@@ -174,7 +187,8 @@ if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
     FLUTTER_PEER_PUB_CACHE_ROOT=$FLUTTER_PEER_CANDIDATE_PUB_CACHE
     SEALED_INPUT_ROOT=$REPO_ROOT/online
 fi
-if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ]; then
+if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
+   || [ "$MODE" = android-emulator-runtime ]; then
     SEALED_INPUT_ROOT=$REPO_ROOT/online
 fi
 readonly FLUTTER_PEER_FLUTTER_VERSION FLUTTER_PEER_FLUTTER_ARCHIVE \
@@ -239,7 +253,9 @@ readonly WINDOWS_GOLDEN_SOURCE="$SCRIPT_DIR/verify-windows-golden.sh"
 readonly ANDROID_RUST_SOURCE="$SCRIPT_DIR/android-rust-check.sh"
 readonly ANDROID_EMULATOR_BOOT_SOURCE="$SCRIPT_DIR/smoke-android-emulator-boot.sh"
 readonly ANDROID_EMULATOR_APP_SOURCE="$SCRIPT_DIR/android-emulator-app-check.sh"
+readonly ANDROID_EMULATOR_RUNTIME_SOURCE="$SCRIPT_DIR/android-emulator-runtime-check.sh"
 readonly ANDROID_EMULATOR_APK_VERIFIER="$SCRIPT_DIR/verify-android-emulator-apk.py"
+readonly ANDROID_APK_MANIFEST_VERIFIER="$SCRIPT_DIR/verify-android-apk-manifest.py"
 readonly ARTIFACT_RESULT_PUBLISHER_SOURCE="$SCRIPT_DIR/publish-artifact-result.py"
 readonly ANDROID_ARTIFACT_STATE_ROOT="$REPO_ROOT/.harness-state/android-emulator-artifacts"
 readonly ANDROID_ARTIFACT_DESTINATION=android-x86_64-test
@@ -299,6 +315,10 @@ elif [ "$MODE" = android-emulator-app ]; then
     readonly VM_TIMEOUT_SECONDS=21600
     readonly OVERLAY_SIZE=64G
     readonly VM_MEMORY=24576
+elif [ "$MODE" = android-emulator-runtime ]; then
+    readonly VM_TIMEOUT_SECONDS=900
+    readonly OVERLAY_SIZE=24G
+    readonly VM_MEMORY=16384
 elif [ "$MODE" = apple-conform ]; then
     readonly VM_TIMEOUT_SECONDS=3600
     readonly OVERLAY_SIZE=40G
@@ -331,6 +351,7 @@ CAPTURE_PID=
 CAPTURE_START=
 KERNEL_FD=
 INITRD_FD=
+ANDROID_ARTIFACT_INPUT_FD=
 VIRTIOFSD_PIDS=()
 VIRTIOFSD_STARTS=()
 VIRTIOFSD_LOGS=()
@@ -344,6 +365,10 @@ ARTIFACT_STATE_ROOT_CREATED=0
 ARTIFACT_STATE_ROOT_ID=
 ANDROID_ARTIFACT_PENDING=
 ANDROID_ARTIFACT_SHA256=
+ANDROID_ARTIFACT_INPUT_ROOT=
+ANDROID_ARTIFACT_INPUT_ID=
+ANDROID_ARTIFACT_INPUT_INVENTORY=
+ANDROID_RUNTIME_ARTIFACT_TREE=
 RUN_COMPLETE=0
 
 fail() {
@@ -675,6 +700,34 @@ android_emulator_input_inventory() {
         | /usr/bin/xargs -0 -r /usr/bin/sha256sum
 }
 
+android_emulator_runtime_input_inventory() {
+    /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
+        "$SEALED_INPUT_ROOT" "$REPO_ROOT/online/candidates" \
+        "$ANDROID_EMULATOR_CANDIDATE_ROOT" "$ONLINE_INPUTS" \
+        "$ONLINE_INPUTS/android-sdk" "$ONLINE_INPUTS/android-sdk/platform-tools"
+    /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+        "$ANDROID_EMULATOR_ARCHIVE" "$ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE" \
+        "$ANDROID_EMULATOR_ADB" "$DEV_CHECK_IMAGE_ARCHIVE" \
+        "$ANDROID_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+    /usr/bin/sha256sum -- \
+        "$ANDROID_EMULATOR_ARCHIVE" "$ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE" \
+        "$ANDROID_EMULATOR_ADB" "$DEV_CHECK_IMAGE_ARCHIVE" \
+        "$ANDROID_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+}
+
+android_runtime_artifact_inventory() {
+    local destination apk checksum
+    destination="$ANDROID_ARTIFACT_INPUT_ROOT/$ANDROID_ARTIFACT_DESTINATION"
+    apk="$destination/rustdesk-x86_64-runtime-test.apk"
+    checksum="$apk.sha256"
+    /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
+        "$ANDROID_ARTIFACT_INPUT_ROOT" "$destination"
+    /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$apk" "$checksum"
+    /usr/bin/sha256sum -- "$apk" "$checksum"
+    /usr/bin/find "$ANDROID_ARTIFACT_INPUT_ROOT" -xdev -mindepth 1 \
+        -printf '%P:%y\n' | LC_ALL=C /usr/bin/sort
+}
+
 android_rust_target_input_inventory() {
     /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS"
     /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
@@ -804,6 +857,10 @@ cleanup() {
     if [ -n "$INITRD_FD" ]; then
         exec {INITRD_FD}<&- || cleanup_failed=1
         INITRD_FD=
+    fi
+    if [ -n "$ANDROID_ARTIFACT_INPUT_FD" ]; then
+        exec {ANDROID_ARTIFACT_INPUT_FD}<&- || cleanup_failed=1
+        ANDROID_ARTIFACT_INPUT_FD=
     fi
     if [ -n "$ARTIFACT_OUTPUT_FD" ]; then
         exec {ARTIFACT_OUTPUT_FD}<&- || cleanup_failed=1
@@ -1109,6 +1166,68 @@ elif [ "$MODE" = android-owner-tests ]; then
         || fail 'focused Android owner-state Kotlin compiler closure differs'
     android_owner_input_inventory >/dev/null \
         || fail 'cannot inventory focused Android owner-state inputs'
+elif [ "$MODE" = android-emulator-runtime ]; then
+    [ -d "$SEALED_INPUT_ROOT" ] && [ ! -L "$SEALED_INPUT_ROOT" ] \
+        && [ "$(/usr/bin/readlink -f -- "$SEALED_INPUT_ROOT")" = \
+             "$SEALED_INPUT_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$SEALED_INPUT_ROOT")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'sealed Android runtime authority root metadata differs'
+    [ -d "$REPO_ROOT/online/candidates" ] \
+        && [ ! -L "$REPO_ROOT/online/candidates" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- \
+            "$REPO_ROOT/online/candidates")" = "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'Android runtime candidate namespace metadata differs'
+    [ -d "$ANDROID_EMULATOR_CANDIDATE_ROOT" ] \
+        && [ ! -L "$ANDROID_EMULATOR_CANDIDATE_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- \
+            "$ANDROID_EMULATOR_CANDIDATE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
+        && [ "$(/usr/bin/find "$ANDROID_EMULATOR_CANDIDATE_ROOT" \
+            -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = \
+             $'emulator-linux_x64-'"${ANDROID_EMULATOR_ARCHIVE_BUILD}"$'.zip\nflutter-maven\nrust-std-1.75-x86_64-linux-android.tar.xz\nvcpkg\nx86_64-'"${ANDROID_EMULATOR_SYSTEM_IMAGE_API}"'_r'"${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}"'.zip' ] \
+        || fail 'Android runtime candidate closure namespace differs'
+    [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'sealed Android runtime input root metadata differs'
+    [ -d "$ONLINE_INPUTS/android-sdk" ] \
+        && [ ! -L "$ONLINE_INPUTS/android-sdk" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- \
+            "$ONLINE_INPUTS/android-sdk")" = "$HOST_UID:$HOST_GID:555" ] \
+        && [ -d "$ONLINE_INPUTS/android-sdk/platform-tools" ] \
+        && [ ! -L "$ONLINE_INPUTS/android-sdk/platform-tools" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- \
+            "$ONLINE_INPUTS/android-sdk/platform-tools")" = \
+             "$HOST_UID:$HOST_GID:555" ] \
+        || fail 'sealed Android runtime SDK directory metadata differs'
+    for input in \
+        "$ANDROID_EMULATOR_ARCHIVE:$SIZE_ANDROID_EMULATOR_LINUX_X64:$SHA256_ANDROID_EMULATOR_LINUX_X64:400" \
+        "$ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE:$SIZE_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64:$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64:400" \
+        "$ANDROID_EMULATOR_ADB:$SIZE_ANDROID_PLATFORM_TOOLS_ADB_37_0_1:$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1:555" \
+        "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE:400" \
+        "$ANDROID_BUILDER_ARCHIVE:$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_ANDROID_BUILDER_IMAGE_ARCHIVE:400" \
+        "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE:400"; do
+        path=${input%%:*}
+        remainder=${input#*:}
+        size=${remainder%%:*}
+        remainder=${remainder#*:}
+        digest=${remainder%%:*}
+        mode=${remainder##*:}
+        [ -f "$path" ] && [ ! -L "$path" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" = \
+                 "$HOST_UID:$HOST_GID:$mode:1:$size" ] \
+            || fail "sealed Android runtime input metadata differs: $path"
+        verify_sha256 "$path" "$digest"
+    done
+    verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
+    [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Package)" = virtiofsd ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Version)" = \
+             "$VERIFIER_VM_VIRTIOFSD_PACKAGE_VERSION" ] \
+        && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Architecture)" = amd64 ] \
+        || fail 'authenticated virtiofsd package identity differs'
+    android_emulator_runtime_input_inventory >/dev/null \
+        || fail 'cannot inventory the sealed Android runtime inputs'
 elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ]; then
     [ -d "$SEALED_INPUT_ROOT" ] && [ ! -L "$SEALED_INPUT_ROOT" ] \
         && [ "$(/usr/bin/readlink -f -- "$SEALED_INPUT_ROOT")" = \
@@ -1340,7 +1459,7 @@ PY
 for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" \
     "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" \
     "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" \
-    "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" \
+    "$ANDROID_BUILDER_SOURCE" "$ANDROID_APK_BUILD_SOURCE" "$ANDROID_BUILDER_CHECKER" \
     "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" \
     "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" \
     "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" \
@@ -1357,7 +1476,8 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" \
     "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" \
     "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" \
-    "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_APK_VERIFIER" \
+    "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_RUNTIME_SOURCE" \
+    "$ANDROID_EMULATOR_APK_VERIFIER" "$ANDROID_APK_MANIFEST_VERIFIER" \
     "$ARTIFACT_RESULT_PUBLISHER_SOURCE" \
     "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" \
     "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" \
@@ -1390,6 +1510,8 @@ done
     && [ -x "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" ] \
     && [ -x "$SYSTEMD_LOGINCTL_SOURCE" ] \
     && [ -x "$ANDROID_RUST_SOURCE" ] \
+    && [ -x "$ANDROID_EMULATOR_APP_SOURCE" ] \
+    && [ -x "$ANDROID_EMULATOR_RUNTIME_SOURCE" ] \
     && [ -x "$DART_AUDIT_SOURCE" ] \
     && [ -x "$WINDOWS_HELPER_RUNTIME_TEST" ] \
     && [ -x "$CAPTURE_HELPER" ] && [ -x "$CLEANUP_HELPER" ] \
@@ -1505,20 +1627,21 @@ fi
 ANDROID_EMULATOR_SOURCE_COMMIT=
 ANDROID_EMULATOR_SOURCE_TREE=
 ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256=
-if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ]; then
+if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
+   || [ "$MODE" = android-emulator-runtime ]; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
-        || fail 'Android emulator boot requires the one checked-out master authority'
+        || fail 'Android emulator workloads require the one checked-out master authority'
     ANDROID_EMULATOR_SOURCE_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
-        || fail 'cannot resolve Android emulator boot source commit'
+        || fail 'cannot resolve Android emulator harness source commit'
     ANDROID_EMULATOR_SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
-        || fail 'cannot resolve Android emulator boot source tree'
+        || fail 'cannot resolve Android emulator harness source tree'
     [ "$ANDROID_EMULATOR_SOURCE_COMMIT" = \
       "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/heads/master)" ] \
         && [ "$ANDROID_EMULATOR_SOURCE_COMMIT" = \
              "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/remotes/origin/master)" ] \
-        || fail 'Android emulator boot source differs from pushed master'
+        || fail 'Android emulator harness source differs from pushed master'
     [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
-        || fail 'Android emulator boot requires a clean source tree'
+        || fail 'Android emulator workloads require a clean source tree'
     [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
         || fail 'Git replacement refs are forbidden'
 fi
@@ -1652,6 +1775,76 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     DEV_CHECK_ARCHIVE_ID="$(/usr/bin/stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$DEV_CHECK_ARCHIVE")"
 fi
 
+if [ "$MODE" = android-emulator-runtime ]; then
+    [[ "$ANDROID_RUNTIME_ARTIFACT_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'Android runtime artifact source commit is malformed'
+    [[ "$ANDROID_RUNTIME_APK_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'Android runtime APK digest is malformed'
+    [ "$(git_closed -C "$REPO_ROOT" rev-parse --verify \
+        "${ANDROID_RUNTIME_ARTIFACT_COMMIT}^{commit}" 2>/dev/null)" = \
+      "$ANDROID_RUNTIME_ARTIFACT_COMMIT" ] \
+        || fail 'Android runtime artifact source commit is absent'
+    git_closed -C "$REPO_ROOT" merge-base --is-ancestor \
+        "$ANDROID_RUNTIME_ARTIFACT_COMMIT" refs/remotes/origin/master \
+        || fail 'Android runtime artifact source commit is not on pushed master history'
+    ANDROID_RUNTIME_ARTIFACT_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify \
+        "${ANDROID_RUNTIME_ARTIFACT_COMMIT}^{tree}")" \
+        || fail 'cannot resolve Android runtime artifact source tree'
+    [[ "$ANDROID_RUNTIME_ARTIFACT_TREE" =~ ^[0-9a-f]{40}$ ]] \
+        || fail 'Android runtime artifact source tree is malformed'
+    [ -d "$ANDROID_ARTIFACT_STATE_ROOT" ] \
+        && [ ! -L "$ANDROID_ARTIFACT_STATE_ROOT" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ANDROID_ARTIFACT_STATE_ROOT")" = \
+             "$ANDROID_ARTIFACT_STATE_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ANDROID_ARTIFACT_STATE_ROOT")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'Android runtime artifact state root metadata differs'
+    ANDROID_ARTIFACT_INPUT_ROOT="$ANDROID_ARTIFACT_STATE_ROOT/$ANDROID_RUNTIME_ARTIFACT_COMMIT"
+    [ -d "$ANDROID_ARTIFACT_INPUT_ROOT" ] \
+        && [ ! -L "$ANDROID_ARTIFACT_INPUT_ROOT" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ANDROID_ARTIFACT_INPUT_ROOT")" = \
+             "$ANDROID_ARTIFACT_INPUT_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ANDROID_ARTIFACT_INPUT_ROOT")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        && [ "$(/usr/bin/find "$ANDROID_ARTIFACT_INPUT_ROOT" \
+            -mindepth 1 -maxdepth 1 -printf '%f\n')" = \
+             "$ANDROID_ARTIFACT_DESTINATION" ] \
+        || fail 'commit-bound Android runtime artifact root differs'
+    artifact_destination="$ANDROID_ARTIFACT_INPUT_ROOT/$ANDROID_ARTIFACT_DESTINATION"
+    artifact_apk="$artifact_destination/rustdesk-x86_64-runtime-test.apk"
+    artifact_checksum="$artifact_apk.sha256"
+    [ -d "$artifact_destination" ] && [ ! -L "$artifact_destination" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$artifact_destination")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        && [ "$(/usr/bin/find "$artifact_destination" -mindepth 1 -maxdepth 1 \
+            -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = \
+             $'rustdesk-x86_64-runtime-test.apk\nrustdesk-x86_64-runtime-test.apk.sha256' ] \
+        || fail 'Android runtime artifact destination inventory differs'
+    for artifact_file in "$artifact_apk" "$artifact_checksum"; do
+        [ -f "$artifact_file" ] && [ ! -L "$artifact_file" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$artifact_file")" = \
+                 "$HOST_UID:$HOST_GID:400:1" ] \
+            || fail "Android runtime artifact file metadata differs: $artifact_file"
+    done
+    [ "$(<"$artifact_checksum")" = \
+      "$ANDROID_RUNTIME_APK_SHA256  rustdesk-x86_64-runtime-test.apk" ] \
+        && [ "$(/usr/bin/sha256sum "$artifact_apk" | /usr/bin/awk '{ print $1 }')" = \
+             "$ANDROID_RUNTIME_APK_SHA256" ] \
+        || fail 'Android runtime artifact digest differs'
+    [ -z "$(/usr/bin/findmnt -rn -o TARGET --submounts \
+        "$ANDROID_ARTIFACT_INPUT_ROOT")" ] \
+        || fail 'Android runtime artifact root contains a descendant mount'
+    ANDROID_ARTIFACT_INPUT_ID="$(/usr/bin/stat -c '%d:%i' -- \
+        "$ANDROID_ARTIFACT_INPUT_ROOT")"
+    ANDROID_ARTIFACT_INPUT_INVENTORY="$(android_runtime_artifact_inventory)" \
+        || fail 'cannot inventory the commit-bound Android runtime artifact'
+    exec {ANDROID_ARTIFACT_INPUT_FD}<"$ANDROID_ARTIFACT_INPUT_ROOT" \
+        || fail 'cannot retain the commit-bound Android runtime artifact root'
+    [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$ANDROID_ARTIFACT_INPUT_FD")" = \
+      "$ANDROID_ARTIFACT_INPUT_ID" ] \
+        || fail 'retained Android runtime artifact root identity differs'
+fi
+
 RUN="$(/usr/bin/mktemp -d "$RUN_ROOT/run.XXXXXXXXXX")" \
     || fail 'cannot create the private verifier-VM run'
 RUN_ID="$(/usr/bin/stat -c '%d:%i' -- "$RUN")"
@@ -1687,6 +1880,8 @@ readonly VIRTIOFS_SOCKET=$RUN/vfs-input.sock
 readonly VIRTIOFSD_LOG=$RUN/virtiofsd-input.log
 readonly ARTIFACT_VIRTIOFS_SOCKET=$RUN/vfs-artifact.sock
 readonly ARTIFACT_VIRTIOFSD_LOG=$RUN/virtiofsd-artifact.log
+readonly ARTIFACT_INPUT_VIRTIOFS_SOCKET=$RUN/vfs-artifact-input.sock
+readonly ARTIFACT_INPUT_VIRTIOFSD_LOG=$RUN/virtiofsd-artifact-input.log
 
 if [ "$MODE" = android-emulator-app ]; then
     if [ -e "$ANDROID_ARTIFACT_STATE_ROOT" ] \
@@ -1725,7 +1920,7 @@ git_package_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$GIT_PACKAGE")
 boot_root_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$BOOT_ROOT")"
 kernel_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$KERNEL"):$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")"
-sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_APK_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")"
+sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_APK_BUILD_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_RUNTIME_SOURCE" "$ANDROID_EMULATOR_APK_VERIFIER" "$ANDROID_APK_MANIFEST_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")"
 focused_inputs_before=
 if [ "$MODE" = hbb-common-fs ]; then
     focused_inputs_before="$(
@@ -1777,6 +1972,9 @@ elif [ "$MODE" = flutter-model-tests ]; then
 elif [ "$MODE" = android-owner-tests ]; then
     focused_inputs_before="$(android_owner_input_inventory)" \
         || fail 'cannot inventory the sealed Android owner-state inputs'
+elif [ "$MODE" = android-emulator-runtime ]; then
+    focused_inputs_before="$(android_emulator_runtime_input_inventory)" \
+        || fail 'cannot inventory the sealed Android runtime inputs'
 elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ]; then
     focused_inputs_before="$(android_emulator_input_inventory)" \
         || fail 'cannot inventory the sealed Android emulator inputs'
@@ -1888,14 +2086,15 @@ elif [ "$MODE" = android-owner-tests ]; then
         || fail 'extracted virtiofsd binary is absent or ambiguous'
     /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
     verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
-elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ]; then
+elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
+   || [ "$MODE" = android-emulator-runtime ]; then
     git_closed -C "$REPO_ROOT" archive --format=tar "$ANDROID_EMULATOR_SOURCE_COMMIT" \
         >"$ANDROID_EMULATOR_SOURCE_ARCHIVE" \
-        || fail 'cannot create the exact Android emulator boot source archive'
+        || fail 'cannot create the exact Android emulator harness source archive'
     /usr/bin/chmod 0400 "$ANDROID_EMULATOR_SOURCE_ARCHIVE"
     [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$ANDROID_EMULATOR_SOURCE_ARCHIVE")" = \
       "$HOST_UID:$HOST_GID:400:1" ] \
-        || fail 'Android emulator boot source archive metadata differs'
+        || fail 'Android emulator harness source archive metadata differs'
     ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256="$(
         /usr/bin/sha256sum "$ANDROID_EMULATOR_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }'
     )"
@@ -1985,7 +2184,8 @@ elif [ "$MODE" = flutter-model-tests ]; then
 elif [ "$MODE" = android-owner-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$ANDROID_OWNER_SOURCE_ARCHIVE")
-elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ]; then
+elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
+   || [ "$MODE" = android-emulator-runtime ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$ANDROID_EMULATOR_SOURCE_ARCHIVE")
 elif [ "$MODE" = flutter-peer-presentation ]; then
@@ -2060,7 +2260,9 @@ fi
     "repo/scripts/android-rust-check.sh=$ANDROID_RUST_SOURCE" \
     "repo/scripts/smoke-android-emulator-boot.sh=$ANDROID_EMULATOR_BOOT_SOURCE" \
     "repo/scripts/android-emulator-app-check.sh=$ANDROID_EMULATOR_APP_SOURCE" \
+    "repo/scripts/android-emulator-runtime-check.sh=$ANDROID_EMULATOR_RUNTIME_SOURCE" \
     "repo/scripts/verify-android-emulator-apk.py=$ANDROID_EMULATOR_APK_VERIFIER" \
+    "repo/scripts/verify-android-apk-manifest.py=$ANDROID_APK_MANIFEST_VERIFIER" \
     "repo/scripts/publish-artifact-result.py=$ARTIFACT_RESULT_PUBLISHER_SOURCE" \
     "repo/scripts/offline-image-provenance.py=$OFFLINE_IMAGE_PROVENANCE_SOURCE" \
     "repo/scripts/online-fetch.sh=$ONLINE_FETCH_SOURCE" \
@@ -2117,6 +2319,8 @@ elif [ "$MODE" = android-emulator-boot ]; then
     guest_invocation+=" --android-emulator-boot /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-emulator-app ]; then
     guest_invocation+=" --android-emulator-app /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
+elif [ "$MODE" = android-emulator-runtime ]; then
+    guest_invocation+=" --android-emulator-runtime /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256 $ANDROID_RUNTIME_ARTIFACT_COMMIT $ANDROID_RUNTIME_ARTIFACT_TREE $ANDROID_RUNTIME_APK_SHA256"
 elif [ "$MODE" = flutter-peer-presentation ]; then
     if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
         guest_invocation+=" --flutter-peer-presentation-candidate /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256"
@@ -2180,6 +2384,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-owner-tests ] \
    || [ "$MODE" = android-emulator-boot ] \
    || [ "$MODE" = android-emulator-app ] \
+   || [ "$MODE" = android-emulator-runtime ] \
    || [ "$MODE" = flutter-peer-presentation ] \
    || [ "$MODE" = rust-audit ]; then
     start_virtiofsd sealed-input "$SEALED_INPUT_ROOT" \
@@ -2196,6 +2401,14 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
         focused_qemu_args+=(
             -chardev "socket,id=artifact-output,path=$ARTIFACT_VIRTIOFS_SOCKET"
             -device "vhost-user-fs-pci,chardev=artifact-output,tag=rustdesk-android-artifact-output,queue-size=1024"
+        )
+    elif [ "$MODE" = android-emulator-runtime ]; then
+        start_virtiofsd sealed-input "$ANDROID_ARTIFACT_INPUT_ROOT" \
+            "$ANDROID_ARTIFACT_INPUT_ID" \
+            "$ARTIFACT_INPUT_VIRTIOFS_SOCKET" "$ARTIFACT_INPUT_VIRTIOFSD_LOG"
+        focused_qemu_args+=(
+            -chardev "socket,id=artifact-input,path=$ARTIFACT_INPUT_VIRTIOFS_SOCKET"
+            -device "vhost-user-fs-pci,chardev=artifact-input,tag=rustdesk-android-artifact-input,queue-size=1024"
         )
     fi
     memory_args=(
@@ -2644,6 +2857,33 @@ elif [ "$MODE" = android-emulator-app ]; then
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'Android emulator app cloud-init completion marker'
+elif [ "$MODE" = android-emulator-runtime ]; then
+    require_exact_fixed_receipt \
+        "VERIFIER_VM_ENTRY_AUTHORITY=pass uid=1000 gid=1000 network=none docker=$VERIFIER_VM_DOCKER_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root" \
+        'Android emulator runtime entry-authority receipt'
+    mapfile -t android_runtime_apk_receipts < <(
+        /usr/bin/grep -Eo \
+            "ANDROID_EMULATOR_APK=pass sha256=$ANDROID_RUNTIME_APK_SHA256 package=com\\.carriez\\.flutter_hbb abi=x86_64 native_libraries=[1-9][0-9]* signer=[0-9A-F]{64} signing=test-only" \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#android_runtime_apk_receipts[@]}" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android runtime APK receipt is absent or duplicated'; }
+    mapfile -t android_runtime_app_receipts < <(
+        /usr/bin/grep -Eo \
+            "ANDROID_EMULATOR_APP=pass emulator=37\\.1\\.11 api=34 abi=x86_64 package=com\\.carriez\\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only acceleration=software framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined" \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#android_runtime_app_receipts[@]}" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android runtime app receipt is absent or duplicated'; }
+    require_exact_fixed_receipt \
+        "ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=$ANDROID_BUILDER_CONFIG_ID runtime=$DEV_CHECK_IMAGE_CONFIG_ID vm_network=none container_network=none inputs=readonly cleanup=joined" \
+        'Android emulator runtime-check receipt'
+    require_exact_fixed_receipt \
+        "ANDROID_EMULATOR_RUNTIME_VM=pass harness_commit=$ANDROID_EMULATOR_SOURCE_COMMIT harness_tree=$ANDROID_EMULATOR_SOURCE_TREE artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT artifact_tree=$ANDROID_RUNTIME_ARTIFACT_TREE apk_sha256=$ANDROID_RUNTIME_APK_SHA256 target=x86_64-linux-android emulator=$ANDROID_EMULATOR_VERSION api=$ANDROID_EMULATOR_SYSTEM_IMAGE_API builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID runtime_index=$DEV_CHECK_IMAGE_ID runtime_config=$DEV_CHECK_IMAGE_CONFIG_ID signing=test-only uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked artifact=readonly-landlocked source=exact-pushed cleanup=joined" \
+        'Android emulator runtime VM receipt'
+    require_exact_fixed_receipt \
+        'VERIFIER_VM_CLOUD_INIT=pass' \
+        'Android emulator runtime cloud-init completion marker'
 elif [ "$MODE" = flutter-peer-presentation ]; then
     require_exact_fixed_receipt \
         "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_FLUTTER_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace" \
@@ -2713,7 +2953,7 @@ fi
     || fail 'direct-boot kernel changed during execution'
 [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")" = "$initrd_before" ] \
     || fail 'direct-boot initramfs changed during execution'
-[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_APK_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
+[ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_APK_BUILD_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_RUNTIME_SOURCE" "$ANDROID_EMULATOR_APK_VERIFIER" "$ANDROID_APK_MANIFEST_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
     || fail 'verifier-VM harness source changed during execution'
 if [ "$MODE" = hbb-common-fs ]; then
     focused_inputs_after="$(
@@ -2804,6 +3044,21 @@ elif [ "$MODE" = android-owner-tests ]; then
         && [ "$(/usr/bin/sha256sum "$ANDROID_OWNER_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
              "$ANDROID_OWNER_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'focused Android owner-state source archive changed during execution'
+elif [ "$MODE" = android-emulator-runtime ]; then
+    focused_inputs_after="$(android_emulator_runtime_input_inventory)" \
+        || fail 'cannot re-inventory the sealed Android runtime inputs'
+    [ "$focused_inputs_after" = "$focused_inputs_before" ] \
+        || fail 'sealed Android runtime inputs changed during execution'
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$ANDROID_EMULATOR_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        && [ "$(/usr/bin/sha256sum "$ANDROID_EMULATOR_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
+             "$ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'Android emulator runtime harness source archive changed during execution'
+    [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$ANDROID_ARTIFACT_INPUT_FD")" = \
+      "$ANDROID_ARTIFACT_INPUT_ID" ] \
+        && [ "$(android_runtime_artifact_inventory)" = \
+             "$ANDROID_ARTIFACT_INPUT_INVENTORY" ] \
+        || fail 'commit-bound Android runtime artifact changed during execution'
 elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ]; then
     focused_inputs_after="$(android_emulator_input_inventory)" \
         || fail 'cannot re-inventory the sealed Android emulator inputs'
@@ -2911,6 +3166,14 @@ elif [ "$MODE" = android-emulator-app ]; then
         "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" "$ANDROID_BUILDER_CONFIG_ID" \
         "$DEV_CHECK_IMAGE_CONFIG_ID" "$ANDROID_ARTIFACT_SHA256" \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_ARTIFACT_DESTINATION" \
+        "$vm_elapsed_seconds"
+elif [ "$MODE" = android-emulator-runtime ]; then
+    printf 'ANDROID_EMULATOR_RUNTIME_VM_OUTER=pass host_uid=%s harness_commit=%s harness_tree=%s artifact_commit=%s artifact_tree=%s apk_sha256=%s signing=test-only emulator=%s api=%s abi=x86_64 builder=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked artifact=readonly-landlocked docker=guest-only product=real-retained-apk-install-launch-render cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$ANDROID_EMULATOR_SOURCE_COMMIT" \
+        "$ANDROID_EMULATOR_SOURCE_TREE" "$ANDROID_RUNTIME_ARTIFACT_COMMIT" \
+        "$ANDROID_RUNTIME_ARTIFACT_TREE" "$ANDROID_RUNTIME_APK_SHA256" \
+        "$ANDROID_EMULATOR_VERSION" "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" \
+        "$ANDROID_BUILDER_CONFIG_ID" "$DEV_CHECK_IMAGE_CONFIG_ID" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = flutter-peer-presentation ]; then
     printf 'FLUTTER_PEER_PRESENTATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s flutter=%s tools=%s candidate=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only product=linux-x11-full-peer-focus-reconnect-resource cleanup=joined elapsed_seconds=%s\n' \

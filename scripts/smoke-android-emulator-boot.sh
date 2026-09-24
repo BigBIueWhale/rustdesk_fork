@@ -393,8 +393,10 @@ if [ "$WORKLOAD" = app ]; then
         "$ADB" -s "$SERIAL" install --no-streaming --no-incremental \
         "$RUNTIME_TEST_APK")" \
         || fail 'runtime-test APK installation failed'
-    [ "$install_output" = Success ] \
-        || fail "runtime-test APK install receipt differs: $install_output"
+    case "$install_output" in
+        Success|$'Performing Push Install\nSuccess') ;;
+        *) fail "runtime-test APK install receipt differs: $install_output" ;;
+    esac
     resolved_activity="$(adb_shell_value cmd package resolve-activity --brief \
         com.carriez.flutter_hbb)"
     [ "$resolved_activity" = com.carriez.flutter_hbb/.MainActivity ] \

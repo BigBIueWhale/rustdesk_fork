@@ -244,6 +244,7 @@ readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
 readonly OSV_PUB_DISCOVERY_HELPER="$SCRIPT_DIR/discover-osv-pub-database.py"
 readonly ANDROID_EMULATOR_DISCOVERY_HELPER="$SCRIPT_DIR/discover-android-emulator-inputs.py"
 readonly RUST_ANDROID_X86_DISCOVERY_HELPER="$SCRIPT_DIR/discover-rust-android-x86-input.py"
+readonly FLUTTER_ANDROID_MAVEN_DISCOVERY_HELPER="$SCRIPT_DIR/discover-flutter-android-maven.py"
 readonly LIBVPX_LOCAL_OUTPUT_HELPER="$SCRIPT_DIR/online-libvpx-local-output.py"
 readonly CARGO_VENDOR_OUTPUT_HELPER="$SCRIPT_DIR/online-cargo-vendor-output.py"
 readonly WINDOWS_ENGINE_OUTPUT_HELPER="$SCRIPT_DIR/online-windows-engine-output.py"
@@ -2790,6 +2791,25 @@ maintenance_discover_rust_android_x86_input() {
         --mount "type=bind,source=$RUST_ANDROID_X86_DISCOVERY_HELPER,target=/authority/discover-rust-android-x86-input.py,readonly,bind-recursive=disabled" \
         "$(online_fetch_builder_runtime_ref "$builder")" \
         /usr/bin/python3 -I -S /authority/discover-rust-android-x86-input.py \
+            --discover
+}
+
+maintenance_discover_flutter_android_maven() {
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
+    verify_or_load_online_fetch_builder_image android-builder "$builder"
+    require_online_fetch_builder_image android-builder "$builder"
+    [ -f "$FLUTTER_ANDROID_MAVEN_DISCOVERY_HELPER" ] \
+        && [ ! -L "$FLUTTER_ANDROID_MAVEN_DISCOVERY_HELPER" ] \
+        || die "Flutter Android Maven discovery helper is absent or ambiguous"
+    online_docker_run_offline \
+        --mount "type=bind,source=$FLUTTER_ANDROID_MAVEN_DISCOVERY_HELPER,target=/authority/discover-flutter-android-maven.py,readonly,bind-recursive=disabled" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /usr/bin/python3 -I -S /authority/discover-flutter-android-maven.py \
+            --self-test
+    online_docker_run_archive_acquisition \
+        --mount "type=bind,source=$FLUTTER_ANDROID_MAVEN_DISCOVERY_HELPER,target=/authority/discover-flutter-android-maven.py,readonly,bind-recursive=disabled" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /usr/bin/python3 -I -S /authority/discover-flutter-android-maven.py \
             --discover
 }
 
@@ -8257,6 +8277,12 @@ main() {
             maintenance_discover_rust_android_x86_input
             return 0
             ;;
+        --maintenance-discover-flutter-android-maven)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-discover-flutter-android-maven takes no arguments"
+            maintenance_discover_flutter_android_maven
+            return 0
+            ;;
         --maintenance-stage-android-emulator-inputs)
             [ "$#" -eq 1 ] \
                 || die "--maintenance-stage-android-emulator-inputs takes no arguments"
@@ -8388,7 +8414,7 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-discover-rust-android-x86-input|--maintenance-stage-android-emulator-inputs|--maintenance-stage-rust-android-x86-input|--maintenance-stage-vcpkg-x64-android|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-promote-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--verifier-vm-inputs|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-discover-rust-android-x86-input|--maintenance-discover-flutter-android-maven|--maintenance-stage-android-emulator-inputs|--maintenance-stage-rust-android-x86-input|--maintenance-stage-vcpkg-x64-android|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-android-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-promote-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online/inputs cache (R-B10)"
     load_builder_images

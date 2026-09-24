@@ -2682,6 +2682,7 @@ run_android_emulator_runtime() {
     local artifact_destination=$artifact_input/android-x86_64-test
     local apk=$artifact_destination/rustdesk-x86_64-runtime-test.apk
     local checksum=$apk.sha256
+    local staged_apk=$ROOT/android-emulator-runtime-artifact.apk
     local source_root=$ROOT/android-emulator-runtime-source
     local online_mount=$source_root/online
     local output=$ROOT/android-emulator-runtime.out
@@ -2692,6 +2693,7 @@ run_android_emulator_runtime() {
     local runtime_archive=$inputs/inputs/verifier-images/devcheck.docker.tar.gz
     local source_archive_sha input_mount_options artifact_mount_options online_mount_options
     local builder_load runtime_load workload_status=0 source_before inputs_before artifact_before
+    local staged_apk_before
     local apk_receipt runtime_receipt check_receipt checksum_line
     local -a git_builder=(
         setpriv --reuid=1000 --regid=1000 --clear-groups
@@ -2829,6 +2831,18 @@ run_android_emulator_runtime() {
         "$artifact_input" "$artifact_destination"):$(stat -c \
         '%d:%i:%u:%g:%a:%h:%s' -- "$apk" "$checksum"):$(sha256sum \
         "$apk" "$checksum")"
+    [ ! -e "$staged_apk" ] && [ ! -L "$staged_apk" ] \
+        || fail 'Android runtime execution-copy destination already exists'
+    install -o 0 -g 0 -m 0444 -- "$apk" "$staged_apk" \
+        || fail 'cannot stage the authenticated APK on the disposable guest disk'
+    [ -f "$staged_apk" ] && [ ! -L "$staged_apk" ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$staged_apk")" = \
+             "0:0:444:1:$(stat -c '%s' -- "$apk")" ] \
+        && [ "$(sha256sum "$staged_apk" | awk '{ print $1 }')" = \
+             "$ANDROID_RUNTIME_APK_SHA256" ] \
+        || fail 'Android runtime execution copy differs from the authenticated artifact'
+    staged_apk_before="$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+        "$staged_apk"):$(sha256sum "$staged_apk")"
 
     mount --bind "$inputs" "$online_mount" \
         || fail 'cannot project the sealed inputs into the Android runtime harness'
@@ -2925,7 +2939,7 @@ run_android_emulator_runtime() {
     setpriv --reuid=1000 --regid=1000 --clear-groups \
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
         /bin/bash "$source_root/scripts/android-emulator-runtime-check.sh" \
-        "$apk" "$ANDROID_RUNTIME_APK_SHA256" \
+        "$staged_apk" "$ANDROID_RUNTIME_APK_SHA256" \
         "$ANDROID_RUNTIME_ARTIFACT_COMMIT" >"$output" 2>&1
     workload_status=$?
     set -e
@@ -2989,6 +3003,14 @@ run_android_emulator_runtime() {
           '%d:%i:%u:%g:%a:%h:%s' -- "$apk" "$checksum"):$(sha256sum \
           "$apk" "$checksum")" ] \
         || fail 'commit-bound Android runtime artifact changed during execution'
+    [ "$staged_apk_before" = \
+      "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+          "$staged_apk"):$(sha256sum "$staged_apk")" ] \
+        || fail 'Android runtime execution copy changed during execution'
+    rm -- "$staged_apk" \
+        || fail 'cannot retire the Android runtime execution copy'
+    [ ! -e "$staged_apk" ] && [ ! -L "$staged_apk" ] \
+        || fail 'Android runtime execution copy survived retirement'
 
     umount "$online_mount" \
         || fail 'cannot retire the Android runtime input projection'

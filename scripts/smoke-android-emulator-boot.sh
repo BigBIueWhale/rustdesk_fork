@@ -1131,7 +1131,7 @@ open_peer_connection() {
         || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
     "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_ENTER >/dev/null || return 1
     if [ "$expect_password" -eq 1 ]; then
-        wait_ui_center text 'Password Required' >/dev/null \
+        wait_ui_center text 'Password required' >/dev/null \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
         capture_ui_hierarchy || return 1
         center="$(ui_center focused-password-field 2>/dev/null || true)"
@@ -1147,7 +1147,7 @@ open_peer_connection() {
     else
         sleep 1
         if capture_ui_hierarchy \
-           && ui_center text 'Password Required' >/dev/null 2>&1; then
+           && ui_center text 'Password required' >/dev/null 2>&1; then
             print_initial_ui_semantics
             return 1
         fi

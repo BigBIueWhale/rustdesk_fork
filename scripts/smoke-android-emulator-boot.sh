@@ -398,6 +398,8 @@ cleanup() {
         tail -n 80 "$ADB_LOG" >&2 2>/dev/null || true
         [ -z "${PEER_SERVER_LOG:-}" ] \
             || tail -n 120 "$PEER_SERVER_LOG" >&2 2>/dev/null || true
+        [ -z "${PEER_SEED_LOG:-}" ] \
+            || tail -n 40 "$PEER_SEED_LOG" >&2 2>/dev/null || true
         [ -z "${PEER_SOURCE_LOG:-}" ] \
             || tail -n 80 "$PEER_SOURCE_LOG" >&2 2>/dev/null || true
         [ -z "${PEER_XVFB_LOG:-}" ] \
@@ -417,6 +419,7 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     readonly PEER_XVFB_MANIFEST=$SCRIPT_DIR/smoke-xvfb-files.tsv
     readonly PEER_READY=$SCRIPT_DIR/smoke-ready.sh
     readonly PEER_PASSWORD=RuntimePeer1x
+    readonly PEER_SEED_LOG=$WORK_ROOT/peer-seed.log
     readonly PEER_SOURCE_LOG=$WORK_ROOT/peer-source.log
     readonly PEER_SERVER_LOG=$WORK_ROOT/peer-server.log
     readonly PEER_XVFB_LOG=$WORK_ROOT/peer-xvfb.log
@@ -490,8 +493,13 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
         'Android peer changing-source readiness'
     install -d -m 0700 -- /tmp/android-peer-server-home
     HOME=/tmp/android-peer-server-home \
-        "$PEER_TARGET/debug/examples/seed_password" "$PEER_PASSWORD" >/dev/null 2>&1 \
-        || fail 'cannot provision the Android peer test password'
+        "$PEER_TARGET/debug/examples/seed_password" "$PEER_PASSWORD" \
+        >"$PEER_SEED_LOG" 2>&1 \
+        || { tail -n 40 "$PEER_SEED_LOG" >&2; fail 'cannot provision the Android peer test password'; }
+    [ "$(grep -Fc 'seed_password: set_permanent_password ok=true, prs_empty=false, prs_is_plaintext=false' \
+        "$PEER_SEED_LOG" || true)" -eq 1 ] \
+        && [ "$(stat -c '%s' -- "$PEER_SEED_LOG")" -le 4096 ] \
+        || { tail -n 40 "$PEER_SEED_LOG" >&2; fail 'the Android peer password seed receipt differs'; }
     HOME=/tmp/android-peer-server-home DISPLAY=:99 \
         LD_PRELOAD="$PEER_TARGET/smoke-bind-loopback.so" \
         "$PEER_TARGET/smoke-server-launcher" "$PEER_TARGET/debug/rustdesk" \
@@ -1537,6 +1545,7 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
         || { tail -n 80 "$PEER_SOURCE_LOG" >&2; fail 'the changing X11 source did not close exactly'; }
     [ "$(stat -c '%s' -- "$PEER_SOURCE_LOG")" -le 2097152 ] \
         && [ "$(stat -c '%s' -- "$PEER_SERVER_LOG")" -le 2097152 ] \
+        && [ "$(stat -c '%s' -- "$PEER_SEED_LOG")" -le 4096 ] \
         && [ ! -s "$PEER_XVFB_LOG" ] \
         || fail 'the controlled Android peer logs differ from their finite bounds'
     [ "$(awk 'FNR > 1 && $2 == "0100007F:527E" { count++ }

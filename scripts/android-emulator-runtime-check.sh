@@ -182,7 +182,20 @@ readonly RUNTIME_LOG=$WORKSPACE/runtime.log
 readonly SERVER_TARGET=$WORKSPACE/server-target
 readonly XVFB_DEBS=$WORKSPACE/xvfb-debs
 readonly XVFB_ROOT=$WORKSPACE/xvfb-root
+readonly SERVER_MACHINE_ID=$WORKSPACE/server.machine-id
+readonly SERVER_MACHINE_ID_VALUE=727573746465736b2d73657276657231
 install -d -m 0700 -- "$SERVER_TARGET" "$XVFB_DEBS" "$XVFB_ROOT"
+[[ "$SERVER_MACHINE_ID_VALUE" =~ ^[0-9a-f]{32}$ ]] \
+    || die 'private Android peer machine identity is malformed'
+printf '%s\n' "$SERVER_MACHINE_ID_VALUE" > "$SERVER_MACHINE_ID.tmp"
+chmod 0400 "$SERVER_MACHINE_ID.tmp"
+mv -- "$SERVER_MACHINE_ID.tmp" "$SERVER_MACHINE_ID"
+[ "$(stat -c '%u:%g:%a:%h:%s' -- "$SERVER_MACHINE_ID")" = \
+  "1000:1000:400:1:33" ] \
+    && [ "$(<"$SERVER_MACHINE_ID")" = "$SERVER_MACHINE_ID_VALUE" ] \
+    || die 'private Android peer machine identity metadata differs'
+readonly SERVER_MACHINE_ID_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+    "$SERVER_MACHINE_ID")"
 
 VERIFY_CONTAINER="$(vm_docker create \
     --name rustdesk-android-emulator-runtime-verify \
@@ -344,6 +357,7 @@ RUNTIME_CONTAINER="$(vm_docker create \
     --mount "type=bind,source=$SERVER_TARGET,target=/smoke-target,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$SERVER_MACHINE_ID,target=/etc/machine-id,readonly,bind-recursive=disabled" \
     --tmpfs /tmp:rw,exec,nosuid,nodev,size=10g,mode=700,uid=1000,gid=1000 \
     --tmpfs /tmp/.X11-unix:rw,noexec,nosuid,nodev,size=1m,mode=1777 \
     --workdir /source \
@@ -365,6 +379,12 @@ runtime_namespace="$(vm_docker inspect --format \
     "$RUNTIME_CONTAINER")"
 [ "$runtime_namespace" = 'false||private||private' ] \
     || die "Android runtime container namespace authority differs: $runtime_namespace"
+runtime_machine_id_mounts="$(vm_docker inspect --format \
+    '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
+    "$RUNTIME_CONTAINER" | awk -F '\t' '$3 == "/etc/machine-id" { print }')"
+[ "$runtime_machine_id_mounts" = \
+  "bind	$SERVER_MACHINE_ID	/etc/machine-id	false" ] \
+    || die 'Android peer private machine-ID mount authority differs'
 runtime_status=0
 vm_docker start --attach "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 || runtime_status=$?
 [ "$runtime_status" -eq 0 ] \
@@ -406,6 +426,10 @@ RUNTIME_CONTAINER=
 [ -z "$(vm_docker ps -aq)" ] \
     || die 'Android emulator runtime check left a container'
 
+[ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$SERVER_MACHINE_ID")" = \
+  "$SERVER_MACHINE_ID_ID" ] \
+    && [ "$(<"$SERVER_MACHINE_ID")" = "$SERVER_MACHINE_ID_VALUE" ] \
+    || die 'private Android peer machine identity changed during execution'
 [ "$(stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$APK")" = "$APK_ID" ] \
     && [ "$(sha256sum "$APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
     || die 'runtime-test APK identity or bytes changed during execution'

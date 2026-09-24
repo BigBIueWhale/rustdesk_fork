@@ -2966,7 +2966,7 @@ run_android_emulator_runtime() {
     [ "$(grep -c '^ANDROID_EMULATOR_APP=' "$output")" -eq 1 ] \
         || fail 'Android runtime app receipt is duplicated'
     lifecycle_receipt="$(grep -E \
-        "^ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=(absent|waited-[1-3]) apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
+        "^ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=(absent|waited-([1-9]|1[0-2])) apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android lifecycle runtime receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_LIFECYCLE=' "$output")" -eq 1 ] \

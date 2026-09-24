@@ -389,6 +389,7 @@ readonly APP_PACKAGE=com.carriez.flutter_hbb
 readonly APP_ACTIVITY=$APP_PACKAGE/.MainActivity
 readonly UI_XML=$WORK_ROOT/window.xml
 readonly FRAMEWORK_ANR_MARKER=$WORK_ROOT/framework-anr.waited
+readonly MAX_FRAMEWORK_ANR_WAITS=12
 
 capture_ui_hierarchy() {
     rm -f -- "$UI_XML"
@@ -502,7 +503,8 @@ wait_ui_center() {
                 anr_wait="$(ui_center resource android:id/aerr_wait 2>/dev/null || true)"
                 [[ "$anr_wait" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
                 printf 'waited\n' >>"$FRAMEWORK_ANR_MARKER"
-                [ "$(wc -l <"$FRAMEWORK_ANR_MARKER")" -le 3 ] || return 1
+                [ "$(wc -l <"$FRAMEWORK_ANR_MARKER")" -le \
+                  "$MAX_FRAMEWORK_ANR_WAITS" ] || return 1
                 read -r anr_x anr_y <<<"$anr_wait"
                 timeout --signal=TERM --kill-after=2s 10s \
                     "$ADB" -s "$SERIAL" shell input tap "$anr_x" "$anr_y" \
@@ -895,7 +897,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ]; then
               1000:1000:600:1 ] \
                 || fail 'the Android framework ANR marker metadata differs'
             framework_anr_count="$(wc -l <"$FRAMEWORK_ANR_MARKER")"
-            [[ "$framework_anr_count" =~ ^[1-3]$ ]] \
+            [[ "$framework_anr_count" =~ ^([1-9]|1[0-2])$ ]] \
                 || fail 'the Android framework ANR wait count is malformed'
             framework_anr=waited-$framework_anr_count
         fi

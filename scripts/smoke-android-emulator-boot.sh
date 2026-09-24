@@ -1361,7 +1361,7 @@ PY
         done
         [ "$service_warning_accepted" -eq 1 ] \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'cannot observe the production service-start warning'; }
-        wait_ui_center text 'Set Password' >/dev/null \
+        wait_ui_center text 'Set password' >/dev/null \
             || { print_initial_ui_semantics; fail 'the production permanent-password dialog did not open'; }
         capture_ui_hierarchy \
             || fail 'cannot inspect the permanent-password dialog'

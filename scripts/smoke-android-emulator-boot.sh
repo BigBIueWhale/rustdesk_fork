@@ -420,7 +420,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 path, kind, *wanted = sys.argv[1:]
-if kind != "focused-password-field" and not wanted:
+if kind not in ("focused-password-field", "password-fields") and not wanted:
     raise SystemExit(2)
 nodes = ET.parse(path).getroot().iter("node")
 centers = set()
@@ -444,6 +444,12 @@ for node in nodes:
             and attributes.get("enabled") == "true"
             and attributes.get("password") == "true"
         )
+    elif kind == "password-fields":
+        matched = (
+            attributes.get("class") == "android.widget.EditText"
+            and attributes.get("enabled") == "true"
+            and attributes.get("password") == "true"
+        )
     else:
         raise SystemExit(2)
     if not matched:
@@ -456,7 +462,9 @@ for node in nodes:
     if right <= left or bottom <= top:
         continue
     centers.add(((left + right) // 2, (top + bottom) // 2))
-if len(centers) != 1:
+if kind == "password-fields" and len(centers) not in (1, 2):
+    raise SystemExit(1)
+if kind != "password-fields" and len(centers) != 1:
     raise SystemExit(1)
 for x, y in sorted(centers, key=lambda point: (point[1], point[0])):
     print(f"{x} {y}")
@@ -705,9 +713,41 @@ PY
             || fail 'cannot focus the password field'
         "$ADB" -s "$SERIAL" shell input text "$TEST_PASSWORD" >/dev/null \
             || fail 'cannot enter the disposable password'
-        "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_TAB >/dev/null \
-            || fail 'cannot traverse to the password-confirmation field'
-        sleep 0.5
+        wait_ui_center text '119 characters remaining' >/dev/null \
+            || fail 'the password field did not observe the exact disposable input'
+        "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null \
+            || fail 'cannot dismiss the disposable soft keyboard'
+        confirmation_counter=
+        for attempt in $(seq 1 5); do
+            if capture_ui_hierarchy; then
+                confirmation_counter="$(ui_center text \
+                    '128 characters remaining' 2>/dev/null || true)"
+                if [[ "$confirmation_counter" =~ ^[0-9]+\ [0-9]+$ ]]; then
+                    break
+                fi
+            fi
+            [ "$attempt" -lt 5 ] || break
+            timeout --signal=TERM --kill-after=2s 10s \
+                "$ADB" -s "$SERIAL" shell input swipe 240 270 240 120 300 \
+                >/dev/null || fail 'cannot scroll the permanent-password dialog'
+            sleep 0.5
+        done
+        if ! [[ "$confirmation_counter" =~ ^[0-9]+\ [0-9]+$ ]]; then
+            ! grep -Fq "$TEST_PASSWORD" "$UI_XML" \
+                || fail 'the Android accessibility hierarchy exposed the password'
+            print_initial_ui_semantics
+            fail 'the exact untouched password-confirmation field did not enter view'
+        fi
+        capture_ui_hierarchy \
+            || fail 'cannot inspect the visible password-confirmation field'
+        mapfile -t password_fields < <(ui_center password-fields 2>/dev/null || true)
+        [ "${#password_fields[@]}" -ge 1 ] \
+            && [ "${#password_fields[@]}" -le 2 ] \
+            || fail 'the scrolled password dialog exposes ambiguous exact fields'
+        confirmation_index=$((${#password_fields[@]} - 1))
+        read -r field_x field_y <<<"${password_fields[$confirmation_index]}"
+        "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" >/dev/null \
+            || fail 'cannot focus the visible password-confirmation field'
         "$ADB" -s "$SERIAL" shell input text "$TEST_PASSWORD" >/dev/null \
             || fail 'cannot enter the disposable password confirmation'
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null \
@@ -723,7 +763,14 @@ PY
         "$ADB" -s "$SERIAL" shell input tap "$ok_x" "$ok_y" >/dev/null \
             || fail 'cannot submit the disposable permanent password'
         tap_ui resource android:id/button1 \
-            || fail 'cannot grant the production MediaProjection consent'
+            || {
+                capture_ui_hierarchy \
+                    || fail 'cannot inspect the missing MediaProjection consent'
+                ! grep -Fq "$TEST_PASSWORD" "$UI_XML" \
+                    || fail 'the Android accessibility hierarchy exposed the password'
+                print_initial_ui_semantics
+                fail 'cannot grant the production MediaProjection consent'
+            }
         wait_ui_center text 'Screen capture ready' >/dev/null \
             || fail 'the production UI did not observe MediaProjection readiness'
         assert_main_service \

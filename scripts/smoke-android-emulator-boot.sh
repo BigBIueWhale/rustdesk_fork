@@ -682,7 +682,7 @@ PY
             || { print_initial_ui_semantics; fail 'cannot invoke the production screen-sharing command'; }
         tap_ui text 'OK' \
             || { print_initial_ui_semantics; fail 'cannot accept the production service-start warning'; }
-        wait_ui_center text 'Set Password' >/dev/null \
+        wait_ui_center text 'Set password' >/dev/null \
             || { print_initial_ui_semantics; fail 'the production permanent-password dialog did not open'; }
         capture_ui_hierarchy \
             || fail 'cannot inspect the permanent-password dialog'

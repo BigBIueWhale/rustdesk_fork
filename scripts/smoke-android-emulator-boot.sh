@@ -683,7 +683,7 @@ PY
         tap_ui text 'OK' \
             || { print_initial_ui_semantics; fail 'cannot accept the production service-start warning'; }
         wait_ui_center text 'Set Password' >/dev/null \
-            || fail 'the production permanent-password dialog did not open'
+            || { print_initial_ui_semantics; fail 'the production permanent-password dialog did not open'; }
         capture_ui_hierarchy \
             || fail 'cannot inspect the permanent-password dialog'
         mapfile -t password_fields < <(ui_center field 2>/dev/null || true)

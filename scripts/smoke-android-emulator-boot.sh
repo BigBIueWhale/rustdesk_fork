@@ -392,10 +392,17 @@ readonly FRAMEWORK_ANR_MARKER=$WORK_ROOT/framework-anr.waited
 readonly MAX_FRAMEWORK_ANR_WAITS=12
 
 capture_ui_hierarchy() {
+    local detail=${1:-compressed}
+    local -a dump_args=(shell uiautomator dump)
+    case "$detail" in
+        compressed) dump_args+=(--compressed) ;;
+        complete) ;;
+        *) return 1 ;;
+    esac
+    dump_args+=(/data/local/tmp/rustdesk-window.xml)
     rm -f -- "$UI_XML"
     timeout --signal=TERM --kill-after=2s 20s \
-        "$ADB" -s "$SERIAL" shell uiautomator dump --compressed \
-        /data/local/tmp/rustdesk-window.xml >/dev/null \
+        "$ADB" -s "$SERIAL" "${dump_args[@]}" >/dev/null \
         || return 1
     timeout --signal=TERM --kill-after=2s 20s \
         "$ADB" -s "$SERIAL" exec-out cat \
@@ -469,6 +476,49 @@ if kind != "password-fields" and len(centers) != 1:
 for x, y in sorted(centers, key=lambda point: (point[1], point[0])):
     print(f"{x} {y}")
 PY
+}
+
+ui_resource_bounds() {
+    local resource=$1
+    python3 -I -S - "$UI_XML" "$resource" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path, resource = sys.argv[1:]
+bounds = set()
+for node in ET.parse(path).getroot().iter("node"):
+    attributes = node.attrib
+    if attributes.get("resource-id") != resource:
+        continue
+    match = re.fullmatch(
+        r"\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]",
+        attributes.get("bounds", ""),
+    )
+    if not match:
+        continue
+    left, top, right, bottom = map(int, match.groups())
+    if right > left and bottom > top:
+        bounds.add((left, top, right, bottom))
+if len(bounds) != 1:
+    raise SystemExit(1)
+print(*bounds.pop())
+PY
+}
+
+wait_ui_resource_bounds() {
+    local resource=$1 bounds=
+    for _ in $(seq 1 12); do
+        if capture_ui_hierarchy complete; then
+            bounds="$(ui_resource_bounds "$resource" 2>/dev/null || true)"
+            if [[ "$bounds" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]]; then
+                printf '%s\n' "$bounds"
+                return 0
+            fi
+        fi
+        sleep 0.5
+    done
+    return 1
 }
 
 print_initial_ui_semantics() {
@@ -622,25 +672,27 @@ PY
 }
 
 swipe_app_task_from_recents() {
-    local expected_task_id=$1 current_task_id= overview_center= x= y= swipe_x= swipe_y=
+    local expected_task_id=$1 current_task_id= task_bounds=
+    local left= top= right= bottom= center_x= start_y=
     current_task_id="$(current_app_task_id 2>/dev/null || true)"
     [ "$current_task_id" = "$expected_task_id" ] || return 1
     timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_APP_SWITCH \
         >/dev/null || return 1
-    overview_center="$(wait_ui_center resource \
-        com.android.launcher3:id/overview_panel 2>/dev/null || true)"
-    if ! [[ "$overview_center" =~ ^[0-9]+\ [0-9]+$ ]]; then
-        capture_ui_hierarchy && print_initial_ui_semantics
+    task_bounds="$(wait_ui_resource_bounds \
+        com.android.launcher3:id/snapshot 2>/dev/null || true)"
+    if ! [[ "$task_bounds" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]]; then
+        capture_ui_hierarchy complete && print_initial_ui_semantics
         return 1
     fi
-    read -r x y <<<"$overview_center"
-    [ "$x" -gt 0 ] && [ "$y" -gt 160 ] || return 1
-    swipe_x=$((x + x / 2))
-    swipe_y=$((y + y / 4))
+    read -r left top right bottom <<<"$task_bounds"
+    [ "$right" -gt "$left" ] && [ "$bottom" -gt "$top" ] \
+        && [ "$bottom" -gt 1 ] || return 1
+    center_x=$(((left + right) / 2))
+    start_y=$((bottom - 1))
     timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" shell input swipe \
-        "$swipe_x" "$swipe_y" "$swipe_x" 40 600 \
+        "$center_x" "$start_y" "$center_x" 0 600 \
         >/dev/null
 }
 

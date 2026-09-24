@@ -407,11 +407,13 @@ if [ "$WORKLOAD" = app ]; then
         "$ADB" -s "$SERIAL" shell am start -W \
         -n com.carriez.flutter_hbb/.MainActivity | tr -d '\r')" \
         || fail 'runtime-test activity launch failed'
+    [ "${#launch_output}" -le 16384 ] \
+        || fail 'runtime-test activity launch receipt exceeds its bound'
     printf '%s\n' "$launch_output" | grep -qFx 'Status: ok' \
-        || fail 'runtime-test activity did not report a successful launch'
+        || fail "runtime-test activity did not report a successful launch: $launch_output"
     printf '%s\n' "$launch_output" \
         | grep -qFx 'Activity: com.carriez.flutter_hbb/.MainActivity' \
-        || fail 'runtime-test launch resolved to a different activity'
+        || fail "runtime-test launch resolved to a different activity: $launch_output"
     for _ in $(seq 1 120); do
         APP_PID="$(adb_shell_value pidof com.carriez.flutter_hbb 2>/dev/null || true)"
         if [[ "$APP_PID" =~ ^[1-9][0-9]*$ ]]; then

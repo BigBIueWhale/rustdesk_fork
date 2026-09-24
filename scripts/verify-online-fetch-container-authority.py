@@ -227,9 +227,11 @@ def validate(repo: pathlib.Path) -> None:
         ("vhost-user-fs-pci,chardev=systemd-cache,tag=rustdesk-systemd-cache,queue-size=1024", "systemd-cache virtiofs device"),
         ("vhost-user-fs-pci,chardev=result,tag=rustdesk-result,queue-size=1024", "bounded-result virtiofs device"),
         ('capture_listeners >"$LISTENERS_BEFORE"', "pre-run listener baseline"),
+        ('capture_process_generations >"$LISTENER_PROCESSES_BEFORE"', "pre-run process-generation baseline"),
         ('capture_listeners >"$LISTENERS_DURING"', "live listener observation"),
         ('capture_listeners >"$LISTENERS_AFTER"', "post-run listener observation"),
-        ("listeners=unchanged", "listener-invariance receipt"),
+        ("listeners=causal", "causal listener-attribution receipt"),
+        ("admit_preexisting_external_listener_drift", "causal listener attribution"),
         ("udp=denied", "TCP-only acquisition receipt"),
         ("readonly SERIAL_LIMIT=16777216", "serial-output bound"),
         ("readonly SUCCESS_RECEIPT_LIMIT=65536", "success-receipt bound"),
@@ -237,15 +239,10 @@ def validate(repo: pathlib.Path) -> None:
         ("online-fetch Buildx authority receipt is absent", "required Buildx result receipt"),
     ):
         require(outer, token, label)
-    if outer.count(
-        '/usr/bin/cmp -s "$LISTENERS_BEFORE" "$LISTENERS_DURING"'
-    ) != 2:
-        raise AuthorityError("complete live listener-inventory comparison differs")
-    require(
-        outer,
-        '/usr/bin/cmp -s "$LISTENERS_BEFORE" "$LISTENERS_AFTER"',
-        "complete final listener-inventory comparison",
-    )
+    if outer.count("admit_preexisting_external_listener_drift \\") != 3:
+        raise AuthorityError("causal listener-attribution call inventory differs")
+    if outer.count('/usr/bin/comm -13 "$LISTENERS_BEFORE"') != 3:
+        raise AuthorityError("new-listener comparison inventory differs")
     if outer.count("vhost-user-fs-pci") != 3:
         raise AuthorityError("writable virtiofs device inventory differs")
     if outer.count("start_virtiofsd ") != 3:
@@ -265,11 +262,12 @@ def validate(repo: pathlib.Path) -> None:
     )
     cleanup = extract(outer, "cleanup() {", "\n}\ntrap cleanup EXIT", "outer cleanup")
     for token, label in (
-        ("format=rustdesk-online-fetch-success-v2", "receipt format"),
+        ("format=rustdesk-online-fetch-success-v3", "receipt format"),
         ("source_commit=$SOURCE_COMMIT", "receipt source commit"),
         ("source_tree=$SOURCE_TREE", "receipt source tree"),
         ("source_bundle_sha256=$SOURCE_BUNDLE_SHA256", "receipt source bundle"),
         ("listener_inventory_sha256=$listener_sha", "receipt listener digest"),
+        ("external_listener_drift_sha256=$drift_sha", "receipt attributed drift digest"),
         ("serial_sha256=$serial_sha", "receipt serial digest"),
         ("transaction_stdout_sha256=$stdout_sha", "receipt stdout digest"),
         ("transaction_stderr_sha256=$stderr_sha", "receipt stderr digest"),

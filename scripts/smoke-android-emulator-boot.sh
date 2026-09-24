@@ -425,7 +425,13 @@ centers = set()
 for node in nodes:
     attributes = node.attrib
     if kind == "text":
-        matched = attributes.get("text") in wanted or attributes.get("content-desc") in wanted
+        semantic_tokens = {
+            token.strip()
+            for key in ("text", "content-desc")
+            for token in attributes.get(key, "").splitlines()
+            if token.strip()
+        }
+        matched = any(value in semantic_tokens for value in wanted)
     elif kind == "resource":
         matched = attributes.get("resource-id") in wanted
     elif kind == "field":
@@ -451,11 +457,35 @@ for x, y in sorted(centers, key=lambda point: (point[1], point[0])):
 PY
 }
 
+print_initial_ui_semantics() {
+    python3 -I -S - "$UI_XML" <<'PY' >&2
+import sys
+import xml.etree.ElementTree as ET
+
+shown = 0
+for node in ET.parse(sys.argv[1]).getroot().iter("node"):
+    attributes = node.attrib
+    values = []
+    for key in ("text", "content-desc", "resource-id"):
+        value = attributes.get(key, "").strip()
+        if value:
+            values.append(f"{key}={value[:240]!r}")
+    if not values:
+        continue
+    print("Android initial UI:", " ".join(values),
+          f"class={attributes.get('class', '')!r}",
+          f"bounds={attributes.get('bounds', '')!r}")
+    shown += 1
+    if shown == 80:
+        break
+PY
+}
+
 wait_ui_center() {
     local kind=$1
     shift
     local center=
-    for _ in $(seq 1 60); do
+    for _ in $(seq 1 12); do
         if capture_ui_hierarchy; then
             center="$(ui_center "$kind" "$@" 2>/dev/null || true)"
             if [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]]; then
@@ -632,11 +662,11 @@ PY
 
     if [ "$WORKLOAD" = app-lifecycle ]; then
         tap_ui text 'Share screen' \
-            || fail 'cannot select the production Share screen page'
+            || { print_initial_ui_semantics; fail 'cannot select the production Share screen page'; }
         tap_ui text 'Start screen sharing' \
-            || fail 'cannot invoke the production screen-sharing command'
+            || { print_initial_ui_semantics; fail 'cannot invoke the production screen-sharing command'; }
         tap_ui text 'OK' \
-            || fail 'cannot accept the production service-start warning'
+            || { print_initial_ui_semantics; fail 'cannot accept the production service-start warning'; }
         wait_ui_center text 'Set Password' >/dev/null \
             || fail 'the production permanent-password dialog did not open'
         capture_ui_hierarchy \

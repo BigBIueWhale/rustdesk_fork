@@ -2087,16 +2087,69 @@ fn store_config_bytes_transaction_unix(
         let parent = path
             .parent()
             .ok_or_else(|| anyhow!("Config path '{}' has no parent directory", path.display()))?;
-        let mut dir = fs::File::open(if parent.is_absolute() {
-            Path::new("/")
-        } else {
-            Path::new(".")
-        })?;
+        let mut names = Vec::new();
         for part in parent.components() {
             match part {
                 std::path::Component::RootDir | std::path::Component::CurDir => {}
-                std::path::Component::Normal(name) => {
-                    let name = component(name, "config directory")?;
+                std::path::Component::Normal(name) => names.push(name),
+                std::path::Component::ParentDir | std::path::Component::Prefix(_) => {
+                    return Err(anyhow!(
+                        "Config path '{}' contains an unsupported parent component",
+                        path.display()
+                    ));
+                }
+            }
+        }
+
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        fn directory_access_flag(final_parent: bool) -> crate::libc::c_int {
+            if final_parent {
+                crate::libc::O_RDONLY
+            } else {
+                crate::libc::O_PATH
+            }
+        }
+
+        #[cfg(not(any(target_os = "android", target_os = "linux")))]
+        fn directory_access_flag(_final_parent: bool) -> crate::libc::c_int {
+            crate::libc::O_RDONLY
+        }
+
+        fn open_directory(
+            parent_fd: Option<i32>,
+            name: &CStr,
+            final_parent: bool,
+        ) -> io::Result<fs::File> {
+            let flags = directory_access_flag(final_parent)
+                | crate::libc::O_DIRECTORY
+                | crate::libc::O_CLOEXEC
+                | crate::libc::O_NOFOLLOW;
+            let fd = unsafe {
+                match parent_fd {
+                    Some(parent_fd) => crate::libc::openat(parent_fd, name.as_ptr(), flags),
+                    None => crate::libc::open(name.as_ptr(), flags),
+                }
+            };
+            if fd < 0 {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(unsafe { fs::File::from_raw_fd(fd) })
+            }
+        }
+
+        let start = if parent.is_absolute() { "/" } else { "." };
+        let start = CString::new(start)?;
+        let mut dir = open_directory(None, &start, names.is_empty()).map_err(|err| {
+            anyhow!("Failed to open config directory root without following links: {err}")
+        })?;
+
+        let count = names.len();
+        for (index, name) in names.into_iter().enumerate() {
+            let name = component(name, "config directory")?;
+            let final_parent = index + 1 == count;
+            match open_directory(Some(dir.as_raw_fd()), &name, final_parent) {
+                Ok(next) => dir = next,
+                Err(err) if err.kind() == io::ErrorKind::NotFound => {
                     let made = unsafe {
                         crate::libc::mkdirat(
                             dir.as_raw_fd(),
@@ -2105,35 +2158,24 @@ fn store_config_bytes_transaction_unix(
                         )
                     };
                     if made != 0 {
-                        let err = io::Error::last_os_error();
-                        if err.raw_os_error() != Some(crate::libc::EEXIST) {
+                        let create_error = io::Error::last_os_error();
+                        if create_error.kind() != io::ErrorKind::AlreadyExists {
                             return Err(anyhow!(
-                                "Failed to create config directory component: {err}"
+                                "Failed to create config directory component: {create_error}"
                             ));
                         }
                     }
-                    let fd = unsafe {
-                        crate::libc::openat(
-                            dir.as_raw_fd(),
-                            name.as_ptr(),
-                            crate::libc::O_RDONLY
-                                | crate::libc::O_DIRECTORY
-                                | crate::libc::O_CLOEXEC
-                                | crate::libc::O_NOFOLLOW,
-                        )
-                    };
-                    if fd < 0 {
-                        return Err(anyhow!(
-                            "Failed to open config directory component without following links: {}",
-                            io::Error::last_os_error()
-                        ));
-                    }
-                    dir = unsafe { fs::File::from_raw_fd(fd) };
+                    dir = open_directory(Some(dir.as_raw_fd()), &name, final_parent).map_err(
+                        |open_error| {
+                            anyhow!(
+                                "Failed to open newly available config directory component without following links: {open_error}"
+                            )
+                        },
+                    )?;
                 }
-                std::path::Component::ParentDir | std::path::Component::Prefix(_) => {
+                Err(err) => {
                     return Err(anyhow!(
-                        "Config path '{}' contains an unsupported parent component",
-                        path.display()
+                        "Failed to open config directory component without following links: {err}"
                     ));
                 }
             }
@@ -4904,6 +4946,73 @@ unrelated = "preserved"
 
         fs::remove_file(&path).unwrap();
         fs::remove_dir(&directory).unwrap();
+    }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    #[test]
+    fn config_transaction_traverses_search_only_existing_ancestor() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = std::env::temp_dir().join(format!(
+            "rustdesk-config-search-only-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let search_only = directory.join("search-only");
+        let writable_parent = search_only.join("writable-parent");
+        fs::create_dir_all(&writable_parent).unwrap();
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::set_permissions(&search_only, fs::Permissions::from_mode(0o111)).unwrap();
+        fs::set_permissions(&writable_parent, fs::Permissions::from_mode(0o700)).unwrap();
+        let path = writable_parent.join("credential.toml");
+
+        let result =
+            store_config_bytes_transaction(&path, b"committed", ConfigStoreFault::None);
+        fs::set_permissions(&search_only, fs::Permissions::from_mode(0o700)).unwrap();
+
+        result.unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"committed");
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        fs::remove_dir_all(&directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn config_transaction_creates_missing_parent_components_privately() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = std::env::temp_dir().join(format!(
+            "rustdesk-config-create-parent-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        fs::create_dir(&directory).unwrap();
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+        let first = directory.join("first");
+        let second = first.join("second");
+        let path = second.join("credential.toml");
+
+        store_config_bytes_transaction(&path, b"committed", ConfigStoreFault::None).unwrap();
+
+        assert_eq!(fs::read(&path).unwrap(), b"committed");
+        assert_eq!(
+            fs::metadata(&first).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(&second).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        fs::remove_dir_all(&directory).unwrap();
     }
 
     #[test]

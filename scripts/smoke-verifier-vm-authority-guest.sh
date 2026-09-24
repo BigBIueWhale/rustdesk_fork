@@ -1326,8 +1326,16 @@ run_focused_rust_tests() {
             --mount "type=bind,source=$rust_archive,target=/inputs/rust.tar.xz,readonly"
         )
         bridge_mounts=()
-        source_fingerprints=(Cargo.lock libs/hbb_common/src/fs.rs)
+        source_fingerprints=(
+            Cargo.lock
+            libs/hbb_common/src/config.rs
+            libs/hbb_common/src/fs.rs
+        )
         required_tests=(
+            config::tests::config_transaction_faults_preserve_precommit_and_make_postcommit_fatal
+            config::tests::config_transaction_traverses_search_only_existing_ancestor
+            config::tests::config_transaction_creates_missing_parent_components_privately
+            config::tests::config_transaction_rejects_symlink_parent_and_replaces_final_link_itself
             fs::tests::r_s11hm_remove_empty_directory_tree_removes_the_complete_empty_tree
             fs::tests::r_s11hm_remove_empty_directory_tree_reports_a_nonempty_tree
             fs::tests::r_s11hm_nonrecursive_directory_removal_uses_empty_only_finality
@@ -1647,6 +1655,8 @@ run_focused_rust_tests() {
                 case "$RUST_TEST_MODE" in
                     hbb-common-fs)
                         cargo test --offline --locked -p hbb_common --lib \
+                            config::tests::config_transaction_ --color never -- --test-threads=1
+                        cargo test --offline --locked -p hbb_common --lib \
                             fs::tests:: --color never -- --test-threads=1
                         ;;
                     android-rust-lifecycle-tests)
@@ -1688,7 +1698,7 @@ run_focused_rust_tests() {
         grep -E '^test result: ok\. [1-9][0-9]* passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output"
     )
     if [ "$MODE" = hbb-common-fs ]; then
-        [ "${#result_lines[@]}" -eq 1 ] \
+        [ "${#result_lines[@]}" -eq 2 ] \
             || { tail -n 200 "$output" >&2; fail 'focused filesystem test summary count differs'; }
     else
         [ "${#result_lines[@]}" -eq 3 ] \

@@ -397,7 +397,7 @@ if [ "$WORKLOAD" = app ]; then
         Success|$'Performing Push Install\nSuccess') ;;
         *) fail "runtime-test APK install receipt differs: $install_output" ;;
     esac
-    resolved_activity="$(adb_shell_value cmd package resolve-activity --brief \
+    resolved_activity="$(adb_shell_value cmd package resolve-activity --components \
         com.carriez.flutter_hbb)"
     [ "$resolved_activity" = com.carriez.flutter_hbb/.MainActivity ] \
         || fail "runtime-test launcher activity differs: $resolved_activity"

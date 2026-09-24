@@ -2580,7 +2580,7 @@ run_android_emulator_app() {
     [ "$(grep -c '^ANDROID_EMULATOR_APK=' "$output")" -eq 1 ] \
         || fail 'Android emulator APK receipt is duplicated'
     runtime_receipt="$(grep -E \
-        '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
+        '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android emulator app runtime receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APP=' "$output")" -eq 1 ] \

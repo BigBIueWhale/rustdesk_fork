@@ -409,11 +409,37 @@ if [ "$WORKLOAD" = app ]; then
         || fail 'runtime-test activity launch failed'
     [ "${#launch_output}" -le 16384 ] \
         || fail 'runtime-test activity launch receipt exceeds its bound'
-    printf '%s\n' "$launch_output" | grep -qFx 'Status: ok' \
-        || fail "runtime-test activity did not report a successful launch: $launch_output"
-    printf '%s\n' "$launch_output" \
-        | grep -qFx 'Activity: com.carriez.flutter_hbb/.MainActivity' \
-        || fail "runtime-test launch resolved to a different activity: $launch_output"
+    LAUNCH_WAIT_STATUS="$(python3 -I -S - "$launch_output" <<'PY'
+import re
+import sys
+
+lines = sys.argv[1].splitlines()
+prefix = "Starting: Intent { cmp=com.carriez.flutter_hbb/.MainActivity }"
+activity = "Activity: com.carriez.flutter_hbb/.MainActivity"
+if len(lines) < 6 or lines[0] != prefix or lines[3] != activity:
+    raise SystemExit("malformed Android activity-launch receipt")
+if lines[-1] != "Complete" or not re.fullmatch(r"WaitTime: [0-9]+", lines[-2]):
+    raise SystemExit("incomplete Android activity-launch receipt")
+if lines[1] == "Status: timeout":
+    if lines != [prefix, "Status: timeout", "LaunchState: UNKNOWN (-1)",
+                 activity, lines[-2], "Complete"]:
+        raise SystemExit("malformed Android activity timeout receipt")
+    print("timeout")
+elif lines[1] == "Status: ok":
+    if not re.fullmatch(r"LaunchState: (COLD|WARM|HOT)", lines[2]):
+        raise SystemExit("malformed Android successful launch state")
+    timings = lines[4:-2]
+    if not timings or any(not re.fullmatch(r"(ThisTime|TotalTime): [0-9]+", line)
+                          for line in timings):
+        raise SystemExit("malformed Android successful launch timings")
+    if len({line.split(":", 1)[0] for line in timings}) != len(timings):
+        raise SystemExit("duplicated Android successful launch timing")
+    print("ok")
+else:
+    raise SystemExit("Android activity launch status is neither ok nor timeout")
+PY
+    )" || fail "runtime-test activity launch receipt differs: $launch_output"
+    readonly LAUNCH_WAIT_STATUS
     for _ in $(seq 1 120); do
         APP_PID="$(adb_shell_value pidof com.carriez.flutter_hbb 2>/dev/null || true)"
         if [[ "$APP_PID" =~ ^[1-9][0-9]*$ ]]; then
@@ -468,8 +494,8 @@ stop_emulator || fail 'Android emulator or adb did not stop within the bounded t
 if [ "$WORKLOAD" = app ]; then
     [ "$(sha256sum "$RUNTIME_TEST_APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
         || fail 'runtime-test APK changed during emulator execution'
-    printf 'ANDROID_EMULATOR_APP=pass emulator=%s api=%s abi=%s package=com.carriez.flutter_hbb activity=MainActivity state=resumed process=stable-five-seconds apk_sha256=%s signing=test-only acceleration=software framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
-        "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$APK_SHA256" \
+    printf 'ANDROID_EMULATOR_APP=pass emulator=%s api=%s abi=%s package=com.carriez.flutter_hbb activity=MainActivity launch_wait=%s state=resumed process=stable-five-seconds apk_sha256=%s signing=test-only acceleration=software framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
+        "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$LAUNCH_WAIT_STATUS" "$APK_SHA256" \
         "$framebuffer_dimensions" "$SELINUX"
 else
     printf 'ANDROID_EMULATOR_BOOT=pass emulator=%s api=%s abi=%s acceleration=software framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \

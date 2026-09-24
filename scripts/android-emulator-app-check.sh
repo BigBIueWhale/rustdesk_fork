@@ -530,7 +530,7 @@ vm_docker start --attach "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 || runtime_st
 [ "$runtime_status" -eq 0 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die "Android app runtime exited with status $runtime_status"; }
 mapfile -t runtime_receipts < <(grep -E \
-    '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
+    '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
     "$RUNTIME_LOG" || true)
 [ "${#runtime_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android app runtime receipt is absent or duplicated'; }

@@ -2191,10 +2191,11 @@ fn store_config_bytes_transaction_unix(
             let metadata = dir.metadata()?;
             if !metadata.file_type().is_dir()
                 || metadata.uid() != unsafe { crate::libc::geteuid() }
-                || metadata.mode() & 0o022 != 0
+                || metadata.gid() != unsafe { crate::libc::getegid() }
+                || metadata.mode() & 0o7002 != 0
             {
                 return Err(anyhow!(
-                    "Android app directory failed directory/owner/write-authority verification"
+                    "Android app directory failed directory/owner/group/world-write verification"
                 ));
             }
         }

@@ -246,7 +246,7 @@ RUNTIME_CONTAINER="$(vm_docker create \
     /bin/bash --noprofile --norc \
         /source/scripts/smoke-android-emulator-boot.sh \
         /inputs/emulator.zip /inputs/system-image.zip /inputs/adb \
-        /tmp/android-emulator-app /inputs/app.apk)"
+        /tmp/android-emulator-app /inputs/app.apk lifecycle)"
 [[ "$RUNTIME_CONTAINER" =~ ^[0-9a-f]{64}$ ]] \
     || die 'Android runtime container ID is malformed'
 runtime_authority="$(vm_docker inspect --format \
@@ -275,6 +275,15 @@ case "${runtime_receipts[0]}" in
     *"apk_sha256=$APK_SHA256"*) ;;
     *) die 'Android app runtime reported a different APK digest' ;;
 esac
+mapfile -t lifecycle_receipts < <(grep -E \
+    '^ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped apk_sha256=[0-9a-f]{64} vm_network=none container_network=none cleanup=joined$' \
+    "$RUNTIME_LOG" || true)
+[ "${#lifecycle_receipts[@]}" -eq 1 ] \
+    || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android lifecycle runtime receipt is absent or duplicated'; }
+case "${lifecycle_receipts[0]}" in
+    *"apk_sha256=$APK_SHA256"*) ;;
+    *) die 'Android lifecycle runtime reported a different APK digest' ;;
+esac
 [ "$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' \
     "$RUNTIME_CONTAINER")" = exited:0 ] \
     || die 'Android runtime container did not exit cleanly'
@@ -292,7 +301,8 @@ verify_sha256 "$SYSTEM_IMAGE_ZIP" "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
 verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
 verify_image android-builder "$ANDROID_BUILDER_CONFIG_ID"
 verify_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"
-printf '%s\n' "${apk_receipts[0]}" "${runtime_receipts[0]}"
+printf '%s\n' "${apk_receipts[0]}" "${runtime_receipts[0]}" \
+    "${lifecycle_receipts[0]}"
 printf 'ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=%s apk_sha256=%s signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=%s runtime=%s vm_network=none container_network=none inputs=readonly cleanup=joined\n' \
     "$ARTIFACT_SOURCE_COMMIT" "$APK_SHA256" \
     "$ANDROID_BUILDER_CONFIG_ID" "$DEV_CHECK_IMAGE_CONFIG_ID"

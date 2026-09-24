@@ -2694,7 +2694,7 @@ run_android_emulator_runtime() {
     local source_archive_sha input_mount_options artifact_mount_options online_mount_options
     local builder_load runtime_load workload_status=0 source_before inputs_before artifact_before
     local staged_apk_before
-    local entry_receipt apk_receipt runtime_receipt check_receipt checksum_line
+    local entry_receipt apk_receipt runtime_receipt lifecycle_receipt check_receipt checksum_line
     local -a git_builder=(
         setpriv --reuid=1000 --regid=1000 --clear-groups
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
@@ -2965,6 +2965,12 @@ run_android_emulator_runtime() {
         || { tail -n 320 "$output" >&2; fail 'Android runtime app receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APP=' "$output")" -eq 1 ] \
         || fail 'Android runtime app receipt is duplicated'
+    lifecycle_receipt="$(grep -Fx \
+        "ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android lifecycle runtime receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_LIFECYCLE=' "$output")" -eq 1 ] \
+        || fail 'Android lifecycle runtime receipt is duplicated'
     check_receipt="$(grep -Fx \
         "ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=$ANDROID_BUILDER_CONFIG_ID runtime=$DEV_CHECK_IMAGE_CONFIG_ID vm_network=none container_network=none inputs=readonly cleanup=joined" \
         "$output")" \
@@ -3028,7 +3034,8 @@ run_android_emulator_runtime() {
     umount "$inputs" \
         || fail 'cannot retire the sealed Android runtime input mount'
     SEALED_INPUTS_MOUNTED=0
-    printf '%s\n' "$entry_receipt" "$apk_receipt" "$runtime_receipt" "$check_receipt"
+    printf '%s\n' "$entry_receipt" "$apk_receipt" "$runtime_receipt" \
+        "$lifecycle_receipt" "$check_receipt"
     printf 'ANDROID_EMULATOR_RUNTIME_VM=pass harness_commit=%s harness_tree=%s artifact_commit=%s artifact_tree=%s apk_sha256=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s signing=test-only uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked artifact=readonly-landlocked source=exact-pushed cleanup=joined\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
         "$ANDROID_RUNTIME_ARTIFACT_COMMIT" "$ANDROID_RUNTIME_ARTIFACT_TREE" \

@@ -10655,7 +10655,7 @@ STOP-SHIP obligations.
 
 **State:** Source implementation plus the exact clean Dart model regression and
 fresh bridge generation pass at `2403bef449d67778cc89a580c34840d2cd029cc3` and exact-current Linux native
-full-peer execution at `76d8a32c2775f0d13c0c05a9fbc8d82939ad866e`. Exact-current Rust regression
+full-peer execution at `3e5d9d0ec2263888957f16bc69dd6445ccd1ce63`. Exact-current Rust regression
 execution, Windows/macOS native execution, installed-platform behavior, sustained performance and resource
 evidence, current artifacts, independent reproduction, and external review remain pending.
 
@@ -10750,45 +10750,43 @@ publication and checks both published colors against root pixels; that correctio
 Android/Windows delay, complete connection correctness, performance, and release evidence remain open STOP-SHIP
 obligations.
 
-Exact no-NIC run `run.1TetmBoRPR` at `06141232` validated the corrected source and revealed a separate close-path
-STOP-SHIP failure. The real password prompt and four initial fresh states passed. All three unfocused intervals
-(2/6/12 seconds) maintained maximum gap 0 ms and 8/24/48 distinct current states, with maximum sampled age
-298/300/302 ms; each same-TCP focus recovery passed. Three server replacement/reconnect generations then obtained
-fresh pixels in 261/179/174 ms, and the measured resource bounds passed. The controller printed its full
-presentation verdict. But on closing the remote window the viewer aborted with exit 134 after successful pixelbuffer
-texture release: the log reports two invalid implicit-view removals, then `g_mutex_clear() called on uninitialised
-or locked mutex`. The outer authority correctly withheld its terminal smoke/VM receipts. This is **not a clean
-end-to-end pass**. The exact GLib object and ownership sequence causing the abort remain unproven; inspect the
-pinned Linux embedder and secondary-engine disposal before changing lifetime or mutating product cleanup. The
-source-occlusion false positive is resolved for this run; graceful viewer teardown and all original cross-platform
-delay/correctness/performance obligations remain open.
+The corrected source fixture then exposed a separate Linux secondary-window teardown race. Presentation, all
+2/6/12-second unfocused intervals, same-TCP recovery, three server replacements, and resource bounds could pass,
+but an uninstrumented viewer intermittently aborted with exit 134 after pixel-buffer release and before manager
+finality: `g_mutex_clear() called on uninitialised or locked mutex`. A temporary mutex interposer and even a
+signal-only preload changed the timing and masked the failure, so both were rejected as acceptance evidence.
+Commit `5f4c4bd4` corrected main/secondary close ordering and manager-lock ownership, and one exact six-cycle run
+passed, but later exact uninstrumented execution disproved that this alone closed the race.
 
-A follow-up exact no-NIC run at `5fe510e4` loaded a temporary `g_mutex_clear` interposer into only the guest viewer
-and exited cleanly, so it could not negate the uninstrumented abort. The repeated one-bundle transaction at
-`ab43f313` made the perturbation decisive: cycles one through three, each with only a SIGABRT-handler preload,
-completed cleanly; the first uninstrumented cycle then reproduced exit 134 immediately after secondary-window
-cleanup. Its log orders main-engine shutdown before manager-owned secondary destruction, followed by the invalid
-implicit-view removal and GLib mutex abort. Thus even the signal-only preload can mask this timing-sensitive race;
-the diagnostic and its instrumented acceptance cycles are deleted rather than retained as apparent coverage.
+Commit `e2b01e29` added a bounded failure-only kernel-core channel to the no-NIC harness. Exact run
+`run.OTmfcqESsz` passed four complete cycles and reproduced the abort on cycle five, retaining the 534,884,352-byte
+core, exact runner, and exact bundle libraries. GDB with the pinned Debian userspace resolved the UI-thread stack
+as `g_mutex_clear` called by `FlCompositorOpenGL::dispose`, reached from `FlViewRenderer::finalize`. The compositor's
+`frame_mutex` contained the locked state. LWP 276's live stack held that exact compositor and mutex while blocked
+inside Mesa's synchronous `glBlitFramebuffer`, called from `FlCompositorOpenGL::present_layers`. This proves that
+GTK child destruction finalized the renderer/compositor while the secondary Flutter engine still had an in-flight
+raster presentation callback. The adjacent invalid implicit-view-removal warning was not the aborting object or
+the cause.
 
-**Exact-current Linux source and isolated native closure; broader evidence remains open.** Linux's ordinary `close` method acknowledged only
-`gtk_window_close()` initiation. `closeAllSubWindows()` treated that response as final and closed the main Flutter
-engine while the secondary engine's response-bound Dart `onDestroy` and later native destruction were still in
-flight. The manager also destroyed the secondary `FlutterWindow` while holding its map write lock. The correction
-adds one main-engine-only close-and-wait operation, one bounded terminal owner per subwindow, and one Dart
-single-flight process-shutdown transaction. Native finalization moves the exact window out under the lock, destroys
-it after releasing the lock, and only then responds to the still-live main engine. Ordinary/self-close initiation
-semantics remain separate because a dying engine cannot observe a post-destruction response. Exact no-NIC run
-`run.8QOhb67WtU` built pushed commit `5f4c4bd4b5d22bfff04cfea49b598c9ac93a5a67` (tree
-`6781d84c67f0299752e10a83b03f2bf651286b0f`) once with Flutter 3.47.5 and passed all six uninstrumented
-server/viewer lifecycles from those bytes. Each cycle passed the real password, actual X11 pixels across all
-focus-loss intervals, same-TCP recovery, three server-generation reconnects, resource bounds, clean viewer exit,
-clean server exit, and exact container retirement. The outer receipt passed after 1,278 seconds with `-nic none`,
-guest-only Docker, read-only Landlocked inputs, unchanged host listeners, and joined QEMU/virtiofsd cleanup; the
-successful private run root was automatically retired. This closes the reproduced Linux X11 close-path defect for
-that exact current source and environment. It does **not** establish the cause or correction of the reported older
-Android persistent-process hang or Windows focus/display delay, nor Windows, Android, Apple, installed Linux,
-cross-version, sustained-soak, signed-artifact, reproducibility, or release closure; all remain open as listed above.
+**Exact-current Linux source and isolated native closure; broader evidence remains open.** Commit `3e5d9d0e`
+retains the secondary `FlViewRenderer` across GTK window destruction and releases that final reference on the GTK
+idle queue only after the corresponding `FlEngine` is finalized. Renderer disposal can still release the engine,
+engine shutdown can synchronously retire raster callbacks, and compositor finalization then occurs after engine
+finality. This is an ownership barrier, not a sleep, ignored error, mutex suppression, or permanent leak.
+
+Exact no-NIC run `run.Qoe0Boy2u8` built pushed commit
+`3e5d9d0ec2263888957f16bc69dd6445ccd1ce63` (tree
+`5b0264a6532078e804fc7507a3f4702c8bfe991a`) once with Flutter 3.47.5 and passed all six uninstrumented
+server/viewer lifecycles from those bytes. Every cycle authenticated through the real password prompt, observed
+actual capture-to-VP9-to-decode-to-Flutter-texture-to-X11 pixels across 2/6/12-second focus-loss intervals,
+recovered on the same TCP connection, completed three server-generation reconnects, stayed within the declared
+thread/FD/RSS bounds, and joined viewer, server, Xvfb, and containers without a core. The outer receipt passed after
+1,267 seconds with `-nic none`, guest-only networkless Docker, read-only Landlocked inputs, no host-listener
+addition or pre-existing-process drift, and joined QEMU/virtiofsd cleanup; the successful private root retired
+automatically. This closes the reproduced Linux X11 compositor-teardown race for that exact source and environment.
+It does **not** establish the cause or correction of the older Android persistent-process hang or Windows
+focus/display delay, nor Windows, Android, Apple, installed Linux, cross-version, sustained-soak, signed-artifact,
+cold-reproduction, independent-reproduction, external-review, or release closure; all remain open as listed above.
 
 **Open evidence.** Run the exact current generated bridge and native Windows and
 macOS plugins, plus installed Linux, through focus/minimize, display-switch, window-transfer,

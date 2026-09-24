@@ -28,6 +28,17 @@ initiation semantics; a secondary engine cannot receive a result after its own
 destruction, and its existing response-bound `onDestroy` transaction remains
 the owner of terminal destruction.
 
+GTK destroys the secondary view's child renderer before the view necessarily
+releases and finalizes its Flutter engine. The engine raster thread can still be
+inside `FlCompositorOpenGL::present_layers` at that point, while renderer
+finalization would otherwise dispose the compositor and clear its locked frame
+mutex. The vendored Linux window teardown therefore retains the exact
+`FlViewRenderer` across GTK destruction and releases that final reference from
+the GTK idle queue only after the corresponding `FlEngine` has finalized. This
+keeps the compositor alive until engine shutdown has retired its presentation
+callbacks without delaying teardown, suppressing errors, or retaining it after
+engine finality.
+
 The imported Linux source also installed process-global GTK button-press and
 button-release emission hooks with the subwindow object as callback data, but
 retained and removed only the press-hook ID. The vendored correction owns both

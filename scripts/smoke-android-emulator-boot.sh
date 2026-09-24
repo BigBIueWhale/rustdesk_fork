@@ -388,7 +388,7 @@ adb_shell_value() {
 readonly APP_PACKAGE=com.carriez.flutter_hbb
 readonly APP_ACTIVITY=$APP_PACKAGE/.MainActivity
 readonly UI_XML=$WORK_ROOT/window.xml
-readonly SYSTEM_UI_ANR_MARKER=$WORK_ROOT/system-ui-anr.waited
+readonly FRAMEWORK_ANR_MARKER=$WORK_ROOT/framework-anr.waited
 
 capture_ui_hierarchy() {
     rm -f -- "$UI_XML"
@@ -488,12 +488,13 @@ wait_ui_center() {
     local center= anr_title= anr_wait= anr_x= anr_y=
     for _ in $(seq 1 12); do
         if capture_ui_hierarchy; then
-            anr_title="$(ui_center text "System UI isn't responding" 2>/dev/null || true)"
+            anr_title="$(ui_center text "System UI isn't responding" \
+                "Process system isn't responding" 2>/dev/null || true)"
             if [[ "$anr_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
                 anr_wait="$(ui_center resource android:id/aerr_wait 2>/dev/null || true)"
                 [[ "$anr_wait" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
-                printf 'waited\n' >>"$SYSTEM_UI_ANR_MARKER"
-                [ "$(wc -l <"$SYSTEM_UI_ANR_MARKER")" -le 3 ] || return 1
+                printf 'waited\n' >>"$FRAMEWORK_ANR_MARKER"
+                [ "$(wc -l <"$FRAMEWORK_ANR_MARKER")" -le 3 ] || return 1
                 read -r anr_x anr_y <<<"$anr_wait"
                 timeout --signal=TERM --kill-after=2s 10s \
                     "$ADB" -s "$SERIAL" shell input tap "$anr_x" "$anr_y" \
@@ -874,18 +875,18 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ]; then
     if [ "$WORKLOAD" = app-lifecycle ]; then
         [ "$LIFECYCLE_RECEIPT_READY" -eq 1 ] \
             || fail 'the Android lifecycle receipt is not ready'
-        system_ui_anr=absent
-        if [ -f "$SYSTEM_UI_ANR_MARKER" ] && [ ! -L "$SYSTEM_UI_ANR_MARKER" ]; then
-            [ "$(stat -c '%u:%g:%a:%h' -- "$SYSTEM_UI_ANR_MARKER")" = \
+        framework_anr=absent
+        if [ -f "$FRAMEWORK_ANR_MARKER" ] && [ ! -L "$FRAMEWORK_ANR_MARKER" ]; then
+            [ "$(stat -c '%u:%g:%a:%h' -- "$FRAMEWORK_ANR_MARKER")" = \
               1000:1000:600:1 ] \
-                || fail 'the System UI ANR marker metadata differs'
-            system_ui_anr_count="$(wc -l <"$SYSTEM_UI_ANR_MARKER")"
-            [[ "$system_ui_anr_count" =~ ^[1-3]$ ]] \
-                || fail 'the System UI ANR wait count is malformed'
-            system_ui_anr=waited-$system_ui_anr_count
+                || fail 'the Android framework ANR marker metadata differs'
+            framework_anr_count="$(wc -l <"$FRAMEWORK_ANR_MARKER")"
+            [[ "$framework_anr_count" =~ ^[1-3]$ ]] \
+                || fail 'the Android framework ANR wait count is malformed'
+            framework_anr=waited-$framework_anr_count
         fi
-        printf 'ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped system_ui_anr=%s apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
-            "$system_ui_anr" "$APK_SHA256"
+        printf 'ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=%s apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
+            "$framework_anr" "$APK_SHA256"
     fi
 else
     printf 'ANDROID_EMULATOR_BOOT=pass emulator=%s api=%s abi=%s acceleration=software framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \

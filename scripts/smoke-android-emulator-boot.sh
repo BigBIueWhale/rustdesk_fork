@@ -586,6 +586,7 @@ readonly APP_PACKAGE=com.carriez.flutter_hbb
 readonly APP_ACTIVITY=$APP_PACKAGE/.MainActivity
 readonly UI_XML=$WORK_ROOT/window.xml
 readonly FRAMEWORK_ANR_MARKER=$WORK_ROOT/framework-anr.waited
+readonly IMMERSIVE_CLING_MARKER=$WORK_ROOT/immersive-cling.dismissed
 readonly MAX_FRAMEWORK_ANR_WAITS=12
 
 capture_ui_hierarchy() {
@@ -804,9 +805,23 @@ print_native_password_log() {
 wait_ui_center() {
     local kind=$1
     shift
-    local center= anr_title= anr_wait= anr_x= anr_y=
+    local center= cling_title= cling_ok= cling_x= cling_y=
+    local anr_title= anr_wait= anr_x= anr_y=
     for _ in $(seq 1 12); do
         if capture_ui_hierarchy; then
+            cling_title="$(ui_center text 'Viewing full screen' 2>/dev/null || true)"
+            if [[ "$cling_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
+                cling_ok="$(ui_center resource android:id/ok 2>/dev/null || true)"
+                [[ "$cling_ok" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+                read -r cling_x cling_y <<<"$cling_ok"
+                timeout --signal=TERM --kill-after=2s 10s \
+                    "$ADB" -s "$SERIAL" shell input tap "$cling_x" "$cling_y" \
+                    >/dev/null || return 1
+                printf 'dismissed\n' >>"$IMMERSIVE_CLING_MARKER"
+                [ "$(wc -l <"$IMMERSIVE_CLING_MARKER")" -le 1 ] || return 1
+                sleep 1
+                continue
+            fi
             anr_title="$(ui_center text "System UI isn't responding" \
                 "Process system isn't responding" 2>/dev/null || true)"
             if [[ "$anr_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
@@ -1580,8 +1595,17 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
                 || fail 'the Android framework ANR wait count is malformed'
             framework_anr=waited-$framework_anr_count
         fi
-        printf 'ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=%s apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
-            "$framework_anr" "$APK_SHA256"
+        immersive_cling=absent
+        if [ -f "$IMMERSIVE_CLING_MARKER" ] && [ ! -L "$IMMERSIVE_CLING_MARKER" ]; then
+            [ "$(stat -c '%u:%g:%a:%h' -- "$IMMERSIVE_CLING_MARKER")" = \
+              "$RUN_UID:$RUN_GID:600:1" ] \
+                || fail 'the immersive-cling marker metadata differs'
+            [ "$(wc -l <"$IMMERSIVE_CLING_MARKER")" -eq 1 ] \
+                || fail 'the immersive-mode tutorial was not dismissed exactly once'
+            immersive_cling=dismissed-1
+        fi
+        printf 'ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=%s immersive_cling=%s apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
+            "$framework_anr" "$immersive_cling" "$APK_SHA256"
         if [ "$WORKLOAD" = app-peer-lifecycle ]; then
             [ "$PEER_RECEIPT_READY" -eq 1 ] \
                 || fail 'the Android real-peer lifecycle receipt is not ready'

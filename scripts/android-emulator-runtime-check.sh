@@ -401,7 +401,7 @@ case "${runtime_receipts[0]}" in
     *) die 'Android app runtime reported a different APK digest' ;;
 esac
 mapfile -t lifecycle_receipts < <(grep -E \
-    '^ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=(absent|waited-([1-9]|1[0-2])) apk_sha256=[0-9a-f]{64} vm_network=none container_network=none cleanup=joined$' \
+    '^ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=(absent|waited-([1-9]|1[0-2])) immersive_cling=(absent|dismissed-1) apk_sha256=[0-9a-f]{64} vm_network=none container_network=none cleanup=joined$' \
     "$RUNTIME_LOG" || true)
 [ "${#lifecycle_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android lifecycle runtime receipt is absent or duplicated'; }

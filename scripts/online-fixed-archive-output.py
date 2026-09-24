@@ -259,6 +259,14 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             fail("the fourteen-entry toolchain manifest has a non-win/ nested path")
         return
     if len(specs) == 6:
+        expected_android_emulator = (
+            "emulator-linux_x64-15917651.zip",
+            "flutter-maven/flutter_embedding_release-1.0.0-a18df97ca57a249df5d8d68cd0820600223ce262.jar",
+            "flutter-maven/flutter_embedding_release-1.0.0-a18df97ca57a249df5d8d68cd0820600223ce262.pom",
+            "flutter-maven/x86_64_release-1.0.0-a18df97ca57a249df5d8d68cd0820600223ce262.jar",
+            "flutter-maven/x86_64_release-1.0.0-a18df97ca57a249df5d8d68cd0820600223ce262.pom",
+            "x86_64-34_r04.zip",
+        )
         expected_wix = tuple(
             f"wix-nuget-packages/{package}.4.0.5.nupkg"
             for package in (
@@ -270,8 +278,11 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
                 "wixtoolset.util.wixext",
             )
         )
-        if names != expected_wix:
-            fail("the six-entry manifest is not the exact WiX source")
+        if names not in (expected_android_emulator, expected_wix):
+            fail(
+                "the six-entry manifest is neither the exact Android-emulator "
+                "runtime/Maven source nor the exact WiX source"
+            )
         return
     if len(specs) == 8:
         expected_flutter_peer = (
@@ -315,7 +326,7 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
         "the archive manifest must contain exactly one admitted systemd or toolchain archive, "
         "an admitted two-entry Dart-audit or Android-emulator source, "
         "three Flutter model-test toolchain entries, "
-        "an admitted six-entry WiX source, seven Android build entries, "
+        "an admitted six-entry Android-emulator or WiX source, seven Android build entries, "
         "an admitted eight-entry Linux full-peer source, "
         "14 toolchain entries, "
         "or 33 vcpkg distfile entries, "
@@ -1593,6 +1604,29 @@ def test_rust_android_x86_archive_specs() -> tuple[ArchiveSpec, ...]:
     )
 
 
+def test_android_emulator_archive_specs() -> tuple[ArchiveSpec, ...]:
+    records: list[list[str]] = []
+    for name in (
+        "emulator-linux_x64-15917651.zip",
+        "flutter-maven/flutter_embedding_release-1.0.0-a18df97ca57a249df5d8d68cd0820600223ce262.jar",
+        "flutter-maven/flutter_embedding_release-1.0.0-a18df97ca57a249df5d8d68cd0820600223ce262.pom",
+        "flutter-maven/x86_64_release-1.0.0-a18df97ca57a249df5d8d68cd0820600223ce262.jar",
+        "flutter-maven/x86_64_release-1.0.0-a18df97ca57a249df5d8d68cd0820600223ce262.pom",
+        "x86_64-34_r04.zip",
+    ):
+        payload = f"{name}-fixture".encode("ascii")
+        records.append(
+            [
+                name,
+                f"https://example.invalid/{name}",
+                str(len(payload)),
+                hashlib.sha256(payload).hexdigest(),
+                "example.invalid",
+            ]
+        )
+    return parse_specs(records)
+
+
 def test_android_build_archive_specs() -> tuple[ArchiveSpec, ...]:
     records: list[list[str]] = []
     for name in (
@@ -1886,6 +1920,7 @@ def self_test() -> None:
         flutter_candidate_specs = test_flutter_candidate_archive_specs()
         flutter_model_specs = test_flutter_model_archive_specs()
         rust_android_x86_specs = test_rust_android_x86_archive_specs()
+        android_emulator_specs = test_android_emulator_archive_specs()
         android_build_specs = test_android_build_archive_specs()
         if download_timeout_seconds(systemd_specs[0]) != 300:
             fail("systemd-image self-test lost its bounded large-image timeout")
@@ -1897,8 +1932,30 @@ def self_test() -> None:
             fail("Flutter model-test self-test lost its exact toolchain manifest")
         if len(rust_android_x86_specs) != 1:
             fail("Rust Android x86 self-test lost its exact archive manifest")
+        if len(android_emulator_specs) != 6:
+            fail("Android emulator self-test lost its exact runtime/Maven manifest")
         if len(android_build_specs) != 7:
             fail("Android build self-test lost its exact toolchain manifest")
+        substituted_emulator_specs = [
+            [
+                spec.name,
+                spec.url,
+                str(spec.size),
+                spec.sha256,
+                ",".join(spec.redirect_hosts),
+            ]
+            for spec in android_emulator_specs
+        ]
+        substituted_emulator_specs[3][0] = (
+            "flutter-maven/x86_64_profile-1.0.0-"
+            "a18df97ca57a249df5d8d68cd0820600223ce262.jar"
+        )
+        try:
+            parse_specs(substituted_emulator_specs)
+        except ContractError:
+            pass
+        else:
+            fail("Android emulator self-test accepted a substituted Maven artifact")
         substituted_android_specs = [
             [
                 spec.name,

@@ -80,14 +80,20 @@ verify_gradle_maven_projection() {
 }
 
 verify_flutter_maven_root() {
-    [ "$#" -eq 1 ] || die 'internal Flutter Maven verifier argument mismatch'
-    local root=$1 version=$FLUTTER_ANDROID_MAVEN_VERSION
-    local artifact extension expected_size expected_sha256 input specification
+    [ "$#" -eq 2 ] || die 'internal Flutter Maven verifier argument mismatch'
+    local root=$1 layout=$2 version=$FLUTTER_ANDROID_MAVEN_VERSION
+    local artifact extension expected_size expected_sha256 expected_directories input specification
     [ -d "$root" ] && [ ! -L "$root" ] \
         || die 'Flutter Maven root is absent or ambiguous'
     [ -z "$(find "$root" -xdev \( ! -type d -a ! -type f \) -print -quit)" ] \
         || die 'Flutter Maven root contains a non-file entry'
-    [ "$(find "$root" -xdev -mindepth 1 -type d -print | wc -l)" -eq 7 ] \
+    case "$layout" in
+        flat) expected_directories=0 ;;
+        repository) expected_directories=7 ;;
+        *) die 'Flutter Maven layout is not flat or repository' ;;
+    esac
+    [ "$(find "$root" -xdev -mindepth 1 -type d -print | wc -l)" \
+      -eq "$expected_directories" ] \
         && [ "$(find "$root" -xdev -type f -print | wc -l)" -eq 4 ] \
         || die 'Flutter Maven root inventory cardinality differs'
     [ -z "$(find "$root" -xdev \
@@ -106,13 +112,38 @@ verify_flutter_maven_root() {
     do
         IFS=: read -r artifact extension expected_size expected_sha256 \
             <<<"$specification"
-        input="$root/download.flutter.io/io/flutter/$artifact/$version/$artifact-$version.$extension"
+        if [ "$layout" = flat ]; then
+            input="$root/$artifact-$version.$extension"
+        else
+            input="$root/download.flutter.io/io/flutter/$artifact/$version/$artifact-$version.$extension"
+        fi
         [ -f "$input" ] && [ ! -L "$input" ] \
             && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$input")" = \
                  "$BUILD_UID:$BUILD_GID:400:1:$expected_size" ] \
             || die "Flutter Maven input metadata differs: $artifact.$extension"
         verify_sha256 "$input" "$expected_sha256"
     done
+}
+
+project_flutter_maven_root() {
+    [ "$#" -eq 2 ] || die 'internal Flutter Maven projection argument mismatch'
+    local source=$1 output=$2 version=$FLUTTER_ANDROID_MAVEN_VERSION
+    local artifact extension destination
+    [ ! -e "$output" ] && [ ! -L "$output" ] \
+        || die 'Flutter Maven projection output was not freshly absent'
+    for artifact in flutter_embedding_release x86_64_release; do
+        destination="$output/download.flutter.io/io/flutter/$artifact/$version"
+        mkdir -p -- "$destination"
+        for extension in jar pom; do
+            /usr/bin/cp --no-dereference --preserve=mode,timestamps \
+                --no-preserve=ownership,xattr \
+                -- "$source/$artifact-$version.$extension" \
+                   "$destination/$artifact-$version.$extension" \
+                || die "cannot project Flutter Maven input: $artifact.$extension"
+        done
+    done
+    find "$output" -xdev -type d -exec chmod 0500 -- {} + \
+        || die 'cannot seal Flutter Maven projection directories'
 }
 
 verify_android_online_inputs() {
@@ -266,7 +297,7 @@ python3 -I -S "$SCRIPT_DIR/online-input-provenance.py" verify-subtree \
 verify_sha256 "$EMULATOR_ZIP" "$SHA256_ANDROID_EMULATOR_LINUX_X64"
 verify_sha256 "$SYSTEM_IMAGE_ZIP" "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
 verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
-verify_flutter_maven_root "$FLUTTER_MAVEN_SOURCE"
+verify_flutter_maven_root "$FLUTTER_MAVEN_SOURCE" flat
 verify_image android-builder "$ANDROID_BUILDER_CONFIG_ID"
 verify_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"
 
@@ -317,10 +348,7 @@ mkdir "$GRADLE_SDK_PROJECTION_ROOT" "$GRADLE_MAVEN_PROJECTION_ROOT" \
     --no-preserve=ownership,xattr \
     -- "$GRADLE_MAVEN_SOURCE" "$GRADLE_MAVEN_PROJECTION" \
     || die 'cannot project the exact Android Maven repository onto guest-local storage'
-/usr/bin/cp --recursive --no-dereference --preserve=mode,timestamps \
-    --no-preserve=ownership,xattr \
-    -- "$FLUTTER_MAVEN_SOURCE" "$FLUTTER_MAVEN_PROJECTION" \
-    || die 'cannot project the exact Flutter Maven repository onto guest-local storage'
+project_flutter_maven_root "$FLUTTER_MAVEN_SOURCE" "$FLUTTER_MAVEN_PROJECTION"
 GRADLE_MAVEN_SOURCE_ID="$(stat -c '%d:%i' -- "$GRADLE_MAVEN_SOURCE")" \
     || die 'cannot identify the canonical Android Maven repository'
 FLUTTER_MAVEN_SOURCE_ID="$(stat -c '%d:%i' -- "$FLUTTER_MAVEN_SOURCE")" \
@@ -344,7 +372,7 @@ verify_android_sdk_root \
 verify_gradle_maven_projection \
     "$GRADLE_MAVEN_SOURCE" "$GRADLE_MAVEN_PROJECTION" \
     "$GRADLE_MAVEN_SOURCE_ID" "$GRADLE_MAVEN_PROJECTION_ID"
-verify_flutter_maven_root "$FLUTTER_MAVEN_PROJECTION"
+verify_flutter_maven_root "$FLUTTER_MAVEN_PROJECTION" repository
 
 BUILD_CONTAINER="$(vm_docker create \
     --name rustdesk-android-emulator-app-build \
@@ -406,8 +434,8 @@ verify_android_sdk_root \
 verify_gradle_maven_projection \
     "$GRADLE_MAVEN_SOURCE" "$GRADLE_MAVEN_PROJECTION" \
     "$GRADLE_MAVEN_SOURCE_ID" "$GRADLE_MAVEN_PROJECTION_ID" >/dev/null
-verify_flutter_maven_root "$FLUTTER_MAVEN_SOURCE"
-verify_flutter_maven_root "$FLUTTER_MAVEN_PROJECTION"
+verify_flutter_maven_root "$FLUTTER_MAVEN_SOURCE" flat
+verify_flutter_maven_root "$FLUTTER_MAVEN_PROJECTION" repository
 [ "$(stat -c '%d:%i' -- "$FLUTTER_MAVEN_SOURCE")" = \
   "$FLUTTER_MAVEN_SOURCE_ID" ] \
     || die 'canonical Flutter Maven source identity changed during app build'

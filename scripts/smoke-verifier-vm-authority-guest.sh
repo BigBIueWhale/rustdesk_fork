@@ -2694,7 +2694,7 @@ run_android_emulator_runtime() {
     local source_archive_sha input_mount_options artifact_mount_options online_mount_options
     local builder_load runtime_load workload_status=0 source_before inputs_before artifact_before
     local staged_apk_before
-    local apk_receipt runtime_receipt check_receipt checksum_line
+    local entry_receipt apk_receipt runtime_receipt check_receipt checksum_line
     local -a git_builder=(
         setpriv --reuid=1000 --regid=1000 --clear-groups
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
@@ -2947,6 +2947,12 @@ run_android_emulator_runtime() {
         || { tail -n 320 "$output" >&2; fail "Android emulator runtime replay exited with status $workload_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 2097152 ] \
         || fail 'Android emulator runtime replay output exceeds its bound'
+    entry_receipt="$(grep -Fx \
+        "VERIFIER_VM_ENTRY_AUTHORITY=pass uid=1000 gid=1000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root" \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android runtime entry-authority receipt is absent'; }
+    [ "$(grep -Fc 'VERIFIER_VM_ENTRY_AUTHORITY=' "$output")" -eq 1 ] \
+        || fail 'Android runtime entry-authority receipt is duplicated'
     apk_receipt="$(grep -E \
         "^ANDROID_EMULATOR_APK=pass sha256=$ANDROID_RUNTIME_APK_SHA256 package=com\\.carriez\\.flutter_hbb abi=x86_64 native_libraries=[1-9][0-9]* signer=[0-9A-F]{64} signing=test-only$" \
         "$output")" \
@@ -3022,7 +3028,7 @@ run_android_emulator_runtime() {
     umount "$inputs" \
         || fail 'cannot retire the sealed Android runtime input mount'
     SEALED_INPUTS_MOUNTED=0
-    printf '%s\n' "$apk_receipt" "$runtime_receipt" "$check_receipt"
+    printf '%s\n' "$entry_receipt" "$apk_receipt" "$runtime_receipt" "$check_receipt"
     printf 'ANDROID_EMULATOR_RUNTIME_VM=pass harness_commit=%s harness_tree=%s artifact_commit=%s artifact_tree=%s apk_sha256=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s signing=test-only uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked artifact=readonly-landlocked source=exact-pushed cleanup=joined\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
         "$ANDROID_RUNTIME_ARTIFACT_COMMIT" "$ANDROID_RUNTIME_ARTIFACT_TREE" \

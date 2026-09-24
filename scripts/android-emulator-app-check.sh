@@ -47,6 +47,37 @@ readonly X86_VCPKG=$CANDIDATE_ROOT/vcpkg/installed/x64-android
 readonly ADB=$ONLINE_DIR/android-sdk/platform-tools/adb
 ANDROID_PUB_CACHE_RECEIPT=
 
+verify_android_sdk_root() {
+    [ "$#" -eq 2 ] || die 'internal Android SDK verifier argument mismatch'
+    local online_root=$1 cmdline_archive=$2
+    python3 -I -S "$SCRIPT_DIR/online-android-sdk-output.py" check-complete \
+        --online "$online_root" \
+        --cmdline-archive "$cmdline_archive" \
+        --uid "$BUILD_UID" --gid "$BUILD_GID" \
+        --builder "$ANDROID_BUILDER_CONFIG_ID" \
+        --package-pin "cmdline-tools=$SHA256_ANDROID_CMDLINE_TOOLS" \
+        --package-pin "platform-tools=$SHA256_ANDROID_PLATFORM_TOOLS_37_0_1" \
+        --package-pin "build-tools-30.0.3=$SHA256_ANDROID_BUILD_TOOLS_30_0_3" \
+        --package-pin "build-tools-34.0.0=$SHA256_ANDROID_BUILD_TOOLS_34_0_0" \
+        --package-pin "platform-31=$SHA256_ANDROID_PLATFORM_31" \
+        --package-pin "platform-32=$SHA256_ANDROID_PLATFORM_32" \
+        --package-pin "platform-33=$SHA256_ANDROID_PLATFORM_33" \
+        --package-pin "platform-34=$SHA256_ANDROID_PLATFORM_34"
+}
+
+verify_gradle_maven_projection() {
+    [ "$#" -eq 4 ] || die 'internal Gradle Maven verifier argument mismatch'
+    local source=$1 projection=$2 source_id=$3 projection_id=$4
+    local source_device source_inode projection_device projection_inode
+    IFS=: read -r source_device source_inode <<<"$source_id"
+    IFS=: read -r projection_device projection_inode <<<"$projection_id"
+    python3 -I -S "$SCRIPT_DIR/online-gradle-output.py" verify-maven-projection \
+        --source "$source" --projection "$projection" \
+        --uid "$BUILD_UID" --gid "$BUILD_GID" \
+        --source-device "$source_device" --source-inode "$source_inode" \
+        --projection-device "$projection_device" --projection-inode "$projection_inode"
+}
+
 verify_android_online_inputs() {
     local pub_cache_receipt
     [ -d "$ONLINE_DIR" ] && [ ! -L "$ONLINE_DIR" ] \
@@ -87,19 +118,8 @@ verify_android_online_inputs() {
         --uid "$BUILD_UID" --gid "$BUILD_GID" \
         --version "$ANDROID_NDK_VERSION" --sha256 "$SHA256_ANDROID_NDK_R28C" \
         --builder "$ANDROID_BUILDER_CONFIG_ID"
-    python3 -I -S "$SCRIPT_DIR/online-android-sdk-output.py" check-complete \
-        --online "$ONLINE_DIR" \
-        --cmdline-archive "$ONLINE_DIR/android-cmdline-tools.zip" \
-        --uid "$BUILD_UID" --gid "$BUILD_GID" \
-        --builder "$ANDROID_BUILDER_CONFIG_ID" \
-        --package-pin "cmdline-tools=$SHA256_ANDROID_CMDLINE_TOOLS" \
-        --package-pin "platform-tools=$SHA256_ANDROID_PLATFORM_TOOLS_37_0_1" \
-        --package-pin "build-tools-30.0.3=$SHA256_ANDROID_BUILD_TOOLS_30_0_3" \
-        --package-pin "build-tools-34.0.0=$SHA256_ANDROID_BUILD_TOOLS_34_0_0" \
-        --package-pin "platform-31=$SHA256_ANDROID_PLATFORM_31" \
-        --package-pin "platform-32=$SHA256_ANDROID_PLATFORM_32" \
-        --package-pin "platform-33=$SHA256_ANDROID_PLATFORM_33" \
-        --package-pin "platform-34=$SHA256_ANDROID_PLATFORM_34"
+    verify_android_sdk_root \
+        "$ONLINE_DIR" "$ONLINE_DIR/android-cmdline-tools.zip"
     python3 -I -S "$SCRIPT_DIR/online-gradle-output.py" check-complete \
         --online "$ONLINE_DIR" --uid "$BUILD_UID" --gid "$BUILD_GID" \
         --gradle-version "$ANDROID_GRADLE_WRAPPER" \
@@ -223,6 +243,12 @@ readonly BUILD_LOG=$WORKSPACE/build.log
 readonly VERIFY_LOG=$WORKSPACE/verify.log
 readonly RUNTIME_LOG=$WORKSPACE/runtime.log
 readonly APK=$WORKSPACE/rustdesk-x86_64-runtime-test.apk
+readonly GRADLE_SDK_PROJECTION_ROOT=$WORKSPACE/gradle-sdk-projection
+readonly GRADLE_SDK_PROJECTION=$GRADLE_SDK_PROJECTION_ROOT/android-sdk
+readonly GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE=$GRADLE_SDK_PROJECTION_ROOT/android-cmdline-tools.zip
+readonly GRADLE_MAVEN_SOURCE=$ONLINE_DIR/cargo-vendor/rustls-platform-verifier-android-0.1.1/maven
+readonly GRADLE_MAVEN_PROJECTION_ROOT=$WORKSPACE/gradle-maven-projection
+readonly GRADLE_MAVEN_PROJECTION=$GRADLE_MAVEN_PROJECTION_ROOT/maven
 mkdir "$SOURCE_AUTHORITY" "$BUILD_SOURCE"
 tar -xf "$SOURCE_ARCHIVE" --no-same-owner --no-same-permissions \
     -C "$SOURCE_AUTHORITY"
@@ -235,6 +261,39 @@ chmod -R a=rX "$SOURCE_AUTHORITY"
 chmod -R u=rwX,go=rX "$BUILD_SOURCE"
 python3 -I -S "$SOURCE_AUTHORITY/scripts/verify-android-build-source.py" \
     --reference "$SOURCE_AUTHORITY" --candidate "$BUILD_SOURCE"
+
+mkdir "$GRADLE_SDK_PROJECTION_ROOT" "$GRADLE_MAVEN_PROJECTION_ROOT"
+/usr/bin/cp --recursive --no-dereference --preserve=mode,timestamps \
+    --no-preserve=ownership,xattr \
+    -- "$ONLINE_DIR/android-sdk" "$GRADLE_SDK_PROJECTION" \
+    || die 'cannot project the exact Android SDK onto guest-local storage'
+/usr/bin/cp --no-dereference --preserve=mode,timestamps \
+    --no-preserve=ownership,xattr \
+    -- "$ONLINE_DIR/android-cmdline-tools.zip" \
+       "$GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE" \
+    || die 'cannot project the Android command-line-tools archive onto guest-local storage'
+/usr/bin/cp --recursive --no-dereference --preserve=mode,timestamps \
+    --no-preserve=ownership,xattr \
+    -- "$GRADLE_MAVEN_SOURCE" "$GRADLE_MAVEN_PROJECTION" \
+    || die 'cannot project the exact Android Maven repository onto guest-local storage'
+GRADLE_MAVEN_SOURCE_ID="$(stat -c '%d:%i' -- "$GRADLE_MAVEN_SOURCE")" \
+    || die 'cannot identify the canonical Android Maven repository'
+GRADLE_SDK_PROJECTION_ID="$(stat -c '%d:%i' -- "$GRADLE_SDK_PROJECTION")" \
+    || die 'cannot identify the guest-local Android SDK projection'
+GRADLE_MAVEN_PROJECTION_ID="$(stat -c '%d:%i' -- "$GRADLE_MAVEN_PROJECTION")" \
+    || die 'cannot identify the guest-local Android Maven projection'
+ONLINE_DEVICE="$(stat -c '%d' -- "$ONLINE_DIR")" \
+    || die 'cannot identify the canonical online-input filesystem'
+readonly GRADLE_MAVEN_SOURCE_ID GRADLE_SDK_PROJECTION_ID \
+    GRADLE_MAVEN_PROJECTION_ID ONLINE_DEVICE
+[ "${GRADLE_SDK_PROJECTION_ID%%:*}" != "$ONLINE_DEVICE" ] \
+    && [ "${GRADLE_MAVEN_PROJECTION_ID%%:*}" != "$ONLINE_DEVICE" ] \
+    || die 'Gradle JVM input projection is not guest-local storage'
+verify_android_sdk_root \
+    "$GRADLE_SDK_PROJECTION_ROOT" "$GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE"
+verify_gradle_maven_projection \
+    "$GRADLE_MAVEN_SOURCE" "$GRADLE_MAVEN_PROJECTION" \
+    "$GRADLE_MAVEN_SOURCE_ID" "$GRADLE_MAVEN_PROJECTION_ID"
 
 BUILD_CONTAINER="$(vm_docker create \
     --name rustdesk-android-emulator-app-build \
@@ -256,6 +315,8 @@ BUILD_CONTAINER="$(vm_docker create \
     --mount "type=bind,source=$BUILD_SOURCE,target=/src,bind-recursive=disabled" \
     --mount "type=bind,source=$SOURCE_AUTHORITY/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$GRADLE_SDK_PROJECTION,target=/online/android-sdk,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$GRADLE_MAVEN_PROJECTION,target=/online/cargo-vendor/rustls-platform-verifier-android-0.1.1/maven,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$CANDIDATE_ROOT,target=/android-candidate,readonly,bind-recursive=disabled" \
     --workdir /src \
     "$ANDROID_BUILDER_CONFIG_ID" \
@@ -277,6 +338,11 @@ vm_docker start --attach "$BUILD_CONTAINER" >"$BUILD_LOG" 2>&1 || build_status=$
     || die 'x86_64 APK build container did not exit cleanly'
 vm_docker rm "$BUILD_CONTAINER" >/dev/null
 BUILD_CONTAINER=
+verify_android_sdk_root \
+    "$GRADLE_SDK_PROJECTION_ROOT" "$GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE"
+verify_gradle_maven_projection \
+    "$GRADLE_MAVEN_SOURCE" "$GRADLE_MAVEN_PROJECTION" \
+    "$GRADLE_MAVEN_SOURCE_ID" "$GRADLE_MAVEN_PROJECTION_ID" >/dev/null
 mapfile -t built_apks < <(find \
     "$BUILD_SOURCE/flutter/build/app/outputs/flutter-apk" \
     -maxdepth 1 -type f -name '*x86_64*release*.apk' -print | LC_ALL=C sort)

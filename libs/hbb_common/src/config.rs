@@ -2087,8 +2087,47 @@ fn store_config_bytes_transaction_unix(
         let parent = path
             .parent()
             .ok_or_else(|| anyhow!("Config path '{}' has no parent directory", path.display()))?;
+
+        #[cfg(target_os = "android")]
+        let trusted_root = {
+            let root = PathBuf::from(
+                APP_DIR
+                    .read()
+                    .map_err(|_| anyhow!("Android app-directory lock is poisoned"))?
+                    .as_str(),
+            );
+            if !root.is_absolute()
+                || root.components().any(|part| {
+                    !matches!(
+                        part,
+                        std::path::Component::RootDir | std::path::Component::Normal(_)
+                    )
+                })
+            {
+                return Err(anyhow!(
+                    "Android app directory is not an absolute clean path"
+                ));
+            }
+            Some(root)
+        };
+        #[cfg(not(target_os = "android"))]
+        let trusted_root: Option<PathBuf> = None;
+
+        let component_root = match trusted_root.as_deref() {
+            // Android owns the prefix leading to its app-private directory and has used both a
+            // symlink and a bind mount at /data/user/0. Open that exact platform-supplied root in
+            // one operation, verify the resulting app-owned directory below, and keep every
+            // application-controlled descendant on the descriptor-relative no-follow walk.
+            Some(root) => parent.strip_prefix(root).map_err(|_| {
+                anyhow!(
+                    "Config path '{}' is outside the Android app directory",
+                    path.display()
+                )
+            })?,
+            None => parent,
+        };
         let mut names = Vec::new();
-        for part in parent.components() {
+        for part in component_root.components() {
             match part {
                 std::path::Component::RootDir | std::path::Component::CurDir => {}
                 std::path::Component::Normal(name) => names.push(name),
@@ -2137,11 +2176,28 @@ fn store_config_bytes_transaction_unix(
             }
         }
 
-        let start = if parent.is_absolute() { "/" } else { "." };
-        let start = CString::new(start)?;
+        let start = match trusted_root.as_deref() {
+            Some(root) => root.as_os_str(),
+            None if parent.is_absolute() => OsStr::new("/"),
+            None => OsStr::new("."),
+        };
+        let start = component(start, "config directory root")?;
         let mut dir = open_directory(None, &start, names.is_empty()).map_err(|err| {
             anyhow!("Failed to open config directory root without following links: {err}")
         })?;
+        if trusted_root.is_some() {
+            use std::os::unix::fs::MetadataExt;
+
+            let metadata = dir.metadata()?;
+            if !metadata.file_type().is_dir()
+                || metadata.uid() != unsafe { crate::libc::geteuid() }
+                || metadata.mode() & 0o022 != 0
+            {
+                return Err(anyhow!(
+                    "Android app directory failed directory/owner/write-authority verification"
+                ));
+            }
+        }
 
         let count = names.len();
         for (index, name) in names.into_iter().enumerate() {
@@ -2175,7 +2231,7 @@ fn store_config_bytes_transaction_unix(
                 }
                 Err(err) => {
                     return Err(anyhow!(
-                        "Failed to open config directory component without following links: {err}"
+                        "Failed to open config directory component {index} without following links: {err}"
                     ));
                 }
             }

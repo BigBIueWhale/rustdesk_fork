@@ -622,22 +622,25 @@ PY
 }
 
 swipe_app_task_from_recents() {
-    local expected_task_id=$1 current_task_id= snapshot_center= x= y=
+    local expected_task_id=$1 current_task_id= overview_center= x= y= swipe_x= swipe_y=
     current_task_id="$(current_app_task_id 2>/dev/null || true)"
     [ "$current_task_id" = "$expected_task_id" ] || return 1
     timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_APP_SWITCH \
         >/dev/null || return 1
-    snapshot_center="$(wait_ui_center resource \
-        com.android.launcher3:id/snapshot 2>/dev/null || true)"
-    if ! [[ "$snapshot_center" =~ ^[0-9]+\ [0-9]+$ ]]; then
+    overview_center="$(wait_ui_center resource \
+        com.android.launcher3:id/overview_panel 2>/dev/null || true)"
+    if ! [[ "$overview_center" =~ ^[0-9]+\ [0-9]+$ ]]; then
         capture_ui_hierarchy && print_initial_ui_semantics
         return 1
     fi
-    read -r x y <<<"$snapshot_center"
-    [ "$y" -gt 160 ] || return 1
+    read -r x y <<<"$overview_center"
+    [ "$x" -gt 0 ] && [ "$y" -gt 160 ] || return 1
+    swipe_x=$((x + x / 2))
+    swipe_y=$((y + y / 4))
     timeout --signal=TERM --kill-after=2s 10s \
-        "$ADB" -s "$SERIAL" shell input swipe "$x" "$y" "$x" 40 600 \
+        "$ADB" -s "$SERIAL" shell input swipe \
+        "$swipe_x" "$swipe_y" "$swipe_x" 40 600 \
         >/dev/null
 }
 
@@ -884,7 +887,10 @@ PY
                 sleep 0.25
             done
             [ "$task_removed" -eq 1 ] \
-                || fail "lifecycle task $lifecycle_cycle survived exact removal"
+                || {
+                    capture_ui_hierarchy && print_initial_ui_semantics
+                    fail "lifecycle task $lifecycle_cycle survived the Recents swipe"
+                }
             [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = \
               "$APP_PID" ] \
                 || fail "task removal $lifecycle_cycle killed or replaced the service process"

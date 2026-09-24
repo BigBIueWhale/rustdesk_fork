@@ -419,7 +419,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 path, kind, *wanted = sys.argv[1:]
-if kind != "field" and not wanted:
+if kind != "focused-password-field" and not wanted:
     raise SystemExit(2)
 nodes = ET.parse(path).getroot().iter("node")
 centers = set()
@@ -435,8 +435,14 @@ for node in nodes:
         matched = any(value in semantic_tokens for value in wanted)
     elif kind == "resource":
         matched = attributes.get("resource-id") in wanted
-    elif kind == "field":
-        matched = attributes.get("class") == "android.widget.EditText"
+    elif kind == "focused-password-field":
+        matched = (
+            attributes.get("class") == "android.widget.EditText"
+            and attributes.get("focusable") == "true"
+            and attributes.get("focused") == "true"
+            and attributes.get("enabled") == "true"
+            and attributes.get("password") == "true"
+        )
     else:
         raise SystemExit(2)
     if not matched:
@@ -449,9 +455,7 @@ for node in nodes:
     if right <= left or bottom <= top:
         continue
     centers.add(((left + right) // 2, (top + bottom) // 2))
-if kind != "field" and len(centers) != 1:
-    raise SystemExit(1)
-if kind == "field" and len(centers) != 2:
+if len(centers) != 1:
     raise SystemExit(1)
 for x, y in sorted(centers, key=lambda point: (point[1], point[0])):
     print(f"{x} {y}")
@@ -690,16 +694,22 @@ PY
             || { print_initial_ui_semantics; fail 'the production permanent-password dialog did not open'; }
         capture_ui_hierarchy \
             || fail 'cannot inspect the permanent-password dialog'
-        mapfile -t password_fields < <(ui_center field 2>/dev/null || true)
-        [ "${#password_fields[@]}" -eq 2 ] \
-            || { print_initial_ui_semantics; fail 'the permanent-password dialog does not expose two exact fields'; }
+        password_field="$(ui_center focused-password-field 2>/dev/null || true)"
+        [[ "$password_field" =~ ^[0-9]+\ [0-9]+$ ]] \
+            || { print_initial_ui_semantics; fail 'the permanent-password dialog has no exact focused password field'; }
         readonly TEST_PASSWORD=Runtime1x
-        read -r field_x field_y <<<"${password_fields[0]}"
+        read -r field_x field_y <<<"$password_field"
         "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" >/dev/null \
             || fail 'cannot focus the password field'
         "$ADB" -s "$SERIAL" shell input text "$TEST_PASSWORD" >/dev/null \
             || fail 'cannot enter the disposable password'
-        read -r field_x field_y <<<"${password_fields[1]}"
+        "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_TAB >/dev/null \
+            || fail 'cannot traverse to the password-confirmation field'
+        sleep 0.5
+        password_field="$(wait_ui_center focused-password-field 2>/dev/null || true)"
+        [[ "$password_field" =~ ^[0-9]+\ [0-9]+$ ]] \
+            || fail 'the password-confirmation field did not take exact focus'
+        read -r field_x field_y <<<"$password_field"
         "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" >/dev/null \
             || fail 'cannot focus the password-confirmation field'
         "$ADB" -s "$SERIAL" shell input text "$TEST_PASSWORD" >/dev/null \

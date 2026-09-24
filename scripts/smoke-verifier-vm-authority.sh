@@ -2875,9 +2875,13 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     )
     [ "${#android_runtime_app_receipts[@]}" -eq 1 ] \
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android runtime app receipt is absent or duplicated'; }
-    require_exact_fixed_receipt \
-        "ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
-        'Android lifecycle runtime receipt'
+    mapfile -t android_lifecycle_receipts < <(
+        /usr/bin/grep -Eo \
+            "ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped system_ui_anr=(absent|waited-[1-3]) apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#android_lifecycle_receipts[@]}" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android lifecycle runtime receipt is absent or duplicated'; }
     require_exact_fixed_receipt \
         "ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=$ANDROID_BUILDER_CONFIG_ID runtime=$DEV_CHECK_IMAGE_CONFIG_ID vm_network=none container_network=none inputs=readonly cleanup=joined" \
         'Android emulator runtime-check receipt'

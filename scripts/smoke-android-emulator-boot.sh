@@ -277,6 +277,67 @@ is_exact_adb_process() {
         && [ "$(process_start_time "$ADB_PID" 2>/dev/null)" = "$ADB_START" ]
 }
 
+print_android_connection_diagnostic() {
+    local logcat_diag= log_dir=/storage/emulated/0/RustDesk/Logs
+    local listing= latest= filename= native_diag=
+    [ "$ADB_STARTED" -eq 1 ] && is_exact_adb_process || return 0
+
+    logcat_diag="$(
+        timeout --signal=TERM --kill-after=2s 20s \
+            "$ADB" -s "$SERIAL" logcat -d -v brief 2>/dev/null \
+            | grep -Ei \
+                'No remembered password|CPace handshake failed|R-S9|connect-password-prompt|session_set_connect_password|viewer owner|outgoing viewer|connection round|Connection closed|keying' \
+            | tail -n 160 \
+            || true
+    )"
+    if [ "${#logcat_diag}" -gt 131072 ]; then
+        printf 'Android connection diagnostic: filtered logcat exceeded 128 KiB\n' >&2
+    elif [ -n "$logcat_diag" ]; then
+        printf 'Android connection diagnostic (logcat):\n%s\n' "$logcat_diag" >&2
+    else
+        printf 'Android connection diagnostic (logcat): no matching records\n' >&2
+    fi
+
+    listing="$(
+        timeout --signal=TERM --kill-after=2s 20s \
+            "$ADB" -s "$SERIAL" shell ls -1t "$log_dir" 2>/dev/null \
+            | tr -d '\r' \
+            || true
+    )"
+    if [ "${#listing}" -gt 32768 ]; then
+        printf 'Android connection diagnostic: native-log inventory exceeded 32 KiB\n' >&2
+        return 0
+    fi
+    while IFS= read -r filename; do
+        [[ "$filename" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || continue
+        latest=$filename
+        break
+    done <<<"$listing"
+    if [ -z "$latest" ]; then
+        printf 'Android connection diagnostic: no release log file\n' >&2
+        return 0
+    fi
+    native_diag="$(
+        timeout --signal=TERM --kill-after=2s 20s \
+            "$ADB" -s "$SERIAL" exec-out tail -c 131072 \
+            "$log_dir/$latest" 2>/dev/null \
+            | tr -d '\r' \
+            | grep -Ei \
+                'No remembered password|CPace handshake failed|R-S9|connect-password-prompt|session_set_connect_password|viewer owner|outgoing viewer|connection round|Connection closed|keying' \
+            | tail -n 160 \
+            || true
+    )"
+    if [ "${#native_diag}" -gt 131072 ]; then
+        printf 'Android connection diagnostic: filtered native log exceeded 128 KiB\n' >&2
+    elif [ -n "$native_diag" ]; then
+        printf 'Android connection diagnostic (%s):\n%s\n' \
+            "$latest" "$native_diag" >&2
+    else
+        printf 'Android connection diagnostic (%s): no matching records\n' \
+            "$latest" >&2
+    fi
+}
+
 is_exact_peer_process() {
     local pid=$1 start=$2
     [ -n "$pid" ] && [ -n "$start" ] && [ -r "/proc/$pid/stat" ] \
@@ -391,6 +452,9 @@ stop_emulator() {
 cleanup() {
     local status=$? cleanup_status=0
     trap - EXIT HUP INT TERM
+    if [ "$status" -ne 0 ]; then
+        print_android_connection_diagnostic || true
+    fi
     stop_emulator || cleanup_status=1
     stop_peer_infrastructure || cleanup_status=1
     if [ "$status" -ne 0 ]; then

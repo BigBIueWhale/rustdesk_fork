@@ -64,9 +64,9 @@ void main() {
     expect(pixels.getUint8(1), lessThan(16));
     expect(pixels.getUint8(2), lessThan(16));
     expect(pixels.getUint8(3), 255);
-    raster.dispose();
 
     await tester.pumpWidget(const SizedBox.shrink());
+    raster.dispose();
   }, timeout: const Timeout(Duration(seconds: 30)));
 
   testWidgets('owned image paint retires exact handles after frame and unmount',

@@ -233,65 +233,64 @@ class _ViewCameraPageState extends State<ViewCameraPage>
       child: BlockableOverlay(
         state: _blockableOverlayState,
         underlying: Scaffold(
-          // workaround for https://github.com/rustdesk/rustdesk/issues/3131
-          floatingActionButtonLocation: keyboardIsVisible
-              ? FABLocation(FloatingActionButtonLocation.endFloat, 0, -35)
-              : null,
-          floatingActionButton: !showActionButton
-              ? null
-              : FloatingActionButton(
-                  mini: !keyboardIsVisible,
-                  child: Icon(
-                    (keyboardIsVisible || _showGestureHelp)
-                        ? Icons.expand_more
-                        : Icons.expand_less,
-                    color: Colors.white,
-                  ),
-                  backgroundColor: MyTheme.accent,
-                  onPressed: () {
-                    setState(() {
-                      if (keyboardIsVisible) {
-                        _showEdit = false;
-                        gFFI.invokeMethod("enable_soft_keyboard", false);
-                        _mobileFocusNode.unfocus();
-                        _physicalFocusNode.requestFocus();
-                      } else if (_showGestureHelp) {
-                        _showGestureHelp = false;
-                      } else {
-                        _showBar = !_showBar;
-                      }
-                    });
-                  }),
-          bottomNavigationBar: Obx(() => _bottomWidget()),
-          body: Obx(
-            () => getRawPointerAndKeyBody(Container(
-              color: kColorCanvas,
-              child: SafeArea(
-                child: OrientationBuilder(builder: (ctx, orientation) {
-                  if (_currentOrientation != orientation) {
-                    Timer(const Duration(milliseconds: 200), () {
-                      if (!mounted || !gFFI.isCurrentSession(sessionId)) {
-                        return;
-                      }
-                      gFFI.dialogManager
-                          .resetMobileActionsOverlay(ffi: gFFI);
-                      _currentOrientation = orientation;
-                      gFFI.canvasModel
-                          .updateViewStyle(expectedSessionId: sessionId);
-                    });
-                  }
-                  return Container(
-                    color: MyTheme.canvasColor,
-                    child: RawTouchGestureDetectorRegion(
-                      child: getBodyForMobile(),
-                      ffi: gFFI,
-                      isCamera: true,
+            // workaround for https://github.com/rustdesk/rustdesk/issues/3131
+            floatingActionButtonLocation: keyboardIsVisible
+                ? FABLocation(FloatingActionButtonLocation.endFloat, 0, -35)
+                : null,
+            floatingActionButton: !showActionButton
+                ? null
+                : FloatingActionButton(
+                    mini: !keyboardIsVisible,
+                    child: Icon(
+                      (keyboardIsVisible || _showGestureHelp)
+                          ? Icons.expand_more
+                          : Icons.expand_less,
+                      color: Colors.white,
                     ),
-                  );
-                }),
-              ),
+                    backgroundColor: MyTheme.accent,
+                    onPressed: () {
+                      setState(() {
+                        if (keyboardIsVisible) {
+                          _showEdit = false;
+                          gFFI.invokeMethod("enable_soft_keyboard", false);
+                          _mobileFocusNode.unfocus();
+                          _physicalFocusNode.requestFocus();
+                        } else if (_showGestureHelp) {
+                          _showGestureHelp = false;
+                        } else {
+                          _showBar = !_showBar;
+                        }
+                      });
+                    }),
+            bottomNavigationBar: Obx(() => _bottomWidget()),
+            body: Obx(
+              () => getRawPointerAndKeyBody(Container(
+                color: kColorCanvas,
+                child: SafeArea(
+                  child: OrientationBuilder(builder: (ctx, orientation) {
+                    if (_currentOrientation != orientation) {
+                      Timer(const Duration(milliseconds: 200), () {
+                        if (!mounted || !gFFI.isCurrentSession(sessionId)) {
+                          return;
+                        }
+                        gFFI.dialogManager.resetMobileActionsOverlay(ffi: gFFI);
+                        _currentOrientation = orientation;
+                        gFFI.canvasModel
+                            .updateViewStyle(expectedSessionId: sessionId);
+                      });
+                    }
+                    return Container(
+                      color: MyTheme.canvasColor,
+                      child: RawTouchGestureDetectorRegion(
+                        child: getBodyForMobile(),
+                        ffi: gFFI,
+                        isCamera: true,
+                      ),
+                    );
+                  }),
+                ),
+              )),
             )),
-          )),
       ),
     );
   }

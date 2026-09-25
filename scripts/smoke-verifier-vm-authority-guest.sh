@@ -3377,6 +3377,9 @@ run_flutter_model_tests() {
                     formatted=/work/$(basename "$format_path").formatted
                     dart format --output=show "$format_path" \
                         >"$formatted" 2>>/work/format.err
+                    format_summary="$(tail -n 1 "$formatted")"
+                    [[ "$format_summary" =~ ^Formatted\ 1\ file\ \([01]\ changed\)\ in\ [0-9.]+\ seconds\.$ ]]
+                    sed -i '$d' "$formatted"
                     if ! diff -u "$format_path" "$formatted" \
                         >>/work/format.diff; then
                         format_status=1

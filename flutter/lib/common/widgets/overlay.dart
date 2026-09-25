@@ -662,8 +662,7 @@ class _BlockableOverlayBody extends StatefulWidget {
       {super.key, required this.underlying, required this.state});
 
   @override
-  State<_BlockableOverlayBody> createState() =>
-      _BlockableOverlayBodyState();
+  State<_BlockableOverlayBody> createState() => _BlockableOverlayBodyState();
 }
 
 class _BlockableOverlayBodyState extends State<_BlockableOverlayBody> {

@@ -770,6 +770,9 @@ class Dialog<T> {
   Dialog();
 
   void complete(T? res) {
+    final retiringEntry = entry;
+    entry = null;
+    if (retiringEntry == null && completer.isCompleted) return;
     try {
       if (!completer.isCompleted) {
         completer.complete(res);
@@ -777,7 +780,13 @@ class Dialog<T> {
     } catch (e) {
       debugPrint("Dialog complete catch error: $e");
     } finally {
-      entry?.remove();
+      if (retiringEntry != null) {
+        try {
+          retiringEntry.remove();
+        } finally {
+          retiringEntry.dispose();
+        }
+      }
     }
   }
 }
@@ -819,16 +828,16 @@ class OverlayDialogManager {
   }
 
   void dismissAll() {
-    _dialogs.forEach((key, value) {
+    final dialogs = Map<String, Dialog>.of(_dialogs);
+    _dialogs.clear();
+    dialogs.forEach((key, value) {
       value.complete(null);
       BackButtonInterceptor.removeByName(key);
     });
-    _dialogs.clear();
   }
 
   void dismissByTag(String tag) {
-    _dialogs[tag]?.complete(null);
-    _dialogs.remove(tag);
+    _dialogs.remove(tag)?.complete(null);
     BackButtonInterceptor.removeByName(tag);
   }
 
@@ -852,6 +861,12 @@ class OverlayDialogManager {
     } else {
       dialogTag = _tagCount.toString();
       _tagCount++;
+    }
+
+    final previous = _dialogs.remove(dialogTag);
+    if (previous != null) {
+      previous.complete(null);
+      BackButtonInterceptor.removeByName(dialogTag);
     }
 
     final dialog = Dialog<T>();

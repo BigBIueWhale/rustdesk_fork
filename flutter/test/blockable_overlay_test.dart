@@ -1,3 +1,4 @@
+import 'package:flutter_hbb/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -92,6 +93,50 @@ void main() {
     expect(blockerTaps, 1);
     expect(routeTaps, 1);
 
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('one explicit dialog tag owns one disposable overlay entry',
+      (tester) async {
+    final overlayState = BlockableOverlayState();
+    final manager = OverlayDialogManager();
+    manager.setOverlayState(overlayState);
+
+    await tester.pumpWidget(MaterialApp(
+      home: BlockableOverlay(
+        state: overlayState,
+        underlying: const SizedBox.expand(),
+      ),
+    ));
+
+    final first = manager.show<void>(
+      (_, __, ___) => const CustomAlertDialog(
+        content: Text('first dialog'),
+      ),
+      tag: 'connection-state',
+    );
+    await tester.pump();
+    expect(find.text('first dialog'), findsOneWidget);
+
+    final replacement = manager.show<void>(
+      (_, __, ___) => const CustomAlertDialog(
+        content: Text('replacement dialog'),
+      ),
+      tag: 'connection-state',
+    );
+    await tester.pump();
+
+    expect(await first, isNull);
+    expect(find.text('first dialog'), findsNothing);
+    expect(find.text('replacement dialog'), findsOneWidget);
+
+    manager.dismissByTag('connection-state');
+    await tester.pump();
+    expect(await replacement, isNull);
+    expect(find.text('replacement dialog'), findsNothing);
+
+    manager.dismissByTag('connection-state');
+    manager.dismissAll();
     await tester.pumpWidget(const SizedBox.shrink());
   });
 }

@@ -322,13 +322,11 @@ print_android_connection_diagnostic() {
             "$ADB" -s "$SERIAL" exec-out tail -c 131072 \
             "$log_dir/$latest" 2>/dev/null \
             | tr -d '\r' \
-            | grep -Ei \
-                'No remembered password|CPace handshake failed|R-S9|connect-password-prompt|session_set_connect_password|viewer owner|outgoing viewer|connection round|Connection closed|keying' \
-            | tail -n 160 \
+            | tail -n 200 \
             || true
     )"
     if [ "${#native_diag}" -gt 131072 ]; then
-        printf 'Android connection diagnostic: filtered native log exceeded 128 KiB\n' >&2
+        printf 'Android connection diagnostic: native-log tail exceeded 128 KiB\n' >&2
     elif [ -n "$native_diag" ]; then
         printf 'Android connection diagnostic (%s):\n%s\n' \
             "$latest" "$native_diag" >&2
@@ -336,6 +334,33 @@ print_android_connection_diagnostic() {
         printf 'Android connection diagnostic (%s): no matching records\n' \
             "$latest" >&2
     fi
+}
+
+print_connect_password_prompt_diagnostic() {
+    local password_prompt= swipe_attempted=0
+    [ "$ADB_STARTED" -eq 1 ] && is_exact_adb_process || return 0
+    [ "${UI_XML+x}" = x ] || return 0
+    capture_ui_hierarchy complete || return 0
+    password_prompt="$(ui_center text 'Password required' 2>/dev/null || true)"
+    [[ "$password_prompt" =~ ^[0-9]+\ [0-9]+$ ]] || return 0
+
+    timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null \
+        || return 0
+    sleep 0.5
+    capture_ui_hierarchy complete || return 0
+    if ! grep -Eq \
+        'No remembered password|CPace handshake failed|R-S9' "$UI_XML"; then
+        timeout --signal=TERM --kill-after=2s 10s \
+            "$ADB" -s "$SERIAL" shell input swipe 240 600 240 120 500 \
+            >/dev/null || return 0
+        swipe_attempted=1
+        sleep 0.5
+        capture_ui_hierarchy complete || return 0
+    fi
+    printf 'Android connect-password prompt diagnostic (swiped=%s):\n' \
+        "$swipe_attempted" >&2
+    print_initial_ui_semantics
 }
 
 is_exact_peer_process() {
@@ -453,6 +478,7 @@ cleanup() {
     local status=$? cleanup_status=0
     trap - EXIT HUP INT TERM
     if [ "$status" -ne 0 ]; then
+        print_connect_password_prompt_diagnostic || true
         print_android_connection_diagnostic || true
     fi
     stop_emulator || cleanup_status=1
@@ -805,6 +831,8 @@ for node in ET.parse(sys.argv[1]).getroot().iter("node"):
     attributes = node.attrib
     values = []
     for key in ("text", "content-desc", "resource-id"):
+        if attributes.get("password") == "true" and key in ("text", "content-desc"):
+            continue
         value = attributes.get(key, "").strip()
         if value:
             values.append(f"{key}={value[:240]!r}")

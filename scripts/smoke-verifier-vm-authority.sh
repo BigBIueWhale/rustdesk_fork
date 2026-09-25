@@ -757,7 +757,7 @@ require_android_renderer_receipt() {
     )
     [ "${#receipts[@]}" -eq 1 ] \
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android renderer receipt is absent or duplicated'; }
-    [ "$(/usr/bin/grep -c '^ANDROID_EMULATOR_RENDERER=' "$SERIAL_LOG")" -eq 1 ] \
+    [ "$(/usr/bin/grep -Fo 'ANDROID_EMULATOR_RENDERER=' "$SERIAL_LOG" | /usr/bin/wc -l)" -eq 1 ] \
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android renderer receipt is malformed or duplicated'; }
 }
 

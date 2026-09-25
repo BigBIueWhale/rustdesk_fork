@@ -30,21 +30,23 @@ void main() {
 
     await tester.pumpWidget(Directionality(
       textDirection: TextDirection.ltr,
-      child: SizedBox(
-        width: 32,
-        height: 24,
-        child: RepaintBoundary(
-          key: boundaryKey,
-          child: Stack(children: [
-            OwnedImagePaint(
-              key: paintKey,
-              image: source,
-              x: 0,
-              y: 0,
-              scale: 16,
-              size: Size.infinite,
-            ),
-          ]),
+      child: Center(
+        child: SizedBox(
+          width: 32,
+          height: 24,
+          child: RepaintBoundary(
+            key: boundaryKey,
+            child: Stack(children: [
+              OwnedImagePaint(
+                key: paintKey,
+                image: source,
+                x: 0,
+                y: 0,
+                scale: 16,
+                size: Size.infinite,
+              ),
+            ]),
+          ),
         ),
       ),
     ));

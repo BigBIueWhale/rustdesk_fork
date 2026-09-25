@@ -267,4 +267,10 @@ if [ -e "$LLVM_ROOT" ] || [ -L "$LLVM_ROOT" ]; then
 fi
 unset LIBCLANG_PATH BINDGEN_EXTRA_CLANG_ARGS
 prepare_offline_gradle_cache
-cd flutter && flutter build apk --release --target-platform "$FLUTTER_TARGET_PLATFORM" --split-per-abi
+flutter_test_args=()
+if [ "$APK_MODE" = emulator-test ]; then
+    # The isolated synthetic-frame test needs one bounded engine readback. Normal
+    # Android artifacts must never log remote-display pixels or pay this cost.
+    flutter_test_args=(--dart-define=RUSTDESK_ANDROID_RGBA_ENGINE_EVIDENCE=true)
+fi
+cd flutter && flutter build apk --release --target-platform "$FLUTTER_TARGET_PLATFORM" --split-per-abi "${flutter_test_args[@]}"

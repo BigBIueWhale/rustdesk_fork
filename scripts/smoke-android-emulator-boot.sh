@@ -1855,6 +1855,14 @@ PY
         ! grep -Eq 'FATAL EXCEPTION' <<<"$lifecycle_log" \
             || fail 'the completed lifecycle logged a fatal exception'
         if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+            rgba_raw_identity="$(printf '%s\n' "$lifecycle_log" | sed -nE \
+                's/.*RGBA_PIPELINE dart-raw display=([0-9]+) publication=([1-9][0-9]*) dimensions=([1-9][0-9]*x[1-9][0-9]*) format=bgra8888-premul row_bytes=[1-9][0-9]* quarter_bytes=[0-9a-f]{8} three_quarter_bytes=[0-9a-f]{8}.*/\1:\2:\3/p')"
+            rgba_engine_identity="$(printf '%s\n' "$lifecycle_log" | sed -nE \
+                's/.*RGBA_PIPELINE dart-engine display=([0-9]+) publication=([1-9][0-9]*) dimensions=([1-9][0-9]*x[1-9][0-9]*) color_space=[A-Za-z0-9]+ format=rgba8888-premul row_bytes=[1-9][0-9]* quarter_bytes=[0-9a-f]{8} three_quarter_bytes=[0-9a-f]{8}.*/\1:\2:\3/p')"
+            [ -n "$rgba_raw_identity" ] \
+                && [ "$rgba_raw_identity" = "$rgba_engine_identity" ] \
+                && [ "$(wc -l <<<"$rgba_raw_identity")" -eq 1 ] \
+                || fail 'the Android peer run lacks one coherent Dart/engine pixel-boundary sample'
             retired_session_events="$(printf '%s\n' "$lifecycle_log" \
                 | grep -Ec 'Retired [1-9][0-9]* outgoing client peer session\(s\)' || true)"
             [ "$retired_session_events" -eq 2 ] \

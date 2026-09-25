@@ -53,6 +53,33 @@ import 'package:flutter_hbb/native/custom_cursor.dart'
 
 typedef HandleMsgBox = Function(Map<String, dynamic> evt, String id);
 typedef ReconnectHandle = Function(OverlayDialogManager, SessionID);
+
+const _androidRgbaEngineEvidence = bool.fromEnvironment(
+    'RUSTDESK_ANDROID_RGBA_ENGINE_EVIDENCE',
+    defaultValue: false);
+
+String _rgbaEvidenceSamples(
+    Uint8List pixels, int width, int height, String channelOrder) {
+  if (width <= 0 ||
+      height <= 0 ||
+      pixels.length % height != 0 ||
+      pixels.length ~/ height < width * 4) {
+    return 'format=$channelOrder sample=unavailable';
+  }
+  final rowBytes = pixels.length ~/ height;
+  final y = height ~/ 2;
+  String sample(int x) {
+    final offset = y * rowBytes + x * 4;
+    return List.generate(4, (index) => pixels[offset + index])
+        .map((value) => value.toRadixString(16).padLeft(2, '0'))
+        .join();
+  }
+
+  return 'format=$channelOrder row_bytes=$rowBytes '
+      'quarter_bytes=${sample(width ~/ 4)} '
+      'three_quarter_bytes=${sample(width * 3 ~/ 4)}';
+}
+
 // One UUID owns the mobile Flutter isolate. Each outgoing connection receives a different UUID
 // below; conflating the two lets a delayed dispose from an old route close its replacement.
 final _mobileClientOwnerId = Uuid().v4obj();
@@ -1787,6 +1814,7 @@ class VirtualMouseMode with ChangeNotifier {
 
 class ImageModel with ChangeNotifier {
   ui.Image? _image;
+  bool _reportedAndroidRgbaEngineEvidence = false;
   final ExactRgbaPublicationOrder<SessionID> _rgbaPublicationOrder =
       ExactRgbaPublicationOrder<SessionID>();
 
@@ -1871,6 +1899,41 @@ class ImageModel with ChangeNotifier {
     );
     if (image == null) {
       return false;
+    }
+    if (isAndroid &&
+        _androidRgbaEngineEvidence &&
+        !_reportedAndroidRgbaEngineEvidence &&
+        expectedRgbaPublication != null) {
+      _reportedAndroidRgbaEngineEvidence = true;
+      final width = image.width;
+      final height = image.height;
+      debugPrint('RGBA_PIPELINE dart-raw display=$display '
+          'publication=${expectedRgbaPublication.publication} '
+          'dimensions=${width}x$height '
+          '${_rgbaEvidenceSamples(rgba, width, height, "bgra8888-premul")}');
+      try {
+        final data =
+            await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+        final pixels = data == null
+            ? null
+            : data.buffer
+                .asUint8List(data.offsetInBytes, data.lengthInBytes);
+        if (pixels == null) {
+          debugPrint('RGBA_PIPELINE dart-engine display=$display '
+              'publication=${expectedRgbaPublication.publication} '
+              'dimensions=${width}x$height color_space=${image.colorSpace.name} '
+              'format=rgba8888-premul sample=unavailable');
+        } else {
+          debugPrint('RGBA_PIPELINE dart-engine display=$display '
+              'publication=${expectedRgbaPublication.publication} '
+              'dimensions=${width}x$height color_space=${image.colorSpace.name} '
+              '${_rgbaEvidenceSamples(pixels, width, height, "rgba8888-premul")}');
+        }
+      } catch (error) {
+        debugPrint('RGBA_PIPELINE dart-engine display=$display '
+            'publication=${expectedRgbaPublication.publication} '
+            'dimensions=${width}x$height readback=${error.runtimeType}');
+      }
     }
     if (parent.target?.ffiModel.isCurrentDisplayTopology(
             expectedSessionId, expectedDisplayTopologyRevision) !=

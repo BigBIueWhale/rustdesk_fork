@@ -15558,9 +15558,13 @@ mapfile -t rr2c_flutter_build_commands < <(
 )
 if [ "${#rr2c_flutter_build_commands[@]}" -ne 1 ] \
   || [ "${rr2c_flutter_build_commands[0]:-}" != \
-       'cd flutter && flutter build apk --release --target-platform "$FLUTTER_TARGET_PLATFORM" --split-per-abi' ]; then
+       'cd flutter && flutter build apk --release --target-platform "$FLUTTER_TARGET_PLATFORM" --split-per-abi "${flutter_test_args[@]}"' ]; then
   rr2c_bad="$rr2c_bad flutter-build-command"
 fi
+grep -qFx 'flutter_test_args=()' scripts/android-apk-build.sh \
+  && grep -qFx 'if [ "$APK_MODE" = emulator-test ]; then' scripts/android-apk-build.sh \
+  && grep -qFx '    flutter_test_args=(--dart-define=RUSTDESK_ANDROID_RGBA_ENGINE_EVIDENCE=true)' scripts/android-apk-build.sh \
+  || rr2c_bad="$rr2c_bad emulator-evidence-define"
 grep -qFx 'FLUTTER_TARGET_PLATFORM=android-arm64' scripts/android-apk-build.sh \
   || rr2c_bad="$rr2c_bad release-flutter-target-default"
 grep -qFx 'ANDROID_RUST_TARGET=aarch64-linux-android' scripts/android-apk-build.sh \

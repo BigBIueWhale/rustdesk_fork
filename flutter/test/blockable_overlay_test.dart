@@ -109,7 +109,7 @@ void main() {
       ),
     ));
 
-    final first = manager.show<void>(
+    final first = manager.show<String>(
       (_, __, ___) => const CustomAlertDialog(
         content: Text('first dialog'),
       ),
@@ -118,7 +118,7 @@ void main() {
     await tester.pump();
     expect(find.text('first dialog'), findsOneWidget);
 
-    final replacement = manager.show<void>(
+    final replacement = manager.show<String>(
       (_, __, ___) => const CustomAlertDialog(
         content: Text('replacement dialog'),
       ),

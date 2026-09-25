@@ -389,6 +389,7 @@ runtime_status=0
 vm_docker start --attach "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 || runtime_status=$?
 if [ "$runtime_status" -ne 0 ]; then
     tail -n 240 "$RUNTIME_LOG" >&2
+    grep '^Android initial UI:' "$RUNTIME_LOG" | tail -n 80 >&2 || true
     runtime_failure="$(grep -m 1 '^Android emulator boot smoke:' \
         "$RUNTIME_LOG" || true)"
     [ -z "$runtime_failure" ] || printf '%s\n' "$runtime_failure" >&2

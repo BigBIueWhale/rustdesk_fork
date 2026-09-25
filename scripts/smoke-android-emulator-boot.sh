@@ -94,6 +94,7 @@ readonly ADB=$SDK_ROOT/platform-tools/adb
 readonly EMULATOR_LOG=$WORK_ROOT/emulator.log
 readonly ADB_LOG=$WORK_ROOT/adb.log
 readonly FRAMEBUFFER=$WORK_ROOT/framebuffer.png
+readonly ANDROID_CONNECTION_DIAGNOSTIC=$WORK_ROOT/android-connection.diagnostic
 mkdir -m 0700 -p -- "$SDK_ROOT" "$HOME_ROOT" "$AVD_HOME" "$SYSTEM_ROOT" \
     "$SDK_ROOT/platform-tools"
 
@@ -368,6 +369,31 @@ print_android_connection_diagnostic() {
     fi
 }
 
+capture_android_connection_diagnostic() {
+    local authority=$1
+    rm -f -- "$ANDROID_CONNECTION_DIAGNOSTIC"
+    {
+        printf 'ANDROID_CONNECTION_DIAGNOSTIC_BEGIN\n'
+        print_android_connection_diagnostic "$authority" || true
+        printf 'ANDROID_CONNECTION_DIAGNOSTIC_END\n'
+    } >"$ANDROID_CONNECTION_DIAGNOSTIC" 2>&1
+    [ -f "$ANDROID_CONNECTION_DIAGNOSTIC" ] \
+        && [ ! -L "$ANDROID_CONNECTION_DIAGNOSTIC" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- \
+            "$ANDROID_CONNECTION_DIAGNOSTIC")" = 1000:1000:600:1 ] \
+        && [ "$(stat -c '%s' -- "$ANDROID_CONNECTION_DIAGNOSTIC")" -le 262144 ]
+}
+
+reprint_android_connection_diagnostic() {
+    [ -f "$ANDROID_CONNECTION_DIAGNOSTIC" ] \
+        && [ ! -L "$ANDROID_CONNECTION_DIAGNOSTIC" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- \
+            "$ANDROID_CONNECTION_DIAGNOSTIC")" = 1000:1000:600:1 ] \
+        && [ "$(stat -c '%s' -- "$ANDROID_CONNECTION_DIAGNOSTIC")" -le 262144 ] \
+        || return 1
+    cat -- "$ANDROID_CONNECTION_DIAGNOSTIC" >&2
+}
+
 print_connect_password_prompt_diagnostic() {
     local password_prompt= swipe_attempted=0
     [ "$ADB_STARTED" -eq 1 ] && is_exact_adb_process || return 0
@@ -511,7 +537,9 @@ cleanup() {
     trap - EXIT HUP INT TERM
     if [ "$status" -ne 0 ]; then
         print_connect_password_prompt_diagnostic || true
-        print_android_connection_diagnostic || true
+        if [ ! -e "$ANDROID_CONNECTION_DIAGNOSTIC" ]; then
+            capture_android_connection_diagnostic cleanup || true
+        fi
     fi
     stop_emulator || cleanup_status=1
     stop_peer_infrastructure || cleanup_status=1
@@ -526,6 +554,7 @@ cleanup() {
             || tail -n 80 "$PEER_SOURCE_LOG" >&2 2>/dev/null || true
         [ -z "${PEER_XVFB_LOG:-}" ] \
             || tail -n 80 "$PEER_XVFB_LOG" >&2 2>/dev/null || true
+        reprint_android_connection_diagnostic || true
     fi
     [ "$cleanup_status" -eq 0 ] || [ "$status" -ne 0 ] || status=1
     exit "$status"
@@ -1269,7 +1298,8 @@ capture_peer_freshness() {
         sleep 0.5
     done
     capture_ui_hierarchy complete && print_initial_ui_semantics
-    print_android_connection_diagnostic active
+    capture_android_connection_diagnostic active || true
+    reprint_android_connection_diagnostic || true
     fail "Android peer display did not become fresh and changing for $phase"
 }
 
@@ -1644,7 +1674,8 @@ PY
                 || fail 'cannot return to the production Connection page'
             open_peer_connection initial 1 \
                 || {
-                    print_android_connection_diagnostic active
+                    capture_android_connection_diagnostic active || true
+                    reprint_android_connection_diagnostic || true
                     capture_ui_hierarchy complete && print_initial_ui_semantics
                     fail 'the initial authenticated Android peer connection failed'
                 }

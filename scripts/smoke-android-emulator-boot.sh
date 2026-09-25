@@ -590,7 +590,7 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
         "$PEER_SEED_LOG" || true)" -eq 1 ] \
         && [ "$(stat -c '%s' -- "$PEER_SEED_LOG")" -le 4096 ] \
         || { tail -n 40 "$PEER_SEED_LOG" >&2; fail 'the Android peer password seed receipt differs'; }
-    HOME=/tmp/android-peer-server-home DISPLAY=:99 \
+    HOME=/tmp/android-peer-server-home DISPLAY=:99 RUST_LOG=debug \
         LD_PRELOAD="$PEER_TARGET/smoke-bind-loopback.so" \
         "$PEER_TARGET/smoke-server-launcher" "$PEER_TARGET/debug/rustdesk" \
         >"$PEER_SERVER_LOG" 2>&1 &
@@ -775,6 +775,38 @@ if kind != "password-fields" and len(centers) != 1:
     raise SystemExit(1)
 for x, y in sorted(centers, key=lambda point: (point[1], point[0])):
     print(f"{x} {y}")
+PY
+}
+
+ui_focused_password_bounds() {
+    python3 -I -S - "$UI_XML" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+bounds = set()
+for node in ET.parse(sys.argv[1]).getroot().iter("node"):
+    attributes = node.attrib
+    if not (
+        attributes.get("class") == "android.widget.EditText"
+        and attributes.get("focusable") == "true"
+        and attributes.get("focused") == "true"
+        and attributes.get("enabled") == "true"
+        and attributes.get("password") == "true"
+    ):
+        continue
+    match = re.fullmatch(
+        r"\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]",
+        attributes.get("bounds", ""),
+    )
+    if not match:
+        continue
+    left, top, right, bottom = map(int, match.groups())
+    if right > left and bottom > top:
+        bounds.add((left, top, right, bottom))
+if len(bounds) != 1:
+    raise SystemExit(1)
+print(*bounds.pop())
 PY
 }
 
@@ -1207,7 +1239,8 @@ capture_peer_freshness() {
 }
 
 open_peer_connection() {
-    local generation=$1 expect_password=$2 center x y
+    local generation=$1 expect_password=$2 center x y bounds=
+    local left= top= right= bottom= visibility_x= visibility_y=
     if ! wait_ui_center address-field >/dev/null 2>&1; then
         tap_ui text 'Connection' \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
@@ -1229,8 +1262,19 @@ open_peer_connection() {
         center="$(ui_center focused-password-field 2>/dev/null || true)"
         [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
         read -r x y <<<"$center"
+        bounds="$(ui_focused_password_bounds 2>/dev/null || true)"
+        [[ "$bounds" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]] || return 1
+        read -r left top right bottom <<<"$bounds"
         "$ADB" -s "$SERIAL" shell input tap "$x" "$y" >/dev/null || return 1
         "$ADB" -s "$SERIAL" shell input text "$PEER_PASSWORD" >/dev/null || return 1
+        visibility_x=$((right - 24))
+        visibility_y=$(((top + bottom) / 2))
+        "$ADB" -s "$SERIAL" shell input tap \
+            "$visibility_x" "$visibility_y" >/dev/null || return 1
+        wait_ui_center address-field "$PEER_PASSWORD" >/dev/null || return 1
+        "$ADB" -s "$SERIAL" shell input tap \
+            "$visibility_x" "$visibility_y" >/dev/null || return 1
+        wait_ui_center focused-password-field >/dev/null || return 1
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null || return 1
         capture_ui_hierarchy || return 1
         ! grep -Fq "$PEER_PASSWORD" "$UI_XML" || return 1

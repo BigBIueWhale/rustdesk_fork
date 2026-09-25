@@ -319,7 +319,7 @@ print_android_connection_diagnostic() {
         timeout --signal=TERM --kill-after=2s 20s \
             "$ADB" -s "$SERIAL" logcat -d -v brief 2>/dev/null \
             | grep -Ei \
-                'No remembered password|CPace handshake failed|R-S9|connect-password-prompt|session_set_connect_password|viewer owner|outgoing viewer|connection round|Connection closed|keying' \
+                'RGBA_PIPELINE|No remembered password|CPace handshake failed|R-S9|connect-password-prompt|session_set_connect_password|viewer owner|outgoing viewer|connection round|Connection closed|keying' \
             | tail -n 160 \
             || true
     )"

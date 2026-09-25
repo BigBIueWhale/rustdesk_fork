@@ -1917,17 +1917,31 @@ impl FlutterHandler {
         display: usize,
         publication: u64,
     ) -> Option<Vec<u8>> {
-        self.display_rgbas
+        let rgba = self
+            .display_rgbas
             .read()
             .unwrap()
             .get(&(*session_id, display))
-            .and_then(|rgba| rgba.copy(publication))
+            .and_then(|rgba| rgba.copy(publication));
+        if publication <= 4 {
+            log::info!(
+                "RGBA_PIPELINE native-copy display={display} publication={publication} hit={} bytes={}",
+                rgba.is_some(),
+                rgba.as_ref().map_or(0, Vec::len)
+            );
+        }
+        rgba
     }
 
     fn next_rgba(&self, session_id: &SessionID, display: usize, publication: u64) {
         let acknowledgement = {
             let mut mailboxes = self.display_rgbas.write().unwrap();
             let Some(mailbox) = mailboxes.get_mut(&(*session_id, display)) else {
+                if publication <= 4 {
+                    log::info!(
+                        "RGBA_PIPELINE native-ack display={display} publication={publication} result=missing"
+                    );
+                }
                 return;
             };
             let result = mailbox.acknowledge(publication, || self.next_rgba_publication());
@@ -1936,6 +1950,11 @@ impl FlutterHandler {
             }
             result
         };
+        if publication <= 4 {
+            log::info!(
+                "RGBA_PIPELINE native-ack display={display} publication={publication} result={acknowledgement:?}"
+            );
+        }
         let RgbaAcknowledgement::Promoted(next_publication) = acknowledgement else {
             return;
         };
@@ -2646,7 +2665,13 @@ impl FlutterHandler {
                 failed.push(session_id);
                 continue;
             };
-            if !stream.add(EventToUI::Rgba(display, publication)) {
+            let delivered = stream.add(EventToUI::Rgba(display, publication));
+            if publication <= 4 {
+                log::info!(
+                    "RGBA_PIPELINE native-publish display={display} publication={publication} delivered={delivered}"
+                );
+            }
+            if !delivered {
                 failed.push(session_id);
             }
         }

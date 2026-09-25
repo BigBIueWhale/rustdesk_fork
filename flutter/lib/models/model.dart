@@ -4427,8 +4427,16 @@ class FFI {
       SessionID activeSessionId,
       int display,
       int publication) async {
+    if (publication <= 4) {
+      debugPrint(
+          'RGBA_PIPELINE dart-receive display=$display publication=$publication');
+    }
     final topologyRevision = await _displayTopologyAfterCheckpoint(
         sessionEvents, streamOwner, activeSessionId);
+    if (publication <= 4) {
+      debugPrint(
+          'RGBA_PIPELINE dart-checkpoint display=$display publication=$publication topology=${topologyRevision ?? "retired"}');
+    }
     if (topologyRevision == null) {
       platformFFI.nextRgba(activeSessionId, display, publication);
       return;
@@ -4440,6 +4448,10 @@ class FFI {
       // borrows a pointer into a Rust mailbox across an asynchronous decode.
       final rgba =
           platformFFI.copyRgba(activeSessionId, display, publication);
+      if (publication <= 4) {
+        debugPrint(
+            'RGBA_PIPELINE dart-copy display=$display publication=$publication hit=${rgba != null} bytes=${rgba?.length ?? 0}');
+      }
       if (rgba == null) {
         platformFFI.nextRgba(activeSessionId, display, publication);
         return;
@@ -4449,9 +4461,18 @@ class FFI {
           activeSessionId, display, rgba,
           publication: publication,
           expectedDisplayTopologyRevision: topologyRevision);
+      if (publication <= 4) {
+        debugPrint(
+            'RGBA_PIPELINE dart-image display=$display publication=$publication presented=$presented');
+      }
       if (presented) {
-        await onEvent2UIRgba(activeSessionId, topologyRevision,
+        final initialized = await onEvent2UIRgba(
+            activeSessionId, topologyRevision,
             imageGeometryInitialized: true);
+        if (publication <= 4) {
+          debugPrint(
+              'RGBA_PIPELINE dart-first-image display=$display publication=$publication initialized=$initialized');
+        }
       }
     } catch (error) {
       if (!imageOwnsAcknowledgement) {
@@ -4754,6 +4775,10 @@ class FFI {
               'The remote session state became inconsistent');
         }
       } else if (message is EventToUI_Rgba) {
+        if (message.field1 <= 4) {
+          debugPrint(
+              'RGBA_PIPELINE dart-stream display=${message.field0} publication=${message.field1}');
+        }
         _observeSessionTask(
             _handleSoftwareRgba(sessionEvents, streamOwner, activeSessionId,
                 message.field0, message.field1),

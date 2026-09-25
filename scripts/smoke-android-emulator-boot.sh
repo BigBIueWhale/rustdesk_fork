@@ -283,13 +283,30 @@ print_android_connection_diagnostic() {
     local listing= latest= filename= native_diag=
     case "$authority" in
         active)
-            device_state="$(
-                timeout --signal=TERM --kill-after=2s 10s \
-                    "$ADB" -s "$SERIAL" get-state 2>/dev/null \
-                    | tr -d '\r' \
-                    || true
-            )"
-            [ "$device_state" = device ] || return 0
+            if ! is_exact_emulator_process; then
+                printf 'Android connection diagnostic: exact emulator process is unavailable\n' >&2
+                return 0
+            fi
+            for _ in $(seq 1 4); do
+                device_state="$(
+                    timeout --signal=TERM --kill-after=2s 10s \
+                        "$ADB" -s "$SERIAL" get-state 2>/dev/null \
+                        | tr -d '\r' \
+                        || true
+                )"
+                [ "$device_state" = device ] && break
+                sleep 0.25
+            done
+            if [ "$device_state" != device ]; then
+                case "$device_state" in
+                    '') device_state=unavailable ;;
+                    offline|unknown) ;;
+                    *) device_state=unexpected ;;
+                esac
+                printf 'Android connection diagnostic: exact serial state is %s\n' \
+                    "$device_state" >&2
+                return 0
+            fi
             ;;
         cleanup)
             [ "$ADB_STARTED" -eq 1 ] && is_exact_adb_process || return 0

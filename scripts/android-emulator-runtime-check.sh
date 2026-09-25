@@ -387,8 +387,13 @@ runtime_machine_id_mounts="$(vm_docker inspect --format \
     || die 'Android peer private machine-ID mount authority differs'
 runtime_status=0
 vm_docker start --attach "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 || runtime_status=$?
-[ "$runtime_status" -eq 0 ] \
-    || { tail -n 240 "$RUNTIME_LOG" >&2; die "Android app runtime exited with status $runtime_status"; }
+if [ "$runtime_status" -ne 0 ]; then
+    tail -n 240 "$RUNTIME_LOG" >&2
+    runtime_failure="$(grep -m 1 '^Android emulator boot smoke:' \
+        "$RUNTIME_LOG" || true)"
+    [ -z "$runtime_failure" ] || printf '%s\n' "$runtime_failure" >&2
+    die "Android app runtime exited with status $runtime_status"
+fi
 [ "$(stat -c '%s' -- "$RUNTIME_LOG")" -le 1048576 ] \
     || die 'Android app runtime output exceeds its bound'
 mapfile -t runtime_receipts < <(grep -E \

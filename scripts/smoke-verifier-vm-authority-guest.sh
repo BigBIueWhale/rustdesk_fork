@@ -2971,8 +2971,16 @@ run_android_emulator_runtime() {
         "$ANDROID_RUNTIME_ARTIFACT_COMMIT" >"$output" 2>&1
     workload_status=$?
     set -e
-    [ "$workload_status" -eq 0 ] \
-        || { tail -n 320 "$output" >&2; fail "Android emulator runtime replay exited with status $workload_status"; }
+    if [ "$workload_status" -ne 0 ]; then
+        tail -n 320 "$output" >&2
+        awk '
+            /^ANDROID_PEER_FRAMEBUFFER_DIAGNOSTIC / { print }
+            /^ANDROID_PEER_FRAMEBUFFER_PNG_BEGIN / { in_png = 1 }
+            in_png { print }
+            /^ANDROID_PEER_FRAMEBUFFER_PNG_END / { in_png = 0 }
+        ' "$output" >&2
+        fail "Android emulator runtime replay exited with status $workload_status"
+    fi
     [ "$(stat -c '%s' -- "$output")" -le 2097152 ] \
         || fail 'Android emulator runtime replay output exceeds its bound'
     entry_receipt="$(grep -Fx \

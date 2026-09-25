@@ -540,17 +540,24 @@ pub fn core_main() -> Option<Vec<String>> {
                 return None;
             }
             crate::ui_interface::start_main_status_sync();
+            #[cfg(not(feature = "flutter"))]
+            {
+                // The non-Flutter desktop binary is also the supported headless `--server`
+                // runtime. Its connection-manager still owns the production IPC protocol and
+                // client registry; only UI event publication is absent.
+                crate::ui_cm_interface::start_cm_no_ui();
+                return None;
+            }
         } else if args[0] == "--cm-no-ui" {
             #[cfg(target_os = "windows")]
             if let Err(err) = crate::ipc::seal_windows_cm_launch_parent_handle() {
                 log::error!("Failed to seal the connection-manager parent capability: {err}");
                 return None;
             }
-            #[cfg(feature = "flutter")]
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
                 crate::ui_interface::start_main_status_sync();
-                crate::flutter::connection_manager::start_cm_no_ui();
+                crate::ui_cm_interface::start_cm_no_ui();
             }
             return None;
         } else if args[0] == "--whiteboard" {

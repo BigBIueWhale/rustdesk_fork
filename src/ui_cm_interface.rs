@@ -807,6 +807,34 @@ pub trait InvokeUiCM: Send + Clone + 'static + Sized {
     );
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Clone, Copy)]
+struct NoUiCmHandler;
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl InvokeUiCM for NoUiCmHandler {
+    fn add_connection(&self, _client: &Client) {}
+
+    fn remove_connection(&self, _id: i32, _registry_generation: i64, _close: bool) {}
+
+    fn new_message(&self, _id: i32, _registry_generation: i64, _text: String) {}
+
+    fn change_theme(&self, _dark: String) {}
+
+    fn change_language(&self) {}
+
+    fn update_voice_call_state(&self, _client: &Client) {}
+
+    fn file_transfer_log(
+        &self,
+        _id: i32,
+        _registry_generation: i64,
+        _action: &str,
+        _log: &str,
+    ) {
+    }
+}
+
 impl<T: InvokeUiCM> Deref for ConnectionManager<T> {
     type Target = T;
 
@@ -1751,6 +1779,14 @@ pub async fn start_ipc<T: InvokeUiCM>(cm: ConnectionManager<T>) {
         }
     }
     quit_cm();
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub fn start_cm_no_ui() {
+    set_exit_on_idle(true);
+    #[cfg(target_os = "linux")]
+    std::thread::spawn(crate::ipc::start_pa);
+    start_ipc(ConnectionManager::new(NoUiCmHandler, 0));
 }
 
 #[cfg(any(target_os = "android", test))]

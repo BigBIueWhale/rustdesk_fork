@@ -3206,13 +3206,6 @@ pub mod connection_manager {
 
     #[inline]
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn start_cm_no_ui() {
-        crate::ui_cm_interface::set_exit_on_idle(true);
-        start_listen_ipc(false);
-    }
-
-    #[inline]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     fn start_listen_ipc_thread() {
         start_listen_ipc(true);
     }

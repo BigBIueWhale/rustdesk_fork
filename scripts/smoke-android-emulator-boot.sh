@@ -1284,7 +1284,8 @@ PY
 
 PEER_LAST_RECOVERY_MS=0
 capture_peer_freshness() {
-    local phase=$1 started_ms now_ms source_state screenshot decoded
+    local phase=$1 attempt started_ms now_ms source_state screenshot decoded
+    local capture_started_ms capture_finished_ms capture_elapsed_ms total_elapsed_ms
     local state age score matched layout max_age=0 last_screenshot= screenshot_size=
     local last_source_state=
     local -A seen=()
@@ -1299,9 +1300,15 @@ capture_peer_freshness() {
             rm -f -- "$last_screenshot"
         fi
         screenshot="$WORK_ROOT/peer-$phase-$attempt.png"
+        capture_started_ms="$(monotonic_millis)" \
+            || fail "cannot start the framebuffer-capture measurement for $phase"
         timeout --signal=TERM --kill-after=2s 20s \
             "$ADB" -s "$SERIAL" exec-out screencap -p >"$screenshot" \
             || fail "cannot capture Android peer framebuffer for $phase"
+        capture_finished_ms="$(monotonic_millis)" \
+            || fail "cannot finish the framebuffer-capture measurement for $phase"
+        capture_elapsed_ms=$((capture_finished_ms - capture_started_ms))
+        total_elapsed_ms=$((capture_finished_ms - started_ms))
         last_screenshot=$screenshot
         source_state="$(peer_source_state 2>/dev/null || true)"
         decoded=
@@ -1315,6 +1322,9 @@ capture_peer_freshness() {
             score=${BASH_REMATCH[3]}
             matched=${BASH_REMATCH[4]}
             layout=${BASH_REMATCH[5]}
+            printf 'ANDROID_PEER_FRAME_SAMPLE phase=%s attempt=%s elapsed_ms=%s capture_ms=%s source_state=%s display_state=%s age=%s score=%s matched=%s layout=%s\n' \
+                "$phase" "$attempt" "$total_elapsed_ms" "$capture_elapsed_ms" \
+                "$source_state" "$state" "$age" "$score" "$matched" "$layout"
             seen[$state]=1
             [ "$age" -le "$max_age" ] || max_age=$age
             if [ "${#seen[@]}" -ge 2 ]; then
@@ -1333,6 +1343,10 @@ capture_peer_freshness() {
                 last_screenshot=
                 return 0
             fi
+        else
+            printf 'ANDROID_PEER_FRAME_SAMPLE phase=%s attempt=%s elapsed_ms=%s capture_ms=%s source_state=%s display_state=unavailable\n' \
+                "$phase" "$attempt" "$total_elapsed_ms" "$capture_elapsed_ms" \
+                "${source_state:-unavailable}"
         fi
         sleep 0.5
     done

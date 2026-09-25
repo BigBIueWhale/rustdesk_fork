@@ -1,3 +1,8 @@
+enum AndroidScreenSharingCommand {
+  requestMediaProjection,
+  stopMainService,
+}
+
 class AndroidServiceUiState {
   bool _observedRunning = false;
   bool _commandInFlight = false;
@@ -12,6 +17,17 @@ class AndroidServiceUiState {
     }
     _observedRunning = running;
     return true;
+  }
+
+  AndroidScreenSharingCommand screenSharingCommand({
+    required bool mediaProjectionReady,
+  }) {
+    // MainService intentionally survives without an active MediaProjection. Its
+    // lifetime therefore cannot decide whether the next screen-sharing action
+    // must request capture or stop an already-active capture.
+    return mediaProjectionReady
+        ? AndroidScreenSharingCommand.stopMainService
+        : AndroidScreenSharingCommand.requestMediaProjection;
   }
 
   Future<bool> runCommand(Future<void> Function() command) async {

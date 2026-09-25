@@ -99,7 +99,10 @@ class _ServerPageState extends State<ServerPage> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
-                        gFFI.serverModel.isStart
+                        // MainService may stay alive for listener ownership while
+                        // MediaProjection is absent. This card describes capture,
+                        // so only the observed capture state selects it.
+                        serverModel.mediaOk
                             ? ServerInfo()
                             : ServiceNotRunningNotification(),
                         const ConnectionManager(),

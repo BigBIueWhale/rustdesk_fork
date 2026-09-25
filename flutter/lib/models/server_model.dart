@@ -354,12 +354,15 @@ class ServerModel with ChangeNotifier {
     return res;
   }
 
-  /// Toggle the screen sharing service.
+  /// Toggle screen sharing while keeping service and capture lifetimes distinct.
   toggleService() async {
     if (_androidServiceUiState.commandInFlight) {
       return;
     }
-    if (isStart) {
+    final command = _androidServiceUiState.screenSharingCommand(
+      mediaProjectionReady: mediaOk,
+    );
+    if (command == AndroidScreenSharingCommand.stopMainService) {
       final res = await parent.target?.dialogManager
           .show<bool>((setState, close, context) {
         submit() => close(true);

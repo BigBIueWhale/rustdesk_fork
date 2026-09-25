@@ -210,4 +210,19 @@ void main() {
     expect(state.observeRunning(false), isFalse);
     expect(state.observedRunning, isFalse);
   });
+
+  test('Android running service without capture requests MediaProjection', () {
+    final state = AndroidServiceUiState();
+
+    state.observeRunning(true);
+    expect(state.observedRunning, isTrue);
+    expect(
+      state.screenSharingCommand(mediaProjectionReady: false),
+      AndroidScreenSharingCommand.requestMediaProjection,
+    );
+    expect(
+      state.screenSharingCommand(mediaProjectionReady: true),
+      AndroidScreenSharingCommand.stopMainService,
+    );
+  });
 }

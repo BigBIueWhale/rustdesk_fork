@@ -2974,11 +2974,15 @@ run_android_emulator_runtime() {
     if [ "$workload_status" -ne 0 ]; then
         tail -n 320 "$output" >&2
         awk '
-            /^ANDROID_PEER_FRAMEBUFFER_DIAGNOSTIC / { print }
             /^ANDROID_PEER_FRAMEBUFFER_PNG_BEGIN / { in_png = 1 }
             in_png { print }
             /^ANDROID_PEER_FRAMEBUFFER_PNG_END / { in_png = 0 }
         ' "$output" >&2
+        grep '^ANDROID_PEER_FRAME_SAMPLE ' "$output" | tail -n 120 >&2 || true
+        grep '^ANDROID_PEER_FRAMEBUFFER_DIAGNOSTIC ' "$output" \
+            | tail -n 20 >&2 || true
+        grep '^Android initial UI:' "$output" | tail -n 80 >&2 || true
+        grep '^Android emulator boot smoke:' "$output" | tail -n 20 >&2 || true
         fail "Android emulator runtime replay exited with status $workload_status"
     fi
     [ "$(stat -c '%s' -- "$output")" -le 2097152 ] \

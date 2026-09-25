@@ -201,7 +201,7 @@ hw.cpu.ncore=2
 hw.dPad=no
 hw.gps=no
 hw.gpu.enabled=yes
-hw.gpu.mode=swiftshader
+hw.gpu.mode=swangle
 hw.initialOrientation=portrait
 hw.keyboard=yes
 hw.lcd.density=240
@@ -699,7 +699,7 @@ done
     -no-metrics \
     -wipe-data \
     -accel off \
-    -gpu swiftshader \
+    -gpu swangle \
     >"$EMULATOR_LOG" 2>&1 &
 EMULATOR_PID=$!
 EMULATOR_START="$(process_start_time "$EMULATOR_PID")" \
@@ -1951,7 +1951,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
    || [ "$WORKLOAD" = app-peer-lifecycle ]; then
     [ "$(sha256sum "$RUNTIME_TEST_APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
         || fail 'runtime-test APK changed during emulator execution'
-    printf 'ANDROID_EMULATOR_APP=pass emulator=%s api=%s abi=%s package=com.carriez.flutter_hbb activity=MainActivity launch_wait=%s state=resumed process=stable-five-seconds apk_sha256=%s signing=test-only acceleration=software framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
+    printf 'ANDROID_EMULATOR_APP=pass emulator=%s api=%s abi=%s package=com.carriez.flutter_hbb activity=MainActivity launch_wait=%s state=resumed process=stable-five-seconds apk_sha256=%s signing=test-only acceleration=software gpu=swangle framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
         "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$LAUNCH_WAIT_STATUS" "$APK_SHA256" \
         "$framebuffer_dimensions" "$SELINUX"
     if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then
@@ -2002,6 +2002,6 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
         fi
     fi
 else
-    printf 'ANDROID_EMULATOR_BOOT=pass emulator=%s api=%s abi=%s acceleration=software framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
+    printf 'ANDROID_EMULATOR_BOOT=pass emulator=%s api=%s abi=%s acceleration=software gpu=swangle framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
         "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$framebuffer_dimensions" "$SELINUX"
 fi

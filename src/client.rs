@@ -513,7 +513,8 @@ impl Client {
             // R-S9/R-P1/R-S16: stage the DERIVED Argon2id PRS (never the plaintext) so the peer-info
             // save path persists the memory-hard viewer twin — and a fresh re-entry OVERWRITES a stale
             // stored twin here. The NEXT connect then keys from the stored derived PRS verbatim.
-            let mut lch = interface.get_lch().write().unwrap();
+            let lch = interface.get_lch();
+            let mut lch = lch.write().unwrap();
             lch.password_prs = derived_prs.into_bytes();
             // A dialog-entered password is an override for one successful onboarding attempt, not
             // a permanent source that should force Argon2id again on every reconnect. The staged

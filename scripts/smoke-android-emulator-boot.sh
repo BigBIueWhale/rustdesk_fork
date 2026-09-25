@@ -278,9 +278,24 @@ is_exact_adb_process() {
 }
 
 print_android_connection_diagnostic() {
+    local authority=${1:-cleanup} device_state=
     local logcat_diag= log_dir=/storage/emulated/0/RustDesk/Logs
     local listing= latest= filename= native_diag=
-    [ "$ADB_STARTED" -eq 1 ] && is_exact_adb_process || return 0
+    case "$authority" in
+        active)
+            device_state="$(
+                timeout --signal=TERM --kill-after=2s 10s \
+                    "$ADB" -s "$SERIAL" get-state 2>/dev/null \
+                    | tr -d '\r' \
+                    || true
+            )"
+            [ "$device_state" = device ] || return 0
+            ;;
+        cleanup)
+            [ "$ADB_STARTED" -eq 1 ] && is_exact_adb_process || return 0
+            ;;
+        *) return 1 ;;
+    esac
 
     logcat_diag="$(
         timeout --signal=TERM --kill-after=2s 20s \
@@ -1235,6 +1250,7 @@ capture_peer_freshness() {
         sleep 0.5
     done
     capture_ui_hierarchy complete && print_initial_ui_semantics
+    print_android_connection_diagnostic active
     fail "Android peer display did not become fresh and changing for $phase"
 }
 

@@ -445,12 +445,14 @@ impl Client {
             bail!("Incoming only mode");
         }
         let _ = (key, token, conn_type);
-        // to-do: remember the port for each peer, so that we can retry easier
-        let mut stream = if hbb_common::is_ip_str(peer) {
-            connect_tcp_local(check_port(peer, DIRECT_PORT), None, CONNECT_TIMEOUT).await?
+        // Validate the direct-only target before doing the memory-hard credential work, but do not
+        // acquire a socket yet. The responder starts its unauthenticated first-frame deadline when
+        // accept(2) completes, so every local prerequisite for CPace step 1 must be ready first.
+        let target = if hbb_common::is_ip_str(peer) {
+            check_port(peer, DIRECT_PORT)
         } else if hbb_common::is_domain_port_str(peer) {
             // Allow connect to {domain}:{port}
-            connect_tcp_local(peer, None, CONNECT_TIMEOUT).await?
+            peer.to_owned()
         } else {
             // R-SV4(b) / R-D / R-S13(d): the fork is DIRECT-IP ONLY. The direct branches above
             // handle every reachable address (an IP, or host:port). Anything else is a bare
@@ -463,10 +465,12 @@ impl Client {
             bail!("Direct-IP only: '{peer}' is not a direct address (use an IP or host:port)");
         };
 
-        // R-S13 / R-P14 (initiator): key the connection with the single mandatory CPace handshake
-        // BEFORE `_start` returns it. The message-loop handoff is no longer a second-phase keying
-        // promise; it receives only a keyed stream. The PRS is the live R-S16 viewer twin
-        // (`PeerConfig.password_prs`).
+        // R-S13 / R-P14 (initiator): completely prepare the single CPace credential BEFORE TCP
+        // connect. Fresh plaintext requires the fixed 64-MiB Argon2id derivation, which may take
+        // longer than the responder's five-second unauthenticated first-frame deadline on a phone
+        // or software-emulated target. Connecting first would spend that peer-owned deadline on
+        // local work and make a correct password fail as a transport timeout. Missing or invalid
+        // local credential material likewise fails without creating a peer socket.
         let (credential, credential_is_derived, onboarding) = {
             // Computed before the lch lock (no re-entrancy): the connect-time password the operator
             // supplied this session (URI/dialog/card).
@@ -474,33 +478,47 @@ impl Client {
             let lch = interface.get_lch();
             let g = lch.read().unwrap();
             // R-S9/R-P1/R-S16: the credential for the balanced PAKE, from PRE-keying sources only.
-            // The persisted per-peer twin (`config.password_prs`) is now the DERIVED Argon2id PRS,
-            // never the plaintext — so it is fed to the PAKE VERBATIM, never re-derived (re-Argon2id-ing
-            // an already-derived PRS would silently fail every reconnect). A freshly-TYPED connect
-            // password is the pre-derivation plaintext, derived inside `key_initiator`. Precedence
+            // A PRS already authenticated in this live session and the persisted per-peer twin
+            // (`config.password_prs`) are DERIVED Argon2id PRSs, never plaintext, so either is fed
+            // to the PAKE VERBATIM. A freshly-TYPED connect password is the pre-derivation plaintext,
+            // prepared before TCP connect. Precedence
             // (load-bearing, R-S9 re-provision): a non-empty `connect_password` — set ONLY by a
             // deliberate re-entry / first-connect onboarding, and empty on an ordinary saved-peer
             // reconnect — takes precedence over the stored twin, so a box password change (which
             // INVALIDATES the cached derived PRS) can be recovered by re-typing the password;
             // otherwise the stale twin would shadow the re-entry in an endless prompt loop. Empty
-            // everywhere fails closed in key_initiator (R-S9).
-            let from_prs = String::from_utf8(g.config.password_prs.clone()).unwrap_or_default();
+            // everywhere fails closed before socket acquisition (R-S9).
+            let from_session_prs = String::from_utf8(g.password_prs.clone()).unwrap_or_default();
+            let from_stored_prs =
+                String::from_utf8(g.config.password_prs.clone()).unwrap_or_default();
             if !connect_pw.is_empty() {
                 (connect_pw, false, true) // re-entry / onboarding: plaintext to derive + stage
-            } else if !from_prs.is_empty() {
-                (from_prs, true, false) // the stored, already-derived PRS: used verbatim
+            } else if !from_session_prs.is_empty() {
+                // A keyed attempt may disconnect before PeerInfo persists the remember candidate.
+                // Its exact session still owns the authenticated derived PRS for reconnect.
+                (from_session_prs, true, false)
+            } else if !from_stored_prs.is_empty() {
+                (from_stored_prs, true, false) // persisted derived PRS: used verbatim
             } else {
                 (g.shared_password.clone().unwrap_or_default(), false, false)
                 // shared-ab plaintext: derived per connect, not persisted per-peer
             }
         };
-        let derived_prs =
-            Self::key_initiator(&credential, credential_is_derived, &mut stream).await?;
+        let derived_prs = Self::prepare_initiator_credential(&credential, credential_is_derived)?;
+
+        // to-do: remember the port for each peer, so that we can retry easier
+        let mut stream = connect_tcp_local(target, None, CONNECT_TIMEOUT).await?;
+        Self::key_initiator(&derived_prs, &mut stream).await?;
         if onboarding {
             // R-S9/R-P1/R-S16: stage the DERIVED Argon2id PRS (never the plaintext) so the peer-info
             // save path persists the memory-hard viewer twin — and a fresh re-entry OVERWRITES a stale
             // stored twin here. The NEXT connect then keys from the stored derived PRS verbatim.
-            interface.get_lch().write().unwrap().password_prs = derived_prs.into_bytes();
+            let mut lch = interface.get_lch().write().unwrap();
+            lch.password_prs = derived_prs.into_bytes();
+            // A dialog-entered password is an override for one successful onboarding attempt, not
+            // a permanent source that should force Argon2id again on every reconnect. The staged
+            // derived PRS above is the session's remember candidate and the persisted viewer twin.
+            lch.connect_password.clear();
         }
         if !stream.is_secured() {
             bail!("R-A1: _start produced an unkeyed direct stream (initiator, fail-closed)");
@@ -508,22 +526,15 @@ impl Client {
         Ok((stream, "TCP"))
     }
 
-    /// R-S13 / R-P14 / R-P1 — the viewer (initiator) keying choke point: the mirror of the
-    /// responder's `run_responder` block (server.rs). The fork keys EVERY connection with the
-    /// single mandatory CPace handshake, run over the direct TCP stream BEFORE any application
-    /// message, fail-closed. On success it returns the DERIVED PRS the caller stages as the
-    /// R-S16 viewer twin. `credential` is either a freshly-typed plaintext password
-    /// (`credential_is_derived == false` — derived here) or the stored, already-derived Argon2id
-    /// PRS (`== true` — fed to the PAKE verbatim, since re-Argon2id-ing it would break keying).
-    /// When derived here (R-P1) the PRS is the memory-hard Argon2id hash over the password alone
-    /// (fixed salt) — identical to the box's stored PRS — so this choke point is the SOLE
-    /// derivation site for a viewer connection.
-    async fn key_initiator(
+    /// Prepare the exact CPace PRS before a peer socket exists. `credential` is either a freshly
+    /// typed plaintext password (`credential_is_derived == false`) or the stored, already-derived
+    /// Argon2id PRS (`true`). The latter is used verbatim; re-deriving it would silently break every
+    /// remembered reconnect.
+    fn prepare_initiator_credential(
         credential: &str,
         credential_is_derived: bool,
-        conn: &mut Stream,
     ) -> Result<String, ViewerKeyingError> {
-        // R-S9: an empty credential has no shared secret — fail closed (never key in the open).
+        // R-S9: an empty credential has no shared secret — fail closed before dialing.
         if credential.is_empty() {
             return Err(ViewerKeyingError::MissingCredential);
         }
@@ -532,27 +543,32 @@ impl Client {
         // freshly-typed plaintext credential (re-entry / onboarding) is run through derive_cpace_prs:
         // base64(Argon2id(NFC(password), fixed salt)). Double-deriving an already-derived PRS would
         // silently fail CPace key-confirmation on every reconnect.
-        let prs = if credential_is_derived {
-            credential.to_string()
+        if credential_is_derived {
+            Ok(credential.to_string())
         } else {
-            let Some(p) = hbb_common::config::derive_cpace_prs(credential) else {
-                return Err(ViewerKeyingError::CredentialDerivation);
-            };
-            p
-        };
-        // The balanced PAKE runs over the direct TCP stream (the flagship path is always TCP).
+            hbb_common::config::derive_cpace_prs(credential)
+                .ok_or(ViewerKeyingError::CredentialDerivation)
+        }
+    }
+
+    /// R-S13 / R-P14 — run the sole CPace handshake immediately after direct TCP connect and before
+    /// any application message. All memory-hard credential preparation has already completed, so
+    /// the responder's first-frame deadline measures transport/peer progress rather than local
+    /// Argon2id work.
+    async fn key_initiator(prs: &str, conn: &mut Stream) -> Result<(), ViewerKeyingError> {
+        if prs.is_empty() {
+            return Err(ViewerKeyingError::MissingCredential);
+        }
         let keys = {
             let Some(fs) = conn.as_framed_tcp_mut() else {
                 return Err(ViewerKeyingError::UnsupportedTransport);
             };
-            hbb_common::cpace::run_initiator(fs, &prs)
+            hbb_common::cpace::run_initiator(fs, prs)
                 .await
                 .map_err(ViewerKeyingError::Handshake)?
         };
         conn.set_session_keys(keys);
-        // Return the DERIVED PRS so the caller can stage it as the R-S16 viewer twin (the
-        // memory-hard Argon2id hash, never the plaintext — R-S9/R-P1).
-        Ok(prs)
+        Ok(())
     }
 
     #[inline]
@@ -1655,7 +1671,7 @@ pub struct LoginConfigHandler {
     // R-S16 (viewer twin) / R-S9 / R-P1: the DERIVED Argon2id CPace PRS (base64) — the memory-hard
     // hash the balanced PAKE keys from, NEVER the plaintext password (a config read yields the hash,
     // not the reusable password — Appendix C #14). Staged
-    // here by the keying path (`key_initiator` returns the derived PRS; `_start` stages it on
+    // here by the pre-connect preparation/keying path (`_start` stages it only after successful
     // onboarding) and by `handle_login_from_ui` (which derives before staging); persisted to
     // `PeerConfig.password_prs` when `remember`, and read back VERBATIM by the initiator at the next
     // connect (fed to the PAKE without re-derivation, Stage A2). Kept separate from `config` because
@@ -1664,8 +1680,9 @@ pub struct LoginConfigHandler {
     // R-S13/A3 (prompt-before-keying): the connect-time plaintext password entered into the
     // pre-keying password dialog (the bare-ID flow has no remembered PRS). Lives here, not on
     // `Session.password` (not interior-mutable), because the lch is `Arc<RwLock>` — so the
-    // dialog's submit can set it and `reconnect`, and `get_connect_password` reads it to feed
-    // `key_initiator`. Never persisted directly; the onboarding-PRS path persists it (A2).
+    // dialog's submit can set it and `reconnect`, and `get_connect_password` reads it for
+    // pre-connect PRS preparation. Never persisted directly; a successful onboarding stages its
+    // derived PRS and clears this one-attempt override (A2).
     pub connect_password: String,
     pub remember: bool,
     config: PeerConfig,
@@ -4971,6 +4988,26 @@ mod tests {
         assert_eq!(
             classify_connection_error(&connect_timeout),
             ConnectionErrorPresentation::DirectUnreachable
+        );
+    }
+
+    #[test]
+    fn r_p14_viewer_credential_is_fully_prepared_before_socket_keying() {
+        let derived = Client::prepare_initiator_credential("RuntimePeer1x", false)
+            .expect("a nonempty plaintext credential must derive");
+        assert!(!derived.is_empty());
+        assert_eq!(
+            Client::prepare_initiator_credential(&derived, true)
+                .expect("a stored derived credential must be admitted verbatim"),
+            derived
+        );
+        assert_eq!(
+            Client::prepare_initiator_credential("", false),
+            Err(ViewerKeyingError::MissingCredential)
+        );
+        assert_eq!(
+            Client::prepare_initiator_credential("", true),
+            Err(ViewerKeyingError::MissingCredential)
         );
     }
 

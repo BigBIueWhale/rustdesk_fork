@@ -35,9 +35,9 @@ use std::sync::{
 /// dribbled frame).
 const HANDSHAKE_STEP_TIMEOUT_MS: u64 = 18_000;
 /// R1(a) DoS hardening — a SHORTER deadline for the responder's FIRST inbound step
-/// (WAIT_1) ONLY. A legitimate viewer sends CPace step ① as the very first frame on
-/// the wire, immediately after the TCP connect completes, so 5 s never rejects a real
-/// first step even over a high-latency/lossy link (worst realistic case ~1–3 s incl.
+/// (WAIT_1) ONLY. A legitimate viewer prepares its credential before acquiring the socket and
+/// sends CPace step ① as the very first frame immediately after TCP connect, so 5 s does not reject
+/// a real first step even over a high-latency/lossy link (worst realistic case ~1–3 s incl.
 /// TCP retransmits). But it slashes the pre-key silent-hold: an attacker who opens a
 /// connection and then sends nothing pins its R-T1 handshake permit for 5 s, not 18 s
 /// (~3.6× less capacity consumed per slot → ~3.6× the flood rate to saturate). Every

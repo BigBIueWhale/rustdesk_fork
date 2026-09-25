@@ -1810,8 +1810,12 @@ class ImageModel with ChangeNotifier {
 
   void clearImage() {
     _rgbaPublicationOrder.retire();
-    _image?.dispose();
+    final retiring = _image;
     _image = null;
+    if (retiring != null) {
+      retiring.dispose();
+      notifyListeners();
+    }
   }
 
   Future<bool> onRgba(
@@ -1953,9 +1957,13 @@ class ImageModel with ChangeNotifier {
     if (image == null) {
       _rgbaPublicationOrder.retire();
     }
-    _image?.dispose();
+    final retiring = _image;
+    if (identical(retiring, image)) {
+      return true;
+    }
     _image = image;
-    if (image != null) notifyListeners();
+    retiring?.dispose();
+    notifyListeners();
     return true;
   }
 

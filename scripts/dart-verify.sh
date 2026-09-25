@@ -285,6 +285,7 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
       lib/common.dart \
       lib/models/model.dart \
       lib/models/file_model.dart \
+      lib/utils/image.dart \
       lib/utils/event_loop.dart \
       lib/desktop/pages/file_manager_page.dart \
       lib/mobile/pages/file_manager_page.dart \
@@ -319,6 +320,7 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
       test/session_stream_finality_test.dart \
       test/presentation_recovery_test.dart \
       test/rgba_publication_order_test.dart \
+      test/owned_image_paint_test.dart \
       test/desktop_tab_retirement_test.dart \
       test/password_field_semantics_test.dart
     set +e
@@ -382,6 +384,8 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/presentation_recovery_test.dart
     echo "  == R-S11fr software RGBA decode commits only the exact newest publication =="
     flutter test --no-pub test/rgba_publication_order_test.dart
+    echo "  == software RGBA painting owns exact image handles and finite bounds =="
+    flutter test --no-pub test/owned_image_paint_test.dart
     echo "  == R-S11gc obscured password fields retain enabled focused semantics =="
     flutter test --no-pub test/password_field_semantics_test.dart
     echo "  == R-S11ex/R-S11ez Linux native texture unregister and callback retirement finality =="

@@ -618,9 +618,12 @@ class ImagePaint extends StatelessWidget {
     final c = Provider.of<CanvasModel>(context);
     var s = c.scale;
     final adjust = c.getAdjustY();
-    return CustomPaint(
-      painter: ImagePainter(
-          image: m.image, x: c.x / s, y: (c.y + adjust) / s, scale: s),
+    return OwnedImagePaint(
+      image: m.image,
+      x: c.x / s,
+      y: (c.y + adjust) / s,
+      scale: s,
+      size: Size.infinite,
     );
   }
 }

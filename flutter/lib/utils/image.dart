@@ -90,6 +90,80 @@ Future<ui.Image?> decodeImageFromPixels(
   return frameInfo.image;
 }
 
+class OwnedImagePaint extends StatefulWidget {
+  const OwnedImagePaint({
+    super.key,
+    required this.image,
+    required this.x,
+    required this.y,
+    required this.scale,
+    required this.size,
+  });
+
+  final ui.Image? image;
+  final double x;
+  final double y;
+  final double scale;
+  final Size size;
+
+  @override
+  State<OwnedImagePaint> createState() => _OwnedImagePaintState();
+}
+
+class _OwnedImagePaintState extends State<OwnedImagePaint> {
+  ui.Image? _paintImage;
+  ui.Image? _retiringImage;
+
+  @override
+  void initState() {
+    super.initState();
+    _paintImage = widget.image?.clone();
+  }
+
+  @override
+  void didUpdateWidget(covariant OwnedImagePaint oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(widget.image, oldWidget.image)) return;
+
+    final replacement = widget.image?.clone();
+    final retiring = _paintImage;
+    _paintImage = replacement;
+    if (retiring != null) {
+      _retiringImage?.dispose();
+      _retiringImage = retiring;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (identical(_retiringImage, retiring)) {
+          _retiringImage = null;
+          retiring.dispose();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _paintImage?.dispose();
+    _paintImage = null;
+    _retiringImage?.dispose();
+    _retiringImage = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: widget.size,
+      willChange: true,
+      painter: ImagePainter(
+        image: _paintImage,
+        x: widget.x,
+        y: widget.y,
+        scale: widget.scale,
+      ),
+    );
+  }
+}
+
 class ImagePainter extends CustomPainter {
   ImagePainter({
     required this.image,

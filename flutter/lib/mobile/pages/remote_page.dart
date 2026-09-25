@@ -1143,9 +1143,12 @@ class ImagePaint extends StatelessWidget {
       }
     }
     final adjust = c.getAdjustY();
-    return CustomPaint(
-      painter: ImagePainter(
-          image: m.image, x: c.x / s, y: (c.y + adjust) / s, scale: s),
+    return OwnedImagePaint(
+      image: m.image,
+      x: c.x / s,
+      y: (c.y + adjust) / s,
+      scale: s,
+      size: Size.infinite,
     );
   }
 }

@@ -685,17 +685,23 @@ class _ImagePaintState extends State<ImagePaint> {
 
   Widget _buildScrollbarNonTextureRender(
       ImageModel m, Size imageSize, double s) {
-    return CustomPaint(
+    return OwnedImagePaint(
+      image: m.image,
+      x: 0,
+      y: 0,
+      scale: s,
       size: imageSize,
-      painter: ImagePainter(image: m.image, x: 0, y: 0, scale: s),
     );
   }
 
   Widget _buildScrollAutoNonTextureRender(
       ImageModel m, CanvasModel c, double s) {
-    return CustomPaint(
+    return OwnedImagePaint(
+      image: m.image,
+      x: c.x / s,
+      y: c.y / s,
+      scale: s,
       size: Size(c.size.width, c.size.height),
-      painter: ImagePainter(image: m.image, x: c.x / s, y: c.y / s, scale: s),
     );
   }
 

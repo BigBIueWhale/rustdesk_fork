@@ -3367,6 +3367,11 @@ run_flutter_model_tests() {
                 fi
                 [ "$tools_lock" = "$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
                 [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
+                dart format --output=none --set-exit-if-changed \
+                    lib/common/widgets/overlay.dart \
+                    lib/mobile/pages/remote_page.dart \
+                    lib/mobile/pages/view_camera_page.dart \
+                    test/blockable_overlay_test.dart
                 codegen_log=/work/codegen.log
                 if ! (cd /source && \
                     /work/toolchain/flutter_rust_bridge_codegen \
@@ -3404,10 +3409,11 @@ run_flutter_model_tests() {
                     test/presentation_recovery_test.dart
                     test/rgba_publication_order_test.dart
                     test/owned_image_paint_test.dart
+                    test/blockable_overlay_test.dart
                     test/custom_cursor_registry_test.dart
                     test/start_ellipsis_text_test.dart
                 )
-                [ "${#tests[@]}" -eq 14 ]
+                [ "${#tests[@]}" -eq 15 ]
                 for test_path in "${tests[@]}"; do
                     [ -f "$test_path" ] && [ ! -L "$test_path" ]
                 done
@@ -3448,7 +3454,7 @@ run_flutter_model_tests() {
         || { tail -n 240 "$output" >&2; fail 'Flutter-tools offline-freshness receipt is absent'; }
     [ "$(grep -Fc 'FLUTTER_TOOLS_OFFLINE_FRESHNESS=' "$output")" -eq 1 ] \
         || fail 'Flutter-tools offline-freshness receipt is duplicated'
-    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=14 tests=109' "$output")" \
+    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=15 tests=111' "$output")" \
         || { tail -n 240 "$output" >&2; fail 'focused Flutter-test success summary is absent'; }
     [ "$(grep -Fc 'FLUTTER_MODEL_TEST_JSON=' "$output")" -eq 1 ] \
         || fail 'focused Flutter-test result summary is duplicated'
@@ -3473,7 +3479,7 @@ run_flutter_model_tests() {
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$tools_freshness_line"
     printf '%s\n' "$result_line"
-    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=14 tests=109 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
+    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=15 tests=111 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
         "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
         "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
         "$SHA256_CARGO_VENDOR_CLOSURE_V1" \

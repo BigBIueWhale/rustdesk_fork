@@ -114,6 +114,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
       }
       _disableAndroidSoftKeyboard(
           isKeyboardVisible: keyboardVisibilityController.isVisible);
+      gFFI.ffiModel.tryShowAndroidActionsOverlay(sessionId);
     });
     WidgetsBinding.instance.addObserver(this);
   }
@@ -214,19 +215,6 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     });
   }
 
-  // to-do: It should be better to use transparent color instead of the bgColor.
-  // But for now, the transparent color will cause the canvas to be white.
-  // I'm sure that the white color is caused by the Overlay widget in BlockableOverlay.
-  // But I don't know why and how to fix it.
-  Widget emptyOverlay(Color bgColor) => BlockableOverlay(
-        /// the Overlay key will be set with _blockableOverlayState in BlockableOverlay
-        /// see override build() in [BlockableOverlay]
-        state: _blockableOverlayState,
-        underlying: Container(
-          color: bgColor,
-        ),
-      );
-
   Widget _bottomWidget() => (_showBar && gFFI.ffiModel.pi.displays.isNotEmpty
       ? getBottomAppBar()
       : Offstage());
@@ -242,7 +230,9 @@ class _ViewCameraPageState extends State<ViewCameraPage>
         clientClose(sessionId, gFFI);
         return false;
       },
-      child: Scaffold(
+      child: BlockableOverlay(
+        state: _blockableOverlayState,
+        underlying: Scaffold(
           // workaround for https://github.com/rustdesk/rustdesk/issues/3131
           floatingActionButtonLocation: keyboardIsVisible
               ? FABLocation(FloatingActionButtonLocation.endFloat, 0, -35)
@@ -272,57 +262,37 @@ class _ViewCameraPageState extends State<ViewCameraPage>
                       }
                     });
                   }),
-          bottomNavigationBar: Obx(() => Stack(
-                alignment: Alignment.bottomCenter,
-                children: [
-                  gFFI.ffiModel.pi.isSet.isTrue &&
-                          gFFI.ffiModel.waitForFirstImage.isTrue
-                      ? emptyOverlay(MyTheme.canvasColor)
-                      : () {
-                          gFFI.ffiModel.tryShowAndroidActionsOverlay(sessionId);
-                          return Offstage();
-                        }(),
-                  _bottomWidget(),
-                  gFFI.ffiModel.pi.isSet.isFalse
-                      ? emptyOverlay(MyTheme.canvasColor)
-                      : Offstage(),
-                ],
-              )),
+          bottomNavigationBar: Obx(() => _bottomWidget()),
           body: Obx(
-            () => getRawPointerAndKeyBody(Overlay(
-              initialEntries: [
-                OverlayEntry(builder: (context) {
+            () => getRawPointerAndKeyBody(Container(
+              color: kColorCanvas,
+              child: SafeArea(
+                child: OrientationBuilder(builder: (ctx, orientation) {
+                  if (_currentOrientation != orientation) {
+                    Timer(const Duration(milliseconds: 200), () {
+                      if (!mounted || !gFFI.isCurrentSession(sessionId)) {
+                        return;
+                      }
+                      gFFI.dialogManager
+                          .resetMobileActionsOverlay(ffi: gFFI);
+                      _currentOrientation = orientation;
+                      gFFI.canvasModel
+                          .updateViewStyle(expectedSessionId: sessionId);
+                    });
+                  }
                   return Container(
-                    color: kColorCanvas,
-                    child: SafeArea(
-                      child: OrientationBuilder(builder: (ctx, orientation) {
-                        if (_currentOrientation != orientation) {
-                          Timer(const Duration(milliseconds: 200), () {
-                            if (!mounted || !gFFI.isCurrentSession(sessionId)) {
-                              return;
-                            }
-                            gFFI.dialogManager
-                                .resetMobileActionsOverlay(ffi: gFFI);
-                            _currentOrientation = orientation;
-                            gFFI.canvasModel
-                                .updateViewStyle(expectedSessionId: sessionId);
-                          });
-                        }
-                        return Container(
-                          color: MyTheme.canvasColor,
-                          child: RawTouchGestureDetectorRegion(
-                            child: getBodyForMobile(),
-                            ffi: gFFI,
-                            isCamera: true,
-                          ),
-                        );
-                      }),
+                    color: MyTheme.canvasColor,
+                    child: RawTouchGestureDetectorRegion(
+                      child: getBodyForMobile(),
+                      ffi: gFFI,
+                      isCamera: true,
                     ),
                   );
-                })
-              ],
+                }),
+              ),
             )),
           )),
+      ),
     );
   }
 

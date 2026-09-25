@@ -9,6 +9,7 @@ import sys
 
 
 EXPECTED_SUITES = {
+    "blockable_overlay_test.dart",
     "custom_cursor_registry_test.dart",
     "desktop_tab_retirement_test.dart",
     "desktop_texture_lifecycle_test.dart",
@@ -24,7 +25,7 @@ EXPECTED_SUITES = {
     "session_stream_finality_test.dart",
     "start_ellipsis_text_test.dart",
 }
-EXPECTED_TESTS = 109
+EXPECTED_TESTS = 111
 MAXIMUM_BYTES = 8 * 1024 * 1024
 MAXIMUM_EVENTS = 16_384
 MAXIMUM_LINE_BYTES = 1024 * 1024

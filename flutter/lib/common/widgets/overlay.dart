@@ -641,34 +641,73 @@ class BlockableOverlayState extends OverlayKeyState {
 
 class BlockableOverlay extends StatelessWidget {
   final Widget underlying;
-  final List<OverlayEntry>? upperLayer;
-
   final BlockableOverlayState state;
 
-  BlockableOverlay(
-      {required this.underlying, required this.state, this.upperLayer});
+  const BlockableOverlay(
+      {super.key, required this.underlying, required this.state});
 
   @override
-  Widget build(BuildContext context) {
-    final initialEntries = [
-      OverlayEntry(builder: (_) => underlying),
+  Widget build(BuildContext context) => _BlockableOverlayBody(
+        key: ObjectKey(state),
+        underlying: underlying,
+        state: state,
+      );
+}
 
-      /// middle layer
-      OverlayEntry(
-          builder: (context) => Obx(() => Listener(
-              onPointerDown: (_) {
-                state.onMiddleBlockedClick?.call();
-              },
-              child: Container(
-                  color:
-                      state.middleBlocked.value ? Colors.transparent : null)))),
-    ];
+class _BlockableOverlayBody extends StatefulWidget {
+  final Widget underlying;
+  final BlockableOverlayState state;
 
-    if (upperLayer != null) {
-      initialEntries.addAll(upperLayer!);
-    }
+  const _BlockableOverlayBody(
+      {super.key, required this.underlying, required this.state});
 
-    /// set key
-    return Overlay(key: state.key, initialEntries: initialEntries);
+  @override
+  State<_BlockableOverlayBody> createState() =>
+      _BlockableOverlayBodyState();
+}
+
+class _BlockableOverlayBodyState extends State<_BlockableOverlayBody> {
+  late final OverlayEntry _underlyingEntry = OverlayEntry(
+    canSizeOverlay: true,
+    builder: (_) => widget.underlying,
+  );
+  late final OverlayEntry _middleEntry = OverlayEntry(
+    builder: (_) => Obx(() {
+      final blocked = widget.state.middleBlocked.value;
+      return IgnorePointer(
+        ignoring: !blocked,
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (_) {
+            widget.state.onMiddleBlockedClick?.call();
+          },
+          child: const SizedBox.expand(),
+        ),
+      );
+    }),
+  );
+
+  @override
+  void didUpdateWidget(_BlockableOverlayBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _underlyingEntry.markNeedsBuild();
+    _middleEntry.markNeedsBuild();
   }
+
+  @override
+  void dispose() {
+    _middleEntry
+      ..remove()
+      ..dispose();
+    _underlyingEntry
+      ..remove()
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Overlay(
+        key: widget.state.key,
+        initialEntries: [_underlyingEntry, _middleEntry],
+      );
 }

@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
@@ -18,6 +19,26 @@ Future<ui.Image> _solidImage(ui.Color color) async {
   return image;
 }
 
+Future<ui.Image> _solidRawBgraImage(ui.Color color) async {
+  final pixels = Uint8List(2 * 2 * 4);
+  for (var offset = 0; offset < pixels.length; offset += 4) {
+    pixels[offset] = color.blue;
+    pixels[offset + 1] = color.green;
+    pixels[offset + 2] = color.red;
+    pixels[offset + 3] = color.alpha;
+  }
+  final image = await decodeImageFromPixels(
+    pixels,
+    2,
+    2,
+    ui.PixelFormat.bgra8888,
+  );
+  if (image == null) {
+    throw StateError('raw BGRA image decoding failed');
+  }
+  return image;
+}
+
 int _openHandles(ui.Image image) =>
     image.debugGetOpenHandleStackTraces()!.length;
 
@@ -25,7 +46,7 @@ void main() {
   testWidgets('owned image paint fills loose stack bounds and retains pixels',
       (tester) async {
     final source = (await tester.runAsync(
-      () => _solidImage(const ui.Color(0xffff0000)),
+      () => _solidRawBgraImage(const ui.Color(0xffff0000)),
     ))!;
     final boundaryKey = GlobalKey();
     final paintKey = GlobalKey();

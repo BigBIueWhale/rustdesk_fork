@@ -1157,6 +1157,7 @@ import zlib
 
 path = sys.argv[1]
 source_state = int(sys.argv[2])
+mode = sys.argv[3] if len(sys.argv) > 3 else "decode"
 palette = (
     (232, 36, 36), (36, 224, 48), (36, 64, 232), (232, 220, 36),
     (224, 36, 220), (36, 220, 220), (240, 120, 24), (128, 40, 232),
@@ -1227,11 +1228,13 @@ regions = {
     "top-bottom": (collections.Counter(), collections.Counter()),
 }
 sample_count = 0
+sampled_colors = collections.Counter()
 for y in range(0, height, 2):
     row = rows[y]
     for x in range(0, width, 2):
         base = x * channels
         rgb = row[base], row[base + 1], row[base + 2]
+        sampled_colors[rgb] += 1
         distances = [sum((rgb[i] - color[i]) ** 2 for i in range(3)) for color in palette]
         nearest = min(range(len(palette)), key=distances.__getitem__)
         if distances[nearest] > 55 * 55:
@@ -1251,6 +1254,22 @@ for layout, (first, second) in regions.items():
     score = min(low_count, high_count)
     candidates.append((age <= 8, score, -age, state, age, layout,
                        low_count + high_count))
+if mode == "diagnose":
+    top_colors = ",".join(
+        f"{red:02x}{green:02x}{blue:02x}:{count}"
+        for (red, green, blue), count in sampled_colors.most_common(8)
+    ) or "none"
+    candidate_summary = ",".join(
+        f"{layout}:state-{state}:age-{age}:score-{score}:matched-{matched}"
+        for _, score, _, state, age, layout, matched in candidates
+    ) or "none"
+    print(
+        "ANDROID_PEER_FRAMEBUFFER_DIAGNOSTIC "
+        f"width={width} height={height} source_state={source_state} "
+        f"palette_samples={sample_count} top_colors={top_colors} "
+        f"candidates={candidate_summary}"
+    )
+    raise SystemExit(0)
 valid = [candidate for candidate in candidates if candidate[0]]
 if not valid:
     raise SystemExit(1)
@@ -1266,7 +1285,7 @@ PY
 PEER_LAST_RECOVERY_MS=0
 capture_peer_freshness() {
     local phase=$1 started_ms now_ms source_state screenshot decoded
-    local state age score matched layout max_age=0
+    local state age score matched layout max_age=0 last_screenshot= screenshot_size=
     local -A seen=()
     started_ms="$(monotonic_millis)" \
         || fail "cannot read the monotonic clock for $phase"
@@ -1275,16 +1294,19 @@ capture_peer_freshness() {
             || fail "cannot reread the monotonic clock for $phase"
         [ "$((now_ms - started_ms))" -le "$PEER_RECOVERY_LIMIT_MS" ] \
             || break
+        if [ -n "$last_screenshot" ]; then
+            rm -f -- "$last_screenshot"
+        fi
         screenshot="$WORK_ROOT/peer-$phase-$attempt.png"
         timeout --signal=TERM --kill-after=2s 20s \
             "$ADB" -s "$SERIAL" exec-out screencap -p >"$screenshot" \
             || fail "cannot capture Android peer framebuffer for $phase"
+        last_screenshot=$screenshot
         source_state="$(peer_source_state 2>/dev/null || true)"
         decoded=
         if [[ "$source_state" =~ ^([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$ ]]; then
             decoded="$(decode_peer_screenshot "$screenshot" "$source_state" 2>/dev/null || true)"
         fi
-        rm -f -- "$screenshot"
         if [[ "$decoded" =~ ^([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)\ (left-right|top-bottom)$ ]]; then
             state=${BASH_REMATCH[1]}
             age=${BASH_REMATCH[2]}
@@ -1305,11 +1327,30 @@ capture_peer_freshness() {
                 printf 'ANDROID_PEER_FRESHNESS=pass phase=%s recovery_ms=%s max_age_ms=%s distinct=%s score=%s matched=%s layout=%s\n' \
                     "$phase" "$PEER_LAST_RECOVERY_MS" "$((max_age * 250))" \
                     "${#seen[@]}" "$score" "$matched" "$layout"
+                rm -f -- "$last_screenshot"
+                last_screenshot=
                 return 0
             fi
         fi
         sleep 0.5
     done
+    if [ -n "$last_screenshot" ] && [ -f "$last_screenshot" ]; then
+        if [[ "$source_state" =~ ^([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$ ]]; then
+            decode_peer_screenshot "$last_screenshot" "$source_state" diagnose \
+                || true
+        fi
+        screenshot_size="$(stat -c '%s' -- "$last_screenshot")"
+        if [ "$screenshot_size" -le 262144 ]; then
+            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_BEGIN phase=%s bytes=%s\n' \
+                "$phase" "$screenshot_size"
+            base64 -w 76 -- "$last_screenshot"
+            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_END phase=%s\n' "$phase"
+        else
+            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_OMITTED phase=%s bytes=%s limit=262144\n' \
+                "$phase" "$screenshot_size"
+        fi
+        rm -f -- "$last_screenshot"
+    fi
     capture_ui_hierarchy complete && print_initial_ui_semantics
     capture_android_connection_diagnostic active || true
     reprint_android_connection_diagnostic || true

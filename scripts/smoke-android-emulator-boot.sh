@@ -245,8 +245,11 @@ PEER_FRESHNESS_MAX_MS=0
 PEER_INITIAL_RECOVERY_MS=0
 PEER_BACKGROUND_RECOVERY_MS=0
 PEER_TASK_RECOVERY_MAX_MS=0
+PEER_LAST_CONNECTION_WAIT_MS=0
 readonly PEER_RECOVERY_LIMIT_MS=8000
 readonly PEER_FRESHNESS_LIMIT_MS=2000
+readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
+readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=120000
 
 monotonic_millis() {
     local uptime ignored whole fraction
@@ -433,17 +436,37 @@ peer_server_established_count() {
 }
 
 wait_peer_server_connections() {
-    local expected=$1 comparison=$2 count
-    for _ in $(seq 1 120); do
+    local expected=$1 comparison=$2
+    local limit_ms=${3:-$PEER_CONNECTION_WAIT_LIMIT_MS}
+    local count started_ms now_ms elapsed_ms
+    case "$expected" in
+        ''|*[!0-9]*) return 2 ;;
+    esac
+    case "$limit_ms" in
+        ''|*[!0-9]*) return 2 ;;
+    esac
+    [ "$limit_ms" -ge 1 ] || return 2
+    case "$comparison" in
+        at-least|exact) ;;
+        *) return 2 ;;
+    esac
+    started_ms="$(monotonic_millis)" || return 2
+    while :; do
         count="$(peer_server_established_count)"
         case "$comparison" in
-            at-least) [ "$count" -ge "$expected" ] && return 0 ;;
-            exact) [ "$count" -eq "$expected" ] && return 0 ;;
-            *) return 2 ;;
+            at-least) [ "$count" -ge "$expected" ] && break ;;
+            exact) [ "$count" -eq "$expected" ] && break ;;
         esac
+        now_ms="$(monotonic_millis)" || return 2
+        elapsed_ms=$((now_ms - started_ms))
+        if [ "$elapsed_ms" -ge "$limit_ms" ]; then
+            PEER_LAST_CONNECTION_WAIT_MS=$elapsed_ms
+            return 1
+        fi
         sleep 0.25
     done
-    return 1
+    now_ms="$(monotonic_millis)" || return 2
+    PEER_LAST_CONNECTION_WAIT_MS=$((now_ms - started_ms))
 }
 
 stop_peer_infrastructure() {
@@ -1376,7 +1399,8 @@ capture_peer_freshness() {
 open_peer_connection() {
     local generation=$1 expect_password=$2 center x y bounds=
     local left= top= right= bottom= visibility_x= visibility_y=
-    local password_input_verified=0
+    local password_input_verified=0 credential=remembered
+    local connection_wait_limit_ms=$PEER_CONNECTION_WAIT_LIMIT_MS
     if ! wait_ui_center address-field >/dev/null 2>&1; then
         tap_ui text 'Connection' \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
@@ -1430,6 +1454,8 @@ open_peer_connection() {
         grep -Fq "$PEER_PASSWORD" "$UI_XML" || return 1
         tap_ui text 'Remember password' || return 1
         tap_ui text 'OK' || return 1
+        credential=entered
+        connection_wait_limit_ms=$PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS
     else
         sleep 1
         if capture_ui_hierarchy \
@@ -1438,7 +1464,16 @@ open_peer_connection() {
             return 1
         fi
     fi
-    wait_peer_server_connections 1 exact || return 1
+    if ! wait_peer_server_connections \
+        1 exact "$connection_wait_limit_ms"; then
+        printf 'ANDROID_PEER_CONNECTION_READY=fail generation=%s credential=%s wait_ms=%s limit_ms=%s expected_connections=1\n' \
+            "$generation" "$credential" "$PEER_LAST_CONNECTION_WAIT_MS" \
+            "$connection_wait_limit_ms" >&2
+        return 1
+    fi
+    printf 'ANDROID_PEER_CONNECTION_READY=pass generation=%s credential=%s wait_ms=%s limit_ms=%s connections=1\n' \
+        "$generation" "$credential" "$PEER_LAST_CONNECTION_WAIT_MS" \
+        "$connection_wait_limit_ms"
     capture_peer_freshness "$generation"
     wait_peer_server_connections 1 exact
 }

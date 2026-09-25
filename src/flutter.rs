@@ -2651,6 +2651,29 @@ impl FlutterHandler {
                 handler.event_stream.as_ref().map(|_| *session_id)
             })
             .collect::<Vec<_>>();
+        #[cfg(target_os = "android")]
+        let rgba_trace = rgba
+            .w
+            .checked_mul(4)
+            .filter(|_| rgba.h > 0 && rgba.raw.len() % rgba.h == 0)
+            .and_then(|minimum_row_bytes| {
+                let row_bytes = rgba.raw.len() / rgba.h;
+                if row_bytes < minimum_row_bytes {
+                    return None;
+                }
+                let y = rgba.h / 2;
+                let three_quarter_x = rgba.w.checked_mul(3)?.checked_div(4)?;
+                let sample = |x: usize| {
+                    let offset = y.checked_mul(row_bytes)?.checked_add(x.checked_mul(4)?)?;
+                    let bytes = rgba.raw.get(offset..offset.checked_add(4)?)?;
+                    Some([bytes[0], bytes[1], bytes[2], bytes[3]])
+                };
+                Some((
+                    row_bytes,
+                    sample(rgba.w / 4)?,
+                    sample(three_quarter_x)?,
+                ))
+            });
         let notifications = self.offer_rgba_to_sessions(&session_ids, display, &mut rgba.raw);
         if notifications.is_empty() {
             return;
@@ -2667,6 +2690,31 @@ impl FlutterHandler {
             };
             let delivered = stream.add(EventToUI::Rgba(display, publication));
             if publication <= 4 {
+                #[cfg(target_os = "android")]
+                if let Some((row_bytes, quarter, three_quarter)) = rgba_trace {
+                    log::info!(
+                        "RGBA_PIPELINE native-publish display={display} publication={publication} delivered={delivered} format={:?} dimensions={}x{} row_bytes={row_bytes} quarter_bytes={:02x}{:02x}{:02x}{:02x} three_quarter_bytes={:02x}{:02x}{:02x}{:02x}",
+                        rgba.fmt,
+                        rgba.w,
+                        rgba.h,
+                        quarter[0],
+                        quarter[1],
+                        quarter[2],
+                        quarter[3],
+                        three_quarter[0],
+                        three_quarter[1],
+                        three_quarter[2],
+                        three_quarter[3],
+                    );
+                } else {
+                    log::info!(
+                        "RGBA_PIPELINE native-publish display={display} publication={publication} delivered={delivered} format={:?} dimensions={}x{} sample=unavailable",
+                        rgba.fmt,
+                        rgba.w,
+                        rgba.h,
+                    );
+                }
+                #[cfg(not(target_os = "android"))]
                 log::info!(
                     "RGBA_PIPELINE native-publish display={display} publication={publication} delivered={delivered}"
                 );

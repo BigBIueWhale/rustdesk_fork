@@ -1148,8 +1148,8 @@ peer_source_state() {
 }
 
 decode_peer_screenshot() {
-    local screenshot=$1 source_state=$2
-    python3 -I -S - "$screenshot" "$source_state" <<'PY'
+    local screenshot=$1 source_state=$2 mode=${3:-decode}
+    python3 -I -S - "$screenshot" "$source_state" "$mode" <<'PY'
 import collections
 import struct
 import sys
@@ -1286,6 +1286,7 @@ PEER_LAST_RECOVERY_MS=0
 capture_peer_freshness() {
     local phase=$1 started_ms now_ms source_state screenshot decoded
     local state age score matched layout max_age=0 last_screenshot= screenshot_size=
+    local last_source_state=
     local -A seen=()
     started_ms="$(monotonic_millis)" \
         || fail "cannot read the monotonic clock for $phase"
@@ -1305,6 +1306,7 @@ capture_peer_freshness() {
         source_state="$(peer_source_state 2>/dev/null || true)"
         decoded=
         if [[ "$source_state" =~ ^([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$ ]]; then
+            last_source_state=$source_state
             decoded="$(decode_peer_screenshot "$screenshot" "$source_state" 2>/dev/null || true)"
         fi
         if [[ "$decoded" =~ ^([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)\ (left-right|top-bottom)$ ]]; then
@@ -1335,8 +1337,8 @@ capture_peer_freshness() {
         sleep 0.5
     done
     if [ -n "$last_screenshot" ] && [ -f "$last_screenshot" ]; then
-        if [[ "$source_state" =~ ^([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$ ]]; then
-            decode_peer_screenshot "$last_screenshot" "$source_state" diagnose \
+        if [ -n "$last_source_state" ]; then
+            decode_peer_screenshot "$last_screenshot" "$last_source_state" diagnose \
                 || true
         fi
         screenshot_size="$(stat -c '%s' -- "$last_screenshot")"

@@ -355,6 +355,7 @@ class FfiModel with ChangeNotifier {
     if (!_isCurrentSession(expectedSessionId)) {
       return null;
     }
+    parent.target?.imageModel.retirePresentation();
     return ++_displayTopologyRevision;
   }
 
@@ -1814,11 +1815,17 @@ class VirtualMouseMode with ChangeNotifier {
 
 class ImageModel with ChangeNotifier {
   ui.Image? _image;
+  RgbaPresentationReceipt? _paintReceipt;
   bool _reportedAndroidRgbaEngineEvidence = false;
   final ExactRgbaPublicationOrder<SessionID> _rgbaPublicationOrder =
       ExactRgbaPublicationOrder<SessionID>();
 
   ui.Image? get image => _image;
+
+  VoidCallback? get onImagePainted {
+    final receipt = _paintReceipt;
+    return receipt == null ? null : receipt.painted;
+  }
 
   String id = '';
 
@@ -1836,8 +1843,15 @@ class ImageModel with ChangeNotifier {
 
   addCallbackOnFirstImage(Function(String) cb) => callbacksOnFirstImage.add(cb);
 
-  void clearImage() {
+  void retirePresentation() {
     _rgbaPublicationOrder.retire();
+    final retiringReceipt = _paintReceipt;
+    _paintReceipt = null;
+    retiringReceipt?.retire();
+  }
+
+  void clearImage() {
+    retirePresentation();
     final retiring = _image;
     _image = null;
     if (retiring != null) {
@@ -1862,15 +1876,21 @@ class ImageModel with ChangeNotifier {
         return false;
       }
     }
+    final paintReceipt = RgbaPresentationReceipt();
     try {
-      return await decodeAndUpdate(expectedSessionId, display, rgba,
+      final accepted = await decodeAndUpdate(expectedSessionId, display, rgba,
           expectedRgbaPublication: admission,
+          presentationReceipt: paintReceipt,
           expectedDisplayTopologyRevision:
               expectedDisplayTopologyRevision);
+      if (!accepted) return false;
+      return await paintReceipt.done ==
+          RgbaPresentationDisposition.painted;
     } catch (e) {
       debugPrint('onRgba error: $e');
       return false;
     } finally {
+      paintReceipt.retire();
       if (publication != null) {
         platformFFI.nextRgba(expectedSessionId, display, publication);
       }
@@ -1880,6 +1900,7 @@ class ImageModel with ChangeNotifier {
   Future<bool> decodeAndUpdate(
       SessionID expectedSessionId, int display, Uint8List rgba,
       {RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,
+      required RgbaPresentationReceipt presentationReceipt,
       required int expectedDisplayTopologyRevision}) async {
     if (parent.target?.ffiModel.isCurrentDisplayTopology(
             expectedSessionId, expectedDisplayTopologyRevision) !=
@@ -1946,6 +1967,7 @@ class ImageModel with ChangeNotifier {
     return update(image,
         expectedSessionId: expectedSessionId,
         expectedRgbaPublication: expectedRgbaPublication,
+        presentationReceipt: presentationReceipt,
         expectedDisplayTopologyRevision: expectedDisplayTopologyRevision);
   }
 
@@ -1953,6 +1975,7 @@ class ImageModel with ChangeNotifier {
       {SessionID? expectedSessionId,
       bool allowClosedSession = false,
       RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,
+      RgbaPresentationReceipt? presentationReceipt,
       int? expectedDisplayTopologyRevision}) async {
     bool acceptsExpectedImage() =>
         (expectedSessionId == null ||
@@ -1970,7 +1993,9 @@ class ImageModel with ChangeNotifier {
                     true));
 
     if (!acceptsExpectedImage()) {
-      image?.dispose();
+      if (!identical(image, _image)) {
+        image?.dispose();
+      }
       return false;
     }
     if (_image == null && image != null) {
@@ -2014,18 +2039,29 @@ class ImageModel with ChangeNotifier {
       }
     }
     if (!acceptsExpectedImage()) {
-      image?.dispose();
+      if (!identical(image, _image)) {
+        image?.dispose();
+      }
       return false;
     }
     if (image == null) {
       _rgbaPublicationOrder.retire();
     }
+    final nextReceipt = image == null ? null : presentationReceipt;
     final retiring = _image;
-    if (identical(retiring, image)) {
+    final retiringReceipt = _paintReceipt;
+    if (identical(retiring, image) &&
+        identical(retiringReceipt, nextReceipt)) {
       return true;
     }
     _image = image;
-    retiring?.dispose();
+    _paintReceipt = nextReceipt;
+    if (!identical(retiringReceipt, nextReceipt)) {
+      retiringReceipt?.retire();
+    }
+    if (!identical(retiring, image)) {
+      retiring?.dispose();
+    }
     notifyListeners();
     return true;
   }
@@ -4307,6 +4343,7 @@ class FFI {
       throw StateError('session owner changed before retirement');
     }
     ffiModel.retireEventListener(retiringSessionId);
+    imageModel.retirePresentation();
     cursorModel.retireCursorResources();
     _firstImageInitialization = null;
   }

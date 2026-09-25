@@ -61,7 +61,21 @@ void main() {
     expect(order.isCurrent(replacement), isTrue);
   });
 
-  test('retirement invalidates an admitted asynchronous completion', () {
+  test('paint and retirement are terminal and invalidate admitted work',
+      () async {
+    final painted = RgbaPresentationReceipt();
+    expect(painted.isCompleted, isFalse);
+    painted.painted();
+    expect(await painted.done, RgbaPresentationDisposition.painted);
+    painted.retire();
+    expect(await painted.done, RgbaPresentationDisposition.painted);
+
+    final retired = RgbaPresentationReceipt();
+    retired.retire();
+    expect(await retired.done, RgbaPresentationDisposition.retired);
+    retired.painted();
+    expect(await retired.done, RgbaPresentationDisposition.retired);
+
     final order = ExactRgbaPublicationOrder<String>();
     final admitted = order.admit('session', 0, 1)!;
 

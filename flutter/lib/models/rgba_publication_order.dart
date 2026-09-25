@@ -1,3 +1,31 @@
+import 'dart:async';
+
+enum RgbaPresentationDisposition { painted, retired }
+
+/// Completes when one software-RGBA image reaches its paint sink or is retired.
+///
+/// Decoding and assigning an image to a model does not mean Flutter consumed it.
+/// The native producer may promote its latest pending frame only after this
+/// receipt reaches a terminal disposition.
+class RgbaPresentationReceipt {
+  final Completer<RgbaPresentationDisposition> _completion =
+      Completer<RgbaPresentationDisposition>();
+
+  Future<RgbaPresentationDisposition> get done => _completion.future;
+
+  bool get isCompleted => _completion.isCompleted;
+
+  void painted() => _complete(RgbaPresentationDisposition.painted);
+
+  void retire() => _complete(RgbaPresentationDisposition.retired);
+
+  void _complete(RgbaPresentationDisposition disposition) {
+    if (!_completion.isCompleted) {
+      _completion.complete(disposition);
+    }
+  }
+}
+
 class RgbaPublicationAdmission<Session extends Object> {
   const RgbaPublicationAdmission._(
       this.session, this.display, this.publication, this.revision);

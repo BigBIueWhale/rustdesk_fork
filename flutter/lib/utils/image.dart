@@ -112,7 +112,8 @@ class OwnedImagePaint extends StatefulWidget {
 
 class _OwnedImagePaintState extends State<OwnedImagePaint> {
   ui.Image? _paintImage;
-  ui.Image? _retiringImage;
+  List<ui.Image> _retiringImages = <ui.Image>[];
+  bool _retirementScheduled = false;
 
   @override
   void initState() {
@@ -129,23 +130,34 @@ class _OwnedImagePaintState extends State<OwnedImagePaint> {
     final retiring = _paintImage;
     _paintImage = replacement;
     if (retiring != null) {
-      _retiringImage?.dispose();
-      _retiringImage = retiring;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (identical(_retiringImage, retiring)) {
-          _retiringImage = null;
-          retiring.dispose();
-        }
-      });
+      _retiringImages.add(retiring);
+      _scheduleRetirement();
     }
+  }
+
+  void _scheduleRetirement() {
+    if (_retirementScheduled) return;
+    _retirementScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final retiringImages = _retiringImages;
+      _retiringImages = <ui.Image>[];
+      _retirementScheduled = false;
+      for (final image in retiringImages) {
+        image.dispose();
+      }
+    });
   }
 
   @override
   void dispose() {
-    _paintImage?.dispose();
+    final paintImage = _paintImage;
     _paintImage = null;
-    _retiringImage?.dispose();
-    _retiringImage = null;
+    if (paintImage != null) {
+      _retiringImages.add(paintImage);
+    }
+    if (_retiringImages.isNotEmpty) {
+      _scheduleRetirement();
+    }
     super.dispose();
   }
 

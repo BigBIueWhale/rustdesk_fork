@@ -67,7 +67,7 @@ void main() {
     raster.dispose();
 
     await tester.pumpWidget(const SizedBox.shrink());
-  });
+  }, timeout: const Timeout(Duration(seconds: 30)));
 
   testWidgets('owned image paint retires exact handles after frame and unmount',
       (tester) async {
@@ -106,5 +106,5 @@ void main() {
     expect(_openHandles(secondObserver), 1);
     firstObserver.dispose();
     secondObserver.dispose();
-  });
+  }, timeout: const Timeout(Duration(seconds: 30)));
 }

@@ -3,6 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+class _TestDialog extends CustomAlertDialog {
+  const _TestDialog(this.label) : super(content: const SizedBox.shrink());
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Text(label);
+}
+
 void main() {
   testWidgets(
       'blockable overlay keeps one mounted owner and rebuilds its underlying route',
@@ -110,18 +119,14 @@ void main() {
     ));
 
     final first = manager.show<String>(
-      (_, __, ___) => const CustomAlertDialog(
-        content: Text('first dialog'),
-      ),
+      (_, __, ___) => const _TestDialog('first dialog'),
       tag: 'connection-state',
     );
     await tester.pump();
     expect(find.text('first dialog'), findsOneWidget);
 
     final replacement = manager.show<String>(
-      (_, __, ___) => const CustomAlertDialog(
-        content: Text('replacement dialog'),
-      ),
+      (_, __, ___) => const _TestDialog('replacement dialog'),
       tag: 'connection-state',
     );
     await tester.pump();

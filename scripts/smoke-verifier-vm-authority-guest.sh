@@ -2206,8 +2206,9 @@ run_android_emulator_boot() {
     local adb=$inputs/inputs/android-sdk/platform-tools/adb
     local runtime_archive=$inputs/inputs/verifier-images/devcheck.docker.tar.gz
     local source_archive_sha source_before inputs_before input_mount_options
-    local load_output inspect namespace_inspect container_status=0 result_line
-    local -a result_lines=()
+    local load_output inspect namespace_inspect container_status=0
+    local renderer_receipt result_line
+    local -a renderer_lines=() result_lines=()
 
     [[ "$ANDROID_EMULATOR_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         || fail 'Android emulator boot source commit is malformed'
@@ -2360,8 +2361,16 @@ run_android_emulator_boot() {
         || { tail -n 200 "$output" >&2; fail "Android emulator boot exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 262144 ] \
         || fail 'Android emulator boot output exceeds its bound'
+    mapfile -t renderer_lines < <(grep -E \
+        '^ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader angle=(present|absent) gles_sha256=[0-9a-f]{64}$' \
+        "$output" || true)
+    [ "${#renderer_lines[@]}" -eq 1 ] \
+        || { tail -n 200 "$output" >&2; fail 'Android renderer receipt is absent or duplicated'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_RENDERER=' "$output")" -eq 1 ] \
+        || { tail -n 200 "$output" >&2; fail 'Android renderer receipt is malformed or duplicated'; }
+    renderer_receipt=${renderer_lines[0]}
     mapfile -t result_lines < <(grep -E \
-        '^ANDROID_EMULATOR_BOOT=pass emulator=37\.1\.11 api=34 abi=x86_64 acceleration=software gpu=swangle framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
+        '^ANDROID_EMULATOR_BOOT=pass emulator=37\.1\.11 api=34 abi=x86_64 acceleration=software gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
         "$output" || true)
     [ "${#result_lines[@]}" -eq 1 ] \
         || { tail -n 200 "$output" >&2; fail 'Android emulator boot receipt is absent or duplicated'; }
@@ -2390,8 +2399,8 @@ run_android_emulator_boot() {
     stop_docker_authority
     umount "$inputs" || fail 'cannot retire the sealed Android emulator input mount'
     SEALED_INPUTS_MOUNTED=0
-    printf '%s\n' "$result_line"
-    printf 'ANDROID_EMULATOR_BOOT_VM=pass commit=%s tree=%s emulator=%s api=%s abi=x86_64 acceleration=software gpu=swangle runtime_index=%s runtime_config=%s uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+    printf '%s\n' "$renderer_receipt" "$result_line"
+    printf 'ANDROID_EMULATOR_BOOT_VM=pass commit=%s tree=%s emulator=%s api=%s abi=x86_64 acceleration=software gpu=swiftshader runtime_index=%s runtime_config=%s uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
         "$ANDROID_EMULATOR_VERSION" "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" \
         "$DEV_CHECK_IMAGE_ID" "$DEV_CHECK_IMAGE_CONFIG_ID"
@@ -2414,7 +2423,8 @@ run_android_emulator_app() {
     local runtime_archive=$inputs/inputs/verifier-images/devcheck.docker.tar.gz
     local source_archive_sha input_mount_options online_mount_options artifact_mount_options
     local builder_load runtime_load workload_status=0 source_before
-    local apk_receipt runtime_receipt prepared_receipt check_receipt apk_sha256
+    local apk_receipt renderer_receipt runtime_receipt prepared_receipt
+    local check_receipt apk_sha256
     local -a git_builder=(
         setpriv --reuid=1000 --regid=1000 --clear-groups
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
@@ -2622,8 +2632,14 @@ run_android_emulator_app() {
         || { tail -n 320 "$output" >&2; fail 'Android emulator APK receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APK=' "$output")" -eq 1 ] \
         || fail 'Android emulator APK receipt is duplicated'
+    renderer_receipt="$(grep -E \
+        '^ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader angle=(present|absent) gles_sha256=[0-9a-f]{64}$' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android renderer receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_RENDERER=' "$output")" -eq 1 ] \
+        || fail 'Android renderer receipt is duplicated'
     runtime_receipt="$(grep -E \
-        '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software gpu=swangle framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
+        '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android emulator app runtime receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APP=' "$output")" -eq 1 ] \
@@ -2680,7 +2696,8 @@ run_android_emulator_app() {
     umount "$artifact_output" \
         || fail 'cannot retire the Android artifact output mount'
     ANDROID_ARTIFACT_OUTPUT_MOUNTED=0
-    printf '%s\n' "$apk_receipt" "$runtime_receipt" "$prepared_receipt" "$check_receipt"
+    printf '%s\n' "$apk_receipt" "$renderer_receipt" "$runtime_receipt" \
+        "$prepared_receipt" "$check_receipt"
     printf 'ANDROID_EMULATOR_APP_VM=pass commit=%s tree=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s apk_sha256=%s signing=test-only artifact=prepared-test-only output=writable-landlocked uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked source=exact-pushed cleanup=joined\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
         "$ANDROID_EMULATOR_VERSION" "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" \
@@ -2706,7 +2723,8 @@ run_android_emulator_runtime() {
     local source_archive_sha input_mount_options artifact_mount_options online_mount_options
     local builder_load runtime_load workload_status=0 source_before inputs_before artifact_before
     local staged_apk_before
-    local entry_receipt apk_receipt runtime_receipt lifecycle_receipt peer_receipt check_receipt checksum_line
+    local entry_receipt apk_receipt renderer_receipt runtime_receipt
+    local lifecycle_receipt peer_receipt check_receipt checksum_line
     local -a git_builder=(
         setpriv --reuid=1000 --regid=1000 --clear-groups
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
@@ -2999,8 +3017,14 @@ run_android_emulator_runtime() {
         || { tail -n 320 "$output" >&2; fail 'Android runtime APK receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APK=' "$output")" -eq 1 ] \
         || fail 'Android runtime APK receipt is duplicated'
+    renderer_receipt="$(grep -E \
+        '^ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader angle=(present|absent) gles_sha256=[0-9a-f]{64}$' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android renderer receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_RENDERER=' "$output")" -eq 1 ] \
+        || fail 'Android renderer receipt is duplicated'
     runtime_receipt="$(grep -E \
-        "^ANDROID_EMULATOR_APP=pass emulator=37\\.1\\.11 api=34 abi=x86_64 package=com\\.carriez\\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only acceleration=software gpu=swangle framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$" \
+        "^ANDROID_EMULATOR_APP=pass emulator=37\\.1\\.11 api=34 abi=x86_64 package=com\\.carriez\\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only acceleration=software gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$" \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android runtime app receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APP=' "$output")" -eq 1 ] \
@@ -3089,8 +3113,9 @@ run_android_emulator_runtime() {
     umount "$inputs" \
         || fail 'cannot retire the sealed Android runtime input mount'
     SEALED_INPUTS_MOUNTED=0
-    printf '%s\n' "$entry_receipt" "$apk_receipt" "$runtime_receipt" \
-        "$lifecycle_receipt" "$peer_receipt" "$check_receipt"
+    printf '%s\n' "$entry_receipt" "$apk_receipt" "$renderer_receipt" \
+        "$runtime_receipt" "$lifecycle_receipt" "$peer_receipt" \
+        "$check_receipt"
     printf 'ANDROID_EMULATOR_RUNTIME_VM=pass harness_commit=%s harness_tree=%s artifact_commit=%s artifact_tree=%s apk_sha256=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s signing=test-only peer=production-loopback-cpace-changing-display uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked artifact=readonly-landlocked source=exact-pushed cleanup=joined\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
         "$ANDROID_RUNTIME_ARTIFACT_COMMIT" "$ANDROID_RUNTIME_ARTIFACT_TREE" \

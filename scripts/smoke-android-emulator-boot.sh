@@ -201,7 +201,7 @@ hw.cpu.ncore=2
 hw.dPad=no
 hw.gps=no
 hw.gpu.enabled=yes
-hw.gpu.mode=swangle
+hw.gpu.mode=swiftshader
 hw.initialOrientation=portrait
 hw.keyboard=yes
 hw.lcd.density=240
@@ -699,7 +699,7 @@ done
     -no-metrics \
     -wipe-data \
     -accel off \
-    -gpu swangle \
+    -gpu swiftshader \
     >"$EMULATOR_LOG" 2>&1 &
 EMULATOR_PID=$!
 EMULATOR_START="$(process_start_time "$EMULATOR_PID")" \
@@ -1471,6 +1471,38 @@ readonly SELINUX="$(adb_shell_value getenforce)"
 [ "$ABI" = x86_64 ] || fail "booted Android ABI differs: $ABI"
 [ "$SELINUX" = Enforcing ] || fail "booted Android SELinux mode differs: $SELINUX"
 
+renderer_line="$(
+    timeout --signal=TERM --kill-after=2s 20s \
+        "$ADB" -s "$SERIAL" shell dumpsys SurfaceFlinger 2>/dev/null \
+        | tr -d '\r' \
+        | awk '
+            /^[[:space:]]*GLES:/ && renderer == "" {
+                sub(/^[[:space:]]*/, "")
+                renderer = $0
+            }
+            END {
+                if (renderer == "") exit 1
+                print renderer
+            }
+        '
+)" || fail 'cannot observe the Android SurfaceFlinger GLES renderer'
+[ "${#renderer_line}" -le 4096 ] \
+    || fail 'the Android SurfaceFlinger GLES renderer description exceeds 4 KiB'
+case "$renderer_line" in
+    *SwiftShader*) ;;
+    *) fail "the Android renderer is not SwiftShader: $renderer_line" ;;
+esac
+renderer_angle=absent
+case "$renderer_line" in
+    *ANGLE*) renderer_angle=present ;;
+esac
+renderer_sha256="$(printf '%s' "$renderer_line" | sha256sum | awk '{ print $1 }')"
+[[ "$renderer_sha256" =~ ^[0-9a-f]{64}$ ]] \
+    || fail 'the Android renderer description digest is malformed'
+readonly renderer_line renderer_angle renderer_sha256
+printf 'ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader angle=%s gles_sha256=%s\n' \
+    "$renderer_angle" "$renderer_sha256"
+
 PEER_REVERSE_READY=0
 PEER_REVERSE_LISTING=
 if [ "$WORKLOAD" = app-peer-lifecycle ]; then
@@ -1965,7 +1997,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
    || [ "$WORKLOAD" = app-peer-lifecycle ]; then
     [ "$(sha256sum "$RUNTIME_TEST_APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
         || fail 'runtime-test APK changed during emulator execution'
-    printf 'ANDROID_EMULATOR_APP=pass emulator=%s api=%s abi=%s package=com.carriez.flutter_hbb activity=MainActivity launch_wait=%s state=resumed process=stable-five-seconds apk_sha256=%s signing=test-only acceleration=software gpu=swangle framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
+    printf 'ANDROID_EMULATOR_APP=pass emulator=%s api=%s abi=%s package=com.carriez.flutter_hbb activity=MainActivity launch_wait=%s state=resumed process=stable-five-seconds apk_sha256=%s signing=test-only acceleration=software gpu=swiftshader framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
         "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$LAUNCH_WAIT_STATUS" "$APK_SHA256" \
         "$framebuffer_dimensions" "$SELINUX"
     if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then
@@ -2016,6 +2048,6 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
         fi
     fi
 else
-    printf 'ANDROID_EMULATOR_BOOT=pass emulator=%s api=%s abi=%s acceleration=software gpu=swangle framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
+    printf 'ANDROID_EMULATOR_BOOT=pass emulator=%s api=%s abi=%s acceleration=software gpu=swiftshader framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
         "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$framebuffer_dimensions" "$SELINUX"
 fi

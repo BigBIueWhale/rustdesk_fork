@@ -537,8 +537,15 @@ runtime_status=0
 vm_docker start --attach "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 || runtime_status=$?
 [ "$runtime_status" -eq 0 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die "Android app runtime exited with status $runtime_status"; }
+mapfile -t renderer_receipts < <(grep -E \
+    '^ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader angle=(present|absent) gles_sha256=[0-9a-f]{64}$' \
+    "$RUNTIME_LOG" || true)
+[ "${#renderer_receipts[@]}" -eq 1 ] \
+    || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android renderer receipt is absent or duplicated'; }
+[ "$(grep -c '^ANDROID_EMULATOR_RENDERER=' "$RUNTIME_LOG")" -eq 1 ] \
+    || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android renderer receipt is malformed or duplicated'; }
 mapfile -t runtime_receipts < <(grep -E \
-    '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software gpu=swangle framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
+    '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
     "$RUNTIME_LOG" || true)
 [ "${#runtime_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android app runtime receipt is absent or duplicated'; }
@@ -580,7 +587,8 @@ read -r pending_result pending_identity publication_extra <<<"$publication_autho
     && [[ "$pending_identity" =~ ^(0|[1-9][0-9]*):[1-9][0-9]*$ ]] \
     && [ -z "$publication_extra" ] \
     || die 'runtime-test APK pending publication authority is malformed'
-printf '%s\n' "${apk_receipts[0]}" "${runtime_receipts[0]}"
+printf '%s\n' "${apk_receipts[0]}" "${renderer_receipts[0]}" \
+    "${runtime_receipts[0]}"
 printf 'ANDROID_EMULATOR_ARTIFACT_PREPARED=pass pending=%s destination=%s apk_sha256=%s signing=test-only publication=atomic-no-clobber\n' \
     "$pending_result" "$OUTPUT_DESTINATION" "$APK_SHA256"
 printf 'ANDROID_EMULATOR_APP_CHECK=pass apk_sha256=%s artifact=prepared-test-only source=exact-archive target=x86_64-linux-android builder=%s runtime=%s vm_network=none container_network=none inputs=readonly cleanup=joined\n' \

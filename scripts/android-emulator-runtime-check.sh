@@ -405,8 +405,15 @@ if [ "$runtime_status" -ne 0 ]; then
 fi
 [ "$(stat -c '%s' -- "$RUNTIME_LOG")" -le 1048576 ] \
     || die 'Android app runtime output exceeds its bound'
+mapfile -t renderer_receipts < <(grep -E \
+    '^ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader angle=(present|absent) gles_sha256=[0-9a-f]{64}$' \
+    "$RUNTIME_LOG" || true)
+[ "${#renderer_receipts[@]}" -eq 1 ] \
+    || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android renderer receipt is absent or duplicated'; }
+[ "$(grep -c '^ANDROID_EMULATOR_RENDERER=' "$RUNTIME_LOG")" -eq 1 ] \
+    || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android renderer receipt is malformed or duplicated'; }
 mapfile -t runtime_receipts < <(grep -E \
-    '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software gpu=swangle framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
+    '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
     "$RUNTIME_LOG" || true)
 [ "${#runtime_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android app runtime receipt is absent or duplicated'; }
@@ -454,7 +461,8 @@ verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
 verify_sha256 "$ONLINE_DIR/cargo-vendor-config.toml" "$SHA256_CARGO_VENDOR_CONFIG"
 verify_image android-builder "$ANDROID_BUILDER_CONFIG_ID"
 verify_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"
-printf '%s\n' "${apk_receipts[0]}" "${runtime_receipts[0]}" \
+printf '%s\n' "${apk_receipts[0]}" "${renderer_receipts[0]}" \
+    "${runtime_receipts[0]}" \
     "${lifecycle_receipts[0]}" "${peer_receipts[0]}"
 printf 'ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=%s apk_sha256=%s signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=%s runtime=%s peer=production-loopback-cpace-changing-display vm_network=none container_network=none inputs=readonly cleanup=joined\n' \
     "$ARTIFACT_SOURCE_COMMIT" "$APK_SHA256" \

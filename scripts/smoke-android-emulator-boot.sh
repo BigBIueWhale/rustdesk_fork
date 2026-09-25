@@ -1276,6 +1276,7 @@ capture_peer_freshness() {
 open_peer_connection() {
     local generation=$1 expect_password=$2 center x y bounds=
     local left= top= right= bottom= visibility_x= visibility_y=
+    local password_input_verified=0
     if ! wait_ui_center address-field >/dev/null 2>&1; then
         tap_ui text 'Connection' \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
@@ -1293,20 +1294,35 @@ open_peer_connection() {
     if [ "$expect_password" -eq 1 ]; then
         wait_ui_center text 'Password required' >/dev/null \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
-        capture_ui_hierarchy || return 1
-        center="$(ui_center focused-password-field 2>/dev/null || true)"
-        [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
-        read -r x y <<<"$center"
-        bounds="$(ui_focused_password_bounds 2>/dev/null || true)"
-        [[ "$bounds" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]] || return 1
-        read -r left top right bottom <<<"$bounds"
-        "$ADB" -s "$SERIAL" shell input tap "$x" "$y" >/dev/null || return 1
-        "$ADB" -s "$SERIAL" shell input text "$PEER_PASSWORD" >/dev/null || return 1
-        visibility_x=$((right - 24))
-        visibility_y=$(((top + bottom) / 2))
-        "$ADB" -s "$SERIAL" shell input tap \
-            "$visibility_x" "$visibility_y" >/dev/null || return 1
-        wait_ui_center address-field "$PEER_PASSWORD" >/dev/null || return 1
+        for _ in $(seq 1 3); do
+            capture_ui_hierarchy || return 1
+            center="$(ui_center focused-password-field 2>/dev/null || true)"
+            [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+            read -r x y <<<"$center"
+            bounds="$(ui_focused_password_bounds 2>/dev/null || true)"
+            [[ "$bounds" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]] || return 1
+            read -r left top right bottom <<<"$bounds"
+            "$ADB" -s "$SERIAL" shell input tap "$x" "$y" >/dev/null || return 1
+            "$ADB" -s "$SERIAL" shell input keycombination \
+                KEYCODE_CTRL_LEFT KEYCODE_A >/dev/null || return 1
+            "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_DEL >/dev/null || return 1
+            "$ADB" -s "$SERIAL" shell input text "$PEER_PASSWORD" >/dev/null || return 1
+            visibility_x=$((right - 24))
+            visibility_y=$(((top + bottom) / 2))
+            "$ADB" -s "$SERIAL" shell input tap \
+                "$visibility_x" "$visibility_y" >/dev/null || return 1
+            if wait_ui_center address-field "$PEER_PASSWORD" >/dev/null; then
+                password_input_verified=1
+                break
+            fi
+            capture_ui_hierarchy || return 1
+            if ! ui_center focused-password-field >/dev/null 2>&1; then
+                "$ADB" -s "$SERIAL" shell input tap \
+                    "$visibility_x" "$visibility_y" >/dev/null || return 1
+                sleep 0.5
+            fi
+        done
+        [ "$password_input_verified" -eq 1 ] || return 1
         printf 'ANDROID_PEER_PASSWORD_INPUT=pass visible_roundtrip=true chars=%s\n' \
             "${#PEER_PASSWORD}"
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null || return 1
@@ -1627,7 +1643,11 @@ PY
             tap_ui text 'Connection' \
                 || fail 'cannot return to the production Connection page'
             open_peer_connection initial 1 \
-                || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'the initial authenticated Android peer connection failed'; }
+                || {
+                    print_android_connection_diagnostic active
+                    capture_ui_hierarchy complete && print_initial_ui_semantics
+                    fail 'the initial authenticated Android peer connection failed'
+                }
             PEER_INITIAL_RECOVERY_MS=$PEER_LAST_RECOVERY_MS
             exercise_peer_background_resume "$APP_PID"
         fi

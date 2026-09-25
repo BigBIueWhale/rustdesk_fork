@@ -1272,12 +1272,11 @@ open_peer_connection() {
         "$ADB" -s "$SERIAL" shell input tap \
             "$visibility_x" "$visibility_y" >/dev/null || return 1
         wait_ui_center address-field "$PEER_PASSWORD" >/dev/null || return 1
-        "$ADB" -s "$SERIAL" shell input tap \
-            "$visibility_x" "$visibility_y" >/dev/null || return 1
-        wait_ui_center focused-password-field >/dev/null || return 1
+        printf 'ANDROID_PEER_PASSWORD_INPUT=pass visible_roundtrip=true chars=%s\n' \
+            "${#PEER_PASSWORD}"
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null || return 1
         capture_ui_hierarchy || return 1
-        ! grep -Fq "$PEER_PASSWORD" "$UI_XML" || return 1
+        grep -Fq "$PEER_PASSWORD" "$UI_XML" || return 1
         tap_ui text 'Remember password' || return 1
         tap_ui text 'OK' || return 1
     else

@@ -136,6 +136,73 @@ pub(crate) struct ClientClipboardContext {
 /// Client of the remote desktop.
 pub struct Client;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ViewerKeyingError {
+    MissingCredential,
+    CredentialDerivation,
+    UnsupportedTransport,
+    Handshake(hbb_common::cpace::HandshakeError),
+}
+
+impl ViewerKeyingError {
+    fn requests_credential_entry(self) -> bool {
+        matches!(
+            self,
+            Self::MissingCredential
+                | Self::Handshake(hbb_common::cpace::HandshakeError::Confirmation)
+        )
+    }
+}
+
+impl std::fmt::Display for ViewerKeyingError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let message = match self {
+            Self::MissingCredential => "No remembered password for this peer — cannot run the CPace handshake (R-S9, fail-closed). Enter the box's password and reconnect.",
+            Self::CredentialDerivation => "The password could not be converted into a CPace credential. The connection was refused before the handshake.",
+            Self::UnsupportedTransport => {
+                "CPace handshake requires a direct TCP stream; the connection was refused fail-closed."
+            }
+            Self::Handshake(hbb_common::cpace::HandshakeError::Confirmation) => "CPace key confirmation failed — the box's password is wrong or the box was re-provisioned with a new password. Re-enter the box's current password and reconnect. Fail-closed.",
+            Self::Handshake(hbb_common::cpace::HandshakeError::Protocol) => "CPace handshake aborted because the peer sent an invalid or out-of-order handshake message. The connection was refused before login.",
+            Self::Handshake(hbb_common::cpace::HandshakeError::Pake) => "CPace cryptographic processing failed. The connection was refused before login.",
+            Self::Handshake(hbb_common::cpace::HandshakeError::Io) => "CPace handshake transport ended, timed out, or violated the handshake frame bound. The connection was refused before login.",
+        };
+        formatter.write_str(message)
+    }
+}
+
+impl std::error::Error for ViewerKeyingError {}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ConnectionErrorPresentation {
+    CredentialPrompt,
+    DirectUnreachable,
+    Error,
+}
+
+fn classify_connection_error(error: &hbb_common::anyhow::Error) -> ConnectionErrorPresentation {
+    if let Some(keying_error) = error.downcast_ref::<ViewerKeyingError>() {
+        return if keying_error.requests_credential_entry() {
+            ConnectionErrorPresentation::CredentialPrompt
+        } else {
+            ConnectionErrorPresentation::Error
+        };
+    }
+
+    let text = error.to_string();
+    if text.contains("Failed to connect")
+        || text.contains("Connection refused")
+        || text.contains("No route to host")
+        || text.contains("Network is unreachable")
+        || text.contains("timed out")
+        || text.contains("timeout")
+    {
+        ConnectionErrorPresentation::DirectUnreachable
+    } else {
+        ConnectionErrorPresentation::Error
+    }
+}
+
 #[cfg(not(target_os = "ios"))]
 struct ClipboardState {
     #[cfg(feature = "flutter")]
@@ -455,10 +522,10 @@ impl Client {
         credential: &str,
         credential_is_derived: bool,
         conn: &mut Stream,
-    ) -> ResultType<String> {
+    ) -> Result<String, ViewerKeyingError> {
         // R-S9: an empty credential has no shared secret — fail closed (never key in the open).
         if credential.is_empty() {
-            bail!("No remembered password for this peer — cannot run the CPace handshake (R-S9, fail-closed). Connect once with the box's password remembered so the viewer can key.");
+            return Err(ViewerKeyingError::MissingCredential);
         }
         // R-S9/R-P1: a stored viewer twin is ALREADY the derived Argon2id PRS — feed it to the PAKE
         // VERBATIM (exactly as the responder uses its at-rest PRS, server.rs), never re-derive. Only a
@@ -469,25 +536,18 @@ impl Client {
             credential.to_string()
         } else {
             let Some(p) = hbb_common::config::derive_cpace_prs(credential) else {
-                bail!("R-S9: could not derive the CPace PRS (empty password) — fail-closed.");
+                return Err(ViewerKeyingError::CredentialDerivation);
             };
             p
         };
         // The balanced PAKE runs over the direct TCP stream (the flagship path is always TCP).
         let keys = {
             let Some(fs) = conn.as_framed_tcp_mut() else {
-                bail!("CPace handshake requires a direct TCP stream");
+                return Err(ViewerKeyingError::UnsupportedTransport);
             };
-            match hbb_common::cpace::run_initiator(fs, &prs).await {
-                Ok(v) => v,
-                // A confirmation mismatch here = wrong password or a non-fork peer. The viewer
-                // cannot tell which, by design; fail closed either way. Re-typing the password
-                // recovers a wrong password or a box re-provisioned with a new password (its PRS
-                // changed) — so a legitimately re-keyed box is not dead-ended.
-                Err(_) => bail!(
-                    "CPace handshake failed — the box's password is wrong, or it was re-provisioned with a new password (it could also be a non-fork peer). Re-type the box's current password and reconnect. Fail-closed."
-                ),
-            }
+            hbb_common::cpace::run_initiator(fs, &prs)
+                .await
+                .map_err(ViewerKeyingError::Handshake)?
         };
         conn.set_session_keys(keys);
         // Return the DERIVED PRS so the caller can stage it as the R-S16 viewer twin (the
@@ -3966,15 +4026,17 @@ pub trait Interface: Send + Clone + 'static + Sized {
         self.get_lch().write().unwrap().received = received;
     }
 
-    fn on_establish_connection_error(&self, err: String) {
+    fn on_establish_connection_error(&self, error: &hbb_common::anyhow::Error) {
         let title = "Connection Error";
-        let text = err.to_string();
-        // R-S13/A3 (prompt-before-keying): a CPace keying failure for want of a password
-        // (R-S9, the bare-ID first connect) or a wrong password is RECOVERABLE — prompt for
-        // the box's password and reconnect, rather than dead-ending on an error. The reconnect
-        // keys via `get_connect_password` -> `key_initiator`. flutter-only (the dialog).
+        let text = error.to_string();
+        let presentation = classify_connection_error(error);
+        // R-S13/A3 / R-P14c: only absent local credential material or the typed CPace
+        // key-confirmation mismatch authorizes credential re-entry. Derivation, protocol,
+        // PAKE-processing, and I/O failures close the exact attempt without turning
+        // attacker-controlled failure text into a password prompt. The reconnect feeds the
+        // replacement credential through `get_connect_password` -> `key_initiator`.
         if cfg!(feature = "flutter")
-            && (err.contains("(R-S9") || err.contains("CPace handshake failed"))
+            && presentation == ConnectionErrorPresentation::CredentialPrompt
         {
             self.msgbox("connect-password-prompt", "Password Required", &text, "");
             return;
@@ -3985,17 +4047,11 @@ pub trait Interface: Send + Clone + 'static + Sized {
         // is removed as dead and misdirecting: an unreachable peer means the address is
         // wrong or :21118 is not port-forwarded, never "retry via relay".
         let errno = errno::errno().0;
-        log::error!("Connection closed: {err}({errno})");
+        log::error!("Connection closed: {error}({errno})");
         // R-G6: a direct connect that fails is TERMINAL (no relay fallback). If the host was simply
         // unreachable, replace the raw "Failed to connect …" with the actionable guidance the spec
         // mandates — check the address and that the port is open/forwarded — instead of a bare error.
-        let unreachable = err.contains("Failed to connect")
-            || err.contains("Connection refused")
-            || err.contains("No route to host")
-            || err.contains("Network is unreachable")
-            || err.contains("timed out")
-            || err.contains("timeout");
-        if unreachable {
+        if presentation == ConnectionErrorPresentation::DirectUnreachable {
             self.msgbox("error", title, "direct_unreachable_tip", "");
         } else {
             self.msgbox("error", title, &text, "");
@@ -4858,6 +4914,64 @@ mod tests {
             max_payload_bytes,
             max_queued_bytes,
         }
+    }
+
+    #[test]
+    fn r_p14c_viewer_credential_prompt_requires_typed_credential_failure() {
+        fn erase_type(error: ViewerKeyingError) -> ResultType<()> {
+            Err(error)?
+        }
+
+        for (error, expected) in [
+            (
+                ViewerKeyingError::MissingCredential,
+                ConnectionErrorPresentation::CredentialPrompt,
+            ),
+            (
+                ViewerKeyingError::CredentialDerivation,
+                ConnectionErrorPresentation::Error,
+            ),
+            (
+                ViewerKeyingError::Handshake(
+                    hbb_common::cpace::HandshakeError::Confirmation,
+                ),
+                ConnectionErrorPresentation::CredentialPrompt,
+            ),
+            (
+                ViewerKeyingError::Handshake(hbb_common::cpace::HandshakeError::Protocol),
+                ConnectionErrorPresentation::Error,
+            ),
+            (
+                ViewerKeyingError::Handshake(hbb_common::cpace::HandshakeError::Pake),
+                ConnectionErrorPresentation::Error,
+            ),
+            (
+                ViewerKeyingError::Handshake(hbb_common::cpace::HandshakeError::Io),
+                ConnectionErrorPresentation::Error,
+            ),
+            (
+                ViewerKeyingError::UnsupportedTransport,
+                ConnectionErrorPresentation::Error,
+            ),
+        ] {
+            let erased = erase_type(error).expect_err("the keying failure must remain terminal");
+            assert_eq!(classify_connection_error(&erased), expected, "{error:?}");
+        }
+
+        let attacker_text = hbb_common::anyhow::anyhow!(
+            "CPace handshake failed and (R-S9) appeared in peer-controlled text"
+        );
+        assert_eq!(
+            classify_connection_error(&attacker_text),
+            ConnectionErrorPresentation::Error,
+            "error text must not authorize credential collection"
+        );
+
+        let connect_timeout = hbb_common::anyhow::anyhow!("Failed to connect: timed out");
+        assert_eq!(
+            classify_connection_error(&connect_timeout),
+            ConnectionErrorPresentation::DirectUnreachable
+        );
     }
 
     #[test]

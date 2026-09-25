@@ -1380,9 +1380,12 @@ run_focused_rust_tests() {
             scripts/online-pub-cache-output.py
             src/lib.rs
             src/android_listener_lifecycle.rs
+            src/client.rs
+            src/client/io_loop.rs
             src/direct_service.rs
             src/flutter.rs
             src/flutter_ffi.rs
+            src/port_forward.rs
             src/privacy_mode.rs
             src/server/connection.rs
             src/server/display_service.rs
@@ -1392,6 +1395,7 @@ run_focused_rust_tests() {
             android_listener_lifecycle::tests::stale_network_callback_cannot_advance_replacement_generation_epoch
             android_listener_lifecycle::tests::worker_must_be_registered_and_converged_before_replacement
             android_listener_lifecycle::tests::invalid_exhausted_and_thread_creation_failure_edges_fail_closed
+            client::tests::r_p14c_viewer_credential_prompt_requires_typed_credential_failure
             direct_service::direct_connection_task_tests::parent_cancellation_converges_every_owned_child_before_listener_completion
             privacy_mode::tests::r_s11iu_privacy_resource_owner_distinguishes_same_id_token_replacement
             privacy_mode::tests::r_s11iu_privacy_activation_commits_only_after_prepare
@@ -1665,6 +1669,9 @@ run_focused_rust_tests() {
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             android_listener_lifecycle::tests:: --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config \
+                            client::tests::r_p14c_viewer_credential_prompt_requires_typed_credential_failure \
+                            --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config \
                             direct_service::direct_connection_task_tests:: --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config,flutter \
                             r_s11iu_ --color never -- --test-threads=1
@@ -1703,7 +1710,7 @@ run_focused_rust_tests() {
         [ "${#result_lines[@]}" -eq 2 ] \
             || { tail -n 200 "$output" >&2; fail 'focused filesystem test summary count differs'; }
     else
-        [ "${#result_lines[@]}" -eq 3 ] \
+        [ "${#result_lines[@]}" -eq 4 ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
     fi
     [ "$(grep -Ec '^test result: ' "$output")" -eq "${#result_lines[@]}" ] \
@@ -1747,9 +1754,9 @@ run_focused_rust_tests() {
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
             "$DEB_BUILDER_CONFIG_ID"
     else
-        [ "$tests_passed" -eq 24 ] \
+        [ "$tests_passed" -eq 25 ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-and-exact-resource-owners rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-and-typed-viewer-keying rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_PUB_CACHE_CLOSURE_V1" \

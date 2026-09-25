@@ -1408,7 +1408,8 @@ impl<T: InvokeUiSession> Remote<T> {
                             if let Some(res) = res {
                                 match res {
                                     Err(err) => {
-                                        self.handler.on_establish_connection_error(err.to_string());
+                                        let err = hbb_common::anyhow::Error::new(err);
+                                        self.handler.on_establish_connection_error(&err);
                                         break;
                                     }
                                     Ok(ref bytes) => {
@@ -1629,7 +1630,7 @@ impl<T: InvokeUiSession> Remote<T> {
             }
             Some(Err(err)) => {
                 let _ = self.handler.connection_round_owner.with_current(round, || {
-                    self.handler.on_establish_connection_error(err.to_string())
+                    self.handler.on_establish_connection_error(&err)
                 });
             }
         }

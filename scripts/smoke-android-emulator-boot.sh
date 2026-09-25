@@ -950,7 +950,8 @@ wait_ui_center() {
     shift
     local center= cling_title= cling_ok= cling_x= cling_y=
     local anr_title= anr_wait= anr_x= anr_y=
-    for _ in $(seq 1 12); do
+    local ui_attempt=0
+    while [ "$ui_attempt" -lt 12 ]; do
         if capture_ui_hierarchy; then
             cling_title="$(ui_center text 'Viewing full screen' 2>/dev/null || true)"
             if [[ "$cling_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
@@ -986,6 +987,7 @@ wait_ui_center() {
                 return 0
             fi
         fi
+        ui_attempt=$((ui_attempt + 1))
         sleep 0.5
     done
     return 1

@@ -372,18 +372,11 @@ _connectDialog(
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // On a keying FAILURE show the reason (a wrong password, or a box re-provisioned with a
-          // new password), so a legitimately re-provisioned box is not dead-ended in a silent
-          // "Password Required" loop. On a fresh first-connect prompt (empty reason) show the
-          // generic tip instead.
-          if (reason.isNotEmpty) ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SelectableText(reason, style: TextStyle(fontSize: 14)),
-            ),
-            const SizedBox(height: 10),
-          ] else
-            descWidget(translate('verify_rustdesk_password_tip')),
+          // Keep the actionable fields first. On compact Android screens the
+          // software keyboard substantially reduces the dialog viewport; a long
+          // keying diagnostic before this field can otherwise make first-connect
+          // onboarding impossible. AlertDialog remains scrollable, so the complete
+          // diagnostic below stays available without displacing the focused field.
           PasswordWidget(
             controller: passwordController,
             autoFocus: true,
@@ -397,6 +390,18 @@ _connectDialog(
               }
             },
           ),
+          // On a keying FAILURE show the reason (a wrong password, or a box re-provisioned with a
+          // new password), so a legitimately re-provisioned box is not dead-ended in a silent
+          // "Password Required" loop. On a fresh first-connect prompt (empty reason) show the
+          // generic tip instead.
+          if (reason.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SelectableText(reason, style: TextStyle(fontSize: 14)),
+            ),
+          ] else
+            descWidget(translate('verify_rustdesk_password_tip')),
         ],
       );
     }

@@ -24,7 +24,9 @@ int _openHandles(ui.Image image) =>
 void main() {
   testWidgets('owned image paint fills loose stack bounds and retains pixels',
       (tester) async {
-    final source = await _solidImage(const ui.Color(0xffff0000));
+    final source = (await tester.runAsync(
+      () => _solidImage(const ui.Color(0xffff0000)),
+    ))!;
     final boundaryKey = GlobalKey();
     final paintKey = GlobalKey();
 
@@ -57,8 +59,11 @@ void main() {
         as RenderRepaintBoundary;
     boundary.markNeedsPaint();
     await tester.pump();
-    final raster = await boundary.toImage();
-    final pixels = await raster.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final raster = (await tester.runAsync(() => boundary.toImage()))!;
+    addTearDown(raster.dispose);
+    final pixels = await tester.runAsync(
+      () => raster.toByteData(format: ui.ImageByteFormat.rawRgba),
+    );
     expect(pixels, isNotNull);
     expect(pixels!.getUint8(0), greaterThan(240));
     expect(pixels.getUint8(1), lessThan(16));
@@ -66,14 +71,17 @@ void main() {
     expect(pixels.getUint8(3), 255);
 
     await tester.pumpWidget(const SizedBox.shrink());
-    raster.dispose();
   }, timeout: const Timeout(Duration(seconds: 30)));
 
   testWidgets('owned image paint retires exact handles after frame and unmount',
       (tester) async {
-    final first = await _solidImage(const ui.Color(0xff00ff00));
+    final first = (await tester.runAsync(
+      () => _solidImage(const ui.Color(0xff00ff00)),
+    ))!;
     final firstObserver = first.clone();
-    final second = await _solidImage(const ui.Color(0xff0000ff));
+    final second = (await tester.runAsync(
+      () => _solidImage(const ui.Color(0xff0000ff)),
+    ))!;
     final secondObserver = second.clone();
 
     Widget paint(ui.Image image) => Directionality(

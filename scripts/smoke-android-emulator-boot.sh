@@ -741,6 +741,7 @@ readonly PEER_REVERSE_CONTAINER_SPEC=tcp:21118
 readonly SERVICE_START_WARNING_TEXT='Turning on "Screen Capture" will automatically start the service, allowing other devices to request a connection to your device.'
 readonly UI_XML=$WORK_ROOT/window.xml
 readonly FRAMEWORK_ANR_MARKER=$WORK_ROOT/framework-anr.waited
+readonly FRAMEWORK_ANR_CLOSE_MARKER=$WORK_ROOT/framework-anr.closed
 readonly IMMERSIVE_CLING_MARKER=$WORK_ROOT/immersive-cling.dismissed
 readonly MAX_FRAMEWORK_ANR_WAITS=12
 
@@ -995,7 +996,7 @@ wait_ui_center() {
     local kind=$1
     shift
     local center= cling_title= cling_ok= cling_x= cling_y=
-    local anr_title= anr_wait= anr_x= anr_y=
+    local anr_title= anr_wait= anr_close= anr_x= anr_y= anr_wait_count=
     local ui_attempt=0
     while [ "$ui_attempt" -lt 12 ]; do
         if capture_ui_hierarchy; then
@@ -1015,12 +1016,24 @@ wait_ui_center() {
             anr_title="$(ui_center text "System UI isn't responding" \
                 "Process system isn't responding" 2>/dev/null || true)"
             if [[ "$anr_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
-                anr_wait="$(ui_center resource android:id/aerr_wait 2>/dev/null || true)"
-                [[ "$anr_wait" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
-                printf 'waited\n' >>"$FRAMEWORK_ANR_MARKER"
-                [ "$(wc -l <"$FRAMEWORK_ANR_MARKER")" -le \
-                  "$MAX_FRAMEWORK_ANR_WAITS" ] || return 1
-                read -r anr_x anr_y <<<"$anr_wait"
+                anr_wait_count=0
+                if [ -f "$FRAMEWORK_ANR_MARKER" ] \
+                   && [ ! -L "$FRAMEWORK_ANR_MARKER" ]; then
+                    anr_wait_count="$(wc -l <"$FRAMEWORK_ANR_MARKER")"
+                fi
+                if [ "$anr_wait_count" -lt "$MAX_FRAMEWORK_ANR_WAITS" ]; then
+                    anr_wait="$(ui_center resource android:id/aerr_wait 2>/dev/null || true)"
+                    [[ "$anr_wait" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+                    printf 'waited\n' >>"$FRAMEWORK_ANR_MARKER"
+                    read -r anr_x anr_y <<<"$anr_wait"
+                else
+                    [ ! -e "$FRAMEWORK_ANR_CLOSE_MARKER" ] \
+                        && [ ! -L "$FRAMEWORK_ANR_CLOSE_MARKER" ] || return 1
+                    anr_close="$(ui_center resource android:id/aerr_close 2>/dev/null || true)"
+                    [[ "$anr_close" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+                    printf 'closed\n' >"$FRAMEWORK_ANR_CLOSE_MARKER"
+                    read -r anr_x anr_y <<<"$anr_close"
+                fi
                 timeout --signal=TERM --kill-after=2s 10s \
                     "$ADB" -s "$SERIAL" shell input tap "$anr_x" "$anr_y" \
                     >/dev/null || return 1
@@ -1539,8 +1552,7 @@ PY
     if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then
         share_command=
         for _ in $(seq 1 3); do
-            tap_ui text 'Share screen' \
-                || { print_initial_ui_semantics; fail 'cannot select the production Share screen page'; }
+            tap_ui text 'Share screen' || continue
             share_command="$(wait_ui_center text 'Start screen sharing' 2>/dev/null || true)"
             [[ "$share_command" =~ ^[0-9]+\ [0-9]+$ ]] && break
         done
@@ -1903,6 +1915,17 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
             [[ "$framework_anr_count" =~ ^([1-9]|1[0-2])$ ]] \
                 || fail 'the Android framework ANR wait count is malformed'
             framework_anr=waited-$framework_anr_count
+        fi
+        if [ -f "$FRAMEWORK_ANR_CLOSE_MARKER" ] \
+           && [ ! -L "$FRAMEWORK_ANR_CLOSE_MARKER" ]; then
+            [ "$(stat -c '%u:%g:%a:%h' -- "$FRAMEWORK_ANR_CLOSE_MARKER")" = \
+              1000:1000:600:1 ] \
+                || fail 'the Android framework ANR close marker metadata differs'
+            [ "$(<"$FRAMEWORK_ANR_CLOSE_MARKER")" = closed ] \
+                || fail 'the Android framework ANR close marker is malformed'
+            [ "${framework_anr_count:-0}" -eq "$MAX_FRAMEWORK_ANR_WAITS" ] \
+                || fail 'System UI was closed before exhausting bounded waits'
+            framework_anr=$framework_anr-closed-1
         fi
         immersive_cling=absent
         if [ -f "$IMMERSIVE_CLING_MARKER" ] && [ ! -L "$IMMERSIVE_CLING_MARKER" ]; then

@@ -3367,11 +3367,28 @@ run_flutter_model_tests() {
                 fi
                 [ "$tools_lock" = "$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
                 [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
-                dart format --output=none --set-exit-if-changed \
+                format_status=0
+                : >/work/format.diff
+                for format_path in \
                     lib/common/widgets/overlay.dart \
                     lib/mobile/pages/remote_page.dart \
                     lib/mobile/pages/view_camera_page.dart \
-                    test/blockable_overlay_test.dart
+                    test/blockable_overlay_test.dart; do
+                    formatted=/work/$(basename "$format_path").formatted
+                    dart format --output=show "$format_path" \
+                        >"$formatted" 2>>/work/format.err
+                    if ! diff -u "$format_path" "$formatted" \
+                        >>/work/format.diff; then
+                        format_status=1
+                    fi
+                done
+                [ "$(stat -c %s /work/format.diff)" -le 1048576 ]
+                [ "$(stat -c %s /work/format.err)" -le 1048576 ]
+                if [ "$format_status" -ne 0 ]; then
+                    cat /work/format.diff >&2
+                    cat /work/format.err >&2
+                    exit 1
+                fi
                 codegen_log=/work/codegen.log
                 if ! (cd /source && \
                     /work/toolchain/flutter_rust_bridge_codegen \

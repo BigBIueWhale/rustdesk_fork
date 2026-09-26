@@ -40,6 +40,13 @@ void main() {
     expect(firstOwner, isNotNull);
     expect(find.text('first'), findsOneWidget);
     expect(tester.getSize(find.byKey(const ValueKey('bottom-bar'))).height, 56);
+    var routeIsInsideOwnedOverlay = false;
+    tester.element(find.text('first')).visitAncestorElements((element) {
+      routeIsInsideOwnedOverlay |=
+          identical(element, overlayState.key!.currentContext);
+      return true;
+    });
+    expect(routeIsInsideOwnedOverlay, isFalse);
 
     final inserted = OverlayEntry(
       builder: (_) => const Positioned(

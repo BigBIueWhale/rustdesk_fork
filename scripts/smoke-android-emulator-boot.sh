@@ -1824,32 +1824,49 @@ PY
             "$ADB" -s "$SERIAL" shell input tap "$share_x" "$share_y" \
             >/dev/null \
             || fail 'cannot invoke the production screen-sharing command'
-        service_warning_accepted=0
-        for service_start_attempt in $(seq 1 3); do
-            warning_title="$(wait_ui_center text 'Warning' 2>/dev/null || true)"
-            if [[ "$warning_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
-                capture_ui_hierarchy complete \
-                    || fail 'cannot inspect the production service-start warning'
-                warning_content="$(ui_center text \
-                    "$SERVICE_START_WARNING_TEXT" 2>/dev/null || true)"
-                [[ "$warning_content" =~ ^[0-9]+\ [0-9]+$ ]] \
-                    || { print_initial_ui_semantics; fail 'the production service-start warning text differs'; }
-                tap_ui text 'OK' \
-                    || { print_initial_ui_semantics; fail 'cannot accept the production service-start warning'; }
-                service_warning_accepted=1
+        service_warning_observed=0
+        password_dialog_ready=0
+        for _ in $(seq 1 12); do
+            if ! capture_ui_hierarchy complete; then
+                sleep 0.5
+                continue
+            fi
+            password_title="$(ui_center text 'Set password' 2>/dev/null || true)"
+            if [[ "$password_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
+                password_dialog_ready=1
                 break
             fi
-            [ "$service_start_attempt" -lt 3 ] || break
-            share_command="$(wait_ui_center text 'Start screen sharing' 2>/dev/null || true)"
-            [[ "$share_command" =~ ^[0-9]+\ [0-9]+$ ]] || break
-            read -r share_x share_y <<<"$share_command"
-            timeout --signal=TERM --kill-after=2s 10s \
-                "$ADB" -s "$SERIAL" shell input tap "$share_x" "$share_y" \
-                >/dev/null \
-                || fail 'cannot retry the production screen-sharing command'
+            warning_title="$(ui_center text 'Warning' 2>/dev/null || true)"
+            if [[ "$warning_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
+                service_warning_observed=1
+                warning_content="$(ui_center text \
+                    "$SERVICE_START_WARNING_TEXT" 2>/dev/null || true)"
+                warning_ok="$(ui_center text 'OK' 2>/dev/null || true)"
+                [[ "$warning_content" =~ ^[0-9]+\ [0-9]+$ ]] \
+                    && [[ "$warning_ok" =~ ^[0-9]+\ [0-9]+$ ]] \
+                    || { print_initial_ui_semantics; fail 'the production service-start warning differs'; }
+                read -r warning_x warning_y <<<"$warning_ok"
+                timeout --signal=TERM --kill-after=2s 10s \
+                    "$ADB" -s "$SERIAL" shell input tap "$warning_x" "$warning_y" \
+                    >/dev/null \
+                    || fail 'cannot accept the production service-start warning'
+                sleep 1
+                continue
+            fi
+            share_command="$(ui_center text 'Start screen sharing' 2>/dev/null || true)"
+            if [[ "$share_command" =~ ^[0-9]+\ [0-9]+$ ]]; then
+                read -r share_x share_y <<<"$share_command"
+                timeout --signal=TERM --kill-after=2s 10s \
+                    "$ADB" -s "$SERIAL" shell input tap "$share_x" "$share_y" \
+                    >/dev/null \
+                    || fail 'cannot retry the production screen-sharing command'
+                sleep 1
+            else
+                sleep 0.5
+            fi
         done
-        [ "$service_warning_accepted" -eq 1 ] \
-            || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'cannot observe the production service-start warning'; }
+        [ "$service_warning_observed:$password_dialog_ready" = 1:1 ] \
+            || { print_initial_ui_semantics; fail 'the production service-start transition did not reach the password dialog'; }
         wait_ui_center text 'Set password' >/dev/null \
             || { print_initial_ui_semantics; fail 'the production permanent-password dialog did not open'; }
         capture_ui_hierarchy \

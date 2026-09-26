@@ -768,6 +768,19 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     [ "$(awk 'FNR > 1 { count++ } END { print count + 0 }' \
         /proc/net/udp)" -eq 0 ] \
         || fail 'the controlled Android peer opened a UDP socket'
+    peer_cpace_output="$(
+        printf '%s\n' "$PEER_PASSWORD" \
+            | timeout --signal=TERM --kill-after=2s 60s \
+                "$PEER_TARGET/debug/examples/probe_client" \
+                127.0.0.1:21118 --password-stdin ok 2>&1
+    )" \
+        || { printf '%s\n' "$peer_cpace_output" >&2; fail 'the production Android peer responder rejected its seeded password'; }
+    expected_peer_cpace_output=$'probe_client: keying ok=true (expected=ok)\nprobe_client: PASS'
+    [ "$peer_cpace_output" = "$expected_peer_cpace_output" ] \
+        || { printf '%s\n' "$peer_cpace_output" >&2; fail 'the production Android peer CPace receipt differs'; }
+    wait_peer_server_connections 0 exact \
+        || fail 'the Android peer credential probe did not close exactly'
+    printf 'ANDROID_PEER_RESPONDER_CPACE=pass initiator=linux-probe responder=production-peer credential=seeded correct=keyed listener=127.0.0.1:21118 connection_cleanup=closed password_transport=stdin\n'
     printf 'ANDROID_PEER_INFRASTRUCTURE=ready server=production auth=cpace listener=127.0.0.1:21118 source=changing-x11 x11=unix-only container_network=none\n'
 fi
 

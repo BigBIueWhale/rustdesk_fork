@@ -294,7 +294,7 @@ vm_docker start --attach "$BUILD_CONTAINER" >"$BUILD_LOG" 2>&1 || build_status=$
     || { tail -n 240 "$BUILD_LOG" >&2; die "Android peer build exited with status $build_status"; }
 [ "$(stat -c '%s' -- "$BUILD_LOG")" -le 4194304 ] \
     || die 'Android peer build output exceeds its bound'
-[ "$(grep -c '^ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=6 network=none$' \
+[ "$(grep -c '^ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=7 network=none$' \
     "$BUILD_LOG" || true)" -eq 1 ] \
     || { tail -n 240 "$BUILD_LOG" >&2; die 'Android peer build receipt is absent or duplicated'; }
 [ "$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' \

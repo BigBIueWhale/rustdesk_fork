@@ -98,6 +98,7 @@ readonly EMULATOR_LOG=$WORK_ROOT/emulator.log
 readonly ADB_LOG=$WORK_ROOT/adb.log
 readonly FRAMEBUFFER=$WORK_ROOT/framebuffer.png
 readonly ANDROID_CONNECTION_DIAGNOSTIC=$WORK_ROOT/android-connection.diagnostic
+readonly ANDROID_CONTROLLED_CPACE_LOG=$WORK_ROOT/android-controlled-cpace.log
 mkdir -m 0700 -p -- "$SDK_ROOT" "$HOME_ROOT" "$AVD_HOME" "$SYSTEM_ROOT" \
     "$SDK_ROOT/platform-tools"
 
@@ -249,10 +250,15 @@ PEER_INITIAL_RECOVERY_MS=0
 PEER_BACKGROUND_RECOVERY_MS=0
 PEER_TASK_RECOVERY_MAX_MS=0
 PEER_LAST_CONNECTION_WAIT_MS=0
+ANDROID_CONTROL_FORWARD_READY=0
+ANDROID_CONTROL_FORWARD_LISTING=
 readonly PEER_RECOVERY_LIMIT_MS=8000
 readonly PEER_FRESHNESS_LIMIT_MS=2000
 readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
 readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=120000
+readonly ANDROID_CONTROL_FORWARD_LOCAL_SPEC=tcp:22119
+readonly ANDROID_CONTROL_FORWARD_DEVICE_SPEC=tcp:21118
+readonly ANDROID_CONTROL_FORWARD_PORT_HEX=5667
 
 monotonic_millis() {
     local uptime ignored whole fraction
@@ -502,6 +508,72 @@ stop_peer_infrastructure() {
     return "$status"
 }
 
+android_control_forward_listing_is_exact() {
+    local listing=$1 identity local_spec device_spec extra
+    [ "${#listing}" -le 256 ] && [[ "$listing" != *$'\n'* ]] || return 1
+    read -r identity local_spec device_spec extra <<<"$listing"
+    [ "$identity" = "$SERIAL" ] \
+        && [ "$local_spec" = "$ANDROID_CONTROL_FORWARD_LOCAL_SPEC" ] \
+        && [ "$device_spec" = "$ANDROID_CONTROL_FORWARD_DEVICE_SPEC" ] \
+        && [ -z "$extra" ]
+}
+
+android_control_forward_is_loopback_only() {
+    local ipv4_total ipv4_loopback ipv6_total
+    read -r ipv4_total ipv4_loopback < <(
+        awk -v port="$ANDROID_CONTROL_FORWARD_PORT_HEX" '
+            FNR > 1 && $4 == "0A" && substr($2, length($2) - 4) == ":" port {
+                total++
+                if ($2 == "0100007F:" port) loopback++
+            }
+            END { print total + 0, loopback + 0 }
+        ' /proc/net/tcp
+    ) || return 1
+    ipv6_total="$(awk -v port="$ANDROID_CONTROL_FORWARD_PORT_HEX" '
+        FNR > 1 && $4 == "0A" && substr($2, length($2) - 4) == ":" port {
+            total++
+        }
+        END { print total + 0 }
+    ' /proc/net/tcp6)" || return 1
+    [ "$ipv4_total:$ipv4_loopback:$ipv6_total" = 1:1:0 ]
+}
+
+android_control_forward_is_absent() {
+    ! awk -v port="$ANDROID_CONTROL_FORWARD_PORT_HEX" \
+        'FNR > 1 && $4 == "0A" \
+            && substr($2, length($2) - 4) == ":" port { found=1 }
+         END { exit found ? 0 : 1 }' /proc/net/tcp \
+        && ! awk -v port="$ANDROID_CONTROL_FORWARD_PORT_HEX" \
+            'FNR > 1 && $4 == "0A" \
+                && substr($2, length($2) - 4) == ":" port { found=1 }
+             END { exit found ? 0 : 1 }' /proc/net/tcp6
+}
+
+remove_android_control_forward() {
+    local listing output
+    [ "$ANDROID_CONTROL_FORWARD_READY" -eq 1 ] || return 0
+    [ "$ADB_STARTED" -eq 1 ] && is_exact_adb_process || return 1
+    listing="$(timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" forward --list | tr -d '\r')" \
+        || return 1
+    android_control_forward_listing_is_exact "$listing" || return 1
+    if [ -n "$ANDROID_CONTROL_FORWARD_LISTING" ] \
+       && [ "$listing" != "$ANDROID_CONTROL_FORWARD_LISTING" ]; then
+        return 1
+    fi
+    output="$(timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" forward --remove \
+        "$ANDROID_CONTROL_FORWARD_LOCAL_SPEC" | tr -d '\r')" \
+        || return 1
+    ANDROID_CONTROL_FORWARD_READY=0
+    ANDROID_CONTROL_FORWARD_LISTING=
+    [ -z "$output" ] || return 1
+    listing="$(timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" forward --list | tr -d '\r')" \
+        || return 1
+    [ -z "$listing" ] && android_control_forward_is_absent
+}
+
 stop_emulator() {
     local status=0
     if [ "$ADB_STARTED" -eq 1 ]; then
@@ -567,6 +639,7 @@ cleanup() {
             capture_android_connection_diagnostic cleanup || true
         fi
     fi
+    remove_android_control_forward || cleanup_status=1
     stop_emulator || cleanup_status=1
     stop_peer_infrastructure || cleanup_status=1
     if [ "$status" -ne 0 ]; then
@@ -637,6 +710,7 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     for executable in \
         "$PEER_TARGET/debug/rustdesk" \
         "$PEER_TARGET/debug/examples/seed_password" \
+        "$PEER_TARGET/debug/examples/probe_client" \
         "$PEER_TARGET/debug/examples/smoke_readiness" \
         "$PEER_TARGET/flutter-peer-source-x11" \
         "$PEER_TARGET/smoke-bind-loopback.so" \
@@ -757,6 +831,63 @@ done
 adb_shell_value() {
     timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" shell "$@" | tr -d '\r'
+}
+
+exercise_android_controlled_cpace() {
+    local forward_output forward_listing expected_probe_output
+    [ "$ANDROID_CONTROL_FORWARD_READY" -eq 0 ] \
+        && [ -z "$ANDROID_CONTROL_FORWARD_LISTING" ] \
+        || fail 'the Android controlled-side forward is already owned'
+    forward_listing="$(timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" forward --list | tr -d '\r')" \
+        || fail 'cannot inspect the initial Android forward table'
+    [ -z "$forward_listing" ] \
+        || fail 'the clean Android emulator has a pre-existing forward mapping'
+    android_control_forward_is_absent \
+        || fail 'the private Android controlled-side probe port is already listening'
+    forward_output="$(timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" forward --no-rebind \
+        "$ANDROID_CONTROL_FORWARD_LOCAL_SPEC" \
+        "$ANDROID_CONTROL_FORWARD_DEVICE_SPEC" | tr -d '\r')" \
+        || fail 'cannot create the private Android controlled-side forward'
+    ANDROID_CONTROL_FORWARD_READY=1
+    case "$forward_output" in
+        ''|22119) ;;
+        *) fail 'creating the Android controlled-side forward returned unexpected output' ;;
+    esac
+    forward_listing="$(timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" forward --list | tr -d '\r')" \
+        || fail 'cannot verify the private Android controlled-side forward'
+    android_control_forward_listing_is_exact "$forward_listing" \
+        || fail "the private Android controlled-side forward differs: $forward_listing"
+    ANDROID_CONTROL_FORWARD_LISTING=$forward_listing
+    android_control_forward_is_loopback_only \
+        || fail 'the Android controlled-side forward is not one exact container-loopback listener'
+
+    {
+        printf '%s\n' "$TEST_PASSWORD" \
+            | timeout --signal=TERM --kill-after=2s 60s \
+                "$PEER_TARGET/debug/examples/probe_client" \
+                127.0.0.1:22119 --password-stdin ok
+        printf '%s\n' 'RuntimeWrong1x' \
+            | timeout --signal=TERM --kill-after=2s 60s \
+                "$PEER_TARGET/debug/examples/probe_client" \
+                127.0.0.1:22119 --password-stdin fail
+    } >"$ANDROID_CONTROLLED_CPACE_LOG" 2>&1 \
+        || { tail -n 20 "$ANDROID_CONTROLLED_CPACE_LOG" >&2; fail 'the Android controlled-side CPace probe failed'; }
+    [ "$(stat -c '%u:%g:%a:%h' -- "$ANDROID_CONTROLLED_CPACE_LOG")" = \
+      "$RUN_UID:$RUN_GID:600:1" ] \
+        && [ "$(stat -c '%s' -- "$ANDROID_CONTROLLED_CPACE_LOG")" -le 4096 ] \
+        || fail 'the Android controlled-side CPace receipt metadata differs'
+    ! grep -Fq -- "$TEST_PASSWORD" "$ANDROID_CONTROLLED_CPACE_LOG" \
+        && ! grep -Fq -- 'RuntimeWrong1x' "$ANDROID_CONTROLLED_CPACE_LOG" \
+        || fail 'the Android controlled-side CPace receipt exposed a password'
+    expected_probe_output=$'probe_client: keying ok=true (expected=ok)\nprobe_client: PASS\nprobe_client: keying ok=false (expected=fail)\nprobe_client: PASS'
+    [ "$(<"$ANDROID_CONTROLLED_CPACE_LOG")" = "$expected_probe_output" ] \
+        || { tail -n 20 "$ANDROID_CONTROLLED_CPACE_LOG" >&2; fail 'the Android controlled-side CPace receipt differs'; }
+    remove_android_control_forward \
+        || fail 'the private Android controlled-side forward did not close exactly'
+    printf 'ANDROID_CONTROLLED_CPACE=pass initiator=linux-probe responder=android-mainservice correct=keyed wrong=refused transport=adb-forward-loopback forward_listener=127.0.0.1:22119 forward_cleanup=removed password_transport=stdin\n'
 }
 
 readonly APP_PACKAGE=com.carriez.flutter_hbb
@@ -1812,6 +1943,12 @@ PY
             || fail 'the initial lifecycle log contains a fatal ownership failure'
 
         if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+            exercise_android_controlled_cpace
+            assert_main_service \
+                || fail 'the Android controlled-side CPace probe changed MainService state'
+            [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = \
+              "$APP_PID" ] \
+                || fail 'the Android controlled-side CPace probe changed the application process'
             tap_ui text 'Connection' \
                 || fail 'cannot return to the production Connection page'
             open_peer_connection initial 1 \

@@ -95,10 +95,12 @@ case "$1" in
     verify_smoke_build_inputs
     prepare_smoke_cargo_home
     cargo build --locked --offline --features linux-pkg-config \
-      --bin rustdesk --example seed_password --example smoke_readiness --color never
+      --bin rustdesk --example seed_password --example probe_client \
+      --example smoke_readiness --color never
     verify_smoke_build_postconditions
     chmod 0755 /smoke-target/debug/rustdesk \
       /smoke-target/debug/examples/seed_password \
+      /smoke-target/debug/examples/probe_client \
       /smoke-target/debug/examples/smoke_readiness
     cc -std=c11 -O2 -Wall -Wextra -Werror \
       scripts/flutter-peer-source-x11.c $(pkg-config --cflags --libs x11) \
@@ -112,11 +114,11 @@ case "$1" in
     (
       cd /smoke-target
       sha256sum debug/rustdesk debug/examples/seed_password \
-        debug/examples/smoke_readiness flutter-peer-source-x11 \
+        debug/examples/probe_client debug/examples/smoke_readiness flutter-peer-source-x11 \
         smoke-bind-loopback.so smoke-server-launcher > android-peer-manifest.sha256
     )
     chmod 0444 /smoke-target/android-peer-manifest.sha256
-    printf 'ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=6 network=none\n'
+    printf 'ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=7 network=none\n'
     ;;
   build)
     verify_smoke_build_inputs

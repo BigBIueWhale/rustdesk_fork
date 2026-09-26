@@ -1039,6 +1039,108 @@ print(*bounds.pop())
 PY
 }
 
+ui_focused_password_remaining() {
+    python3 -I -S - "$UI_XML" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+
+def parse_bounds(value):
+    match = re.fullmatch(
+        r"\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]",
+        value,
+    )
+    if not match:
+        return None
+    left, top, right, bottom = map(int, match.groups())
+    if right <= left or bottom <= top:
+        return None
+    return left, top, right, bottom
+
+
+nodes = list(ET.parse(sys.argv[1]).getroot().iter("node"))
+focused_fields = []
+for node in nodes:
+    attributes = node.attrib
+    if not (
+        attributes.get("class") == "android.widget.EditText"
+        and attributes.get("focusable") == "true"
+        and attributes.get("focused") == "true"
+        and attributes.get("enabled") == "true"
+        and attributes.get("password") == "true"
+    ):
+        continue
+    bounds = parse_bounds(attributes.get("bounds", ""))
+    if bounds is not None:
+        focused_fields.append(bounds)
+if len(set(focused_fields)) != 1:
+    raise SystemExit(1)
+field_left, field_top, field_right, field_bottom = focused_fields[0]
+
+remaining = set()
+for node in nodes:
+    attributes = node.attrib
+    semantic_tokens = {
+        token.strip()
+        for key in ("text", "content-desc")
+        for token in attributes.get(key, "").splitlines()
+        if token.strip()
+    }
+    values = {
+        int(match.group(1))
+        for token in semantic_tokens
+        if (match := re.fullmatch(r"([0-9]+) characters remaining", token))
+    }
+    if not values:
+        continue
+    bounds = parse_bounds(attributes.get("bounds", ""))
+    if bounds is None:
+        continue
+    left, top, right, bottom = bounds
+    if (
+        left >= field_left
+        and top >= field_top
+        and right <= field_right
+        and bottom <= field_bottom
+    ):
+        remaining.update(values)
+if len(remaining) != 1:
+    raise SystemExit(1)
+print(remaining.pop())
+PY
+}
+
+enter_exact_password() {
+    local field_x=$1 field_y=$2 password=$3 expected_remaining=$4
+    local observed_remaining=
+    for _ in $(seq 1 3); do
+        "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" \
+            >/dev/null \
+            || fail 'cannot focus the disposable password field'
+        sleep 0.5
+        "$ADB" -s "$SERIAL" shell input keycombination \
+            KEYCODE_CTRL_LEFT KEYCODE_A >/dev/null \
+            || fail 'cannot select the disposable password field'
+        "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_DEL >/dev/null \
+            || fail 'cannot clear the disposable password field'
+        "$ADB" -s "$SERIAL" shell input text "$password" >/dev/null \
+            || fail 'cannot enter the disposable password'
+        for _ in $(seq 1 12); do
+            if capture_ui_hierarchy complete; then
+                ! grep -Fq "$password" "$UI_XML" \
+                    || fail 'the Android accessibility hierarchy exposed the password'
+                observed_remaining="$(ui_focused_password_remaining 2>/dev/null || true)"
+                if [ "$observed_remaining" = "$expected_remaining" ]; then
+                    return 0
+                fi
+            fi
+            sleep 0.5
+        done
+    done
+    return 1
+}
+
 ui_resource_bounds() {
     local resource=$1
     python3 -I -S - "$UI_XML" "$resource" <<'PY'
@@ -1885,28 +1987,12 @@ PY
         [[ "$password_field" =~ ^[0-9]+\ [0-9]+$ ]] \
             || { print_initial_ui_semantics; fail 'the permanent-password dialog has no exact focused password field'; }
         readonly TEST_PASSWORD=Runtime1x
+        readonly TEST_PASSWORD_REMAINING=$((128 - ${#TEST_PASSWORD}))
         read -r field_x field_y <<<"$password_field"
-        password_input_ready=0
-        for _ in $(seq 1 3); do
-            "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" \
-                >/dev/null \
-                || fail 'cannot focus the password field'
-            sleep 0.5
-            "$ADB" -s "$SERIAL" shell input keycombination \
-                KEYCODE_CTRL_LEFT KEYCODE_A >/dev/null \
-                || fail 'cannot select the disposable password field'
-            "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_DEL >/dev/null \
-                || fail 'cannot clear the disposable password field'
-            "$ADB" -s "$SERIAL" shell input text "$TEST_PASSWORD" >/dev/null \
-                || fail 'cannot enter the disposable password'
-            if wait_ui_center text '119 characters remaining' >/dev/null; then
-                password_input_ready=1
-                break
-            fi
-        done
-        [ "$password_input_ready" -eq 1 ] \
+        enter_exact_password \
+            "$field_x" "$field_y" "$TEST_PASSWORD" "$TEST_PASSWORD_REMAINING" \
             || {
-                capture_ui_hierarchy complete && print_initial_ui_semantics
+                print_initial_ui_semantics
                 fail 'the password field did not observe the exact disposable input'
             }
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null \
@@ -1940,10 +2026,12 @@ PY
             || fail 'the scrolled password dialog exposes ambiguous exact fields'
         confirmation_index=$((${#password_fields[@]} - 1))
         read -r field_x field_y <<<"${password_fields[$confirmation_index]}"
-        "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" >/dev/null \
-            || fail 'cannot focus the visible password-confirmation field'
-        "$ADB" -s "$SERIAL" shell input text "$TEST_PASSWORD" >/dev/null \
-            || fail 'cannot enter the disposable password confirmation'
+        enter_exact_password \
+            "$field_x" "$field_y" "$TEST_PASSWORD" "$TEST_PASSWORD_REMAINING" \
+            || {
+                print_initial_ui_semantics
+                fail 'the password-confirmation field did not observe the exact disposable input'
+            }
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null \
             || fail 'cannot dismiss the disposable soft keyboard'
         capture_ui_hierarchy \

@@ -2998,11 +2998,35 @@ run_android_emulator_runtime() {
     workload_status=$?
     set -e
     if [ "$workload_status" -ne 0 ]; then
-        tail -n 320 "$output" >&2
+        awk '
+            /^ANDROID_PEER_FRAMEBUFFER_PNG_BEGIN / { in_png = 1; next }
+            in_png {
+                if (/^ANDROID_PEER_FRAMEBUFFER_PNG_END /) in_png = 0
+                next
+            }
+            /^ANDROID_CONNECTION_DIAGNOSTIC_BEGIN$/ { in_diag = 1; next }
+            in_diag {
+                if (/^ANDROID_CONNECTION_DIAGNOSTIC_END$/) in_diag = 0
+                next
+            }
+            { print }
+        ' "$output" | tail -n 320 >&2
         awk '
             /^ANDROID_PEER_FRAMEBUFFER_PNG_BEGIN / { in_png = 1 }
             in_png { print }
             /^ANDROID_PEER_FRAMEBUFFER_PNG_END / { in_png = 0 }
+        ' "$output" >&2
+        awk '
+            /^ANDROID_CONNECTION_DIAGNOSTIC_BEGIN$/ {
+                block = ""
+                in_diag = 1
+            }
+            in_diag { block = block $0 ORS }
+            /^ANDROID_CONNECTION_DIAGNOSTIC_END$/ && in_diag {
+                last = block
+                in_diag = 0
+            }
+            END { printf "%s", last }
         ' "$output" >&2
         grep '^ANDROID_PEER_FRAME_SAMPLE ' "$output" | tail -n 120 >&2 || true
         grep '^ANDROID_PEER_FRAMEBUFFER_DIAGNOSTIC ' "$output" \

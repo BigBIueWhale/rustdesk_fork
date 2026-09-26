@@ -333,11 +333,10 @@ print_android_connection_diagnostic() {
             | grep -Ei \
                 'RGBA_PIPELINE|No remembered password|CPace handshake failed|R-S9|connect-password-prompt|session_set_connect_password|viewer owner|outgoing viewer|connection round|Connection closed|keying' \
             | tail -n 160 \
+            | tail -c 98304 \
             || true
     )"
-    if [ "${#logcat_diag}" -gt 131072 ]; then
-        printf 'Android connection diagnostic: filtered logcat exceeded 128 KiB\n' >&2
-    elif [ -n "$logcat_diag" ]; then
+    if [ -n "$logcat_diag" ]; then
         printf 'Android connection diagnostic (logcat):\n%s\n' "$logcat_diag" >&2
     else
         printf 'Android connection diagnostic (logcat): no matching records\n' >&2
@@ -364,15 +363,13 @@ print_android_connection_diagnostic() {
     fi
     native_diag="$(
         timeout --signal=TERM --kill-after=2s 20s \
-            "$ADB" -s "$SERIAL" exec-out tail -c 131072 \
+            "$ADB" -s "$SERIAL" exec-out tail -c 98304 \
             "$log_dir/$latest" 2>/dev/null \
             | tr -d '\r' \
             | tail -n 200 \
             || true
     )"
-    if [ "${#native_diag}" -gt 131072 ]; then
-        printf 'Android connection diagnostic: native-log tail exceeded 128 KiB\n' >&2
-    elif [ -n "$native_diag" ]; then
+    if [ -n "$native_diag" ]; then
         printf 'Android connection diagnostic (%s):\n%s\n' \
             "$latest" "$native_diag" >&2
     else

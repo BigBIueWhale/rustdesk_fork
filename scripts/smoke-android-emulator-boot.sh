@@ -16,6 +16,9 @@ readonly INPUT_ADB=$3
 readonly WORK_ROOT=$4
 readonly RUNTIME_TEST_APK=${5:-}
 readonly APP_SCENARIO=${6:-launch}
+# Diagnostic A/B for the exact retained APK: keep SurfaceFlinger on the same
+# pinned SwiftShader backend while asking Flutter to use its software rasterizer.
+readonly -a APP_START_RENDERER_ARGS=(--ez enable-software-rendering true)
 if [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = peer-lifecycle ]; then
     readonly WORKLOAD=app-peer-lifecycle
 elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = lifecycle ]; then
@@ -1488,7 +1491,8 @@ exercise_peer_background_resume() {
     wait_peer_server_connections 1 exact \
         || fail 'backgrounding retired the live Android peer connection'
     timeout --signal=TERM --kill-after=2s 60s \
-        "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" >/dev/null \
+        "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" \
+        "${APP_START_RENDERER_ARGS[@]}" >/dev/null \
         || fail 'cannot resume the backgrounded Android peer Activity'
     wait_resumed_activity || fail 'backgrounded Android peer Activity did not resume'
     [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$pid_before" ] \
@@ -1537,6 +1541,7 @@ renderer_sha256="$(printf '%s' "$renderer_line" | sha256sum | awk '{ print $1 }'
 readonly renderer_line renderer_angle renderer_sha256
 printf 'ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader angle=%s gles_sha256=%s\n' \
     "$renderer_angle" "$renderer_sha256"
+printf 'ANDROID_FLUTTER_RASTERIZER=requested-software intent_extra=enable-software-rendering\n'
 
 PEER_REVERSE_READY=0
 PEER_REVERSE_LISTING=
@@ -1621,7 +1626,8 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
         || fail 'cannot clear the runtime-test log before launch'
     launch_output="$(timeout --signal=TERM --kill-after=2s 60s \
         "$ADB" -s "$SERIAL" shell am start -W \
-        -n com.carriez.flutter_hbb/.MainActivity | tr -d '\r')" \
+        -n com.carriez.flutter_hbb/.MainActivity \
+        "${APP_START_RENDERER_ARGS[@]}" | tr -d '\r')" \
         || fail 'runtime-test activity launch failed'
     [ "${#launch_output}" -le 16384 ] \
         || fail 'runtime-test activity launch receipt exceeds its bound'
@@ -1849,6 +1855,7 @@ PY
             fi
             timeout --signal=TERM --kill-after=2s 60s \
                 "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" \
+                "${APP_START_RENDERER_ARGS[@]}" \
                 >/dev/null \
                 || fail "relaunch $lifecycle_cycle failed"
             wait_resumed_activity \
@@ -1905,7 +1912,8 @@ PY
         grep -Eq 'stopped=true' <<<"$package_state" \
             || fail 'Android did not record the package Force Stop state'
         timeout --signal=TERM --kill-after=2s 60s \
-            "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" >/dev/null \
+            "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" \
+            "${APP_START_RENDERER_ARGS[@]}" >/dev/null \
             || fail 'the post-Force-Stop launch failed'
         wait_resumed_activity \
             || fail 'the post-Force-Stop MainActivity did not resume'

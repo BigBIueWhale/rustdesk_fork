@@ -666,6 +666,10 @@ class _BlockableOverlayBody extends StatefulWidget {
 }
 
 class _BlockableOverlayBodyState extends State<_BlockableOverlayBody> {
+  late final OverlayEntry _underlyingEntry = OverlayEntry(
+    canSizeOverlay: true,
+    builder: (_) => widget.underlying,
+  );
   late final OverlayEntry _middleEntry = OverlayEntry(
     builder: (_) => Obx(() {
       final blocked = widget.state.middleBlocked.value;
@@ -685,6 +689,7 @@ class _BlockableOverlayBodyState extends State<_BlockableOverlayBody> {
   @override
   void didUpdateWidget(_BlockableOverlayBody oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _underlyingEntry.markNeedsBuild();
     _middleEntry.markNeedsBuild();
   }
 
@@ -693,18 +698,15 @@ class _BlockableOverlayBodyState extends State<_BlockableOverlayBody> {
     _middleEntry
       ..remove()
       ..dispose();
+    _underlyingEntry
+      ..remove()
+      ..dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => Stack(
-        fit: StackFit.expand,
-        children: [
-          widget.underlying,
-          Overlay(
-            key: widget.state.key,
-            initialEntries: [_middleEntry],
-          ),
-        ],
+  Widget build(BuildContext context) => Overlay(
+        key: widget.state.key,
+        initialEntries: [_underlyingEntry, _middleEntry],
       );
 }

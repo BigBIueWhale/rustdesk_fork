@@ -250,10 +250,14 @@ PEER_INITIAL_RECOVERY_MS=0
 PEER_BACKGROUND_RECOVERY_MS=0
 PEER_TASK_RECOVERY_MAX_MS=0
 PEER_LAST_CONNECTION_WAIT_MS=0
+PEER_CAPTURE_MAX_MS=0
 ANDROID_CONTROL_FORWARD_READY=0
 ANDROID_CONTROL_FORWARD_LISTING=
 readonly PEER_RECOVERY_LIMIT_MS=8000
 readonly PEER_FRESHNESS_LIMIT_MS=2000
+# A timing observer that consumes a material part of the freshness budget
+# cannot classify the product.  Raw capture gets one quarter of that budget.
+readonly PEER_CAPTURE_LIMIT_MS=500
 readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
 readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=120000
 readonly ANDROID_CONTROL_FORWARD_LOCAL_SPEC=tcp:22119
@@ -1416,13 +1420,12 @@ peer_source_state() {
          END { if (state != "") print state; else exit 1 }' "$PEER_SOURCE_LOG"
 }
 
-decode_peer_screenshot() {
-    local screenshot=$1 source_state=$2 mode=${3:-decode}
-    python3 -I -S - "$screenshot" "$source_state" "$mode" <<'PY'
+decode_peer_framebuffer() {
+    local framebuffer=$1 source_state=$2 mode=${3:-decode}
+    python3 -I -S - "$framebuffer" "$source_state" "$mode" <<'PY'
 import collections
 import struct
 import sys
-import zlib
 
 path = sys.argv[1]
 source_state = int(sys.argv[2])
@@ -1434,63 +1437,41 @@ palette = (
     (196, 92, 44), (44, 196, 92), (92, 44, 196), (196, 196, 196),
 )
 
-data = open(path, "rb").read()
-if len(data) > 8 * 1024 * 1024 or not data.startswith(b"\x89PNG\r\n\x1a\n"):
+with open(path, "rb") as stream:
+    data = stream.read(8 * 1024 * 1024 + 1)
+if len(data) < 16 or len(data) > 8 * 1024 * 1024:
     raise SystemExit(1)
-offset = 8
-idat = bytearray()
-width = height = depth = color_type = interlace = None
-while offset + 12 <= len(data):
-    length = struct.unpack(">I", data[offset:offset + 4])[0]
-    kind = data[offset + 4:offset + 8]
-    payload = data[offset + 8:offset + 8 + length]
-    if offset + 12 + length > len(data):
-        raise SystemExit(1)
-    if kind == b"IHDR":
-        width, height, depth, color_type, compression, filtering, interlace = \
-            struct.unpack(">IIBBBBB", payload)
-        if compression != 0 or filtering != 0:
-            raise SystemExit(1)
-    elif kind == b"IDAT":
-        idat.extend(payload)
-    elif kind == b"IEND":
-        break
-    offset += 12 + length
-if depth != 8 or color_type not in (2, 6) or interlace != 0:
+# Android 14 screencap writes four native-endian uint32 values followed by
+# tightly packed rows.  This harness admits only the pinned x86_64 image.
+width, height, pixel_format, dataspace = struct.unpack("<IIII", data[:16])
+if (width, height) not in ((480, 800), (800, 480)) or dataspace not in (0, 1, 2):
     raise SystemExit(1)
-channels = 3 if color_type == 2 else 4
-raw = zlib.decompress(bytes(idat))
-stride = width * channels
-if len(raw) != height * (stride + 1):
+formats = {
+    1: ("rgba8888", 4),
+    2: ("rgbx8888", 4),
+    3: ("rgb888", 3),
+    4: ("rgb565", 2),
+    5: ("bgra8888", 4),
+}
+if pixel_format not in formats:
     raise SystemExit(1)
-rows = []
-previous = bytearray(stride)
-cursor = 0
-for _ in range(height):
-    filter_type = raw[cursor]
-    scanline = bytearray(raw[cursor + 1:cursor + 1 + stride])
-    cursor += stride + 1
-    for index in range(stride):
-        left = scanline[index - channels] if index >= channels else 0
-        above = previous[index]
-        upper_left = previous[index - channels] if index >= channels else 0
-        if filter_type == 1:
-            scanline[index] = (scanline[index] + left) & 0xff
-        elif filter_type == 2:
-            scanline[index] = (scanline[index] + above) & 0xff
-        elif filter_type == 3:
-            scanline[index] = (scanline[index] + ((left + above) >> 1)) & 0xff
-        elif filter_type == 4:
-            estimate = left + above - upper_left
-            pa = abs(estimate - left)
-            pb = abs(estimate - above)
-            pc = abs(estimate - upper_left)
-            predictor = left if pa <= pb and pa <= pc else above if pb <= pc else upper_left
-            scanline[index] = (scanline[index] + predictor) & 0xff
-        elif filter_type != 0:
-            raise SystemExit(1)
-    rows.append(scanline)
-    previous = scanline
+format_name, bytes_per_pixel = formats[pixel_format]
+expected_size = 16 + width * height * bytes_per_pixel
+if len(data) != expected_size:
+    raise SystemExit(1)
+pixels = memoryview(data)[16:]
+
+
+def read_rgb(offset):
+    if pixel_format in (1, 2, 3):
+        return pixels[offset], pixels[offset + 1], pixels[offset + 2]
+    if pixel_format == 5:
+        return pixels[offset + 2], pixels[offset + 1], pixels[offset]
+    packed = pixels[offset] | (pixels[offset + 1] << 8)
+    red = (((packed >> 11) & 0x1f) * 255 + 15) // 31
+    green = (((packed >> 5) & 0x3f) * 255 + 31) // 63
+    blue = ((packed & 0x1f) * 255 + 15) // 31
+    return red, green, blue
 
 regions = {
     "left-right": (collections.Counter(), collections.Counter()),
@@ -1499,10 +1480,9 @@ regions = {
 sample_count = 0
 sampled_colors = collections.Counter()
 for y in range(0, height, 2):
-    row = rows[y]
+    row_offset = y * width * bytes_per_pixel
     for x in range(0, width, 2):
-        base = x * channels
-        rgb = row[base], row[base + 1], row[base + 2]
+        rgb = read_rgb(row_offset + x * bytes_per_pixel)
         sampled_colors[rgb] += 1
         distances = [sum((rgb[i] - color[i]) ** 2 for i in range(3)) for color in palette]
         nearest = min(range(len(palette)), key=distances.__getitem__)
@@ -1534,29 +1514,40 @@ if mode == "diagnose":
     ) or "none"
     print(
         "ANDROID_PEER_FRAMEBUFFER_DIAGNOSTIC "
-        f"width={width} height={height} source_state={source_state} "
+        f"width={width} height={height} format={format_name} "
+        f"dataspace={dataspace} source_state={source_state} "
         f"palette_samples={sample_count} top_colors={top_colors} "
         f"candidates={candidate_summary}"
     )
     raise SystemExit(0)
 valid = [candidate for candidate in candidates if candidate[0]]
 if not valid:
-    raise SystemExit(1)
+    print(
+        f"unavailable {format_name} {dataspace} {width} {height}"
+    )
+    raise SystemExit(0)
 chosen = max(valid)
 _, score, _, state, age, layout, matched = chosen
 minimum = max(300, (width * height) // 40)
 if score < minimum or matched < minimum * 2:
-    raise SystemExit(1)
-print(f"{state} {age} {score} {matched} {layout}")
+    print(
+        f"unavailable {format_name} {dataspace} {width} {height}"
+    )
+    raise SystemExit(0)
+print(
+    f"{state} {age} {score} {matched} {layout} "
+    f"{format_name} {dataspace} {width} {height}"
+)
 PY
 }
 
 PEER_LAST_RECOVERY_MS=0
 capture_peer_freshness() {
-    local phase=$1 attempt started_ms now_ms source_state screenshot decoded
+    local phase=$1 attempt started_ms now_ms source_state framebuffer decoded
     local capture_started_ms capture_finished_ms capture_elapsed_ms total_elapsed_ms
-    local state age score matched layout max_age=0 last_screenshot= screenshot_size=
-    local last_source_state=
+    local state age score matched layout format_name dataspace width height
+    local max_age=0 last_framebuffer= framebuffer_size= diagnostic_png=
+    local last_source_state= observer_failure= source_seen=0
     local -A seen=()
     started_ms="$(monotonic_millis)" \
         || fail "cannot read the monotonic clock for $phase"
@@ -1565,35 +1556,56 @@ capture_peer_freshness() {
             || fail "cannot reread the monotonic clock for $phase"
         [ "$((now_ms - started_ms))" -le "$PEER_RECOVERY_LIMIT_MS" ] \
             || break
-        if [ -n "$last_screenshot" ]; then
-            rm -f -- "$last_screenshot"
+        if [ -n "$last_framebuffer" ]; then
+            rm -f -- "$last_framebuffer"
         fi
-        screenshot="$WORK_ROOT/peer-$phase-$attempt.png"
+        framebuffer="$WORK_ROOT/peer-$phase-$attempt.raw"
         capture_started_ms="$(monotonic_millis)" \
             || fail "cannot start the framebuffer-capture measurement for $phase"
-        timeout --signal=TERM --kill-after=2s 20s \
-            "$ADB" -s "$SERIAL" exec-out screencap -p >"$screenshot" \
-            || fail "cannot capture Android peer framebuffer for $phase"
+        timeout --signal=TERM --kill-after=1s 2s \
+            "$ADB" -s "$SERIAL" exec-out screencap >"$framebuffer" \
+            || fail "cannot capture raw Android peer framebuffer for $phase"
         capture_finished_ms="$(monotonic_millis)" \
             || fail "cannot finish the framebuffer-capture measurement for $phase"
         capture_elapsed_ms=$((capture_finished_ms - capture_started_ms))
         total_elapsed_ms=$((capture_finished_ms - started_ms))
-        last_screenshot=$screenshot
+        last_framebuffer=$framebuffer
+        [ "$capture_elapsed_ms" -le "$PEER_CAPTURE_MAX_MS" ] \
+            || PEER_CAPTURE_MAX_MS=$capture_elapsed_ms
+        if [ "$capture_elapsed_ms" -gt "$PEER_CAPTURE_LIMIT_MS" ]; then
+            printf 'ANDROID_PEER_OBSERVER=unavailable phase=%s attempt=%s capture_ms=%s limit_ms=%s reason=raw-capture-too-slow\n' \
+                "$phase" "$attempt" "$capture_elapsed_ms" "$PEER_CAPTURE_LIMIT_MS"
+            observer_failure="Android raw framebuffer observer exceeded its $PEER_CAPTURE_LIMIT_MS ms limit for $phase"
+            break
+        fi
         source_state="$(peer_source_state 2>/dev/null || true)"
         decoded=
         if [[ "$source_state" =~ ^([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$ ]]; then
             last_source_state=$source_state
-            decoded="$(decode_peer_screenshot "$screenshot" "$source_state" 2>/dev/null || true)"
+            source_seen=1
+            if ! decoded="$(decode_peer_framebuffer "$framebuffer" "$source_state" 2>/dev/null)"; then
+                framebuffer_size="$(stat -c '%s' -- "$framebuffer")"
+                printf 'ANDROID_PEER_OBSERVER=unavailable phase=%s attempt=%s bytes=%s sha256=%s reason=invalid-raw-framebuffer\n' \
+                    "$phase" "$attempt" "$framebuffer_size" \
+                    "$(sha256sum "$framebuffer" | awk '{ print $1 }')"
+                observer_failure="Android raw framebuffer observer rejected its input for $phase"
+                break
+            fi
         fi
-        if [[ "$decoded" =~ ^([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)\ (left-right|top-bottom)$ ]]; then
+        if [[ "$decoded" =~ ^([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)\ (left-right|top-bottom)\ (rgba8888|rgbx8888|rgb888|rgb565|bgra8888)\ ([012])\ (480|800)\ (480|800)$ ]]; then
             state=${BASH_REMATCH[1]}
             age=${BASH_REMATCH[2]}
             score=${BASH_REMATCH[3]}
             matched=${BASH_REMATCH[4]}
             layout=${BASH_REMATCH[5]}
-            printf 'ANDROID_PEER_FRAME_SAMPLE phase=%s attempt=%s elapsed_ms=%s capture_ms=%s source_state=%s display_state=%s age=%s score=%s matched=%s layout=%s\n' \
+            format_name=${BASH_REMATCH[6]}
+            dataspace=${BASH_REMATCH[7]}
+            width=${BASH_REMATCH[8]}
+            height=${BASH_REMATCH[9]}
+            printf 'ANDROID_PEER_FRAME_SAMPLE phase=%s attempt=%s elapsed_ms=%s capture_ms=%s source_state=%s display_state=%s age=%s score=%s matched=%s layout=%s format=%s dataspace=%s dimensions=%sx%s\n' \
                 "$phase" "$attempt" "$total_elapsed_ms" "$capture_elapsed_ms" \
-                "$source_state" "$state" "$age" "$score" "$matched" "$layout"
+                "$source_state" "$state" "$age" "$score" "$matched" "$layout" \
+                "$format_name" "$dataspace" "$width" "$height"
             seen[$state]=1
             [ "$age" -le "$max_age" ] || max_age=$age
             if [ "${#seen[@]}" -ge 2 ]; then
@@ -1608,37 +1620,57 @@ capture_peer_freshness() {
                 printf 'ANDROID_PEER_FRESHNESS=pass phase=%s recovery_ms=%s max_age_ms=%s distinct=%s score=%s matched=%s layout=%s\n' \
                     "$phase" "$PEER_LAST_RECOVERY_MS" "$((max_age * 250))" \
                     "${#seen[@]}" "$score" "$matched" "$layout"
-                rm -f -- "$last_screenshot"
-                last_screenshot=
+                rm -f -- "$last_framebuffer"
+                last_framebuffer=
                 return 0
             fi
-        else
+        elif [[ "$decoded" =~ ^unavailable\ (rgba8888|rgbx8888|rgb888|rgb565|bgra8888)\ ([012])\ (480|800)\ (480|800)$ ]] \
+             || [ -z "$decoded" ]; then
             printf 'ANDROID_PEER_FRAME_SAMPLE phase=%s attempt=%s elapsed_ms=%s capture_ms=%s source_state=%s display_state=unavailable\n' \
                 "$phase" "$attempt" "$total_elapsed_ms" "$capture_elapsed_ms" \
                 "${source_state:-unavailable}"
+        else
+            printf 'ANDROID_PEER_OBSERVER=unavailable phase=%s attempt=%s reason=malformed-decoder-result\n' \
+                "$phase" "$attempt"
+            observer_failure="Android raw framebuffer observer returned a malformed result for $phase"
+            break
         fi
         sleep 0.5
     done
-    if [ -n "$last_screenshot" ] && [ -f "$last_screenshot" ]; then
+    if [ "$source_seen" -eq 0 ] && [ -z "$observer_failure" ]; then
+        printf 'ANDROID_PEER_OBSERVER=unavailable phase=%s reason=missing-source-state\n' \
+            "$phase"
+        observer_failure="Android peer source-state observer produced no valid state for $phase"
+    fi
+    if [ -n "$last_framebuffer" ] && [ -f "$last_framebuffer" ]; then
         if [ -n "$last_source_state" ]; then
-            decode_peer_screenshot "$last_screenshot" "$last_source_state" diagnose \
+            decode_peer_framebuffer "$last_framebuffer" "$last_source_state" diagnose \
                 || true
         fi
-        screenshot_size="$(stat -c '%s' -- "$last_screenshot")"
-        if [ "$screenshot_size" -le 262144 ]; then
-            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_BEGIN phase=%s bytes=%s\n' \
-                "$phase" "$screenshot_size"
-            base64 -w 76 -- "$last_screenshot"
-            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_END phase=%s\n' "$phase"
-        else
-            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_OMITTED phase=%s bytes=%s limit=262144\n' \
-                "$phase" "$screenshot_size"
-        fi
-        rm -f -- "$last_screenshot"
+        rm -f -- "$last_framebuffer"
     fi
     capture_ui_hierarchy complete && print_initial_ui_semantics
     capture_android_connection_diagnostic active || true
     reprint_android_connection_diagnostic || true
+    diagnostic_png="$WORK_ROOT/peer-$phase-diagnostic.png"
+    if timeout --signal=TERM --kill-after=2s 20s \
+        "$ADB" -s "$SERIAL" exec-out screencap -p >"$diagnostic_png"; then
+        framebuffer_size="$(stat -c '%s' -- "$diagnostic_png")"
+        if [ "$framebuffer_size" -le 262144 ]; then
+            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_BEGIN phase=%s bytes=%s verdict_input=false\n' \
+                "$phase" "$framebuffer_size"
+            base64 -w 76 -- "$diagnostic_png"
+            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_END phase=%s\n' "$phase"
+        else
+            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_OMITTED phase=%s bytes=%s limit=262144 verdict_input=false\n' \
+                "$phase" "$framebuffer_size"
+        fi
+    else
+        printf 'ANDROID_PEER_FRAMEBUFFER_PNG_OMITTED phase=%s reason=capture-failed verdict_input=false\n' \
+            "$phase"
+    fi
+    rm -f -- "$diagnostic_png"
+    [ -z "$observer_failure" ] || fail "$observer_failure"
     fail "Android peer display did not become fresh and changing for $phase"
 }
 
@@ -2352,10 +2384,11 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
                 || fail 'the Android real-peer lifecycle receipt is not ready'
             [ "$PEER_REVERSE_READY" -eq 0 ] \
                 || fail 'the Android peer reverse mapping remained live at receipt time'
-            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
+            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
                 "$PEER_INITIAL_RECOVERY_MS" "$PEER_BACKGROUND_RECOVERY_MS" "$PEER_TASK_RECOVERY_MAX_MS" \
                 "$PEER_RECOVERY_LIMIT_MS" \
                 "$PEER_FRESHNESS_MAX_MS" "$PEER_FRESHNESS_LIMIT_MS" \
+                "$PEER_CAPTURE_MAX_MS" "$PEER_CAPTURE_LIMIT_MS" \
                 "$PEER_DISTINCT_FRAMES" "$APK_SHA256"
         fi
     fi

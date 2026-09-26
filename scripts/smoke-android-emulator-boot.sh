@@ -1636,7 +1636,7 @@ import re
 import sys
 
 lines = sys.argv[1].splitlines()
-prefix = "Starting: Intent { cmp=com.carriez.flutter_hbb/.MainActivity }"
+prefix = "Starting: Intent { cmp=com.carriez.flutter_hbb/.MainActivity (has extras) }"
 activity = "Activity: com.carriez.flutter_hbb/.MainActivity"
 if len(lines) < 6 or lines[0] != prefix or lines[3] != activity:
     raise SystemExit("malformed Android activity-launch receipt")

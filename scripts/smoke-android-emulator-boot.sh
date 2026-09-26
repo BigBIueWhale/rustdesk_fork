@@ -1886,12 +1886,29 @@ PY
             || { print_initial_ui_semantics; fail 'the permanent-password dialog has no exact focused password field'; }
         readonly TEST_PASSWORD=Runtime1x
         read -r field_x field_y <<<"$password_field"
-        "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" >/dev/null \
-            || fail 'cannot focus the password field'
-        "$ADB" -s "$SERIAL" shell input text "$TEST_PASSWORD" >/dev/null \
-            || fail 'cannot enter the disposable password'
-        wait_ui_center text '119 characters remaining' >/dev/null \
-            || fail 'the password field did not observe the exact disposable input'
+        password_input_ready=0
+        for _ in $(seq 1 3); do
+            "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" \
+                >/dev/null \
+                || fail 'cannot focus the password field'
+            sleep 0.5
+            "$ADB" -s "$SERIAL" shell input keycombination \
+                KEYCODE_CTRL_LEFT KEYCODE_A >/dev/null \
+                || fail 'cannot select the disposable password field'
+            "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_DEL >/dev/null \
+                || fail 'cannot clear the disposable password field'
+            "$ADB" -s "$SERIAL" shell input text "$TEST_PASSWORD" >/dev/null \
+                || fail 'cannot enter the disposable password'
+            if wait_ui_center text '119 characters remaining' >/dev/null; then
+                password_input_ready=1
+                break
+            fi
+        done
+        [ "$password_input_ready" -eq 1 ] \
+            || {
+                capture_ui_hierarchy complete && print_initial_ui_semantics
+                fail 'the password field did not observe the exact disposable input'
+            }
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null \
             || fail 'cannot dismiss the disposable soft keyboard'
         confirmation_counter=

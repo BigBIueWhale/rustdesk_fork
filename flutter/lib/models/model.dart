@@ -2028,6 +2028,131 @@ class ImageModel with ChangeNotifier {
 
       reportLayer(layer, '0');
       debugPrint('RGBA_PIPELINE flutter-layer-total count=$layerCount');
+      final logicalSize = renderView.size;
+      String colorHex(Color? color) => color == null
+          ? 'null'
+          : color.value.toRadixString(16).padLeft(8, '0');
+      String decorationPaint(Decoration? decoration) {
+        if (decoration == null) return 'null';
+        if (decoration is BoxDecoration) {
+          return 'BoxDecoration(color=${colorHex(decoration.color)},'
+              'gradient=${decoration.gradient.runtimeType},'
+              'image=${decoration.image.runtimeType},'
+              'blend=${decoration.backgroundBlendMode})';
+        }
+        if (decoration is ShapeDecoration) {
+          return 'ShapeDecoration(color=${colorHex(decoration.color)},'
+              'gradient=${decoration.gradient.runtimeType},'
+              'image=${decoration.image.runtimeType})';
+        }
+        return decoration.runtimeType.toString();
+      }
+
+      var elementCount = 0;
+      var paintCandidateCount = 0;
+      void reportElement(Element current, String path, bool ancestorPainted) {
+        elementCount += 1;
+        final widget = current.widget;
+        final painted = ancestorPainted &&
+            !(widget is Offstage && widget.offstage) &&
+            !(widget is Visibility && !widget.visible);
+        Rect? globalRect;
+        final renderObject = current.renderObject;
+        if (renderObject is RenderBox &&
+            renderObject.attached &&
+            renderObject.hasSize) {
+          try {
+            globalRect = renderObject.localToGlobal(Offset.zero) &
+                renderObject.size;
+          } catch (_) {
+            globalRect = null;
+          }
+        }
+        final isLarge = globalRect != null &&
+            globalRect.width >= logicalSize.width * 0.9 &&
+            globalRect.height >= logicalSize.height * 0.6;
+        String? paint;
+        if (widget is Container &&
+            (widget.color != null ||
+                widget.decoration != null ||
+                widget.foregroundDecoration != null)) {
+          paint = 'color=${colorHex(widget.color)} '
+              'decoration=${decorationPaint(widget.decoration)} '
+              'foreground=${decorationPaint(widget.foregroundDecoration)}';
+        } else if (widget is ColoredBox) {
+          paint = 'color=${colorHex(widget.color)}';
+        } else if (widget is DecoratedBox) {
+          paint = 'decoration=${decorationPaint(widget.decoration)} '
+              'position=${widget.position}';
+        } else if (widget is Material) {
+          paint = 'color=${colorHex(widget.color)} type=${widget.type} '
+              'elevation=${widget.elevation}';
+        } else if (widget is Scaffold) {
+          paint = 'background=${colorHex(widget.backgroundColor)}';
+        } else if (widget is ModalBarrier) {
+          paint = 'color=${colorHex(widget.color)} '
+              'dismissible=${widget.dismissible}';
+        } else if (widget is AnimatedModalBarrier) {
+          paint = 'color=${colorHex(widget.color.value)} '
+              'dismissible=${widget.dismissible}';
+        } else if (widget is CustomPaint) {
+          paint = 'painter=${widget.painter.runtimeType} '
+              'foreground=${widget.foregroundPainter.runtimeType}';
+        } else if (widget is Opacity) {
+          paint = 'opacity=${widget.opacity}';
+        } else if (widget is AnimatedOpacity) {
+          paint = 'opacity=${widget.opacity}';
+        } else if (widget is FadeTransition) {
+          paint = 'opacity=${widget.opacity.value}';
+        } else if (widget is PhysicalModel) {
+          paint = 'color=${colorHex(widget.color)} '
+              'shadow=${colorHex(widget.shadowColor)} '
+              'elevation=${widget.elevation}';
+        } else if (widget is ColorFiltered) {
+          paint = 'filter=${widget.colorFilter}';
+        } else if (widget is ImageFiltered) {
+          paint = 'filter=${widget.imageFilter}';
+        } else if (widget is BackdropFilter) {
+          paint = 'filter=${widget.filter} blend=${widget.blendMode}';
+        } else if (widget is ShaderMask) {
+          paint = 'blend=${widget.blendMode}';
+        }
+        if (painted && paint != null &&
+            (isLarge ||
+                widget is ModalBarrier ||
+                widget is AnimatedModalBarrier ||
+                widget is Opacity ||
+                widget is AnimatedOpacity ||
+                widget is FadeTransition ||
+                widget is ColorFiltered ||
+                widget is ImageFiltered ||
+                widget is BackdropFilter ||
+                widget is ShaderMask)) {
+          paintCandidateCount += 1;
+          final rect = globalRect == null
+              ? 'unavailable'
+              : '${globalRect.left.toStringAsFixed(1)},'
+                  '${globalRect.top.toStringAsFixed(1)},'
+                  '${globalRect.width.toStringAsFixed(1)},'
+                  '${globalRect.height.toStringAsFixed(1)}';
+          debugPrint('RGBA_PIPELINE flutter-widget path=$path '
+              'type=${widget.runtimeType} rect=$rect $paint');
+        }
+        var childIndex = 0;
+        current.visitChildren((child) {
+          reportElement(child, '$path.$childIndex', painted);
+          childIndex += 1;
+        });
+      }
+
+      final rootElement = WidgetsBinding.instance.rootElement;
+      if (rootElement == null) {
+        debugPrint('RGBA_PIPELINE flutter-widget-tree state=unavailable');
+      } else {
+        reportElement(rootElement, '0', true);
+        debugPrint('RGBA_PIPELINE flutter-widget-total '
+            'elements=$elementCount candidates=$paintCandidateCount');
+      }
     } catch (error) {
       debugPrint('RGBA_PIPELINE flutter-root display=$display '
           'publication=$publication readback=${error.runtimeType}');

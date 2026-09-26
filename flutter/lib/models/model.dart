@@ -1980,6 +1980,54 @@ class ImageModel with ChangeNotifier {
           'remote_left=${sample(0.25, 0.5)} '
           'remote_right=${sample(0.75, 0.5)} '
           'toolbar=${sample(0.15, 0.95)}');
+      var layerCount = 0;
+      void reportLayer(Layer current, String path) {
+        layerCount += 1;
+        String details = '';
+        if (current is OpacityLayer) {
+          details = ' alpha=${current.alpha} offset=${current.offset}';
+        } else if (current is ColorFilterLayer) {
+          details = ' color_filter=${current.colorFilter}';
+        } else if (current is ImageFilterLayer) {
+          details =
+              ' image_filter=${current.imageFilter} offset=${current.offset}';
+        } else if (current is BackdropFilterLayer) {
+          details =
+              ' backdrop_filter=${current.filter} blend=${current.blendMode}';
+        } else if (current is ShaderMaskLayer) {
+          details =
+              ' mask_rect=${current.maskRect} blend=${current.blendMode}';
+        } else if (current is TransformLayer) {
+          details = ' offset=${current.offset} transform=${current.transform}';
+        } else if (current is ClipRectLayer) {
+          details =
+              ' clip=${current.clipRect} behavior=${current.clipBehavior}';
+        } else if (current is ClipRRectLayer) {
+          details =
+              ' clip=${current.clipRRect} behavior=${current.clipBehavior}';
+        } else if (current is ClipPathLayer) {
+          details =
+              ' clip=${current.clipPath?.getBounds()} behavior=${current.clipBehavior}';
+        } else if (current is PictureLayer) {
+          details = ' canvas_bounds=${current.canvasBounds}';
+        } else if (current is OffsetLayer) {
+          details = ' offset=${current.offset}';
+        }
+        debugPrint('RGBA_PIPELINE flutter-layer path=$path '
+            'type=${current.runtimeType}$details');
+        if (current is ContainerLayer) {
+          var child = current.firstChild;
+          var childIndex = 0;
+          while (child != null) {
+            reportLayer(child, '$path.$childIndex');
+            childIndex += 1;
+            child = child.nextSibling;
+          }
+        }
+      }
+
+      reportLayer(layer, '0');
+      debugPrint('RGBA_PIPELINE flutter-layer-total count=$layerCount');
     } catch (error) {
       debugPrint('RGBA_PIPELINE flutter-root display=$display '
           'publication=$publication readback=${error.runtimeType}');

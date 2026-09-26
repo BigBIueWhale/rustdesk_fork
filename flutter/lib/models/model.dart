@@ -9,6 +9,7 @@ import 'package:bot_toast/bot_toast.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_hbb/common/widgets/peers_view.dart';
@@ -1817,6 +1818,7 @@ class ImageModel with ChangeNotifier {
   ui.Image? _image;
   RgbaPresentationReceipt? _paintReceipt;
   bool _reportedAndroidRgbaEngineEvidence = false;
+  bool _reportedAndroidRootLayerEvidence = false;
   final ExactRgbaPublicationOrder<SessionID> _rgbaPublicationOrder =
       ExactRgbaPublicationOrder<SessionID>();
 
@@ -1884,8 +1886,13 @@ class ImageModel with ChangeNotifier {
           expectedDisplayTopologyRevision:
               expectedDisplayTopologyRevision);
       if (!accepted) return false;
-      return await paintReceipt.done ==
+      final presented = await paintReceipt.done ==
           RgbaPresentationDisposition.painted;
+      if (presented && publication != null) {
+        unawaited(_reportAndroidRootLayerEvidence(
+            expectedSessionId, display, publication));
+      }
+      return presented;
     } catch (e) {
       debugPrint('onRgba error: $e');
       return false;
@@ -1894,6 +1901,90 @@ class ImageModel with ChangeNotifier {
       if (publication != null) {
         platformFFI.nextRgba(expectedSessionId, display, publication);
       }
+    }
+  }
+
+  Future<void> _reportAndroidRootLayerEvidence(
+      SessionID expectedSessionId, int display, int publication) async {
+    if (!isAndroid ||
+        !_androidRgbaEngineEvidence ||
+        _reportedAndroidRootLayerEvidence) {
+      return;
+    }
+    _reportedAndroidRootLayerEvidence = true;
+    ui.Image? rootImage;
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      if (parent.target?.isCurrentSession(expectedSessionId) != true) {
+        debugPrint('RGBA_PIPELINE flutter-root display=$display '
+            'publication=$publication state=retired');
+        return;
+      }
+      final renderViews =
+          RendererBinding.instance.renderViews.toList(growable: false);
+      if (renderViews.length != 1) {
+        debugPrint('RGBA_PIPELINE flutter-root display=$display '
+            'publication=$publication render_views=${renderViews.length} '
+            'readback=ambiguous');
+        return;
+      }
+      final renderView = renderViews.single;
+      // RenderObject.layer is framework-protected but remains the exact retained
+      // scene submitted by RenderView. Dynamic access keeps this test-only
+      // observation from pretending to be a supported product abstraction.
+      final Object? layer = (renderView as dynamic).layer;
+      if (layer is! OffsetLayer) {
+        debugPrint('RGBA_PIPELINE flutter-root display=$display '
+            'publication=$publication layer=${layer.runtimeType} '
+            'readback=unavailable');
+        return;
+      }
+      final physicalSize = renderView.flutterView.physicalSize;
+      if (physicalSize.isEmpty) {
+        debugPrint('RGBA_PIPELINE flutter-root display=$display '
+            'publication=$publication readback=empty-view');
+        return;
+      }
+      final capturedImage = await layer.toImage(Offset.zero & physicalSize);
+      rootImage = capturedImage;
+      final data =
+          await capturedImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (data == null) {
+        debugPrint('RGBA_PIPELINE flutter-root display=$display '
+            'publication=$publication dimensions=${capturedImage.width}x${capturedImage.height} '
+            'readback=unavailable');
+        return;
+      }
+      final pixels =
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      final width = capturedImage.width;
+      final height = capturedImage.height;
+      final rowBytes = pixels.length ~/ height;
+      String sample(double xFraction, double yFraction) {
+        final x =
+            (width * xFraction).floor().clamp(0, width - 1).toInt();
+        final y =
+            (height * yFraction).floor().clamp(0, height - 1).toInt();
+        final offset = y * rowBytes + x * 4;
+        return List.generate(4, (index) => pixels[offset + index])
+            .map((value) => value.toRadixString(16).padLeft(2, '0'))
+            .join();
+      }
+
+      debugPrint('RGBA_PIPELINE flutter-root display=$display '
+          'publication=$publication layer=${layer.runtimeType} '
+          'dimensions=${width}x$height '
+          'device_pixel_ratio=${renderView.flutterView.devicePixelRatio} '
+          'format=rgba8888-premul row_bytes=$rowBytes '
+          'body_top=${sample(0.5, 0.125)} '
+          'remote_left=${sample(0.25, 0.5)} '
+          'remote_right=${sample(0.75, 0.5)} '
+          'toolbar=${sample(0.15, 0.95)}');
+    } catch (error) {
+      debugPrint('RGBA_PIPELINE flutter-root display=$display '
+          'publication=$publication readback=${error.runtimeType}');
+    } finally {
+      rootImage?.dispose();
     }
   }
 

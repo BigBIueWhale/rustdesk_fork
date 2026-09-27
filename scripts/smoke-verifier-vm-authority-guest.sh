@@ -2789,7 +2789,7 @@ run_android_emulator_runtime() {
     local lifecycle_receipt peer_receipt check_receipt checksum_line
     local frame_endpoint_receipt frame_parser_receipt
     local frame_observer_self_test_receipt frame_observer_build_receipt
-    local frame_observer_receipt
+    local frame_observer_receipt frame_observer_dependency_manifest_sha256
     local -a git_builder=(
         setpriv --reuid=1000 --regid=1000 --clear-groups
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
@@ -2857,7 +2857,9 @@ run_android_emulator_runtime() {
             || fail "Android emulator runtime workload metadata differs: $workload"
     done
     for workload in pins.env lib.sh online-android-sdk-output.py \
+        online-gradle-output.py \
         AndroidEmulatorFrameObserver.java \
+        android-emulator-frame-observer-dependencies.tsv \
         flutter-peer-source-x11.c \
         smoke-bind-loopback.c smoke-server-launcher.c \
         smoke-xvfb-files.tsv smoke-xvfb-packages.tsv; do
@@ -2878,11 +2880,13 @@ run_android_emulator_runtime() {
         "$source_root/scripts/android-emulator-frame-observer.sh" \
         "$source_root/scripts/android-emulator-frame.py" \
         "$source_root/scripts/AndroidEmulatorFrameObserver.java" \
+        "$source_root/scripts/android-emulator-frame-observer-dependencies.tsv" \
         "$source_root/scripts/smoke-android-emulator-boot.sh" \
         "$source_root/scripts/smoke-server-stage.sh" \
         "$source_root/scripts/smoke-xvfb-prepare.sh" \
         "$source_root/scripts/smoke-ready.sh" \
         "$source_root/scripts/online-input-provenance.py" \
+        "$source_root/scripts/online-gradle-output.py" \
         "$source_root/scripts/flutter-peer-source-x11.c" \
         "$source_root/scripts/smoke-bind-loopback.c" \
         "$source_root/scripts/smoke-server-launcher.c" \
@@ -2893,6 +2897,12 @@ run_android_emulator_runtime() {
         "$source_root/scripts/online-android-sdk-output.py" \
         "$source_root/scripts/offline-image-provenance.py" \
         "$source_root/scripts/verify-vm-entry-preflight.sh")"
+    frame_observer_dependency_manifest_sha256="$(sha256sum \
+        "$source_root/scripts/android-emulator-frame-observer-dependencies.tsv" \
+        | awk '{ print $1 }')" \
+        || fail 'cannot digest the Android frame-observer dependency manifest'
+    [[ "$frame_observer_dependency_manifest_sha256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'Android frame-observer dependency manifest digest is malformed'
     mkdir "$online_mount"
     chown 1000:1000 "$online_mount"
     chmod -R a-w -- "$source_root"
@@ -3153,7 +3163,7 @@ run_android_emulator_runtime() {
     [ "$(grep -c '^ANDROID_EMULATOR_FRAME_OBSERVER_SELF_TEST=' "$output")" -eq 1 ] \
         || fail 'Android frame-observer self-test receipt is duplicated'
     frame_observer_build_receipt="$(grep -E \
-        '^ANDROID_EMULATOR_FRAME_OBSERVER_BUILD=pass protoc=3\.20\.1 protobuf=3\.22\.3 grpc=1\.57\.0 jars=31 generated_sources=[1-9][0-9]* network=container-loopback output=private-bind$' \
+        "^ANDROID_EMULATOR_FRAME_OBSERVER_BUILD=pass protoc=3\\.20\\.1 protobuf=3\\.22\\.3 grpc=1\\.57\\.0 jars=31 generated_sources=[1-9][0-9]* dependency_manifest_sha256=$frame_observer_dependency_manifest_sha256 network=container-loopback output=private-bind$" \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android frame-observer build receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_FRAME_OBSERVER_BUILD=' "$output")" -eq 1 ] \
@@ -3212,11 +3222,13 @@ run_android_emulator_runtime() {
           "$source_root/scripts/android-emulator-frame-observer.sh" \
           "$source_root/scripts/android-emulator-frame.py" \
           "$source_root/scripts/AndroidEmulatorFrameObserver.java" \
+          "$source_root/scripts/android-emulator-frame-observer-dependencies.tsv" \
           "$source_root/scripts/smoke-android-emulator-boot.sh" \
           "$source_root/scripts/smoke-server-stage.sh" \
           "$source_root/scripts/smoke-xvfb-prepare.sh" \
           "$source_root/scripts/smoke-ready.sh" \
           "$source_root/scripts/online-input-provenance.py" \
+          "$source_root/scripts/online-gradle-output.py" \
           "$source_root/scripts/flutter-peer-source-x11.c" \
           "$source_root/scripts/smoke-bind-loopback.c" \
           "$source_root/scripts/smoke-server-launcher.c" \

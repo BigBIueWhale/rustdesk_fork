@@ -45,6 +45,15 @@ readonly CANDIDATE_ROOT=$REPO_ROOT/online/candidates/android-emulator
 readonly EMULATOR_ZIP=$CANDIDATE_ROOT/emulator-linux_x64-${ANDROID_EMULATOR_ARCHIVE_BUILD}.zip
 readonly SYSTEM_IMAGE_ZIP=$CANDIDATE_ROOT/x86_64-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip
 readonly ADB=$ONLINE_DIR/android-sdk/platform-tools/adb
+readonly OBSERVER_DEPENDENCY_MANIFEST=$SCRIPT_DIR/android-emulator-frame-observer-dependencies.tsv
+[ -f "$OBSERVER_DEPENDENCY_MANIFEST" ] && [ ! -L "$OBSERVER_DEPENDENCY_MANIFEST" ] \
+    || die 'the observer dependency manifest is absent or ambiguous'
+OBSERVER_DEPENDENCY_MANIFEST_SHA256="$(sha256sum "$OBSERVER_DEPENDENCY_MANIFEST" \
+    | awk '{ print $1 }')" \
+    || die 'cannot digest the observer dependency manifest'
+[[ "$OBSERVER_DEPENDENCY_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+    || die 'the observer dependency manifest digest is malformed'
+readonly OBSERVER_DEPENDENCY_MANIFEST_SHA256
 
 verify_android_sdk_root() {
     python3 -I -S "$SCRIPT_DIR/online-android-sdk-output.py" check-complete \
@@ -60,6 +69,15 @@ verify_android_sdk_root() {
         --package-pin "platform-32=$SHA256_ANDROID_PLATFORM_32" \
         --package-pin "platform-33=$SHA256_ANDROID_PLATFORM_33" \
         --package-pin "platform-34=$SHA256_ANDROID_PLATFORM_34"
+}
+
+verify_gradle_root() {
+    python3 -I -S "$SCRIPT_DIR/online-gradle-output.py" check-complete \
+        --online "$ONLINE_DIR" --uid "$RUN_UID" --gid "$RUN_GID" \
+        --gradle-version "$ANDROID_GRADLE_WRAPPER" \
+        --gradle-sha256 "$SHA256_ANDROID_GRADLE_WRAPPER_ALL" \
+        --build-tools "$ANDROID_BUILD_TOOLS" \
+        --compile-sdk "$ANDROID_COMPILE_SDK"
 }
 
 vm_docker() {
@@ -159,6 +177,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 verify_android_sdk_root
+verify_gradle_root
 verify_sha256 "$EMULATOR_ZIP" "$SHA256_ANDROID_EMULATOR_LINUX_X64"
 verify_sha256 "$SYSTEM_IMAGE_ZIP" "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
 verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
@@ -668,7 +687,7 @@ mapfile -t frame_observer_self_test_receipts < <(grep -Fx \
 [ "${#frame_observer_self_test_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$OBSERVER_LOG" >&2; die 'Android emulator frame-observer self-test receipt is absent or duplicated'; }
 mapfile -t frame_observer_build_receipts < <(grep -E \
-    '^ANDROID_EMULATOR_FRAME_OBSERVER_BUILD=pass protoc=3\.20\.1 protobuf=3\.22\.3 grpc=1\.57\.0 jars=31 generated_sources=[1-9][0-9]* network=container-loopback output=private-bind$' \
+    "^ANDROID_EMULATOR_FRAME_OBSERVER_BUILD=pass protoc=3\\.20\\.1 protobuf=3\\.22\\.3 grpc=1\\.57\\.0 jars=31 generated_sources=[1-9][0-9]* dependency_manifest_sha256=$OBSERVER_DEPENDENCY_MANIFEST_SHA256 network=container-loopback output=private-bind$" \
     "$OBSERVER_LOG" || true)
 [ "${#frame_observer_build_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$OBSERVER_LOG" >&2; die 'Android emulator frame-observer build receipt is absent or duplicated'; }
@@ -759,6 +778,7 @@ RUNTIME_CONTAINER=
     && [ "$(sha256sum "$APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
     || die 'runtime-test APK identity or bytes changed during execution'
 verify_android_sdk_root
+verify_gradle_root
 verify_sha256 "$EMULATOR_ZIP" "$SHA256_ANDROID_EMULATOR_LINUX_X64"
 verify_sha256 "$SYSTEM_IMAGE_ZIP" "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
 verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"

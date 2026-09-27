@@ -3507,7 +3507,6 @@ run_flutter_model_tests() {
                     lib/common/widgets/overlay.dart \
                     lib/common/widgets/permanent_password_dialog.dart \
                     lib/common/widgets/custom_password.dart \
-                    lib/desktop/pages/desktop_home_page.dart \
                     lib/models/reconnect_schedule_authority.dart \
                     lib/mobile/pages/remote_page.dart \
                     lib/mobile/pages/view_camera_page.dart \

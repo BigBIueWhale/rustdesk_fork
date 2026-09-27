@@ -56,21 +56,25 @@ void main() {
       everyElement(isFalse),
     );
     expect(
-      tester.widget<ElevatedButton>(
-        find.ancestor(
-          of: find.text('OK'),
-          matching: find.byType(ElevatedButton),
-        ),
-      ).onPressed,
+      tester
+          .widget<ElevatedButton>(
+            find.ancestor(
+              of: find.text('OK'),
+              matching: find.byType(ElevatedButton),
+            ),
+          )
+          .onPressed,
       isNull,
     );
     expect(
-      tester.widget<OutlinedButton>(
-        find.ancestor(
-          of: find.text('Cancel'),
-          matching: find.byType(OutlinedButton),
-        ),
-      ).onPressed,
+      tester
+          .widget<OutlinedButton>(
+            find.ancestor(
+              of: find.text('Cancel'),
+              matching: find.byType(OutlinedButton),
+            ),
+          )
+          .onPressed,
       isNull,
     );
     expect(

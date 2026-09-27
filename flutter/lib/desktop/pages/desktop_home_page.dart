@@ -713,7 +713,6 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     _updateTimer?.cancel();
     super.dispose();
   }
-
 }
 
 Future<bool> canSetPermanentPassword() async {

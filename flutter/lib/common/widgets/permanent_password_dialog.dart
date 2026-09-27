@@ -28,8 +28,7 @@ class PermanentPasswordMutation {
     }
   }
 
-  bool _isOwnedBy(Object dialogOwner) =>
-      identical(_dialogOwner, dialogOwner);
+  bool _isOwnedBy(Object dialogOwner) => identical(_dialogOwner, dialogOwner);
 }
 
 /// Retains the one native password write across dialog/Activity replacement.
@@ -76,8 +75,7 @@ class PermanentPasswordMutationCoordinator {
     PermanentPasswordMutation mutation,
     Object dialogOwner,
   ) {
-    if (!identical(_active, mutation) ||
-        !mutation._isOwnedBy(dialogOwner)) {
+    if (!identical(_active, mutation) || !mutation._isOwnedBy(dialogOwner)) {
       return false;
     }
     mutation._release(dialogOwner);
@@ -282,14 +280,12 @@ class _PermanentPasswordDialogState extends State<PermanentPasswordDialog> {
     if (!persisted) {
       setState(() {
         _submitting = false;
-        _passwordError =
-            '${_translate('Prompt')}: ${_translate("Failed")}';
+        _passwordError = '${_translate('Prompt')}: ${_translate("Failed")}';
       });
       return;
     }
 
-    final continuation =
-        mutation.setsPassword ? widget.onNonEmptySaved : null;
+    final continuation = mutation.setsPassword ? widget.onNonEmptySaved : null;
     widget.close();
     if (continuation != null) {
       unawaited(Future<void>.sync(continuation).catchError(
@@ -389,8 +385,7 @@ class _PermanentPasswordDialogState extends State<PermanentPasswordDialog> {
                 runSpacing: widget.compactSpacing ? 2 : 8,
                 spacing: 4,
                 children: _rules.map((rule) {
-                  final checked =
-                      rule.validate(_passwordStrength.value.trim());
+                  final checked = rule.validate(_passwordStrength.value.trim());
                   return Chip(
                     label: Text(
                       rule.label,

@@ -286,7 +286,6 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
       lib/common/widgets/overlay.dart \
       lib/common/widgets/permanent_password_dialog.dart \
       lib/common/widgets/custom_password.dart \
-      lib/desktop/pages/desktop_home_page.dart \
       lib/models/model.dart \
       lib/models/file_model.dart \
       lib/utils/image.dart \

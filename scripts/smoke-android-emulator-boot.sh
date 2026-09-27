@@ -1180,11 +1180,13 @@ PY
 enter_exact_password() {
     local field_x=$1 field_y=$2 password=$3 expected_remaining=$4
     local observed_remaining=
+    "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" \
+        >/dev/null \
+        || fail 'cannot focus the disposable password field'
+    sleep 0.5
     for _ in $(seq 1 3); do
-        "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" \
-            >/dev/null \
-            || fail 'cannot focus the disposable password field'
-        sleep 0.5
+        wait_ui_center focused-password-field >/dev/null \
+            || return 1
         "$ADB" -s "$SERIAL" shell input keycombination \
             KEYCODE_CTRL_LEFT KEYCODE_A >/dev/null \
             || fail 'cannot select the disposable password field'

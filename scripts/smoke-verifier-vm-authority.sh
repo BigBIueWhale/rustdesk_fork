@@ -2941,6 +2941,29 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     )
     [ "${#android_runtime_apk_receipts[@]}" -eq 1 ] \
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android runtime APK receipt is absent or duplicated'; }
+    require_exact_fixed_receipt \
+        'ANDROID_EMULATOR_FRAME_ENDPOINT=pass listener=127.0.0.1:8554 transport=grpc-stream network=container-loopback' \
+        'Android emulator frame-endpoint receipt'
+    require_exact_fixed_receipt \
+        'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass scenarios=11' \
+        'Android emulator frame-parser self-test receipt'
+    require_exact_fixed_receipt \
+        'ANDROID_EMULATOR_FRAME_OBSERVER_SELF_TEST=pass scenarios=7' \
+        'Android emulator frame-observer self-test receipt'
+    mapfile -t android_frame_observer_build_receipts < <(
+        /usr/bin/grep -Eo \
+            'ANDROID_EMULATOR_FRAME_OBSERVER_BUILD=pass protoc=3\.20\.1 protobuf=3\.22\.3 grpc=1\.57\.0 jars=31 generated_sources=[1-9][0-9]* network=container-loopback output=private-bind' \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#android_frame_observer_build_receipts[@]}" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android frame-observer build receipt is absent or duplicated'; }
+    mapfile -t android_frame_observer_receipts < <(
+        /usr/bin/grep -Eo \
+            'ANDROID_EMULATOR_FRAME_OBSERVER=pass endpoint=127\.0\.0\.1:8554 transport=grpc-stream format=rgb888 orientation=bottom-up frames_received=[1-9][0-9]* frames_published=[1-9][0-9]* last_seq=[0-9]+ cleanup=joined' \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#android_frame_observer_receipts[@]}" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android frame-observer runtime receipt is absent or duplicated'; }
     mapfile -t android_runtime_app_receipts < <(
         /usr/bin/grep -Eo \
             "ANDROID_EMULATOR_APP=pass emulator=37\\.1\\.11 api=34 abi=x86_64 package=com\\.carriez\\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only acceleration=software gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined" \

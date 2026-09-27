@@ -130,11 +130,12 @@ VERIFY_CONTAINER=
 BUILD_CONTAINER=
 XVFB_CONTAINER=
 RUNTIME_CONTAINER=
+OBSERVER_CONTAINER=
 cleanup() {
     local status=$? cleanup_status=0 container
     trap - EXIT HUP INT TERM
-    for container in "$RUNTIME_CONTAINER" "$XVFB_CONTAINER" "$BUILD_CONTAINER" \
-        "$VERIFY_CONTAINER"; do
+    for container in "$OBSERVER_CONTAINER" "$RUNTIME_CONTAINER" "$XVFB_CONTAINER" \
+        "$BUILD_CONTAINER" "$VERIFY_CONTAINER"; do
         [ -n "$container" ] || continue
         vm_docker rm -f "$container" >/dev/null 2>&1 || cleanup_status=1
     done
@@ -179,12 +180,15 @@ readonly VERIFY_LOG=$WORKSPACE/verify.log
 readonly BUILD_LOG=$WORKSPACE/build.log
 readonly XVFB_LOG=$WORKSPACE/xvfb.log
 readonly RUNTIME_LOG=$WORKSPACE/runtime.log
+readonly OBSERVER_LOG=$WORKSPACE/observer.log
+readonly OBSERVER_ROOT=$WORKSPACE/observer
 readonly SERVER_TARGET=$WORKSPACE/server-target
 readonly XVFB_DEBS=$WORKSPACE/xvfb-debs
 readonly XVFB_ROOT=$WORKSPACE/xvfb-root
 readonly SERVER_MACHINE_ID=$WORKSPACE/server.machine-id
 readonly SERVER_MACHINE_ID_VALUE=727573746465736b2d73657276657231
-install -d -m 0700 -- "$SERVER_TARGET" "$XVFB_DEBS" "$XVFB_ROOT"
+install -d -m 0700 -- "$OBSERVER_ROOT" "$SERVER_TARGET" "$XVFB_DEBS" \
+    "$XVFB_ROOT"
 [[ "$SERVER_MACHINE_ID_VALUE" =~ ^[0-9a-f]{32}$ ]] \
     || die 'private Android peer machine identity is malformed'
 printf '%s\n' "$SERVER_MACHINE_ID_VALUE" > "$SERVER_MACHINE_ID.tmp"
@@ -358,6 +362,7 @@ RUNTIME_CONTAINER="$(vm_docker create \
     --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$SERVER_MACHINE_ID,target=/etc/machine-id,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$OBSERVER_ROOT,target=/observer,bind-recursive=disabled" \
     --tmpfs /tmp:rw,exec,nosuid,nodev,size=10g,mode=700,uid=1000,gid=1000 \
     --tmpfs /tmp/.X11-unix:rw,noexec,nosuid,nodev,size=1m,mode=1777 \
     --workdir /source \
@@ -385,10 +390,131 @@ runtime_machine_id_mounts="$(vm_docker inspect --format \
 [ "$runtime_machine_id_mounts" = \
   "bind	$SERVER_MACHINE_ID	/etc/machine-id	false" ] \
     || die 'Android peer private machine-ID mount authority differs'
-runtime_status=0
-vm_docker start --attach "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 || runtime_status=$?
+runtime_observer_mounts="$(vm_docker inspect --format \
+    '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
+    "$RUNTIME_CONTAINER" | awk -F '\t' '$3 == "/observer" { print }')"
+[ "$runtime_observer_mounts" = \
+  "bind	$OBSERVER_ROOT	/observer	true" ] \
+    || die 'Android runtime frame-observer exchange mount authority differs'
+
+vm_docker start "$RUNTIME_CONTAINER" >/dev/null \
+    || die 'cannot start the Android runtime container'
+
+OBSERVER_CONTAINER="$(vm_docker create \
+    --name rustdesk-android-emulator-frame-observer \
+    --pull=never --network="container:$RUNTIME_CONTAINER" --read-only \
+    --user 1000:1000 \
+    --pids-limit=512 --memory=3g --memory-swap=3g --cpus=2 \
+    --ulimit nofile=2048:2048 --ulimit core=0:0 \
+    --cap-drop=ALL --security-opt=no-new-privileges \
+    --security-opt=apparmor=docker-default \
+    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=700,uid=1000,gid=1000,size=2g \
+    --env HOME=/tmp/frame-observer-home \
+    --mount "type=bind,source=$REPO_ROOT,target=/source,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$EMULATOR_ZIP,target=/inputs/emulator.zip,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$ONLINE_DIR/gradle-home,target=/gradle,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$OBSERVER_ROOT,target=/observer,bind-recursive=disabled" \
+    --workdir /source \
+    "$ANDROID_BUILDER_CONFIG_ID" \
+    /bin/bash --noprofile --norc \
+        /source/scripts/android-emulator-frame-observer.sh \
+        /inputs/emulator.zip /gradle /observer)"
+[[ "$OBSERVER_CONTAINER" =~ ^[0-9a-f]{64}$ ]] \
+    || die 'Android emulator frame-observer container ID is malformed'
+observer_authority="$(vm_docker inspect --format \
+    '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}' \
+    "$OBSERVER_CONTAINER")"
+[ "$observer_authority" = \
+  "container:$RUNTIME_CONTAINER|true|1000:1000|3221225472|3221225472|2000000000|512|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]|{}|[]" ] \
+    || die "Android emulator frame-observer authority differs: $observer_authority"
+observer_namespace="$(vm_docker inspect --format \
+    '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}' \
+    "$OBSERVER_CONTAINER")"
+[ "$observer_namespace" = 'false||private||private' ] \
+    || die "Android emulator frame-observer namespace authority differs: $observer_namespace"
+observer_mounts="$(vm_docker inspect --format \
+    '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
+    "$OBSERVER_CONTAINER" | LC_ALL=C sort)"
+[ "$observer_mounts" = "$(printf '%s\n' \
+    "bind	$EMULATOR_ZIP	/inputs/emulator.zip	false" \
+    "bind	$OBSERVER_ROOT	/observer	true" \
+    "bind	$ONLINE_DIR/gradle-home	/gradle	false" \
+    "bind	$REPO_ROOT	/source	false" | LC_ALL=C sort)" ] \
+    || die 'Android emulator frame-observer mount authority differs'
+vm_docker start "$OBSERVER_CONTAINER" >/dev/null \
+    || die 'cannot start the Android emulator frame-observer container'
+
+observer_ready=0
+for _ in $(seq 1 9000); do
+    if [ -f "$OBSERVER_ROOT/ready" ] && [ ! -L "$OBSERVER_ROOT/ready" ]; then
+        [ "$(stat -c '%u:%g:%a:%h' -- "$OBSERVER_ROOT/ready")" = \
+          1000:1000:600:1 ] \
+            || die 'Android emulator frame-observer ready metadata differs'
+        observer_ready=1
+        break
+    fi
+    observer_state="$(vm_docker inspect --format '{{.State.Status}}' \
+        "$OBSERVER_CONTAINER")" \
+        || die 'cannot inspect the Android emulator frame-observer startup state'
+    case "$observer_state" in
+        exited|dead)
+            vm_docker logs "$OBSERVER_CONTAINER" >"$OBSERVER_LOG" 2>&1 || true
+            tail -n 240 "$OBSERVER_LOG" >&2
+            die 'Android emulator frame observer exited before its first external frame'
+            ;;
+        created|running|restarting|removing|paused) ;;
+        *) die "Android emulator frame-observer startup state is malformed: $observer_state" ;;
+    esac
+    runtime_state="$(vm_docker inspect --format '{{.State.Status}}' \
+        "$RUNTIME_CONTAINER")" \
+        || die 'cannot inspect the Android runtime startup state'
+    case "$runtime_state" in
+        exited|dead) break ;;
+        created|running|restarting|removing|paused) ;;
+        *) die "Android runtime startup state is malformed: $runtime_state" ;;
+    esac
+    sleep 0.1
+done
+if [ "$observer_ready" -eq 0 ] \
+   && [ "$(vm_docker inspect --format '{{.State.Status}}' \
+        "$RUNTIME_CONTAINER")" = running ]; then
+    vm_docker logs "$OBSERVER_CONTAINER" >"$OBSERVER_LOG" 2>&1 || true
+    tail -n 240 "$OBSERVER_LOG" >&2
+    die 'Android emulator frame observer produced no external frame within 15 minutes'
+fi
+
+if ! runtime_status="$(vm_docker wait "$RUNTIME_CONTAINER")"; then
+    die 'cannot wait for the Android runtime container'
+fi
+[[ "$runtime_status" =~ ^[0-9]+$ ]] \
+    || die "Android runtime container returned a malformed status: $runtime_status"
+vm_docker logs "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 \
+    || die 'cannot collect the Android runtime log'
+
+observer_joined=0
+for _ in $(seq 1 1200); do
+    observer_state="$(vm_docker inspect --format '{{.State.Status}}' \
+        "$OBSERVER_CONTAINER")" \
+        || die 'cannot inspect the Android emulator frame-observer state'
+    case "$observer_state" in
+        exited|dead)
+            observer_joined=1
+            break
+            ;;
+        created|running|restarting|removing|paused) ;;
+        *) die "Android emulator frame-observer state is malformed: $observer_state" ;;
+    esac
+    sleep 0.1
+done
+vm_docker logs "$OBSERVER_CONTAINER" >"$OBSERVER_LOG" 2>&1 \
+    || die 'cannot collect the Android emulator frame-observer log'
+[ "$observer_joined" -eq 1 ] \
+    || { tail -n 240 "$OBSERVER_LOG" >&2; die 'Android emulator frame observer did not join within 120 seconds'; }
+observer_status="$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' \
+    "$OBSERVER_CONTAINER")"
 if [ "$runtime_status" -ne 0 ]; then
     tail -n 240 "$RUNTIME_LOG" >&2
+    tail -n 240 "$OBSERVER_LOG" >&2
     grep '^ANDROID_MAIN_SERVICE_LOG_' "$RUNTIME_LOG" \
         | tail -n 40 >&2 || true
     grep -E '^ANDROID_PEER_(PASSWORD_INPUT|PASSWORD_SUBMIT|CREDENTIAL_RECOVERY|CONNECTION_WAIT|CONNECTION_READY|CONNECTION_STATE)=' \
@@ -425,8 +551,67 @@ if [ "$runtime_status" -ne 0 ]; then
     [ -z "$runtime_failure" ] || printf '%s\n' "$runtime_failure" >&2
     die "Android app runtime exited with status $runtime_status"
 fi
+[ "$observer_status" = exited:0 ] \
+    || { tail -n 240 "$OBSERVER_LOG" >&2; die "Android emulator frame observer did not exit cleanly: $observer_status"; }
 [ "$(stat -c '%s' -- "$RUNTIME_LOG")" -le 1048576 ] \
     || die 'Android app runtime output exceeds its bound'
+[ "$(stat -c '%s' -- "$OBSERVER_LOG")" -le 1048576 ] \
+    || die 'Android emulator frame-observer output exceeds its bound'
+mapfile -t endpoint_receipts < <(grep -Fx \
+    'ANDROID_EMULATOR_FRAME_ENDPOINT=pass listener=127.0.0.1:8554 transport=grpc-stream network=container-loopback' \
+    "$RUNTIME_LOG" || true)
+[ "${#endpoint_receipts[@]}" -eq 1 ] \
+    || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android emulator frame-endpoint receipt is absent or duplicated'; }
+mapfile -t frame_parser_receipts < <(grep -Fx \
+    'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass scenarios=11' \
+    "$OBSERVER_LOG" || true)
+[ "${#frame_parser_receipts[@]}" -eq 1 ] \
+    || { tail -n 240 "$OBSERVER_LOG" >&2; die 'Android emulator frame-parser self-test receipt is absent or duplicated'; }
+mapfile -t frame_observer_self_test_receipts < <(grep -Fx \
+    'ANDROID_EMULATOR_FRAME_OBSERVER_SELF_TEST=pass scenarios=7' \
+    "$OBSERVER_LOG" || true)
+[ "${#frame_observer_self_test_receipts[@]}" -eq 1 ] \
+    || { tail -n 240 "$OBSERVER_LOG" >&2; die 'Android emulator frame-observer self-test receipt is absent or duplicated'; }
+mapfile -t frame_observer_build_receipts < <(grep -E \
+    '^ANDROID_EMULATOR_FRAME_OBSERVER_BUILD=pass protoc=3\.20\.1 protobuf=3\.22\.3 grpc=1\.57\.0 jars=31 generated_sources=[1-9][0-9]* network=container-loopback output=private-bind$' \
+    "$OBSERVER_LOG" || true)
+[ "${#frame_observer_build_receipts[@]}" -eq 1 ] \
+    || { tail -n 240 "$OBSERVER_LOG" >&2; die 'Android emulator frame-observer build receipt is absent or duplicated'; }
+mapfile -t frame_observer_receipts < <(grep -E \
+    '^ANDROID_EMULATOR_FRAME_OBSERVER=pass endpoint=127\.0\.0\.1:8554 transport=grpc-stream format=rgb888 orientation=bottom-up frames_received=[1-9][0-9]* frames_published=[1-9][0-9]* last_seq=[0-9]+ cleanup=joined$' \
+    "$OBSERVER_LOG" || true)
+[ "${#frame_observer_receipts[@]}" -eq 1 ] \
+    || { tail -n 240 "$OBSERVER_LOG" >&2; die 'Android emulator frame-observer runtime receipt is absent or duplicated'; }
+observer_inventory="$(find "$OBSERVER_ROOT" -mindepth 1 -maxdepth 1 \
+    -printf '%f\n' | LC_ALL=C sort)"
+[ "$observer_inventory" = $'latest.frame\nready\nstop\nstopped' ] \
+    || die "Android emulator frame-observer output inventory differs: $observer_inventory"
+for observer_output in latest.frame ready stop stopped; do
+    [ -f "$OBSERVER_ROOT/$observer_output" ] \
+        && [ ! -L "$OBSERVER_ROOT/$observer_output" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- \
+            "$OBSERVER_ROOT/$observer_output")" = 1000:1000:600:1 ] \
+        || die "Android emulator frame-observer output metadata differs: $observer_output"
+done
+[ "$(stat -c '%s' -- "$OBSERVER_ROOT/latest.frame")" -ge 1024 ] \
+    && [ "$(stat -c '%s' -- "$OBSERVER_ROOT/latest.frame")" -le 262144 ] \
+    && [ "$(stat -c '%s' -- "$OBSERVER_ROOT/ready")" -le 128 ] \
+    && [ "$(stat -c '%s' -- "$OBSERVER_ROOT/stop")" -eq 5 ] \
+    && [ "$(stat -c '%s' -- "$OBSERVER_ROOT/stopped")" -le 256 ] \
+    || die 'Android emulator frame-observer output size differs'
+[ "$(<"$OBSERVER_ROOT/stop")" = stop ] \
+    || die 'Android emulator frame-observer stop marker differs'
+[[ "${frame_observer_receipts[0]}" =~ \
+    frames_received=([1-9][0-9]*)\ frames_published=([1-9][0-9]*)\ last_seq=([0-9]+)\ cleanup=joined$ ]] \
+    || die 'Android emulator frame-observer runtime counts are malformed'
+observer_frames_received=${BASH_REMATCH[1]}
+observer_frames_published=${BASH_REMATCH[2]}
+observer_last_sequence=${BASH_REMATCH[3]}
+[ "$observer_frames_received" -ge "$observer_frames_published" ] \
+    || die 'Android emulator frame-observer published more frames than it received'
+[ "$(<"$OBSERVER_ROOT/stopped")" = \
+  "stopped frames_received=$observer_frames_received frames_published=$observer_frames_published last_seq=$observer_last_sequence" ] \
+    || die 'Android emulator frame-observer finality receipt differs from its output marker'
 mapfile -t renderer_receipts < <(grep -E \
     '^ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader angle=(present|absent) gles_sha256=[0-9a-f]{64}$' \
     "$RUNTIME_LOG" || true)
@@ -464,6 +649,8 @@ esac
 [ "$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' \
     "$RUNTIME_CONTAINER")" = exited:0 ] \
     || die 'Android runtime container did not exit cleanly'
+vm_docker rm "$OBSERVER_CONTAINER" >/dev/null
+OBSERVER_CONTAINER=
 vm_docker rm "$RUNTIME_CONTAINER" >/dev/null
 RUNTIME_CONTAINER=
 [ -z "$(vm_docker ps -aq)" ] \
@@ -483,8 +670,11 @@ verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
 verify_sha256 "$ONLINE_DIR/cargo-vendor-config.toml" "$SHA256_CARGO_VENDOR_CONFIG"
 verify_image android-builder "$ANDROID_BUILDER_CONFIG_ID"
 verify_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"
-printf '%s\n' "${apk_receipts[0]}" "${renderer_receipts[0]}" \
-    "${runtime_receipts[0]}" \
+printf '%s\n' "${apk_receipts[0]}" "${endpoint_receipts[0]}" \
+    "${frame_parser_receipts[0]}" \
+    "${frame_observer_self_test_receipts[0]}" \
+    "${frame_observer_build_receipts[0]}" "${frame_observer_receipts[0]}" \
+    "${renderer_receipts[0]}" "${runtime_receipts[0]}" \
     "${lifecycle_receipts[0]}" "${peer_receipts[0]}"
 printf 'ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=%s apk_sha256=%s signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=%s runtime=%s peer=production-loopback-cpace-changing-display vm_network=none container_network=none inputs=readonly cleanup=joined\n' \
     "$ARTIFACT_SOURCE_COMMIT" "$APK_SHA256" \

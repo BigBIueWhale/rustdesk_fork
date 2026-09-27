@@ -2787,6 +2787,9 @@ run_android_emulator_runtime() {
     local staged_apk_before
     local entry_receipt apk_receipt renderer_receipt runtime_receipt
     local lifecycle_receipt peer_receipt check_receipt checksum_line
+    local frame_endpoint_receipt frame_parser_receipt
+    local frame_observer_self_test_receipt frame_observer_build_receipt
+    local frame_observer_receipt
     local -a git_builder=(
         setpriv --reuid=1000 --regid=1000 --clear-groups
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
@@ -2836,6 +2839,8 @@ run_android_emulator_runtime() {
     rm -rf -- "$source_root/.git"
     for workload in \
         android-emulator-runtime-check.sh \
+        android-emulator-frame-observer.sh \
+        android-emulator-frame.py \
         smoke-android-emulator-boot.sh \
         smoke-server-stage.sh \
         smoke-xvfb-prepare.sh \
@@ -2852,6 +2857,7 @@ run_android_emulator_runtime() {
             || fail "Android emulator runtime workload metadata differs: $workload"
     done
     for workload in pins.env lib.sh online-android-sdk-output.py \
+        AndroidEmulatorFrameObserver.java \
         flutter-peer-source-x11.c \
         smoke-bind-loopback.c smoke-server-launcher.c \
         smoke-xvfb-files.tsv smoke-xvfb-packages.tsv; do
@@ -2869,6 +2875,9 @@ run_android_emulator_runtime() {
         "$source_root/scripts/pins.env" \
         "$source_root/scripts/lib.sh" \
         "$source_root/scripts/android-emulator-runtime-check.sh" \
+        "$source_root/scripts/android-emulator-frame-observer.sh" \
+        "$source_root/scripts/android-emulator-frame.py" \
+        "$source_root/scripts/AndroidEmulatorFrameObserver.java" \
         "$source_root/scripts/smoke-android-emulator-boot.sh" \
         "$source_root/scripts/smoke-server-stage.sh" \
         "$source_root/scripts/smoke-xvfb-prepare.sh" \
@@ -3125,6 +3134,36 @@ run_android_emulator_runtime() {
         || { tail -n 320 "$output" >&2; fail 'Android runtime APK receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APK=' "$output")" -eq 1 ] \
         || fail 'Android runtime APK receipt is duplicated'
+    frame_endpoint_receipt="$(grep -Fx \
+        'ANDROID_EMULATOR_FRAME_ENDPOINT=pass listener=127.0.0.1:8554 transport=grpc-stream network=container-loopback' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android frame-endpoint receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_FRAME_ENDPOINT=' "$output")" -eq 1 ] \
+        || fail 'Android frame-endpoint receipt is duplicated'
+    frame_parser_receipt="$(grep -Fx \
+        'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass scenarios=11' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android frame-parser receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=' "$output")" -eq 1 ] \
+        || fail 'Android frame-parser receipt is duplicated'
+    frame_observer_self_test_receipt="$(grep -Fx \
+        'ANDROID_EMULATOR_FRAME_OBSERVER_SELF_TEST=pass scenarios=7' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android frame-observer self-test receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_FRAME_OBSERVER_SELF_TEST=' "$output")" -eq 1 ] \
+        || fail 'Android frame-observer self-test receipt is duplicated'
+    frame_observer_build_receipt="$(grep -E \
+        '^ANDROID_EMULATOR_FRAME_OBSERVER_BUILD=pass protoc=3\.20\.1 protobuf=3\.22\.3 grpc=1\.57\.0 jars=31 generated_sources=[1-9][0-9]* network=container-loopback output=private-bind$' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android frame-observer build receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_FRAME_OBSERVER_BUILD=' "$output")" -eq 1 ] \
+        || fail 'Android frame-observer build receipt is duplicated'
+    frame_observer_receipt="$(grep -E \
+        '^ANDROID_EMULATOR_FRAME_OBSERVER=pass endpoint=127\.0\.0\.1:8554 transport=grpc-stream format=rgb888 orientation=bottom-up frames_received=[1-9][0-9]* frames_published=[1-9][0-9]* last_seq=[0-9]+ cleanup=joined$' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android frame-observer runtime receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_FRAME_OBSERVER=' "$output")" -eq 1 ] \
+        || fail 'Android frame-observer runtime receipt is duplicated'
     renderer_receipt="$(grep -E \
         '^ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader angle=(present|absent) gles_sha256=[0-9a-f]{64}$' \
         "$output")" \
@@ -3170,6 +3209,9 @@ run_android_emulator_runtime() {
           "$source_root/scripts/pins.env" \
           "$source_root/scripts/lib.sh" \
           "$source_root/scripts/android-emulator-runtime-check.sh" \
+          "$source_root/scripts/android-emulator-frame-observer.sh" \
+          "$source_root/scripts/android-emulator-frame.py" \
+          "$source_root/scripts/AndroidEmulatorFrameObserver.java" \
           "$source_root/scripts/smoke-android-emulator-boot.sh" \
           "$source_root/scripts/smoke-server-stage.sh" \
           "$source_root/scripts/smoke-xvfb-prepare.sh" \
@@ -3221,7 +3263,10 @@ run_android_emulator_runtime() {
     umount "$inputs" \
         || fail 'cannot retire the sealed Android runtime input mount'
     SEALED_INPUTS_MOUNTED=0
-    printf '%s\n' "$entry_receipt" "$apk_receipt" "$renderer_receipt" \
+    printf '%s\n' "$entry_receipt" "$apk_receipt" \
+        "$frame_endpoint_receipt" "$frame_parser_receipt" \
+        "$frame_observer_self_test_receipt" "$frame_observer_build_receipt" \
+        "$frame_observer_receipt" "$renderer_receipt" \
         "$runtime_receipt" "$lifecycle_receipt" "$peer_receipt" \
         "$check_receipt"
     printf 'ANDROID_EMULATOR_RUNTIME_VM=pass harness_commit=%s harness_tree=%s artifact_commit=%s artifact_tree=%s apk_sha256=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s signing=test-only peer=production-loopback-cpace-changing-display uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked artifact=readonly-landlocked source=exact-pushed cleanup=joined\n' \

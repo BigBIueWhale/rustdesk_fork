@@ -30,6 +30,11 @@ elif [ -z "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = launch ]; then
 else
     fail 'the Android app scenario differs from launch, lifecycle, or peer-lifecycle'
 fi
+EMULATOR_GRPC_ARGS=()
+if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+    EMULATOR_GRPC_ARGS=(-grpc 8554)
+fi
+readonly -a EMULATOR_GRPC_ARGS
 readonly SCRIPT_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/pins.env
 source "$SCRIPT_DIR/pins.env"
@@ -99,6 +104,13 @@ readonly ADB_LOG=$WORK_ROOT/adb.log
 readonly FRAMEBUFFER=$WORK_ROOT/framebuffer.png
 readonly ANDROID_CONNECTION_DIAGNOSTIC=$WORK_ROOT/android-connection.diagnostic
 readonly ANDROID_CONTROLLED_CPACE_LOG=$WORK_ROOT/android-controlled-cpace.log
+readonly FRAME_OBSERVER_ROOT=/observer
+readonly FRAME_OBSERVER_FRAME=$FRAME_OBSERVER_ROOT/latest.frame
+readonly FRAME_OBSERVER_READY=$FRAME_OBSERVER_ROOT/ready
+readonly FRAME_OBSERVER_FAILURE=$FRAME_OBSERVER_ROOT/failure
+readonly FRAME_OBSERVER_STOP=$FRAME_OBSERVER_ROOT/stop
+readonly FRAME_OBSERVER_STOPPED=$FRAME_OBSERVER_ROOT/stopped
+readonly FRAME_DECODER=$SCRIPT_DIR/android-emulator-frame.py
 mkdir -m 0700 -p -- "$SDK_ROOT" "$HOME_ROOT" "$AVD_HOME" "$SYSTEM_ROOT" \
     "$SDK_ROOT/platform-tools"
 
@@ -257,10 +269,13 @@ PEER_CREDENTIAL_PROMPT_MS=0
 PEER_CREDENTIAL_SEMANTIC_MODE=unavailable
 ANDROID_CONTROL_FORWARD_READY=0
 ANDROID_CONTROL_FORWARD_LISTING=
+FRAME_OBSERVER_STOP_REQUESTED=0
+FRAME_OBSERVER_JOINED=0
 readonly PEER_RECOVERY_LIMIT_MS=8000
 readonly PEER_FRESHNESS_LIMIT_MS=2000
 # A timing observer that consumes a material part of the freshness budget
-# cannot classify the product.  Raw capture gets one quarter of that budget.
+# cannot classify the product.  Emulator-stream transport and publication get
+# one quarter of that budget.
 readonly PEER_CAPTURE_LIMIT_MS=500
 readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
 # The nested, acceleration-off x86_64 emulator can spend multiple minutes in the
@@ -309,6 +324,68 @@ is_exact_adb_process() {
     [ -n "$ADB_PID" ] && [ -n "$ADB_START" ] \
         && [ -r "/proc/$ADB_PID/stat" ] \
         && [ "$(process_start_time "$ADB_PID" 2>/dev/null)" = "$ADB_START" ]
+}
+
+frame_observer_listener_is_exact() {
+    [ "$(awk 'FNR > 1 && $4 == "0A" && substr($2, length($2) - 4) == ":216A" {
+            count++
+        }
+        END { print count + 0 }' /proc/net/tcp /proc/net/tcp6)" -eq 1 ] \
+        && awk 'FNR > 1 && $4 == "0A" && substr($2, length($2) - 4) == ":216A" {
+                if (FILENAME != "/proc/net/tcp" || $2 != "0100007F:216A") bad=1
+            }
+            END { exit bad ? 1 : 0 }' /proc/net/tcp /proc/net/tcp6
+}
+
+frame_observer_failure_detail() {
+    [ -f "$FRAME_OBSERVER_FAILURE" ] \
+        && [ ! -L "$FRAME_OBSERVER_FAILURE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$FRAME_OBSERVER_FAILURE")" = \
+             1000:1000:600:1 ] \
+        && [ "$(stat -c '%s' -- "$FRAME_OBSERVER_FAILURE")" -le 1024 ] \
+        || return 1
+    tr '\r\n' '  ' <"$FRAME_OBSERVER_FAILURE" | cut -c 1-1024
+}
+
+stop_frame_observer() {
+    local detail= stopped= temporary=
+    [ "$WORKLOAD" = app-peer-lifecycle ] || return 0
+    [ "$FRAME_OBSERVER_JOINED" -eq 0 ] || return 0
+    [ -d "$FRAME_OBSERVER_ROOT" ] && [ ! -L "$FRAME_OBSERVER_ROOT" ] \
+        && [ "$(stat -c '%u:%g:%a' -- "$FRAME_OBSERVER_ROOT")" = \
+             1000:1000:700 ] \
+        || return 1
+    if [ "$FRAME_OBSERVER_STOP_REQUESTED" -eq 0 ]; then
+        temporary=$FRAME_OBSERVER_ROOT/.stop.$$
+        [ ! -e "$temporary" ] && [ ! -L "$temporary" ] || return 1
+        printf 'stop\n' >"$temporary" || return 1
+        chmod 0600 "$temporary" || return 1
+        mv -T -- "$temporary" "$FRAME_OBSERVER_STOP" || return 1
+        FRAME_OBSERVER_STOP_REQUESTED=1
+    fi
+    for _ in $(seq 1 200); do
+        if [ -e "$FRAME_OBSERVER_FAILURE" ] || [ -L "$FRAME_OBSERVER_FAILURE" ]; then
+            detail="$(frame_observer_failure_detail 2>/dev/null || true)"
+            printf 'Android frame observer failure: %s\n' "${detail:-malformed}" >&2
+            return 1
+        fi
+        if [ -f "$FRAME_OBSERVER_STOPPED" ] \
+           && [ ! -L "$FRAME_OBSERVER_STOPPED" ]; then
+            break
+        fi
+        sleep 0.05
+    done
+    [ -f "$FRAME_OBSERVER_STOPPED" ] \
+        && [ ! -L "$FRAME_OBSERVER_STOPPED" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$FRAME_OBSERVER_STOPPED")" = \
+             1000:1000:600:1 ] \
+        && [ "$(stat -c '%s' -- "$FRAME_OBSERVER_STOPPED")" -le 256 ] \
+        || return 1
+    stopped="$(<"$FRAME_OBSERVER_STOPPED")"
+    [[ "$stopped" =~ ^stopped\ frames_received=([1-9][0-9]*)\ frames_published=([1-9][0-9]*)\ last_seq=([0-9]+)$ ]] \
+        || return 1
+    [ "${BASH_REMATCH[1]}" -ge "${BASH_REMATCH[2]}" ] || return 1
+    FRAME_OBSERVER_JOINED=1
 }
 
 print_android_connection_diagnostic() {
@@ -674,6 +751,7 @@ cleanup() {
         fi
     fi
     remove_android_control_forward || cleanup_status=1
+    stop_frame_observer || cleanup_status=1
     stop_emulator || cleanup_status=1
     stop_peer_infrastructure || cleanup_status=1
     if [ "$status" -ne 0 ]; then
@@ -709,6 +787,14 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     readonly PEER_SOURCE_LOG=$WORK_ROOT/peer-source.log
     readonly PEER_SERVER_LOG=$WORK_ROOT/peer-server.log
     readonly PEER_XVFB_LOG=$WORK_ROOT/peer-xvfb.log
+    [ -f "$FRAME_DECODER" ] && [ ! -L "$FRAME_DECODER" ] \
+        || fail 'the Android emulator frame decoder is absent or ambiguous'
+    [ -d "$FRAME_OBSERVER_ROOT" ] && [ ! -L "$FRAME_OBSERVER_ROOT" ] \
+        && [ "$(stat -c '%u:%g:%a' -- "$FRAME_OBSERVER_ROOT")" = \
+             1000:1000:700 ] \
+        || fail 'the Android emulator frame-observer exchange root differs'
+    [ -z "$(find "$FRAME_OBSERVER_ROOT" -mindepth 1 -maxdepth 1 -print -quit)" ] \
+        || fail 'the Android emulator frame-observer exchange root is not empty'
     [ "$(find /sys/class/net -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)" = lo ] \
         || fail 'the real-peer runtime container has a non-loopback interface'
     [ -f "$PEER_TARGET/android-peer-manifest.sha256" ] \
@@ -849,12 +935,29 @@ done
     -wipe-data \
     -accel off \
     -gpu swiftshader \
+    "${EMULATOR_GRPC_ARGS[@]}" \
     >"$EMULATOR_LOG" 2>&1 &
 EMULATOR_PID=$!
 EMULATOR_START="$(process_start_time "$EMULATOR_PID")" \
     || fail 'cannot bind the emulator process generation'
 [[ "$EMULATOR_START" =~ ^[1-9][0-9]*$ ]] \
     || fail 'the emulator process start time is malformed'
+
+if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+    grpc_ready=0
+    for _ in $(seq 1 300); do
+        is_exact_emulator_process \
+            || fail 'the Android emulator exited before its display observer became ready'
+        if frame_observer_listener_is_exact; then
+            grpc_ready=1
+            break
+        fi
+        sleep 0.1
+    done
+    [ "$grpc_ready" -eq 1 ] \
+        || fail 'the emulator display observer is not one exact 127.0.0.1:8554 listener'
+    printf 'ANDROID_EMULATOR_FRAME_ENDPOINT=pass listener=127.0.0.1:8554 transport=grpc-stream network=container-loopback\n'
+fi
 
 boot_ready=0
 for _ in $(seq 1 3600); do
@@ -1721,160 +1824,63 @@ peer_source_state() {
 
 decode_peer_framebuffer() {
     local framebuffer=$1 source_state=$2 mode=${3:-decode}
-    python3 -I -S - "$framebuffer" "$source_state" "$mode" <<'PY'
-import collections
-import struct
-import sys
-
-path = sys.argv[1]
-source_state = int(sys.argv[2])
-mode = sys.argv[3] if len(sys.argv) > 3 else "decode"
-palette = (
-    (232, 36, 36), (36, 224, 48), (36, 64, 232), (232, 220, 36),
-    (224, 36, 220), (36, 220, 220), (240, 120, 24), (128, 40, 232),
-    (24, 132, 232), (232, 40, 128), (132, 232, 24), (24, 232, 132),
-    (196, 92, 44), (44, 196, 92), (92, 44, 196), (196, 196, 196),
-)
-
-with open(path, "rb") as stream:
-    data = stream.read(8 * 1024 * 1024 + 1)
-if len(data) < 16 or len(data) > 8 * 1024 * 1024:
-    raise SystemExit(1)
-# Android 14 screencap writes four native-endian uint32 values followed by
-# tightly packed rows.  This harness admits only the pinned x86_64 image.
-width, height, pixel_format, dataspace = struct.unpack("<IIII", data[:16])
-if (width, height) not in ((480, 800), (800, 480)) or dataspace not in (0, 1, 2):
-    raise SystemExit(1)
-formats = {
-    1: ("rgba8888", 4),
-    2: ("rgbx8888", 4),
-    3: ("rgb888", 3),
-    4: ("rgb565", 2),
-    5: ("bgra8888", 4),
+    local -a arguments=(decode "$framebuffer" "$source_state")
+    [ "$mode" = diagnose ] && arguments+=(diagnose)
+    python3 -I -S "$FRAME_DECODER" "${arguments[@]}"
 }
-if pixel_format not in formats:
-    raise SystemExit(1)
-format_name, bytes_per_pixel = formats[pixel_format]
-expected_size = 16 + width * height * bytes_per_pixel
-if len(data) != expected_size:
-    raise SystemExit(1)
-pixels = memoryview(data)[16:]
 
-
-def read_rgb(offset):
-    if pixel_format in (1, 2, 3):
-        return pixels[offset], pixels[offset + 1], pixels[offset + 2]
-    if pixel_format == 5:
-        return pixels[offset + 2], pixels[offset + 1], pixels[offset]
-    packed = pixels[offset] | (pixels[offset + 1] << 8)
-    red = (((packed >> 11) & 0x1f) * 255 + 15) // 31
-    green = (((packed >> 5) & 0x3f) * 255 + 31) // 63
-    blue = ((packed & 0x1f) * 255 + 15) // 31
-    return red, green, blue
-
-regions = {
-    "left-right": (collections.Counter(), collections.Counter()),
-    "top-bottom": (collections.Counter(), collections.Counter()),
-}
-sample_count = 0
-sampled_colors = collections.Counter()
-for y in range(0, height, 2):
-    row_offset = y * width * bytes_per_pixel
-    for x in range(0, width, 2):
-        rgb = read_rgb(row_offset + x * bytes_per_pixel)
-        sampled_colors[rgb] += 1
-        distances = [sum((rgb[i] - color[i]) ** 2 for i in range(3)) for color in palette]
-        nearest = min(range(len(palette)), key=distances.__getitem__)
-        if distances[nearest] > 55 * 55:
-            continue
-        regions["left-right"][0 if x < width // 2 else 1][nearest] += 1
-        regions["top-bottom"][0 if y < height // 2 else 1][nearest] += 1
-        sample_count += 1
-
-candidates = []
-for layout, (first, second) in regions.items():
-    if not first or not second:
-        continue
-    low, low_count = first.most_common(1)[0]
-    high, high_count = second.most_common(1)[0]
-    state = high * 16 + low
-    age = (source_state - state) % 256
-    score = min(low_count, high_count)
-    candidates.append((age <= 8, score, -age, state, age, layout,
-                       low_count + high_count))
-if mode == "diagnose":
-    top_colors = ",".join(
-        f"{red:02x}{green:02x}{blue:02x}:{count}"
-        for (red, green, blue), count in sampled_colors.most_common(8)
-    ) or "none"
-    candidate_summary = ",".join(
-        f"{layout}:state-{state}:age-{age}:score-{score}:matched-{matched}"
-        for _, score, _, state, age, layout, matched in candidates
-    ) or "none"
-    print(
-        "ANDROID_PEER_FRAMEBUFFER_DIAGNOSTIC "
-        f"width={width} height={height} format={format_name} "
-        f"dataspace={dataspace} source_state={source_state} "
-        f"palette_samples={sample_count} top_colors={top_colors} "
-        f"candidates={candidate_summary}"
-    )
-    raise SystemExit(0)
-valid = [candidate for candidate in candidates if candidate[0]]
-if not valid:
-    print(
-        f"unavailable {format_name} {dataspace} {width} {height}"
-    )
-    raise SystemExit(0)
-chosen = max(valid)
-_, score, _, state, age, layout, matched = chosen
-minimum = max(300, (width * height) // 40)
-if score < minimum or matched < minimum * 2:
-    print(
-        f"unavailable {format_name} {dataspace} {width} {height}"
-    )
-    raise SystemExit(0)
-print(
-    f"{state} {age} {score} {matched} {layout} "
-    f"{format_name} {dataspace} {width} {height}"
-)
-PY
+wait_frame_observer_ready() {
+    local detail= ready=
+    for _ in $(seq 1 600); do
+        if [ -e "$FRAME_OBSERVER_FAILURE" ] || [ -L "$FRAME_OBSERVER_FAILURE" ]; then
+            detail="$(frame_observer_failure_detail 2>/dev/null || true)"
+            printf 'ANDROID_PEER_OBSERVER=unavailable reason=observer-failed detail=%s\n' \
+                "${detail:-malformed}"
+            return 1
+        fi
+        if [ -f "$FRAME_OBSERVER_READY" ] \
+           && [ ! -L "$FRAME_OBSERVER_READY" ] \
+           && [ -f "$FRAME_OBSERVER_FRAME" ] \
+           && [ ! -L "$FRAME_OBSERVER_FRAME" ]; then
+            break
+        fi
+        sleep 0.05
+    done
+    [ -f "$FRAME_OBSERVER_READY" ] \
+        && [ ! -L "$FRAME_OBSERVER_READY" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$FRAME_OBSERVER_READY")" = \
+             1000:1000:600:1 ] \
+        && [ "$(stat -c '%s' -- "$FRAME_OBSERVER_READY")" -le 128 ] \
+        || return 1
+    ready="$(<"$FRAME_OBSERVER_READY")"
+    [[ "$ready" =~ ^ready\ seq=([0-9]+)$ ]] || return 1
+    [ -f "$FRAME_OBSERVER_FRAME" ] \
+        && [ ! -L "$FRAME_OBSERVER_FRAME" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$FRAME_OBSERVER_FRAME")" = \
+             1000:1000:600:1 ] \
+        && [ "$(stat -c '%s' -- "$FRAME_OBSERVER_FRAME")" -le 262144 ]
 }
 
 PEER_LAST_RECOVERY_MS=0
 capture_peer_freshness() {
-    local phase=$1 attempt started_ms now_ms source_state framebuffer decoded
-    local capture_started_ms capture_finished_ms capture_elapsed_ms total_elapsed_ms
-    local state age score matched layout format_name dataspace width height
-    local max_age=0 last_framebuffer= framebuffer_size= diagnostic_png=
-    local last_source_state= observer_failure= source_seen=0
+    local phase=$1 attempt=0 started_ms now_ms source_state decoded
+    local total_elapsed_ms capture_elapsed_ms
+    local state age score matched layout format_name orientation width height
+    local sequence timestamp_us last_sequence= observer_failure= source_seen=0
+    local max_age=0 last_source_state= diagnostic_png= framebuffer_size=
     local -A seen=()
+
+    wait_frame_observer_ready \
+        || fail "the Android emulator display observer did not become ready for $phase"
     started_ms="$(monotonic_millis)" \
         || fail "cannot read the monotonic clock for $phase"
-    for attempt in $(seq 1 30); do
+    while [ "$attempt" -lt 160 ]; do
         now_ms="$(monotonic_millis)" \
             || fail "cannot reread the monotonic clock for $phase"
         [ "$((now_ms - started_ms))" -le "$PEER_RECOVERY_LIMIT_MS" ] \
             || break
-        if [ -n "$last_framebuffer" ]; then
-            rm -f -- "$last_framebuffer"
-        fi
-        framebuffer="$WORK_ROOT/peer-$phase-$attempt.raw"
-        capture_started_ms="$(monotonic_millis)" \
-            || fail "cannot start the framebuffer-capture measurement for $phase"
-        timeout --signal=TERM --kill-after=1s 2s \
-            "$ADB" -s "$SERIAL" exec-out screencap >"$framebuffer" \
-            || fail "cannot capture raw Android peer framebuffer for $phase"
-        capture_finished_ms="$(monotonic_millis)" \
-            || fail "cannot finish the framebuffer-capture measurement for $phase"
-        capture_elapsed_ms=$((capture_finished_ms - capture_started_ms))
-        total_elapsed_ms=$((capture_finished_ms - started_ms))
-        last_framebuffer=$framebuffer
-        [ "$capture_elapsed_ms" -le "$PEER_CAPTURE_MAX_MS" ] \
-            || PEER_CAPTURE_MAX_MS=$capture_elapsed_ms
-        if [ "$capture_elapsed_ms" -gt "$PEER_CAPTURE_LIMIT_MS" ]; then
-            printf 'ANDROID_PEER_OBSERVER=unavailable phase=%s attempt=%s capture_ms=%s limit_ms=%s reason=raw-capture-too-slow\n' \
-                "$phase" "$attempt" "$capture_elapsed_ms" "$PEER_CAPTURE_LIMIT_MS"
-            observer_failure="Android raw framebuffer observer exceeded its $PEER_CAPTURE_LIMIT_MS ms limit for $phase"
+        if [ -e "$FRAME_OBSERVER_FAILURE" ] || [ -L "$FRAME_OBSERVER_FAILURE" ]; then
+            observer_failure="Android emulator display observer failed for $phase"
             break
         fi
         source_state="$(peer_source_state 2>/dev/null || true)"
@@ -1882,29 +1888,59 @@ capture_peer_freshness() {
         if [[ "$source_state" =~ ^([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$ ]]; then
             last_source_state=$source_state
             source_seen=1
-            if ! decoded="$(decode_peer_framebuffer "$framebuffer" "$source_state" 2>/dev/null)"; then
-                framebuffer_size="$(stat -c '%s' -- "$framebuffer")"
-                printf 'ANDROID_PEER_OBSERVER=unavailable phase=%s attempt=%s bytes=%s sha256=%s reason=invalid-raw-framebuffer\n' \
-                    "$phase" "$attempt" "$framebuffer_size" \
-                    "$(sha256sum "$framebuffer" | awk '{ print $1 }')"
-                observer_failure="Android raw framebuffer observer rejected its input for $phase"
+            if ! decoded="$(decode_peer_framebuffer \
+                "$FRAME_OBSERVER_FRAME" "$source_state" 2>/dev/null)"; then
+                printf 'ANDROID_PEER_OBSERVER=unavailable phase=%s reason=invalid-grpc-frame-record\n' \
+                    "$phase"
+                observer_failure="Android emulator display observer returned an invalid frame for $phase"
                 break
             fi
         fi
-        if [[ "$decoded" =~ ^([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)\ (left-right|top-bottom)\ (rgba8888|rgbx8888|rgb888|rgb565|bgra8888)\ ([012])\ (480|800)\ (480|800)$ ]]; then
+        if [[ "$decoded" =~ ^([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)\ (left-right|top-bottom)\ (rgb888)\ (bottom-up)\ (120|200)\ (120|200)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)$ ]]; then
             state=${BASH_REMATCH[1]}
             age=${BASH_REMATCH[2]}
             score=${BASH_REMATCH[3]}
             matched=${BASH_REMATCH[4]}
             layout=${BASH_REMATCH[5]}
             format_name=${BASH_REMATCH[6]}
-            dataspace=${BASH_REMATCH[7]}
+            orientation=${BASH_REMATCH[7]}
             width=${BASH_REMATCH[8]}
             height=${BASH_REMATCH[9]}
-            printf 'ANDROID_PEER_FRAME_SAMPLE phase=%s attempt=%s elapsed_ms=%s capture_ms=%s source_state=%s display_state=%s age=%s score=%s matched=%s layout=%s format=%s dataspace=%s dimensions=%sx%s\n' \
+            sequence=${BASH_REMATCH[10]}
+            timestamp_us=${BASH_REMATCH[11]}
+            capture_elapsed_ms=${BASH_REMATCH[12]}
+            if ! { [ "$width:$height" = 120:200 ] \
+                   || [ "$width:$height" = 200:120 ]; }; then
+                observer_failure="Android emulator display observer dimensions differ for $phase"
+                break
+            fi
+            if [ -n "$last_sequence" ]; then
+                if [ "$sequence" -lt "$last_sequence" ]; then
+                    observer_failure="Android emulator display observer sequence regressed for $phase"
+                    break
+                fi
+                if [ "$sequence" -eq "$last_sequence" ]; then
+                    sleep 0.05
+                    continue
+                fi
+            fi
+            last_sequence=$sequence
+            attempt=$((attempt + 1))
+            total_elapsed_ms=$((now_ms - started_ms))
+            [ "$capture_elapsed_ms" -le "$PEER_CAPTURE_MAX_MS" ] \
+                || PEER_CAPTURE_MAX_MS=$capture_elapsed_ms
+            if [ "$capture_elapsed_ms" -gt "$PEER_CAPTURE_LIMIT_MS" ]; then
+                printf 'ANDROID_PEER_OBSERVER=unavailable phase=%s attempt=%s observer_age_ms=%s limit_ms=%s seq=%s reason=grpc-frame-too-old\n' \
+                    "$phase" "$attempt" "$capture_elapsed_ms" \
+                    "$PEER_CAPTURE_LIMIT_MS" "$sequence"
+                observer_failure="Android emulator display observer exceeded its $PEER_CAPTURE_LIMIT_MS ms limit for $phase"
+                break
+            fi
+            printf 'ANDROID_PEER_FRAME_SAMPLE phase=%s attempt=%s elapsed_ms=%s observer_age_ms=%s source_state=%s display_state=%s age=%s score=%s matched=%s layout=%s format=%s orientation=%s dimensions=%sx%s seq=%s timestamp_us=%s\n' \
                 "$phase" "$attempt" "$total_elapsed_ms" "$capture_elapsed_ms" \
                 "$source_state" "$state" "$age" "$score" "$matched" "$layout" \
-                "$format_name" "$dataspace" "$width" "$height"
+                "$format_name" "$orientation" "$width" "$height" "$sequence" \
+                "$timestamp_us"
             seen[$state]=1
             [ "$age" -le "$max_age" ] || max_age=$age
             if [ "${#seen[@]}" -ge 2 ]; then
@@ -1916,37 +1952,58 @@ capture_peer_freshness() {
                 PEER_DISTINCT_FRAMES=$((PEER_DISTINCT_FRAMES + ${#seen[@]}))
                 [ "$((max_age * 250))" -le "$PEER_FRESHNESS_MAX_MS" ] \
                     || PEER_FRESHNESS_MAX_MS=$((max_age * 250))
-                printf 'ANDROID_PEER_FRESHNESS=pass phase=%s recovery_ms=%s max_age_ms=%s distinct=%s score=%s matched=%s layout=%s\n' \
+                printf 'ANDROID_PEER_FRESHNESS=pass phase=%s recovery_ms=%s max_age_ms=%s distinct=%s score=%s matched=%s layout=%s observer=emulator-grpc-rgb888 last_seq=%s\n' \
                     "$phase" "$PEER_LAST_RECOVERY_MS" "$((max_age * 250))" \
-                    "${#seen[@]}" "$score" "$matched" "$layout"
-                rm -f -- "$last_framebuffer"
-                last_framebuffer=
+                    "${#seen[@]}" "$score" "$matched" "$layout" "$sequence"
                 return 0
             fi
-        elif [[ "$decoded" =~ ^unavailable\ (rgba8888|rgbx8888|rgb888|rgb565|bgra8888)\ ([012])\ (480|800)\ (480|800)$ ]] \
+        elif [[ "$decoded" =~ ^unavailable\ rgb888\ bottom-up\ (120|200)\ (120|200)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)$ ]] \
              || [ -z "$decoded" ]; then
-            printf 'ANDROID_PEER_FRAME_SAMPLE phase=%s attempt=%s elapsed_ms=%s capture_ms=%s source_state=%s display_state=unavailable\n' \
-                "$phase" "$attempt" "$total_elapsed_ms" "$capture_elapsed_ms" \
-                "${source_state:-unavailable}"
+            if [ -n "$decoded" ]; then
+                width=${BASH_REMATCH[1]}
+                height=${BASH_REMATCH[2]}
+                sequence=${BASH_REMATCH[3]}
+                timestamp_us=${BASH_REMATCH[4]}
+                capture_elapsed_ms=${BASH_REMATCH[5]}
+                if [ -n "$last_sequence" ] && [ "$sequence" -lt "$last_sequence" ]; then
+                    observer_failure="Android emulator display observer sequence regressed for $phase"
+                    break
+                fi
+                if [ -n "$last_sequence" ] && [ "$sequence" -eq "$last_sequence" ]; then
+                    sleep 0.05
+                    continue
+                fi
+                last_sequence=$sequence
+                attempt=$((attempt + 1))
+                [ "$capture_elapsed_ms" -le "$PEER_CAPTURE_MAX_MS" ] \
+                    || PEER_CAPTURE_MAX_MS=$capture_elapsed_ms
+                if [ "$capture_elapsed_ms" -gt "$PEER_CAPTURE_LIMIT_MS" ]; then
+                    observer_failure="Android emulator display observer exceeded its $PEER_CAPTURE_LIMIT_MS ms limit for $phase"
+                    break
+                fi
+                total_elapsed_ms=$((now_ms - started_ms))
+                printf 'ANDROID_PEER_FRAME_SAMPLE phase=%s attempt=%s elapsed_ms=%s observer_age_ms=%s source_state=%s display_state=unavailable dimensions=%sx%s seq=%s timestamp_us=%s\n' \
+                    "$phase" "$attempt" "$total_elapsed_ms" "$capture_elapsed_ms" \
+                    "$source_state" "$width" "$height" "$sequence" "$timestamp_us"
+            fi
         else
-            printf 'ANDROID_PEER_OBSERVER=unavailable phase=%s attempt=%s reason=malformed-decoder-result\n' \
-                "$phase" "$attempt"
-            observer_failure="Android raw framebuffer observer returned a malformed result for $phase"
+            printf 'ANDROID_PEER_OBSERVER=unavailable phase=%s reason=malformed-decoder-result\n' \
+                "$phase"
+            observer_failure="Android emulator display observer returned a malformed result for $phase"
             break
         fi
-        sleep 0.5
+        sleep 0.05
     done
     if [ "$source_seen" -eq 0 ] && [ -z "$observer_failure" ]; then
         printf 'ANDROID_PEER_OBSERVER=unavailable phase=%s reason=missing-source-state\n' \
             "$phase"
         observer_failure="Android peer source-state observer produced no valid state for $phase"
     fi
-    if [ -n "$last_framebuffer" ] && [ -f "$last_framebuffer" ]; then
-        if [ -n "$last_source_state" ]; then
-            decode_peer_framebuffer "$last_framebuffer" "$last_source_state" diagnose \
-                || true
-        fi
-        rm -f -- "$last_framebuffer"
+    if [ -n "$last_source_state" ] \
+       && [ -f "$FRAME_OBSERVER_FRAME" ] \
+       && [ ! -L "$FRAME_OBSERVER_FRAME" ]; then
+        decode_peer_framebuffer \
+            "$FRAME_OBSERVER_FRAME" "$last_source_state" diagnose || true
     fi
     capture_ui_hierarchy complete && print_initial_ui_semantics
     capture_android_connection_diagnostic active || true
@@ -2912,9 +2969,16 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
         || fail 'the Android peer reverse mapping survived explicit removal'
     PEER_REVERSE_READY=0
     PEER_REVERSE_LISTING=
+    stop_frame_observer \
+        || fail 'the Android emulator display observer did not join cleanly'
+    frame_observer_listener_is_exact \
+        || fail 'the emulator display endpoint changed before emulator shutdown'
 fi
 
 stop_emulator || fail 'Android emulator or adb did not stop within the bounded teardown'
+[ "$WORKLOAD" != app-peer-lifecycle ] \
+    || ! frame_observer_listener_is_exact \
+    || fail 'the emulator display endpoint survived emulator shutdown'
 [ -z "$(find /proc -maxdepth 2 -path '*/comm' -readable -exec \
     awk '$0 == "qemu-system-x86" { print FILENAME }' {} + 2>/dev/null)" ] \
     || fail 'an Android emulator process survived bounded teardown'

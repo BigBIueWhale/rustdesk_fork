@@ -1845,6 +1845,7 @@ android_peer_root_presentation_count() {
     timeout --signal=TERM --kill-after=1s 2s \
         "$ADB" -s "$SERIAL" logcat -d -v brief 'flutter:I' '*:S' \
         2>/dev/null \
+        | tr -d '\r' \
         | awk '
             function has_rgba_sample(prefix, i, value) {
                 for (i = 1; i <= NF; i++) {

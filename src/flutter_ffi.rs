@@ -113,12 +113,12 @@ pub fn stop_global_event_stream(app_type: String) {
 }
 pub enum EventToUI {
     Event(String),
-    Rgba(usize, u64), // (display, exact publication)
-    Texture(usize),   // display
+    Rgba(usize, u64),              // (display, exact publication)
+    Texture(usize),                // display
     CursorPosition(i32, i32, u64), // (x, y, exact publication)
     CursorData(String, u64, i32, i32, i32, i32, Vec<u8>, u64),
     // (id, revision, hotx, hoty, width, height, rgba, exact publication)
-    CursorId(String, u64, u64), // (id, revision, exact publication)
+    CursorId(String, u64, u64),     // (id, revision, exact publication)
     CursorUnavailable(String, u64), // (id, exact publication)
 }
 
@@ -282,8 +282,7 @@ pub fn session_login(session_id: SessionID, password: String, remember: bool) {
 }
 
 pub fn session_close(session_id: SessionID, client_owner_id: SessionID) {
-    if let Some(session) =
-        sessions::remove_session_by_exact_ui_owner(&session_id, &client_owner_id)
+    if let Some(session) = sessions::remove_session_by_exact_ui_owner(&session_id, &client_owner_id)
     {
         // `release_remote_keys` is not required for mobile platforms in common cases.
         // But we still call it to make the code more stable.
@@ -360,14 +359,9 @@ pub fn session_set_connect_password(
     password: String,
     remember: bool,
 ) -> SyncReturn<bool> {
-    let accepted = sessions::get_session_by_session_id(&session_id)
-        .is_some_and(|session| {
-            session.set_connect_password_and_reconnect(
-                credential_prompt_round,
-                password,
-                remember,
-            )
-        });
+    let accepted = sessions::get_session_by_session_id(&session_id).is_some_and(|session| {
+        session.set_connect_password_and_reconnect(credential_prompt_round, password, remember)
+    });
     if accepted {
         session_on_waiting_for_image_dialog_show(session_id);
     }
@@ -1909,24 +1903,12 @@ pub fn translate(name: String, locale: String) -> SyncReturn<String> {
     SyncReturn(crate::client::translate_locale(name, &locale))
 }
 
-pub fn session_copy_rgba(
+pub fn session_take_latest_rgba(
     session_id: SessionID,
     display: usize,
     publication: u64,
 ) -> SyncReturn<Option<Vec<u8>>> {
-    SyncReturn(super::flutter::session_copy_rgba(
-        session_id,
-        display,
-        publication,
-    ))
-}
-
-pub fn session_next_rgba(
-    session_id: SessionID,
-    display: usize,
-    publication: u64,
-) -> SyncReturn<()> {
-    SyncReturn(super::flutter::session_next_rgba(
+    SyncReturn(super::flutter::session_take_latest_rgba(
         session_id,
         display,
         publication,

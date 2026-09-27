@@ -9,9 +9,7 @@ import 'package:bot_toast/bot_toast.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter_hbb/common/widgets/peers_view.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/chat_model.dart';
@@ -56,32 +54,6 @@ import 'package:flutter_hbb/native/custom_cursor.dart'
 typedef HandleMsgBox = Function(Map<String, dynamic> evt, String id);
 typedef ReconnectHandle = Function(OverlayDialogManager, SessionID);
 
-const _androidRgbaEngineEvidence = bool.fromEnvironment(
-    'RUSTDESK_ANDROID_RGBA_ENGINE_EVIDENCE',
-    defaultValue: false);
-
-String _rgbaEvidenceSamples(
-    Uint8List pixels, int width, int height, String channelOrder) {
-  if (width <= 0 ||
-      height <= 0 ||
-      pixels.length % height != 0 ||
-      pixels.length ~/ height < width * 4) {
-    return 'format=$channelOrder sample=unavailable';
-  }
-  final rowBytes = pixels.length ~/ height;
-  final y = height ~/ 2;
-  String sample(int x) {
-    final offset = y * rowBytes + x * 4;
-    return List.generate(4, (index) => pixels[offset + index])
-        .map((value) => value.toRadixString(16).padLeft(2, '0'))
-        .join();
-  }
-
-  return 'format=$channelOrder row_bytes=$rowBytes '
-      'quarter_bytes=${sample(width ~/ 4)} '
-      'three_quarter_bytes=${sample(width * 3 ~/ 4)}';
-}
-
 // One UUID owns the mobile Flutter isolate. Each outgoing connection receives a different UUID
 // below; conflating the two lets a delayed dispose from an old route close its replacement.
 final _mobileClientOwnerId = Uuid().v4obj();
@@ -100,6 +72,13 @@ class _SessionOwner {
 
   @override
   int get hashCode => Object.hash(sessionId, clientOwnerId);
+}
+
+class _SoftwareRgbaPublication {
+  const _SoftwareRgbaPublication(this.display, this.publication);
+
+  final int display;
+  final int publication;
 }
 
 class _WebCursorPosition {
@@ -1862,18 +1841,10 @@ class VirtualMouseMode with ChangeNotifier {
 
 class ImageModel with ChangeNotifier {
   ui.Image? _image;
-  RgbaPresentationReceipt? _paintReceipt;
-  bool _reportedAndroidRgbaEngineEvidence = false;
-  bool _reportedAndroidRootLayerEvidence = false;
   final ExactRgbaPublicationOrder<SessionID> _rgbaPublicationOrder =
       ExactRgbaPublicationOrder<SessionID>();
 
   ui.Image? get image => _image;
-
-  VoidCallback? get onImagePainted {
-    final receipt = _paintReceipt;
-    return receipt == null ? null : receipt.painted;
-  }
 
   String id = '';
 
@@ -1893,9 +1864,6 @@ class ImageModel with ChangeNotifier {
 
   void retirePresentation() {
     _rgbaPublicationOrder.retire();
-    final retiringReceipt = _paintReceipt;
-    _paintReceipt = null;
-    retiringReceipt?.retire();
   }
 
   void clearImage() {
@@ -1920,297 +1888,23 @@ class ImageModel with ChangeNotifier {
             expectedSessionId, display, publication);
       }
       if (admission == null) {
-        platformFFI.nextRgba(expectedSessionId, display, publication);
         return false;
       }
     }
-    final paintReceipt = RgbaPresentationReceipt();
     try {
-      final accepted = await decodeAndUpdate(expectedSessionId, display, rgba,
+      return await decodeAndUpdate(expectedSessionId, display, rgba,
           expectedRgbaPublication: admission,
-          presentationReceipt: paintReceipt,
           expectedDisplayTopologyRevision:
               expectedDisplayTopologyRevision);
-      if (!accepted) return false;
-      final presented = await paintReceipt.done ==
-          RgbaPresentationDisposition.painted;
-      if (presented && publication != null) {
-        unawaited(_reportAndroidRootLayerEvidence(
-            expectedSessionId, display, publication));
-      }
-      return presented;
     } catch (e) {
       debugPrint('onRgba error: $e');
       return false;
-    } finally {
-      paintReceipt.retire();
-      if (publication != null) {
-        platformFFI.nextRgba(expectedSessionId, display, publication);
-      }
-    }
-  }
-
-  Future<void> _reportAndroidRootLayerEvidence(
-      SessionID expectedSessionId, int display, int publication) async {
-    if (!isAndroid ||
-        !_androidRgbaEngineEvidence ||
-        _reportedAndroidRootLayerEvidence) {
-      return;
-    }
-    _reportedAndroidRootLayerEvidence = true;
-    ui.Image? rootImage;
-    try {
-      await WidgetsBinding.instance.endOfFrame;
-      if (parent.target?.isCurrentSession(expectedSessionId) != true) {
-        debugPrint('RGBA_PIPELINE flutter-root display=$display '
-            'publication=$publication state=retired');
-        return;
-      }
-      final renderViews =
-          RendererBinding.instance.renderViews.toList(growable: false);
-      if (renderViews.length != 1) {
-        debugPrint('RGBA_PIPELINE flutter-root display=$display '
-            'publication=$publication render_views=${renderViews.length} '
-            'readback=ambiguous');
-        return;
-      }
-      final renderView = renderViews.single;
-      // RenderObject.layer is framework-protected but remains the exact retained
-      // scene submitted by RenderView. Dynamic access keeps this test-only
-      // observation from pretending to be a supported product abstraction.
-      final Object? layer = (renderView as dynamic).layer;
-      if (layer is! OffsetLayer) {
-        debugPrint('RGBA_PIPELINE flutter-root display=$display '
-            'publication=$publication layer=${layer.runtimeType} '
-            'readback=unavailable');
-        return;
-      }
-      final physicalSize = renderView.flutterView.physicalSize;
-      if (physicalSize.isEmpty) {
-        debugPrint('RGBA_PIPELINE flutter-root display=$display '
-            'publication=$publication readback=empty-view');
-        return;
-      }
-      final capturedImage = await layer.toImage(Offset.zero & physicalSize);
-      rootImage = capturedImage;
-      final data =
-          await capturedImage.toByteData(format: ui.ImageByteFormat.rawRgba);
-      if (data == null) {
-        debugPrint('RGBA_PIPELINE flutter-root display=$display '
-            'publication=$publication dimensions=${capturedImage.width}x${capturedImage.height} '
-            'readback=unavailable');
-        return;
-      }
-      final pixels =
-          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-      final width = capturedImage.width;
-      final height = capturedImage.height;
-      final rowBytes = pixels.length ~/ height;
-      String sample(double xFraction, double yFraction) {
-        final x =
-            (width * xFraction).floor().clamp(0, width - 1).toInt();
-        final y =
-            (height * yFraction).floor().clamp(0, height - 1).toInt();
-        final offset = y * rowBytes + x * 4;
-        return List.generate(4, (index) => pixels[offset + index])
-            .map((value) => value.toRadixString(16).padLeft(2, '0'))
-            .join();
-      }
-
-      debugPrint('RGBA_PIPELINE flutter-root display=$display '
-          'publication=$publication layer=${layer.runtimeType} '
-          'dimensions=${width}x$height '
-          'device_pixel_ratio=${renderView.flutterView.devicePixelRatio} '
-          'format=rgba8888-premul row_bytes=$rowBytes '
-          'body_top=${sample(0.5, 0.125)} '
-          'remote_left=${sample(0.25, 0.5)} '
-          'remote_right=${sample(0.75, 0.5)} '
-          'toolbar=${sample(0.15, 0.95)}');
-      var layerCount = 0;
-      void reportLayer(Layer current, String path) {
-        layerCount += 1;
-        String details = '';
-        if (current is OpacityLayer) {
-          details = ' alpha=${current.alpha} offset=${current.offset}';
-        } else if (current is ColorFilterLayer) {
-          details = ' color_filter=${current.colorFilter}';
-        } else if (current is ImageFilterLayer) {
-          details =
-              ' image_filter=${current.imageFilter} offset=${current.offset}';
-        } else if (current is BackdropFilterLayer) {
-          details =
-              ' backdrop_filter=${current.filter} blend=${current.blendMode}';
-        } else if (current is ShaderMaskLayer) {
-          details =
-              ' mask_rect=${current.maskRect} blend=${current.blendMode}';
-        } else if (current is TransformLayer) {
-          details = ' offset=${current.offset} transform=${current.transform}';
-        } else if (current is ClipRectLayer) {
-          details =
-              ' clip=${current.clipRect} behavior=${current.clipBehavior}';
-        } else if (current is ClipRRectLayer) {
-          details =
-              ' clip=${current.clipRRect} behavior=${current.clipBehavior}';
-        } else if (current is ClipPathLayer) {
-          details =
-              ' clip=${current.clipPath?.getBounds()} behavior=${current.clipBehavior}';
-        } else if (current is PictureLayer) {
-          details = ' canvas_bounds=${current.canvasBounds}';
-        } else if (current is OffsetLayer) {
-          details = ' offset=${current.offset}';
-        }
-        debugPrint('RGBA_PIPELINE flutter-layer path=$path '
-            'type=${current.runtimeType}$details');
-        if (current is ContainerLayer) {
-          var child = current.firstChild;
-          var childIndex = 0;
-          while (child != null) {
-            reportLayer(child, '$path.$childIndex');
-            childIndex += 1;
-            child = child.nextSibling;
-          }
-        }
-      }
-
-      reportLayer(layer, '0');
-      debugPrint('RGBA_PIPELINE flutter-layer-total count=$layerCount');
-      final logicalSize = renderView.size;
-      String colorHex(Color? color) => color == null
-          ? 'null'
-          : color.value.toRadixString(16).padLeft(8, '0');
-      String decorationPaint(Decoration? decoration) {
-        if (decoration == null) return 'null';
-        if (decoration is BoxDecoration) {
-          return 'BoxDecoration(color=${colorHex(decoration.color)},'
-              'gradient=${decoration.gradient.runtimeType},'
-              'image=${decoration.image.runtimeType},'
-              'blend=${decoration.backgroundBlendMode})';
-        }
-        if (decoration is ShapeDecoration) {
-          return 'ShapeDecoration(color=${colorHex(decoration.color)},'
-              'gradient=${decoration.gradient.runtimeType},'
-              'image=${decoration.image.runtimeType})';
-        }
-        return decoration.runtimeType.toString();
-      }
-
-      var elementCount = 0;
-      var paintCandidateCount = 0;
-      void reportElement(Element current, String path, bool ancestorPainted) {
-        elementCount += 1;
-        final widget = current.widget;
-        final painted = ancestorPainted &&
-            !(widget is Offstage && widget.offstage) &&
-            !(widget is Visibility && !widget.visible);
-        Rect? globalRect;
-        final renderObject = current.renderObject;
-        if (renderObject is RenderBox &&
-            renderObject.attached &&
-            renderObject.hasSize) {
-          try {
-            globalRect = renderObject.localToGlobal(Offset.zero) &
-                renderObject.size;
-          } catch (_) {
-            globalRect = null;
-          }
-        }
-        final isLarge = globalRect != null &&
-            globalRect.width >= logicalSize.width * 0.9 &&
-            globalRect.height >= logicalSize.height * 0.6;
-        String? paint;
-        if (widget is Container &&
-            (widget.color != null ||
-                widget.decoration != null ||
-                widget.foregroundDecoration != null)) {
-          paint = 'color=${colorHex(widget.color)} '
-              'decoration=${decorationPaint(widget.decoration)} '
-              'foreground=${decorationPaint(widget.foregroundDecoration)}';
-        } else if (widget is ColoredBox) {
-          paint = 'color=${colorHex(widget.color)}';
-        } else if (widget is DecoratedBox) {
-          paint = 'decoration=${decorationPaint(widget.decoration)} '
-              'position=${widget.position}';
-        } else if (widget is Material) {
-          paint = 'color=${colorHex(widget.color)} type=${widget.type} '
-              'elevation=${widget.elevation}';
-        } else if (widget is Scaffold) {
-          paint = 'background=${colorHex(widget.backgroundColor)}';
-        } else if (widget is ModalBarrier) {
-          paint = 'color=${colorHex(widget.color)} '
-              'dismissible=${widget.dismissible}';
-        } else if (widget is AnimatedModalBarrier) {
-          paint = 'color=${colorHex(widget.color.value)} '
-              'dismissible=${widget.dismissible}';
-        } else if (widget is CustomPaint) {
-          paint = 'painter=${widget.painter.runtimeType} '
-              'foreground=${widget.foregroundPainter.runtimeType}';
-        } else if (widget is Opacity) {
-          paint = 'opacity=${widget.opacity}';
-        } else if (widget is AnimatedOpacity) {
-          paint = 'opacity=${widget.opacity}';
-        } else if (widget is FadeTransition) {
-          paint = 'opacity=${widget.opacity.value}';
-        } else if (widget is PhysicalModel) {
-          paint = 'color=${colorHex(widget.color)} '
-              'shadow=${colorHex(widget.shadowColor)} '
-              'elevation=${widget.elevation}';
-        } else if (widget is ColorFiltered) {
-          paint = 'filter=${widget.colorFilter}';
-        } else if (widget is ImageFiltered) {
-          paint = 'filter=${widget.imageFilter}';
-        } else if (widget is BackdropFilter) {
-          paint = 'filter=${widget.filter} blend=${widget.blendMode}';
-        } else if (widget is ShaderMask) {
-          paint = 'blend=${widget.blendMode}';
-        }
-        if (painted && paint != null &&
-            (isLarge ||
-                widget is ModalBarrier ||
-                widget is AnimatedModalBarrier ||
-                widget is Opacity ||
-                widget is AnimatedOpacity ||
-                widget is FadeTransition ||
-                widget is ColorFiltered ||
-                widget is ImageFiltered ||
-                widget is BackdropFilter ||
-                widget is ShaderMask)) {
-          paintCandidateCount += 1;
-          final rect = globalRect == null
-              ? 'unavailable'
-              : '${globalRect.left.toStringAsFixed(1)},'
-                  '${globalRect.top.toStringAsFixed(1)},'
-                  '${globalRect.width.toStringAsFixed(1)},'
-                  '${globalRect.height.toStringAsFixed(1)}';
-          debugPrint('RGBA_PIPELINE flutter-widget path=$path '
-              'type=${widget.runtimeType} rect=$rect $paint');
-        }
-        var childIndex = 0;
-        current.visitChildren((child) {
-          reportElement(child, '$path.$childIndex', painted);
-          childIndex += 1;
-        });
-      }
-
-      final rootElement = WidgetsBinding.instance.rootElement;
-      if (rootElement == null) {
-        debugPrint('RGBA_PIPELINE flutter-widget-tree state=unavailable');
-      } else {
-        reportElement(rootElement, '0', true);
-        debugPrint('RGBA_PIPELINE flutter-widget-total '
-            'elements=$elementCount candidates=$paintCandidateCount');
-      }
-    } catch (error) {
-      debugPrint('RGBA_PIPELINE flutter-root display=$display '
-          'publication=$publication readback=${error.runtimeType}');
-    } finally {
-      rootImage?.dispose();
     }
   }
 
   Future<bool> decodeAndUpdate(
       SessionID expectedSessionId, int display, Uint8List rgba,
       {RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,
-      required RgbaPresentationReceipt presentationReceipt,
       required int expectedDisplayTopologyRevision}) async {
     if (parent.target?.ffiModel.isCurrentDisplayTopology(
             expectedSessionId, expectedDisplayTopologyRevision) !=
@@ -2231,41 +1925,6 @@ class ImageModel with ChangeNotifier {
     if (image == null) {
       return false;
     }
-    if (isAndroid &&
-        _androidRgbaEngineEvidence &&
-        !_reportedAndroidRgbaEngineEvidence &&
-        expectedRgbaPublication != null) {
-      _reportedAndroidRgbaEngineEvidence = true;
-      final width = image.width;
-      final height = image.height;
-      debugPrint('RGBA_PIPELINE dart-raw display=$display '
-          'publication=${expectedRgbaPublication.publication} '
-          'dimensions=${width}x$height '
-          '${_rgbaEvidenceSamples(rgba, width, height, "bgra8888-premul")}');
-      try {
-        final data =
-            await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-        final pixels = data == null
-            ? null
-            : data.buffer
-                .asUint8List(data.offsetInBytes, data.lengthInBytes);
-        if (pixels == null) {
-          debugPrint('RGBA_PIPELINE dart-engine display=$display '
-              'publication=${expectedRgbaPublication.publication} '
-              'dimensions=${width}x$height color_space=${image.colorSpace.name} '
-              'format=rgba8888-premul sample=unavailable');
-        } else {
-          debugPrint('RGBA_PIPELINE dart-engine display=$display '
-              'publication=${expectedRgbaPublication.publication} '
-              'dimensions=${width}x$height color_space=${image.colorSpace.name} '
-              '${_rgbaEvidenceSamples(pixels, width, height, "rgba8888-premul")}');
-        }
-      } catch (error) {
-        debugPrint('RGBA_PIPELINE dart-engine display=$display '
-            'publication=${expectedRgbaPublication.publication} '
-            'dimensions=${width}x$height readback=${error.runtimeType}');
-      }
-    }
     if (parent.target?.ffiModel.isCurrentDisplayTopology(
             expectedSessionId, expectedDisplayTopologyRevision) !=
         true ||
@@ -2277,7 +1936,6 @@ class ImageModel with ChangeNotifier {
     return update(image,
         expectedSessionId: expectedSessionId,
         expectedRgbaPublication: expectedRgbaPublication,
-        presentationReceipt: presentationReceipt,
         expectedDisplayTopologyRevision: expectedDisplayTopologyRevision);
   }
 
@@ -2285,7 +1943,6 @@ class ImageModel with ChangeNotifier {
       {SessionID? expectedSessionId,
       bool allowClosedSession = false,
       RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,
-      RgbaPresentationReceipt? presentationReceipt,
       int? expectedDisplayTopologyRevision}) async {
     bool acceptsExpectedImage() =>
         (expectedSessionId == null ||
@@ -2357,21 +2014,12 @@ class ImageModel with ChangeNotifier {
     if (image == null) {
       _rgbaPublicationOrder.retire();
     }
-    final nextReceipt = image == null ? null : presentationReceipt;
     final retiring = _image;
-    final retiringReceipt = _paintReceipt;
-    if (identical(retiring, image) &&
-        identical(retiringReceipt, nextReceipt)) {
+    if (identical(retiring, image)) {
       return true;
     }
     _image = image;
-    _paintReceipt = nextReceipt;
-    if (!identical(retiringReceipt, nextReceipt)) {
-      retiringReceipt?.retire();
-    }
-    if (!identical(retiring, image)) {
-      retiring?.dispose();
-    }
+    retiring?.dispose();
     notifyListeners();
     return true;
   }
@@ -4512,6 +4160,8 @@ class FFI {
   late SessionEventQueue<_SessionOwner> _sessionEvents;
   final SessionStreamGeneration<_SessionOwner> _sessionStreams =
       SessionStreamGeneration<_SessionOwner>();
+  late LatestFrameQueue<_SessionOwner, int, _SoftwareRgbaPublication>
+      _softwareRgbaFrames;
   late LatestFrameQueue<_SessionOwner, int, Uint8List> _webRgbaFrames;
   late LatestFrameQueue<_SessionOwner, int, _WebCursorPosition>
       _webCursorPositions;
@@ -4628,6 +4278,7 @@ class FFI {
     _sessionOwner = nextOwner;
     _displaySelections = DisplaySelectionQueue(nextOwner);
     _sessionEvents = SessionEventQueue(nextOwner);
+    _softwareRgbaFrames = LatestFrameQueue(nextOwner);
     _webRgbaFrames = LatestFrameQueue(nextOwner);
     _webCursorPositions = LatestFrameQueue(nextOwner, maxKeys: 1);
     _webCursorShapes = LatestFrameQueue(nextOwner, maxKeys: 1);
@@ -4640,6 +4291,8 @@ class FFI {
     final sessionStreamRetired = _sessionStreams.retireOwner(retiringOwner);
     final sessionEventsRetired = _sessionEvents.retire(retiringOwner);
     final displaySelectionsRetired = _displaySelections.retire(retiringOwner);
+    final softwareRgbaFramesRetired =
+        _softwareRgbaFrames.retire(retiringOwner);
     final webRgbaFramesRetired = _webRgbaFrames.retire(retiringOwner);
     final webCursorPositionsRetired =
         _webCursorPositions.retire(retiringOwner);
@@ -4647,6 +4300,7 @@ class FFI {
     if (!sessionStreamRetired ||
         !sessionEventsRetired ||
         !displaySelectionsRetired ||
+        !softwareRgbaFramesRetired ||
         !webRgbaFramesRetired ||
         !webCursorPositionsRetired ||
         !webCursorShapesRetired) {
@@ -4843,60 +4497,25 @@ class FFI {
       SessionEventQueue<_SessionOwner> sessionEvents,
       _SessionOwner streamOwner,
       SessionID activeSessionId,
-      int display,
-      int publication) async {
-    if (publication <= 4) {
-      debugPrint(
-          'RGBA_PIPELINE dart-receive display=$display publication=$publication');
-    }
+      _SoftwareRgbaPublication frame) async {
+    // Atomically take the newest bytes represented by this exact token before
+    // any asynchronous UI work. Native flow control never waits for Flutter's
+    // paint or compositor scheduling.
+    final rgba = platformFFI.takeLatestRgba(
+        activeSessionId, frame.display, frame.publication);
+    if (rgba == null) return;
+
     final topologyRevision = await _displayTopologyAfterCheckpoint(
         sessionEvents, streamOwner, activeSessionId);
-    if (publication <= 4) {
-      debugPrint(
-          'RGBA_PIPELINE dart-checkpoint display=$display publication=$publication topology=${topologyRevision ?? "retired"}');
-    }
-    if (topologyRevision == null) {
-      platformFFI.nextRgba(activeSessionId, display, publication);
-      return;
-    }
+    if (topologyRevision == null) return;
 
-    var imageOwnsAcknowledgement = false;
-    try {
-      // Copy the exact publication through the generated bridge. Flutter never
-      // borrows a pointer into a Rust mailbox across an asynchronous decode.
-      final rgba =
-          platformFFI.copyRgba(activeSessionId, display, publication);
-      if (publication <= 4) {
-        debugPrint(
-            'RGBA_PIPELINE dart-copy display=$display publication=$publication hit=${rgba != null} bytes=${rgba?.length ?? 0}');
-      }
-      if (rgba == null) {
-        platformFFI.nextRgba(activeSessionId, display, publication);
-        return;
-      }
-      imageOwnsAcknowledgement = true;
-      final presented = await imageModel.onRgba(
-          activeSessionId, display, rgba,
-          publication: publication,
-          expectedDisplayTopologyRevision: topologyRevision);
-      if (publication <= 4) {
-        debugPrint(
-            'RGBA_PIPELINE dart-image display=$display publication=$publication presented=$presented');
-      }
-      if (presented) {
-        final initialized = await onEvent2UIRgba(
-            activeSessionId, topologyRevision,
-            imageGeometryInitialized: true);
-        if (publication <= 4) {
-          debugPrint(
-              'RGBA_PIPELINE dart-first-image display=$display publication=$publication initialized=$initialized');
-        }
-      }
-    } catch (error) {
-      if (!imageOwnsAcknowledgement) {
-        platformFFI.nextRgba(activeSessionId, display, publication);
-      }
-      debugPrint('Software RGBA presentation failed: ${error.runtimeType}');
+    final committed = await imageModel.onRgba(
+        activeSessionId, frame.display, rgba,
+        publication: frame.publication,
+        expectedDisplayTopologyRevision: topologyRevision);
+    if (committed) {
+      await onEvent2UIRgba(activeSessionId, topologyRevision,
+          imageGeometryInitialized: true);
     }
   }
 
@@ -5134,6 +4753,7 @@ class FFI {
 
     final cb = ffiModel.startEventListener(activeSessionId, peerId);
     imageModel.updateUserTextureRender();
+    final softwareRgbaFrames = _softwareRgbaFrames;
     final SimpleWrapper<bool> isToNewWindowNotified = SimpleWrapper(false);
     final streamFinality = SessionStreamFinality();
     // Preserved for the rgba data.
@@ -5193,15 +4813,17 @@ class FFI {
               'The remote session state became inconsistent');
         }
       } else if (message is EventToUI_Rgba) {
-        if (message.field1 <= 4) {
-          debugPrint(
-              'RGBA_PIPELINE dart-stream display=${message.field0} publication=${message.field1}');
-        }
-        _observeSessionTask(
-            _handleSoftwareRgba(sessionEvents, streamOwner, activeSessionId,
-                message.field0, message.field1),
-            activeSessionId,
-            'Software RGBA presentation');
+        softwareRgbaFrames.submitObserved(
+            streamOwner,
+            message.field0,
+            _SoftwareRgbaPublication(message.field0, message.field1),
+            (frame) => _handleSoftwareRgba(
+                sessionEvents, streamOwner, activeSessionId, frame),
+            onError: (error, stackTrace) {
+          debugPrint('Software RGBA presentation failed: ${error.runtimeType}');
+          _reportSessionStreamFailure(activeSessionId, peerId,
+              'The remote session presentation became inconsistent');
+        });
       } else if (message is EventToUI_CursorPosition) {
         _observeSessionTask(
             _handleCursorPosition(

@@ -16,9 +16,6 @@ readonly INPUT_ADB=$3
 readonly WORK_ROOT=$4
 readonly RUNTIME_TEST_APK=${5:-}
 readonly APP_SCENARIO=${6:-launch}
-# Diagnostic A/B for the exact retained APK: keep SurfaceFlinger on the same
-# pinned SwiftShader backend while asking Flutter to use its software rasterizer.
-readonly -a APP_START_RENDERER_ARGS=(--ez enable-software-rendering true)
 if [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = peer-lifecycle ]; then
     readonly WORKLOAD=app-peer-lifecycle
 elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = lifecycle ]; then
@@ -436,7 +433,7 @@ print_android_connection_diagnostic() {
         timeout --signal=TERM --kill-after=2s 20s \
             "$ADB" -s "$SERIAL" logcat -d -v brief 2>/dev/null \
             | grep -Ei \
-                'RGBA_PIPELINE|No remembered password|CPace handshake failed|R-S9|connect-password-prompt|session_set_connect_password|viewer owner|outgoing viewer|connection round|Connection closed|keying' \
+                'No remembered password|CPace handshake failed|R-S9|connect-password-prompt|session_set_connect_password|viewer owner|outgoing viewer|connection round|Connection closed|keying' \
             | tail -n 160 \
             | tail -c 98304 \
             || true
@@ -2730,8 +2727,7 @@ exercise_peer_background_resume() {
     wait_peer_server_connections 1 exact \
         || fail 'backgrounding retired the live Android peer connection'
     timeout --signal=TERM --kill-after=2s 60s \
-        "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" \
-        "${APP_START_RENDERER_ARGS[@]}" >/dev/null \
+        "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" >/dev/null \
         || fail 'cannot resume the backgrounded Android peer Activity'
     wait_resumed_activity || fail 'backgrounded Android peer Activity did not resume'
     [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$pid_before" ] \
@@ -2780,7 +2776,6 @@ renderer_sha256="$(printf '%s' "$renderer_line" | sha256sum | awk '{ print $1 }'
 readonly renderer_line renderer_angle renderer_sha256
 printf 'ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader angle=%s gles_sha256=%s\n' \
     "$renderer_angle" "$renderer_sha256"
-printf 'ANDROID_FLUTTER_RASTERIZER=requested-software intent_extra=enable-software-rendering\n'
 
 PEER_REVERSE_READY=0
 PEER_REVERSE_LISTING=
@@ -2865,8 +2860,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
         || fail 'cannot clear the runtime-test log before launch'
     launch_output="$(timeout --signal=TERM --kill-after=2s 60s \
         "$ADB" -s "$SERIAL" shell am start -W \
-        -n com.carriez.flutter_hbb/.MainActivity \
-        "${APP_START_RENDERER_ARGS[@]}" | tr -d '\r')" \
+        -n com.carriez.flutter_hbb/.MainActivity | tr -d '\r')" \
         || fail 'runtime-test activity launch failed'
     [ "${#launch_output}" -le 16384 ] \
         || fail 'runtime-test activity launch receipt exceeds its bound'
@@ -2875,7 +2869,7 @@ import re
 import sys
 
 lines = sys.argv[1].splitlines()
-prefix = "Starting: Intent { cmp=com.carriez.flutter_hbb/.MainActivity (has extras) }"
+prefix = "Starting: Intent { cmp=com.carriez.flutter_hbb/.MainActivity }"
 activity = "Activity: com.carriez.flutter_hbb/.MainActivity"
 if len(lines) < 6 or lines[0] != prefix or lines[3] != activity:
     raise SystemExit("malformed Android activity-launch receipt")
@@ -3130,7 +3124,6 @@ PY
             fi
             timeout --signal=TERM --kill-after=2s 60s \
                 "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" \
-                "${APP_START_RENDERER_ARGS[@]}" \
                 >/dev/null \
                 || fail "relaunch $lifecycle_cycle failed"
             wait_resumed_activity \
@@ -3184,8 +3177,7 @@ PY
         grep -Eq 'stopped=true' <<<"$package_state" \
             || fail 'Android did not record the package Force Stop state'
         timeout --signal=TERM --kill-after=2s 60s \
-            "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" \
-            "${APP_START_RENDERER_ARGS[@]}" >/dev/null \
+            "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" >/dev/null \
             || fail 'the post-Force-Stop launch failed'
         wait_resumed_activity \
             || fail 'the post-Force-Stop MainActivity did not resume'
@@ -3216,14 +3208,6 @@ PY
         ! grep -Eq 'FATAL EXCEPTION' <<<"$lifecycle_log" \
             || fail 'the completed lifecycle logged a fatal exception'
         if [ "$WORKLOAD" = app-peer-lifecycle ]; then
-            rgba_raw_identity="$(printf '%s\n' "$lifecycle_log" | sed -nE \
-                's/.*RGBA_PIPELINE dart-raw display=([0-9]+) publication=([1-9][0-9]*) dimensions=([1-9][0-9]*x[1-9][0-9]*) format=bgra8888-premul row_bytes=[1-9][0-9]* quarter_bytes=[0-9a-f]{8} three_quarter_bytes=[0-9a-f]{8}.*/\1:\2:\3/p')"
-            rgba_engine_identity="$(printf '%s\n' "$lifecycle_log" | sed -nE \
-                's/.*RGBA_PIPELINE dart-engine display=([0-9]+) publication=([1-9][0-9]*) dimensions=([1-9][0-9]*x[1-9][0-9]*) color_space=[A-Za-z0-9]+ format=rgba8888-premul row_bytes=[1-9][0-9]* quarter_bytes=[0-9a-f]{8} three_quarter_bytes=[0-9a-f]{8}.*/\1:\2:\3/p')"
-            [ -n "$rgba_raw_identity" ] \
-                && [ "$rgba_raw_identity" = "$rgba_engine_identity" ] \
-                && [ "$(wc -l <<<"$rgba_raw_identity")" -eq 1 ] \
-                || fail 'the Android peer run lacks one coherent Dart/engine pixel-boundary sample'
             retired_session_events="$(printf '%s\n' "$lifecycle_log" \
                 | grep -Ec 'Retired [1-9][0-9]* outgoing client peer session\(s\)' || true)"
             [ "$retired_session_events" -eq 2 ] \

@@ -89,11 +89,9 @@ class PlatformFFI {
   String translate(String name, String locale) =>
       _ffiBind.translate(name: name, locale: locale);
 
-  Uint8List? copyRgba(SessionID sessionId, int display, int publication) =>
-      _ffiBind.sessionCopyRgba(
-          sessionId: sessionId, display: display, publication: publication);
-  void nextRgba(SessionID sessionId, int display, int publication) =>
-      _ffiBind.sessionNextRgba(
+  Uint8List? takeLatestRgba(
+          SessionID sessionId, int display, int publication) =>
+      _ffiBind.sessionTakeLatestRgba(
           sessionId: sessionId, display: display, publication: publication);
   bool takeCursorPosition(SessionID sessionId, SessionID clientOwnerId, int x,
           int y, int publication) =>

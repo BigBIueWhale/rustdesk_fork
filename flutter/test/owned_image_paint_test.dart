@@ -48,7 +48,6 @@ void main() {
     final source = (await tester.runAsync(
       () => _solidRawBgraImage(const ui.Color(0xffff0000)),
     ))!;
-    var painted = false;
     final boundaryKey = GlobalKey();
     final paintKey = GlobalKey();
 
@@ -64,7 +63,6 @@ void main() {
               OwnedImagePaint(
                 key: paintKey,
                 image: source,
-                onPainted: () => painted = true,
                 x: 0,
                 y: 0,
                 scale: 16,
@@ -77,7 +75,6 @@ void main() {
     ));
 
     expect(tester.getSize(find.byKey(paintKey)), const Size(32, 24));
-    expect(painted, isTrue);
     source.dispose();
     final boundary = boundaryKey.currentContext!.findRenderObject()
         as RenderRepaintBoundary;
@@ -115,7 +112,6 @@ void main() {
             height: 8,
             child: OwnedImagePaint(
               image: image,
-              onPainted: null,
               x: 0,
               y: 0,
               scale: 4,

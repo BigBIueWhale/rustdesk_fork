@@ -1252,12 +1252,6 @@ class RustdeskImpl {
     ]);
   }
 
-  void sessionNextRgba(
-      {required UuidValue sessionId,
-      required int display,
-      required int publication,
-      dynamic hint}) {}
-
   bool sessionTakeCursorPosition(
       {required UuidValue sessionId,
       required UuidValue clientOwnerId,

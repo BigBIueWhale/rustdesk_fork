@@ -841,6 +841,7 @@ def validate(sources: Dict[str, str]) -> None:
             "_sessionOwner = nextOwner;",
             "_displaySelections = DisplaySelectionQueue(nextOwner);",
             "_sessionEvents = SessionEventQueue(nextOwner);",
+            "_softwareRgbaFrames = LatestFrameQueue(nextOwner);",
             "_webRgbaFrames = LatestFrameQueue(nextOwner);",
         ),
         "fresh exact-pair queue installation",
@@ -856,9 +857,11 @@ def validate(sources: Dict[str, str]) -> None:
             "_SessionOwner(retiringSessionId, clientOwnerId)",
             "_sessionEvents.retire(retiringOwner)",
             "_displaySelections.retire(retiringOwner)",
+            "_softwareRgbaFrames.retire(retiringOwner)",
             "_webRgbaFrames.retire(retiringOwner)",
             "!sessionEventsRetired ||",
             "!displaySelectionsRetired ||",
+            "!softwareRgbaFramesRetired ||",
             "!webRgbaFramesRetired",
             "throw StateError(",
         ),
@@ -1221,6 +1224,7 @@ def validate(sources: Dict[str, str]) -> None:
             "final decoded = json.decode(message.field0);",
             "decoded is! Map<String, dynamic>",
             "_reportSessionStreamFailure(activeSessionId, peerId,",
+            "softwareRgbaFrames.submitObserved(",
             "_handleSoftwareRgba(sessionEvents, streamOwner, activeSessionId,",
             "_handleTextureRgba(sessionEvents, streamOwner, activeSessionId,",
         ),
@@ -1295,18 +1299,23 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         software_rgba,
         (
+            "platformFFI.takeLatestRgba(",
+            "activeSessionId, frame.display, frame.publication",
             "await _displayTopologyAfterCheckpoint(",
-            "platformFFI.nextRgba(activeSessionId, display, publication);",
-            "platformFFI.copyRgba(activeSessionId, display, publication)",
-            "imageOwnsAcknowledgement = true;",
             "await imageModel.onRgba(",
-            "publication: publication",
+            "publication: frame.publication",
             "expectedDisplayTopologyRevision: topologyRevision",
             "await onEvent2UIRgba(",
             "imageGeometryInitialized: true",
         ),
-        "checkpointed exact-publication RGBA presentation",
+        "atomic newest-frame take before bounded RGBA presentation",
     )
+    for obsolete in ("copyRgba(", "nextRgba(", "RgbaPresentationReceipt"):
+        forbid(
+            sources["model_dart"],
+            obsolete,
+            "paint-callback-owned native RGBA flow control",
+        )
     image_decode = extract_braced_item(
         sources["model_dart"],
         "Future<bool> decodeAndUpdate(",

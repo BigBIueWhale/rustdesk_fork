@@ -936,7 +936,6 @@ class _ImagePaintState extends State<ImagePaint> {
       ImageModel m, Size imageSize, double s) {
     return OwnedImagePaint(
       image: m.image,
-      onPainted: m.onImagePainted,
       x: 0,
       y: 0,
       scale: s,
@@ -955,7 +954,6 @@ class _ImagePaintState extends State<ImagePaint> {
     }
     return OwnedImagePaint(
       image: m.image,
-      onPainted: m.onImagePainted,
       x: c.x / sizeScale,
       y: c.y / sizeScale,
       scale: sizeScale,

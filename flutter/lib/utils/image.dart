@@ -94,7 +94,6 @@ class OwnedImagePaint extends StatefulWidget {
   const OwnedImagePaint({
     super.key,
     required this.image,
-    required this.onPainted,
     required this.x,
     required this.y,
     required this.scale,
@@ -102,7 +101,6 @@ class OwnedImagePaint extends StatefulWidget {
   });
 
   final ui.Image? image;
-  final VoidCallback? onPainted;
   final double x;
   final double y;
   final double scale;
@@ -170,7 +168,6 @@ class _OwnedImagePaintState extends State<OwnedImagePaint> {
       willChange: true,
       painter: ImagePainter(
         image: _paintImage,
-        onPainted: widget.onPainted,
         x: widget.x,
         y: widget.y,
         scale: widget.scale,
@@ -182,14 +179,12 @@ class _OwnedImagePaintState extends State<OwnedImagePaint> {
 class ImagePainter extends CustomPainter {
   ImagePainter({
     required this.image,
-    this.onPainted,
     required this.x,
     required this.y,
     required this.scale,
   });
 
   ui.Image? image;
-  final VoidCallback? onPainted;
   double x;
   double y;
   double scale;
@@ -215,7 +210,6 @@ class ImagePainter extends CustomPainter {
     }
     canvas.drawImage(
         image!, Offset(x.toInt().toDouble(), y.toInt().toDouble()), paint);
-    onPainted?.call();
   }
 
   @override

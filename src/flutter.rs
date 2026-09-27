@@ -523,7 +523,11 @@ enum CursorPositionRearm {
 }
 
 impl CursorPositionMailbox {
-    fn offer<F>(&mut self, position: CursorPositionValue, next_publication: F) -> CursorPositionOffer
+    fn offer<F>(
+        &mut self,
+        position: CursorPositionValue,
+        next_publication: F,
+    ) -> CursorPositionOffer
     where
         F: FnOnce() -> Option<u64>,
     {
@@ -857,9 +861,10 @@ impl CursorShapeKnowledge {
     }
 
     fn remove(&mut self, id: &str, revision: Option<u64>) {
-        let should_remove = self.entries.get(id).is_some_and(|entry| {
-            revision.map_or(true, |revision| entry.revision == revision)
-        });
+        let should_remove = self
+            .entries
+            .get(id)
+            .is_some_and(|entry| revision.map_or(true, |revision| entry.revision == revision));
         if !should_remove {
             return;
         }
@@ -1022,10 +1027,7 @@ fn post_cursor_position(
     ))
 }
 
-fn post_cursor_shape(
-    stream: &StreamSink<EventToUI>,
-    publication: &CursorShapePublication,
-) -> bool {
+fn post_cursor_shape(stream: &StreamSink<EventToUI>, publication: &CursorShapePublication) -> bool {
     match &publication.value.state {
         CursorShapeState::Available(shape) if publication.value.include_data => {
             stream.add(EventToUI::CursorData(
@@ -1053,8 +1055,9 @@ fn post_cursor_shape(
 
 #[derive(Default)]
 struct RgbaData {
-    // `data` is immutable while `valid` is true. It is copied through the generated bridge under
-    // the mailbox read lock, so Dart never borrows a pointer into this allocation.
+    // `data` is immutable while `valid` is true. The exact publication token atomically takes an
+    // owned copy of the newest available bytes through the generated bridge, so Dart never borrows
+    // a pointer into this allocation and native ownership does not depend on Flutter painting.
     data: Vec<u8>,
     valid: bool,
     publication: u64,
@@ -1070,14 +1073,6 @@ struct RgbaData {
 enum RgbaOffer {
     Published(u64),
     Pending,
-    Exhausted,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-enum RgbaAcknowledgement {
-    Ignored,
-    Drained,
-    Promoted(u64),
     Exhausted,
 }
 
@@ -1136,32 +1131,18 @@ impl RgbaData {
         RgbaOffer::Pending
     }
 
-    fn copy(&self, publication: u64) -> Option<Vec<u8>> {
-        (self.valid && self.publication == publication).then(|| self.data.clone())
-    }
-
-    fn acknowledge<F>(&mut self, publication: u64, next_publication: F) -> RgbaAcknowledgement
-    where
-        F: FnOnce() -> Option<u64>,
-    {
+    fn take_latest(&mut self, publication: u64) -> Option<Vec<u8>> {
         if !self.valid || self.publication != publication {
-            return RgbaAcknowledgement::Ignored;
+            return None;
         }
-        let Some(mut latest) = self.pending.take() else {
-            self.valid = false;
-            self.publication = 0;
-            return RgbaAcknowledgement::Drained;
-        };
-        let Some(publication) = next_publication() else {
-            self.valid = false;
-            self.publication = 0;
-            return RgbaAcknowledgement::Exhausted;
-        };
-        std::mem::swap(&mut self.data, &mut latest);
-        latest.clear();
-        self.spare = latest;
-        self.publication = publication;
-        RgbaAcknowledgement::Promoted(publication)
+        if let Some(mut latest) = self.pending.take() {
+            std::mem::swap(&mut self.data, &mut latest);
+            latest.clear();
+            self.spare = latest;
+        }
+        self.valid = false;
+        self.publication = 0;
+        Some(self.data.clone())
     }
 
     fn rearm<F>(&mut self, next_publication: F) -> RgbaRearm
@@ -1485,12 +1466,7 @@ impl SessionHandler {
         // rgba array render will notify every frame
     }
 
-    fn set_owned_display_size(
-        &mut self,
-        display: usize,
-        width: usize,
-        height: usize,
-    ) -> bool {
+    fn set_owned_display_size(&mut self, display: usize, width: usize, height: usize) -> bool {
         if !self.displays.contains(&display) {
             return false;
         }
@@ -1521,9 +1497,7 @@ fn bind_initial_display_owner(
     }
     let pending = handlers
         .iter()
-        .filter_map(|(session_id, handler)| {
-            handler.awaiting_initial_display.then_some(*session_id)
-        })
+        .filter_map(|(session_id, handler)| handler.awaiting_initial_display.then_some(*session_id))
         .collect::<Vec<_>>();
     if pending.len() > 1 {
         bail!("more than one UI owner is awaiting the initial peer display");
@@ -1669,9 +1643,10 @@ impl FlutterHandler {
         else {
             return false;
         };
-        match handler.cursor_position.acknowledge(expected, || {
-            self.next_cursor_position_publication()
-        }) {
+        match handler
+            .cursor_position
+            .acknowledge(expected, || self.next_cursor_position_publication())
+        {
             CursorPositionAcknowledgement::Ignored => false,
             CursorPositionAcknowledgement::Drained => true,
             CursorPositionAcknowledgement::Promoted(next) => {
@@ -1733,12 +1708,11 @@ impl FlutterHandler {
                 handler.known_cursor_shapes.remove(unavailable_id, None);
             }
         }
-        match handler.cursor_shape.acknowledge(
-            id,
-            revision,
-            publication,
-            || self.next_cursor_shape_publication(),
-        ) {
+        match handler
+            .cursor_shape
+            .acknowledge(id, revision, publication, || {
+                self.next_cursor_shape_publication()
+            }) {
             CursorShapeAcknowledgement::Ignored => false,
             CursorShapeAcknowledgement::Drained => true,
             CursorShapeAcknowledgement::Promoted(mut next) => {
@@ -1911,68 +1885,17 @@ impl FlutterHandler {
         notify
     }
 
-    fn copy_rgba(
+    fn take_latest_rgba(
         &self,
         session_id: &SessionID,
         display: usize,
         publication: u64,
     ) -> Option<Vec<u8>> {
-        let rgba = self
-            .display_rgbas
-            .read()
+        self.display_rgbas
+            .write()
             .unwrap()
-            .get(&(*session_id, display))
-            .and_then(|rgba| rgba.copy(publication));
-        if publication <= 4 {
-            log::info!(
-                "RGBA_PIPELINE native-copy display={display} publication={publication} hit={} bytes={}",
-                rgba.is_some(),
-                rgba.as_ref().map_or(0, Vec::len)
-            );
-        }
-        rgba
-    }
-
-    fn next_rgba(&self, session_id: &SessionID, display: usize, publication: u64) {
-        let acknowledgement = {
-            let mut mailboxes = self.display_rgbas.write().unwrap();
-            let Some(mailbox) = mailboxes.get_mut(&(*session_id, display)) else {
-                if publication <= 4 {
-                    log::info!(
-                        "RGBA_PIPELINE native-ack display={display} publication={publication} result=missing"
-                    );
-                }
-                return;
-            };
-            let result = mailbox.acknowledge(publication, || self.next_rgba_publication());
-            if result == RgbaAcknowledgement::Exhausted {
-                mailboxes.remove(&(*session_id, display));
-            }
-            result
-        };
-        if publication <= 4 {
-            log::info!(
-                "RGBA_PIPELINE native-ack display={display} publication={publication} result={acknowledgement:?}"
-            );
-        }
-        let RgbaAcknowledgement::Promoted(next_publication) = acknowledgement else {
-            return;
-        };
-        let stream = self
-            .session_handlers
-            .read()
-            .unwrap()
-            .get(session_id)
-            .and_then(|handler| handler.event_stream.as_ref())
-            .map_or(false, |stream| {
-                stream.add(EventToUI::Rgba(display, next_publication))
-            });
-        if !stream {
-            self.display_rgbas
-                .write()
-                .unwrap()
-                .remove(&(*session_id, display));
-        }
+            .get_mut(&(*session_id, display))
+            .and_then(|rgba| rgba.take_latest(publication))
     }
 
     fn rearm_rgba_for_stream_replacement<F>(
@@ -2111,7 +2034,12 @@ impl InvokeUiSession for FlutterHandler {
             height: cd.height,
             rgba: colors,
         });
-        if !self.cursor_shapes.write().unwrap().insert(Arc::clone(&shape)) {
+        if !self
+            .cursor_shapes
+            .write()
+            .unwrap()
+            .insert(Arc::clone(&shape))
+        {
             log::warn!("cursor-shape cache refused a bounded entry");
             self.offer_cursor_shape(CursorShapeValue {
                 state: CursorShapeState::Unavailable(shape.id.clone()),
@@ -2145,9 +2073,10 @@ impl InvokeUiSession for FlutterHandler {
                 handler.cursor_position.retain_current(position);
                 continue;
             };
-            match handler.cursor_position.offer(position, || {
-                self.next_cursor_position_publication()
-            }) {
+            match handler
+                .cursor_position
+                .offer(position, || self.next_cursor_position_publication())
+            {
                 CursorPositionOffer::Pending => {}
                 CursorPositionOffer::Published(publication) => {
                     if !post_cursor_position(stream, publication) {
@@ -2667,29 +2596,6 @@ impl FlutterHandler {
                 handler.event_stream.as_ref().map(|_| *session_id)
             })
             .collect::<Vec<_>>();
-        #[cfg(target_os = "android")]
-        let rgba_trace = rgba
-            .w
-            .checked_mul(4)
-            .filter(|_| rgba.h > 0 && rgba.raw.len() % rgba.h == 0)
-            .and_then(|minimum_row_bytes| {
-                let row_bytes = rgba.raw.len() / rgba.h;
-                if row_bytes < minimum_row_bytes {
-                    return None;
-                }
-                let y = rgba.h / 2;
-                let three_quarter_x = rgba.w.checked_mul(3)?.checked_div(4)?;
-                let sample = |x: usize| {
-                    let offset = y.checked_mul(row_bytes)?.checked_add(x.checked_mul(4)?)?;
-                    let bytes = rgba.raw.get(offset..offset.checked_add(4)?)?;
-                    Some([bytes[0], bytes[1], bytes[2], bytes[3]])
-                };
-                Some((
-                    row_bytes,
-                    sample(rgba.w / 4)?,
-                    sample(three_quarter_x)?,
-                ))
-            });
         let notifications = self.offer_rgba_to_sessions(&session_ids, display, &mut rgba.raw);
         if notifications.is_empty() {
             return;
@@ -2705,36 +2611,6 @@ impl FlutterHandler {
                 continue;
             };
             let delivered = stream.add(EventToUI::Rgba(display, publication));
-            if publication <= 4 {
-                #[cfg(target_os = "android")]
-                if let Some((row_bytes, quarter, three_quarter)) = rgba_trace {
-                    log::info!(
-                        "RGBA_PIPELINE native-publish display={display} publication={publication} delivered={delivered} format={:?} dimensions={}x{} row_bytes={row_bytes} quarter_bytes={:02x}{:02x}{:02x}{:02x} three_quarter_bytes={:02x}{:02x}{:02x}{:02x}",
-                        rgba.fmt,
-                        rgba.w,
-                        rgba.h,
-                        quarter[0],
-                        quarter[1],
-                        quarter[2],
-                        quarter[3],
-                        three_quarter[0],
-                        three_quarter[1],
-                        three_quarter[2],
-                        three_quarter[3],
-                    );
-                } else {
-                    log::info!(
-                        "RGBA_PIPELINE native-publish display={display} publication={publication} delivered={delivered} format={:?} dimensions={}x{} sample=unavailable",
-                        rgba.fmt,
-                        rgba.w,
-                        rgba.h,
-                    );
-                }
-                #[cfg(not(target_os = "android"))]
-                log::info!(
-                    "RGBA_PIPELINE native-publish display={display} publication={publication} delivered={delivered}"
-                );
-            }
             if !delivered {
                 failed.push(session_id);
             }
@@ -2952,16 +2828,10 @@ pub fn session_start_(
     for s in sessions::get_sessions() {
         // This unlocked association probe is only a routing optimization. The exact owner is
         // rechecked after taking the worker slot and handler-owner guard below.
-        if !s
-            .session_handlers
-            .read()
-            .unwrap()
-            .contains_key(session_id)
-        {
+        if !s.session_handlers.read().unwrap().contains_key(session_id) {
             continue;
         }
-        let is_video_session =
-            !s.is_file_transfer() && !s.is_port_forward() && !s.is_terminal();
+        let is_video_session = !s.is_file_transfer() && !s.is_port_forward() && !s.is_terminal();
         // Reconnect/final teardown also owns this slot while it joins the old worker. Take it
         // before the handler map so that worker event delivery can never invert these locks.
         let mut thread_lock = s.thread.lock().unwrap();
@@ -3012,9 +2882,10 @@ pub fn session_start_(
                 }
             }
             if start_failure.is_none() {
-                match h.cursor_position.rearm(|| {
-                    s.ui_handler.next_cursor_position_publication()
-                }) {
+                match h
+                    .cursor_position
+                    .rearm(|| s.ui_handler.next_cursor_position_publication())
+                {
                     CursorPositionRearm::Idle => {}
                     CursorPositionRearm::Rearmed(publication) => {
                         let delivered = h
@@ -3090,9 +2961,7 @@ pub fn session_start_(
 }
 
 fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {
-    if let Some(session) =
-        sessions::remove_session_by_exact_ui_owner(session_id, client_owner_id)
-    {
+    if let Some(session) = sessions::remove_session_by_exact_ui_owner(session_id, client_owner_id) {
         session.close_and_join();
     }
 }
@@ -3250,13 +3119,7 @@ pub mod connection_manager {
             self.push_event("update_voice_call_state", &[("client", &client_json)]);
         }
 
-        fn file_transfer_log(
-            &self,
-            id: i32,
-            registry_generation: i64,
-            action: &str,
-            log: &str,
-        ) {
+        fn file_transfer_log(&self, id: i32, registry_generation: i64, action: &str, log: &str) {
             let id = id.to_string();
             let registry_generation = registry_generation.to_string();
             self.push_event(
@@ -3414,7 +3277,7 @@ fn serialize_resolutions(resolutions: &Vec<Resolution>) -> String {
     serde_json::ser::to_string(&v).unwrap_or("".to_string())
 }
 
-pub fn session_copy_rgba(
+pub fn session_take_latest_rgba(
     session_id: SessionID,
     display: usize,
     publication: u64,
@@ -3422,15 +3285,9 @@ pub fn session_copy_rgba(
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         return session
             .ui_handler
-            .copy_rgba(&session_id, display, publication);
+            .take_latest_rgba(&session_id, display, publication);
     }
     None
-}
-
-pub fn session_next_rgba(session_id: SessionID, display: usize, publication: u64) {
-    if let Some(s) = sessions::get_session_by_session_id(&session_id) {
-        s.ui_handler.next_rgba(&session_id, display, publication);
-    }
 }
 
 pub fn session_take_cursor_position(
@@ -3508,20 +3365,15 @@ pub fn session_register_pixelbuffer_texture(
     register: bool,
 ) -> bool {
     for s in sessions::get_sessions() {
-        if let Some(admitted) =
-            s.ui_handler
-                .update_pixelbuffer_texture(
-                    &session_id,
-                    &client_owner_id,
-                    display,
-                    ptr,
-                    register,
-                )
-        {
+        if let Some(admitted) = s.ui_handler.update_pixelbuffer_texture(
+            &session_id,
+            &client_owner_id,
+            display,
+            ptr,
+            register,
+        ) {
             if !admitted {
-                log::debug!(
-                    "Refusing pixelbuffer texture operation for session {session_id}"
-                );
+                log::debug!("Refusing pixelbuffer texture operation for session {session_id}");
             }
             return admitted;
         }
@@ -4072,10 +3924,8 @@ pub mod sessions {
             .entry((session.get_id(), conn_type))
             .or_insert(session);
         let current_cursor = peer_session.ui_handler.current_cursor.read().unwrap();
-        let handler = FlutterHandler::session_handler_for_cursor_state(
-            client_owner_id,
-            &current_cursor,
-        );
+        let handler =
+            FlutterHandler::session_handler_for_cursor_state(client_owner_id, &current_cursor);
         let mut handlers = peer_session.session_handlers.write().unwrap();
         match handlers.entry(session_id) {
             Entry::Vacant(entry) => {
@@ -4110,10 +3960,8 @@ pub mod sessions {
         if let Some(s) = sessions.get(&(peer_id, conn_type)) {
             let validated_displays = validate_display_selection(s, &displays)?;
             let current_cursor = s.ui_handler.current_cursor.read().unwrap();
-            let mut h = FlutterHandler::session_handler_for_cursor_state(
-                client_owner_id,
-                &current_cursor,
-            );
+            let mut h =
+                FlutterHandler::session_handler_for_cursor_state(client_owner_id, &current_cursor);
             let mut handlers = s.ui_handler.session_handlers.write().unwrap();
             let mut capture_set = remaining_displays(Some(&session_id), &handlers)?;
             capture_set.extend(displays.iter().copied());
@@ -4844,10 +4692,12 @@ mod mobile_session_lifecycle_tests {
         )
         .expect("the bounded initial display binds to the sole marked UI owner");
         assert_eq!(handlers.get(&initial_session).unwrap().displays, vec![2]);
-        assert!(!handlers
-            .get(&initial_session)
-            .unwrap()
-            .awaiting_initial_display);
+        assert!(
+            !handlers
+                .get(&initial_session)
+                .unwrap()
+                .awaiting_initial_display
+        );
         assert_eq!(handlers.get(&explicit_session).unwrap().displays, vec![0]);
 
         peer_info.current_display = 1;
@@ -4884,7 +4734,9 @@ mod mobile_session_lifecycle_tests {
             peer_info.displays.len(),
         )
         .is_err());
-        assert!(ambiguous.values().all(|handler| handler.displays.is_empty()));
+        assert!(ambiguous
+            .values()
+            .all(|handler| handler.displays.is_empty()));
 
         let mut missing = HashMap::from([(first, SessionHandler::default())]);
         assert!(bind_initial_display_owner(
@@ -4955,9 +4807,7 @@ mod mobile_session_lifecycle_tests {
                 ..Default::default()
             },
         );
-        assert!(
-            bind_initial_display_owner(&mut negative, -1, peer_info.displays.len()).is_err()
-        );
+        assert!(bind_initial_display_owner(&mut negative, -1, peer_info.displays.len()).is_err());
         assert!(negative.get(&first).unwrap().displays.is_empty());
 
         let mut conflicting = HashMap::new();
@@ -5041,9 +4891,7 @@ mod mobile_session_lifecycle_tests {
             .read()
             .unwrap()
             .is_empty());
-        assert!(handler
-            .renderer
-            .update_pixelbuffer_texture(4, 41, true));
+        assert!(handler.renderer.update_pixelbuffer_texture(4, 41, true));
         let handlers = HashMap::from([(session_id, handler)]);
 
         assert_eq!(
@@ -5131,29 +4979,25 @@ mod mobile_session_lifecycle_tests {
         let (sender, receiver) = viewer_video_refresh_channel();
         *session.video_refresh_sender.write().unwrap() = Some(sender);
 
-        assert!(sessions::request_video_refresh_for_exact_ui_owner(
-            &session_id,
-            &stale_owner,
-        )
-        .is_err());
+        assert!(
+            sessions::request_video_refresh_for_exact_ui_owner(&session_id, &stale_owner,).is_err()
+        );
         assert_eq!(receiver.try_recv(), None);
 
-        assert!(sessions::request_video_refresh_for_exact_ui_owner(
-            &session_id,
-            &current_owner,
-        )
-        .is_err());
+        assert!(
+            sessions::request_video_refresh_for_exact_ui_owner(&session_id, &current_owner,)
+                .is_err()
+        );
         assert_eq!(receiver.try_recv(), None);
 
         {
             let mut handlers = session.ui_handler.session_handlers.write().unwrap();
             handlers.get_mut(&session_id).unwrap().displays = vec![5];
         }
-        assert!(sessions::request_video_refresh_for_exact_ui_owner(
-            &session_id,
-            &current_owner,
-        )
-        .is_err());
+        assert!(
+            sessions::request_video_refresh_for_exact_ui_owner(&session_id, &current_owner,)
+                .is_err()
+        );
         assert_eq!(receiver.try_recv(), None);
 
         {
@@ -5230,13 +5074,18 @@ mod mobile_session_lifecycle_tests {
         let latest = CursorPositionValue { x: 50, y: 60 };
         let mut mailbox = CursorPositionMailbox::default();
 
-        let CursorPositionOffer::Published(first_publication) =
-            mailbox.offer(first, || Some(1))
+        let CursorPositionOffer::Published(first_publication) = mailbox.offer(first, || Some(1))
         else {
             panic!("first cursor position was not published");
         };
-        assert_eq!(mailbox.offer(second, || Some(2)), CursorPositionOffer::Pending);
-        assert_eq!(mailbox.offer(latest, || Some(3)), CursorPositionOffer::Pending);
+        assert_eq!(
+            mailbox.offer(second, || Some(2)),
+            CursorPositionOffer::Pending
+        );
+        assert_eq!(
+            mailbox.offer(latest, || Some(3)),
+            CursorPositionOffer::Pending
+        );
         assert_eq!(mailbox.published, Some(first_publication));
         assert_eq!(mailbox.current, Some(latest));
 
@@ -5286,8 +5135,7 @@ mod mobile_session_lifecycle_tests {
         let pre_topology_pending = CursorPositionValue { x: 30, y: 40 };
         let after = CursorPositionValue { x: 50, y: 60 };
         let mut mailbox = CursorPositionMailbox::default();
-        let CursorPositionOffer::Published(before_publication) =
-            mailbox.offer(before, || Some(1))
+        let CursorPositionOffer::Published(before_publication) = mailbox.offer(before, || Some(1))
         else {
             panic!("first cursor position was not published");
         };
@@ -5299,7 +5147,10 @@ mod mobile_session_lifecycle_tests {
         assert_eq!(mailbox.published, Some(before_publication));
         assert!(mailbox.current.is_none());
 
-        assert_eq!(mailbox.offer(after, || Some(2)), CursorPositionOffer::Pending);
+        assert_eq!(
+            mailbox.offer(after, || Some(2)),
+            CursorPositionOffer::Pending
+        );
         let CursorPositionAcknowledgement::Promoted(after_publication) =
             mailbox.acknowledge(before_publication, || Some(2))
         else {
@@ -5316,12 +5167,14 @@ mod mobile_session_lifecycle_tests {
         let first = CursorPositionValue { x: 10, y: 20 };
         let latest = CursorPositionValue { x: 50, y: 60 };
         let mut mailbox = CursorPositionMailbox::default();
-        let CursorPositionOffer::Published(first_publication) =
-            mailbox.offer(first, || Some(1))
+        let CursorPositionOffer::Published(first_publication) = mailbox.offer(first, || Some(1))
         else {
             panic!("first cursor position was not published");
         };
-        assert_eq!(mailbox.offer(latest, || Some(2)), CursorPositionOffer::Pending);
+        assert_eq!(
+            mailbox.offer(latest, || Some(2)),
+            CursorPositionOffer::Pending
+        );
         let CursorPositionRearm::Rearmed(rearmed) = mailbox.rearm(|| Some(2)) else {
             panic!("cursor position was not re-armed for the replacement stream");
         };
@@ -5337,9 +5190,7 @@ mod mobile_session_lifecycle_tests {
         );
         assert_eq!(mailbox.current, Some(latest));
 
-        let CursorPositionRearm::Rearmed(replayed_after_drain) =
-            mailbox.rearm(|| Some(3))
-        else {
+        let CursorPositionRearm::Rearmed(replayed_after_drain) = mailbox.rearm(|| Some(3)) else {
             panic!("the current cursor position was not replayed after acknowledgement");
         };
         assert_eq!(replayed_after_drain.position, latest);
@@ -5353,7 +5204,10 @@ mod mobile_session_lifecycle_tests {
         else {
             panic!("cursor position was not republished after drain");
         };
-        assert_eq!(mailbox.offer(latest, || Some(4)), CursorPositionOffer::Pending);
+        assert_eq!(
+            mailbox.offer(latest, || Some(4)),
+            CursorPositionOffer::Pending
+        );
         assert_eq!(
             mailbox.acknowledge(exhausted_publication, || None),
             CursorPositionAcknowledgement::Exhausted
@@ -5368,19 +5222,14 @@ mod mobile_session_lifecycle_tests {
         assert!(mailbox.published.is_none());
         assert!(mailbox.current.is_none());
 
-        let CursorPositionOffer::Published(_) =
-            mailbox.offer(first, || Some(4))
-        else {
+        let CursorPositionOffer::Published(_) = mailbox.offer(first, || Some(4)) else {
             panic!("cursor position was not published before re-arm exhaustion");
         };
         assert_eq!(
             mailbox.offer(latest, || Some(5)),
             CursorPositionOffer::Pending
         );
-        assert_eq!(
-            mailbox.rearm(|| None),
-            CursorPositionRearm::Exhausted
-        );
+        assert_eq!(mailbox.rearm(|| None), CursorPositionRearm::Exhausted);
         assert!(mailbox.published.is_none());
         assert!(mailbox.current.is_none());
     }
@@ -5440,12 +5289,9 @@ mod mobile_session_lifecycle_tests {
             mailbox.acknowledge("1", 1, first_publication.publication + 1, || Some(2)),
             CursorShapeAcknowledgement::Ignored
         );
-        let CursorShapeAcknowledgement::Promoted(latest_publication) = mailbox.acknowledge(
-            "1",
-            1,
-            first_publication.publication,
-            || Some(2),
-        ) else {
+        let CursorShapeAcknowledgement::Promoted(latest_publication) =
+            mailbox.acknowledge("1", 1, first_publication.publication, || Some(2))
+        else {
             panic!("the latest cursor shape was not promoted");
         };
         assert_eq!(latest_publication.value.state.identity(), ("3", 3));
@@ -5527,12 +5373,9 @@ mod mobile_session_lifecycle_tests {
             panic!("the ID-only cursor shape was not published");
         };
         mailbox.require_data_for(&id_only);
-        let CursorShapeAcknowledgement::Promoted(full_data) = mailbox.acknowledge(
-            "known",
-            7,
-            id_only.publication,
-            || Some(2),
-        ) else {
+        let CursorShapeAcknowledgement::Promoted(full_data) =
+            mailbox.acknowledge("known", 7, id_only.publication, || Some(2))
+        else {
             panic!("the rejected ID-only shape was not repaired with full data");
         };
         assert!(full_data.value.include_data);
@@ -5573,21 +5416,27 @@ mod mobile_session_lifecycle_tests {
         };
         let mut known = CursorShapeKnowledge::default();
 
-        assert!(id_reference
-            .clone()
-            .bind_to_knowledge(&mut known)
-            .include_data);
+        assert!(
+            id_reference
+                .clone()
+                .bind_to_knowledge(&mut known)
+                .include_data
+        );
         assert!(known.insert(&shape));
-        assert!(!id_reference
-            .clone()
-            .bind_to_knowledge(&mut known)
-            .include_data);
+        assert!(
+            !id_reference
+                .clone()
+                .bind_to_knowledge(&mut known)
+                .include_data
+        );
 
         known.remove(&shape.id, Some(shape.revision + 1));
-        assert!(!id_reference
-            .clone()
-            .bind_to_knowledge(&mut known)
-            .include_data);
+        assert!(
+            !id_reference
+                .clone()
+                .bind_to_knowledge(&mut known)
+                .include_data
+        );
         known.remove(&shape.id, Some(shape.revision));
         assert!(id_reference.bind_to_knowledge(&mut known).include_data);
     }
@@ -5650,8 +5499,7 @@ mod mobile_session_lifecycle_tests {
         current.position = Some(CursorPositionValue { x: 31, y: 47 });
 
         let owner = SessionID::new_v4();
-        let mut handler =
-            FlutterHandler::session_handler_for_cursor_state(owner, &current);
+        let mut handler = FlutterHandler::session_handler_for_cursor_state(owner, &current);
         drop(current);
         assert_eq!(handler.client_owner_id, Some(owner));
         assert_eq!(
@@ -5672,8 +5520,7 @@ mod mobile_session_lifecycle_tests {
             Some(CursorPositionValue { x: 31, y: 47 })
         );
 
-        let CursorShapeRearm::Rearmed(replayed_shape) =
-            handler.cursor_shape.rearm(|| Some(1))
+        let CursorShapeRearm::Rearmed(replayed_shape) = handler.cursor_shape.rearm(|| Some(1))
         else {
             panic!("the inherited cursor shape was not replayable");
         };
@@ -5683,7 +5530,10 @@ mod mobile_session_lifecycle_tests {
         else {
             panic!("the inherited cursor position was not replayable");
         };
-        assert_eq!(replayed_position.position, CursorPositionValue { x: 31, y: 47 });
+        assert_eq!(
+            replayed_position.position,
+            CursorPositionValue { x: 31, y: 47 }
+        );
     }
 
     #[test]
@@ -5710,28 +5560,21 @@ mod mobile_session_lifecycle_tests {
         assert_eq!(mailbox.data.as_ptr(), published_ptr);
         assert_eq!(mailbox.data, vec![1; 16]);
         assert_eq!(mailbox.pending.as_deref(), Some(&[3; 16][..]));
-        assert_eq!(mailbox.copy(2), None);
-        assert_eq!(mailbox.copy(1), Some(vec![1; 16]));
-
-        assert_eq!(
-            mailbox.acknowledge(1, || Some(2)),
-            RgbaAcknowledgement::Promoted(2)
-        );
+        assert_eq!(mailbox.take_latest(2), None);
+        assert_eq!(mailbox.take_latest(1), Some(vec![3; 16]));
         assert_eq!(mailbox.data, vec![3; 16]);
-        assert!(mailbox.valid);
+        assert!(!mailbox.valid);
+        assert_eq!(mailbox.publication, 0);
         assert!(mailbox.pending.is_none());
         assert!(mailbox.spare.is_empty());
-        assert_eq!(
-            mailbox.acknowledge(1, || Some(3)),
-            RgbaAcknowledgement::Ignored
-        );
-        assert!(mailbox.valid);
+        assert_eq!(mailbox.take_latest(1), None);
 
+        let mut next = vec![4; 16];
         assert_eq!(
-            mailbox.acknowledge(2, || Some(3)),
-            RgbaAcknowledgement::Drained
+            mailbox.offer_swap(&mut next, || Some(2)),
+            RgbaOffer::Published(2)
         );
-        assert!(!mailbox.valid);
+        assert_eq!(mailbox.take_latest(2), Some(vec![4; 16]));
     }
 
     #[test]
@@ -5744,8 +5587,7 @@ mod mobile_session_lifecycle_tests {
         );
 
         assert_eq!(mailbox.rearm(|| Some(2)), RgbaRearm::Rearmed(2));
-        assert_eq!(mailbox.copy(1), None);
-        assert_eq!(mailbox.copy(2), Some(vec![1; 16]));
+        assert_eq!(mailbox.take_latest(1), None);
 
         let mut second = vec![2; 16];
         assert_eq!(
@@ -5760,14 +5602,9 @@ mod mobile_session_lifecycle_tests {
         assert_eq!(mailbox.rearm(|| Some(3)), RgbaRearm::Rearmed(3));
         assert_eq!(mailbox.data, vec![3; 16]);
         assert!(mailbox.pending.is_none());
-        assert_eq!(
-            mailbox.acknowledge(2, || Some(4)),
-            RgbaAcknowledgement::Ignored
-        );
-        assert_eq!(
-            mailbox.acknowledge(3, || Some(4)),
-            RgbaAcknowledgement::Drained
-        );
+        assert_eq!(mailbox.take_latest(2), None);
+        assert_eq!(mailbox.take_latest(3), Some(vec![3; 16]));
+        assert!(!mailbox.valid);
     }
 
     #[test]
@@ -5797,7 +5634,7 @@ mod mobile_session_lifecycle_tests {
         assert!(!mailbox.valid);
         assert_eq!(mailbox.publication, 0);
         assert!(mailbox.pending.is_none());
-        assert_eq!(mailbox.copy(1), None);
+        assert_eq!(mailbox.take_latest(1), None);
     }
 
     #[test]
@@ -5823,7 +5660,7 @@ mod mobile_session_lifecycle_tests {
     }
 
     #[test]
-    fn r_s11iw_stream_replacement_rotates_rgba_and_rejects_predecessor_acknowledgement() {
+    fn r_s11iw_stream_replacement_rotates_rgba_and_rejects_predecessor_take() {
         let handler = FlutterHandler::default();
         let session_id = SessionID::new_v4();
         let other_session_id = SessionID::new_v4();
@@ -5870,24 +5707,28 @@ mod mobile_session_lifecycle_tests {
         assert!(replacement_publication > first_publication);
         let replacement_stable_publication = replacement_publications[1].1;
         assert!(replacement_stable_publication > stable_publication);
-        assert_eq!(handler.copy_rgba(&session_id, 4, first_publication), None);
         assert_eq!(
-            handler.copy_rgba(&session_id, 4, replacement_publication),
-            Some(vec![2; 8])
-        );
-
-        handler.next_rgba(&session_id, 4, first_publication);
-        assert_eq!(
-            handler.copy_rgba(&session_id, 4, replacement_publication),
-            Some(vec![2; 8])
+            handler.take_latest_rgba(&session_id, 4, first_publication),
+            None
         );
         assert_eq!(
-            handler.copy_rgba(&other_session_id, 7, other_publication),
+            handler.take_latest_rgba(&other_session_id, 7, other_publication),
             Some(vec![3; 8])
         );
-        assert_eq!(handler.copy_rgba(&session_id, 9, stable_publication), None);
         assert_eq!(
-            handler.copy_rgba(&session_id, 9, replacement_stable_publication),
+            handler.take_latest_rgba(&session_id, 4, replacement_publication),
+            Some(vec![2; 8])
+        );
+        assert_eq!(
+            handler.take_latest_rgba(&session_id, 4, replacement_publication),
+            None
+        );
+        assert_eq!(
+            handler.take_latest_rgba(&session_id, 9, stable_publication),
+            None
+        );
+        assert_eq!(
+            handler.take_latest_rgba(&session_id, 9, replacement_stable_publication),
             Some(vec![4; 8])
         );
     }
@@ -5922,7 +5763,7 @@ mod mobile_session_lifecycle_tests {
             .unwrap()
             .contains_key(&(session_id, 9)));
         assert_eq!(
-            handler.copy_rgba(&other_session_id, 7, other_publication),
+            handler.take_latest_rgba(&other_session_id, 7, other_publication),
             Some(vec![2; 8])
         );
     }
@@ -5944,15 +5785,7 @@ mod mobile_session_lifecycle_tests {
         let first_publication = publications[0].1;
         let second_publication = publications[1].1;
         assert_eq!(
-            handler.copy_rgba(&first, 4, first_publication),
-            Some(vec![10; 8])
-        );
-        assert_eq!(
-            handler.copy_rgba(&second, 4, second_publication),
-            Some(vec![10; 8])
-        );
-        assert_eq!(
-            handler.copy_rgba(&SessionID::new_v4(), 4, first_publication),
+            handler.take_latest_rgba(&SessionID::new_v4(), 4, first_publication),
             None
         );
 
@@ -5960,26 +5793,25 @@ mod mobile_session_lifecycle_tests {
         assert!(handler
             .offer_rgba_to_sessions(&[first, second], 4, &mut replacement)
             .is_empty());
+        assert_eq!(
+            handler.take_latest_rgba(&first, 4, first_publication),
+            Some(vec![20; 8])
+        );
         {
-            let mut mailboxes = handler.display_rgbas.write().unwrap();
-            let first_mailbox = mailboxes
-                .get_mut(&(first, 4))
-                .expect("first exact RGBA mailbox");
-            assert!(matches!(
-                first_mailbox.acknowledge(first_publication, || Some(3)),
-                RgbaAcknowledgement::Promoted(_)
-            ));
-            assert_eq!(first_mailbox.data, vec![20; 8]);
-
+            let mailboxes = handler.display_rgbas.read().unwrap();
             let second_mailbox = mailboxes
                 .get(&(second, 4))
                 .expect("second exact RGBA mailbox");
             assert_eq!(second_mailbox.data, vec![10; 8]);
             assert_eq!(second_mailbox.pending.as_deref(), Some(&[20; 8][..]));
         }
+        assert_eq!(
+            handler.take_latest_rgba(&second, 4, second_publication),
+            Some(vec![20; 8])
+        );
 
         handler.retire_rgba_session(&first);
-        assert_eq!(handler.copy_rgba(&first, 4, first_publication), None);
+        assert_eq!(handler.take_latest_rgba(&first, 4, first_publication), None);
         let mailboxes = handler.display_rgbas.read().unwrap();
         assert!(!mailboxes.contains_key(&(first, 4)));
         assert!(mailboxes.contains_key(&(second, 4)));
@@ -6051,13 +5883,7 @@ mod mobile_session_lifecycle_tests {
             );
         }
         assert_eq!(
-            handler.update_pixelbuffer_texture(
-                &session_id,
-                &replacement_owner,
-                0,
-                84,
-                true,
-            ),
+            handler.update_pixelbuffer_texture(&session_id, &replacement_owner, 0, 84, true,),
             Some(true)
         );
         assert_eq!(
@@ -6147,10 +5973,7 @@ mod mobile_session_lifecycle_tests {
             mailbox.offer_swap(&mut pending, || Some(2)),
             RgbaOffer::Pending
         );
-        assert_eq!(
-            mailbox.acknowledge(1, || None),
-            RgbaAcknowledgement::Exhausted
-        );
+        assert_eq!(mailbox.take_latest(1), Some(vec![2; 4]));
         assert!(!mailbox.valid);
         assert_eq!(mailbox.publication, 0);
         assert!(mailbox.pending.is_none());
@@ -6320,11 +6143,10 @@ mod mobile_session_lifecycle_tests {
             "same-host",
             ConnType::DEFAULT_CONN,
         );
-        assert!(sessions::remove_session_by_exact_ui_owner(
-            &stale_session_id,
-            &client_owner_id,
-        )
-        .is_none());
+        assert!(
+            sessions::remove_session_by_exact_ui_owner(&stale_session_id, &client_owner_id,)
+                .is_none()
+        );
         assert!(sessions::contains_peer("same-host", ConnType::DEFAULT_CONN));
         assert!(!replacement.close_requested.load(Ordering::Acquire));
         assert!(sessions::session_has_client_owner(
@@ -6342,8 +6164,7 @@ mod mobile_session_lifecycle_tests {
 
         let first_session_id = SessionID::new_v4();
         let first_owner_id = SessionID::new_v4();
-        let first_candidate =
-            initialized_test_session("registry-host", ConnType::DEFAULT_CONN);
+        let first_candidate = initialized_test_session("registry-host", ConnType::DEFAULT_CONN);
         let installed = sessions::insert_session(
             first_session_id,
             first_owner_id,
@@ -6355,8 +6176,7 @@ mod mobile_session_lifecycle_tests {
 
         let second_session_id = SessionID::new_v4();
         let second_owner_id = SessionID::new_v4();
-        let unused_candidate =
-            initialized_test_session("registry-host", ConnType::DEFAULT_CONN);
+        let unused_candidate = initialized_test_session("registry-host", ConnType::DEFAULT_CONN);
         let reused = sessions::insert_session(
             second_session_id,
             second_owner_id,
@@ -6434,11 +6254,10 @@ mod mobile_session_lifecycle_tests {
             &first_owner_id,
         ));
 
-        assert!(sessions::remove_session_by_exact_ui_owner(
-            &first_session_id,
-            &first_owner_id,
-        )
-        .is_none());
+        assert!(
+            sessions::remove_session_by_exact_ui_owner(&first_session_id, &first_owner_id,)
+                .is_none()
+        );
         assert!(!sessions::session_has_client_owner(
             &first_session_id,
             &first_owner_id,

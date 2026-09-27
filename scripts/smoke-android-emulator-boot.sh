@@ -327,12 +327,16 @@ is_exact_adb_process() {
 }
 
 frame_observer_listener_is_exact() {
-    [ "$(awk 'FNR > 1 && $4 == "0A" && substr($2, length($2) - 4) == ":216A" {
+    local -a interfaces=(/sys/class/net/*)
+    [ "${#interfaces[@]}" -eq 1 ] \
+        && [ "${interfaces[0]}" = /sys/class/net/lo ] \
+        && [ "$(awk 'FNR > 1 && $4 == "0A" && substr($2, length($2) - 4) == ":216A" {
             count++
         }
         END { print count + 0 }' /proc/net/tcp /proc/net/tcp6)" -eq 1 ] \
         && awk 'FNR > 1 && $4 == "0A" && substr($2, length($2) - 4) == ":216A" {
-                if (FILENAME != "/proc/net/tcp" || $2 != "0100007F:216A") bad=1
+                if (FILENAME != "/proc/net/tcp6" ||
+                    $2 != "00000000000000000000000000000000:216A") bad=1
             }
             END { exit bad ? 1 : 0 }' /proc/net/tcp /proc/net/tcp6
 }
@@ -955,8 +959,8 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
         sleep 0.1
     done
     [ "$grpc_ready" -eq 1 ] \
-        || fail 'the emulator display observer is not one exact 127.0.0.1:8554 listener'
-    printf 'ANDROID_EMULATOR_FRAME_ENDPOINT=pass listener=127.0.0.1:8554 transport=grpc-stream network=container-loopback\n'
+        || fail 'the emulator display observer is not one exact isolated [::]:8554 listener'
+    printf 'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none\n'
 fi
 
 boot_ready=0

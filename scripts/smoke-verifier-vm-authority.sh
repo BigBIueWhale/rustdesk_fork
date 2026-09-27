@@ -3006,7 +3006,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     [ "${#android_runtime_apk_receipts[@]}" -eq 1 ] \
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android runtime APK receipt is absent or duplicated'; }
     require_exact_fixed_receipt \
-        'ANDROID_EMULATOR_FRAME_ENDPOINT=pass listener=127.0.0.1:8554 transport=grpc-stream network=container-loopback' \
+        'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none' \
         'Android emulator frame-endpoint receipt'
     require_exact_fixed_receipt \
         'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass scenarios=11' \

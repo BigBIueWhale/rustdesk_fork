@@ -3145,7 +3145,7 @@ run_android_emulator_runtime() {
     [ "$(grep -c '^ANDROID_EMULATOR_APK=' "$output")" -eq 1 ] \
         || fail 'Android runtime APK receipt is duplicated'
     frame_endpoint_receipt="$(grep -Fx \
-        'ANDROID_EMULATOR_FRAME_ENDPOINT=pass listener=127.0.0.1:8554 transport=grpc-stream network=container-loopback' \
+        'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none' \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android frame-endpoint receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_FRAME_ENDPOINT=' "$output")" -eq 1 ] \

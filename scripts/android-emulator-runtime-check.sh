@@ -710,7 +710,7 @@ fi
 [ "$(stat -c '%s' -- "$OBSERVER_LOG")" -le 1048576 ] \
     || die 'Android emulator frame-observer output exceeds its bound'
 mapfile -t endpoint_receipts < <(grep -Fx \
-    'ANDROID_EMULATOR_FRAME_ENDPOINT=pass listener=127.0.0.1:8554 transport=grpc-stream network=container-loopback' \
+    'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none' \
     "$RUNTIME_LOG" || true)
 [ "${#endpoint_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android emulator frame-endpoint receipt is absent or duplicated'; }

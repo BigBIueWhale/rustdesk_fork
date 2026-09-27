@@ -10,6 +10,9 @@ case "$#:${8:-}" in
     12:--hbb-common-fs)
         MODE=hbb-common-fs
         ;;
+    12:--cpace-recovery-tests)
+        MODE=cpace-recovery-tests
+        ;;
     12:--android-rust-lifecycle-tests)
         MODE=android-rust-lifecycle-tests
         ;;
@@ -51,7 +54,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -1360,6 +1363,33 @@ run_focused_rust_tests() {
             fs::tests::rename_admitted_entry_refuses_a_replaced_source_name
             fs::tests::rename_admitted_entry_stays_with_its_retained_parent_after_path_swap
         )
+    elif [ "$MODE" = cpace-recovery-tests ]; then
+        container_name=rustdesk-cpace-recovery-tests
+        memory=8g
+        memory_bytes=8589934592
+        tmpfs_size=3g
+        image_archive=$inputs/build-images/deb-builder.docker.tar.gz
+        image_config=$DEB_BUILDER_CONFIG_ID
+        image_index=$DEB_BUILDER_IMAGE_ID
+        toolchain_mode=archive
+        toolchain_mount=(
+            --mount "type=bind,source=$rust_archive,target=/inputs/rust.tar.xz,readonly"
+        )
+        bridge_mounts=()
+        source_fingerprints=(
+            Cargo.lock
+            libs/cpace_it/Cargo.toml
+            libs/cpace_it/tests/handshake.rs
+            libs/hbb_common/protos/message.proto
+            libs/hbb_common/src/cpace.rs
+            libs/hbb_common/src/tcp.rs
+            libs/pake/src/lib.rs
+        )
+        required_tests=(
+            wrong_password_aborts_at_confirmation
+            initiator_eof_before_step2_remains_plain_io
+            initiator_invalid_step4_tag_remains_confirmation
+        )
     else
         [ "$MODE" = android-rust-lifecycle-tests ] \
             || fail "unknown focused Rust-test mode: $MODE"
@@ -1378,9 +1408,6 @@ run_focused_rust_tests() {
             scripts/finalize-flutter-tools-offline.sh
             scripts/flutter-offline-shim.sh
             scripts/online-pub-cache-output.py
-            libs/cpace_it/Cargo.toml
-            libs/cpace_it/tests/handshake.rs
-            libs/hbb_common/src/cpace.rs
             src/lib.rs
             src/android_listener_lifecycle.rs
             src/client.rs
@@ -1400,9 +1427,6 @@ run_focused_rust_tests() {
             android_listener_lifecycle::tests::invalid_exhausted_and_thread_creation_failure_edges_fail_closed
             client::tests::r_p14c_viewer_credential_prompt_requires_typed_credential_failure
             client::tests::r_p14_viewer_credential_is_fully_prepared_before_socket_keying
-            wrong_password_aborts_at_confirmation
-            initiator_eof_before_step2_remains_plain_io
-            initiator_invalid_step4_tag_remains_confirmation
             direct_service::direct_connection_task_tests::parent_cancellation_converges_every_owned_child_before_listener_completion
             privacy_mode::tests::r_s11iu_privacy_resource_owner_distinguishes_same_id_token_replacement
             privacy_mode::tests::r_s11iu_privacy_activation_commits_only_after_prepare
@@ -1493,7 +1517,7 @@ run_focused_rust_tests() {
             verify-subtree --tree "$vendor" \
             --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
         || fail 'sealed Cargo vendor closure differs'
-    if [ "$MODE" = hbb-common-fs ]; then
+    if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ]; then
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$rust_archive")" = \
           "1000:1000:400:1:$SIZE_RUST_1_75" ] \
             && [ "$(sha256sum "$rust_archive" | awk '{ print $1 }')" = "$SHA256_RUST_1_75" ] \
@@ -1672,9 +1696,11 @@ run_focused_rust_tests() {
                         cargo test --offline --locked -p hbb_common --lib \
                             fs::tests:: --color never -- --test-threads=1
                         ;;
-                    android-rust-lifecycle-tests)
+                    cpace-recovery-tests)
                         cargo test --offline --locked -p cpace_it --test handshake \
                             --color never -- --test-threads=1
+                        ;;
+                    android-rust-lifecycle-tests)
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             android_listener_lifecycle::tests:: --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config \
@@ -1718,8 +1744,11 @@ run_focused_rust_tests() {
     if [ "$MODE" = hbb-common-fs ]; then
         [ "${#result_lines[@]}" -eq 2 ] \
             || { tail -n 200 "$output" >&2; fail 'focused filesystem test summary count differs'; }
+    elif [ "$MODE" = cpace-recovery-tests ]; then
+        [ "${#result_lines[@]}" -eq 1 ] \
+            || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
     else
-        [ "${#result_lines[@]}" -eq 5 ] \
+        [ "${#result_lines[@]}" -eq 4 ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
     fi
     [ "$(grep -Ec '^test result: ' "$output")" -eq "${#result_lines[@]}" ] \
@@ -1762,10 +1791,17 @@ run_focused_rust_tests() {
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
             "$DEB_BUILDER_CONFIG_ID"
+    elif [ "$MODE" = cpace-recovery-tests ]; then
+        [ "$tests_passed" -eq 20 ] \
+            || fail "CPace recovery test count differs: $tests_passed"
+        printf 'CPACE_RECOVERY_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+            "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
+            "$DEB_BUILDER_CONFIG_ID"
     else
-        [ "$tests_passed" -eq 46 ] \
+        [ "$tests_passed" -eq 26 ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-and-wire-recovery rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-and-typed-viewer-keying rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_PUB_CACHE_CLOSURE_V1" \
@@ -4174,7 +4210,8 @@ done
 [ "$server_version" = "$EXPECTED_VERSION" ] || fail 'Docker server version differs'
 [ "$(<"$PIDFILE")" = "$DAEMON_PID" ] || fail 'Docker daemon PID file differs'
 docker_socket_gid=4000
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
+   || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ] \
    || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = android-owner-tests ] \
@@ -4233,6 +4270,11 @@ if [ "$MODE" = apple-conform ]; then
 fi
 
 if [ "$MODE" = hbb-common-fs ]; then
+    run_focused_rust_tests
+    exit 0
+fi
+
+if [ "$MODE" = cpace-recovery-tests ]; then
     run_focused_rust_tests
     exit 0
 fi

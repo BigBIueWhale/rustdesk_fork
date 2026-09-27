@@ -34,6 +34,12 @@ case "$#:${1:-}" in
             || { echo 'focused Rust-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=hbb-common-fs
         ;;
+    1:--cpace-recovery-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'focused CPace-recovery input/run overrides are forbidden' >&2; exit 2; }
+        MODE=cpace-recovery-tests
+        ;;
     1:--android-rust-lifecycle-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -125,7 +131,7 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
-        printf 'usage: %s [--hbb-common-fs | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
@@ -303,6 +309,10 @@ elif [ "$MODE" = android-rust-target-check ]; then
     readonly VM_MEMORY=16384
 elif [ "$MODE" = hbb-common-fs ]; then
     readonly VM_TIMEOUT_SECONDS=1800
+    readonly OVERLAY_SIZE=16G
+    readonly VM_MEMORY=8192
+elif [ "$MODE" = cpace-recovery-tests ]; then
+    readonly VM_TIMEOUT_SECONDS=900
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=8192
 elif [ "$MODE" = flutter-model-tests ]; then
@@ -978,7 +988,7 @@ verify_sha256 "$GIT_PACKAGE" "$SHA256_VERIFIER_VM_GIT_PACKAGE"
     && [ "$(/usr/bin/dpkg-deb --field "$GIT_PACKAGE" Architecture)" = amd64 ] \
     || fail 'authenticated verifier-VM Git package identity differs'
 /usr/bin/qemu-img check -q "$BASE" || fail 'Debian verifier-VM base failed qcow2 validation'
-if [ "$MODE" = hbb-common-fs ]; then
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ]; then
     [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
@@ -1558,7 +1568,8 @@ verify_sha256 "$INITRD" "$SHA256_VERIFIER_VM_INITRD"
 RUST_TEST_SOURCE_COMMIT=
 RUST_TEST_SOURCE_TREE=
 RUST_TEST_SOURCE_ARCHIVE_SHA256=
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
+   || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ]; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
         || fail 'focused Rust workloads require the one checked-out master authority'
@@ -1951,7 +1962,7 @@ kernel_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$KERNEL"):$(/usr/bi
 initrd_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INITRD"):$(/usr/bin/sha256sum "$INITRD")"
 sources_before="$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_APK_BUILD_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_RUNTIME_SOURCE" "$ANDROID_EMULATOR_APK_VERIFIER" "$ANDROID_APK_MANIFEST_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")"
 focused_inputs_before=
-if [ "$MODE" = hbb-common-fs ]; then
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ]; then
     focused_inputs_before="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
@@ -2030,7 +2041,8 @@ capture_listener_details >"$LISTENERS_BEFORE_DETAIL"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
     || fail 'pass-private overlay metadata differs'
 
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
+   || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ]; then
     git_closed -C "$REPO_ROOT" archive --format=tar "$RUST_TEST_SOURCE_COMMIT" \
         >"$RUST_TEST_SOURCE_ARCHIVE" \
@@ -2200,7 +2212,8 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
         "devcheck.docker.tar.gz=$DEV_CHECK_ARCHIVE"
         "artifact/rustdesk-x86_64.deb=$LIFECYCLE_ARTIFACT"
     )
-elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
+elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
+   || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$RUST_TEST_SOURCE_ARCHIVE")
@@ -2334,6 +2347,8 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     guest_invocation+=" --debian-systemd-lifecycle /mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz /mnt/rustdesk-verifier-inputs/artifact/rustdesk-x86_64.deb $LIFECYCLE_ARTIFACT_SHA256 $LIFECYCLE_COMMIT"
 elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
+elif [ "$MODE" = cpace-recovery-tests ]; then
+    guest_invocation+=" --cpace-recovery-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     guest_invocation+=" --android-rust-lifecycle-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-rust-target-check ]; then
@@ -2406,7 +2421,8 @@ exec {INITRD_FD}<"$INITRD" || fail 'cannot retain the exact verifier-VM initramf
     || fail 'retained initramfs descriptor identity differs'
 memory_args=(-m "$VM_MEMORY")
 focused_qemu_args=()
-if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = android-rust-lifecycle-tests ] \
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
+   || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ] \
    || [ "$MODE" = apple-conform ] \
    || [ "$MODE" = flutter-model-tests ] \
@@ -2833,9 +2849,16 @@ elif [ "$MODE" = hbb-common-fs ]; then
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Rust-test cloud-init completion marker'
+elif [ "$MODE" = cpace-recovery-tests ]; then
+    require_exact_fixed_receipt \
+        "CPACE_RECOVERY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=20 rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'focused CPace recovery receipt'
+    require_exact_fixed_receipt \
+        'VERIFIER_VM_CLOUD_INIT=pass' \
+        'focused CPace recovery cloud-init completion marker'
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     require_exact_fixed_receipt \
-        "ANDROID_RUST_LIFECYCLE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=46 target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-and-wire-recovery rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 bridge_builder=$DEB_BUILDER_CONFIG_ID devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "ANDROID_RUST_LIFECYCLE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=26 target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-and-typed-viewer-keying rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 bridge_builder=$DEB_BUILDER_CONFIG_ID devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused Android Rust-lifecycle receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
@@ -3019,7 +3042,7 @@ fi
     || fail 'direct-boot initramfs changed during execution'
 [ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_APK_BUILD_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_RUNTIME_SOURCE" "$ANDROID_EMULATOR_APK_VERIFIER" "$ANDROID_APK_MANIFEST_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
     || fail 'verifier-VM harness source changed during execution'
-if [ "$MODE" = hbb-common-fs ]; then
+if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ]; then
     focused_inputs_after="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
@@ -3200,8 +3223,11 @@ elif [ "$MODE" = debian-systemd-lifecycle ]; then
 elif [ "$MODE" = hbb-common-fs ]; then
     printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+elif [ "$MODE" = cpace-recovery-tests ]; then
+    printf 'CPACE_RECOVERY_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
-    printf 'ANDROID_RUST_LIFECYCLE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-and-wire-recovery network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+    printf 'ANDROID_RUST_LIFECYCLE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-and-typed-viewer-keying network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = android-rust-target-check ]; then

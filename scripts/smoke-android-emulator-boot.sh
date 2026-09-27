@@ -1368,7 +1368,7 @@ fill_focused_password() {
         "$ADB" -s "$SERIAL" shell input text "$password" >/dev/null \
             || fail 'cannot enter the disposable password'
         for _ in $(seq 1 12); do
-            if capture_ui_hierarchy complete; then
+            if capture_unobscured_ui_hierarchy complete; then
                 ! grep -Fq "$password" "$UI_XML" \
                     || fail 'the Android accessibility hierarchy exposed the password'
                 observed_remaining="$(ui_focused_password_remaining 2>/dev/null || true)"
@@ -1422,7 +1422,7 @@ PY
 wait_ui_resource_bounds() {
     local resource=$1 bounds=
     for _ in $(seq 1 12); do
-        if capture_ui_hierarchy complete; then
+        if capture_unobscured_ui_hierarchy complete; then
             bounds="$(ui_resource_bounds "$resource" 2>/dev/null || true)"
             if [[ "$bounds" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]]; then
                 printf '%s\n' "$bounds"
@@ -1597,16 +1597,23 @@ handle_framework_interruption() {
     sleep 2
 }
 
+capture_unobscured_ui_hierarchy() {
+    local detail=${1:-compressed}
+    while :; do
+        capture_ui_hierarchy "$detail" || return 1
+        handle_framework_interruption || return 1
+        if [ "$FRAMEWORK_INTERRUPTION_HANDLED" -eq 0 ]; then
+            return 0
+        fi
+    done
+}
+
 wait_ui_center() {
     local kind=$1
     shift
     local center= ui_attempt=0
     while [ "$ui_attempt" -lt 12 ]; do
-        if capture_ui_hierarchy; then
-            handle_framework_interruption || return 1
-            if [ "$FRAMEWORK_INTERRUPTION_HANDLED" -eq 1 ]; then
-                continue
-            fi
+        if capture_unobscured_ui_hierarchy; then
             center="$(ui_center "$kind" "$@" 2>/dev/null || true)"
             if [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]]; then
                 printf '%s\n' "$center"
@@ -2158,7 +2165,7 @@ wait_peer_password_submit_ack() {
     local kind=$1 started_ms now_ms prompt
     started_ms="$(monotonic_millis)" || return 2
     while :; do
-        if capture_ui_hierarchy complete; then
+        if capture_unobscured_ui_hierarchy complete; then
             prompt="$(ui_center text 'Password required' 2>/dev/null || true)"
             if ! [[ "$prompt" =~ ^[0-9]+\ [0-9]+$ ]]; then
                 now_ms="$(monotonic_millis)" || return 2
@@ -2215,11 +2222,7 @@ wait_peer_initial_credential_prompt() {
                 "$established_count"
             return 1
         fi
-        if capture_ui_hierarchy complete; then
-            handle_framework_interruption || return 1
-            if [ "$FRAMEWORK_INTERRUPTION_HANDLED" -eq 1 ]; then
-                continue
-            fi
+        if capture_unobscured_ui_hierarchy complete; then
             title="$(ui_center text 'Password required' 2>/dev/null || true)"
             if [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
                && ui_has_credential_reason_semantics \
@@ -2302,7 +2305,7 @@ submit_peer_password() {
         esac
     done
     wait_ui_center text 'Password required' >/dev/null || return 1
-    capture_ui_hierarchy complete || return 1
+    capture_unobscured_ui_hierarchy complete || return 1
     remember_state="$(ui_checkbox_checked 'Remember password' 2>/dev/null || true)"
     if [ "$remember_state" != false ]; then
         printf 'ANDROID_PEER_PASSWORD_INPUT=fail kind=%s stage=initial-remember-state observed=%s expected=false\n' \
@@ -2310,7 +2313,7 @@ submit_peer_password() {
         return 1
     fi
     for _ in $(seq 1 3); do
-        capture_ui_hierarchy || return 1
+        capture_unobscured_ui_hierarchy || return 1
         center="$(ui_center focused-password-field 2>/dev/null || true)"
         [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
         read -r x y <<<"$center"
@@ -2330,7 +2333,7 @@ submit_peer_password() {
             password_input_verified=1
             break
         fi
-        capture_ui_hierarchy || return 1
+        capture_unobscured_ui_hierarchy || return 1
         if ! ui_center focused-password-field >/dev/null 2>&1; then
             "$ADB" -s "$SERIAL" shell input tap \
                 "$visibility_x" "$visibility_y" >/dev/null || return 1
@@ -2341,12 +2344,12 @@ submit_peer_password() {
     printf 'ANDROID_PEER_PASSWORD_INPUT=pass kind=%s visible_roundtrip=true chars=%s remember=%s\n' \
         "$kind" "${#password}" "$remember"
     "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null || return 1
-    capture_ui_hierarchy || return 1
+    capture_unobscured_ui_hierarchy || return 1
     grep -Fq "$password" "$UI_XML" || return 1
     if [ "$remember" -eq 1 ]; then
         tap_ui text 'Remember password' || return 1
         for _ in $(seq 1 12); do
-            if capture_ui_hierarchy complete \
+            if capture_unobscured_ui_hierarchy complete \
                && [ "$(ui_checkbox_checked 'Remember password' \
                     2>/dev/null || true)" = true ]; then
                 remember_ready=1
@@ -2370,7 +2373,7 @@ submit_peer_password() {
             return 1
         fi
     fi
-    capture_ui_hierarchy complete || return 1
+    capture_unobscured_ui_hierarchy complete || return 1
     center="$(ui_center text 'OK' 2>/dev/null || true)"
     [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
     read -r x y <<<"$center"
@@ -2452,7 +2455,7 @@ wait_peer_credential_recovery_prompt() {
                 "$established_count"
             return 1
         fi
-        if capture_ui_hierarchy complete; then
+        if capture_unobscured_ui_hierarchy complete; then
             title="$(ui_center text 'Password required' 2>/dev/null || true)"
             if [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
                && ui_has_credential_reason_semantics "$PEER_CONFIRMATION_UNAVAILABLE_REASON" \
@@ -2474,7 +2477,7 @@ wait_peer_credential_recovery_prompt() {
                     KEYCODE_BACK >/dev/null \
                     || return 1
                 sleep 0.5
-                capture_ui_hierarchy complete || return 1
+                capture_unobscured_ui_hierarchy complete || return 1
                 title="$(ui_center text 'Password required' 2>/dev/null || true)"
                 [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
                     || return 1
@@ -2529,7 +2532,7 @@ wait_peer_credential_recovery_prompt() {
         fi
         sleep 0.25
     done
-    capture_ui_hierarchy complete \
+    capture_unobscured_ui_hierarchy complete \
         && [[ "$(ui_center text 'Password required' 2>/dev/null || true)" \
              =~ ^[0-9]+\ [0-9]+$ ]] \
         && ui_has_credential_reason_semantics \
@@ -2593,7 +2596,7 @@ open_peer_connection() {
         connection_wait_limit_ms=$PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS
     else
         sleep 1
-        if capture_ui_hierarchy \
+        if capture_unobscured_ui_hierarchy \
            && ui_center text 'Password required' >/dev/null 2>&1; then
             print_initial_ui_semantics
             return 1
@@ -2901,7 +2904,7 @@ PY
         confirmation_field=
         confirmation_focused=0
         for attempt in $(seq 1 5); do
-            if capture_ui_hierarchy; then
+            if capture_unobscured_ui_hierarchy; then
                 ! grep -Fq "$TEST_PASSWORD" "$UI_XML" \
                     || fail 'the Android accessibility hierarchy exposed the password'
                 confirmation_field="$(ui_password_field_center_with_remaining \
@@ -2913,7 +2916,7 @@ PY
                         || fail 'cannot focus the password-confirmation field'
                     sleep 0.5
                     if wait_ui_center focused-password-field >/dev/null \
-                       && capture_ui_hierarchy complete; then
+                       && capture_unobscured_ui_hierarchy complete; then
                         ! grep -Fq "$TEST_PASSWORD" "$UI_XML" \
                             || fail 'the Android accessibility hierarchy exposed the password'
                         focused_remaining="$(ui_focused_password_remaining \
@@ -2948,7 +2951,7 @@ PY
             }
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null \
             || fail 'cannot dismiss the disposable soft keyboard'
-        capture_ui_hierarchy \
+        capture_unobscured_ui_hierarchy \
             || fail 'cannot inspect the completed permanent-password dialog'
         ! grep -Fq "$TEST_PASSWORD" "$UI_XML" \
             || fail 'the Android accessibility hierarchy exposed the password'

@@ -985,7 +985,7 @@ import sys
 import xml.etree.ElementTree as ET
 
 path, kind, *wanted = sys.argv[1:]
-if kind not in ("address-field", "focused-password-field", "password-fields") and not wanted:
+if kind not in ("address-field", "focused-password-field") and not wanted:
     raise SystemExit(2)
 nodes = ET.parse(path).getroot().iter("node")
 centers = set()
@@ -1017,12 +1017,6 @@ for node in nodes:
             and attributes.get("enabled") == "true"
             and attributes.get("password") == "true"
         )
-    elif kind == "password-fields":
-        matched = (
-            attributes.get("class") == "android.widget.EditText"
-            and attributes.get("enabled") == "true"
-            and attributes.get("password") == "true"
-        )
     else:
         raise SystemExit(2)
     if not matched:
@@ -1035,9 +1029,7 @@ for node in nodes:
     if right <= left or bottom <= top:
         continue
     centers.add(((left + right) // 2, (top + bottom) // 2))
-if kind == "password-fields" and len(centers) not in (1, 2):
-    raise SystemExit(1)
-if kind != "password-fields" and len(centers) != 1:
+if len(centers) != 1:
     raise SystemExit(1)
 for x, y in sorted(centers, key=lambda point: (point[1], point[0])):
     print(f"{x} {y}")
@@ -1105,8 +1097,10 @@ print(states.pop())
 PY
 }
 
-ui_focused_password_remaining() {
-    python3 -I -S - "$UI_XML" <<'PY'
+ui_password_field_semantics() {
+    local mode=$1
+    shift
+    python3 -I -S - "$UI_XML" "$mode" "$@" <<'PY'
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -1125,65 +1119,87 @@ def parse_bounds(value):
     return left, top, right, bottom
 
 
-nodes = list(ET.parse(sys.argv[1]).getroot().iter("node"))
-focused_fields = []
-for node in nodes:
+path, mode, *arguments = sys.argv[1:]
+if mode not in ("focused-remaining", "center-with-remaining"):
+    raise SystemExit(2)
+fields = []
+counters = []
+for node in ET.parse(path).getroot().iter("node"):
     attributes = node.attrib
-    if not (
+    bounds = parse_bounds(attributes.get("bounds", ""))
+    if bounds is None:
+        continue
+    if (
         attributes.get("class") == "android.widget.EditText"
         and attributes.get("focusable") == "true"
-        and attributes.get("focused") == "true"
         and attributes.get("enabled") == "true"
         and attributes.get("password") == "true"
     ):
-        continue
-    bounds = parse_bounds(attributes.get("bounds", ""))
-    if bounds is not None:
-        focused_fields.append(bounds)
-if len(set(focused_fields)) != 1:
-    raise SystemExit(1)
-field_left, field_top, field_right, field_bottom = focused_fields[0]
-
-remaining = set()
-for node in nodes:
-    attributes = node.attrib
+        fields.append((bounds, attributes.get("focused") == "true"))
     semantic_tokens = {
         token.strip()
         for key in ("text", "content-desc")
         for token in attributes.get(key, "").splitlines()
         if token.strip()
     }
-    values = {
+    for remaining in {
         int(match.group(1))
         for token in semantic_tokens
         if (match := re.fullmatch(r"([0-9]+) characters remaining", token))
+    }:
+        counters.append((bounds, remaining))
+
+
+def field_remaining(field):
+    field_left, field_top, field_right, field_bottom = field
+    values = {
+        remaining
+        for (counter_left, counter_top, counter_right, counter_bottom), remaining
+        in counters
+        if counter_left >= field_left
+        and counter_top >= field_top
+        and counter_right <= field_right
+        and counter_bottom <= field_bottom
     }
-    if not values:
-        continue
-    bounds = parse_bounds(attributes.get("bounds", ""))
-    if bounds is None:
-        continue
-    left, top, right, bottom = bounds
-    if (
-        left >= field_left
-        and top >= field_top
-        and right <= field_right
-        and bottom <= field_bottom
-    ):
-        remaining.update(values)
-if len(remaining) != 1:
-    raise SystemExit(1)
-print(remaining.pop())
+    return values.pop() if len(values) == 1 else None
+
+
+if mode == "focused-remaining":
+    if arguments:
+        raise SystemExit(2)
+    focused = {field for field, is_focused in fields if is_focused}
+    if len(focused) != 1:
+        raise SystemExit(1)
+    remaining = field_remaining(focused.pop())
+    if remaining is None:
+        raise SystemExit(1)
+    print(remaining)
+else:
+    if len(arguments) != 1:
+        raise SystemExit(2)
+    expected_remaining = int(arguments[0])
+    matching = {
+        field for field, _ in fields
+        if field_remaining(field) == expected_remaining
+    }
+    if len(matching) != 1:
+        raise SystemExit(1)
+    left, top, right, bottom = matching.pop()
+    print((left + right) // 2, (top + bottom) // 2)
 PY
 }
 
-enter_exact_password() {
-    local field_x=$1 field_y=$2 password=$3 expected_remaining=$4
+ui_focused_password_remaining() {
+    ui_password_field_semantics focused-remaining
+}
+
+ui_password_field_center_with_remaining() {
+    ui_password_field_semantics center-with-remaining "$1"
+}
+
+fill_focused_password() {
+    local password=$1 expected_remaining=$2
     local observed_remaining=
-    "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" \
-        >/dev/null \
-        || fail 'cannot focus the disposable password field'
-    sleep 0.5
     for _ in $(seq 1 3); do
         wait_ui_center focused-password-field >/dev/null \
             || return 1
@@ -1207,6 +1223,15 @@ enter_exact_password() {
         done
     done
     return 1
+}
+
+enter_exact_password() {
+    local field_x=$1 field_y=$2 password=$3 expected_remaining=$4
+    "$ADB" -s "$SERIAL" shell input tap "$field_x" "$field_y" \
+        >/dev/null \
+        || fail 'cannot focus the disposable password field'
+    sleep 0.5
+    fill_focused_password "$password" "$expected_remaining"
 }
 
 ui_resource_bounds() {
@@ -2446,13 +2471,35 @@ PY
             }
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null \
             || fail 'cannot dismiss the disposable soft keyboard'
-        confirmation_counter=
+        confirmation_field=
+        confirmation_focused=0
         for attempt in $(seq 1 5); do
             if capture_ui_hierarchy; then
-                confirmation_counter="$(ui_center text \
-                    '128 characters remaining' 2>/dev/null || true)"
-                if [[ "$confirmation_counter" =~ ^[0-9]+\ [0-9]+$ ]]; then
-                    break
+                ! grep -Fq "$TEST_PASSWORD" "$UI_XML" \
+                    || fail 'the Android accessibility hierarchy exposed the password'
+                confirmation_field="$(ui_password_field_center_with_remaining \
+                    128 2>/dev/null || true)"
+                if [[ "$confirmation_field" =~ ^[0-9]+\ [0-9]+$ ]]; then
+                    read -r field_x field_y <<<"$confirmation_field"
+                    "$ADB" -s "$SERIAL" shell input tap \
+                        "$field_x" "$field_y" >/dev/null \
+                        || fail 'cannot focus the password-confirmation field'
+                    sleep 0.5
+                    if wait_ui_center focused-password-field >/dev/null \
+                       && capture_ui_hierarchy complete; then
+                        ! grep -Fq "$TEST_PASSWORD" "$UI_XML" \
+                            || fail 'the Android accessibility hierarchy exposed the password'
+                        focused_remaining="$(ui_focused_password_remaining \
+                            2>/dev/null || true)"
+                        if [ "$focused_remaining" = 128 ]; then
+                            confirmation_focused=1
+                            break
+                        fi
+                        "$ADB" -s "$SERIAL" shell input keyevent \
+                            KEYCODE_BACK >/dev/null \
+                            || fail 'cannot dismiss the misplaced password keyboard'
+                        sleep 0.5
+                    fi
                 fi
             fi
             [ "$attempt" -lt 5 ] || break
@@ -2461,20 +2508,13 @@ PY
                 >/dev/null || fail 'cannot scroll the permanent-password dialog'
             sleep 0.5
         done
-        if ! [[ "$confirmation_counter" =~ ^[0-9]+\ [0-9]+$ ]]; then
+        if [ "$confirmation_focused" -ne 1 ]; then
             ! grep -Fq "$TEST_PASSWORD" "$UI_XML" \
                 || fail 'the Android accessibility hierarchy exposed the password'
             print_initial_ui_semantics
-            fail 'the exact untouched password-confirmation field did not enter view'
+            fail 'the exact untouched password-confirmation field did not receive focus'
         fi
-        mapfile -t password_fields < <(ui_center password-fields 2>/dev/null || true)
-        [ "${#password_fields[@]}" -ge 1 ] \
-            && [ "${#password_fields[@]}" -le 2 ] \
-            || fail 'the scrolled password dialog exposes ambiguous exact fields'
-        confirmation_index=$((${#password_fields[@]} - 1))
-        read -r field_x field_y <<<"${password_fields[$confirmation_index]}"
-        enter_exact_password \
-            "$field_x" "$field_y" "$TEST_PASSWORD" "$TEST_PASSWORD_REMAINING" \
+        fill_focused_password "$TEST_PASSWORD" "$TEST_PASSWORD_REMAINING" \
             || {
                 print_initial_ui_semantics
                 fail 'the password-confirmation field did not observe the exact disposable input'

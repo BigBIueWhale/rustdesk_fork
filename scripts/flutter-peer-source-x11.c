@@ -3,9 +3,11 @@
 /*
  * Test-only source display for the full RustDesk peer-presentation probe.
  *
- * The two independently colored halves encode one of 256 ordered frame states. The exact product
- * captures this X11 window; the observer compares the decoded Flutter/X11 pixels with the live
- * source state to distinguish a current picture from a merely changing but delayed picture.
+ * The two independently colored halves encode one of 256 ordered frame states. A bounded band at
+ * the top repeats the same state as a high-contrast Manchester code so a scaled mobile observer
+ * can distinguish the remote image from letterbox and toolbar pixels. The exact product captures
+ * this X11 window; the observer compares the decoded pixels with the live source state to
+ * distinguish a current picture from a merely changing but delayed picture.
  */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -21,6 +23,8 @@
 #define SOURCE_HEIGHT 480U
 #define FRAME_INTERVAL_MS 250U
 #define DISPLAY_OPEN_ATTEMPTS 200U
+#define STATE_CODE_BARS 20U
+#define STATE_CODE_HEIGHT 96U
 
 static volatile sig_atomic_t stop_requested = 0;
 
@@ -32,6 +36,8 @@ static const uint8_t palette[16][3] = {
     {196U, 92U, 44U},   {44U, 196U, 92U},   {92U, 44U, 196U},
     {196U, 196U, 196U},
 };
+static const uint8_t code_black[3] = {0U, 0U, 0U};
+static const uint8_t code_white[3] = {255U, 255U, 255U};
 
 static void request_stop(int signal_number) {
     (void)signal_number;
@@ -79,6 +85,39 @@ static unsigned long rgb_pixel(const Visual *visual, const uint8_t color[3]) {
     return component_pixel(color[0], visual->red_mask) |
            component_pixel(color[1], visual->green_mask) |
            component_pixel(color[2], visual->blue_mask);
+}
+
+static int root_pixel_matches(Display *display, Window root, int x, int y,
+                              unsigned long expected);
+
+static int state_code_bar_is_white(unsigned int state, unsigned int bar) {
+    unsigned int pair;
+    unsigned int bit;
+    if (bar == 0U || bar == STATE_CODE_BARS - 1U) {
+        return 0;
+    }
+    if (bar == 1U || bar == STATE_CODE_BARS - 2U) {
+        return 1;
+    }
+    pair = (bar - 2U) / 2U;
+    bit = (state >> (7U - pair)) & 1U;
+    return ((bar - 2U) & 1U) == 0U ? (int)bit : (int)(bit ^ 1U);
+}
+
+static int root_state_code_matches(Display *display, Window root, const Visual *visual,
+                                   unsigned int state) {
+    unsigned int bar;
+    for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
+        unsigned int x = ((bar * 2U + 1U) * SOURCE_WIDTH) /
+                         (STATE_CODE_BARS * 2U);
+        const uint8_t *color =
+            state_code_bar_is_white(state, bar) != 0 ? code_white : code_black;
+        if (!root_pixel_matches(display, root, (int)x, (int)(STATE_CODE_HEIGHT / 2U),
+                                rgb_pixel(visual, color))) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 static int root_pixel_matches(Display *display, Window root, int x, int y,
@@ -174,7 +213,7 @@ int main(void) {
     while (stop_requested == 0) {
         unsigned int low = frame & 15U;
         unsigned int high = (frame >> 4U) & 15U;
-        unsigned int marker_x = (frame * 17U) % (SOURCE_WIDTH - 24U);
+        unsigned int bar;
 
         XSetForeground(display, graphics, rgb_pixel(visual, palette[low]));
         XFillRectangle(display, back_buffer, graphics, 0, 0, SOURCE_WIDTH / 2U,
@@ -182,8 +221,15 @@ int main(void) {
         XSetForeground(display, graphics, rgb_pixel(visual, palette[high]));
         XFillRectangle(display, back_buffer, graphics, SOURCE_WIDTH / 2U, 0,
                        SOURCE_WIDTH / 2U, SOURCE_HEIGHT);
-        XSetForeground(display, graphics, BlackPixel(display, screen));
-        XFillRectangle(display, back_buffer, graphics, (int)marker_x, 8, 24U, 8U);
+        for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
+            unsigned int start = (bar * SOURCE_WIDTH) / STATE_CODE_BARS;
+            unsigned int end = ((bar + 1U) * SOURCE_WIDTH) / STATE_CODE_BARS;
+            const uint8_t *color =
+                state_code_bar_is_white(frame, bar) != 0 ? code_white : code_black;
+            XSetForeground(display, graphics, rgb_pixel(visual, color));
+            XFillRectangle(display, back_buffer, graphics, (int)start, 0,
+                           end - start, STATE_CODE_HEIGHT);
+        }
         /*
          * The observer and RustDesk capture are separate X clients. Publishing both color
          * nibbles in one request prevents either client from observing a state torn between
@@ -198,7 +244,8 @@ int main(void) {
                                 rgb_pixel(visual, palette[low])) ||
             !root_pixel_matches(display, root, (int)(SOURCE_WIDTH * 3U / 4U),
                                 (int)(SOURCE_HEIGHT / 2U),
-                                rgb_pixel(visual, palette[high]))) {
+                                rgb_pixel(visual, palette[high])) ||
+            !root_state_code_matches(display, root, visual, frame)) {
             fprintf(stderr, "FLUTTER_PEER_SOURCE_FAIL source window occluded frame=%u\n", frame);
             exit_status = 1;
             break;

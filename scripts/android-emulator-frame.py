@@ -33,6 +33,9 @@ PALETTE = (
     (92, 44, 196),
     (196, 196, 196),
 )
+STATE_CODE_BARS = 20
+STATE_CODE_MIN_BAR_WIDTH = 3
+STATE_CODE_MIN_CONTRAST = 48
 METADATA = re.compile(
     rb"seq=([0-9]+) timestamp_us=([0-9]+) observed_epoch_us=([0-9]+) "
     rb"observed_monotonic_ns=([0-9]+) width=([0-9]+) height=([0-9]+) "
@@ -96,77 +99,205 @@ def parse_record(data: bytes, now_monotonic_ns: int | None = None) -> dict[str, 
     }
 
 
+def state_code_bars(state: int) -> tuple[int, ...]:
+    bars = [0, 1]
+    for shift in range(7, -1, -1):
+        bit = (state >> shift) & 1
+        bars.extend((bit, bit ^ 1))
+    bars.extend((1, 0))
+    return tuple(bars)
+
+
+def pixel_luma(
+    pixels: memoryview, width: int, height: int, logical_y: int, x: int
+) -> int:
+    storage_y = height - logical_y - 1
+    offset = (storage_y * width + x) * 3
+    return (
+        54 * pixels[offset]
+        + 183 * pixels[offset + 1]
+        + 19 * pixels[offset + 2]
+    ) // 256
+
+
+def decode_state_code_row(
+    pixels: memoryview,
+    width: int,
+    height: int,
+    logical_y: int,
+    left: int,
+    span: int,
+) -> tuple[int, int] | None:
+    values = tuple(
+        pixel_luma(
+            pixels,
+            width,
+            height,
+            logical_y,
+            left + ((2 * bar + 1) * span) // (2 * STATE_CODE_BARS),
+        )
+        for bar in range(STATE_CODE_BARS)
+    )
+    contrasts = [values[1] - values[0], values[-2] - values[-1]]
+    if min(contrasts) < STATE_CODE_MIN_CONTRAST:
+        return None
+    state = 0
+    for bar in range(2, STATE_CODE_BARS - 2, 2):
+        difference = values[bar] - values[bar + 1]
+        contrast = abs(difference)
+        if contrast < STATE_CODE_MIN_CONTRAST:
+            return None
+        state = (state << 1) | int(difference > 0)
+        contrasts.append(contrast)
+    return state, min(contrasts)
+
+
 def analyze(record: dict[str, object], source_state: int) -> dict[str, object]:
     if not 0 <= source_state <= 255:
         raise InvalidFrame("source state is outside uint8")
     width = int(record["width"])
     height = int(record["height"])
     pixels = memoryview(record["pixels"])
-    regions = {
-        "left-right": (collections.Counter(), collections.Counter()),
-        "top-bottom": (collections.Counter(), collections.Counter()),
-    }
     sampled_colors: collections.Counter[tuple[int, int, int]] = collections.Counter()
-    palette_samples = 0
     for storage_y in range(height):
-        logical_y = height - storage_y - 1
         row_offset = storage_y * width * 3
         for x in range(width):
             offset = row_offset + x * 3
             rgb = (pixels[offset], pixels[offset + 1], pixels[offset + 2])
             sampled_colors[rgb] += 1
-            distances = [
-                sum((rgb[channel] - color[channel]) ** 2 for channel in range(3))
-                for color in PALETTE
-            ]
-            nearest = min(range(len(PALETTE)), key=distances.__getitem__)
-            if distances[nearest] > 55 * 55:
-                continue
-            regions["left-right"][0 if x < width // 2 else 1][nearest] += 1
-            regions["top-bottom"][0 if logical_y < height // 2 else 1][nearest] += 1
-            palette_samples += 1
 
-    candidates = []
-    for layout, (first, second) in regions.items():
-        if not first or not second:
-            continue
-        low, low_count = first.most_common(1)[0]
-        high, high_count = second.most_common(1)[0]
-        state = high * 16 + low
-        age = (source_state - state) % 256
-        score = min(low_count, high_count)
-        candidates.append(
+    minimum_span = max(STATE_CODE_BARS * STATE_CODE_MIN_BAR_WIDTH, width * 3 // 5)
+    spans = list(range(minimum_span, width + 1, 2))
+    if not spans or spans[-1] != width:
+        spans.append(width)
+    best_by_state: dict[int, dict[str, object]] = {}
+    decoded_rows = 0
+    geometries = 0
+
+    def record_run(
+        state: int | None,
+        rows: int,
+        top: int,
+        contrast: int,
+        left: int,
+        span: int,
+    ) -> None:
+        if state is None or rows == 0:
+            return
+        minimum_rows = max(6, (span * 3 + 39) // 40)
+        candidate = {
+            "fresh": (source_state - state) % 256 <= 8,
+            "score": rows,
+            "state": state,
+            "age": (source_state - state) % 256,
+            "layout": "left-right",
+            "matched": rows * STATE_CODE_BARS,
+            "left": left,
+            "span": span,
+            "top": top,
+            "contrast": contrast,
+            "minimum": minimum_rows,
+        }
+        previous = best_by_state.get(state)
+        ranking = (rows, contrast, span)
+        if previous is None or ranking > (
+            int(previous["score"]),
+            int(previous["contrast"]),
+            int(previous["span"]),
+        ):
+            best_by_state[state] = candidate
+
+    for span in spans:
+        centered_left = (width - span) // 2
+        lefts = sorted(
             {
-                "fresh": age <= 8,
-                "score": score,
-                "state": state,
-                "age": age,
-                "layout": layout,
-                "matched": low_count + high_count,
+                centered_left + delta
+                for delta in range(-3, 4)
+                if 0 <= centered_left + delta <= width - span
             }
         )
+        for left in lefts:
+            geometries += 1
+            run_state = None
+            run_top = 0
+            run_rows = 0
+            run_contrast = 0
+            for logical_y in range(height):
+                decoded = decode_state_code_row(
+                    pixels, width, height, logical_y, left, span
+                )
+                if decoded is None:
+                    record_run(
+                        run_state,
+                        run_rows,
+                        run_top,
+                        run_contrast,
+                        left,
+                        span,
+                    )
+                    run_state = None
+                    run_rows = 0
+                    run_contrast = 0
+                    continue
+                decoded_rows += 1
+                state, contrast = decoded
+                if state == run_state:
+                    run_rows += 1
+                    run_contrast = min(run_contrast, contrast)
+                else:
+                    record_run(
+                        run_state,
+                        run_rows,
+                        run_top,
+                        run_contrast,
+                        left,
+                        span,
+                    )
+                    run_state = state
+                    run_top = logical_y
+                    run_rows = 1
+                    run_contrast = contrast
+            record_run(
+                run_state,
+                run_rows,
+                run_top,
+                run_contrast,
+                left,
+                span,
+            )
+
+    candidates = sorted(
+        best_by_state.values(),
+        key=lambda entry: (
+            int(entry["score"]),
+            int(entry["contrast"]),
+            int(entry["span"]),
+        ),
+        reverse=True,
+    )
     chosen = None
-    valid = [candidate for candidate in candidates if candidate["fresh"]]
+    valid = [
+        candidate
+        for candidate in candidates
+        if candidate["fresh"]
+        and int(candidate["score"]) >= int(candidate["minimum"])
+    ]
     if valid:
-        candidate = max(
+        chosen = max(
             valid,
             key=lambda entry: (
                 int(entry["score"]),
+                int(entry["contrast"]),
                 -int(entry["age"]),
-                str(entry["layout"]),
+                int(entry["span"]),
             ),
         )
-        minimum = max(20, width * height // 40)
-        if (
-            int(candidate["score"]) >= minimum
-            and int(candidate["matched"]) >= minimum * 2
-        ):
-            chosen = candidate
     return {
         "chosen": chosen,
-        "palette_samples": palette_samples,
+        "decoded_rows": decoded_rows,
+        "geometries": geometries,
         "top_colors": sampled_colors.most_common(8),
-        "candidates": candidates,
+        "candidates": candidates[:8],
     }
 
 
@@ -187,7 +318,9 @@ def decode(path: Path, source_state: int, diagnose: bool) -> int:
         ) or "none"
         candidates = ",".join(
             f"{entry['layout']}:state-{entry['state']}:age-{entry['age']}:"
-            f"score-{entry['score']}:matched-{entry['matched']}"
+            f"score-{entry['score']}:matched-{entry['matched']}:"
+            f"left-{entry['left']}:span-{entry['span']}:top-{entry['top']}:"
+            f"contrast-{entry['contrast']}:minimum-{entry['minimum']}"
             for entry in analysis["candidates"]
         ) or "none"
         print(
@@ -196,7 +329,8 @@ def decode(path: Path, source_state: int, diagnose: bool) -> int:
             f"orientation=bottom-up seq={record['sequence']} "
             f"timestamp_us={record['timestamp_us']} "
             f"observer_age_ms={record['observation_ms']} source_state={source_state} "
-            f"palette_samples={analysis['palette_samples']} "
+            f"barcode_decoded_rows={analysis['decoded_rows']} "
+            f"barcode_geometries={analysis['geometries']} "
             f"top_colors={top_colors} candidates={candidates}"
         )
         return 0
@@ -219,23 +353,36 @@ def fixture_record(
     width: int,
     height: int,
     state: int,
-    layout: str,
+    remote_left: int,
+    remote_top: int,
+    remote_width: int,
+    remote_height: int,
     sequence: int,
     now_epoch_us: int,
     now_monotonic_ns: int,
+    include_code: bool = True,
 ) -> bytes:
     low = PALETTE[state & 15]
     high = PALETTE[(state >> 4) & 15]
+    background = (197, 190, 184)
+    code = state_code_bars(state)
     pixels = bytearray()
     for storage_y in range(height):
         logical_y = height - storage_y - 1
         for x in range(width):
-            if layout == "left-right":
-                pixels.extend(low if x < width // 2 else high)
-            elif layout == "top-bottom":
-                pixels.extend(low if logical_y < height // 2 else high)
+            if not (
+                remote_left <= x < remote_left + remote_width
+                and remote_top <= logical_y < remote_top + remote_height
+            ):
+                pixels.extend(background)
+                continue
+            remote_x = x - remote_left
+            remote_y = logical_y - remote_top
+            if include_code and remote_y * 5 < remote_height:
+                bar = min(STATE_CODE_BARS - 1, remote_x * STATE_CODE_BARS // remote_width)
+                pixels.extend((255, 255, 255) if code[bar] else (0, 0, 0))
             else:
-                raise ValueError(layout)
+                pixels.extend(low if remote_x * 2 < remote_width else high)
     metadata = (
         f"seq={sequence} timestamp_us={now_epoch_us - 1_000} "
         f"observed_epoch_us={now_epoch_us} "
@@ -250,14 +397,14 @@ def self_test() -> int:
     now_epoch_us = time.time_ns() // 1_000
     now_monotonic_ns = time.monotonic_ns()
     scenarios = 0
-    for dimensions, layout, state, age in (
-        ((120, 200), "left-right", 0xA5, 0),
-        ((200, 120), "top-bottom", 0x3C, 1),
+    for dimensions, remote, state, age in (
+        ((120, 200), (0, 55, 120, 90), 0xAA, 0),
+        ((200, 120), (32, 9, 136, 102), 0x3C, 1),
     ):
         data = fixture_record(
             *dimensions,
             state,
-            layout,
+            *remote,
             17 + scenarios,
             now_epoch_us,
             now_monotonic_ns,
@@ -266,12 +413,12 @@ def self_test() -> int:
         candidate = classify(record, (state + age) & 0xFF)
         if candidate is None or candidate["state"] != state or candidate["age"] != age:
             raise AssertionError("valid fixture was not classified exactly")
-        if candidate["layout"] != layout or record["observation_ms"] != 2:
+        if candidate["layout"] != "left-right" or record["observation_ms"] != 2:
             raise AssertionError("fixture orientation or timing differs")
         scenarios += 1
 
     valid = fixture_record(
-        120, 200, 0x42, "left-right", 9, now_epoch_us, now_monotonic_ns
+        120, 200, 0x42, 0, 55, 120, 90, 9, now_epoch_us, now_monotonic_ns
     )
     invalid = [
         b"wrong" + valid[len(b"wrong") :],
@@ -303,7 +450,22 @@ def self_test() -> int:
         path.write_bytes(valid)
         record = parse_record(path.read_bytes(), now_monotonic_ns)
         if classify(record, 0x80) is not None:
-            raise AssertionError("stale palette state was accepted")
+            raise AssertionError("stale barcode state was accepted")
+        no_code = fixture_record(
+            120,
+            200,
+            0x42,
+            0,
+            55,
+            120,
+            90,
+            10,
+            now_epoch_us,
+            now_monotonic_ns,
+            include_code=False,
+        )
+        if classify(parse_record(no_code, now_monotonic_ns), 0x42) is not None:
+            raise AssertionError("letterbox and palette pixels were accepted without a code")
         scenarios += 1
     print(f"ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass scenarios={scenarios}")
     return 0

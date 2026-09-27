@@ -266,7 +266,7 @@ def self_test() -> int:
         candidate = classify(record, (state + age) & 0xFF)
         if candidate is None or candidate["state"] != state or candidate["age"] != age:
             raise AssertionError("valid fixture was not classified exactly")
-        if candidate["layout"] != layout or record["observation_ms"] != 1:
+        if candidate["layout"] != layout or record["observation_ms"] != 2:
             raise AssertionError("fixture orientation or timing differs")
         scenarios += 1
 

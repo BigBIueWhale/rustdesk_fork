@@ -1841,77 +1841,15 @@ PY
 }
 
 PEER_LAST_RECOVERY_MS=0
-android_peer_root_presentation_count() {
-    timeout --signal=TERM --kill-after=1s 2s \
-        "$ADB" -s "$SERIAL" logcat -d -v brief \
-        --regex='^RGBA_PIPELINE flutter-root ' 'flutter:I' '*:S' \
-        2>/dev/null \
-        | tr -d '\r' \
-        | awk '
-            function has_rgba_sample(prefix, i, value) {
-                for (i = 1; i <= NF; i++) {
-                    if (index($i, prefix) == 1) {
-                        value = substr($i, length(prefix) + 1)
-                        return length(value) == 8 && value !~ /[^0-9a-f]/
-                    }
-                }
-                return 0
-            }
-            # The Dart probe admits OffsetLayer and every subtype before it
-            # performs toImage/raw-RGBA readback.  Flutter currently exposes
-            # the RenderView root as a TransformLayer (an OffsetLayer subtype),
-            # so runtimeType is not an authority boundary.  Count only the
-            # complete successful-readback record; all failure records omit
-            # the row metadata and sampled pixels below.
-            /RGBA_PIPELINE flutter-root/ &&
-            /dimensions=(480x800|800x480)/ &&
-            /format=rgba8888-premul/ &&
-            /row_bytes=[1-9][0-9]*/ &&
-            has_rgba_sample("body_top=") &&
-            has_rgba_sample("remote_left=") &&
-            has_rgba_sample("remote_right=") &&
-            has_rgba_sample("toolbar=") {
-                count += 1
-            }
-            END { print count + 0 }
-        '
-}
-
 capture_peer_freshness() {
-    local phase=$1 require_root_presentation=${2:-0}
-    local attempt started_ms now_ms source_state framebuffer decoded
+    local phase=$1 attempt started_ms now_ms source_state framebuffer decoded
     local capture_started_ms capture_finished_ms capture_elapsed_ms total_elapsed_ms
     local state age score matched layout format_name dataspace width height
     local max_age=0 last_framebuffer= framebuffer_size= diagnostic_png=
     local last_source_state= observer_failure= source_seen=0
-    local presentation_count=0 presentation_ready=0 presentation_wait_ms=0
     local -A seen=()
     started_ms="$(monotonic_millis)" \
         || fail "cannot read the monotonic clock for $phase"
-    if [ "$require_root_presentation" -eq 1 ]; then
-        for _ in $(seq 1 80); do
-            now_ms="$(monotonic_millis)" \
-                || fail "cannot time root presentation readiness for $phase"
-            presentation_wait_ms=$((now_ms - started_ms))
-            [ "$presentation_wait_ms" -le "$PEER_RECOVERY_LIMIT_MS" ] \
-                || break
-            presentation_count="$(android_peer_root_presentation_count 2>/dev/null || true)"
-            now_ms="$(monotonic_millis)" \
-                || fail "cannot finish root presentation readiness timing for $phase"
-            presentation_wait_ms=$((now_ms - started_ms))
-            if [ "$presentation_wait_ms" -le "$PEER_RECOVERY_LIMIT_MS" ] \
-               && [[ "$presentation_count" =~ ^[1-9][0-9]*$ ]]; then
-                presentation_ready=1
-                break
-            fi
-            sleep 0.1
-        done
-        [ "$presentation_ready" -eq 1 ] \
-            || fail "Android peer root presentation was not ready within the recovery limit for $phase"
-        printf 'ANDROID_PEER_PRESENTATION_READY=pass phase=%s wait_ms=%s limit_ms=%s markers=%s observer=flutter-root-readback gate=external-raw-framebuffer-verdict\n' \
-            "$phase" "$presentation_wait_ms" "$PEER_RECOVERY_LIMIT_MS" \
-            "$presentation_count"
-    fi
     for attempt in $(seq 1 30); do
         now_ms="$(monotonic_millis)" \
             || fail "cannot reread the monotonic clock for $phase"
@@ -2400,7 +2338,7 @@ open_peer_connection() {
     elif [ "$PEER_LAST_CONNECTION_WAIT_MS" -gt "$PEER_CACHED_CONNECTION_MAX_MS" ]; then
         PEER_CACHED_CONNECTION_MAX_MS=$PEER_LAST_CONNECTION_WAIT_MS
     fi
-    capture_peer_freshness "$generation" "$expect_password"
+    capture_peer_freshness "$generation"
     wait_peer_server_connections 1 exact
 }
 

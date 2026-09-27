@@ -250,6 +250,8 @@ PEER_INITIAL_RECOVERY_MS=0
 PEER_BACKGROUND_RECOVERY_MS=0
 PEER_TASK_RECOVERY_MAX_MS=0
 PEER_LAST_CONNECTION_WAIT_MS=0
+PEER_CORRECT_CREDENTIAL_CONNECTION_MS=0
+PEER_CACHED_CONNECTION_MAX_MS=0
 PEER_CAPTURE_MAX_MS=0
 PEER_CREDENTIAL_PROMPT_MS=0
 ANDROID_CONTROL_FORWARD_READY=0
@@ -260,8 +262,12 @@ readonly PEER_FRESHNESS_LIMIT_MS=2000
 # cannot classify the product.  Raw capture gets one quarter of that budget.
 readonly PEER_CAPTURE_LIMIT_MS=500
 readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
-readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=120000
-readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=30000
+# The nested, acceleration-off x86_64 emulator can spend multiple minutes in the
+# deliberately memory-hard Argon2id derivation under host contention.  These two
+# values are integration-finality ceilings, not native credential-latency claims;
+# presentation recovery and freshness retain their independent tight bounds above.
+readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=240000
+readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=240000
 readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=3000
 readonly ANDROID_CONTROL_FORWARD_LOCAL_SPEC=tcp:22119
 readonly ANDROID_CONTROL_FORWARD_DEVICE_SPEC=tcp:21118
@@ -1681,12 +1687,22 @@ capture_peer_freshness() {
 
 ui_has_exact_semantic_text() {
     local expected=$1
-    python3 -I -S - "$UI_XML" "$expected" <<'PY'
+    local mode=${2:-quiet}
+    if [ ! -f "$UI_XML" ] || [ -L "$UI_XML" ]; then
+        [ "$mode" != diagnose ] \
+            || printf 'ANDROID_PEER_CREDENTIAL_SEMANTICS=unavailable reason=hierarchy-absent\n'
+        return 1
+    fi
+    python3 -I -S - "$UI_XML" "$expected" "$mode" <<'PY'
+import hashlib
 import sys
 import xml.etree.ElementTree as ET
 
-path, expected = sys.argv[1:]
+path, expected, mode = sys.argv[1:]
+if mode not in ("quiet", "diagnose"):
+    raise SystemExit(2)
 matches = 0
+related = set()
 for node in ET.parse(path).getroot().iter("node"):
     values = {
         " ".join(node.attrib.get(key, "").split())
@@ -1694,7 +1710,20 @@ for node in ET.parse(path).getroot().iter("node"):
     }
     if expected in values:
         matches += 1
+    related.update(
+        value for value in values
+        if value and (expected.startswith(value) or value.startswith(expected[:64]))
+    )
 if matches != 1:
+    if mode == "diagnose":
+        details = ",".join(
+            f"{len(value)}:{hashlib.sha256(value.encode()).hexdigest()}"
+            for value in sorted(related, key=lambda value: (len(value), value))
+        ) or "none"
+        print(
+            "ANDROID_PEER_CREDENTIAL_SEMANTICS=unavailable "
+            f"exact_matches={matches} related_length_sha256={details}"
+        )
     raise SystemExit(1)
 PY
 }
@@ -1770,6 +1799,12 @@ wait_peer_credential_recovery_prompt() {
         fi
         now_ms="$(monotonic_millis)" || return 2
         if [ "$((now_ms - started_ms))" -ge "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" ]; then
+            ui_has_exact_semantic_text \
+                "$PEER_CONFIRMATION_UNAVAILABLE_REASON" diagnose || true
+            printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=fail elapsed_ms=%s limit_ms=%s failures=%s expected_failures=%s established=%s\n' \
+                "$((now_ms - started_ms))" "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
+                "${failure_count:-unavailable}" "$expected_failures" \
+                "$(peer_server_established_count)"
             return 1
         fi
         sleep 0.5
@@ -1843,6 +1878,11 @@ open_peer_connection() {
     printf 'ANDROID_PEER_CONNECTION_READY=pass generation=%s credential=%s wait_ms=%s limit_ms=%s connections=1\n' \
         "$generation" "$credential" "$PEER_LAST_CONNECTION_WAIT_MS" \
         "$connection_wait_limit_ms"
+    if [ "$expect_password" -eq 1 ]; then
+        PEER_CORRECT_CREDENTIAL_CONNECTION_MS=$PEER_LAST_CONNECTION_WAIT_MS
+    elif [ "$PEER_LAST_CONNECTION_WAIT_MS" -gt "$PEER_CACHED_CONNECTION_MAX_MS" ]; then
+        PEER_CACHED_CONNECTION_MAX_MS=$PEER_LAST_CONNECTION_WAIT_MS
+    fi
     capture_peer_freshness "$generation"
     wait_peer_server_connections 1 exact
 }
@@ -2475,9 +2515,12 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
                 || fail 'the Android real-peer lifecycle receipt is not ready'
             [ "$PEER_REVERSE_READY" -eq 0 ] \
                 || fail 'the Android peer reverse mapping remained live at receipt time'
-            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
+            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
                 "$PEER_CREDENTIAL_PROMPT_MS" "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
                 "$PEER_NO_AUTO_RETRY_OBSERVATION_MS" \
+                "$PEER_CORRECT_CREDENTIAL_CONNECTION_MS" \
+                "$PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS" \
+                "$PEER_CACHED_CONNECTION_MAX_MS" "$PEER_CONNECTION_WAIT_LIMIT_MS" \
                 "$PEER_INITIAL_RECOVERY_MS" "$PEER_BACKGROUND_RECOVERY_MS" "$PEER_TASK_RECOVERY_MAX_MS" \
                 "$PEER_RECOVERY_LIMIT_MS" \
                 "$PEER_FRESHNESS_MAX_MS" "$PEER_FRESHNESS_LIMIT_MS" \

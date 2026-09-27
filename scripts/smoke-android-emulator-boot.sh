@@ -2467,8 +2467,6 @@ PY
             print_initial_ui_semantics
             fail 'the exact untouched password-confirmation field did not enter view'
         fi
-        capture_ui_hierarchy \
-            || fail 'cannot inspect the visible password-confirmation field'
         mapfile -t password_fields < <(ui_center password-fields 2>/dev/null || true)
         [ "${#password_fields[@]}" -ge 1 ] \
             && [ "${#password_fields[@]}" -le 2 ] \

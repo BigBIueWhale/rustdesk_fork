@@ -611,6 +611,32 @@ peer_server_keyed_session_count() {
     grep -Fc ' Connection opened from ' "$PEER_SERVER_LOG" || true
 }
 
+record_peer_password_pre_submit_state() {
+    local kind=$1 stage=$2 expected_pre_session_failures=$3
+    local expected_key_failures=$4 expected_keyed_sessions=$5
+    local wall_ms pre_session_failures key_failures keyed_sessions established
+    wall_ms="$(date +%s%3N)" || return 2
+    [[ "$wall_ms" =~ ^[1-9][0-9]{12}$ ]] || return 2
+    pre_session_failures="$(peer_server_pre_session_failure_count)"
+    key_failures="$(peer_server_key_failure_count)"
+    keyed_sessions="$(peer_server_keyed_session_count)"
+    established="$(peer_server_established_count)"
+    if [ "$pre_session_failures" -ne "$expected_pre_session_failures" ] \
+       || [ "$key_failures" -ne "$expected_key_failures" ] \
+       || [ "$keyed_sessions" -ne "$expected_keyed_sessions" ] \
+       || [ "$established" -ne 0 ]; then
+        printf 'ANDROID_PEER_PASSWORD_PRE_SUBMIT_STATE=fail kind=%s stage=%s observed_wall_ms=%s pre_session_failures=%s expected_pre_session_failures=%s key_failures=%s expected_key_failures=%s keyed_sessions=%s expected_keyed_sessions=%s established=%s\n' \
+            "$kind" "$stage" "$wall_ms" "$pre_session_failures" \
+            "$expected_pre_session_failures" "$key_failures" \
+            "$expected_key_failures" "$keyed_sessions" \
+            "$expected_keyed_sessions" "$established"
+        return 1
+    fi
+    printf 'ANDROID_PEER_PASSWORD_PRE_SUBMIT_STATE=pass kind=%s stage=%s observed_wall_ms=%s pre_session_failures=%s key_failures=%s keyed_sessions=%s established=0\n' \
+        "$kind" "$stage" "$wall_ms" "$pre_session_failures" \
+        "$key_failures" "$keyed_sessions"
+}
+
 stop_peer_infrastructure() {
     local status=0
     if [ -n "$SERVER_PID" ]; then
@@ -2312,6 +2338,9 @@ submit_peer_password() {
             "$kind" "${remember_state:-unavailable}"
         return 1
     fi
+    record_peer_password_pre_submit_state "$kind" dialog-observed \
+        "$expected_pre_session_failures" "$expected_key_failures" \
+        "$expected_keyed_sessions" || return 1
     for _ in $(seq 1 3); do
         capture_unobscured_ui_hierarchy || return 1
         center="$(ui_center focused-password-field 2>/dev/null || true)"
@@ -2324,12 +2353,24 @@ submit_peer_password() {
         "$ADB" -s "$SERIAL" shell input keycombination \
             KEYCODE_CTRL_LEFT KEYCODE_A >/dev/null || return 1
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_DEL >/dev/null || return 1
+        record_peer_password_pre_submit_state "$kind" field-cleared \
+            "$expected_pre_session_failures" "$expected_key_failures" \
+            "$expected_keyed_sessions" || return 1
         "$ADB" -s "$SERIAL" shell input text "$password" >/dev/null || return 1
+        record_peer_password_pre_submit_state "$kind" text-injected \
+            "$expected_pre_session_failures" "$expected_key_failures" \
+            "$expected_keyed_sessions" || return 1
         visibility_x=$((right - 24))
         visibility_y=$(((top + bottom) / 2))
         "$ADB" -s "$SERIAL" shell input tap \
             "$visibility_x" "$visibility_y" >/dev/null || return 1
+        record_peer_password_pre_submit_state "$kind" visibility-toggled \
+            "$expected_pre_session_failures" "$expected_key_failures" \
+            "$expected_keyed_sessions" || return 1
         if wait_ui_center address-field "$password" >/dev/null; then
+            record_peer_password_pre_submit_state "$kind" visible-roundtrip \
+                "$expected_pre_session_failures" "$expected_key_failures" \
+                "$expected_keyed_sessions" || return 1
             password_input_verified=1
             break
         fi
@@ -2346,6 +2387,9 @@ submit_peer_password() {
     "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null || return 1
     capture_unobscured_ui_hierarchy || return 1
     grep -Fq "$password" "$UI_XML" || return 1
+    record_peer_password_pre_submit_state "$kind" keyboard-dismissed \
+        "$expected_pre_session_failures" "$expected_key_failures" \
+        "$expected_keyed_sessions" || return 1
     if [ "$remember" -eq 1 ]; then
         tap_ui text 'Remember password' || return 1
         for _ in $(seq 1 12); do
@@ -2364,6 +2408,9 @@ submit_peer_password() {
                     printf unavailable)"
             return 1
         fi
+        record_peer_password_pre_submit_state "$kind" remember-enabled \
+            "$expected_pre_session_failures" "$expected_key_failures" \
+            "$expected_keyed_sessions" || return 1
     else
         remember_state="$(ui_checkbox_checked 'Remember password' \
             2>/dev/null || true)"
@@ -2377,6 +2424,9 @@ submit_peer_password() {
     center="$(ui_center text 'OK' 2>/dev/null || true)"
     [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
     read -r x y <<<"$center"
+    record_peer_password_pre_submit_state "$kind" ok-ready \
+        "$expected_pre_session_failures" "$expected_key_failures" \
+        "$expected_keyed_sessions" || return 1
     pre_session_failures="$(peer_server_pre_session_failure_count)"
     key_failures="$(peer_server_key_failure_count)"
     keyed_sessions="$(peer_server_keyed_session_count)"

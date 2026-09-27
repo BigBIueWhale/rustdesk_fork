@@ -391,6 +391,10 @@ if [ "$runtime_status" -ne 0 ]; then
     tail -n 240 "$RUNTIME_LOG" >&2
     grep '^ANDROID_MAIN_SERVICE_LOG_' "$RUNTIME_LOG" \
         | tail -n 40 >&2 || true
+    grep -E '^ANDROID_PEER_(PASSWORD_INPUT|PASSWORD_SUBMIT|CREDENTIAL_RECOVERY|CONNECTION_WAIT|CONNECTION_READY|CONNECTION_STATE)=' \
+        "$RUNTIME_LOG" | tail -n 80 >&2 || true
+    grep '^ANDROID_PEER_PROCESS_THREAD ' "$RUNTIME_LOG" \
+        | tail -n 64 >&2 || true
     awk '
         /^ANDROID_PEER_FRAMEBUFFER_PNG_BEGIN / { in_png = 1 }
         in_png { print }

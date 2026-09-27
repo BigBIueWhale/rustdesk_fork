@@ -3074,6 +3074,10 @@ run_android_emulator_runtime() {
         ' "$output" >&2
         grep '^ANDROID_MAIN_SERVICE_LOG_' "$output" \
             | tail -n 40 >&2 || true
+        grep -E '^ANDROID_PEER_(PASSWORD_INPUT|PASSWORD_SUBMIT|CREDENTIAL_RECOVERY|CONNECTION_WAIT|CONNECTION_READY|CONNECTION_STATE)=' \
+            "$output" | tail -n 80 >&2 || true
+        grep '^ANDROID_PEER_PROCESS_THREAD ' "$output" \
+            | tail -n 64 >&2 || true
         grep '^ANDROID_PEER_FRAME_SAMPLE ' "$output" | tail -n 120 >&2 || true
         grep '^ANDROID_PEER_FRAMEBUFFER_DIAGNOSTIC ' "$output" \
             | tail -n 20 >&2 || true

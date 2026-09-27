@@ -269,6 +269,7 @@ readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
 readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=240000
 readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=240000
 readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=3000
+readonly PEER_PASSWORD_SUBMIT_ACK_LIMIT_MS=30000
 readonly ANDROID_CONTROL_FORWARD_LOCAL_SPEC=tcp:22119
 readonly ANDROID_CONTROL_FORWARD_DEVICE_SPEC=tcp:21118
 readonly ANDROID_CONTROL_FORWARD_PORT_HEX=5667
@@ -457,7 +458,7 @@ peer_server_established_count() {
 wait_peer_server_connections() {
     local expected=$1 comparison=$2
     local limit_ms=${3:-$PEER_CONNECTION_WAIT_LIMIT_MS}
-    local count started_ms now_ms elapsed_ms
+    local count started_ms now_ms elapsed_ms next_progress_ms=30000
     case "$expected" in
         ''|*[!0-9]*) return 2 ;;
     esac
@@ -482,10 +483,26 @@ wait_peer_server_connections() {
             PEER_LAST_CONNECTION_WAIT_MS=$elapsed_ms
             return 1
         fi
+        if [ "$limit_ms" -gt 30000 ] \
+           && [ "$elapsed_ms" -ge "$next_progress_ms" ]; then
+            printf 'ANDROID_PEER_CONNECTION_WAIT=progress elapsed_ms=%s limit_ms=%s established=%s failures=%s\n' \
+                "$elapsed_ms" "$limit_ms" "$count" \
+                "$(peer_server_key_failure_count)"
+            next_progress_ms=$((next_progress_ms + 30000))
+        fi
         sleep 0.25
     done
     now_ms="$(monotonic_millis)" || return 2
     PEER_LAST_CONNECTION_WAIT_MS=$((now_ms - started_ms))
+}
+
+peer_server_key_failure_count() {
+    if [ -z "${PEER_SERVER_LOG:-}" ] || [ ! -f "$PEER_SERVER_LOG" ]; then
+        printf 'unavailable\n'
+        return
+    fi
+    grep -Fc 'ended before session completion: CPace handshake failed: fail-closed' \
+        "$PEER_SERVER_LOG" || true
 }
 
 stop_peer_infrastructure() {
@@ -1051,6 +1068,35 @@ for node in ET.parse(sys.argv[1]).getroot().iter("node"):
 if len(bounds) != 1:
     raise SystemExit(1)
 print(*bounds.pop())
+PY
+}
+
+ui_checkbox_checked() {
+    local expected=$1
+    python3 -I -S - "$UI_XML" "$expected" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+path, expected = sys.argv[1:]
+states = set()
+for node in ET.parse(path).getroot().iter("node"):
+    attributes = node.attrib
+    semantic_tokens = {
+        token.strip()
+        for key in ("text", "content-desc")
+        for token in attributes.get(key, "").splitlines()
+        if token.strip()
+    }
+    if (
+        expected in semantic_tokens
+        and attributes.get("class") == "android.widget.CheckBox"
+        and attributes.get("enabled") == "true"
+        and attributes.get("checked") in ("true", "false")
+    ):
+        states.add(attributes["checked"])
+if len(states) != 1:
+    raise SystemExit(1)
+print(states.pop())
 PY
 }
 
@@ -1750,15 +1796,89 @@ if matches != 1:
 PY
 }
 
+print_peer_connection_state_diagnostic() {
+    local phase=$1 prompt=unavailable reason=unavailable remember=unavailable
+    local app_pid= thread_listing=
+    if capture_ui_hierarchy complete; then
+        if ui_center text 'Password required' >/dev/null 2>&1; then
+            prompt=present
+            if ui_has_exact_semantic_text \
+                "$PEER_CONFIRMATION_UNAVAILABLE_REASON"; then
+                reason=peer-confirmation-unavailable
+            else
+                reason=other-or-absent
+            fi
+            remember="$(ui_checkbox_checked 'Remember password' 2>/dev/null || true)"
+            [ -n "$remember" ] || remember=unavailable
+        else
+            prompt=absent
+            reason=absent
+            remember=absent
+        fi
+    fi
+    printf 'ANDROID_PEER_CONNECTION_STATE=diagnostic phase=%s established=%s failures=%s prompt=%s reason=%s remember=%s\n' \
+        "$phase" "$(peer_server_established_count)" \
+        "$(peer_server_key_failure_count)" "$prompt" "$reason" "$remember"
+    app_pid="$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)"
+    if [[ "$app_pid" =~ ^[1-9][0-9]*$ ]]; then
+        thread_listing="$(adb_shell_value ps -T -p "$app_pid" -o TID,STAT,NAME \
+            2>/dev/null || true)"
+        if [ -n "$thread_listing" ]; then
+            printf '%s\n' "$thread_listing" \
+                | sed -n '1,64p' \
+                | sed 's/^/ANDROID_PEER_PROCESS_THREAD /'
+        else
+            printf 'ANDROID_PEER_PROCESS_THREAD unavailable pid=%s\n' "$app_pid"
+        fi
+    else
+        printf 'ANDROID_PEER_PROCESS_THREAD unavailable pid=absent\n'
+    fi
+}
+
+wait_peer_password_submit_ack() {
+    local kind=$1 started_ms now_ms prompt
+    started_ms="$(monotonic_millis)" || return 2
+    while :; do
+        if capture_ui_hierarchy complete; then
+            prompt="$(ui_center text 'Password required' 2>/dev/null || true)"
+            if ! [[ "$prompt" =~ ^[0-9]+\ [0-9]+$ ]]; then
+                now_ms="$(monotonic_millis)" || return 2
+                printf 'ANDROID_PEER_PASSWORD_SUBMIT=pass kind=%s prompt=dismissed ack_ms=%s ack_limit_ms=%s\n' \
+                    "$kind" "$((now_ms - started_ms))" \
+                    "$PEER_PASSWORD_SUBMIT_ACK_LIMIT_MS"
+                return 0
+            fi
+        fi
+        now_ms="$(monotonic_millis)" || return 2
+        if [ "$((now_ms - started_ms))" -ge \
+             "$PEER_PASSWORD_SUBMIT_ACK_LIMIT_MS" ]; then
+            printf 'ANDROID_PEER_PASSWORD_SUBMIT=fail kind=%s prompt=not-dismissed ack_ms=%s ack_limit_ms=%s\n' \
+                "$kind" "$((now_ms - started_ms))" \
+                "$PEER_PASSWORD_SUBMIT_ACK_LIMIT_MS"
+            print_peer_connection_state_diagnostic "submit-$kind"
+            return 1
+        fi
+        sleep 0.25
+    done
+}
+
 submit_peer_password() {
     local password=$1 kind=$2 remember=$3
     local center= x= y= bounds= left= top= right= bottom=
     local visibility_x= visibility_y= password_input_verified=0
+    local remember_state= remember_ready=0
     case "$kind:$remember" in
         wrong:0|correct:1) ;;
         *) return 2 ;;
     esac
     wait_ui_center text 'Password required' >/dev/null || return 1
+    capture_ui_hierarchy complete || return 1
+    remember_state="$(ui_checkbox_checked 'Remember password' 2>/dev/null || true)"
+    if [ "$remember_state" != false ]; then
+        printf 'ANDROID_PEER_PASSWORD_INPUT=fail kind=%s stage=initial-remember-state observed=%s expected=false\n' \
+            "$kind" "${remember_state:-unavailable}"
+        return 1
+    fi
     for _ in $(seq 1 3); do
         capture_ui_hierarchy || return 1
         center="$(ui_center focused-password-field 2>/dev/null || true)"
@@ -1795,8 +1915,33 @@ submit_peer_password() {
     grep -Fq "$password" "$UI_XML" || return 1
     if [ "$remember" -eq 1 ]; then
         tap_ui text 'Remember password' || return 1
+        for _ in $(seq 1 12); do
+            if capture_ui_hierarchy complete \
+               && [ "$(ui_checkbox_checked 'Remember password' \
+                    2>/dev/null || true)" = true ]; then
+                remember_ready=1
+                break
+            fi
+            sleep 0.25
+        done
+        if [ "$remember_ready" -ne 1 ]; then
+            printf 'ANDROID_PEER_PASSWORD_INPUT=fail kind=%s stage=remember-enable observed=%s expected=true\n' \
+                "$kind" \
+                "$(ui_checkbox_checked 'Remember password' 2>/dev/null || \
+                    printf unavailable)"
+            return 1
+        fi
+    else
+        remember_state="$(ui_checkbox_checked 'Remember password' \
+            2>/dev/null || true)"
+        if [ "$remember_state" != false ]; then
+            printf 'ANDROID_PEER_PASSWORD_INPUT=fail kind=%s stage=remember-preservation observed=%s expected=false\n' \
+                "$kind" "${remember_state:-unavailable}"
+            return 1
+        fi
     fi
-    tap_ui text 'OK'
+    tap_ui text 'OK' || return 1
+    wait_peer_password_submit_ack "$kind"
 }
 
 wait_peer_credential_recovery_prompt() {
@@ -1895,6 +2040,7 @@ open_peer_connection() {
         printf 'ANDROID_PEER_CONNECTION_READY=fail generation=%s credential=%s wait_ms=%s limit_ms=%s expected_connections=1\n' \
             "$generation" "$credential" "$PEER_LAST_CONNECTION_WAIT_MS" \
             "$connection_wait_limit_ms" >&2
+        print_peer_connection_state_diagnostic "connection-$generation"
         return 1
     fi
     printf 'ANDROID_PEER_CONNECTION_READY=pass generation=%s credential=%s wait_ms=%s limit_ms=%s connections=1\n' \

@@ -25,6 +25,11 @@ Widget _harness({
   );
 }
 
+Finder _button(String label) => find.ancestor(
+      of: find.text(label),
+      matching: find.byWidgetPredicate((widget) => widget is ButtonStyleButton),
+    );
+
 void main() {
   testWidgets('one submit owns every action until durable completion',
       (tester) async {
@@ -56,25 +61,11 @@ void main() {
       everyElement(isFalse),
     );
     expect(
-      tester
-          .widget<ElevatedButton>(
-            find.ancestor(
-              of: find.text('OK'),
-              matching: find.byType(ElevatedButton),
-            ),
-          )
-          .onPressed,
+      tester.widget<ButtonStyleButton>(_button('OK')).onPressed,
       isNull,
     );
     expect(
-      tester
-          .widget<OutlinedButton>(
-            find.ancestor(
-              of: find.text('Cancel'),
-              matching: find.byType(OutlinedButton),
-            ),
-          )
-          .onPressed,
+      tester.widget<ButtonStyleButton>(_button('Cancel')).onPressed,
       isNull,
     );
     expect(

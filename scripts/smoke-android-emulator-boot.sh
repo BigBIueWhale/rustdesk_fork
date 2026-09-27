@@ -1843,7 +1843,8 @@ PY
 PEER_LAST_RECOVERY_MS=0
 android_peer_root_presentation_count() {
     timeout --signal=TERM --kill-after=1s 2s \
-        "$ADB" -s "$SERIAL" logcat -d -v brief 'flutter:I' '*:S' \
+        "$ADB" -s "$SERIAL" logcat -d -v brief \
+        --regex='^RGBA_PIPELINE flutter-root ' 'flutter:I' '*:S' \
         2>/dev/null \
         | tr -d '\r' \
         | awk '

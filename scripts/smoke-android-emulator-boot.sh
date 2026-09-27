@@ -2051,6 +2051,7 @@ submit_peer_password() {
 wait_peer_credential_recovery_prompt() {
     local failures_before=$1 expected_failures
     local started_ms now_ms failure_count established_count title
+    local reveal_attempted=0
     case "$failures_before" in
         ''|*[!0-9]*) return 2 ;;
     esac
@@ -2078,6 +2079,25 @@ wait_peer_credential_recovery_prompt() {
             if [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
                && ui_has_credential_reason_semantics "$PEER_CONFIRMATION_UNAVAILABLE_REASON" \
                && [ "$failure_count" -eq "$expected_failures" ]; then
+                break
+            fi
+            if [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
+               && [ "$failure_count" -eq "$expected_failures" ] \
+               && [ "$reveal_attempted" -eq 0 ]; then
+                reveal_attempted=1
+                timeout --signal=TERM --kill-after=2s 10s \
+                    "$ADB" -s "$SERIAL" shell input keyevent \
+                    KEYCODE_BACK >/dev/null \
+                    || return 1
+                sleep 0.5
+                capture_ui_hierarchy complete || return 1
+                title="$(ui_center text 'Password required' 2>/dev/null || true)"
+                [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
+                    || return 1
+                ui_has_credential_reason_semantics \
+                    "$PEER_CONFIRMATION_UNAVAILABLE_REASON" \
+                    || return 1
+                printf 'ANDROID_PEER_CREDENTIAL_REVEAL=pass action=back prompt=retained semantics=exact-or-accessibility-prefix\n'
                 break
             fi
         fi

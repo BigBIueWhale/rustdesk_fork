@@ -389,6 +389,8 @@ runtime_status=0
 vm_docker start --attach "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 || runtime_status=$?
 if [ "$runtime_status" -ne 0 ]; then
     tail -n 240 "$RUNTIME_LOG" >&2
+    grep '^ANDROID_MAIN_SERVICE_LOG_' "$RUNTIME_LOG" \
+        | tail -n 40 >&2 || true
     awk '
         /^ANDROID_PEER_FRAMEBUFFER_PNG_BEGIN / { in_png = 1 }
         in_png { print }

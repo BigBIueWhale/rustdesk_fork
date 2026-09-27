@@ -3072,6 +3072,8 @@ run_android_emulator_runtime() {
             }
             END { printf "%s", last }
         ' "$output" >&2
+        grep '^ANDROID_MAIN_SERVICE_LOG_' "$output" \
+            | tail -n 40 >&2 || true
         grep '^ANDROID_PEER_FRAME_SAMPLE ' "$output" | tail -n 120 >&2 || true
         grep '^ANDROID_PEER_FRAMEBUFFER_DIAGNOSTIC ' "$output" \
             | tail -n 20 >&2 || true

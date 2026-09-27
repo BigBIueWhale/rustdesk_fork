@@ -432,35 +432,110 @@ observer_namespace="$(vm_docker inspect --format \
     "$OBSERVER_CONTAINER")"
 [ "$observer_namespace" = 'false||private||private' ] \
     || die "Android emulator frame-observer namespace authority differs: $observer_namespace"
-observer_configured_mounts="$(vm_docker inspect --format \
-    '{{range .HostConfig.Mounts}}{{printf "%s\t%s\t%s\t%t\t%t\n" .Type .Source .Target .ReadOnly .BindOptions.NonRecursive}}{{end}}' \
-    "$OBSERVER_CONTAINER" | LC_ALL=C sort)"
-[ "$observer_configured_mounts" = "$(printf '%s\n' \
-    "bind	$EMULATOR_ZIP	/inputs/emulator.zip	true	true" \
-    "bind	$OBSERVER_ROOT	/observer	false	true" \
-    "bind	$ONLINE_DIR/gradle-home	/gradle	true	true" \
-    "bind	$REPO_ROOT	/source	true	true" | LC_ALL=C sort)" ] \
-    || die "Android emulator frame-observer configured mount authority differs: $observer_configured_mounts"
+observer_configured_mount_output="$(vm_docker inspect --format \
+    '{{range .HostConfig.Mounts}}{{printf "%s|%s|%s|%t|%t\n" .Type .Source .Target .ReadOnly .BindOptions.NonRecursive}}{{end}}' \
+    "$OBSERVER_CONTAINER")"
+mapfile -t observer_configured_mounts <<<"$observer_configured_mount_output"
+[ "${#observer_configured_mounts[@]}" -eq 4 ] \
+    || die "Android emulator frame-observer configured mount count differs: $observer_configured_mount_output"
+observer_source_mounts=0
+observer_emulator_mounts=0
+observer_gradle_mounts=0
+observer_output_mounts=0
+for observer_mount in "${observer_configured_mounts[@]}"; do
+    IFS='|' read -r observer_type observer_source observer_target \
+        observer_read_only observer_non_recursive observer_extra <<<"$observer_mount"
+    [ "$observer_type" = bind ] && [ -z "$observer_extra" ] \
+        && [ "$observer_non_recursive" = true ] \
+        || die "Android emulator frame-observer configured mount shape differs: $observer_mount"
+    case "$observer_target" in
+        /source)
+            [ "$observer_source:$observer_read_only" = "$REPO_ROOT:true" ] \
+                || die "Android emulator frame-observer source mount differs: $observer_mount"
+            observer_source_mounts=$((observer_source_mounts + 1))
+            ;;
+        /inputs/emulator.zip)
+            [ "$observer_source:$observer_read_only" = "$EMULATOR_ZIP:true" ] \
+                || die "Android emulator frame-observer emulator mount differs: $observer_mount"
+            observer_emulator_mounts=$((observer_emulator_mounts + 1))
+            ;;
+        /gradle)
+            [ "$observer_source:$observer_read_only" = \
+              "$ONLINE_DIR/gradle-home:true" ] \
+                || die "Android emulator frame-observer Gradle mount differs: $observer_mount"
+            observer_gradle_mounts=$((observer_gradle_mounts + 1))
+            ;;
+        /observer)
+            [ "$observer_source:$observer_read_only" = \
+              "$OBSERVER_ROOT:false" ] \
+                || die "Android emulator frame-observer output mount differs: $observer_mount"
+            observer_output_mounts=$((observer_output_mounts + 1))
+            ;;
+        *) die "Android emulator frame-observer configured an unexpected mount: $observer_mount" ;;
+    esac
+done
+[ "$observer_source_mounts:$observer_emulator_mounts:$observer_gradle_mounts:$observer_output_mounts" = \
+  1:1:1:1 ] \
+    || die 'Android emulator frame-observer configured mount targets are not unique'
 observer_tmpfs="$(vm_docker inspect --format '{{json .HostConfig.Tmpfs}}' \
     "$OBSERVER_CONTAINER")"
 [ "$observer_tmpfs" = \
   '{"/tmp":"rw,exec,nosuid,nodev,mode=700,uid=1000,gid=1000,size=2g"}' ] \
     || die "Android emulator frame-observer tmpfs authority differs: $observer_tmpfs"
-observer_resolved_binds="$(vm_docker inspect --format \
-    '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\t%s\n" .Type .Source .Destination .RW .Propagation}}{{end}}' \
-    "$OBSERVER_CONTAINER" | awk -F '\t' '$1 == "bind" { print }' | LC_ALL=C sort)"
-[ "$observer_resolved_binds" = "$(printf '%s\n' \
-    "bind	$EMULATOR_ZIP	/inputs/emulator.zip	false	rprivate" \
-    "bind	$OBSERVER_ROOT	/observer	true	rprivate" \
-    "bind	$ONLINE_DIR/gradle-home	/gradle	false	rprivate" \
-    "bind	$REPO_ROOT	/source	false	rprivate" | LC_ALL=C sort)" ] \
-    || die "Android emulator frame-observer resolved bind authority differs: $observer_resolved_binds"
-observer_resolved_other="$(vm_docker inspect --format \
-    '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\t%s\n" .Type .Source .Destination .RW .Propagation}}{{end}}' \
-    "$OBSERVER_CONTAINER" | awk -F '\t' '$1 != "bind" { print }')"
-[ -z "$observer_resolved_other" ] \
-    || [ "$observer_resolved_other" = $'tmpfs\t\t/tmp\ttrue\t' ] \
-    || die "Android emulator frame-observer unexpected resolved mount: $observer_resolved_other"
+observer_resolved_mount_output="$(vm_docker inspect --format \
+    '{{range .Mounts}}{{printf "%s|%s|%s|%t|%s\n" .Type .Source .Destination .RW .Propagation}}{{end}}' \
+    "$OBSERVER_CONTAINER")"
+mapfile -t observer_resolved_mounts <<<"$observer_resolved_mount_output"
+[ "${#observer_resolved_mounts[@]}" -ge 4 ] \
+    && [ "${#observer_resolved_mounts[@]}" -le 5 ] \
+    || die "Android emulator frame-observer resolved mount count differs: $observer_resolved_mount_output"
+observer_resolved_source=0
+observer_resolved_emulator=0
+observer_resolved_gradle=0
+observer_resolved_output=0
+observer_resolved_tmpfs=0
+for observer_mount in "${observer_resolved_mounts[@]}"; do
+    IFS='|' read -r observer_type observer_source observer_target \
+        observer_writable observer_propagation observer_extra <<<"$observer_mount"
+    [ -z "$observer_extra" ] \
+        || die "Android emulator frame-observer resolved mount shape differs: $observer_mount"
+    case "$observer_type:$observer_target" in
+        bind:/source)
+            [ "$observer_source:$observer_writable:$observer_propagation" = \
+              "$REPO_ROOT:false:rprivate" ] \
+                || die "Android emulator frame-observer resolved source mount differs: $observer_mount"
+            observer_resolved_source=$((observer_resolved_source + 1))
+            ;;
+        bind:/inputs/emulator.zip)
+            [ "$observer_source:$observer_writable:$observer_propagation" = \
+              "$EMULATOR_ZIP:false:rprivate" ] \
+                || die "Android emulator frame-observer resolved emulator mount differs: $observer_mount"
+            observer_resolved_emulator=$((observer_resolved_emulator + 1))
+            ;;
+        bind:/gradle)
+            [ "$observer_source:$observer_writable:$observer_propagation" = \
+              "$ONLINE_DIR/gradle-home:false:rprivate" ] \
+                || die "Android emulator frame-observer resolved Gradle mount differs: $observer_mount"
+            observer_resolved_gradle=$((observer_resolved_gradle + 1))
+            ;;
+        bind:/observer)
+            [ "$observer_source:$observer_writable:$observer_propagation" = \
+              "$OBSERVER_ROOT:true:rprivate" ] \
+                || die "Android emulator frame-observer resolved output mount differs: $observer_mount"
+            observer_resolved_output=$((observer_resolved_output + 1))
+            ;;
+        tmpfs:/tmp)
+            [ -z "$observer_source" ] && [ "$observer_writable" = true ] \
+                && [ -z "$observer_propagation" ] \
+                || die "Android emulator frame-observer resolved tmpfs differs: $observer_mount"
+            observer_resolved_tmpfs=$((observer_resolved_tmpfs + 1))
+            ;;
+        *) die "Android emulator frame-observer resolved an unexpected mount: $observer_mount" ;;
+    esac
+done
+[ "$observer_resolved_source:$observer_resolved_emulator:$observer_resolved_gradle:$observer_resolved_output" = \
+  1:1:1:1 ] && [ "$observer_resolved_tmpfs" -le 1 ] \
+    || die 'Android emulator frame-observer resolved mount targets are not unique'
 vm_docker start "$OBSERVER_CONTAINER" >/dev/null \
     || die 'cannot start the Android emulator frame-observer container'
 

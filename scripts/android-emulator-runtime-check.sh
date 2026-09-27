@@ -403,6 +403,20 @@ if [ "$runtime_status" -ne 0 ]; then
     grep '^ANDROID_PEER_FRAME_SAMPLE ' "$RUNTIME_LOG" | tail -n 120 >&2 || true
     grep '^ANDROID_PEER_FRAMEBUFFER_DIAGNOSTIC ' "$RUNTIME_LOG" \
         | tail -n 20 >&2 || true
+    awk '
+        /^ANDROID_PASSWORD_SUBMIT_DIAGNOSTIC_BEGIN$/ {
+            block = ""
+            in_diag = 1
+        }
+        in_diag { block = block $0 ORS }
+        /^ANDROID_PASSWORD_SUBMIT_DIAGNOSTIC_END$/ && in_diag {
+            last = block
+            in_diag = 0
+        }
+        END { printf "%s", last }
+    ' "$RUNTIME_LOG" >&2
+    grep '^ANDROID_PERMANENT_PASSWORD_SUBMIT=' "$RUNTIME_LOG" \
+        | tail -n 20 >&2 || true
     grep '^Android initial UI:' "$RUNTIME_LOG" | tail -n 80 >&2 || true
     runtime_failure="$(grep -m 1 '^Android emulator boot smoke:' \
         "$RUNTIME_LOG" || true)"

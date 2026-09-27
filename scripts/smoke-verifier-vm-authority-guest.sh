@@ -3081,6 +3081,20 @@ run_android_emulator_runtime() {
             }
             END { printf "%s", last }
         ' "$output" >&2
+        awk '
+            /^ANDROID_PASSWORD_SUBMIT_DIAGNOSTIC_BEGIN$/ {
+                block = ""
+                in_diag = 1
+            }
+            in_diag { block = block $0 ORS }
+            /^ANDROID_PASSWORD_SUBMIT_DIAGNOSTIC_END$/ && in_diag {
+                last = block
+                in_diag = 0
+            }
+            END { printf "%s", last }
+        ' "$output" >&2
+        grep '^ANDROID_PERMANENT_PASSWORD_SUBMIT=' "$output" \
+            | tail -n 20 >&2 || true
         grep '^ANDROID_MAIN_SERVICE_LOG_' "$output" \
             | tail -n 40 >&2 || true
         grep -E '^ANDROID_PEER_(PASSWORD_INPUT|PASSWORD_SUBMIT|CREDENTIAL_RECOVERY|CONNECTION_WAIT|CONNECTION_READY|CONNECTION_STATE)=' \
@@ -3491,10 +3505,14 @@ run_flutter_model_tests() {
                 : >/work/format.diff
                 for format_path in \
                     lib/common/widgets/overlay.dart \
+                    lib/common/widgets/permanent_password_dialog.dart \
+                    lib/common/widgets/custom_password.dart \
+                    lib/desktop/pages/desktop_home_page.dart \
                     lib/models/reconnect_schedule_authority.dart \
                     lib/mobile/pages/remote_page.dart \
                     lib/mobile/pages/view_camera_page.dart \
                     test/blockable_overlay_test.dart \
+                    test/permanent_password_dialog_lifecycle_test.dart \
                     test/reconnect_schedule_authority_test.dart; do
                     formatted=/work/$(basename "$format_path").formatted
                     dart format --output=show "$format_path" \
@@ -3555,8 +3573,9 @@ run_flutter_model_tests() {
                     test/blockable_overlay_test.dart
                     test/custom_cursor_registry_test.dart
                     test/start_ellipsis_text_test.dart
+                    test/permanent_password_dialog_lifecycle_test.dart
                 )
-                [ "${#tests[@]}" -eq 16 ]
+                [ "${#tests[@]}" -eq 17 ]
                 for test_path in "${tests[@]}"; do
                     [ -f "$test_path" ] && [ ! -L "$test_path" ]
                 done
@@ -3597,7 +3616,7 @@ run_flutter_model_tests() {
         || { tail -n 240 "$output" >&2; fail 'Flutter-tools offline-freshness receipt is absent'; }
     [ "$(grep -Fc 'FLUTTER_TOOLS_OFFLINE_FRESHNESS=' "$output")" -eq 1 ] \
         || fail 'Flutter-tools offline-freshness receipt is duplicated'
-    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=16 tests=116' "$output")" \
+    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=17 tests=120' "$output")" \
         || { tail -n 240 "$output" >&2; fail 'focused Flutter-test success summary is absent'; }
     [ "$(grep -Fc 'FLUTTER_MODEL_TEST_JSON=' "$output")" -eq 1 ] \
         || fail 'focused Flutter-test result summary is duplicated'
@@ -3622,7 +3641,7 @@ run_flutter_model_tests() {
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$tools_freshness_line"
     printf '%s\n' "$result_line"
-    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=16 tests=116 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
+    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=17 tests=120 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
         "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
         "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
         "$SHA256_CARGO_VENDOR_CLOSURE_V1" \

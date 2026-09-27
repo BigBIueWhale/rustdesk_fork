@@ -71,9 +71,11 @@ class MinCharactersValidationRule extends ValidationRule {
 
 class PasswordStrengthIndicator extends StatelessWidget {
   final RxString password;
+  final String Function(String text)? translateText;
   final double weakMedium = 0.33;
   final double mediumStrong = 0.67;
-  const PasswordStrengthIndicator({Key? key, required this.password})
+  const PasswordStrengthIndicator(
+      {Key? key, required this.password, this.translateText})
       : super(key: key);
 
   @override
@@ -93,7 +95,9 @@ class PasswordStrengthIndicator extends StatelessWidget {
               child: _indicator(password.isEmpty || strength < mediumStrong
                   ? Colors.grey
                   : _getColor(strength))),
-          Text(password.isEmpty ? '' : translate(_getLabel(strength)))
+          Text(password.isEmpty
+                  ? ''
+                  : (translateText ?? translate)(_getLabel(strength)))
               .marginOnly(left: password.isEmpty ? 0 : 8),
         ],
       );

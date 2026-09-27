@@ -274,6 +274,7 @@ readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
 # observation intentionally spans that old behavior; focused development checks remain separate.
 readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=140000
 readonly PEER_PASSWORD_SUBMIT_ACK_LIMIT_MS=30000
+readonly PERMANENT_PASSWORD_SUBMIT_ACK_LIMIT_MS=30000
 readonly ANDROID_CONTROL_FORWARD_LOCAL_SPEC=tcp:22119
 readonly ANDROID_CONTROL_FORWARD_DEVICE_SPEC=tcp:21118
 readonly ANDROID_CONTROL_FORWARD_PORT_HEX=5667
@@ -1036,6 +1037,34 @@ for x, y in sorted(centers, key=lambda point: (point[1], point[0])):
 PY
 }
 
+ui_button_enabled_state() {
+    local label=$1
+    python3 -I -S - "$UI_XML" "$label" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+path, label = sys.argv[1:]
+states = set()
+for node in ET.parse(path).getroot().iter("node"):
+    attributes = node.attrib
+    semantic_tokens = {
+        token.strip()
+        for key in ("text", "content-desc")
+        for token in attributes.get(key, "").splitlines()
+        if token.strip()
+    }
+    if (
+        label in semantic_tokens
+        and attributes.get("class") == "android.widget.Button"
+        and attributes.get("enabled") in ("true", "false")
+    ):
+        states.add(attributes["enabled"])
+if len(states) != 1:
+    raise SystemExit(1)
+print(states.pop())
+PY
+}
+
 ui_focused_password_bounds() {
     python3 -I -S - "$UI_XML" <<'PY'
 import re
@@ -1354,6 +1383,43 @@ print_native_password_log() {
     fi
 }
 
+print_password_submit_thread_diagnostic() {
+    local threads= cpu= backtrace=
+    printf 'ANDROID_PASSWORD_SUBMIT_DIAGNOSTIC_BEGIN\n' >&2
+    printf 'Android password-submit diagnostic: app_pid=%s\n' \
+        "${APP_PID:-unavailable}" >&2
+    if [[ "${APP_PID:-}" =~ ^[1-9][0-9]*$ ]]; then
+        threads="$(timeout --signal=TERM --kill-after=2s 20s \
+            "$ADB" -s "$SERIAL" shell ps -T -p "$APP_PID" \
+            -o PID,TID,NAME,STAT 2>/dev/null \
+            | tr -d '\r' | head -n 128 | tail -c 32768 || true)"
+        if [ -n "$threads" ]; then
+            printf 'Android password-submit threads:\n%s\n' "$threads" >&2
+        else
+            printf 'Android password-submit threads: unavailable\n' >&2
+        fi
+        cpu="$(timeout --signal=TERM --kill-after=2s 20s \
+            "$ADB" -s "$SERIAL" shell dumpsys cpuinfo 2>/dev/null \
+            | tr -d '\r' | grep -F "$APP_PACKAGE" \
+            | head -n 16 | tail -c 16384 || true)"
+        if [ -n "$cpu" ]; then
+            printf 'Android password-submit CPU:\n%s\n' "$cpu" >&2
+        else
+            printf 'Android password-submit CPU: unavailable\n' >&2
+        fi
+        backtrace="$(timeout --signal=TERM --kill-after=2s 30s \
+            "$ADB" -s "$SERIAL" shell debuggerd -b "$APP_PID" \
+            2>&1 | tr -d '\r' | tail -c 131072 || true)"
+        if [ -n "$backtrace" ]; then
+            printf 'Android password-submit native backtrace:\n%s\n' \
+                "$backtrace" >&2
+        else
+            printf 'Android password-submit native backtrace: unavailable\n' >&2
+        fi
+    fi
+    printf 'ANDROID_PASSWORD_SUBMIT_DIAGNOSTIC_END\n' >&2
+}
+
 handle_framework_interruption() {
     local cling_title= cling_ok= cling_x= cling_y=
     local anr_title= anr_wait= anr_close= anr_x= anr_y= anr_wait_count=0
@@ -1436,7 +1502,8 @@ tap_ui() {
 }
 
 grant_media_projection_after_password_submit() {
-    local started_ms now_ms consent password_error x y
+    local started_ms now_ms elapsed_ms consent password_error x y
+    local password_title waiting ok_state home_action acknowledged=0 ack_ms=0
     started_ms="$(monotonic_millis)" || return 2
     while :; do
         if capture_ui_hierarchy complete; then
@@ -1451,8 +1518,14 @@ grant_media_projection_after_password_submit() {
                     "$ADB" -s "$SERIAL" shell input tap "$x" "$y" \
                     >/dev/null || return 1
                 now_ms="$(monotonic_millis)" || return 2
-                printf 'ANDROID_PERMANENT_PASSWORD_SUBMIT=pass result=media-projection-consent-ready wait_ms=%s limit_ms=%s\n' \
-                    "$((now_ms - started_ms))" \
+                elapsed_ms=$((now_ms - started_ms))
+                if [ "$acknowledged" -eq 0 ]; then
+                    acknowledged=1
+                    ack_ms=$elapsed_ms
+                fi
+                printf 'ANDROID_PERMANENT_PASSWORD_SUBMIT=pass result=media-projection-consent-ready ack_ms=%s wait_ms=%s limit_ms=%s\n' \
+                    "$ack_ms" \
+                    "$elapsed_ms" \
                     "$PERMANENT_PASSWORD_SUBMIT_LIMIT_MS"
                 return 0
             fi
@@ -1467,12 +1540,44 @@ grant_media_projection_after_password_submit() {
                     "$PERMANENT_PASSWORD_SUBMIT_LIMIT_MS"
                 return 1
             fi
+            password_title="$(ui_center text 'Set password' 2>/dev/null || true)"
+            if [[ "$password_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
+                waiting="$(ui_center text 'Waiting' 2>/dev/null || true)"
+                ok_state="$(ui_button_enabled_state 'OK' 2>/dev/null || true)"
+                if [ "$acknowledged" -eq 0 ] \
+                   && [[ "$waiting" =~ ^[0-9]+\ [0-9]+$ ]] \
+                   && [ "$ok_state" = false ]; then
+                    now_ms="$(monotonic_millis)" || return 2
+                    ack_ms=$((now_ms - started_ms))
+                    acknowledged=1
+                    printf 'ANDROID_PERMANENT_PASSWORD_SUBMIT=progress result=mutation-owned ack_ms=%s ack_limit_ms=%s\n' \
+                        "$ack_ms" "$PERMANENT_PASSWORD_SUBMIT_ACK_LIMIT_MS"
+                fi
+            elif [ "$acknowledged" -eq 0 ]; then
+                home_action="$(ui_center text \
+                    'Start screen sharing' 2>/dev/null || true)"
+                if [[ "$home_action" =~ ^[0-9]+\ [0-9]+$ ]]; then
+                    now_ms="$(monotonic_millis)" || return 2
+                    ack_ms=$((now_ms - started_ms))
+                    acknowledged=1
+                    printf 'ANDROID_PERMANENT_PASSWORD_SUBMIT=progress result=dialog-retired-after-durable-write ack_ms=%s ack_limit_ms=%s\n' \
+                        "$ack_ms" "$PERMANENT_PASSWORD_SUBMIT_ACK_LIMIT_MS"
+                fi
+            fi
         fi
         now_ms="$(monotonic_millis)" || return 2
-        if [ "$((now_ms - started_ms))" -ge \
+        elapsed_ms=$((now_ms - started_ms))
+        if [ "$acknowledged" -eq 0 ] \
+           && [ "$elapsed_ms" -ge \
+                "$PERMANENT_PASSWORD_SUBMIT_ACK_LIMIT_MS" ]; then
+            printf 'ANDROID_PERMANENT_PASSWORD_SUBMIT=fail result=action-not-acknowledged wait_ms=%s ack_limit_ms=%s\n' \
+                "$elapsed_ms" "$PERMANENT_PASSWORD_SUBMIT_ACK_LIMIT_MS"
+            return 1
+        fi
+        if [ "$elapsed_ms" -ge \
              "$PERMANENT_PASSWORD_SUBMIT_LIMIT_MS" ]; then
-            printf 'ANDROID_PERMANENT_PASSWORD_SUBMIT=fail result=consent-not-requested wait_ms=%s limit_ms=%s\n' \
-                "$((now_ms - started_ms))" \
+            printf 'ANDROID_PERMANENT_PASSWORD_SUBMIT=fail result=consent-not-requested acknowledged=%s ack_ms=%s wait_ms=%s limit_ms=%s\n' \
+                "$acknowledged" "$ack_ms" "$elapsed_ms" \
                 "$PERMANENT_PASSWORD_SUBMIT_LIMIT_MS"
             return 1
         fi
@@ -2594,6 +2699,7 @@ PY
             || fail 'cannot submit the disposable permanent password'
         grant_media_projection_after_password_submit \
             || {
+                print_password_submit_thread_diagnostic
                 print_mobile_storage_key_log
                 print_native_password_log
                 capture_ui_hierarchy \

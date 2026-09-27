@@ -284,6 +284,9 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
     dart format --output=none --set-exit-if-changed \
       lib/common.dart \
       lib/common/widgets/overlay.dart \
+      lib/common/widgets/permanent_password_dialog.dart \
+      lib/common/widgets/custom_password.dart \
+      lib/desktop/pages/desktop_home_page.dart \
       lib/models/model.dart \
       lib/models/file_model.dart \
       lib/utils/image.dart \
@@ -324,6 +327,7 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
       test/owned_image_paint_test.dart \
       test/blockable_overlay_test.dart \
       test/desktop_tab_retirement_test.dart \
+      test/permanent_password_dialog_lifecycle_test.dart \
       test/password_field_semantics_test.dart
     set +e
     out="$(flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/ 2>&1)"
@@ -392,6 +396,8 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/blockable_overlay_test.dart
     echo "  == R-S11gc obscured password fields retain enabled focused semantics =="
     flutter test --no-pub test/password_field_semantics_test.dart
+    echo "  == permanent-password dialog owns one mutation through retirement =="
+    flutter test --no-pub test/permanent_password_dialog_lifecycle_test.dart
     echo "  == R-S11ex/R-S11ez Linux native texture unregister and callback retirement finality =="
     engine="${flutter_roots[0]}/bin/cache/artifacts/engine/linux-x64"
     plugin=/src/flutter/third_party/texture_rgba_renderer/linux

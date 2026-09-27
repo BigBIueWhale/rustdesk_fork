@@ -18,6 +18,7 @@ EXPECTED_SUITES = {
     "latest_frame_queue_test.dart",
     "mobile_session_start_queue_test.dart",
     "owned_image_paint_test.dart",
+    "permanent_password_dialog_lifecycle_test.dart",
     "presentation_recovery_test.dart",
     "reconnect_schedule_authority_test.dart",
     "rgba_publication_order_test.dart",
@@ -26,7 +27,7 @@ EXPECTED_SUITES = {
     "session_stream_finality_test.dart",
     "start_ellipsis_text_test.dart",
 }
-EXPECTED_TESTS = 116
+EXPECTED_TESTS = 120
 MAXIMUM_BYTES = 8 * 1024 * 1024
 MAXIMUM_EVENTS = 16_384
 MAXIMUM_LINE_BYTES = 1024 * 1024

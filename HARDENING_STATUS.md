@@ -967,32 +967,34 @@ resource/soak, physical-device, current artifact, cold R-B2/R-B10, independent-r
 obligations remain open.
 
 The current retained x86_64 test APK is source commit
-`df02b52cbec41c6a8427bcc26afe2a646497a37d`, tree
-`ff457f8bd9c7c54e66189988e4b3b3dd64a2f336`, and SHA-256
-`d1e6b316d46728923108aadf8765b2ae5653d3c8d33d72eecb0c748d253fb8d2`. At that exact clean pushed source, the
-zero-NIC focused Flutter transaction passed 15 suites and 112 tests in 279 seconds, and the real Android 14 test APK
-build/install/launch/framebuffer baseline passed. The last complete task-removal/foreground-service/MediaProjection/
+`140838f5eb3c9fa44f4bc4058da7c4dd36ad9777`, tree
+`9ba20393e86a59750b0fd97c4c5a6fd27717ca4f`, and SHA-256
+`d831aabe8af8274235e432cda13ef3feca87fab0bd76c4ce679e12a17852b4b0`. It is an exactly admitted test-only
+artifact, not a stable-signed release APK. The last complete task-removal/foreground-service/MediaProjection/
 Force-Stop lifecycle pass remains the older source `48acf94e1a26bf51af1f8e697a11cfe2aa84cbd4`, harness
 `eeb4327e0ba5c4677ba6571f97ca95bf14beeed1`, and APK
 `8036056ecb5d7df1888bbfef44866bfb8b169cbcfc2b4f756ab64361a5c05774`; it is historical evidence, not a current-
 artifact lifecycle pass.
 
-The current real-peer/presentation verdict is **FAILED / OPEN**. A first replay of the current APK admitted the CPace
-peer and proved native decode, BGRA-to-engine RGBA conversion, Dart image creation, publication acknowledgement, and
-first-image initialization, but the Android framebuffer showed a washed remote surface and failed the changing-frame
-freshness gate. Pushed harness commit `f6754822d2188c79bedba17cc23d713cd584e0ec`, tree
-`5c8e5cdcbe062c5bb8f43524a635041079c129e2`, replaced the previously asserted ANGLE-over-SwiftShader `swangle`
-backend with direct `swiftshader` and requires a digest-bound SurfaceFlinger renderer observation through every
-successful wrapper. Replaying the same immutable APK selected `Google SwiftShader` / OpenGL ES 3.0, but the submitted
-connection failed during CPace before decode or remote presentation; the resulting password dialog and dimmed
-background rendered crisply, which does not classify remote-pixel correctness. The current client erases the typed
-`Confirmation`/`Protocol`/`Pake`/`Io` handshake failure and presents every variant as a wrong-password/re-provisioning
-error, while the server log also erases the variant. The absence of a key-confirmation aggregate suggests but does not
-prove that this failure was not a wrong password because that aggregate is best-effort. The exact failure class,
-renderer A/B result, peer lifecycle, actual-presentation freshness, and the reported background/task-relaunch symptom
-therefore remain unresolved. Both failed runs had zero during/after host-listener additions, zero pre-existing-process
-drift, and joined cleanup; their multi-gigabyte private roots were retired by exact device/inode after compact evidence
-was inspected or retained.
+The current real-peer/presentation verdict is **FAILED / OPEN**. One replay of this immutable APK authenticated,
+received peer information, decoded VP9, copied exact BGRA bytes into engine RGBA, and obtained Dart image/publication
+receipts. Its actual-pixel verdict is invalid: each PNG `screencap -p` observation consumed 3.01--3.30 seconds while
+the claimed freshness ceiling was two seconds, leaving only two perturbing samples and conflating observer delay with
+product behavior. Harness commit `1c114109dbb1e08e692435de805df25f66e199f6` replaces verdict polling with strict
+Android-14 raw-frame parsing and refuses to classify the product if a capture exceeds 500 ms; all admitted raw pixel
+formats, both orientations, non-palette pixels, exact receipt syntax, and malformed framing passed focused fixtures.
+That raw observer has not yet executed in the VM: the next exact-artifact replay failed during CPace before decode.
+
+The latest CPace failure exposes a separate source-level recovery defect. The production responder received step 3,
+classified its failed tag as `HandshakeError::Confirmation`, and closed; the honest initiator consequently observed
+EOF as `HandshakeError::Io` while waiting for step 4. `ViewerKeyingError::requests_credential_entry()` re-prompts only
+for local `Confirmation` or a missing credential, so the ordinary wrong/stale-password outcome reaches a terminal
+generic error instead of allowing exact credential replacement. The transport cannot honestly tell the initiator
+whether that post-step-3 close was a password rejection, network loss, or hostile peer, so recovery needs a typed,
+stage-aware ambiguous outcome rather than relabeling every I/O failure as a password failure. Peer lifecycle,
+actual-presentation freshness, background/task-relaunch behavior, and causal reproduction remain unresolved. Both
+latest replays used zero-NIC VMs, added no host listener, caused no pre-existing-process drift, and joined all owned
+cleanup; the failed private roots remain retained for bounded evidence inspection.
 
 Pub-cache and Gradle replacement cleanup is now one recoverable, acquisition-identity-owned transaction. A
 replacement refuses an existing root unless it is owned by the acquisition UID/GID and sealed mode 0500; the old
@@ -1119,10 +1121,10 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
-| Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained. The current source/tree/digest-bound x86_64 test APK has a real Android 14 build/install/launch/framebuffer baseline, while the complete task-removal/foreground-service/MediaProjection/Force-Stop pass is from an older artifact. Current authenticated peer attempts fail the actual-presentation gate: one decoded and published frames but produced a washed framebuffer; the direct-SwiftShader A/B run failed CPace before decode, and the client erased the typed handshake failure into a wrong-password prompt. Correct the error/lifetime path and then exercise authenticated peer/session replacement, outgoing viewing, controlled capture/input callbacks, reconnect, capture/decode/actual-presentation freshness, network/background/focus transitions, stale-generation refusal, repeated resource bounds, physical devices, stable-signed release artifacts, and cold/independent reproduction. iOS still has no current package/device result. |
+| Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained. The current source/tree/digest-bound x86_64 test APK has a real Android 14 build/install/launch/framebuffer baseline, while the complete task-removal/foreground-service/MediaProjection/Force-Stop pass is from an older artifact. One current replay authenticated and decoded/published frames, but its multi-second PNG observer invalidated the freshness verdict; the strict raw observer is fixture-checked but has not reached execution. A later replay source-proved the honest mismatch asymmetry—responder `Confirmation`, initiator EOF/`Io`—and the viewer currently dead-ends that ordinary wrong/stale-credential outcome instead of offering exact replacement. Correct the stage-aware recovery/lifetime path and then exercise authenticated peer/session replacement, outgoing viewing, controlled capture/input callbacks, reconnect, capture/decode/actual-presentation freshness, network/background/focus transitions, stale-generation refusal, repeated resource bounds, physical devices, stable-signed release artifacts, and cold/independent reproduction. iOS still has no current package/device result. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg now has pin-bound recoverable devcheck and Apple verifier images. For each image, two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. The complete current Apple three-target source-conformance workload is now green in the no-NIC verifier VM; current product/native workloads and fresh independently administered rebuilds remain required, and the image-infrastructure result itself supplies no product or native evidence. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES, EXACT-CURRENT LINUX FILESYSTEM TESTS, ONLINE ACQUISITION, CURRENT DART/RUST ADVISORY VERDICTS, COMPLETE CURRENT APPLE SOURCE CONFORMANCE, ANDROID/DEBIAN/WINDOWS-HELPER CERTIFICATION, AND AN OLDER-ARTIFACT ANDROID LIFECYCLE ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; focused entries refuse applicable root/foreign callers and execute bounded guest containers. R-S11cj separately confines acquisition to ordinary-user QEMU with rootless exact exports, TCP-only guest/container egress, no host forwarding, listener invariance, and joined finality. The current retained test APK is source `df02b52cbec41c6a8427bcc26afe2a646497a37d`, tree `ff457f8bd9c7c54e66189988e4b3b3dd64a2f336`, and SHA-256 `d1e6b316d46728923108aadf8765b2ae5653d3c8d33d72eecb0c748d253fb8d2`; its real peer/presentation transaction is red. Stable Android signing/release artifacts, a current complete lifecycle pass, real peer/presentation/device behavior, native Apple build/sign/install/runtime behavior, Debian/Windows product workloads, cold artifacts, complete prepared inputs, fresh independent reproduction, and external review remain open. Source conformance, library tests, entry gates, builder fingerprints, and historical test-only lifecycle evidence are not full product or release evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES, EXACT-CURRENT LINUX FILESYSTEM TESTS, ONLINE ACQUISITION, CURRENT DART/RUST ADVISORY VERDICTS, COMPLETE CURRENT APPLE SOURCE CONFORMANCE, ANDROID/DEBIAN/WINDOWS-HELPER CERTIFICATION, AND AN OLDER-ARTIFACT ANDROID LIFECYCLE ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; focused entries refuse applicable root/foreign callers and execute bounded guest containers. R-S11cj separately confines acquisition to ordinary-user QEMU with rootless exact exports, TCP-only guest/container egress, no host forwarding, listener invariance, and joined finality. The retained test APK is source `140838f5eb3c9fa44f4bc4058da7c4dd36ad9777`, tree `9ba20393e86a59750b0fd97c4c5a6fd27717ca4f`, and SHA-256 `d831aabe8af8274235e432cda13ef3feca87fab0bd76c4ce679e12a17852b4b0`; its real peer/presentation transaction remains red/open, and the corrected raw observer has not executed past CPace. Stable Android signing/release artifacts, a current complete lifecycle pass, real peer/presentation/device behavior, native Apple build/sign/install/runtime behavior, Debian/Windows product workloads, cold artifacts, complete prepared inputs, fresh independent reproduction, and external review remain open. Source conformance, library tests, entry gates, builder fingerprints, and historical test-only lifecycle evidence are not full product or release evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED

@@ -10,6 +10,7 @@ use hbb_common::cpace::{
     DirectionalCipher, HandshakeError,
 };
 use hbb_common::message_proto::{cpace::Union as CpaceUnion, Cpace, CpaceStep1, CpaceStep3};
+use hbb_common::protobuf::Message as _;
 use hbb_common::tcp::FramedStream;
 use std::net::{IpAddr, Ipv4Addr};
 use tokio::net::{TcpListener, TcpStream};
@@ -432,10 +433,107 @@ async fn wrong_password_aborts_at_confirmation() {
     assert_confirmation_feeds_limiter(responder_error, 24);
 
     let (initiator_result, initiator_secured) = ji.await.unwrap();
-    assert!(initiator_result.is_err(), "initiator also fails closed");
+    let initiator_error = err_of(initiator_result);
+    assert_eq!(
+        initiator_error,
+        HandshakeError::PeerConfirmationUnavailable,
+        "after sending step 3, the initiator must preserve the ambiguous missing-peer-confirmation state"
+    );
     assert!(
         !initiator_secured,
         "wrong-password failure must not install initiator keys"
+    );
+    assert_failure_does_not_feed_limiter(initiator_error, 28);
+}
+
+#[tokio::test]
+async fn initiator_eof_before_step2_remains_plain_io() {
+    let (si, mut sr) = loopback_pair().await;
+    let ji = tokio::spawn(async move {
+        let mut si = si;
+        let result = run_initiator(&mut si, "early-eof-password").await;
+        (result, si.is_secured())
+    });
+
+    let step1 = sr
+        .next()
+        .await
+        .expect("the initiator must send step 1")
+        .expect("step 1 framing must be valid");
+    assert!(!step1.is_empty());
+    drop(sr);
+
+    let (result, secured) = ji.await.unwrap();
+    let error = err_of(result);
+    assert_eq!(
+        error,
+        HandshakeError::Io,
+        "an abort before the peer has received a confirmation attempt is not a credential-replacement signal"
+    );
+    assert!(!secured, "early EOF must not install initiator keys");
+    assert_failure_does_not_feed_limiter(error, 29);
+}
+
+#[tokio::test]
+async fn initiator_invalid_step4_tag_remains_confirmation() {
+    let (mut initiator, mut proxy_from_initiator) = loopback_pair().await;
+    let (mut proxy_to_responder, mut responder) = loopback_pair().await;
+    let password = "step4-confirmation-password";
+
+    let initiator_future = run_initiator(&mut initiator, password);
+    let responder_future = run_responder(&mut responder, password);
+    let proxy_future = async {
+        let step1 = proxy_from_initiator
+            .next()
+            .await
+            .expect("initiator step 1")
+            .expect("valid initiator step 1 framing");
+        proxy_to_responder.send_raw(step1.to_vec()).await.unwrap();
+
+        let step2 = proxy_to_responder
+            .next()
+            .await
+            .expect("responder step 2")
+            .expect("valid responder step 2 framing");
+        proxy_from_initiator.send_raw(step2.to_vec()).await.unwrap();
+
+        let step3 = proxy_from_initiator
+            .next()
+            .await
+            .expect("initiator step 3")
+            .expect("valid initiator step 3 framing");
+        proxy_to_responder.send_raw(step3.to_vec()).await.unwrap();
+
+        let step4 = proxy_to_responder
+            .next()
+            .await
+            .expect("responder step 4")
+            .expect("valid responder step 4 framing");
+        let mut step4 = Cpace::parse_from_bytes(&step4).expect("parse responder step 4");
+        let Some(CpaceUnion::Step4(step4_body)) = step4.union.as_mut() else {
+            panic!("the responder must emit step 4");
+        };
+        let mut tag = step4_body.tb.to_vec();
+        tag[0] ^= 0x80;
+        step4_body.tb = Bytes::from(tag);
+        proxy_from_initiator.send(&step4).await.unwrap();
+    };
+
+    let (initiator_result, responder_result, ()) =
+        tokio::join!(initiator_future, responder_future, proxy_future);
+    assert!(
+        responder_result.is_ok(),
+        "the responder must complete before the proxy corrupts its valid step 4"
+    );
+    let error = err_of(initiator_result);
+    assert_eq!(
+        error,
+        HandshakeError::Confirmation,
+        "a received step 4 with a bad tag is a confirmation failure, not the missing-confirmation ambiguity"
+    );
+    assert!(
+        !initiator.is_secured(),
+        "an invalid responder confirmation must not install initiator keys"
     );
 }
 

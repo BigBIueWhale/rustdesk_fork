@@ -64,6 +64,13 @@ pub const MAX_SESSION_PACKET: usize = 32 * 1024 * 1024;
 pub enum HandshakeError {
     /// R-P3 key-confirmation tag mismatch — the sole online-guess event.
     Confirmation,
+    /// The initiator successfully submitted step ③ but could not obtain step ④.
+    /// The responder may have rejected the initiator's confirmation (for example,
+    /// because the PRSs differ), or the transport/peer may have failed before its
+    /// confirmation arrived. This ambiguity is intentionally preserved: it is a
+    /// local credential-replacement opportunity, not proof of a password guess,
+    /// and therefore never feeds the responder's per-source limiter.
+    PeerConfirmationUnavailable,
     /// Wrong / duplicate / out-of-order oneof variant, an unset union, a
     /// length-invalid field, or a decode failure (R-P14a). Does not feed the limiter.
     Protocol,
@@ -302,7 +309,16 @@ pub async fn run_initiator_with_transcript(
     send_cpace(stream, from_step3(&step3)).await?;
 
     // WAIT_4: accept ONLY step ④; verify the responder's tag (R-P3). Initiator side — full 18 s.
-    let step4 = match recv_cpace(stream, HANDSHAKE_STEP_TIMEOUT_MS).await?.union {
+    // A responder with a different PRS rejects our step ③ and closes without a step ④. Once step ③
+    // was successfully submitted, an I/O abort is therefore intrinsically ambiguous: it can be a
+    // credential rejection, transport loss, or a hostile peer. Preserve that exact stage instead of
+    // collapsing it into the early-handshake `Io` class or claiming that the password was wrong.
+    let step4_message = match recv_cpace(stream, HANDSHAKE_STEP_TIMEOUT_MS).await {
+        Ok(message) => message,
+        Err(HandshakeError::Io) => return Err(HandshakeError::PeerConfirmationUnavailable),
+        Err(error) => return Err(error),
+    };
+    let step4 = match step4_message.union {
         Some(CpaceUnion::Step4(s)) => to_step4(&s)?,
         _ => return Err(HandshakeError::Protocol),
     };

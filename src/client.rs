@@ -150,6 +150,9 @@ impl ViewerKeyingError {
             self,
             Self::MissingCredential
                 | Self::Handshake(hbb_common::cpace::HandshakeError::Confirmation)
+                | Self::Handshake(
+                    hbb_common::cpace::HandshakeError::PeerConfirmationUnavailable
+                )
         )
     }
 }
@@ -163,6 +166,7 @@ impl std::fmt::Display for ViewerKeyingError {
                 "CPace handshake requires a direct TCP stream; the connection was refused fail-closed."
             }
             Self::Handshake(hbb_common::cpace::HandshakeError::Confirmation) => "CPace key confirmation failed — the box's password is wrong or the box was re-provisioned with a new password. Re-enter the box's current password and reconnect. Fail-closed.",
+            Self::Handshake(hbb_common::cpace::HandshakeError::PeerConfirmationUnavailable) => "The peer did not provide CPace key confirmation after this viewer sent its confirmation. The peer may have rejected a stale or wrong password, or the connection may have ended. Re-enter the box's password if it changed; otherwise retry the connection. No session was authorized.",
             Self::Handshake(hbb_common::cpace::HandshakeError::Protocol) => "CPace handshake aborted because the peer sent an invalid or out-of-order handshake message. The connection was refused before login.",
             Self::Handshake(hbb_common::cpace::HandshakeError::Pake) => "CPace cryptographic processing failed. The connection was refused before login.",
             Self::Handshake(hbb_common::cpace::HandshakeError::Io) => "CPace handshake transport ended, timed out, or violated the handshake frame bound. The connection was refused before login.",
@@ -4048,11 +4052,12 @@ pub trait Interface: Send + Clone + 'static + Sized {
         let title = "Connection Error";
         let text = error.to_string();
         let presentation = classify_connection_error(error);
-        // R-S13/A3 / R-P14c: only absent local credential material or the typed CPace
-        // key-confirmation mismatch authorizes credential re-entry. Derivation, protocol,
-        // PAKE-processing, and I/O failures close the exact attempt without turning
-        // attacker-controlled failure text into a password prompt. The reconnect feeds the
-        // replacement credential through `get_connect_password` -> `key_initiator`.
+        // R-S13/A3 / R-P14c: absent local credential material, a typed CPace
+        // key-confirmation mismatch, or the exact initiator WAIT_4 ambiguity authorizes deliberate
+        // credential replacement. Earlier I/O, derivation, protocol, and PAKE-processing failures
+        // close the exact attempt without turning attacker-controlled failure text into a password
+        // prompt. The reconnect feeds the replacement credential through `get_connect_password` ->
+        // `key_initiator`; it does not delete a remembered credential or retry automatically.
         if cfg!(feature = "flutter")
             && presentation == ConnectionErrorPresentation::CredentialPrompt
         {
@@ -4952,6 +4957,12 @@ mod tests {
             (
                 ViewerKeyingError::Handshake(
                     hbb_common::cpace::HandshakeError::Confirmation,
+                ),
+                ConnectionErrorPresentation::CredentialPrompt,
+            ),
+            (
+                ViewerKeyingError::Handshake(
+                    hbb_common::cpace::HandshakeError::PeerConfirmationUnavailable,
                 ),
                 ConnectionErrorPresentation::CredentialPrompt,
             ),

@@ -1420,6 +1420,28 @@ assert_no_main_service() {
     ! grep -qF "$APP_PACKAGE/.MainService" <<<"$state"
 }
 
+assert_single_main_service_log_generation() {
+    local lifecycle_log=$1
+    local context=$2
+    local create_count start_count projection_start_count launch_count
+    create_count="$(grep -cF 'MainService onCreate' <<<"$lifecycle_log" || true)"
+    start_count="$(grep -cF 'this service:' <<<"$lifecycle_log" || true)"
+    projection_start_count="$(grep -cF 'service starting:' <<<"$lifecycle_log" || true)"
+    launch_count="$(grep -cF 'Launch MainService' <<<"$lifecycle_log" || true)"
+    if [ "$create_count" -eq 1 ] && [ "$start_count" -eq 1 ]; then
+        return 0
+    fi
+    printf 'ANDROID_MAIN_SERVICE_LOG_CARDINALITY=fail context=%s create=%s start=%s projection_start=%s projection_launch=%s\n' \
+        "$context" "$create_count" "$start_count" "$projection_start_count" \
+        "$launch_count"
+    printf '%s\n' "$lifecycle_log" \
+        | grep -E 'MainService onCreate|this service:|service starting:|Launch MainService' \
+        | tail -n 32 \
+        | sed 's/^/ANDROID_MAIN_SERVICE_LOG_LINE /' \
+        || true
+    return 1
+}
+
 peer_source_state() {
     awk '/^RUSTDESK_PRESENTATION_TRACE stage=source-publish / {
             for (i = 1; i <= NF; i++) {
@@ -2227,12 +2249,8 @@ PY
             || fail 'the application process changed while starting MainService'
 
         lifecycle_log="$(adb_shell_value logcat -d -v brief)"
-        [ "$(printf '%s\n' "$lifecycle_log" \
-            | grep -cF 'MainService onCreate' || true)" -eq 1 ] \
-            || fail 'MainService was not created exactly once'
-        [ "$(printf '%s\n' "$lifecycle_log" \
-            | grep -cF 'this service:' || true)" -eq 1 ] \
-            || fail 'MainService was not started exactly once'
+        assert_single_main_service_log_generation "$lifecycle_log" initial \
+            || fail 'MainService was not created and started exactly once'
         ! grep -Eq 'FATAL EXCEPTION|Failed to resume Android client session ownership|MainService destruction retained incomplete generation authority' \
             <<<"$lifecycle_log" \
             || fail 'the initial lifecycle log contains a fatal ownership failure'
@@ -2302,12 +2320,9 @@ PY
             assert_main_service \
                 || fail "relaunch $lifecycle_cycle changed MainService state"
             lifecycle_log="$(adb_shell_value logcat -d -v brief)"
-            [ "$(printf '%s\n' "$lifecycle_log" \
-                | grep -cF 'MainService onCreate' || true)" -eq 1 ] \
-                || fail "relaunch $lifecycle_cycle duplicated MainService"
-            [ "$(printf '%s\n' "$lifecycle_log" \
-                | grep -cF 'this service:' || true)" -eq 1 ] \
-                || fail "relaunch $lifecycle_cycle restarted MainService"
+            assert_single_main_service_log_generation \
+                "$lifecycle_log" "relaunch-$lifecycle_cycle" \
+                || fail "relaunch $lifecycle_cycle changed MainService lifecycle cardinality"
             ! grep -Eq 'FATAL EXCEPTION|Failed to resume Android client session ownership|MainService destruction retained incomplete generation authority' \
                 <<<"$lifecycle_log" \
                 || fail "relaunch $lifecycle_cycle logged a fatal ownership failure"

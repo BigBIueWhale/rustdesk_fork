@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class _TestDialog extends CustomAlertDialog {
-  const _TestDialog(this.label) : super(content: const SizedBox.shrink());
+class _TestDialog extends StatelessWidget {
+  const _TestDialog(this.label);
 
   final String label;
 

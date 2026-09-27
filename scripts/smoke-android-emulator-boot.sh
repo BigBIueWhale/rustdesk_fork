@@ -1836,7 +1836,7 @@ prefix_matches = 0
 related = set()
 for node in ET.parse(path).getroot().iter("node"):
     values = {
-        " ".join(node.attrib.get(key, "").split())
+        node.attrib.get(key, "")
         for key in ("text", "content-desc")
     }
     if expected in values:

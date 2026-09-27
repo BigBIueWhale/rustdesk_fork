@@ -35,7 +35,8 @@ PALETTE = (
 )
 STATE_CODE_BARS = 20
 STATE_CODE_MIN_BAR_WIDTH = 3
-STATE_CODE_MIN_CONTRAST = 48
+STATE_CODE_MIN_CONTRAST = 8
+STATE_CODE_MIN_SEPARATION = 5
 METADATA = re.compile(
     rb"seq=([0-9]+) timestamp_us=([0-9]+) observed_epoch_us=([0-9]+) "
     rb"observed_monotonic_ns=([0-9]+) width=([0-9]+) height=([0-9]+) "
@@ -149,7 +150,13 @@ def decode_state_code_row(
             return None
         state = (state << 1) | int(difference > 0)
         contrasts.append(contrast)
-    return state, min(contrasts)
+    expected = state_code_bars(state)
+    dark = [value for value, white in zip(values, expected) if not white]
+    light = [value for value, white in zip(values, expected) if white]
+    separation = min(light) - max(dark)
+    if separation < STATE_CODE_MIN_SEPARATION:
+        return None
+    return state, min(contrasts + [separation])
 
 
 def analyze(record: dict[str, object], source_state: int) -> dict[str, object]:
@@ -361,6 +368,8 @@ def fixture_record(
     now_epoch_us: int,
     now_monotonic_ns: int,
     include_code: bool = True,
+    code_dark: tuple[int, int, int] = (0, 0, 0),
+    code_light: tuple[int, int, int] = (255, 255, 255),
 ) -> bytes:
     low = PALETTE[state & 15]
     high = PALETTE[(state >> 4) & 15]
@@ -380,7 +389,7 @@ def fixture_record(
             remote_y = logical_y - remote_top
             if include_code and remote_y * 5 < remote_height:
                 bar = min(STATE_CODE_BARS - 1, remote_x * STATE_CODE_BARS // remote_width)
-                pixels.extend((255, 255, 255) if code[bar] else (0, 0, 0))
+                pixels.extend(code_light if code[bar] else code_dark)
             else:
                 pixels.extend(low if remote_x * 2 < remote_width else high)
     metadata = (
@@ -397,9 +406,15 @@ def self_test() -> int:
     now_epoch_us = time.time_ns() // 1_000
     now_monotonic_ns = time.monotonic_ns()
     scenarios = 0
-    for dimensions, remote, state, age in (
-        ((120, 200), (0, 55, 120, 90), 0xAA, 0),
-        ((200, 120), (32, 9, 136, 102), 0x3C, 1),
+    for dimensions, remote, state, age, code_levels in (
+        (
+            (120, 200),
+            (0, 55, 120, 90),
+            0xAA,
+            0,
+            ((182, 182, 182), (195, 195, 195)),
+        ),
+        ((200, 120), (32, 9, 136, 102), 0x3C, 1, ((0, 0, 0), (255, 255, 255))),
     ):
         data = fixture_record(
             *dimensions,
@@ -408,6 +423,8 @@ def self_test() -> int:
             17 + scenarios,
             now_epoch_us,
             now_monotonic_ns,
+            code_dark=code_levels[0],
+            code_light=code_levels[1],
         )
         record = parse_record(data, now_monotonic_ns)
         candidate = classify(record, (state + age) & 0xFF)

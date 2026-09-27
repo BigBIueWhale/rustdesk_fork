@@ -3095,6 +3095,8 @@ run_android_emulator_runtime() {
         ' "$output" >&2
         grep '^ANDROID_PERMANENT_PASSWORD_SUBMIT=' "$output" \
             | tail -n 20 >&2 || true
+        grep '^ANDROID_PERMANENT_PASSWORD_ACTION=' "$output" \
+            | tail -n 20 >&2 || true
         grep '^ANDROID_MAIN_SERVICE_LOG_' "$output" \
             | tail -n 40 >&2 || true
         grep -E '^ANDROID_PEER_(PASSWORD_INPUT|PASSWORD_SUBMIT|CREDENTIAL_RECOVERY|CONNECTION_WAIT|CONNECTION_READY|CONNECTION_STATE)=' \

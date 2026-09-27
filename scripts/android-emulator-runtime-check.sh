@@ -417,6 +417,8 @@ if [ "$runtime_status" -ne 0 ]; then
     ' "$RUNTIME_LOG" >&2
     grep '^ANDROID_PERMANENT_PASSWORD_SUBMIT=' "$RUNTIME_LOG" \
         | tail -n 20 >&2 || true
+    grep '^ANDROID_PERMANENT_PASSWORD_ACTION=' "$RUNTIME_LOG" \
+        | tail -n 20 >&2 || true
     grep '^Android initial UI:' "$RUNTIME_LOG" | tail -n 80 >&2 || true
     runtime_failure="$(grep -m 1 '^Android emulator boot smoke:' \
         "$RUNTIME_LOG" || true)"

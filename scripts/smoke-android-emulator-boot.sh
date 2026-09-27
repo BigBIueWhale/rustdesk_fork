@@ -275,6 +275,8 @@ readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
 readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=140000
 readonly PEER_PASSWORD_SUBMIT_ACK_LIMIT_MS=30000
 readonly PERMANENT_PASSWORD_SUBMIT_ACK_LIMIT_MS=30000
+readonly PERMANENT_PASSWORD_SUBMIT_TAP_RETRY_MS=5000
+readonly PERMANENT_PASSWORD_SUBMIT_TAP_ATTEMPTS=3
 readonly ANDROID_CONTROL_FORWARD_LOCAL_SPEC=tcp:22119
 readonly ANDROID_CONTROL_FORWARD_DEVICE_SPEC=tcp:21118
 readonly ANDROID_CONTROL_FORWARD_PORT_HEX=5667
@@ -1503,7 +1505,9 @@ tap_ui() {
 
 grant_media_projection_after_password_submit() {
     local started_ms now_ms elapsed_ms consent password_error x y
-    local password_title waiting ok_state home_action acknowledged=0 ack_ms=0
+    local password_title waiting ok_state home_action password_ok
+    local submit_x submit_y last_submit_ms=0
+    local acknowledged=0 ack_ms=0 submit_attempt=0
     started_ms="$(monotonic_millis)" || return 2
     while :; do
         if capture_ui_hierarchy complete; then
@@ -1552,6 +1556,28 @@ grant_media_projection_after_password_submit() {
                     acknowledged=1
                     printf 'ANDROID_PERMANENT_PASSWORD_SUBMIT=progress result=mutation-owned ack_ms=%s ack_limit_ms=%s\n' \
                         "$ack_ms" "$PERMANENT_PASSWORD_SUBMIT_ACK_LIMIT_MS"
+                elif [ "$acknowledged" -eq 0 ] && [ "$ok_state" = true ]; then
+                    now_ms="$(monotonic_millis)" || return 2
+                    if [ "$submit_attempt" -lt \
+                         "$PERMANENT_PASSWORD_SUBMIT_TAP_ATTEMPTS" ] \
+                       && { [ "$submit_attempt" -eq 0 ] \
+                            || [ "$((now_ms - last_submit_ms))" -ge \
+                                 "$PERMANENT_PASSWORD_SUBMIT_TAP_RETRY_MS" ]; }; then
+                        password_ok="$(ui_center text 'OK' 2>/dev/null || true)"
+                        [[ "$password_ok" =~ ^[0-9]+\ [0-9]+$ ]] \
+                            || return 1
+                        read -r submit_x submit_y <<<"$password_ok"
+                        timeout --signal=TERM --kill-after=2s 10s \
+                            "$ADB" -s "$SERIAL" shell input tap \
+                            "$submit_x" "$submit_y" >/dev/null \
+                            || return 1
+                        submit_attempt=$((submit_attempt + 1))
+                        last_submit_ms="$now_ms"
+                        printf 'ANDROID_PERMANENT_PASSWORD_ACTION=injected attempt=%s max_attempts=%s elapsed_ms=%s target=current-enabled-semantic-ok\n' \
+                            "$submit_attempt" \
+                            "$PERMANENT_PASSWORD_SUBMIT_TAP_ATTEMPTS" \
+                            "$((now_ms - started_ms))"
+                    fi
                 fi
             elif [ "$acknowledged" -eq 0 ]; then
                 home_action="$(ui_center text \
@@ -1570,8 +1596,9 @@ grant_media_projection_after_password_submit() {
         if [ "$acknowledged" -eq 0 ] \
            && [ "$elapsed_ms" -ge \
                 "$PERMANENT_PASSWORD_SUBMIT_ACK_LIMIT_MS" ]; then
-            printf 'ANDROID_PERMANENT_PASSWORD_SUBMIT=fail result=action-not-acknowledged wait_ms=%s ack_limit_ms=%s\n' \
-                "$elapsed_ms" "$PERMANENT_PASSWORD_SUBMIT_ACK_LIMIT_MS"
+            printf 'ANDROID_PERMANENT_PASSWORD_SUBMIT=fail result=action-not-acknowledged attempts=%s wait_ms=%s ack_limit_ms=%s\n' \
+                "$submit_attempt" "$elapsed_ms" \
+                "$PERMANENT_PASSWORD_SUBMIT_ACK_LIMIT_MS"
             return 1
         fi
         if [ "$elapsed_ms" -ge \
@@ -2691,12 +2718,6 @@ PY
             || fail 'cannot inspect the completed permanent-password dialog'
         ! grep -Fq "$TEST_PASSWORD" "$UI_XML" \
             || fail 'the Android accessibility hierarchy exposed the password'
-        password_ok="$(ui_center text 'OK' 2>/dev/null || true)"
-        [[ "$password_ok" =~ ^[0-9]+\ [0-9]+$ ]] \
-            || fail 'the completed permanent-password dialog has no exact OK action'
-        read -r ok_x ok_y <<<"$password_ok"
-        "$ADB" -s "$SERIAL" shell input tap "$ok_x" "$ok_y" >/dev/null \
-            || fail 'cannot submit the disposable permanent password'
         grant_media_projection_after_password_submit \
             || {
                 print_password_submit_thread_diagnostic

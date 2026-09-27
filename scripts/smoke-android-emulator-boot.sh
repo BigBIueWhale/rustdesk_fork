@@ -2216,6 +2216,10 @@ wait_peer_initial_credential_prompt() {
             return 1
         fi
         if capture_ui_hierarchy complete; then
+            handle_framework_interruption || return 1
+            if [ "$FRAMEWORK_INTERRUPTION_HANDLED" -eq 1 ]; then
+                continue
+            fi
             title="$(ui_center text 'Password required' 2>/dev/null || true)"
             if [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
                && ui_has_credential_reason_semantics \

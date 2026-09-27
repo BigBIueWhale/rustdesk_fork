@@ -3490,7 +3490,6 @@ run_flutter_model_tests() {
                 : >/work/format.diff
                 for format_path in \
                     lib/common/widgets/overlay.dart \
-                    lib/models/model.dart \
                     lib/models/reconnect_schedule_authority.dart \
                     lib/mobile/pages/remote_page.dart \
                     lib/mobile/pages/view_camera_page.dart \

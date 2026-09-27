@@ -1846,10 +1846,29 @@ android_peer_root_presentation_count() {
         "$ADB" -s "$SERIAL" logcat -d -v brief 'flutter:I' '*:S' \
         2>/dev/null \
         | awk '
+            function has_rgba_sample(prefix, i, value) {
+                for (i = 1; i <= NF; i++) {
+                    if (index($i, prefix) == 1) {
+                        value = substr($i, length(prefix) + 1)
+                        return length(value) == 8 && value !~ /[^0-9a-f]/
+                    }
+                }
+                return 0
+            }
+            # The Dart probe admits OffsetLayer and every subtype before it
+            # performs toImage/raw-RGBA readback.  Flutter currently exposes
+            # the RenderView root as a TransformLayer (an OffsetLayer subtype),
+            # so runtimeType is not an authority boundary.  Count only the
+            # complete successful-readback record; all failure records omit
+            # the row metadata and sampled pixels below.
             /RGBA_PIPELINE flutter-root/ &&
-            /layer=OffsetLayer/ &&
             /dimensions=(480x800|800x480)/ &&
-            /format=rgba8888-premul/ {
+            /format=rgba8888-premul/ &&
+            /row_bytes=[1-9][0-9]*/ &&
+            has_rgba_sample("body_top=") &&
+            has_rgba_sample("remote_left=") &&
+            has_rgba_sample("remote_right=") &&
+            has_rgba_sample("toolbar=") {
                 count += 1
             }
             END { print count + 0 }

@@ -1410,6 +1410,7 @@ run_focused_rust_tests() {
             scripts/online-pub-cache-output.py
             src/lib.rs
             src/android_listener_lifecycle.rs
+            src/cli.rs
             src/client.rs
             src/client/io_loop.rs
             src/direct_service.rs
@@ -1420,6 +1421,7 @@ run_focused_rust_tests() {
             src/server/connection.rs
             src/server/display_service.rs
             src/ui_cm_interface.rs
+            src/ui_session_interface.rs
         )
         required_tests=(
             android_listener_lifecycle::tests::stale_network_callback_cannot_advance_replacement_generation_epoch
@@ -1448,6 +1450,9 @@ run_focused_rust_tests() {
             ui_cm_interface::tests::r_s11iu_disconnected_owner_can_be_replaced_but_cannot_retire_replacement
             ui_cm_interface::tests::r_s11iu_generation_exhaustion_does_not_commit_a_client
             ui_cm_interface::tests::r_s11iu_file_log_publication_requires_exact_current_owner
+            ui_session_interface::connection_round_ownership_tests::credential_prompt_revokes_every_generic_reconnect
+            ui_session_interface::connection_round_ownership_tests::credential_stale_round_cannot_rearm_recovery
+            ui_session_interface::connection_round_ownership_tests::credential_failed_replacement_requires_a_fresh_prompt_attempt
         )
     fi
 
@@ -1710,6 +1715,9 @@ run_focused_rust_tests() {
                             direct_service::direct_connection_task_tests:: --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config,flutter \
                             r_s11iu_ --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config,flutter \
+                            ui_session_interface::connection_round_ownership_tests::credential_ \
+                            --color never -- --test-threads=1
                         ;;
                     *) exit 93 ;;
                 esac
@@ -1748,7 +1756,7 @@ run_focused_rust_tests() {
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
     else
-        [ "${#result_lines[@]}" -eq 4 ] \
+        [ "${#result_lines[@]}" -eq 5 ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
     fi
     [ "$(grep -Ec '^test result: ' "$output")" -eq "${#result_lines[@]}" ] \
@@ -1799,7 +1807,7 @@ run_focused_rust_tests() {
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
             "$DEB_BUILDER_CONFIG_ID"
     else
-        [ "$tests_passed" -eq 26 ] \
+        [ "$tests_passed" -eq 29 ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
         printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-and-typed-viewer-keying rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
@@ -3482,9 +3490,12 @@ run_flutter_model_tests() {
                 : >/work/format.diff
                 for format_path in \
                     lib/common/widgets/overlay.dart \
+                    lib/models/model.dart \
+                    lib/models/reconnect_schedule_authority.dart \
                     lib/mobile/pages/remote_page.dart \
                     lib/mobile/pages/view_camera_page.dart \
-                    test/blockable_overlay_test.dart; do
+                    test/blockable_overlay_test.dart \
+                    test/reconnect_schedule_authority_test.dart; do
                     formatted=/work/$(basename "$format_path").formatted
                     dart format --output=show "$format_path" \
                         >"$formatted" 2>>/work/format.err
@@ -3538,13 +3549,14 @@ run_flutter_model_tests() {
                     test/desktop_texture_lifecycle_test.dart
                     test/desktop_tab_retirement_test.dart
                     test/presentation_recovery_test.dart
+                    test/reconnect_schedule_authority_test.dart
                     test/rgba_publication_order_test.dart
                     test/owned_image_paint_test.dart
                     test/blockable_overlay_test.dart
                     test/custom_cursor_registry_test.dart
                     test/start_ellipsis_text_test.dart
                 )
-                [ "${#tests[@]}" -eq 15 ]
+                [ "${#tests[@]}" -eq 16 ]
                 for test_path in "${tests[@]}"; do
                     [ -f "$test_path" ] && [ ! -L "$test_path" ]
                 done
@@ -3585,7 +3597,7 @@ run_flutter_model_tests() {
         || { tail -n 240 "$output" >&2; fail 'Flutter-tools offline-freshness receipt is absent'; }
     [ "$(grep -Fc 'FLUTTER_TOOLS_OFFLINE_FRESHNESS=' "$output")" -eq 1 ] \
         || fail 'Flutter-tools offline-freshness receipt is duplicated'
-    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=15 tests=112' "$output")" \
+    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=16 tests=116' "$output")" \
         || { tail -n 240 "$output" >&2; fail 'focused Flutter-test success summary is absent'; }
     [ "$(grep -Fc 'FLUTTER_MODEL_TEST_JSON=' "$output")" -eq 1 ] \
         || fail 'focused Flutter-test result summary is duplicated'
@@ -3610,7 +3622,7 @@ run_flutter_model_tests() {
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$tools_freshness_line"
     printf '%s\n' "$result_line"
-    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=15 tests=112 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
+    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=16 tests=116 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
         "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
         "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
         "$SHA256_CARGO_VENDOR_CLOSURE_V1" \

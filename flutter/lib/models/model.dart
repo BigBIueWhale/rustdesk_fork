@@ -42,6 +42,7 @@ import 'latest_frame_queue.dart';
 import 'mobile_session_start_queue.dart';
 import 'platform_model.dart';
 import 'presentation_recovery.dart';
+import 'reconnect_schedule_authority.dart';
 import 'rgba_publication_order.dart';
 import 'session_event_queue.dart';
 import 'session_stream_finality.dart';
@@ -275,6 +276,7 @@ class FfiModel with ChangeNotifier {
   bool _touchMode = false;
   late VirtualMouseMode virtualMouseMode;
   Timer? _timer;
+  final _reconnectScheduleAuthority = ReconnectScheduleAuthority();
   var _reconnects = 1;
   DateTime? _offlineReconnectStartTime;
   bool _viewOnly = false;
@@ -450,6 +452,7 @@ class FfiModel with ChangeNotifier {
     _showMyCursor = false;
     _timer?.cancel();
     _timer = null;
+    _reconnectScheduleAuthority.reset();
     clearPermissions();
     cachedPeerData.permissions = _permissions;
     waitForImageTimer?.cancel();
@@ -604,6 +607,13 @@ class FfiModel with ChangeNotifier {
     } else if (name == 'connection_ready') {
       // R-G3: the peer's secure/direct wire flags are ignored — the channel is always
       // PAKE-keyed + direct, so only the stream type (badge suffix) is consumed.
+      // Native emits this only after the exact connection round completed keying. It is therefore
+      // the authority for ending credential recovery; dialog submission alone is not success.
+      _timer?.cancel();
+      _timer = null;
+      _reconnectScheduleAuthority.acceptConnected();
+      _reconnects = 1;
+      _offlineReconnectStartTime = null;
       setConnectionType(peerId, evt['stream_type'] ?? '');
     } else if (name == 'switch_display') {
       // switch display is kept for backward compatibility
@@ -1035,9 +1045,11 @@ class FfiModel with ChangeNotifier {
     }
 
     if (type == 'connect-password-prompt') {
-      // A credential-required transition supersedes every generic reconnect schedule. Leaving an
-      // older timer alive can reconnect with the credential this exact failure just rejected,
-      // while the replacement prompt is still visible.
+      // A credential-required transition supersedes every generic reconnect schedule. Cancel is
+      // not sufficient because its callback may already be queued, so the authority generation
+      // also makes every predecessor stale. Generic retry remains disabled until native keying
+      // emits connection_ready for the explicit replacement attempt.
+      _reconnectScheduleAuthority.requireCredentialReplacement();
       _timer?.cancel();
       _timer = null;
       _reconnects = 1;
@@ -1134,17 +1146,33 @@ class FfiModel with ChangeNotifier {
   showMsgBox(SessionID sessionId, String type, String title, String text,
       String link, bool hasRetry, OverlayDialogManager dialogManager,
       {bool? hasCancel}) async {
+    _timer?.cancel();
+    _timer = null;
+    final retryGeneration = _reconnectScheduleAuthority
+        .replaceAutomaticRetry(requested: hasRetry);
+
+    void retry(
+        OverlayDialogManager retryDialogManager, SessionID retrySessionId) {
+      if (retrySessionId != sessionId ||
+          !_isCurrentSession(sessionId) ||
+          retryGeneration == null ||
+          !_reconnectScheduleAuthority.claim(retryGeneration)) {
+        return;
+      }
+      _timer?.cancel();
+      _timer = null;
+      _performReconnect(retryDialogManager, retrySessionId);
+    }
+
     // R-SV/R-G4: the audit note-at-close prompt is removed (the audit GUID is never
     // fetched, so this path only ever fell through to the plain msgBox).
     msgBox(sessionId, type, title, text, link, dialogManager,
         hasCancel: hasCancel,
-        reconnect: hasRetry ? reconnect : null,
-        reconnectTimeout: hasRetry ? _reconnects : null);
-    _timer?.cancel();
-    if (hasRetry) {
+        reconnect: retryGeneration == null ? null : retry,
+        reconnectTimeout: retryGeneration == null ? null : _reconnects);
+    if (retryGeneration != null) {
       _timer = Timer(Duration(seconds: _reconnects), () {
-        if (!_isCurrentSession(sessionId)) return;
-        reconnect(dialogManager, sessionId);
+        retry(dialogManager, sessionId);
       });
       _reconnects *= 2;
     } else {
@@ -1153,7 +1181,8 @@ class FfiModel with ChangeNotifier {
     }
   }
 
-  void reconnect(OverlayDialogManager dialogManager, SessionID sessionId) {
+  void _performReconnect(
+      OverlayDialogManager dialogManager, SessionID sessionId) {
     if (!_isCurrentSession(sessionId)) return;
     // Disable relative mouse mode before reconnecting to ensure cursor is released.
     parent.target?.inputModel.setRelativeMouseMode(false);

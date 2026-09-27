@@ -9,10 +9,11 @@ use crate::{
 };
 use crate::{
     client::{
-        self, new_voice_call_request, AudioFormatAdmission, AudioFrameAdmission, Client, Data,
-        Interface, LoginConfigHandler, OwnedMediaThread, OwnedVideoThread, QualityStatus,
-        VideoControl, VideoControlAdmission, VideoFrameAdmission, ViewerCommandReceiver,
-        ViewerCommandSender, MAX_PEER_VIDEO_DISPLAYS, MILLI1, SEC30,
+        self, classify_connection_error, new_voice_call_request, AudioFormatAdmission,
+        AudioFrameAdmission, Client, ConnectionErrorPresentation, Data, Interface,
+        LoginConfigHandler, OwnedMediaThread, OwnedVideoThread, QualityStatus, VideoControl,
+        VideoControlAdmission, VideoFrameAdmission, ViewerCommandReceiver, ViewerCommandSender,
+        MAX_PEER_VIDEO_DISPLAYS, MILLI1, SEC30,
     },
     common::get_default_sound_input,
     ui_session_interface::{InvokeUiSession, Session},
@@ -1409,7 +1410,10 @@ impl<T: InvokeUiSession> Remote<T> {
                                 match res {
                                     Err(err) => {
                                         let err = hbb_common::anyhow::Error::new(err);
-                                        self.handler.on_establish_connection_error(&err);
+                                        let _ = self.handler.connection_round_owner.with_current(
+                                            round,
+                                            || self.handler.on_establish_connection_error(&err),
+                                        );
                                         break;
                                     }
                                     Ok(ref bytes) => {
@@ -1629,9 +1633,17 @@ impl<T: InvokeUiSession> Remote<T> {
                 log::debug!("Exit io_loop of id={}", self.handler.get_id());
             }
             Some(Err(err)) => {
-                let _ = self.handler.connection_round_owner.with_current(round, || {
-                    self.handler.on_establish_connection_error(&err)
-                });
+                let requires_credential_replacement =
+                    classify_connection_error(&err)
+                        == ConnectionErrorPresentation::CredentialPrompt;
+                let _ = self
+                    .handler
+                    .connection_round_owner
+                    .with_current_establish_error(
+                        round,
+                        requires_credential_replacement,
+                        || self.handler.on_establish_connection_error(&err),
+                    );
             }
         }
         self.finish_file_flow();
@@ -4779,6 +4791,8 @@ mod tests {
         fn try_send(&self, _data: Data) -> hbb_common::ResultType<()> {
             panic!("the exact-round input sequence must not use the mutable interface sender");
         }
+
+        fn require_credential_replacement(&self) {}
 
         fn msgbox(&self, _msgtype: &str, _title: &str, _text: &str, _link: &str) {}
 

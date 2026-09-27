@@ -555,7 +555,7 @@ async fn serve_connection(
         )
         .await;
         if let Err(err) = &result {
-            setup_interface.on_establish_connection_error(err);
+            setup_interface.on_unowned_establish_connection_error(err);
         }
         result
     };

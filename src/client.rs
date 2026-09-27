@@ -4016,6 +4016,9 @@ pub trait Interface: Send + Clone + 'static + Sized {
     /// Admit one command to the exact current viewer round and expose rejection to callers whose
     /// own operation would otherwise wait for a peer response that can never arrive.
     fn try_send(&self, data: Data) -> ResultType<()>;
+    /// Revoke generic reconnect authority before publishing a credential-replacement prompt.
+    /// Implementations without reconnectable UI state must still make that absence explicit.
+    fn require_credential_replacement(&self);
     fn msgbox(&self, msgtype: &str, title: &str, text: &str, link: &str);
     fn handle_login_error(&self, err: &str) -> bool;
     fn handle_peer_info(&self, pi: PeerInfo);
@@ -4079,6 +4082,16 @@ pub trait Interface: Send + Clone + 'static + Sized {
         } else {
             self.msgbox("error", title, &text, "");
         }
+    }
+
+    /// Establishment paths without a connection-round owner must revoke reconnect authority
+    /// before the shared presentation code publishes a credential prompt. Round-owned viewer
+    /// paths perform the same transition atomically with their exact-round admission instead.
+    fn on_unowned_establish_connection_error(&self, error: &hbb_common::anyhow::Error) {
+        if classify_connection_error(error) == ConnectionErrorPresentation::CredentialPrompt {
+            self.require_credential_replacement();
+        }
+        self.on_establish_connection_error(error);
     }
 }
 

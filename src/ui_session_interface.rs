@@ -113,9 +113,17 @@ enum ConnectionState {
     Disconnected,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CredentialReplacementState {
+    Inactive,
+    Required,
+    AttemptInFlight,
+}
+
 struct ConnectionRoundState {
     round: u64,
     state: ConnectionState,
+    credential_replacement: CredentialReplacementState,
     retired: bool,
 }
 
@@ -124,6 +132,7 @@ impl Default for ConnectionRoundState {
         Self {
             round: 0,
             state: ConnectionState::Disconnected,
+            credential_replacement: CredentialReplacementState::Inactive,
             retired: false,
         }
     }
@@ -138,7 +147,9 @@ pub(crate) struct ConnectionRoundOwner {
 impl ConnectionRoundOwner {
     fn begin(&self) -> Option<(ConnectionState, u64)> {
         let mut state = self.state.lock().unwrap();
-        if state.retired {
+        if state.retired
+            || state.credential_replacement != CredentialReplacementState::Inactive
+        {
             return None;
         }
         let round = state.round.checked_add(1)?;
@@ -146,6 +157,28 @@ impl ConnectionRoundOwner {
         state.round = round;
         state.state = ConnectionState::Connecting;
         Some((previous, round))
+    }
+
+    fn begin_credential_replacement(&self) -> Option<(ConnectionState, u64)> {
+        let mut state = self.state.lock().unwrap();
+        if state.retired
+            || state.credential_replacement != CredentialReplacementState::Required
+        {
+            return None;
+        }
+        let round = state.round.checked_add(1)?;
+        let previous = state.state;
+        state.round = round;
+        state.state = ConnectionState::Connecting;
+        state.credential_replacement = CredentialReplacementState::AttemptInFlight;
+        Some((previous, round))
+    }
+
+    fn require_credential_replacement(&self) {
+        let mut state = self.state.lock().unwrap();
+        if !state.retired {
+            state.credential_replacement = CredentialReplacementState::Required;
+        }
     }
 
     fn cancel_connecting_start(&self) {
@@ -201,7 +234,27 @@ impl ConnectionRoundOwner {
             return None;
         }
         state.state = ConnectionState::Connected;
+        state.credential_replacement = CredentialReplacementState::Inactive;
         Some(admitted())
+    }
+
+    pub(crate) fn with_current_establish_error<R>(
+        &self,
+        round: u64,
+        requires_credential_replacement: bool,
+        current: impl FnOnce() -> R,
+    ) -> Option<R> {
+        // Mark credential recovery under the same lock that admits error publication. A
+        // concurrent generic retry therefore either wins first (and makes this round stale) or is
+        // refused before the credential prompt can be published; there is no unguarded interval.
+        let mut state = self.state.lock().unwrap();
+        if state.retired || state.round != round {
+            return None;
+        }
+        if requires_credential_replacement {
+            state.credential_replacement = CredentialReplacementState::Required;
+        }
+        Some(current())
     }
 
     pub(crate) fn with_current<R>(&self, round: u64, current: impl FnOnce() -> R) -> Option<R> {
@@ -216,6 +269,9 @@ impl ConnectionRoundOwner {
             return false;
         }
         state.state = ConnectionState::Disconnected;
+        if state.credential_replacement == CredentialReplacementState::AttemptInFlight {
+            state.credential_replacement = CredentialReplacementState::Required;
+        }
         true
     }
 }
@@ -1399,7 +1455,7 @@ impl<T: InvokeUiSession> Session<T> {
         }
     }
 
-    pub fn reconnect(&self) {
+    fn reconnect_with_credential(&self, credential: Option<(String, bool)>) {
         // The worker slot serializes explicit replacement against initial start and final owner
         // teardown. Recheck retirement after acquiring it so a queued reconnect cannot revive a
         // session whose owner closed while this caller was waiting.
@@ -1409,10 +1465,28 @@ impl<T: InvokeUiSession> Session<T> {
             return;
         }
 
-        let Some((previous_state, round)) = self.connection_round_owner.begin() else {
-            log::error!("refusing to reconnect after viewer owner retirement or round exhaustion");
+        let connection_round = if credential.is_some() {
+            self.connection_round_owner.begin_credential_replacement()
+        } else {
+            self.connection_round_owner.begin()
+        };
+        let Some((previous_state, round)) = connection_round else {
+            if credential.is_some() {
+                log::warn!(
+                    "refusing a duplicate or unauthorized viewer credential-replacement attempt"
+                );
+            } else {
+                log::warn!(
+                    "refusing generic viewer reconnect while credential replacement or owner retirement has authority"
+                );
+            }
             return;
         };
+        if let Some((password, remember)) = credential {
+            let mut lc = self.lc.write().unwrap();
+            lc.connect_password = password;
+            lc.remember = remember;
+        }
         if thread_lock.is_some() {
             *self.video_refresh_sender.write().unwrap() = None;
             match previous_state {
@@ -1458,6 +1532,10 @@ impl<T: InvokeUiSession> Session<T> {
                 log::error!("failed to start outgoing viewer I/O worker: {err}");
             }
         }
+    }
+
+    pub fn reconnect(&self) {
+        self.reconnect_with_credential(None);
     }
 
     fn activate_video_refresh_round(
@@ -1558,12 +1636,7 @@ impl<T: InvokeUiSession> Session<T> {
     /// `remember` flows to the lch so a successful onboarding persists the PRS (A2). This is
     /// how a bare-ID first connect to a not-yet-remembered peer provides its password.
     pub fn set_connect_password_and_reconnect(&self, password: String, remember: bool) {
-        {
-            let mut lc = self.lc.write().unwrap();
-            lc.connect_password = password;
-            lc.remember = remember;
-        }
-        self.reconnect();
+        self.reconnect_with_credential(Some((password, remember)));
     }
 
     #[cfg(not(feature = "flutter"))]
@@ -1988,6 +2061,10 @@ impl<T: InvokeUiSession> Interface for Session<T> {
             .cloned()
             .ok_or_else(|| anyhow!("no active viewer connection round"))?;
         sender.send(data).map_err(|err| anyhow!(err.to_string()))
+    }
+
+    fn require_credential_replacement(&self) {
+        self.connection_round_owner.require_credential_replacement();
     }
 
     fn msgbox(&self, msgtype: &str, title: &str, text: &str, link: &str) {
@@ -2806,6 +2883,60 @@ mod connection_round_ownership_tests {
         assert_eq!(replacement_result, Some(Ok(())));
         assert!(owner.admit_connected(replacement_round, || ()).is_some());
         assert!(owner.finish(replacement_round));
+    }
+
+    #[test]
+    fn credential_prompt_revokes_every_generic_reconnect() {
+        let owner = ConnectionRoundOwner::default();
+        let (_, failed_round) = owner.begin().expect("initial connection round");
+
+        assert!(owner
+            .with_current_establish_error(failed_round, true, || ())
+            .is_some());
+        assert!(owner.begin().is_none());
+
+        let (_, replacement_round) = owner
+            .begin_credential_replacement()
+            .expect("one explicit replacement attempt");
+        assert!(owner.begin().is_none());
+        assert!(owner.begin_credential_replacement().is_none());
+
+        assert!(owner.admit_connected(replacement_round, || ()).is_some());
+        assert!(owner.begin().is_some());
+    }
+
+    #[test]
+    fn credential_stale_round_cannot_rearm_recovery() {
+        let owner = ConnectionRoundOwner::default();
+        let (_, failed_round) = owner.begin().expect("initial connection round");
+        owner
+            .with_current_establish_error(failed_round, true, || ())
+            .expect("current credential failure");
+        let (_, replacement_round) = owner
+            .begin_credential_replacement()
+            .expect("replacement round");
+
+        assert!(owner
+            .with_current_establish_error(failed_round, true, || ())
+            .is_none());
+        assert!(owner.admit_connected(replacement_round, || ()).is_some());
+        assert!(owner.begin().is_some());
+    }
+
+    #[test]
+    fn credential_failed_replacement_requires_a_fresh_prompt_attempt() {
+        let owner = ConnectionRoundOwner::default();
+        let (_, failed_round) = owner.begin().expect("initial connection round");
+        owner
+            .with_current_establish_error(failed_round, true, || ())
+            .expect("current credential failure");
+        let (_, replacement_round) = owner
+            .begin_credential_replacement()
+            .expect("replacement round");
+
+        assert!(owner.finish(replacement_round));
+        assert!(owner.begin().is_none());
+        assert!(owner.begin_credential_replacement().is_some());
     }
 
     #[tokio::test]

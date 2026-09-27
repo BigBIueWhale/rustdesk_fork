@@ -53,6 +53,10 @@ impl Interface for Session {
         self.lc.clone()
     }
 
+    fn require_credential_replacement(&self) {
+        // The CLI reads its one connect password synchronously and has no generic reconnect UI.
+    }
+
     fn get_connect_password(&self) -> String {
         let password = self.lc.read().unwrap().connect_password.clone();
         if password.is_empty() {

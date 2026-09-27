@@ -678,7 +678,8 @@ if [ "$runtime_status" -ne 0 ]; then
         in_png { print }
         /^ANDROID_PEER_FRAMEBUFFER_PNG_END / { in_png = 0 }
     ' "$RUNTIME_LOG" >&2
-    grep '^ANDROID_PEER_FRAME_SAMPLE ' "$RUNTIME_LOG" | tail -n 120 >&2 || true
+    grep -E '^ANDROID_PEER_(FRAME_BASELINE |FRAME_SAMPLE |PRESENTATION_UI=)' \
+        "$RUNTIME_LOG" | tail -n 140 >&2 || true
     grep '^ANDROID_PEER_FRAMEBUFFER_DIAGNOSTIC ' "$RUNTIME_LOG" \
         | tail -n 20 >&2 || true
     awk '
@@ -771,6 +772,28 @@ mapfile -t renderer_receipts < <(grep -E \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android renderer receipt is absent or duplicated'; }
 [ "$(grep -c '^ANDROID_EMULATOR_RENDERER=' "$RUNTIME_LOG")" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android renderer receipt is malformed or duplicated'; }
+mapfile -t peer_frame_baselines < <(grep -E \
+    '^ANDROID_PEER_FRAME_BASELINE phase=(initial|background-resume|task-relaunch-[12]) observer_age_ms=[0-9]+ source_state=([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]) display_state=([0-9]+|unavailable) dimensions=(120x200|200x120) seq=[0-9]+ timestamp_us=[1-9][0-9]*$' \
+    "$RUNTIME_LOG" || true)
+[ "${#peer_frame_baselines[@]}" -eq 4 ] \
+    || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android peer frame baselines are absent or duplicated'; }
+peer_frame_baseline_phases="$(printf '%s\n' "${peer_frame_baselines[@]}" \
+    | sed -nE 's/^ANDROID_PEER_FRAME_BASELINE phase=([^ ]+) .*/\1/p' \
+    | LC_ALL=C sort)"
+[ "$peer_frame_baseline_phases" = \
+  $'background-resume\ninitial\ntask-relaunch-1\ntask-relaunch-2' ] \
+    || die "Android peer frame baseline phases differ: $peer_frame_baseline_phases"
+mapfile -t peer_presentation_ui_receipts < <(grep -E \
+    '^ANDROID_PEER_PRESENTATION_UI=pass phase=(initial|background-resume|task-relaunch-[12]) connecting=retired credential=retired waiting=retired$' \
+    "$RUNTIME_LOG" || true)
+[ "${#peer_presentation_ui_receipts[@]}" -eq 4 ] \
+    || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android peer presentation UI receipts are absent or duplicated'; }
+peer_presentation_ui_phases="$(printf '%s\n' "${peer_presentation_ui_receipts[@]}" \
+    | sed -nE 's/^ANDROID_PEER_PRESENTATION_UI=pass phase=([^ ]+) .*/\1/p' \
+    | LC_ALL=C sort)"
+[ "$peer_presentation_ui_phases" = \
+  $'background-resume\ninitial\ntask-relaunch-1\ntask-relaunch-2' ] \
+    || die "Android peer presentation UI phases differ: $peer_presentation_ui_phases"
 mapfile -t runtime_receipts < <(grep -E \
     '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
     "$RUNTIME_LOG" || true)

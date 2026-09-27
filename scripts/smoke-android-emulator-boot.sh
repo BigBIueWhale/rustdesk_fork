@@ -1660,6 +1660,46 @@ wait_ui_center() {
     return 1
 }
 
+ui_semantic_token_count() {
+    local token=$1
+    python3 -I -S - "$UI_XML" "$token" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+path, token = sys.argv[1:]
+count = 0
+for node in ET.parse(path).getroot().iter("node"):
+    attributes = node.attrib
+    semantic_tokens = {
+        value.strip()
+        for key in ("text", "content-desc")
+        for value in attributes.get(key, "").splitlines()
+        if value.strip()
+    }
+    if token in semantic_tokens:
+        count += 1
+print(count)
+PY
+}
+
+assert_peer_presentation_ui_finality() {
+    local phase=$1 token count
+    capture_unobscured_ui_hierarchy complete || return 1
+    for token in \
+        'Connecting...' \
+        'Password required' \
+        'Connected, waiting for image...'; do
+        count="$(ui_semantic_token_count "$token")" || return 1
+        [ "$count" -eq 0 ] || {
+            printf 'ANDROID_PEER_PRESENTATION_UI=fail phase=%s token=%s count=%s\n' \
+                "$phase" "$token" "$count"
+            return 1
+        }
+    done
+    printf 'ANDROID_PEER_PRESENTATION_UI=pass phase=%s connecting=retired credential=retired waiting=retired\n' \
+        "$phase"
+}
+
 tap_ui() {
     local kind=$1
     shift
@@ -1931,6 +1971,7 @@ capture_peer_freshness() {
     local total_elapsed_ms capture_elapsed_ms
     local state age score matched layout format_name orientation width height
     local sequence timestamp_us last_sequence= observer_failure= source_seen=0
+    local baseline_pending=1
     local max_age=0 last_source_state= diagnostic_png= framebuffer_size=
     local -A seen=()
 
@@ -1978,6 +2019,15 @@ capture_peer_freshness() {
                 observer_failure="Android emulator display observer dimensions differ for $phase"
                 break
             fi
+            if [ "$baseline_pending" -eq 1 ]; then
+                last_sequence=$sequence
+                baseline_pending=0
+                printf 'ANDROID_PEER_FRAME_BASELINE phase=%s observer_age_ms=%s source_state=%s display_state=%s dimensions=%sx%s seq=%s timestamp_us=%s\n' \
+                    "$phase" "$capture_elapsed_ms" "$source_state" "$state" \
+                    "$width" "$height" "$sequence" "$timestamp_us"
+                sleep 0.05
+                continue
+            fi
             if [ -n "$last_sequence" ]; then
                 if [ "$sequence" -lt "$last_sequence" ]; then
                     observer_failure="Android emulator display observer sequence regressed for $phase"
@@ -2013,6 +2063,10 @@ capture_peer_freshness() {
                 PEER_LAST_RECOVERY_MS=$((now_ms - started_ms))
                 [ "$PEER_LAST_RECOVERY_MS" -le "$PEER_RECOVERY_LIMIT_MS" ] \
                     || break
+                if ! assert_peer_presentation_ui_finality "$phase"; then
+                    observer_failure="Android remote-view dialogs did not retire after presentation for $phase"
+                    break
+                fi
                 PEER_DISTINCT_FRAMES=$((PEER_DISTINCT_FRAMES + ${#seen[@]}))
                 [ "$((max_age * 250))" -le "$PEER_FRESHNESS_MAX_MS" ] \
                     || PEER_FRESHNESS_MAX_MS=$((max_age * 250))
@@ -2032,6 +2086,15 @@ capture_peer_freshness() {
                 if [ -n "$last_sequence" ] && [ "$sequence" -lt "$last_sequence" ]; then
                     observer_failure="Android emulator display observer sequence regressed for $phase"
                     break
+                fi
+                if [ "$baseline_pending" -eq 1 ]; then
+                    last_sequence=$sequence
+                    baseline_pending=0
+                    printf 'ANDROID_PEER_FRAME_BASELINE phase=%s observer_age_ms=%s source_state=%s display_state=unavailable dimensions=%sx%s seq=%s timestamp_us=%s\n' \
+                        "$phase" "$capture_elapsed_ms" "$source_state" \
+                        "$width" "$height" "$sequence" "$timestamp_us"
+                    sleep 0.05
+                    continue
                 fi
                 if [ -n "$last_sequence" ] && [ "$sequence" -eq "$last_sequence" ]; then
                     sleep 0.05

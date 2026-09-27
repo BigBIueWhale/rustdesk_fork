@@ -947,6 +947,7 @@ readonly FRAMEWORK_ANR_MARKER=$WORK_ROOT/framework-anr.waited
 readonly FRAMEWORK_ANR_CLOSE_MARKER=$WORK_ROOT/framework-anr.closed
 readonly IMMERSIVE_CLING_MARKER=$WORK_ROOT/immersive-cling.dismissed
 readonly MAX_FRAMEWORK_ANR_WAITS=12
+FRAMEWORK_INTERRUPTION_HANDLED=0
 
 capture_ui_hierarchy() {
     local detail=${1:-compressed}
@@ -1326,52 +1327,63 @@ print_native_password_log() {
     fi
 }
 
+handle_framework_interruption() {
+    local cling_title= cling_ok= cling_x= cling_y=
+    local anr_title= anr_wait= anr_close= anr_x= anr_y= anr_wait_count=0
+    FRAMEWORK_INTERRUPTION_HANDLED=0
+
+    cling_title="$(ui_center text 'Viewing full screen' 2>/dev/null || true)"
+    if [[ "$cling_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
+        cling_ok="$(ui_center resource android:id/ok 2>/dev/null || true)"
+        [[ "$cling_ok" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+        read -r cling_x cling_y <<<"$cling_ok"
+        timeout --signal=TERM --kill-after=2s 10s \
+            "$ADB" -s "$SERIAL" shell input tap "$cling_x" "$cling_y" \
+            >/dev/null || return 1
+        printf 'dismissed\n' >>"$IMMERSIVE_CLING_MARKER"
+        [ "$(wc -l <"$IMMERSIVE_CLING_MARKER")" -le 1 ] || return 1
+        FRAMEWORK_INTERRUPTION_HANDLED=1
+        sleep 1
+        return 0
+    fi
+
+    anr_title="$(ui_center text "System UI isn't responding" \
+        "Process system isn't responding" 2>/dev/null || true)"
+    if ! [[ "$anr_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
+        return 0
+    fi
+    if [ -f "$FRAMEWORK_ANR_MARKER" ] \
+       && [ ! -L "$FRAMEWORK_ANR_MARKER" ]; then
+        anr_wait_count="$(wc -l <"$FRAMEWORK_ANR_MARKER")"
+    fi
+    if [ "$anr_wait_count" -lt "$MAX_FRAMEWORK_ANR_WAITS" ]; then
+        anr_wait="$(ui_center resource android:id/aerr_wait 2>/dev/null || true)"
+        [[ "$anr_wait" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+        printf 'waited\n' >>"$FRAMEWORK_ANR_MARKER"
+        read -r anr_x anr_y <<<"$anr_wait"
+    else
+        [ ! -e "$FRAMEWORK_ANR_CLOSE_MARKER" ] \
+            && [ ! -L "$FRAMEWORK_ANR_CLOSE_MARKER" ] || return 1
+        anr_close="$(ui_center resource android:id/aerr_close 2>/dev/null || true)"
+        [[ "$anr_close" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+        printf 'closed\n' >"$FRAMEWORK_ANR_CLOSE_MARKER"
+        read -r anr_x anr_y <<<"$anr_close"
+    fi
+    timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" shell input tap "$anr_x" "$anr_y" \
+        >/dev/null || return 1
+    FRAMEWORK_INTERRUPTION_HANDLED=1
+    sleep 2
+}
+
 wait_ui_center() {
     local kind=$1
     shift
-    local center= cling_title= cling_ok= cling_x= cling_y=
-    local anr_title= anr_wait= anr_close= anr_x= anr_y= anr_wait_count=
-    local ui_attempt=0
+    local center= ui_attempt=0
     while [ "$ui_attempt" -lt 12 ]; do
         if capture_ui_hierarchy; then
-            cling_title="$(ui_center text 'Viewing full screen' 2>/dev/null || true)"
-            if [[ "$cling_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
-                cling_ok="$(ui_center resource android:id/ok 2>/dev/null || true)"
-                [[ "$cling_ok" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
-                read -r cling_x cling_y <<<"$cling_ok"
-                timeout --signal=TERM --kill-after=2s 10s \
-                    "$ADB" -s "$SERIAL" shell input tap "$cling_x" "$cling_y" \
-                    >/dev/null || return 1
-                printf 'dismissed\n' >>"$IMMERSIVE_CLING_MARKER"
-                [ "$(wc -l <"$IMMERSIVE_CLING_MARKER")" -le 1 ] || return 1
-                sleep 1
-                continue
-            fi
-            anr_title="$(ui_center text "System UI isn't responding" \
-                "Process system isn't responding" 2>/dev/null || true)"
-            if [[ "$anr_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
-                anr_wait_count=0
-                if [ -f "$FRAMEWORK_ANR_MARKER" ] \
-                   && [ ! -L "$FRAMEWORK_ANR_MARKER" ]; then
-                    anr_wait_count="$(wc -l <"$FRAMEWORK_ANR_MARKER")"
-                fi
-                if [ "$anr_wait_count" -lt "$MAX_FRAMEWORK_ANR_WAITS" ]; then
-                    anr_wait="$(ui_center resource android:id/aerr_wait 2>/dev/null || true)"
-                    [[ "$anr_wait" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
-                    printf 'waited\n' >>"$FRAMEWORK_ANR_MARKER"
-                    read -r anr_x anr_y <<<"$anr_wait"
-                else
-                    [ ! -e "$FRAMEWORK_ANR_CLOSE_MARKER" ] \
-                        && [ ! -L "$FRAMEWORK_ANR_CLOSE_MARKER" ] || return 1
-                    anr_close="$(ui_center resource android:id/aerr_close 2>/dev/null || true)"
-                    [[ "$anr_close" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
-                    printf 'closed\n' >"$FRAMEWORK_ANR_CLOSE_MARKER"
-                    read -r anr_x anr_y <<<"$anr_close"
-                fi
-                timeout --signal=TERM --kill-after=2s 10s \
-                    "$ADB" -s "$SERIAL" shell input tap "$anr_x" "$anr_y" \
-                    >/dev/null || return 1
-                sleep 2
+            handle_framework_interruption || return 1
+            if [ "$FRAMEWORK_INTERRUPTION_HANDLED" -eq 1 ]; then
                 continue
             fi
             center="$(ui_center "$kind" "$@" 2>/dev/null || true)"
@@ -1401,6 +1413,10 @@ grant_media_projection_after_password_submit() {
     started_ms="$(monotonic_millis)" || return 2
     while :; do
         if capture_ui_hierarchy complete; then
+            handle_framework_interruption || return 1
+            if [ "$FRAMEWORK_INTERRUPTION_HANDLED" -eq 1 ]; then
+                continue
+            fi
             consent="$(ui_center resource android:id/button1 2>/dev/null || true)"
             if [[ "$consent" =~ ^[0-9]+\ [0-9]+$ ]]; then
                 read -r x y <<<"$consent"
@@ -2361,11 +2377,19 @@ PY
             || fail 'cannot invoke the production screen-sharing command'
         service_warning_observed=0
         password_dialog_ready=0
-        for _ in $(seq 1 12); do
+        service_transition_attempt=0
+        while [ "$service_transition_attempt" -lt 12 ]; do
             if ! capture_ui_hierarchy complete; then
+                service_transition_attempt=$((service_transition_attempt + 1))
                 sleep 0.5
                 continue
             fi
+            handle_framework_interruption \
+                || fail 'cannot handle the Android framework UI interruption'
+            if [ "$FRAMEWORK_INTERRUPTION_HANDLED" -eq 1 ]; then
+                continue
+            fi
+            service_transition_attempt=$((service_transition_attempt + 1))
             password_title="$(ui_center text 'Set password' 2>/dev/null || true)"
             if [[ "$password_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
                 password_dialog_ready=1

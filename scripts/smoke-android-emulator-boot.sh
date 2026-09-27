@@ -269,6 +269,7 @@ readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
 # presentation recovery and freshness retain their independent tight bounds above.
 readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=240000
 readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=240000
+readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
 # The retained failing artifact repeated the rejected credential after 129.4 s. This integration
 # observation intentionally spans that old behavior; focused development checks remain separate.
 readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=140000
@@ -1395,6 +1396,47 @@ tap_ui() {
         "$ADB" -s "$SERIAL" shell input tap "$x" "$y" >/dev/null
 }
 
+grant_media_projection_after_password_submit() {
+    local started_ms now_ms consent password_error x y
+    started_ms="$(monotonic_millis)" || return 2
+    while :; do
+        if capture_ui_hierarchy complete; then
+            consent="$(ui_center resource android:id/button1 2>/dev/null || true)"
+            if [[ "$consent" =~ ^[0-9]+\ [0-9]+$ ]]; then
+                read -r x y <<<"$consent"
+                timeout --signal=TERM --kill-after=2s 10s \
+                    "$ADB" -s "$SERIAL" shell input tap "$x" "$y" \
+                    >/dev/null || return 1
+                now_ms="$(monotonic_millis)" || return 2
+                printf 'ANDROID_PERMANENT_PASSWORD_SUBMIT=pass result=media-projection-consent-ready wait_ms=%s limit_ms=%s\n' \
+                    "$((now_ms - started_ms))" \
+                    "$PERMANENT_PASSWORD_SUBMIT_LIMIT_MS"
+                return 0
+            fi
+            password_error="$(ui_center text \
+                'Prompt: Failed' \
+                'Prompt: The confirmation is not identical.' \
+                2>/dev/null || true)"
+            if [[ "$password_error" =~ ^[0-9]+\ [0-9]+$ ]]; then
+                now_ms="$(monotonic_millis)" || return 2
+                printf 'ANDROID_PERMANENT_PASSWORD_SUBMIT=fail result=validation-error wait_ms=%s limit_ms=%s\n' \
+                    "$((now_ms - started_ms))" \
+                    "$PERMANENT_PASSWORD_SUBMIT_LIMIT_MS"
+                return 1
+            fi
+        fi
+        now_ms="$(monotonic_millis)" || return 2
+        if [ "$((now_ms - started_ms))" -ge \
+             "$PERMANENT_PASSWORD_SUBMIT_LIMIT_MS" ]; then
+            printf 'ANDROID_PERMANENT_PASSWORD_SUBMIT=fail result=consent-not-requested wait_ms=%s limit_ms=%s\n' \
+                "$((now_ms - started_ms))" \
+                "$PERMANENT_PASSWORD_SUBMIT_LIMIT_MS"
+            return 1
+        fi
+        sleep 0.5
+    done
+}
+
 wait_resumed_activity() {
     local state
     for _ in $(seq 1 120); do
@@ -2425,7 +2467,7 @@ PY
         read -r ok_x ok_y <<<"$password_ok"
         "$ADB" -s "$SERIAL" shell input tap "$ok_x" "$ok_y" >/dev/null \
             || fail 'cannot submit the disposable permanent password'
-        tap_ui resource android:id/button1 \
+        grant_media_projection_after_password_submit \
             || {
                 print_mobile_storage_key_log
                 print_native_password_log

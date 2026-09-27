@@ -559,6 +559,7 @@ vm_docker start "$OBSERVER_CONTAINER" >/dev/null \
     || die 'cannot start the Android emulator frame-observer container'
 
 observer_ready=0
+observer_startup_failed=0
 for _ in $(seq 1 9000); do
     if [ -f "$OBSERVER_ROOT/ready" ] && [ ! -L "$OBSERVER_ROOT/ready" ]; then
         [ "$(stat -c '%u:%g:%a:%h' -- "$OBSERVER_ROOT/ready")" = \
@@ -572,9 +573,8 @@ for _ in $(seq 1 9000); do
         || die 'cannot inspect the Android emulator frame-observer startup state'
     case "$observer_state" in
         exited|dead)
-            vm_docker logs "$OBSERVER_CONTAINER" >"$OBSERVER_LOG" 2>&1 || true
-            tail -n 240 "$OBSERVER_LOG" >&2
-            die 'Android emulator frame observer exited before its first external frame'
+            observer_startup_failed=1
+            break
             ;;
         created|running|restarting|removing|paused) ;;
         *) die "Android emulator frame-observer startup state is malformed: $observer_state" ;;
@@ -589,6 +589,44 @@ for _ in $(seq 1 9000); do
     esac
     sleep 0.1
 done
+if [ "$observer_startup_failed" -eq 1 ]; then
+    runtime_startup_terminal=0
+    runtime_state=unknown
+    for _ in $(seq 1 1200); do
+        if ! runtime_state="$(vm_docker inspect --format '{{.State.Status}}' \
+            "$RUNTIME_CONTAINER")"; then
+            runtime_state=inspect-failed
+            break
+        fi
+        case "$runtime_state" in
+            exited|dead)
+                runtime_startup_terminal=1
+                break
+                ;;
+            created|running|restarting|removing|paused) ;;
+            *)
+                runtime_state="malformed:$runtime_state"
+                break
+                ;;
+        esac
+        sleep 0.1
+    done
+    vm_docker logs --tail 320 "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 || true
+    vm_docker logs --tail 320 "$OBSERVER_CONTAINER" >"$OBSERVER_LOG" 2>&1 || true
+    runtime_final_state="$(vm_docker inspect --format \
+        '{{.State.Status}}:{{.State.ExitCode}}' "$RUNTIME_CONTAINER" 2>/dev/null \
+        || printf unavailable)"
+    observer_final_state="$(vm_docker inspect --format \
+        '{{.State.Status}}:{{.State.ExitCode}}' "$OBSERVER_CONTAINER" 2>/dev/null \
+        || printf unavailable)"
+    printf 'Android emulator startup failure states: runtime=%s observer=%s runtime_terminal=%s\n' \
+        "$runtime_final_state" "$observer_final_state" "$runtime_startup_terminal" >&2
+    printf '%s\n' '--- Android runtime log (last 320 lines) ---' >&2
+    tail -n 320 "$RUNTIME_LOG" >&2
+    printf '%s\n' '--- Android frame-observer log (last 320 lines) ---' >&2
+    tail -n 320 "$OBSERVER_LOG" >&2
+    die "Android emulator frame observer exited before its first external frame (runtime startup state: $runtime_state)"
+fi
 if [ "$observer_ready" -eq 0 ] \
    && [ "$(vm_docker inspect --format '{{.State.Status}}' \
         "$RUNTIME_CONTAINER")" = running ]; then

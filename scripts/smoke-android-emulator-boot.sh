@@ -291,6 +291,7 @@ readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
 # observation intentionally spans that old behavior; focused development checks remain separate.
 readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=140000
 readonly PEER_PASSWORD_SUBMIT_ACK_LIMIT_MS=30000
+readonly PEER_PASSWORD_PRE_SUBMIT_QUIET_MS=15000
 readonly PERMANENT_PASSWORD_SUBMIT_ACK_LIMIT_MS=30000
 readonly PERMANENT_PASSWORD_SUBMIT_TAP_RETRY_MS=5000
 readonly PERMANENT_PASSWORD_SUBMIT_TAP_ATTEMPTS=3
@@ -635,6 +636,45 @@ record_peer_password_pre_submit_state() {
     printf 'ANDROID_PEER_PASSWORD_PRE_SUBMIT_STATE=pass kind=%s stage=%s observed_wall_ms=%s pre_session_failures=%s key_failures=%s keyed_sessions=%s established=0\n' \
         "$kind" "$stage" "$wall_ms" "$pre_session_failures" \
         "$key_failures" "$keyed_sessions"
+}
+
+observe_peer_password_pre_submit_quiet() {
+    local kind=$1 stage=$2 expected_pre_session_failures=$3
+    local expected_key_failures=$4 expected_keyed_sessions=$5
+    local started_ms now_ms elapsed_ms wall_ms
+    local pre_session_failures key_failures keyed_sessions established
+    started_ms="$(monotonic_millis)" || return 2
+    while :; do
+        pre_session_failures="$(peer_server_pre_session_failure_count)"
+        key_failures="$(peer_server_key_failure_count)"
+        keyed_sessions="$(peer_server_keyed_session_count)"
+        established="$(peer_server_established_count)"
+        now_ms="$(monotonic_millis)" || return 2
+        elapsed_ms=$((now_ms - started_ms))
+        if [ "$pre_session_failures" -ne "$expected_pre_session_failures" ] \
+           || [ "$key_failures" -ne "$expected_key_failures" ] \
+           || [ "$keyed_sessions" -ne "$expected_keyed_sessions" ] \
+           || [ "$established" -ne 0 ]; then
+            wall_ms="$(date +%s%3N)" || return 2
+            printf 'ANDROID_PEER_PASSWORD_PRE_SUBMIT_QUIET=fail kind=%s stage=%s observed_wall_ms=%s elapsed_ms=%s limit_ms=%s pre_session_failures=%s expected_pre_session_failures=%s key_failures=%s expected_key_failures=%s keyed_sessions=%s expected_keyed_sessions=%s established=%s\n' \
+                "$kind" "$stage" "$wall_ms" "$elapsed_ms" \
+                "$PEER_PASSWORD_PRE_SUBMIT_QUIET_MS" \
+                "$pre_session_failures" "$expected_pre_session_failures" \
+                "$key_failures" "$expected_key_failures" \
+                "$keyed_sessions" "$expected_keyed_sessions" "$established"
+            return 1
+        fi
+        if [ "$elapsed_ms" -ge "$PEER_PASSWORD_PRE_SUBMIT_QUIET_MS" ]; then
+            break
+        fi
+        sleep 0.25
+    done
+    record_peer_password_pre_submit_state "$kind" "$stage-quiet" \
+        "$expected_pre_session_failures" "$expected_key_failures" \
+        "$expected_keyed_sessions" || return 1
+    printf 'ANDROID_PEER_PASSWORD_PRE_SUBMIT_QUIET=pass kind=%s stage=%s elapsed_ms=%s limit_ms=%s observed_network_attempts=0\n' \
+        "$kind" "$stage" "$elapsed_ms" \
+        "$PEER_PASSWORD_PRE_SUBMIT_QUIET_MS"
 }
 
 stop_peer_infrastructure() {
@@ -1216,38 +1256,6 @@ for node in ET.parse(path).getroot().iter("node"):
 if len(states) != 1:
     raise SystemExit(1)
 print(states.pop())
-PY
-}
-
-ui_focused_password_bounds() {
-    python3 -I -S - "$UI_XML" <<'PY'
-import re
-import sys
-import xml.etree.ElementTree as ET
-
-bounds = set()
-for node in ET.parse(sys.argv[1]).getroot().iter("node"):
-    attributes = node.attrib
-    if not (
-        attributes.get("class") == "android.widget.EditText"
-        and attributes.get("focusable") == "true"
-        and attributes.get("focused") == "true"
-        and attributes.get("enabled") == "true"
-        and attributes.get("password") == "true"
-    ):
-        continue
-    match = re.fullmatch(
-        r"\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]",
-        attributes.get("bounds", ""),
-    )
-    if not match:
-        continue
-    left, top, right, bottom = map(int, match.groups())
-    if right > left and bottom > top:
-        bounds.add((left, top, right, bottom))
-if len(bounds) != 1:
-    raise SystemExit(1)
-print(*bounds.pop())
 PY
 }
 
@@ -2314,8 +2322,7 @@ submit_peer_password() {
     local password=$1 kind=$2 remember=$3
     local expected_pre_session_failures=$4 expected_key_failures=$5
     local expected_keyed_sessions=$6
-    local center= x= y= bounds= left= top= right= bottom=
-    local visibility_x= visibility_y= password_input_verified=0
+    local center= x= y=
     local remember_state= remember_ready=0
     local pre_session_failures key_failures keyed_sessions established_count
     local action_wall_ms count
@@ -2341,52 +2348,30 @@ submit_peer_password() {
     record_peer_password_pre_submit_state "$kind" dialog-observed \
         "$expected_pre_session_failures" "$expected_key_failures" \
         "$expected_keyed_sessions" || return 1
-    for _ in $(seq 1 3); do
-        capture_unobscured_ui_hierarchy || return 1
-        center="$(ui_center focused-password-field 2>/dev/null || true)"
-        [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
-        read -r x y <<<"$center"
-        bounds="$(ui_focused_password_bounds 2>/dev/null || true)"
-        [[ "$bounds" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]] || return 1
-        read -r left top right bottom <<<"$bounds"
-        "$ADB" -s "$SERIAL" shell input tap "$x" "$y" >/dev/null || return 1
-        "$ADB" -s "$SERIAL" shell input keycombination \
-            KEYCODE_CTRL_LEFT KEYCODE_A >/dev/null || return 1
-        "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_DEL >/dev/null || return 1
-        record_peer_password_pre_submit_state "$kind" field-cleared \
-            "$expected_pre_session_failures" "$expected_key_failures" \
-            "$expected_keyed_sessions" || return 1
-        "$ADB" -s "$SERIAL" shell input text "$password" >/dev/null || return 1
-        record_peer_password_pre_submit_state "$kind" text-injected \
-            "$expected_pre_session_failures" "$expected_key_failures" \
-            "$expected_keyed_sessions" || return 1
-        visibility_x=$((right - 24))
-        visibility_y=$(((top + bottom) / 2))
-        "$ADB" -s "$SERIAL" shell input tap \
-            "$visibility_x" "$visibility_y" >/dev/null || return 1
-        record_peer_password_pre_submit_state "$kind" visibility-toggled \
-            "$expected_pre_session_failures" "$expected_key_failures" \
-            "$expected_keyed_sessions" || return 1
-        if wait_ui_center address-field "$password" >/dev/null; then
-            record_peer_password_pre_submit_state "$kind" visible-roundtrip \
-                "$expected_pre_session_failures" "$expected_key_failures" \
-                "$expected_keyed_sessions" || return 1
-            password_input_verified=1
-            break
-        fi
-        capture_unobscured_ui_hierarchy || return 1
-        if ! ui_center focused-password-field >/dev/null 2>&1; then
-            "$ADB" -s "$SERIAL" shell input tap \
-                "$visibility_x" "$visibility_y" >/dev/null || return 1
-            sleep 0.5
-        fi
-    done
-    [ "$password_input_verified" -eq 1 ] || return 1
-    printf 'ANDROID_PEER_PASSWORD_INPUT=pass kind=%s visible_roundtrip=true chars=%s remember=%s\n' \
+    capture_unobscured_ui_hierarchy || return 1
+    center="$(ui_center focused-password-field 2>/dev/null || true)"
+    [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+    read -r x y <<<"$center"
+    "$ADB" -s "$SERIAL" shell input tap "$x" "$y" >/dev/null || return 1
+    "$ADB" -s "$SERIAL" shell input keycombination \
+        KEYCODE_CTRL_LEFT KEYCODE_A >/dev/null || return 1
+    "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_DEL >/dev/null || return 1
+    record_peer_password_pre_submit_state "$kind" field-cleared \
+        "$expected_pre_session_failures" "$expected_key_failures" \
+        "$expected_keyed_sessions" || return 1
+    "$ADB" -s "$SERIAL" shell input text "$password" >/dev/null || return 1
+    record_peer_password_pre_submit_state "$kind" text-injected \
+        "$expected_pre_session_failures" "$expected_key_failures" \
+        "$expected_keyed_sessions" || return 1
+    observe_peer_password_pre_submit_quiet "$kind" text-injected \
+        "$expected_pre_session_failures" "$expected_key_failures" \
+        "$expected_keyed_sessions" || return 1
+    printf 'ANDROID_PEER_PASSWORD_INPUT=pass kind=%s obscured=true chars=%s remember=%s\n' \
         "$kind" "${#password}" "$remember"
     "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null || return 1
-    capture_unobscured_ui_hierarchy || return 1
-    grep -Fq "$password" "$UI_XML" || return 1
+    capture_unobscured_ui_hierarchy complete || return 1
+    ui_center focused-password-field >/dev/null || return 1
+    ! grep -Fq "$password" "$UI_XML" || return 1
     record_peer_password_pre_submit_state "$kind" keyboard-dismissed \
         "$expected_pre_session_failures" "$expected_key_failures" \
         "$expected_keyed_sessions" || return 1

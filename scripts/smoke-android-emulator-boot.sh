@@ -2880,9 +2880,7 @@ PY
             || { print_initial_ui_semantics; fail 'the production service-start transition did not reach the password dialog'; }
         wait_ui_center text 'Set password' >/dev/null \
             || { print_initial_ui_semantics; fail 'the production permanent-password dialog did not open'; }
-        capture_ui_hierarchy \
-            || fail 'cannot inspect the permanent-password dialog'
-        password_field="$(ui_center focused-password-field 2>/dev/null || true)"
+        password_field="$(wait_ui_center focused-password-field 2>/dev/null || true)"
         [[ "$password_field" =~ ^[0-9]+\ [0-9]+$ ]] \
             || { print_initial_ui_semantics; fail 'the permanent-password dialog has no exact focused password field'; }
         readonly TEST_PASSWORD=Runtime1x

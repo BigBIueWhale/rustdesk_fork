@@ -3504,7 +3504,6 @@ run_flutter_model_tests() {
                 format_status=0
                 : >/work/format.diff
                 for format_path in \
-                    lib/common.dart \
                     lib/common/widgets/overlay.dart \
                     lib/common/widgets/permanent_password_dialog.dart \
                     lib/common/widgets/custom_password.dart \

@@ -432,15 +432,35 @@ observer_namespace="$(vm_docker inspect --format \
     "$OBSERVER_CONTAINER")"
 [ "$observer_namespace" = 'false||private||private' ] \
     || die "Android emulator frame-observer namespace authority differs: $observer_namespace"
-observer_mounts="$(vm_docker inspect --format \
-    '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
+observer_configured_mounts="$(vm_docker inspect --format \
+    '{{range .HostConfig.Mounts}}{{printf "%s\t%s\t%s\t%t\t%t\n" .Type .Source .Target .ReadOnly .BindOptions.NonRecursive}}{{end}}' \
     "$OBSERVER_CONTAINER" | LC_ALL=C sort)"
-[ "$observer_mounts" = "$(printf '%s\n' \
-    "bind	$EMULATOR_ZIP	/inputs/emulator.zip	false" \
-    "bind	$OBSERVER_ROOT	/observer	true" \
-    "bind	$ONLINE_DIR/gradle-home	/gradle	false" \
-    "bind	$REPO_ROOT	/source	false" | LC_ALL=C sort)" ] \
-    || die 'Android emulator frame-observer mount authority differs'
+[ "$observer_configured_mounts" = "$(printf '%s\n' \
+    "bind	$EMULATOR_ZIP	/inputs/emulator.zip	true	true" \
+    "bind	$OBSERVER_ROOT	/observer	false	true" \
+    "bind	$ONLINE_DIR/gradle-home	/gradle	true	true" \
+    "bind	$REPO_ROOT	/source	true	true" | LC_ALL=C sort)" ] \
+    || die "Android emulator frame-observer configured mount authority differs: $observer_configured_mounts"
+observer_tmpfs="$(vm_docker inspect --format '{{json .HostConfig.Tmpfs}}' \
+    "$OBSERVER_CONTAINER")"
+[ "$observer_tmpfs" = \
+  '{"/tmp":"rw,exec,nosuid,nodev,mode=700,uid=1000,gid=1000,size=2g"}' ] \
+    || die "Android emulator frame-observer tmpfs authority differs: $observer_tmpfs"
+observer_resolved_binds="$(vm_docker inspect --format \
+    '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\t%s\n" .Type .Source .Destination .RW .Propagation}}{{end}}' \
+    "$OBSERVER_CONTAINER" | awk -F '\t' '$1 == "bind" { print }' | LC_ALL=C sort)"
+[ "$observer_resolved_binds" = "$(printf '%s\n' \
+    "bind	$EMULATOR_ZIP	/inputs/emulator.zip	false	rprivate" \
+    "bind	$OBSERVER_ROOT	/observer	true	rprivate" \
+    "bind	$ONLINE_DIR/gradle-home	/gradle	false	rprivate" \
+    "bind	$REPO_ROOT	/source	false	rprivate" | LC_ALL=C sort)" ] \
+    || die "Android emulator frame-observer resolved bind authority differs: $observer_resolved_binds"
+observer_resolved_other="$(vm_docker inspect --format \
+    '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\t%s\n" .Type .Source .Destination .RW .Propagation}}{{end}}' \
+    "$OBSERVER_CONTAINER" | awk -F '\t' '$1 != "bind" { print }')"
+[ -z "$observer_resolved_other" ] \
+    || [ "$observer_resolved_other" = $'tmpfs\t\t/tmp\ttrue\t' ] \
+    || die "Android emulator frame-observer unexpected resolved mount: $observer_resolved_other"
 vm_docker start "$OBSERVER_CONTAINER" >/dev/null \
     || die 'cannot start the Android emulator frame-observer container'
 

@@ -251,6 +251,7 @@ PEER_BACKGROUND_RECOVERY_MS=0
 PEER_TASK_RECOVERY_MAX_MS=0
 PEER_LAST_CONNECTION_WAIT_MS=0
 PEER_CAPTURE_MAX_MS=0
+PEER_CREDENTIAL_PROMPT_MS=0
 ANDROID_CONTROL_FORWARD_READY=0
 ANDROID_CONTROL_FORWARD_LISTING=
 readonly PEER_RECOVERY_LIMIT_MS=8000
@@ -260,6 +261,8 @@ readonly PEER_FRESHNESS_LIMIT_MS=2000
 readonly PEER_CAPTURE_LIMIT_MS=500
 readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
 readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=120000
+readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=30000
+readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=3000
 readonly ANDROID_CONTROL_FORWARD_LOCAL_SPEC=tcp:22119
 readonly ANDROID_CONTROL_FORWARD_DEVICE_SPEC=tcp:21118
 readonly ANDROID_CONTROL_FORWARD_PORT_HEX=5667
@@ -670,6 +673,8 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     readonly PEER_XVFB_MANIFEST=$SCRIPT_DIR/smoke-xvfb-files.tsv
     readonly PEER_READY=$SCRIPT_DIR/smoke-ready.sh
     readonly PEER_PASSWORD=RuntimePeer1x
+    readonly PEER_WRONG_PASSWORD=RuntimeWrong1x
+    readonly PEER_CONFIRMATION_UNAVAILABLE_REASON="The peer did not provide CPace key confirmation after this viewer sent its confirmation. The peer may have rejected a stale or wrong password, or the connection may have ended. Re-enter the box's password if it changed; otherwise retry the connection. No session was authorized."
     readonly PEER_SEED_LOG=$WORK_ROOT/peer-seed.log
     readonly PEER_SOURCE_LOG=$WORK_ROOT/peer-source.log
     readonly PEER_SERVER_LOG=$WORK_ROOT/peer-server.log
@@ -1674,10 +1679,125 @@ capture_peer_freshness() {
     fail "Android peer display did not become fresh and changing for $phase"
 }
 
+ui_has_exact_semantic_text() {
+    local expected=$1
+    python3 -I -S - "$UI_XML" "$expected" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+path, expected = sys.argv[1:]
+matches = 0
+for node in ET.parse(path).getroot().iter("node"):
+    values = {
+        " ".join(node.attrib.get(key, "").split())
+        for key in ("text", "content-desc")
+    }
+    if expected in values:
+        matches += 1
+if matches != 1:
+    raise SystemExit(1)
+PY
+}
+
+submit_peer_password() {
+    local password=$1 kind=$2 remember=$3
+    local center= x= y= bounds= left= top= right= bottom=
+    local visibility_x= visibility_y= password_input_verified=0
+    case "$kind:$remember" in
+        wrong:0|correct:1) ;;
+        *) return 2 ;;
+    esac
+    wait_ui_center text 'Password required' >/dev/null || return 1
+    for _ in $(seq 1 3); do
+        capture_ui_hierarchy || return 1
+        center="$(ui_center focused-password-field 2>/dev/null || true)"
+        [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+        read -r x y <<<"$center"
+        bounds="$(ui_focused_password_bounds 2>/dev/null || true)"
+        [[ "$bounds" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]] || return 1
+        read -r left top right bottom <<<"$bounds"
+        "$ADB" -s "$SERIAL" shell input tap "$x" "$y" >/dev/null || return 1
+        "$ADB" -s "$SERIAL" shell input keycombination \
+            KEYCODE_CTRL_LEFT KEYCODE_A >/dev/null || return 1
+        "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_DEL >/dev/null || return 1
+        "$ADB" -s "$SERIAL" shell input text "$password" >/dev/null || return 1
+        visibility_x=$((right - 24))
+        visibility_y=$(((top + bottom) / 2))
+        "$ADB" -s "$SERIAL" shell input tap \
+            "$visibility_x" "$visibility_y" >/dev/null || return 1
+        if wait_ui_center address-field "$password" >/dev/null; then
+            password_input_verified=1
+            break
+        fi
+        capture_ui_hierarchy || return 1
+        if ! ui_center focused-password-field >/dev/null 2>&1; then
+            "$ADB" -s "$SERIAL" shell input tap \
+                "$visibility_x" "$visibility_y" >/dev/null || return 1
+            sleep 0.5
+        fi
+    done
+    [ "$password_input_verified" -eq 1 ] || return 1
+    printf 'ANDROID_PEER_PASSWORD_INPUT=pass kind=%s visible_roundtrip=true chars=%s remember=%s\n' \
+        "$kind" "${#password}" "$remember"
+    "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null || return 1
+    capture_ui_hierarchy || return 1
+    grep -Fq "$password" "$UI_XML" || return 1
+    if [ "$remember" -eq 1 ]; then
+        tap_ui text 'Remember password' || return 1
+    fi
+    tap_ui text 'OK'
+}
+
+wait_peer_credential_recovery_prompt() {
+    local failures_before=$1 expected_failures
+    local started_ms now_ms failure_count title
+    case "$failures_before" in
+        ''|*[!0-9]*) return 2 ;;
+    esac
+    expected_failures=$((failures_before + 1))
+    started_ms="$(monotonic_millis)" || return 2
+    while :; do
+        if capture_ui_hierarchy complete; then
+            title="$(ui_center text 'Password required' 2>/dev/null || true)"
+            failure_count="$(grep -Fc \
+                'ended before session completion: CPace handshake failed: fail-closed' \
+                "$PEER_SERVER_LOG" || true)"
+            if [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
+               && ui_has_exact_semantic_text "$PEER_CONFIRMATION_UNAVAILABLE_REASON" \
+               && [ "$failure_count" -eq "$expected_failures" ]; then
+                break
+            fi
+        fi
+        now_ms="$(monotonic_millis)" || return 2
+        if [ "$((now_ms - started_ms))" -ge "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" ]; then
+            return 1
+        fi
+        sleep 0.5
+    done
+    now_ms="$(monotonic_millis)" || return 2
+    PEER_CREDENTIAL_PROMPT_MS=$((now_ms - started_ms))
+    [ "$PEER_CREDENTIAL_PROMPT_MS" -le "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" ] \
+        || return 1
+    for _ in $(seq 1 $((PEER_NO_AUTO_RETRY_OBSERVATION_MS / 250))); do
+        [ "$(peer_server_established_count)" -eq 0 ] || return 1
+        [ "$(grep -Fc \
+            'ended before session completion: CPace handshake failed: fail-closed' \
+            "$PEER_SERVER_LOG" || true)" -eq "$expected_failures" ] || return 1
+        sleep 0.25
+    done
+    capture_ui_hierarchy complete \
+        && [[ "$(ui_center text 'Password required' 2>/dev/null || true)" \
+             =~ ^[0-9]+\ [0-9]+$ ]] \
+        && ui_has_exact_semantic_text "$PEER_CONFIRMATION_UNAVAILABLE_REASON" \
+        || return 1
+    printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=pass wrong_attempts=1 error=peer-confirmation-unavailable prompt=exact manual_retry=required auto_retry=absent prompt_ms=%s prompt_limit_ms=%s observation_ms=%s\n' \
+        "$PEER_CREDENTIAL_PROMPT_MS" "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
+        "$PEER_NO_AUTO_RETRY_OBSERVATION_MS"
+}
+
 open_peer_connection() {
-    local generation=$1 expect_password=$2 center x y bounds=
-    local left= top= right= bottom= visibility_x= visibility_y=
-    local password_input_verified=0 credential=remembered
+    local generation=$1 expect_password=$2 center x y
+    local credential=remembered failures_before=
     local connection_wait_limit_ms=$PEER_CONNECTION_WAIT_LIMIT_MS
     if ! wait_ui_center address-field >/dev/null 2>&1; then
         tap_ui text 'Connection' \
@@ -1694,45 +1814,16 @@ open_peer_connection() {
         || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
     "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_ENTER >/dev/null || return 1
     if [ "$expect_password" -eq 1 ]; then
-        wait_ui_center text 'Password required' >/dev/null \
+        failures_before="$(grep -Fc \
+            'ended before session completion: CPace handshake failed: fail-closed' \
+            "$PEER_SERVER_LOG" || true)"
+        submit_peer_password "$PEER_WRONG_PASSWORD" wrong 0 \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
-        for _ in $(seq 1 3); do
-            capture_ui_hierarchy || return 1
-            center="$(ui_center focused-password-field 2>/dev/null || true)"
-            [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
-            read -r x y <<<"$center"
-            bounds="$(ui_focused_password_bounds 2>/dev/null || true)"
-            [[ "$bounds" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]] || return 1
-            read -r left top right bottom <<<"$bounds"
-            "$ADB" -s "$SERIAL" shell input tap "$x" "$y" >/dev/null || return 1
-            "$ADB" -s "$SERIAL" shell input keycombination \
-                KEYCODE_CTRL_LEFT KEYCODE_A >/dev/null || return 1
-            "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_DEL >/dev/null || return 1
-            "$ADB" -s "$SERIAL" shell input text "$PEER_PASSWORD" >/dev/null || return 1
-            visibility_x=$((right - 24))
-            visibility_y=$(((top + bottom) / 2))
-            "$ADB" -s "$SERIAL" shell input tap \
-                "$visibility_x" "$visibility_y" >/dev/null || return 1
-            if wait_ui_center address-field "$PEER_PASSWORD" >/dev/null; then
-                password_input_verified=1
-                break
-            fi
-            capture_ui_hierarchy || return 1
-            if ! ui_center focused-password-field >/dev/null 2>&1; then
-                "$ADB" -s "$SERIAL" shell input tap \
-                    "$visibility_x" "$visibility_y" >/dev/null || return 1
-                sleep 0.5
-            fi
-        done
-        [ "$password_input_verified" -eq 1 ] || return 1
-        printf 'ANDROID_PEER_PASSWORD_INPUT=pass visible_roundtrip=true chars=%s\n' \
-            "${#PEER_PASSWORD}"
-        "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null || return 1
-        capture_ui_hierarchy || return 1
-        grep -Fq "$PEER_PASSWORD" "$UI_XML" || return 1
-        tap_ui text 'Remember password' || return 1
-        tap_ui text 'OK' || return 1
-        credential=entered
+        wait_peer_credential_recovery_prompt "$failures_before" \
+            || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
+        submit_peer_password "$PEER_PASSWORD" correct 1 \
+            || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
+        credential=entered-after-manual-recovery
         connection_wait_limit_ms=$PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS
     else
         sleep 1
@@ -2384,7 +2475,9 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
                 || fail 'the Android real-peer lifecycle receipt is not ready'
             [ "$PEER_REVERSE_READY" -eq 0 ] \
                 || fail 'the Android peer reverse mapping remained live at receipt time'
-            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
+            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
+                "$PEER_CREDENTIAL_PROMPT_MS" "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
+                "$PEER_NO_AUTO_RETRY_OBSERVATION_MS" \
                 "$PEER_INITIAL_RECOVERY_MS" "$PEER_BACKGROUND_RECOVERY_MS" "$PEER_TASK_RECOVERY_MAX_MS" \
                 "$PEER_RECOVERY_LIMIT_MS" \
                 "$PEER_FRESHNESS_MAX_MS" "$PEER_FRESHNESS_LIMIT_MS" \

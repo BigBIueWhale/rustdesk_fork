@@ -2906,6 +2906,28 @@ mod connection_round_ownership_tests {
     }
 
     #[test]
+    fn credential_post_admission_failure_revokes_every_generic_reconnect() {
+        let owner = ConnectionRoundOwner::default();
+        let (_, failed_round) = owner.begin().expect("initial connection round");
+        assert!(owner.admit_connected(failed_round, || ()).is_some());
+
+        assert!(owner
+            .with_current_establish_error(failed_round, true, || ())
+            .is_some());
+        assert!(owner.begin().is_none());
+
+        let (previous, replacement_round) = owner
+            .begin_credential_replacement()
+            .expect("one explicit replacement attempt");
+        assert_eq!(previous, ConnectionState::Connected);
+        assert!(owner.begin().is_none());
+        assert!(owner.begin_credential_replacement().is_none());
+
+        assert!(owner.admit_connected(replacement_round, || ()).is_some());
+        assert!(owner.begin().is_some());
+    }
+
+    #[test]
     fn credential_stale_round_cannot_rearm_recovery() {
         let owner = ConnectionRoundOwner::default();
         let (_, failed_round) = owner.begin().expect("initial connection round");

@@ -1451,6 +1451,7 @@ run_focused_rust_tests() {
             ui_cm_interface::tests::r_s11iu_generation_exhaustion_does_not_commit_a_client
             ui_cm_interface::tests::r_s11iu_file_log_publication_requires_exact_current_owner
             ui_session_interface::connection_round_ownership_tests::credential_prompt_revokes_every_generic_reconnect
+            ui_session_interface::connection_round_ownership_tests::credential_post_admission_failure_revokes_every_generic_reconnect
             ui_session_interface::connection_round_ownership_tests::credential_stale_round_cannot_rearm_recovery
             ui_session_interface::connection_round_ownership_tests::credential_failed_replacement_requires_a_fresh_prompt_attempt
         )
@@ -1807,7 +1808,7 @@ run_focused_rust_tests() {
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
             "$DEB_BUILDER_CONFIG_ID"
     else
-        [ "$tests_passed" -eq 29 ] \
+        [ "$tests_passed" -eq 30 ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
         printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-and-typed-viewer-keying rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

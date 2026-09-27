@@ -1410,10 +1410,20 @@ impl<T: InvokeUiSession> Remote<T> {
                                 match res {
                                     Err(err) => {
                                         let err = hbb_common::anyhow::Error::new(err);
-                                        let _ = self.handler.connection_round_owner.with_current(
-                                            round,
-                                            || self.handler.on_establish_connection_error(&err),
-                                        );
+                                        let requires_credential_replacement =
+                                            classify_connection_error(&err)
+                                                == ConnectionErrorPresentation::CredentialPrompt;
+                                        let _ = self
+                                            .handler
+                                            .connection_round_owner
+                                            .with_current_establish_error(
+                                                round,
+                                                requires_credential_replacement,
+                                                || {
+                                                    self.handler
+                                                        .on_establish_connection_error(&err)
+                                                },
+                                            );
                                         break;
                                     }
                                     Ok(ref bytes) => {

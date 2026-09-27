@@ -265,6 +265,8 @@ PEER_LAST_CONNECTION_WAIT_MS=0
 PEER_CORRECT_CREDENTIAL_CONNECTION_MS=0
 PEER_CACHED_CONNECTION_MAX_MS=0
 PEER_CAPTURE_MAX_MS=0
+PEER_INITIAL_CREDENTIAL_PROMPT_MS=0
+PEER_INITIAL_CREDENTIAL_SEMANTIC_MODE=unavailable
 PEER_CREDENTIAL_PROMPT_MS=0
 PEER_CREDENTIAL_SEMANTIC_MODE=unavailable
 ANDROID_CONTROL_FORWARD_READY=0
@@ -593,6 +595,22 @@ peer_server_key_failure_count() {
         "$PEER_SERVER_LOG" || true
 }
 
+peer_server_pre_session_failure_count() {
+    if [ -z "${PEER_SERVER_LOG:-}" ] || [ ! -f "$PEER_SERVER_LOG" ]; then
+        printf 'unavailable\n'
+        return
+    fi
+    grep -Fc ' ended before session completion:' "$PEER_SERVER_LOG" || true
+}
+
+peer_server_keyed_session_count() {
+    if [ -z "${PEER_SERVER_LOG:-}" ] || [ ! -f "$PEER_SERVER_LOG" ]; then
+        printf 'unavailable\n'
+        return
+    fi
+    grep -Fc ' Connection opened from ' "$PEER_SERVER_LOG" || true
+}
+
 stop_peer_infrastructure() {
     local status=0
     if [ -n "$SERVER_PID" ]; then
@@ -786,6 +804,7 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     readonly PEER_READY=$SCRIPT_DIR/smoke-ready.sh
     readonly PEER_PASSWORD=RuntimePeer1x
     readonly PEER_WRONG_PASSWORD=RuntimeWrong1x
+    readonly PEER_MISSING_CREDENTIAL_REASON="No remembered password for this peer — cannot run the CPace handshake (R-S9, fail-closed). Enter the box's password and reconnect."
     readonly PEER_CONFIRMATION_UNAVAILABLE_REASON="The peer did not provide CPace key confirmation after this viewer sent its confirmation. The peer may have rejected a stale or wrong password, or the connection may have ended. Re-enter the box's password if it changed; otherwise retry the connection. No session was authorized."
     readonly PEER_SEED_LOG=$WORK_ROOT/peer-seed.log
     readonly PEER_SOURCE_LOG=$WORK_ROOT/peer-source.log
@@ -2113,9 +2132,12 @@ print_peer_connection_state_diagnostic() {
             remember=absent
         fi
     fi
-    printf 'ANDROID_PEER_CONNECTION_STATE=diagnostic phase=%s established=%s failures=%s prompt=%s reason=%s remember=%s\n' \
+    printf 'ANDROID_PEER_CONNECTION_STATE=diagnostic phase=%s established=%s pre_session_failures=%s key_failures=%s keyed_sessions=%s prompt=%s reason=%s remember=%s\n' \
         "$phase" "$(peer_server_established_count)" \
-        "$(peer_server_key_failure_count)" "$prompt" "$reason" "$remember"
+        "$(peer_server_pre_session_failure_count)" \
+        "$(peer_server_key_failure_count)" \
+        "$(peer_server_keyed_session_count)" \
+        "$prompt" "$reason" "$remember"
     app_pid="$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)"
     if [[ "$app_pid" =~ ^[1-9][0-9]*$ ]]; then
         thread_listing="$(adb_shell_value ps -T -p "$app_pid" -o TID,STAT,NAME \
@@ -2159,15 +2181,122 @@ wait_peer_password_submit_ack() {
     done
 }
 
+wait_peer_initial_credential_prompt() {
+    local pre_session_failures_before=$1 key_failures_before=$2
+    local keyed_sessions_before=$3
+    local started_ms now_ms pre_session_failures key_failures keyed_sessions
+    local established_count title semantic_mode reveal_attempted=0 count
+    for count in \
+        "$pre_session_failures_before" "$key_failures_before" \
+        "$keyed_sessions_before"; do
+        case "$count" in
+            ''|*[!0-9]*) return 2 ;;
+        esac
+    done
+    started_ms="$(monotonic_millis)" || return 2
+    while :; do
+        pre_session_failures="$(peer_server_pre_session_failure_count)"
+        key_failures="$(peer_server_key_failure_count)"
+        keyed_sessions="$(peer_server_keyed_session_count)"
+        established_count="$(peer_server_established_count)"
+        if [ "$pre_session_failures" -ne "$pre_session_failures_before" ] \
+           || [ "$key_failures" -ne "$key_failures_before" ] \
+           || [ "$keyed_sessions" -ne "$keyed_sessions_before" ] \
+           || [ "$established_count" -ne 0 ]; then
+            now_ms="$(monotonic_millis)" || return 2
+            capture_ui_hierarchy complete || true
+            ui_has_credential_reason_semantics \
+                "$PEER_MISSING_CREDENTIAL_REASON" diagnose || true
+            printf 'ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT=fail reason=unexpected-network-attempt-before-credential elapsed_ms=%s limit_ms=%s pre_session_failures=%s expected_pre_session_failures=%s key_failures=%s expected_key_failures=%s keyed_sessions=%s expected_keyed_sessions=%s established=%s\n' \
+                "$((now_ms - started_ms))" "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
+                "$pre_session_failures" "$pre_session_failures_before" \
+                "$key_failures" "$key_failures_before" \
+                "$keyed_sessions" "$keyed_sessions_before" \
+                "$established_count"
+            return 1
+        fi
+        if capture_ui_hierarchy complete; then
+            title="$(ui_center text 'Password required' 2>/dev/null || true)"
+            if [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
+               && ui_has_credential_reason_semantics \
+                    "$PEER_MISSING_CREDENTIAL_REASON"; then
+                break
+            fi
+            if [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
+               && [ "$reveal_attempted" -eq 0 ]; then
+                reveal_attempted=1
+                timeout --signal=TERM --kill-after=2s 10s \
+                    "$ADB" -s "$SERIAL" shell input keyevent \
+                    KEYCODE_BACK >/dev/null \
+                    || return 1
+                sleep 0.5
+            fi
+        fi
+        now_ms="$(monotonic_millis)" || return 2
+        if [ "$((now_ms - started_ms))" -ge \
+             "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" ]; then
+            ui_has_credential_reason_semantics \
+                "$PEER_MISSING_CREDENTIAL_REASON" diagnose || true
+            printf 'ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT=fail reason=prompt-timeout elapsed_ms=%s limit_ms=%s pre_session_failures=%s expected_pre_session_failures=%s key_failures=%s expected_key_failures=%s keyed_sessions=%s expected_keyed_sessions=%s established=%s\n' \
+                "$((now_ms - started_ms))" "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
+                "$pre_session_failures" "$pre_session_failures_before" \
+                "$key_failures" "$key_failures_before" \
+                "$keyed_sessions" "$keyed_sessions_before" \
+                "$established_count"
+            return 1
+        fi
+        sleep 0.25
+    done
+    now_ms="$(monotonic_millis)" || return 2
+    PEER_INITIAL_CREDENTIAL_PROMPT_MS=$((now_ms - started_ms))
+    pre_session_failures="$(peer_server_pre_session_failure_count)"
+    key_failures="$(peer_server_key_failure_count)"
+    keyed_sessions="$(peer_server_keyed_session_count)"
+    established_count="$(peer_server_established_count)"
+    if [ "$pre_session_failures" -ne "$pre_session_failures_before" ] \
+       || [ "$key_failures" -ne "$key_failures_before" ] \
+       || [ "$keyed_sessions" -ne "$keyed_sessions_before" ] \
+       || [ "$established_count" -ne 0 ]; then
+        printf 'ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT=fail reason=unexpected-network-attempt-before-credential elapsed_ms=%s limit_ms=%s pre_session_failures=%s expected_pre_session_failures=%s key_failures=%s expected_key_failures=%s keyed_sessions=%s expected_keyed_sessions=%s established=%s\n' \
+            "$PEER_INITIAL_CREDENTIAL_PROMPT_MS" \
+            "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
+            "$pre_session_failures" "$pre_session_failures_before" \
+            "$key_failures" "$key_failures_before" \
+            "$keyed_sessions" "$keyed_sessions_before" \
+            "$established_count"
+        return 1
+    fi
+    semantic_mode="$(
+        ui_has_credential_reason_semantics \
+            "$PEER_MISSING_CREDENTIAL_REASON" describe
+    )" || return 1
+    PEER_INITIAL_CREDENTIAL_SEMANTIC_MODE=$semantic_mode
+    printf 'ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT=pass reason=missing-credential observer=%s observed_network_attempts=0 pre_session_failure_delta=0 key_failure_delta=0 keyed_session_delta=0 established=0 prompt_ms=%s prompt_limit_ms=%s\n' \
+        "$PEER_INITIAL_CREDENTIAL_SEMANTIC_MODE" \
+        "$PEER_INITIAL_CREDENTIAL_PROMPT_MS" \
+        "$PEER_CREDENTIAL_PROMPT_LIMIT_MS"
+}
+
 submit_peer_password() {
     local password=$1 kind=$2 remember=$3
+    local expected_pre_session_failures=$4 expected_key_failures=$5
+    local expected_keyed_sessions=$6
     local center= x= y= bounds= left= top= right= bottom=
     local visibility_x= visibility_y= password_input_verified=0
     local remember_state= remember_ready=0
+    local pre_session_failures key_failures keyed_sessions established_count
+    local action_wall_ms count
     case "$kind:$remember" in
         wrong:0|correct:1) ;;
         *) return 2 ;;
     esac
+    for count in \
+        "$expected_pre_session_failures" "$expected_key_failures" \
+        "$expected_keyed_sessions"; do
+        case "$count" in
+            ''|*[!0-9]*) return 2 ;;
+        esac
+    done
     wait_ui_center text 'Password required' >/dev/null || return 1
     capture_ui_hierarchy complete || return 1
     remember_state="$(ui_checkbox_checked 'Remember password' 2>/dev/null || true)"
@@ -2237,45 +2366,103 @@ submit_peer_password() {
             return 1
         fi
     fi
-    tap_ui text 'OK' || return 1
+    capture_ui_hierarchy complete || return 1
+    center="$(ui_center text 'OK' 2>/dev/null || true)"
+    [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+    read -r x y <<<"$center"
+    pre_session_failures="$(peer_server_pre_session_failure_count)"
+    key_failures="$(peer_server_key_failure_count)"
+    keyed_sessions="$(peer_server_keyed_session_count)"
+    established_count="$(peer_server_established_count)"
+    if [ "$pre_session_failures" -ne "$expected_pre_session_failures" ] \
+       || [ "$key_failures" -ne "$expected_key_failures" ] \
+       || [ "$keyed_sessions" -ne "$expected_keyed_sessions" ] \
+       || [ "$established_count" -ne 0 ]; then
+        printf 'ANDROID_PEER_PASSWORD_SUBMIT=fail kind=%s stage=pre-submit-network-state pre_session_failures=%s expected_pre_session_failures=%s key_failures=%s expected_key_failures=%s keyed_sessions=%s expected_keyed_sessions=%s established=%s reason=unexpected-network-attempt\n' \
+            "$kind" "$pre_session_failures" \
+            "$expected_pre_session_failures" "$key_failures" \
+            "$expected_key_failures" "$keyed_sessions" \
+            "$expected_keyed_sessions" "$established_count"
+        print_peer_connection_state_diagnostic "pre-submit-$kind"
+        return 1
+    fi
+    action_wall_ms="$(date +%s%3N)" || return 2
+    [[ "$action_wall_ms" =~ ^[1-9][0-9]{12}$ ]] || return 2
+    timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" shell input tap "$x" "$y" >/dev/null \
+        || return 1
+    printf 'ANDROID_PEER_PASSWORD_ACTION=injected kind=%s issued_wall_ms=%s pre_session_failures_before=%s key_failures_before=%s keyed_sessions_before=%s established_before=0\n' \
+        "$kind" "$action_wall_ms" "$pre_session_failures" \
+        "$key_failures" "$keyed_sessions"
     wait_peer_password_submit_ack "$kind"
 }
 
 wait_peer_credential_recovery_prompt() {
-    local failures_before=$1 expected_failures
-    local started_ms now_ms failure_count established_count title
-    local reveal_attempted=0
-    case "$failures_before" in
-        ''|*[!0-9]*) return 2 ;;
-    esac
-    expected_failures=$((failures_before + 1))
+    local pre_session_failures_before=$1 key_failures_before=$2
+    local keyed_sessions_before=$3
+    local expected_pre_session_failures expected_key_failures
+    local started_ms now_ms pre_session_failures key_failures keyed_sessions
+    local established_count title
+    local reveal_attempted=0 count
+    for count in \
+        "$pre_session_failures_before" "$key_failures_before" \
+        "$keyed_sessions_before"; do
+        case "$count" in
+            ''|*[!0-9]*) return 2 ;;
+        esac
+    done
+    expected_pre_session_failures=$((pre_session_failures_before + 1))
+    expected_key_failures=$((key_failures_before + 1))
     started_ms="$(monotonic_millis)" || return 2
     while :; do
-        failure_count="$(grep -Fc \
-            'ended before session completion: CPace handshake failed: fail-closed' \
-            "$PEER_SERVER_LOG" || true)"
+        pre_session_failures="$(peer_server_pre_session_failure_count)"
+        key_failures="$(peer_server_key_failure_count)"
+        keyed_sessions="$(peer_server_keyed_session_count)"
         established_count="$(peer_server_established_count)"
-        if [ "$failure_count" -gt "$expected_failures" ] \
-           || [ "$established_count" -ne 0 ]; then
+        if [ "$pre_session_failures" -gt "$expected_pre_session_failures" ] \
+           || [ "$key_failures" -gt "$expected_key_failures" ] \
+           || [ "$keyed_sessions" -ne "$keyed_sessions_before" ] \
+           || [ "$established_count" -gt 1 ]; then
             capture_ui_hierarchy complete || true
             ui_has_credential_reason_semantics \
                 "$PEER_CONFIRMATION_UNAVAILABLE_REASON" diagnose || true
             now_ms="$(monotonic_millis)" || return 2
-            printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=fail elapsed_ms=%s limit_ms=%s failures=%s expected_failures=%s established=%s reason=unexpected-network-attempt\n' \
+            printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=fail elapsed_ms=%s limit_ms=%s pre_session_failures=%s expected_pre_session_failures=%s key_failures=%s expected_key_failures=%s keyed_sessions=%s expected_keyed_sessions=%s established=%s reason=additional-network-attempt-after-single-submit\n' \
                 "$((now_ms - started_ms))" \
-                "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" "$failure_count" \
-                "$expected_failures" "$established_count"
+                "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
+                "$pre_session_failures" "$expected_pre_session_failures" \
+                "$key_failures" "$expected_key_failures" \
+                "$keyed_sessions" "$keyed_sessions_before" \
+                "$established_count"
+            return 1
+        fi
+        if [ "$pre_session_failures" -eq "$expected_pre_session_failures" ] \
+           && [ "$key_failures" -ne "$expected_key_failures" ]; then
+            now_ms="$(monotonic_millis)" || return 2
+            printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=fail elapsed_ms=%s limit_ms=%s pre_session_failures=%s expected_pre_session_failures=%s key_failures=%s expected_key_failures=%s keyed_sessions=%s expected_keyed_sessions=%s established=%s reason=unexpected-terminal-result\n' \
+                "$((now_ms - started_ms))" \
+                "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
+                "$pre_session_failures" "$expected_pre_session_failures" \
+                "$key_failures" "$expected_key_failures" \
+                "$keyed_sessions" "$keyed_sessions_before" \
+                "$established_count"
             return 1
         fi
         if capture_ui_hierarchy complete; then
             title="$(ui_center text 'Password required' 2>/dev/null || true)"
             if [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
                && ui_has_credential_reason_semantics "$PEER_CONFIRMATION_UNAVAILABLE_REASON" \
-               && [ "$failure_count" -eq "$expected_failures" ]; then
+               && [ "$pre_session_failures" -eq \
+                    "$expected_pre_session_failures" ] \
+               && [ "$key_failures" -eq "$expected_key_failures" ] \
+               && [ "$established_count" -eq 0 ]; then
                 break
             fi
             if [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
-               && [ "$failure_count" -eq "$expected_failures" ] \
+               && [ "$pre_session_failures" -eq \
+                    "$expected_pre_session_failures" ] \
+               && [ "$key_failures" -eq "$expected_key_failures" ] \
+               && [ "$established_count" -eq 0 ] \
                && [ "$reveal_attempted" -eq 0 ]; then
                 reveal_attempted=1
                 timeout --signal=TERM --kill-after=2s 10s \
@@ -2298,9 +2485,12 @@ wait_peer_credential_recovery_prompt() {
         if [ "$((now_ms - started_ms))" -ge "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" ]; then
             ui_has_credential_reason_semantics \
                 "$PEER_CONFIRMATION_UNAVAILABLE_REASON" diagnose || true
-            printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=fail elapsed_ms=%s limit_ms=%s failures=%s expected_failures=%s established=%s\n' \
+            printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=fail elapsed_ms=%s limit_ms=%s pre_session_failures=%s expected_pre_session_failures=%s key_failures=%s expected_key_failures=%s keyed_sessions=%s expected_keyed_sessions=%s established=%s reason=prompt-timeout\n' \
                 "$((now_ms - started_ms))" "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
-                "${failure_count:-unavailable}" "$expected_failures" \
+                "${pre_session_failures:-unavailable}" \
+                "$expected_pre_session_failures" \
+                "${key_failures:-unavailable}" "$expected_key_failures" \
+                "${keyed_sessions:-unavailable}" "$keyed_sessions_before" \
                 "$(peer_server_established_count)"
             return 1
         fi
@@ -2312,19 +2502,25 @@ wait_peer_credential_recovery_prompt() {
         || return 1
     for _ in $(seq 1 $((PEER_NO_AUTO_RETRY_OBSERVATION_MS / 250))); do
         established_count="$(peer_server_established_count)"
-        failure_count="$(grep -Fc \
-            'ended before session completion: CPace handshake failed: fail-closed' \
-            "$PEER_SERVER_LOG" || true)"
+        pre_session_failures="$(peer_server_pre_session_failure_count)"
+        key_failures="$(peer_server_key_failure_count)"
+        keyed_sessions="$(peer_server_keyed_session_count)"
         if [ "$established_count" -ne 0 ] \
-           || [ "$failure_count" -ne "$expected_failures" ]; then
+           || [ "$pre_session_failures" -ne \
+                "$expected_pre_session_failures" ] \
+           || [ "$key_failures" -ne "$expected_key_failures" ] \
+           || [ "$keyed_sessions" -ne "$keyed_sessions_before" ]; then
             now_ms="$(monotonic_millis)" || return 2
             capture_ui_hierarchy complete || true
             ui_has_credential_reason_semantics \
                 "$PEER_CONFIRMATION_UNAVAILABLE_REASON" diagnose || true
-            printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=fail elapsed_ms=%s observation_limit_ms=%s failures=%s expected_failures=%s established=%s reason=automatic-retry-observed\n' \
+            printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=fail elapsed_ms=%s observation_limit_ms=%s pre_session_failures=%s expected_pre_session_failures=%s key_failures=%s expected_key_failures=%s keyed_sessions=%s expected_keyed_sessions=%s established=%s reason=automatic-retry-observed\n' \
                 "$((now_ms - started_ms))" \
-                "$PEER_NO_AUTO_RETRY_OBSERVATION_MS" "$failure_count" \
-                "$expected_failures" "$established_count"
+                "$PEER_NO_AUTO_RETRY_OBSERVATION_MS" \
+                "$pre_session_failures" "$expected_pre_session_failures" \
+                "$key_failures" "$expected_key_failures" \
+                "$keyed_sessions" "$keyed_sessions_before" \
+                "$established_count"
             return 1
         fi
         sleep 0.25
@@ -2339,7 +2535,7 @@ wait_peer_credential_recovery_prompt() {
         ui_has_credential_reason_semantics \
             "$PEER_CONFIRMATION_UNAVAILABLE_REASON" describe
     )" || return 1
-    printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=pass wrong_attempts=1 error=peer-confirmation-unavailable prompt=%s manual_retry=required auto_retry=absent prompt_ms=%s prompt_limit_ms=%s observation_ms=%s\n' \
+    printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=pass wrong_attempts=1 pre_session_failure_delta=1 key_failure_delta=1 keyed_session_delta=0 error=peer-confirmation-unavailable prompt=%s manual_retry=required auto_retry=absent prompt_ms=%s prompt_limit_ms=%s observation_ms=%s\n' \
         "$PEER_CREDENTIAL_SEMANTIC_MODE" \
         "$PEER_CREDENTIAL_PROMPT_MS" "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
         "$PEER_NO_AUTO_RETRY_OBSERVATION_MS"
@@ -2347,7 +2543,8 @@ wait_peer_credential_recovery_prompt() {
 
 open_peer_connection() {
     local generation=$1 expect_password=$2 center x y
-    local credential=remembered failures_before=
+    local credential=remembered pre_session_failures_before=
+    local key_failures_before= keyed_sessions_before=
     local connection_wait_limit_ms=$PEER_CONNECTION_WAIT_LIMIT_MS
     if ! wait_ui_center address-field >/dev/null 2>&1; then
         tap_ui text 'Connection' \
@@ -2362,16 +2559,31 @@ open_peer_connection() {
     "$ADB" -s "$SERIAL" shell input text "$PEER_VIEW_ADDRESS" >/dev/null || return 1
     wait_ui_center address-field "$PEER_VIEW_ADDRESS" >/dev/null \
         || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
+    if [ "$expect_password" -eq 1 ]; then
+        pre_session_failures_before="$(peer_server_pre_session_failure_count)"
+        key_failures_before="$(peer_server_key_failure_count)"
+        keyed_sessions_before="$(peer_server_keyed_session_count)"
+    fi
     "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_ENTER >/dev/null || return 1
     if [ "$expect_password" -eq 1 ]; then
-        failures_before="$(grep -Fc \
-            'ended before session completion: CPace handshake failed: fail-closed' \
-            "$PEER_SERVER_LOG" || true)"
+        wait_peer_initial_credential_prompt \
+            "$pre_session_failures_before" "$key_failures_before" \
+            "$keyed_sessions_before" \
+            || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
         submit_peer_password "$PEER_WRONG_PASSWORD" wrong 0 \
+            "$pre_session_failures_before" "$key_failures_before" \
+            "$keyed_sessions_before" \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
-        wait_peer_credential_recovery_prompt "$failures_before" \
+        wait_peer_credential_recovery_prompt \
+            "$pre_session_failures_before" "$key_failures_before" \
+            "$keyed_sessions_before" \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
+        pre_session_failures_before="$(peer_server_pre_session_failure_count)"
+        key_failures_before="$(peer_server_key_failure_count)"
+        keyed_sessions_before="$(peer_server_keyed_session_count)"
         submit_peer_password "$PEER_PASSWORD" correct 1 \
+            "$pre_session_failures_before" "$key_failures_before" \
+            "$keyed_sessions_before" \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
         credential=entered-after-manual-recovery
         connection_wait_limit_ms=$PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS
@@ -3047,7 +3259,10 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
                 || fail 'the Android real-peer lifecycle receipt is not ready'
             [ "$PEER_REVERSE_READY" -eq 0 ] \
                 || fail 'the Android peer reverse mapping remained live at receipt time'
-            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=%s credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
+            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_credential=missing-credential initial_credential_prompt_observer=%s initial_credential_prompt_ms=%s initial_credential_prompt_limit_ms=%s initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=%s credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
+                "$PEER_INITIAL_CREDENTIAL_SEMANTIC_MODE" \
+                "$PEER_INITIAL_CREDENTIAL_PROMPT_MS" \
+                "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
                 "$PEER_CREDENTIAL_SEMANTIC_MODE" \
                 "$PEER_CREDENTIAL_PROMPT_MS" "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
                 "$PEER_NO_AUTO_RETRY_OBSERVATION_MS" \

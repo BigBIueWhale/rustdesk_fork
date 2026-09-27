@@ -669,7 +669,7 @@ if [ "$runtime_status" -ne 0 ]; then
     tail -n 240 "$OBSERVER_LOG" >&2
     grep '^ANDROID_MAIN_SERVICE_LOG_' "$RUNTIME_LOG" \
         | tail -n 40 >&2 || true
-    grep -E '^ANDROID_PEER_(PASSWORD_INPUT|PASSWORD_SUBMIT|CREDENTIAL_RECOVERY|CONNECTION_WAIT|CONNECTION_READY|CONNECTION_STATE)=' \
+    grep -E '^ANDROID_PEER_(INITIAL_CREDENTIAL_PROMPT|PASSWORD_INPUT|PASSWORD_ACTION|PASSWORD_SUBMIT|CREDENTIAL_RECOVERY|CONNECTION_WAIT|CONNECTION_READY|CONNECTION_STATE)=' \
         "$RUNTIME_LOG" | tail -n 80 >&2 || true
     grep '^ANDROID_PEER_PROCESS_THREAD ' "$RUNTIME_LOG" \
         | tail -n 64 >&2 || true
@@ -789,8 +789,15 @@ case "${lifecycle_receipts[0]}" in
     *"apk_sha256=$APK_SHA256"*) ;;
     *) die 'Android lifecycle runtime reported a different APK digest' ;;
 esac
+mapfile -t initial_credential_receipts < <(grep -E \
+    '^ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT=pass reason=missing-credential observer=(exact|android-accessibility-prefix-240) observed_network_attempts=0 pre_session_failure_delta=0 key_failure_delta=0 keyed_session_delta=0 established=0 prompt_ms=[0-9]+ prompt_limit_ms=240000$' \
+    "$RUNTIME_LOG" || true)
+[ "${#initial_credential_receipts[@]}" -eq 1 ] \
+    || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android initial credential prompt receipt is absent or duplicated'; }
+[ "$(grep -c '^ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT=' "$RUNTIME_LOG")" -eq 1 ] \
+    || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android initial credential prompt receipt is malformed or duplicated'; }
 mapfile -t peer_receipts < <(grep -E \
-    '^ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127\.0\.0\.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=(exact|android-accessibility-prefix-240) credential_prompt_ms=[0-9]+ credential_prompt_limit_ms=240000 auto_retry_observation_ms=140000 correct_credential_connection_ms=[0-9]+ credential_connection_limit_ms=240000 cached_connection_max_ms=[0-9]+ cached_connection_limit_ms=30000 initial_recovery_ms=[0-9]+ background_recovery_ms=[0-9]+ task_recovery_max_ms=[0-9]+ recovery_limit_ms=8000 freshness_max_ms=[0-9]+ freshness_limit_ms=2000 capture_max_ms=[0-9]+ capture_limit_ms=500 distinct_frames=([89]|[1-9][0-9]+) force_stop=baseline apk_sha256=[0-9a-f]{64} vm_network=none container_network=none server_listener=127\.0\.0\.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined$' \
+    '^ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127\.0\.0\.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_credential=missing-credential initial_credential_prompt_observer=(exact|android-accessibility-prefix-240) initial_credential_prompt_ms=[0-9]+ initial_credential_prompt_limit_ms=240000 initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=(exact|android-accessibility-prefix-240) credential_prompt_ms=[0-9]+ credential_prompt_limit_ms=240000 auto_retry_observation_ms=140000 correct_credential_connection_ms=[0-9]+ credential_connection_limit_ms=240000 cached_connection_max_ms=[0-9]+ cached_connection_limit_ms=30000 initial_recovery_ms=[0-9]+ background_recovery_ms=[0-9]+ task_recovery_max_ms=[0-9]+ recovery_limit_ms=8000 freshness_max_ms=[0-9]+ freshness_limit_ms=2000 capture_max_ms=[0-9]+ capture_limit_ms=500 distinct_frames=([89]|[1-9][0-9]+) force_stop=baseline apk_sha256=[0-9a-f]{64} vm_network=none container_network=none server_listener=127\.0\.0\.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined$' \
     "$RUNTIME_LOG" || true)
 [ "${#peer_receipts[@]}" -eq 1 ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android real-peer lifecycle receipt is absent or duplicated'; }
@@ -828,7 +835,8 @@ printf '%s\n' "${apk_receipts[0]}" "${endpoint_receipts[0]}" \
     "${frame_observer_self_test_receipts[0]}" \
     "${frame_observer_build_receipts[0]}" "${frame_observer_receipts[0]}" \
     "${renderer_receipts[0]}" "${runtime_receipts[0]}" \
-    "${lifecycle_receipts[0]}" "${peer_receipts[0]}"
+    "${lifecycle_receipts[0]}" "${initial_credential_receipts[0]}" \
+    "${peer_receipts[0]}"
 printf 'ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=%s apk_sha256=%s signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=%s runtime=%s peer=production-loopback-cpace-changing-display vm_network=none container_network=none inputs=readonly cleanup=joined\n' \
     "$ARTIFACT_SOURCE_COMMIT" "$APK_SHA256" \
     "$ANDROID_BUILDER_CONFIG_ID" "$DEV_CHECK_IMAGE_CONFIG_ID"

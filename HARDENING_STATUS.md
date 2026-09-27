@@ -968,29 +968,34 @@ resource/soak, physical-device, current artifact, cold R-B2/R-B10, independent-r
 obligations remain open.
 
 The current retained x86_64 test APK is source commit
-`3d590852d908366770089e1e62e761ae0e1c6e7e`, tree
-`c19575f5716e95094acbc8d3bdf30b5e2d5c04f4`, and SHA-256
-`d53ac2ce97f9fc9699dd7d069665da1f1b364bac1958b189d9a27a7add566861`. Its 1,345-second zero-NIC transaction
-built from the exact clean pushed source, independently verified the APK, installed and resumed the real Android 14
-`MainActivity`, held one unchanged app PID for five seconds, observed enforcing SELinux and a real framebuffer,
-published the commit-bound artifact atomically, added no host listener or process drift, and joined every guest,
-container, emulator, ADB, VM, and virtiofs owner. It is an exactly admitted test-only artifact, not a stable-signed
-release APK. The last complete task-removal/foreground-service/MediaProjection/
+`67332db4ec32e1d4b67612808acc840e1658973a`, tree
+`8390c1439f834b6e46b203e1571e00255992874e`, and SHA-256
+`1c889e3cb09a4510851b14d6b8d2e33e6ba7442949fb52e585dbb1653abce361`. It was built from exact clean pushed
+source and published as a commit-bound test-only artifact. The latest zero-NIC replay at clean pushed harness
+`f4a3dca14d0cbe71b45e7a22a93a05a50a8ab47a` independently admitted, installed, and launched that APK on Android
+14, reached the foreground service, MediaProjection-ready UI, production peer, password UI, and CPace path, and
+left no harness-created host listener during execution. It then failed closed during credential recovery before a
+complete lifecycle receipt; guest/container/emulator/ADB/VM/virtiofs cleanup joined and the failed evidence root was
+retained. This is not a stable-signed release APK. The last complete task-removal/foreground-service/MediaProjection/
 Force-Stop lifecycle pass remains the older source `48acf94e1a26bf51af1f8e697a11cfe2aa84cbd4`, harness
 `eeb4327e0ba5c4677ba6571f97ca95bf14beeed1`, and APK
 `8036056ecb5d7df1888bbfef44866bfb8b169cbcfc2b4f756ab64361a5c05774`; it is historical evidence, not a current-
 artifact lifecycle pass.
 
-The current real-peer/presentation verdict is **FAILED / OPEN**. No peer replay has yet used the new current APK.
-One replay of its predecessor artifact authenticated,
+The current real-peer/presentation verdict is **FAILED / OPEN**. One predecessor-artifact replay authenticated,
 received peer information, decoded VP9, copied exact BGRA bytes into engine RGBA, and obtained Dart image/publication
-receipts. Its actual-pixel verdict is invalid: each PNG `screencap -p` observation consumed 3.01--3.30 seconds while
-the claimed freshness ceiling was two seconds, leaving only two perturbing samples and conflating observer delay with
-product behavior. Harness commit `1c114109dbb1e08e692435de805df25f66e199f6` replaces verdict polling with strict
-Android-14 raw-frame parsing and refuses to classify the product if a capture exceeds 500 ms; all admitted raw pixel
-formats, both orientations, non-palette pixels, exact receipt syntax, and malformed framing passed focused fixtures.
-That raw observer has not yet reached product observation in the VM: the next predecessor-artifact replay failed
-during CPace before decode.
+receipts, but its 3.01--3.30-second PNG observations invalidated the claimed two-second freshness verdict. The strict
+Android-14 gRPC raw-frame observer that replaced it is now both fixture-checked and actually executed: the latest
+current-artifact run received 2,206 emulator frames and published 1,873 with joined cleanup. That does not prove
+remote presentation because the current APK stopped in credential recovery before the correct credential, decode,
+or remote-view pixel transaction. The production peer recorded two fail-closed CPace attempts 128 seconds apart
+where the harness expected exactly one deliberate wrong-password submission. Aggregate failure counts and buffered
+UI receipts could not determine whether the extra attempt preceded the tap or was a later retry, so the run remains
+a real failure rather than a recovery or presentation result. The current harness now binds the initial exact
+MissingCredential prompt to unchanged pre-session/keyed/ESTABLISHED observations, snapshots those observations
+immediately before each single UI tap, emits a tap-time marker, and reports pre-submit activity separately from an
+additional post-submit attempt. An isolated replay is still required to identify and then correct the owning product
+path; no two-attempt compatibility allowance was added.
 
 The source-level CPace recovery defect exposed by the later replay is corrected at
 `714141e9741922c64489a64f18515e49f4090b96`. After step 3 has been sent successfully, and only while the initiator
@@ -1007,10 +1012,11 @@ zero-NIC verifier VM. Because that was too slow for the focused development loop
 generation and the broader Android/CM Rust lifecycle tests. The new exact-current transaction passed in 138 seconds
 with a no-NIC VM, guest-only networkless Docker, immutable/Landlocked sealed inputs, no host listener addition or
 pre-existing-process drift, and joined cleanup. This closes only the source/wire recovery taxonomy and exact client
-classification. The current retained test APK includes this correction and has the real build/install/launch baseline
-above, but its credential prompt and peer path have not executed. APK/device prompt behavior, peer lifecycle, actual-
-presentation freshness, background/task-relaunch
-behavior, and causal reproduction remain unresolved; the failed peer-replay roots remain bounded evidence only.
+classification. The current retained test APK includes this correction and has now executed the real initial prompt
+and wrong-credential peer path, but the unexplained additional attempt prevented correct-credential recovery and all
+later presentation/lifecycle checks. APK/device recovery behavior, peer lifecycle, actual-presentation freshness,
+background/task-relaunch behavior, causal reproduction, and the cross-platform focus/background delay complaint
+remain unresolved; the failed peer-replay roots remain bounded evidence only.
 
 Pub-cache and Gradle replacement cleanup is now one recoverable, acquisition-identity-owned transaction. A
 replacement refuses an existing root unless it is owned by the acquisition UID/GID and sealed mode 0500; the old
@@ -1137,10 +1143,10 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
-| Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained. The exact-current source/tree/digest-bound x86_64 test APK has a real Android 14 build/install/launch/framebuffer baseline, while the complete task-removal/foreground-service/MediaProjection/Force-Stop pass is from an older artifact. A predecessor-artifact replay authenticated and decoded/published frames, but its multi-second PNG observer invalidated the freshness verdict; the strict raw observer is fixture-checked but has not yet reached product observation. A later predecessor replay exposed the honest mismatch asymmetry—responder `Confirmation`, initiator post-step-3 EOF—and source now preserves that initiator outcome as `PeerConfirmationUnavailable`, offers deliberate credential replacement without automatic deletion/retry, and keeps earlier I/O generic. Exact client-classifier and 20-test wire transactions are green in a zero-NIC Linux VM, and the current APK contains that correction, but its prompt and peer path have not run. Replay the current retained artifact through the strict observer, then exercise authenticated peer/session replacement, outgoing viewing, controlled capture/input callbacks, reconnect, capture/decode/actual-presentation freshness, network/background/focus transitions, stale-generation refusal, repeated resource bounds, physical devices, stable-signed release artifacts, and cold/independent reproduction. iOS still has no current package/device result. |
+| Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained. Retained test APK `67332db4`/`8390c143`/`1c889e3c…e361` has a real Android 14 build/install/launch baseline, while the complete task-removal/foreground-service/MediaProjection/Force-Stop pass is from an older artifact. A predecessor replay authenticated and decoded/published frames, but its multi-second PNG observer invalidated freshness. The strict raw observer now executes, but the current APK produced two fail-closed CPace attempts for one expected wrong-password submission and therefore never reached correct-credential recovery or remote presentation. Source preserves initiator post-step-3 EOF as `PeerConfirmationUnavailable`, offers deliberate credential replacement without automatic deletion/retry, and keeps earlier I/O generic; exact client-classifier and 20-test wire transactions are green in a zero-NIC Linux VM. Replay the corrected causal harness to distinguish pre-submit activity from an additional post-submit attempt, correct the owning product path, then exercise authenticated peer/session replacement, outgoing viewing, controlled capture/input callbacks, reconnect, capture/decode/actual-presentation freshness, network/background/focus transitions, stale-generation refusal, repeated resource bounds, physical devices, stable-signed release artifacts, and cold/independent reproduction. iOS still has no current package/device result. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg now has pin-bound recoverable devcheck and Apple verifier images. For each image, two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. The complete current Apple three-target source-conformance workload is now green in the no-NIC verifier VM; current product/native workloads and fresh independently administered rebuilds remain required, and the image-infrastructure result itself supplies no product or native evidence. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES, EXACT-CURRENT LINUX FILESYSTEM TESTS, ONLINE ACQUISITION, CURRENT DART/RUST ADVISORY VERDICTS, COMPLETE CURRENT APPLE SOURCE CONFORMANCE, ANDROID/DEBIAN/WINDOWS-HELPER CERTIFICATION, AND AN OLDER-ARTIFACT ANDROID LIFECYCLE ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; focused entries refuse applicable root/foreign callers and execute bounded guest containers. R-S11cj separately confines acquisition to ordinary-user QEMU with rootless exact exports, TCP-only guest/container egress, no host forwarding, listener invariance, and joined finality. The retained test APK is source `3d590852d908366770089e1e62e761ae0e1c6e7e`, tree `c19575f5716e95094acbc8d3bdf30b5e2d5c04f4`, and SHA-256 `d53ac2ce97f9fc9699dd7d069665da1f1b364bac1958b189d9a27a7add566861`; its real build/install/launch baseline is green, but it has not yet entered the peer/presentation transaction. The predecessor peer transaction remains red/open, and the corrected raw observer did not execute past CPace there. Stable Android signing/release artifacts, a current complete lifecycle pass, real peer/presentation/device behavior, native Apple build/sign/install/runtime behavior, Debian/Windows product workloads, cold artifacts, complete prepared inputs, fresh independent reproduction, and external review remain open. Source conformance, library tests, entry gates, builder fingerprints, and historical test-only lifecycle evidence are not full product or release evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES, EXACT-CURRENT LINUX FILESYSTEM TESTS, ONLINE ACQUISITION, CURRENT DART/RUST ADVISORY VERDICTS, COMPLETE CURRENT APPLE SOURCE CONFORMANCE, ANDROID/DEBIAN/WINDOWS-HELPER CERTIFICATION, AND AN OLDER-ARTIFACT ANDROID LIFECYCLE ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; focused entries refuse applicable root/foreign callers and execute bounded guest containers. R-S11cj separately confines acquisition to ordinary-user QEMU with rootless exact exports, TCP-only guest/container egress, no host forwarding, listener invariance, and joined finality. The retained test APK is source `67332db4ec32e1d4b67612808acc840e1658973a`, tree `8390c1439f834b6e46b203e1571e00255992874e`, and SHA-256 `1c889e3cb09a4510851b14d6b8d2e33e6ba7442949fb52e585dbb1653abce361`; its real build/install/launch and wrong-credential peer path executed, but recovery failed after two CPace attempts where one was expected. The strict raw observer executed but did not observe the remote view. Stable Android signing/release artifacts, a current complete lifecycle pass, real peer/presentation/device behavior, native Apple build/sign/install/runtime behavior, Debian/Windows product workloads, cold artifacts, complete prepared inputs, fresh independent reproduction, and external review remain open. Source conformance, library tests, entry gates, builder fingerprints, and historical test-only lifecycle evidence are not full product or release evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED

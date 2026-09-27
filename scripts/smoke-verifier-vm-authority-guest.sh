@@ -1454,6 +1454,7 @@ run_focused_rust_tests() {
             ui_session_interface::connection_round_ownership_tests::credential_post_admission_failure_revokes_every_generic_reconnect
             ui_session_interface::connection_round_ownership_tests::credential_stale_round_cannot_rearm_recovery
             ui_session_interface::connection_round_ownership_tests::credential_failed_replacement_requires_a_fresh_prompt_attempt
+            ui_session_interface::connection_round_ownership_tests::credential_stale_prompt_cannot_mutate_session_or_start_worker
         )
     fi
 

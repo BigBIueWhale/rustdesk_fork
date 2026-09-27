@@ -53,8 +53,9 @@ impl Interface for Session {
         self.lc.clone()
     }
 
-    fn require_credential_replacement(&self) {
+    fn require_credential_replacement(&self) -> Option<u64> {
         // The CLI reads its one connect password synchronously and has no generic reconnect UI.
+        None
     }
 
     fn get_connect_password(&self) -> String {

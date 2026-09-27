@@ -1419,9 +1419,12 @@ impl<T: InvokeUiSession> Remote<T> {
                                             .with_current_establish_error(
                                                 round,
                                                 requires_credential_replacement,
-                                                || {
+                                                |credential_prompt_round| {
                                                     self.handler
-                                                        .on_establish_connection_error(&err)
+                                                        .on_establish_connection_error(
+                                                            &err,
+                                                            credential_prompt_round,
+                                                        )
                                                 },
                                             );
                                         break;
@@ -1652,7 +1655,12 @@ impl<T: InvokeUiSession> Remote<T> {
                     .with_current_establish_error(
                         round,
                         requires_credential_replacement,
-                        || self.handler.on_establish_connection_error(&err),
+                        |credential_prompt_round| {
+                            self.handler.on_establish_connection_error(
+                                &err,
+                                credential_prompt_round,
+                            )
+                        },
                     );
             }
         }
@@ -4802,7 +4810,9 @@ mod tests {
             panic!("the exact-round input sequence must not use the mutable interface sender");
         }
 
-        fn require_credential_replacement(&self) {}
+        fn require_credential_replacement(&self) -> Option<u64> {
+            None
+        }
 
         fn msgbox(&self, _msgtype: &str, _title: &str, _text: &str, _link: &str) {}
 

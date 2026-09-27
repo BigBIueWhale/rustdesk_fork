@@ -289,6 +289,17 @@ class RustdeskImpl {
     return Future(() => js.context.callMethod('setByName', ['reconnect']));
   }
 
+  bool sessionSetConnectPassword(
+      {required UuidValue sessionId,
+      required int credentialPromptRound,
+      required String password,
+      required bool remember,
+      dynamic hint}) {
+    // The web backend has no round-bound credential-replacement operation. Keep the
+    // shared UI interface closed rather than inventing an unowned JavaScript command.
+    return false;
+  }
+
   Future<void> sessionToggleOption(
       {required UuidValue sessionId, required String value, dynamic hint}) {
     return Future(

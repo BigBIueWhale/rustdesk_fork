@@ -2452,6 +2452,22 @@ impl InvokeUiSession for FlutterHandler {
         );
     }
 
+    fn connect_password_prompt(&self, text: &str, prompt_round: u64) {
+        let prompt_round = prompt_round.to_string();
+        self.push_event(
+            "msgbox",
+            &[
+                ("type", "connect-password-prompt"),
+                ("title", "Password Required"),
+                ("text", text),
+                ("link", ""),
+                ("hasRetry", ""),
+                ("credential_prompt_round", prompt_round.as_str()),
+            ],
+            &[],
+        );
+    }
+
     fn cancel_msgbox(&self, tag: &str) {
         self.push_event("cancel_msgbox", &[("tag", tag)], &[]);
     }

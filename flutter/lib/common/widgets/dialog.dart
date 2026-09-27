@@ -290,10 +290,13 @@ class _PasswordWidgetState extends State<PasswordWidget> {
 // a box re-provisioned with a new password, so a legitimately re-provisioned box is not dead-ended
 // in an eternal "Password Required" loop with no hint of the real cause.
 void enterConnectPasswordDialog(
-    SessionID sessionId, OverlayDialogManager dialogManager,
+    SessionID sessionId,
+    int credentialPromptRound,
+    OverlayDialogManager dialogManager,
     [String reason = '']) async {
   await _connectDialog(
     sessionId,
+    credentialPromptRound,
     dialogManager,
     passwordController: TextEditingController(),
     reason: reason,
@@ -306,6 +309,7 @@ void enterConnectPasswordDialog(
 // strips os_login, and create_login_msg no longer sends it).
 _connectDialog(
   SessionID sessionId,
+  int credentialPromptRound,
   OverlayDialogManager dialogManager, {
   required TextEditingController passwordController,
   String reason = '',
@@ -329,8 +333,15 @@ _connectDialog(
       // (no keyed connection exists yet, so we cannot `login`). CPace is the sole authenticator,
       // so there is no post-keying `login` path here. The dialog generation grants exactly one
       // replacement attempt even if button and keyboard submission arrive back-to-back.
-      bind.sessionSetConnectPassword(
-          sessionId: sessionId, password: password, remember: rememberPassword);
+      final accepted = bind.sessionSetConnectPassword(
+          sessionId: sessionId,
+          credentialPromptRound: credentialPromptRound,
+          password: password,
+          remember: rememberPassword);
+      if (!accepted) {
+        submitted = false;
+        return;
+      }
       close();
       dialogManager.showLoading(translate('Connecting...'),
           onCancel: closeConnection);

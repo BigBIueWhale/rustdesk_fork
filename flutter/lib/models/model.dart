@@ -1045,6 +1045,15 @@ class FfiModel with ChangeNotifier {
     }
 
     if (type == 'connect-password-prompt') {
+      final promptRoundValue = evt['credential_prompt_round'];
+      final promptRound = promptRoundValue is String
+          ? int.tryParse(promptRoundValue)
+          : null;
+      if (promptRound == null || promptRound < 0) {
+        parent.target?._reportSessionStreamFailure(
+            sessionId, peerId, 'Credential prompt authority is invalid');
+        return;
+      }
       // A credential-required transition supersedes every generic reconnect schedule. Cancel is
       // not sufficient because its callback may already be queued, so the authority generation
       // also makes every predecessor stale. Generic retry remains disabled until native keying
@@ -1060,7 +1069,8 @@ class FfiModel with ChangeNotifier {
       // re-provisioned with a new password), so a legitimately re-provisioned box does not dead-end.
       // (There is no post-keying `input-password`/`re-input-password` re-prompt: CPace is the sole
       // authenticator — R-A1 — so the responder never asks to re-enter a login password.)
-      enterConnectPasswordDialog(sessionId, dialogManager, text);
+      enterConnectPasswordDialog(
+          sessionId, promptRound, dialogManager, text);
     } else if (type == 'restarting') {
       showMsgBox(sessionId, type, title, text, link, false, dialogManager,
           hasCancel: false);

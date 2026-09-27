@@ -1035,6 +1035,13 @@ class FfiModel with ChangeNotifier {
     }
 
     if (type == 'connect-password-prompt') {
+      // A credential-required transition supersedes every generic reconnect schedule. Leaving an
+      // older timer alive can reconnect with the credential this exact failure just rejected,
+      // while the replacement prompt is still visible.
+      _timer?.cancel();
+      _timer = null;
+      _reconnects = 1;
+      _offlineReconnectStartTime = null;
       // R-S13/A3 (prompt-before-keying): the CPace keying needs the box's password up front;
       // a bare-ID first connect has none, so the keying fails and routes here. Enter it →
       // store + reconnect → key with it. `text` carries the reason (a wrong password, or a box

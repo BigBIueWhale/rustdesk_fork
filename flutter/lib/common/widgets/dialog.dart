@@ -312,6 +312,7 @@ _connectDialog(
 }) async {
   var rememberPassword =
       await bind.sessionGetRemember(sessionId: sessionId) ?? false;
+  var submitted = false;
 
   dialogManager.dismissAll();
   dialogManager.show((setState, close, context) {
@@ -322,10 +323,12 @@ _connectDialog(
 
     submit() {
       final password = passwordController.text.trim();
-      if (password.isEmpty) return;
+      if (password.isEmpty || submitted) return;
+      submitted = true;
       // R-S13/A3: store the connect-time password + reconnect so the CPace handshake keys with it
       // (no keyed connection exists yet, so we cannot `login`). CPace is the sole authenticator,
-      // so there is no post-keying `login` path here.
+      // so there is no post-keying `login` path here. The dialog generation grants exactly one
+      // replacement attempt even if button and keyboard submission arrive back-to-back.
       bind.sessionSetConnectPassword(
           sessionId: sessionId, password: password, remember: rememberPassword);
       close();

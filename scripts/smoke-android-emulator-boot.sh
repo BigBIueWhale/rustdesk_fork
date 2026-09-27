@@ -254,6 +254,7 @@ PEER_CORRECT_CREDENTIAL_CONNECTION_MS=0
 PEER_CACHED_CONNECTION_MAX_MS=0
 PEER_CAPTURE_MAX_MS=0
 PEER_CREDENTIAL_PROMPT_MS=0
+PEER_CREDENTIAL_SEMANTIC_MODE=unavailable
 ANDROID_CONTROL_FORWARD_READY=0
 ANDROID_CONTROL_FORWARD_LISTING=
 readonly PEER_RECOVERY_LIMIT_MS=8000
@@ -268,7 +269,9 @@ readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
 # presentation recovery and freshness retain their independent tight bounds above.
 readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=240000
 readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=240000
-readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=3000
+# The retained failing artifact repeated the rejected credential after 129.4 s. This integration
+# observation intentionally spans that old behavior; focused development checks remain separate.
+readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=140000
 readonly PEER_PASSWORD_SUBMIT_ACK_LIMIT_MS=30000
 readonly ANDROID_CONTROL_FORWARD_LOCAL_SPEC=tcp:22119
 readonly ANDROID_CONTROL_FORWARD_DEVICE_SPEC=tcp:21118
@@ -1753,7 +1756,7 @@ capture_peer_freshness() {
     fail "Android peer display did not become fresh and changing for $phase"
 }
 
-ui_has_exact_semantic_text() {
+ui_has_credential_reason_semantics() {
     local expected=$1
     local mode=${2:-quiet}
     if [ ! -f "$UI_XML" ] || [ -L "$UI_XML" ]; then
@@ -1767,9 +1770,11 @@ import sys
 import xml.etree.ElementTree as ET
 
 path, expected, mode = sys.argv[1:]
-if mode not in ("quiet", "diagnose"):
+if mode not in ("quiet", "diagnose", "describe"):
     raise SystemExit(2)
-matches = 0
+prefix = expected[:240]
+exact_matches = 0
+prefix_matches = 0
 related = set()
 for node in ET.parse(path).getroot().iter("node"):
     values = {
@@ -1777,11 +1782,14 @@ for node in ET.parse(path).getroot().iter("node"):
         for key in ("text", "content-desc")
     }
     if expected in values:
-        matches += 1
+        exact_matches += 1
+    elif len(expected) > len(prefix) and prefix in values:
+        prefix_matches += 1
     related.update(
         value for value in values
         if value and (expected.startswith(value) or value.startswith(expected[:64]))
     )
+matches = exact_matches + prefix_matches
 if matches != 1:
     if mode == "diagnose":
         details = ",".join(
@@ -1790,9 +1798,20 @@ if matches != 1:
         ) or "none"
         print(
             "ANDROID_PEER_CREDENTIAL_SEMANTICS=unavailable "
-            f"exact_matches={matches} related_length_sha256={details}"
+            f"exact_matches={exact_matches} prefix_240_matches={prefix_matches} "
+            f"related_length_sha256={details}"
         )
     raise SystemExit(1)
+observer = "exact" if exact_matches else "android-accessibility-prefix-240"
+if mode == "diagnose":
+    print(
+        "ANDROID_PEER_CREDENTIAL_SEMANTICS=pass "
+        f"observer={observer} "
+        f"observed_chars={len(expected) if exact_matches else len(prefix)} "
+        f"expected_chars={len(expected)}"
+    )
+elif mode == "describe":
+    print(observer)
 PY
 }
 
@@ -1802,7 +1821,7 @@ print_peer_connection_state_diagnostic() {
     if capture_ui_hierarchy complete; then
         if ui_center text 'Password required' >/dev/null 2>&1; then
             prompt=present
-            if ui_has_exact_semantic_text \
+            if ui_has_credential_reason_semantics \
                 "$PEER_CONFIRMATION_UNAVAILABLE_REASON"; then
                 reason=peer-confirmation-unavailable
             else
@@ -1946,27 +1965,40 @@ submit_peer_password() {
 
 wait_peer_credential_recovery_prompt() {
     local failures_before=$1 expected_failures
-    local started_ms now_ms failure_count title
+    local started_ms now_ms failure_count established_count title
     case "$failures_before" in
         ''|*[!0-9]*) return 2 ;;
     esac
     expected_failures=$((failures_before + 1))
     started_ms="$(monotonic_millis)" || return 2
     while :; do
+        failure_count="$(grep -Fc \
+            'ended before session completion: CPace handshake failed: fail-closed' \
+            "$PEER_SERVER_LOG" || true)"
+        established_count="$(peer_server_established_count)"
+        if [ "$failure_count" -gt "$expected_failures" ] \
+           || [ "$established_count" -ne 0 ]; then
+            capture_ui_hierarchy complete || true
+            ui_has_credential_reason_semantics \
+                "$PEER_CONFIRMATION_UNAVAILABLE_REASON" diagnose || true
+            now_ms="$(monotonic_millis)" || return 2
+            printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=fail elapsed_ms=%s limit_ms=%s failures=%s expected_failures=%s established=%s reason=unexpected-network-attempt\n' \
+                "$((now_ms - started_ms))" \
+                "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" "$failure_count" \
+                "$expected_failures" "$established_count"
+            return 1
+        fi
         if capture_ui_hierarchy complete; then
             title="$(ui_center text 'Password required' 2>/dev/null || true)"
-            failure_count="$(grep -Fc \
-                'ended before session completion: CPace handshake failed: fail-closed' \
-                "$PEER_SERVER_LOG" || true)"
             if [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
-               && ui_has_exact_semantic_text "$PEER_CONFIRMATION_UNAVAILABLE_REASON" \
+               && ui_has_credential_reason_semantics "$PEER_CONFIRMATION_UNAVAILABLE_REASON" \
                && [ "$failure_count" -eq "$expected_failures" ]; then
                 break
             fi
         fi
         now_ms="$(monotonic_millis)" || return 2
         if [ "$((now_ms - started_ms))" -ge "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" ]; then
-            ui_has_exact_semantic_text \
+            ui_has_credential_reason_semantics \
                 "$PEER_CONFIRMATION_UNAVAILABLE_REASON" diagnose || true
             printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=fail elapsed_ms=%s limit_ms=%s failures=%s expected_failures=%s established=%s\n' \
                 "$((now_ms - started_ms))" "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
@@ -1981,18 +2013,36 @@ wait_peer_credential_recovery_prompt() {
     [ "$PEER_CREDENTIAL_PROMPT_MS" -le "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" ] \
         || return 1
     for _ in $(seq 1 $((PEER_NO_AUTO_RETRY_OBSERVATION_MS / 250))); do
-        [ "$(peer_server_established_count)" -eq 0 ] || return 1
-        [ "$(grep -Fc \
+        established_count="$(peer_server_established_count)"
+        failure_count="$(grep -Fc \
             'ended before session completion: CPace handshake failed: fail-closed' \
-            "$PEER_SERVER_LOG" || true)" -eq "$expected_failures" ] || return 1
+            "$PEER_SERVER_LOG" || true)"
+        if [ "$established_count" -ne 0 ] \
+           || [ "$failure_count" -ne "$expected_failures" ]; then
+            now_ms="$(monotonic_millis)" || return 2
+            capture_ui_hierarchy complete || true
+            ui_has_credential_reason_semantics \
+                "$PEER_CONFIRMATION_UNAVAILABLE_REASON" diagnose || true
+            printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=fail elapsed_ms=%s observation_limit_ms=%s failures=%s expected_failures=%s established=%s reason=automatic-retry-observed\n' \
+                "$((now_ms - started_ms))" \
+                "$PEER_NO_AUTO_RETRY_OBSERVATION_MS" "$failure_count" \
+                "$expected_failures" "$established_count"
+            return 1
+        fi
         sleep 0.25
     done
     capture_ui_hierarchy complete \
         && [[ "$(ui_center text 'Password required' 2>/dev/null || true)" \
              =~ ^[0-9]+\ [0-9]+$ ]] \
-        && ui_has_exact_semantic_text "$PEER_CONFIRMATION_UNAVAILABLE_REASON" \
+        && ui_has_credential_reason_semantics \
+            "$PEER_CONFIRMATION_UNAVAILABLE_REASON" diagnose \
         || return 1
-    printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=pass wrong_attempts=1 error=peer-confirmation-unavailable prompt=exact manual_retry=required auto_retry=absent prompt_ms=%s prompt_limit_ms=%s observation_ms=%s\n' \
+    PEER_CREDENTIAL_SEMANTIC_MODE="$(
+        ui_has_credential_reason_semantics \
+            "$PEER_CONFIRMATION_UNAVAILABLE_REASON" describe
+    )" || return 1
+    printf 'ANDROID_PEER_CREDENTIAL_RECOVERY=pass wrong_attempts=1 error=peer-confirmation-unavailable prompt=%s manual_retry=required auto_retry=absent prompt_ms=%s prompt_limit_ms=%s observation_ms=%s\n' \
+        "$PEER_CREDENTIAL_SEMANTIC_MODE" \
         "$PEER_CREDENTIAL_PROMPT_MS" "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
         "$PEER_NO_AUTO_RETRY_OBSERVATION_MS"
 }
@@ -2676,7 +2726,8 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
                 || fail 'the Android real-peer lifecycle receipt is not ready'
             [ "$PEER_REVERSE_READY" -eq 0 ] \
                 || fail 'the Android peer reverse mapping remained live at receipt time'
-            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
+            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=%s credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
+                "$PEER_CREDENTIAL_SEMANTIC_MODE" \
                 "$PEER_CREDENTIAL_PROMPT_MS" "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
                 "$PEER_NO_AUTO_RETRY_OBSERVATION_MS" \
                 "$PEER_CORRECT_CREDENTIAL_CONNECTION_MS" \

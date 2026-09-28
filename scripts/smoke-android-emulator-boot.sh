@@ -311,7 +311,7 @@ readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
 readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=240000
 readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=240000
 readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
-readonly RECENTS_DISMISS_GESTURE_STEPS=10
+readonly RECENTS_DISMISS_GESTURE_STEPS=33
 readonly RECENTS_DISMISS_OUTCOME_POLLS=20
 readonly RECENTS_FOCUSED_CYCLES=10
 readonly RECENTS_GESTURE_DEVICE_PATH=/data/local/tmp/rustdesk-recents-dismiss.jar
@@ -1964,7 +1964,9 @@ swipe_app_task_from_recents() {
         "${RECENTS_GESTURE_DEVICE_PATH##*/}" \
         -c com.rustdesk.harness.AndroidRecentsDismiss#testDismissBoundTask \
         -e start_x "$center_x" -e start_y "$start_y" \
-        -e end_x "$center_x" -e end_y 0 2>&1 | tr -d '\r')"; then
+        -e end_x "$center_x" -e end_y 0 \
+        -e gesture_steps "$RECENTS_DISMISS_GESTURE_STEPS" \
+        2>&1 | tr -d '\r')"; then
         printf 'ANDROID_RECENTS_GESTURE_OUTPUT_BEGIN cycle=%s task_id=%s\n%s\nANDROID_RECENTS_GESTURE_OUTPUT_END cycle=%s task_id=%s\n' \
             "$lifecycle_cycle" "$expected_task_id" "$gesture_output" \
             "$lifecycle_cycle" "$expected_task_id" >&2

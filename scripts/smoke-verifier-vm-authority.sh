@@ -2706,14 +2706,14 @@ if [ -r "/proc/$VM_PID/stat" ] && [ "$(process_start_time "$VM_PID" 2>/dev/null)
 fi
 capture_listeners >"$LISTENERS_AFTER"
 /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_AFTER" >"$NEW_AFTER"
-[ "$(/usr/bin/grep -Ec 'VERIFIER_VM_CLOUD_INIT=fail status=[1-9][0-9]*' "$SERIAL_LOG")" -eq 0 ] \
-    || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'guest workload reported failure'; }
 if [ -s "$NEW_AFTER" ]; then
     capture_listener_details >"$LISTENERS_AFTER_DETAIL"
     admit_preexisting_external_listener_drift \
         "$NEW_AFTER" "$LISTENERS_AFTER_DETAIL" after-cleanup \
         || { /usr/bin/cat "$LISTENERS_AFTER_DETAIL" >&2; fail 'verifier VM left or coincided with an unattributable host INET listener'; }
 fi
+[ "$(/usr/bin/grep -Ec 'VERIFIER_VM_CLOUD_INIT=fail status=[1-9][0-9]*' "$SERIAL_LOG")" -eq 0 ] \
+    || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'guest workload reported failure'; }
 reconcile_socket "$SERIAL_SOCKET" || fail 'serial channel cleanup is ambiguous'
 reconcile_socket "$QMP_SOCKET" || fail 'QMP channel cleanup is ambiguous'
 for socket in "${VIRTIOFS_SOCKETS[@]}"; do
@@ -3037,7 +3037,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         || fail 'Android Recents gesture-driver build receipt is malformed'
     android_recents_driver_sha256=${BASH_REMATCH[1]}
     require_exact_fixed_receipt \
-        "ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$android_recents_driver_sha256 framework=platform-uiautomator steps=10 device_path=/data/local/tmp/rustdesk-recents-dismiss.jar" \
+        "ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$android_recents_driver_sha256 framework=platform-uiautomator steps=33 device_path=/data/local/tmp/rustdesk-recents-dismiss.jar" \
         'Android Recents gesture-driver stage receipt'
     if [ "$ANDROID_RUNTIME_SCENARIO" = recents ]; then
         android_recents_cycles=10
@@ -3048,7 +3048,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     fi
     mapfile -t android_recents_action_receipts < <(
         /usr/bin/grep -Eo \
-            "ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$android_recents_cycle_pattern task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 framework=platform-uiautomator steps=10 driver_sha256=$android_recents_driver_sha256" \
+            "ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$android_recents_cycle_pattern task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 framework=platform-uiautomator steps=33 driver_sha256=$android_recents_driver_sha256" \
             "$SERIAL_LOG" || true
     )
     [ "${#android_recents_action_receipts[@]}" -eq "$android_recents_cycles" ] \
@@ -3138,7 +3138,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         android_runtime_peer=production-loopback-cpace-changing-display
     else
         require_exact_fixed_receipt \
-            "ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 task_ids=distinct driver=platform-uiautomator steps=10 driver_sha256=$android_recents_driver_sha256 service=never-started relaunch=resumed apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
+            "ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 task_ids=distinct driver=platform-uiautomator steps=33 driver_sha256=$android_recents_driver_sha256 service=never-started relaunch=resumed apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
             'focused Android Recents runtime receipt'
         android_runtime_peer=absent
     fi

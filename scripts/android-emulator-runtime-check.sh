@@ -934,7 +934,7 @@ case "${runtime_receipts[0]}" in
     *) die 'Android app runtime reported a different APK digest' ;;
 esac
 mapfile -t recents_driver_stage_receipts < <(grep -E \
-    "^ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$RECENTS_DRIVER_SHA256 framework=platform-uiautomator steps=10 device_path=/data/local/tmp/rustdesk-recents-dismiss\.jar$" \
+    "^ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$RECENTS_DRIVER_SHA256 framework=platform-uiautomator steps=33 device_path=/data/local/tmp/rustdesk-recents-dismiss\.jar$" \
     "$RUNTIME_LOG" || true)
 [ "${#recents_driver_stage_receipts[@]}" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_RECENTS_GESTURE_DRIVER=' "$RUNTIME_LOG")" -eq 1 ] \
@@ -947,7 +947,7 @@ else
     readonly recents_cycle_pattern='[12]'
 fi
 mapfile -t recents_dismiss_action_receipts < <(grep -E \
-    "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$recents_cycle_pattern task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 framework=platform-uiautomator steps=10 driver_sha256=$RECENTS_DRIVER_SHA256$" \
+    "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$recents_cycle_pattern task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 framework=platform-uiautomator steps=33 driver_sha256=$RECENTS_DRIVER_SHA256$" \
     "$RUNTIME_LOG" || true)
 [ "${#recents_dismiss_action_receipts[@]}" -eq "$expected_recents_cycles" ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android Recents-dismiss action receipts are absent, malformed, or duplicated'; }
@@ -972,7 +972,7 @@ for lifecycle_cycle in $(seq 1 "$expected_recents_cycles"); do
         || die "Android Recents-dismiss cycle $lifecycle_cycle outcome differs"
     cycle_task_id=${BASH_REMATCH[1]}
     [ "$(grep -Ec \
-        "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$lifecycle_cycle task_id=$cycle_task_id .* framework=platform-uiautomator steps=10 driver_sha256=$RECENTS_DRIVER_SHA256$" \
+        "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$lifecycle_cycle task_id=$cycle_task_id .* framework=platform-uiautomator steps=33 driver_sha256=$RECENTS_DRIVER_SHA256$" \
         "$RUNTIME_LOG")" -eq 1 ] \
         || die "Android Recents-dismiss cycle $lifecycle_cycle action/outcome binding differs"
     case " $recents_task_ids " in
@@ -1010,7 +1010,7 @@ case "${peer_receipts[0]}" in
 esac
 else
 mapfile -t focused_recents_receipts < <(grep -E \
-    "^ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 task_ids=distinct driver=platform-uiautomator steps=10 driver_sha256=$RECENTS_DRIVER_SHA256 service=never-started relaunch=resumed apk_sha256=$APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
+    "^ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 task_ids=distinct driver=platform-uiautomator steps=33 driver_sha256=$RECENTS_DRIVER_SHA256 service=never-started relaunch=resumed apk_sha256=$APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
     "$RUNTIME_LOG" || true)
 [ "${#focused_recents_receipts[@]}" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_EMULATOR_RECENTS=' "$RUNTIME_LOG")" -eq 1 ] \

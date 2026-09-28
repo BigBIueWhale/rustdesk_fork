@@ -3590,6 +3590,7 @@ run_flutter_model_tests() {
                 format_status=0
                 : >/work/format.diff
                 for format_path in \
+                    lib/models/android_permission_request_coordinator.dart \
                     lib/common/widgets/overlay.dart \
                     lib/common/widgets/permanent_password_dialog.dart \
                     lib/common/widgets/custom_password.dart \
@@ -3597,6 +3598,7 @@ run_flutter_model_tests() {
                     lib/mobile/pages/remote_page.dart \
                     lib/mobile/pages/view_camera_page.dart \
                     test/blockable_overlay_test.dart \
+                    test/android_permission_request_coordinator_test.dart \
                     test/permanent_password_dialog_lifecycle_test.dart \
                     test/reconnect_schedule_authority_test.dart; do
                     formatted=/work/$(basename "$format_path").formatted

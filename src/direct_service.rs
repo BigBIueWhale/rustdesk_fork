@@ -63,9 +63,9 @@ static ANDROID_LISTENER_OWNER: Mutex<AndroidListenerOwner> = Mutex::new(AndroidL
 /// `true` iff `direct_server` currently holds a bound `TcpListener` on the pinned v4 port. It is
 /// the single source of truth the UI reads for "reachable on :21118" (via the FFI
 /// `main_get_common("direct-listener-bound")`), NOT a Dart-side optimistic flag: on Android
-/// `serverModel.isStart` is set before `init_service` and never synced from the native service, so
-/// after a boot listener-only start (BR-17) it is `false` while the listener is UP — the lie this
-/// signal replaces. It is published by an RAII `ListenerBoundGuard` (below) stored INSIDE the bound
+/// `serverModel.isStart` observes MainService lifecycle callbacks rather than the socket owner, so
+/// after a boot listener-only start (BR-17) it can be `false` while the listener is UP. It is
+/// published by an RAII `ListenerBoundGuard` (below) stored INSIDE the bound
 /// listener's `Option`, so it is tied to the listener's LIFETIME and cleared on EVERY teardown path
 /// — see that guard's doc. Reflects reachability within the accept-loop poll (~1s).
 static DIRECT_LISTENER_BOUND: AtomicBool = AtomicBool::new(false);

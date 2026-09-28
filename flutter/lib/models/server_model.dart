@@ -440,18 +440,12 @@ class ServerModel with ChangeNotifier {
         );
       });
       if (res == true) {
-        await _startService();
+        await _startScreenSharing();
       }
     }
   }
 
-  /// Start the screen sharing service.
-  Future<void> startService() => _runAndroidServiceUiCommand(
-        'MainService start request',
-        _startService,
-      );
-
-  Future<void> _startService() async {
+  Future<void> _startScreenSharing() async {
     // R-S9: the same typed credential availability consumed by the native park path gates
     // the only mobile start command. The UI never fabricates a credential or service state.
     if ((isAndroid || isIOS) &&
@@ -471,9 +465,11 @@ class ServerModel with ChangeNotifier {
       throw StateError('The Android service command owner is unavailable');
     }
     target.ffiModel.updateEventListener(target.sessionId, "");
-    // R-D7a/R-S11hr: MainService.onStartCommand owns the exact JNI startup/recovery
-    // transaction. Dart requests it but does not change observed running state.
-    await target.invokeMethod("init_service");
+    // R-D7a/R-S11hr: this current UI action is the only operation that may
+    // create the inert bound Service and request fresh capture consent.
+    // MainService.onStartCommand remains the exact JNI startup/recovery owner;
+    // Dart does not change observed running state.
+    await target.invokeMethod("start_screen_sharing");
 
     try {
       await updateClientState();

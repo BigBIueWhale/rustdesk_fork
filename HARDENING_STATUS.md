@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-b532ea33ee66575aa81b50e1e43d52e675f52c2e0cdfed6344ad6e487dd7766b  requirements.html
+165e5993252e4c40f4cd28f07205b32ae6c04ad6c6770006fab969560a95849e  requirements.html
 ```
 
 ## Current Verdict
@@ -9979,13 +9979,16 @@ symptoms, and complete connection-flow correctness and performance remain open.
 
 ### R-S11hr/R-S11e-255 — app-open health start and persistent-resource generation transfer
 
-**State.** Source recovery and exact UI-command ownership are implemented. Reopening the app while the
-foreground service persists now schedules one explicit
-`ACT_ENSURE_CONTROLLED_SERVICE` start before passive binding. Scheduling
-failure is returned to Flutter, and the health action cannot request or consume
-screen-capture consent. One deliberate screen-sharing action now owns every
-asynchronous permission, warning, credential, and native-command phase; repeated
-taps cannot create parallel transactions.
+**State.** Source recovery and exact UI-command ownership are implemented. The Android app-open path now invokes
+the typed `ensure_controlled_service` operation after exact Activity-owner
+registration. Existing status schedules one explicit
+`ACT_ENSURE_CONTROLLED_SERVICE` start before a non-creating bind; absent status
+is a successful no-op that cannot bind, create or start `MainService` or request
+screen-capture consent. The distinct `start_screen_sharing` operation remains
+owned by one deliberate UI action across every asynchronous permission,
+warning, credential and native-command phase; repeated taps cannot create
+parallel transactions. Scheduling or binding failure returns a MethodChannel
+error without automatic retry.
 
 **Boundary and implementation.** An unhealthy committed generation is retired
 while it still owns callback authority: controlled admission closes; exact
@@ -10004,16 +10007,24 @@ password callback is absent: completion after dialog/UI replacement cannot
 start `MainService` under a retired owner's intent.
 
 **Evidence.** Source commit
-`2fb7d4aaebf8899a347a2c7e7a27f68e9caaf98f` contains the Activity health edge
-and transfer ordering. Focused status/listener/raw/voice validators and
-the independent source gate bind the current product topology. Commit
+`2fb7d4aaebf8899a347a2c7e7a27f68e9caaf98f` contains the native Activity health
+operation and transfer ordering, but subsequent review proved that mobile
+startup never called that operation and that the lifecycle replay incorrectly
+required only one total `onStartCommand` after two app reopens. Current source
+adds the missing typed app-open caller, separates health from the human-owned
+screen-sharing operation without an `init_service` alias, and requires one
+initial projection start plus exactly one health-only start per relaunch and no
+post-Force-Stop start. Commit
 `13a9f979afe5733c26d4f6531431b4fd2a474090` contains the outer UI-command
 ownership correction. Its exact 342-second zero-NIC generated-bridge/model
 transaction passed all 18 suites and 129 tests, including command-latch and
 password-dialog lifetime coverage; cleanup joined and no host listener was
-added. This is Dart/model evidence only; no current Kotlin/Gradle/JNI build,
-APK, emulator, or physical device executed the corrected UI transaction. The
-latest retained APK at
+added. This is Dart/model evidence only and predates the app-open caller change.
+Build run `run.zsbQUofNUt` against clean pushed commit `75025846` was externally
+interrupted after source admission and before any APK publication; no owned
+process or listener remains, and its private evidence root is retained. No
+current Kotlin/Gradle/JNI build, APK, emulator, or physical device has executed
+both corrections. The latest retained APK at
 `c4f0f46491df2a9ae1bd977a6944aa59db89518e` passed exact build/install/launch,
 but replay `run.SudbB1JvLK` exposed the prior latch gap and stopped at the
 password-dialog transition. It did not reach service startup or presentation.

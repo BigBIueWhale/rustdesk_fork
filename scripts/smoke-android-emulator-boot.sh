@@ -1896,22 +1896,30 @@ assert_no_main_service() {
     ! grep -qF "$APP_PACKAGE/.MainService" <<<"$state"
 }
 
-assert_single_main_service_log_generation() {
+assert_main_service_log_cardinality() {
     local lifecycle_log=$1
     local context=$2
-    local create_count start_count projection_start_count launch_count
+    local expected_start_count=$3
+    local expected_health_count=$4
+    local create_count start_count projection_start_count launch_count health_count
     create_count="$(grep -cF 'MainService onCreate' <<<"$lifecycle_log" || true)"
     start_count="$(grep -cF 'this service:' <<<"$lifecycle_log" || true)"
     projection_start_count="$(grep -cF 'service starting:' <<<"$lifecycle_log" || true)"
     launch_count="$(grep -cF 'Launch MainService' <<<"$lifecycle_log" || true)"
-    if [ "$create_count" -eq 1 ] && [ "$start_count" -eq 1 ]; then
+    health_count="$(grep -cF 'controlled service health check:' <<<"$lifecycle_log" || true)"
+    if [ "$create_count" -eq 1 ] \
+       && [ "$start_count" -eq "$expected_start_count" ] \
+       && [ "$projection_start_count" -eq 1 ] \
+       && [ "$launch_count" -eq 1 ] \
+       && [ "$health_count" -eq "$expected_health_count" ]; then
         return 0
     fi
-    printf 'ANDROID_MAIN_SERVICE_LOG_CARDINALITY=fail context=%s create=%s start=%s projection_start=%s projection_launch=%s\n' \
-        "$context" "$create_count" "$start_count" "$projection_start_count" \
-        "$launch_count"
+    printf 'ANDROID_MAIN_SERVICE_LOG_CARDINALITY=fail context=%s create=%s start=%s expected_start=%s projection_start=%s projection_launch=%s health=%s expected_health=%s\n' \
+        "$context" "$create_count" "$start_count" "$expected_start_count" \
+        "$projection_start_count" "$launch_count" "$health_count" \
+        "$expected_health_count"
     printf '%s\n' "$lifecycle_log" \
-        | grep -E 'MainService onCreate|this service:|service starting:|Launch MainService' \
+        | grep -E 'MainService onCreate|this service:|service starting:|Launch MainService|controlled service health check:' \
         | tail -n 32 \
         | sed 's/^/ANDROID_MAIN_SERVICE_LOG_LINE /' \
         || true
@@ -3074,7 +3082,7 @@ PY
             || fail 'the application process changed while starting MainService'
 
         lifecycle_log="$(adb_shell_value logcat -d -v brief)"
-        assert_single_main_service_log_generation "$lifecycle_log" initial \
+        assert_main_service_log_cardinality "$lifecycle_log" initial 1 0 \
             || fail 'MainService was not created and started exactly once'
         ! grep -Eq 'FATAL EXCEPTION|Failed to resume Android client session ownership|MainService destruction retained incomplete generation authority' \
             <<<"$lifecycle_log" \
@@ -3144,8 +3152,9 @@ PY
             assert_main_service \
                 || fail "relaunch $lifecycle_cycle changed MainService state"
             lifecycle_log="$(adb_shell_value logcat -d -v brief)"
-            assert_single_main_service_log_generation \
+            assert_main_service_log_cardinality \
                 "$lifecycle_log" "relaunch-$lifecycle_cycle" \
+                "$((lifecycle_cycle + 1))" "$lifecycle_cycle" \
                 || fail "relaunch $lifecycle_cycle changed MainService lifecycle cardinality"
             ! grep -Eq 'FATAL EXCEPTION|Failed to resume Android client session ownership|MainService destruction retained incomplete generation authority' \
                 <<<"$lifecycle_log" \
@@ -3211,6 +3220,9 @@ PY
         assert_no_main_service \
             || fail 'MainService started without a post-Force-Stop user command'
         lifecycle_log="$(adb_shell_value logcat -d -v brief)"
+        assert_main_service_log_cardinality \
+            "$lifecycle_log" post-force-stop 3 2 \
+            || fail 'the post-Force-Stop launch changed MainService start cardinality'
         ! grep -Eq 'FATAL EXCEPTION' <<<"$lifecycle_log" \
             || fail 'the completed lifecycle logged a fatal exception'
         if [ "$WORKLOAD" = app-peer-lifecycle ]; then

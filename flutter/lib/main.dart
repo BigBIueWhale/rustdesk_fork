@@ -109,7 +109,7 @@ Future<void> main(List<String> args) async {
     if (isMacOS) {
       disableWindowMovable(kWindowId);
     }
-    runMainApp(true);
+    runMainApp();
   }
 }
 
@@ -126,16 +126,13 @@ Future<void> initEnv(String appType) async {
   updateSystemWindowTheme();
 }
 
-void runMainApp(bool startService) async {
+void runMainApp() async {
   // register uni links
   await initEnv(kAppTypeMain);
   // R-G4 / R-SV3 / §18: no startup version-check — the updater + version fetch are excised
   // (sovereign: dial nobody). (Was checkUpdate().)
   if (isDesktop) {
     await bind.mainStartStatusSync();
-  }
-  if (startService) {
-    gFFI.serverModel.startService();
   }
   runApp(App());
 
@@ -181,6 +178,20 @@ void runMobileApp() async {
           'Android client session owner registration failed closed; terminating stale Activity');
       await SystemNavigator.pop();
       return;
+    }
+    try {
+      // R-S11hr: app reopen may repair only an already-published controlled
+      // service. A fresh or Force-Stopped process is a successful no-op; only
+      // the human-owned screen-sharing action may create the Service or ask
+      // for MediaProjection consent.
+      await gFFI.invokeMethod('ensure_controlled_service');
+    } catch (error, stackTrace) {
+      // Keep the Activity available for an explicit operator action, but do
+      // not turn a failed health request into an automatic retry.
+      debugPrintStack(
+        label: 'Android controlled-service health check failed: $error',
+        stackTrace: stackTrace,
+      );
     }
   }
   draggablePositions.load();

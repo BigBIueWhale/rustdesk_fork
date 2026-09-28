@@ -183,8 +183,8 @@ class MainActivity : FlutterActivity() {
                     Log.w(logTag, "Failed to bind MainService")
                 }
             }
-        } catch (e: SecurityException) {
-            Log.e(logTag, "MainService binding was rejected", e)
+        } catch (e: RuntimeException) {
+            Log.e(logTag, "MainService binding failed", e)
             false
         }
     }
@@ -232,6 +232,13 @@ class MainActivity : FlutterActivity() {
             Log.e(logTag, "Failed to request the explicit MainService health check", e)
             false
         }
+    }
+
+    private fun requestMainServiceHealthAndBind(): Boolean {
+        if (!requestMainServiceHealthCheck()) {
+            return false
+        }
+        return bindMainService(createIfNeeded = false)
     }
 
     private val serviceConnection = object : ServiceConnection {
@@ -287,17 +294,43 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                 }
-                "init_service" -> {
+                "ensure_controlled_service" -> {
                     val status = MainService.currentStatus()
-                    if (status != null && !requestMainServiceHealthCheck()) {
+                    if (status == null) {
+                        // Fresh launch and the post-Force-Stop baseline are
+                        // observation-only. Do not create or bind a Service,
+                        // and never ask for capture consent from app startup.
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    if (!requestMainServiceHealthAndBind()) {
                         result.error(
-                            "MAIN_SERVICE_START_FAILED",
-                            "Failed to request the MainService health check",
+                            "MAIN_SERVICE_HEALTH_FAILED",
+                            "Failed to request or bind the existing MainService health check",
                             null,
                         )
                         return@setMethodCallHandler
                     }
-                    bindMainService(createIfNeeded = status == null)
+                    result.success(true)
+                }
+                "start_screen_sharing" -> {
+                    val status = MainService.currentStatus()
+                    if (status != null && !requestMainServiceHealthAndBind()) {
+                        result.error(
+                            "MAIN_SERVICE_HEALTH_FAILED",
+                            "Failed to request or bind the existing MainService health check",
+                            null,
+                        )
+                        return@setMethodCallHandler
+                    }
+                    if (status == null && !bindMainService(createIfNeeded = true)) {
+                        result.error(
+                            "MAIN_SERVICE_BIND_FAILED",
+                            "Failed to create the inert MainService binding",
+                            null,
+                        )
+                        return@setMethodCallHandler
+                    }
                     if (status?.mediaProjectionReady == true) {
                         result.success(false)
                         return@setMethodCallHandler

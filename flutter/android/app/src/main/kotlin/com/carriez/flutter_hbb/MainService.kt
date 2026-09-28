@@ -907,6 +907,7 @@ class MainService : Service() {
         acquireNetworkKeepaliveWakeLock()
         registerNetworkCallback()
         if (intent?.action == ACT_ENSURE_CONTROLLED_SERVICE) {
+            Log.d(logTag, "controlled service health check: $startId")
             checkMediaPermission()
         } else if (intent?.action == ACT_INIT_MEDIA_PROJECTION_AND_SERVICE) {
             Log.d(logTag, "service starting: ${startId}:${Thread.currentThread()}")

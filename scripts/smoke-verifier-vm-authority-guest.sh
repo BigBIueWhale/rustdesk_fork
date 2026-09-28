@@ -1455,6 +1455,16 @@ run_focused_rust_tests() {
             ui_session_interface::connection_round_ownership_tests::credential_stale_round_cannot_rearm_recovery
             ui_session_interface::connection_round_ownership_tests::credential_failed_replacement_requires_a_fresh_prompt_attempt
             ui_session_interface::connection_round_ownership_tests::credential_stale_prompt_cannot_mutate_session_or_start_worker
+            flutter::mobile_session_lifecycle_tests::r_s11ew_rgba_mailbox_keeps_published_frame_stable_and_promotes_only_latest
+            flutter::mobile_session_lifecycle_tests::r_s11ew_rgba_mailboxes_are_exact_per_ui_session_and_display
+            flutter::mobile_session_lifecycle_tests::r_s11ew_rgba_without_a_live_consumer_retains_no_frame
+            flutter::mobile_session_lifecycle_tests::r_s11ew_display_switch_retires_only_obsolete_exact_mailboxes
+            flutter::mobile_session_lifecycle_tests::r_s11ew_rgba_publication_exhaustion_fails_closed
+            flutter::mobile_session_lifecycle_tests::r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame
+            flutter::mobile_session_lifecycle_tests::r_s11fr_rgba_rearm_is_idle_without_a_publication_and_fails_closed_on_exhaustion
+            flutter::mobile_session_lifecycle_tests::r_s11fr_failed_rgba_rearm_retires_the_exact_mailbox
+            flutter::mobile_session_lifecycle_tests::r_s11iw_stream_replacement_rotates_rgba_and_rejects_predecessor_take
+            flutter::mobile_session_lifecycle_tests::r_s11iw_stream_replacement_refusal_retires_only_its_exact_rgba_session
         )
     fi
 
@@ -1720,6 +1730,15 @@ run_focused_rust_tests() {
                         cargo test --offline --locked --lib --features linux-pkg-config,flutter \
                             ui_session_interface::connection_round_ownership_tests::credential_ \
                             --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config,flutter \
+                            flutter::mobile_session_lifecycle_tests::r_s11ew_ \
+                            --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config,flutter \
+                            flutter::mobile_session_lifecycle_tests::r_s11fr_ \
+                            --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config,flutter \
+                            flutter::mobile_session_lifecycle_tests::r_s11iw_ \
+                            --color never -- --test-threads=1
                         ;;
                     *) exit 93 ;;
                 esac
@@ -1758,7 +1777,7 @@ run_focused_rust_tests() {
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
     else
-        [ "${#result_lines[@]}" -eq 5 ] \
+        [ "${#result_lines[@]}" -eq 8 ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
     fi
     [ "$(grep -Ec '^test result: ' "$output")" -eq "${#result_lines[@]}" ] \
@@ -1809,9 +1828,9 @@ run_focused_rust_tests() {
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
             "$DEB_BUILDER_CONFIG_ID"
     else
-        [ "$tests_passed" -eq 31 ] \
+        [ "$tests_passed" -eq 41 ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-and-typed-viewer-keying rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-and-software-rgba-mailbox rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_PUB_CACHE_CLOSURE_V1" \

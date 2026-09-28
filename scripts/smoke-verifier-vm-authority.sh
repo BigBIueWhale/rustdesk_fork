@@ -2922,7 +2922,7 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
         'focused CPace recovery cloud-init completion marker'
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     require_exact_fixed_receipt \
-        "ANDROID_RUST_LIFECYCLE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=31 target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-and-typed-viewer-keying rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 bridge_builder=$DEB_BUILDER_CONFIG_ID devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "ANDROID_RUST_LIFECYCLE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=41 target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-and-software-rgba-mailbox rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 bridge_builder=$DEB_BUILDER_CONFIG_ID devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused Android Rust-lifecycle receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
@@ -3321,7 +3321,7 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
     printf 'CPACE_RECOVERY_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
-    printf 'ANDROID_RUST_LIFECYCLE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-and-typed-viewer-keying network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+    printf 'ANDROID_RUST_LIFECYCLE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-and-software-rgba-mailbox network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = android-rust-target-check ]; then

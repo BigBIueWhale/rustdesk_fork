@@ -31,7 +31,7 @@ case "$#:${8:-}" in
     12:--android-emulator-app)
         MODE=android-emulator-app
         ;;
-    15:--android-emulator-runtime)
+    16:--android-emulator-runtime)
         MODE=android-emulator-runtime
         ;;
     12:--apple-conform)
@@ -54,7 +54,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 SCENARIO | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -86,6 +86,7 @@ readonly ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256=${12:-}
 readonly ANDROID_RUNTIME_ARTIFACT_COMMIT=${13:-}
 readonly ANDROID_RUNTIME_ARTIFACT_TREE=${14:-}
 readonly ANDROID_RUNTIME_APK_SHA256=${15:-}
+readonly ANDROID_RUNTIME_SCENARIO=${16:-}
 readonly APPLE_SOURCE_ARCHIVE=${9:-}
 readonly APPLE_SOURCE_COMMIT=${10:-}
 readonly APPLE_SOURCE_TREE=${11:-}
@@ -2805,7 +2806,12 @@ run_android_emulator_runtime() {
     local builder_load runtime_load workload_status=0 source_before inputs_before artifact_before
     local staged_apk_before
     local entry_receipt apk_receipt renderer_receipt runtime_receipt
-    local lifecycle_receipt peer_receipt check_receipt checksum_line
+    local lifecycle_receipt peer_receipt focused_recents_receipt check_receipt
+    local checksum_line runtime_peer
+    local recents_build_receipt recents_driver_receipt recents_driver_sha256
+    local recents_cycles recents_cycle_pattern recents_cycle recents_task_id
+    local recents_task_ids
+    local -a recents_action_receipts recents_outcome_receipts cycle_outcomes
     local frame_endpoint_receipt frame_parser_receipt
     local frame_observer_self_test_receipt frame_observer_build_receipt
     local frame_observer_receipt frame_observer_dependency_manifest_sha256
@@ -2829,6 +2835,10 @@ run_android_emulator_runtime() {
         || fail 'Android emulator runtime artifact tree is malformed'
     [[ "$ANDROID_RUNTIME_APK_SHA256" =~ ^[0-9a-f]{64}$ ]] \
         || fail 'Android emulator runtime APK digest is malformed'
+    case "$ANDROID_RUNTIME_SCENARIO" in
+        recents|peer-lifecycle) ;;
+        *) fail 'Android emulator runtime scenario differs from recents or peer-lifecycle' ;;
+    esac
     [ -f "$ANDROID_EMULATOR_SOURCE_ARCHIVE" ] \
         && [ ! -L "$ANDROID_EMULATOR_SOURCE_ARCHIVE" ] \
         && [ "$(stat -c '%u:%g:%a:%h' -- "$ANDROID_EMULATOR_SOURCE_ARCHIVE")" = \
@@ -2877,6 +2887,7 @@ run_android_emulator_runtime() {
     done
     for workload in pins.env lib.sh online-android-sdk-output.py \
         online-gradle-output.py \
+        AndroidRecentsDismiss.java \
         AndroidEmulatorFrameObserver.java \
         android-emulator-frame-observer-dependencies.tsv \
         flutter-peer-source-x11.c \
@@ -2896,6 +2907,7 @@ run_android_emulator_runtime() {
         "$source_root/scripts/pins.env" \
         "$source_root/scripts/lib.sh" \
         "$source_root/scripts/android-emulator-runtime-check.sh" \
+        "$source_root/scripts/AndroidRecentsDismiss.java" \
         "$source_root/scripts/android-emulator-frame-observer.sh" \
         "$source_root/scripts/android-emulator-frame.py" \
         "$source_root/scripts/AndroidEmulatorFrameObserver.java" \
@@ -3086,7 +3098,8 @@ run_android_emulator_runtime() {
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
         /bin/bash "$source_root/scripts/android-emulator-runtime-check.sh" \
         "$staged_apk" "$ANDROID_RUNTIME_APK_SHA256" \
-        "$ANDROID_RUNTIME_ARTIFACT_COMMIT" >"$output" 2>&1
+        "$ANDROID_RUNTIME_ARTIFACT_COMMIT" "$ANDROID_RUNTIME_SCENARIO" \
+        >"$output" 2>&1
     workload_status=$?
     set -e
     if [ "$workload_status" -ne 0 ]; then
@@ -3163,6 +3176,64 @@ run_android_emulator_runtime() {
         || { tail -n 320 "$output" >&2; fail 'Android runtime APK receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APK=' "$output")" -eq 1 ] \
         || fail 'Android runtime APK receipt is duplicated'
+    recents_build_receipt="$(grep -E \
+        '^ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} android_jar_sha256=[0-9a-f]{64} uiautomator_jar_sha256=[0-9a-f]{64} d8_sha256=[0-9a-f]{64} copies=2 equality=byte-identical network=none output=private-bind$' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android Recents gesture-driver build receipt is absent'; }
+    [ "$(grep -c '^ANDROID_RECENTS_GESTURE_BUILD=' "$output")" -eq 1 ] \
+        || fail 'Android Recents gesture-driver build receipt is duplicated'
+    [[ "$recents_build_receipt" =~ \
+        sha256=([0-9a-f]{64})\ source_sha256= ]] \
+        || fail 'Android Recents gesture-driver build receipt is malformed'
+    recents_driver_sha256=${BASH_REMATCH[1]}
+    recents_driver_receipt="$(grep -Fx \
+        "ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$recents_driver_sha256 framework=platform-uiautomator steps=10 device_path=/data/local/tmp/rustdesk-recents-dismiss.jar" \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android Recents gesture-driver stage receipt is absent'; }
+    [ "$(grep -c '^ANDROID_RECENTS_GESTURE_DRIVER=' "$output")" -eq 1 ] \
+        || fail 'Android Recents gesture-driver stage receipt is duplicated'
+    if [ "$ANDROID_RUNTIME_SCENARIO" = recents ]; then
+        recents_cycles=10
+        recents_cycle_pattern='([1-9]|10)'
+    else
+        recents_cycles=2
+        recents_cycle_pattern='[12]'
+    fi
+    mapfile -t recents_action_receipts < <(grep -E \
+        "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$recents_cycle_pattern task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 framework=platform-uiautomator steps=10 driver_sha256=$recents_driver_sha256$" \
+        "$output" || true)
+    [ "${#recents_action_receipts[@]}" -eq "$recents_cycles" ] \
+        && [ "$(grep -c '^ANDROID_RECENTS_DISMISS_ACTION=' "$output")" -eq \
+             "$recents_cycles" ] \
+        || { tail -n 320 "$output" >&2; fail 'Android Recents action receipts differ'; }
+    mapfile -t recents_outcome_receipts < <(grep -E \
+        "^ANDROID_RECENTS_DISMISS_OUTCOME=pass cycle=$recents_cycle_pattern task_id=[1-9][0-9]* actions=1$" \
+        "$output" || true)
+    [ "${#recents_outcome_receipts[@]}" -eq "$recents_cycles" ] \
+        && [ "$(grep -c '^ANDROID_RECENTS_DISMISS_OUTCOME=' "$output")" -eq \
+             "$recents_cycles" ] \
+        || { tail -n 320 "$output" >&2; fail 'Android Recents outcome receipts differ'; }
+    recents_task_ids=
+    for recents_cycle in $(seq 1 "$recents_cycles"); do
+        mapfile -t cycle_outcomes < <(printf '%s\n' \
+            "${recents_outcome_receipts[@]}" | grep -E \
+            "^ANDROID_RECENTS_DISMISS_OUTCOME=pass cycle=$recents_cycle task_id=[1-9][0-9]* actions=1$" || true)
+        [ "${#cycle_outcomes[@]}" -eq 1 ] \
+            || fail "Android Recents cycle $recents_cycle outcome differs"
+        [[ "${cycle_outcomes[0]}" =~ task_id=([1-9][0-9]*)\ actions=1$ ]] \
+            || fail "Android Recents cycle $recents_cycle task binding is malformed"
+        recents_task_id=${BASH_REMATCH[1]}
+        [ "$(printf '%s\n' "${recents_action_receipts[@]}" | grep -Ec \
+            "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$recents_cycle task_id=$recents_task_id .* driver_sha256=$recents_driver_sha256$" || true)" -eq 1 ] \
+            || fail "Android Recents cycle $recents_cycle action/outcome binding differs"
+        case " $recents_task_ids " in
+            *" $recents_task_id "*)
+                fail "Android Recents cycle $recents_cycle reused a task ID"
+                ;;
+        esac
+        recents_task_ids="${recents_task_ids:+$recents_task_ids }$recents_task_id"
+    done
+    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
     frame_endpoint_receipt="$(grep -Fx \
         'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none' \
         "$output")" \
@@ -3193,6 +3264,7 @@ run_android_emulator_runtime() {
         || { tail -n 320 "$output" >&2; fail 'Android frame-observer runtime receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_FRAME_OBSERVER=' "$output")" -eq 1 ] \
         || fail 'Android frame-observer runtime receipt is duplicated'
+    fi
     renderer_receipt="$(grep -E \
         '^ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader angle=(present|absent) gles_sha256=[0-9a-f]{64}$' \
         "$output")" \
@@ -3205,6 +3277,7 @@ run_android_emulator_runtime() {
         || { tail -n 320 "$output" >&2; fail 'Android runtime app receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APP=' "$output")" -eq 1 ] \
         || fail 'Android runtime app receipt is duplicated'
+    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
     lifecycle_receipt="$(grep -E \
         "^ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=(absent|waited-([1-9]|1[0-2])|waited-12-closed-1) immersive_cling=(absent|dismissed-1) apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
         "$output")" \
@@ -3223,8 +3296,18 @@ run_android_emulator_runtime() {
         || { tail -n 320 "$output" >&2; fail 'Android real-peer lifecycle receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_PEER_LIFECYCLE=' "$output")" -eq 1 ] \
         || fail 'Android real-peer lifecycle receipt is duplicated'
+        runtime_peer=production-loopback-cpace-changing-display
+    else
+        focused_recents_receipt="$(grep -Fx \
+            "ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 task_ids=distinct driver=platform-uiautomator steps=10 driver_sha256=$recents_driver_sha256 service=never-started relaunch=resumed apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
+            "$output")" \
+            || { tail -n 320 "$output" >&2; fail 'focused Android Recents runtime receipt is absent'; }
+        [ "$(grep -c '^ANDROID_EMULATOR_RECENTS=' "$output")" -eq 1 ] \
+            || fail 'focused Android Recents runtime receipt is duplicated'
+        runtime_peer=absent
+    fi
     check_receipt="$(grep -Fx \
-        "ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=$ANDROID_BUILDER_CONFIG_ID runtime=$DEV_CHECK_IMAGE_CONFIG_ID peer=production-loopback-cpace-changing-display vm_network=none container_network=none inputs=readonly cleanup=joined" \
+        "ANDROID_EMULATOR_RUNTIME_CHECK=pass scenario=$ANDROID_RUNTIME_SCENARIO artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=$ANDROID_BUILDER_CONFIG_ID runtime=$DEV_CHECK_IMAGE_CONFIG_ID peer=$runtime_peer vm_network=none container_network=none inputs=readonly cleanup=joined" \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android emulator runtime-check receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_RUNTIME_CHECK=' "$output")" -eq 1 ] \
@@ -3244,6 +3327,7 @@ run_android_emulator_runtime() {
           "$source_root/scripts/pins.env" \
           "$source_root/scripts/lib.sh" \
           "$source_root/scripts/android-emulator-runtime-check.sh" \
+          "$source_root/scripts/AndroidRecentsDismiss.java" \
           "$source_root/scripts/android-emulator-frame-observer.sh" \
           "$source_root/scripts/android-emulator-frame.py" \
           "$source_root/scripts/AndroidEmulatorFrameObserver.java" \
@@ -3301,19 +3385,26 @@ run_android_emulator_runtime() {
         || fail 'cannot retire the sealed Android runtime input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$entry_receipt" "$apk_receipt" \
-        "$frame_endpoint_receipt" "$frame_parser_receipt" \
-        "$frame_observer_self_test_receipt" "$frame_observer_build_receipt" \
-        "$frame_observer_receipt" "$renderer_receipt" \
-        "$runtime_receipt" "$lifecycle_receipt" \
-        "$initial_credential_receipt" "$peer_receipt" \
-        "$check_receipt"
-    printf 'ANDROID_EMULATOR_RUNTIME_VM=pass harness_commit=%s harness_tree=%s artifact_commit=%s artifact_tree=%s apk_sha256=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s signing=test-only peer=production-loopback-cpace-changing-display uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked artifact=readonly-landlocked source=exact-pushed cleanup=joined\n' \
+        "$recents_build_receipt" "$recents_driver_receipt" \
+        "${recents_action_receipts[@]}" "${recents_outcome_receipts[@]}" \
+        "$renderer_receipt" "$runtime_receipt"
+    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+        printf '%s\n' "$frame_endpoint_receipt" "$frame_parser_receipt" \
+            "$frame_observer_self_test_receipt" "$frame_observer_build_receipt" \
+            "$frame_observer_receipt" "$lifecycle_receipt" \
+            "$initial_credential_receipt" "$peer_receipt"
+    else
+        printf '%s\n' "$focused_recents_receipt"
+    fi
+    printf '%s\n' "$check_receipt"
+    printf 'ANDROID_EMULATOR_RUNTIME_VM=pass scenario=%s harness_commit=%s harness_tree=%s artifact_commit=%s artifact_tree=%s apk_sha256=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s signing=test-only peer=%s uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked artifact=readonly-landlocked source=exact-pushed cleanup=joined\n' \
+        "$ANDROID_RUNTIME_SCENARIO" \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
         "$ANDROID_RUNTIME_ARTIFACT_COMMIT" "$ANDROID_RUNTIME_ARTIFACT_TREE" \
         "$ANDROID_RUNTIME_APK_SHA256" "$ANDROID_EMULATOR_VERSION" \
         "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" "$ANDROID_BUILDER_IMAGE_ID" \
         "$ANDROID_BUILDER_CONFIG_ID" "$DEV_CHECK_IMAGE_ID" \
-        "$DEV_CHECK_IMAGE_CONFIG_ID"
+        "$DEV_CHECK_IMAGE_CONFIG_ID" "$runtime_peer"
 }
 
 run_flutter_model_tests() {
@@ -4183,7 +4274,8 @@ for verify_source in verify.sh verify-release.sh build-release.sh \
     verify-online-fetch-gradle-output-authority.py android-gradle-cache.py \
     android-rust-check.sh \
     smoke-android-emulator-boot.sh android-emulator-app-check.sh \
-    android-emulator-runtime-check.sh verify-android-emulator-apk.py \
+    android-emulator-runtime-check.sh AndroidRecentsDismiss.java \
+    verify-android-emulator-apk.py \
     verify-android-apk-manifest.py publish-artifact-result.py \
     dart-audit.sh dart-audit-result.py \
     verify-dart-verifier-authority.py verify-dart-audit-authority.py \

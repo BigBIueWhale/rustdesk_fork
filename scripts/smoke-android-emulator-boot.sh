@@ -9,23 +9,27 @@ fail() {
 }
 
 [ "$#" -eq 4 ] || [ "$#" -eq 5 ] || [ "$#" -eq 6 ] \
-    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [lifecycle|peer-lifecycle]]'
+    || [ "$#" -eq 7 ] \
+    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [launch|recents|lifecycle|peer-lifecycle [RECENTS_GESTURE_JAR]]]'
 readonly EMULATOR_ZIP=$1
 readonly SYSTEM_IMAGE_ZIP=$2
 readonly INPUT_ADB=$3
 readonly WORK_ROOT=$4
 readonly RUNTIME_TEST_APK=${5:-}
 readonly APP_SCENARIO=${6:-launch}
+readonly RECENTS_GESTURE_JAR=${7:-}
 if [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = peer-lifecycle ]; then
     readonly WORKLOAD=app-peer-lifecycle
 elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = lifecycle ]; then
     readonly WORKLOAD=app-lifecycle
+elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = recents ]; then
+    readonly WORKLOAD=app-recents
 elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = launch ]; then
     readonly WORKLOAD=app
 elif [ -z "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = launch ]; then
     readonly WORKLOAD=boot
 else
-    fail 'the Android app scenario differs from launch, lifecycle, or peer-lifecycle'
+    fail 'the Android app scenario differs from launch, recents, lifecycle, or peer-lifecycle'
 fi
 EMULATOR_GRPC_ARGS=()
 if [ "$WORKLOAD" = app-peer-lifecycle ]; then
@@ -40,7 +44,8 @@ readonly RUN_UID="$(id -u)"
 readonly RUN_GID="$(id -g)"
 [ "$RUN_UID:$RUN_GID" = 1000:1000 ] \
     || fail 'the emulator workload requires numeric uid/gid 1000:1000'
-if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
+if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
+   || [ "$WORKLOAD" = app-lifecycle ] \
    || [ "$WORKLOAD" = app-peer-lifecycle ]; then
     [ "$WORK_ROOT" = /tmp/android-emulator-app ] \
         || fail 'the emulator app work root differs from the fixed private tmpfs path'
@@ -71,7 +76,8 @@ verify_regular_input \
     "$INPUT_ADB" 555 "$SIZE_ANDROID_PLATFORM_TOOLS_ADB_37_0_1" \
     "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1" 'Android adb executable'
 APK_SHA256=
-if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
+if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
+   || [ "$WORKLOAD" = app-lifecycle ] \
    || [ "$WORKLOAD" = app-peer-lifecycle ]; then
     [ -f "$RUNTIME_TEST_APK" ] && [ ! -L "$RUNTIME_TEST_APK" ] \
         || fail 'runtime-test APK is absent or ambiguous'
@@ -87,6 +93,27 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
     [[ "$APK_SHA256" =~ ^[0-9a-f]{64}$ ]] \
         || fail 'runtime-test APK digest is malformed'
     readonly APK_SHA256 apk_size
+fi
+RECENTS_GESTURE_SHA256=
+if [ "$WORKLOAD" = app-recents ] || [ "$WORKLOAD" = app-lifecycle ] \
+   || [ "$WORKLOAD" = app-peer-lifecycle ]; then
+    [ -f "$RECENTS_GESTURE_JAR" ] && [ ! -L "$RECENTS_GESTURE_JAR" ] \
+        || fail 'the Recents gesture driver is absent or ambiguous'
+    gesture_size="$(stat -c '%s' -- "$RECENTS_GESTURE_JAR")"
+    case "$gesture_size" in
+        ''|*[!0-9]*) fail 'the Recents gesture driver size is malformed' ;;
+    esac
+    [ "$gesture_size" -ge 512 ] && [ "$gesture_size" -le 1048576 ] \
+        || fail 'the Recents gesture driver size is outside the admitted range'
+    [ "$(stat -c '%u:%g:%a:%h' -- "$RECENTS_GESTURE_JAR")" = \
+      1000:1000:400:1 ] \
+        || fail 'the Recents gesture driver metadata differs'
+    RECENTS_GESTURE_SHA256="$(sha256sum "$RECENTS_GESTURE_JAR" | awk '{ print $1 }')"
+    [[ "$RECENTS_GESTURE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'the Recents gesture driver digest is malformed'
+    readonly RECENTS_GESTURE_SHA256 gesture_size
+elif [ -n "$RECENTS_GESTURE_JAR" ]; then
+    fail 'the launch-only Android scenario received a Recents gesture driver'
 fi
 
 mkdir -m 0700 -- "$WORK_ROOT"
@@ -284,11 +311,12 @@ readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
 readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=240000
 readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=240000
 readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
-# Android's shell input command generates a different motion-event stream from
-# Launcher3 TAPL.  This duration has completed the real pinned-image gesture.
-readonly RECENTS_DISMISS_GESTURE_MS=600
-readonly RECENTS_DISMISS_MAX_ATTEMPTS=2
+readonly RECENTS_DISMISS_GESTURE_STEPS=10
 readonly RECENTS_DISMISS_OUTCOME_POLLS=20
+readonly RECENTS_FOCUSED_CYCLES=10
+readonly RECENTS_GESTURE_DEVICE_PATH=/data/local/tmp/rustdesk-recents-dismiss.jar
+RECENTS_GESTURE_STAGED=0
+RECENTS_LAST_TASK_ID=
 # The retained failing artifact repeated the rejected credential after 129.4 s. This integration
 # observation intentionally spans that old behavior; focused development checks remain separate.
 readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=140000
@@ -1833,6 +1861,46 @@ wait_resumed_activity() {
     return 1
 }
 
+stage_recents_gesture_driver() {
+    local push_output= device_checksum= device_digest= device_path= extra=
+    [ "$RECENTS_GESTURE_STAGED" -eq 0 ] || return 1
+    push_output="$(timeout --signal=TERM --kill-after=2s 30s \
+        "$ADB" -s "$SERIAL" push --sync \
+        "$RECENTS_GESTURE_JAR" "$RECENTS_GESTURE_DEVICE_PATH" \
+        2>&1 | tr -d '\r')" \
+        || { printf '%s\n' "$push_output" >&2; return 1; }
+    [ "${#push_output}" -le 4096 ] || return 1
+    timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" shell chmod 0400 \
+        "$RECENTS_GESTURE_DEVICE_PATH" >/dev/null \
+        || return 1
+    device_checksum="$(adb_shell_value sha256sum \
+        "$RECENTS_GESTURE_DEVICE_PATH")" || return 1
+    read -r device_digest device_path extra <<<"$device_checksum"
+    [ "$device_digest" = "$RECENTS_GESTURE_SHA256" ] \
+        && [ "$device_path" = "$RECENTS_GESTURE_DEVICE_PATH" ] \
+        && [ -z "$extra" ] \
+        || return 1
+    RECENTS_GESTURE_STAGED=1
+    printf 'ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=%s framework=platform-uiautomator steps=%s device_path=%s\n' \
+        "$RECENTS_GESTURE_SHA256" "$RECENTS_DISMISS_GESTURE_STEPS" \
+        "$RECENTS_GESTURE_DEVICE_PATH"
+}
+
+retire_recents_gesture_driver() {
+    [ "$RECENTS_GESTURE_STAGED" -eq 1 ] || return 1
+    timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" shell rm -f \
+        "$RECENTS_GESTURE_DEVICE_PATH" >/dev/null \
+        || return 1
+    if timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" shell test -e \
+        "$RECENTS_GESTURE_DEVICE_PATH" >/dev/null 2>&1; then
+        return 1
+    fi
+    RECENTS_GESTURE_STAGED=0
+}
+
 app_task_state() {
     local state
     state="$(adb_shell_value dumpsys activity recents)" || return 1
@@ -1870,16 +1938,16 @@ current_app_task_id() {
 }
 
 swipe_app_task_from_recents() {
-    local expected_task_id=$1 lifecycle_cycle=$2 dismiss_attempt=$3
+    local expected_task_id=$1 lifecycle_cycle=$2
     local current_task_id= task_bounds=
     local left= top= right= bottom= center_x= start_y=
+    local gesture_output=
+    [ "$RECENTS_GESTURE_STAGED" -eq 1 ] || return 1
     current_task_id="$(current_app_task_id 2>/dev/null || true)"
     [ "$current_task_id" = "$expected_task_id" ] || return 1
-    if [ "$dismiss_attempt" -eq 1 ]; then
-        timeout --signal=TERM --kill-after=2s 10s \
-            "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_APP_SWITCH \
-            >/dev/null || return 1
-    fi
+    timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_APP_SWITCH \
+        >/dev/null || return 1
     task_bounds="$(wait_ui_resource_bounds \
         com.android.launcher3:id/snapshot 2>/dev/null || true)"
     if ! [[ "$task_bounds" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]]; then
@@ -1891,15 +1959,49 @@ swipe_app_task_from_recents() {
         && [ "$bottom" -gt 1 ] || return 1
     center_x=$(((left + right) / 2))
     start_y=$((bottom - 1))
-    timeout --signal=TERM --kill-after=2s 10s \
-        "$ADB" -s "$SERIAL" shell input swipe \
-        "$center_x" "$start_y" "$center_x" 0 \
-        "$RECENTS_DISMISS_GESTURE_MS" >/dev/null \
-        || return 1
-    printf 'ANDROID_RECENTS_DISMISS_ACTION=injected cycle=%s attempt=%s task_id=%s bounds=%s,%s,%s,%s start=%s,%s end=%s,%s duration_ms=%s\n' \
-        "$lifecycle_cycle" "$dismiss_attempt" "$expected_task_id" \
+    if ! gesture_output="$(timeout --signal=TERM --kill-after=2s 30s \
+        "$ADB" -s "$SERIAL" shell uiautomator runtest \
+        "${RECENTS_GESTURE_DEVICE_PATH##*/}" \
+        -c com.rustdesk.harness.AndroidRecentsDismiss#testDismissBoundTask \
+        -e start_x "$center_x" -e start_y "$start_y" \
+        -e end_x "$center_x" -e end_y 0 2>&1 | tr -d '\r')"; then
+        printf 'ANDROID_RECENTS_GESTURE_OUTPUT_BEGIN cycle=%s task_id=%s\n%s\nANDROID_RECENTS_GESTURE_OUTPUT_END cycle=%s task_id=%s\n' \
+            "$lifecycle_cycle" "$expected_task_id" "$gesture_output" \
+            "$lifecycle_cycle" "$expected_task_id" >&2
+        return 1
+    fi
+    [ "${#gesture_output}" -le 16384 ] \
+        && [ "$(grep -Fxc 'OK (1 test)' <<<"$gesture_output")" -eq 1 ] \
+        && ! grep -Fq 'FAILURES!!!' <<<"$gesture_output" \
+        || {
+            printf 'ANDROID_RECENTS_GESTURE_OUTPUT_BEGIN cycle=%s task_id=%s\n%s\nANDROID_RECENTS_GESTURE_OUTPUT_END cycle=%s task_id=%s\n' \
+                "$lifecycle_cycle" "$expected_task_id" "$gesture_output" \
+                "$lifecycle_cycle" "$expected_task_id" >&2
+            return 1
+        }
+    printf 'ANDROID_RECENTS_DISMISS_ACTION=injected cycle=%s task_id=%s bounds=%s,%s,%s,%s start=%s,%s end=%s,%s framework=platform-uiautomator steps=%s driver_sha256=%s\n' \
+        "$lifecycle_cycle" "$expected_task_id" \
         "$left" "$top" "$right" "$bottom" "$center_x" "$start_y" "$center_x" 0 \
-        "$RECENTS_DISMISS_GESTURE_MS"
+        "$RECENTS_DISMISS_GESTURE_STEPS" "$RECENTS_GESTURE_SHA256"
+}
+
+dismiss_current_app_task() {
+    local lifecycle_cycle=$1 task_id= observed_task_state=
+    task_id="$(current_app_task_id 2>/dev/null || true)"
+    [[ "$task_id" =~ ^[1-9][0-9]*$ ]] || return 1
+    swipe_app_task_from_recents "$task_id" "$lifecycle_cycle" || return 1
+    for _ in $(seq 1 "$RECENTS_DISMISS_OUTCOME_POLLS"); do
+        observed_task_state="$(app_task_state 2>/dev/null || true)"
+        if [ "$observed_task_state" = absent ]; then
+            RECENTS_LAST_TASK_ID=$task_id
+            printf 'ANDROID_RECENTS_DISMISS_OUTCOME=pass cycle=%s task_id=%s actions=1\n' \
+                "$lifecycle_cycle" "$task_id"
+            return 0
+        fi
+        [ "$observed_task_state" = "$task_id" ] || return 1
+        sleep 0.25
+    done
+    return 1
 }
 
 assert_main_service() {
@@ -2825,7 +2927,9 @@ fi
 APP_PID=
 LIFECYCLE_RECEIPT_READY=0
 PEER_RECEIPT_READY=0
-if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
+RECENTS_RECEIPT_READY=0
+if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
+   || [ "$WORKLOAD" = app-lifecycle ] \
    || [ "$WORKLOAD" = app-peer-lifecycle ]; then
     install_output="$(timeout --signal=TERM --kill-after=2s 180s \
         "$ADB" -s "$SERIAL" install --no-streaming --no-incremental \
@@ -2919,6 +3023,48 @@ PY
         || fail 'runtime-test application process did not survive initial rendering'
     wait_resumed_activity \
         || fail 'runtime-test MainActivity is not the resumed activity'
+
+    if [ "$WORKLOAD" = app-recents ]; then
+        assert_no_main_service \
+            || fail 'the focused Recents scenario began with MainService running'
+        stage_recents_gesture_driver \
+            || fail 'cannot stage the platform UiAutomator Recents driver'
+        focused_task_ids=
+        for lifecycle_cycle in $(seq 1 "$RECENTS_FOCUSED_CYCLES"); do
+            dismiss_current_app_task "$lifecycle_cycle" \
+                || {
+                    capture_ui_hierarchy && print_initial_ui_semantics
+                    fail "focused Recents cycle $lifecycle_cycle did not remove its bound task"
+                }
+            case " $focused_task_ids " in
+                *" $RECENTS_LAST_TASK_ID "*)
+                    fail "focused Recents cycle $lifecycle_cycle reused a removed task ID"
+                    ;;
+            esac
+            focused_task_ids="${focused_task_ids:+$focused_task_ids }$RECENTS_LAST_TASK_ID"
+            assert_no_main_service \
+                || fail "focused Recents cycle $lifecycle_cycle started MainService"
+            timeout --signal=TERM --kill-after=2s 60s \
+                "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" \
+                >/dev/null \
+                || fail "focused Recents relaunch $lifecycle_cycle failed"
+            wait_resumed_activity \
+                || fail "focused Recents relaunch $lifecycle_cycle did not resume MainActivity"
+            for _ in $(seq 1 120); do
+                APP_PID="$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)"
+                [[ "$APP_PID" =~ ^[1-9][0-9]*$ ]] && break
+                APP_PID=
+                sleep 0.25
+            done
+            [[ "$APP_PID" =~ ^[1-9][0-9]*$ ]] \
+                || fail "focused Recents relaunch $lifecycle_cycle has no application process"
+            assert_no_main_service \
+                || fail "focused Recents relaunch $lifecycle_cycle started MainService"
+        done
+        retire_recents_gesture_driver \
+            || fail 'the focused Recents gesture driver did not retire exactly'
+        RECENTS_RECEIPT_READY=1
+    fi
 
     if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then
         share_command=
@@ -3102,37 +3248,14 @@ PY
             exercise_peer_background_resume "$APP_PID"
         fi
 
+        stage_recents_gesture_driver \
+            || fail 'cannot stage the platform UiAutomator Recents driver'
         for lifecycle_cycle in 1 2; do
-            task_id="$(current_app_task_id 2>/dev/null || true)"
-            [[ "$task_id" =~ ^[1-9][0-9]*$ ]] \
-                || fail "cannot bind lifecycle task $lifecycle_cycle"
-            task_removed=0
-            dismiss_attempts=0
-            for dismiss_attempt in $(seq 1 "$RECENTS_DISMISS_MAX_ATTEMPTS"); do
-                swipe_app_task_from_recents \
-                    "$task_id" "$lifecycle_cycle" "$dismiss_attempt" \
-                    || fail "cannot swipe lifecycle task $lifecycle_cycle from Recents"
-                dismiss_attempts=$dismiss_attempt
-                observed_task_state=
-                for _ in $(seq 1 "$RECENTS_DISMISS_OUTCOME_POLLS"); do
-                    observed_task_state="$(app_task_state 2>/dev/null || true)"
-                    if [ "$observed_task_state" = absent ]; then
-                        task_removed=1
-                        break
-                    fi
-                    sleep 0.25
-                done
-                [ "$task_removed" -eq 0 ] || break
-                [ "$observed_task_state" = "$task_id" ] \
-                    || fail "lifecycle task $lifecycle_cycle state became ambiguous after the Recents swipe"
-            done
-            [ "$task_removed" -eq 1 ] \
+            dismiss_current_app_task "$lifecycle_cycle" \
                 || {
                     capture_ui_hierarchy && print_initial_ui_semantics
-                    fail "lifecycle task $lifecycle_cycle survived the bounded Recents swipes"
+                    fail "lifecycle task $lifecycle_cycle was not removed by its bound Recents action"
                 }
-            printf 'ANDROID_RECENTS_DISMISS_OUTCOME=pass cycle=%s task_id=%s attempts=%s\n' \
-                "$lifecycle_cycle" "$task_id" "$dismiss_attempts"
             [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = \
               "$APP_PID" ] \
                 || fail "task removal $lifecycle_cycle killed or replaced the service process"
@@ -3174,6 +3297,8 @@ PY
                     || PEER_TASK_RECOVERY_MAX_MS=$PEER_LAST_RECOVERY_MS
             fi
         done
+        retire_recents_gesture_driver \
+            || fail 'the lifecycle Recents gesture driver did not retire exactly'
 
         readonly PRE_FORCE_PID=$APP_PID
         timeout --signal=TERM --kill-after=2s 10s \
@@ -3323,13 +3448,24 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
         END { print count + 0 }' /proc/net/tcp)" -eq 0 ] \
         || fail 'the controlled Android peer listener survived teardown'
 fi
-if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-lifecycle ] \
+if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
+   || [ "$WORKLOAD" = app-lifecycle ] \
    || [ "$WORKLOAD" = app-peer-lifecycle ]; then
     [ "$(sha256sum "$RUNTIME_TEST_APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
         || fail 'runtime-test APK changed during emulator execution'
     printf 'ANDROID_EMULATOR_APP=pass emulator=%s api=%s abi=%s package=com.carriez.flutter_hbb activity=MainActivity launch_wait=%s state=resumed process=stable-five-seconds apk_sha256=%s signing=test-only acceleration=software gpu=swiftshader framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
         "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$LAUNCH_WAIT_STATUS" "$APK_SHA256" \
         "$framebuffer_dimensions" "$SELINUX"
+    if [ "$WORKLOAD" = app-recents ]; then
+        [ "$RECENTS_RECEIPT_READY" -eq 1 ] \
+            || fail 'the focused Recents receipt is not ready'
+        [ "$RECENTS_GESTURE_STAGED" -eq 0 ] \
+            || fail 'the focused Recents gesture driver remained staged'
+        printf 'ANDROID_EMULATOR_RECENTS=pass task_removals=%s actions=%s task_ids=distinct driver=platform-uiautomator steps=%s driver_sha256=%s service=never-started relaunch=resumed apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
+            "$RECENTS_FOCUSED_CYCLES" "$RECENTS_FOCUSED_CYCLES" \
+            "$RECENTS_DISMISS_GESTURE_STEPS" "$RECENTS_GESTURE_SHA256" \
+            "$APK_SHA256"
+    fi
     if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then
         [ "$LIFECYCLE_RECEIPT_READY" -eq 1 ] \
             || fail 'the Android lifecycle receipt is not ready'

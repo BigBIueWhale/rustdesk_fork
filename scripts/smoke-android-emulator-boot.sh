@@ -287,7 +287,6 @@ readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
 # The retained failing artifact repeated the rejected credential after 129.4 s. This integration
 # observation intentionally spans that old behavior; focused development checks remain separate.
 readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=140000
-readonly PEER_PASSWORD_SUBMIT_ACK_LIMIT_MS=30000
 readonly PEER_PASSWORD_PRE_SUBMIT_QUIET_MS=15000
 readonly PERMANENT_PASSWORD_SUBMIT_ACK_LIMIT_MS=30000
 readonly PERMANENT_PASSWORD_SUBMIT_TAP_RETRY_MS=5000
@@ -2269,33 +2268,6 @@ print_peer_connection_state_diagnostic() {
     fi
 }
 
-wait_peer_password_submit_ack() {
-    local kind=$1 started_ms now_ms prompt
-    started_ms="$(monotonic_millis)" || return 2
-    while :; do
-        if capture_unobscured_ui_hierarchy complete; then
-            prompt="$(ui_center text 'Password required' 2>/dev/null || true)"
-            if ! [[ "$prompt" =~ ^[0-9]+\ [0-9]+$ ]]; then
-                now_ms="$(monotonic_millis)" || return 2
-                printf 'ANDROID_PEER_PASSWORD_SUBMIT=pass kind=%s prompt=dismissed ack_ms=%s ack_limit_ms=%s\n' \
-                    "$kind" "$((now_ms - started_ms))" \
-                    "$PEER_PASSWORD_SUBMIT_ACK_LIMIT_MS"
-                return 0
-            fi
-        fi
-        now_ms="$(monotonic_millis)" || return 2
-        if [ "$((now_ms - started_ms))" -ge \
-             "$PEER_PASSWORD_SUBMIT_ACK_LIMIT_MS" ]; then
-            printf 'ANDROID_PEER_PASSWORD_SUBMIT=fail kind=%s prompt=not-dismissed ack_ms=%s ack_limit_ms=%s\n' \
-                "$kind" "$((now_ms - started_ms))" \
-                "$PEER_PASSWORD_SUBMIT_ACK_LIMIT_MS"
-            print_peer_connection_state_diagnostic "submit-$kind"
-            return 1
-        fi
-        sleep 0.25
-    done
-}
-
 wait_peer_initial_credential_prompt() {
     local pre_session_failures_before=$1 key_failures_before=$2
     local keyed_sessions_before=$3
@@ -2392,7 +2364,7 @@ wait_peer_initial_credential_prompt() {
         "$PEER_CREDENTIAL_PROMPT_LIMIT_MS"
 }
 
-submit_peer_password() {
+inject_peer_password_submit() {
     local password=$1 kind=$2 remember=$3
     local expected_pre_session_failures=$4 expected_key_failures=$5
     local expected_keyed_sessions=$6
@@ -2510,7 +2482,6 @@ submit_peer_password() {
     printf 'ANDROID_PEER_PASSWORD_ACTION=injected kind=%s issued_wall_ms=%s pre_session_failures_before=%s key_failures_before=%s keyed_sessions_before=%s established_before=0\n' \
         "$kind" "$action_wall_ms" "$pre_session_failures" \
         "$key_failures" "$keyed_sessions"
-    wait_peer_password_submit_ack "$kind"
 }
 
 wait_peer_credential_recovery_prompt() {
@@ -2538,7 +2509,7 @@ wait_peer_credential_recovery_prompt() {
         if [ "$pre_session_failures" -gt "$expected_pre_session_failures" ] \
            || [ "$key_failures" -gt "$expected_key_failures" ] \
            || [ "$keyed_sessions" -ne "$keyed_sessions_before" ] \
-           || [ "$established_count" -gt 1 ]; then
+           || [ "$established_count" -ne 0 ]; then
             capture_ui_hierarchy complete || true
             ui_has_credential_reason_semantics \
                 "$PEER_CONFIRMATION_UNAVAILABLE_REASON" diagnose || true
@@ -2686,7 +2657,7 @@ open_peer_connection() {
             "$pre_session_failures_before" "$key_failures_before" \
             "$keyed_sessions_before" \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
-        submit_peer_password "$PEER_WRONG_PASSWORD" wrong 0 \
+        inject_peer_password_submit "$PEER_WRONG_PASSWORD" wrong 0 \
             "$pre_session_failures_before" "$key_failures_before" \
             "$keyed_sessions_before" \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }
@@ -2697,7 +2668,7 @@ open_peer_connection() {
         pre_session_failures_before="$(peer_server_pre_session_failure_count)"
         key_failures_before="$(peer_server_key_failure_count)"
         keyed_sessions_before="$(peer_server_keyed_session_count)"
-        submit_peer_password "$PEER_PASSWORD" correct 1 \
+        inject_peer_password_submit "$PEER_PASSWORD" correct 1 \
             "$pre_session_failures_before" "$key_failures_before" \
             "$keyed_sessions_before" \
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; return 1; }

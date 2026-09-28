@@ -178,8 +178,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       _resumePresentation();
       trySyncClipboard();
     } else {
-      _suspendPresentation(
-          stopFrames: state != AppLifecycleState.inactive);
+      _suspendPresentation(stopFrames: state != AppLifecycleState.inactive);
     }
   }
 

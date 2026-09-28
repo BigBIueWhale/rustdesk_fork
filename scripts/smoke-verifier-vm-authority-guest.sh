@@ -3594,7 +3594,6 @@ run_flutter_model_tests() {
                     lib/common/widgets/toolbar.dart \
                     lib/models/android_permission_request_coordinator.dart \
                     lib/models/latest_frame_queue.dart \
-                    lib/models/model.dart \
                     lib/common/widgets/overlay.dart \
                     lib/common/widgets/permanent_password_dialog.dart \
                     lib/common/widgets/custom_password.dart \

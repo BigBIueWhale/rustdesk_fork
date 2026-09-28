@@ -4827,8 +4827,8 @@ class FFI {
         // Take ownership synchronously, then retain only one running and the
         // latest pending frame for each display while topology work completes.
         final ownedData = Uint8List.fromList(data);
-        final publication = _WebRgbaPublication(
-            ownedData, imageModel.presentationRevision);
+        final publication =
+            _WebRgbaPublication(ownedData, imageModel.presentationRevision);
         final frameTask = webRgbaFrames.submit(
             streamOwner,
             display,
@@ -4907,8 +4907,8 @@ class FFI {
               'The remote session state became inconsistent');
         }
       } else if (message is EventToUI_Rgba) {
-        final frame = _SoftwareRgbaPublication(message.field0, message.field1,
-            imageModel.presentationRevision);
+        final frame = _SoftwareRgbaPublication(
+            message.field0, message.field1, imageModel.presentationRevision);
         softwareRgbaFrames.submitObserved(
             streamOwner,
             message.field0,

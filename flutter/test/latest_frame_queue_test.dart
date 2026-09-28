@@ -162,8 +162,8 @@ void main() {
     final presented = <String>[];
     final oldQueue = LatestFrameQueue<String, int, String>('session-a');
 
-    final oldRunning = oldQueue.submit('session-a', 0, 'old-running',
-        (frame) async {
+    final oldRunning =
+        oldQueue.submit('session-a', 0, 'old-running', (frame) async {
       presented.add(frame);
       oldEntered.complete();
       await releaseOld.future;
@@ -261,8 +261,7 @@ void main() {
     releaseOld.complete();
     await Future<void>.delayed(Duration.zero);
     expect(failures, isEmpty);
-    expect(
-        await queue.submit('session-a', 0, 'successor', (_) async {}),
+    expect(await queue.submit('session-a', 0, 'successor', (_) async {}),
         LatestFrameDisposition.presented);
   });
 
@@ -292,8 +291,7 @@ void main() {
     expect(await second, LatestFrameDisposition.retired);
     expect(queue.recover('session-a'), isTrue);
 
-    await expectLater(
-        queue.submit('session-a', 0, 'overflow', (_) async {}),
+    await expectLater(queue.submit('session-a', 0, 'overflow', (_) async {}),
         throwsStateError);
     expect(queue.recover('session-a'), isFalse);
 
@@ -305,7 +303,8 @@ void main() {
   test('detached displays remain inside the queue-wide key bound', () async {
     final firstEntered = Completer<void>();
     final releaseFirst = Completer<void>();
-    final queue = LatestFrameQueue<String, int, String>('session-a', maxKeys: 1);
+    final queue =
+        LatestFrameQueue<String, int, String>('session-a', maxKeys: 1);
 
     final first = queue.submit('session-a', 0, 'first', (_) async {
       firstEntered.complete();

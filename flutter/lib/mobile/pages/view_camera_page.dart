@@ -164,8 +164,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     if (state == AppLifecycleState.resumed) {
       _resumePresentation();
     } else {
-      _suspendPresentation(
-          stopFrames: state != AppLifecycleState.inactive);
+      _suspendPresentation(stopFrames: state != AppLifecycleState.inactive);
     }
   }
 

@@ -1143,6 +1143,13 @@ component as both a `javac` and D8 library, records and validates its live SHA-2
 `uiautomator.jar`, and D8, and rechecks all four after execution. No dependency was downloaded or added to the
 product. The failed VM powered off, listener delta/drift files are empty, and its evidence root is retained.
 
+Focused replay `run.ASNuXsiGsN` compiled and D8-transformed the driver twice and passed byte equality, then stopped
+before emulator launch because the nested receipt shell expanded awk's `$1` under `set -u` instead of passing it
+to awk. The artifact digest field was therefore empty and the verifier rejected its own receipt. Current source
+removes the nested positional expansion and selects the first literal `sha256sum` field with `cut`. This changes no
+driver bytes or product path. The failed VM powered off, listener delta/drift files are empty, and its evidence
+root is retained.
+
 The last complete task-removal/foreground-service/MediaProjection/Force-Stop lifecycle pass remains older source
 `48acf94e1a26bf51af1f8e697a11cfe2aa84cbd4`, harness
 `eeb4327e0ba5c4677ba6571f97ca95bf14beeed1`, and APK

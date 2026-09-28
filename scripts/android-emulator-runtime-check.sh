@@ -308,7 +308,7 @@ VERIFY_CONTAINER="$(vm_docker create \
         rm -rf -- /driver/classes-a /driver/classes-b \
             /driver/recents-dismiss-a.jar /driver/recents-dismiss-b.jar
         printf "ANDROID_RECENTS_GESTURE_BUILD=pass sha256=%s source_sha256=%s android_jar_sha256=%s uiautomator_jar_sha256=%s test_base_jar_sha256=%s d8_sha256=%s copies=2 equality=byte-identical network=none output=private-bind\\n" \
-            "$(sha256sum /driver/recents-dismiss.jar | awk "{ print \\$1 }")" \
+            "$(sha256sum /driver/recents-dismiss.jar | cut -d " " -f 1)" \
             '"$RECENTS_DRIVER_SOURCE_SHA256"' '"$ANDROID_PLATFORM_JAR_SHA256"' \
             '"$ANDROID_UIAUTOMATOR_JAR_SHA256"' '"$ANDROID_TEST_BASE_JAR_SHA256"' \
             '"$ANDROID_D8_SHA256"'

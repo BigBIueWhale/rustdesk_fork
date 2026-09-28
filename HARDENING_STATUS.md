@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-ff79fba0d70e7b549a89c14e11ddc12f0bd515d92d0e80e68862276bbcc392a8  requirements.html
+9d392c6057cd8e25d9a18c15fecba0d1a5edfbf62a5dedcf59a28e2933da0562  requirements.html
 ```
 
 ## Current Verdict
@@ -868,14 +868,18 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   one fixed literal `TERM` from service-owned platform policy after `env_clear`; it does not enumerate user
   processes, ingest their environment, or parse an ambient-selected terminfo database. Installed-service execution
   remains open.
-- **R-S11fr/R-S11e-205 exact software-RGBA presentation recovery and asynchronous commit order** — Source and
-  focused generated-bridge/model execution are green. Recovery rotates and redelivers the exact bounded software
-  publication before native re-notification and peer refresh. Dart atomically takes native ownership before its
-  first await, serializes each display through one-running/one-latest work, and permits only the newest still-current
-  asynchronous decode to replace the displayed `ui.Image`; `CustomPainter.paint` is not treated as a compositor
-  receipt. The three Rust recovery regressions passed in the 41-test `4aee0323` VM transaction, and the six exact
-  asynchronous-ordering tests passed within the 120-test `4ebeaa73` Flutter transaction. Target-native lifecycle,
-  actual presentation, capture-to-present latency, performance/soak, and artifact evidence remain open.
+- **R-S11fr/R-S11e-205 exact software-RGBA presentation recovery and asynchronous commit order** — The prior
+  one-running/one-latest Dart lane still serialized a recovered frame behind an uncancellable suspended Flutter
+  decode, contradicting the requirement that recovery not depend on that callback completing. Current source closes
+  inactive software admission, detaches the old lane, invalidates its presentation revision, and opens a fresh lane
+  before native re-arm and peer refresh. A detached completion cannot commit, fail, consume, or retire its successor;
+  one detached plus one current drain is the per-display limit, detached keys remain in the queue-wide display bound,
+  and exhaustion fails visibly. Desktop blur continues consuming while the window may remain visible; minimize, tab
+  deselection, and mobile hidden/paused/detached states suspend software presentation. The Android controlled-side
+  persistent service is unchanged. Exact-owner bypass, detached-failure isolation, and both resource bounds have
+  focused behavioral regressions, but exact generated-bridge/model execution for this source is pending. The earlier
+  native mailbox recovery regressions remain valid for their named commit only. Current Android/iOS lifecycle,
+  Windows software/native presentation, actual pixels, latency, performance/soak, and artifact evidence remain open.
 - **R-S11fs/R-S11e-206 pointer-evidenced desktop presentation recovery** — Source closed. A pointer event delivered
   to the exact Windows remote canvas always consults the same coalesced exact-owner presentation recovery used by a
   real focus event. A stale blur flag is still cleared, but recovery no longer depends on that second flag: a pending
@@ -973,42 +977,38 @@ resource/soak, physical-device, current artifact, cold R-B2/R-B10, independent-r
 obligations remain open.
 
 The current retained x86_64 test APK is source commit
-`67332db4ec32e1d4b67612808acc840e1658973a`, tree
-`8390c1439f834b6e46b203e1571e00255992874e`, and SHA-256
-`1c889e3cb09a4510851b14d6b8d2e33e6ba7442949fb52e585dbb1653abce361`. It was built from exact clean pushed
-source and published as a commit-bound test-only artifact. The first causal zero-NIC replay at clean pushed harness
-`b9be3fc9c5412d91b5d76cec97768a4b275993e7` independently admitted, installed, and launched that APK on
-Android 14, reached the foreground service, MediaProjection-ready UI, production peer, password UI, and CPace path,
-and left no harness-created host listener during execution or after cleanup. It proved that a missing credential
-caused no network attempt, one deliberate wrong-password tap caused exactly one failed CPace attempt and the typed
-`PeerConfirmationUnavailable` UI, no automatic retry occurred during 140 seconds, and one later correct-password
-tap established the session. The real client then received peer information, created a VP9 decoder, and copied and
-acknowledged four native/Dart RGBA publications. The run failed its external display-freshness observation before a
-complete lifecycle receipt; guest/container/emulator/ADB/VM/virtiofs cleanup joined and failed evidence root
-`run.z2kFyl0sWd` remains retained. This is not a stable-signed release APK. The last complete task-removal/
-foreground-service/MediaProjection/Force-Stop lifecycle pass remains the older source
+`5a1604c81a381008e3b72ed619992e6094f42abd`, tree
+`c0b10fb2341010e971dc496690e61891396f026a`, and SHA-256
+`3096e9b5e652865f2317160ccc4e593c23f24f9310dd5ee0a0e56600021c2648`. It was built from exact clean pushed
+source, independently inspected, installed, and launched on Android 14 as a commit-bound test-only artifact. It is
+not a stable-signed release APK and predates the current presentation-generation correction.
+
+The current real-peer/presentation verdict is **FAILED / OPEN**. Retained zero-NIC run `run.QpoczThYDu` replayed
+that exact APK with the same source as harness authority. It proved missing-credential silence, one deliberate wrong
+CPace attempt, no automatic retry, deliberate correct-credential recovery, a real VP9 peer, changing initial pixels,
+and changing pixels 560--760 ms after a real background/resume cycle. Its later task-swipe verdict was invalid: the
+Android 14 AOSP dump placed the removed task only in `mHiddenTasks`, while the harness parser incorrectly treated any
+later task record as active. Commit `8c55664287d2e7afdf3f3372177f0b0b1b7227eb` restricts that observation to the
+active recent-task section; the product result is neither a task-removal failure nor a full lifecycle pass.
+
+The next run, `run.aoi1TDknyU`, used that corrected harness with the identical APK. Credential and real-peer setup
+again passed, and the raw observer continued publishing fresh frames while the controlled source advanced. The
+display initially reached state 184, then did not become fresh/changing during the eight-second limit. Its retained
+diagnostic framebuffer contained state 192 across 12 decoded rows and state 208 across six rows while source state
+was 213, showing a partial newer presentation beginning at the timeout rather than a disconnected transport. This
+does not isolate Flutter decode, raster, compositor, or Android display scheduling, and the earlier successful run
+shows the symptom is intermittent. Read-only source tracing nevertheless found an independent correctness defect:
+software recovery rearmed native state but queued its new Dart decode behind the same possibly suspended async
+lane. The current source correction replaces that lane generation; no corrected APK has executed yet. Both failed
+roots are retained, their emulator/ADB/container/VM cleanup joined, and neither run added a host listener.
+
+The last complete task-removal/foreground-service/MediaProjection/Force-Stop lifecycle pass remains older source
 `48acf94e1a26bf51af1f8e697a11cfe2aa84cbd4`, harness
 `eeb4327e0ba5c4677ba6571f97ca95bf14beeed1`, and APK
 `8036056ecb5d7df1888bbfef44866bfb8b169cbcfc2b4f756ab64361a5c05774`; it is historical evidence, not a current-
-artifact lifecycle pass.
-
-The current real-peer/presentation verdict is **FAILED / OPEN**. One predecessor-artifact replay authenticated,
-received peer information, decoded VP9, copied exact BGRA bytes into engine RGBA, and obtained Dart image/publication
-receipts, but its 3.01--3.30-second PNG observations invalidated the claimed two-second freshness verdict. The strict
-Android-14 gRPC raw-frame observer that replaced it is now actually executed. One replay received 2,311 emulator
-frames, published 1,988, and sampled eight newly sequenced raw frames at 61--175 ms observer age after exact
-credential recovery, but the first decoder rejected the 182/195-luma presentation overlay with an unjustified
-48-level contrast floor. Harness commits `b9be3fc9c5412d91b5d76cec97768a4b275993e7` and
-`20e8b9d923d00b1ff63264ba851d8fd392216bc5` replaced that predicate with fixed guards, eight Manchester pairs,
-global class separation, repeated-row geometry, and live-source freshness. The corrected decoder then executed in
-retained zero-NIC run `run.BsU5WBfbDT` at harness `0a5fb983`: it decoded 144 rows at 13-level contrast but found the
-displayed code 18 source generations—about 4.5 seconds—behind, so the run correctly failed freshness. That artifact
-was deliberately perturbing: it forced Flutter software rendering and performed engine-image and root-layer
-readbacks plus extensive widget/layer diagnostics. It is diagnostic evidence, not ordinary-product or release
-evidence and cannot establish whether the uninstrumented renderer has the same delay. Current source deletes those
-readbacks, diagnostic logs, and forced-renderer launch arguments. A fresh ordinary-renderer artifact and external
-framebuffer replay are required before causal or product-freshness conclusions. UI finality, background/task
-recovery, and the rest of the lifecycle remain open.
+artifact lifecycle pass. Exact-current Android background/task/reopen/Force-Stop execution, stable presentation
+freshness, resource soak, physical-device behavior, and the reported Windows software/native focus delay all remain
+release-blocking.
 
 The source-level CPace recovery defect exposed by the later replay is corrected at
 `714141e9741922c64489a64f18515e49f4090b96`. After step 3 has been sent successfully, and only while the initiator

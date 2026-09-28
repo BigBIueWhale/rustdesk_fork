@@ -164,7 +164,17 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     if (state == AppLifecycleState.resumed) {
       _resumePresentation();
     } else {
-      _presentationRecovery.suspend();
+      _suspendPresentation(
+          stopFrames: state != AppLifecycleState.inactive);
+    }
+  }
+
+  void _suspendPresentation({required bool stopFrames}) {
+    _presentationRecovery.suspend();
+    if (stopFrames &&
+        !gFFI.suspendPresentation(sessionId, gFFI.clientOwnerId) &&
+        gFFI.isCurrentSession(sessionId)) {
+      debugPrint('Mobile camera presentation suspension lost its exact owner');
     }
   }
 
@@ -185,7 +195,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
 
   Future<void> _refreshPresentation() async {
     if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
-    await sessionRefreshVideo(sessionId, gFFI.clientOwnerId);
+    await gFFI.refreshPresentation(sessionId, gFFI.clientOwnerId);
   }
 
   void _onPresentationRefreshError(Object error, StackTrace stackTrace) {

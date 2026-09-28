@@ -169,7 +169,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   @override
   void onWindowBlur() {
     super.onWindowBlur();
-    _presentationRecovery.suspend();
+    _suspendPresentation(stopFrames: false);
     // On windows, we use `focus` way to handle keyboard better.
     // Now on Linux, there's some rdev issues which will break the input.
     // We disable the `focus` way for non-Windows temporarily.
@@ -216,7 +216,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   @override
   void onWindowMinimize() {
     super.onWindowMinimize();
-    _presentationRecovery.suspend();
+    _suspendPresentation(stopFrames: true);
     WakelockManager.disable(_uniqueKey);
   }
 
@@ -327,7 +327,16 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     if (selected) {
       _resumePresentationIfNeeded();
     } else {
-      _presentationRecovery.suspend();
+      _suspendPresentation(stopFrames: true);
+    }
+  }
+
+  void _suspendPresentation({required bool stopFrames}) {
+    _presentationRecovery.suspend();
+    if (stopFrames &&
+        !_ffi.suspendPresentation(sessionId, _ffi.clientOwnerId) &&
+        _ffi.isCurrentSession(sessionId)) {
+      debugPrint('Desktop camera presentation suspension lost its exact owner');
     }
   }
 
@@ -358,7 +367,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
 
   Future<void> _refreshPresentation() async {
     if (!mounted || !_ffi.isCurrentSession(sessionId)) return;
-    await sessionRefreshVideo(sessionId, _ffi.clientOwnerId);
+    await _ffi.refreshPresentation(sessionId, _ffi.clientOwnerId);
   }
 
   void _onPresentationRefreshError(Object error, StackTrace stackTrace) {

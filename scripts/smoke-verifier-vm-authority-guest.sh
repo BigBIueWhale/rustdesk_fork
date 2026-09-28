@@ -3590,13 +3590,20 @@ run_flutter_model_tests() {
                 format_status=0
                 : >/work/format.diff
                 for format_path in \
+                    lib/common.dart \
+                    lib/common/widgets/toolbar.dart \
                     lib/models/android_permission_request_coordinator.dart \
+                    lib/models/latest_frame_queue.dart \
+                    lib/models/model.dart \
                     lib/common/widgets/overlay.dart \
                     lib/common/widgets/permanent_password_dialog.dart \
                     lib/common/widgets/custom_password.dart \
                     lib/models/reconnect_schedule_authority.dart \
+                    lib/desktop/pages/remote_page.dart \
+                    lib/desktop/pages/view_camera_page.dart \
                     lib/mobile/pages/remote_page.dart \
                     lib/mobile/pages/view_camera_page.dart \
+                    test/latest_frame_queue_test.dart \
                     test/blockable_overlay_test.dart \
                     test/android_permission_request_coordinator_test.dart \
                     test/permanent_password_dialog_lifecycle_test.dart \
@@ -3704,7 +3711,7 @@ run_flutter_model_tests() {
         || { tail -n 240 "$output" >&2; fail 'Flutter-tools offline-freshness receipt is absent'; }
     [ "$(grep -Fc 'FLUTTER_TOOLS_OFFLINE_FRESHNESS=' "$output")" -eq 1 ] \
         || fail 'Flutter-tools offline-freshness receipt is duplicated'
-    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=18 tests=125' "$output")" \
+    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=18 tests=129' "$output")" \
         || { tail -n 240 "$output" >&2; fail 'focused Flutter-test success summary is absent'; }
     [ "$(grep -Fc 'FLUTTER_MODEL_TEST_JSON=' "$output")" -eq 1 ] \
         || fail 'focused Flutter-test result summary is duplicated'
@@ -3729,7 +3736,7 @@ run_flutter_model_tests() {
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$tools_freshness_line"
     printf '%s\n' "$result_line"
-    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=18 tests=125 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
+    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=18 tests=129 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
         "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
         "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
         "$SHA256_CARGO_VENDOR_CLOSURE_V1" \

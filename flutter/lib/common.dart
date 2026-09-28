@@ -3147,11 +3147,6 @@ String getDesktopTabLabel(String peerId, String alias) {
   return label;
 }
 
-sessionRefreshVideo(SessionID sessionId, SessionID clientOwnerId) async {
-  await bind.sessionRefresh(
-      sessionId: sessionId, clientOwnerId: clientOwnerId);
-}
-
 Future<List<Rect>> getScreenListWayland() async {
   final screenRectList = <Rect>[];
   if (isMainDesktopWindow) {

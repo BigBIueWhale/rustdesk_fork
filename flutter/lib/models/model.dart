@@ -76,10 +76,19 @@ class _SessionOwner {
 }
 
 class _SoftwareRgbaPublication {
-  const _SoftwareRgbaPublication(this.display, this.publication);
+  const _SoftwareRgbaPublication(
+      this.display, this.publication, this.presentationRevision);
 
   final int display;
   final int publication;
+  final int presentationRevision;
+}
+
+class _WebRgbaPublication {
+  const _WebRgbaPublication(this.data, this.presentationRevision);
+
+  final Uint8List data;
+  final int presentationRevision;
 }
 
 class _WebCursorPosition {
@@ -1842,6 +1851,7 @@ class VirtualMouseMode with ChangeNotifier {
 
 class ImageModel with ChangeNotifier {
   ui.Image? _image;
+  int _presentationRevision = 0;
   final ExactRgbaPublicationOrder<SessionID> _rgbaPublicationOrder =
       ExactRgbaPublicationOrder<SessionID>();
 
@@ -1863,7 +1873,13 @@ class ImageModel with ChangeNotifier {
 
   addCallbackOnFirstImage(Function(String) cb) => callbacksOnFirstImage.add(cb);
 
+  int get presentationRevision => _presentationRevision;
+
+  bool isCurrentPresentationRevision(int expectedRevision) =>
+      expectedRevision == _presentationRevision;
+
   void retirePresentation() {
+    _presentationRevision += 1;
     _rgbaPublicationOrder.retire();
   }
 
@@ -1879,12 +1895,18 @@ class ImageModel with ChangeNotifier {
 
   Future<bool> onRgba(
       SessionID expectedSessionId, int display, Uint8List rgba,
-      {int? publication, required int expectedDisplayTopologyRevision}) async {
+      {int? publication,
+      required int expectedDisplayTopologyRevision,
+      required int expectedPresentationRevision}) async {
     RgbaPublicationAdmission<SessionID>? admission;
+    if (!isCurrentPresentationRevision(expectedPresentationRevision)) {
+      return false;
+    }
     if (publication != null) {
       if (parent.target?.ffiModel.isCurrentDisplayTopology(
-              expectedSessionId, expectedDisplayTopologyRevision) ==
-          true) {
+                  expectedSessionId, expectedDisplayTopologyRevision) ==
+              true &&
+          isCurrentPresentationRevision(expectedPresentationRevision)) {
         admission = _rgbaPublicationOrder.admit(
             expectedSessionId, display, publication);
       }
@@ -1896,7 +1918,8 @@ class ImageModel with ChangeNotifier {
       return await decodeAndUpdate(expectedSessionId, display, rgba,
           expectedRgbaPublication: admission,
           expectedDisplayTopologyRevision:
-              expectedDisplayTopologyRevision);
+              expectedDisplayTopologyRevision,
+          expectedPresentationRevision: expectedPresentationRevision);
     } catch (e) {
       debugPrint('onRgba error: $e');
       return false;
@@ -1906,10 +1929,12 @@ class ImageModel with ChangeNotifier {
   Future<bool> decodeAndUpdate(
       SessionID expectedSessionId, int display, Uint8List rgba,
       {RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,
-      required int expectedDisplayTopologyRevision}) async {
+      required int expectedDisplayTopologyRevision,
+      required int expectedPresentationRevision}) async {
     if (parent.target?.ffiModel.isCurrentDisplayTopology(
-            expectedSessionId, expectedDisplayTopologyRevision) !=
-        true ||
+                expectedSessionId, expectedDisplayTopologyRevision) !=
+            true ||
+        !isCurrentPresentationRevision(expectedPresentationRevision) ||
         (expectedRgbaPublication != null &&
             !_rgbaPublicationOrder.isCurrent(expectedRgbaPublication))) {
       return false;
@@ -1927,8 +1952,9 @@ class ImageModel with ChangeNotifier {
       return false;
     }
     if (parent.target?.ffiModel.isCurrentDisplayTopology(
-            expectedSessionId, expectedDisplayTopologyRevision) !=
-        true ||
+                expectedSessionId, expectedDisplayTopologyRevision) !=
+            true ||
+        !isCurrentPresentationRevision(expectedPresentationRevision) ||
         (expectedRgbaPublication != null &&
             !_rgbaPublicationOrder.isCurrent(expectedRgbaPublication))) {
       image.dispose();
@@ -1937,14 +1963,16 @@ class ImageModel with ChangeNotifier {
     return update(image,
         expectedSessionId: expectedSessionId,
         expectedRgbaPublication: expectedRgbaPublication,
-        expectedDisplayTopologyRevision: expectedDisplayTopologyRevision);
+        expectedDisplayTopologyRevision: expectedDisplayTopologyRevision,
+        expectedPresentationRevision: expectedPresentationRevision);
   }
 
   Future<bool> update(ui.Image? image,
       {SessionID? expectedSessionId,
       bool allowClosedSession = false,
       RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,
-      int? expectedDisplayTopologyRevision}) async {
+      int? expectedDisplayTopologyRevision,
+      int? expectedPresentationRevision}) async {
     bool acceptsExpectedImage() =>
         (expectedSessionId == null ||
             (allowClosedSession
@@ -1953,6 +1981,8 @@ class ImageModel with ChangeNotifier {
                     true)) &&
         (expectedRgbaPublication == null ||
             _rgbaPublicationOrder.isCurrent(expectedRgbaPublication)) &&
+        (expectedPresentationRevision == null ||
+            isCurrentPresentationRevision(expectedPresentationRevision)) &&
         (expectedDisplayTopologyRevision == null ||
             (expectedSessionId != null &&
                 parent.target?.ffiModel.isCurrentDisplayTopology(
@@ -4099,7 +4129,7 @@ class RecordingModel with ChangeNotifier {
     final sessionId = ffi.sessionId;
     bool value = !_start;
     if (value) {
-      await sessionRefreshVideo(sessionId, ffi.clientOwnerId);
+      await ffi.refreshPresentation(sessionId, ffi.clientOwnerId);
     }
     await bind.sessionRecordScreen(sessionId: sessionId, start: value);
   }
@@ -4163,7 +4193,7 @@ class FFI {
       SessionStreamGeneration<_SessionOwner>();
   late LatestFrameQueue<_SessionOwner, int, _SoftwareRgbaPublication>
       _softwareRgbaFrames;
-  late LatestFrameQueue<_SessionOwner, int, Uint8List> _webRgbaFrames;
+  late LatestFrameQueue<_SessionOwner, int, _WebRgbaPublication> _webRgbaFrames;
   late LatestFrameQueue<_SessionOwner, int, _WebCursorPosition>
       _webCursorPositions;
   late LatestFrameQueue<_SessionOwner, int, _WebCursorShape>
@@ -4183,6 +4213,44 @@ class FFI {
           SessionID expectedSessionId, SessionID expectedClientOwnerId) =>
       isCurrentSession(expectedSessionId) &&
       clientOwnerId == expectedClientOwnerId;
+
+  bool suspendPresentation(
+      SessionID expectedSessionId, SessionID expectedClientOwnerId) {
+    final expectedOwner =
+        _SessionOwner(expectedSessionId, expectedClientOwnerId);
+    if (expectedOwner != _sessionOwner ||
+        !isCurrentSessionOwner(expectedSessionId, expectedClientOwnerId)) {
+      return false;
+    }
+    final suspended = isWeb
+        ? _webRgbaFrames.suspend(expectedOwner)
+        : _softwareRgbaFrames.suspend(expectedOwner);
+    if (!suspended) {
+      return false;
+    }
+    imageModel.retirePresentation();
+    return true;
+  }
+
+  Future<void> refreshPresentation(
+      SessionID expectedSessionId, SessionID expectedClientOwnerId) async {
+    final expectedOwner =
+        _SessionOwner(expectedSessionId, expectedClientOwnerId);
+    if (expectedOwner != _sessionOwner ||
+        !isCurrentSessionOwner(expectedSessionId, expectedClientOwnerId)) {
+      throw StateError('presentation refresh owner is no longer current');
+    }
+    final recovered = isWeb
+        ? _webRgbaFrames.recover(expectedOwner)
+        : _softwareRgbaFrames.recover(expectedOwner);
+    if (!recovered) {
+      throw StateError('presentation frame queue cannot recover');
+    }
+    imageModel.retirePresentation();
+    await bind.sessionRefresh(
+        sessionId: expectedSessionId,
+        clientOwnerId: expectedClientOwnerId);
+  }
 
   SessionStreamBinding<_SessionOwner> _reserveSessionStream(
       SessionID expectedSessionId) {
@@ -4499,6 +4567,10 @@ class FFI {
       _SessionOwner streamOwner,
       SessionID activeSessionId,
       _SoftwareRgbaPublication frame) async {
+    if (!imageModel
+        .isCurrentPresentationRevision(frame.presentationRevision)) {
+      return;
+    }
     // Atomically take the newest bytes represented by this exact token before
     // any asynchronous UI work. Native flow control never waits for Flutter's
     // paint or compositor scheduling.
@@ -4508,13 +4580,20 @@ class FFI {
 
     final topologyRevision = await _displayTopologyAfterCheckpoint(
         sessionEvents, streamOwner, activeSessionId);
-    if (topologyRevision == null) return;
+    if (topologyRevision == null ||
+        !imageModel
+            .isCurrentPresentationRevision(frame.presentationRevision)) {
+      return;
+    }
 
     final committed = await imageModel.onRgba(
         activeSessionId, frame.display, rgba,
         publication: frame.publication,
-        expectedDisplayTopologyRevision: topologyRevision);
-    if (committed) {
+        expectedDisplayTopologyRevision: topologyRevision,
+        expectedPresentationRevision: frame.presentationRevision);
+    if (committed &&
+        imageModel
+            .isCurrentPresentationRevision(frame.presentationRevision)) {
       await onEvent2UIRgba(activeSessionId, topologyRevision,
           imageGeometryInitialized: true);
     }
@@ -4659,13 +4738,25 @@ class FFI {
       _SessionOwner streamOwner,
       SessionID activeSessionId,
       int display,
-      Uint8List data) async {
+      _WebRgbaPublication frame) async {
+    if (!imageModel
+        .isCurrentPresentationRevision(frame.presentationRevision)) {
+      return;
+    }
     final topologyRevision = await _displayTopologyAfterCheckpoint(
         sessionEvents, streamOwner, activeSessionId);
-    if (topologyRevision == null) return;
-    final presented = await imageModel.onRgba(activeSessionId, display, data,
-        expectedDisplayTopologyRevision: topologyRevision);
-    if (presented) {
+    if (topologyRevision == null ||
+        !imageModel
+            .isCurrentPresentationRevision(frame.presentationRevision)) {
+      return;
+    }
+    final presented = await imageModel.onRgba(
+        activeSessionId, display, frame.data,
+        expectedDisplayTopologyRevision: topologyRevision,
+        expectedPresentationRevision: frame.presentationRevision);
+    if (presented &&
+        imageModel
+            .isCurrentPresentationRevision(frame.presentationRevision)) {
       await onEvent2UIRgba(activeSessionId, topologyRevision,
           imageGeometryInitialized: true);
     }
@@ -4736,13 +4827,15 @@ class FFI {
         // Take ownership synchronously, then retain only one running and the
         // latest pending frame for each display while topology work completes.
         final ownedData = Uint8List.fromList(data);
-        final frame = webRgbaFrames.submit(
+        final publication = _WebRgbaPublication(
+            ownedData, imageModel.presentationRevision);
+        final frameTask = webRgbaFrames.submit(
             streamOwner,
             display,
-            ownedData,
-            (rgba) => _handleWebRgba(sessionEvents, streamOwner,
-                activeSessionId, display, rgba));
-        unawaited(frame.then<void>((_) {},
+            publication,
+            (publication) => _handleWebRgba(sessionEvents, streamOwner,
+                activeSessionId, display, publication));
+        unawaited(frameTask.then<void>((_) {},
             onError: (Object error, StackTrace stackTrace) {
           debugPrint('Web RGBA presentation failed: ${error.runtimeType}');
           _reportSessionStreamFailure(activeSessionId, peerId,
@@ -4778,7 +4871,7 @@ class FFI {
           ffiModel.setPermissions(data.permissions);
           await ffiModel.handleCachedPeerData(data, peerId, activeSessionId);
           if (!isCurrentSession(activeSessionId)) return;
-          await sessionRefreshVideo(activeSessionId, clientOwnerId);
+          await refreshPresentation(activeSessionId, clientOwnerId);
           if (!isCurrentSession(activeSessionId)) return;
           await bind.sessionRequestNewDisplayInitMsgs(
               sessionId: activeSessionId, display: ffiModel.pi.currentDisplay);
@@ -4814,10 +4907,12 @@ class FFI {
               'The remote session state became inconsistent');
         }
       } else if (message is EventToUI_Rgba) {
+        final frame = _SoftwareRgbaPublication(message.field0, message.field1,
+            imageModel.presentationRevision);
         softwareRgbaFrames.submitObserved(
             streamOwner,
             message.field0,
-            _SoftwareRgbaPublication(message.field0, message.field1),
+            frame,
             (frame) => _handleSoftwareRgba(
                 sessionEvents, streamOwner, activeSessionId, frame),
             onError: (error, stackTrace) {

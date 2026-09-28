@@ -192,4 +192,135 @@ void main() {
     expect(oldQueue.retire('session-a'), isTrue);
     expect(presented, ['old-running', 'replacement']);
   });
+
+  test('recovery bypasses a detached asynchronous presentation', () async {
+    final oldEntered = Completer<void>();
+    final releaseOld = Completer<void>();
+    final presented = <String>[];
+    final queue = LatestFrameQueue<String, int, String>('session-a');
+
+    final old = queue.submit('session-a', 0, 'old', (frame) async {
+      presented.add(frame);
+      oldEntered.complete();
+      await releaseOld.future;
+    });
+    await oldEntered.future;
+    final pending = queue.submit('session-a', 0, 'pending', (frame) async {
+      presented.add(frame);
+    });
+
+    expect(queue.suspend('session-b'), isFalse);
+    expect(queue.recover('session-b'), isFalse);
+    expect(queue.suspend('session-a'), isTrue);
+    expect(await old, LatestFrameDisposition.retired);
+    expect(await pending, LatestFrameDisposition.retired);
+    expect(
+        await queue.submit('session-a', 0, 'while-suspended', (frame) async {
+          presented.add(frame);
+        }),
+        LatestFrameDisposition.retired);
+
+    expect(queue.recover('session-a'), isTrue);
+    expect(
+        await queue.submit('session-a', 0, 'replacement', (frame) async {
+          presented.add(frame);
+        }),
+        LatestFrameDisposition.presented);
+    expect(presented, ['old', 'replacement']);
+
+    releaseOld.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(presented, ['old', 'replacement']);
+  });
+
+  test('a detached failure cannot retire its recovered generation', () async {
+    final oldEntered = Completer<void>();
+    final releaseOld = Completer<void>();
+    final replacementPresented = Completer<void>();
+    final failures = <Object>[];
+    final queue = LatestFrameQueue<String, int, String>('session-a');
+
+    expect(
+        queue.submitObserved('session-a', 0, 'old', (_) async {
+          oldEntered.complete();
+          await releaseOld.future;
+          throw StateError('detached failure');
+        }, onError: (error, stackTrace) => failures.add(error)),
+        isTrue);
+    await oldEntered.future;
+
+    expect(queue.suspend('session-a'), isTrue);
+    expect(queue.recover('session-a'), isTrue);
+    expect(
+        queue.submitObserved('session-a', 0, 'replacement', (_) async {
+          replacementPresented.complete();
+        }, onError: (error, stackTrace) => failures.add(error)),
+        isTrue);
+    await replacementPresented.future;
+
+    releaseOld.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(failures, isEmpty);
+    expect(
+        await queue.submit('session-a', 0, 'successor', (_) async {}),
+        LatestFrameDisposition.presented);
+  });
+
+  test('recovery fails visibly at the per-display drain bound', () async {
+    final firstEntered = Completer<void>();
+    final secondEntered = Completer<void>();
+    final releaseFirst = Completer<void>();
+    final releaseSecond = Completer<void>();
+    final queue = LatestFrameQueue<String, int, String>('session-a',
+        maxConcurrentDrainsPerKey: 2);
+
+    final first = queue.submit('session-a', 0, 'first', (_) async {
+      firstEntered.complete();
+      await releaseFirst.future;
+    });
+    await firstEntered.future;
+    expect(queue.suspend('session-a'), isTrue);
+    expect(await first, LatestFrameDisposition.retired);
+    expect(queue.recover('session-a'), isTrue);
+
+    final second = queue.submit('session-a', 0, 'second', (_) async {
+      secondEntered.complete();
+      await releaseSecond.future;
+    });
+    await secondEntered.future;
+    expect(queue.suspend('session-a'), isTrue);
+    expect(await second, LatestFrameDisposition.retired);
+    expect(queue.recover('session-a'), isTrue);
+
+    await expectLater(
+        queue.submit('session-a', 0, 'overflow', (_) async {}),
+        throwsStateError);
+    expect(queue.recover('session-a'), isFalse);
+
+    releaseFirst.complete();
+    releaseSecond.complete();
+    await Future<void>.delayed(Duration.zero);
+  });
+
+  test('detached displays remain inside the queue-wide key bound', () async {
+    final firstEntered = Completer<void>();
+    final releaseFirst = Completer<void>();
+    final queue = LatestFrameQueue<String, int, String>('session-a', maxKeys: 1);
+
+    final first = queue.submit('session-a', 0, 'first', (_) async {
+      firstEntered.complete();
+      await releaseFirst.future;
+    });
+    await firstEntered.future;
+    expect(queue.suspend('session-a'), isTrue);
+    expect(await first, LatestFrameDisposition.retired);
+    expect(queue.recover('session-a'), isTrue);
+
+    await expectLater(
+        queue.submit('session-a', 1, 'other-display', (_) async {}),
+        throwsStateError);
+
+    releaseFirst.complete();
+    await Future<void>.delayed(Duration.zero);
+  });
 }

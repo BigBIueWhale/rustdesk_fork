@@ -16603,7 +16603,9 @@ grep -qE "minSdkVersion[[:space:]]+${min_sdk_pin}\\b" flutter/android/app/build.
 grep -qF "strictly(\"${kotlin_stdlib_pin}\")" flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad kotlin-stdlib"
 grep -qF 'namespace "com.carriez.flutter_hbb"' flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad app-namespace"
 grep -qF 'jvmTarget = JavaVersion.VERSION_1_8' flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad kotlin-jvm-target"
-grep -qxF 'kotlin.daemon.useFallbackStrategy=false' flutter/android/gradle.properties || android_pin_bad="$android_pin_bad kotlin-daemon-fallback"
+if [ "$(awk -F= '$1 == "kotlin.compiler.execution.strategy" { n += 1 } END { print n + 0 }' flutter/android/gradle.properties)" -ne 1 ] || [ "$(awk '$0 == "kotlin.compiler.execution.strategy=in-process" { n += 1 } END { print n + 0 }' flutter/android/gradle.properties)" -ne 1 ]; then android_pin_bad="$android_pin_bad kotlin-compiler-execution"; fi
+if [ "$(awk -F= '$1 == "kotlin.daemon.useFallbackStrategy" { n += 1 } END { print n + 0 }' flutter/android/gradle.properties)" -ne 1 ] || [ "$(awk '$0 == "kotlin.daemon.useFallbackStrategy=false" { n += 1 } END { print n + 0 }' flutter/android/gradle.properties)" -ne 1 ]; then android_pin_bad="$android_pin_bad kotlin-daemon-fallback"; fi
+if git grep -qE 'compilerExecutionStrategy|kotlin\.compiler\.execution\.strategy' -- 'flutter/android/**' ':!flutter/android/gradle.properties'; then android_pin_bad="$android_pin_bad kotlin-compiler-task-override"; fi
 grep -qF 'path: third_party/uni_links' flutter/pubspec.yaml || android_pin_bad="$android_pin_bad uni-links-local-source"
 grep -qF "namespace 'name.avioli.unilinks'" flutter/third_party/uni_links/android/build.gradle || android_pin_bad="$android_pin_bad uni-links-namespace"
 grep -qF "classpath 'com.android.tools.build:gradle:${agp_pin}'" flutter/third_party/uni_links/android/build.gradle || android_pin_bad="$android_pin_bad uni-links-agp"
@@ -16616,7 +16618,7 @@ if grep -qE '[[:space:]]package=' flutter/android/app/src/main/AndroidManifest.x
 if [ -n "$android_pin_bad" ]; then
   echo "  FAIL R-B5a/R-B9: Android build pins drift from scripts/pins.env:$android_pin_bad"; rc=1
 else
-  echo "  ok  Android AGP/Kotlin/Gradle/SDK pins, namespace/JVM policy, vendored UniLinks provenance, and active ProGuard rules match scripts/pins.env"
+  echo "  ok  Android AGP/Kotlin/Gradle/SDK pins, in-process compiler policy, namespace/JVM policy, vendored UniLinks provenance, and active ProGuard rules match scripts/pins.env"
 fi
 
 echo "== (6c-a2) Android immutable Gradle seed and offline authority (R-B9/R-B10) =="

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-165e5993252e4c40f4cd28f07205b32ae6c04ad6c6770006fab969560a95849e  requirements.html
+354658fff1b913ca8df3730dfc992f5e8534576080c1ef132b0f6d6de19c12f5  requirements.html
 ```
 
 ## Current Verdict
@@ -79,7 +79,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Appendix C #185–206, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; current source and evidence limits remain in the named requirement sections of this ledger. |
 | Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub and RustSec snapshots have real no-NIC VM verdicts recorded in R-S11df and R-S11dg below; future snapshot refresh, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. Documentation or mutation counts are not scanner evidence. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
-| Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | The source-side packaging, immutable-cache, extraction, replacement, and recovery contracts remain requirement-owned. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound. The test-only x86_64 APK has a real isolated build/install/launch/render baseline and commit/tree/digest-bound real-peer replays that currently fail the presentation/handshake gates; it is still not stable-signed or a release APK/AAB. Complete canonical release inputs, stable signing material, cold artifact equality, current lifecycle/peer/presentation/device evidence, independent reproduction, and external review remain absent or open. |
+| Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | The source-side packaging, immutable-cache, extraction, replacement, recovery, and Kotlin execution-strategy contracts remain requirement-owned. Android's clean ephemeral build now explicitly selects Kotlin 2.0.21's supported in-process compiler and forbids fallback or local task overrides; no separate shareable compiler daemon or incremental compiler state is authoritative. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound. The test-only x86_64 APK has a real isolated build/install/launch/render baseline and commit/tree/digest-bound real-peer replays that currently fail the presentation/handshake gates; it is still not stable-signed or a release APK/AAB. The corrected build strategy has not yet produced an APK. Complete canonical release inputs, stable signing material, cold artifact equality, current lifecycle/peer/presentation/device evidence, independent reproduction, and external review remain absent or open. |
 
 Completed documentation cleanup has no live progress log here. Requirement-specific current dispositions remain in
 their dedicated ledger entries or the table above; the Current Verdict and open matrices are authoritative for
@@ -1001,6 +1001,18 @@ continuation so a retired dialog cannot start a Service. Exact pushed source
 transaction in the zero-NIC VM in 278 seconds, including the command-latch and password-dialog lifetime
 regressions. No corrected APK has executed this path yet; this failed run and the model pass are not presentation
 evidence.
+
+The first exact-current APK attempt at clean pushed commit
+`d10dc383c2d455681f3ac59d25a5863b7ea26d6b` completed the optimized Rust/JNI build in the zero-NIC verifier VM,
+then failed before compiling application Kotlin. Three Kotlin compiler-daemon startup attempts each announced
+readiness and then terminated with status zero; `:desktop_drop:compileReleaseKotlin` consequently failed because the
+configured no-fallback policy correctly refused an implicit in-process retry. No APK was published and this is
+build-infrastructure evidence, not a product compile verdict. The VM, guest Docker, and build container joined,
+and before/during/after snapshots found no harness-added host listener or pre-existing-process drift. Because every
+Android transaction already deletes generated output and runs one fresh bounded Gradle process in an ephemeral
+networkless container, current source now explicitly selects Kotlin 2.0.21's supported `in-process` strategy,
+retains fallback refusal, and rejects local task-level strategy overrides. A clean real APK build remains required
+to validate this source correction; no artifact or Android framework/lifecycle claim is advanced by the pin alone.
 
 The current real-peer/presentation verdict is **FAILED / OPEN**. Retained zero-NIC run `run.QpoczThYDu` replayed
 that exact APK with the same source as harness authority. It proved missing-credential silence, one deliberate wrong

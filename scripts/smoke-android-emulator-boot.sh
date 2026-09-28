@@ -284,6 +284,9 @@ readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
 readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=240000
 readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=240000
 readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
+# Launcher3's own OverviewTask dismissal uses ten 16 ms motion steps.  Keep
+# this a fling; a slow drag can settle the card back into Recents.
+readonly RECENTS_DISMISS_GESTURE_MS=160
 # The retained failing artifact repeated the rejected credential after 129.4 s. This integration
 # observation intentionally spans that old behavior; focused development checks remain separate.
 readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=140000
@@ -1875,8 +1878,13 @@ swipe_app_task_from_recents() {
     start_y=$((bottom - 1))
     timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" shell input swipe \
-        "$center_x" "$start_y" "$center_x" 0 600 \
-        >/dev/null
+        "$center_x" "$start_y" "$center_x" 0 \
+        "$RECENTS_DISMISS_GESTURE_MS" >/dev/null \
+        || return 1
+    printf 'ANDROID_RECENTS_DISMISS_ACTION=injected task_id=%s bounds=%s,%s,%s,%s start=%s,%s end=%s,%s duration_ms=%s\n' \
+        "$expected_task_id" "$left" "$top" "$right" "$bottom" \
+        "$center_x" "$start_y" "$center_x" 0 \
+        "$RECENTS_DISMISS_GESTURE_MS"
 }
 
 assert_main_service() {

@@ -1838,9 +1838,15 @@ import sys
 
 task_ids = set()
 for line in sys.argv[1].splitlines():
-    if "com.carriez.flutter_hbb" not in line or "Task{" not in line:
+    stripped = line.lstrip()
+    # RecentTasks also dumps mHiddenTasks=[Task{...}] for non-empty tasks that
+    # have already been removed from Recents. Only the active raw-list entries
+    # identify cards that a user can still see and dismiss.
+    if (not stripped.startswith("* Recent #")
+            or ": Task{" not in stripped
+            or "com.carriez.flutter_hbb" not in stripped):
         continue
-    match = re.search(r"Task\{[^}]* #[1-9][0-9]*\b", line)
+    match = re.search(r"Task\{[^}]* #[1-9][0-9]*\b", stripped)
     if match:
         task_ids.add(match.group().rsplit("#", 1)[1])
 if len(task_ids) != 1:

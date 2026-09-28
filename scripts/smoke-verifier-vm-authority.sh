@@ -3053,6 +3053,27 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     )
     [ "${#android_recents_action_receipts[@]}" -eq "$android_recents_cycles" ] \
         || { /usr/bin/tail -n 320 "$SERIAL_LOG" >&2; fail 'Android Recents action receipt cardinality differs'; }
+    android_recents_action_geometry_pattern='bounds=([0-9]+),([0-9]+),([0-9]+),([0-9]+) start=([0-9]+),([0-9]+) end=([0-9]+),0 '
+    for android_recents_action_receipt in "${android_recents_action_receipts[@]}"; do
+        [[ "$android_recents_action_receipt" =~ \
+            $android_recents_action_geometry_pattern ]] \
+            || fail 'Android Recents action geometry is malformed'
+        android_recents_left=${BASH_REMATCH[1]}
+        android_recents_top=${BASH_REMATCH[2]}
+        android_recents_right=${BASH_REMATCH[3]}
+        android_recents_bottom=${BASH_REMATCH[4]}
+        android_recents_start_x=${BASH_REMATCH[5]}
+        android_recents_start_y=${BASH_REMATCH[6]}
+        android_recents_end_x=${BASH_REMATCH[7]}
+        [ "$android_recents_right" -gt "$android_recents_left" ] \
+            && [ "$android_recents_bottom" -gt "$android_recents_top" ] \
+            && [ "$android_recents_start_x" -eq \
+                 "$(((android_recents_left + android_recents_right) / 2))" ] \
+            && [ "$android_recents_start_y" -eq \
+                 "$(((android_recents_top + android_recents_bottom) / 2))" ] \
+            && [ "$android_recents_end_x" -eq "$android_recents_start_x" ] \
+            || fail 'Android Recents action did not use the exact visible-task center'
+    done
     mapfile -t android_recents_outcome_receipts < <(
         /usr/bin/grep -Eo \
             "ANDROID_RECENTS_DISMISS_OUTCOME=pass cycle=$android_recents_cycle_pattern task_id=[1-9][0-9]* actions=1" \

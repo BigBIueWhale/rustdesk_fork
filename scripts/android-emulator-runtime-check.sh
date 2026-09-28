@@ -954,6 +954,24 @@ mapfile -t recents_dismiss_action_receipts < <(grep -E \
 [ "$(grep -c '^ANDROID_RECENTS_DISMISS_ACTION=' "$RUNTIME_LOG")" -eq \
   "${#recents_dismiss_action_receipts[@]}" ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android Recents-dismiss action receipt cardinality differs'; }
+recents_action_geometry_pattern='bounds=([0-9]+),([0-9]+),([0-9]+),([0-9]+) start=([0-9]+),([0-9]+) end=([0-9]+),0 '
+for recents_action_receipt in "${recents_dismiss_action_receipts[@]}"; do
+    [[ "$recents_action_receipt" =~ $recents_action_geometry_pattern ]] \
+        || die 'Android Recents-dismiss action geometry is malformed'
+    recents_left=${BASH_REMATCH[1]}
+    recents_top=${BASH_REMATCH[2]}
+    recents_right=${BASH_REMATCH[3]}
+    recents_bottom=${BASH_REMATCH[4]}
+    recents_start_x=${BASH_REMATCH[5]}
+    recents_start_y=${BASH_REMATCH[6]}
+    recents_end_x=${BASH_REMATCH[7]}
+    [ "$recents_right" -gt "$recents_left" ] \
+        && [ "$recents_bottom" -gt "$recents_top" ] \
+        && [ "$recents_start_x" -eq "$(((recents_left + recents_right) / 2))" ] \
+        && [ "$recents_start_y" -eq "$(((recents_top + recents_bottom) / 2))" ] \
+        && [ "$recents_end_x" -eq "$recents_start_x" ] \
+        || die 'Android Recents-dismiss action did not use the exact visible-task center'
+done
 mapfile -t recents_dismiss_outcome_receipts < <(grep -E \
     "^ANDROID_RECENTS_DISMISS_OUTCOME=pass cycle=$recents_cycle_pattern task_id=[1-9][0-9]* actions=1$" \
     "$RUNTIME_LOG" || true)

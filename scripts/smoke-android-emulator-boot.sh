@@ -1940,7 +1940,7 @@ current_app_task_id() {
 swipe_app_task_from_recents() {
     local expected_task_id=$1 lifecycle_cycle=$2
     local current_task_id= task_bounds=
-    local left= top= right= bottom= center_x= start_y=
+    local left= top= right= bottom= center_x= center_y=
     local gesture_output=
     [ "$RECENTS_GESTURE_STAGED" -eq 1 ] || return 1
     current_task_id="$(current_app_task_id 2>/dev/null || true)"
@@ -1956,14 +1956,14 @@ swipe_app_task_from_recents() {
     fi
     read -r left top right bottom <<<"$task_bounds"
     [ "$right" -gt "$left" ] && [ "$bottom" -gt "$top" ] \
-        && [ "$bottom" -gt 1 ] || return 1
+        || return 1
     center_x=$(((left + right) / 2))
-    start_y=$((bottom - 1))
+    center_y=$(((top + bottom) / 2))
     if ! gesture_output="$(timeout --signal=TERM --kill-after=2s 30s \
         "$ADB" -s "$SERIAL" shell uiautomator runtest \
         "${RECENTS_GESTURE_DEVICE_PATH##*/}" \
         -c com.rustdesk.harness.AndroidRecentsDismiss#testDismissBoundTask \
-        -e start_x "$center_x" -e start_y "$start_y" \
+        -e start_x "$center_x" -e start_y "$center_y" \
         -e end_x "$center_x" -e end_y 0 \
         -e gesture_steps "$RECENTS_DISMISS_GESTURE_STEPS" \
         2>&1 | tr -d '\r')"; then
@@ -1983,15 +1983,54 @@ swipe_app_task_from_recents() {
         }
     printf 'ANDROID_RECENTS_DISMISS_ACTION=injected cycle=%s task_id=%s bounds=%s,%s,%s,%s start=%s,%s end=%s,%s framework=platform-uiautomator steps=%s driver_sha256=%s\n' \
         "$lifecycle_cycle" "$expected_task_id" \
-        "$left" "$top" "$right" "$bottom" "$center_x" "$start_y" "$center_x" 0 \
+        "$left" "$top" "$right" "$bottom" "$center_x" "$center_y" "$center_x" 0 \
         "$RECENTS_DISMISS_GESTURE_STEPS" "$RECENTS_GESTURE_SHA256"
+}
+
+print_app_task_diagnostic() {
+    local lifecycle_cycle=$1 expected_task_id=$2 state=
+    state="$(adb_shell_value dumpsys activity recents)" || return 1
+    [ "${#state}" -le 1048576 ] || return 1
+    python3 -I -S - "$lifecycle_cycle" "$expected_task_id" "$state" <<'PY'
+import sys
+
+cycle, expected_task_id, state = sys.argv[1:]
+records = []
+for line in state.splitlines():
+    stripped = line.lstrip()
+    if "com.carriez.flutter_hbb" not in stripped:
+        continue
+    if stripped.startswith("* Recent #") and ": Task{" in stripped:
+        records.append(("active", stripped))
+    elif stripped.startswith("mHiddenTasks="):
+        records.append(("hidden", stripped))
+
+if len(records) > 8 or any(len(line) > 4096 for _, line in records):
+    raise SystemExit(1)
+
+print(
+    "ANDROID_RECENTS_TASK_DIAGNOSTIC_BEGIN "
+    f"cycle={cycle} task_id={expected_task_id} records={len(records)}"
+)
+if records:
+    for kind, line in records:
+        print(f"ANDROID_RECENTS_TASK_RECORD kind={kind} value={line}")
+else:
+    print("ANDROID_RECENTS_TASK_RECORD kind=none")
+print(
+    "ANDROID_RECENTS_TASK_DIAGNOSTIC_END "
+    f"cycle={cycle} task_id={expected_task_id}"
+)
+PY
 }
 
 dismiss_current_app_task() {
     local lifecycle_cycle=$1 task_id= observed_task_state=
+    local outcome_started_ms= outcome_now_ms= outcome_elapsed_ms=
     task_id="$(current_app_task_id 2>/dev/null || true)"
     [[ "$task_id" =~ ^[1-9][0-9]*$ ]] || return 1
     swipe_app_task_from_recents "$task_id" "$lifecycle_cycle" || return 1
+    outcome_started_ms="$(monotonic_millis)" || return 1
     for _ in $(seq 1 "$RECENTS_DISMISS_OUTCOME_POLLS"); do
         observed_task_state="$(app_task_state 2>/dev/null || true)"
         if [ "$observed_task_state" = absent ]; then
@@ -2000,9 +2039,28 @@ dismiss_current_app_task() {
                 "$lifecycle_cycle" "$task_id"
             return 0
         fi
-        [ "$observed_task_state" = "$task_id" ] || return 1
+        if [ "$observed_task_state" != "$task_id" ]; then
+            outcome_now_ms="$(monotonic_millis)" || return 1
+            outcome_elapsed_ms=$((outcome_now_ms - outcome_started_ms))
+            printf 'ANDROID_RECENTS_DISMISS_OUTCOME=fail cycle=%s task_id=%s observed=%s polls=%s elapsed_ms=%s\n' \
+                "$lifecycle_cycle" "$task_id" \
+                "${observed_task_state:-invalid}" \
+                "$RECENTS_DISMISS_OUTCOME_POLLS" "$outcome_elapsed_ms" >&2
+            print_app_task_diagnostic "$lifecycle_cycle" "$task_id" >&2 \
+                || printf 'ANDROID_RECENTS_TASK_DIAGNOSTIC=unavailable cycle=%s task_id=%s\n' \
+                    "$lifecycle_cycle" "$task_id" >&2
+            return 1
+        fi
         sleep 0.25
     done
+    outcome_now_ms="$(monotonic_millis)" || return 1
+    outcome_elapsed_ms=$((outcome_now_ms - outcome_started_ms))
+    printf 'ANDROID_RECENTS_DISMISS_OUTCOME=fail cycle=%s task_id=%s observed=%s polls=%s elapsed_ms=%s\n' \
+        "$lifecycle_cycle" "$task_id" "$observed_task_state" \
+        "$RECENTS_DISMISS_OUTCOME_POLLS" "$outcome_elapsed_ms" >&2
+    print_app_task_diagnostic "$lifecycle_cycle" "$task_id" >&2 \
+        || printf 'ANDROID_RECENTS_TASK_DIAGNOSTIC=unavailable cycle=%s task_id=%s\n' \
+            "$lifecycle_cycle" "$task_id" >&2
     return 1
 }
 

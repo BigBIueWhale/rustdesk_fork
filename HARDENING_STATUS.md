@@ -760,15 +760,17 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   duplicate workspace validator are deleted because they missed this semantic mismatch and observed no runtime.
   Current compilation/execution is not claimed for this correction: the fixed rootless Docker socket was absent,
   and no host or rootful fallback was used. Target-native focus/background/presentation evidence remains open.
-- **R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication** — Source implementation
-  and five directly wired executable Rust regressions remain. Each `(session, display)` owns one immutable
-  published frame plus at most one latest pending frame and exact event generation; stale consumers or
-  acknowledgements cannot publish or retain another session's pixels. Offer results now distinguish a bounded
-  pending replacement from publication-token exhaustion, so exhaustion before an initial publication retires
-  the just-created exact mailbox instead of leaving an empty map entry. The exhaustion regression exercises the
-  real multi-consumer owner facade, but current compilation/execution is not claimed because the fixed rootless
-  Docker socket is absent and no host or rootful fallback was used. Generated-bridge and native presentation,
-  lifecycle, performance, and artifact evidence remain open.
+- **R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication** — Source and focused
+  generated-bridge/model execution are green. Each `(session, display)` owns one published token plus at most one
+  latest pending frame. One exact atomic `take_latest` operation promotes the pending frame when present, returns
+  owned bytes, consumes the token, and immediately frees the native publication slot before any asynchronous UI
+  work; the split copy/acknowledge API and paint-driven native flow control are absent. Dart admits each exact
+  owner/display into one running decode plus one latest successor, while different displays drain independently.
+  Five Rust mailbox regressions ran within the 41-test zero-NIC VM transaction at `4aee0323`; fresh bridge
+  generation and 17 focused Flutter suites/120 tests passed at `4ebeaa73`. Publication exhaustion, stale/duplicate
+  take, exact-session separation, stream replacement, Dart supersession, and retirement are covered at those
+  model/state-machine layers. Actual Android/iOS/desktop renderer presentation, lifecycle, latency, sustained
+  resource behavior, current artifacts, and release evidence remain open.
 - **R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration** — Source closed.
   Native texture pointer creation, publication, replacement, view transfer, and retirement are tied to the exact
   asynchronous UI owner. Failed Rust-pointer unpublication retains native storage; failed native release remains
@@ -866,11 +868,14 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   one fixed literal `TERM` from service-owned platform policy after `env_clear`; it does not enumerate user
   processes, ingest their environment, or parse an ambient-selected terminfo database. Installed-service execution
   remains open.
-- **R-S11fr/R-S11e-205 exact software-RGBA presentation recovery and asynchronous commit order** — Source
-  implementation, three directly wired executable Rust regressions, and six directly wired pure-Dart ordering
-  regressions remain. Recovery rotates and redelivers the exact bounded software publication before native
-  re-notification and peer refresh; only the newest still-current asynchronous Dart decode may replace the
-  displayed `ui.Image`. Generated-bridge and native lifecycle/presentation/performance evidence remain open.
+- **R-S11fr/R-S11e-205 exact software-RGBA presentation recovery and asynchronous commit order** — Source and
+  focused generated-bridge/model execution are green. Recovery rotates and redelivers the exact bounded software
+  publication before native re-notification and peer refresh. Dart atomically takes native ownership before its
+  first await, serializes each display through one-running/one-latest work, and permits only the newest still-current
+  asynchronous decode to replace the displayed `ui.Image`; `CustomPainter.paint` is not treated as a compositor
+  receipt. The three Rust recovery regressions passed in the 41-test `4aee0323` VM transaction, and the six exact
+  asynchronous-ordering tests passed within the 120-test `4ebeaa73` Flutter transaction. Target-native lifecycle,
+  actual presentation, capture-to-present latency, performance/soak, and artifact evidence remain open.
 - **R-S11fs/R-S11e-206 pointer-evidenced desktop presentation recovery** — Source closed. A pointer event delivered
   to the exact Windows remote canvas always consults the same coalesced exact-owner presentation recovery used by a
   real focus event. A stale blur flag is still cleared, but recovery no longer depends on that second flag: a pending
@@ -971,8 +976,8 @@ The current retained x86_64 test APK is source commit
 `67332db4ec32e1d4b67612808acc840e1658973a`, tree
 `8390c1439f834b6e46b203e1571e00255992874e`, and SHA-256
 `1c889e3cb09a4510851b14d6b8d2e33e6ba7442949fb52e585dbb1653abce361`. It was built from exact clean pushed
-source and published as a commit-bound test-only artifact. The latest completed zero-NIC replay at clean pushed
-harness `b9be3fc9c5412d91b5d76cec97768a4b275993e7` independently admitted, installed, and launched that APK on
+source and published as a commit-bound test-only artifact. The first causal zero-NIC replay at clean pushed harness
+`b9be3fc9c5412d91b5d76cec97768a4b275993e7` independently admitted, installed, and launched that APK on
 Android 14, reached the foreground service, MediaProjection-ready UI, production peer, password UI, and CPace path,
 and left no harness-created host listener during execution or after cleanup. It proved that a missing credential
 caused no network attempt, one deliberate wrong-password tap caused exactly one failed CPace attempt and the typed
@@ -990,19 +995,20 @@ artifact lifecycle pass.
 The current real-peer/presentation verdict is **FAILED / OPEN**. One predecessor-artifact replay authenticated,
 received peer information, decoded VP9, copied exact BGRA bytes into engine RGBA, and obtained Dart image/publication
 receipts, but its 3.01--3.30-second PNG observations invalidated the claimed two-second freshness verdict. The strict
-Android-14 gRPC raw-frame observer that replaced it is now actually executed. The completed current-artifact replay
-received 2,311 emulator frames, published 1,988, and sampled eight newly sequenced raw frames at 61--175 ms observer
-age after the exact credential recovery above. Its source fixture contained a 20-bar Manchester state code and the
-retained ADB framebuffer visibly contains that code, but the decoder reported zero code rows: Android's still-active
-UI overlay mapped fixture black/white to only about luma 182/195, below the decoder's unjustified
-48-level floor. The result is therefore a verifier false negative, not evidence that product pixels were stale or
-absent. Harness commits `b9be3fc9c5412d91b5d76cec97768a4b275993e7` and
-`20e8b9d923d00b1ff63264ba851d8fd392216bc5` replace whole-screen palette majorities with fixed guards, eight
-Manchester pairs, global dark/light separation, repeated-row geometry, and live-source freshness; the focused
-fixture now includes the observed 182/195 presentation contrast and retains a no-code gray-letterbox rejection.
-The exact low-contrast decoder has not completed an isolated runtime replay: two subsequent VMs were externally
-SIGTERMed before the Android workload, so neither is product evidence. Actual changing-pixel freshness, UI finality,
-background/task recovery, and the rest of the lifecycle remain open.
+Android-14 gRPC raw-frame observer that replaced it is now actually executed. One replay received 2,311 emulator
+frames, published 1,988, and sampled eight newly sequenced raw frames at 61--175 ms observer age after exact
+credential recovery, but the first decoder rejected the 182/195-luma presentation overlay with an unjustified
+48-level contrast floor. Harness commits `b9be3fc9c5412d91b5d76cec97768a4b275993e7` and
+`20e8b9d923d00b1ff63264ba851d8fd392216bc5` replaced that predicate with fixed guards, eight Manchester pairs,
+global class separation, repeated-row geometry, and live-source freshness. The corrected decoder then executed in
+retained zero-NIC run `run.BsU5WBfbDT` at harness `0a5fb983`: it decoded 144 rows at 13-level contrast but found the
+displayed code 18 source generations—about 4.5 seconds—behind, so the run correctly failed freshness. That artifact
+was deliberately perturbing: it forced Flutter software rendering and performed engine-image and root-layer
+readbacks plus extensive widget/layer diagnostics. It is diagnostic evidence, not ordinary-product or release
+evidence and cannot establish whether the uninstrumented renderer has the same delay. Current source deletes those
+readbacks, diagnostic logs, and forced-renderer launch arguments. A fresh ordinary-renderer artifact and external
+framebuffer replay are required before causal or product-freshness conclusions. UI finality, background/task
+recovery, and the rest of the lifecycle remain open.
 
 The source-level CPace recovery defect exposed by the later replay is corrected at
 `714141e9741922c64489a64f18515e49f4090b96`. After step 3 has been sent successfully, and only while the initiator
@@ -1151,10 +1157,10 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
-| Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained. Retained test APK `67332db4`/`8390c143`/`1c889e3c…e361` has a real Android 14 build/install/launch baseline, while the complete task-removal/foreground-service/MediaProjection/Force-Stop pass is from an older artifact. The causal current-artifact replay proved missing-credential quiet, exactly one deliberate wrong attempt, typed ambiguous confirmation loss, 140 seconds without automatic retry, deliberate replacement, correct-credential connection, peer information, VP9 decode, and native/Dart RGBA publication. Its external framebuffer visibly contained the encoded source, but the raw decoder rejected the presentation overlay's 13-level luma contrast; the corrected low-contrast decoder remains unexecuted because two later VMs were externally interrupted before the workload. Source preserves initiator post-step-3 EOF as `PeerConfirmationUnavailable`, offers deliberate credential replacement without automatic deletion/retry, and keeps earlier I/O generic; exact client-classifier and 20-test wire transactions are green in a zero-NIC Linux VM. Replay harness `20e8b9d9` to establish changing-pixel freshness, then exercise authenticated peer/session replacement, outgoing viewing, controlled capture/input callbacks, reconnect, network/background/focus transitions, stale-generation refusal, repeated resource bounds, physical devices, stable-signed release artifacts, and cold/independent reproduction. iOS still has no current package/device result. |
+| Android and iOS | Android has no root IPC boundary and its exported service/component source shape is contained. Retained test APK `67332db4`/`8390c143`/`1c889e3c…e361` has a real Android 14 build/install/launch baseline, while the complete task-removal/foreground-service/MediaProjection/Force-Stop pass is from an older artifact. The causal retained-artifact replay proved missing-credential quiet, exactly one deliberate wrong attempt, typed ambiguous confirmation loss, 140 seconds without automatic retry, deliberate replacement, correct-credential connection, peer information, VP9 decode, and the predecessor split RGBA publication path. Corrected low-contrast observation in `run.BsU5WBfbDT` decoded the external framebuffer but measured the displayed code about 4.5 seconds behind its live source; because that APK forced software rendering and contained invasive engine/root-layer readbacks and diagnostics, the failure is perturbing diagnostic evidence rather than an ordinary-product verdict. Current source replaces split copy/paint acknowledgment with atomic native take plus a bounded Dart lane and removes the instrumentation and forced renderer. Build a fresh ordinary-renderer APK, replay it with the external observer, then exercise authenticated peer/session replacement, outgoing viewing, controlled capture/input callbacks, reconnect, network/background/focus transitions, stale-generation refusal, repeated resource bounds, physical devices, stable-signed release artifacts, and cold/independent reproduction. iOS still has no current package/device result. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg now has pin-bound recoverable devcheck and Apple verifier images. For each image, two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. The complete current Apple three-target source-conformance workload is now green in the no-NIC verifier VM; current product/native workloads and fresh independently administered rebuilds remain required, and the image-infrastructure result itself supplies no product or native evidence. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES, EXACT-CURRENT LINUX FILESYSTEM TESTS, ONLINE ACQUISITION, CURRENT DART/RUST ADVISORY VERDICTS, COMPLETE CURRENT APPLE SOURCE CONFORMANCE, ANDROID/DEBIAN/WINDOWS-HELPER CERTIFICATION, AND AN OLDER-ARTIFACT ANDROID LIFECYCLE ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; focused entries refuse applicable root/foreign callers and execute bounded guest containers. R-S11cj separately confines acquisition to ordinary-user QEMU with rootless exact exports, TCP-only guest/container egress, no host forwarding, listener invariance, and joined finality. The retained test APK is source `67332db4ec32e1d4b67612808acc840e1658973a`, tree `8390c1439f834b6e46b203e1571e00255992874e`, and SHA-256 `1c889e3cb09a4510851b14d6b8d2e33e6ba7442949fb52e585dbb1653abce361`; its real build/install/launch, exact wrong-then-correct credential recovery, peer information, decode, and RGBA publication executed. The strict raw observer also executed and the retained framebuffer visibly contains the encoded remote source, but its contrast policy rejected that display, so automated changing-pixel freshness is still unproved. Stable Android signing/release artifacts, a current complete lifecycle pass, remaining peer/presentation/device behavior, native Apple build/sign/install/runtime behavior, Debian/Windows product workloads, cold artifacts, complete prepared inputs, fresh independent reproduction, and external review remain open. Source conformance, library tests, entry gates, builder fingerprints, and historical test-only lifecycle evidence are not full product or release evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP; FAST NO-NIC AUTHORITY SMOKES, EXACT-CURRENT LINUX FILESYSTEM TESTS, ONLINE ACQUISITION, CURRENT DART/RUST ADVISORY VERDICTS, COMPLETE CURRENT APPLE SOURCE CONFORMANCE, ANDROID/DEBIAN/WINDOWS-HELPER CERTIFICATION, AND AN OLDER-ARTIFACT ANDROID LIFECYCLE ARE GREEN, BUT PRODUCT AND RELEASE WORKLOADS REMAIN OPEN.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; focused entries refuse applicable root/foreign callers and execute bounded guest containers. R-S11cj separately confines acquisition to ordinary-user QEMU with rootless exact exports, TCP-only guest/container egress, no host forwarding, listener invariance, and joined finality. The retained test APK is source `67332db4ec32e1d4b67612808acc840e1658973a`, tree `8390c1439f834b6e46b203e1571e00255992874e`, and SHA-256 `1c889e3cb09a4510851b14d6b8d2e33e6ba7442949fb52e585dbb1653abce361`; its real build/install/launch, exact wrong-then-correct credential recovery, peer information, decode, and predecessor RGBA publication executed. The corrected raw observer later decoded the retained framebuffer and rejected an approximately 4.5-second-old display state, but that APK forced software rendering and performed invasive engine/root-layer readbacks, so current uninstrumented changing-pixel freshness is still unproved. Stable Android signing/release artifacts, a current complete lifecycle pass, remaining peer/presentation/device behavior, native Apple build/sign/install/runtime behavior, Debian/Windows product workloads, cold artifacts, complete prepared inputs, fresh independent reproduction, and external review remain open. Source conformance, library tests, entry gates, builder fingerprints, and historical test-only lifecycle evidence are not full product or release evidence. |
 | Product-level behavior | Real capture-to-present latency, display freshness during focus/background transitions, cross-version interoperability, reconnect finality, sustained performance/soak, and process/resource cleanup remain open across applicable platforms. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
@@ -8346,11 +8352,12 @@ Exact-current zero-interface QEMU execution, Windows peer/service behavior, and 
   refused. A checkpoint that remains current captures the exact display-topology revision. That session/revision is
   checked before dimensions are read, after asynchronous pixel decode, after canvas/cursor initialization awaits, and
   immediately before image commit. A later topology mutation therefore prevents an old decode or canvas continuation
-  from publishing into new state. Software RGBA acknowledges the exact native publication on stale, missing-copy,
-  decode, success, and pre-handoff failure paths. First-image preparation is shared through at most one exact in-flight
-  future; only a still-current session/revision marks it complete or runs callbacks. Malformed session-stream JSON is a
-  visible terminal inconsistency rather than log-and-continue behavior. High-rate cursor/file work is not added to the
-  topology FIFO, and frame decode never occupies it.
+  from publishing into new state. Software RGBA atomically takes owned native bytes before its topology await, then
+  enters an exact per-display one-running/one-latest lane; superseded Dart work retains no native publication and a
+  missing or stale token is inert. First-image preparation is shared through at most one exact in-flight future; only a
+  still-current session/revision marks it complete or runs callbacks. Malformed session-stream JSON is a visible
+  terminal inconsistency rather than log-and-continue behavior. High-rate cursor/file work is not added to the topology
+  FIFO, and frame decode never occupies it.
 - This is an ordering/lifetime correction, not a recovery mechanism. It adds no reconnect, retry, timer, polling loop,
   isolate, worker, runtime, Android service restart, native transport queue, or decode head-of-line wait. Deterministic
   Dart queue tests cover FIFO behavior, capacity-free checkpoints, later-state invalidation, overflow retirement, task
@@ -8376,8 +8383,9 @@ Exact-current zero-interface QEMU execution, Windows peer/service behavior, and 
   callback return and therefore deep-copied it, but the live callback never used that helper. The helper's growable list
   was not a valid resource bound either. Every live web frame also created and detached a separate checkpoint/decode
   continuation, so delayed topology or decode could retain an unbounded number of futures and full-frame buffers before
-  resuming them together. Rust's native software-RGBA path is not this defect: its exact session/display mailbox already
-  owns at most one active and one latest pending frame, and exact acknowledgement promotes the pending publication.
+  resuming them together. Rust's native software-RGBA path is not this defect: its exact session/display mailbox owns at
+  most one published token and one latest pending frame, and an exact atomic take selects the newest bytes while freeing
+  the native slot before Dart awaits.
   This is web buffer-lifetime and presentation-resource debt, not proof of the reported older Android/Windows delay, a
   native mailbox failure, network exposure, privilege escalation, host mutation, exploitation, or compromise.
 - The live web callback now takes one synchronous `Uint8List.fromList` copy before any await and submits that owned frame
@@ -10529,25 +10537,28 @@ independent reproduction and R-V3 external review.
 
 ### R-S11iw/R-S11e-286 — exact software-RGBA event-stream replacement
 
-**SOURCE IMPLEMENTED; TWO EXECUTABLE RUST REGRESSIONS RETAINED AND DIRECTLY WIRED;
-SOURCE/MUTATION THEATER DELETED; EXACT GENERATED-BRIDGE, TARGET-RUNTIME,
-PRESENTATION, PERFORMANCE, ARTIFACT, AND REVIEW EVIDENCE OPEN.**
+**SOURCE IMPLEMENTED; EXACT GENERATED-BRIDGE AND FOCUSED RUST EXECUTION GREEN;
+SOURCE/MUTATION THEATER DELETED; TARGET-RUNTIME, PRESENTATION, PERFORMANCE,
+ARTIFACT, AND REVIEW EVIDENCE OPEN.**
 
 One exact connection session, UI owner, replacement transaction, display, and checked publication
 token own each handoff. `session_start_` retains the worker and exact handler-owner guards through
 stream replacement. `rearm_rgba_for_stream_replacement` holds the mailbox write guard, rotates
 every live exact-session publication to a fresh checked token, promotes only the newest pending
 frame, bounds and canonically sorts at most 16 displays, and posts to the supplied stream before a
-predecessor acknowledgement can interleave. Exhaustion, excess state, or post refusal retires only
+predecessor take can interleave. Exhaustion, excess state, or post refusal retires only
 that exact session and fails visibly; unrelated sessions remain intact.
 
 The directly wired `r_s11iw_stream_replacement_*` Rust regressions exercise fresh-token rotation,
-latest-pending promotion, predecessor copy/acknowledgement refusal, unrelated-session preservation,
-and exact-session refusal cleanup. They do not execute a generated bridge, Flutter event stream,
-target renderer, Android Activity/service lifecycle, Windows window transfer, or compositor.
+latest-pending promotion, predecessor-take refusal, unrelated-session preservation, and exact-session
+refusal cleanup. Both passed with the freshly generated read-only bridge in the 41-test zero-NIC VM
+transaction at `4aee0323`. The separate `4ebeaa73` transaction generated the current bridge and passed
+17 focused Flutter suites/120 tests, including stream-owner retirement and software-RGBA ordering. These
+transactions do not execute a Flutter event stream against a target renderer, Android Activity/service
+lifecycle, Windows window transfer, or compositor.
 
-Exact-current generated-bridge and target-artifact scenarios remain STOP-SHIP: replace a live stream,
-delay predecessor completion, observe successor pixels and predecessor inactivity, and verify
+Exact-current target-artifact scenarios remain STOP-SHIP: replace a live stream, delay predecessor
+completion, observe successor pixels and predecessor inactivity, and verify
 bounded latency, CPU, memory, handles/tasks, and cleanup across Android task-swipe/reopen/Force-Stop,
 Windows focus/minimize/window transfer, other supported platforms, and reconnect soak. Cross-version
 behavior, cold R-B2/R-B10 equality, independent reproduction, causation, and external review remain

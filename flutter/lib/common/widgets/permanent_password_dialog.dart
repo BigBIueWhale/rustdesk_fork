@@ -6,15 +6,12 @@ import 'package:flutter_hbb/common/widgets/custom_password.dart';
 import 'package:get/get.dart';
 
 typedef PermanentPasswordWriter = Future<bool> Function(String password);
-typedef PermanentPasswordContinuation = Future<void> Function();
 
 class PermanentPasswordMutation {
   PermanentPasswordMutation._({
-    required this.setsPassword,
     required this.result,
   });
 
-  final bool setsPassword;
   final Future<bool> result;
   Object? _dialogOwner;
 
@@ -33,8 +30,8 @@ class PermanentPasswordMutation {
 
 /// Retains the one native password write across dialog/Activity replacement.
 /// A replacement dialog observes that exact write instead of starting another
-/// one; the coordinator retains only whether it sets or removes a password,
-/// never the password itself.
+/// one; the coordinator retains only the operation future, never the password
+/// itself.
 class PermanentPasswordMutationCoordinator {
   PermanentPasswordMutation? _active;
 
@@ -56,7 +53,6 @@ class PermanentPasswordMutationCoordinator {
     }
 
     final mutation = PermanentPasswordMutation._(
-      setsPassword: password.isNotEmpty,
       result: Future<bool>.sync(() => writePassword(password)),
     );
     mutation._claim(dialogOwner);
@@ -109,7 +105,6 @@ class PermanentPasswordDialog extends StatefulWidget {
     required this.writePassword,
     required this.mutationCoordinator,
     required this.close,
-    this.onNonEmptySaved,
     this.statusTip = '',
     this.compactSpacing = false,
     this.compactActions = false,
@@ -121,7 +116,6 @@ class PermanentPasswordDialog extends StatefulWidget {
   final PermanentPasswordWriter writePassword;
   final PermanentPasswordMutationCoordinator mutationCoordinator;
   final VoidCallback close;
-  final PermanentPasswordContinuation? onNonEmptySaved;
   final String statusTip;
   final bool compactSpacing;
   final bool compactActions;
@@ -285,17 +279,7 @@ class _PermanentPasswordDialogState extends State<PermanentPasswordDialog> {
       return;
     }
 
-    final continuation = mutation.setsPassword ? widget.onNonEmptySaved : null;
     widget.close();
-    if (continuation != null) {
-      unawaited(Future<void>.sync(continuation).catchError(
-        (Object error, StackTrace stackTrace) {
-          debugPrint(
-            'Permanent password continuation failed: ${error.runtimeType}',
-          );
-        },
-      ));
-    }
   }
 
   @override

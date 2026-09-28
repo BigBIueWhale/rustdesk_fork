@@ -160,18 +160,22 @@ void main() {
     );
   });
 
-  test('Android service commands cannot manufacture observed running state',
+  test('Android service command owns preflight through final dispatch',
       () async {
     final state = AndroidServiceUiState();
-    final entered = Completer<void>();
-    final release = Completer<void>();
+    final preflightEntered = Completer<void>();
+    final releasePreflight = Completer<void>();
+    final dispatchEntered = Completer<void>();
+    final releaseDispatch = Completer<void>();
     var duplicateRan = false;
 
     final first = state.runCommand(() async {
-      entered.complete();
-      await release.future;
+      preflightEntered.complete();
+      await releasePreflight.future;
+      dispatchEntered.complete();
+      await releaseDispatch.future;
     });
-    await entered.future;
+    await preflightEntered.future;
 
     expect(state.commandInFlight, isTrue);
     expect(state.observedRunning, isFalse);
@@ -183,9 +187,20 @@ void main() {
     );
     expect(duplicateRan, isFalse);
 
+    releasePreflight.complete();
+    await dispatchEntered.future;
+    expect(state.commandInFlight, isTrue);
+    expect(
+      await state.runCommand(() async {
+        duplicateRan = true;
+      }),
+      isFalse,
+    );
+    expect(duplicateRan, isFalse);
+
     expect(state.observeRunning(true), isTrue);
     expect(state.observedRunning, isTrue);
-    release.complete();
+    releaseDispatch.complete();
     expect(await first, isTrue);
     expect(state.commandInFlight, isFalse);
     expect(state.observedRunning, isTrue);

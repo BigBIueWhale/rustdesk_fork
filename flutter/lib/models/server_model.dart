@@ -354,11 +354,31 @@ class ServerModel with ChangeNotifier {
     return res;
   }
 
-  /// Toggle screen sharing while keeping service and capture lifetimes distinct.
-  toggleService() async {
-    if (_androidServiceUiState.commandInFlight) {
-      return;
+  Future<void> _runAndroidServiceUiCommand(
+    String description,
+    Future<void> Function() command,
+  ) async {
+    try {
+      await _androidServiceUiState.runCommand(command);
+    } catch (error, stackTrace) {
+      debugPrintStack(
+        label: '$description failed: $error',
+        stackTrace: stackTrace,
+      );
+      showToast(translate('Failed'));
     }
+  }
+
+  /// Toggle screen sharing while keeping service and capture lifetimes distinct.
+  /// The one command owner spans permission checks, confirmation, credential
+  /// mutation, and the native start/stop request. A second tap cannot create a
+  /// parallel dialog or permission transaction while any of those phases runs.
+  Future<void> toggleService() => _runAndroidServiceUiCommand(
+        'Screen-sharing command',
+        _toggleService,
+      );
+
+  Future<void> _toggleService() async {
     final command = _androidServiceUiState.screenSharingCommand(
       mediaProjectionReady: mediaOk,
     );
@@ -383,7 +403,7 @@ class ServerModel with ChangeNotifier {
         );
       });
       if (res == true) {
-        await stopService();
+        await _stopService();
       }
     } else {
       await checkRequestNotificationPermission();
@@ -420,89 +440,80 @@ class ServerModel with ChangeNotifier {
         );
       });
       if (res == true) {
-        await startService();
+        await _startService();
       }
     }
   }
 
   /// Start the screen sharing service.
-  Future<void> startService() async {
+  Future<void> startService() => _runAndroidServiceUiCommand(
+        'MainService start request',
+        _startService,
+      );
+
+  Future<void> _startService() async {
+    // R-S9: the same typed credential availability consumed by the native park path gates
+    // the only mobile start command. The UI never fabricates a credential or service state.
+    if ((isAndroid || isIOS) &&
+        (await bind.mainGetCommon(key: 'permanent-password-set')) != 'true') {
+      showToast(translate(
+          'Please set a permanent password before starting the service.'));
+      await setPasswordDialog();
+      // The dialog is part of this exact UI command. Cancellation, replacement,
+      // removal, or a failed/empty mutation cannot authorize a later native start.
+      if ((await bind.mainGetCommon(key: 'permanent-password-set')) != 'true') {
+        return;
+      }
+    }
+
+    final target = parent.target;
+    if (target == null) {
+      throw StateError('The Android service command owner is unavailable');
+    }
+    target.ffiModel.updateEventListener(target.sessionId, "");
+    // R-D7a/R-S11hr: MainService.onStartCommand owns the exact JNI startup/recovery
+    // transaction. Dart requests it but does not change observed running state.
+    await target.invokeMethod("init_service");
+
     try {
-      await _androidServiceUiState.runCommand(() async {
-        // R-S9: the same typed credential availability consumed by the native park path gates
-        // the only mobile start command. The UI never fabricates a credential or service state.
-        if ((isAndroid || isIOS) &&
-            (await bind.mainGetCommon(key: 'permanent-password-set')) !=
-                'true') {
-          showToast(translate(
-              'Please set a permanent password before starting the service.'));
-          setPasswordDialog(notEmptyCallback: () => startService());
-          return;
-        }
-
-        final target = parent.target;
-        if (target == null) {
-          throw StateError('The Android service command owner is unavailable');
-        }
-        target.ffiModel.updateEventListener(target.sessionId, "");
-        // R-D7a/R-S11hr: MainService.onStartCommand owns the exact JNI startup/recovery
-        // transaction. Dart requests it but does not change observed running state.
-        await target.invokeMethod("init_service");
-
-        try {
-          await updateClientState();
-        } catch (error, stackTrace) {
-          // Client-list observation is independent from the native service lifecycle.
-          debugPrintStack(
-            label: 'Initial client-state refresh failed: $error',
-            stackTrace: stackTrace,
-          );
-        }
-        if (isAndroid) {
-          androidUpdatekeepScreenOn();
-        }
-      });
+      await updateClientState();
     } catch (error, stackTrace) {
+      // Client-list observation is independent from the native service lifecycle.
       debugPrintStack(
-        label: 'MainService start request failed: $error',
+        label: 'Initial client-state refresh failed: $error',
         stackTrace: stackTrace,
       );
-      showToast(translate('Failed'));
+    }
+    if (isAndroid) {
+      androidUpdatekeepScreenOn();
     }
   }
 
   /// Stop the screen sharing service.
-  Future<void> stopService() async {
-    try {
-      await _androidServiceUiState.runCommand(() async {
-        unawaited(closeAll().catchError((Object error, StackTrace stackTrace) {
-          debugPrintStack(
-            label: 'Controlled-client close failed during MainService Stop: $error',
-            stackTrace: stackTrace,
-          );
-        }));
-        final target = parent.target;
-        if (target == null) {
-          throw StateError('The Android service command owner is unavailable');
-        }
-        // R-D7a/R-S11en: Kotlin requests Context.stopService and always attempts to remove the
-        // Activity binding. MainService.onDestroy owns the exact listener/resource teardown.
-        final retired = await target.invokeMethod("stop_service");
-        if (retired != true) {
-          throw StateError('Android reported no MainService lifetime to retire');
-        }
-        WakelockManager.disable(_wakelockKey);
-      });
-    } catch (error, stackTrace) {
-      // Do not turn a failed/uncertain request into a false stopped observation.
+  Future<void> stopService() => _runAndroidServiceUiCommand(
+        'MainService stop request',
+        _stopService,
+      );
+
+  Future<void> _stopService() async {
+    unawaited(closeAll().catchError((Object error, StackTrace stackTrace) {
       debugPrintStack(
-        label: 'MainService Stop request failed: $error',
+        label: 'Controlled-client close failed during MainService Stop: $error',
         stackTrace: stackTrace,
       );
-      showToast(translate('Failed'));
+    }));
+    final target = parent.target;
+    if (target == null) {
+      throw StateError('The Android service command owner is unavailable');
     }
+    // R-D7a/R-S11en: Kotlin requests Context.stopService and always attempts to remove the
+    // Activity binding. MainService.onDestroy owns the exact listener/resource teardown.
+    final retired = await target.invokeMethod("stop_service");
+    if (retired != true) {
+      throw StateError('Android reported no MainService lifetime to retire');
+    }
+    WakelockManager.disable(_wakelockKey);
   }
-
 
   changeStatue(String name, bool value) {
     debugPrint("changeStatue value $value");

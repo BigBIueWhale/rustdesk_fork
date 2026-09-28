@@ -8,7 +8,6 @@ Widget _harness({
   required PermanentPasswordWriter writePassword,
   required PermanentPasswordMutationCoordinator mutationCoordinator,
   required VoidCallback close,
-  PermanentPasswordContinuation? onNonEmptySaved,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -18,7 +17,6 @@ Widget _harness({
         writePassword: writePassword,
         mutationCoordinator: mutationCoordinator,
         close: close,
-        onNonEmptySaved: onNonEmptySaved,
         translateText: (text) => text,
       ),
     ),
@@ -45,7 +43,6 @@ void main() {
       },
       mutationCoordinator: mutationCoordinator,
       close: () => events.add('close'),
-      onNonEmptySaved: () async => events.add('continue'),
     ));
 
     final fields = find.byType(TextField);
@@ -79,7 +76,7 @@ void main() {
 
     completion.complete(true);
     await tester.pump();
-    expect(events, ['close', 'continue']);
+    expect(events, ['close']);
   });
 
   testWidgets('failed mutation reopens the same dialog owner', (tester) async {
@@ -117,12 +114,10 @@ void main() {
     final completion = Completer<bool>();
     final mutationCoordinator = PermanentPasswordMutationCoordinator();
     var closes = 0;
-    var continuations = 0;
     await tester.pumpWidget(_harness(
       writePassword: (_) => completion.future,
       mutationCoordinator: mutationCoordinator,
       close: () => closes += 1,
-      onNonEmptySaved: () async => continuations += 1,
     ));
 
     final fields = find.byType(TextField);
@@ -136,7 +131,6 @@ void main() {
     await tester.pump();
 
     expect(closes, 0);
-    expect(continuations, 0);
     expect(tester.takeException(), isNull);
   });
 
@@ -147,7 +141,6 @@ void main() {
     var writes = 0;
     var retiredCloses = 0;
     var replacementCloses = 0;
-    var continuations = 0;
 
     Future<bool> writePassword(String _) {
       writes += 1;
@@ -158,7 +151,6 @@ void main() {
       writePassword: writePassword,
       mutationCoordinator: mutationCoordinator,
       close: () => retiredCloses += 1,
-      onNonEmptySaved: () async => continuations += 100,
     ));
     final fields = find.byType(TextField);
     await tester.enterText(fields.at(0), 'Runtime1x');
@@ -172,7 +164,6 @@ void main() {
       writePassword: writePassword,
       mutationCoordinator: mutationCoordinator,
       close: () => replacementCloses += 1,
-      onNonEmptySaved: () async => continuations += 1,
     ));
     await tester.pump();
 
@@ -194,6 +185,5 @@ void main() {
     expect(writes, 1);
     expect(retiredCloses, 0);
     expect(replacementCloses, 1);
-    expect(continuations, 1);
   });
 }

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-9d392c6057cd8e25d9a18c15fecba0d1a5edfbf62a5dedcf59a28e2933da0562  requirements.html
+b532ea33ee66575aa81b50e1e43d52e675f52c2e0cdfed6344ad6e487dd7766b  requirements.html
 ```
 
 ## Current Verdict
@@ -42,7 +42,7 @@ not a claim that every target OS has executed them.
 | Exact Android/CM Rust lifecycles (`ceec168e8a25d231156e59c25b08365a29fef5d7`) | A zero-NIC VM freshly generated the Flutter bridge, compiled the complete Linux-host Rust library with `linux-pkg-config,flutter`, and executed 24 exact production tests in a networkless guest-only container. Four cover listener generation and owned-child convergence; 20 cover exact CM registry/file-log/Android-child ownership, privacy activation/retirement, final-Remote cleanup, and resolution restoration. The offline canary, pinned sub-closures, read-only source/generated bindings, unchanged host listeners, and joined cleanup passed. This is Linux-target Rust behavior, not Android-target, JNI, Service/Activity, real socket/peer, APK/device, task-swipe, Force Stop, rendered presentation, or native Windows evidence. |
 | CPace viewer credential recovery (product `714141e9741922c64489a64f18515e49f4090b96`; focused harness `2ab3efa0eb376621eab3f26270031c17f3d296d4`) | The exact product/client source first passed a 46-test Linux-target integration transaction in a zero-NIC VM, including the client prompt classifier and all wire cases. The verifier was then split: a 138-second exact-current transaction re-executed all 20 real loopback CPace wire tests with pinned Rust 1.75, sealed vendor/builder inputs, guest-only networkless Docker, no host listener or process drift, and joined cleanup. This is source/wire evidence, not Android/Windows UI presentation, an APK/native artifact, device reconnect, or peer display recovery. |
 | Isolated Android 14 framework boot (`a38441110283a0b6cd7875cc28c69dc0668996a2`) | The exact pinned Emulator 37.1.11 and Android 34 default x86_64 image booted in 284 seconds inside a networkless guest-only container in a zero-NIC VM. API 34, x86_64 ABI, enforcing SELinux, framework readiness, a real framebuffer PNG, bounded teardown, automatic run-root retirement, and complete host listener invariance passed. This establishes the disposable Android runtime path only; no RustDesk APK, Activity/service/JNI/peer/session/task-swipe/Force Stop behavior, signing, or app presentation was exercised. |
-| Exact-current Android test-APK baseline (`3d590852d908366770089e1e62e761ae0e1c6e7e`) | A clean zero-NIC VM built the exact-current x86_64 emulator-test APK from sealed inputs, independently checked its package, launcher, x86_64 native-library set, and explicit non-release signing identity, installed it in Android 14, and exercised the real `MainActivity`. The runtime required an exact bounded `am start -W` receipt and then independently proved an unchanged live app PID for five seconds, exact resumed-Activity state, enforcing SELinux, a real 480x800/800x480 framebuffer, and joined emulator/ADB/container/VM cleanup. The 1,345-second outer transaction used guest-only networkless Docker, added no host listener or process drift, atomically published the commit-bound test artifact, and retired its run root automatically. This is a retained test-only build/install/launch/render baseline—not stable signing or a release artifact, foreground-service/task-swipe/reopen/Force-Stop behavior, JNI/MediaProjection/Accessibility, a real peer/session, display/control/file transfer, presentation freshness/latency, resource soak, or physical-device evidence. |
+| Latest retained Android test-APK baseline (`c4f0f46491df2a9ae1bd977a6944aa59db89518e`) | A clean zero-NIC VM built the x86_64 emulator-test APK from sealed inputs, independently checked its package, launcher, x86_64 native-library set, and explicit non-release signing identity, installed it in Android 14, and exercised the real `MainActivity`. Source tree `397f36e76b62308072367048bf32cf249e551e53` produced SHA-256 `d92cc1cbf5eb0ca916c3b5711323c4d127f7789dae91dc189dcf37706e707bdc`. The 1,702-second outer transaction used guest-only networkless Docker, added no host listener or process drift, joined emulator/ADB/container/VM cleanup, atomically published the commit-bound artifact, and retired its successful run root. This is a retained test-only build/install/launch/render baseline—not stable signing or a release artifact, the later UI-command correction, foreground-service/task-swipe/reopen/Force-Stop behavior, a completed real peer/session, presentation freshness/latency, resource soak, or physical-device evidence. |
 | Exact Android foreground-service lifecycle (artifact `48acf94e1a26bf51af1f8e697a11cfe2aa84cbd4`; harness `eeb4327e0ba5c4677ba6571f97ca95bf14beeed1`) | The retained x86_64 test APK, tree `b400f789568cd45c721cdbe5e06efc7f3a9f3760`, SHA-256 `8036056ecb5d7df1888bbfef44866bfb8b169cbcfc2b4f756ab64361a5c05774`, was admitted by exact source/tree/digest and replayed on Android 14 without rebuilding. The real app persisted its permanent password through AndroidKeyStore-backed storage, obtained MediaProjection, and published `Screen capture ready` with exactly one foreground `MainService`. Two actual Launcher3 task-card upward swipes removed the exact task; each relaunch resumed `MainActivity` in the unchanged service process with capture still ready and no duplicate service creation. Android Force Stop then removed both process and service and marked the package stopped; a subsequent launch created a new process while leaving `MainService` stopped. The 672-second zero-NIC transaction used networkless guest-only containers, added no host listener or process drift, joined every transient owner, and self-retired its run root. This is a real Activity/service/MediaProjection lifecycle baseline, not a real peer/session, raw-frame or input-callback exercise, presentation-freshness/latency result, resource soak, physical-device result, stable-signed release artifact, or causal reproduction of the reported outgoing-viewer hang. |
 | Named Windows native/installed transactions | The recorded native-suite/package pass, installed LocalSystem CM transaction, and SCM credential transaction establish only their exact commits and scenarios. No current full RustDesk peer, native focus/minimize recovery, cold A==B build, or sustained resource/latency result exists. |
 | Named Android package transactions | Real JNI/APK assembly and stable-signature byte equality were demonstrated for named older source parents; the rows above add a test-only x86_64 build/install baseline and the exact retained-APK Activity/foreground-service lifecycle. The retained test APK is not a release artifact. No exact-current stable-signed or retained release APK/AAB, real peer/session, presentation-latency, reconnect/resource-soak, or physical-device result exists. |
@@ -977,12 +977,26 @@ controlled-side persistence, peer/session replacement, task swipe/reopen, Force 
 resource/soak, physical-device, current artifact, cold R-B2/R-B10, independent-reproduction, and external-review
 obligations remain open.
 
-The current retained x86_64 test APK is source commit
-`5a1604c81a381008e3b72ed619992e6094f42abd`, tree
-`c0b10fb2341010e971dc496690e61891396f026a`, and SHA-256
-`3096e9b5e652865f2317160ccc4e593c23f24f9310dd5ee0a0e56600021c2648`. It was built from exact clean pushed
-source, independently inspected, installed, and launched on Android 14 as a commit-bound test-only artifact. It is
-not a stable-signed release APK and predates the current presentation-generation correction.
+The latest retained x86_64 test APK is source commit
+`c4f0f46491df2a9ae1bd977a6944aa59db89518e`, tree
+`397f36e76b62308072367048bf32cf249e551e53`, and SHA-256
+`d92cc1cbf5eb0ca916c3b5711323c4d127f7789dae91dc189dcf37706e707bdc`. A 1,702-second zero-NIC transaction
+built it from exact clean pushed source, independently inspected it, installed and launched it on Android 14,
+observed a real framebuffer, published the commit-bound test-only artifact, proved zero host-listener/process drift,
+joined cleanup, and retired its successful run root. It contains the presentation-generation correction but is not
+a stable-signed release APK and predates the subsequent Android UI-command ownership correction.
+
+Retained zero-NIC replay `run.SudbB1JvLK` admitted those exact APK bytes and source identity but failed before the
+credential, MediaProjection, peer, or presentation scenario. The initial app UI was real and responsive, yet the
+production service-start transition returned to the Connection tab without reaching the password dialog. The run
+then failed closed, shut down its peer, frame observer, emulator, containers, and VM, added no host listener, and
+retained its private evidence root. Source tracing found a matching independent defect: `toggleService()` checked
+the service-command latch before permission and warning work but acquired it only later inside `startService()`,
+while the runtime driver could legitimately retry the still-visible Start action. Multiple taps could therefore
+create overlapping permission/warning transactions. The source correction moves ownership to the outermost UI
+action, keeps it through credential revalidation and native dispatch, and deletes the detached durable-password
+continuation so a retired dialog cannot start a Service. No corrected APK has executed this path yet; this failed
+run is not presentation evidence.
 
 The current real-peer/presentation verdict is **FAILED / OPEN**. Retained zero-NIC run `run.QpoczThYDu` replayed
 that exact APK with the same source as harness authority. It proved missing-credential silence, one deliberate wrong
@@ -1000,7 +1014,8 @@ was 213, showing a partial newer presentation beginning at the timeout rather th
 does not isolate Flutter decode, raster, compositor, or Android display scheduling, and the earlier successful run
 shows the symptom is intermittent. Read-only source tracing nevertheless found an independent correctness defect:
 software recovery rearmed native state but queued its new Dart decode behind the same possibly suspended async
-lane. The current source correction replaces that lane generation; no corrected APK has executed yet. Both failed
+lane. The current source correction replaces that lane generation. A corrected APK has been built and launched,
+but the later replay failed at the earlier UI-command boundary and never reached peer presentation. Both failed
 roots are retained, their emulator/ADB/container/VM cleanup joined, and neither run added a host listener.
 
 The last complete task-removal/foreground-service/MediaProjection/Force-Stop lifecycle pass remains older source
@@ -9960,11 +9975,13 @@ symptoms, and complete connection-flow correctness and performance remain open.
 
 ### R-S11hr/R-S11e-255 — app-open health start and persistent-resource generation transfer
 
-**State.** Source recovery is implemented. Reopening the app while the
+**State.** Source recovery and exact UI-command ownership are implemented. Reopening the app while the
 foreground service persists now schedules one explicit
 `ACT_ENSURE_CONTROLLED_SERVICE` start before passive binding. Scheduling
 failure is returned to Flutter, and the health action cannot request or consume
-screen-capture consent.
+screen-capture consent. One deliberate screen-sharing action now owns every
+asynchronous permission, warning, credential, and native-command phase; repeated
+taps cannot create parallel transactions.
 
 **Boundary and implementation.** An unhealthy committed generation is retired
 while it still owns callback authority: controlled admission closes; exact
@@ -9976,18 +9993,28 @@ surface; older policy releases it. Mismatched projection/callback state is
 discarded. The replacement republishes retained readiness only to its new exact
 generation. Each explicit transaction publishes its actual Boolean service
 outcome, while `direct-listener-bound` remains the UI's socket truth.
+The Dart command latch is acquired before the first asynchronous preflight and
+released only after cancellation or the native decision. Password persistence
+is awaited and revalidated by that same owner. The former detached nonempty-
+password callback is absent: completion after dialog/UI replacement cannot
+start `MainService` under a retired owner's intent.
 
 **Evidence.** Source commit
 `2fb7d4aaebf8899a347a2c7e7a27f68e9caaf98f` contains the Activity health edge
 and transfer ordering. Focused status/listener/raw/voice validators and
 the independent source gate bind the current product topology. This is source
 evidence only; no current Kotlin/Gradle/JNI build, APK, emulator, or physical
-device executed this transaction.
+device executed the corrected UI transaction. The latest retained APK at
+`c4f0f46491df2a9ae1bd977a6944aa59db89518e` passed exact build/install/launch,
+but replay `run.SudbB1JvLK` exposed the prior latch gap and stopped at the
+password-dialog transition. It did not reach service startup or presentation.
 
 **Open evidence.** Run the exact installed APK through task swipe, reopen,
 Service recreation, Force Stop, retained/revoked projection, Android 14 display
 reuse, injected cleanup/activation failures, reconnect, and concurrent
-file/display/control/audio work. Capture-to-present latency, queue/CPU/memory/
+file/display/control/audio work. First execute the corrected outer UI transaction
+under repeated Start actions and prove exactly one warning, credential mutation,
+and native command. Capture-to-present latency, queue/CPU/memory/
 handle cleanup, sustained lifecycle soak, cross-version behavior, cold release
 equality, independent reproduction, causation, and external review remain
 STOP-SHIP.

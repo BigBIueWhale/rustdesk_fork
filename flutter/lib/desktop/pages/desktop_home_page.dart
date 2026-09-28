@@ -723,8 +723,7 @@ Future<bool> canSetPermanentPassword() async {
 final _permanentPasswordMutationCoordinator =
     PermanentPasswordMutationCoordinator();
 
-void setPasswordDialog(
-    {PermanentPasswordContinuation? notEmptyCallback}) async {
+Future<void> setPasswordDialog() async {
   if (!await canSetPermanentPassword()) {
     return;
   }
@@ -743,7 +742,6 @@ void setPasswordDialog(
           bind.mainSetPermanentPasswordWithResult(password: password),
       mutationCoordinator: _permanentPasswordMutationCoordinator,
       close: close,
-      onNonEmptySaved: notEmptyCallback,
       statusTip: statusTip,
       compactSpacing: showStatusTipOnMobile,
       compactActions: !isDesktop && !isWebDesktop,

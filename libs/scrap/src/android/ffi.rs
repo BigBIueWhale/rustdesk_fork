@@ -1,5 +1,5 @@
 use jni::objects::JValue;
-use jni::objects::{JByteArray, JByteBuffer};
+use jni::objects::{JByteArray, JByteBuffer, JString};
 use jni::sys::{jboolean, jint, jlong};
 use jni::JNIEnv;
 use jni::{
@@ -279,6 +279,39 @@ pub extern "system" fn Java_ffi_FFI_init(
         owner: retained_service,
     });
     jboolean::from(true)
+}
+
+fn android_app_dir_from_context(env: &mut JNIEnv, context: &JObject) -> ResultType<String> {
+    let directory_name = env
+        .new_string("flutter")
+        .map_err(|error| anyhow!("failed to create Android app-directory name: {error}"))?;
+    let directory_name = JObject::from(directory_name);
+    let directory = env
+        .call_method(
+            context,
+            "getDir",
+            "(Ljava/lang/String;I)Ljava/io/File;",
+            &[JValue::Object(&directory_name), JValue::Int(0)],
+        )
+        .map_err(|error| anyhow!("failed to obtain Android app directory: {error}"))?
+        .l()
+        .map_err(|error| anyhow!("Android app directory was not an object: {error}"))?;
+    if directory.is_null() {
+        return Err(anyhow!("Android app directory is null"));
+    }
+    let path = env
+        .call_method(&directory, "getPath", "()Ljava/lang/String;", &[])
+        .map_err(|error| anyhow!("failed to obtain Android app-directory path: {error}"))?
+        .l()
+        .map_err(|error| anyhow!("Android app-directory path was not a string: {error}"))?;
+    if path.is_null() {
+        return Err(anyhow!("Android app-directory path is null"));
+    }
+    let path = JString::from(path);
+    let path = env
+        .get_string(&path)
+        .map_err(|error| anyhow!("failed to decode Android app-directory path: {error}"))?;
+    Ok(path.into())
 }
 
 pub fn bind_main_service_generation<Begin, Rollback>(
@@ -847,14 +880,29 @@ pub extern "C" fn JNI_OnLoad(vm: jni::JavaVM, res: *mut std::os::raw::c_void) ->
 }
 
 #[no_mangle]
-pub extern "system" fn Java_ffi_FFI_onAppStart(mut env: JNIEnv, _class: JClass, ctx: JObject) {
+pub extern "system" fn Java_ffi_FFI_onAppStart(
+    mut env: JNIEnv,
+    _class: JClass,
+    ctx: JObject,
+) -> jboolean {
     if ctx.is_null() {
         log::error!("application context is null");
-        return;
+        return jboolean::from(false);
+    }
+    let app_dir = match android_app_dir_from_context(&mut env, &ctx) {
+        Ok(app_dir) => app_dir,
+        Err(error) => {
+            log::error!("failed to derive Android app directory: {error}");
+            return jboolean::from(false);
+        }
+    };
+    if let Err(error) = hbb_common::config::initialize_android_app_dir(app_dir) {
+        log::error!("failed to initialize Android app directory: {error}");
+        return jboolean::from(false);
     }
     if APPLICATION_CONTEXT.read().unwrap().is_some() {
         log::info!("application context already initialized");
-        return;
+        return jboolean::from(true);
     }
     if let Ok(jvm) = env.get_java_vm() {
         if let Ok(context) = env.new_global_ref(ctx) {
@@ -864,6 +912,9 @@ pub extern "system" fn Java_ffi_FFI_onAppStart(mut env: JNIEnv, _class: JClass, 
             } else {
                 log::info!("application context already initialized");
             }
+            return jboolean::from(true);
         }
     }
+    log::error!("failed to retain Android application context");
+    jboolean::from(false)
 }

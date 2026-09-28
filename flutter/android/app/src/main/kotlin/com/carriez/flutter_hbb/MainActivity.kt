@@ -418,17 +418,6 @@ class MainActivity : FlutterActivity() {
                 // R-G7 (§19): the get/set "Start on boot" platform-channel handlers are
                 // removed with the toggle — boot-start is re-homed unconditionally in
                 // BootReceiver (RECEIVE_BOOT_COMPLETED alone), so there is no opt to read/write.
-                SYNC_APP_DIR_CONFIG_PATH -> {
-                    if (call.arguments is String) {
-                        val prefs = getSharedPreferences(KEY_SHARED_PREFERENCES, MODE_PRIVATE)
-                        val edit = prefs.edit()
-                        edit.putString(KEY_APP_DIR_CONFIG_PATH, call.arguments as String)
-                        edit.apply()
-                        result.success(true)
-                    } else {
-                        result.success(false)
-                    }
-                }
                 GET_VALUE -> {
                     if (call.arguments is String) {
                         if (call.arguments == KEY_IS_SUPPORT_VOICE_CALL) {

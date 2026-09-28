@@ -13085,7 +13085,7 @@ replacement_take = rust[
 ]
 registration_failure = run_mobile[
     run_mobile.index("if (ownerRegistered != true)"):
-    run_mobile.index("platformFFI.syncAndroidServiceAppDirConfigPath()")
+    run_mobile.index("runApp(App())")
 ]
 
 ok = (
@@ -15956,6 +15956,7 @@ fi
 echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11iu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-S11e-284/R-T4) =="
 r_s14_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
 r_s14_activity_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainActivity.kt
+r_s14_application_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainApplication.kt
 r_s14_status_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainServiceStatusOwner.kt
 r_s14_clipboard_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/RdClipboardManager.kt
 r_s14_type_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt
@@ -16088,8 +16089,16 @@ grep -qF 'external fun init(service: Context, applicationContext: Context): Bool
 grep -qF 'nativeCallbackContextReady = FFI.init(this, applicationContext)' "$r_s14_kt" || r_s14_missing="$r_s14_missing service-callback-context-admission-result-ignored"
 grep -qF 'Ok(false) if context.generation.has_generation()' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing active-service-callback-owner-replacement-not-refused"
 grep -qF 'external fun releaseService(service: Context): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-release-jni-declaration-missing"
-grep -qF 'external fun startServer(service: Context, app_dir: String, custom_client_config: String): Long' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-generation-not-exact-object-bound"
-grep -qF 'val generation = FFI.startServer(this, configPath, "")' "$r_s14_kt" || r_s14_missing="$r_s14_missing service-start-generation-not-exact-object-bound"
+grep -qF 'external fun onAppStart(ctx: Context): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing application-root-bootstrap-not-result-bearing"
+grep -qF 'if (!FFI.onAppStart(applicationContext))' "$r_s14_application_kt" || r_s14_missing="$r_s14_missing application-root-bootstrap-result-ignored"
+grep -qF 'hbb_common::config::initialize_android_app_dir(app_dir)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing context-owned-app-directory-not-installed"
+grep -qF 'external fun startServer(service: Context): Long' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-generation-not-exact-object-bound"
+grep -qF 'val generation = FFI.startServer(this)' "$r_s14_kt" || r_s14_missing="$r_s14_missing service-start-generation-not-exact-object-bound"
+grep -qF 'startServer refused an uninitialized Android app directory' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing service-start-does-not-fail-closed-without-app-directory"
+if grep -R -qE 'syncAndroidServiceAppDirConfigPath|SYNC_APP_DIR_CONFIG_PATH|KEY_APP_DIR_CONFIG_PATH|kSyncAppDirConfigPath|sync_app_dir' \
+    flutter/android/app/src/main/kotlin flutter/lib; then
+  r_s14_missing="$r_s14_missing persisted-flutter-app-directory-authority-retained"
+fi
 grep -qF 'external fun deactivateServer(service: Context, generation: Long): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-deactivate-not-exact-object-generation"
 grep -qF 'external fun retireServerGeneration(service: Context, generation: Long): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-retirement-not-exact-object-generation"
 grep -qF 'pub fn retire_main_service_generation<ConfirmInactive>(' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-retirement-missing"

@@ -400,7 +400,6 @@ class AndroidChannel {
   static final kStartAction = "start_action";
   // R-G7 (§19): kGetStartOnBootOpt/kSetStartOnBootOpt removed with the "Start on boot"
   // toggle — boot-start is re-homed unconditionally in the native BootReceiver.
-  static final kSyncAppDirConfigPath = "sync_app_dir";
 }
 
 /// flutter/packages/flutter/lib/src/services/keyboard_key.dart -> _keyLabels

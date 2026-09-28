@@ -167,9 +167,6 @@ class PlatformFFI {
     return true;
   }
 
-  // just for compilation
-  void syncAndroidServiceAppDirConfigPath() {}
-
   void setFullscreenCallback(void Function(bool) fun) {
     context["onFullscreenChanged"] = (bool v) {
       fun(v);

@@ -240,7 +240,7 @@ def validate_dex(dexdump_outputs):
                 "getOrCreate:(Landroid/content/Context;)[B"
             ),
             "Lffi/FFI;.setMobileAtRestStorageKey:([B)Z",
-            "Lffi/FFI;.onAppStart:(Landroid/content/Context;)V",
+            "Lffi/FFI;.onAppStart:(Landroid/content/Context;)Z",
         ],
     )
 

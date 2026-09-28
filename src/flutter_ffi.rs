@@ -62,9 +62,19 @@ unsafe extern "C" fn rustdesk_set_mobile_at_rest_storage_key(key: *const u8, len
 
 fn initialize(app_dir: &str, custom_client_config: &str) {
     // `APP_DIR` is set in `main_get_data_dir_ios()` on iOS.
-    #[cfg(not(target_os = "ios"))]
+    // Android installs its exact Context-owned app directory from MainApplication before any
+    // Activity, receiver, or Service can run. Dart is not an authority for that process root.
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     {
         *config::APP_DIR.write().unwrap() = app_dir.to_owned();
+    }
+    #[cfg(target_os = "android")]
+    {
+        let _ = app_dir;
+        if let Err(error) = config::android_app_dir() {
+            log::error!("Android app directory was not initialized: {error}");
+            return;
+        }
     }
     // core_main's load_custom_client does not work for flutter since it is only applied to its load_library in main.c
     if custom_client_config.is_empty() {
@@ -2339,19 +2349,11 @@ pub mod server_side {
         env: JNIEnv,
         _class: JClass,
         service: JObject,
-        app_dir: JString,
-        custom_client_config: JString,
     ) -> jlong {
         log::debug!("startServer from jvm");
-        let mut env = env;
-        if let Ok(app_dir) = env.get_string(&app_dir) {
-            *config::APP_DIR.write().unwrap() = app_dir.into();
-        }
-        if let Ok(custom_client_config) = env.get_string(&custom_client_config) {
-            if !custom_client_config.is_empty() {
-                let custom_client_config: String = custom_client_config.into();
-                crate::read_custom_client(&custom_client_config);
-            }
+        if let Err(error) = config::android_app_dir() {
+            log::error!("startServer refused an uninitialized Android app directory: {error}");
+            return 0;
         }
         // R-D7a/R-S11hq: reserve and bind a fresh exact Service generation, but do not spawn the
         // direct listener yet. Kotlin must first complete its screen/status/voice transaction and

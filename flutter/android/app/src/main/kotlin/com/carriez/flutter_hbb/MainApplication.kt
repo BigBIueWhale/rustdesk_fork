@@ -16,6 +16,8 @@ class MainApplication : Application() {
         if (storageKey == null || !FFI.setMobileAtRestStorageKey(storageKey)) {
             Log.e(TAG, "Mobile at-rest storage key was not installed; encrypted config reads fail closed")
         }
-        FFI.onAppStart(applicationContext)
+        if (!FFI.onAppStart(applicationContext)) {
+            Log.e(TAG, "Android application context or app directory initialization failed")
+        }
     }
 }

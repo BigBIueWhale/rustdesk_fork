@@ -15,9 +15,9 @@ object FFI {
     external fun init(service: Context, applicationContext: Context): Boolean
     external fun releaseService(service: Context): Boolean
     external fun setMobileAtRestStorageKey(key: ByteArray): Boolean
-    external fun onAppStart(ctx: Context)
+    external fun onAppStart(ctx: Context): Boolean
     external fun setClipboardManager(clipboardManager: RdClipboardManager)
-    external fun startServer(service: Context, app_dir: String, custom_client_config: String): Long
+    external fun startServer(service: Context): Long
     external fun activateServer(service: Context, generation: Long): Boolean
     external fun isServerGenerationActive(service: Context, generation: Long): Boolean
     external fun deactivateServer(service: Context, generation: Long): Boolean

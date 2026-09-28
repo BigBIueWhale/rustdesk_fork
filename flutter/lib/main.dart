@@ -182,7 +182,6 @@ void runMobileApp() async {
       await SystemNavigator.pop();
       return;
     }
-    platformFFI.syncAndroidServiceAppDirConfigPath();
   }
   draggablePositions.load();
   runApp(App());

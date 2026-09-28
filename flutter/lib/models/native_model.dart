@@ -260,9 +260,5 @@ class PlatformFFI {
     return await _toAndroidChannel.invokeMethod(method, arguments);
   }
 
-  void syncAndroidServiceAppDirConfigPath() {
-    invokeMethod(AndroidChannel.kSyncAppDirConfigPath, _dir);
-  }
-
   void setFullscreenCallback(void Function(bool) fun) {}
 }

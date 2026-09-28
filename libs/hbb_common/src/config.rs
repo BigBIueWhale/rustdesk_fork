@@ -892,6 +892,61 @@ lazy_static::lazy_static! {
     pub static ref APP_DIR: RwLock<String> = Default::default();
 }
 
+#[cfg(any(target_os = "android", test))]
+fn is_absolute_clean_android_app_dir(path: &Path) -> bool {
+    path.is_absolute()
+        && path.components().all(|part| {
+            matches!(
+                part,
+                std::path::Component::RootDir | std::path::Component::Normal(_)
+            )
+        })
+        && path
+            .to_str()
+            .map(|value| {
+                !value
+                    .split('/')
+                    .any(|component| matches!(component, "." | ".."))
+            })
+            .unwrap_or(false)
+}
+
+#[cfg(target_os = "android")]
+pub fn initialize_android_app_dir(path: String) -> Result<PathBuf> {
+    let candidate = PathBuf::from(&path);
+    if !is_absolute_clean_android_app_dir(&candidate) {
+        return Err(anyhow!(
+            "Android app directory is not an absolute clean path"
+        ));
+    }
+
+    let mut current = APP_DIR
+        .write()
+        .map_err(|_| anyhow!("Android app-directory lock is poisoned"))?;
+    if current.is_empty() {
+        *current = path;
+    } else if Path::new(current.as_str()) != candidate.as_path() {
+        return Err(anyhow!(
+            "Android app directory was initialized inconsistently"
+        ));
+    }
+    Ok(candidate)
+}
+
+#[cfg(target_os = "android")]
+pub fn android_app_dir() -> Result<PathBuf> {
+    let current = APP_DIR
+        .read()
+        .map_err(|_| anyhow!("Android app-directory lock is poisoned"))?;
+    let path = PathBuf::from(current.as_str());
+    if !is_absolute_clean_android_app_dir(&path) {
+        return Err(anyhow!(
+            "Android app directory is not an absolute clean path"
+        ));
+    }
+    Ok(path)
+}
+
 #[cfg(any(target_os = "android", target_os = "ios"))]
 lazy_static::lazy_static! {
     pub static ref APP_HOME_DIR: RwLock<String> = Default::default();
@@ -2089,27 +2144,7 @@ fn store_config_bytes_transaction_unix(
             .ok_or_else(|| anyhow!("Config path '{}' has no parent directory", path.display()))?;
 
         #[cfg(target_os = "android")]
-        let trusted_root = {
-            let root = PathBuf::from(
-                APP_DIR
-                    .read()
-                    .map_err(|_| anyhow!("Android app-directory lock is poisoned"))?
-                    .as_str(),
-            );
-            if !root.is_absolute()
-                || root.components().any(|part| {
-                    !matches!(
-                        part,
-                        std::path::Component::RootDir | std::path::Component::Normal(_)
-                    )
-                })
-            {
-                return Err(anyhow!(
-                    "Android app directory is not an absolute clean path"
-                ));
-            }
-            Some(root)
-        };
+        let trusted_root = Some(android_app_dir()?);
         #[cfg(not(target_os = "android"))]
         let trusted_root: Option<PathBuf> = None;
 
@@ -4561,6 +4596,21 @@ impl Status {
 #[cfg(test)]
 mod tests {
     use super::{permanent_password::encode_permanent_password_encrypted_storage_from_h1, *};
+
+    #[test]
+    fn android_app_directory_shape_is_absolute_and_clean() {
+        assert!(is_absolute_clean_android_app_dir(Path::new(
+            "/data/user/0/com.carriez.flutter_hbb/app_flutter"
+        )));
+        assert!(!is_absolute_clean_android_app_dir(Path::new("")));
+        assert!(!is_absolute_clean_android_app_dir(Path::new("app_flutter")));
+        assert!(!is_absolute_clean_android_app_dir(Path::new(
+            "/data/user/0/../app_flutter"
+        )));
+        assert!(!is_absolute_clean_android_app_dir(Path::new(
+            "/data/user/0/./app_flutter"
+        )));
+    }
 
     #[test]
     fn direct_only_password_config_is_not_empty() {

@@ -39,7 +39,6 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import io.flutter.embedding.android.FlutterActivity
 import kotlin.concurrent.thread
 import org.json.JSONException
 import org.json.JSONObject
@@ -469,12 +468,7 @@ class MainService : Service() {
         }
 
         acceptingControlledConnections = false
-        val prefs = applicationContext.getSharedPreferences(
-            KEY_SHARED_PREFERENCES,
-            FlutterActivity.MODE_PRIVATE,
-        )
-        val configPath = prefs.getString(KEY_APP_DIR_CONFIG_PATH, "") ?: ""
-        val generation = FFI.startServer(this, configPath, "")
+        val generation = FFI.startServer(this)
         if (generation <= 0L) {
             Log.e(logTag, "Failed to bind the native server to this MainService generation")
             return false

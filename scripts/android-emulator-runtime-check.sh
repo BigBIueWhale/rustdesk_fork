@@ -199,7 +199,7 @@ for sdk_input in "$ANDROID_PLATFORM_JAR" "$ANDROID_UIAUTOMATOR_JAR" "$ANDROID_D8
 done
 [ -f "$RECENTS_DRIVER_SOURCE" ] && [ ! -L "$RECENTS_DRIVER_SOURCE" ] \
     && [ "$(stat -c '%u:%g:%a:%h' -- "$RECENTS_DRIVER_SOURCE")" = \
-         1000:1000:600:1 ] \
+         1000:1000:400:1 ] \
     || die 'the Recents-driver Java source metadata differs'
 readonly RECENTS_DRIVER_SOURCE_SHA256="$(sha256sum "$RECENTS_DRIVER_SOURCE" | awk '{ print $1 }')"
 readonly ANDROID_PLATFORM_JAR_SHA256="$(sha256sum "$ANDROID_PLATFORM_JAR" | awk '{ print $1 }')"
@@ -1037,7 +1037,7 @@ verify_gradle_root
 verify_sha256 "$EMULATOR_ZIP" "$SHA256_ANDROID_EMULATOR_LINUX_X64"
 verify_sha256 "$SYSTEM_IMAGE_ZIP" "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
 verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
-[ "$(stat -c '%u:%g:%a:%h' -- "$RECENTS_DRIVER_SOURCE")" = 1000:1000:600:1 ] \
+[ "$(stat -c '%u:%g:%a:%h' -- "$RECENTS_DRIVER_SOURCE")" = 1000:1000:400:1 ] \
     && [ "$(sha256sum "$RECENTS_DRIVER_SOURCE" | awk '{ print $1 }')" = \
          "$RECENTS_DRIVER_SOURCE_SHA256" ] \
     || die 'Recents gesture-driver source changed during execution'

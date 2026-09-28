@@ -1129,6 +1129,13 @@ is explicitly retired, all three verifier layers bind its build/stage/action/out
 `CLEAR ALL`, shell task removal, task/process kill, hard-coded coordinate, retry, or alternate product outcome.
 This source has not yet executed; it is not evidence of a successful dismissal or current product lifecycle.
 
+Focused no-NIC replay `run.HZ7x6ebGWq` stopped before driver compilation or emulator launch because the inner
+runtime verifier required the Java source's pre-seal mode `0600` after the guest had correctly removed all write
+bits from the exact source tree, making it `0400`. The source archive/tree check, guest metadata check, and
+read-only seal all passed; the mismatch was solely at the later redundant mode check. Current source admits only
+the actual post-seal `1000:1000:0400:1` metadata and rechecks it after execution. The failed VM powered off,
+listener delta/drift files are empty, no product behavior was exercised, and the private evidence root is retained.
+
 The last complete task-removal/foreground-service/MediaProjection/Force-Stop lifecycle pass remains older source
 `48acf94e1a26bf51af1f8e697a11cfe2aa84cbd4`, harness
 `eeb4327e0ba5c4677ba6571f97ca95bf14beeed1`, and APK

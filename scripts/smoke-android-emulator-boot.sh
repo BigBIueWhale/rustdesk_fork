@@ -1873,9 +1873,10 @@ swipe_app_task_from_recents() {
     fi
     read -r left top right bottom <<<"$task_bounds"
     [ "$right" -gt "$left" ] && [ "$bottom" -gt "$top" ] \
-        && [ "$bottom" -gt 1 ] || return 1
+        || return 1
     center_x=$(((left + right) / 2))
-    start_y=$((bottom - 1))
+    # Android 14 TAPL dismisses the selected snapshot from its visible center.
+    start_y=$(((top + bottom) / 2))
     timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" shell input swipe \
         "$center_x" "$start_y" "$center_x" 0 \

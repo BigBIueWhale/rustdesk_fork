@@ -311,11 +311,15 @@ readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
 readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=240000
 readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=240000
 readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
-readonly RECENTS_DISMISS_GESTURE_STEPS=33
+readonly RECENTS_DISMISS_GESTURE_EVENTS=12
+readonly RECENTS_DISMISS_GESTURE_STEPS=10
+readonly RECENTS_DISMISS_GESTURE_STEP_MS=16
 readonly RECENTS_DISMISS_OUTCOME_POLLS=20
 readonly RECENTS_FOCUSED_CYCLES=10
 readonly RECENTS_GESTURE_DEVICE_PATH=/data/local/tmp/rustdesk-recents-dismiss.jar
+readonly RECENTS_RUNTIME_UIAUTOMATOR_PATH=/system/framework/uiautomator.jar
 RECENTS_GESTURE_STAGED=0
+RECENTS_RUNTIME_UIAUTOMATOR_SHA256=
 RECENTS_LAST_TASK_ID=
 # The retained failing artifact repeated the rejected credential after 129.4 s. This integration
 # observation intentionally spans that old behavior; focused development checks remain separate.
@@ -1863,6 +1867,7 @@ wait_resumed_activity() {
 
 stage_recents_gesture_driver() {
     local push_output= device_checksum= device_digest= device_path= extra=
+    local runtime_checksum= runtime_digest= runtime_path=
     [ "$RECENTS_GESTURE_STAGED" -eq 0 ] || return 1
     push_output="$(timeout --signal=TERM --kill-after=2s 30s \
         "$ADB" -s "$SERIAL" push --sync \
@@ -1881,10 +1886,19 @@ stage_recents_gesture_driver() {
         && [ "$device_path" = "$RECENTS_GESTURE_DEVICE_PATH" ] \
         && [ -z "$extra" ] \
         || return 1
+    runtime_checksum="$(adb_shell_value sha256sum \
+        "$RECENTS_RUNTIME_UIAUTOMATOR_PATH")" || return 1
+    read -r runtime_digest runtime_path extra <<<"$runtime_checksum"
+    [[ "$runtime_digest" =~ ^[0-9a-f]{64}$ ]] \
+        && [ "$runtime_path" = "$RECENTS_RUNTIME_UIAUTOMATOR_PATH" ] \
+        && [ -z "$extra" ] \
+        || return 1
+    RECENTS_RUNTIME_UIAUTOMATOR_SHA256=$runtime_digest
     RECENTS_GESTURE_STAGED=1
-    printf 'ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=%s framework=platform-uiautomator steps=%s device_path=%s\n' \
-        "$RECENTS_GESTURE_SHA256" "$RECENTS_DISMISS_GESTURE_STEPS" \
-        "$RECENTS_GESTURE_DEVICE_PATH"
+    printf 'ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=%s framework=android14-ui-automation-direct events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s device_path=%s\n' \
+        "$RECENTS_GESTURE_SHA256" "$RECENTS_DISMISS_GESTURE_EVENTS" \
+        "$RECENTS_DISMISS_GESTURE_STEPS" "$RECENTS_DISMISS_GESTURE_STEP_MS" \
+        "$RECENTS_RUNTIME_UIAUTOMATOR_SHA256" "$RECENTS_GESTURE_DEVICE_PATH"
 }
 
 retire_recents_gesture_driver() {
@@ -1941,7 +1955,7 @@ swipe_app_task_from_recents() {
     local expected_task_id=$1 lifecycle_cycle=$2
     local current_task_id= task_bounds=
     local left= top= right= bottom= center_x= center_y=
-    local gesture_output=
+    local gesture_output= injection_receipt= injection_elapsed_ms=
     [ "$RECENTS_GESTURE_STAGED" -eq 1 ] || return 1
     current_task_id="$(current_app_task_id 2>/dev/null || true)"
     [ "$current_task_id" = "$expected_task_id" ] || return 1
@@ -1960,31 +1974,42 @@ swipe_app_task_from_recents() {
     center_x=$(((left + right) / 2))
     center_y=$(((top + bottom) / 2))
     if ! gesture_output="$(timeout --signal=TERM --kill-after=2s 30s \
-        "$ADB" -s "$SERIAL" shell uiautomator runtest \
-        "${RECENTS_GESTURE_DEVICE_PATH##*/}" \
-        -c com.rustdesk.harness.AndroidRecentsDismiss#testDismissBoundTask \
-        -e start_x "$center_x" -e start_y "$center_y" \
-        -e end_x "$center_x" -e end_y 0 \
-        -e gesture_steps "$RECENTS_DISMISS_GESTURE_STEPS" \
+        "$ADB" -s "$SERIAL" shell env \
+        "CLASSPATH=$RECENTS_RUNTIME_UIAUTOMATOR_PATH:$RECENTS_GESTURE_DEVICE_PATH" \
+        /system/bin/app_process /system/bin \
+        com.rustdesk.harness.AndroidRecentsDismiss \
+        "$center_x" "$center_y" "$center_x" 0 \
         2>&1 | tr -d '\r')"; then
         printf 'ANDROID_RECENTS_GESTURE_OUTPUT_BEGIN cycle=%s task_id=%s\n%s\nANDROID_RECENTS_GESTURE_OUTPUT_END cycle=%s task_id=%s\n' \
             "$lifecycle_cycle" "$expected_task_id" "$gesture_output" \
             "$lifecycle_cycle" "$expected_task_id" >&2
         return 1
     fi
+    injection_receipt="$(grep -E \
+        '^ANDROID_RECENTS_DIRECT_INJECTION=pass events=12 steps=10 step_ms=16 wait_for_animations=false elapsed_ms=[0-9]+$' \
+        <<<"$gesture_output" || true)"
     [ "${#gesture_output}" -le 16384 ] \
-        && [ "$(grep -Fxc 'OK (1 test)' <<<"$gesture_output")" -eq 1 ] \
-        && ! grep -Fq 'FAILURES!!!' <<<"$gesture_output" \
+        && [ "$(grep -c '^ANDROID_RECENTS_DIRECT_INJECTION=' \
+             <<<"$gesture_output")" -eq 1 ] \
+        && [ -n "$injection_receipt" ] \
         || {
             printf 'ANDROID_RECENTS_GESTURE_OUTPUT_BEGIN cycle=%s task_id=%s\n%s\nANDROID_RECENTS_GESTURE_OUTPUT_END cycle=%s task_id=%s\n' \
                 "$lifecycle_cycle" "$expected_task_id" "$gesture_output" \
                 "$lifecycle_cycle" "$expected_task_id" >&2
             return 1
         }
-    printf 'ANDROID_RECENTS_DISMISS_ACTION=injected cycle=%s task_id=%s bounds=%s,%s,%s,%s start=%s,%s end=%s,%s framework=platform-uiautomator steps=%s driver_sha256=%s\n' \
+    [[ "$injection_receipt" =~ elapsed_ms=([0-9]+)$ ]] || return 1
+    injection_elapsed_ms=${BASH_REMATCH[1]}
+    [ "$injection_elapsed_ms" -ge \
+      "$((RECENTS_DISMISS_GESTURE_STEPS * RECENTS_DISMISS_GESTURE_STEP_MS))" ] \
+        && [ "$injection_elapsed_ms" -le 5000 ] \
+        || return 1
+    printf 'ANDROID_RECENTS_DISMISS_ACTION=injected cycle=%s task_id=%s bounds=%s,%s,%s,%s start=%s,%s end=%s,%s framework=android14-ui-automation-direct events=%s steps=%s step_ms=%s wait_for_animations=false driver_elapsed_ms=%s driver_sha256=%s\n' \
         "$lifecycle_cycle" "$expected_task_id" \
         "$left" "$top" "$right" "$bottom" "$center_x" "$center_y" "$center_x" 0 \
-        "$RECENTS_DISMISS_GESTURE_STEPS" "$RECENTS_GESTURE_SHA256"
+        "$RECENTS_DISMISS_GESTURE_EVENTS" "$RECENTS_DISMISS_GESTURE_STEPS" \
+        "$RECENTS_DISMISS_GESTURE_STEP_MS" "$injection_elapsed_ms" \
+        "$RECENTS_GESTURE_SHA256"
 }
 
 print_app_task_diagnostic() {
@@ -3521,9 +3546,11 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
             || fail 'the focused Recents receipt is not ready'
         [ "$RECENTS_GESTURE_STAGED" -eq 0 ] \
             || fail 'the focused Recents gesture driver remained staged'
-        printf 'ANDROID_EMULATOR_RECENTS=pass task_removals=%s actions=%s task_ids=distinct driver=platform-uiautomator steps=%s driver_sha256=%s service=never-started relaunch=resumed apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
+        printf 'ANDROID_EMULATOR_RECENTS=pass task_removals=%s actions=%s task_ids=distinct driver=android14-ui-automation-direct events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s driver_sha256=%s service=never-started relaunch=resumed apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
             "$RECENTS_FOCUSED_CYCLES" "$RECENTS_FOCUSED_CYCLES" \
-            "$RECENTS_DISMISS_GESTURE_STEPS" "$RECENTS_GESTURE_SHA256" \
+            "$RECENTS_DISMISS_GESTURE_EVENTS" "$RECENTS_DISMISS_GESTURE_STEPS" \
+            "$RECENTS_DISMISS_GESTURE_STEP_MS" \
+            "$RECENTS_RUNTIME_UIAUTOMATOR_SHA256" "$RECENTS_GESTURE_SHA256" \
             "$APK_SHA256"
     fi
     if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then

@@ -51,8 +51,6 @@ readonly EMULATOR_ZIP=$CANDIDATE_ROOT/emulator-linux_x64-${ANDROID_EMULATOR_ARCH
 readonly SYSTEM_IMAGE_ZIP=$CANDIDATE_ROOT/x86_64-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip
 readonly ADB=$ONLINE_DIR/android-sdk/platform-tools/adb
 readonly ANDROID_PLATFORM_JAR=$ONLINE_DIR/android-sdk/platforms/android-${ANDROID_COMPILE_SDK}/android.jar
-readonly ANDROID_UIAUTOMATOR_JAR=$ONLINE_DIR/android-sdk/platforms/android-${ANDROID_COMPILE_SDK}/uiautomator.jar
-readonly ANDROID_TEST_BASE_JAR=$ONLINE_DIR/android-sdk/platforms/android-${ANDROID_COMPILE_SDK}/optional/android.test.base.jar
 readonly ANDROID_D8=$ONLINE_DIR/android-sdk/build-tools/${ANDROID_BUILD_TOOLS}/d8
 readonly RECENTS_DRIVER_SOURCE=$SCRIPT_DIR/AndroidRecentsDismiss.java
 readonly OBSERVER_DEPENDENCY_MANIFEST=$SCRIPT_DIR/android-emulator-frame-observer-dependencies.tsv
@@ -194,8 +192,7 @@ verify_gradle_root
 verify_sha256 "$EMULATOR_ZIP" "$SHA256_ANDROID_EMULATOR_LINUX_X64"
 verify_sha256 "$SYSTEM_IMAGE_ZIP" "$SHA256_ANDROID_EMULATOR_SYSTEM_IMAGE_X86_64"
 verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
-for sdk_input in "$ANDROID_PLATFORM_JAR" "$ANDROID_UIAUTOMATOR_JAR" \
-    "$ANDROID_TEST_BASE_JAR" "$ANDROID_D8"; do
+for sdk_input in "$ANDROID_PLATFORM_JAR" "$ANDROID_D8"; do
     [ -f "$sdk_input" ] && [ ! -L "$sdk_input" ] \
         || die "the Recents-driver SDK input is absent or ambiguous: $sdk_input"
 done
@@ -205,12 +202,9 @@ done
     || die 'the Recents-driver Java source metadata differs'
 readonly RECENTS_DRIVER_SOURCE_SHA256="$(sha256sum "$RECENTS_DRIVER_SOURCE" | awk '{ print $1 }')"
 readonly ANDROID_PLATFORM_JAR_SHA256="$(sha256sum "$ANDROID_PLATFORM_JAR" | awk '{ print $1 }')"
-readonly ANDROID_UIAUTOMATOR_JAR_SHA256="$(sha256sum "$ANDROID_UIAUTOMATOR_JAR" | awk '{ print $1 }')"
-readonly ANDROID_TEST_BASE_JAR_SHA256="$(sha256sum "$ANDROID_TEST_BASE_JAR" | awk '{ print $1 }')"
 readonly ANDROID_D8_SHA256="$(sha256sum "$ANDROID_D8" | awk '{ print $1 }')"
 for component_digest in "$RECENTS_DRIVER_SOURCE_SHA256" \
-    "$ANDROID_PLATFORM_JAR_SHA256" "$ANDROID_UIAUTOMATOR_JAR_SHA256" \
-    "$ANDROID_TEST_BASE_JAR_SHA256" "$ANDROID_D8_SHA256"; do
+    "$ANDROID_PLATFORM_JAR_SHA256" "$ANDROID_D8_SHA256"; do
     [[ "$component_digest" =~ ^[0-9a-f]{64}$ ]] \
         || die 'a Recents-driver source/tool digest is malformed'
 done
@@ -290,14 +284,12 @@ VERIFY_CONTAINER="$(vm_docker create \
         for pass in a b; do
             mkdir -m 0700 "/driver/classes-$pass"
             javac -encoding UTF-8 -source 8 -target 8 \
-                -classpath /online/android-sdk/platforms/android-'"$ANDROID_COMPILE_SDK"'/android.jar:/online/android-sdk/platforms/android-'"$ANDROID_COMPILE_SDK"'/uiautomator.jar:/online/android-sdk/platforms/android-'"$ANDROID_COMPILE_SDK"'/optional/android.test.base.jar \
+                -classpath /online/android-sdk/platforms/android-'"$ANDROID_COMPILE_SDK"'/android.jar \
                 -d "/driver/classes-$pass" \
                 /source/scripts/AndroidRecentsDismiss.java
             /online/android-sdk/build-tools/'"$ANDROID_BUILD_TOOLS"'/d8 \
                 --release --min-api 16 \
                 --lib /online/android-sdk/platforms/android-'"$ANDROID_COMPILE_SDK"'/android.jar \
-                --lib /online/android-sdk/platforms/android-'"$ANDROID_COMPILE_SDK"'/uiautomator.jar \
-                --lib /online/android-sdk/platforms/android-'"$ANDROID_COMPILE_SDK"'/optional/android.test.base.jar \
                 --output "/driver/recents-dismiss-$pass.jar" \
                 "/driver/classes-$pass/com/rustdesk/harness/AndroidRecentsDismiss.class"
         done
@@ -307,10 +299,9 @@ VERIFY_CONTAINER="$(vm_docker create \
         unzip -t /driver/recents-dismiss.jar >/dev/null
         rm -rf -- /driver/classes-a /driver/classes-b \
             /driver/recents-dismiss-a.jar /driver/recents-dismiss-b.jar
-        printf "ANDROID_RECENTS_GESTURE_BUILD=pass sha256=%s source_sha256=%s android_jar_sha256=%s uiautomator_jar_sha256=%s test_base_jar_sha256=%s d8_sha256=%s copies=2 equality=byte-identical network=none output=private-bind\\n" \
+        printf "ANDROID_RECENTS_GESTURE_BUILD=pass sha256=%s source_sha256=%s android_jar_sha256=%s d8_sha256=%s copies=2 equality=byte-identical network=none output=private-bind\\n" \
             "$(sha256sum /driver/recents-dismiss.jar | cut -d " " -f 1)" \
             '"$RECENTS_DRIVER_SOURCE_SHA256"' '"$ANDROID_PLATFORM_JAR_SHA256"' \
-            '"$ANDROID_UIAUTOMATOR_JAR_SHA256"' '"$ANDROID_TEST_BASE_JAR_SHA256"' \
             '"$ANDROID_D8_SHA256"'
     ')"
 [[ "$VERIFY_CONTAINER" =~ ^[0-9a-f]{64}$ ]] \
@@ -342,7 +333,7 @@ case "${apk_receipts[0]}" in
     *) die 'runtime-test APK verifier reported a different digest' ;;
 esac
 mapfile -t recents_driver_build_receipts < <(grep -E \
-    "^ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=$RECENTS_DRIVER_SOURCE_SHA256 android_jar_sha256=$ANDROID_PLATFORM_JAR_SHA256 uiautomator_jar_sha256=$ANDROID_UIAUTOMATOR_JAR_SHA256 test_base_jar_sha256=$ANDROID_TEST_BASE_JAR_SHA256 d8_sha256=$ANDROID_D8_SHA256 copies=2 equality=byte-identical network=none output=private-bind$" \
+    "^ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=$RECENTS_DRIVER_SOURCE_SHA256 android_jar_sha256=$ANDROID_PLATFORM_JAR_SHA256 d8_sha256=$ANDROID_D8_SHA256 copies=2 equality=byte-identical network=none output=private-bind$" \
     "$VERIFY_LOG" || true)
 [ "${#recents_driver_build_receipts[@]}" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_RECENTS_GESTURE_BUILD=' "$VERIFY_LOG")" -eq 1 ] \
@@ -934,11 +925,15 @@ case "${runtime_receipts[0]}" in
     *) die 'Android app runtime reported a different APK digest' ;;
 esac
 mapfile -t recents_driver_stage_receipts < <(grep -E \
-    "^ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$RECENTS_DRIVER_SHA256 framework=platform-uiautomator steps=33 device_path=/data/local/tmp/rustdesk-recents-dismiss\.jar$" \
+    "^ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$RECENTS_DRIVER_SHA256 framework=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=[0-9a-f]{64} device_path=/data/local/tmp/rustdesk-recents-dismiss\.jar$" \
     "$RUNTIME_LOG" || true)
 [ "${#recents_driver_stage_receipts[@]}" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_RECENTS_GESTURE_DRIVER=' "$RUNTIME_LOG")" -eq 1 ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android Recents gesture-driver stage receipt is absent, malformed, or duplicated'; }
+[[ "${recents_driver_stage_receipts[0]}" =~ \
+    runtime_uiautomator_sha256=([0-9a-f]{64})\ device_path= ]] \
+    || die 'Android Recents gesture-driver runtime UiAutomator digest is malformed'
+RECENTS_RUNTIME_UIAUTOMATOR_SHA256=${BASH_REMATCH[1]}
 if [ "$RUNTIME_SCENARIO" = recents ]; then
     readonly expected_recents_cycles=10
     readonly recents_cycle_pattern='([1-9]|10)'
@@ -947,7 +942,7 @@ else
     readonly recents_cycle_pattern='[12]'
 fi
 mapfile -t recents_dismiss_action_receipts < <(grep -E \
-    "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$recents_cycle_pattern task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 framework=platform-uiautomator steps=33 driver_sha256=$RECENTS_DRIVER_SHA256$" \
+    "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$recents_cycle_pattern task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 framework=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false driver_elapsed_ms=[0-9]+ driver_sha256=$RECENTS_DRIVER_SHA256$" \
     "$RUNTIME_LOG" || true)
 [ "${#recents_dismiss_action_receipts[@]}" -eq "$expected_recents_cycles" ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android Recents-dismiss action receipts are absent, malformed, or duplicated'; }
@@ -971,6 +966,13 @@ for recents_action_receipt in "${recents_dismiss_action_receipts[@]}"; do
         && [ "$recents_start_y" -eq "$(((recents_top + recents_bottom) / 2))" ] \
         && [ "$recents_end_x" -eq "$recents_start_x" ] \
         || die 'Android Recents-dismiss action did not use the exact visible-task center'
+    [[ "$recents_action_receipt" =~ \
+        driver_elapsed_ms=([0-9]+)\ driver_sha256= ]] \
+        || die 'Android Recents-dismiss driver elapsed time is malformed'
+    recents_driver_elapsed_ms=${BASH_REMATCH[1]}
+    [ "$recents_driver_elapsed_ms" -ge 160 ] \
+        && [ "$recents_driver_elapsed_ms" -le 5000 ] \
+        || die 'Android Recents-dismiss driver elapsed time is outside its bound'
 done
 mapfile -t recents_dismiss_outcome_receipts < <(grep -E \
     "^ANDROID_RECENTS_DISMISS_OUTCOME=pass cycle=$recents_cycle_pattern task_id=[1-9][0-9]* actions=1$" \
@@ -990,7 +992,7 @@ for lifecycle_cycle in $(seq 1 "$expected_recents_cycles"); do
         || die "Android Recents-dismiss cycle $lifecycle_cycle outcome differs"
     cycle_task_id=${BASH_REMATCH[1]}
     [ "$(grep -Ec \
-        "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$lifecycle_cycle task_id=$cycle_task_id .* framework=platform-uiautomator steps=33 driver_sha256=$RECENTS_DRIVER_SHA256$" \
+        "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$lifecycle_cycle task_id=$cycle_task_id .* framework=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false driver_elapsed_ms=[0-9]+ driver_sha256=$RECENTS_DRIVER_SHA256$" \
         "$RUNTIME_LOG")" -eq 1 ] \
         || die "Android Recents-dismiss cycle $lifecycle_cycle action/outcome binding differs"
     case " $recents_task_ids " in
@@ -1028,7 +1030,7 @@ case "${peer_receipts[0]}" in
 esac
 else
 mapfile -t focused_recents_receipts < <(grep -E \
-    "^ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 task_ids=distinct driver=platform-uiautomator steps=33 driver_sha256=$RECENTS_DRIVER_SHA256 service=never-started relaunch=resumed apk_sha256=$APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
+    "^ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 task_ids=distinct driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$RECENTS_RUNTIME_UIAUTOMATOR_SHA256 driver_sha256=$RECENTS_DRIVER_SHA256 service=never-started relaunch=resumed apk_sha256=$APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
     "$RUNTIME_LOG" || true)
 [ "${#focused_recents_receipts[@]}" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_EMULATOR_RECENTS=' "$RUNTIME_LOG")" -eq 1 ] \
@@ -1066,10 +1068,6 @@ verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
     || die 'Recents gesture-driver source changed during execution'
 [ "$(sha256sum "$ANDROID_PLATFORM_JAR" | awk '{ print $1 }')" = \
   "$ANDROID_PLATFORM_JAR_SHA256" ] \
-    && [ "$(sha256sum "$ANDROID_UIAUTOMATOR_JAR" | awk '{ print $1 }')" = \
-         "$ANDROID_UIAUTOMATOR_JAR_SHA256" ] \
-    && [ "$(sha256sum "$ANDROID_TEST_BASE_JAR" | awk '{ print $1 }')" = \
-         "$ANDROID_TEST_BASE_JAR_SHA256" ] \
     && [ "$(sha256sum "$ANDROID_D8" | awk '{ print $1 }')" = \
          "$ANDROID_D8_SHA256" ] \
     || die 'a Recents gesture-driver SDK input changed during execution'

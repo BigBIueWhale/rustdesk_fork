@@ -3027,7 +3027,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android runtime APK receipt is absent or duplicated'; }
     mapfile -t android_recents_build_receipts < <(
         /usr/bin/grep -Eo \
-            'ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} android_jar_sha256=[0-9a-f]{64} uiautomator_jar_sha256=[0-9a-f]{64} test_base_jar_sha256=[0-9a-f]{64} d8_sha256=[0-9a-f]{64} copies=2 equality=byte-identical network=none output=private-bind' \
+            'ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} android_jar_sha256=[0-9a-f]{64} d8_sha256=[0-9a-f]{64} copies=2 equality=byte-identical network=none output=private-bind' \
             "$SERIAL_LOG" || true
     )
     [ "${#android_recents_build_receipts[@]}" -eq 1 ] \
@@ -3036,9 +3036,17 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         sha256=([0-9a-f]{64})\ source_sha256= ]] \
         || fail 'Android Recents gesture-driver build receipt is malformed'
     android_recents_driver_sha256=${BASH_REMATCH[1]}
-    require_exact_fixed_receipt \
-        "ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$android_recents_driver_sha256 framework=platform-uiautomator steps=33 device_path=/data/local/tmp/rustdesk-recents-dismiss.jar" \
-        'Android Recents gesture-driver stage receipt'
+    mapfile -t android_recents_driver_receipts < <(
+        /usr/bin/grep -Eo \
+            "ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$android_recents_driver_sha256 framework=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=[0-9a-f]{64} device_path=/data/local/tmp/rustdesk-recents-dismiss\.jar" \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#android_recents_driver_receipts[@]}" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android Recents gesture-driver stage receipt is absent or duplicated'; }
+    [[ "${android_recents_driver_receipts[0]}" =~ \
+        runtime_uiautomator_sha256=([0-9a-f]{64})\ device_path= ]] \
+        || fail 'Android Recents gesture-driver runtime UiAutomator digest is malformed'
+    android_recents_runtime_uiautomator_sha256=${BASH_REMATCH[1]}
     if [ "$ANDROID_RUNTIME_SCENARIO" = recents ]; then
         android_recents_cycles=10
         android_recents_cycle_pattern='([1-9]|10)'
@@ -3048,7 +3056,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     fi
     mapfile -t android_recents_action_receipts < <(
         /usr/bin/grep -Eo \
-            "ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$android_recents_cycle_pattern task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 framework=platform-uiautomator steps=33 driver_sha256=$android_recents_driver_sha256" \
+            "ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$android_recents_cycle_pattern task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 framework=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false driver_elapsed_ms=[0-9]+ driver_sha256=$android_recents_driver_sha256" \
             "$SERIAL_LOG" || true
     )
     [ "${#android_recents_action_receipts[@]}" -eq "$android_recents_cycles" ] \
@@ -3073,6 +3081,13 @@ elif [ "$MODE" = android-emulator-runtime ]; then
                  "$(((android_recents_top + android_recents_bottom) / 2))" ] \
             && [ "$android_recents_end_x" -eq "$android_recents_start_x" ] \
             || fail 'Android Recents action did not use the exact visible-task center'
+        [[ "$android_recents_action_receipt" =~ \
+            driver_elapsed_ms=([0-9]+)\ driver_sha256= ]] \
+            || fail 'Android Recents driver elapsed time is malformed'
+        android_recents_driver_elapsed_ms=${BASH_REMATCH[1]}
+        [ "$android_recents_driver_elapsed_ms" -ge 160 ] \
+            && [ "$android_recents_driver_elapsed_ms" -le 5000 ] \
+            || fail 'Android Recents driver elapsed time is outside its bound'
     done
     mapfile -t android_recents_outcome_receipts < <(
         /usr/bin/grep -Eo \
@@ -3159,7 +3174,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         android_runtime_peer=production-loopback-cpace-changing-display
     else
         require_exact_fixed_receipt \
-            "ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 task_ids=distinct driver=platform-uiautomator steps=33 driver_sha256=$android_recents_driver_sha256 service=never-started relaunch=resumed apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
+            "ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 task_ids=distinct driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$android_recents_runtime_uiautomator_sha256 driver_sha256=$android_recents_driver_sha256 service=never-started relaunch=resumed apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
             'focused Android Recents runtime receipt'
         android_runtime_peer=absent
     fi
@@ -3460,7 +3475,7 @@ elif [ "$MODE" = android-emulator-app ]; then
         "$vm_elapsed_seconds"
 elif [ "$MODE" = android-emulator-runtime ]; then
     if [ "$ANDROID_RUNTIME_SCENARIO" = recents ]; then
-        android_runtime_product=real-retained-apk-platform-uiautomator-recents-ten-cycle
+        android_runtime_product=real-retained-apk-direct-uiautomation-recents-ten-cycle
     else
         android_runtime_product=real-retained-apk-production-peer-cpace-changing-display-background-task-remove-relaunch-force-stop
     fi

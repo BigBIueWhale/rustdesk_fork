@@ -3590,16 +3590,12 @@ run_flutter_model_tests() {
                 format_status=0
                 : >/work/format.diff
                 for format_path in \
-                    lib/common.dart \
-                    lib/common/widgets/toolbar.dart \
                     lib/models/android_permission_request_coordinator.dart \
                     lib/models/latest_frame_queue.dart \
                     lib/common/widgets/overlay.dart \
                     lib/common/widgets/permanent_password_dialog.dart \
                     lib/common/widgets/custom_password.dart \
                     lib/models/reconnect_schedule_authority.dart \
-                    lib/desktop/pages/remote_page.dart \
-                    lib/desktop/pages/view_camera_page.dart \
                     lib/mobile/pages/remote_page.dart \
                     lib/mobile/pages/view_camera_page.dart \
                     test/latest_frame_queue_test.dart \

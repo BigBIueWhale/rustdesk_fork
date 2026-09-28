@@ -216,8 +216,7 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
   if (pi.version.isNotEmpty) {
     v.add(TTextMenu(
       child: Text(translate('Refresh')),
-      onPressed: () =>
-          ffi.refreshPresentation(sessionId, ffi.clientOwnerId),
+      onPressed: () => ffi.refreshPresentation(sessionId, ffi.clientOwnerId),
     ));
   }
   // record

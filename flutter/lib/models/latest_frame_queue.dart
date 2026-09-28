@@ -46,8 +46,7 @@ class LatestFrameQueue<Owner, Key, Frame> {
     if (admission == _LatestFrameAdmission.retired) {
       entry.complete(LatestFrameDisposition.retired);
     } else if (admission == _LatestFrameAdmission.exhausted) {
-      entry.completeError(
-          StateError('frame presentation capacity exhausted'),
+      entry.completeError(StateError('frame presentation capacity exhausted'),
           StackTrace.current);
     }
     return entry.done!.future;
@@ -69,16 +68,15 @@ class LatestFrameQueue<Owner, Key, Frame> {
       return false;
     }
     if (admission == _LatestFrameAdmission.exhausted) {
-      entry.completeError(
-          StateError('frame presentation capacity exhausted'),
+      entry.completeError(StateError('frame presentation capacity exhausted'),
           StackTrace.current);
       return false;
     }
     return true;
   }
 
-  _LatestFrameAdmission _admit(Owner expectedOwner, Key key,
-      _LatestFrameEntry<Frame> entry) {
+  _LatestFrameAdmission _admit(
+      Owner expectedOwner, Key key, _LatestFrameEntry<Frame> entry) {
     if (_retired || _suspended || expectedOwner != owner) {
       return _LatestFrameAdmission.retired;
     }

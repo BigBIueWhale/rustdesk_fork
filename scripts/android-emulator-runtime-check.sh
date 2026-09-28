@@ -700,6 +700,8 @@ if [ "$runtime_status" -ne 0 ]; then
         | tail -n 20 >&2 || true
     grep '^ANDROID_RECENTS_DISMISS_ACTION=' "$RUNTIME_LOG" \
         | tail -n 4 >&2 || true
+    grep '^ANDROID_RECENTS_DISMISS_OUTCOME=' "$RUNTIME_LOG" \
+        | tail -n 2 >&2 || true
     grep '^Android initial UI:' "$RUNTIME_LOG" | tail -n 80 >&2 || true
     runtime_failure="$(grep -m 1 '^Android emulator boot smoke:' \
         "$RUNTIME_LOG" || true)"
@@ -806,12 +808,49 @@ case "${runtime_receipts[0]}" in
     *) die 'Android app runtime reported a different APK digest' ;;
 esac
 mapfile -t recents_dismiss_action_receipts < <(grep -E \
-    '^ANDROID_RECENTS_DISMISS_ACTION=injected task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 duration_ms=600$' \
+    '^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=[12] attempt=[12] task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 duration_ms=600$' \
     "$RUNTIME_LOG" || true)
-[ "${#recents_dismiss_action_receipts[@]}" -eq 2 ] \
+[ "${#recents_dismiss_action_receipts[@]}" -ge 2 ] \
+    && [ "${#recents_dismiss_action_receipts[@]}" -le 4 ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android Recents-dismiss action receipts are absent, malformed, or duplicated'; }
-[ "$(grep -c '^ANDROID_RECENTS_DISMISS_ACTION=' "$RUNTIME_LOG")" -eq 2 ] \
+[ "$(grep -c '^ANDROID_RECENTS_DISMISS_ACTION=' "$RUNTIME_LOG")" -eq \
+  "${#recents_dismiss_action_receipts[@]}" ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android Recents-dismiss action receipt cardinality differs'; }
+mapfile -t recents_dismiss_outcome_receipts < <(grep -E \
+    '^ANDROID_RECENTS_DISMISS_OUTCOME=pass cycle=[12] task_id=[1-9][0-9]* attempts=[12]$' \
+    "$RUNTIME_LOG" || true)
+[ "${#recents_dismiss_outcome_receipts[@]}" -eq 2 ] \
+    && [ "$(grep -c '^ANDROID_RECENTS_DISMISS_OUTCOME=' "$RUNTIME_LOG")" -eq 2 ] \
+    || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android Recents-dismiss outcome receipts are absent, malformed, or duplicated'; }
+recents_dismiss_attempt_total=0
+for lifecycle_cycle in 1 2; do
+    mapfile -t cycle_outcomes < <(grep -E \
+        "^ANDROID_RECENTS_DISMISS_OUTCOME=pass cycle=$lifecycle_cycle task_id=[1-9][0-9]* attempts=[12]$" \
+        "$RUNTIME_LOG" || true)
+    [ "${#cycle_outcomes[@]}" -eq 1 ] \
+        || die "Android Recents-dismiss cycle $lifecycle_cycle outcome cardinality differs"
+    [[ "${cycle_outcomes[0]}" =~ task_id=([1-9][0-9]*)\ attempts=([12])$ ]] \
+        || die "Android Recents-dismiss cycle $lifecycle_cycle outcome differs"
+    cycle_task_id=${BASH_REMATCH[1]}
+    cycle_attempts=${BASH_REMATCH[2]}
+    [ "$(grep -Ec \
+        "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$lifecycle_cycle attempt=[12] task_id=$cycle_task_id " \
+        "$RUNTIME_LOG")" -eq "$cycle_attempts" ] \
+        || die "Android Recents-dismiss cycle $lifecycle_cycle action/outcome binding differs"
+    [ "$(grep -c \
+        "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$lifecycle_cycle attempt=1 task_id=$cycle_task_id " \
+        "$RUNTIME_LOG")" -eq 1 ] \
+        || die "Android Recents-dismiss cycle $lifecycle_cycle first action differs"
+    if [ "$cycle_attempts" -eq 2 ]; then
+        [ "$(grep -c \
+            "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$lifecycle_cycle attempt=2 task_id=$cycle_task_id " \
+            "$RUNTIME_LOG")" -eq 1 ] \
+            || die "Android Recents-dismiss cycle $lifecycle_cycle retry action differs"
+    fi
+    recents_dismiss_attempt_total=$((recents_dismiss_attempt_total + cycle_attempts))
+done
+[ "$recents_dismiss_attempt_total" -eq "${#recents_dismiss_action_receipts[@]}" ] \
+    || die 'Android Recents-dismiss total action/outcome binding differs'
 mapfile -t lifecycle_receipts < <(grep -E \
     '^ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=(absent|waited-([1-9]|1[0-2])|waited-12-closed-1) immersive_cling=(absent|dismissed-1) apk_sha256=[0-9a-f]{64} vm_network=none container_network=none cleanup=joined$' \
     "$RUNTIME_LOG" || true)
@@ -868,6 +907,7 @@ printf '%s\n' "${apk_receipts[0]}" "${endpoint_receipts[0]}" \
     "${frame_observer_build_receipts[0]}" "${frame_observer_receipts[0]}" \
     "${renderer_receipts[0]}" "${runtime_receipts[0]}" \
     "${recents_dismiss_action_receipts[@]}" \
+    "${recents_dismiss_outcome_receipts[@]}" \
     "${lifecycle_receipts[0]}" "${initial_credential_receipts[0]}" \
     "${peer_receipts[0]}"
 printf 'ANDROID_EMULATOR_RUNTIME_CHECK=pass artifact_commit=%s apk_sha256=%s signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=%s runtime=%s peer=production-loopback-cpace-changing-display vm_network=none container_network=none inputs=readonly cleanup=joined\n' \

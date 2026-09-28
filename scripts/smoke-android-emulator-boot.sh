@@ -287,6 +287,8 @@ readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
 # Android's shell input command generates a different motion-event stream from
 # Launcher3 TAPL.  This duration has completed the real pinned-image gesture.
 readonly RECENTS_DISMISS_GESTURE_MS=600
+readonly RECENTS_DISMISS_MAX_ATTEMPTS=2
+readonly RECENTS_DISMISS_OUTCOME_POLLS=20
 # The retained failing artifact repeated the rejected credential after 129.4 s. This integration
 # observation intentionally spans that old behavior; focused development checks remain separate.
 readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=140000
@@ -1831,7 +1833,7 @@ wait_resumed_activity() {
     return 1
 }
 
-current_app_task_id() {
+app_task_state() {
     local state
     state="$(adb_shell_value dumpsys activity recents)" || return 1
     python3 -I -S - "$state" <<'PY'
@@ -1851,20 +1853,33 @@ for line in sys.argv[1].splitlines():
     match = re.search(r"Task\{[^}]* #[1-9][0-9]*\b", stripped)
     if match:
         task_ids.add(match.group().rsplit("#", 1)[1])
-if len(task_ids) != 1:
+if not task_ids:
+    print("absent")
+elif len(task_ids) == 1:
+    print(task_ids.pop())
+else:
     raise SystemExit(1)
-print(task_ids.pop())
 PY
 }
 
+current_app_task_id() {
+    local state
+    state="$(app_task_state)" || return 1
+    [[ "$state" =~ ^[1-9][0-9]*$ ]] || return 1
+    printf '%s\n' "$state"
+}
+
 swipe_app_task_from_recents() {
-    local expected_task_id=$1 current_task_id= task_bounds=
+    local expected_task_id=$1 lifecycle_cycle=$2 dismiss_attempt=$3
+    local current_task_id= task_bounds=
     local left= top= right= bottom= center_x= start_y=
     current_task_id="$(current_app_task_id 2>/dev/null || true)"
     [ "$current_task_id" = "$expected_task_id" ] || return 1
-    timeout --signal=TERM --kill-after=2s 10s \
-        "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_APP_SWITCH \
-        >/dev/null || return 1
+    if [ "$dismiss_attempt" -eq 1 ]; then
+        timeout --signal=TERM --kill-after=2s 10s \
+            "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_APP_SWITCH \
+            >/dev/null || return 1
+    fi
     task_bounds="$(wait_ui_resource_bounds \
         com.android.launcher3:id/snapshot 2>/dev/null || true)"
     if ! [[ "$task_bounds" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]]; then
@@ -1881,9 +1896,9 @@ swipe_app_task_from_recents() {
         "$center_x" "$start_y" "$center_x" 0 \
         "$RECENTS_DISMISS_GESTURE_MS" >/dev/null \
         || return 1
-    printf 'ANDROID_RECENTS_DISMISS_ACTION=injected task_id=%s bounds=%s,%s,%s,%s start=%s,%s end=%s,%s duration_ms=%s\n' \
-        "$expected_task_id" "$left" "$top" "$right" "$bottom" \
-        "$center_x" "$start_y" "$center_x" 0 \
+    printf 'ANDROID_RECENTS_DISMISS_ACTION=injected cycle=%s attempt=%s task_id=%s bounds=%s,%s,%s,%s start=%s,%s end=%s,%s duration_ms=%s\n' \
+        "$lifecycle_cycle" "$dismiss_attempt" "$expected_task_id" \
+        "$left" "$top" "$right" "$bottom" "$center_x" "$start_y" "$center_x" 0 \
         "$RECENTS_DISMISS_GESTURE_MS"
 }
 
@@ -3091,21 +3106,33 @@ PY
             task_id="$(current_app_task_id 2>/dev/null || true)"
             [[ "$task_id" =~ ^[1-9][0-9]*$ ]] \
                 || fail "cannot bind lifecycle task $lifecycle_cycle"
-            swipe_app_task_from_recents "$task_id" \
-                || fail "cannot swipe lifecycle task $lifecycle_cycle from Recents"
             task_removed=0
-            for _ in $(seq 1 120); do
-                if ! current_app_task_id >/dev/null 2>&1; then
-                    task_removed=1
-                    break
-                fi
-                sleep 0.25
+            dismiss_attempts=0
+            for dismiss_attempt in $(seq 1 "$RECENTS_DISMISS_MAX_ATTEMPTS"); do
+                swipe_app_task_from_recents \
+                    "$task_id" "$lifecycle_cycle" "$dismiss_attempt" \
+                    || fail "cannot swipe lifecycle task $lifecycle_cycle from Recents"
+                dismiss_attempts=$dismiss_attempt
+                observed_task_state=
+                for _ in $(seq 1 "$RECENTS_DISMISS_OUTCOME_POLLS"); do
+                    observed_task_state="$(app_task_state 2>/dev/null || true)"
+                    if [ "$observed_task_state" = absent ]; then
+                        task_removed=1
+                        break
+                    fi
+                    sleep 0.25
+                done
+                [ "$task_removed" -eq 0 ] || break
+                [ "$observed_task_state" = "$task_id" ] \
+                    || fail "lifecycle task $lifecycle_cycle state became ambiguous after the Recents swipe"
             done
             [ "$task_removed" -eq 1 ] \
                 || {
                     capture_ui_hierarchy && print_initial_ui_semantics
-                    fail "lifecycle task $lifecycle_cycle survived the Recents swipe"
+                    fail "lifecycle task $lifecycle_cycle survived the bounded Recents swipes"
                 }
+            printf 'ANDROID_RECENTS_DISMISS_OUTCOME=pass cycle=%s task_id=%s attempts=%s\n' \
+                "$lifecycle_cycle" "$task_id" "$dismiss_attempts"
             [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = \
               "$APP_PID" ] \
                 || fail "task removal $lifecycle_cycle killed or replaced the service process"

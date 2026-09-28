@@ -806,7 +806,7 @@ case "${runtime_receipts[0]}" in
     *) die 'Android app runtime reported a different APK digest' ;;
 esac
 mapfile -t recents_dismiss_action_receipts < <(grep -E \
-    '^ANDROID_RECENTS_DISMISS_ACTION=injected task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 duration_ms=160$' \
+    '^ANDROID_RECENTS_DISMISS_ACTION=injected task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 duration_ms=600$' \
     "$RUNTIME_LOG" || true)
 [ "${#recents_dismiss_action_receipts[@]}" -eq 2 ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android Recents-dismiss action receipts are absent, malformed, or duplicated'; }

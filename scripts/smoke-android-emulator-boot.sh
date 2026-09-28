@@ -284,9 +284,9 @@ readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
 readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=240000
 readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=240000
 readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
-# Launcher3's own OverviewTask dismissal uses ten 16 ms motion steps.  Keep
-# this a fling; a slow drag can settle the card back into Recents.
-readonly RECENTS_DISMISS_GESTURE_MS=160
+# Android's shell input command generates a different motion-event stream from
+# Launcher3 TAPL.  This duration has completed the real pinned-image gesture.
+readonly RECENTS_DISMISS_GESTURE_MS=600
 # The retained failing artifact repeated the rejected credential after 129.4 s. This integration
 # observation intentionally spans that old behavior; focused development checks remain separate.
 readonly PEER_NO_AUTO_RETRY_OBSERVATION_MS=140000
@@ -1873,10 +1873,9 @@ swipe_app_task_from_recents() {
     fi
     read -r left top right bottom <<<"$task_bounds"
     [ "$right" -gt "$left" ] && [ "$bottom" -gt "$top" ] \
-        || return 1
+        && [ "$bottom" -gt 1 ] || return 1
     center_x=$(((left + right) / 2))
-    # Android 14 TAPL dismisses the selected snapshot from its visible center.
-    start_y=$(((top + bottom) / 2))
+    start_y=$((bottom - 1))
     timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" shell input swipe \
         "$center_x" "$start_y" "$center_x" 0 \

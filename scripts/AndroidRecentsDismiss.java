@@ -1,5 +1,6 @@
 package com.rustdesk.harness;
 
+import android.accessibilityservice.AccessibilityService;
 import android.app.UiAutomation;
 import android.os.SystemClock;
 import android.view.InputDevice;
@@ -16,6 +17,7 @@ public final class AndroidRecentsDismiss {
     private static final int GESTURE_EVENT_COUNT = GESTURE_STEPS + 2;
     private static final String UIAUTOMATION_WRAPPER_CLASS =
             "com.android.uiautomator.core.UiAutomationShellWrapper";
+    private static final String OPEN_RECENTS_ARGUMENT = "open-recents";
 
     private AndroidRecentsDismiss() {
     }
@@ -145,12 +147,23 @@ public final class AndroidRecentsDismiss {
     }
 
     public static void main(String[] arguments) throws Exception {
-        int startX = requiredCoordinate(arguments, 0, "start_x");
-        int startY = requiredCoordinate(arguments, 1, "start_y");
-        int endX = requiredCoordinate(arguments, 2, "end_x");
-        int endY = requiredCoordinate(arguments, 3, "end_y");
-        if (startX != endX || startY <= 0 || endY < 0 || endY >= startY) {
-            throw new IllegalArgumentException("gesture geometry differs");
+        boolean openRecents = arguments.length == 1
+                && OPEN_RECENTS_ARGUMENT.equals(arguments[0]);
+        if (!openRecents && arguments.length != 4) {
+            throw new IllegalArgumentException("expected open-recents or four coordinates");
+        }
+        int startX = 0;
+        int startY = 0;
+        int endX = 0;
+        int endY = 0;
+        if (!openRecents) {
+            startX = requiredCoordinate(arguments, 0, "start_x");
+            startY = requiredCoordinate(arguments, 1, "start_y");
+            endX = requiredCoordinate(arguments, 2, "end_x");
+            endY = requiredCoordinate(arguments, 3, "end_y");
+            if (startX != endX || startY <= 0 || endY < 0 || endY >= startY) {
+                throw new IllegalArgumentException("gesture geometry differs");
+            }
         }
 
         Class<?> wrapperType = Class.forName(UIAUTOMATION_WRAPPER_CLASS);
@@ -175,13 +188,21 @@ public final class AndroidRecentsDismiss {
                 throw new IllegalStateException("UiAutomation wrapper returned a different type");
             }
             long startedAt = SystemClock.uptimeMillis();
-            injectGesture(
-                    (UiAutomation) automationValue,
-                    injectInputEvent,
-                    startX,
-                    startY,
-                    endX,
-                    endY);
+            UiAutomation automation = (UiAutomation) automationValue;
+            if (openRecents) {
+                if (!automation.performGlobalAction(
+                        AccessibilityService.GLOBAL_ACTION_RECENTS)) {
+                    throw new IllegalStateException("UiAutomation rejected the Recents action");
+                }
+            } else {
+                injectGesture(
+                        automation,
+                        injectInputEvent,
+                        startX,
+                        startY,
+                        endX,
+                        endY);
+            }
             elapsedMillis = SystemClock.uptimeMillis() - startedAt;
         } catch (Exception error) {
             failure = error;
@@ -200,13 +221,21 @@ public final class AndroidRecentsDismiss {
             }
         }
 
-        System.out.printf(
-                Locale.ROOT,
-                "ANDROID_RECENTS_DIRECT_INJECTION=pass events=%d steps=%d step_ms=%d "
-                        + "wait_for_animations=false elapsed_ms=%d%n",
-                GESTURE_EVENT_COUNT,
-                GESTURE_STEPS,
-                GESTURE_STEP_MILLIS,
-                elapsedMillis);
+        if (openRecents) {
+            System.out.printf(
+                    Locale.ROOT,
+                    "ANDROID_RECENTS_DIRECT_OPEN=accepted action=global-action-recents "
+                            + "elapsed_ms=%d%n",
+                    elapsedMillis);
+        } else {
+            System.out.printf(
+                    Locale.ROOT,
+                    "ANDROID_RECENTS_DIRECT_INJECTION=pass events=%d steps=%d step_ms=%d "
+                            + "wait_for_animations=false elapsed_ms=%d%n",
+                    GESTURE_EVENT_COUNT,
+                    GESTURE_STEPS,
+                    GESTURE_STEP_MILLIS,
+                    elapsedMillis);
+        }
     }
 }

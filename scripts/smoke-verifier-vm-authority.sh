@@ -3038,7 +3038,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     android_recents_driver_sha256=${BASH_REMATCH[1]}
     mapfile -t android_recents_driver_receipts < <(
         /usr/bin/grep -Eo \
-            "ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$android_recents_driver_sha256 framework=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=[0-9a-f]{64} device_path=/data/local/tmp/rustdesk-recents-dismiss\.jar" \
+            "ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$android_recents_driver_sha256 framework=android14-ui-automation-direct open=global-action-recents events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=[0-9a-f]{64} device_path=/data/local/tmp/rustdesk-recents-dismiss\.jar" \
             "$SERIAL_LOG" || true
     )
     [ "${#android_recents_driver_receipts[@]}" -eq 1 ] \
@@ -3054,6 +3054,23 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         android_recents_cycles=2
         android_recents_cycle_pattern='[12]'
     fi
+    mapfile -t android_recents_open_action_receipts < <(
+        /usr/bin/grep -Eo \
+            "ANDROID_RECENTS_OPEN_ACTION=accepted cycle=$android_recents_cycle_pattern task_id=[1-9][0-9]* mechanism=ui-automation-global-action-recents driver_elapsed_ms=[0-9]+ driver_sha256=$android_recents_driver_sha256" \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#android_recents_open_action_receipts[@]}" -eq \
+      "$android_recents_cycles" ] \
+        || { /usr/bin/tail -n 320 "$SERIAL_LOG" >&2; fail 'Android Recents-open action receipt cardinality differs'; }
+    for android_recents_open_action_receipt in \
+        "${android_recents_open_action_receipts[@]}"; do
+        [[ "$android_recents_open_action_receipt" =~ \
+            driver_elapsed_ms=([0-9]+)\ driver_sha256= ]] \
+            || fail 'Android Recents-open driver elapsed time is malformed'
+        android_recents_open_elapsed_ms=${BASH_REMATCH[1]}
+        [ "$android_recents_open_elapsed_ms" -le 5000 ] \
+            || fail 'Android Recents-open driver elapsed time is outside its bound'
+    done
     mapfile -t android_recents_action_receipts < <(
         /usr/bin/grep -Eo \
             "ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$android_recents_cycle_pattern task_id=[1-9][0-9]* bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ start=[0-9]+,[0-9]+ end=[0-9]+,0 framework=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false driver_elapsed_ms=[0-9]+ driver_sha256=$android_recents_driver_sha256" \
@@ -3106,6 +3123,10 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         [[ "${android_cycle_outcomes[0]}" =~ task_id=([1-9][0-9]*)\ actions=1$ ]] \
             || fail "Android Recents cycle $android_recents_cycle task binding is malformed"
         android_recents_task_id=${BASH_REMATCH[1]}
+        [ "$(printf '%s\n' "${android_recents_open_action_receipts[@]}" | \
+            /usr/bin/grep -Ec \
+            "^ANDROID_RECENTS_OPEN_ACTION=accepted cycle=$android_recents_cycle task_id=$android_recents_task_id mechanism=ui-automation-global-action-recents driver_elapsed_ms=[0-9]+ driver_sha256=$android_recents_driver_sha256$" || true)" -eq 1 ] \
+            || fail "Android Recents cycle $android_recents_cycle open/outcome binding differs"
         [ "$(printf '%s\n' "${android_recents_action_receipts[@]}" | \
             /usr/bin/grep -Ec \
             "^ANDROID_RECENTS_DISMISS_ACTION=injected cycle=$android_recents_cycle task_id=$android_recents_task_id .* driver_sha256=$android_recents_driver_sha256$" || true)" -eq 1 ] \
@@ -3174,7 +3195,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         android_runtime_peer=production-loopback-cpace-changing-display
     else
         require_exact_fixed_receipt \
-            "ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 task_ids=distinct driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$android_recents_runtime_uiautomator_sha256 driver_sha256=$android_recents_driver_sha256 service=never-started relaunch=resumed apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
+            "ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 open_actions=10 task_ids=distinct open=global-action-recents driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$android_recents_runtime_uiautomator_sha256 driver_sha256=$android_recents_driver_sha256 service=never-started relaunch=resumed apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
             'focused Android Recents runtime receipt'
         android_runtime_peer=absent
     fi

@@ -1136,6 +1136,13 @@ read-only seal all passed; the mismatch was solely at the later redundant mode c
 the actual post-seal `1000:1000:0400:1` metadata and rechecks it after execution. The failed VM powered off,
 listener delta/drift files are empty, no product behavior was exercised, and the private evidence root is retained.
 
+The next focused no-NIC replay, `run.qXIOKGn24D`, reached the deterministic driver build but stopped before D8 or
+emulator launch: legacy platform `UiAutomatorTestCase` inherits `junit.framework.TestCase`, and the compile
+classpath omitted Android 34's sealed official optional `android.test.base.jar`. Current source adds that exact SDK
+component as both a `javac` and D8 library, records and validates its live SHA-256 alongside `android.jar`,
+`uiautomator.jar`, and D8, and rechecks all four after execution. No dependency was downloaded or added to the
+product. The failed VM powered off, listener delta/drift files are empty, and its evidence root is retained.
+
 The last complete task-removal/foreground-service/MediaProjection/Force-Stop lifecycle pass remains older source
 `48acf94e1a26bf51af1f8e697a11cfe2aa84cbd4`, harness
 `eeb4327e0ba5c4677ba6571f97ca95bf14beeed1`, and APK

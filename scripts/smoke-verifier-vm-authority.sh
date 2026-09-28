@@ -3027,7 +3027,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android runtime APK receipt is absent or duplicated'; }
     mapfile -t android_recents_build_receipts < <(
         /usr/bin/grep -Eo \
-            'ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} android_jar_sha256=[0-9a-f]{64} uiautomator_jar_sha256=[0-9a-f]{64} d8_sha256=[0-9a-f]{64} copies=2 equality=byte-identical network=none output=private-bind' \
+            'ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} android_jar_sha256=[0-9a-f]{64} uiautomator_jar_sha256=[0-9a-f]{64} test_base_jar_sha256=[0-9a-f]{64} d8_sha256=[0-9a-f]{64} copies=2 equality=byte-identical network=none output=private-bind' \
             "$SERIAL_LOG" || true
     )
     [ "${#android_recents_build_receipts[@]}" -eq 1 ] \

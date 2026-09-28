@@ -3177,7 +3177,7 @@ run_android_emulator_runtime() {
     [ "$(grep -c '^ANDROID_EMULATOR_APK=' "$output")" -eq 1 ] \
         || fail 'Android runtime APK receipt is duplicated'
     recents_build_receipt="$(grep -E \
-        '^ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} android_jar_sha256=[0-9a-f]{64} uiautomator_jar_sha256=[0-9a-f]{64} d8_sha256=[0-9a-f]{64} copies=2 equality=byte-identical network=none output=private-bind$' \
+        '^ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} android_jar_sha256=[0-9a-f]{64} uiautomator_jar_sha256=[0-9a-f]{64} test_base_jar_sha256=[0-9a-f]{64} d8_sha256=[0-9a-f]{64} copies=2 equality=byte-identical network=none output=private-bind$' \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android Recents gesture-driver build receipt is absent'; }
     [ "$(grep -c '^ANDROID_RECENTS_GESTURE_BUILD=' "$output")" -eq 1 ] \

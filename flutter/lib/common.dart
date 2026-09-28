@@ -12,6 +12,7 @@ import 'package:flutter_hbb/common/formatter/direct_address.dart';
 import 'package:flutter_hbb/desktop/widgets/refresh_wrapper.dart';
 import 'package:flutter_hbb/desktop/widgets/tabbar_widget.dart';
 import 'package:flutter_hbb/main.dart';
+import 'package:flutter_hbb/models/android_permission_request_coordinator.dart';
 import 'package:flutter_hbb/models/peer_model.dart';
 import 'package:flutter_hbb/models/peer_tab_model.dart';
 import 'package:flutter_hbb/models/state_model.dart';
@@ -1486,16 +1487,10 @@ class AccessibilityListener extends StatelessWidget {
 }
 
 class AndroidPermissionManager {
-  static Completer<bool>? _completer;
+  static final _requests = AndroidPermissionRequestCoordinator();
   static Timer? _timer;
-  static var _current = "";
 
-  static bool isWaitingFile() {
-    if (_completer != null) {
-      return !_completer!.isCompleted && _current == kManageExternalStorage;
-    }
-    return false;
-  }
+  static String? pendingId(String type) => _requests.pendingId(type);
 
   static Future<bool> check(String type) {
     if (isDesktop || isWeb) {
@@ -1511,40 +1506,51 @@ class AndroidPermissionManager {
 
   /// We use XXPermissions to request permissions,
   /// for supported types, see https://github.com/getActivity/XXPermissions/blob/e46caea32a64ad7819df62d448fb1c825481cd28/library/src/main/java/com/hjq/permissions/Permission.java
-  static Future<bool> request(String type) {
+  static Future<bool> request(String type) async {
     if (isDesktop || isWeb) {
-      return Future.value(true);
+      return true;
     }
 
-    gFFI.invokeMethod("request_permission", type);
-
-    // clear last task
-    if (_completer?.isCompleted == false) {
-      _completer?.complete(false);
+    final request = _requests.begin(type: type, id: Uuid().v4());
+    if (request == null) {
+      return false;
     }
-    _timer?.cancel();
 
-    _current = type;
-    _completer = Completer<bool>();
-
-    _timer = Timer(Duration(seconds: 120), () {
-      if (_completer == null) return;
-      if (!_completer!.isCompleted) {
-        _completer!.complete(false);
-      }
-      _completer = null;
-      _current = "";
+    _timer = Timer(const Duration(seconds: 120), () {
+      _complete(type, request.id, false);
     });
-    return _completer!.future;
+    unawaited(_dispatch(request));
+    return request.result;
   }
 
-  static complete(String type, bool res) {
-    if (type != _current) {
-      res = false;
+  static Future<void> _dispatch(AndroidPermissionRequest request) async {
+    try {
+      final started = await gFFI.invokeMethod("request_permission", {
+        "type": request.type,
+        "id": request.id,
+      });
+      if (!started) {
+        _complete(request.type, request.id, false);
+      }
+    } catch (error, stackTrace) {
+      debugPrintStack(
+        label: "Failed to dispatch Android permission request: $error",
+        stackTrace: stackTrace,
+      );
+      _complete(request.type, request.id, false);
+    }
+  }
+
+  static bool complete(String type, String id, bool granted) =>
+      _complete(type, id, granted);
+
+  static bool _complete(String type, String id, bool granted) {
+    if (!_requests.complete(type: type, id: id, granted: granted)) {
+      return false;
     }
     _timer?.cancel();
-    _completer?.complete(res);
-    _current = "";
+    _timer = null;
+    return true;
   }
 }
 

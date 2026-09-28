@@ -118,8 +118,12 @@ class _ServerPageState extends State<ServerPage> {
 void checkService() async {
   gFFI.invokeMethod("check_service");
   // for Android 10/11, request MANAGE_EXTERNAL_STORAGE permission from system setting page
-  if (AndroidPermissionManager.isWaitingFile() && !gFFI.serverModel.fileOk) {
-    AndroidPermissionManager.complete(kManageExternalStorage,
+  final permissionRequestId =
+      AndroidPermissionManager.pendingId(kManageExternalStorage);
+  if (permissionRequestId != null && !gFFI.serverModel.fileOk) {
+    AndroidPermissionManager.complete(
+        kManageExternalStorage,
+        permissionRequestId,
         await AndroidPermissionManager.check(kManageExternalStorage));
     debugPrint("file permission finished");
   }
@@ -648,8 +652,9 @@ void androidChannelInit() {
         case "on_android_permission_result":
           {
             var type = arguments["type"] as String;
+            var id = arguments["id"] as String;
             var result = arguments["result"] as bool;
-            AndroidPermissionManager.complete(type, result);
+            AndroidPermissionManager.complete(type, id, result);
             break;
           }
         case "on_media_projection_canceled":

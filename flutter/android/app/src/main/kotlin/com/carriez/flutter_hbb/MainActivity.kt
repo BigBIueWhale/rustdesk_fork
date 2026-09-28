@@ -339,11 +339,23 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "request_permission" -> {
-                    if (call.arguments is String) {
-                        requestPermission(context, call.arguments as String)
-                        result.success(true)
-                    } else {
+                    val arguments = call.arguments as? Map<*, *>
+                    val type = arguments?.get("type") as? String
+                    val id = arguments?.get("id") as? String
+                    if (type.isNullOrEmpty() || id.isNullOrEmpty()) {
                         result.success(false)
+                    } else {
+                        try {
+                            requestPermission(context, type, id)
+                            result.success(true)
+                        } catch (e: RuntimeException) {
+                            Log.e(logTag, "Failed to dispatch Android permission request", e)
+                            result.error(
+                                "PERMISSION_REQUEST_FAILED",
+                                "Failed to dispatch Android permission request",
+                                null,
+                            )
+                        }
                     }
                 }
                 START_ACTION -> {

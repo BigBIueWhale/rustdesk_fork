@@ -389,9 +389,6 @@ class ServerModel with ChangeNotifier {
       await checkRequestNotificationPermission();
       // R-X6: the floating-window overlay permission request is removed — the native
       // floating window is excised, so service start no longer asks for SYSTEM_ALERT_WINDOW.
-      if (!await AndroidPermissionManager.check(kManageExternalStorage)) {
-        await AndroidPermissionManager.request(kManageExternalStorage);
-      }
       // R-G7 (§19): the user-settable "Start on boot" toggle is removed — the controlled
       // box auto-starts on boot unconditionally (BootReceiver, re-homed on
       // RECEIVE_BOOT_COMPLETED alone, gated only on the battery-optimization exemption).

@@ -2815,6 +2815,7 @@ run_android_emulator_runtime() {
     local -a recents_action_receipts recents_outcome_receipts cycle_outcomes
     local -a presentation_stage_receipts resource_samples
     local frame_endpoint_receipt frame_parser_receipt
+    local tombstone_fd_parser_receipt tombstone_fd_authority_receipt
     local frame_observer_self_test_receipt frame_observer_build_receipt
     local frame_observer_receipt frame_observer_dependency_manifest_sha256
     local -a git_builder=(
@@ -2872,6 +2873,7 @@ run_android_emulator_runtime() {
         android-emulator-runtime-check.sh \
         android-emulator-frame-observer.sh \
         android-emulator-frame.py \
+        android-emulator-tombstone-fds.py \
         smoke-android-emulator-boot.sh \
         smoke-server-stage.sh \
         smoke-xvfb-prepare.sh \
@@ -2912,6 +2914,7 @@ run_android_emulator_runtime() {
         "$source_root/scripts/AndroidRecentsDismiss.java" \
         "$source_root/scripts/android-emulator-frame-observer.sh" \
         "$source_root/scripts/android-emulator-frame.py" \
+        "$source_root/scripts/android-emulator-tombstone-fds.py" \
         "$source_root/scripts/AndroidEmulatorFrameObserver.java" \
         "$source_root/scripts/android-emulator-frame-observer-dependencies.tsv" \
         "$source_root/scripts/smoke-android-emulator-boot.sh" \
@@ -3299,6 +3302,18 @@ run_android_emulator_runtime() {
         recents_task_ids="${recents_task_ids:+$recents_task_ids }$recents_task_id"
     done
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+    tombstone_fd_parser_receipt="$(grep -Fx \
+        'ANDROID_TOMBSTONE_FD_PARSER_SELF_TEST=pass scenarios=10 max_input_bytes=33554432' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android tombstone descriptor-parser receipt is absent'; }
+    [ "$(grep -c '^ANDROID_TOMBSTONE_FD_PARSER_SELF_TEST=' "$output")" -eq 1 ] \
+        || fail 'Android tombstone descriptor-parser receipt is duplicated'
+    tombstone_fd_authority_receipt="$(grep -E \
+        '^ANDROID_TOMBSTONE_FD_AUTHORITY=pass observer=debuggerd-live-tombstone target=installed-test-apk process=stable service=not-started peer_connections=0 fds=[1-9][0-9]*$' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android live-tombstone descriptor authority receipt is absent'; }
+    [ "$(grep -c '^ANDROID_TOMBSTONE_FD_AUTHORITY=' "$output")" -eq 1 ] \
+        || fail 'Android live-tombstone descriptor authority receipt is malformed or duplicated'
     frame_endpoint_receipt="$(grep -Fx \
         'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none' \
         "$output")" \
@@ -3370,7 +3385,7 @@ run_android_emulator_runtime() {
             || fail "Android presentation-stage binding differs for $phase"
     done
     mapfile -t resource_samples < <(grep -E \
-        '^ANDROID_PEER_RESOURCE_SAMPLE=pass phase=(baseline|task-relaunch-[1-6]) ordinal=[0-6] rss_kib=[1-9][0-9]* threads=[1-9][0-9]* fds=[1-9][0-9]* rss_growth_kib=[0-9]+ thread_growth=[0-9]+ fd_growth=[0-9]+$' \
+        '^ANDROID_PEER_RESOURCE_SAMPLE=pass phase=(baseline|task-relaunch-[1-6]) ordinal=[0-6] rss_kib=[1-9][0-9]* threads=[1-9][0-9]* fds=[1-9][0-9]* rss_growth_kib=[0-9]+ thread_growth=[0-9]+ fd_growth=[0-9]+ fd_observer=debuggerd-live-tombstone observer_survival=process-service-peer$' \
         "$output" || true)
     [ "${#resource_samples[@]}" -eq 7 ] \
         && [ "$(grep -c '^ANDROID_PEER_RESOURCE_SAMPLE=' "$output")" -eq 7 ] \
@@ -3384,7 +3399,7 @@ run_android_emulator_runtime() {
             || fail "Android peer resource-sample binding differs for $phase"
     done
     resource_bound_receipt="$(grep -E \
-        '^ANDROID_PEER_RESOURCE_BOUND=pass samples=7 replacement_samples=6 rss_baseline_kib=[1-9][0-9]* rss_max_kib=[1-9][0-9]* rss_final_kib=[1-9][0-9]* rss_growth_max_kib=[0-9]+ rss_growth_limit_kib=131072 threads_baseline=[1-9][0-9]* threads_max=[1-9][0-9]* threads_final=[1-9][0-9]* thread_growth_max=[0-9]+ thread_growth_limit=8 fds_baseline=[1-9][0-9]* fds_max=[1-9][0-9]* fds_final=[1-9][0-9]* fd_growth_max=[0-9]+ fd_growth_limit=16$' \
+        '^ANDROID_PEER_RESOURCE_BOUND=pass samples=7 replacement_samples=6 rss_baseline_kib=[1-9][0-9]* rss_max_kib=[1-9][0-9]* rss_final_kib=[1-9][0-9]* rss_growth_max_kib=[0-9]+ rss_growth_limit_kib=131072 threads_baseline=[1-9][0-9]* threads_max=[1-9][0-9]* threads_final=[1-9][0-9]* thread_growth_max=[0-9]+ thread_growth_limit=8 fds_baseline=[1-9][0-9]* fds_max=[1-9][0-9]* fds_final=[1-9][0-9]* fd_growth_max=[0-9]+ fd_growth_limit=16 fd_observer=debuggerd-live-tombstone observer_survival=process-service-peer$' \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android peer aggregate resource bound is absent'; }
     [ "$(grep -c '^ANDROID_PEER_RESOURCE_BOUND=' "$output")" -eq 1 ] \
@@ -3429,6 +3444,7 @@ run_android_emulator_runtime() {
           "$source_root/scripts/AndroidRecentsDismiss.java" \
           "$source_root/scripts/android-emulator-frame-observer.sh" \
           "$source_root/scripts/android-emulator-frame.py" \
+          "$source_root/scripts/android-emulator-tombstone-fds.py" \
           "$source_root/scripts/AndroidEmulatorFrameObserver.java" \
           "$source_root/scripts/android-emulator-frame-observer-dependencies.tsv" \
           "$source_root/scripts/smoke-android-emulator-boot.sh" \
@@ -3489,7 +3505,9 @@ run_android_emulator_runtime() {
         "${recents_action_receipts[@]}" "${recents_outcome_receipts[@]}" \
         "$renderer_receipt" "$runtime_receipt"
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
-        printf '%s\n' "$frame_endpoint_receipt" "$frame_parser_receipt" \
+        printf '%s\n' "$tombstone_fd_parser_receipt" \
+            "$tombstone_fd_authority_receipt" \
+            "$frame_endpoint_receipt" "$frame_parser_receipt" \
             "$frame_observer_self_test_receipt" "$frame_observer_build_receipt" \
             "$frame_observer_receipt" "$lifecycle_receipt" \
             "$initial_credential_receipt" \

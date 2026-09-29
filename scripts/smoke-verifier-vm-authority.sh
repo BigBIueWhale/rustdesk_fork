@@ -274,6 +274,7 @@ readonly WINDOWS_PROVISION_SOURCE="$SCRIPT_DIR/provision-windows-vm.sh"
 readonly WINDOWS_GOLDEN_SOURCE="$SCRIPT_DIR/verify-windows-golden.sh"
 readonly ANDROID_RUST_SOURCE="$SCRIPT_DIR/android-rust-check.sh"
 readonly ANDROID_EMULATOR_BOOT_SOURCE="$SCRIPT_DIR/smoke-android-emulator-boot.sh"
+readonly ANDROID_TOMBSTONE_FD_PARSER_SOURCE="$SCRIPT_DIR/android-emulator-tombstone-fds.py"
 readonly ANDROID_EMULATOR_APP_SOURCE="$SCRIPT_DIR/android-emulator-app-check.sh"
 readonly ANDROID_EMULATOR_RUNTIME_SOURCE="$SCRIPT_DIR/android-emulator-runtime-check.sh"
 readonly ANDROID_RECENTS_DRIVER_SOURCE="$SCRIPT_DIR/AndroidRecentsDismiss.java"
@@ -2383,6 +2384,7 @@ fi
     "repo/scripts/verify-windows-golden.sh=$WINDOWS_GOLDEN_SOURCE" \
     "repo/scripts/android-rust-check.sh=$ANDROID_RUST_SOURCE" \
     "repo/scripts/smoke-android-emulator-boot.sh=$ANDROID_EMULATOR_BOOT_SOURCE" \
+    "repo/scripts/android-emulator-tombstone-fds.py=$ANDROID_TOMBSTONE_FD_PARSER_SOURCE" \
     "repo/scripts/android-emulator-app-check.sh=$ANDROID_EMULATOR_APP_SOURCE" \
     "repo/scripts/android-emulator-runtime-check.sh=$ANDROID_EMULATOR_RUNTIME_SOURCE" \
     "repo/scripts/AndroidRecentsDismiss.java=$ANDROID_RECENTS_DRIVER_SOURCE" \
@@ -3140,6 +3142,17 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     done
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
     require_exact_fixed_receipt \
+        'ANDROID_TOMBSTONE_FD_PARSER_SELF_TEST=pass scenarios=10 max_input_bytes=33554432' \
+        'Android tombstone descriptor-parser self-test receipt'
+    mapfile -t android_tombstone_fd_authority_receipts < <(
+        /usr/bin/grep -Eo \
+            'ANDROID_TOMBSTONE_FD_AUTHORITY=pass observer=debuggerd-live-tombstone target=installed-test-apk process=stable service=not-started peer_connections=0 fds=[1-9][0-9]*' \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#android_tombstone_fd_authority_receipts[@]}" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android live-tombstone descriptor authority receipt is absent or duplicated'; }
+    printf '%s\n' "${android_tombstone_fd_authority_receipts[@]}"
+    require_exact_fixed_receipt \
         'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none' \
         'Android emulator frame-endpoint receipt'
     require_exact_fixed_receipt \
@@ -3203,7 +3216,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     printf '%s\n' "${android_presentation_stage_receipts[@]}"
     mapfile -t android_resource_samples < <(
         /usr/bin/grep -Eo \
-            'ANDROID_PEER_RESOURCE_SAMPLE=pass phase=(baseline|task-relaunch-[1-6]) ordinal=[0-6] rss_kib=[1-9][0-9]* threads=[1-9][0-9]* fds=[1-9][0-9]* rss_growth_kib=[0-9]+ thread_growth=[0-9]+ fd_growth=[0-9]+' \
+            'ANDROID_PEER_RESOURCE_SAMPLE=pass phase=(baseline|task-relaunch-[1-6]) ordinal=[0-6] rss_kib=[1-9][0-9]* threads=[1-9][0-9]* fds=[1-9][0-9]* rss_growth_kib=[0-9]+ thread_growth=[0-9]+ fd_growth=[0-9]+ fd_observer=debuggerd-live-tombstone observer_survival=process-service-peer' \
             "$SERIAL_LOG" || true
     )
     [ "${#android_resource_samples[@]}" -eq 7 ] \
@@ -3219,7 +3232,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     printf '%s\n' "${android_resource_samples[@]}"
     mapfile -t android_resource_bound_receipts < <(
         /usr/bin/grep -Eo \
-            'ANDROID_PEER_RESOURCE_BOUND=pass samples=7 replacement_samples=6 rss_baseline_kib=[1-9][0-9]* rss_max_kib=[1-9][0-9]* rss_final_kib=[1-9][0-9]* rss_growth_max_kib=[0-9]+ rss_growth_limit_kib=131072 threads_baseline=[1-9][0-9]* threads_max=[1-9][0-9]* threads_final=[1-9][0-9]* thread_growth_max=[0-9]+ thread_growth_limit=8 fds_baseline=[1-9][0-9]* fds_max=[1-9][0-9]* fds_final=[1-9][0-9]* fd_growth_max=[0-9]+ fd_growth_limit=16' \
+            'ANDROID_PEER_RESOURCE_BOUND=pass samples=7 replacement_samples=6 rss_baseline_kib=[1-9][0-9]* rss_max_kib=[1-9][0-9]* rss_final_kib=[1-9][0-9]* rss_growth_max_kib=[0-9]+ rss_growth_limit_kib=131072 threads_baseline=[1-9][0-9]* threads_max=[1-9][0-9]* threads_final=[1-9][0-9]* thread_growth_max=[0-9]+ thread_growth_limit=8 fds_baseline=[1-9][0-9]* fds_max=[1-9][0-9]* fds_final=[1-9][0-9]* fd_growth_max=[0-9]+ fd_growth_limit=16 fd_observer=debuggerd-live-tombstone observer_survival=process-service-peer' \
             "$SERIAL_LOG" || true
     )
     [ "${#android_resource_bound_receipts[@]}" -eq 1 ] \

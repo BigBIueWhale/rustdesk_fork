@@ -135,8 +135,19 @@ readonly FRAME_OBSERVER_FAILURE=$FRAME_OBSERVER_ROOT/failure
 readonly FRAME_OBSERVER_STOP=$FRAME_OBSERVER_ROOT/stop
 readonly FRAME_OBSERVER_STOPPED=$FRAME_OBSERVER_ROOT/stopped
 readonly FRAME_DECODER=$SCRIPT_DIR/android-emulator-frame.py
+readonly TOMBSTONE_FD_PARSER=$SCRIPT_DIR/android-emulator-tombstone-fds.py
+readonly TOMBSTONE_DEBUGGERD_DIAGNOSTIC=$WORK_ROOT/debuggerd-fd.stderr
+readonly TOMBSTONE_PARSER_DIAGNOSTIC=$WORK_ROOT/tombstone-fd-parser.stderr
 mkdir -m 0700 -p -- "$SDK_ROOT" "$HOME_ROOT" "$AVD_HOME" "$SYSTEM_ROOT" \
     "$SDK_ROOT/platform-tools"
+
+if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+    [ -f "$TOMBSTONE_FD_PARSER" ] && [ ! -L "$TOMBSTONE_FD_PARSER" ] \
+        && [ -x "$TOMBSTONE_FD_PARSER" ] \
+        || fail 'the Android tombstone descriptor parser is absent or ambiguous'
+    python3 -I -S "$TOMBSTONE_FD_PARSER" --self-test \
+        || fail 'the Android tombstone descriptor parser self-test failed'
+fi
 
 # The archives are exact-hash inputs, but extraction still rejects every archive
 # shape that could escape or alias the destination.  File modes are derived here,
@@ -310,6 +321,8 @@ PEER_RESOURCE_FINAL_RSS_KIB=0
 PEER_RESOURCE_FINAL_THREADS=0
 PEER_RESOURCE_FINAL_FDS=0
 PEER_RESOURCE_BOUND_READY=0
+ANDROID_TOMBSTONE_FD_COUNT=0
+ANDROID_TOMBSTONE_FD_AUTHORITY_READY=0
 ANDROID_CONTROL_FORWARD_READY=0
 ANDROID_CONTROL_FORWARD_LISTING=
 FRAME_OBSERVER_STOP_REQUESTED=0
@@ -895,9 +908,72 @@ emit_peer_presentation_stage_receipts() {
     done
 }
 
+observe_android_descriptor_count() {
+    local phase=$1 descriptor_result= descriptor_status=0
+    local debuggerd_diagnostic= parser_diagnostic=
+    local debuggerd_diagnostic_size=0 parser_diagnostic_size=0
+    [[ "$phase" =~ ^(authority-preflight|baseline|task-relaunch-[1-9][0-9]*)$ ]] \
+        && [[ "$APP_PID" =~ ^[1-9][0-9]*$ ]] \
+        || fail 'the Android descriptor-observer identity is malformed'
+    [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = \
+      "$APP_PID" ] \
+        || fail "$phase cannot observe the exact Android process descriptors"
+    [ ! -e "$TOMBSTONE_DEBUGGERD_DIAGNOSTIC" ] \
+        && [ ! -L "$TOMBSTONE_DEBUGGERD_DIAGNOSTIC" ] \
+        && [ ! -e "$TOMBSTONE_PARSER_DIAGNOSTIC" ] \
+        && [ ! -L "$TOMBSTONE_PARSER_DIAGNOSTIC" ] \
+        || fail "$phase Android descriptor diagnostics are already occupied"
+    descriptor_result="$(
+        timeout --signal=TERM --kill-after=2s 60s \
+            "$ADB" -s "$SERIAL" shell debuggerd "$APP_PID" \
+            2>"$TOMBSTONE_DEBUGGERD_DIAGNOSTIC" \
+        | python3 -I -S "$TOMBSTONE_FD_PARSER" \
+            --pid "$APP_PID" --package "$APP_PACKAGE" \
+            2>"$TOMBSTONE_PARSER_DIAGNOSTIC"
+    )" || descriptor_status=$?
+    for diagnostic in \
+        "$TOMBSTONE_DEBUGGERD_DIAGNOSTIC" \
+        "$TOMBSTONE_PARSER_DIAGNOSTIC"; do
+        [ -f "$diagnostic" ] && [ ! -L "$diagnostic" ] \
+            || fail "$phase Android descriptor diagnostic is absent or ambiguous"
+    done
+    debuggerd_diagnostic_size="$(stat -c '%s' -- \
+        "$TOMBSTONE_DEBUGGERD_DIAGNOSTIC")"
+    parser_diagnostic_size="$(stat -c '%s' -- \
+        "$TOMBSTONE_PARSER_DIAGNOSTIC")"
+    [ "$debuggerd_diagnostic_size" -le 4096 ] \
+        && [ "$parser_diagnostic_size" -le 4096 ] \
+        || {
+            rm -f -- "$TOMBSTONE_DEBUGGERD_DIAGNOSTIC" \
+                "$TOMBSTONE_PARSER_DIAGNOSTIC"
+            fail "$phase Android descriptor diagnostic exceeds 4 KiB"
+        }
+    debuggerd_diagnostic="$(<"$TOMBSTONE_DEBUGGERD_DIAGNOSTIC")"
+    parser_diagnostic="$(<"$TOMBSTONE_PARSER_DIAGNOSTIC")"
+    rm -f -- "$TOMBSTONE_DEBUGGERD_DIAGNOSTIC" \
+        "$TOMBSTONE_PARSER_DIAGNOSTIC"
+    if [ "$descriptor_status" -ne 0 ]; then
+        [ -z "$debuggerd_diagnostic" ] \
+            || printf 'ANDROID_DEBUGGERD_FD_DIAGNOSTIC phase=%s %s\n' \
+                "$phase" "$debuggerd_diagnostic" >&2
+        [ -z "$parser_diagnostic" ] \
+            || printf 'ANDROID_TOMBSTONE_FD_DIAGNOSTIC phase=%s %s\n' \
+                "$phase" "$parser_diagnostic" >&2
+        fail "$phase cannot obtain a bounded live Android descriptor tombstone"
+    fi
+    [ -z "$debuggerd_diagnostic" ] && [ -z "$parser_diagnostic" ] \
+        || fail "$phase Android descriptor observation reported a diagnostic"
+    [[ "$descriptor_result" =~ ^fds=([1-9][0-9]*)$ ]] \
+        || fail "$phase Android tombstone descriptor count is malformed"
+    ANDROID_TOMBSTONE_FD_COUNT=${BASH_REMATCH[1]}
+    [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = \
+      "$APP_PID" ] \
+        || fail "$phase Android descriptor observation replaced the process"
+}
+
 record_peer_process_resources() {
     local phase=$1 ordinal=$2 status= rss_line= threads_line=
-    local rss_kib= threads= fd_listing= fds=
+    local rss_kib= threads= fds=
     local rss_growth_kib= thread_growth= fd_growth=
     [[ "$phase" =~ ^(baseline|task-relaunch-[1-9][0-9]*)$ ]] \
         && [[ "$ordinal" =~ ^[0-9]+$ ]] \
@@ -922,16 +998,11 @@ record_peer_process_resources() {
         || fail "$phase Android process status lacks an exact thread field"
     threads=$threads_line
 
-    fd_listing="$(timeout --signal=TERM --kill-after=2s 20s \
-        "$ADB" -s "$SERIAL" shell ls -1 "/proc/$APP_PID/fd" \
-        2>/dev/null | tr -d '\r')" \
-        || fail "$phase cannot enumerate Android process descriptors"
-    [ -n "$fd_listing" ] && [ "${#fd_listing}" -le 65536 ] \
-        && ! grep -Evq '^[0-9]+$' <<<"$fd_listing" \
-        || fail "$phase Android descriptor inventory is empty or malformed"
-    fds="$(wc -l <<<"$fd_listing")"
-    [[ "$fds" =~ ^[1-9][0-9]*$ ]] \
-        || fail "$phase Android descriptor count is malformed"
+    observe_android_descriptor_count "$phase"
+    fds=$ANDROID_TOMBSTONE_FD_COUNT
+    assert_main_service \
+        && wait_peer_server_connections 1 exact \
+        || fail "$phase Android descriptor observation disrupted process, service, or peer ownership"
 
     if [ "$ordinal" -eq 0 ]; then
         [ "$PEER_RESOURCE_SAMPLE_COUNT" -eq 0 ] \
@@ -969,7 +1040,7 @@ record_peer_process_resources() {
         ? threads - PEER_RESOURCE_BASELINE_THREADS : 0))
     fd_growth=$((fds > PEER_RESOURCE_BASELINE_FDS \
         ? fds - PEER_RESOURCE_BASELINE_FDS : 0))
-    printf 'ANDROID_PEER_RESOURCE_SAMPLE=pass phase=%s ordinal=%s rss_kib=%s threads=%s fds=%s rss_growth_kib=%s thread_growth=%s fd_growth=%s\n' \
+    printf 'ANDROID_PEER_RESOURCE_SAMPLE=pass phase=%s ordinal=%s rss_kib=%s threads=%s fds=%s rss_growth_kib=%s thread_growth=%s fd_growth=%s fd_observer=debuggerd-live-tombstone observer_survival=process-service-peer\n' \
         "$phase" "$ordinal" "$rss_kib" "$threads" "$fds" \
         "$rss_growth_kib" "$thread_growth" "$fd_growth"
 }
@@ -988,7 +1059,7 @@ emit_peer_resource_bound_receipt() {
         && [ "$thread_growth_max" -le "$PEER_RESOURCE_THREAD_GROWTH_LIMIT" ] \
         && [ "$fd_growth_max" -le "$PEER_RESOURCE_FD_GROWTH_LIMIT" ] \
         || fail 'the Android peer aggregate resource bounds differ'
-    printf 'ANDROID_PEER_RESOURCE_BOUND=pass samples=%s replacement_samples=%s rss_baseline_kib=%s rss_max_kib=%s rss_final_kib=%s rss_growth_max_kib=%s rss_growth_limit_kib=%s threads_baseline=%s threads_max=%s threads_final=%s thread_growth_max=%s thread_growth_limit=%s fds_baseline=%s fds_max=%s fds_final=%s fd_growth_max=%s fd_growth_limit=%s\n' \
+    printf 'ANDROID_PEER_RESOURCE_BOUND=pass samples=%s replacement_samples=%s rss_baseline_kib=%s rss_max_kib=%s rss_final_kib=%s rss_growth_max_kib=%s rss_growth_limit_kib=%s threads_baseline=%s threads_max=%s threads_final=%s thread_growth_max=%s thread_growth_limit=%s fds_baseline=%s fds_max=%s fds_final=%s fd_growth_max=%s fd_growth_limit=%s fd_observer=debuggerd-live-tombstone observer_survival=process-service-peer\n' \
         "$PEER_RESOURCE_SAMPLE_COUNT" "$PEER_TASK_REPLACEMENT_CYCLES" \
         "$PEER_RESOURCE_BASELINE_RSS_KIB" "$PEER_RESOURCE_MAX_RSS_KIB" \
         "$PEER_RESOURCE_FINAL_RSS_KIB" "$rss_growth_max_kib" \
@@ -3527,6 +3598,20 @@ PY
     wait_resumed_activity \
         || fail 'runtime-test MainActivity is not the resumed activity'
 
+    if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+        assert_no_main_service \
+            || fail 'the Android descriptor-observer preflight began with MainService running'
+        wait_peer_server_connections 0 exact \
+            || fail 'the Android descriptor-observer preflight began with a peer connection'
+        observe_android_descriptor_count authority-preflight
+        assert_no_main_service \
+            && wait_peer_server_connections 0 exact \
+            || fail 'the Android descriptor-observer preflight changed service or peer state'
+        printf 'ANDROID_TOMBSTONE_FD_AUTHORITY=pass observer=debuggerd-live-tombstone target=installed-test-apk process=stable service=not-started peer_connections=0 fds=%s\n' \
+            "$ANDROID_TOMBSTONE_FD_COUNT"
+        ANDROID_TOMBSTONE_FD_AUTHORITY_READY=1
+    fi
+
     if [ "$WORKLOAD" = app-recents ]; then
         assert_no_main_service \
             || fail 'the focused Recents scenario began with MainService running'
@@ -3892,8 +3977,9 @@ PY
                 && [ "$PEER_TASK_RECOVERY_MAX_MS" -le "$PEER_RECOVERY_LIMIT_MS" ] \
                 && [ "$PEER_FRESHNESS_MAX_MS" -le "$PEER_FRESHNESS_LIMIT_MS" ] \
                 && [ "$PEER_DISTINCT_FRAMES" -ge 12 ] \
+                && [ "$ANDROID_TOMBSTONE_FD_AUTHORITY_READY" -eq 1 ] \
                 && [ "$PEER_RESOURCE_BOUND_READY" -eq 1 ] \
-                || fail 'the Android peer display exceeded its recovery or freshness bounds'
+                || fail 'the Android peer lifecycle, display, or resource evidence differs'
             PEER_RECEIPT_READY=1
         fi
         LIFECYCLE_RECEIPT_READY=1

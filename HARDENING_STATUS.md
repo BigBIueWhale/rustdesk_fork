@@ -1050,8 +1050,13 @@ This proves the peer build/publication boundary, not execution of these peer byt
 or a release artifact. Replay now requires explicit `--scenario peer-lifecycle --peer-commit COMMIT
 --peer-manifest-sha256 SHA256` authority, shares the fixed inert capsule read-only/noexec, and uses
 the VM-gated materializer instead of a build container. The execution copy is mounted read-only and
-its exact mount/layout is checked. This consumer wiring is implemented but native replay of it is
-not yet executed; artifact execution, Android pixels, and the intermittent defect remain OPEN.
+its exact mount/layout is checked. The first actual consumer attempt at `46bd01ba` refused before
+VM boot: the exporter requires a mode-0700 share root, whereas the capsule is deliberately mode 0500.
+The source now exports the existing private commit parent, requires its sole entry to be the sealed
+capsule, and checks both parent and capsule metadata in the guest; neither the exporter policy nor
+the capsule permissions are weakened. That failed run was identity-bound reconciled after its owners
+joined. A complete consumer replay is still unverified; peer execution, Android pixels, and the
+intermittent defect remain OPEN.
 The attempted shared authority smoke hit its existing 90-second VM deadline after the 22 capsule
 cases and several authority entries passed; it is not a complete transaction or consumer verdict.
 The peer launcher now validates the externally digest-bound capsule manifest and all seven execution

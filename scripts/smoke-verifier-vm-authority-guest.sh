@@ -2969,7 +2969,8 @@ run_android_emulator_app() {
 run_android_emulator_runtime() {
     local inputs=/mnt/rustdesk-sealed-inputs
     local artifact_input=/mnt/rustdesk-android-artifact-input
-    local peer_input=/mnt/rustdesk-android-peer-artifact-input
+    local peer_mount=/mnt/rustdesk-android-peer-artifact-input
+    local peer_input=$peer_mount/linux-x86_64-peer
     local artifact_destination=$artifact_input/android-x86_64-test
     local apk=$artifact_destination/rustdesk-x86_64-runtime-test.apk
     local checksum=$apk.sha256
@@ -3184,19 +3185,21 @@ run_android_emulator_runtime() {
     runtime_arguments=("$staged_apk" "$ANDROID_RUNTIME_APK_SHA256" \
         "$ANDROID_RUNTIME_ARTIFACT_COMMIT" "$ANDROID_RUNTIME_SCENARIO")
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
-        mkdir "$peer_input"
+        mkdir "$peer_mount"
         mount -t virtiofs -o ro,nodev,nosuid,noexec \
-            rustdesk-android-peer-artifact-input "$peer_input" \
+            rustdesk-android-peer-artifact-input "$peer_mount" \
             || fail 'cannot mount the source-bound Android peer capsule'
         ANDROID_PEER_ARTIFACT_INPUT_MOUNTED=1
-        artifact_mount_options="$(findmnt -n -o OPTIONS --target "$peer_input")"
+        artifact_mount_options="$(findmnt -n -o OPTIONS --target "$peer_mount")"
         for option in ro nodev nosuid noexec; do
             case ",$artifact_mount_options," in
                 *,$option,*) ;;
                 *) fail "Android peer capsule input lacks $option" ;;
             esac
         done
-        [ "$(stat -c '%u:%g:%a' -- "$peer_input")" = 1000:1000:500 ] \
+        [ "$(stat -c '%u:%g:%a' -- "$peer_mount")" = 1000:1000:700 ] \
+            && [ "$(find "$peer_mount" -mindepth 1 -maxdepth 1 -printf '%f\n')" = linux-x86_64-peer ] \
+            && [ "$(stat -c '%u:%g:%a' -- "$peer_input")" = 1000:1000:500 ] \
             || fail 'Android peer capsule mount metadata differs'
         runtime_arguments+=("$peer_input" "$ANDROID_RUNTIME_PEER_COMMIT" \
             "$ANDROID_RUNTIME_PEER_TREE" "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256")
@@ -3714,7 +3717,7 @@ run_android_emulator_runtime() {
         || fail 'cannot retire the commit-bound Android runtime artifact mount'
     ANDROID_ARTIFACT_INPUT_MOUNTED=0
     if [ "$ANDROID_PEER_ARTIFACT_INPUT_MOUNTED" -eq 1 ]; then
-        umount "$peer_input" || fail 'cannot retire the Android peer capsule mount'
+        umount "$peer_mount" || fail 'cannot retire the Android peer capsule mount'
         ANDROID_PEER_ARTIFACT_INPUT_MOUNTED=0
     fi
     umount "$inputs" \

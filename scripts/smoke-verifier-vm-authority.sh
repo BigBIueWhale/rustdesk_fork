@@ -431,6 +431,8 @@ ANDROID_ARTIFACT_INPUT_INVENTORY=
 ANDROID_RUNTIME_ARTIFACT_TREE=
 ANDROID_PEER_INPUT_FD=
 ANDROID_PEER_INPUT_ROOT=
+ANDROID_PEER_SHARE_ROOT=
+ANDROID_PEER_SHARE_ID=
 ANDROID_PEER_INPUT_ID=
 ANDROID_PEER_INPUT_INVENTORY=
 ANDROID_RUNTIME_PEER_TREE=
@@ -894,7 +896,7 @@ android_runtime_artifact_inventory() {
 
 android_peer_runtime_inventory() {
     local name path size
-    /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ANDROID_PEER_INPUT_ROOT"
+    /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ANDROID_PEER_SHARE_ROOT" "$ANDROID_PEER_INPUT_ROOT"
     for name in rustdesk seed_password probe_client smoke_readiness \
         flutter-peer-source-x11 smoke-bind-loopback.so smoke-server-launcher peer-manifest.json; do
         path="$ANDROID_PEER_INPUT_ROOT/$name"
@@ -2128,6 +2130,7 @@ if [ "$MODE" = android-emulator-runtime ] && [ "$ANDROID_RUNTIME_SCENARIO" = pee
         || fail 'cannot resolve the Android peer artifact source tree'
     peer_state="$REPO_ROOT/.harness-state/android-peer-artifacts"
     peer_parent="$peer_state/$ANDROID_RUNTIME_PEER_COMMIT"
+    ANDROID_PEER_SHARE_ROOT=$peer_parent
     ANDROID_PEER_INPUT_ROOT="$peer_parent/linux-x86_64-peer"
     for parent in "$peer_state" "$peer_parent"; do
         [ -d "$parent" ] && [ ! -L "$parent" ] \
@@ -2135,6 +2138,9 @@ if [ "$MODE" = android-emulator-runtime ] && [ "$ANDROID_RUNTIME_SCENARIO" = pee
             && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$parent")" = "$HOST_UID:$HOST_GID:700" ] \
             || fail 'Android peer artifact parent authority differs'
     done
+    [ "$(/usr/bin/find "$peer_parent" -mindepth 1 -maxdepth 1 -printf '%f\n')" = linux-x86_64-peer ] \
+        || fail 'Android peer share inventory differs'
+    ANDROID_PEER_SHARE_ID=$(/usr/bin/stat -c '%d:%i' -- "$peer_parent")
     [ -d "$ANDROID_PEER_INPUT_ROOT" ] && [ ! -L "$ANDROID_PEER_INPUT_ROOT" ] \
         && [ "$(/usr/bin/readlink -f -- "$ANDROID_PEER_INPUT_ROOT")" = "$ANDROID_PEER_INPUT_ROOT" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ANDROID_PEER_INPUT_ROOT")" = "$HOST_UID:$HOST_GID:500" ] \
@@ -2763,7 +2769,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
             -device "vhost-user-fs-pci,chardev=artifact-input,tag=rustdesk-android-artifact-input,queue-size=1024"
         )
         if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
-            start_virtiofsd sealed-input "$ANDROID_PEER_INPUT_ROOT" "$ANDROID_PEER_INPUT_ID" \
+            start_virtiofsd sealed-input "$ANDROID_PEER_SHARE_ROOT" "$ANDROID_PEER_SHARE_ID" \
                 "$RUN/vfs-peer-input.sock" "$RUN/virtiofsd-peer-input.log"
             focused_qemu_args+=(
                 -chardev "socket,id=peer-artifact-input,path=$RUN/vfs-peer-input.sock"

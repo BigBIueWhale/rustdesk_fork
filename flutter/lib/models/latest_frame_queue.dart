@@ -162,8 +162,8 @@ class LatestFrameQueue<Owner, Key, Frame> {
     return true;
   }
 
-  void _startDrain(Key key, _LatestFrameLane<Frame> lane,
-      _LatestFrameEntry<Frame> entry) {
+  void _startDrain(
+      Key key, _LatestFrameLane<Frame> lane, _LatestFrameEntry<Frame> entry) {
     final drain = _LatestFrameDrain(entry);
     lane.running.add(drain);
     _activeDrains[key] = (_activeDrains[key] ?? 0) + 1;

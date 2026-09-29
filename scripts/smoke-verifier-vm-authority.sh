@@ -22,7 +22,9 @@ DEV_CHECK_ARCHIVE=
 FLUTTER_PEER_CANDIDATE=0
 ANDROID_RUNTIME_ARTIFACT_COMMIT=
 ANDROID_RUNTIME_APK_SHA256=
-ANDROID_RUNTIME_SCENARIO=peer-lifecycle
+ANDROID_RUNTIME_SCENARIO=
+ANDROID_RUNTIME_PEER_COMMIT=
+ANDROID_RUNTIME_PEER_MANIFEST_SHA256=
 case "$#:${1:-}" in
     0:)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -83,24 +85,12 @@ case "$#:${1:-}" in
             || { echo 'Android emulator app input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-emulator-app
         ;;
-    5:--android-emulator-runtime)
-        [ "$2" = --artifact-commit ] && [ "$4" = --apk-sha256 ] \
-            || { echo 'invalid Android emulator runtime argument order' >&2; exit 2; }
-        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
-            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
-            || { echo 'Android emulator runtime input/run overrides are forbidden' >&2; exit 2; }
-        MODE=android-emulator-runtime
-        ANDROID_RUNTIME_ARTIFACT_COMMIT=$3
-        ANDROID_RUNTIME_APK_SHA256=$5
-        ;;
     7:--android-emulator-runtime)
         [ "$2" = --artifact-commit ] && [ "$4" = --apk-sha256 ] \
             && [ "$6" = --scenario ] \
             || { echo 'invalid Android emulator runtime argument order' >&2; exit 2; }
-        case "$7" in
-            recents|peer-lifecycle) ;;
-            *) echo 'invalid Android emulator runtime scenario' >&2; exit 2 ;;
-        esac
+        [ "$7" = recents ] \
+            || { echo 'peer-lifecycle requires an exact peer commit and manifest digest' >&2; exit 2; }
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Android emulator runtime input/run overrides are forbidden' >&2; exit 2; }
@@ -108,6 +98,21 @@ case "$#:${1:-}" in
         ANDROID_RUNTIME_ARTIFACT_COMMIT=$3
         ANDROID_RUNTIME_APK_SHA256=$5
         ANDROID_RUNTIME_SCENARIO=$7
+        ;;
+    11:--android-emulator-runtime)
+        [ "$2" = --artifact-commit ] && [ "$4" = --apk-sha256 ] \
+            && [ "$6" = --scenario ] && [ "$7" = peer-lifecycle ] \
+            && [ "$8" = --peer-commit ] && [ "${10}" = --peer-manifest-sha256 ] \
+            || { echo 'invalid Android peer replay argument order' >&2; exit 2; }
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Android emulator runtime input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-emulator-runtime
+        ANDROID_RUNTIME_ARTIFACT_COMMIT=$3
+        ANDROID_RUNTIME_APK_SHA256=$5
+        ANDROID_RUNTIME_SCENARIO=$7
+        ANDROID_RUNTIME_PEER_COMMIT=$9
+        ANDROID_RUNTIME_PEER_MANIFEST_SHA256=${11}
         ;;
     1:--apple-conform)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -154,13 +159,14 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
-        printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 [--scenario recents|peer-lifecycle] | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario peer-lifecycle --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
 readonly MODE LIFECYCLE_ARTIFACT LIFECYCLE_ARTIFACT_SHA256 LIFECYCLE_COMMIT \
     DEV_CHECK_ARCHIVE FLUTTER_PEER_CANDIDATE ANDROID_RUNTIME_ARTIFACT_COMMIT \
-    ANDROID_RUNTIME_APK_SHA256 ANDROID_RUNTIME_SCENARIO
+    ANDROID_RUNTIME_APK_SHA256 ANDROID_RUNTIME_SCENARIO \
+    ANDROID_RUNTIME_PEER_COMMIT ANDROID_RUNTIME_PEER_MANIFEST_SHA256
 readonly INPUT_ROOT="${VERIFIER_VM_INPUT_ROOT:-$REPO_ROOT/.harness-state/verifier-vm}"
 readonly RUN_ROOT="${VERIFIER_VM_RUN_ROOT:-$INPUT_ROOT}"
 readonly IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
@@ -423,6 +429,11 @@ ANDROID_ARTIFACT_INPUT_ROOT=
 ANDROID_ARTIFACT_INPUT_ID=
 ANDROID_ARTIFACT_INPUT_INVENTORY=
 ANDROID_RUNTIME_ARTIFACT_TREE=
+ANDROID_PEER_INPUT_FD=
+ANDROID_PEER_INPUT_ROOT=
+ANDROID_PEER_INPUT_ID=
+ANDROID_PEER_INPUT_INVENTORY=
+ANDROID_RUNTIME_PEER_TREE=
 RUN_COMPLETE=0
 
 fail() {
@@ -881,6 +892,25 @@ android_runtime_artifact_inventory() {
         -printf '%P:%y\n' | LC_ALL=C /usr/bin/sort
 }
 
+android_peer_runtime_inventory() {
+    local name path size
+    /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ANDROID_PEER_INPUT_ROOT"
+    for name in rustdesk seed_password probe_client smoke_readiness \
+        flutter-peer-source-x11 smoke-bind-loopback.so smoke-server-launcher peer-manifest.json; do
+        path="$ANDROID_PEER_INPUT_ROOT/$name"
+        [ -f "$path" ] && [ ! -L "$path" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$path")" = "$HOST_UID:$HOST_GID:400:1" ] \
+            || return 1
+        size=$(/usr/bin/stat -c '%s' -- "$path") || return 1
+        [ "$size" -ge 1 ] && [ "$size" -le 536870912 ] || return 1
+        [ "$name" != peer-manifest.json ] || [ "$size" -le 8192 ] || return 1
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$path"
+        /usr/bin/sha256sum -- "$path"
+    done
+    /usr/bin/find "$ANDROID_PEER_INPUT_ROOT" -xdev -mindepth 1 -maxdepth 1 \
+        -printf '%f:%y\n' | LC_ALL=C /usr/bin/sort
+}
+
 android_rust_target_input_inventory() {
     /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS"
     /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
@@ -1069,6 +1099,10 @@ cleanup() {
     if [ -n "$ANDROID_ARTIFACT_INPUT_FD" ]; then
         exec {ANDROID_ARTIFACT_INPUT_FD}<&- || cleanup_failed=1
         ANDROID_ARTIFACT_INPUT_FD=
+    fi
+    if [ -n "$ANDROID_PEER_INPUT_FD" ]; then
+        exec {ANDROID_PEER_INPUT_FD}<&- || cleanup_failed=1
+        ANDROID_PEER_INPUT_FD=
     fi
     if [ -n "$ARTIFACT_OUTPUT_FD" ]; then
         exec {ARTIFACT_OUTPUT_FD}<&- || cleanup_failed=1
@@ -2081,6 +2115,43 @@ if [ "$MODE" = android-emulator-runtime ]; then
         || fail 'retained Android runtime artifact root identity differs'
 fi
 
+if [ "$MODE" = android-emulator-runtime ] && [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+    [[ "$ANDROID_RUNTIME_PEER_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        && [[ "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'Android peer artifact identity is malformed'
+    [ "$(git_closed -C "$REPO_ROOT" rev-parse --verify "${ANDROID_RUNTIME_PEER_COMMIT}^{commit}")" = \
+      "$ANDROID_RUNTIME_PEER_COMMIT" ] \
+        && git_closed -C "$REPO_ROOT" merge-base --is-ancestor \
+            "$ANDROID_RUNTIME_PEER_COMMIT" refs/remotes/origin/master \
+        || fail 'Android peer artifact source is not on pushed master history'
+    ANDROID_RUNTIME_PEER_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify "${ANDROID_RUNTIME_PEER_COMMIT}^{tree}")" \
+        || fail 'cannot resolve the Android peer artifact source tree'
+    peer_state="$REPO_ROOT/.harness-state/android-peer-artifacts"
+    peer_parent="$peer_state/$ANDROID_RUNTIME_PEER_COMMIT"
+    ANDROID_PEER_INPUT_ROOT="$peer_parent/linux-x86_64-peer"
+    for parent in "$peer_state" "$peer_parent"; do
+        [ -d "$parent" ] && [ ! -L "$parent" ] \
+            && [ "$(/usr/bin/readlink -f -- "$parent")" = "$parent" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$parent")" = "$HOST_UID:$HOST_GID:700" ] \
+            || fail 'Android peer artifact parent authority differs'
+    done
+    [ -d "$ANDROID_PEER_INPUT_ROOT" ] && [ ! -L "$ANDROID_PEER_INPUT_ROOT" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ANDROID_PEER_INPUT_ROOT")" = "$ANDROID_PEER_INPUT_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ANDROID_PEER_INPUT_ROOT")" = "$HOST_UID:$HOST_GID:500" ] \
+        && [ -z "$(/usr/bin/findmnt -rn -o TARGET --submounts "$ANDROID_PEER_INPUT_ROOT")" ] \
+        || fail 'Android peer capsule authority differs'
+    ANDROID_PEER_INPUT_ID=$(/usr/bin/stat -c '%d:%i' -- "$ANDROID_PEER_INPUT_ROOT")
+    ANDROID_PEER_INPUT_INVENTORY="$(android_peer_runtime_inventory)" \
+        || fail 'cannot inventory the Android peer capsule'
+    [ "$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/peer-manifest.json" | /usr/bin/awk '{print $1}')" = \
+      "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" ] \
+        || fail 'Android peer manifest digest differs'
+    exec {ANDROID_PEER_INPUT_FD}<"$ANDROID_PEER_INPUT_ROOT" \
+        || fail 'cannot retain the Android peer capsule'
+    [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$ANDROID_PEER_INPUT_FD")" = "$ANDROID_PEER_INPUT_ID" ] \
+        || fail 'retained Android peer capsule identity differs'
+fi
+
 readonly OVERLAY=$RUN/overlay.qcow2
 readonly PAYLOAD=$RUN/payload.iso
 readonly SEED=$RUN/seed.iso
@@ -2579,6 +2650,9 @@ elif [ "$MODE" = android-emulator-app ]; then
     guest_invocation+=" --android-emulator-app /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-emulator-runtime ]; then
     guest_invocation+=" --android-emulator-runtime /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256 $ANDROID_RUNTIME_ARTIFACT_COMMIT $ANDROID_RUNTIME_ARTIFACT_TREE $ANDROID_RUNTIME_APK_SHA256 $ANDROID_RUNTIME_SCENARIO"
+    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+        guest_invocation+=" $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256"
+    fi
 elif [ "$MODE" = flutter-peer-presentation ]; then
     if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
         guest_invocation+=" --flutter-peer-presentation-candidate /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256"
@@ -2688,6 +2762,14 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
             -chardev "socket,id=artifact-input,path=$ARTIFACT_INPUT_VIRTIOFS_SOCKET"
             -device "vhost-user-fs-pci,chardev=artifact-input,tag=rustdesk-android-artifact-input,queue-size=1024"
         )
+        if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+            start_virtiofsd sealed-input "$ANDROID_PEER_INPUT_ROOT" "$ANDROID_PEER_INPUT_ID" \
+                "$RUN/vfs-peer-input.sock" "$RUN/virtiofsd-peer-input.log"
+            focused_qemu_args+=(
+                -chardev "socket,id=peer-artifact-input,path=$RUN/vfs-peer-input.sock"
+                -device "vhost-user-fs-pci,chardev=peer-artifact-input,tag=rustdesk-android-peer-artifact-input,queue-size=1024"
+            )
+        fi
     fi
     memory_args=(
         -m "$VM_MEMORY"
@@ -3171,6 +3253,11 @@ elif [ "$MODE" = android-emulator-app ]; then
         'Android emulator app cloud-init completion marker'
 elif [ "$MODE" = android-emulator-runtime ]; then
     require_android_renderer_receipt
+    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+        require_exact_fixed_receipt \
+            "ANDROID_PEER_ARTIFACT_ADMITTED=pass commit=$ANDROID_RUNTIME_PEER_COMMIT tree=$ANDROID_RUNTIME_PEER_TREE manifest_sha256=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 builder=$DEV_CHECK_IMAGE_CONFIG_ID files=7 build=absent execution=readonly-guest-copy" \
+            'source-bound production peer admission receipt'
+    fi
     require_exact_fixed_receipt \
         "VERIFIER_VM_ENTRY_AUTHORITY=pass uid=1000 gid=1000 network=none docker=$VERIFIER_VM_DOCKER_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root" \
         'Android emulator runtime entry-authority receipt'
@@ -3602,6 +3689,11 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         && [ "$(android_runtime_artifact_inventory)" = \
              "$ANDROID_ARTIFACT_INPUT_INVENTORY" ] \
         || fail 'commit-bound Android runtime artifact changed during execution'
+    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+        [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$ANDROID_PEER_INPUT_FD")" = "$ANDROID_PEER_INPUT_ID" ] \
+            && [ "$(android_peer_runtime_inventory)" = "$ANDROID_PEER_INPUT_INVENTORY" ] \
+            || fail 'source-bound Android peer capsule changed during execution'
+    fi
 elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ]; then
     focused_inputs_after="$(android_emulator_input_inventory)" \
         || fail 'cannot re-inventory the sealed Android emulator inputs'

@@ -494,7 +494,7 @@ print_android_connection_diagnostic() {
         timeout --signal=TERM --kill-after=2s 20s \
             "$ADB" -s "$SERIAL" logcat -d -v brief 2>/dev/null \
             | grep -Ei \
-                'No remembered password|CPace handshake failed|R-S9|connect-password-prompt|session_set_connect_password|viewer owner|outgoing viewer|connection round|Connection closed|keying|RUSTDESK_PRESENTATION_STAGE' \
+                'No remembered password|CPace handshake failed|R-S9|connect-password-prompt|session_set_connect_password|viewer owner|outgoing viewer|connection round|Connection closed|keying|RUSTDESK_PRESENTATION_(STAGE|PROGRESS)' \
             | tail -n 160 \
             | tail -c 98304 \
             || true
@@ -717,6 +717,14 @@ print_peer_presentation_stage_diagnostic() {
     android_dart_presentation_stages \
         | tail -n 8 \
         | sed 's/^/ANDROID_PEER_PRESENTATION_STAGE_DART /' \
+        || true
+    timeout --signal=TERM --kill-after=2s 20s \
+        "$ADB" -s "$SERIAL" logcat -d -v brief 2>/dev/null \
+        | tr -d '\r' \
+        | grep -F 'RUSTDESK_PRESENTATION_PROGRESS ' \
+        | tail -n 64 \
+        | tail -c 98304 \
+        | sed 's/^/ANDROID_PEER_PRESENTATION_PROGRESS /' \
         || true
     printf 'ANDROID_PEER_PRESENTATION_STAGE_DIAGNOSTIC_END phase=%s\n' "$phase"
 }
@@ -1251,12 +1259,67 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
         || fail 'the Android emulator frame-observer exchange root is not empty'
     [ "$(find /sys/class/net -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)" = lo ] \
         || fail 'the real-peer runtime container has a non-loopback interface'
-    [ -f "$PEER_TARGET/android-peer-manifest.sha256" ] \
-        && [ ! -L "$PEER_TARGET/android-peer-manifest.sha256" ] \
-        || fail 'the Android peer runtime manifest is absent or ambiguous'
-    (cd "$PEER_TARGET" \
-        && sha256sum --check --strict android-peer-manifest.sha256 >/dev/null) \
-        || fail 'the Android peer runtime bundle differs from its manifest'
+    python3 -I -S - "$DEV_CHECK_IMAGE_CONFIG_ID" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+        "$SHA256_CARGO_VENDOR_CONFIG" "$RUST_VERSION" <<'PY' \
+        || fail 'the Android peer runtime bundle differs from its source-bound manifest'
+import hashlib, json, os, stat, sys
+layout = {
+    "rustdesk": "debug/rustdesk",
+    "seed_password": "debug/examples/seed_password",
+    "probe_client": "debug/examples/probe_client",
+    "smoke_readiness": "debug/examples/smoke_readiness",
+    "flutter-peer-source-x11": "flutter-peer-source-x11",
+    "smoke-bind-loopback.so": "smoke-bind-loopback.so",
+    "smoke-server-launcher": "smoke-server-launcher",
+}
+def open_file(path, mode, limit):
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
+    info = os.fstat(fd)
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != 1000 or info.st_gid != 1000
+            or stat.S_IMODE(info.st_mode) != mode or info.st_nlink != 1
+            or not 1 <= info.st_size <= limit):
+        os.close(fd)
+        raise ValueError("peer runtime file authority differs")
+    return os.fdopen(fd, "rb"), info
+def stable(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+handle, info = open_file("/inputs/peer-manifest.json", 0o400, 8192)
+with handle:
+    raw = handle.read(8193)
+    if stable(os.fstat(handle.fileno())) != stable(info):
+        raise ValueError("peer runtime manifest changed during inspection")
+if len(raw) != info.st_size or hashlib.sha256(raw).hexdigest() != os.environ["ANDROID_PEER_MANIFEST_SHA256"]:
+    raise ValueError("peer runtime manifest digest differs")
+manifest = json.loads(raw)
+context = {
+    "source_commit": os.environ["ANDROID_PEER_SOURCE_COMMIT"],
+    "source_tree": os.environ["ANDROID_PEER_SOURCE_TREE"],
+    "builder_config": sys.argv[1], "vendor_closure": sys.argv[2],
+    "vendor_config": sys.argv[3], "rust_toolchain": sys.argv[4] + ".0-x86_64-unknown-linux-gnu",
+}
+if manifest.get("schema") != 1 or manifest.get("context") != context or set(manifest.get("files", {})) != set(layout):
+    raise ValueError("peer runtime manifest context or inventory differs")
+total = 0
+for name, relative in layout.items():
+    handle, info = open_file("/smoke-target/" + relative, 0o500, 512 * 1024 * 1024)
+    digest = hashlib.sha256()
+    with handle:
+        total += info.st_size
+        if total > 2 * 1024 * 1024 * 1024:
+            raise ValueError("peer runtime aggregate bound exceeded")
+        remaining = info.st_size
+        while remaining:
+            chunk = handle.read(min(remaining, 1024 * 1024))
+            if not chunk:
+                raise ValueError("peer runtime execution file shortened")
+            digest.update(chunk)
+            remaining -= len(chunk)
+        if handle.read(1) or stable(os.fstat(handle.fileno())) != stable(info):
+            raise ValueError("peer runtime execution file changed")
+    if manifest["files"][name] != {"bytes": info.st_size, "sha256": digest.hexdigest()}:
+        raise ValueError("peer runtime execution bytes differ")
+PY
     [ -f "$PEER_XVFB_MANIFEST" ] && [ ! -L "$PEER_XVFB_MANIFEST" ] \
         || fail 'the Android peer Xvfb file manifest is absent or ambiguous'
     xvfb_file_count=0

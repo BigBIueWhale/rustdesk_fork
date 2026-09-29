@@ -1047,7 +1047,17 @@ earlier empty-cache observation before allocation. A final 83-second authority t
 the added real-directory/file/dangling-symlink capsule refusals with no run allocation, all original
 16-caller admission cases, unchanged host listeners, and joined successful-run retirement.
 This proves the peer build/publication boundary, not execution of these peer bytes, Android pixels,
-or a release artifact. Replay/admission wiring remains OPEN; behavioral replay still rebuilds the peer.
+or a release artifact. Replay now requires explicit `--scenario peer-lifecycle --peer-commit COMMIT
+--peer-manifest-sha256 SHA256` authority, shares the fixed inert capsule read-only/noexec, and uses
+the VM-gated materializer instead of a build container. The execution copy is mounted read-only and
+its exact mount/layout is checked. This consumer wiring is implemented but native replay of it is
+not yet executed; artifact execution, Android pixels, and the intermittent defect remain OPEN.
+The attempted shared authority smoke hit its existing 90-second VM deadline after the 22 capsule
+cases and several authority entries passed; it is not a complete transaction or consumer verdict.
+The peer launcher now validates the externally digest-bound capsule manifest and all seven execution
+files directly instead of depending on the obsolete build-target checksum file.
+Bounded sampled `RUSTDESK_PRESENTATION_PROGRESS` now survives the logcat, presentation diagnostic,
+runtime-wrapper, and guest failure-forwarding filters alongside the independent STAGE records.
 
 CPace recovery is independently source/wire-covered: after successful step-3 transmission, transport
 loss while awaiting step 4 is `PeerConfirmationUnavailable`; earlier I/O remains `Io`, malformed or
@@ -1057,10 +1067,8 @@ retries automatically; no failed path installs keys. Only responder-side `Confir
 guess limiter. The focused 20-wire-test transaction at `2ab3efa0` passed in 138 seconds; it is not
 native UI/presentation evidence.
 
-Next work must preserve sampled `RUSTDESK_PRESENTATION_PROGRESS` through every failure-forwarding
-layer and separate an authenticated, exact-source production-peer artifact from behavioral replay:
-the current replay rebuilds the peer into a fresh ephemeral target with incremental compilation
-disabled. Artifact reuse must retain digest/source/input admission, read-only execution, no fallback,
+Next work must execute and validate the compile-free, exact-artifact replay and diagnostic forwarding.
+Artifact reuse must retain digest/source/input admission, read-only execution, no fallback,
 bounded output, and joined cleanup. Then distinguish event, native mailbox, conversion completion,
 model commit, widget/paint, and actual framebuffer progress across repeated task/session replacement.
 The shared three-conversion pool's dependence on uncancellable Flutter futures is a liveness candidate,

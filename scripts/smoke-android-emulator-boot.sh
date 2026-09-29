@@ -775,7 +775,8 @@ emit_peer_presentation_stage_receipts() {
     local native_wall_ms receive_to_admit_us admit_to_dequeue_us decode_us
     local dart_session dart_display publication dart_wall_ms event_queue_us
     local take_us checkpoint_us decode_commit_us ui_finalize_us total_us
-    local calculated_total connections= sessions= previous_generation=0
+    local calculated_total connections= sessions=
+    local previous_server_generation=0 previous_native_generation=0
     local index
     local -a phases=(initial task-relaunch-1 task-relaunch-2)
     local -a server_stages native_stages dart_stages
@@ -832,8 +833,9 @@ emit_peer_presentation_stage_receipts() {
             + decode_commit_us + ui_finalize_us))
         [ "$server_display" -eq "$native_display" ] \
             && [ "$native_display" -eq "$dart_display" ] \
-            && [ "$server_generation" -eq "$native_generation" ] \
-            && [ "$server_generation" -gt "$previous_generation" ] \
+            && [ "$native_generation" -ge "$server_generation" ] \
+            && [ "$server_generation" -gt "$previous_server_generation" ] \
+            && [ "$native_generation" -gt "$previous_native_generation" ] \
             && [ "$calculated_total" -eq "$total_us" ] \
             || return 1
         case " $connections " in
@@ -844,10 +846,12 @@ emit_peer_presentation_stage_receipts() {
         esac
         connections="${connections:+$connections }$server_connection"
         sessions="${sessions:+$sessions }$dart_session"
-        previous_generation=$server_generation
-        printf 'ANDROID_PEER_PRESENTATION_STAGE=pass phase=%s ordinal=%s server_connection=%s display=%s wire_generation=%s server_wall_ms=%s server_queue_us=%s viewer_mailbox_generation=%s viewer_wall_ms=%s receive_to_admit_us=%s admit_to_dequeue_us=%s decode_us=%s dart_session=%s publication=%s dart_wall_ms=%s event_queue_us=%s take_us=%s checkpoint_us=%s decode_commit_us=%s ui_finalize_us=%s dart_total_us=%s\n' \
+        previous_server_generation=$server_generation
+        previous_native_generation=$native_generation
+        printf 'ANDROID_PEER_PRESENTATION_STAGE=pass phase=%s ordinal=%s server_connection=%s display=%s server_wire_generation=%s viewer_wire_generation=%s server_wall_ms=%s server_queue_us=%s viewer_mailbox_generation=%s viewer_wall_ms=%s receive_to_admit_us=%s admit_to_dequeue_us=%s decode_us=%s dart_session=%s publication=%s dart_wall_ms=%s event_queue_us=%s take_us=%s checkpoint_us=%s decode_commit_us=%s ui_finalize_us=%s dart_total_us=%s\n' \
             "$phase" "$((index + 1))" "$server_connection" \
-            "$server_display" "$server_generation" "$server_wall_ms" \
+            "$server_display" "$server_generation" "$native_generation" \
+            "$server_wall_ms" \
             "$server_queue_us" "$mailbox_generation" "$native_wall_ms" \
             "$receive_to_admit_us" "$admit_to_dequeue_us" "$decode_us" \
             "$dart_session" "$publication" "$dart_wall_ms" \

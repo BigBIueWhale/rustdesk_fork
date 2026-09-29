@@ -1936,7 +1936,7 @@ class ImageModel with ChangeNotifier {
             true ||
         !isCurrentPresentationRevision(expectedPresentationRevision) ||
         (expectedRgbaPublication != null &&
-            !_rgbaPublicationOrder.isCurrent(expectedRgbaPublication))) {
+            !_rgbaPublicationOrder.canComplete(expectedRgbaPublication))) {
       return false;
     }
     final rect = parent.target?.ffiModel.pi.getDisplayRect(display);
@@ -1956,13 +1956,22 @@ class ImageModel with ChangeNotifier {
             true ||
         !isCurrentPresentationRevision(expectedPresentationRevision) ||
         (expectedRgbaPublication != null &&
-            !_rgbaPublicationOrder.isCurrent(expectedRgbaPublication))) {
+            !_rgbaPublicationOrder.canComplete(expectedRgbaPublication))) {
       image.dispose();
       return false;
     }
+    RgbaPublicationCommit<SessionID>? publicationCommit;
+    if (expectedRgbaPublication != null) {
+      publicationCommit =
+          _rgbaPublicationOrder.commit(expectedRgbaPublication);
+      if (publicationCommit == null) {
+        image.dispose();
+        return false;
+      }
+    }
     return update(image,
         expectedSessionId: expectedSessionId,
-        expectedRgbaPublication: expectedRgbaPublication,
+        expectedRgbaCommit: publicationCommit,
         expectedDisplayTopologyRevision: expectedDisplayTopologyRevision,
         expectedPresentationRevision: expectedPresentationRevision);
   }
@@ -1970,7 +1979,7 @@ class ImageModel with ChangeNotifier {
   Future<bool> update(ui.Image? image,
       {SessionID? expectedSessionId,
       bool allowClosedSession = false,
-      RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,
+      RgbaPublicationCommit<SessionID>? expectedRgbaCommit,
       int? expectedDisplayTopologyRevision,
       int? expectedPresentationRevision}) async {
     bool acceptsExpectedImage() =>
@@ -1979,8 +1988,8 @@ class ImageModel with ChangeNotifier {
                 ? parent.target?.sessionId == expectedSessionId
                 : parent.target?.isCurrentSession(expectedSessionId) ==
                     true)) &&
-        (expectedRgbaPublication == null ||
-            _rgbaPublicationOrder.isCurrent(expectedRgbaPublication)) &&
+        (expectedRgbaCommit == null ||
+            _rgbaPublicationOrder.isCurrent(expectedRgbaCommit)) &&
         (expectedPresentationRevision == null ||
             isCurrentPresentationRevision(expectedPresentationRevision)) &&
         (expectedDisplayTopologyRevision == null ||
@@ -4347,7 +4356,8 @@ class FFI {
     _sessionOwner = nextOwner;
     _displaySelections = DisplaySelectionQueue(nextOwner);
     _sessionEvents = SessionEventQueue(nextOwner);
-    _softwareRgbaFrames = LatestFrameQueue(nextOwner);
+    _softwareRgbaFrames = LatestFrameQueue(nextOwner,
+        maxConcurrentDrainsPerKey: 3, maxCurrentDrainsPerKey: 2);
     _webRgbaFrames = LatestFrameQueue(nextOwner);
     _webCursorPositions = LatestFrameQueue(nextOwner, maxKeys: 1);
     _webCursorShapes = LatestFrameQueue(nextOwner, maxKeys: 1);

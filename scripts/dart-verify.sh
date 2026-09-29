@@ -387,7 +387,7 @@ verifier_vm_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/desktop_tab_retirement_test.dart
     echo "  == viewer presentation recovery coalesces background and focus transitions =="
     flutter test --no-pub test/presentation_recovery_test.dart
-    echo "  == R-S11fr software RGBA decode commits only the exact newest publication =="
+    echo "  == R-S11fr software RGBA commits advance by exact completion order =="
     flutter test --no-pub test/rgba_publication_order_test.dart
     echo "  == software RGBA painting owns exact image handles and finite bounds =="
     flutter test --no-pub test/owned_image_paint_test.dart

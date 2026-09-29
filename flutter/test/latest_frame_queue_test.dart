@@ -54,6 +54,154 @@ void main() {
     expect(await first, LatestFrameDisposition.presented);
   });
 
+  test('bounded parallel lane overtakes one stalled presentation', () async {
+    final firstEntered = Completer<void>();
+    final secondEntered = Completer<void>();
+    final fourthEntered = Completer<void>();
+    final releaseFirst = Completer<void>();
+    final releaseSecond = Completer<void>();
+    final releaseFourth = Completer<void>();
+    final presented = <String>[];
+    var running = 0;
+    var peakRunning = 0;
+    final queue = LatestFrameQueue<String, int, String>('session-a',
+        maxConcurrentDrainsPerKey: 3, maxCurrentDrainsPerKey: 2);
+
+    Future<void> present(String frame) async {
+      presented.add(frame);
+      running += 1;
+      peakRunning = running > peakRunning ? running : peakRunning;
+      try {
+        if (frame == 'first') {
+          firstEntered.complete();
+          await releaseFirst.future;
+        } else if (frame == 'second') {
+          secondEntered.complete();
+          await releaseSecond.future;
+        } else if (frame == 'fourth') {
+          fourthEntered.complete();
+          await releaseFourth.future;
+        }
+      } finally {
+        running -= 1;
+      }
+    }
+
+    final first = queue.submit('session-a', 0, 'first', present);
+    await firstEntered.future;
+    final second = queue.submit('session-a', 0, 'second', present);
+    await secondEntered.future;
+    final third = queue.submit('session-a', 0, 'third', present);
+    final fourth = queue.submit('session-a', 0, 'fourth', present);
+
+    expect(await third, LatestFrameDisposition.superseded);
+    expect(presented, ['first', 'second']);
+    releaseSecond.complete();
+    expect(await second, LatestFrameDisposition.presented);
+    await fourthEntered.future;
+    expect(presented, ['first', 'second', 'fourth']);
+    expect(peakRunning, 2);
+
+    releaseFourth.complete();
+    expect(await fourth, LatestFrameDisposition.presented);
+    releaseFirst.complete();
+    expect(await first, LatestFrameDisposition.presented);
+  });
+
+  test('parallel recovery remains inside the total drain bound', () async {
+    final firstEntered = Completer<void>();
+    final secondEntered = Completer<void>();
+    final replacementEntered = Completer<void>();
+    final successorEntered = Completer<void>();
+    final releaseFirst = Completer<void>();
+    final releaseSecond = Completer<void>();
+    final releaseReplacement = Completer<void>();
+    final queue = LatestFrameQueue<String, int, String>('session-a',
+        maxConcurrentDrainsPerKey: 3, maxCurrentDrainsPerKey: 2);
+
+    final first = queue.submit('session-a', 0, 'first', (_) async {
+      firstEntered.complete();
+      await releaseFirst.future;
+    });
+    await firstEntered.future;
+    final second = queue.submit('session-a', 0, 'second', (_) async {
+      secondEntered.complete();
+      await releaseSecond.future;
+    });
+    await secondEntered.future;
+
+    expect(queue.suspend('session-a'), isTrue);
+    expect(await first, LatestFrameDisposition.retired);
+    expect(await second, LatestFrameDisposition.retired);
+    expect(queue.recover('session-a'), isTrue);
+
+    final replacement = queue.submit('session-a', 0, 'replacement', (_) async {
+      replacementEntered.complete();
+      await releaseReplacement.future;
+    });
+    await replacementEntered.future;
+    final successor = queue.submit('session-a', 0, 'successor', (_) async {
+      successorEntered.complete();
+    });
+
+    // Both detached drains plus the replacement consume the hard total. The
+    // latest successor stays bounded until one of those operations finishes.
+    expect(successorEntered.isCompleted, isFalse);
+    releaseFirst.complete();
+    await successorEntered.future;
+    expect(await successor, LatestFrameDisposition.presented);
+
+    releaseReplacement.complete();
+    expect(await replacement, LatestFrameDisposition.presented);
+    releaseSecond.complete();
+    await Future<void>.delayed(Duration.zero);
+  });
+
+  test('parallel limit cannot exceed the total drain bound', () {
+    expect(
+        () => LatestFrameQueue<String, int, String>('session-a',
+            maxConcurrentDrainsPerKey: 1, maxCurrentDrainsPerKey: 2),
+        throwsArgumentError);
+  });
+
+  test('parallel failure retires its peer and retained successor', () async {
+    final failedEntered = Completer<void>();
+    final peerEntered = Completer<void>();
+    final releaseFailed = Completer<void>();
+    final releasePeer = Completer<void>();
+    final presented = <String>[];
+    final queue = LatestFrameQueue<String, int, String>('session-a',
+        maxConcurrentDrainsPerKey: 3, maxCurrentDrainsPerKey: 2);
+
+    final failed = queue.submit('session-a', 0, 'failed', (frame) async {
+      presented.add(frame);
+      failedEntered.complete();
+      await releaseFailed.future;
+      throw StateError('expected failure');
+    });
+    await failedEntered.future;
+    final peer = queue.submit('session-a', 0, 'peer', (frame) async {
+      presented.add(frame);
+      peerEntered.complete();
+      await releasePeer.future;
+    });
+    await peerEntered.future;
+    final successor = queue.submit('session-a', 0, 'successor', (frame) async {
+      presented.add(frame);
+    });
+
+    releaseFailed.complete();
+    await expectLater(failed, throwsStateError);
+    expect(await peer, LatestFrameDisposition.retired);
+    expect(await successor, LatestFrameDisposition.retired);
+    expect(presented, ['failed', 'peer']);
+    expect(await queue.submit('session-a', 0, 'later', (_) async {}),
+        LatestFrameDisposition.retired);
+
+    releasePeer.complete();
+    await Future<void>.delayed(Duration.zero);
+  });
+
   test('observed submissions retain only running and latest without futures',
       () async {
     final firstEntered = Completer<void>();

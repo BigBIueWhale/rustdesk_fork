@@ -8,15 +8,19 @@ enum LatestFrameDisposition {
 
 /// Bounds asynchronous frame presentation for one exact owner.
 ///
-/// Each current display generation retains one running frame and only its
-/// latest successor. Recovery may leave one uncancellable predecessor drain,
-/// but its completion is powerless and the per-key and queue-wide limits still
-/// bound it. Different displays drain independently.
+/// Each current display generation retains a fixed number of running frames
+/// and only its latest successor. Software image conversion uses two running
+/// slots so a newer frame can overtake one slow, uncancellable engine future;
+/// other callers retain the default single running slot. Recovery may leave
+/// uncancellable predecessor drains, but their completions are powerless and
+/// the per-key and queue-wide limits still bound them. Different displays
+/// drain independently.
 class LatestFrameQueue<Owner, Key, Frame> {
   LatestFrameQueue(
     this.owner, {
     this.maxKeys = 32,
     this.maxConcurrentDrainsPerKey = 2,
+    this.maxCurrentDrainsPerKey = 1,
   }) {
     if (maxKeys < 1) {
       throw ArgumentError.value(maxKeys, 'maxKeys');
@@ -25,11 +29,17 @@ class LatestFrameQueue<Owner, Key, Frame> {
       throw ArgumentError.value(
           maxConcurrentDrainsPerKey, 'maxConcurrentDrainsPerKey');
     }
+    if (maxCurrentDrainsPerKey < 1 ||
+        maxCurrentDrainsPerKey > maxConcurrentDrainsPerKey) {
+      throw ArgumentError.value(
+          maxCurrentDrainsPerKey, 'maxCurrentDrainsPerKey');
+    }
   }
 
   final Owner owner;
   final int maxKeys;
   final int maxConcurrentDrainsPerKey;
+  final int maxCurrentDrainsPerKey;
   final Map<Key, _LatestFrameLane<Frame>> _lanes = {};
   final Map<Key, int> _activeDrains = {};
   bool _retired = false;
@@ -88,6 +98,8 @@ class LatestFrameQueue<Owner, Key, Frame> {
         _retireAll();
         return _LatestFrameAdmission.exhausted;
       }
+      // A recovered generation must not wait forever behind a full set of
+      // detached engine futures. Refuse visibly before retaining its frame.
       if (activeDrains >= maxConcurrentDrainsPerKey) {
         _retireAll();
         return _LatestFrameAdmission.exhausted;
@@ -96,10 +108,9 @@ class LatestFrameQueue<Owner, Key, Frame> {
       _lanes[key] = lane;
     }
 
-    if (lane.running == null) {
-      lane.running = entry;
-      _activeDrains[key] = (_activeDrains[key] ?? 0) + 1;
-      unawaited(_drain(key, lane));
+    if (lane.running.length < maxCurrentDrainsPerKey &&
+        (_activeDrains[key] ?? 0) < maxConcurrentDrainsPerKey) {
+      _startDrain(key, lane, entry);
     } else {
       lane.pending?.complete(LatestFrameDisposition.superseded);
       lane.pending = entry;
@@ -109,9 +120,10 @@ class LatestFrameQueue<Owner, Key, Frame> {
 
   /// Stops new work and detaches the exact in-flight generation.
   ///
-  /// An asynchronous engine operation cannot be cancelled, so one detached
-  /// drain may still finish. Its entry is already retired and it cannot consume
-  /// a successor or report a failure into the replacement generation.
+  /// Asynchronous engine operations cannot be cancelled, so the bounded
+  /// current drains may still finish. Their entries are already retired and
+  /// they cannot consume successors or report a failure into the replacement
+  /// generation.
   bool suspend(Owner expectedOwner) {
     if (_retired || expectedOwner != owner) {
       return false;
@@ -126,9 +138,10 @@ class LatestFrameQueue<Owner, Key, Frame> {
 
   /// Starts a fresh generation without waiting for a detached engine future.
   ///
-  /// At most [maxConcurrentDrainsPerKey] generations may execute concurrently
-  /// for one key. Exhausting that hard bound retires the queue visibly instead
-  /// of leaking one uncancellable decode per lifecycle transition.
+  /// At most [maxConcurrentDrainsPerKey] operations may execute concurrently
+  /// for one key across current and detached generations. Exhausting that hard
+  /// bound retires the queue visibly instead of leaking uncancellable work
+  /// across lifecycle transitions.
   bool recover(Owner expectedOwner) {
     if (_retired || expectedOwner != owner) {
       return false;
@@ -149,53 +162,71 @@ class LatestFrameQueue<Owner, Key, Frame> {
     return true;
   }
 
-  Future<void> _drain(Key key, _LatestFrameLane<Frame> lane) async {
+  void _startDrain(Key key, _LatestFrameLane<Frame> lane,
+      _LatestFrameEntry<Frame> entry) {
+    final drain = _LatestFrameDrain(entry);
+    lane.running.add(drain);
+    _activeDrains[key] = (_activeDrains[key] ?? 0) + 1;
+    unawaited(_drain(key, lane, drain));
+  }
+
+  void _startPendingIfPossible(Key key) {
+    if (_retired || _suspended) return;
+    final lane = _lanes[key];
+    if (lane == null ||
+        lane.pending == null ||
+        lane.running.length >= maxCurrentDrainsPerKey ||
+        (_activeDrains[key] ?? 0) >= maxConcurrentDrainsPerKey) {
+      return;
+    }
+    final pending = lane.pending!;
+    lane.pending = null;
+    _startDrain(key, lane, pending);
+  }
+
+  Future<void> _drain(Key key, _LatestFrameLane<Frame> lane,
+      _LatestFrameDrain<Frame> drain) async {
     try {
-      while (true) {
-        final entry = lane.running;
-        if (entry == null) {
-          return;
-        }
-        try {
-          await entry.present(entry.frame);
-          entry.complete(_retired || lane.detached
-              ? LatestFrameDisposition.retired
-              : LatestFrameDisposition.presented);
-        } catch (error, stackTrace) {
-          if (_retired || lane.detached) {
-            entry.complete(LatestFrameDisposition.retired);
-          } else {
-            entry.completeError(error, stackTrace);
-            _retireAll();
-          }
-        }
-        if (_retired || lane.detached) {
-          lane.running = null;
-          return;
-        }
-        lane.running = lane.pending;
-        lane.pending = null;
-        if (lane.running == null) {
-          if (identical(_lanes[key], lane)) {
-            _lanes.remove(key);
-          }
-          return;
+      final entry = drain.entry;
+      try {
+        await entry.present(entry.frame);
+        entry.complete(_retired || drain.detached
+            ? LatestFrameDisposition.retired
+            : LatestFrameDisposition.presented);
+      } catch (error, stackTrace) {
+        if (_retired || drain.detached) {
+          entry.complete(LatestFrameDisposition.retired);
+        } else {
+          entry.completeError(error, stackTrace);
+          _retireAll();
         }
       }
     } finally {
+      if (!drain.detached && identical(_lanes[key], lane)) {
+        lane.running.remove(drain);
+      }
       final remaining = (_activeDrains[key] ?? 1) - 1;
       if (remaining == 0) {
         _activeDrains.remove(key);
       } else {
         _activeDrains[key] = remaining;
       }
+      _startPendingIfPossible(key);
+      final current = _lanes[key];
+      if (current != null &&
+          current.running.isEmpty &&
+          current.pending == null) {
+        _lanes.remove(key);
+      }
     }
   }
 
   void _detachLanes() {
     for (final lane in _lanes.values) {
-      lane.detached = true;
-      lane.running?.complete(LatestFrameDisposition.retired);
+      for (final drain in lane.running) {
+        drain.detached = true;
+        drain.entry.complete(LatestFrameDisposition.retired);
+      }
       lane.pending?.complete(LatestFrameDisposition.retired);
       lane.pending = null;
     }
@@ -210,8 +241,14 @@ class LatestFrameQueue<Owner, Key, Frame> {
 }
 
 class _LatestFrameLane<Frame> {
-  _LatestFrameEntry<Frame>? running;
+  final Set<_LatestFrameDrain<Frame>> running = {};
   _LatestFrameEntry<Frame>? pending;
+}
+
+class _LatestFrameDrain<Frame> {
+  _LatestFrameDrain(this.entry);
+
+  final _LatestFrameEntry<Frame> entry;
   bool detached = false;
 }
 

@@ -1028,7 +1028,14 @@ no-clobber collision, and a FIFO substitution A/B: old flags blocked; corrected 
 All children/workspaces/VM owners joined, with no added host listener or pre-existing process drift.
 The fixture uses a guest-system ELF, not RustDesk: this tests the capsule contract, not source
 provenance, an actual peer build, Android lifecycle, presentation, or a release artifact.
-The production build/publish and replay/admission wiring remains OPEN; replay still rebuilds the peer.
+`smoke-verifier-vm-authority.sh --android-peer-build` now wires the existing production peer-build
+stage to capsule preparation and joined, inert publication. It admits only clean pushed source,
+authenticated offline builder/vendor inputs, a zero-NIC VM, and a networkless UID/GID-1000 container.
+Any retained peer-artifact entry refuses a new build before VM-run allocation. The producer's real
+build/publication transaction is not yet executed; this is implemented orchestration, not build proof.
+The affected shared authority transaction passed in 85 seconds, including run admission and the
+22 capsule cases, unchanged host listeners, and joined successful-run retirement.
+Replay/admission wiring remains OPEN; behavioral replay still rebuilds the peer.
 
 CPace recovery is independently source/wire-covered: after successful step-3 transmission, transport
 loss while awaiting step 4 is `PeerConfirmationUnavailable`; earlier I/O remains `Io`, malformed or

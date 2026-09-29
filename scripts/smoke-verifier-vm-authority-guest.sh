@@ -25,6 +25,9 @@ case "$#:${8:-}" in
     12:--android-owner-tests)
         MODE=android-owner-tests
         ;;
+    12:--android-peer-build)
+        MODE=android-peer-build
+        ;;
     12:--android-emulator-boot)
         MODE=android-emulator-boot
         ;;
@@ -54,7 +57,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 SCENARIO | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 SCENARIO | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         exit 2
         ;;
 esac
@@ -2277,6 +2280,173 @@ run_android_owner_tests() {
         "$ANDROID_OWNER_SOURCE_COMMIT" "$ANDROID_OWNER_SOURCE_TREE" \
         "$ANDROID_KOTLIN_VERSION" "$ANDROID_BUILDER_IMAGE_ID" \
         "$ANDROID_BUILDER_CONFIG_ID"
+}
+
+run_android_peer_build() {
+    local inputs=/mnt/rustdesk-sealed-inputs
+    local artifact_output=/mnt/rustdesk-android-artifact-output
+    local source_root=$ROOT/android-peer-build-source
+    local target=$ROOT/android-peer-build-target
+    local flat=$ROOT/android-peer-build-flat
+    local output=$ROOT/android-peer-build.out
+    local image=$inputs/verifier-images/devcheck.docker.tar.gz
+    local source_sha source_before load_output inspect status=0 prepared pending pending_id digest
+    local name relative options
+    local -a git_builder=(
+        setpriv --reuid=1000 --regid=1000 --clear-groups
+        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
+        GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+        GIT_TERMINAL_PROMPT=0 GIT_NO_REPLACE_OBJECTS=1
+    )
+    [[ "$ANDROID_EMULATOR_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        && [[ "$ANDROID_EMULATOR_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
+        && [[ "$ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'Android peer source identity is malformed'
+    [ -f "$ANDROID_EMULATOR_SOURCE_ARCHIVE" ] && [ ! -L "$ANDROID_EMULATOR_SOURCE_ARCHIVE" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$ANDROID_EMULATOR_SOURCE_ARCHIVE")" = 4000:4000:400:1 ] \
+        || fail 'Android peer source archive metadata differs'
+    source_sha="$(sha256sum "$ANDROID_EMULATOR_SOURCE_ARCHIVE" | awk '{ print $1 }')"
+    [ "$source_sha" = "$ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'Android peer source archive digest differs'
+    [ ! -e "$source_root" ] && [ ! -L "$source_root" ] \
+        || fail 'Android peer source workspace already exists'
+    mkdir -m 0700 "$source_root"
+    tar -xf "$ANDROID_EMULATOR_SOURCE_ARCHIVE" --no-same-owner --no-same-permissions -C "$source_root"
+    [ -z "$(find "$source_root" -xdev \( ! -type d -a ! -type f \) -print -quit)" ] \
+        || fail 'Android peer source contains a non-file entry'
+    chown -R 1000:1000 "$source_root"
+    "${git_builder[@]}" /usr/bin/git -c init.defaultBranch=master -C "$source_root" init -q
+    "${git_builder[@]}" /usr/bin/git -C "$source_root" add -f -- .
+    [ "$("${git_builder[@]}" /usr/bin/git -C "$source_root" write-tree)" = "$ANDROID_EMULATOR_SOURCE_TREE" ] \
+        || fail 'Android peer source archive tree differs from pushed master'
+    rm -rf -- "$source_root/.git"
+    source_before="$(sha256sum "$source_root/scripts/pins.env" \
+        "$source_root/scripts/smoke-server-stage.sh" "$source_root/scripts/android-peer-artifact.py" \
+        "$source_root/scripts/publish-artifact-result.py" "$source_root/Cargo.lock")"
+
+    mkdir "$inputs" "$artifact_output"
+    mount -t virtiofs -o ro,nodev,nosuid rustdesk-sealed-inputs "$inputs" \
+        || fail 'cannot mount sealed Android peer inputs'
+    SEALED_INPUTS_MOUNTED=1
+    options="$(findmnt -n -o OPTIONS --target "$inputs")"
+    for option in ro nodev nosuid; do
+        case ",$options," in *,$option,*) ;; *) fail "Android peer input mount lacks $option" ;; esac
+    done
+    mount -t virtiofs -o rw,nodev,nosuid,noexec rustdesk-android-artifact-output "$artifact_output" \
+        || fail 'cannot mount Android peer output'
+    ANDROID_ARTIFACT_OUTPUT_MOUNTED=1
+    options="$(findmnt -n -o OPTIONS --target "$artifact_output")"
+    for option in rw nodev nosuid noexec; do
+        case ",$options," in *,$option,*) ;; *) fail "Android peer output mount lacks $option" ;; esac
+    done
+    [ "$(stat -c '%u:%g:%a' -- "$artifact_output")" = 1000:1000:700 ] \
+        && [ -z "$(find "$artifact_output" -mindepth 1 -maxdepth 1 -print -quit)" ] \
+        || fail 'Android peer output was not private and empty at handoff'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$image")" = "1000:1000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        && [ "$(sha256sum "$image" | awk '{ print $1 }')" = "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        || fail 'Android peer builder archive differs'
+    load_output="$(setpriv --reuid=1000 --regid=1000 --clear-groups \
+        env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+        python3 -I -S "$OFFLINE_IMAGE_PROVENANCE" verify-load \
+            --archive "$image" --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+            --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" --role devcheck \
+            --expected-id "$DEV_CHECK_IMAGE_ID" --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+            --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+            --cargo-sha "$SHA256_DEV_CHECK_CARGO" --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
+            --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
+            --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" \
+            --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID")" \
+        || fail 'Android peer builder verification/load failed'
+    [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
+        || fail 'Android peer builder load receipt differs'
+    install -d -o 1000 -g 1000 -m 0700 "$target" "$flat"
+    printf 'ANDROID_PEER_BUILD_STAGE=begin commit=%s tree=%s builder=%s\n' \
+        "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" "$DEV_CHECK_IMAGE_CONFIG_ID"
+    CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
+        --name rustdesk-android-peer-artifact-build --pull=never --network=none --read-only \
+        --user 1000:1000 --pids-limit=1024 --memory=12g --memory-swap=12g --cpus=4 \
+        --ulimit nofile=8192:8192 --ulimit core=0:0 \
+        --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
+        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g \
+        --env HOME=/tmp/android-peer-build --env CARGO_HOME=/tmp/smoke-cargo-home \
+        --env CARGO_TARGET_DIR=/smoke-target --env CARGO_INCREMENTAL=0 \
+        --env CARGO_NET_OFFLINE=true --env CARGO_NET_RETRY=0 \
+        --env "RUSTUP_TOOLCHAIN=${RUST_VERSION}.0-x86_64-unknown-linux-gnu" \
+        --env "SMOKE_EXPECTED_RUSTUP_TOOLCHAIN=${RUST_VERSION}.0-x86_64-unknown-linux-gnu" \
+        --env "SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256=$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+        --env "SMOKE_EXPECTED_VENDOR_CONFIG_SHA256=$SHA256_CARGO_VENDOR_CONFIG" \
+        --mount "type=bind,source=$source_root,target=/work,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$inputs,target=/online,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$target,target=/smoke-target,bind-recursive=disabled" \
+        --workdir /work "$DEV_CHECK_IMAGE_CONFIG_ID" \
+        /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh android-peer-build)"
+    [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'Android peer build container ID is malformed'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}' "$CONTAINER_ID")"
+    [ "$inspect" = 'none|true|1000:1000|12884901888|12884901888|4000000000|1024|["ALL"]|["no-new-privileges","apparmor=docker-default"]|{}|[]' ] \
+        || fail 'Android peer build confinement differs'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}' "$CONTAINER_ID")"
+    [ "$inspect" = 'false||private||private' ] || fail 'Android peer build namespace authority differs'
+    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
+        | /usr/bin/tee "$output" || status=$?
+    [ "$status" -eq 0 ] && [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
+        || { tail -n 200 "$output" >&2; fail "Android peer build failed: $status"; }
+    [ "$(grep -Fc 'ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=7 network=none' "$output")" -eq 1 ] \
+        || fail 'Android peer build receipt differs'
+    [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+        || fail 'Android peer build did not exit cleanly'
+    "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+    CONTAINER_ID=
+    while IFS=' ' read -r name relative; do
+        [ -f "$target/$relative" ] && [ ! -L "$target/$relative" ] \
+            || fail "Android peer output is not a regular file: $relative"
+        install -o 1000 -g 1000 -m 0400 -- "$target/$relative" "$flat/$name"
+    done <<'LAYOUT'
+rustdesk debug/rustdesk
+seed_password debug/examples/seed_password
+probe_client debug/examples/probe_client
+smoke_readiness debug/examples/smoke_readiness
+flutter-peer-source-x11 flutter-peer-source-x11
+smoke-bind-loopback.so smoke-bind-loopback.so
+smoke-server-launcher smoke-server-launcher
+LAYOUT
+    chmod 0500 "$flat"
+    prepared="$(setpriv --reuid=1000 --regid=1000 --clear-groups \
+        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+        python3 -I -S "$source_root/scripts/android-peer-artifact.py" prepare \
+            --root "$flat" --root-identity "$(stat -c '%d:%i' -- "$flat")" \
+            --parent "$artifact_output" --parent-identity "$(stat -c '%d:%i' -- "$artifact_output")" \
+            --source-commit "$ANDROID_EMULATOR_SOURCE_COMMIT" --source-tree "$ANDROID_EMULATOR_SOURCE_TREE" \
+            --builder-config "$DEV_CHECK_IMAGE_CONFIG_ID" --vendor-closure "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+            --vendor-config "$SHA256_CARGO_VENDOR_CONFIG" \
+            --rust-toolchain "${RUST_VERSION}.0-x86_64-unknown-linux-gnu")" \
+        || fail 'Android peer capsule preparation failed'
+    [[ "$prepared" =~ ^(\.android-peer-pending-[0-9a-f]{64})\ ([0-9]+:[0-9]+)\ ([0-9a-f]{64})$ ]] \
+        || fail 'Android peer capsule preparation result is malformed'
+    pending=${BASH_REMATCH[1]}
+    pending_id=${BASH_REMATCH[2]}
+    digest=${BASH_REMATCH[3]}
+    [ "$(stat -c '%d:%i' -- "$artifact_output/$pending")" = "$pending_id" ] \
+        || fail 'Android peer prepared root identity changed'
+    [ "$source_before" = "$(sha256sum "$source_root/scripts/pins.env" \
+        "$source_root/scripts/smoke-server-stage.sh" "$source_root/scripts/android-peer-artifact.py" \
+        "$source_root/scripts/publish-artifact-result.py" "$source_root/Cargo.lock")" ] \
+        && [ "$(sha256sum "$ANDROID_EMULATOR_SOURCE_ARCHIVE" | awk '{ print $1 }')" = "$source_sha" ] \
+        || fail 'Android peer source changed during build'
+    "$CLIENT" --host "unix://$SOCK" image rm "$DEV_CHECK_IMAGE_CONFIG_ID" >/dev/null
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'Android peer build left a container or image'
+    stop_docker_authority
+    umount "$artifact_output"
+    ANDROID_ARTIFACT_OUTPUT_MOUNTED=0
+    umount "$inputs"
+    SEALED_INPUTS_MOUNTED=0
+    printf 'ANDROID_PEER_ARTIFACT_PREPARED=pass commit=%s tree=%s pending=%s manifest_sha256=%s builder=%s vendor=%s rust=1.75.0 files=7 network=none cleanup=joined\n' \
+        "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" "$pending" "$digest" \
+        "$DEV_CHECK_IMAGE_CONFIG_ID" "$SHA256_CARGO_VENDOR_CLOSURE_V1"
 }
 
 run_android_emulator_boot() {
@@ -4559,6 +4729,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = android-rust-target-check ] \
    || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = android-owner-tests ] \
+   || [ "$MODE" = android-peer-build ] \
    || [ "$MODE" = android-emulator-boot ] \
    || [ "$MODE" = android-emulator-app ] \
    || [ "$MODE" = android-emulator-runtime ] \
@@ -4635,6 +4806,11 @@ fi
 
 if [ "$MODE" = android-owner-tests ]; then
     run_android_owner_tests
+    exit 0
+fi
+
+if [ "$MODE" = android-peer-build ]; then
+    run_android_peer_build
     exit 0
 fi
 

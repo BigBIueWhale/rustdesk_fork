@@ -65,6 +65,12 @@ case "$#:${1:-}" in
             || { echo 'focused Android owner-state input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-owner-tests
         ;;
+    1:--android-peer-build)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Android peer-build input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-peer-build
+        ;;
     1:--android-emulator-boot)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -148,7 +154,7 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
-        printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 [--scenario recents|peer-lifecycle] | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 [--scenario recents|peer-lifecycle] | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
@@ -209,7 +215,9 @@ if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
     FLUTTER_PEER_FLUTTER_SIZE=$SIZE_FLUTTER_PRESENTATION_CANDIDATE
     FLUTTER_PEER_PUB_CACHE_ROOT=$FLUTTER_PEER_CANDIDATE_PUB_CACHE
 fi
-if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
+if [ "$MODE" = android-peer-build ]; then
+    SEALED_INPUT_ROOT=$ONLINE_INPUTS
+elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
    || [ "$MODE" = android-emulator-runtime ]; then
     SEALED_INPUT_ROOT=$REPO_ROOT/online
 fi
@@ -284,7 +292,11 @@ readonly ANDROID_EMULATOR_OBSERVER_DEPENDENCIES="$SCRIPT_DIR/android-emulator-fr
 readonly ANDROID_EMULATOR_APK_VERIFIER="$SCRIPT_DIR/verify-android-emulator-apk.py"
 readonly ANDROID_APK_MANIFEST_VERIFIER="$SCRIPT_DIR/verify-android-apk-manifest.py"
 readonly ARTIFACT_RESULT_PUBLISHER_SOURCE="$SCRIPT_DIR/publish-artifact-result.py"
-readonly ANDROID_ARTIFACT_STATE_ROOT="$REPO_ROOT/.harness-state/android-emulator-artifacts"
+if [ "$MODE" = android-peer-build ]; then
+    readonly ANDROID_ARTIFACT_STATE_ROOT="$REPO_ROOT/.harness-state/android-peer-artifacts"
+else
+    readonly ANDROID_ARTIFACT_STATE_ROOT="$REPO_ROOT/.harness-state/android-emulator-artifacts"
+fi
 readonly ANDROID_ARTIFACT_DESTINATION=android-x86_64-test
 readonly OFFLINE_IMAGE_PROVENANCE_SOURCE="$SCRIPT_DIR/offline-image-provenance.py"
 readonly ONLINE_FETCH_SOURCE="$SCRIPT_DIR/online-fetch.sh"
@@ -345,6 +357,10 @@ elif [ "$MODE" = android-owner-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
+elif [ "$MODE" = android-peer-build ]; then
+    readonly VM_TIMEOUT_SECONDS=2400
+    readonly OVERLAY_SIZE=40G
+    readonly VM_MEMORY=16384
 elif [ "$MODE" = android-emulator-boot ]; then
     readonly VM_TIMEOUT_SECONDS=7200
     readonly OVERLAY_SIZE=32G
@@ -942,6 +958,48 @@ publish_android_runtime_artifact() {
     ARTIFACT_PUBLISHED=1
 }
 
+publish_android_peer_artifact() {
+    local pending_path pending_id destination
+    [ "$MODE" = android-peer-build ] \
+        && [[ "$ANDROID_ARTIFACT_PENDING" =~ ^\.android-peer-pending-[0-9a-f]{64}$ ]] \
+        && [[ "$ANDROID_ARTIFACT_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        && [ -n "$ARTIFACT_OUTPUT_PARENT" ] \
+        || fail 'Android peer publication authority is incomplete'
+    [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ARTIFACT_OUTPUT_PARENT")" = \
+      "$ARTIFACT_OUTPUT_PARENT_ID:$HOST_UID:$HOST_GID:700" ] \
+        && [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$ARTIFACT_OUTPUT_FD")" = \
+             "$ARTIFACT_OUTPUT_PARENT_ID" ] \
+        || fail 'Android peer output authority changed'
+    pending_path="$ARTIFACT_OUTPUT_PARENT/$ANDROID_ARTIFACT_PENDING"
+    [ -d "$pending_path" ] && [ ! -L "$pending_path" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$pending_path")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'Android peer pending root metadata differs'
+    pending_id="$(/usr/bin/stat -c '%d:%i' -- "$pending_path")"
+    destination="$(/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C \
+        /usr/bin/python3 -I -S "$ANDROID_PEER_ARTIFACT_SOURCE" commit \
+            --parent "$ARTIFACT_OUTPUT_PARENT" --parent-identity "$ARTIFACT_OUTPUT_PARENT_ID" \
+            --pending "$ANDROID_ARTIFACT_PENDING" --pending-identity "$pending_id" \
+            --manifest-sha256 "$ANDROID_ARTIFACT_SHA256" \
+            --source-commit "$ANDROID_EMULATOR_SOURCE_COMMIT" \
+            --source-tree "$ANDROID_EMULATOR_SOURCE_TREE" \
+            --builder-config "$DEV_CHECK_IMAGE_CONFIG_ID" \
+            --vendor-closure "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+            --vendor-config "$SHA256_CARGO_VENDOR_CONFIG" \
+            --rust-toolchain "${RUST_VERSION}.0-x86_64-unknown-linux-gnu")" \
+        || fail 'Android peer capsule could not be committed'
+    [ "$destination" = "$ARTIFACT_OUTPUT_PARENT/linux-x86_64-peer" ] \
+        || fail 'Android peer publication returned a different destination'
+    ARTIFACT_PUBLISHED=1
+}
+
+android_peer_input_inventory() {
+    /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
+    /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
+        "$DEV_CHECK_IMAGE_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$VIRTIOFSD_PACKAGE"
+    /usr/bin/sha256sum -- "$DEV_CHECK_IMAGE_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$VIRTIOFSD_PACKAGE"
+}
+
 reconcile_socket() {
     local path=$1
     if [ -e "$path" ] || [ -L "$path" ]; then
@@ -1082,6 +1140,35 @@ for private_root in "$INPUT_ROOT" "$RUN_ROOT"; do
       "$HOST_UID:$HOST_GID:700" ] \
         || fail "verifier-VM private root is not current-user/current-group mode 0700: $private_root"
 done
+ANDROID_EMULATOR_SOURCE_COMMIT=
+ANDROID_EMULATOR_SOURCE_TREE=
+ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256=
+if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
+   || [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-peer-build ]; then
+    [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
+        || fail 'Android emulator workloads require the one checked-out master authority'
+    ANDROID_EMULATOR_SOURCE_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
+        || fail 'cannot resolve Android emulator harness source commit'
+    ANDROID_EMULATOR_SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
+        || fail 'cannot resolve Android emulator harness source tree'
+    [ "$ANDROID_EMULATOR_SOURCE_COMMIT" = \
+      "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/heads/master)" ] \
+        && [ "$ANDROID_EMULATOR_SOURCE_COMMIT" = \
+             "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/remotes/origin/master)" ] \
+        || fail 'Android emulator harness source differs from pushed master'
+    [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'Android emulator workloads require a clean source tree'
+    [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
+        || fail 'Git replacement refs are forbidden'
+fi
+if [ "$MODE" = android-peer-build ] && { [ -e "$ANDROID_ARTIFACT_STATE_ROOT" ] || [ -L "$ANDROID_ARTIFACT_STATE_ROOT" ]; }; then
+    [ -d "$ANDROID_ARTIFACT_STATE_ROOT" ] && [ ! -L "$ANDROID_ARTIFACT_STATE_ROOT" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ANDROID_ARTIFACT_STATE_ROOT")" = "$ANDROID_ARTIFACT_STATE_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ANDROID_ARTIFACT_STATE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'Android peer artifact state authority differs'
+    [ -z "$(/usr/bin/find "$ANDROID_ARTIFACT_STATE_ROOT" -mindepth 1 -maxdepth 1 -print -quit)" ] \
+        || fail 'an earlier Android peer artifact remains; reuse it or explicitly reconcile it before building another'
+fi
 reserve_verifier_run
 for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE" \
     "$DOCKER_BUNDLE:$SIZE_VERIFIER_VM_DOCKER_STATIC" \
@@ -1309,6 +1396,27 @@ elif [ "$MODE" = android-owner-tests ]; then
         || fail 'focused Android owner-state Kotlin compiler closure differs'
     android_owner_input_inventory >/dev/null \
         || fail 'cannot inventory focused Android owner-state inputs'
+elif [ "$MODE" = android-peer-build ]; then
+    [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = "$HOST_UID:$HOST_GID:700" ] \
+        && [ -d "$CARGO_VENDOR_ROOT" ] && [ ! -L "$CARGO_VENDOR_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = "$HOST_UID:$HOST_GID:500" ] \
+        || fail 'sealed Android peer input root authority differs'
+    for input in \
+        "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+        "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG" \
+        "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
+        path=${input%%:*}
+        remainder=${input#*:}
+        size=${remainder%%:*}
+        digest=${remainder#*:}
+        [ -f "$path" ] && [ ! -L "$path" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" = "$HOST_UID:$HOST_GID:400:1:$size" ] \
+            || fail "sealed Android peer input metadata differs: $path"
+        verify_sha256 "$path" "$digest"
+    done
+    verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
 elif [ "$MODE" = android-emulator-runtime ]; then
     [ -d "$SEALED_INPUT_ROOT" ] && [ ! -L "$SEALED_INPUT_ROOT" ] \
         && [ "$(/usr/bin/readlink -f -- "$SEALED_INPUT_ROOT")" = \
@@ -1774,28 +1882,6 @@ if [ "$MODE" = android-owner-tests ]; then
         || fail 'Git replacement refs are forbidden'
 fi
 
-ANDROID_EMULATOR_SOURCE_COMMIT=
-ANDROID_EMULATOR_SOURCE_TREE=
-ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256=
-if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
-   || [ "$MODE" = android-emulator-runtime ]; then
-    [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
-        || fail 'Android emulator workloads require the one checked-out master authority'
-    ANDROID_EMULATOR_SOURCE_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
-        || fail 'cannot resolve Android emulator harness source commit'
-    ANDROID_EMULATOR_SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
-        || fail 'cannot resolve Android emulator harness source tree'
-    [ "$ANDROID_EMULATOR_SOURCE_COMMIT" = \
-      "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/heads/master)" ] \
-        && [ "$ANDROID_EMULATOR_SOURCE_COMMIT" = \
-             "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/remotes/origin/master)" ] \
-        || fail 'Android emulator harness source differs from pushed master'
-    [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
-        || fail 'Android emulator workloads require a clean source tree'
-    [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
-        || fail 'Git replacement refs are forbidden'
-fi
-
 FLUTTER_PEER_SOURCE_COMMIT=
 FLUTTER_PEER_SOURCE_TREE=
 FLUTTER_PEER_SOURCE_ARCHIVE_SHA256=
@@ -2041,7 +2127,7 @@ if [ "$MODE" = flutter-peer-presentation ]; then
         || fail 'Flutter peer failure-output authority metadata differs'
 fi
 
-if [ "$MODE" = android-emulator-app ]; then
+if [ "$MODE" = android-emulator-app ] || [ "$MODE" = android-peer-build ]; then
     if [ -e "$ANDROID_ARTIFACT_STATE_ROOT" ] \
        || [ -L "$ANDROID_ARTIFACT_STATE_ROOT" ]; then
         [ -d "$ANDROID_ARTIFACT_STATE_ROOT" ] \
@@ -2130,6 +2216,9 @@ elif [ "$MODE" = flutter-model-tests ]; then
 elif [ "$MODE" = android-owner-tests ]; then
     focused_inputs_before="$(android_owner_input_inventory)" \
         || fail 'cannot inventory the sealed Android owner-state inputs'
+elif [ "$MODE" = android-peer-build ]; then
+    focused_inputs_before="$(android_peer_input_inventory)" \
+        || fail 'cannot inventory sealed Android peer inputs'
 elif [ "$MODE" = android-emulator-runtime ]; then
     focused_inputs_before="$(android_emulator_runtime_input_inventory)" \
         || fail 'cannot inventory the sealed Android runtime inputs'
@@ -2246,7 +2335,7 @@ elif [ "$MODE" = android-owner-tests ]; then
     /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
     verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
 elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
-   || [ "$MODE" = android-emulator-runtime ]; then
+   || [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-peer-build ]; then
     git_closed -C "$REPO_ROOT" archive --format=tar "$ANDROID_EMULATOR_SOURCE_COMMIT" \
         >"$ANDROID_EMULATOR_SOURCE_ARCHIVE" \
         || fail 'cannot create the exact Android emulator harness source archive'
@@ -2345,7 +2434,7 @@ elif [ "$MODE" = android-owner-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$ANDROID_OWNER_SOURCE_ARCHIVE")
 elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
-   || [ "$MODE" = android-emulator-runtime ]; then
+   || [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-peer-build ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$ANDROID_EMULATOR_SOURCE_ARCHIVE")
 elif [ "$MODE" = flutter-peer-presentation ]; then
@@ -2482,6 +2571,8 @@ elif [ "$MODE" = flutter-model-tests ]; then
     guest_invocation+=" --flutter-model-tests /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_SOURCE_COMMIT $FLUTTER_SOURCE_TREE $FLUTTER_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-owner-tests ]; then
     guest_invocation+=" --android-owner-tests /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_OWNER_SOURCE_COMMIT $ANDROID_OWNER_SOURCE_TREE $ANDROID_OWNER_SOURCE_ARCHIVE_SHA256"
+elif [ "$MODE" = android-peer-build ]; then
+    guest_invocation+=" --android-peer-build /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-emulator-boot ]; then
     guest_invocation+=" --android-emulator-boot /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-emulator-app ]; then
@@ -2550,6 +2641,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = apple-conform ] \
    || [ "$MODE" = flutter-model-tests ] \
    || [ "$MODE" = android-owner-tests ] \
+   || [ "$MODE" = android-peer-build ] \
    || [ "$MODE" = android-emulator-boot ] \
    || [ "$MODE" = android-emulator-app ] \
    || [ "$MODE" = android-emulator-runtime ] \
@@ -2580,7 +2672,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
             -chardev "socket,id=flutter-failure-output,path=$FLUTTER_FAILURE_VIRTIOFS_SOCKET"
             -device "vhost-user-fs-pci,chardev=flutter-failure-output,tag=rustdesk-flutter-failure-output,queue-size=1024"
         )
-    elif [ "$MODE" = android-emulator-app ]; then
+    elif [ "$MODE" = android-emulator-app ] || [ "$MODE" = android-peer-build ]; then
         start_virtiofsd bounded-result "$ARTIFACT_OUTPUT_PARENT" \
             "$ARTIFACT_OUTPUT_PARENT_ID" \
             "$ARTIFACT_VIRTIOFS_SOCKET" "$ARTIFACT_VIRTIOFSD_LOG"
@@ -3030,6 +3122,23 @@ elif [ "$MODE" = android-owner-tests ]; then
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Android owner-state cloud-init completion marker'
+elif [ "$MODE" = android-peer-build ]; then
+    mapfile -t peer_artifact_receipts < <(
+        /usr/bin/grep -Eo \
+            "ANDROID_PEER_ARTIFACT_PREPARED=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE pending=[.]android-peer-pending-[0-9a-f]{64} manifest_sha256=[0-9a-f]{64} builder=$DEV_CHECK_IMAGE_CONFIG_ID vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 rust=1[.]75[.]0 files=7 network=none cleanup=joined" \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#peer_artifact_receipts[@]}" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android peer preparation receipt is absent or duplicated'; }
+    [[ "${peer_artifact_receipts[0]}" =~ pending=([a-z0-9.-]+)[[:space:]]manifest_sha256=([0-9a-f]{64})[[:space:]]builder= ]] \
+        || fail 'Android peer preparation receipt is malformed'
+    ANDROID_ARTIFACT_PENDING=${BASH_REMATCH[1]}
+    ANDROID_ARTIFACT_SHA256=${BASH_REMATCH[2]}
+    require_exact_fixed_receipt "${peer_artifact_receipts[0]}" \
+        'Android peer preparation receipt'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
+        'Android peer-build cloud-init completion marker'
+    printf '%s\n' "${peer_artifact_receipts[0]}"
 elif [ "$MODE" = android-emulator-boot ]; then
     require_android_renderer_receipt
     require_exact_fixed_receipt \
@@ -3468,6 +3577,16 @@ elif [ "$MODE" = android-owner-tests ]; then
         && [ "$(/usr/bin/sha256sum "$ANDROID_OWNER_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
              "$ANDROID_OWNER_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'focused Android owner-state source archive changed during execution'
+elif [ "$MODE" = android-peer-build ]; then
+    focused_inputs_after="$(android_peer_input_inventory)" \
+        || fail 'cannot re-inventory the sealed Android peer inputs'
+    [ "$focused_inputs_after" = "$focused_inputs_before" ] \
+        || fail 'sealed Android peer inputs changed during execution'
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$ANDROID_EMULATOR_SOURCE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1" ] \
+        && [ "$(/usr/bin/sha256sum "$ANDROID_EMULATOR_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = \
+             "$ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256" ] \
+        || fail 'Android peer source archive changed during execution'
 elif [ "$MODE" = android-emulator-runtime ]; then
     focused_inputs_after="$(android_emulator_runtime_input_inventory)" \
         || fail 'cannot re-inventory the sealed Android runtime inputs'
@@ -3546,6 +3665,8 @@ fi
 
 if [ "$MODE" = android-emulator-app ]; then
     publish_android_runtime_artifact
+elif [ "$MODE" = android-peer-build ]; then
+    publish_android_peer_artifact
 fi
 external_listener_drift_count="$(/usr/bin/wc -l <"$EXTERNAL_LISTENER_DRIFT")"
 /usr/bin/printf 'VERIFIER_VM_HOST_LISTENER_AUDIT=pass complete_snapshots=before,during,after harness_additions=none preexisting_process_drift=%s\n' \
@@ -3579,6 +3700,12 @@ elif [ "$MODE" = apple-conform ]; then
 elif [ "$MODE" = android-owner-tests ]; then
     printf 'ANDROID_OWNER_STATE_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked compiler_inputs=verified-copy-readonly docker=guest-only evidence=compiled-production-state-machines cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$ANDROID_OWNER_SOURCE_COMMIT" "$ANDROID_OWNER_SOURCE_TREE" \
+        "$vm_elapsed_seconds"
+elif [ "$MODE" = android-peer-build ]; then
+    printf 'ANDROID_PEER_BUILD_VM_OUTER=pass host_uid=%s commit=%s tree=%s builder=%s manifest_sha256=%s destination=%s/linux-x86_64-peer files=7 network=none listeners=no-harness-addition inputs=readonly-landlocked output=inert docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$ANDROID_EMULATOR_SOURCE_COMMIT" \
+        "$ANDROID_EMULATOR_SOURCE_TREE" "$DEV_CHECK_IMAGE_CONFIG_ID" \
+        "$ANDROID_ARTIFACT_SHA256" "$ANDROID_EMULATOR_SOURCE_COMMIT" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = android-emulator-boot ]; then
     printf 'ANDROID_EMULATOR_BOOT_VM_OUTER=pass host_uid=%s commit=%s tree=%s emulator=%s api=%s abi=x86_64 acceleration=software gpu=swiftshader runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only product=android-framework-boot-and-framebuffer cleanup=joined elapsed_seconds=%s\n' \

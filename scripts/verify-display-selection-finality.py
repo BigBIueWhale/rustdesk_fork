@@ -1306,7 +1306,7 @@ def validate(sources: Dict[str, str]) -> None:
             "decoded is! Map<String, dynamic>",
             "_reportSessionStreamFailure(activeSessionId, peerId,",
             "softwareRgbaFrames.submitObserved(",
-            "_handleSoftwareRgba(sessionEvents, streamOwner, activeSessionId,",
+            "(frame) => _handleSoftwareRgba(",
             "_handleTextureRgba(sessionEvents, streamOwner, activeSessionId,",
         ),
         "cached-state/event/media/terminal stream ordering",

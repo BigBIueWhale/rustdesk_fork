@@ -1895,7 +1895,7 @@ stage_recents_gesture_driver() {
         || return 1
     RECENTS_RUNTIME_UIAUTOMATOR_SHA256=$runtime_digest
     RECENTS_GESTURE_STAGED=1
-    printf 'ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=%s framework=android14-ui-automation-direct open=global-action-recents events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s device_path=%s\n' \
+    printf 'ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=%s framework=android14-ui-automation-direct open=systemui-recent-apps-click events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s device_path=%s\n' \
         "$RECENTS_GESTURE_SHA256" "$RECENTS_DISMISS_GESTURE_EVENTS" \
         "$RECENTS_DISMISS_GESTURE_STEPS" "$RECENTS_DISMISS_GESTURE_STEP_MS" \
         "$RECENTS_RUNTIME_UIAUTOMATOR_SHA256" "$RECENTS_GESTURE_DEVICE_PATH"
@@ -1958,7 +1958,7 @@ open_app_recents() {
         "$ADB" -s "$SERIAL" shell env \
         "CLASSPATH=$RECENTS_RUNTIME_UIAUTOMATOR_PATH:$RECENTS_GESTURE_DEVICE_PATH" \
         /system/bin/app_process /system/bin \
-        com.rustdesk.harness.AndroidRecentsDismiss open-recents \
+        com.rustdesk.harness.AndroidRecentsDismiss click-recents-button \
         2>&1 | tr -d '\r')"; then
         printf 'ANDROID_RECENTS_OPEN_OUTPUT_BEGIN cycle=%s task_id=%s\n%s\nANDROID_RECENTS_OPEN_OUTPUT_END cycle=%s task_id=%s\n' \
             "$lifecycle_cycle" "$expected_task_id" "$open_output" \
@@ -1966,7 +1966,7 @@ open_app_recents() {
         return 1
     fi
     open_receipt="$(grep -E \
-        '^ANDROID_RECENTS_DIRECT_OPEN=accepted action=global-action-recents elapsed_ms=[0-9]+$' \
+        '^ANDROID_RECENTS_DIRECT_OPEN=pass action=systemui-recent-apps-click matches=1 elapsed_ms=[0-9]+$' \
         <<<"$open_output" || true)"
     [ "${#open_output}" -le 16384 ] \
         && [ "$(grep -c '^ANDROID_RECENTS_DIRECT_OPEN=' \
@@ -1981,7 +1981,7 @@ open_app_recents() {
     [[ "$open_receipt" =~ elapsed_ms=([0-9]+)$ ]] || return 1
     open_elapsed_ms=${BASH_REMATCH[1]}
     [ "$open_elapsed_ms" -le 5000 ] || return 1
-    printf 'ANDROID_RECENTS_OPEN_ACTION=accepted cycle=%s task_id=%s mechanism=ui-automation-global-action-recents driver_elapsed_ms=%s driver_sha256=%s\n' \
+    printf 'ANDROID_RECENTS_OPEN_ACTION=clicked cycle=%s task_id=%s mechanism=ui-automation-systemui-recent-apps matches=1 driver_elapsed_ms=%s driver_sha256=%s\n' \
         "$lifecycle_cycle" "$expected_task_id" "$open_elapsed_ms" \
         "$RECENTS_GESTURE_SHA256"
 }
@@ -3579,7 +3579,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
             || fail 'the focused Recents receipt is not ready'
         [ "$RECENTS_GESTURE_STAGED" -eq 0 ] \
             || fail 'the focused Recents gesture driver remained staged'
-        printf 'ANDROID_EMULATOR_RECENTS=pass task_removals=%s actions=%s open_actions=%s task_ids=distinct open=global-action-recents driver=android14-ui-automation-direct events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s driver_sha256=%s service=never-started relaunch=resumed apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
+        printf 'ANDROID_EMULATOR_RECENTS=pass task_removals=%s actions=%s open_actions=%s task_ids=distinct open=systemui-recent-apps-click driver=android14-ui-automation-direct events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s driver_sha256=%s service=never-started relaunch=resumed apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
             "$RECENTS_FOCUSED_CYCLES" "$RECENTS_FOCUSED_CYCLES" \
             "$RECENTS_FOCUSED_CYCLES" \
             "$RECENTS_DISMISS_GESTURE_EVENTS" "$RECENTS_DISMISS_GESTURE_STEPS" \

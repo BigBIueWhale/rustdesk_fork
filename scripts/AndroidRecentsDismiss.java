@@ -1,14 +1,16 @@
 package com.rustdesk.harness;
 
-import android.accessibilityservice.AccessibilityService;
 import android.app.UiAutomation;
 import android.os.SystemClock;
 import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.MotionEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Locale;
 
 public final class AndroidRecentsDismiss {
@@ -17,7 +19,11 @@ public final class AndroidRecentsDismiss {
     private static final int GESTURE_EVENT_COUNT = GESTURE_STEPS + 2;
     private static final String UIAUTOMATION_WRAPPER_CLASS =
             "com.android.uiautomator.core.UiAutomationShellWrapper";
-    private static final String OPEN_RECENTS_ARGUMENT = "open-recents";
+    private static final String OPEN_RECENTS_ARGUMENT = "click-recents-button";
+    private static final String RECENTS_BUTTON_VIEW_ID =
+            "com.android.systemui:id/recent_apps";
+    private static final long RECENTS_BUTTON_WAIT_MILLIS = 5000;
+    private static final long RECENTS_BUTTON_POLL_MILLIS = 50;
 
     private AndroidRecentsDismiss() {
     }
@@ -146,11 +152,69 @@ public final class AndroidRecentsDismiss {
                 endY);
     }
 
+    private static boolean clickVisibleRecentsButton(UiAutomation automation) {
+        List<AccessibilityWindowInfo> windows = automation.getWindows();
+        AccessibilityNodeInfo target = null;
+        int matches = 0;
+        try {
+            for (AccessibilityWindowInfo window : windows) {
+                AccessibilityNodeInfo root = window.getRoot();
+                if (root == null) {
+                    continue;
+                }
+                try {
+                    List<AccessibilityNodeInfo> nodes =
+                            root.findAccessibilityNodeInfosByViewId(RECENTS_BUTTON_VIEW_ID);
+                    for (AccessibilityNodeInfo node : nodes) {
+                        if (node.isVisibleToUser() && node.isEnabled() && node.isClickable()) {
+                            matches++;
+                            if (target == null) {
+                                target = node;
+                                continue;
+                            }
+                        }
+                        node.recycle();
+                    }
+                } finally {
+                    root.recycle();
+                }
+            }
+            if (matches > 1) {
+                throw new IllegalStateException("multiple clickable Recents buttons");
+            }
+            if (target == null) {
+                return false;
+            }
+            if (!target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                throw new IllegalStateException("SystemUI rejected the Recents-button click");
+            }
+            return true;
+        } finally {
+            if (target != null) {
+                target.recycle();
+            }
+            for (AccessibilityWindowInfo window : windows) {
+                window.recycle();
+            }
+        }
+    }
+
+    private static void clickRecentsButton(UiAutomation automation) {
+        long deadline = SystemClock.uptimeMillis() + RECENTS_BUTTON_WAIT_MILLIS;
+        while (!clickVisibleRecentsButton(automation)) {
+            if (SystemClock.uptimeMillis() >= deadline) {
+                throw new IllegalStateException("clickable SystemUI Recents button not found");
+            }
+            SystemClock.sleep(RECENTS_BUTTON_POLL_MILLIS);
+        }
+    }
+
     public static void main(String[] arguments) throws Exception {
         boolean openRecents = arguments.length == 1
                 && OPEN_RECENTS_ARGUMENT.equals(arguments[0]);
         if (!openRecents && arguments.length != 4) {
-            throw new IllegalArgumentException("expected open-recents or four coordinates");
+            throw new IllegalArgumentException(
+                    "expected click-recents-button or four coordinates");
         }
         int startX = 0;
         int startY = 0;
@@ -190,10 +254,7 @@ public final class AndroidRecentsDismiss {
             long startedAt = SystemClock.uptimeMillis();
             UiAutomation automation = (UiAutomation) automationValue;
             if (openRecents) {
-                if (!automation.performGlobalAction(
-                        AccessibilityService.GLOBAL_ACTION_RECENTS)) {
-                    throw new IllegalStateException("UiAutomation rejected the Recents action");
-                }
+                clickRecentsButton(automation);
             } else {
                 injectGesture(
                         automation,
@@ -224,8 +285,8 @@ public final class AndroidRecentsDismiss {
         if (openRecents) {
             System.out.printf(
                     Locale.ROOT,
-                    "ANDROID_RECENTS_DIRECT_OPEN=accepted action=global-action-recents "
-                            + "elapsed_ms=%d%n",
+                    "ANDROID_RECENTS_DIRECT_OPEN=pass action=systemui-recent-apps-click "
+                            + "matches=1 elapsed_ms=%d%n",
                     elapsedMillis);
         } else {
             System.out.printf(

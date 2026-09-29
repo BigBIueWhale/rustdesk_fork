@@ -1088,10 +1088,12 @@ The focused `smoke-verifier-vm-authority.sh --android-execution-probe` now obser
 guest as UID/GID 4000, with VM-entry proof before and after the read-only inventory. Its first
 13-second transaction observed four CPUs with `vmx`, kernel `6.1.0-50-cloud-amd64` configured with
 KVM/Intel/AMD as modules, all three module files, and a root-owned kernel KVM character device;
-the diagnostic principal had no read/write access. It loaded no modules, changed no device
-permissions, launched no Android emulator, added no host listener or process drift, and joined
-Docker/QEMU/capture with automatic run-root retirement. This establishes guest capability and
-access state, not usable nested KVM, a supported Android topology, healthy boot, or presentation.
+the diagnostic principal had no read/write access. The diagnostic requested no module loads or
+device-permission changes and launched no emulator. The transaction added no host listener or
+process drift and joined Docker/QEMU/capture with automatic run-root retirement. A fresh repeat
+of exact pushed `e15d7b68` returned the same observation/config digest in 14 seconds. This establishes
+guest capability and access state, not usable nested KVM, a supported Android topology, healthy boot,
+or presentation.
 Google's emulator documentation warns against VM-nested acceleration; Linux documents nested KVM.
 Next prove a minimal guest-local device grant and actual KVM/emulator execution with no host-device
 passthrough or software fallback, then establish framework health before interpreting display timings.

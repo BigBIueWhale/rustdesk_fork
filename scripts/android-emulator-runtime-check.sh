@@ -892,27 +892,27 @@ mapfile -t renderer_receipts < <(grep -E \
 [ "$(grep -c '^ANDROID_EMULATOR_RENDERER=' "$RUNTIME_LOG")" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android renderer receipt is malformed or duplicated'; }
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
+readonly peer_presentation_phase_pattern='(initial|background-resume-1-2s|background-resume-2-6s|background-resume-3-12s|task-relaunch-[12])'
+readonly peer_presentation_phase_inventory=$'background-resume-1-2s\nbackground-resume-2-6s\nbackground-resume-3-12s\ninitial\ntask-relaunch-1\ntask-relaunch-2'
 mapfile -t peer_frame_baselines < <(grep -E \
-    '^ANDROID_PEER_FRAME_BASELINE phase=(initial|background-resume|task-relaunch-[12]) observer_age_ms=[0-9]+ source_state=([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]) display_state=([0-9]+|unavailable) dimensions=(120x200|200x120) seq=[0-9]+ timestamp_us=[1-9][0-9]*$' \
+    "^ANDROID_PEER_FRAME_BASELINE phase=$peer_presentation_phase_pattern observer_age_ms=[0-9]+ source_state=([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]) display_state=([0-9]+|unavailable) dimensions=(120x200|200x120) seq=[0-9]+ timestamp_us=[1-9][0-9]*$" \
     "$RUNTIME_LOG" || true)
-[ "${#peer_frame_baselines[@]}" -eq 4 ] \
+[ "${#peer_frame_baselines[@]}" -eq 6 ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android peer frame baselines are absent or duplicated'; }
 peer_frame_baseline_phases="$(printf '%s\n' "${peer_frame_baselines[@]}" \
     | sed -nE 's/^ANDROID_PEER_FRAME_BASELINE phase=([^ ]+) .*/\1/p' \
     | LC_ALL=C sort)"
-[ "$peer_frame_baseline_phases" = \
-  $'background-resume\ninitial\ntask-relaunch-1\ntask-relaunch-2' ] \
+[ "$peer_frame_baseline_phases" = "$peer_presentation_phase_inventory" ] \
     || die "Android peer frame baseline phases differ: $peer_frame_baseline_phases"
 mapfile -t peer_presentation_ui_receipts < <(grep -E \
-    '^ANDROID_PEER_PRESENTATION_UI=pass phase=(initial|background-resume|task-relaunch-[12]) connecting=retired credential=retired waiting=retired$' \
+    "^ANDROID_PEER_PRESENTATION_UI=pass phase=$peer_presentation_phase_pattern connecting=retired credential=retired waiting=retired$" \
     "$RUNTIME_LOG" || true)
-[ "${#peer_presentation_ui_receipts[@]}" -eq 4 ] \
+[ "${#peer_presentation_ui_receipts[@]}" -eq 6 ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android peer presentation UI receipts are absent or duplicated'; }
 peer_presentation_ui_phases="$(printf '%s\n' "${peer_presentation_ui_receipts[@]}" \
     | sed -nE 's/^ANDROID_PEER_PRESENTATION_UI=pass phase=([^ ]+) .*/\1/p' \
     | LC_ALL=C sort)"
-[ "$peer_presentation_ui_phases" = \
-  $'background-resume\ninitial\ntask-relaunch-1\ntask-relaunch-2' ] \
+[ "$peer_presentation_ui_phases" = "$peer_presentation_phase_inventory" ] \
     || die "Android peer presentation UI phases differ: $peer_presentation_ui_phases"
 fi
 mapfile -t runtime_receipts < <(grep -E \

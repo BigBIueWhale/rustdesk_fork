@@ -3449,6 +3449,7 @@ run_android_emulator_runtime() {
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$entry_receipt" "$apk_receipt" \
         "$recents_build_receipt" "$recents_driver_receipt" \
+        "${recents_open_action_receipts[@]}" \
         "${recents_action_receipts[@]}" "${recents_outcome_receipts[@]}" \
         "$renderer_receipt" "$runtime_receipt"
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then

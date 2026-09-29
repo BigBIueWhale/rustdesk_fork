@@ -1410,14 +1410,18 @@ def validate(sources: Dict[str, str]) -> None:
         image_decode,
         (
             "required int expectedDisplayTopologyRevision",
+            "required int expectedPresentationRevision",
             "isCurrentDisplayTopology(",
+            "isCurrentPresentationRevision(",
             "final rect = parent.target?.ffiModel.pi.getDisplayRect(display);",
             "final image = await img.decodeImageFromPixels(",
             "isCurrentDisplayTopology(",
+            "isCurrentPresentationRevision(",
             "image.dispose();",
             "expectedDisplayTopologyRevision: expectedDisplayTopologyRevision",
+            "expectedPresentationRevision: expectedPresentationRevision",
         ),
-        "pre/post-decode topology revision admission",
+        "pre/post-decode topology and presentation revision admission",
     )
     first_image = extract_braced_item(
         sources["model_dart"],
@@ -1990,7 +1994,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("model_dart", "final ownedData = Uint8List.fromList(data);", "final ownedData = data;", "synchronous web callback buffer ownership"),
     ("model_dart", "final frameTask = webRgbaFrames.submit(", "final frameTask = Future.value(LatestFrameDisposition.presented);\n        _handleWebRgba(", "bounded live web-frame submission"),
     ("model_dart", "_reportSessionStreamFailure(activeSessionId, peerId,\n              'The remote session presentation became inconsistent');", "debugPrint('web frame failure ignored');", "visible web-frame failure finality"),
-    ("model_dart", "Future<bool> decodeAndUpdate(\n      SessionID expectedSessionId, int display, Uint8List rgba,\n      {RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,\n      required int expectedDisplayTopologyRevision}", "Future<bool> decodeAndUpdate(\n      SessionID expectedSessionId, int display, Uint8List rgba,\n      {RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,\n      int expectedDisplayTopologyRevision = 0}", "required frame topology revision"),
+    ("model_dart", "Future<bool> decodeAndUpdate(\n      SessionID expectedSessionId, int display, Uint8List rgba,\n      {RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,\n      required int expectedDisplayTopologyRevision,\n      required int expectedPresentationRevision}) async {", "Future<bool> decodeAndUpdate(\n      SessionID expectedSessionId, int display, Uint8List rgba,\n      {RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,\n      int expectedDisplayTopologyRevision = 0,\n      required int expectedPresentationRevision}) async {", "required frame topology revision"),
     ("model_dart", "parent.target?.ffiModel.isCurrentDisplayTopology(\n            expectedSessionId, expectedDisplayTopologyRevision) !=", "false &&", "pre-decode topology admission"),
     ("model_dart", "final inProgress = _firstImageInitialization;", "final inProgress = null;", "single first-image initialization"),
     ("model_dart", "if (completed) return true;\n        continue;", "return completed;", "stale first-image retry"),

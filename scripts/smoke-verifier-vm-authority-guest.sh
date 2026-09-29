@@ -3503,7 +3503,7 @@ run_flutter_model_tests() {
     local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
     local load_output container_status=0 inspect namespace_inspect result_line
     local source_archive_sha input_mount_options cargo_receipt pub_receipt post_pub_receipt
-    local tools_freshness_line
+    local tools_freshness_line display_selection_line
 
     [[ "$FLUTTER_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         || fail 'focused Flutter-test source commit is malformed'
@@ -3816,6 +3816,11 @@ run_flutter_model_tests() {
                 sed -i "s/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g" \
                     /source/flutter/lib/generated_bridge.dart
                 [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
+                cd /source
+                timeout --signal=TERM --kill-after=5s 30s \
+                    python3 -I -S scripts/verify-display-selection-finality.py \
+                        --repo . --self-test
+                cd /source/flutter
                 tests=(
                     test/global_event_dispatcher_test.dart
                     test/server_status_refresh_loop_test.dart
@@ -3877,6 +3882,12 @@ run_flutter_model_tests() {
         || { tail -n 240 "$output" >&2; fail 'Flutter-tools offline-freshness receipt is absent'; }
     [ "$(grep -Fc 'FLUTTER_TOOLS_OFFLINE_FRESHNESS=' "$output")" -eq 1 ] \
         || fail 'Flutter-tools offline-freshness receipt is duplicated'
+    display_selection_line="$(grep -E \
+        '^display selection finality verifier self-test passed \([1-9][0-9]* mutations\)$' \
+        "$output")" \
+        || { tail -n 240 "$output" >&2; fail 'focused display-selection verifier receipt is absent'; }
+    [ "$(grep -Ec '^display selection finality verifier self-test passed \([1-9][0-9]* mutations\)$' "$output")" -eq 1 ] \
+        || fail 'focused display-selection verifier receipt is duplicated'
     result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=18 tests=138' "$output")" \
         || { tail -n 240 "$output" >&2; fail 'focused Flutter-test success summary is absent'; }
     [ "$(grep -Fc 'FLUTTER_MODEL_TEST_JSON=' "$output")" -eq 1 ] \
@@ -3901,6 +3912,7 @@ run_flutter_model_tests() {
     umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$tools_freshness_line"
+    printf '%s\n' "$display_selection_line"
     printf '%s\n' "$result_line"
     printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=18 tests=138 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
         "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \

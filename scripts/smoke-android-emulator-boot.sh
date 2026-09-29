@@ -284,6 +284,7 @@ PEER_DISTINCT_FRAMES=0
 PEER_FRESHNESS_MAX_MS=0
 PEER_INITIAL_RECOVERY_MS=0
 PEER_BACKGROUND_RECOVERY_MS=0
+PEER_BACKGROUND_CYCLES=0
 PEER_TASK_RECOVERY_MAX_MS=0
 PEER_LAST_CONNECTION_WAIT_MS=0
 PEER_CORRECT_CREDENTIAL_CONNECTION_MS=0
@@ -311,6 +312,9 @@ readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
 readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=240000
 readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=240000
 readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
+# Keep one authenticated session across intervals below, within, and beyond the
+# reported roughly ten-second focus-loss delay window.
+readonly -a PEER_BACKGROUND_SECONDS=(2 6 12)
 readonly RECENTS_DISMISS_GESTURE_EVENTS=12
 readonly RECENTS_DISMISS_GESTURE_STEPS=10
 readonly RECENTS_DISMISS_GESTURE_STEP_MS=16
@@ -2962,24 +2966,30 @@ open_peer_connection() {
 }
 
 exercise_peer_background_resume() {
-    local pid_before=$1
+    local pid_before=$1 cycle=$2 background_seconds=$3 phase=
+    [[ "$cycle" =~ ^[1-9][0-9]*$ ]] \
+        && [[ "$background_seconds" =~ ^[1-9][0-9]*$ ]] \
+        || fail 'the Android background/resume phase identity is malformed'
+    phase="background-resume-$cycle-${background_seconds}s"
     "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_HOME >/dev/null \
         || fail 'cannot background the Android peer Activity'
-    sleep 4
+    sleep "$background_seconds"
     [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$pid_before" ] \
-        || fail 'backgrounding replaced the MainService process'
+        || fail "$phase replaced the MainService process"
     wait_peer_server_connections 1 exact \
-        || fail 'backgrounding retired the live Android peer connection'
+        || fail "$phase retired the live Android peer connection"
     timeout --signal=TERM --kill-after=2s 60s \
         "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" >/dev/null \
-        || fail 'cannot resume the backgrounded Android peer Activity'
-    wait_resumed_activity || fail 'backgrounded Android peer Activity did not resume'
+        || fail "cannot resume the Android peer Activity for $phase"
+    wait_resumed_activity || fail "the Android peer Activity did not resume for $phase"
     [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$pid_before" ] \
-        || fail 'resuming replaced the MainService process'
-    capture_peer_freshness background-resume
+        || fail "$phase replaced the MainService process on resume"
+    capture_peer_freshness "$phase"
     wait_peer_server_connections 1 exact \
-        || fail 'background resume duplicated or retired the Android peer connection'
-    PEER_BACKGROUND_RECOVERY_MS=$PEER_LAST_RECOVERY_MS
+        || fail "$phase duplicated or retired the Android peer connection"
+    [ "$PEER_LAST_RECOVERY_MS" -le "$PEER_BACKGROUND_RECOVERY_MS" ] \
+        || PEER_BACKGROUND_RECOVERY_MS=$PEER_LAST_RECOVERY_MS
+    PEER_BACKGROUND_CYCLES=$((PEER_BACKGROUND_CYCLES + 1))
 }
 
 readonly API="$(adb_shell_value getprop ro.build.version.sdk)"
@@ -3379,7 +3389,12 @@ PY
                     fail 'the initial authenticated Android peer connection failed'
                 }
             PEER_INITIAL_RECOVERY_MS=$PEER_LAST_RECOVERY_MS
-            exercise_peer_background_resume "$APP_PID"
+            background_cycle=0
+            for background_seconds in "${PEER_BACKGROUND_SECONDS[@]}"; do
+                background_cycle=$((background_cycle + 1))
+                exercise_peer_background_resume \
+                    "$APP_PID" "$background_cycle" "$background_seconds"
+            done
         fi
 
         stage_recents_gesture_driver \
@@ -3497,9 +3512,10 @@ PY
                 || fail 'the two removed tasks did not report exact outgoing-session retirement'
             [ "$PEER_INITIAL_RECOVERY_MS" -le "$PEER_RECOVERY_LIMIT_MS" ] \
                 && [ "$PEER_BACKGROUND_RECOVERY_MS" -le "$PEER_RECOVERY_LIMIT_MS" ] \
+                && [ "$PEER_BACKGROUND_CYCLES" -eq "${#PEER_BACKGROUND_SECONDS[@]}" ] \
                 && [ "$PEER_TASK_RECOVERY_MAX_MS" -le "$PEER_RECOVERY_LIMIT_MS" ] \
                 && [ "$PEER_FRESHNESS_MAX_MS" -le "$PEER_FRESHNESS_LIMIT_MS" ] \
-                && [ "$PEER_DISTINCT_FRAMES" -ge 8 ] \
+                && [ "$PEER_DISTINCT_FRAMES" -ge 12 ] \
                 || fail 'the Android peer display exceeded its recovery or freshness bounds'
             PEER_RECEIPT_READY=1
         fi
@@ -3627,7 +3643,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
                 || fail 'the Android real-peer lifecycle receipt is not ready'
             [ "$PEER_REVERSE_READY" -eq 0 ] \
                 || fail 'the Android peer reverse mapping remained live at receipt time'
-            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_credential=missing-credential initial_credential_prompt_observer=%s initial_credential_prompt_ms=%s initial_credential_prompt_limit_ms=%s initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=%s credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_recovery_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
+            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_credential=missing-credential initial_credential_prompt_observer=%s initial_credential_prompt_ms=%s initial_credential_prompt_limit_ms=%s initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=%s credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_cycles=%s background_seconds=2,6,12 background_recovery_max_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
                 "$PEER_INITIAL_CREDENTIAL_SEMANTIC_MODE" \
                 "$PEER_INITIAL_CREDENTIAL_PROMPT_MS" \
                 "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
@@ -3637,7 +3653,8 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
                 "$PEER_CORRECT_CREDENTIAL_CONNECTION_MS" \
                 "$PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS" \
                 "$PEER_CACHED_CONNECTION_MAX_MS" "$PEER_CONNECTION_WAIT_LIMIT_MS" \
-                "$PEER_INITIAL_RECOVERY_MS" "$PEER_BACKGROUND_RECOVERY_MS" "$PEER_TASK_RECOVERY_MAX_MS" \
+                "$PEER_INITIAL_RECOVERY_MS" "$PEER_BACKGROUND_CYCLES" \
+                "$PEER_BACKGROUND_RECOVERY_MS" "$PEER_TASK_RECOVERY_MAX_MS" \
                 "$PEER_RECOVERY_LIMIT_MS" \
                 "$PEER_FRESHNESS_MAX_MS" "$PEER_FRESHNESS_LIMIT_MS" \
                 "$PEER_CAPTURE_MAX_MS" "$PEER_CAPTURE_LIMIT_MS" \

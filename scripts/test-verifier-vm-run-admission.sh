@@ -40,6 +40,8 @@ invoke() {
         RUN_ROOT=$2
         HOST_UID=$(/usr/bin/id -u)
         HOST_GID=$(/usr/bin/id -g)
+        MODE=${3:-authority-smoke}
+        ANDROID_ARTIFACT_STATE_ROOT=${4:-}
         reserve_verifier_run
         for descriptor in /proc/$$/fd/*; do
             if [ "$descriptor" -ef "$RUN_ROOT" ]; then
@@ -47,12 +49,12 @@ invoke() {
             fi
         done
         printf "%s %s\n" "$RUN" "$RUN_ID"
-    ' run-admission "$workspace/function.sh" "$1"
+    ' run-admission "$workspace/function.sh" "$1" "${2:-authority-smoke}" "${3:-}"
 }
 
 require_refusal() {
     local root=$1 expected=$2
-    if invoke "$root" >"$workspace/refusal.out" 2>"$workspace/refusal.err"; then
+    if invoke "$root" "${3:-authority-smoke}" "${4:-}" >"$workspace/refusal.out" 2>"$workspace/refusal.err"; then
         printf 'Unexpected run admission: %s\n' "$root" >&2
         exit 1
     fi
@@ -88,6 +90,20 @@ for kind in file symlink; do
     fi
     require_refusal "$root" 'earlier verifier run remains'
     [ "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
+done
+
+for kind in directory file symlink; do
+    root=$workspace/peer-run-$kind
+    capsule=$workspace/peer-capsule-$kind
+    /usr/bin/mkdir -m 0700 -- "$root" "$capsule"
+    case "$kind" in
+        directory) /usr/bin/mkdir -m 0700 -- "$capsule/retained" ;;
+        file) : >"$capsule/retained" ;;
+        symlink) /usr/bin/ln -s -- missing "$capsule/retained" ;;
+    esac
+    require_refusal "$root" 'an earlier Android peer artifact remains' android-peer-build "$capsule"
+    [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
+    [ "$(/usr/bin/find "$capsule" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
 done
 
 root=$workspace/locked

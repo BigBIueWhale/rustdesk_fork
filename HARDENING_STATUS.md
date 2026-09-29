@@ -1042,6 +1042,10 @@ self-retired; the sole capsule occupies 756,826,112 allocated bytes (~0.705 GiB)
 producer invocation refused before allocating a VM, with run/artifact inventories unchanged.
 The affected shared authority transaction also passed in 85 seconds, including run admission and
 the 22 capsule cases. Both transactions had no added host listener or pre-existing process drift.
+The retained-capsule check now runs inside the nonblocking locked run reservation, eliminating an
+earlier empty-cache observation before allocation. A final 83-second authority transaction passed
+the added real-directory/file/dangling-symlink capsule refusals with no run allocation, all original
+16-caller admission cases, unchanged host listeners, and joined successful-run retirement.
 This proves the peer build/publication boundary, not execution of these peer bytes, Android pixels,
 or a release artifact. Replay/admission wiring remains OPEN; behavioral replay still rebuilds the peer.
 

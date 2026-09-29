@@ -447,6 +447,14 @@ reserve_verifier_run() {
         || fail 'retained verifier-VM run-root authority differs'
     /usr/bin/flock --exclusive --nonblock "$descriptor" \
         || fail 'another verifier is reserving a run; retry after its admission completes'
+    if [ "${MODE:-}" = android-peer-build ] && { [ -e "$ANDROID_ARTIFACT_STATE_ROOT" ] || [ -L "$ANDROID_ARTIFACT_STATE_ROOT" ]; }; then
+        [ -d "$ANDROID_ARTIFACT_STATE_ROOT" ] && [ ! -L "$ANDROID_ARTIFACT_STATE_ROOT" ] \
+            && [ "$(/usr/bin/readlink -f -- "$ANDROID_ARTIFACT_STATE_ROOT")" = "$ANDROID_ARTIFACT_STATE_ROOT" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ANDROID_ARTIFACT_STATE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
+            || fail 'Android peer artifact state authority differs'
+        [ -z "$(/usr/bin/find "$ANDROID_ARTIFACT_STATE_ROOT" -mindepth 1 -maxdepth 1 -print -quit)" ] \
+            || fail 'an earlier Android peer artifact remains; reuse it or explicitly reconcile it before building another'
+    fi
     for entry in "/proc/$$/fd/$descriptor"/run.*; do
         [ -e "$entry" ] || [ -L "$entry" ] || continue
         fail "earlier verifier run remains: $RUN_ROOT/${entry##*/}; inspect it and clear it only after its owned processes have exited"
@@ -1160,14 +1168,6 @@ if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
         || fail 'Android emulator workloads require a clean source tree'
     [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
         || fail 'Git replacement refs are forbidden'
-fi
-if [ "$MODE" = android-peer-build ] && { [ -e "$ANDROID_ARTIFACT_STATE_ROOT" ] || [ -L "$ANDROID_ARTIFACT_STATE_ROOT" ]; }; then
-    [ -d "$ANDROID_ARTIFACT_STATE_ROOT" ] && [ ! -L "$ANDROID_ARTIFACT_STATE_ROOT" ] \
-        && [ "$(/usr/bin/readlink -f -- "$ANDROID_ARTIFACT_STATE_ROOT")" = "$ANDROID_ARTIFACT_STATE_ROOT" ] \
-        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ANDROID_ARTIFACT_STATE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
-        || fail 'Android peer artifact state authority differs'
-    [ -z "$(/usr/bin/find "$ANDROID_ARTIFACT_STATE_ROOT" -mindepth 1 -maxdepth 1 -print -quit)" ] \
-        || fail 'an earlier Android peer artifact remains; reuse it or explicitly reconcile it before building another'
 fi
 reserve_verifier_run
 for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE" \

@@ -3212,13 +3212,20 @@ run_android_emulator_runtime() {
         runtime_uiautomator_sha256=([0-9a-f]{64})\ device_path= ]] \
         || fail 'Android Recents gesture-driver runtime UiAutomator digest is malformed'
     recents_runtime_uiautomator_sha256=${BASH_REMATCH[1]}
-    if [ "$ANDROID_RUNTIME_SCENARIO" = recents ]; then
-        recents_cycles=10
-        recents_cycle_pattern='([1-9]|10)'
-    else
-        recents_cycles=2
-        recents_cycle_pattern='[12]'
-    fi
+    case "$ANDROID_RUNTIME_SCENARIO" in
+        recents)
+            recents_cycles=10
+            recents_cycle_pattern='([1-9]|10)'
+            ;;
+        peer-lifecycle)
+            recents_cycles=6
+            recents_cycle_pattern='[1-6]'
+            ;;
+        *)
+            recents_cycles=2
+            recents_cycle_pattern='[12]'
+            ;;
+    esac
     mapfile -t recents_open_action_receipts < <(grep -E \
         "^ANDROID_RECENTS_OPEN_ACTION=injected cycle=$recents_cycle_pattern task_id=[1-9][0-9]* mechanism=android14-ui-automation-app-switch-key keycode=187 events=2 display_id=0 source=keyboard device=virtual-keyboard wait_for_animations=false driver_elapsed_ms=[0-9]+ driver_sha256=$recents_driver_sha256$" \
         "$output" || true)

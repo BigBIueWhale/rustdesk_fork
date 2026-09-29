@@ -37,15 +37,15 @@ not a claim that every target OS has executed them.
 | Portable Linux server transaction (`250e775b9a88a62a980937e1f278ad053f2d9d58`) | Real nonroot parked/listening, CPace, Remote/FileTransfer admission, capacity/refusal, and joined-shutdown behavior in confinement. It is not an installed root service or current release artifact. |
 | Exact-current Linux full-peer presentation (`5f4c4bd4b5d22bfff04cfea49b598c9ac93a5a67`) | Six uninstrumented lifecycles from one exact Flutter 3.47.5 bundle each exercised the real password prompt, capture-to-X11-pixel delivery, 2/6/12-second focus-loss cycles, same-connection recovery, three server-generation reconnects, bounded resources, and joined viewer/server teardown. It is not Windows/Android/Apple, sustained soak, cross-version, installed-service, or release-artifact evidence. |
 | Exact-current Linux filesystem regressions (`76cc2fefc6470aeaeb76b50d34b4dc377b39ba49`) | A zero-NIC VM and networkless guest-only container executed all 57 `hbb_common::fs` tests on pinned Rust 1.75, including retained-directory, symlink-parent, path-swap, bounded-depth, create, remove, and rename authority cases. This is Linux library behavior, not Windows junction/handle, installed peer, end-to-end transfer, or release-artifact evidence. |
-| Exact clean Flutter model transaction (`ca5690869c4c665c2d5a17a8e6baeeb664afbb78`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 18 focused suites and 138 tests in 278 seconds on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. In addition to presentation-generation and completion-order coverage, the executed tests prove one isolate-wide three-conversion authority across distinct queue/session replacement, latest-only pending data, FIFO live waiters, exact cancelled-waiter removal, and visible bounded-waiter exhaustion. No host listener was added, cleanup joined, and the preceding formatter-only failed runs remain retained. This is exact Dart/model and generated-bridge evidence, not target-native behavior by itself. |
+| Exact clean Flutter model transaction (`ca5690869c4c665c2d5a17a8e6baeeb664afbb78`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 18 focused suites and 138 tests in 278 seconds on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. In addition to presentation-generation and completion-order coverage, the executed tests prove one isolate-wide three-conversion authority across distinct queue/session replacement, latest-only pending data, FIFO live waiters, exact cancelled-waiter removal, and visible bounded-waiter exhaustion. No host listener was added and cleanup joined. This is exact Dart/model and generated-bridge evidence, not target-native behavior by itself. |
 | Exact Android owner states (`a2cbbbd27228aa053994a2f65ee075baf7e88f68`) | A zero-NIC VM and networkless guest-only container compiled seven exact production Kotlin state classes with pinned Kotlin 2.0.21 and passed 15 scenarios with 293 assertions over closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation. This is pure owner-state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, JNI, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
 | Exact Android/CM Rust lifecycles (`ceec168e8a25d231156e59c25b08365a29fef5d7`) | A zero-NIC VM freshly generated the Flutter bridge, compiled the complete Linux-host Rust library with `linux-pkg-config,flutter`, and executed 24 exact production tests in a networkless guest-only container. Four cover listener generation and owned-child convergence; 20 cover exact CM registry/file-log/Android-child ownership, privacy activation/retirement, final-Remote cleanup, and resolution restoration. The offline canary, pinned sub-closures, read-only source/generated bindings, unchanged host listeners, and joined cleanup passed. This is Linux-target Rust behavior, not Android-target, JNI, Service/Activity, real socket/peer, APK/device, task-swipe, Force Stop, rendered presentation, or native Windows evidence. |
 | CPace viewer credential recovery (product `714141e9741922c64489a64f18515e49f4090b96`; focused harness `2ab3efa0eb376621eab3f26270031c17f3d296d4`) | The exact product/client source first passed a 46-test Linux-target integration transaction in a zero-NIC VM, including the client prompt classifier and all wire cases. The verifier was then split: a 138-second exact-current transaction re-executed all 20 real loopback CPace wire tests with pinned Rust 1.75, sealed vendor/builder inputs, guest-only networkless Docker, no host listener or process drift, and joined cleanup. This is source/wire evidence, not Android/Windows UI presentation, an APK/native artifact, device reconnect, or peer display recovery. |
 | Isolated Android 14 framework boot (`a38441110283a0b6cd7875cc28c69dc0668996a2`) | The exact pinned Emulator 37.1.11 and Android 34 default x86_64 image booted in 284 seconds inside a networkless guest-only container in a zero-NIC VM. API 34, x86_64 ABI, enforcing SELinux, framework readiness, a real framebuffer PNG, bounded teardown, automatic run-root retirement, and complete host listener invariance passed. This establishes the disposable Android runtime path only; no RustDesk APK, Activity/service/JNI/peer/session/task-swipe/Force Stop behavior, signing, or app presentation was exercised. |
-| Retained Android test-APK baselines (`ca5690869c4c665c2d5a17a8e6baeeb664afbb78`; authority-clean harness `89a85f4bc313c923f4f8a669d6eb3274d3d4078b`; expanded harness `bb5f33f3c0030e8ef6ab3f078e60aebac1e8488d`, validator `16b374b2`) | A clean zero-NIC VM built, inspected, installed, launched, and rendered the real x86_64 Android 14 test APK; source tree `c8637d401a677bf5e64f3dfbcd4115413a9cab2d` produced test-only SHA-256 `7d49e481…8737c`. The authority-clean retained-artifact replay passed initial presentation, 2/6/12-second same-connection background intervals, two real task-card removals and fresh-session relaunches, persistent foreground-service/MediaProjection continuity, exact old-session closure, cached credentials, and Force Stop as the destructive baseline. Initial/background recovery was at most 1.50 seconds; both task relaunches recovered in at most 1.20 seconds; capture age was at most 175 ms; all twelve required changing frames were observed. A later retained guest execution, `run.5c2mQBD57v`, expanded this to six real task removals and six fresh authenticated session replacements in the same persistent process. It reported old sessions closed, all transient presentation UI retired, task recovery at most 7.04 seconds against the predeclared 8-second limit, freshness at most 2.00 seconds, capture at most 184 ms, 20 changing frames, RSS growth at most 2,772 KiB, and thread growth at most six against the limit of eight. Descriptor counts were honestly unobserved because the non-debuggable release APK cannot inspect its process `/proc` descriptors; the handle bound remains open. That guest workload and cleanup passed, but the guest wrapper rejected its six correct Recents receipts against a stale two-cycle validator and the outer authority independently rejected unrelated browser/WebDriver host-listener churn. Commit `16b374b2` corrects only those two validators; no authority-clean replay of the expanded harness exists yet. The APK is not stable-signed, physical-device, sustained-soak, CPU/queue/handle-complete, network-transition, cross-version, cold-equality, independently reproduced, or externally reviewed evidence. |
+| Named Android test-APK baselines (`ca569086`/`c8637d40`/`7d49e481…8737c`; harness `89a85f4b`) | A zero-NIC build/inspection/install/render transaction and one complete retained-APK peer transaction passed. Initial/background actual-pixel recovery was at most 1.50 seconds; both task relaunches recovered within 1.20 seconds; capture age was at most 175 ms; twelve required changing frames were observed while the foreground service and MediaProjection remained live. **Later replay `855a5d52` of the same APK failed the first task-relaunch pixel oracle at 8,000 ms; the intermittent defect remains OPEN.** An expanded six-replacement guest workload reported task recovery at most 7.04 seconds, freshness at most 2.00 seconds, RSS growth 2,772 KiB, and thread growth six; its wrapper and outer listener attestation failed, so it is not an accepted full transaction. Descriptor counts were unobserved. Newer diagnostic APK `035c9a20`/`19e061f6…bd0` is retained, but its peer replay was interrupted and supplies no product verdict. Stable signing, release artifacts, physical devices, sustained resource/latency soak, network transitions, cross-version behavior, cold equality, independent reproduction, and external review remain open. |
 | Exact Android foreground-service lifecycle (artifact `48acf94e1a26bf51af1f8e697a11cfe2aa84cbd4`; harness `eeb4327e0ba5c4677ba6571f97ca95bf14beeed1`) | The retained x86_64 test APK, tree `b400f789568cd45c721cdbe5e06efc7f3a9f3760`, SHA-256 `8036056ecb5d7df1888bbfef44866bfb8b169cbcfc2b4f756ab64361a5c05774`, was admitted by exact source/tree/digest and replayed on Android 14 without rebuilding. The real app persisted its permanent password through AndroidKeyStore-backed storage, obtained MediaProjection, and published `Screen capture ready` with exactly one foreground `MainService`. Two actual Launcher3 task-card upward swipes removed the exact task; each relaunch resumed `MainActivity` in the unchanged service process with capture still ready and no duplicate service creation. Android Force Stop then removed both process and service and marked the package stopped; a subsequent launch created a new process while leaving `MainService` stopped. The 672-second zero-NIC transaction used networkless guest-only containers, added no host listener or process drift, joined every transient owner, and self-retired its run root. This is a real Activity/service/MediaProjection lifecycle baseline, not a real peer/session, raw-frame or input-callback exercise, presentation-freshness/latency result, resource soak, physical-device result, stable-signed release artifact, or causal reproduction of the reported outgoing-viewer hang. |
 | Named Windows native/installed transactions | The recorded native-suite/package pass, installed LocalSystem CM transaction, and SCM credential transaction establish only their exact commits and scenarios. No current full RustDesk peer, native focus/minimize recovery, cold A==B build, or sustained resource/latency result exists. |
-| Named Android package transactions | Real JNI/APK assembly and stable-signature byte equality were demonstrated for named older source parents; the current `ca569086` row adds a fresh test-only x86_64 build/install and a complete retained-APK peer/presentation/Activity/foreground-service/MediaProjection/task-relaunch/Force-Stop transaction with explicit isolate conversion-resource receipts. The retained test APK is not a release artifact. No exact-current stable-signed release APK/AAB, sustained reconnect/resource soak, physical-device, cold artifact equality, independently administered reproduction, or external review exists. |
+| Named Android package transactions | Real JNI/APK assembly and stable-signature byte equality were demonstrated for named older source parents; the named `ca569086` row records a fresh test-only x86_64 build/install and a complete retained-APK peer/presentation/Activity/foreground-service/MediaProjection/task-relaunch/Force-Stop transaction with explicit isolate conversion-resource receipts. The retained test APK is not a release artifact. No exact-current stable-signed release APK/AAB, sustained reconnect/resource soak, physical-device, cold artifact equality, independently administered reproduction, or external review exists. |
 | Apple and iOS checks | Source/portable checks only. No signed installed macOS or current iOS package/device result exists. |
 
 Release still requires exact current artifacts and target-native execution: installed Linux across supported
@@ -54,10 +54,11 @@ coverage; legitimate signed macOS installation/helper/launchd behavior; Android/
 presentation; complete CM/file finality; cross-version interoperability; monotonic capture-to-actual-present
 latency and freshness; bounded CPU/memory/thread/handle/queue use; repeated replacement/reconnect/soak and
 cleanup; cold R-B2/R-B10 equality; independent reproduction; and external review. Android's persistent service
-is intentional: recovery must come from exact generation retirement, not killing it. The exact Android emulator
-scenario that previously exposed the persistent-process display stall now passes with the isolate-wide conversion
-authority in a fresh current APK, while physical Android, repeated soak/network transition, release-artifact, and
-independent evidence remain open. The Windows display-only focus delay remains open until exercised with a current
+is intentional: recovery must come from exact generation retirement, not killing it. Named Android emulator
+schedules passed, but a later replay of the same APK again failed the eight-second task-relaunch presentation
+oracle. The intermittent Android display defect remains OPEN; model bounds and earlier green schedules do not
+close it. Physical Android, repeated soak/network transition, release-artifact, and independent evidence remain
+open. The Windows display-only focus delay remains open until exercised with a current
 native artifact. Focused fast verification is the development default; broader verification is a deliberate
 integration/release checkpoint.
 
@@ -81,7 +82,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Appendix C #185–206, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; current source and evidence limits remain in the named requirement sections of this ledger. |
 | Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub and RustSec snapshots have real no-NIC VM verdicts recorded in R-S11df and R-S11dg below; future snapshot refresh, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. Documentation or mutation counts are not scanner evidence. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
-| Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | The source-side packaging, immutable-cache, extraction, replacement, recovery, and Kotlin execution-strategy contracts remain requirement-owned. Android's clean ephemeral build explicitly selects Kotlin 2.0.21's supported in-process compiler and forbids fallback or local task overrides; no separate shareable compiler daemon or incremental compiler state is authoritative. Exact pushed source `ca569086`, tree `c8637d40`, passed the complete zero-NIC x86_64 APK build, independent inspection, Android 14 install/launch/render, publication, listener-invariance, and joined cleanup in 1,368 seconds, producing test-only SHA-256 `7d49e481…8737c`. Exact pushed harness `89a85f4b` then passed the 1,806-second retained-APK production-peer transaction: missing/wrong/correct credential behavior, 2/6/12-second same-connection background intervals, two task removals/relaunches, changing actual pixels, foreground-service/MediaProjection continuity, exact session replacement, bounded isolate conversion receipts, and Force Stop. Expanded guest workload `run.5c2mQBD57v` subsequently passed six task/session replacements plus seven RSS/thread samples, but its stale two-cycle wrapper and independent outer host-listener attestation failed; `16b374b2` aligns the wrapper without changing product behavior, and an authority-clean expanded replay remains open. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound. The APK is not stable-signed or a release APK/AAB; canonical release inputs, stable signing material, cold artifact equality, sustained CPU/memory/thread/handle/queue evidence, network transitions, physical-device coverage, independently administered reproduction, and external review remain absent or open. |
+| Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | Packaging, immutable-cache, extraction, replacement/recovery, and Kotlin strategy contracts remain requirement-owned. Fresh Android builds explicitly select Kotlin 2.0.21 in-process compilation and reject fallback or task-level overrides. Named APK `ca569086`/`7d49e481…8737c` passed build/install/render and one complete peer schedule, but later native presentation failed on that same artifact; the intermittent defect is OPEN. Newer diagnostic APK `035c9a20` is retained without a completed peer verdict. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound. They and the test-signed APKs do not establish complete canonical release inputs, stable signing, cold equality, sustained resource/latency bounds, network/device coverage, independent reproduction, or external review. See the Android runtime disposition below and the release-blocking matrix. |
 
 Completed documentation cleanup has no live progress log here. Requirement-specific current dispositions remain in
 their dedicated ledger entries or the table above; the Current Verdict and open matrices are authoritative for
@@ -970,460 +971,69 @@ installed lifecycle evidence cannot presently be completed from the retained loc
 those inputs must preserve R-B2 and R-B10's single complete canonical closure and must not introduce a partial-cache
 fallback.
 
-The Android runtime harness is now real rather than source-simulated. The first ARM64 launch reached the actual
-Emulator 37.1.11 architecture check and failed closed because current QEMU2 rejects an ARM64 AVD on an x86_64
-host even with `-accel off`. Clean pushed commits `125074b0`, `e00705e1`, and `a3844111` then selected, inspected,
-and staged Google's Android 34 default x86_64 revision-4 image (`x86_64-34_r04.zip`, 720,747,116 bytes, publisher
-SHA-1 `5f6a249f9bc3b1b4c459b13ce2eb646c9680bed1`, SHA-256
-`b57f6386af25b0fe5488e77196b43c03778c6760e6f4311611d090391b9cb2b3`) through the outbound-only acquisition
-VM. Complete CRC/layout inspection found 23 entries, 1,764,599,215 expanded bytes, root `x86_64`, and zero
-symlinks. Transactional publication completed before the exact-hash old ARM64 candidate was retired.
+### Android runtime — intermittent presentation remains OPEN
 
-At exact clean commit `a38441110283a0b6cd7875cc28c69dc0668996a2`, the pinned x86_64 image and Emulator
-37.1.11 booted in 284 seconds inside a numeric-nonroot, networkless, read-only-root guest-only container in the
-zero-NIC verifier VM. Android reported API 34, ABI x86_64, and enforcing SELinux; both framework readiness
-properties and stopped boot animation converged; a structurally valid 480x800/800x480 framebuffer PNG was read
-through exact pinned ADB; emulator/ADB/Docker/QEMU/virtiofsd teardown joined; the successful private run root
-retired automatically; and complete before/during/after host snapshots found no listener addition or process
-drift. This proves only the disposable Android framework/emulator path. No RustDesk APK was built, signed,
-installed, or executed, so Activity/foreground-service/JNI/MediaProjection/Accessibility, outgoing viewer,
-controlled-side persistence, peer/session replacement, task swipe/reopen, Force Stop, presentation latency,
-resource/soak, physical-device, current artifact, cold R-B2/R-B10, independent-reproduction, and external-review
-obligations remain open.
+The disposable runtime uses the pinned Emulator 37.1.11 and Android 14/API-34 x86_64 image in a
+networkless numeric-nonroot container inside the ordinary-user zero-NIC verifier VM. Source and APK
+inputs are read-only and digest-bound; host listeners are audited and every transient owner must join.
+Framework boot at `a3844111` passed readiness, enforcing SELinux, real framebuffer capture, listener
+invariance, and cleanup in 284 seconds. This is framework evidence, not product correctness.
 
-The latest retained x86_64 test APK is source commit
-`ca5690869c4c665c2d5a17a8e6baeeb664afbb78`, tree
-`c8637d401a677bf5e64f3dfbcd4115413a9cab2d`, and SHA-256
-`7d49e4819b5c1666b22815aa8b5c3db4b0ea7c3dfcd0ca4d5af23a1331d8737c`. A 1,368-second zero-NIC transaction
-built it from exact clean pushed source with explicit in-process Kotlin compilation, independently inspected it,
-installed and launched it on Android 14, observed real rendering, published the commit-bound test-only artifact,
-proved zero host-listener drift, joined cleanup, and retired its successful run root. Exact harness
-`89a85f4bc313c923f4f8a669d6eb3274d3d4078b` then passed the complete 1,806-second retained-artifact production-
-peer/presentation/lifecycle replay described above. The historical failed and partial replays below remain useful
-causal and harness evidence but no longer describe the latest artifact. The APK remains test-signed and is not a
-release artifact.
+The current source-bound Recents driver is compiled twice from the sealed SDK with byte equality.
+It injects one explicit-display app-switch down/up pair, then one direct 12-event upward gesture from
+the bound task snapshot's center; only independent disappearance of the exact active task counts.
+The ten-cycle transaction at `afc4161e` passed inner, guest, and outer acceptance in 1,014 seconds.
+It did not start MainService or exercise a peer, MediaProjection continuity, Force Stop, or presentation.
+Obsolete shell gestures, accessibility discovery, legacy runners, and partial forwarding attempts are
+history, not alternate supported behavior.
 
-Retained zero-NIC replay `run.SudbB1JvLK` admitted predecessor APK source
-`c4f0f46491df2a9ae1bd977a6944aa59db89518e` and SHA-256
-`d92cc1cbf5eb0ca916c3b5711323c4d127f7789dae91dc189dcf37706e707bdc` but failed before the
-credential, MediaProjection, peer, or presentation scenario. The initial app UI was real and responsive, yet the
-production service-start transition returned to the Connection tab without reaching the password dialog. The run
-then failed closed, shut down its peer, frame observer, emulator, containers, and VM, added no host listener, and
-retained its private evidence root. Source tracing found a matching independent defect: `toggleService()` checked
-the service-command latch before permission and warning work but acquired it only later inside `startService()`,
-while the runtime driver could legitimately retry the still-visible Start action. Multiple taps could therefore
-create overlapping permission/warning transactions. The source correction moves ownership to the outermost UI
-action, keeps it through credential revalidation and native dispatch, and deletes the detached durable-password
-continuation so a retired dialog cannot start a Service. Exact pushed source
-`b1d04e44852f537bb70f15b5213699e8f2a76d91` passed the complete 18-suite/129-test generated-bridge/model
-transaction in the zero-NIC VM in 278 seconds, including the command-latch and password-dialog lifetime
-regressions. The retained current APK subsequently executed the corrected service-start path in `run.uRwqmsegBV`
-and reached a real peer; that later run failed at the second Recents gesture and is not a complete lifecycle pass.
+Named test APK `ca5690869c4c665c2d5a17a8e6baeeb664afbb78`, tree
+`c8637d401a677bf5e64f3dfbcd4115413a9cab2d`, SHA-256
+`7d49e4819b5c1666b22815aa8b5c3db4b0ea7c3dfcd0ca4d5af23a1331d8737c`, passed a
+1,368-second build/inspection/install/render transaction. Harness `89a85f4b` then passed a
+1,806-second real-peer schedule: missing/wrong/correct credentials, 140 seconds without automatic
+retry, initial and 2/6/12-second same-connection background pixels, two task/session replacements,
+persistent-service/MediaProjection continuity, and Force Stop as a destructive baseline. The expanded
+six-replacement guest workload also reported bounded RSS/thread growth, but its wrapper and outer
+listener attestation failed; it is not a complete authority-clean transaction. Descriptor bounds were
+unobserved. These named passes do not close an intermittent defect.
 
-The first exact-current APK attempt at clean pushed commit
-`d10dc383c2d455681f3ac59d25a5863b7ea26d6b` completed the optimized Rust/JNI build in the zero-NIC verifier VM,
-then failed before compiling application Kotlin. Three Kotlin compiler-daemon startup attempts each announced
-readiness and then terminated with status zero; `:desktop_drop:compileReleaseKotlin` consequently failed because the
-configured no-fallback policy correctly refused an implicit in-process retry. No APK was published and this is
-build-infrastructure evidence, not a product compile verdict. The VM, guest Docker, and build container joined,
-and before/during/after snapshots found no harness-added host listener or pre-existing-process drift. Because every
-Android transaction already deletes generated output and runs one fresh bounded Gradle process in an ephemeral
-networkless container, current source explicitly selects Kotlin 2.0.21's supported `in-process` strategy, retains
-fallback refusal, and rejects local task-level strategy overrides. The exact pushed successor at `9bf6e0cf` passed
-the complete 1,401-second build/inspect/install/launch/render transaction and published the test-only APK named
-above, validating the corrected compiler mode in its real build path. That build pass does not itself exercise
-service startup, task swipe/reopen, Force Stop, a peer, or presentation recovery. The first retained replay below
-supplied only partial exact-artifact evidence; the later `d8bbf0c5` replay closes the bounded transaction described
-above.
+**Contradicting native evidence:** later harness `855a5d5251a568450cdced8848775fa673999123`
+replayed that same APK in `run.VvNXj8JbEP`. Task removal, remembered-credential replacement, and
+initial native decode/Dart image notification completed, but the first relaunch failed the 8,000-ms
+fresh-changing-pixel oracle. Display state 224 persisted while source states advanced through 232;
+the final diagnostic still showed 224 against source 236. Initial decode and notification took
+277,439 us and 333,302 us, with conversion active/waiting/peak `2/0/2`. This establishes a failed
+presentation scenario, not its exact blocking callback or shared causation with Windows.
+The audit records the source identities, measurements, and serial digest
+`6d57ff581f81f7f0f3ca54325ba91491f6d67db94cfcce0b9f9b1c1b01b9630d`.
+Those failed-run logs/disks were deleted during the explicit user-authorized storage cleanup;
+the recorded audit is not a currently retained raw log or an independently reproducible pass.
 
-The first retained-artifact runtime replay of that APK used harness source
-`9cd58a70530e853333b45b8983b41e7ec458eb9a`, artifact source `9bf6e0cf`, and exact APK SHA-256
-`db23c06b…bc96` in zero-NIC run `run.MuK0tl0sE0`. It reached the real missing-credential prompt without a network
-attempt, injected one deliberate wrong credential, and observed exactly one failed CPace attempt with no established
-session. The app then retained the password prompt and populated it with the typed
-`PeerConfirmationUnavailable` recovery explanation. The harness failed at 32.25 seconds because a generic
-submission helper required the password prompt to disappear before the already outcome-specific recovery observer
-could accept that retained prompt. Older APKs happened to expose a long enough loading-dialog interval for that
-polling oracle to pass; prompt absence is not a credential outcome or requirement. Current harness source deletes
-that transient oracle: the wrong branch is owned only by the typed prompt plus exact network counters and the
-correct branch only by established-connection observation. The failed VM shut down cleanly, added no host listener,
-and remains retained for diagnosis. This is partial causal evidence, not a successful current peer, lifecycle, or
-presentation replay. The credential-oracle correction itself passed in the later replay below.
+A newer diagnostic APK is locally retained for source `035c9a203d33153cf98345a6e8031453d0d9360b`,
+SHA-256 `19e061f6c5cb546ced8313eecba66c10961c6ce28f81f87fcf33e3f620ff5bd0`.
+Its peer replay was deliberately interrupted for the storage/admission correction; that interruption
+supplies no product verdict. Logging image notification or paint recording is not actual presentation.
 
-The following real-peer/presentation attempts were historically **FAILED / OPEN** until superseded by the later
-complete bounded pass recorded below. Retained zero-NIC run `run.QpoczThYDu` replayed
-older APK source `5a1604c81a381008e3b72ed619992e6094f42abd`, tree
-`c0b10fb2341010e971dc496690e61891396f026a`, and SHA-256
-`3096e9b5e652865f2317160ccc4e593c23f24f9310dd5ee0a0e56600021c2648` with the same source as harness authority.
-It proved missing-credential silence, one deliberate wrong
-CPace attempt, no automatic retry, deliberate correct-credential recovery, a real VP9 peer, changing initial pixels,
-and changing pixels 560--760 ms after a real background/resume cycle. Its later task-swipe verdict was invalid: the
-Android 14 AOSP dump placed the removed task only in `mHiddenTasks`, while the harness parser incorrectly treated any
-later task record as active. Commit `8c55664287d2e7afdf3f3372177f0b0b1b7227eb` restricts that observation to the
-active recent-task section; the product result is neither a task-removal failure nor a full lifecycle pass.
+CPace recovery is independently source/wire-covered: after successful step-3 transmission, transport
+loss while awaiting step 4 is `PeerConfirmationUnavailable`; earlier I/O remains `Io`, malformed or
+out-of-order traffic remains `Protocol`, and an invalid received confirmation remains `Confirmation`.
+The viewer permits deliberate credential replacement but neither deletes stored credentials nor
+retries automatically; no failed path installs keys. Only responder-side `Confirmation` feeds the
+guess limiter. The focused 20-wire-test transaction at `2ab3efa0` passed in 138 seconds; it is not
+native UI/presentation evidence.
 
-The next run, `run.aoi1TDknyU`, used that corrected harness with the identical APK. Credential and real-peer setup
-again passed, and the raw observer continued publishing fresh frames while the controlled source advanced. The
-display initially reached state 184, then did not become fresh/changing during the eight-second limit. Its retained
-diagnostic framebuffer contained state 192 across 12 decoded rows and state 208 across six rows while source state
-was 213, showing a partial newer presentation beginning at the timeout rather than a disconnected transport. This
-does not isolate Flutter decode, raster, compositor, or Android display scheduling, and the earlier successful run
-shows the symptom is intermittent. Read-only source tracing nevertheless found an independent correctness defect:
-software recovery rearmed native state but queued its new Dart decode behind the same possibly suspended async
-lane. The current source correction replaces that lane generation. A corrected APK has been built and launched,
-and its first exact-current retained-artifact replay reached the credential-recovery path described above but did
-not reach peer presentation because of the false harness oracle. The older failed roots remain retained, their
-emulator/ADB/container/VM cleanup joined, and none added a host listener.
-
-Retained zero-NIC run `run.uRwqmsegBV` then replayed the same exact APK with clean pushed harness source
-`defdc0491331a688f8d379211d97fd705739fa43`, tree
-`5c3ec7705323bdbf2ad8706e1d07c889f95284df`. It passed the real missing-credential/no-attempt state; exactly one
-wrong attempt and typed `PeerConfirmationUnavailable` prompt; the complete 140-second no-automatic-retry interval;
-deliberate remembered-correct-credential replacement; one real VP9 peer; and fresh changing pixels after initial
-connect, background/resume, and the first bound-task swipe/relaunch. It also proved that the first removed task
-retired its obsolete peer and that relaunch established one fresh cached-credential connection in the same
-foreground-service process. The second bound task remained in the active Recents list after one injected gesture,
-so the run failed before the second relaunch, Force Stop, terminal resource verdict, or overall pass.
-
-The first correction attempted to match Launcher3's ten 16 ms instrumentation steps by changing the 600 ms shell
-gesture to 160 ms.
-Retained zero-NIC run `run.ldRvGfurWa`, harness source
-`d3ba9e8ba80a10591ac7f7c26ae4e558ab8cec29`, reran that correction against the same APK. It again passed the
-missing→one-wrong→140-second-no-retry→correct credential transaction, real VP9 connection, and fresh initial and
-background/resume pixels, but the first bound task remained active after the 160 ms gesture. This disproved that
-TAPL timing could be transferred directly to the shell injector; it is not a RustDesk lifecycle failure. The VM
-powered off cleanly, all three listener-delta/drift files are empty, no owned process remains, and the failed root
-is retained.
-
-A follow-up source comparison incorrectly treated TAPL's fixed-step instrumentation gesture and Android's shell
-`input swipe` as interchangeable. Retained zero-NIC run `run.emLrnmaftx`, harness source
-`1aa841b5`, moved the unchanged 160 ms action from the snapshot bottom to its center. The complete native prefix
-again passed: missing credentials produced an exact prompt with zero connection attempts, one wrong submission
-produced the typed recovery state with no automatic retry for 140 seconds, deliberate correct replacement
-connected in 2.30 seconds, initial pixels reached exact source/display state 148 in 1.52 seconds, and
-background/resume reached exact state 216 in 350 ms. The first bound task 8 nevertheless survived the one
-receipt-bound action from snapshot bounds `283,132,480,548`, center `381,340`, to display top over 160 ms.
-
-Android 14's shell implementation defaults a swipe to 300 ms and emits motion events continuously in a
-wall-clock loop with synchronous input completion; Launcher TAPL injects a separately synchronized fixed-step
-gesture and waits for a Launcher dismissal event. Therefore TAPL's step count and delay are not a valid shell
-duration. The earlier bottom-origin 600 ms shell action already removed two real task cards on the same pinned
-Android image. Current source restores that one-shot action while preserving exactly one nonempty `snapshot`, the
-pre-bound active task ID, the failure-visible action receipt, exactly two required success receipts, and the
-independent task-ID-disappearance outcome. There is still no retry, hard-coded coordinate, shell task removal, or
-`CLEAR ALL` fallback. This correction has not yet replayed; all current-artifact runs remain partial evidence, not
-a current lifecycle pass.
-
-Retained zero-NIC run `run.H17CiYE71N`, harness source `2ae1b144`, then replayed that restored action. It again
-passed the complete credential transaction and initial/background presentation. The first 600 ms action removed
-bound task 8; the obsolete peer closed; the same foreground-service process survived; remembered credentials
-reconnected immediately after relaunch; and exact fresh display state 64 returned in 900 ms. A second 600 ms
-action was injected against new bound task 9 and its newly captured centered snapshot, but that task remained in
-Recents. This proves the shell action is nondeterministic even when its task binding and geometry are current; it
-does not negate the completed first RustDesk lifecycle cycle. The VM powered off cleanly, the 124,711-byte serial
-capture is bounded, listener-delta/drift files are empty, no owned process remains, and the 9.1 GiB failed root is
-retained.
-
-Retained zero-NIC run `run.awN7S76WCd`, clean pushed harness source
-`0afb166d549650255600cffd242dbfb1f5f9353b`, replayed that bounded retry against the same exact APK. The real
-missing-credential prompt took 15.36 seconds, one deliberate wrong attempt reached typed recovery in 22.95
-seconds, the complete 140-second no-automatic-retry interval passed, the deliberate correct credential connected
-in 2.55 seconds, and initial/background display evidence passed. Two freshly captured 600 ms shell swipes then
-targeted the same still-active task 8 at bounds `283,132,480,548`, from `381,547` to `381,0`; neither dismissed
-it. Thus a retry does not correct the shell injector and must not mask the failed synthetic action. The 122,003-byte
-serial log is bounded, the VM powered off cleanly, before/during/after listener sets are identical, no owned
-process remains, and the 9.2 GiB failed root is retained.
-
-The shell abstraction was then replaced by a tiny source-bound platform UiAutomator driver. The verifier compiles
-it twice from the exact pushed Java source and sealed Android SDK jars with the pinned D8 tool, requires byte
-equality, stages the exact digest read-only on the disposable emulator, and permits one action per task. Each
-action still binds the one nonempty Launcher snapshot's live bounds and the exact active task ID; only independent
-disappearance of that ID counts as success. A focused scenario performs ten distinct remove/relaunch cycles while
-proving `MainService` never starts, so framework gesture validity can be checked before the long peer lifecycle.
-The driver is explicitly retired, all three verifier layers bind its build/stage/action/outcome receipts, and there
-remains no `CLEAR ALL`, shell task removal, task/process kill, hard-coded coordinate, retry, or alternate product
-outcome.
-
-Focused no-NIC replay `run.HZ7x6ebGWq` stopped before driver compilation or emulator launch because the inner
-runtime verifier required the Java source's pre-seal mode `0600` after the guest had correctly removed all write
-bits from the exact source tree, making it `0400`. The source archive/tree check, guest metadata check, and
-read-only seal all passed; the mismatch was solely at the later redundant mode check. Current source admits only
-the actual post-seal `1000:1000:0400:1` metadata and rechecks it after execution. The failed VM powered off,
-listener delta/drift files are empty, no product behavior was exercised, and the private evidence root is retained.
-
-The next focused no-NIC replay, `run.qXIOKGn24D`, reached the deterministic driver build but stopped before D8 or
-emulator launch: legacy platform `UiAutomatorTestCase` inherits `junit.framework.TestCase`, and the compile
-classpath omitted Android 34's sealed official optional `android.test.base.jar`. The correction at that point added
-that exact SDK component as both a `javac` and D8 library and bound all input digests. The later direct-driver
-simplification deleted the legacy test case and its compile dependencies entirely; current source needs only
-sealed `android.jar` plus D8. No dependency was downloaded or added to the product. The failed VM powered off,
-listener delta/drift files are empty, and its evidence root is retained.
-
-Focused replay `run.ASNuXsiGsN` compiled and D8-transformed the driver twice and passed byte equality, then stopped
-before emulator launch because the nested receipt shell expanded awk's `$1` under `set -u` instead of passing it
-to awk. The artifact digest field was therefore empty and the verifier rejected its own receipt. Current source
-removes the nested positional expansion and selects the first literal `sha256sum` field with `cut`. This changes no
-driver bytes or product path. The failed VM powered off, listener delta/drift files are empty, and its evidence
-root is retained.
-
-Focused zero-NIC replay `run.SNYBfgKFfB`, clean pushed harness source `0381c908`, then built the driver twice,
-passed byte equality, booted the pinned Android 14 image, launched the real retained APK, and injected its one
-platform action against exact active task 8 and snapshot bounds `283,132,480,548`. Driver SHA-256
-`6d73c46d0307a069911bf7a1bbf2a5eb2c17f4a6c94ab6413135725f3c9bd51b` returned one successful test action, but
-task 8 remained active; the post-action accessibility card had moved upward to bounds `283,36,480,548`. The
-driver had copied Launcher TAPL's literal ten-step count without copying its timing: Launcher injects ten 16 ms
-intervals, whereas the pinned legacy `UiDevice.swipe` implementation injects `steps - 1` moves separated by 5 ms,
-so the attempted gesture lasted only about 45 ms. The VM reached clean poweroff and no listener appeared during
-execution. Two unrelated-looking wildcard UDP sockets appeared only in the final normalized snapshot, but the
-failure path checked the guest verdict before taking its detailed final snapshot; this retained run therefore
-does not establish full listener invariance and is not a pass.
-
-Focused zero-NIC replay `run.sRtqlkd6eW`, clean pushed harness source `5d6bac3f`, executed the corrected 33-step
-driver at SHA-256 `d55c1f0bcd2ebe608a97c64ea6871bb24c5a16a8c610f8c6f19e3af43bffcc3d`. The one action against task 8 and
-bounds `283,132,480,548` moved the RustDesk card out of the accessibility hierarchy, but the exact task remained
-in the active `* Recent #` list throughout all 20 outcome polls. The VM powered off cleanly; before/during/after
-listener inventories were byte-identical, both new-listener deltas and pre-existing-process drift were empty, and
-the failed root is retained. This is a failed action, not a lifecycle pass.
-
-Pinned Android 14 source at Launcher3 tag commit `cb782191d689da0c7697561394a408e289554112` resolved the geometry
-discrepancy: `OverviewTask.dismissBySwipingUp()` uses the visible task bounds' `centerX` **and `centerY`**, injects
-ten 16 ms steps, and waits for the dedicated dismissal-animation-end event. It does not use `bottom - 1`; prior
-ledger text claiming otherwise was wrong. On success `RecentsView` posts
-`ActivityManagerWrapper.removeTask(taskId)`, and framework tag commit
-`9e9606a34be15eef38c5ddae0369eae86b9512ac` removes the task synchronously from the active RecentTasks list, so
-visual disappearance alone cannot satisfy the verifier.
-
-Focused zero-NIC replay `run.Cof0rlB7R6`, clean pushed harness source `2cccdf69`, executed that exact center
-geometry. Its one 33-step legacy action used active task 8 and snapshot bounds `283,132,480,548`, from `381,340`
-to `381,0`. The RustDesk snapshot disappeared from the UI hierarchy, but task 8 remained an active
-`* Recent #1: Task{cf78252 #8 type=standard A=10141:com.carriez.flutter_hbb}` through all 20 polls and 16.64
-seconds. The VM powered off cleanly; before/during/after listener inventories had identical SHA-256
-`def3ff…`, both new-listener deltas and pre-existing-process drift were empty, and the failed root is retained.
-This falsifies task-center geometry as a sufficient correction; it remains a failed synthetic action, not a
-product-lifecycle pass.
-
-The pinned framework source identifies the deeper mismatch. Legacy `UiDevice.swipe` routes each event through
-`UiAutomation.injectInputEvent(event, true)`, whose Android 14 two-argument overload forces
-`waitForAnimations=true`. Launcher TAPL instead calls the public test API
-`injectInputEvent(event, true, false)` for every event, specifically bypassing window-animation waits during the
-gesture. Harness `7e623c54` therefore removed the legacy `UiAutomatorTestCase`/`UiDevice` abstraction and compiled
-the shell-owned platform `UiAutomation` driver successfully in focused zero-NIC run `run.1qeskCwxv2`. The staged
-driver and system UiAutomator digests were bound, but the pre-existing shell `KEYCODE_APP_SWITCH` action returned
-success without opening Recents: six seconds of complete hierarchy polling still showed RustDesk. No driver open
-or swipe action executed, so this run neither validates nor falsifies the direct injector. The VM powered off
-cleanly, its 98,117-byte serial capture is bounded, all three listener inventories have identical SHA-256
-`707d0e…`, both new-listener deltas and pre-existing-process drift are empty, and the failed root is retained.
-
-Harness `2c334338` next used the same connected driver for the platform's documented
-`GLOBAL_ACTION_RECENTS`. Focused zero-NIC run `run.nGP4NHJMoC` compiled and staged driver SHA-256 `6eeee4a6…`,
-bound active task 8, and received an accepted global-action result in 212 ms; nevertheless six seconds of complete
-hierarchy polling again remained on RustDesk. No swipe executed. The VM powered off cleanly, the 98,201-byte
-serial capture is bounded, all listener inventories again have identical SHA-256 `707d0e…`, both new-listener
-deltas and pre-existing-process drift are empty, and the failed root is retained. An accepted global-action
-return is therefore not evidence that this pinned three-button Launcher entered Recents.
-
-Pinned Launcher TAPL's three-button path instead waits for SystemUI resource `recent_apps` and clicks that exact
-object. Harness `dfc7466e` attempted to reproduce that with `AccessibilityNodeInfo.ACTION_CLICK`. Focused zero-NIC
-run `run.f0wIPrcgZU` compiled and staged driver SHA-256 `a7e17c95…`, bound active task 8, then hit the 30-second
-open bound without a click receipt; its forwarded output was `Killed`, and the hierarchy showed `Process system
-isn't responding`. No dismissal gesture executed, so this is a verifier/runtime failure rather than RustDesk
-lifecycle evidence. The VM powered off cleanly, its serial capture is bounded at 87,028 bytes, all three listener
-inventories have identical SHA-256 `707d0e…`, both listener deltas and pre-existing-process drift are empty, and
-the failed root is retained.
-
-The first physical-click implementation at `d58bcf57` then failed closed before emulator boot in focused run
-`run.cWPW0pZDVV`: sealed API-34 compilation proved that legacy `UiDevice` has no `findObject(UiSelector)` method.
-No Android action executed. The VM powered off cleanly; its 70,357-byte serial capture is bounded; all listener
-inventories again have identical SHA-256 `707d0e…`; both listener deltas and pre-existing-process drift are empty;
-and the failed root is retained. The one-line public-constructor correction compiled in the next run.
-
-Focused zero-NIC run `run.Umd6r3TxsZ` then compiled and staged driver SHA-256
-`cf8214845d5b9207039939101c00872211281988ded49f90dabe22b17b68e45d`, bound runtime UiAutomator SHA-256
-`3eeeef300d4ece99c9f44f2bcaae10718e533fafdbd31133b4cd3e91c0f5454a`, booted Android 14, launched the app,
-and bound its active task. It still executed no physical click or swipe: the independent `uiautomator dump` exposed
-only the app window `[0,0][480,728]`, not the SystemUI navigation-bar window `[0,728][480,800]`, so exact
-`recent_apps` discovery failed closed. The VM powered off cleanly; its 91,008-byte serial capture is bounded; all
-three listener inventories have identical SHA-256 `707d0e…`; both listener deltas and pre-existing-process drift
-are empty; and the failed root is retained. This proves that an app-root hierarchy dump is the wrong discovery
-layer; it is not product task-lifecycle evidence.
-
-Commit `2b89dde5` removed the app-root dump and legacy runner, explicitly set and verified both interactive-window
-and view-ID flags, searched all window roots, and emitted the exact physical two-event click. Focused zero-NIC run
-`run.wNxrpEfGx1` compiled and staged driver SHA-256 `1b85e1a94891de04dbbf6ec2659db112cc8580b402a41107fa5ccceffe8a73c0`
-and bound runtime UiAutomator SHA-256 `3eeeef30…`, but cycle 1 again hit the 30-second opener bound. Forwarded output
-was exactly `Killed`; Android displayed `System UI isn't responding`; no open receipt or swipe existed. The VM
-powered off cleanly; its 86,515-byte serial capture is bounded; before/during/after listener inventories have
-identical SHA-256 `707d0e…`; both new-listener deltas and pre-existing-process drift are empty; and the failed root
-is retained. Because the only driver receipt followed disconnect, this run cannot distinguish a blocked window
-query, node query, click, or disconnect. Current unexecuted diagnostic source flushes exact phase records before
-and after each of those boundaries; it does not claim a product or lifecycle result.
-
-Diagnostic commit `af512e59` then made focused run `run.jdIgyTTQGR` conclusive. Driver SHA-256
-`1f294f1d5584e0360bd44f34654186a9018e7910a3f56d4b03813aa373936f52` connected, set both flags, called
-`getWindows()`, received exactly zero windows, and disconnected; every boundary completed before the outer timeout
-killed the still-live failed CLI process. No root query, click, or swipe ran, and no SystemUI ANR appeared in this
-run. The VM powered off cleanly; its 85,084-byte serial capture and 4,486,397,952-byte overlay are retained;
-before/during/after listener inventories again have identical SHA-256 `707d0e…`; both listener deltas and
-pre-existing-process drift are empty. This localizes the defect to using an immediately queried default-display
-window list, not a Binder hang and not RustDesk behavior.
-
-Pinned AndroidX UiAutomator source identifies the correct complete sequence. Its constructor explicitly adds
-`AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS` to the connected `UiAutomation`, allowing exact node
-search across SystemUI and app windows; Android's test-automation connection supplies `FLAG_REPORT_VIEW_IDS`; and
-its click gesture is exactly a same-point pointer down followed by pointer up, not accessibility `ACTION_CLICK`.
-Commit `431739c5` therefore uses one connected shell-owned `UiAutomation`, explicitly sets and verifies
-both query flags, waits for a 500-ms-quiet event stream within a five-second bound, queries and releases the active
-root, then flattens `getWindowsOnAllDisplays()` exactly as API-30+ AndroidX does. It searches every resulting root
-for exactly one visible, enabled,
-clickable `com.android.systemui:id/recent_apps` node, derives its nonempty bounds and center, and emits exactly two
-direct physical pointer events with `waitForAnimations=false`. Only after the Launcher snapshot appears does the
-same standalone driver emit one down event, ten moves separated by 16 ms, and one up event, also with animation
-waiting disabled. The build now needs only sealed API-34 `android.jar` plus D8; the inner runtime, guest, and outer
-verifier layers validate open bounds/center, exact event count, lookup/click limits of five seconds, cycle/task
-binding, direct-swipe geometry/timing, driver/runtime-JAR digests, and independent disappearance of the exact active
-task ID. Failure forwarding preserves complete driver output plus action, outcome, and task receipts. There is no
-retry, test runner, app-root dump, immediate default-display enumeration, abstract global action, shell task
-removal, hard-coded coordinate, `CLEAR ALL`, or visual-card-only fallback. The one-shot CLI now reports exceptions
-and exits explicitly after clean disconnect rather than relying on handler-thread convergence.
-
-Focused zero-NIC run `run.282ZHmGcj8` compiled and staged driver SHA-256
-`bccd32fb4f78bbfe2b95cdea6adf16b2083a0817a194719e94368c465f3d79eb`. Idle convergence, active-root query,
-and all-display enumeration completed; display 0 returned one active/focused type-3 window. Its root contained zero
-Recents nodes because Android was displaying the modal `Process system isn't responding` dialog. The driver
-disconnected, reported the exact no-match exception, and exited; no click or swipe ran. The VM and emulator shut
-down cleanly. The 90,261-byte serial capture and 4,469,424,128-byte overlay are retained; before/during/after
-listener inventories have identical SHA-256 `707d0e…`; both listener deltas and pre-existing-process drift are
-empty. This is an invalid framework precondition, not RustDesk behavior or evidence against all-display discovery.
-Commit `30e9c1ec` then admitted only a bounded physical `Wait` acknowledgement, required an unobscured hierarchy,
-and deleted the framework-terminating `Close app` fallback. Focused zero-NIC replay `run.Uhqn7y6Xp5` reached that
-clean precondition and made the remaining discovery limitation conclusive: driver SHA-256 `bccd32fb…d79eb`
-connected, enabled both flags, reached idle, obtained the active root, and enumerated exactly one active/focused
-type-1 application window. SystemUI's navigation window was not exposed to this shell-owned accessibility session,
-so there were zero `recent_apps` nodes and no click or swipe. The VM shut down; its retained 95,250-byte serial log,
-4,480,892,928-byte overlay, and 30,136,320-byte source archive have SHA-256 `0c002aa5…24e4`,
-`082f35dd…44d3`, and `e31e22e4…d5f5`. No listener was added during or after the run and both new-listener delta
-files are empty. Two unrelated pre-existing loopback listeners (`127.0.0.1:7555` and `127.0.0.1:9222`) disappeared
-during the interval, so before/after inventories are not identical; the harness neither inspected nor restored
-those external owners.
-
-Commit `01724916` first attempted a shell-UID `IStatusBarService.toggleRecentApps()` request. Focused zero-NIC run
-`run.lsDiuKn0WX` proved that older interface assumption wrong before any action: the live API-34 `statusbar` Binder
-descriptor resolved, but its runtime interface has no `toggleRecentApps()` method. Driver SHA-256
-`eb6aad1d…6248e` stopped on `NoSuchMethodException`; no Overview request, click, or swipe ran. The VM powered off;
-the retained 92,151-byte serial log, 4,467,589,120-byte overlay, and 30,115,840-byte source archive have SHA-256
-`6d080ced…a4c`, `cef667d3…3b6d`, and `79ce7f7a…9a60`. Before/during/after listener inventories are byte-identical
-at SHA-256 `347e825a…121`; both listener deltas and pre-existing-process drift are empty. Android 14 routes Recents
-through system-server-local `StatusBarManagerInternal`, not that external Binder surface, so the unavailable method
-is deleted rather than emulated.
-
-Current unexecuted source instead follows Android 14's actual input-policy path. `KEYCODE_APP_SWITCH` is defined to
-show the app switcher; `PhoneWindowManager` preloads Recents on its down event and toggles Recents on its up event.
-The earlier shell-key run used `input keyevent` without a display, while Android 14's `InputShellCommand` defaults
-key events to `INVALID_DISPLAY`. The standalone driver now connects one shell-owned `UiAutomation`, emits exactly
-one synchronous down and one synchronous up from the virtual keyboard with `displayId=0`, verifies that identity on
-both events, disables animation waiting, then disconnects. This is an injected platform key action, not claimed as
-a physical navigation-button click. Success still requires a live Launcher snapshot, the existing 160-ms direct
-pointer swipe from its exact center, and independent disappearance of the bound task ID from `RecentTasks`; key
-injection alone cannot pass. Driver and all three verifier layers bind the key code, event count, display, source,
-device, timing, driver digest, exact task/action, and outcome. There is no accessibility-window search, coordinate
-opener, retry, shell task removal, task/process kill, `CLEAR ALL`, or visual-only fallback.
-Focused zero-NIC run `run.AfmYq7sXEJ` admitted the exact APK and sealed inputs, then failed before emulator launch:
-API-34 `javac` correctly reported that `KeyEvent` has no `recycle()` method. The driver had copied the recycling
-lifetime required by its `MotionEvent` gesture path onto a non-recyclable key object. No driver artifact, Android
-action, app process, or product lifecycle existed in that run. The VM powered off cleanly; its retained 68,702-byte
-serial log, 4,441,112,576-byte overlay, and 30,115,840-byte source archive have SHA-256 `68a206d8…3c1c`,
-`887a6eb3…5b8`, and `e41c7587…e17`. Before/during/after listener inventories are byte-identical at SHA-256
-`347e825a…121`; both new-listener deltas and pre-existing-external drift are empty.
-
-Successor `run.oOGMI8Pwyd` compiled the non-recycling driver twice with byte identity, staged SHA-256
-`1f550837…cd6`, booted Android 14, and completed ten real cycles. The explicit-display app-switch down/up pair
-opened Launcher Recents each time; exactly one direct 12-event gesture then removed each distinct bound task ID
-8–17, and the inner runtime independently observed every disappearance before relaunch. Its focused summary was
-`ANDROID_EMULATOR_RECENTS=pass` with ten open actions, ten task removals, `framework_anr=waited-2`, and no service
-start. The guest nevertheless failed closed after the inner pass because the success-path forwarder omitted the
-ten already-validated `ANDROID_RECENTS_OPEN_ACTION` records while its next layer correctly required them. Thus
-this is strong inner Android behavioral evidence but not a valid complete outer transaction. The VM powered off
-cleanly; its retained 75,179-byte serial log, 4,343,463,936-byte overlay, and 30,115,840-byte source archive have
-SHA-256 `701905c6…9685`, `01f27b75…10d`, and `87eae1d9…f1f0`. Before/during/after listener inventories are
-byte-identical at SHA-256 `347e825a…121`; both new-listener files and pre-existing-external drift are empty.
-Current source forwards the existing validated opener array alongside the dismissal/outcome arrays without
-changing its parser, gesture, product, or oracle. Commit `a15c571b` published that correction. Exact rerun
-`run.fTLnwuRlTH` repeated all ten successful Android cycles, and this time the guest accepted every opener,
-dismissal, outcome, digest, cleanup, and task binding and emitted `ANDROID_EMULATOR_RUNTIME_VM=pass`. The outer
-layer then failed closed because the guest's final success printer independently omitted the same opener array.
-The retained 74,570-byte serial log, 4,346,216,448-byte overlay, and 30,126,080-byte source archive have SHA-256
-`ed22940e…a479`, `5a7827b0…2a1a`, and `528c0bbc…d5e`; before/during/after listener inventories are again
-byte-identical at SHA-256 `347e825a…121`, with empty new-listener and pre-existing-external-drift files. Current
-source now forwards the validated opener array from the guest to the serial/outer layer as well. It changes no
-matcher or behavior. Commit `afc4161e3b1b7e26b0edea71932eabde498868bf`, tree
-`f986343b9377c21f31d1f0db03d656ca0c84b872`, published that second correction. The exact zero-NIC rerun then
-passed all inner, guest, and outer parsers across ten distinct task cycles. Its terminal receipt binds retained APK
-SHA-256 `db23c06b…bc96`, Android 14/API 34, Emulator 37.1.11, explicit guest-only Docker, read-only Landlocked
-source/artifact inputs, no network, no harness-added listener, zero pre-existing-process drift, and joined cleanup
-in 1,014 seconds. The successful private run root `run.9xarvLg6ua` retired automatically and no owned process
-remained. This closes the exact-current focused Recents-open/direct-card-dismiss/task-disappearance scenario only;
-it does not start or test `MainService`, MediaProjection preservation, Force Stop, a peer/session, presentation,
-latency, resource soak, physical hardware, stable signing, or release reproducibility. Primary AOSP routes:
-`https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android14-release/services/core/java/com/android/server/input/InputShellCommand.java`,
-`https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android14-release/services/core/java/com/android/server/policy/PhoneWindowManager.java`,
-and `https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android14-release/core/java/android/view/KeyEvent.java`.
-
-Exact pushed harness `d8bbf0c583e3baa34d91722c0d54d2cd59194c03`, tree
-`7f9d4831d36aa58ce220632e7906ddc39e0774ff`, subsequently passed the full retained-APK `peer-lifecycle`
-transaction in 1,671 seconds. It admitted exact artifact commit `9bf6e0cf`, tree `5dca32ad`, and SHA-256
-`db23c06b…bc96`; exercised the real missing-credential state, one deliberate wrong CPace attempt, typed
-`PeerConfirmationUnavailable`, 140 seconds without automatic retry, deliberate correct-credential replacement,
-and successful connection; and observed fresh changing VP9 presentation initially, after background/resume, and
-after each of two exact task-swipe/relaunch cycles. The obsolete peer closed and one replacement established after
-each removal. Exactly one foreground `MainService`, its process, and MediaProjection remained ready through both
-task removals; Force Stop then removed the process and service, and a post-stop Activity launch created a new
-process without silently restarting the service. All inner, guest, and outer bindings passed in a zero-NIC VM with
-networkless guest-only Docker and read-only Landlocked source/artifact inputs. Before/during/after inspection found
-no host-listener addition or pre-existing-process drift, every owner joined, successful root `run.19oUs2hg9U`
-self-retired, and no owned process remained. This closes that bounded current test-APK transaction only. Its
-1,671-second duration is integration evidence and verifier-performance debt, not a fast focused loop. Stable-signed
-release APK/AAB execution, physical devices, sustained resource/performance soak, cross-version behavior,
-independent reproduction, external review, and the reported Windows software/native focus delay remain
-release-blocking.
-
-The later exact extended schedule at pushed harness `acc3e58a` invalidates any current-presentation closure inferred
-from that earlier pass. Preserved failed root `run.cVrNlulsuf` reused the exact retained artifact and passed initial
-presentation, same-connection 2/6/12-second Home/background intervals, both task removals, both replacement
-connections, and the first task relaunch. On the second relaunch, source state advanced from 185 through 192 while
-the Android display remained at state 184; the freshness oracle then had no fresh barcode candidate until state 216
-appeared at exactly 8,000 ms. Control/session progress and the independent frame observer remained current, native
-VP9 initialized without decode errors, and the final diagnostic showed the current test pattern and RustDesk toolbar
-without a modal overlay. The serial log, VM overlay, and source archive are retained at SHA-256
-`77c7858b…fb7`, `f8f77178…bba`, and `67aa409f…7d7`; before/during/after listener snapshots are byte-identical at
-`347e825a…121`, cleanup joined, and no owned process remained. This narrows the observed failure downstream of
-native VP9 decode into software presentation, but does not by itself prove the exact blocking callback or show that
-another platform shares the same cause.
-
-The source-level CPace recovery defect exposed by the later replay is corrected at
-`714141e9741922c64489a64f18515e49f4090b96`. After step 3 has been sent successfully, and only while the initiator
-waits for step 4, transport loss now returns the typed `PeerConfirmationUnavailable` ambiguity: the responder may
-have rejected a stale/wrong credential, the transport may have failed, or the peer may be hostile. Earlier I/O remains
-plain `Io`; malformed or out-of-order traffic remains `Protocol`; and an actually received invalid step-4 tag remains
-`Confirmation`. The viewer offers deliberate credential replacement for missing local credentials, `Confirmation`,
-or `PeerConfirmationUnavailable`; it neither deletes a remembered credential nor retries automatically, and no
-failed path installs session keys. Only responder-side `Confirmation` feeds the online-guess limiter.
-
-The exact product and client classifier passed a 46-test Linux-target integration transaction in 555 seconds in the
-zero-NIC verifier VM. Because that was too slow for the focused development loop, harness commit
-`2ab3efa0eb376621eab3f26270031c17f3d296d4` separated the complete 20-test `cpace_it` wire suite from Flutter bridge
-generation and the broader Android/CM Rust lifecycle tests. The new exact-current transaction passed in 138 seconds
-with a no-NIC VM, guest-only networkless Docker, immutable/Landlocked sealed inputs, no host listener addition or
-pre-existing-process drift, and joined cleanup. This closes only the source/wire recovery taxonomy and exact client
-classification. The current retained test APK includes this correction and has now executed the real initial prompt,
-one deliberate wrong attempt, exact failed-CPace counters, the typed recovery prompt, the complete 140-second
-no-retry interval, deliberate credential replacement, and a successful correct-credential connection. It also
-presented fresh changing pixels across initial, background/resume, and two task-relaunch phases while closing and
-replacing each obsolete peer; the same transaction proved retained foreground-service/MediaProjection ownership,
-Force-Stop finality, and no silent post-stop service resurrection. The older run resolved the prior ambiguous
-two-attempt report as a harness-causality problem rather than evidence of automatic product retry. Sustained
-resource/performance soak, physical-device and stable-signed release evidence, cross-version behavior, and the
-cross-platform focus/background delay complaint remain unresolved; failed peer-replay roots remain bounded
-historical evidence only.
+Next work must preserve sampled `RUSTDESK_PRESENTATION_PROGRESS` through every failure-forwarding
+layer and separate an authenticated, exact-source production-peer artifact from behavioral replay:
+the current replay rebuilds the peer into a fresh ephemeral target with incremental compilation
+disabled. Artifact reuse must retain digest/source/input admission, read-only execution, no fallback,
+bounded output, and joined cleanup. Then distinguish event, native mailbox, conversion completion,
+model commit, widget/paint, and actual framebuffer progress across repeated task/session replacement.
+The shared three-conversion pool's dependence on uncancellable Flutter futures is a liveness candidate,
+not proven causation; raising bounds, releasing permits before completion, reconnecting, or killing the
+persistent service is not a correctness fix. Physical devices, stable-signed releases, sustained
+resource/latency soak, network transitions, cross-version behavior, current Windows focus/minimize,
+Apple behavior, cold equality, independent reproduction, and external review remain open.
 
 Pub-cache and Gradle replacement cleanup is now one recoverable, acquisition-identity-owned transaction. A
 replacement refuses an existing root unless it is owned by the acquisition UID/GID and sealed mode 0500; the old
@@ -1563,11 +1173,11 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
-| Android and iOS | Android's exported component source shape is contained, but device/release evidence remains incomplete. Current retained test APK `ca569086`/`c8637d40`/`7d49e481…8737c` has a real Android 14 build/install/launch baseline and a complete production-peer transaction with initial and 2/6/12-second background presentation, two task removals/relaunches, exact session replacement, bounded conversion-resource receipts, persistent-service/MediaProjection continuity, and Force Stop. This exact emulator scenario supersedes the prior 8,000-ms task-relaunch stall. Still exercise repeated replacement/reconnect, controlled capture/input callbacks, network transitions, stale-generation refusal, sustained CPU/memory/thread/handle/queue and latency bounds, physical devices, stable-signed release artifacts, cold equality, independently administered reproduction, and external review. iOS still has no current package/device result. |
+| Android and iOS | **Android intermittent presentation remains OPEN.** Named APK `ca569086` has real build/install/launch and a passing peer/background/task-replacement/service-continuity baseline, but a later replay of those same bytes failed the 8,000-ms relaunch pixel oracle. Newer diagnostic APK `035c9a20` has no completed peer result. Establish exact-current repeated replacement/reconnect behavior, controlled capture/input callbacks, network transitions, stale-generation refusal, sustained CPU/memory/thread/handle/queue and latency bounds, physical devices, stable-signed artifacts, cold equality, independent reproduction, and external review. iOS still has no current package/device result. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg now has pin-bound recoverable devcheck and Apple verifier images. For each image, two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. Exact commit `f85e18e4` passed the complete current Apple three-target source-conformance/cross-compile workload in the no-NIC verifier VM after the focused Flutter gate first required the same shared display-verifier self-test. Current product/native workloads and fresh independently administered rebuilds remain required; neither verifier-image provenance nor Apple source/cross-compile success supplies native Apple behavior. |
 | Build/test execution authority (R-S11dh) | **STOP-SHIP: focused no-NIC authority smokes and substantial product/build evidence exist, but current release workloads remain incomplete.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; R-S11cj separately confines acquisition to an ordinary-user VM with outbound-only guest/container networking, no host forwarding, and joined finality. Product source `ca569086` passed the fresh model and Android APK build/install/render transactions; exact pushed harness `89a85f4b` passed the retained-APK production-peer lifecycle/presentation transaction. Current exact source `f85e18e4` passed the focused verifier-plus-138-test gate and three-target Apple source-conformance/cross-compile gate while preserving the strict host-listener audit and joined cleanup. Stable Android signing, physical devices, sustained resource/performance soak, native Apple work, Debian/Windows product workloads, cold release artifacts, complete prepared inputs, independently administered reproduction, and external review remain open. Source checks, cross-compiles, builder fingerprints, and historical lifecycle evidence are not release or native evidence. |
-| Product-level behavior | The current retained Android artifact passes the exact emulator schedule that previously exposed an 8,000-ms display-only task-relaunch stall: initial, three same-connection background cycles, and both task relaunches produced fresh changing actual pixels, with task recovery at most 1.20 seconds and isolate conversion peaks at most two. This closes only that current emulator scenario. Full capture-to-compositor/actual-present monotonic instrumentation is still incomplete, and sustained freshness/performance/resource soak, network transitions, broad reconnect finality, cross-version interoperability, physical Android, current Windows focus/minimize behavior, and Apple behavior remain open. These are not inferred from compile, model, source-string, frame-receipt, or protocol-only evidence. |
+| Product-level behavior | **OPEN / RELEASE-BLOCKING:** a passing Android schedule is contradicted by a later same-APK display-only relaunch failure; neither earlier timing/resource receipts nor source/model bounds close the intermittent defect. Preserve complete sampled event/mailbox/conversion/model/widget diagnostics, reuse a source-bound production-peer artifact without rebuilding each replay, and observe actual pixels across repeated replacement/background cycles. Full capture-to-compositor/actual-present monotonic instrumentation, sustained freshness/performance/resource soak, network transitions, broad reconnect finality, cross-version interoperability, physical Android, current Windows focus/minimize, and Apple behavior remain required. Correctness applies to the whole connection flow, not only the reported complaints; no compile, model, source-string, frame-receipt, or protocol-only result substitutes for these native obligations. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
 NATIVE EVIDENCE OPEN.** `src/server.rs`, `src/direct_service.rs`, and `src/ipc.rs` perform startup

@@ -67,6 +67,12 @@ case "$#:${1:-}" in
             || { echo 'focused Android owner-state input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-owner-tests
         ;;
+    1:--android-execution-probe)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Android execution-probe input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-execution-probe
+        ;;
     1:--android-peer-build)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -159,7 +165,7 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
-        printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario peer-lifecycle --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario peer-lifecycle --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
@@ -2636,6 +2642,8 @@ fi
 guest_invocation="bash /mnt/rustdesk-verifier-inputs/guest.sh /mnt/rustdesk-verifier-inputs/docker.tgz /mnt/rustdesk-verifier-inputs/repo/scripts/verify-vm-entry-preflight.sh $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID"
 if [ "$MODE" = debian-systemd-lifecycle ]; then
     guest_invocation+=" --debian-systemd-lifecycle /mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz /mnt/rustdesk-verifier-inputs/artifact/rustdesk-x86_64.deb $LIFECYCLE_ARTIFACT_SHA256 $LIFECYCLE_COMMIT"
+elif [ "$MODE" = android-execution-probe ]; then
+    guest_invocation+=' --android-execution-probe'
 elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = cpace-recovery-tests ]; then
@@ -2971,6 +2979,20 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     require_exact_fixed_receipt \
         "VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=$VERIFIER_VM_KERNEL_RELEASE direct_boot=on boot_masks=on docker=$VERIFIER_VM_DOCKER_VERSION vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off lifecycle=installed-debian-artifact" \
         'lifecycle guest authority marker'
+elif [ "$MODE" = android-execution-probe ]; then
+    mapfile -t android_execution_receipts < <(
+        /usr/bin/grep -Eo \
+            "ANDROID_EXECUTION_PROBE=observed kernel=$VERIFIER_VM_KERNEL_RELEASE config_sha256=[0-9a-f]{64} cpus=$VM_CPUS virtualization=(vmx|svm|none) kvm=(y|m|n) intel=(y|m|n) amd=(y|m|n) module_files=[0-9] device=(absent|present) access=(unobserved|denied|rw) uid=4000 gid=4000 vm_network=none" \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#android_execution_receipts[@]}" -eq 1 ] \
+        || fail 'Android execution observation is absent or duplicated'
+    printf '%s\n' "${android_execution_receipts[0]}"
+    require_exact_fixed_receipt \
+        'ANDROID_EXECUTION_PROBE_FINALITY=pass docker=retired emulator=unexecuted module_loads=none device_changes=none cleanup=joined' \
+        'Android execution-probe finality marker'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
+        'Android execution-probe cloud-init completion marker'
 elif [ "$MODE" = authority-smoke ]; then
 require_exact_fixed_receipt \
     'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cleanup=joined' \
@@ -3779,6 +3801,9 @@ RUN_COMPLETE=1
 if [ "$MODE" = authority-smoke ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"
+elif [ "$MODE" = android-execution-probe ]; then
+    printf 'ANDROID_EXECUTION_PROBE_OUTER=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=guest-only emulator=unexecuted module_loads=none device_changes=none cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$vm_elapsed_seconds"
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 mode=debian-systemd-lifecycle output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"

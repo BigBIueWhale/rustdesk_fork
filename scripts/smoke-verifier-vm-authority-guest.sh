@@ -7,6 +7,9 @@ case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
         ;;
+    8:--android-execution-probe)
+        MODE=android-execution-probe
+        ;;
     12:--hbb-common-fs)
         MODE=hbb-common-fs
         ;;
@@ -63,6 +66,7 @@ case "$#:${8:-}" in
         ;;
     *)
         echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 peer-lifecycle PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'The seven base arguments also accept --android-execution-probe for a read-only guest capability inventory.' >&2
         exit 2
         ;;
 esac
@@ -4846,6 +4850,100 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     run_debian_systemd_lifecycle
     printf 'VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=%s direct_boot=on boot_masks=on docker=%s vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off lifecycle=installed-debian-artifact\n' \
         "$EXPECTED_KERNEL_RELEASE" "$EXPECTED_VERSION"
+    exit 0
+fi
+
+if [ "$MODE" = android-execution-probe ]; then
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$ENTRY_PREFLIGHT"
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C \
+        /usr/bin/timeout --signal=TERM --kill-after=2s 5s \
+        /usr/bin/python3 -I -S - "$EXPECTED_KERNEL_RELEASE" <<'PY'
+import hashlib
+import os
+import re
+import stat
+import sys
+
+if (os.geteuid(), os.getegid()) != (4000, 4000):
+    raise SystemExit("Android execution probe requires the exact nonroot guest principal")
+release = os.uname().release
+if release != sys.argv[1]:
+    raise SystemExit("Android execution probe kernel differs")
+config_path = f"/boot/config-{release}"
+descriptor = os.open(config_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
+try:
+    before = os.fstat(descriptor)
+    if (not stat.S_ISREG(before.st_mode) or before.st_uid != 0 or before.st_gid != 0
+            or stat.S_IMODE(before.st_mode) != 0o644 or before.st_nlink != 1
+            or not 0 < before.st_size <= 1024 * 1024):
+        raise SystemExit("Android execution probe kernel config authority differs")
+    with os.fdopen(descriptor, "rb", closefd=False) as source:
+        config = source.read(1024 * 1024 + 1)
+    after = os.fstat(descriptor)
+    if len(config) != before.st_size or any(
+            getattr(after, field) != getattr(before, field)
+            for field in ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+                          "st_size", "st_mtime_ns", "st_ctime_ns")):
+        raise SystemExit("Android execution probe kernel config changed")
+finally:
+    os.close(descriptor)
+options = {}
+for line in config.decode("ascii").splitlines():
+    match = re.fullmatch(r"(CONFIG_KVM(?:_INTEL|_AMD)?)=([ym])", line)
+    disabled = re.fullmatch(r"# (CONFIG_KVM(?:_INTEL|_AMD)?) is not set", line)
+    if match or disabled:
+        key, value = (match.group(1), match.group(2)) if match else (disabled.group(1), "n")
+        if key in options:
+            raise SystemExit("Android execution probe kernel config is ambiguous")
+        options[key] = value
+if "CONFIG_KVM" not in options:
+    raise SystemExit("Android execution probe has no explicit KVM kernel setting")
+with open("/proc/cpuinfo", encoding="ascii") as source:
+    cpuinfo = source.read(1024 * 1024 + 1)
+if len(cpuinfo) > 1024 * 1024:
+    raise SystemExit("Android execution probe CPU inventory exceeds its bound")
+flags = [set(line.split(":", 1)[1].split()) for line in cpuinfo.splitlines()
+         if line.startswith("flags\t")]
+if not flags:
+    raise SystemExit("Android execution probe CPU flags are absent")
+extensions = set.intersection(*flags) & {"vmx", "svm"}
+if len(extensions) > 1:
+    raise SystemExit("Android execution probe CPU virtualization is ambiguous")
+virtualization = next(iter(extensions), "none")
+module_root = f"/lib/modules/{release}/kernel/arch/x86/kvm"
+module_files = 0
+for name in ("kvm", "kvm-intel", "kvm-amd"):
+    for suffix in (".ko", ".ko.xz", ".ko.zst"):
+        path = f"{module_root}/{name}{suffix}"
+        try:
+            metadata = os.lstat(path)
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_mode & 0o022:
+            raise SystemExit("Android execution probe module authority differs")
+        module_files += 1
+try:
+    device = os.lstat("/dev/kvm")
+except FileNotFoundError:
+    device_state, access = "absent", "unobserved"
+else:
+    if not stat.S_ISCHR(device.st_mode) or device.st_uid != 0 or os.major(device.st_rdev) != 10 or os.minor(device.st_rdev) != 232:
+        raise SystemExit("Android execution probe KVM device authority differs")
+    device_state = "present"
+    access = "rw" if os.access("/dev/kvm", os.R_OK | os.W_OK) else "denied"
+print(f"ANDROID_EXECUTION_PROBE=observed kernel={release} "
+      f"config_sha256={hashlib.sha256(config).hexdigest()} cpus={len(flags)} "
+      f"virtualization={virtualization} kvm={options['CONFIG_KVM']} "
+      f"intel={options.get('CONFIG_KVM_INTEL', 'n')} amd={options.get('CONFIG_KVM_AMD', 'n')} "
+      f"module_files={module_files} device={device_state} access={access} "
+      "uid=4000 gid=4000 vm_network=none")
+PY
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$ENTRY_PREFLIGHT"
+    stop_docker_authority
+    printf 'ANDROID_EXECUTION_PROBE_FINALITY=pass docker=retired emulator=unexecuted module_loads=none device_changes=none cleanup=joined\n'
     exit 0
 fi
 

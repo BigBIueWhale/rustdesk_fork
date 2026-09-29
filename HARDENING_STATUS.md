@@ -1084,6 +1084,17 @@ before EOF; the failed VM transaction ended at 753 s with joined owned processes
 host listener inventories. Bounded raw serial evidence is retained outside the retired failed VM root.
 Healthy Android execution and presentation remain OPEN. No APK/peer code, cryptographic work factor,
 presentation/freshness budget, or persistent service was changed.
+The focused `smoke-verifier-vm-authority.sh --android-execution-probe` now observes the real pinned
+guest as UID/GID 4000, with VM-entry proof before and after the read-only inventory. Its first
+13-second transaction observed four CPUs with `vmx`, kernel `6.1.0-50-cloud-amd64` configured with
+KVM/Intel/AMD as modules, all three module files, and a root-owned kernel KVM character device;
+the diagnostic principal had no read/write access. It loaded no modules, changed no device
+permissions, launched no Android emulator, added no host listener or process drift, and joined
+Docker/QEMU/capture with automatic run-root retirement. This establishes guest capability and
+access state, not usable nested KVM, a supported Android topology, healthy boot, or presentation.
+Google's emulator documentation warns against VM-nested acceleration; Linux documents nested KVM.
+Next prove a minimal guest-local device grant and actual KVM/emulator execution with no host-device
+passthrough or software fallback, then establish framework health before interpreting display timings.
 The attempted shared authority smoke hit its existing 90-second VM deadline after the 22 capsule
 cases and several authority entries passed; it is not a complete transaction or consumer verdict.
 The peer launcher now validates the externally digest-bound capsule manifest and all seven execution

@@ -166,8 +166,8 @@ void main() {
 
   test('shared drain pool survives queue replacement without minting capacity',
       () async {
-    final pool = LatestFrameDrainPool(
-        maxConcurrentDrains: 3, maxWaitingDrains: 8);
+    final pool =
+        LatestFrameDrainPool(maxConcurrentDrains: 3, maxWaitingDrains: 8);
     final releaseOldFirst = Completer<void>();
     final releaseOldSecond = Completer<void>();
     final releaseReplacement = Completer<void>();
@@ -213,8 +213,8 @@ void main() {
         'replacement-running',
         (_) => hold(replacementEntered, releaseReplacement));
     await replacementEntered.future;
-    final replacementWaiting = replacement.submit(
-        'replacement', 0, 'replacement-waiting', (_) async {
+    final replacementWaiting =
+        replacement.submit('replacement', 0, 'replacement-waiting', (_) async {
       fail('retired queued conversion must not start');
     });
     expect(pool.activeDrains, 3);
@@ -253,21 +253,21 @@ void main() {
   });
 
   test('shared drain pool retains only the latest waiting frame', () async {
-    final pool = LatestFrameDrainPool(
-        maxConcurrentDrains: 1, maxWaitingDrains: 4);
+    final pool =
+        LatestFrameDrainPool(maxConcurrentDrains: 1, maxWaitingDrains: 4);
     final blockerEntered = Completer<void>();
     final releaseBlocker = Completer<void>();
     final presented = <String>[];
-    final blocker = LatestFrameQueue<String, int, String>('blocker',
-        drainPool: pool);
+    final blocker =
+        LatestFrameQueue<String, int, String>('blocker', drainPool: pool);
     final blocked = blocker.submit('blocker', 0, 'blocked', (_) async {
       blockerEntered.complete();
       await releaseBlocker.future;
     });
     await blockerEntered.future;
 
-    final waiting = LatestFrameQueue<String, int, String>('waiting',
-        drainPool: pool);
+    final waiting =
+        LatestFrameQueue<String, int, String>('waiting', drainPool: pool);
     final first = waiting.submit('waiting', 0, 'first', (frame) async {
       presented.add(frame);
     });
@@ -292,12 +292,12 @@ void main() {
   });
 
   test('shared drain pool starts live waiting lanes in FIFO order', () async {
-    final pool = LatestFrameDrainPool(
-        maxConcurrentDrains: 1, maxWaitingDrains: 4);
+    final pool =
+        LatestFrameDrainPool(maxConcurrentDrains: 1, maxWaitingDrains: 4);
     final blockerEntered = Completer<void>();
     final releaseBlocker = Completer<void>();
-    final blocker = LatestFrameQueue<String, int, String>('blocker',
-        drainPool: pool);
+    final blocker =
+        LatestFrameQueue<String, int, String>('blocker', drainPool: pool);
     final blocked = blocker.submit('blocker', 0, 'blocked', (_) async {
       blockerEntered.complete();
       await releaseBlocker.future;
@@ -306,15 +306,15 @@ void main() {
 
     final firstEntered = Completer<void>();
     final releaseFirst = Completer<void>();
-    final firstWaiting = LatestFrameQueue<String, int, String>('first',
-        drainPool: pool);
+    final firstWaiting =
+        LatestFrameQueue<String, int, String>('first', drainPool: pool);
     final first = firstWaiting.submit('first', 0, 'first', (_) async {
       firstEntered.complete();
       await releaseFirst.future;
     });
     final secondEntered = Completer<void>();
-    final secondWaiting = LatestFrameQueue<String, int, String>('second',
-        drainPool: pool);
+    final secondWaiting =
+        LatestFrameQueue<String, int, String>('second', drainPool: pool);
     final second = secondWaiting.submit('second', 0, 'second', (_) async {
       secondEntered.complete();
     });
@@ -336,28 +336,28 @@ void main() {
   });
 
   test('shared drain pool refuses excess waiting lanes visibly', () async {
-    final pool = LatestFrameDrainPool(
-        maxConcurrentDrains: 1, maxWaitingDrains: 1);
+    final pool =
+        LatestFrameDrainPool(maxConcurrentDrains: 1, maxWaitingDrains: 1);
     final blockerEntered = Completer<void>();
     final releaseBlocker = Completer<void>();
-    final blocker = LatestFrameQueue<String, int, String>('blocker',
-        drainPool: pool);
+    final blocker =
+        LatestFrameQueue<String, int, String>('blocker', drainPool: pool);
     final blocked = blocker.submit('blocker', 0, 'blocked', (_) async {
       blockerEntered.complete();
       await releaseBlocker.future;
     });
     await blockerEntered.future;
 
-    final firstWaiting = LatestFrameQueue<String, int, String>('first-waiting',
-        drainPool: pool);
+    final firstWaiting =
+        LatestFrameQueue<String, int, String>('first-waiting', drainPool: pool);
     final firstStarted = Completer<void>();
     final first = firstWaiting.submit('first-waiting', 0, 'first', (_) async {
       firstStarted.complete();
     });
     expect(pool.waitingDrains, 1);
 
-    final refused = LatestFrameQueue<String, int, String>('refused',
-        drainPool: pool);
+    final refused =
+        LatestFrameQueue<String, int, String>('refused', drainPool: pool);
     var refusedStarted = false;
     await expectLater(
         refused.submit('refused', 0, 'refused', (_) async {

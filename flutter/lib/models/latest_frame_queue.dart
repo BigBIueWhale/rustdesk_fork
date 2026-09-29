@@ -20,8 +20,7 @@ class LatestFrameDrainPool {
     this.maxWaitingDrains = 64,
   }) {
     if (maxConcurrentDrains < 1) {
-      throw ArgumentError.value(
-          maxConcurrentDrains, 'maxConcurrentDrains');
+      throw ArgumentError.value(maxConcurrentDrains, 'maxConcurrentDrains');
     }
     if (maxWaitingDrains < 1) {
       throw ArgumentError.value(maxWaitingDrains, 'maxWaitingDrains');

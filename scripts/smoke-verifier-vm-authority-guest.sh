@@ -3761,9 +3761,7 @@ run_flutter_model_tests() {
                 for format_path in \
                     lib/models/android_permission_request_coordinator.dart \
                     lib/models/latest_frame_queue.dart \
-                    lib/models/model.dart \
                     lib/models/rgba_publication_order.dart \
-                    lib/utils/image.dart \
                     lib/common/widgets/overlay.dart \
                     lib/common/widgets/permanent_password_dialog.dart \
                     lib/common/widgets/custom_password.dart \

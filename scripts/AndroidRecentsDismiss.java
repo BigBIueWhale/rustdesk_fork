@@ -1,11 +1,11 @@
 package com.rustdesk.harness;
 
 import android.app.UiAutomation;
-import android.os.IBinder;
-import android.os.Process;
 import android.os.SystemClock;
 import android.view.InputDevice;
 import android.view.InputEvent;
+import android.view.KeyCharacterMap;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 
 import java.lang.reflect.InvocationTargetException;
@@ -18,14 +18,9 @@ public final class AndroidRecentsDismiss {
     private static final int GESTURE_EVENT_COUNT = GESTURE_STEPS + 2;
     private static final String UIAUTOMATION_WRAPPER_CLASS =
             "com.android.uiautomator.core.UiAutomationShellWrapper";
-    private static final String OPEN_RECENTS_ARGUMENT = "toggle-recents-through-statusbar";
-    private static final String SERVICE_MANAGER_CLASS = "android.os.ServiceManager";
-    private static final String STATUS_BAR_SERVICE = "statusbar";
-    private static final String STATUS_BAR_SERVICE_INTERFACE =
-            "com.android.internal.statusbar.IStatusBarService";
-    private static final String STATUS_BAR_SERVICE_STUB =
-            STATUS_BAR_SERVICE_INTERFACE + "$Stub";
-    private static final int SHELL_UID = 2000;
+    private static final String OPEN_RECENTS_ARGUMENT = "open-recents-with-app-switch-key";
+    private static final int DEFAULT_DISPLAY_ID = 0;
+    private static final int OPEN_EVENT_COUNT = 2;
 
     private AndroidRecentsDismiss() {
     }
@@ -159,42 +154,70 @@ public final class AndroidRecentsDismiss {
                 endY);
     }
 
-    private static long toggleRecentsThroughStatusBar() throws Exception {
-        int callerUid = Process.myUid();
-        if (callerUid != SHELL_UID) {
-            throw new SecurityException(
-                    "Recents opener requires the Android shell UID, got " + callerUid);
+    private static void injectAppSwitchKeyEvent(
+            UiAutomation automation,
+            Method injectInputEvent,
+            Method setDisplayId,
+            Method getDisplayId,
+            int action,
+            long downTime) throws Exception {
+        KeyEvent event = new KeyEvent(
+                downTime,
+                downTime,
+                action,
+                KeyEvent.KEYCODE_APP_SWITCH,
+                0,
+                0,
+                KeyCharacterMap.VIRTUAL_KEYBOARD,
+                0,
+                0,
+                InputDevice.SOURCE_KEYBOARD);
+        try {
+            invoke(setDisplayId, event, DEFAULT_DISPLAY_ID);
+            Object displayId = invoke(getDisplayId, event);
+            if (!Integer.valueOf(DEFAULT_DISPLAY_ID).equals(displayId)) {
+                throw new IllegalStateException("app-switch key event display differs");
+            }
+            Object injected = invoke(
+                    injectInputEvent,
+                    automation,
+                    event,
+                    true,
+                    false);
+            if (!Boolean.TRUE.equals(injected)) {
+                throw new IllegalStateException("UiAutomation rejected an app-switch key event");
+            }
+        } finally {
+            event.recycle();
         }
+    }
 
-        openPhase("service-lookup-start");
-        Class<?> serviceManagerType = Class.forName(SERVICE_MANAGER_CLASS);
-        Method getService = serviceManagerType.getMethod("getService", String.class);
-        Object binderValue = invoke(getService, null, STATUS_BAR_SERVICE);
-        if (!(binderValue instanceof IBinder)) {
-            throw new IllegalStateException("statusbar service Binder is unavailable");
-        }
-        IBinder binder = (IBinder) binderValue;
-        String descriptor = binder.getInterfaceDescriptor();
-        if (!STATUS_BAR_SERVICE_INTERFACE.equals(descriptor)) {
-            throw new IllegalStateException(
-                    "statusbar service descriptor differs: " + descriptor);
-        }
-        openPhase("service-lookup-complete");
-
-        Class<?> stubType = Class.forName(STATUS_BAR_SERVICE_STUB);
-        Method asInterface = stubType.getMethod("asInterface", IBinder.class);
-        Object statusBarService = invoke(asInterface, null, binder);
-        if (statusBarService == null) {
-            throw new IllegalStateException("statusbar service interface is unavailable");
-        }
-        Class<?> interfaceType = Class.forName(STATUS_BAR_SERVICE_INTERFACE);
-        Method toggleRecentApps = interfaceType.getMethod("toggleRecentApps");
-        long startedAt = SystemClock.uptimeMillis();
-        openPhase("toggle-start");
-        invoke(toggleRecentApps, statusBarService);
-        long elapsedMillis = SystemClock.uptimeMillis() - startedAt;
-        openPhase("toggle-complete");
-        return elapsedMillis;
+    private static long injectAppSwitchKey(
+            UiAutomation automation,
+            Method injectInputEvent,
+            Method setDisplayId,
+            Method getDisplayId) throws Exception {
+        long eventTime = SystemClock.uptimeMillis();
+        long startedAt = eventTime;
+        openPhase("key-down-start");
+        injectAppSwitchKeyEvent(
+                automation,
+                injectInputEvent,
+                setDisplayId,
+                getDisplayId,
+                KeyEvent.ACTION_DOWN,
+                eventTime);
+        openPhase("key-down-complete");
+        openPhase("key-up-start");
+        injectAppSwitchKeyEvent(
+                automation,
+                injectInputEvent,
+                setDisplayId,
+                getDisplayId,
+                KeyEvent.ACTION_UP,
+                eventTime);
+        openPhase("key-up-complete");
+        return SystemClock.uptimeMillis() - startedAt;
     }
 
     public static void main(String[] arguments) throws Exception {
@@ -202,7 +225,7 @@ public final class AndroidRecentsDismiss {
                 && OPEN_RECENTS_ARGUMENT.equals(arguments[0]);
         if (!openRecents && arguments.length != 4) {
             throw new IllegalArgumentException(
-                    "expected toggle-recents-through-statusbar or four coordinates");
+                    "expected open-recents-with-app-switch-key or four coordinates");
         }
         int startX = 0;
         int startY = 0;
@@ -218,28 +241,6 @@ public final class AndroidRecentsDismiss {
             }
         }
 
-        if (openRecents) {
-            try {
-                long elapsedMillis = toggleRecentsThroughStatusBar();
-                System.out.printf(
-                        Locale.ROOT,
-                        "ANDROID_RECENTS_DIRECT_OPEN=pass action=statusbar-binder-toggle "
-                                + "service=%s descriptor=%s method=toggleRecentApps calls=1 "
-                                + "caller_uid=%d elapsed_ms=%d%n",
-                        STATUS_BAR_SERVICE,
-                        STATUS_BAR_SERVICE_INTERFACE,
-                        Process.myUid(),
-                        elapsedMillis);
-                System.out.flush();
-                System.exit(0);
-            } catch (Exception failure) {
-                failure.printStackTrace(System.err);
-                System.err.flush();
-                System.exit(1);
-            }
-            return;
-        }
-
         Class<?> wrapperType = Class.forName(UIAUTOMATION_WRAPPER_CLASS);
         Object wrapper = wrapperType.getConstructor().newInstance();
         Method connect = wrapperType.getMethod("connect");
@@ -250,6 +251,8 @@ public final class AndroidRecentsDismiss {
                 InputEvent.class,
                 boolean.class,
                 boolean.class);
+        Method setDisplayId = InputEvent.class.getMethod("setDisplayId", int.class);
+        Method getDisplayId = InputEvent.class.getMethod("getDisplayId");
         boolean connected = false;
         Exception failure = null;
         long elapsedMillis = 0;
@@ -261,15 +264,23 @@ public final class AndroidRecentsDismiss {
                 throw new IllegalStateException("UiAutomation wrapper returned a different type");
             }
             UiAutomation automation = (UiAutomation) automationValue;
-            long startedAt = SystemClock.uptimeMillis();
-            injectGesture(
-                    automation,
-                    injectInputEvent,
-                    startX,
-                    startY,
-                    endX,
-                    endY);
-            elapsedMillis = SystemClock.uptimeMillis() - startedAt;
+            if (openRecents) {
+                elapsedMillis = injectAppSwitchKey(
+                        automation,
+                        injectInputEvent,
+                        setDisplayId,
+                        getDisplayId);
+            } else {
+                long startedAt = SystemClock.uptimeMillis();
+                injectGesture(
+                        automation,
+                        injectInputEvent,
+                        startX,
+                        startY,
+                        endX,
+                        endY);
+                elapsedMillis = SystemClock.uptimeMillis() - startedAt;
+            }
         } catch (Exception error) {
             failure = error;
         } finally {
@@ -293,14 +304,27 @@ public final class AndroidRecentsDismiss {
             return;
         }
 
-        System.out.printf(
-                Locale.ROOT,
-                "ANDROID_RECENTS_DIRECT_INJECTION=pass events=%d steps=%d step_ms=%d "
-                        + "wait_for_animations=false elapsed_ms=%d%n",
-                GESTURE_EVENT_COUNT,
-                GESTURE_STEPS,
-                GESTURE_STEP_MILLIS,
-                elapsedMillis);
+        if (openRecents) {
+            System.out.printf(
+                    Locale.ROOT,
+                    "ANDROID_RECENTS_DIRECT_OPEN=pass action=ui-automation-app-switch-key "
+                            + "key=KEYCODE_APP_SWITCH keycode=%d events=%d display_id=%d "
+                            + "source=keyboard device=virtual-keyboard "
+                            + "wait_for_animations=false elapsed_ms=%d%n",
+                    KeyEvent.KEYCODE_APP_SWITCH,
+                    OPEN_EVENT_COUNT,
+                    DEFAULT_DISPLAY_ID,
+                    elapsedMillis);
+        } else {
+            System.out.printf(
+                    Locale.ROOT,
+                    "ANDROID_RECENTS_DIRECT_INJECTION=pass events=%d steps=%d step_ms=%d "
+                            + "wait_for_animations=false elapsed_ms=%d%n",
+                    GESTURE_EVENT_COUNT,
+                    GESTURE_STEPS,
+                    GESTURE_STEP_MILLIS,
+                    elapsedMillis);
+        }
         System.out.flush();
         System.exit(0);
     }

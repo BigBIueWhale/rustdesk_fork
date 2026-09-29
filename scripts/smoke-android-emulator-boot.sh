@@ -1907,7 +1907,7 @@ stage_recents_gesture_driver() {
         || return 1
     RECENTS_RUNTIME_UIAUTOMATOR_SHA256=$runtime_digest
     RECENTS_GESTURE_STAGED=1
-    printf 'ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=%s framework=android14-ui-automation-direct open=statusbar-binder-toggle events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s device_path=%s\n' \
+    printf 'ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=%s framework=android14-ui-automation-direct open=ui-automation-app-switch-key-display-0 events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s device_path=%s\n' \
         "$RECENTS_GESTURE_SHA256" "$RECENTS_DISMISS_GESTURE_EVENTS" \
         "$RECENTS_DISMISS_GESTURE_STEPS" "$RECENTS_DISMISS_GESTURE_STEP_MS" \
         "$RECENTS_RUNTIME_UIAUTOMATOR_SHA256" "$RECENTS_GESTURE_DEVICE_PATH"
@@ -1972,7 +1972,7 @@ open_app_recents() {
         "CLASSPATH=$RECENTS_RUNTIME_UIAUTOMATOR_PATH:$RECENTS_GESTURE_DEVICE_PATH" \
         /system/bin/app_process /system/bin \
         com.rustdesk.harness.AndroidRecentsDismiss \
-        toggle-recents-through-statusbar \
+        open-recents-with-app-switch-key \
         2>&1 | tr -d '\r')"; then
         printf 'ANDROID_RECENTS_OPEN_OUTPUT_BEGIN cycle=%s task_id=%s\n%s\nANDROID_RECENTS_OPEN_OUTPUT_END cycle=%s task_id=%s\n' \
             "$lifecycle_cycle" "$expected_task_id" "$open_output" \
@@ -1980,7 +1980,7 @@ open_app_recents() {
         return 1
     fi
     open_receipt="$(grep -E \
-        '^ANDROID_RECENTS_DIRECT_OPEN=pass action=statusbar-binder-toggle service=statusbar descriptor=com.android.internal.statusbar.IStatusBarService method=toggleRecentApps calls=1 caller_uid=2000 elapsed_ms=[0-9]+$' \
+        '^ANDROID_RECENTS_DIRECT_OPEN=pass action=ui-automation-app-switch-key key=KEYCODE_APP_SWITCH keycode=187 events=2 display_id=0 source=keyboard device=virtual-keyboard wait_for_animations=false elapsed_ms=[0-9]+$' \
         <<<"$open_output" || true)"
     [ "${#open_output}" -le 16384 ] \
         && [ "$(grep -c '^ANDROID_RECENTS_DIRECT_OPEN=' \
@@ -1996,7 +1996,7 @@ open_app_recents() {
         || return 1
     elapsed_ms=${BASH_REMATCH[1]}
     [ "$elapsed_ms" -le 5000 ] || return 1
-    printf 'ANDROID_RECENTS_OPEN_ACTION=requested cycle=%s task_id=%s mechanism=android14-statusbar-binder-toggle service=statusbar descriptor=com.android.internal.statusbar.IStatusBarService method=toggleRecentApps calls=1 caller_uid=2000 driver_elapsed_ms=%s driver_sha256=%s\n' \
+    printf 'ANDROID_RECENTS_OPEN_ACTION=injected cycle=%s task_id=%s mechanism=android14-ui-automation-app-switch-key keycode=187 events=2 display_id=0 source=keyboard device=virtual-keyboard wait_for_animations=false driver_elapsed_ms=%s driver_sha256=%s\n' \
         "$lifecycle_cycle" "$expected_task_id" \
         "$elapsed_ms" \
         "$RECENTS_GESTURE_SHA256"
@@ -3597,7 +3597,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
             || fail 'the focused Recents gesture driver remained staged'
         framework_anr="$(framework_anr_receipt)" \
             || fail 'the focused Recents framework ANR receipt is invalid'
-        printf 'ANDROID_EMULATOR_RECENTS=pass task_removals=%s actions=%s open_actions=%s task_ids=distinct open=statusbar-binder-toggle driver=android14-ui-automation-direct events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s driver_sha256=%s framework_anr=%s service=never-started relaunch=resumed apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
+        printf 'ANDROID_EMULATOR_RECENTS=pass task_removals=%s actions=%s open_actions=%s task_ids=distinct open=ui-automation-app-switch-key-display-0 driver=android14-ui-automation-direct events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s driver_sha256=%s framework_anr=%s service=never-started relaunch=resumed apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
             "$RECENTS_FOCUSED_CYCLES" "$RECENTS_FOCUSED_CYCLES" \
             "$RECENTS_FOCUSED_CYCLES" \
             "$RECENTS_DISMISS_GESTURE_EVENTS" "$RECENTS_DISMISS_GESTURE_STEPS" \

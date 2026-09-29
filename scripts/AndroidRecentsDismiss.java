@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.UiAutomation;
 import android.graphics.Rect;
 import android.os.SystemClock;
+import android.util.SparseArray;
 import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.MotionEvent;
@@ -12,8 +13,10 @@ import android.view.accessibility.AccessibilityWindowInfo;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.TimeoutException;
 
 public final class AndroidRecentsDismiss {
     private static final int GESTURE_STEPS = 10;
@@ -192,9 +195,44 @@ public final class AndroidRecentsDismiss {
     }
 
     private static Rect findUniqueRecentsButton(UiAutomation automation) {
-        openPhase("windows-query-start");
-        List<AccessibilityWindowInfo> windows = automation.getWindows();
-        openPhase("windows-query-complete", "windows=%d", windows.size());
+        openPhase("idle-wait-start", "quiet_ms=500 limit_ms=5000");
+        try {
+            automation.waitForIdle(500, 5000);
+            openPhase("idle-wait-complete", "quiet_ms=500 limit_ms=5000");
+        } catch (TimeoutException error) {
+            openPhase("idle-wait-timeout", "quiet_ms=500 limit_ms=5000");
+        }
+
+        openPhase("active-root-query-start");
+        AccessibilityNodeInfo activeRoot = automation.getRootInActiveWindow();
+        if (activeRoot == null) {
+            openPhase("active-root-query-null");
+        } else {
+            openPhase("active-root-query-complete");
+            activeRoot.recycle();
+        }
+
+        openPhase("all-display-windows-query-start");
+        SparseArray<List<AccessibilityWindowInfo>> windowsByDisplay =
+                automation.getWindowsOnAllDisplays();
+        List<AccessibilityWindowInfo> windows = new ArrayList<>();
+        for (int displayIndex = 0;
+                displayIndex < windowsByDisplay.size();
+                displayIndex++) {
+            List<AccessibilityWindowInfo> displayWindows =
+                    windowsByDisplay.valueAt(displayIndex);
+            openPhase(
+                    "display-windows",
+                    "display=%d windows=%d",
+                    windowsByDisplay.keyAt(displayIndex),
+                    displayWindows.size());
+            windows.addAll(displayWindows);
+        }
+        openPhase(
+                "all-display-windows-query-complete",
+                "displays=%d windows=%d",
+                windowsByDisplay.size(),
+                windows.size());
         Rect targetBounds = null;
         int matches = 0;
         int windowIndex = 0;
@@ -368,7 +406,6 @@ public final class AndroidRecentsDismiss {
             }
         } catch (Exception error) {
             failure = error;
-            throw error;
         } finally {
             if (connected) {
                 try {
@@ -383,10 +420,17 @@ public final class AndroidRecentsDismiss {
                     if (failure != null) {
                         failure.addSuppressed(disconnectError);
                     } else {
-                        throw disconnectError;
+                        failure = disconnectError;
                     }
                 }
             }
+        }
+
+        if (failure != null) {
+            failure.printStackTrace(System.err);
+            System.err.flush();
+            System.exit(1);
+            return;
         }
 
         if (openRecents) {
@@ -416,5 +460,7 @@ public final class AndroidRecentsDismiss {
                     GESTURE_STEP_MILLIS,
                     elapsedMillis);
         }
+        System.out.flush();
+        System.exit(0);
     }
 }

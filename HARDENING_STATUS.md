@@ -1050,18 +1050,21 @@ This proves the peer build/publication boundary, not execution of these peer byt
 or a release artifact. Replay now requires explicit `--scenario peer-lifecycle --peer-commit COMMIT
 --peer-manifest-sha256 SHA256` authority, shares the fixed inert capsule read-only/noexec, and uses
 the VM-gated materializer instead of a build container. The execution copy is mounted read-only and
-its exact mount/layout is checked. The first actual consumer attempt at `46bd01ba` refused before
-VM boot: the exporter requires a mode-0700 share root, whereas the capsule is deliberately mode 0500.
-The source now exports the existing private commit parent, requires its sole entry to be the sealed
-capsule, and checks both parent and capsule metadata in the guest; neither the exporter policy nor
-the capsule permissions are weakened. That failed run was identity-bound reconciled after its owners
-joined. The next transaction at `03ed88bb` booted and joined all three read-only exporters, but
-stopped at source admission before Android execution: the new list incorrectly classified the
-Git-executable `publish-artifact-result.py` as non-executable data. Its admission now checks the
-exact executable source mode, with no permission fallback. The failed VM has exited; its bounded
-diagnostic record is retained in the audit and its exact run root is reconciled before another attempt.
-A complete consumer replay is still unverified; peer execution, Android pixels, and the intermittent
-defect remain OPEN.
+its exact mount/layout is checked. The exporter admits only the private mode-0700 commit parent,
+whose sole child is the sealed mode-0500 capsule; source admission preserves each helper's exact
+Git executable mode. Transaction `275d923d` admitted the retained capsule and executed its production
+RustDesk peer without rebuilding, with the real frame observer receiving 1,732 emulator frames.
+The replay nevertheless failed: Android's initial UI reported `System UI isn't responding`, and
+the production screen-sharing command could not be observed. No authenticated Android peer session,
+task-replacement pixels, or causal reproduction of the reported hang was established. QEMU/exporter
+owners joined and host listener inventories were identical. The bounded audit record precedes
+identity-bound failed-root reconciliation; this is partial consumer execution, not a complete pass.
+The sparse progress marker arrived only at producer EOF, despite output `fflush()`. The guest filter
+now uses a line-by-line Bash reader; a VM-only real-pipe A/B exercises old input buffering versus
+progress before EOF with diagnostics filtered and both child processes joined. That actual UID/GID-4000
+pipe A/B passed in the zero-NIC VM; the surrounding authority smoke later hit its unchanged 90-second
+deadline and is not a complete pass. End-to-end forwarding in a healthy Android replay, presentation,
+and the intermittent defect remain OPEN.
 The attempted shared authority smoke hit its existing 90-second VM deadline after the 22 capsule
 cases and several authority entries passed; it is not a complete transaction or consumer verdict.
 The peer launcher now validates the externally digest-bound capsule manifest and all seven execution

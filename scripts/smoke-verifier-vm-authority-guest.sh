@@ -2966,6 +2966,17 @@ run_android_emulator_app() {
         "$DEV_CHECK_IMAGE_ID" "$DEV_CHECK_IMAGE_CONFIG_ID" "$apk_sha256"
 }
 
+forward_android_runtime_progress() {
+    local line
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            'ANDROID_PEER_ARTIFACT_ADMITTED=pass '*)
+                printf 'ANDROID_RUNTIME_PROGRESS event=peer-admitted build=absent\n'
+                ;;
+        esac
+    done
+}
+
 run_android_emulator_runtime() {
     local inputs=/mnt/rustdesk-sealed-inputs
     local artifact_input=/mnt/rustdesk-android-artifact-input
@@ -3314,12 +3325,7 @@ run_android_emulator_runtime() {
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
         /bin/bash "$source_root/scripts/android-emulator-runtime-check.sh" \
         "${runtime_arguments[@]}" \
-        2>&1 | tee "$output" | awk '
-            /^ANDROID_PEER_ARTIFACT_ADMITTED=pass / {
-                print "ANDROID_RUNTIME_PROGRESS event=peer-admitted build=absent"
-                fflush()
-            }
-        '
+        2>&1 | tee "$output" | forward_android_runtime_progress
     workload_status=$?
     set -e
     if [ "$workload_status" -ne 0 ]; then
@@ -4640,7 +4646,7 @@ for verify_source in verify.sh verify-release.sh build-release.sh \
     android-emulator-runtime-check.sh AndroidRecentsDismiss.java \
     verify-android-emulator-apk.py \
     verify-android-apk-manifest.py publish-artifact-result.py \
-    android-peer-artifact.py test-android-peer-artifact.py \
+    android-peer-artifact.py test-android-peer-artifact.py test-android-runtime-progress.py \
     dart-audit.sh dart-audit-result.py \
     verify-dart-verifier-authority.py verify-dart-audit-authority.py \
     smoke-verifier-vm-authority.sh smoke-verifier-vm-authority-guest.sh \
@@ -4925,6 +4931,15 @@ peer_artifact_output="$(
   'ANDROID_PEER_ARTIFACT=pass fixture=system-elf files=7 cases=22 publication=noclobber admission=exact execution=guest-only cleanup=joined' ] \
     || fail "Android peer artifact authority result differs: $peer_artifact_output"
 printf '%s\n' "$peer_artifact_output"
+
+runtime_progress_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$VERIFY_REPO/scripts/test-android-runtime-progress.py"
+)" || fail 'numeric-nonroot Android runtime progress test failed'
+[ "$runtime_progress_output" = \
+  'ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof diagnostics=filtered cardinality=1 children=joined' ] \
+    || fail "Android runtime progress result differs: $runtime_progress_output"
+printf '%s\n' "$runtime_progress_output"
 
 if /bin/bash "$VERIFY_SCRIPT" --self-test-workspace \
     >"$ROOT/root-entry.out" 2>"$ROOT/root-entry.err"; then

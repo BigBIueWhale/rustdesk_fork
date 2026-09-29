@@ -251,6 +251,11 @@ class RustdeskImpl {
         () => js.context.callMethod('getByName', ['option:session', arg]));
   }
 
+  String? sessionGetOptionSync(
+      {required UuidValue sessionId, required String arg, dynamic hint}) {
+    return js.context.callMethod('getByName', ['option:session', arg]);
+  }
+
   Future<void> sessionLogin(
       {required UuidValue sessionId,
       required String password,
@@ -366,6 +371,12 @@ class RustdeskImpl {
       {required UuidValue sessionId, dynamic hint}) {
     return Future(() =>
         js.context.callMethod('getByName', ['option:session', 'view_style']));
+  }
+
+  String? sessionGetViewStyleSync(
+      {required UuidValue sessionId, dynamic hint}) {
+    return js.context
+        .callMethod('getByName', ['option:session', 'view_style']);
   }
 
   Future<void> sessionSetViewStyle(
@@ -800,6 +811,16 @@ class RustdeskImpl {
       required int height,
       dynamic hint}) {
     return Future.value();
+  }
+
+  String sessionSetSizeSync(
+      {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
+      required int display,
+      required int width,
+      required int height,
+      dynamic hint}) {
+    return '';
   }
 
   Future<void> sessionSendSelectedSessionId(

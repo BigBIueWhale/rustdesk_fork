@@ -285,6 +285,10 @@ pub fn session_get_option(session_id: SessionID, arg: String) -> Option<String> 
     }
 }
 
+pub fn session_get_option_sync(session_id: SessionID, arg: String) -> SyncReturn<Option<String>> {
+    SyncReturn(session_get_option(session_id, arg))
+}
+
 pub fn session_login(session_id: SessionID, password: String, remember: bool) {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         session.login(password, remember);
@@ -443,6 +447,10 @@ pub fn session_get_view_style(session_id: SessionID) -> Option<String> {
     } else {
         None
     }
+}
+
+pub fn session_get_view_style_sync(session_id: SessionID) -> SyncReturn<Option<String>> {
+    SyncReturn(session_get_view_style(session_id))
 }
 
 pub fn session_set_view_style(session_id: SessionID, value: String) {
@@ -981,6 +989,26 @@ pub fn session_set_size(
     height: usize,
 ) -> Result<()> {
     super::flutter::session_set_size(session_id, client_owner_id, display, width, height)
+}
+
+pub fn session_set_size_sync(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    display: usize,
+    width: usize,
+    height: usize,
+) -> SyncReturn<String> {
+    SyncReturn(
+        session_set_size(
+            session_id,
+            client_owner_id,
+            display,
+            width,
+            height,
+        )
+        .err()
+        .map_or_else(String::new, |error| error.to_string()),
+    )
 }
 
 pub fn session_send_selected_session_id(session_id: SessionID, sid: String) {

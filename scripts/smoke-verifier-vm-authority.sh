@@ -3206,6 +3206,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     )
     [ "${#android_peer_lifecycle_receipts[@]}" -eq 1 ] \
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android real-peer lifecycle receipt is absent or duplicated'; }
+    printf '%s\n' "${android_peer_lifecycle_receipts[@]}"
         android_runtime_peer=production-loopback-cpace-changing-display
     else
         mapfile -t android_recents_receipts < <(

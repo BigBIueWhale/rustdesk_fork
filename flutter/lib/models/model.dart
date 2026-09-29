@@ -929,7 +929,7 @@ class FfiModel with ChangeNotifier {
           !isCurrentDisplayTopology(sessionId, expectedTopologyRevision)) {
         return false;
       }
-      await _updateSessionWidthHeight(sessionId, expectedClientOwnerId);
+      _updateSessionWidthHeight(sessionId, expectedClientOwnerId);
 
       // Keep pointer lock center in sync when using relative mouse mode.
       // Note: updatePointerLockCenter is async-safe (handles errors internally),
@@ -1241,8 +1241,8 @@ class FfiModel with ChangeNotifier {
     });
   }
 
-  Future<void> _updateSessionWidthHeight(
-      SessionID sessionId, SessionID expectedClientOwnerId) async {
+  void _updateSessionWidthHeight(
+      SessionID sessionId, SessionID expectedClientOwnerId) {
     if (_rect == null) return;
     if (_rect!.width <= 0 || _rect!.height <= 0) {
       debugPrintStack(
@@ -1250,7 +1250,7 @@ class FfiModel with ChangeNotifier {
     } else {
       final displays = _pi.getCurDisplays();
       if (displays.length == 1) {
-        await bind.sessionSetSize(
+        final error = bind.sessionSetSizeSync(
           sessionId: sessionId,
           clientOwnerId: expectedClientOwnerId,
           display:
@@ -1258,15 +1258,21 @@ class FfiModel with ChangeNotifier {
           width: displays[0].width,
           height: displays[0].height,
         );
+        if (error.isNotEmpty) {
+          throw StateError(error);
+        }
       } else {
         for (int i = 0; i < displays.length; ++i) {
-          await bind.sessionSetSize(
+          final error = bind.sessionSetSizeSync(
             sessionId: sessionId,
             clientOwnerId: expectedClientOwnerId,
             display: i,
             width: displays[i].width,
             height: displays[i].height,
           );
+          if (error.isNotEmpty) {
+            throw StateError(error);
+          }
         }
       }
     }
@@ -1343,7 +1349,7 @@ class FfiModel with ChangeNotifier {
       if (optLocal != '') {
         _touchMode = optLocal == 'Y';
       } else {
-        final optSession = await bind.sessionGetOption(
+        final optSession = bind.sessionGetOptionSync(
             sessionId: expectedSessionId, arg: kOptionTouchMode);
         if (!isCurrentDisplayTopology(
             expectedSessionId, topologyRevision)) return;
@@ -2442,7 +2448,7 @@ class CanvasModel with ChangeNotifier {
     if (!_acceptsExpectedDisplayTopology(
         expectedSessionId, expectedDisplayTopologyRevision)) return;
     final selectedSessionId = expectedSessionId ?? sessionId;
-    final style = await bind.sessionGetViewStyle(sessionId: selectedSessionId);
+    final style = bind.sessionGetViewStyleSync(sessionId: selectedSessionId);
     if (!_acceptsExpectedDisplayTopology(
         expectedSessionId, expectedDisplayTopologyRevision)) return;
     if (style == null) {
@@ -2528,7 +2534,7 @@ class CanvasModel with ChangeNotifier {
     if (!_acceptsExpectedDisplayTopology(
         expectedSessionId, expectedDisplayTopologyRevision)) return;
     if (_scrollStyle == ScrollStyle.scrollauto) return;
-    style ??= await bind.sessionGetViewStyle(
+    style ??= bind.sessionGetViewStyleSync(
         sessionId: expectedSessionId ?? sessionId);
     if (!_acceptsExpectedDisplayTopology(
         expectedSessionId, expectedDisplayTopologyRevision)) return;

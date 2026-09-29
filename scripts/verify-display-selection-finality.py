@@ -459,6 +459,21 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "renderer-size FFI exact-owner forwarding",
     )
+    ffi_size_sync = extract_braced_item(
+        ffi, "pub fn session_set_size_sync(", "synchronous renderer-size FFI"
+    )
+    require_order(
+        ffi_size_sync,
+        (
+            "client_owner_id: SessionID",
+            "-> SyncReturn<String>",
+            "session_set_size(",
+            "client_owner_id,",
+            ".err()",
+            ".map_or_else(String::new, |error| error.to_string())",
+        ),
+        "synchronous renderer-size FFI preserves exact-owner errors",
+    )
     dart_size_region = extract_between(
         sources["model_dart"],
         "Future<bool> updateCurDisplay(",
@@ -470,10 +485,12 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "final expectedClientOwnerId = ffi.clientOwnerId;",
             "ffi.isCurrentSessionOwner(sessionId, expectedClientOwnerId)",
-            "await _updateSessionWidthHeight(sessionId, expectedClientOwnerId);",
+            "_updateSessionWidthHeight(sessionId, expectedClientOwnerId);",
+            "void _updateSessionWidthHeight(",
             "SessionID sessionId",
             "SessionID expectedClientOwnerId",
-            "async {",
+            "bind.sessionSetSizeSync(",
+            "throw StateError(error);",
         ),
         "Dart renderer sizing retains and rechecks the exact UI owner",
     )
@@ -481,9 +498,13 @@ def validate(sources: Dict[str, str]) -> None:
         raise VerificationError(
             "Dart renderer sizing must pass the exact UI owner in both display shapes"
         )
-    if dart_size_region.count("await bind.sessionSetSize(") != 2:
+    if dart_size_region.count("bind.sessionSetSizeSync(") != 2:
         raise VerificationError(
-            "Dart renderer sizing must await both bounded bridge-call shapes"
+            "Dart renderer sizing must synchronously commit both bounded bridge-call shapes"
+        )
+    if dart_size_region.count("throw StateError(error);") != 2:
+        raise VerificationError(
+            "Dart renderer sizing must fail both bridge-call shapes on native refusal"
         )
     dart_peer_info = extract_between(
         sources["model_dart"],
@@ -512,7 +533,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     web_size = extract_between(
         sources["web_dart"],
-        "Future<void> sessionSetSize(",
+        "String sessionSetSizeSync(",
         "\n  Future<void> sessionSendSelectedSessionId(",
         "web renderer sizing",
     )
@@ -841,7 +862,8 @@ def validate(sources: Dict[str, str]) -> None:
             "_sessionOwner = nextOwner;",
             "_displaySelections = DisplaySelectionQueue(nextOwner);",
             "_sessionEvents = SessionEventQueue(nextOwner);",
-            "_softwareRgbaFrames = LatestFrameQueue(nextOwner);",
+            "_softwareRgbaFrames = LatestFrameQueue(nextOwner,",
+            "maxConcurrentDrainsPerKey: 3, maxCurrentDrainsPerKey: 2);",
             "_webRgbaFrames = LatestFrameQueue(nextOwner);",
         ),
         "fresh exact-pair queue installation",
@@ -1799,14 +1821,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", ") -> ResultType<()> {\n    for s in sessions::get_sessions() {\n        if let Some(admitted) = s.ui_handler.set_exact_owned_display_size(", ") {\n    for s in sessions::get_sessions() {\n        if let Some(admitted) = s.ui_handler.set_exact_owned_display_size(", "result-bearing renderer size admission"),
     ("ffi", "super::flutter::session_set_size(session_id, client_owner_id, display, width, height)", "super::flutter::session_set_size(session_id, session_id, display, width, height)", "renderer size FFI owner forwarding"),
     ("ffi", ") -> Result<()> {\n    super::flutter::session_set_size(session_id, client_owner_id, display, width, height)", ") {\n    super::flutter::session_set_size(session_id, client_owner_id, display, width, height)", "result-bearing renderer size FFI"),
-    ("model_dart", "await _updateSessionWidthHeight(sessionId, expectedClientOwnerId);", "await _updateSessionWidthHeight(sessionId, sessionId);", "Dart renderer size owner propagation"),
-    ("model_dart", "await bind.sessionSetSize(", "bind.sessionSetSize(", "awaited Dart renderer size finality"),
+    ("model_dart", "_updateSessionWidthHeight(sessionId, expectedClientOwnerId);", "_updateSessionWidthHeight(sessionId, sessionId);", "Dart renderer size owner propagation"),
+    ("model_dart", "bind.sessionSetSizeSync(", "bind.sessionSetSize(", "synchronous Dart renderer size finality"),
+    ("model_dart", "throw StateError(error);", "return;", "Dart renderer size refusal propagation"),
     ("model_dart", "clientOwnerId: expectedClientOwnerId", "clientOwnerId: sessionId", "Dart renderer size owner bridge argument"),
     ("model_dart", "final restoreDisplaySelection = !isCache && _pi.isSet.value;", "final restoreDisplaySelection = false;", "established reconnect display restoration"),
     ("model_dart", "if (!preserveDisplaySelection &&", "if (true &&", "reconnect display-state preservation"),
     ("model_dart", "!await selectRemoteDisplays(\n                ffi, expectedSessionId, reconnectDisplays)", "false", "awaited reconnect display restoration"),
     ("model_dart", "'The previous display selection could not be restored'", "'Reconnect display failure ignored'", "terminal reconnect display restoration failure"),
-    ("web_dart", "Future<void> sessionSetSize(\n      {required UuidValue sessionId,\n      required UuidValue clientOwnerId", "Future<void> sessionSetSize(\n      {required UuidValue sessionId,\n      required UuidValue retiredClientOwnerId", "web renderer size owner parity"),
+    ("web_dart", "String sessionSetSizeSync(\n      {required UuidValue sessionId,\n      required UuidValue clientOwnerId", "String sessionSetSizeSync(\n      {required UuidValue sessionId,\n      required UuidValue retiredClientOwnerId", "web renderer size owner parity"),
     ("flutter", "fn admit_session_start(\n    is_video_session: bool,", "fn admit_session_start_disabled(\n    is_video_session: bool,", "display-owned session-start admission"),
     ("flutter", "let starts_peer_connection = !has_ui_stream\n        && is_first_ui_session\n        && is_unselected_ui_session\n        && !is_awaiting_initial_display;", "let starts_peer_connection = !has_ui_stream\n        && is_first_ui_session\n        && !is_awaiting_initial_display;", "first unselected peer-connection start"),
     ("flutter", "&& is_unselected_ui_session\n        && !is_awaiting_initial_display;\n    if is_video_session", "&& is_unselected_ui_session;\n    if is_video_session", "pending initial owner cannot restart peer connection"),
@@ -1866,6 +1889,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("frame_queue_dart", "if (identical(_lanes[key], lane))", "if (false)", "exact per-display lane retirement"),
     ("model_dart", "_sessionEvents = SessionEventQueue(nextOwner);", "_sessionEvents = SessionEventQueue(_SessionOwner(Uuid().v4obj(), clientOwnerId));", "fresh session topology owner"),
     ("model_dart", "final sessionEventsRetired = _sessionEvents.retire(retiringOwner);", "final sessionEventsRetired = true;", "session topology owner retirement"),
+    ("model_dart", "maxConcurrentDrainsPerKey: 3, maxCurrentDrainsPerKey: 2", "maxConcurrentDrainsPerKey: 3, maxCurrentDrainsPerKey: 3", "bounded current software-frame conversions"),
     ("model_dart", "_webRgbaFrames = LatestFrameQueue(nextOwner);", "_webRgbaFrames = LatestFrameQueue(_SessionOwner(Uuid().v4obj(), clientOwnerId));", "fresh exact-owner web-frame queue"),
     ("model_dart", "final webRgbaFramesRetired = _webRgbaFrames.retire(retiringOwner);", "final webRgbaFramesRetired = true;", "exact web-frame queue retirement"),
     ("model_dart", "_orderedSessionTopologyEvents.contains(name)", "false", "ordered topology event admission"),

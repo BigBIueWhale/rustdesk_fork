@@ -1102,6 +1102,7 @@ verify_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"
 printf '%s\n' "${apk_receipts[0]}" "${recents_driver_build_receipts[0]}" \
     "${recents_driver_stage_receipts[0]}" \
     "${renderer_receipts[0]}" "${runtime_receipts[0]}" \
+    "${recents_open_action_receipts[@]}" \
     "${recents_dismiss_action_receipts[@]}" \
     "${recents_dismiss_outcome_receipts[@]}"
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then

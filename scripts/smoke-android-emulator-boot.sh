@@ -681,7 +681,7 @@ android_dart_presentation_stages() {
         "$ADB" -s "$SERIAL" logcat -d -v brief 2>/dev/null \
         | tr -d '\r' \
         | grep -Eo \
-            'RUSTDESK_PRESENTATION_STAGE stage=dart-image-notified session=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} display=[0-9]+ publication=[1-9][0-9]* wall_ms=[1-9][0-9]* event_queue_us=[0-9]+ take_us=[0-9]+ checkpoint_us=[0-9]+ decode_commit_us=[0-9]+ ui_finalize_us=[0-9]+ total_us=[0-9]+' \
+            'RUSTDESK_PRESENTATION_STAGE stage=dart-image-notified session=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} display=[0-9]+ publication=[1-9][0-9]* wall_ms=[1-9][0-9]* event_queue_us=[0-9]+ take_us=[0-9]+ checkpoint_us=[0-9]+ decode_commit_us=[0-9]+ ui_finalize_us=[0-9]+ total_us=[0-9]+ image_conversions_active=[0-9]+ image_conversions_waiting=[0-9]+ image_conversions_peak=[0-9]+' \
         || true
 }
 
@@ -775,6 +775,8 @@ emit_peer_presentation_stage_receipts() {
     local native_wall_ms receive_to_admit_us admit_to_dequeue_us decode_us
     local dart_session dart_display publication dart_wall_ms event_queue_us
     local take_us checkpoint_us decode_commit_us ui_finalize_us total_us
+    local image_conversions_active image_conversions_waiting
+    local image_conversions_peak
     local calculated_total connections= sessions=
     local previous_server_generation=0 previous_native_generation=0
     local index
@@ -817,7 +819,7 @@ emit_peer_presentation_stage_receipts() {
         receive_to_admit_us=${BASH_REMATCH[5]}
         admit_to_dequeue_us=${BASH_REMATCH[6]}
         decode_us=${BASH_REMATCH[7]}
-        [[ "$dart_line" =~ ^RUSTDESK_PRESENTATION_STAGE\ stage=dart-image-notified\ session=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\ display=([0-9]+)\ publication=([1-9][0-9]*)\ wall_ms=([1-9][0-9]*)\ event_queue_us=([0-9]+)\ take_us=([0-9]+)\ checkpoint_us=([0-9]+)\ decode_commit_us=([0-9]+)\ ui_finalize_us=([0-9]+)\ total_us=([0-9]+)$ ]] \
+        [[ "$dart_line" =~ ^RUSTDESK_PRESENTATION_STAGE\ stage=dart-image-notified\ session=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\ display=([0-9]+)\ publication=([1-9][0-9]*)\ wall_ms=([1-9][0-9]*)\ event_queue_us=([0-9]+)\ take_us=([0-9]+)\ checkpoint_us=([0-9]+)\ decode_commit_us=([0-9]+)\ ui_finalize_us=([0-9]+)\ total_us=([0-9]+)\ image_conversions_active=([0-9]+)\ image_conversions_waiting=([0-9]+)\ image_conversions_peak=([0-9]+)$ ]] \
             || return 1
         dart_session=${BASH_REMATCH[1]}
         dart_display=${BASH_REMATCH[2]}
@@ -829,6 +831,9 @@ emit_peer_presentation_stage_receipts() {
         decode_commit_us=${BASH_REMATCH[8]}
         ui_finalize_us=${BASH_REMATCH[9]}
         total_us=${BASH_REMATCH[10]}
+        image_conversions_active=${BASH_REMATCH[11]}
+        image_conversions_waiting=${BASH_REMATCH[12]}
+        image_conversions_peak=${BASH_REMATCH[13]}
         calculated_total=$((event_queue_us + take_us + checkpoint_us \
             + decode_commit_us + ui_finalize_us))
         [ "$server_display" -eq "$native_display" ] \
@@ -837,6 +842,11 @@ emit_peer_presentation_stage_receipts() {
             && [ "$server_generation" -gt "$previous_server_generation" ] \
             && [ "$native_generation" -gt "$previous_native_generation" ] \
             && [ "$calculated_total" -eq "$total_us" ] \
+            && [ "$image_conversions_active" -ge 1 ] \
+            && [ "$image_conversions_active" -le 3 ] \
+            && [ "$image_conversions_waiting" -le 64 ] \
+            && [ "$image_conversions_peak" -ge "$image_conversions_active" ] \
+            && [ "$image_conversions_peak" -le 3 ] \
             || return 1
         case " $connections " in
             *" $server_connection "*) return 1 ;;
@@ -848,7 +858,7 @@ emit_peer_presentation_stage_receipts() {
         sessions="${sessions:+$sessions }$dart_session"
         previous_server_generation=$server_generation
         previous_native_generation=$native_generation
-        printf 'ANDROID_PEER_PRESENTATION_STAGE=pass phase=%s ordinal=%s server_connection=%s display=%s server_wire_generation=%s viewer_wire_generation=%s server_wall_ms=%s server_queue_us=%s viewer_mailbox_generation=%s viewer_wall_ms=%s receive_to_admit_us=%s admit_to_dequeue_us=%s decode_us=%s dart_session=%s publication=%s dart_wall_ms=%s event_queue_us=%s take_us=%s checkpoint_us=%s decode_commit_us=%s ui_finalize_us=%s dart_total_us=%s\n' \
+        printf 'ANDROID_PEER_PRESENTATION_STAGE=pass phase=%s ordinal=%s server_connection=%s display=%s server_wire_generation=%s viewer_wire_generation=%s server_wall_ms=%s server_queue_us=%s viewer_mailbox_generation=%s viewer_wall_ms=%s receive_to_admit_us=%s admit_to_dequeue_us=%s decode_us=%s dart_session=%s publication=%s dart_wall_ms=%s event_queue_us=%s take_us=%s checkpoint_us=%s decode_commit_us=%s ui_finalize_us=%s dart_total_us=%s image_conversions_active=%s image_conversions_waiting=%s image_conversions_peak=%s\n' \
             "$phase" "$((index + 1))" "$server_connection" \
             "$server_display" "$server_generation" "$native_generation" \
             "$server_wall_ms" \
@@ -856,7 +866,9 @@ emit_peer_presentation_stage_receipts() {
             "$receive_to_admit_us" "$admit_to_dequeue_us" "$decode_us" \
             "$dart_session" "$publication" "$dart_wall_ms" \
             "$event_queue_us" "$take_us" "$checkpoint_us" \
-            "$decode_commit_us" "$ui_finalize_us" "$total_us"
+            "$decode_commit_us" "$ui_finalize_us" "$total_us" \
+            "$image_conversions_active" "$image_conversions_waiting" \
+            "$image_conversions_peak"
     done
 }
 

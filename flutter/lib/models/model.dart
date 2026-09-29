@@ -59,6 +59,15 @@ typedef ReconnectHandle = Function(OverlayDialogManager, SessionID);
 // below; conflating the two lets a delayed dispose from an old route close its replacement.
 final _mobileClientOwnerId = Uuid().v4obj();
 
+// Raw-image conversion runs on one engine-owned concurrent/IO/UI pipeline per
+// Flutter isolate. Session replacement revokes commit authority but cannot
+// cancel work already handed to that pipeline, so every software-RGBA queue in
+// this isolate shares one hard admission budget.
+final _softwareRgbaDrainPool = LatestFrameDrainPool(
+  maxConcurrentDrains: 3,
+  maxWaitingDrains: 64,
+);
+
 class _SessionOwner {
   const _SessionOwner(this.sessionId, this.clientOwnerId);
 
@@ -4369,7 +4378,9 @@ class FFI {
     _displaySelections = DisplaySelectionQueue(nextOwner);
     _sessionEvents = SessionEventQueue(nextOwner);
     _softwareRgbaFrames = LatestFrameQueue(nextOwner,
-        maxConcurrentDrainsPerKey: 3, maxCurrentDrainsPerKey: 2);
+        maxConcurrentDrainsPerKey: 3,
+        maxCurrentDrainsPerKey: 2,
+        drainPool: _softwareRgbaDrainPool);
     _webRgbaFrames = LatestFrameQueue(nextOwner);
     _webCursorPositions = LatestFrameQueue(nextOwner, maxKeys: 1);
     _webCursorShapes = LatestFrameQueue(nextOwner, maxKeys: 1);
@@ -4639,7 +4650,7 @@ class FFI {
         final decodeCommitUs = imageCommitCompleteUs - checkpointCompleteUs;
         final uiFinalizeUs = uiFinalizeCompleteUs - imageCommitCompleteUs;
         debugPrint(
-            'RUSTDESK_PRESENTATION_STAGE stage=dart-image-notified session=$activeSessionId display=${frame.display} publication=${frame.publication} wall_ms=${DateTime.now().millisecondsSinceEpoch} event_queue_us=$handlerEntryUs take_us=$takeUs checkpoint_us=$checkpointUs decode_commit_us=$decodeCommitUs ui_finalize_us=$uiFinalizeUs total_us=$uiFinalizeCompleteUs');
+            'RUSTDESK_PRESENTATION_STAGE stage=dart-image-notified session=$activeSessionId display=${frame.display} publication=${frame.publication} wall_ms=${DateTime.now().millisecondsSinceEpoch} event_queue_us=$handlerEntryUs take_us=$takeUs checkpoint_us=$checkpointUs decode_commit_us=$decodeCommitUs ui_finalize_us=$uiFinalizeUs total_us=$uiFinalizeCompleteUs image_conversions_active=${_softwareRgbaDrainPool.activeDrains} image_conversions_waiting=${_softwareRgbaDrainPool.waitingDrains} image_conversions_peak=${_softwareRgbaDrainPool.peakActiveDrains}');
       }
     }
   }

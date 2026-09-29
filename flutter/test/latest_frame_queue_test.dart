@@ -164,6 +164,220 @@ void main() {
         throwsArgumentError);
   });
 
+  test('shared drain pool survives queue replacement without minting capacity',
+      () async {
+    final pool = LatestFrameDrainPool(
+        maxConcurrentDrains: 3, maxWaitingDrains: 8);
+    final releaseOldFirst = Completer<void>();
+    final releaseOldSecond = Completer<void>();
+    final releaseReplacement = Completer<void>();
+    final oldFirstEntered = Completer<void>();
+    final oldSecondEntered = Completer<void>();
+    final replacementEntered = Completer<void>();
+    final newestEntered = Completer<void>();
+    var running = 0;
+    var observedPeak = 0;
+
+    Future<void> hold(Completer<void> entered, Completer<void> release) async {
+      running += 1;
+      observedPeak = running > observedPeak ? running : observedPeak;
+      entered.complete();
+      try {
+        await release.future;
+      } finally {
+        running -= 1;
+      }
+    }
+
+    final old = LatestFrameQueue<String, int, String>('old',
+        maxConcurrentDrainsPerKey: 3,
+        maxCurrentDrainsPerKey: 2,
+        drainPool: pool);
+    final oldFirst = old.submit(
+        'old', 0, 'old-first', (_) => hold(oldFirstEntered, releaseOldFirst));
+    await oldFirstEntered.future;
+    final oldSecond = old.submit('old', 0, 'old-second',
+        (_) => hold(oldSecondEntered, releaseOldSecond));
+    await oldSecondEntered.future;
+    expect(old.retire('old'), isTrue);
+    expect(await oldFirst, LatestFrameDisposition.retired);
+    expect(await oldSecond, LatestFrameDisposition.retired);
+
+    final replacement = LatestFrameQueue<String, int, String>('replacement',
+        maxConcurrentDrainsPerKey: 3,
+        maxCurrentDrainsPerKey: 2,
+        drainPool: pool);
+    final replacementRunning = replacement.submit(
+        'replacement',
+        0,
+        'replacement-running',
+        (_) => hold(replacementEntered, releaseReplacement));
+    await replacementEntered.future;
+    final replacementWaiting = replacement.submit(
+        'replacement', 0, 'replacement-waiting', (_) async {
+      fail('retired queued conversion must not start');
+    });
+    expect(pool.activeDrains, 3);
+    expect(pool.waitingDrains, 1);
+
+    expect(replacement.retire('replacement'), isTrue);
+    expect(await replacementRunning, LatestFrameDisposition.retired);
+    expect(await replacementWaiting, LatestFrameDisposition.retired);
+    expect(pool.waitingDrains, 0);
+
+    final newest = LatestFrameQueue<String, int, String>('newest',
+        maxConcurrentDrainsPerKey: 3,
+        maxCurrentDrainsPerKey: 2,
+        drainPool: pool);
+    final newestFrame = newest.submit('newest', 0, 'newest', (_) async {
+      running += 1;
+      observedPeak = running > observedPeak ? running : observedPeak;
+      newestEntered.complete();
+      running -= 1;
+    });
+    expect(newestEntered.isCompleted, isFalse);
+    expect(pool.activeDrains, 3);
+    expect(pool.waitingDrains, 1);
+
+    releaseOldFirst.complete();
+    await newestEntered.future;
+    expect(await newestFrame, LatestFrameDisposition.presented);
+    expect(observedPeak, 3);
+    expect(pool.peakActiveDrains, 3);
+
+    releaseOldSecond.complete();
+    releaseReplacement.complete();
+    await Future<void>.delayed(Duration.zero);
+    expect(pool.activeDrains, 0);
+    expect(pool.waitingDrains, 0);
+  });
+
+  test('shared drain pool retains only the latest waiting frame', () async {
+    final pool = LatestFrameDrainPool(
+        maxConcurrentDrains: 1, maxWaitingDrains: 4);
+    final blockerEntered = Completer<void>();
+    final releaseBlocker = Completer<void>();
+    final presented = <String>[];
+    final blocker = LatestFrameQueue<String, int, String>('blocker',
+        drainPool: pool);
+    final blocked = blocker.submit('blocker', 0, 'blocked', (_) async {
+      blockerEntered.complete();
+      await releaseBlocker.future;
+    });
+    await blockerEntered.future;
+
+    final waiting = LatestFrameQueue<String, int, String>('waiting',
+        drainPool: pool);
+    final first = waiting.submit('waiting', 0, 'first', (frame) async {
+      presented.add(frame);
+    });
+    final second = waiting.submit('waiting', 0, 'second', (frame) async {
+      presented.add(frame);
+    });
+    final latest = waiting.submit('waiting', 0, 'latest', (frame) async {
+      presented.add(frame);
+    });
+
+    expect(await first, LatestFrameDisposition.superseded);
+    expect(await second, LatestFrameDisposition.superseded);
+    expect(pool.waitingDrains, 1);
+    expect(presented, isEmpty);
+
+    releaseBlocker.complete();
+    expect(await blocked, LatestFrameDisposition.presented);
+    expect(await latest, LatestFrameDisposition.presented);
+    expect(presented, ['latest']);
+    expect(pool.activeDrains, 0);
+    expect(pool.waitingDrains, 0);
+  });
+
+  test('shared drain pool starts live waiting lanes in FIFO order', () async {
+    final pool = LatestFrameDrainPool(
+        maxConcurrentDrains: 1, maxWaitingDrains: 4);
+    final blockerEntered = Completer<void>();
+    final releaseBlocker = Completer<void>();
+    final blocker = LatestFrameQueue<String, int, String>('blocker',
+        drainPool: pool);
+    final blocked = blocker.submit('blocker', 0, 'blocked', (_) async {
+      blockerEntered.complete();
+      await releaseBlocker.future;
+    });
+    await blockerEntered.future;
+
+    final firstEntered = Completer<void>();
+    final releaseFirst = Completer<void>();
+    final firstWaiting = LatestFrameQueue<String, int, String>('first',
+        drainPool: pool);
+    final first = firstWaiting.submit('first', 0, 'first', (_) async {
+      firstEntered.complete();
+      await releaseFirst.future;
+    });
+    final secondEntered = Completer<void>();
+    final secondWaiting = LatestFrameQueue<String, int, String>('second',
+        drainPool: pool);
+    final second = secondWaiting.submit('second', 0, 'second', (_) async {
+      secondEntered.complete();
+    });
+    expect(pool.waitingDrains, 2);
+
+    releaseBlocker.complete();
+    expect(await blocked, LatestFrameDisposition.presented);
+    await firstEntered.future;
+    expect(secondEntered.isCompleted, isFalse);
+    expect(pool.activeDrains, 1);
+    expect(pool.waitingDrains, 1);
+
+    releaseFirst.complete();
+    expect(await first, LatestFrameDisposition.presented);
+    await secondEntered.future;
+    expect(await second, LatestFrameDisposition.presented);
+    expect(pool.activeDrains, 0);
+    expect(pool.waitingDrains, 0);
+  });
+
+  test('shared drain pool refuses excess waiting lanes visibly', () async {
+    final pool = LatestFrameDrainPool(
+        maxConcurrentDrains: 1, maxWaitingDrains: 1);
+    final blockerEntered = Completer<void>();
+    final releaseBlocker = Completer<void>();
+    final blocker = LatestFrameQueue<String, int, String>('blocker',
+        drainPool: pool);
+    final blocked = blocker.submit('blocker', 0, 'blocked', (_) async {
+      blockerEntered.complete();
+      await releaseBlocker.future;
+    });
+    await blockerEntered.future;
+
+    final firstWaiting = LatestFrameQueue<String, int, String>('first-waiting',
+        drainPool: pool);
+    final firstStarted = Completer<void>();
+    final first = firstWaiting.submit('first-waiting', 0, 'first', (_) async {
+      firstStarted.complete();
+    });
+    expect(pool.waitingDrains, 1);
+
+    final refused = LatestFrameQueue<String, int, String>('refused',
+        drainPool: pool);
+    var refusedStarted = false;
+    await expectLater(
+        refused.submit('refused', 0, 'refused', (_) async {
+          refusedStarted = true;
+        }),
+        throwsStateError);
+    expect(refusedStarted, isFalse);
+    expect(pool.activeDrains, 1);
+    expect(pool.waitingDrains, 1);
+    expect(await refused.submit('refused', 0, 'later', (_) async {}),
+        LatestFrameDisposition.retired);
+
+    releaseBlocker.complete();
+    expect(await blocked, LatestFrameDisposition.presented);
+    await firstStarted.future;
+    expect(await first, LatestFrameDisposition.presented);
+    expect(pool.activeDrains, 0);
+    expect(pool.waitingDrains, 0);
+  });
+
   test('parallel failure retires its peer and retained successor', () async {
     final failedEntered = Completer<void>();
     final peerEntered = Completer<void>();

@@ -73,9 +73,9 @@ Future<ui.Image?> decodeImageFromPixels(
     return null;
   }
 
-  final ui.FrameInfo frameInfo;
+  final Future<ui.FrameInfo> pendingFrame;
   try {
-    frameInfo = await codec.getNextFrame();
+    pendingFrame = codec.getNextFrame();
   } catch (e) {
     print("getNextFrame failed: $e");
     codec.dispose();
@@ -84,7 +84,20 @@ Future<ui.Image?> decodeImageFromPixels(
     return null;
   }
 
+  // The pinned Flutter engine retains SingleFrameCodec natively until this
+  // exact callback completes. Release the Dart handle immediately, matching
+  // dart:ui's decodeImageFromPixels implementation.
   codec.dispose();
+  final ui.FrameInfo frameInfo;
+  try {
+    frameInfo = await pendingFrame;
+  } catch (e) {
+    print("getNextFrame failed: $e");
+    buffer.dispose();
+    descriptor.dispose();
+    return null;
+  }
+
   buffer.dispose();
   descriptor.dispose();
   return frameInfo.image;

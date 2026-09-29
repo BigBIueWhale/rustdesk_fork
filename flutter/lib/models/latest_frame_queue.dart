@@ -1,9 +1,96 @@
 import 'dart:async';
+import 'dart:collection';
 
 enum LatestFrameDisposition {
   presented,
   superseded,
   retired,
+}
+
+/// Owns the hard asynchronous-presentation budget for one Flutter isolate.
+///
+/// A queue retirement revokes publication authority, but it cannot cancel work
+/// already handed to the engine. Sharing this pool across queue instances keeps
+/// those retired operations inside the same hard bound as their replacements.
+/// Waiters retain no extra backlog: each represents one queue lane, which still
+/// owns only its latest pending frame.
+class LatestFrameDrainPool {
+  LatestFrameDrainPool({
+    required this.maxConcurrentDrains,
+    this.maxWaitingDrains = 64,
+  }) {
+    if (maxConcurrentDrains < 1) {
+      throw ArgumentError.value(
+          maxConcurrentDrains, 'maxConcurrentDrains');
+    }
+    if (maxWaitingDrains < 1) {
+      throw ArgumentError.value(maxWaitingDrains, 'maxWaitingDrains');
+    }
+  }
+
+  final int maxConcurrentDrains;
+  final int maxWaitingDrains;
+  final Queue<_LatestFrameDrainWaiter> _waiters =
+      Queue<_LatestFrameDrainWaiter>();
+  int _activeDrains = 0;
+  int _waitingDrains = 0;
+  int _peakActiveDrains = 0;
+
+  int get activeDrains => _activeDrains;
+  int get waitingDrains => _waitingDrains;
+  int get peakActiveDrains => _peakActiveDrains;
+
+  bool _tryAcquire() {
+    if (_activeDrains >= maxConcurrentDrains) {
+      return false;
+    }
+    _activeDrains += 1;
+    if (_activeDrains > _peakActiveDrains) {
+      _peakActiveDrains = _activeDrains;
+    }
+    return true;
+  }
+
+  bool _enqueue(_LatestFrameDrainWaiter waiter) {
+    if (_waitingDrains >= maxWaitingDrains) {
+      return false;
+    }
+    waiter.waiting = true;
+    _waiters.addLast(waiter);
+    _waitingDrains += 1;
+    return true;
+  }
+
+  void _cancel(_LatestFrameDrainWaiter waiter) {
+    if (!waiter.waiting) return;
+    _waiters.remove(waiter);
+    waiter.waiting = false;
+    _waitingDrains -= 1;
+  }
+
+  void _release() {
+    if (_activeDrains < 1) {
+      throw StateError('frame drain pool released without an active drain');
+    }
+    _activeDrains -= 1;
+    while (_activeDrains < maxConcurrentDrains && _waiters.isNotEmpty) {
+      final waiter = _waiters.removeFirst();
+      if (!waiter.waiting) continue;
+      waiter.waiting = false;
+      _waitingDrains -= 1;
+      _activeDrains += 1;
+      var started = false;
+      try {
+        started = waiter.start();
+      } catch (error, stackTrace) {
+        Zone.current.scheduleMicrotask(
+            () => Zone.current.handleUncaughtError(error, stackTrace));
+      }
+      if (!started) {
+        _activeDrains -= 1;
+      }
+    }
+  }
 }
 
 /// Bounds asynchronous frame presentation for one exact owner.
@@ -13,14 +100,16 @@ enum LatestFrameDisposition {
 /// slots so a newer frame can overtake one slow, uncancellable engine future;
 /// other callers retain the default single running slot. Recovery may leave
 /// uncancellable predecessor drains, but their completions are powerless and
-/// the per-key and queue-wide limits still bound them. Different displays
-/// drain independently.
+/// the per-key and queue-wide limits still bound them. Different displays own
+/// independent latest-wins lanes; an optional shared pool bounds engine work
+/// across queue and session replacement.
 class LatestFrameQueue<Owner, Key, Frame> {
   LatestFrameQueue(
     this.owner, {
     this.maxKeys = 32,
     this.maxConcurrentDrainsPerKey = 2,
     this.maxCurrentDrainsPerKey = 1,
+    this.drainPool,
   }) {
     if (maxKeys < 1) {
       throw ArgumentError.value(maxKeys, 'maxKeys');
@@ -40,6 +129,7 @@ class LatestFrameQueue<Owner, Key, Frame> {
   final int maxKeys;
   final int maxConcurrentDrainsPerKey;
   final int maxCurrentDrainsPerKey;
+  final LatestFrameDrainPool? drainPool;
   final Map<Key, _LatestFrameLane<Frame>> _lanes = {};
   final Map<Key, int> _activeDrains = {};
   bool _retired = false;
@@ -108,12 +198,16 @@ class LatestFrameQueue<Owner, Key, Frame> {
       _lanes[key] = lane;
     }
 
-    if (lane.running.length < maxCurrentDrainsPerKey &&
-        (_activeDrains[key] ?? 0) < maxConcurrentDrainsPerKey) {
-      _startDrain(key, lane, entry);
-    } else {
-      lane.pending?.complete(LatestFrameDisposition.superseded);
-      lane.pending = entry;
+    if (_hasLocalCapacity(key, lane) && _tryStartDrain(key, lane, entry)) {
+      return _LatestFrameAdmission.accepted;
+    }
+
+    lane.pending?.complete(LatestFrameDisposition.superseded);
+    lane.pending = entry;
+    if (_hasLocalCapacity(key, lane) && !_ensurePoolWaiter(key, lane)) {
+      lane.pending = null;
+      _retireAll();
+      return _LatestFrameAdmission.exhausted;
     }
     return _LatestFrameAdmission.accepted;
   }
@@ -162,9 +256,57 @@ class LatestFrameQueue<Owner, Key, Frame> {
     return true;
   }
 
-  void _startDrain(
+  bool _hasLocalCapacity(Key key, _LatestFrameLane<Frame> lane) =>
+      lane.running.length < maxCurrentDrainsPerKey &&
+      (_activeDrains[key] ?? 0) < maxConcurrentDrainsPerKey;
+
+  bool _tryStartDrain(
       Key key, _LatestFrameLane<Frame> lane, _LatestFrameEntry<Frame> entry) {
-    final drain = _LatestFrameDrain(entry);
+    if (!_hasLocalCapacity(key, lane)) return false;
+    final pool = drainPool;
+    if (pool != null && !pool._tryAcquire()) {
+      return false;
+    }
+    _startDrain(key, lane, entry, hasPoolPermit: pool != null);
+    return true;
+  }
+
+  bool _ensurePoolWaiter(Key key, _LatestFrameLane<Frame> lane) {
+    if (lane.poolWaiter != null) return true;
+    final pool = drainPool;
+    if (pool == null) return false;
+    late final _LatestFrameDrainWaiter waiter;
+    waiter = _LatestFrameDrainWaiter(
+        () => _startPendingWithPoolPermit(key, lane, waiter));
+    lane.poolWaiter = waiter;
+    if (pool._enqueue(waiter)) {
+      return true;
+    }
+    lane.poolWaiter = null;
+    return false;
+  }
+
+  bool _startPendingWithPoolPermit(
+      Key key, _LatestFrameLane<Frame> lane, _LatestFrameDrainWaiter waiter) {
+    if (!identical(lane.poolWaiter, waiter)) return false;
+    lane.poolWaiter = null;
+    if (_retired ||
+        _suspended ||
+        !identical(_lanes[key], lane) ||
+        lane.pending == null ||
+        !_hasLocalCapacity(key, lane)) {
+      return false;
+    }
+    final pending = lane.pending!;
+    lane.pending = null;
+    _startDrain(key, lane, pending, hasPoolPermit: true);
+    return true;
+  }
+
+  void _startDrain(Key key, _LatestFrameLane<Frame> lane,
+      _LatestFrameEntry<Frame> entry,
+      {required bool hasPoolPermit}) {
+    final drain = _LatestFrameDrain(entry, hasPoolPermit);
     lane.running.add(drain);
     _activeDrains[key] = (_activeDrains[key] ?? 0) + 1;
     unawaited(_drain(key, lane, drain));
@@ -181,7 +323,14 @@ class LatestFrameQueue<Owner, Key, Frame> {
     }
     final pending = lane.pending!;
     lane.pending = null;
-    _startDrain(key, lane, pending);
+    if (_tryStartDrain(key, lane, pending)) return;
+    lane.pending = pending;
+    if (!_ensurePoolWaiter(key, lane)) {
+      lane.pending = null;
+      pending.completeError(StateError('frame drain pool capacity exhausted'),
+          StackTrace.current);
+      _retireAll();
+    }
   }
 
   Future<void> _drain(Key key, _LatestFrameLane<Frame> lane,
@@ -211,6 +360,9 @@ class LatestFrameQueue<Owner, Key, Frame> {
       } else {
         _activeDrains[key] = remaining;
       }
+      if (drain.hasPoolPermit) {
+        drainPool!._release();
+      }
       _startPendingIfPossible(key);
       final current = _lanes[key];
       if (current != null &&
@@ -223,6 +375,11 @@ class LatestFrameQueue<Owner, Key, Frame> {
 
   void _detachLanes() {
     for (final lane in _lanes.values) {
+      final waiter = lane.poolWaiter;
+      if (waiter != null) {
+        drainPool?._cancel(waiter);
+        lane.poolWaiter = null;
+      }
       for (final drain in lane.running) {
         drain.detached = true;
         drain.entry.complete(LatestFrameDisposition.retired);
@@ -243,13 +400,22 @@ class LatestFrameQueue<Owner, Key, Frame> {
 class _LatestFrameLane<Frame> {
   final Set<_LatestFrameDrain<Frame>> running = {};
   _LatestFrameEntry<Frame>? pending;
+  _LatestFrameDrainWaiter? poolWaiter;
 }
 
 class _LatestFrameDrain<Frame> {
-  _LatestFrameDrain(this.entry);
+  _LatestFrameDrain(this.entry, this.hasPoolPermit);
 
   final _LatestFrameEntry<Frame> entry;
+  final bool hasPoolPermit;
   bool detached = false;
+}
+
+class _LatestFrameDrainWaiter {
+  _LatestFrameDrainWaiter(this.start);
+
+  final bool Function() start;
+  bool waiting = false;
 }
 
 enum _LatestFrameAdmission {

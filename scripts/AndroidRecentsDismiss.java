@@ -28,6 +28,26 @@ public final class AndroidRecentsDismiss {
     private AndroidRecentsDismiss() {
     }
 
+    private static void openPhase(String phase) {
+        System.out.printf(Locale.ROOT, "ANDROID_RECENTS_OPEN_PHASE=%s%n", phase);
+        System.out.flush();
+    }
+
+    private static void openPhase(String phase, String detailFormat, Object... details) {
+        System.out.printf(
+                Locale.ROOT,
+                "ANDROID_RECENTS_OPEN_PHASE=%s " + detailFormat + "%n",
+                prepend(phase, details));
+        System.out.flush();
+    }
+
+    private static Object[] prepend(Object first, Object[] remaining) {
+        Object[] combined = new Object[remaining.length + 1];
+        combined[0] = first;
+        System.arraycopy(remaining, 0, combined, 1, remaining.length);
+        return combined;
+    }
+
     private static int requiredCoordinate(String[] arguments, int index, String name) {
         if (arguments.length != 4 || !arguments[index].matches("[0-9]+")) {
             throw new IllegalArgumentException("missing or malformed coordinate: " + name);
@@ -172,18 +192,37 @@ public final class AndroidRecentsDismiss {
     }
 
     private static Rect findUniqueRecentsButton(UiAutomation automation) {
+        openPhase("windows-query-start");
         List<AccessibilityWindowInfo> windows = automation.getWindows();
+        openPhase("windows-query-complete", "windows=%d", windows.size());
         Rect targetBounds = null;
         int matches = 0;
+        int windowIndex = 0;
         try {
             for (AccessibilityWindowInfo window : windows) {
+                openPhase(
+                        "window-root-start",
+                        "index=%d type=%d layer=%d active=%s focused=%s",
+                        windowIndex,
+                        window.getType(),
+                        window.getLayer(),
+                        window.isActive(),
+                        window.isFocused());
                 AccessibilityNodeInfo root = window.getRoot();
                 if (root == null) {
+                    openPhase("window-root-null", "index=%d", windowIndex);
+                    windowIndex++;
                     continue;
                 }
                 try {
+                    openPhase("window-query-start", "index=%d", windowIndex);
                     List<AccessibilityNodeInfo> nodes =
                             root.findAccessibilityNodeInfosByViewId(RECENTS_BUTTON_VIEW_ID);
+                    openPhase(
+                            "window-query-complete",
+                            "index=%d matches=%d",
+                            windowIndex,
+                            nodes.size());
                     for (AccessibilityNodeInfo node : nodes) {
                         try {
                             matches++;
@@ -209,6 +248,7 @@ public final class AndroidRecentsDismiss {
                 } finally {
                     root.recycle();
                 }
+                windowIndex++;
             }
         } finally {
             for (AccessibilityWindowInfo window : windows) {
@@ -284,25 +324,37 @@ public final class AndroidRecentsDismiss {
         long lookupElapsedMillis = 0;
         Rect openBounds = null;
         try {
+            if (openRecents) {
+                openPhase("connect-start");
+            }
             invoke(connect, wrapper);
             connected = true;
+            if (openRecents) {
+                openPhase("connect-complete");
+            }
             Object automationValue = invoke(getUiAutomation, wrapper);
             if (!(automationValue instanceof UiAutomation)) {
                 throw new IllegalStateException("UiAutomation wrapper returned a different type");
             }
             UiAutomation automation = (UiAutomation) automationValue;
             if (openRecents) {
+                openPhase("automation-ready");
+                openPhase("service-flags-start");
                 enableInteractiveWindows(automation);
+                openPhase("service-flags-complete");
                 long lookupStartedAt = SystemClock.uptimeMillis();
                 openBounds = findUniqueRecentsButton(automation);
                 lookupElapsedMillis = SystemClock.uptimeMillis() - lookupStartedAt;
+                openPhase("button-query-complete");
                 long clickStartedAt = SystemClock.uptimeMillis();
+                openPhase("click-start");
                 injectClick(
                         automation,
                         injectInputEvent,
                         openBounds.centerX(),
                         openBounds.centerY());
                 elapsedMillis = SystemClock.uptimeMillis() - clickStartedAt;
+                openPhase("click-complete");
             } else {
                 long startedAt = SystemClock.uptimeMillis();
                 injectGesture(
@@ -320,7 +372,13 @@ public final class AndroidRecentsDismiss {
         } finally {
             if (connected) {
                 try {
+                    if (openRecents) {
+                        openPhase("disconnect-start");
+                    }
                     invoke(disconnect, wrapper);
+                    if (openRecents) {
+                        openPhase("disconnect-complete");
+                    }
                 } catch (Exception disconnectError) {
                     if (failure != null) {
                         failure.addSuppressed(disconnectError);

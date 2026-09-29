@@ -1486,6 +1486,37 @@ print(*bounds.pop())
 PY
 }
 
+ui_exact_clickable_resource_bounds() {
+    local resource=$1
+    python3 -I -S - "$UI_XML" "$resource" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path, resource = sys.argv[1:]
+matches = [
+    node.attrib
+    for node in ET.parse(path).getroot().iter("node")
+    if node.attrib.get("resource-id") == resource
+]
+if len(matches) != 1:
+    raise SystemExit(1)
+attributes = matches[0]
+if attributes.get("enabled") != "true" or attributes.get("clickable") != "true":
+    raise SystemExit(1)
+match = re.fullmatch(
+    r"\[([0-9]+),([0-9]+)\]\[([0-9]+),([0-9]+)\]",
+    attributes.get("bounds", ""),
+)
+if not match:
+    raise SystemExit(1)
+left, top, right, bottom = map(int, match.groups())
+if right <= left or bottom <= top:
+    raise SystemExit(1)
+print(left, top, right, bottom)
+PY
+}
+
 wait_ui_resource_bounds() {
     local resource=$1 bounds=
     for _ in $(seq 1 12); do
@@ -1895,7 +1926,7 @@ stage_recents_gesture_driver() {
         || return 1
     RECENTS_RUNTIME_UIAUTOMATOR_SHA256=$runtime_digest
     RECENTS_GESTURE_STAGED=1
-    printf 'ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=%s framework=android14-ui-automation-direct open=systemui-recent-apps-click events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s device_path=%s\n' \
+    printf 'ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=%s framework=android14-ui-automation-direct open=platform-uiautomator-systemui-object-click events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s device_path=%s\n' \
         "$RECENTS_GESTURE_SHA256" "$RECENTS_DISMISS_GESTURE_EVENTS" \
         "$RECENTS_DISMISS_GESTURE_STEPS" "$RECENTS_DISMISS_GESTURE_STEP_MS" \
         "$RECENTS_RUNTIME_UIAUTOMATOR_SHA256" "$RECENTS_GESTURE_DEVICE_PATH"
@@ -1953,36 +1984,49 @@ current_app_task_id() {
 
 open_app_recents() {
     local expected_task_id=$1 lifecycle_cycle=$2
-    local open_output= open_receipt= open_elapsed_ms=
+    local open_output= open_bounds= left= top= right= bottom= center_x= center_y=
+    local lookup_started_ms= lookup_finished_ms= lookup_elapsed_ms=
+    local click_started_ms= click_finished_ms= click_elapsed_ms=
+    lookup_started_ms="$(monotonic_millis)" || return 1
+    capture_unobscured_ui_hierarchy complete || return 1
+    open_bounds="$(ui_exact_clickable_resource_bounds \
+        com.android.systemui:id/recent_apps 2>/dev/null || true)"
+    [[ "$open_bounds" =~ ^[0-9]+\ [0-9]+\ [0-9]+\ [0-9]+$ ]] || return 1
+    read -r left top right bottom <<<"$open_bounds"
+    center_x=$(((left + right) / 2))
+    center_y=$(((top + bottom) / 2))
+    lookup_finished_ms="$(monotonic_millis)" || return 1
+    lookup_elapsed_ms=$((lookup_finished_ms - lookup_started_ms))
+    click_started_ms="$(monotonic_millis)" || return 1
     if ! open_output="$(timeout --signal=TERM --kill-after=2s 30s \
-        "$ADB" -s "$SERIAL" shell env \
-        "CLASSPATH=$RECENTS_RUNTIME_UIAUTOMATOR_PATH:$RECENTS_GESTURE_DEVICE_PATH" \
-        /system/bin/app_process /system/bin \
-        com.rustdesk.harness.AndroidRecentsDismiss click-recents-button \
+        "$ADB" -s "$SERIAL" shell uiautomator runtest \
+        "${RECENTS_GESTURE_DEVICE_PATH##*/}" \
+        -c 'com.rustdesk.harness.AndroidRecentsDismiss$OpenRecentsTest#testClickRecentsButton' \
+        -e expected_left "$left" -e expected_top "$top" \
+        -e expected_right "$right" -e expected_bottom "$bottom" \
         2>&1 | tr -d '\r')"; then
         printf 'ANDROID_RECENTS_OPEN_OUTPUT_BEGIN cycle=%s task_id=%s\n%s\nANDROID_RECENTS_OPEN_OUTPUT_END cycle=%s task_id=%s\n' \
             "$lifecycle_cycle" "$expected_task_id" "$open_output" \
             "$lifecycle_cycle" "$expected_task_id" >&2
         return 1
     fi
-    open_receipt="$(grep -E \
-        '^ANDROID_RECENTS_DIRECT_OPEN=pass action=systemui-recent-apps-click matches=1 elapsed_ms=[0-9]+$' \
-        <<<"$open_output" || true)"
+    click_finished_ms="$(monotonic_millis)" || return 1
+    click_elapsed_ms=$((click_finished_ms - click_started_ms))
     [ "${#open_output}" -le 16384 ] \
-        && [ "$(grep -c '^ANDROID_RECENTS_DIRECT_OPEN=' \
-             <<<"$open_output")" -eq 1 ] \
-        && [ -n "$open_receipt" ] \
+        && [ "$(grep -Fxc 'OK (1 test)' <<<"$open_output")" -eq 1 ] \
+        && ! grep -Fq 'FAILURES!!!' <<<"$open_output" \
         || {
             printf 'ANDROID_RECENTS_OPEN_OUTPUT_BEGIN cycle=%s task_id=%s\n%s\nANDROID_RECENTS_OPEN_OUTPUT_END cycle=%s task_id=%s\n' \
                 "$lifecycle_cycle" "$expected_task_id" "$open_output" \
                 "$lifecycle_cycle" "$expected_task_id" >&2
             return 1
         }
-    [[ "$open_receipt" =~ elapsed_ms=([0-9]+)$ ]] || return 1
-    open_elapsed_ms=${BASH_REMATCH[1]}
-    [ "$open_elapsed_ms" -le 5000 ] || return 1
-    printf 'ANDROID_RECENTS_OPEN_ACTION=clicked cycle=%s task_id=%s mechanism=ui-automation-systemui-recent-apps matches=1 driver_elapsed_ms=%s driver_sha256=%s\n' \
-        "$lifecycle_cycle" "$expected_task_id" "$open_elapsed_ms" \
+    [ "$lookup_elapsed_ms" -le 30000 ] \
+        && [ "$click_elapsed_ms" -le 30000 ] || return 1
+    printf 'ANDROID_RECENTS_OPEN_ACTION=clicked cycle=%s task_id=%s resource=com.android.systemui:id/recent_apps bounds=%s,%s,%s,%s center=%s,%s mechanism=platform-uiautomator-object-click matches=1 lookup_elapsed_ms=%s driver_elapsed_ms=%s driver_sha256=%s\n' \
+        "$lifecycle_cycle" "$expected_task_id" \
+        "$left" "$top" "$right" "$bottom" "$center_x" "$center_y" \
+        "$lookup_elapsed_ms" "$click_elapsed_ms" \
         "$RECENTS_GESTURE_SHA256"
 }
 
@@ -3579,7 +3623,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
             || fail 'the focused Recents receipt is not ready'
         [ "$RECENTS_GESTURE_STAGED" -eq 0 ] \
             || fail 'the focused Recents gesture driver remained staged'
-        printf 'ANDROID_EMULATOR_RECENTS=pass task_removals=%s actions=%s open_actions=%s task_ids=distinct open=systemui-recent-apps-click driver=android14-ui-automation-direct events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s driver_sha256=%s service=never-started relaunch=resumed apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
+        printf 'ANDROID_EMULATOR_RECENTS=pass task_removals=%s actions=%s open_actions=%s task_ids=distinct open=platform-uiautomator-systemui-object-click driver=android14-ui-automation-direct events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s driver_sha256=%s service=never-started relaunch=resumed apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
             "$RECENTS_FOCUSED_CYCLES" "$RECENTS_FOCUSED_CYCLES" \
             "$RECENTS_FOCUSED_CYCLES" \
             "$RECENTS_DISMISS_GESTURE_EVENTS" "$RECENTS_DISMISS_GESTURE_STEPS" \

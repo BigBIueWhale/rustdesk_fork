@@ -764,6 +764,11 @@ else
     observer_status=not-applicable
 fi
 if [ "$runtime_status" -ne 0 ]; then
+    awk '
+        /^ANDROID_FRAMEWORK_DIAGNOSTIC_BEGIN$/ { in_diag = 1 }
+        in_diag { print }
+        /^ANDROID_FRAMEWORK_DIAGNOSTIC_END$/ { in_diag = 0 }
+    ' "$RUNTIME_LOG" >&2
     tail -n 240 "$RUNTIME_LOG" >&2
     [ "$RUNTIME_SCENARIO" != peer-lifecycle ] \
         || tail -n 240 "$OBSERVER_LOG" >&2
@@ -1050,7 +1055,7 @@ for lifecycle_cycle in $(seq 1 "$expected_recents_cycles"); do
 done
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
 mapfile -t lifecycle_receipts < <(grep -E \
-    '^ANDROID_EMULATOR_LIFECYCLE=pass task_removals=6 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=(absent|waited-([1-9]|1[0-2])) immersive_cling=(absent|dismissed-1) apk_sha256=[0-9a-f]{64} vm_network=none container_network=none cleanup=joined$' \
+    '^ANDROID_EMULATOR_LIFECYCLE=pass task_removals=6 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=absent immersive_cling=(absent|dismissed-1) apk_sha256=[0-9a-f]{64} vm_network=none container_network=none cleanup=joined$' \
     "$RUNTIME_LOG" || true)
 [ "${#lifecycle_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android lifecycle runtime receipt is absent or duplicated'; }
@@ -1076,7 +1081,7 @@ case "${peer_receipts[0]}" in
 esac
 else
 mapfile -t focused_recents_receipts < <(grep -E \
-    "^ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 open_actions=10 task_ids=distinct open=ui-automation-app-switch-key-display-0 driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$RECENTS_RUNTIME_UIAUTOMATOR_SHA256 driver_sha256=$RECENTS_DRIVER_SHA256 framework_anr=(absent|waited-([1-9]|1[0-2])) service=never-started relaunch=resumed apk_sha256=$APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
+    "^ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 open_actions=10 task_ids=distinct open=ui-automation-app-switch-key-display-0 driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$RECENTS_RUNTIME_UIAUTOMATOR_SHA256 driver_sha256=$RECENTS_DRIVER_SHA256 framework_anr=absent service=never-started relaunch=resumed apk_sha256=$APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
     "$RUNTIME_LOG" || true)
 [ "${#focused_recents_receipts[@]}" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_EMULATOR_RECENTS=' "$RUNTIME_LOG")" -eq 1 ] \

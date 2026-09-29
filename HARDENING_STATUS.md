@@ -1065,6 +1065,14 @@ progress before EOF with diagnostics filtered and both child processes joined. T
 pipe A/B passed in the zero-NIC VM; the surrounding authority smoke later hit its unchanged 90-second
 deadline and is not a complete pass. End-to-end forwarding in a healthy Android replay, presentation,
 and the intermittent defect remain OPEN.
+The replay no longer presses an ANR dialog's Wait button or admits `framework_anr=waited-*` as
+success. Every captured hierarchy checks the Android ANR resource pair and known framework titles;
+an observation retains a sticky private diagnostic and refuses subsequent UI sampling/success.
+The diagnostic bounds events, framework logcat, ActivityManager's last ANR, and CPU usage to 128 KiB,
+records each command status, and is forwarded through both runtime wrappers before joined teardown.
+The first-run immersive tutorial remains a separate benign dismissal. Syntax/diff checks are complete;
+the real cached-artifact replay and native ANR-refusal/diagnostic evidence remain pending. No APK or
+peer code, cryptographic work factor, presentation/freshness budget, or persistent service was changed.
 The attempted shared authority smoke hit its existing 90-second VM deadline after the 22 capsule
 cases and several authority entries passed; it is not a complete transaction or consumer verdict.
 The peer launcher now validates the externally digest-bound capsule manifest and all seven execution

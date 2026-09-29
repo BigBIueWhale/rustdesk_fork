@@ -127,6 +127,7 @@ readonly EMULATOR_LOG=$WORK_ROOT/emulator.log
 readonly ADB_LOG=$WORK_ROOT/adb.log
 readonly FRAMEBUFFER=$WORK_ROOT/framebuffer.png
 readonly ANDROID_CONNECTION_DIAGNOSTIC=$WORK_ROOT/android-connection.diagnostic
+readonly ANDROID_FRAMEWORK_DIAGNOSTIC=$WORK_ROOT/android-framework.diagnostic
 readonly ANDROID_CONTROLLED_CPACE_LOG=$WORK_ROOT/android-controlled-cpace.log
 readonly FRAME_OBSERVER_ROOT=/observer
 readonly FRAME_OBSERVER_FRAME=$FRAME_OBSERVER_ROOT/latest.frame
@@ -451,6 +452,56 @@ stop_frame_observer() {
         || return 1
     [ "${BASH_REMATCH[1]}" -ge "${BASH_REMATCH[2]}" ] || return 1
     FRAME_OBSERVER_JOINED=1
+}
+
+capture_android_framework_diagnostic() {
+    [ "$ADB_STARTED" -eq 1 ] && is_exact_adb_process \
+        && is_exact_emulator_process || return 1
+    [ ! -e "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] \
+        && [ ! -L "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] || return 1
+    local status=0
+    {
+        printf 'ANDROID_FRAMEWORK_DIAGNOSTIC_BEGIN\n'
+        printf 'Android framework diagnostic: source=events\n'
+        timeout --signal=TERM --kill-after=2s 5s \
+            "$ADB" -s "$SERIAL" logcat -d -b events -v brief \
+            'am_anr:I' 'am_crash:I' '*:S' 2>&1 \
+            | tail -c 16384 || status=$?
+        printf '\nAndroid framework diagnostic: events_status=%s source=framework-logcat\n' "$status"
+        status=0
+        timeout --signal=TERM --kill-after=2s 5s \
+            "$ADB" -s "$SERIAL" logcat -d -v threadtime \
+            'ActivityManager:I' 'WindowManager:I' 'InputDispatcher:I' \
+            'Watchdog:I' 'AndroidRuntime:E' '*:S' 2>&1 \
+            | tail -c 32768 || status=$?
+        printf '\nAndroid framework diagnostic: logcat_status=%s source=lastanr\n' "$status"
+        status=0
+        timeout --signal=TERM --kill-after=2s 5s \
+            "$ADB" -s "$SERIAL" shell dumpsys activity lastanr 2>&1 \
+            | head -c 32768 || status=$?
+        printf '\nAndroid framework diagnostic: lastanr_status=%s source=cpuinfo\n' "$status"
+        status=0
+        timeout --signal=TERM --kill-after=2s 5s \
+            "$ADB" -s "$SERIAL" shell dumpsys cpuinfo 2>&1 \
+            | head -c 16384 || status=$?
+        printf '\nAndroid framework diagnostic: cpuinfo_status=%s\n' "$status"
+        printf 'ANDROID_FRAMEWORK_DIAGNOSTIC_END\n'
+    } >"$ANDROID_FRAMEWORK_DIAGNOSTIC" 2>&1
+    [ -f "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] \
+        && [ ! -L "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$ANDROID_FRAMEWORK_DIAGNOSTIC")" = \
+             1000:1000:600:1 ] \
+        && [ "$(stat -c '%s' -- "$ANDROID_FRAMEWORK_DIAGNOSTIC")" -le 131072 ]
+}
+
+reprint_android_framework_diagnostic() {
+    [ -f "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] \
+        && [ ! -L "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$ANDROID_FRAMEWORK_DIAGNOSTIC")" = \
+             1000:1000:600:1 ] \
+        && [ "$(stat -c '%s' -- "$ANDROID_FRAMEWORK_DIAGNOSTIC")" -le 131072 ] \
+        || return 1
+    cat -- "$ANDROID_FRAMEWORK_DIAGNOSTIC" >&2
 }
 
 print_android_connection_diagnostic() {
@@ -1207,6 +1258,10 @@ cleanup() {
     trap - EXIT HUP INT TERM
     if [ "$status" -ne 0 ]; then
         print_connect_password_prompt_diagnostic || true
+        if [ ! -e "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] \
+           && [ ! -L "$ANDROID_FRAMEWORK_DIAGNOSTIC" ]; then
+            capture_android_framework_diagnostic || true
+        fi
         if [ ! -e "$ANDROID_CONNECTION_DIAGNOSTIC" ]; then
             capture_android_connection_diagnostic cleanup || true
         fi
@@ -1227,6 +1282,7 @@ cleanup() {
         [ -z "${PEER_XVFB_LOG:-}" ] \
             || tail -n 80 "$PEER_XVFB_LOG" >&2 2>/dev/null || true
         reprint_android_connection_diagnostic || true
+        reprint_android_framework_diagnostic || true
     fi
     [ "$cleanup_status" -eq 0 ] || [ "$status" -ne 0 ] || status=1
     exit "$status"
@@ -1566,13 +1622,13 @@ readonly PEER_REVERSE_DEVICE_SPEC=tcp:22118
 readonly PEER_REVERSE_CONTAINER_SPEC=tcp:21118
 readonly SERVICE_START_WARNING_TEXT='Turning on "Screen Capture" will automatically start the service, allowing other devices to request a connection to your device.'
 readonly UI_XML=$WORK_ROOT/window.xml
-readonly FRAMEWORK_ANR_MARKER=$WORK_ROOT/framework-anr.waited
 readonly IMMERSIVE_CLING_MARKER=$WORK_ROOT/immersive-cling.dismissed
-readonly MAX_FRAMEWORK_ANR_WAITS=12
 FRAMEWORK_INTERRUPTION_HANDLED=0
 
 capture_ui_hierarchy() {
-    local detail=${1:-compressed}
+    local detail=${1:-compressed} health=
+    [ ! -e "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] \
+        && [ ! -L "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] || return 1
     local -a dump_args=(shell uiautomator dump)
     case "$detail" in
         compressed) dump_args+=(--compressed) ;;
@@ -1595,7 +1651,29 @@ capture_ui_hierarchy() {
     [ -f "$UI_XML" ] && [ ! -L "$UI_XML" ] \
         && [ "$(stat -c '%u:%g:%a:%h' -- "$UI_XML")" = 1000:1000:600:1 ] \
         && [ "$(stat -c '%s' -- "$UI_XML")" -gt 0 ] \
-        && [ "$(stat -c '%s' -- "$UI_XML")" -le 1048576 ]
+        && [ "$(stat -c '%s' -- "$UI_XML")" -le 1048576 ] || return 1
+    health="$(python3 -I -S - "$UI_XML" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+nodes = list(ET.parse(sys.argv[1]).getroot().iter("node"))
+resources = {node.get("resource-id") for node in nodes}
+titles = {node.get("text") for node in nodes}
+anr = {"android:id/aerr_wait", "android:id/aerr_close"} <= resources or bool(
+    {"System UI isn't responding", "Process system isn't responding"} & titles
+)
+print("anr" if anr else "clear")
+PY
+    )" || return 1
+    case "$health" in
+        clear) return 0 ;;
+        anr)
+            capture_android_framework_diagnostic || true
+            printf 'Android emulator boot smoke: observed Android ANR; dialog preserved, runtime refused\n' >&2
+            return 1
+            ;;
+        *) return 1 ;;
+    esac
 }
 
 ui_center() {
@@ -2011,7 +2089,6 @@ print_password_submit_thread_diagnostic() {
 
 handle_framework_interruption() {
     local cling_title= cling_ok= cling_x= cling_y=
-    local anr_title= anr_wait= anr_x= anr_y= anr_wait_count=0
     FRAMEWORK_INTERRUPTION_HANDLED=0
 
     cling_title="$(ui_center text 'Viewing full screen' 2>/dev/null || true)"
@@ -2029,29 +2106,7 @@ handle_framework_interruption() {
         return 0
     fi
 
-    anr_title="$(ui_center text "System UI isn't responding" \
-        "Process system isn't responding" 2>/dev/null || true)"
-    if ! [[ "$anr_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
-        return 0
-    fi
-    if [ -e "$FRAMEWORK_ANR_MARKER" ] \
-       || [ -L "$FRAMEWORK_ANR_MARKER" ]; then
-        [ -f "$FRAMEWORK_ANR_MARKER" ] && [ ! -L "$FRAMEWORK_ANR_MARKER" ] \
-            || return 1
-        [ "$(stat -c '%u:%g:%a:%h' -- "$FRAMEWORK_ANR_MARKER")" = \
-          "$RUN_UID:$RUN_GID:600:1" ] || return 1
-        anr_wait_count="$(wc -l <"$FRAMEWORK_ANR_MARKER")"
-    fi
-    [ "$anr_wait_count" -lt "$MAX_FRAMEWORK_ANR_WAITS" ] || return 1
-    anr_wait="$(ui_center resource android:id/aerr_wait 2>/dev/null || true)"
-    [[ "$anr_wait" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
-    printf 'waited\n' >>"$FRAMEWORK_ANR_MARKER"
-    read -r anr_x anr_y <<<"$anr_wait"
-    timeout --signal=TERM --kill-after=2s 10s \
-        "$ADB" -s "$SERIAL" shell input tap "$anr_x" "$anr_y" \
-        >/dev/null || return 1
-    FRAMEWORK_INTERRUPTION_HANDLED=1
-    sleep 2
+    return 0
 }
 
 capture_unobscured_ui_hierarchy() {
@@ -2066,20 +2121,9 @@ capture_unobscured_ui_hierarchy() {
 }
 
 framework_anr_receipt() {
-    local anr_wait_count=
-    if [ ! -e "$FRAMEWORK_ANR_MARKER" ]; then
-        [ ! -L "$FRAMEWORK_ANR_MARKER" ] || return 1
-        printf 'absent\n'
-        return 0
-    fi
-    [ -f "$FRAMEWORK_ANR_MARKER" ] && [ ! -L "$FRAMEWORK_ANR_MARKER" ] \
-        || return 1
-    [ "$(stat -c '%u:%g:%a:%h' -- "$FRAMEWORK_ANR_MARKER")" = \
-      "$RUN_UID:$RUN_GID:600:1" ] || return 1
-    anr_wait_count="$(wc -l <"$FRAMEWORK_ANR_MARKER")"
-    [[ "$anr_wait_count" =~ ^[1-9][0-9]*$ ]] \
-        && [ "$anr_wait_count" -le "$MAX_FRAMEWORK_ANR_WAITS" ] || return 1
-    printf 'waited-%s\n' "$anr_wait_count"
+    [ ! -e "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] \
+        && [ ! -L "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] || return 1
+    printf 'absent\n'
 }
 
 wait_ui_center() {
@@ -2087,6 +2131,8 @@ wait_ui_center() {
     shift
     local center= ui_attempt=0
     while [ "$ui_attempt" -lt 12 ]; do
+        [ ! -e "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] \
+            && [ ! -L "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] || return 1
         if capture_unobscured_ui_hierarchy; then
             center="$(ui_center "$kind" "$@" 2>/dev/null || true)"
             if [[ "$center" =~ ^[0-9]+\ [0-9]+$ ]]; then

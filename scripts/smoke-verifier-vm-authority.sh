@@ -3435,7 +3435,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
     mapfile -t android_lifecycle_receipts < <(
         /usr/bin/grep -Eo \
-            "ANDROID_EMULATOR_LIFECYCLE=pass task_removals=6 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=(absent|waited-([1-9]|1[0-2])) immersive_cling=(absent|dismissed-1) apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
+            "ANDROID_EMULATOR_LIFECYCLE=pass task_removals=6 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=absent immersive_cling=(absent|dismissed-1) apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
             "$SERIAL_LOG" || true
     )
     [ "${#android_lifecycle_receipts[@]}" -eq 1 ] \
@@ -3499,7 +3499,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     else
         mapfile -t android_recents_receipts < <(
             /usr/bin/grep -Eo \
-                "ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 open_actions=10 task_ids=distinct open=ui-automation-app-switch-key-display-0 driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$android_recents_runtime_uiautomator_sha256 driver_sha256=$android_recents_driver_sha256 framework_anr=(absent|waited-([1-9]|1[0-2])) service=never-started relaunch=resumed apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
+                "ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 open_actions=10 task_ids=distinct open=ui-automation-app-switch-key-display-0 driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$android_recents_runtime_uiautomator_sha256 driver_sha256=$android_recents_driver_sha256 framework_anr=absent service=never-started relaunch=resumed apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
                 "$SERIAL_LOG" || true
         )
         [ "${#android_recents_receipts[@]}" -eq 1 ] \

@@ -1031,11 +1031,19 @@ provenance, an actual peer build, Android lifecycle, presentation, or a release 
 `smoke-verifier-vm-authority.sh --android-peer-build` now wires the existing production peer-build
 stage to capsule preparation and joined, inert publication. It admits only clean pushed source,
 authenticated offline builder/vendor inputs, a zero-NIC VM, and a networkless UID/GID-1000 container.
-Any retained peer-artifact entry refuses a new build before VM-run allocation. The producer's real
-build/publication transaction is not yet executed; this is implemented orchestration, not build proof.
-The affected shared authority transaction passed in 85 seconds, including run admission and the
-22 capsule cases, unchanged host listeners, and joined successful-run retirement.
-Replay/admission wiring remains OPEN; behavioral replay still rebuilds the peer.
+Any retained peer-artifact entry refuses a new build before VM-run allocation. Exact pushed source
+`03ce7fc6b7af1cf6634e8bbcf4d2159019f5bbcd`, tree `2f665ce07306a3f9de977aaf2a1c66e931641132`,
+passed the real production build/preparation/publication transaction in 381 seconds. Manifest SHA-256
+`edf8e2753c0203ff4d8458bfc1ced3b104fac81a70b824cc16e3ee3b4963de0d` binds the seven files to that
+source, pinned devcheck config `sha256:5bf549eb60a88e1039a751ffb37de390b655895c20009db97fb48f54e09415fa`,
+vendor closure/config, and Rust 1.75.0. After guest-container/Docker/QEMU/virtiofs owners joined,
+the host ordinary-user publisher revalidated and committed only inert data. The successful VM root
+self-retired; the sole capsule occupies 756,826,112 allocated bytes (~0.705 GiB). A second actual
+producer invocation refused before allocating a VM, with run/artifact inventories unchanged.
+The affected shared authority transaction also passed in 85 seconds, including run admission and
+the 22 capsule cases. Both transactions had no added host listener or pre-existing process drift.
+This proves the peer build/publication boundary, not execution of these peer bytes, Android pixels,
+or a release artifact. Replay/admission wiring remains OPEN; behavioral replay still rebuilds the peer.
 
 CPace recovery is independently source/wire-covered: after successful step-3 transmission, transport
 loss while awaiting step 4 is `PeerConfirmationUnavailable`; earlier I/O remains `Io`, malformed or

@@ -1055,8 +1055,13 @@ VM boot: the exporter requires a mode-0700 share root, whereas the capsule is de
 The source now exports the existing private commit parent, requires its sole entry to be the sealed
 capsule, and checks both parent and capsule metadata in the guest; neither the exporter policy nor
 the capsule permissions are weakened. That failed run was identity-bound reconciled after its owners
-joined. A complete consumer replay is still unverified; peer execution, Android pixels, and the
-intermittent defect remain OPEN.
+joined. The next transaction at `03ed88bb` booted and joined all three read-only exporters, but
+stopped at source admission before Android execution: the new list incorrectly classified the
+Git-executable `publish-artifact-result.py` as non-executable data. Its admission now checks the
+exact executable source mode, with no permission fallback. The failed VM has exited; its bounded
+diagnostic record is retained in the audit and its exact run root is reconciled before another attempt.
+A complete consumer replay is still unverified; peer execution, Android pixels, and the intermittent
+defect remain OPEN.
 The attempted shared authority smoke hit its existing 90-second VM deadline after the 22 capsule
 cases and several authority entries passed; it is not a complete transaction or consumer verdict.
 The peer launcher now validates the externally digest-bound capsule manifest and all seven execution

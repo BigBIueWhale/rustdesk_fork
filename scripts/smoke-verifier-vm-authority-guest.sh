@@ -3067,6 +3067,7 @@ run_android_emulator_runtime() {
         online-input-provenance.py \
         verify-android-emulator-apk.py \
         verify-android-apk-manifest.py \
+        publish-artifact-result.py \
         offline-image-provenance.py \
         verify-vm-entry-preflight.sh; do
         [ -f "$source_root/scripts/$workload" ] \
@@ -3076,7 +3077,7 @@ run_android_emulator_runtime() {
             || fail "Android emulator runtime workload metadata differs: $workload"
     done
     for workload in pins.env lib.sh online-android-sdk-output.py \
-        android-peer-artifact.py publish-artifact-result.py \
+        android-peer-artifact.py \
         online-gradle-output.py \
         AndroidRecentsDismiss.java \
         AndroidEmulatorFrameObserver.java \

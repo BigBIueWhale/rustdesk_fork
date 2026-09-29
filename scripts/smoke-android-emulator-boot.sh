@@ -299,6 +299,17 @@ declare -a PEER_PRESENTATION_PHASES=()
 declare -a PEER_SERVER_PRESENTATION_STAGES=()
 declare -a PEER_NATIVE_PRESENTATION_STAGES=()
 declare -a PEER_DART_PRESENTATION_STAGES=()
+PEER_RESOURCE_SAMPLE_COUNT=0
+PEER_RESOURCE_BASELINE_RSS_KIB=0
+PEER_RESOURCE_BASELINE_THREADS=0
+PEER_RESOURCE_BASELINE_FDS=0
+PEER_RESOURCE_MAX_RSS_KIB=0
+PEER_RESOURCE_MAX_THREADS=0
+PEER_RESOURCE_MAX_FDS=0
+PEER_RESOURCE_FINAL_RSS_KIB=0
+PEER_RESOURCE_FINAL_THREADS=0
+PEER_RESOURCE_FINAL_FDS=0
+PEER_RESOURCE_BOUND_READY=0
 ANDROID_CONTROL_FORWARD_READY=0
 ANDROID_CONTROL_FORWARD_LISTING=
 FRAME_OBSERVER_STOP_REQUESTED=0
@@ -320,6 +331,14 @@ readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
 # Keep one authenticated session across intervals below, within, and beyond the
 # reported roughly ten-second focus-loss delay window.
 readonly -a PEER_BACKGROUND_SECONDS=(2 6 12)
+readonly PEER_TASK_REPLACEMENT_CYCLES=6
+readonly LIFECYCLE_TASK_REMOVAL_CYCLES=2
+# Sample the warmed release process before replacement, then every replacement.
+# These are predeclared integration ceilings, not permission to accumulate per
+# session: a larger excursion fails and retains the exact sample that crossed it.
+readonly PEER_RESOURCE_RSS_GROWTH_LIMIT_KIB=131072
+readonly PEER_RESOURCE_THREAD_GROWTH_LIMIT=8
+readonly PEER_RESOURCE_FD_GROWTH_LIMIT=16
 readonly RECENTS_DISMISS_GESTURE_EVENTS=12
 readonly RECENTS_DISMISS_GESTURE_STEPS=10
 readonly RECENTS_DISMISS_GESTURE_STEP_MS=16
@@ -780,8 +799,12 @@ emit_peer_presentation_stage_receipts() {
     local calculated_total connections= sessions=
     local previous_server_generation=0 previous_native_generation=0
     local index
-    local -a phases=(initial task-relaunch-1 task-relaunch-2)
+    local -a phases=(initial)
     local -a server_stages native_stages dart_stages
+
+    for index in $(seq 1 "$PEER_TASK_REPLACEMENT_CYCLES"); do
+        phases+=("task-relaunch-$index")
+    done
 
     server_stages=("${PEER_SERVER_PRESENTATION_STAGES[@]}")
     native_stages=("${PEER_NATIVE_PRESENTATION_STAGES[@]}")
@@ -870,6 +893,113 @@ emit_peer_presentation_stage_receipts() {
             "$image_conversions_active" "$image_conversions_waiting" \
             "$image_conversions_peak"
     done
+}
+
+record_peer_process_resources() {
+    local phase=$1 ordinal=$2 status= rss_line= threads_line=
+    local rss_kib= threads= fd_listing= fds=
+    local rss_growth_kib= thread_growth= fd_growth=
+    [[ "$phase" =~ ^(baseline|task-relaunch-[1-9][0-9]*)$ ]] \
+        && [[ "$ordinal" =~ ^[0-9]+$ ]] \
+        && [[ "$APP_PID" =~ ^[1-9][0-9]*$ ]] \
+        || fail 'the Android peer resource-sample identity is malformed'
+    [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = \
+      "$APP_PID" ] \
+        || fail "$phase cannot sample the exact persistent Android process"
+
+    status="$(timeout --signal=TERM --kill-after=2s 20s \
+        "$ADB" -s "$SERIAL" shell cat "/proc/$APP_PID/status" \
+        2>/dev/null | tr -d '\r')" \
+        || fail "$phase cannot read the Android process status"
+    [ -n "$status" ] && [ "${#status}" -le 65536 ] \
+        || fail "$phase Android process status is empty or exceeds 64 KiB"
+    rss_line="$(awk '$1 == "VmRSS:" { print $2 " " $3 }' <<<"$status")"
+    threads_line="$(awk '$1 == "Threads:" { print $2 }' <<<"$status")"
+    [[ "$rss_line" =~ ^([1-9][0-9]*)\ kB$ ]] \
+        || fail "$phase Android process status lacks an exact RSS field"
+    rss_kib=${BASH_REMATCH[1]}
+    [[ "$threads_line" =~ ^[1-9][0-9]*$ ]] \
+        || fail "$phase Android process status lacks an exact thread field"
+    threads=$threads_line
+
+    fd_listing="$(timeout --signal=TERM --kill-after=2s 20s \
+        "$ADB" -s "$SERIAL" shell ls -1 "/proc/$APP_PID/fd" \
+        2>/dev/null | tr -d '\r')" \
+        || fail "$phase cannot enumerate Android process descriptors"
+    [ -n "$fd_listing" ] && [ "${#fd_listing}" -le 65536 ] \
+        && ! grep -Evq '^[0-9]+$' <<<"$fd_listing" \
+        || fail "$phase Android descriptor inventory is empty or malformed"
+    fds="$(wc -l <<<"$fd_listing")"
+    [[ "$fds" =~ ^[1-9][0-9]*$ ]] \
+        || fail "$phase Android descriptor count is malformed"
+
+    if [ "$ordinal" -eq 0 ]; then
+        [ "$PEER_RESOURCE_SAMPLE_COUNT" -eq 0 ] \
+            || fail 'the Android peer resource baseline was sampled more than once'
+        PEER_RESOURCE_BASELINE_RSS_KIB=$rss_kib
+        PEER_RESOURCE_BASELINE_THREADS=$threads
+        PEER_RESOURCE_BASELINE_FDS=$fds
+        PEER_RESOURCE_MAX_RSS_KIB=$rss_kib
+        PEER_RESOURCE_MAX_THREADS=$threads
+        PEER_RESOURCE_MAX_FDS=$fds
+    else
+        [ "$ordinal" -eq "$PEER_RESOURCE_SAMPLE_COUNT" ] \
+            || fail "$phase Android resource sample is out of order"
+        [ "$rss_kib" -le \
+          "$((PEER_RESOURCE_BASELINE_RSS_KIB + PEER_RESOURCE_RSS_GROWTH_LIMIT_KIB))" ] \
+            && [ "$threads" -le \
+                 "$((PEER_RESOURCE_BASELINE_THREADS + PEER_RESOURCE_THREAD_GROWTH_LIMIT))" ] \
+            && [ "$fds" -le \
+                 "$((PEER_RESOURCE_BASELINE_FDS + PEER_RESOURCE_FD_GROWTH_LIMIT))" ] \
+            || fail "$phase exceeded the Android repeated-replacement resource bounds"
+        [ "$rss_kib" -le "$PEER_RESOURCE_MAX_RSS_KIB" ] \
+            || PEER_RESOURCE_MAX_RSS_KIB=$rss_kib
+        [ "$threads" -le "$PEER_RESOURCE_MAX_THREADS" ] \
+            || PEER_RESOURCE_MAX_THREADS=$threads
+        [ "$fds" -le "$PEER_RESOURCE_MAX_FDS" ] \
+            || PEER_RESOURCE_MAX_FDS=$fds
+    fi
+    PEER_RESOURCE_FINAL_RSS_KIB=$rss_kib
+    PEER_RESOURCE_FINAL_THREADS=$threads
+    PEER_RESOURCE_FINAL_FDS=$fds
+    PEER_RESOURCE_SAMPLE_COUNT=$((PEER_RESOURCE_SAMPLE_COUNT + 1))
+    rss_growth_kib=$((rss_kib > PEER_RESOURCE_BASELINE_RSS_KIB \
+        ? rss_kib - PEER_RESOURCE_BASELINE_RSS_KIB : 0))
+    thread_growth=$((threads > PEER_RESOURCE_BASELINE_THREADS \
+        ? threads - PEER_RESOURCE_BASELINE_THREADS : 0))
+    fd_growth=$((fds > PEER_RESOURCE_BASELINE_FDS \
+        ? fds - PEER_RESOURCE_BASELINE_FDS : 0))
+    printf 'ANDROID_PEER_RESOURCE_SAMPLE=pass phase=%s ordinal=%s rss_kib=%s threads=%s fds=%s rss_growth_kib=%s thread_growth=%s fd_growth=%s\n' \
+        "$phase" "$ordinal" "$rss_kib" "$threads" "$fds" \
+        "$rss_growth_kib" "$thread_growth" "$fd_growth"
+}
+
+emit_peer_resource_bound_receipt() {
+    local rss_growth_max_kib thread_growth_max fd_growth_max
+    [ "$PEER_RESOURCE_SAMPLE_COUNT" -eq \
+      "$((PEER_TASK_REPLACEMENT_CYCLES + 1))" ] \
+        || fail 'the Android peer resource-sample count differs'
+    rss_growth_max_kib=$((PEER_RESOURCE_MAX_RSS_KIB \
+        - PEER_RESOURCE_BASELINE_RSS_KIB))
+    thread_growth_max=$((PEER_RESOURCE_MAX_THREADS \
+        - PEER_RESOURCE_BASELINE_THREADS))
+    fd_growth_max=$((PEER_RESOURCE_MAX_FDS - PEER_RESOURCE_BASELINE_FDS))
+    [ "$rss_growth_max_kib" -le "$PEER_RESOURCE_RSS_GROWTH_LIMIT_KIB" ] \
+        && [ "$thread_growth_max" -le "$PEER_RESOURCE_THREAD_GROWTH_LIMIT" ] \
+        && [ "$fd_growth_max" -le "$PEER_RESOURCE_FD_GROWTH_LIMIT" ] \
+        || fail 'the Android peer aggregate resource bounds differ'
+    printf 'ANDROID_PEER_RESOURCE_BOUND=pass samples=%s replacement_samples=%s rss_baseline_kib=%s rss_max_kib=%s rss_final_kib=%s rss_growth_max_kib=%s rss_growth_limit_kib=%s threads_baseline=%s threads_max=%s threads_final=%s thread_growth_max=%s thread_growth_limit=%s fds_baseline=%s fds_max=%s fds_final=%s fd_growth_max=%s fd_growth_limit=%s\n' \
+        "$PEER_RESOURCE_SAMPLE_COUNT" "$PEER_TASK_REPLACEMENT_CYCLES" \
+        "$PEER_RESOURCE_BASELINE_RSS_KIB" "$PEER_RESOURCE_MAX_RSS_KIB" \
+        "$PEER_RESOURCE_FINAL_RSS_KIB" "$rss_growth_max_kib" \
+        "$PEER_RESOURCE_RSS_GROWTH_LIMIT_KIB" \
+        "$PEER_RESOURCE_BASELINE_THREADS" "$PEER_RESOURCE_MAX_THREADS" \
+        "$PEER_RESOURCE_FINAL_THREADS" "$thread_growth_max" \
+        "$PEER_RESOURCE_THREAD_GROWTH_LIMIT" \
+        "$PEER_RESOURCE_BASELINE_FDS" "$PEER_RESOURCE_MAX_FDS" \
+        "$PEER_RESOURCE_FINAL_FDS" "$fd_growth_max" \
+        "$PEER_RESOURCE_FD_GROWTH_LIMIT"
+    PEER_RESOURCE_BOUND_READY=1
 }
 
 record_peer_password_pre_submit_state() {
@@ -3624,11 +3754,16 @@ PY
                 exercise_peer_background_resume \
                     "$APP_PID" "$background_cycle" "$background_seconds"
             done
+            record_peer_process_resources baseline 0
         fi
 
         stage_recents_gesture_driver \
             || fail 'cannot stage the platform UiAutomator Recents driver'
-        for lifecycle_cycle in 1 2; do
+        task_removal_cycles=$LIFECYCLE_TASK_REMOVAL_CYCLES
+        if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+            task_removal_cycles=$PEER_TASK_REPLACEMENT_CYCLES
+        fi
+        for lifecycle_cycle in $(seq 1 "$task_removal_cycles"); do
             dismiss_current_app_task "$lifecycle_cycle" \
                 || {
                     capture_ui_hierarchy && print_initial_ui_semantics
@@ -3673,6 +3808,8 @@ PY
                     || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail "relaunch $lifecycle_cycle did not establish a fresh cached-credential peer session"; }
                 [ "$PEER_LAST_RECOVERY_MS" -le "$PEER_TASK_RECOVERY_MAX_MS" ] \
                     || PEER_TASK_RECOVERY_MAX_MS=$PEER_LAST_RECOVERY_MS
+                record_peer_process_resources \
+                    "task-relaunch-$lifecycle_cycle" "$lifecycle_cycle"
             fi
         done
         if [ "$WORKLOAD" = app-peer-lifecycle ]; then
@@ -3682,6 +3819,7 @@ PY
                     fail 'the bounded Android presentation-stage receipts differ'
                 }
             PEER_PRESENTATION_STAGE_READY=1
+            emit_peer_resource_bound_receipt
         fi
         retire_recents_gesture_driver \
             || fail 'the lifecycle Recents gesture driver did not retire exactly'
@@ -3738,21 +3876,23 @@ PY
             || fail 'MainService started without a post-Force-Stop user command'
         lifecycle_log="$(adb_shell_value logcat -d -v brief)"
         assert_main_service_log_cardinality \
-            "$lifecycle_log" post-force-stop 3 2 \
+            "$lifecycle_log" post-force-stop \
+            "$((task_removal_cycles + 1))" "$task_removal_cycles" \
             || fail 'the post-Force-Stop launch changed MainService start cardinality'
         ! grep -Eq 'FATAL EXCEPTION' <<<"$lifecycle_log" \
             || fail 'the completed lifecycle logged a fatal exception'
         if [ "$WORKLOAD" = app-peer-lifecycle ]; then
             retired_session_events="$(printf '%s\n' "$lifecycle_log" \
                 | grep -Ec 'Retired [1-9][0-9]* outgoing client peer session\(s\)' || true)"
-            [ "$retired_session_events" -eq 2 ] \
-                || fail 'the two removed tasks did not report exact outgoing-session retirement'
+            [ "$retired_session_events" -eq "$PEER_TASK_REPLACEMENT_CYCLES" ] \
+                || fail 'the removed tasks did not report exact outgoing-session retirement'
             [ "$PEER_INITIAL_RECOVERY_MS" -le "$PEER_RECOVERY_LIMIT_MS" ] \
                 && [ "$PEER_BACKGROUND_RECOVERY_MS" -le "$PEER_RECOVERY_LIMIT_MS" ] \
                 && [ "$PEER_BACKGROUND_CYCLES" -eq "${#PEER_BACKGROUND_SECONDS[@]}" ] \
                 && [ "$PEER_TASK_RECOVERY_MAX_MS" -le "$PEER_RECOVERY_LIMIT_MS" ] \
                 && [ "$PEER_FRESHNESS_MAX_MS" -le "$PEER_FRESHNESS_LIMIT_MS" ] \
                 && [ "$PEER_DISTINCT_FRAMES" -ge 12 ] \
+                && [ "$PEER_RESOURCE_BOUND_READY" -eq 1 ] \
                 || fail 'the Android peer display exceeded its recovery or freshness bounds'
             PEER_RECEIPT_READY=1
         fi
@@ -3873,8 +4013,9 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
                 || fail 'the immersive-mode tutorial was not dismissed exactly once'
             immersive_cling=dismissed-1
         fi
-        printf 'ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=%s immersive_cling=%s apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
-            "$framework_anr" "$immersive_cling" "$APK_SHA256"
+        printf 'ANDROID_EMULATOR_LIFECYCLE=pass task_removals=%s task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=%s immersive_cling=%s apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
+            "$task_removal_cycles" "$framework_anr" "$immersive_cling" \
+            "$APK_SHA256"
         if [ "$WORKLOAD" = app-peer-lifecycle ]; then
             [ "$PEER_RECEIPT_READY" -eq 1 ] \
                 || fail 'the Android real-peer lifecycle receipt is not ready'
@@ -3882,7 +4023,9 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
                 || fail 'the Android presentation-stage receipt is not ready'
             [ "$PEER_REVERSE_READY" -eq 0 ] \
                 || fail 'the Android peer reverse mapping remained live at receipt time'
-            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_credential=missing-credential initial_credential_prompt_observer=%s initial_credential_prompt_ms=%s initial_credential_prompt_limit_ms=%s initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=%s credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_cycles=%s background_seconds=2,6,12 background_recovery_max_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
+            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=%s old_sessions=closed replacements=%s initial_credential=missing-credential initial_credential_prompt_observer=%s initial_credential_prompt_ms=%s initial_credential_prompt_limit_ms=%s initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=%s credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_cycles=%s background_seconds=2,6,12 background_recovery_max_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s resource_samples=%s resource_bound=pass force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
+                "$PEER_TASK_REPLACEMENT_CYCLES" \
+                "$PEER_TASK_REPLACEMENT_CYCLES" \
                 "$PEER_INITIAL_CREDENTIAL_SEMANTIC_MODE" \
                 "$PEER_INITIAL_CREDENTIAL_PROMPT_MS" \
                 "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \
@@ -3897,7 +4040,8 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
                 "$PEER_RECOVERY_LIMIT_MS" \
                 "$PEER_FRESHNESS_MAX_MS" "$PEER_FRESHNESS_LIMIT_MS" \
                 "$PEER_CAPTURE_MAX_MS" "$PEER_CAPTURE_LIMIT_MS" \
-                "$PEER_DISTINCT_FRAMES" "$APK_SHA256"
+                "$PEER_DISTINCT_FRAMES" "$PEER_RESOURCE_SAMPLE_COUNT" \
+                "$APK_SHA256"
         fi
     fi
 else

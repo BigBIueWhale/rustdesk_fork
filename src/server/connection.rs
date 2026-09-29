@@ -2123,11 +2123,16 @@ pub(crate) struct VideoEgressFrame {
     queued_at: Instant,
     message: Arc<Message>,
     identity: VideoFrameIdentity,
+    independent: bool,
 }
 
 impl VideoEgressFrame {
     fn identity(&self) -> VideoFrameIdentity {
         self.identity
+    }
+
+    fn is_independent(&self) -> bool {
+        self.independent
     }
 
     #[cfg(test)]
@@ -2355,6 +2360,7 @@ impl VideoEgressSender {
             queued_at: Instant::now(),
             message,
             identity,
+            independent,
         };
         let mut retired = Vec::new();
         {
@@ -5569,6 +5575,7 @@ mod video_egress_tests {
             panic!("the latest independent frame must remain ready");
         };
         assert_eq!(frame.identity(), identity(VideoSource::Monitor, 0, 2));
+        assert!(frame.is_independent());
         assert!(receiver.take_next().is_none());
     }
 
@@ -5601,6 +5608,7 @@ mod video_egress_tests {
             panic!("an independent frame must open a fresh display");
         };
         assert_eq!(frame.identity(), identity(VideoSource::Monitor, 0, 10));
+        assert!(frame.is_independent());
     }
 
     #[test]
@@ -6029,6 +6037,7 @@ impl Connection {
 
         let mut second_timer = crate::rustdesk_interval(time::interval(Duration::from_secs(1)));
         let mut pending_video_delivery: Option<PendingVideoDelivery> = None;
+        let mut reported_independent_video_displays = HashSet::new();
 
         #[cfg(all(
             feature = "unix-file-copy-paste",
@@ -6368,6 +6377,21 @@ impl Connection {
                         VideoEgressItem::Frame(frame) => {
                             match conn.stream.send_with_receipt(frame.message.as_ref()).await {
                                 Ok(receipt) => {
+                                    if frame.is_independent()
+                                        && reported_independent_video_displays
+                                            .insert(frame.identity.display)
+                                    {
+                                        let wall_ms = std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .unwrap_or_default()
+                                            .as_millis();
+                                        let queue_us = frame.queued_at.elapsed().as_micros();
+                                        log::info!(
+                                            "RUSTDESK_PRESENTATION_STAGE stage=server-independent-enqueued connection={id} display={} wire_generation={} wall_ms={wall_ms} queue_us={queue_us}",
+                                            frame.identity.display,
+                                            frame.identity.generation,
+                                        );
+                                    }
                                     pending_video_delivery =
                                         Some(PendingVideoDelivery::new(receipt, &frame));
                                 }

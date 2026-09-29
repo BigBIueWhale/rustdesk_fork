@@ -294,6 +294,11 @@ PEER_INITIAL_CREDENTIAL_PROMPT_MS=0
 PEER_INITIAL_CREDENTIAL_SEMANTIC_MODE=unavailable
 PEER_CREDENTIAL_PROMPT_MS=0
 PEER_CREDENTIAL_SEMANTIC_MODE=unavailable
+PEER_PRESENTATION_STAGE_READY=0
+declare -a PEER_PRESENTATION_PHASES=()
+declare -a PEER_SERVER_PRESENTATION_STAGES=()
+declare -a PEER_NATIVE_PRESENTATION_STAGES=()
+declare -a PEER_DART_PRESENTATION_STAGES=()
 ANDROID_CONTROL_FORWARD_READY=0
 ANDROID_CONTROL_FORWARD_LISTING=
 FRAME_OBSERVER_STOP_REQUESTED=0
@@ -473,7 +478,7 @@ print_android_connection_diagnostic() {
         timeout --signal=TERM --kill-after=2s 20s \
             "$ADB" -s "$SERIAL" logcat -d -v brief 2>/dev/null \
             | grep -Ei \
-                'No remembered password|CPace handshake failed|R-S9|connect-password-prompt|session_set_connect_password|viewer owner|outgoing viewer|connection round|Connection closed|keying' \
+                'No remembered password|CPace handshake failed|R-S9|connect-password-prompt|session_set_connect_password|viewer owner|outgoing viewer|connection round|Connection closed|keying|RUSTDESK_PRESENTATION_STAGE' \
             | tail -n 160 \
             | tail -c 98304 \
             || true
@@ -647,6 +652,208 @@ peer_server_keyed_session_count() {
         return
     fi
     grep -Fc ' Connection opened from ' "$PEER_SERVER_LOG" || true
+}
+
+android_native_presentation_stages() {
+    local log_dir=/storage/emulated/0/RustDesk/Logs
+    local listing= filename= latest=
+    listing="$(timeout --signal=TERM --kill-after=2s 20s \
+        "$ADB" -s "$SERIAL" shell ls -1t "$log_dir" 2>/dev/null \
+        | tr -d '\r' || true)"
+    [ "${#listing}" -le 32768 ] || return 1
+    while IFS= read -r filename; do
+        [[ "$filename" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || continue
+        latest=$filename
+        break
+    done <<<"$listing"
+    [ -n "$latest" ] || return 1
+    timeout --signal=TERM --kill-after=2s 20s \
+        "$ADB" -s "$SERIAL" exec-out tail -c 1048576 \
+        "$log_dir/$latest" 2>/dev/null \
+        | tr -d '\r' \
+        | grep -Eo \
+            'RUSTDESK_PRESENTATION_STAGE stage=viewer-independent-decoded display=[0-9]+ wire_generation=[1-9][0-9]* mailbox_generation=[1-9][0-9]* wall_ms=[1-9][0-9]* receive_to_admit_us=[0-9]+ admit_to_dequeue_us=[0-9]+ decode_us=[0-9]+' \
+        || true
+}
+
+android_dart_presentation_stages() {
+    timeout --signal=TERM --kill-after=2s 20s \
+        "$ADB" -s "$SERIAL" logcat -d -v brief 2>/dev/null \
+        | tr -d '\r' \
+        | grep -Eo \
+            'RUSTDESK_PRESENTATION_STAGE stage=dart-image-notified session=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} display=[0-9]+ publication=[1-9][0-9]* wall_ms=[1-9][0-9]* event_queue_us=[0-9]+ take_us=[0-9]+ checkpoint_us=[0-9]+ decode_commit_us=[0-9]+ ui_finalize_us=[0-9]+ total_us=[0-9]+' \
+        || true
+}
+
+print_peer_presentation_stage_diagnostic() {
+    local phase=$1
+    printf 'ANDROID_PEER_PRESENTATION_STAGE_DIAGNOSTIC_BEGIN phase=%s\n' "$phase"
+    grep -Eo \
+        'RUSTDESK_PRESENTATION_STAGE stage=server-independent-enqueued connection=[1-9][0-9]* display=[0-9]+ wire_generation=[1-9][0-9]* wall_ms=[1-9][0-9]* queue_us=[0-9]+' \
+        "$PEER_SERVER_LOG" 2>/dev/null \
+        | tail -n 8 \
+        | sed 's/^/ANDROID_PEER_PRESENTATION_STAGE_SERVER /' \
+        || true
+    android_native_presentation_stages \
+        | tail -n 8 \
+        | sed 's/^/ANDROID_PEER_PRESENTATION_STAGE_NATIVE /' \
+        || true
+    android_dart_presentation_stages \
+        | tail -n 8 \
+        | sed 's/^/ANDROID_PEER_PRESENTATION_STAGE_DART /' \
+        || true
+    printf 'ANDROID_PEER_PRESENTATION_STAGE_DIAGNOSTIC_END phase=%s\n' "$phase"
+}
+
+presentation_stage_line_recorded() {
+    local candidate=$1 recorded
+    shift
+    for recorded in "$@"; do
+        [ "$recorded" != "$candidate" ] || return 0
+    done
+    return 1
+}
+
+record_peer_presentation_stage() {
+    local phase=$1 line attempt
+    local server_pattern
+    local -a server_current native_current dart_current
+    local -a new_server=() new_native=() new_dart=()
+
+    server_pattern='RUSTDESK_PRESENTATION_STAGE stage=server-independent-enqueued connection=[1-9][0-9]* display=[0-9]+ wire_generation=[1-9][0-9]* wall_ms=[1-9][0-9]* queue_us=[0-9]+'
+    for attempt in $(seq 1 30); do
+        server_current=()
+        native_current=()
+        dart_current=()
+        new_server=()
+        new_native=()
+        new_dart=()
+        mapfile -t server_current < <(grep -Eo "$server_pattern" \
+            "$PEER_SERVER_LOG" 2>/dev/null || true)
+        mapfile -t native_current < <(android_native_presentation_stages)
+        mapfile -t dart_current < <(android_dart_presentation_stages)
+        for line in "${server_current[@]}"; do
+            presentation_stage_line_recorded \
+                "$line" "${PEER_SERVER_PRESENTATION_STAGES[@]}" \
+                || new_server+=("$line")
+        done
+        for line in "${native_current[@]}"; do
+            presentation_stage_line_recorded \
+                "$line" "${PEER_NATIVE_PRESENTATION_STAGES[@]}" \
+                || new_native+=("$line")
+        done
+        for line in "${dart_current[@]}"; do
+            presentation_stage_line_recorded \
+                "$line" "${PEER_DART_PRESENTATION_STAGES[@]}" \
+                || new_dart+=("$line")
+        done
+        [ "${#new_server[@]}" -le 1 ] \
+            && [ "${#new_native[@]}" -le 1 ] \
+            && [ "${#new_dart[@]}" -le 1 ] \
+            || break
+        if [ "${#new_server[@]}" -eq 1 ] \
+           && [ "${#new_native[@]}" -eq 1 ] \
+           && [ "${#new_dart[@]}" -eq 1 ]; then
+            PEER_PRESENTATION_PHASES+=("$phase")
+            PEER_SERVER_PRESENTATION_STAGES+=("${new_server[0]}")
+            PEER_NATIVE_PRESENTATION_STAGES+=("${new_native[0]}")
+            PEER_DART_PRESENTATION_STAGES+=("${new_dart[0]}")
+            return 0
+        fi
+        sleep 0.1
+    done
+    printf 'ANDROID_PEER_PRESENTATION_STAGE_SNAPSHOT=fail phase=%s server=%s native=%s dart=%s expected=1\n' \
+        "$phase" "${#new_server[@]}" "${#new_native[@]}" \
+        "${#new_dart[@]}"
+    return 1
+}
+
+emit_peer_presentation_stage_receipts() {
+    local server_line native_line dart_line phase
+    local server_connection server_display server_generation server_wall_ms
+    local server_queue_us native_display native_generation mailbox_generation
+    local native_wall_ms receive_to_admit_us admit_to_dequeue_us decode_us
+    local dart_session dart_display publication dart_wall_ms event_queue_us
+    local take_us checkpoint_us decode_commit_us ui_finalize_us total_us
+    local calculated_total connections= sessions= previous_generation=0
+    local index
+    local -a phases=(initial task-relaunch-1 task-relaunch-2)
+    local -a server_stages native_stages dart_stages
+
+    server_stages=("${PEER_SERVER_PRESENTATION_STAGES[@]}")
+    native_stages=("${PEER_NATIVE_PRESENTATION_STAGES[@]}")
+    dart_stages=("${PEER_DART_PRESENTATION_STAGES[@]}")
+    [ "${#server_stages[@]}" -eq "${#phases[@]}" ] \
+        && [ "${#native_stages[@]}" -eq "${#phases[@]}" ] \
+        && [ "${#dart_stages[@]}" -eq "${#phases[@]}" ] \
+        && [ "${#PEER_PRESENTATION_PHASES[@]}" -eq "${#phases[@]}" ] \
+        || {
+            printf 'ANDROID_PEER_PRESENTATION_STAGE=fail server=%s native=%s dart=%s expected=%s\n' \
+                "${#server_stages[@]}" "${#native_stages[@]}" \
+                "${#dart_stages[@]}" "${#phases[@]}"
+            return 1
+        }
+
+    for index in "${!phases[@]}"; do
+        phase=${phases[$index]}
+        [ "${PEER_PRESENTATION_PHASES[$index]}" = "$phase" ] || return 1
+        server_line=${server_stages[$index]}
+        native_line=${native_stages[$index]}
+        dart_line=${dart_stages[$index]}
+        [[ "$server_line" =~ ^RUSTDESK_PRESENTATION_STAGE\ stage=server-independent-enqueued\ connection=([1-9][0-9]*)\ display=([0-9]+)\ wire_generation=([1-9][0-9]*)\ wall_ms=([1-9][0-9]*)\ queue_us=([0-9]+)$ ]] \
+            || return 1
+        server_connection=${BASH_REMATCH[1]}
+        server_display=${BASH_REMATCH[2]}
+        server_generation=${BASH_REMATCH[3]}
+        server_wall_ms=${BASH_REMATCH[4]}
+        server_queue_us=${BASH_REMATCH[5]}
+        [[ "$native_line" =~ ^RUSTDESK_PRESENTATION_STAGE\ stage=viewer-independent-decoded\ display=([0-9]+)\ wire_generation=([1-9][0-9]*)\ mailbox_generation=([1-9][0-9]*)\ wall_ms=([1-9][0-9]*)\ receive_to_admit_us=([0-9]+)\ admit_to_dequeue_us=([0-9]+)\ decode_us=([0-9]+)$ ]] \
+            || return 1
+        native_display=${BASH_REMATCH[1]}
+        native_generation=${BASH_REMATCH[2]}
+        mailbox_generation=${BASH_REMATCH[3]}
+        native_wall_ms=${BASH_REMATCH[4]}
+        receive_to_admit_us=${BASH_REMATCH[5]}
+        admit_to_dequeue_us=${BASH_REMATCH[6]}
+        decode_us=${BASH_REMATCH[7]}
+        [[ "$dart_line" =~ ^RUSTDESK_PRESENTATION_STAGE\ stage=dart-image-notified\ session=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\ display=([0-9]+)\ publication=([1-9][0-9]*)\ wall_ms=([1-9][0-9]*)\ event_queue_us=([0-9]+)\ take_us=([0-9]+)\ checkpoint_us=([0-9]+)\ decode_commit_us=([0-9]+)\ ui_finalize_us=([0-9]+)\ total_us=([0-9]+)$ ]] \
+            || return 1
+        dart_session=${BASH_REMATCH[1]}
+        dart_display=${BASH_REMATCH[2]}
+        publication=${BASH_REMATCH[3]}
+        dart_wall_ms=${BASH_REMATCH[4]}
+        event_queue_us=${BASH_REMATCH[5]}
+        take_us=${BASH_REMATCH[6]}
+        checkpoint_us=${BASH_REMATCH[7]}
+        decode_commit_us=${BASH_REMATCH[8]}
+        ui_finalize_us=${BASH_REMATCH[9]}
+        total_us=${BASH_REMATCH[10]}
+        calculated_total=$((event_queue_us + take_us + checkpoint_us \
+            + decode_commit_us + ui_finalize_us))
+        [ "$server_display" -eq "$native_display" ] \
+            && [ "$native_display" -eq "$dart_display" ] \
+            && [ "$server_generation" -eq "$native_generation" ] \
+            && [ "$server_generation" -gt "$previous_generation" ] \
+            && [ "$calculated_total" -eq "$total_us" ] \
+            || return 1
+        case " $connections " in
+            *" $server_connection "*) return 1 ;;
+        esac
+        case " $sessions " in
+            *" $dart_session "*) return 1 ;;
+        esac
+        connections="${connections:+$connections }$server_connection"
+        sessions="${sessions:+$sessions }$dart_session"
+        previous_generation=$server_generation
+        printf 'ANDROID_PEER_PRESENTATION_STAGE=pass phase=%s ordinal=%s server_connection=%s display=%s wire_generation=%s server_wall_ms=%s server_queue_us=%s viewer_mailbox_generation=%s viewer_wall_ms=%s receive_to_admit_us=%s admit_to_dequeue_us=%s decode_us=%s dart_session=%s publication=%s dart_wall_ms=%s event_queue_us=%s take_us=%s checkpoint_us=%s decode_commit_us=%s ui_finalize_us=%s dart_total_us=%s\n' \
+            "$phase" "$((index + 1))" "$server_connection" \
+            "$server_display" "$server_generation" "$server_wall_ms" \
+            "$server_queue_us" "$mailbox_generation" "$native_wall_ms" \
+            "$receive_to_admit_us" "$admit_to_dequeue_us" "$decode_us" \
+            "$dart_session" "$publication" "$dart_wall_ms" \
+            "$event_queue_us" "$take_us" "$checkpoint_us" \
+            "$decode_commit_us" "$ui_finalize_us" "$total_us"
+    done
 }
 
 record_peer_password_pre_submit_state() {
@@ -2408,6 +2615,7 @@ capture_peer_freshness() {
     capture_ui_hierarchy complete && print_initial_ui_semantics
     capture_android_connection_diagnostic active || true
     reprint_android_connection_diagnostic || true
+    print_peer_presentation_stage_diagnostic "$phase" || true
     diagnostic_png="$WORK_ROOT/peer-$phase-diagnostic.png"
     if timeout --signal=TERM --kill-after=2s 20s \
         "$ADB" -s "$SERIAL" exec-out screencap -p >"$diagnostic_png"; then
@@ -2962,6 +3170,11 @@ open_peer_connection() {
         PEER_CACHED_CONNECTION_MAX_MS=$PEER_LAST_CONNECTION_WAIT_MS
     fi
     capture_peer_freshness "$generation"
+    record_peer_presentation_stage "$generation" \
+        || {
+            print_peer_presentation_stage_diagnostic "$generation" || true
+            return 1
+        }
     wait_peer_server_connections 1 exact
 }
 
@@ -3446,6 +3659,14 @@ PY
                     || PEER_TASK_RECOVERY_MAX_MS=$PEER_LAST_RECOVERY_MS
             fi
         done
+        if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+            emit_peer_presentation_stage_receipts \
+                || {
+                    print_peer_presentation_stage_diagnostic complete || true
+                    fail 'the bounded Android presentation-stage receipts differ'
+                }
+            PEER_PRESENTATION_STAGE_READY=1
+        fi
         retire_recents_gesture_driver \
             || fail 'the lifecycle Recents gesture driver did not retire exactly'
 
@@ -3641,6 +3862,8 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
         if [ "$WORKLOAD" = app-peer-lifecycle ]; then
             [ "$PEER_RECEIPT_READY" -eq 1 ] \
                 || fail 'the Android real-peer lifecycle receipt is not ready'
+            [ "$PEER_PRESENTATION_STAGE_READY" -eq 1 ] \
+                || fail 'the Android presentation-stage receipt is not ready'
             [ "$PEER_REVERSE_READY" -eq 0 ] \
                 || fail 'the Android peer reverse mapping remained live at receipt time'
             printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_credential=missing-credential initial_credential_prompt_observer=%s initial_credential_prompt_ms=%s initial_credential_prompt_limit_ms=%s initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=%s credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_cycles=%s background_seconds=2,6,12 background_recovery_max_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \

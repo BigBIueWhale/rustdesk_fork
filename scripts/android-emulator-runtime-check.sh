@@ -792,6 +792,8 @@ if [ "$runtime_status" -ne 0 ]; then
     ' "$RUNTIME_LOG" >&2
     grep -E '^ANDROID_PEER_(FRAME_BASELINE |FRAME_SAMPLE |PRESENTATION_UI=)' \
         "$RUNTIME_LOG" | tail -n 140 >&2 || true
+    grep -E '^ANDROID_PEER_PRESENTATION_STAGE(_DIAGNOSTIC_(BEGIN|END)|_(SERVER|NATIVE|DART)|=)' \
+        "$RUNTIME_LOG" | tail -n 80 >&2 || true
     grep '^ANDROID_PEER_FRAMEBUFFER_DIAGNOSTIC ' "$RUNTIME_LOG" \
         | tail -n 20 >&2 || true
     awk '
@@ -914,6 +916,18 @@ peer_presentation_ui_phases="$(printf '%s\n' "${peer_presentation_ui_receipts[@]
     | LC_ALL=C sort)"
 [ "$peer_presentation_ui_phases" = "$peer_presentation_phase_inventory" ] \
     || die "Android peer presentation UI phases differ: $peer_presentation_ui_phases"
+mapfile -t peer_presentation_stage_receipts < <(grep -E \
+    '^ANDROID_PEER_PRESENTATION_STAGE=pass phase=(initial|task-relaunch-[12]) ordinal=[123] server_connection=[1-9][0-9]* display=[0-9]+ wire_generation=[1-9][0-9]* server_wall_ms=[1-9][0-9]* server_queue_us=[0-9]+ viewer_mailbox_generation=[1-9][0-9]* viewer_wall_ms=[1-9][0-9]* receive_to_admit_us=[0-9]+ admit_to_dequeue_us=[0-9]+ decode_us=[0-9]+ dart_session=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} publication=[1-9][0-9]* dart_wall_ms=[1-9][0-9]* event_queue_us=[0-9]+ take_us=[0-9]+ checkpoint_us=[0-9]+ decode_commit_us=[0-9]+ ui_finalize_us=[0-9]+ dart_total_us=[0-9]+$' \
+    "$RUNTIME_LOG" || true)
+[ "${#peer_presentation_stage_receipts[@]}" -eq 3 ] \
+    && [ "$(grep -c '^ANDROID_PEER_PRESENTATION_STAGE=' "$RUNTIME_LOG")" -eq 3 ] \
+    || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android peer presentation-stage receipts are absent, malformed, or duplicated'; }
+for phase_ordinal in 'initial 1' 'task-relaunch-1 2' 'task-relaunch-2 3'; do
+    read -r phase ordinal <<<"$phase_ordinal"
+    [ "$(printf '%s\n' "${peer_presentation_stage_receipts[@]}" \
+        | grep -Ec "^ANDROID_PEER_PRESENTATION_STAGE=pass phase=$phase ordinal=$ordinal ")" -eq 1 ] \
+        || die "Android peer presentation-stage binding differs for $phase"
+done
 fi
 mapfile -t runtime_receipts < <(grep -E \
     '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
@@ -1111,6 +1125,7 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         "${frame_observer_build_receipts[0]}" \
         "${frame_observer_receipts[0]}" \
         "${peer_frame_baselines[@]}" "${peer_presentation_ui_receipts[@]}" \
+        "${peer_presentation_stage_receipts[@]}" \
         "${lifecycle_receipts[0]}" "${initial_credential_receipts[0]}" \
         "${peer_receipts[0]}"
     runtime_peer=production-loopback-cpace-changing-display

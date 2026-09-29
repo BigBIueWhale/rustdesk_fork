@@ -2792,6 +2792,7 @@ pub(crate) enum VideoControlAdmission {
 struct QueuedVideoFrame {
     generation: u64,
     received_at: std::time::Instant,
+    admitted_at: std::time::Instant,
     is_keyframe: bool,
     frame: VideoFrame,
 }
@@ -2907,6 +2908,7 @@ impl VideoMailboxSender {
         is_keyframe: bool,
         received_at: std::time::Instant,
     ) -> VideoFrameAdmission {
+        let admitted_at = std::time::Instant::now();
         let mut state = self.shared.state.lock().unwrap();
         if state.closed {
             return VideoFrameAdmission::Closed;
@@ -2925,6 +2927,7 @@ impl VideoMailboxSender {
             state.work.push_back(VideoWork::Frame(QueuedVideoFrame {
                 generation,
                 received_at,
+                admitted_at,
                 is_keyframe: true,
                 frame,
             }));
@@ -2956,6 +2959,7 @@ impl VideoMailboxSender {
         state.work.push_back(VideoWork::Frame(QueuedVideoFrame {
             generation,
             received_at,
+            admitted_at,
             is_keyframe: false,
             frame,
         }));
@@ -3380,6 +3384,7 @@ where
         let mut duration = std::time::Duration::ZERO;
         let mut skip_beginning = 0;
         let mut decoder_generation = None;
+        let mut independent_stage_reported = false;
         loop {
             if let Some(data) = video_receiver.recv() {
                 match data {
@@ -3393,6 +3398,7 @@ where
                         }
                     }
                     VideoMailboxItem::Frame(queued) => {
+                        let dequeued_at = std::time::Instant::now();
                         if queued.is_keyframe {
                             decoder_generation = Some(queued.generation);
                         } else if decoder_generation != Some(queued.generation) {
@@ -3409,6 +3415,9 @@ where
                         }
                         let generation = queued.generation;
                         let received_at = queued.received_at;
+                        let admitted_at = queued.admitted_at;
+                        let is_keyframe = queued.is_keyframe;
+                        let wire_generation = queued.frame.generation;
                         let vf = queued.frame;
                         let display = vf.display as usize;
                         let start = std::time::Instant::now();
@@ -3439,6 +3448,7 @@ where
                             let format_changed = handler.decoder.format() != format;
                             match handler.handle_frame(vf, &mut pixelbuffer, &mut tmp_chroma) {
                                 Ok(rendered) => {
+                                    let decoded_at = std::time::Instant::now();
                                     if !video_frame_is_fresh(received_at, std::time::Instant::now()) {
                                         if video_receiver.invalidate_generation(generation) {
                                             if let Err(err) = session.refresh_video(display as _) {
@@ -3455,6 +3465,28 @@ where
                                         continue;
                                     }
                                     if rendered {
+                                        if is_keyframe && !independent_stage_reported {
+                                            independent_stage_reported = true;
+                                            let wall_ms = std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default()
+                                                .as_millis();
+                                            let receive_to_admit_us = admitted_at
+                                                .checked_duration_since(received_at)
+                                                .unwrap_or_default()
+                                                .as_micros();
+                                            let admit_to_dequeue_us = dequeued_at
+                                                .checked_duration_since(admitted_at)
+                                                .unwrap_or_default()
+                                                .as_micros();
+                                            let decode_us = decoded_at
+                                                .checked_duration_since(start)
+                                                .unwrap_or_default()
+                                                .as_micros();
+                                            log::info!(
+                                                "RUSTDESK_PRESENTATION_STAGE stage=viewer-independent-decoded display={display} wire_generation={wire_generation} mailbox_generation={generation} wall_ms={wall_ms} receive_to_admit_us={receive_to_admit_us} admit_to_dequeue_us={admit_to_dequeue_us} decode_us={decode_us}"
+                                            );
+                                        }
                                         video_callback(
                                             display,
                                             &mut handler.rgb,

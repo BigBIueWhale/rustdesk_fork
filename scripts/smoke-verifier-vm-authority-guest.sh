@@ -2807,11 +2807,12 @@ run_android_emulator_runtime() {
     local staged_apk_before
     local entry_receipt apk_receipt renderer_receipt runtime_receipt
     local lifecycle_receipt peer_receipt focused_recents_receipt check_receipt
-    local checksum_line runtime_peer
+    local checksum_line runtime_peer phase_ordinal phase ordinal
     local recents_build_receipt recents_driver_receipt recents_driver_sha256
     local recents_cycles recents_cycle_pattern recents_cycle recents_task_id
     local recents_task_ids
     local -a recents_action_receipts recents_outcome_receipts cycle_outcomes
+    local -a presentation_stage_receipts
     local frame_endpoint_receipt frame_parser_receipt
     local frame_observer_self_test_receipt frame_observer_build_receipt
     local frame_observer_receipt frame_observer_dependency_manifest_sha256
@@ -3353,6 +3354,18 @@ run_android_emulator_runtime() {
         || { tail -n 320 "$output" >&2; fail 'Android initial credential prompt receipt is absent'; }
     [ "$(grep -c '^ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT=' "$output")" -eq 1 ] \
         || fail 'Android initial credential prompt receipt is malformed or duplicated'
+    mapfile -t presentation_stage_receipts < <(grep -E \
+        '^ANDROID_PEER_PRESENTATION_STAGE=pass phase=(initial|task-relaunch-[12]) ordinal=[123] server_connection=[1-9][0-9]* display=[0-9]+ wire_generation=[1-9][0-9]* server_wall_ms=[1-9][0-9]* server_queue_us=[0-9]+ viewer_mailbox_generation=[1-9][0-9]* viewer_wall_ms=[1-9][0-9]* receive_to_admit_us=[0-9]+ admit_to_dequeue_us=[0-9]+ decode_us=[0-9]+ dart_session=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} publication=[1-9][0-9]* dart_wall_ms=[1-9][0-9]* event_queue_us=[0-9]+ take_us=[0-9]+ checkpoint_us=[0-9]+ decode_commit_us=[0-9]+ ui_finalize_us=[0-9]+ dart_total_us=[0-9]+$' \
+        "$output" || true)
+    [ "${#presentation_stage_receipts[@]}" -eq 3 ] \
+        && [ "$(grep -c '^ANDROID_PEER_PRESENTATION_STAGE=' "$output")" -eq 3 ] \
+        || { tail -n 320 "$output" >&2; fail 'Android presentation-stage receipts are absent, malformed, or duplicated'; }
+    for phase_ordinal in 'initial 1' 'task-relaunch-1 2' 'task-relaunch-2 3'; do
+        read -r phase ordinal <<<"$phase_ordinal"
+        [ "$(printf '%s\n' "${presentation_stage_receipts[@]}" \
+            | grep -Ec "^ANDROID_PEER_PRESENTATION_STAGE=pass phase=$phase ordinal=$ordinal ")" -eq 1 ] \
+            || fail "Android presentation-stage binding differs for $phase"
+    done
     peer_receipt="$(grep -E \
         "^ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127\\.0\\.0\\.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=2 old_sessions=closed replacements=2 initial_credential=missing-credential initial_credential_prompt_observer=(exact|android-accessibility-prefix-240) initial_credential_prompt_ms=[0-9]+ initial_credential_prompt_limit_ms=240000 initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=(exact|android-accessibility-prefix-240) credential_prompt_ms=[0-9]+ credential_prompt_limit_ms=240000 auto_retry_observation_ms=140000 correct_credential_connection_ms=[0-9]+ credential_connection_limit_ms=240000 cached_connection_max_ms=[0-9]+ cached_connection_limit_ms=30000 initial_recovery_ms=[0-9]+ background_cycles=3 background_seconds=2,6,12 background_recovery_max_ms=[0-9]+ task_recovery_max_ms=[0-9]+ recovery_limit_ms=8000 freshness_max_ms=[0-9]+ freshness_limit_ms=2000 capture_max_ms=[0-9]+ capture_limit_ms=500 distinct_frames=(1[2-9]|[2-9][0-9]|[1-9][0-9]{2,}) force_stop=baseline apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none server_listener=127\\.0\\.0\\.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined$" \
         "$output")" \
@@ -3456,7 +3469,8 @@ run_android_emulator_runtime() {
         printf '%s\n' "$frame_endpoint_receipt" "$frame_parser_receipt" \
             "$frame_observer_self_test_receipt" "$frame_observer_build_receipt" \
             "$frame_observer_receipt" "$lifecycle_receipt" \
-            "$initial_credential_receipt" "$peer_receipt"
+            "$initial_credential_receipt" \
+            "${presentation_stage_receipts[@]}" "$peer_receipt"
     else
         printf '%s\n' "$focused_recents_receipt"
     fi

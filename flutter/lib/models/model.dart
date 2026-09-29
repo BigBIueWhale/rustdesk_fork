@@ -76,12 +76,17 @@ class _SessionOwner {
 }
 
 class _SoftwareRgbaPublication {
-  const _SoftwareRgbaPublication(
-      this.display, this.publication, this.presentationRevision);
+  _SoftwareRgbaPublication(
+      this.display,
+      this.publication,
+      this.presentationRevision,
+      bool tracePresentationStage)
+      : stageClock = tracePresentationStage ? (Stopwatch()..start()) : null;
 
   final int display;
   final int publication;
   final int presentationRevision;
+  final Stopwatch? stageClock;
 }
 
 class _WebRgbaPublication {
@@ -4208,6 +4213,7 @@ class FFI {
   late LatestFrameQueue<_SessionOwner, int, _WebCursorShape>
       _webCursorShapes;
   Future<bool>? _firstImageInitialization;
+  bool _presentationStageCommitted = false;
 
   // Terminal model registry for multiple terminals
   final Map<int, TerminalModel> _terminalModels = {};
@@ -4362,6 +4368,7 @@ class FFI {
     _webCursorPositions = LatestFrameQueue(nextOwner, maxKeys: 1);
     _webCursorShapes = LatestFrameQueue(nextOwner, maxKeys: 1);
     _firstImageInitialization = null;
+    _presentationStageCommitted = false;
   }
 
   void _retireSessionOwner(SessionID retiringSessionId) {
@@ -4577,6 +4584,8 @@ class FFI {
       _SessionOwner streamOwner,
       SessionID activeSessionId,
       _SoftwareRgbaPublication frame) async {
+    final stageClock = frame.stageClock;
+    final handlerEntryUs = stageClock?.elapsedMicroseconds;
     if (!imageModel
         .isCurrentPresentationRevision(frame.presentationRevision)) {
       return;
@@ -4587,6 +4596,7 @@ class FFI {
     final rgba = platformFFI.takeLatestRgba(
         activeSessionId, frame.display, frame.publication);
     if (rgba == null) return;
+    final takeCompleteUs = stageClock?.elapsedMicroseconds;
 
     final topologyRevision = await _displayTopologyAfterCheckpoint(
         sessionEvents, streamOwner, activeSessionId);
@@ -4595,17 +4605,36 @@ class FFI {
             .isCurrentPresentationRevision(frame.presentationRevision)) {
       return;
     }
+    final checkpointCompleteUs = stageClock?.elapsedMicroseconds;
 
     final committed = await imageModel.onRgba(
         activeSessionId, frame.display, rgba,
         publication: frame.publication,
         expectedDisplayTopologyRevision: topologyRevision,
         expectedPresentationRevision: frame.presentationRevision);
+    final imageCommitCompleteUs = stageClock?.elapsedMicroseconds;
     if (committed &&
         imageModel
             .isCurrentPresentationRevision(frame.presentationRevision)) {
       await onEvent2UIRgba(activeSessionId, topologyRevision,
           imageGeometryInitialized: true);
+      final uiFinalizeCompleteUs = stageClock?.elapsedMicroseconds;
+      if (!_presentationStageCommitted &&
+          handlerEntryUs != null &&
+          takeCompleteUs != null &&
+          checkpointCompleteUs != null &&
+          imageCommitCompleteUs != null &&
+          uiFinalizeCompleteUs != null &&
+          isCurrentSessionOwner(
+              activeSessionId, streamOwner.clientOwnerId)) {
+        _presentationStageCommitted = true;
+        final takeUs = takeCompleteUs - handlerEntryUs;
+        final checkpointUs = checkpointCompleteUs - takeCompleteUs;
+        final decodeCommitUs = imageCommitCompleteUs - checkpointCompleteUs;
+        final uiFinalizeUs = uiFinalizeCompleteUs - imageCommitCompleteUs;
+        debugPrint(
+            'RUSTDESK_PRESENTATION_STAGE stage=dart-image-notified session=$activeSessionId display=${frame.display} publication=${frame.publication} wall_ms=${DateTime.now().millisecondsSinceEpoch} event_queue_us=$handlerEntryUs take_us=$takeUs checkpoint_us=$checkpointUs decode_commit_us=$decodeCommitUs ui_finalize_us=$uiFinalizeUs total_us=$uiFinalizeCompleteUs');
+      }
     }
   }
 
@@ -4918,7 +4947,10 @@ class FFI {
         }
       } else if (message is EventToUI_Rgba) {
         final frame = _SoftwareRgbaPublication(
-            message.field0, message.field1, imageModel.presentationRevision);
+            message.field0,
+            message.field1,
+            imageModel.presentationRevision,
+            !_presentationStageCommitted);
         softwareRgbaFrames.submitObserved(
             streamOwner,
             message.field0,

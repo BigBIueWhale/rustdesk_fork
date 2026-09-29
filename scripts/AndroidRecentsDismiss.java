@@ -8,7 +8,6 @@ import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.MotionEvent;
 
-import com.android.uiautomator.core.UiDevice;
 import com.android.uiautomator.core.UiObject;
 import com.android.uiautomator.core.UiSelector;
 import com.android.uiautomator.testrunner.UiAutomatorTestCase;
@@ -51,8 +50,7 @@ public final class AndroidRecentsDismiss {
             assertTrue("expected Recents bounds are empty", expectedRight > expectedLeft);
             assertTrue("expected Recents bounds are empty", expectedBottom > expectedTop);
 
-            UiDevice device = getUiDevice();
-            UiObject button = device.findObject(
+            UiObject button = new UiObject(
                     new UiSelector().resourceId(RECENTS_BUTTON_VIEW_ID));
             assertTrue("SystemUI Recents button is absent", button.waitForExists(5000));
             assertTrue("SystemUI Recents button is disabled", button.isEnabled());

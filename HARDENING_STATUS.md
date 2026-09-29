@@ -1214,6 +1214,14 @@ lifecycle evidence. The VM powered off cleanly, its serial capture is bounded at
 inventories have identical SHA-256 `707d0e…`, both listener deltas and pre-existing-process drift are empty, and
 the failed root is retained.
 
+The first physical-click implementation at `d58bcf57` then failed closed before emulator boot in focused run
+`run.cWPW0pZDVV`: sealed API-34 compilation proved that legacy `UiDevice` has no `findObject(UiSelector)` method.
+No Android action executed. The VM powered off cleanly; its 70,357-byte serial capture is bounded; all listener
+inventories again have identical SHA-256 `707d0e…`; both listener deltas and pre-existing-process drift are empty;
+and the failed root is retained. Current source uses legacy UiAutomator's public `UiObject(UiSelector)` constructor,
+which is the API shape used by the pinned implementation, without changing the exact-object or physical-click
+semantics.
+
 Pinned UiAutomator source confirms why that was not TAPL-equivalent: `UiObject2.click()` computes the visible
 center and performs a pointer gesture through the gesture controller; it does not call accessibility
 `ACTION_CLICK`. Current unexecuted source therefore makes one complete hierarchy capture, requires exactly one
@@ -1221,7 +1229,7 @@ enabled and clickable `com.android.systemui:id/recent_apps` object, binds its ex
 platform UiAutomator's physical object click with those same expected bounds. Only after that command succeeds and
 the hierarchy exposes the Launcher snapshot does the standalone driver emit one down event, ten moves separated
 by 16 ms, and one up event with `waitForAnimations=false`. The build now seals and digests API-34 `android.jar`,
-`uiautomator.jar`, and `android.test.base.jar`; the inner runtime, guest, and outer verifier layers validate open
+`uiautomator.jar`, and `android.test.base.jar`; the inner runtime, guest, and outer verifier layers are configured to validate open
 bounds/center, lookup/click timing, cycle/task binding, direct-swipe geometry/timing, driver/runtime-JAR digests,
 and independent disappearance of the exact active task ID. Failure forwarding preserves the complete test-runner
 or driver output plus action, outcome, and task receipts. There is no retry, abstract global action, shell task

@@ -696,6 +696,8 @@ class _ImagePaintState extends State<ImagePaint> {
       ImageModel m, Size imageSize, double s) {
     return OwnedImagePaint(
       image: m.image,
+      presentationDisplay: m.presentationDisplay,
+      presentationPublication: m.presentationPublication,
       x: 0,
       y: 0,
       scale: s,
@@ -707,6 +709,8 @@ class _ImagePaintState extends State<ImagePaint> {
       ImageModel m, CanvasModel c, double s) {
     return OwnedImagePaint(
       image: m.image,
+      presentationDisplay: m.presentationDisplay,
+      presentationPublication: m.presentationPublication,
       x: c.x / s,
       y: c.y / s,
       scale: s,

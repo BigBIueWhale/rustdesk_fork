@@ -68,6 +68,16 @@ final _softwareRgbaDrainPool = LatestFrameDrainPool(
   maxWaitingDrains: 64,
 );
 
+bool _traceSoftwareRgbaPublication(int publication) =>
+    publication <= 4 || publication % 64 == 0;
+
+void _traceSoftwareRgbaStage(String stage, SessionID sessionId, int display,
+    int publication, Stopwatch? clock) {
+  if (!_traceSoftwareRgbaPublication(publication)) return;
+  debugPrint(
+      'RUSTDESK_PRESENTATION_PROGRESS stage=$stage session=$sessionId display=$display publication=$publication elapsed_us=${clock?.elapsedMicroseconds ?? -1} wall_ms=${DateTime.now().millisecondsSinceEpoch}');
+}
+
 class _SessionOwner {
   const _SessionOwner(this.sessionId, this.clientOwnerId);
 
@@ -89,8 +99,7 @@ class _SoftwareRgbaPublication {
       this.display,
       this.publication,
       this.presentationRevision,
-      bool tracePresentationStage)
-      : stageClock = tracePresentationStage ? (Stopwatch()..start()) : null;
+      this.stageClock);
 
   final int display;
   final int publication;
@@ -1871,11 +1880,15 @@ class VirtualMouseMode with ChangeNotifier {
 
 class ImageModel with ChangeNotifier {
   ui.Image? _image;
+  int? _presentationDisplay;
+  int? _presentationPublication;
   int _presentationRevision = 0;
   final ExactRgbaPublicationOrder<SessionID> _rgbaPublicationOrder =
       ExactRgbaPublicationOrder<SessionID>();
 
   ui.Image? get image => _image;
+  int? get presentationDisplay => _presentationDisplay;
+  int? get presentationPublication => _presentationPublication;
 
   String id = '';
 
@@ -1901,6 +1914,8 @@ class ImageModel with ChangeNotifier {
   void retirePresentation() {
     _presentationRevision += 1;
     _rgbaPublicationOrder.retire();
+    _presentationDisplay = null;
+    _presentationPublication = null;
   }
 
   void clearImage() {
@@ -1960,6 +1975,15 @@ class ImageModel with ChangeNotifier {
       return false;
     }
     final rect = parent.target?.ffiModel.pi.getDisplayRect(display);
+    final publication = expectedRgbaPublication?.publication;
+    final traceClock = publication != null &&
+            _traceSoftwareRgbaPublication(publication)
+        ? (Stopwatch()..start())
+        : null;
+    if (publication != null) {
+      _traceSoftwareRgbaStage('image-conversion-started', expectedSessionId,
+          display, publication, traceClock);
+    }
     final image = await img.decodeImageFromPixels(
       rgba,
       rect?.width.toInt() ?? 0,
@@ -1967,6 +1991,10 @@ class ImageModel with ChangeNotifier {
       isWeb | isWindows | isLinux
           ? ui.PixelFormat.rgba8888
           : ui.PixelFormat.bgra8888,
+      onStage: publication == null || traceClock == null
+          ? null
+          : (stage) => _traceSoftwareRgbaStage(stage, expectedSessionId,
+              display, publication, traceClock),
     );
     if (image == null) {
       return false;
@@ -2079,6 +2107,8 @@ class ImageModel with ChangeNotifier {
       return true;
     }
     _image = image;
+    _presentationDisplay = expectedRgbaCommit?.display;
+    _presentationPublication = expectedRgbaCommit?.publication;
     retiring?.dispose();
     notifyListeners();
     return true;
@@ -4603,6 +4633,8 @@ class FFI {
       _SoftwareRgbaPublication frame) async {
     final stageClock = frame.stageClock;
     final handlerEntryUs = stageClock?.elapsedMicroseconds;
+    _traceSoftwareRgbaStage('dart-drain-started', activeSessionId,
+        frame.display, frame.publication, stageClock);
     if (!imageModel
         .isCurrentPresentationRevision(frame.presentationRevision)) {
       return;
@@ -4613,6 +4645,8 @@ class FFI {
     final rgba = platformFFI.takeLatestRgba(
         activeSessionId, frame.display, frame.publication);
     if (rgba == null) return;
+    _traceSoftwareRgbaStage('native-mailbox-taken', activeSessionId,
+        frame.display, frame.publication, stageClock);
     final takeCompleteUs = stageClock?.elapsedMicroseconds;
 
     final topologyRevision = await _displayTopologyAfterCheckpoint(
@@ -4623,6 +4657,8 @@ class FFI {
       return;
     }
     final checkpointCompleteUs = stageClock?.elapsedMicroseconds;
+    _traceSoftwareRgbaStage('topology-checkpoint-complete', activeSessionId,
+        frame.display, frame.publication, stageClock);
 
     final committed = await imageModel.onRgba(
         activeSessionId, frame.display, rgba,
@@ -4630,6 +4666,10 @@ class FFI {
         expectedDisplayTopologyRevision: topologyRevision,
         expectedPresentationRevision: frame.presentationRevision);
     final imageCommitCompleteUs = stageClock?.elapsedMicroseconds;
+    if (committed) {
+      _traceSoftwareRgbaStage('image-model-committed', activeSessionId,
+          frame.display, frame.publication, stageClock);
+    }
     if (committed &&
         imageModel
             .isCurrentPresentationRevision(frame.presentationRevision)) {
@@ -4963,11 +5003,17 @@ class FFI {
               'The remote session state became inconsistent');
         }
       } else if (message is EventToUI_Rgba) {
+        final traceClock = _traceSoftwareRgbaPublication(message.field1)
+            ? (Stopwatch()..start())
+            : null;
+        _traceSoftwareRgbaStage('dart-event-received', activeSessionId,
+            message.field0, message.field1, traceClock);
         final frame = _SoftwareRgbaPublication(
             message.field0,
             message.field1,
             imageModel.presentationRevision,
-            !_presentationStageCommitted);
+            traceClock ??
+                (!_presentationStageCommitted ? (Stopwatch()..start()) : null));
         softwareRgbaFrames.submitObserved(
             streamOwner,
             message.field0,

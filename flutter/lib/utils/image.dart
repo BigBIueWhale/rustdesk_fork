@@ -14,6 +14,7 @@ Future<ui.Image?> decodeImageFromPixels(
   int? targetWidth,
   int? targetHeight,
   bool allowUpscaling = true,
+  void Function(String stage)? onStage,
 }) async {
   if (targetWidth != null) {
     assert(allowUpscaling || targetWidth <= width);
@@ -33,7 +34,9 @@ Future<ui.Image?> decodeImageFromPixels(
   final ui.ImmutableBuffer buffer;
   try {
     buffer = await ui.ImmutableBuffer.fromUint8List(pixels);
+    onStage?.call('image-buffer-ready');
   } catch (e) {
+    onStage?.call('image-buffer-failed');
     return null;
   }
 
@@ -54,7 +57,9 @@ Future<ui.Image?> decodeImageFromPixels(
         targetHeight = descriptor.height;
       }
     }
+    onStage?.call('image-descriptor-ready');
   } catch (e) {
+    onStage?.call('image-descriptor-failed');
     print("ImageDescriptor.raw failed: $e");
     buffer.dispose();
     return null;
@@ -66,7 +71,9 @@ Future<ui.Image?> decodeImageFromPixels(
       targetWidth: targetWidth,
       targetHeight: targetHeight,
     );
+    onStage?.call('image-codec-ready');
   } catch (e) {
+    onStage?.call('image-codec-failed');
     print("instantiateCodec failed: $e");
     buffer.dispose();
     descriptor.dispose();
@@ -76,7 +83,9 @@ Future<ui.Image?> decodeImageFromPixels(
   final Future<ui.FrameInfo> pendingFrame;
   try {
     pendingFrame = codec.getNextFrame();
+    onStage?.call('image-frame-requested');
   } catch (e) {
+    onStage?.call('image-frame-request-failed');
     print("getNextFrame failed: $e");
     codec.dispose();
     buffer.dispose();
@@ -91,7 +100,9 @@ Future<ui.Image?> decodeImageFromPixels(
   final ui.FrameInfo frameInfo;
   try {
     frameInfo = await pendingFrame;
+    onStage?.call('image-frame-ready');
   } catch (e) {
+    onStage?.call('image-frame-failed');
     print("getNextFrame failed: $e");
     buffer.dispose();
     descriptor.dispose();
@@ -111,6 +122,8 @@ class OwnedImagePaint extends StatefulWidget {
     required this.y,
     required this.scale,
     required this.size,
+    this.presentationDisplay,
+    this.presentationPublication,
   });
 
   final ui.Image? image;
@@ -118,6 +131,8 @@ class OwnedImagePaint extends StatefulWidget {
   final double y;
   final double scale;
   final Size size;
+  final int? presentationDisplay;
+  final int? presentationPublication;
 
   @override
   State<OwnedImagePaint> createState() => _OwnedImagePaintState();
@@ -132,6 +147,7 @@ class _OwnedImagePaintState extends State<OwnedImagePaint> {
   void initState() {
     super.initState();
     _paintImage = widget.image?.clone();
+    _tracePresentation('widget-mounted');
   }
 
   @override
@@ -142,10 +158,21 @@ class _OwnedImagePaintState extends State<OwnedImagePaint> {
     final replacement = widget.image?.clone();
     final retiring = _paintImage;
     _paintImage = replacement;
+    _tracePresentation('widget-image-replaced');
     if (retiring != null) {
       _retiringImages.add(retiring);
       _scheduleRetirement();
     }
+  }
+
+  void _tracePresentation(String stage) {
+    final publication = widget.presentationPublication;
+    if (publication == null ||
+        (publication > 4 && publication % 64 != 0)) {
+      return;
+    }
+    debugPrint(
+        'RUSTDESK_PRESENTATION_PROGRESS stage=$stage display=${widget.presentationDisplay ?? -1} publication=$publication image=${_paintImage == null ? "absent" : "present"} wall_ms=${DateTime.now().millisecondsSinceEpoch}');
   }
 
   void _scheduleRetirement() {
@@ -184,6 +211,8 @@ class _OwnedImagePaintState extends State<OwnedImagePaint> {
         x: widget.x,
         y: widget.y,
         scale: widget.scale,
+        presentationDisplay: widget.presentationDisplay,
+        presentationPublication: widget.presentationPublication,
       ),
     );
   }
@@ -195,17 +224,27 @@ class ImagePainter extends CustomPainter {
     required this.x,
     required this.y,
     required this.scale,
+    this.presentationDisplay,
+    this.presentationPublication,
   });
 
   ui.Image? image;
   double x;
   double y;
   double scale;
+  final int? presentationDisplay;
+  final int? presentationPublication;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (image == null) return;
     if (x.isNaN || y.isNaN) return;
+    final publication = presentationPublication;
+    if (publication != null &&
+        (publication <= 4 || publication % 64 == 0)) {
+      debugPrint(
+          'RUSTDESK_PRESENTATION_PROGRESS stage=paint-recorded display=${presentationDisplay ?? -1} publication=$publication wall_ms=${DateTime.now().millisecondsSinceEpoch}');
+    }
     canvas.scale(scale, scale);
     // https://github.com/flutter/flutter/issues/76187#issuecomment-784628161
     // https://api.flutter-io.cn/flutter/dart-ui/FilterQuality.html

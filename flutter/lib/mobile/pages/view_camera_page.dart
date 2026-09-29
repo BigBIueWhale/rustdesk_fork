@@ -598,6 +598,8 @@ class ImagePaint extends StatelessWidget {
     final adjust = c.getAdjustY();
     return OwnedImagePaint(
       image: m.image,
+      presentationDisplay: m.presentationDisplay,
+      presentationPublication: m.presentationPublication,
       x: c.x / s,
       y: (c.y + adjust) / s,
       scale: s,

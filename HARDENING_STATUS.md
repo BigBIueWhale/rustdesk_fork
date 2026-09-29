@@ -982,8 +982,10 @@ invariance, and cleanup in 284 seconds. This is framework evidence, not product 
 The current source-bound Recents driver is compiled twice from the sealed SDK with byte equality.
 It injects one explicit-display app-switch down/up pair, then one direct 12-event upward gesture from
 the bound task snapshot's center; only independent disappearance of the exact active task counts.
-The ten-cycle transaction at `afc4161e` passed inner, guest, and outer acceptance in 1,014 seconds.
-It did not start MainService or exercise a peer, MediaProjection continuity, Force Stop, or presentation.
+The ten-cycle transaction at `afc4161e` passed inner, guest, and outer acceptance in 1,014 seconds
+under the then-permissive ANR-Wait criterion; it is historical task-removal evidence, not proof of an
+uninterrupted healthy framework baseline. It did not start MainService or exercise a peer,
+MediaProjection continuity, Force Stop, or presentation.
 Obsolete shell gestures, accessibility discovery, legacy runners, and partial forwarding attempts are
 history, not alternate supported behavior.
 
@@ -1070,9 +1072,18 @@ success. Every captured hierarchy checks the Android ANR resource pair and known
 an observation retains a sticky private diagnostic and refuses subsequent UI sampling/success.
 The diagnostic bounds events, framework logcat, ActivityManager's last ANR, and CPU usage to 128 KiB,
 records each command status, and is forwarded through both runtime wrappers before joined teardown.
-The first-run immersive tutorial remains a separate benign dismissal. Syntax/diff checks are complete;
-the real cached-artifact replay and native ANR-refusal/diagnostic evidence remain pending. No APK or
-peer code, cryptographic work factor, presentation/freshness budget, or persistent service was changed.
+The first-run immersive tutorial remains a separate benign dismissal. Exact pushed harness `01c61b8e`
+then executed the cached-artifact replay: actual Android displayed `Process system isn't responding`,
+and the new refusal/diagnostic path ended the transaction without pressing Wait. Events recorded ANRs
+in System UI, system binding, media storage, and telephony. The framework reported CPU-pressure
+`some avg10=92.29` and 99% total CPU use; this supports a CPU-starved emulator, not the reported
+RustDesk display defect's cause. All four diagnostic commands returned zero, but `lastanr` claimed
+no ANR since boot despite the actual dialog/events; that summary cannot override them. The real frame
+observer received/published 245/221 frames and joined. Peer admission progress arrived at guest 265 s
+before EOF; the failed VM transaction ended at 753 s with joined owned processes and identical
+host listener inventories. Bounded raw serial evidence is retained outside the retired failed VM root.
+Healthy Android execution and presentation remain OPEN. No APK/peer code, cryptographic work factor,
+presentation/freshness budget, or persistent service was changed.
 The attempted shared authority smoke hit its existing 90-second VM deadline after the 22 capsule
 cases and several authority entries passed; it is not a complete transaction or consumer verdict.
 The peer launcher now validates the externally digest-bound capsule manifest and all seven execution

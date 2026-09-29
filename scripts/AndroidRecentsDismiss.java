@@ -172,23 +172,19 @@ public final class AndroidRecentsDismiss {
                 0,
                 0,
                 InputDevice.SOURCE_KEYBOARD);
-        try {
-            invoke(setDisplayId, event, DEFAULT_DISPLAY_ID);
-            Object displayId = invoke(getDisplayId, event);
-            if (!Integer.valueOf(DEFAULT_DISPLAY_ID).equals(displayId)) {
-                throw new IllegalStateException("app-switch key event display differs");
-            }
-            Object injected = invoke(
-                    injectInputEvent,
-                    automation,
-                    event,
-                    true,
-                    false);
-            if (!Boolean.TRUE.equals(injected)) {
-                throw new IllegalStateException("UiAutomation rejected an app-switch key event");
-            }
-        } finally {
-            event.recycle();
+        invoke(setDisplayId, event, DEFAULT_DISPLAY_ID);
+        Object displayId = invoke(getDisplayId, event);
+        if (!Integer.valueOf(DEFAULT_DISPLAY_ID).equals(displayId)) {
+            throw new IllegalStateException("app-switch key event display differs");
+        }
+        Object injected = invoke(
+                injectInputEvent,
+                automation,
+                event,
+                true,
+                false);
+        if (!Boolean.TRUE.equals(injected)) {
+            throw new IllegalStateException("UiAutomation rejected an app-switch key event");
         }
     }
 

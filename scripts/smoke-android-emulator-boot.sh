@@ -1172,7 +1172,6 @@ readonly PEER_REVERSE_CONTAINER_SPEC=tcp:21118
 readonly SERVICE_START_WARNING_TEXT='Turning on "Screen Capture" will automatically start the service, allowing other devices to request a connection to your device.'
 readonly UI_XML=$WORK_ROOT/window.xml
 readonly FRAMEWORK_ANR_MARKER=$WORK_ROOT/framework-anr.waited
-readonly FRAMEWORK_ANR_CLOSE_MARKER=$WORK_ROOT/framework-anr.closed
 readonly IMMERSIVE_CLING_MARKER=$WORK_ROOT/immersive-cling.dismissed
 readonly MAX_FRAMEWORK_ANR_WAITS=12
 FRAMEWORK_INTERRUPTION_HANDLED=0
@@ -1617,7 +1616,7 @@ print_password_submit_thread_diagnostic() {
 
 handle_framework_interruption() {
     local cling_title= cling_ok= cling_x= cling_y=
-    local anr_title= anr_wait= anr_close= anr_x= anr_y= anr_wait_count=0
+    local anr_title= anr_wait= anr_x= anr_y= anr_wait_count=0
     FRAMEWORK_INTERRUPTION_HANDLED=0
 
     cling_title="$(ui_center text 'Viewing full screen' 2>/dev/null || true)"
@@ -1640,23 +1639,19 @@ handle_framework_interruption() {
     if ! [[ "$anr_title" =~ ^[0-9]+\ [0-9]+$ ]]; then
         return 0
     fi
-    if [ -f "$FRAMEWORK_ANR_MARKER" ] \
-       && [ ! -L "$FRAMEWORK_ANR_MARKER" ]; then
+    if [ -e "$FRAMEWORK_ANR_MARKER" ] \
+       || [ -L "$FRAMEWORK_ANR_MARKER" ]; then
+        [ -f "$FRAMEWORK_ANR_MARKER" ] && [ ! -L "$FRAMEWORK_ANR_MARKER" ] \
+            || return 1
+        [ "$(stat -c '%u:%g:%a:%h' -- "$FRAMEWORK_ANR_MARKER")" = \
+          "$RUN_UID:$RUN_GID:600:1" ] || return 1
         anr_wait_count="$(wc -l <"$FRAMEWORK_ANR_MARKER")"
     fi
-    if [ "$anr_wait_count" -lt "$MAX_FRAMEWORK_ANR_WAITS" ]; then
-        anr_wait="$(ui_center resource android:id/aerr_wait 2>/dev/null || true)"
-        [[ "$anr_wait" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
-        printf 'waited\n' >>"$FRAMEWORK_ANR_MARKER"
-        read -r anr_x anr_y <<<"$anr_wait"
-    else
-        [ ! -e "$FRAMEWORK_ANR_CLOSE_MARKER" ] \
-            && [ ! -L "$FRAMEWORK_ANR_CLOSE_MARKER" ] || return 1
-        anr_close="$(ui_center resource android:id/aerr_close 2>/dev/null || true)"
-        [[ "$anr_close" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
-        printf 'closed\n' >"$FRAMEWORK_ANR_CLOSE_MARKER"
-        read -r anr_x anr_y <<<"$anr_close"
-    fi
+    [ "$anr_wait_count" -lt "$MAX_FRAMEWORK_ANR_WAITS" ] || return 1
+    anr_wait="$(ui_center resource android:id/aerr_wait 2>/dev/null || true)"
+    [[ "$anr_wait" =~ ^[0-9]+\ [0-9]+$ ]] || return 1
+    printf 'waited\n' >>"$FRAMEWORK_ANR_MARKER"
+    read -r anr_x anr_y <<<"$anr_wait"
     timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" shell input tap "$anr_x" "$anr_y" \
         >/dev/null || return 1
@@ -1673,6 +1668,23 @@ capture_unobscured_ui_hierarchy() {
             return 0
         fi
     done
+}
+
+framework_anr_receipt() {
+    local anr_wait_count=
+    if [ ! -e "$FRAMEWORK_ANR_MARKER" ]; then
+        [ ! -L "$FRAMEWORK_ANR_MARKER" ] || return 1
+        printf 'absent\n'
+        return 0
+    fi
+    [ -f "$FRAMEWORK_ANR_MARKER" ] && [ ! -L "$FRAMEWORK_ANR_MARKER" ] \
+        || return 1
+    [ "$(stat -c '%u:%g:%a:%h' -- "$FRAMEWORK_ANR_MARKER")" = \
+      "$RUN_UID:$RUN_GID:600:1" ] || return 1
+    anr_wait_count="$(wc -l <"$FRAMEWORK_ANR_MARKER")"
+    [[ "$anr_wait_count" =~ ^[1-9][0-9]*$ ]] \
+        && [ "$anr_wait_count" -le "$MAX_FRAMEWORK_ANR_WAITS" ] || return 1
+    printf 'waited-%s\n' "$anr_wait_count"
 }
 
 wait_ui_center() {
@@ -1955,6 +1967,7 @@ open_app_recents() {
     local expected_task_id=$1 lifecycle_cycle=$2
     local open_output= open_receipt= left= top= right= bottom= center_x= center_y=
     local lookup_elapsed_ms= click_elapsed_ms=
+    capture_unobscured_ui_hierarchy complete || return 1
     if ! open_output="$(timeout --signal=TERM --kill-after=2s 30s \
         "$ADB" -s "$SERIAL" shell env \
         "CLASSPATH=$RECENTS_RUNTIME_UIAUTOMATOR_PATH:$RECENTS_GESTURE_DEVICE_PATH" \
@@ -3599,38 +3612,22 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
             || fail 'the focused Recents receipt is not ready'
         [ "$RECENTS_GESTURE_STAGED" -eq 0 ] \
             || fail 'the focused Recents gesture driver remained staged'
-        printf 'ANDROID_EMULATOR_RECENTS=pass task_removals=%s actions=%s open_actions=%s task_ids=distinct open=ui-automation-physical-systemui-object-click driver=android14-ui-automation-direct events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s driver_sha256=%s service=never-started relaunch=resumed apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
+        framework_anr="$(framework_anr_receipt)" \
+            || fail 'the focused Recents framework ANR receipt is invalid'
+        printf 'ANDROID_EMULATOR_RECENTS=pass task_removals=%s actions=%s open_actions=%s task_ids=distinct open=ui-automation-physical-systemui-object-click driver=android14-ui-automation-direct events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s driver_sha256=%s framework_anr=%s service=never-started relaunch=resumed apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
             "$RECENTS_FOCUSED_CYCLES" "$RECENTS_FOCUSED_CYCLES" \
             "$RECENTS_FOCUSED_CYCLES" \
             "$RECENTS_DISMISS_GESTURE_EVENTS" "$RECENTS_DISMISS_GESTURE_STEPS" \
             "$RECENTS_DISMISS_GESTURE_STEP_MS" \
             "$RECENTS_RUNTIME_UIAUTOMATOR_SHA256" "$RECENTS_GESTURE_SHA256" \
+            "$framework_anr" \
             "$APK_SHA256"
     fi
     if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then
         [ "$LIFECYCLE_RECEIPT_READY" -eq 1 ] \
             || fail 'the Android lifecycle receipt is not ready'
-        framework_anr=absent
-        if [ -f "$FRAMEWORK_ANR_MARKER" ] && [ ! -L "$FRAMEWORK_ANR_MARKER" ]; then
-            [ "$(stat -c '%u:%g:%a:%h' -- "$FRAMEWORK_ANR_MARKER")" = \
-              1000:1000:600:1 ] \
-                || fail 'the Android framework ANR marker metadata differs'
-            framework_anr_count="$(wc -l <"$FRAMEWORK_ANR_MARKER")"
-            [[ "$framework_anr_count" =~ ^([1-9]|1[0-2])$ ]] \
-                || fail 'the Android framework ANR wait count is malformed'
-            framework_anr=waited-$framework_anr_count
-        fi
-        if [ -f "$FRAMEWORK_ANR_CLOSE_MARKER" ] \
-           && [ ! -L "$FRAMEWORK_ANR_CLOSE_MARKER" ]; then
-            [ "$(stat -c '%u:%g:%a:%h' -- "$FRAMEWORK_ANR_CLOSE_MARKER")" = \
-              1000:1000:600:1 ] \
-                || fail 'the Android framework ANR close marker metadata differs'
-            [ "$(<"$FRAMEWORK_ANR_CLOSE_MARKER")" = closed ] \
-                || fail 'the Android framework ANR close marker is malformed'
-            [ "${framework_anr_count:-0}" -eq "$MAX_FRAMEWORK_ANR_WAITS" ] \
-                || fail 'System UI was closed before exhausting bounded waits'
-            framework_anr=$framework_anr-closed-1
-        fi
+        framework_anr="$(framework_anr_receipt)" \
+            || fail 'the Android lifecycle framework ANR receipt is invalid'
         immersive_cling=absent
         if [ -f "$IMMERSIVE_CLING_MARKER" ] && [ ! -L "$IMMERSIVE_CLING_MARKER" ]; then
             [ "$(stat -c '%u:%g:%a:%h' -- "$IMMERSIVE_CLING_MARKER")" = \

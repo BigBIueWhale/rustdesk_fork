@@ -3363,7 +3363,7 @@ run_android_emulator_runtime() {
         || fail 'Android runtime app receipt is duplicated'
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
     lifecycle_receipt="$(grep -E \
-        "^ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=(absent|waited-([1-9]|1[0-2])|waited-12-closed-1) immersive_cling=(absent|dismissed-1) apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
+        "^ANDROID_EMULATOR_LIFECYCLE=pass task_removals=2 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=(absent|waited-([1-9]|1[0-2])) immersive_cling=(absent|dismissed-1) apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android lifecycle runtime receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_LIFECYCLE=' "$output")" -eq 1 ] \
@@ -3382,8 +3382,8 @@ run_android_emulator_runtime() {
         || fail 'Android real-peer lifecycle receipt is duplicated'
         runtime_peer=production-loopback-cpace-changing-display
     else
-        focused_recents_receipt="$(grep -Fx \
-            "ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 open_actions=10 task_ids=distinct open=ui-automation-physical-systemui-object-click driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$recents_runtime_uiautomator_sha256 driver_sha256=$recents_driver_sha256 service=never-started relaunch=resumed apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
+        focused_recents_receipt="$(grep -E \
+            "^ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 open_actions=10 task_ids=distinct open=ui-automation-physical-systemui-object-click driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$recents_runtime_uiautomator_sha256 driver_sha256=$recents_driver_sha256 framework_anr=(absent|waited-([1-9]|1[0-2])) service=never-started relaunch=resumed apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
             "$output")" \
             || { tail -n 320 "$output" >&2; fail 'focused Android Recents runtime receipt is absent'; }
         [ "$(grep -c '^ANDROID_EMULATOR_RECENTS=' "$output")" -eq 1 ] \

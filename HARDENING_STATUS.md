@@ -1015,6 +1015,21 @@ SHA-256 `19e061f6c5cb546ced8313eecba66c10961c6ce28f81f87fcf33e3f620ff5bd0`.
 Its peer replay was deliberately interrupted for the storage/admission correction; that interruption
 supplies no product verdict. Logging image notification or paint recording is not actual presentation.
 
+Peer build/runtime separation is partially implemented in `scripts/android-peer-artifact.py`.
+Its closed capsule holds only the seven required Linux x86_64 ELF files plus a bounded manifest;
+source commit/tree, builder configuration, vendor closure/configuration, and Rust toolchain must match
+the independently supplied build context and manifest digest. It retains directory/file identities,
+rejects unsafe ownership/modes, ACLs, extra entries, links, and content drift, and publishes without
+clobbering through a locked parent. Cached files remain non-executable mode 0400. Materialization
+requires the authenticated zero-NIC VM and creates only the fixed owner-only execution layout.
+The 22 real-filesystem cases passed under guest UID/GID 4000 in the 85-second zero-NIC authority
+transaction, including CLI publication/materialization, actual guest-only fixture execution, late
+no-clobber collision, and a FIFO substitution A/B: old flags blocked; corrected flags refused.
+All children/workspaces/VM owners joined, with no added host listener or pre-existing process drift.
+The fixture uses a guest-system ELF, not RustDesk: this tests the capsule contract, not source
+provenance, an actual peer build, Android lifecycle, presentation, or a release artifact.
+The production build/publish and replay/admission wiring remains OPEN; replay still rebuilds the peer.
+
 CPace recovery is independently source/wire-covered: after successful step-3 transmission, transport
 loss while awaiting step 4 is `PeerConfirmationUnavailable`; earlier I/O remains `Io`, malformed or
 out-of-order traffic remains `Protocol`, and an invalid received confirmation remains `Confirmation`.

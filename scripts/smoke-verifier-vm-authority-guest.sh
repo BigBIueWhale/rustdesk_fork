@@ -4401,6 +4401,7 @@ for verify_source in verify.sh verify-release.sh build-release.sh \
     android-emulator-runtime-check.sh AndroidRecentsDismiss.java \
     verify-android-emulator-apk.py \
     verify-android-apk-manifest.py publish-artifact-result.py \
+    android-peer-artifact.py test-android-peer-artifact.py \
     dart-audit.sh dart-audit-result.py \
     verify-dart-verifier-authority.py verify-dart-audit-authority.py \
     smoke-verifier-vm-authority.sh smoke-verifier-vm-authority-guest.sh \
@@ -4670,6 +4671,15 @@ run_admission_output="$(
   'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cleanup=joined' ] \
     || fail "verifier-VM run admission result differs: $run_admission_output"
 printf '%s\n' "$run_admission_output"
+
+peer_artifact_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -I -S "$VERIFY_REPO/scripts/test-android-peer-artifact.py"
+)" || fail 'numeric-nonroot Android peer artifact authority test failed'
+[ "$peer_artifact_output" = \
+  'ANDROID_PEER_ARTIFACT=pass fixture=system-elf files=7 cases=22 publication=noclobber admission=exact execution=guest-only cleanup=joined' ] \
+    || fail "Android peer artifact authority result differs: $peer_artifact_output"
+printf '%s\n' "$peer_artifact_output"
 
 if /bin/bash "$VERIFY_SCRIPT" --self-test-workspace \
     >"$ROOT/root-entry.out" 2>"$ROOT/root-entry.err"; then

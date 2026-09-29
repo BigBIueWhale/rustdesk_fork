@@ -280,7 +280,7 @@ def open_result_file(
         or before.st_size > maximum
     ):
         fail(f"{label} metadata is invalid")
-    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
     try:
         descriptor = os.open(name, flags, dir_fd=parent)
     except OSError as exc:

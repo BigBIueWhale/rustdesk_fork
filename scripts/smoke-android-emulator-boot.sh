@@ -1907,7 +1907,7 @@ stage_recents_gesture_driver() {
         || return 1
     RECENTS_RUNTIME_UIAUTOMATOR_SHA256=$runtime_digest
     RECENTS_GESTURE_STAGED=1
-    printf 'ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=%s framework=android14-ui-automation-direct open=ui-automation-physical-systemui-object-click events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s device_path=%s\n' \
+    printf 'ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=%s framework=android14-ui-automation-direct open=statusbar-binder-toggle events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s device_path=%s\n' \
         "$RECENTS_GESTURE_SHA256" "$RECENTS_DISMISS_GESTURE_EVENTS" \
         "$RECENTS_DISMISS_GESTURE_STEPS" "$RECENTS_DISMISS_GESTURE_STEP_MS" \
         "$RECENTS_RUNTIME_UIAUTOMATOR_SHA256" "$RECENTS_GESTURE_DEVICE_PATH"
@@ -1965,14 +1965,14 @@ current_app_task_id() {
 
 open_app_recents() {
     local expected_task_id=$1 lifecycle_cycle=$2
-    local open_output= open_receipt= left= top= right= bottom= center_x= center_y=
-    local lookup_elapsed_ms= click_elapsed_ms=
+    local open_output= open_receipt= elapsed_ms=
     capture_unobscured_ui_hierarchy complete || return 1
     if ! open_output="$(timeout --signal=TERM --kill-after=2s 30s \
         "$ADB" -s "$SERIAL" shell env \
         "CLASSPATH=$RECENTS_RUNTIME_UIAUTOMATOR_PATH:$RECENTS_GESTURE_DEVICE_PATH" \
         /system/bin/app_process /system/bin \
-        com.rustdesk.harness.AndroidRecentsDismiss click-recents-button \
+        com.rustdesk.harness.AndroidRecentsDismiss \
+        toggle-recents-through-statusbar \
         2>&1 | tr -d '\r')"; then
         printf 'ANDROID_RECENTS_OPEN_OUTPUT_BEGIN cycle=%s task_id=%s\n%s\nANDROID_RECENTS_OPEN_OUTPUT_END cycle=%s task_id=%s\n' \
             "$lifecycle_cycle" "$expected_task_id" "$open_output" \
@@ -1980,7 +1980,7 @@ open_app_recents() {
         return 1
     fi
     open_receipt="$(grep -E \
-        '^ANDROID_RECENTS_DIRECT_OPEN=pass resource=com.android.systemui:id/recent_apps bounds=[0-9]+,[0-9]+,[0-9]+,[0-9]+ center=[0-9]+,[0-9]+ action=ui-automation-physical-click matches=1 events=2 wait_for_animations=false lookup_elapsed_ms=[0-9]+ click_elapsed_ms=[0-9]+$' \
+        '^ANDROID_RECENTS_DIRECT_OPEN=pass action=statusbar-binder-toggle service=statusbar descriptor=com.android.internal.statusbar.IStatusBarService method=toggleRecentApps calls=1 caller_uid=2000 elapsed_ms=[0-9]+$' \
         <<<"$open_output" || true)"
     [ "${#open_output}" -le 16384 ] \
         && [ "$(grep -c '^ANDROID_RECENTS_DIRECT_OPEN=' \
@@ -1992,30 +1992,13 @@ open_app_recents() {
                 "$lifecycle_cycle" "$expected_task_id" >&2
             return 1
         }
-    [[ "$open_receipt" =~ \
-        bounds=([0-9]+),([0-9]+),([0-9]+),([0-9]+)\ center=([0-9]+),([0-9]+)\ action= ]] \
+    [[ "$open_receipt" =~ elapsed_ms=([0-9]+)$ ]] \
         || return 1
-    left=${BASH_REMATCH[1]}
-    top=${BASH_REMATCH[2]}
-    right=${BASH_REMATCH[3]}
-    bottom=${BASH_REMATCH[4]}
-    center_x=${BASH_REMATCH[5]}
-    center_y=${BASH_REMATCH[6]}
-    [ "$right" -gt "$left" ] && [ "$bottom" -gt "$top" ] \
-        && [ "$center_x" -eq "$(((left + right) / 2))" ] \
-        && [ "$center_y" -eq "$(((top + bottom) / 2))" ] \
-        || return 1
-    [[ "$open_receipt" =~ \
-        lookup_elapsed_ms=([0-9]+)\ click_elapsed_ms=([0-9]+)$ ]] \
-        || return 1
-    lookup_elapsed_ms=${BASH_REMATCH[1]}
-    click_elapsed_ms=${BASH_REMATCH[2]}
-    [ "$lookup_elapsed_ms" -le 5000 ] \
-        && [ "$click_elapsed_ms" -le 5000 ] || return 1
-    printf 'ANDROID_RECENTS_OPEN_ACTION=clicked cycle=%s task_id=%s resource=com.android.systemui:id/recent_apps bounds=%s,%s,%s,%s center=%s,%s mechanism=android14-ui-automation-physical-object-click matches=1 events=2 wait_for_animations=false lookup_elapsed_ms=%s driver_elapsed_ms=%s driver_sha256=%s\n' \
+    elapsed_ms=${BASH_REMATCH[1]}
+    [ "$elapsed_ms" -le 5000 ] || return 1
+    printf 'ANDROID_RECENTS_OPEN_ACTION=requested cycle=%s task_id=%s mechanism=android14-statusbar-binder-toggle service=statusbar descriptor=com.android.internal.statusbar.IStatusBarService method=toggleRecentApps calls=1 caller_uid=2000 driver_elapsed_ms=%s driver_sha256=%s\n' \
         "$lifecycle_cycle" "$expected_task_id" \
-        "$left" "$top" "$right" "$bottom" "$center_x" "$center_y" \
-        "$lookup_elapsed_ms" "$click_elapsed_ms" \
+        "$elapsed_ms" \
         "$RECENTS_GESTURE_SHA256"
 }
 
@@ -3614,7 +3597,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
             || fail 'the focused Recents gesture driver remained staged'
         framework_anr="$(framework_anr_receipt)" \
             || fail 'the focused Recents framework ANR receipt is invalid'
-        printf 'ANDROID_EMULATOR_RECENTS=pass task_removals=%s actions=%s open_actions=%s task_ids=distinct open=ui-automation-physical-systemui-object-click driver=android14-ui-automation-direct events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s driver_sha256=%s framework_anr=%s service=never-started relaunch=resumed apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
+        printf 'ANDROID_EMULATOR_RECENTS=pass task_removals=%s actions=%s open_actions=%s task_ids=distinct open=statusbar-binder-toggle driver=android14-ui-automation-direct events=%s steps=%s step_ms=%s wait_for_animations=false runtime_uiautomator_sha256=%s driver_sha256=%s framework_anr=%s service=never-started relaunch=resumed apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
             "$RECENTS_FOCUSED_CYCLES" "$RECENTS_FOCUSED_CYCLES" \
             "$RECENTS_FOCUSED_CYCLES" \
             "$RECENTS_DISMISS_GESTURE_EVENTS" "$RECENTS_DISMISS_GESTURE_STEPS" \

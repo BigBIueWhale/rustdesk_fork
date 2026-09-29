@@ -1,22 +1,16 @@
 package com.rustdesk.harness;
 
-import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.UiAutomation;
-import android.graphics.Rect;
+import android.os.IBinder;
+import android.os.Process;
 import android.os.SystemClock;
-import android.util.SparseArray;
 import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.MotionEvent;
-import android.view.accessibility.AccessibilityNodeInfo;
-import android.view.accessibility.AccessibilityWindowInfo;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.TimeoutException;
 
 public final class AndroidRecentsDismiss {
     private static final int GESTURE_STEPS = 10;
@@ -24,9 +18,14 @@ public final class AndroidRecentsDismiss {
     private static final int GESTURE_EVENT_COUNT = GESTURE_STEPS + 2;
     private static final String UIAUTOMATION_WRAPPER_CLASS =
             "com.android.uiautomator.core.UiAutomationShellWrapper";
-    private static final String OPEN_RECENTS_ARGUMENT = "click-recents-button";
-    private static final String RECENTS_BUTTON_VIEW_ID =
-            "com.android.systemui:id/recent_apps";
+    private static final String OPEN_RECENTS_ARGUMENT = "toggle-recents-through-statusbar";
+    private static final String SERVICE_MANAGER_CLASS = "android.os.ServiceManager";
+    private static final String STATUS_BAR_SERVICE = "statusbar";
+    private static final String STATUS_BAR_SERVICE_INTERFACE =
+            "com.android.internal.statusbar.IStatusBarService";
+    private static final String STATUS_BAR_SERVICE_STUB =
+            STATUS_BAR_SERVICE_INTERFACE + "$Stub";
+    private static final int SHELL_UID = 2000;
 
     private AndroidRecentsDismiss() {
     }
@@ -34,21 +33,6 @@ public final class AndroidRecentsDismiss {
     private static void openPhase(String phase) {
         System.out.printf(Locale.ROOT, "ANDROID_RECENTS_OPEN_PHASE=%s%n", phase);
         System.out.flush();
-    }
-
-    private static void openPhase(String phase, String detailFormat, Object... details) {
-        System.out.printf(
-                Locale.ROOT,
-                "ANDROID_RECENTS_OPEN_PHASE=%s " + detailFormat + "%n",
-                prepend(phase, details));
-        System.out.flush();
-    }
-
-    private static Object[] prepend(Object first, Object[] remaining) {
-        Object[] combined = new Object[remaining.length + 1];
-        combined[0] = first;
-        System.arraycopy(remaining, 0, combined, 1, remaining.length);
-        return combined;
     }
 
     private static int requiredCoordinate(String[] arguments, int index, String name) {
@@ -175,153 +159,42 @@ public final class AndroidRecentsDismiss {
                 endY);
     }
 
-    private static void enableInteractiveWindows(UiAutomation automation) {
-        AccessibilityServiceInfo serviceInfo = automation.getServiceInfo();
-        if (serviceInfo == null) {
-            throw new IllegalStateException("UiAutomation service info is unavailable");
+    private static long toggleRecentsThroughStatusBar() throws Exception {
+        int callerUid = Process.myUid();
+        if (callerUid != SHELL_UID) {
+            throw new SecurityException(
+                    "Recents opener requires the Android shell UID, got " + callerUid);
         }
-        serviceInfo.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-                | AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS;
-        automation.setServiceInfo(serviceInfo);
-        AccessibilityServiceInfo effectiveInfo = automation.getServiceInfo();
-        if (effectiveInfo == null
-                || (effectiveInfo.flags
-                & AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS) == 0
-                || (effectiveInfo.flags
-                & AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS) == 0) {
+
+        openPhase("service-lookup-start");
+        Class<?> serviceManagerType = Class.forName(SERVICE_MANAGER_CLASS);
+        Method getService = serviceManagerType.getMethod("getService", String.class);
+        Object binderValue = invoke(getService, null, STATUS_BAR_SERVICE);
+        if (!(binderValue instanceof IBinder)) {
+            throw new IllegalStateException("statusbar service Binder is unavailable");
+        }
+        IBinder binder = (IBinder) binderValue;
+        String descriptor = binder.getInterfaceDescriptor();
+        if (!STATUS_BAR_SERVICE_INTERFACE.equals(descriptor)) {
             throw new IllegalStateException(
-                    "interactive-window or view-ID retrieval was not enabled");
+                    "statusbar service descriptor differs: " + descriptor);
         }
-    }
+        openPhase("service-lookup-complete");
 
-    private static Rect findUniqueRecentsButton(UiAutomation automation) {
-        openPhase("idle-wait-start", "quiet_ms=500 limit_ms=5000");
-        try {
-            automation.waitForIdle(500, 5000);
-            openPhase("idle-wait-complete", "quiet_ms=500 limit_ms=5000");
-        } catch (TimeoutException error) {
-            openPhase("idle-wait-timeout", "quiet_ms=500 limit_ms=5000");
+        Class<?> stubType = Class.forName(STATUS_BAR_SERVICE_STUB);
+        Method asInterface = stubType.getMethod("asInterface", IBinder.class);
+        Object statusBarService = invoke(asInterface, null, binder);
+        if (statusBarService == null) {
+            throw new IllegalStateException("statusbar service interface is unavailable");
         }
-
-        openPhase("active-root-query-start");
-        AccessibilityNodeInfo activeRoot = automation.getRootInActiveWindow();
-        if (activeRoot == null) {
-            openPhase("active-root-query-null");
-        } else {
-            openPhase("active-root-query-complete");
-            activeRoot.recycle();
-        }
-
-        openPhase("all-display-windows-query-start");
-        SparseArray<List<AccessibilityWindowInfo>> windowsByDisplay =
-                automation.getWindowsOnAllDisplays();
-        List<AccessibilityWindowInfo> windows = new ArrayList<>();
-        for (int displayIndex = 0;
-                displayIndex < windowsByDisplay.size();
-                displayIndex++) {
-            List<AccessibilityWindowInfo> displayWindows =
-                    windowsByDisplay.valueAt(displayIndex);
-            openPhase(
-                    "display-windows",
-                    "display=%d windows=%d",
-                    windowsByDisplay.keyAt(displayIndex),
-                    displayWindows.size());
-            windows.addAll(displayWindows);
-        }
-        openPhase(
-                "all-display-windows-query-complete",
-                "displays=%d windows=%d",
-                windowsByDisplay.size(),
-                windows.size());
-        Rect targetBounds = null;
-        int matches = 0;
-        int windowIndex = 0;
-        try {
-            for (AccessibilityWindowInfo window : windows) {
-                openPhase(
-                        "window-root-start",
-                        "index=%d type=%d layer=%d active=%s focused=%s",
-                        windowIndex,
-                        window.getType(),
-                        window.getLayer(),
-                        window.isActive(),
-                        window.isFocused());
-                AccessibilityNodeInfo root = window.getRoot();
-                if (root == null) {
-                    openPhase("window-root-null", "index=%d", windowIndex);
-                    windowIndex++;
-                    continue;
-                }
-                try {
-                    openPhase("window-query-start", "index=%d", windowIndex);
-                    List<AccessibilityNodeInfo> nodes =
-                            root.findAccessibilityNodeInfosByViewId(RECENTS_BUTTON_VIEW_ID);
-                    openPhase(
-                            "window-query-complete",
-                            "index=%d matches=%d",
-                            windowIndex,
-                            nodes.size());
-                    for (AccessibilityNodeInfo node : nodes) {
-                        try {
-                            matches++;
-                            if (!node.isVisibleToUser()
-                                    || !node.isEnabled()
-                                    || !node.isClickable()) {
-                                throw new IllegalStateException(
-                                        "SystemUI Recents button is not actionable");
-                            }
-                            Rect bounds = new Rect();
-                            node.getBoundsInScreen(bounds);
-                            if (bounds.isEmpty()) {
-                                throw new IllegalStateException(
-                                        "SystemUI Recents button bounds are empty");
-                            }
-                            if (targetBounds == null) {
-                                targetBounds = bounds;
-                            }
-                        } finally {
-                            node.recycle();
-                        }
-                    }
-                } finally {
-                    root.recycle();
-                }
-                windowIndex++;
-            }
-        } finally {
-            for (AccessibilityWindowInfo window : windows) {
-                window.recycle();
-            }
-        }
-        if (matches != 1 || targetBounds == null) {
-            throw new IllegalStateException(
-                    "expected exactly one SystemUI Recents button, found " + matches);
-        }
-        return targetBounds;
-    }
-
-    private static void injectClick(
-            UiAutomation automation,
-            Method injectInputEvent,
-            int x,
-            int y) throws Exception {
-        long eventTime = SystemClock.uptimeMillis();
-        injectPointer(
-                automation,
-                injectInputEvent,
-                eventTime,
-                eventTime,
-                MotionEvent.ACTION_DOWN,
-                x,
-                y);
-        injectPointer(
-                automation,
-                injectInputEvent,
-                eventTime,
-                eventTime,
-                MotionEvent.ACTION_UP,
-                x,
-                y);
+        Class<?> interfaceType = Class.forName(STATUS_BAR_SERVICE_INTERFACE);
+        Method toggleRecentApps = interfaceType.getMethod("toggleRecentApps");
+        long startedAt = SystemClock.uptimeMillis();
+        openPhase("toggle-start");
+        invoke(toggleRecentApps, statusBarService);
+        long elapsedMillis = SystemClock.uptimeMillis() - startedAt;
+        openPhase("toggle-complete");
+        return elapsedMillis;
     }
 
     public static void main(String[] arguments) throws Exception {
@@ -329,7 +202,7 @@ public final class AndroidRecentsDismiss {
                 && OPEN_RECENTS_ARGUMENT.equals(arguments[0]);
         if (!openRecents && arguments.length != 4) {
             throw new IllegalArgumentException(
-                    "expected click-recents-button or four coordinates");
+                    "expected toggle-recents-through-statusbar or four coordinates");
         }
         int startX = 0;
         int startY = 0;
@@ -345,6 +218,28 @@ public final class AndroidRecentsDismiss {
             }
         }
 
+        if (openRecents) {
+            try {
+                long elapsedMillis = toggleRecentsThroughStatusBar();
+                System.out.printf(
+                        Locale.ROOT,
+                        "ANDROID_RECENTS_DIRECT_OPEN=pass action=statusbar-binder-toggle "
+                                + "service=%s descriptor=%s method=toggleRecentApps calls=1 "
+                                + "caller_uid=%d elapsed_ms=%d%n",
+                        STATUS_BAR_SERVICE,
+                        STATUS_BAR_SERVICE_INTERFACE,
+                        Process.myUid(),
+                        elapsedMillis);
+                System.out.flush();
+                System.exit(0);
+            } catch (Exception failure) {
+                failure.printStackTrace(System.err);
+                System.err.flush();
+                System.exit(1);
+            }
+            return;
+        }
+
         Class<?> wrapperType = Class.forName(UIAUTOMATION_WRAPPER_CLASS);
         Object wrapper = wrapperType.getConstructor().newInstance();
         Method connect = wrapperType.getMethod("connect");
@@ -355,67 +250,32 @@ public final class AndroidRecentsDismiss {
                 InputEvent.class,
                 boolean.class,
                 boolean.class);
-
         boolean connected = false;
         Exception failure = null;
         long elapsedMillis = 0;
-        long lookupElapsedMillis = 0;
-        Rect openBounds = null;
         try {
-            if (openRecents) {
-                openPhase("connect-start");
-            }
             invoke(connect, wrapper);
             connected = true;
-            if (openRecents) {
-                openPhase("connect-complete");
-            }
             Object automationValue = invoke(getUiAutomation, wrapper);
             if (!(automationValue instanceof UiAutomation)) {
                 throw new IllegalStateException("UiAutomation wrapper returned a different type");
             }
             UiAutomation automation = (UiAutomation) automationValue;
-            if (openRecents) {
-                openPhase("automation-ready");
-                openPhase("service-flags-start");
-                enableInteractiveWindows(automation);
-                openPhase("service-flags-complete");
-                long lookupStartedAt = SystemClock.uptimeMillis();
-                openBounds = findUniqueRecentsButton(automation);
-                lookupElapsedMillis = SystemClock.uptimeMillis() - lookupStartedAt;
-                openPhase("button-query-complete");
-                long clickStartedAt = SystemClock.uptimeMillis();
-                openPhase("click-start");
-                injectClick(
-                        automation,
-                        injectInputEvent,
-                        openBounds.centerX(),
-                        openBounds.centerY());
-                elapsedMillis = SystemClock.uptimeMillis() - clickStartedAt;
-                openPhase("click-complete");
-            } else {
-                long startedAt = SystemClock.uptimeMillis();
-                injectGesture(
-                        automation,
-                        injectInputEvent,
-                        startX,
-                        startY,
-                        endX,
-                        endY);
-                elapsedMillis = SystemClock.uptimeMillis() - startedAt;
-            }
+            long startedAt = SystemClock.uptimeMillis();
+            injectGesture(
+                    automation,
+                    injectInputEvent,
+                    startX,
+                    startY,
+                    endX,
+                    endY);
+            elapsedMillis = SystemClock.uptimeMillis() - startedAt;
         } catch (Exception error) {
             failure = error;
         } finally {
             if (connected) {
                 try {
-                    if (openRecents) {
-                        openPhase("disconnect-start");
-                    }
                     invoke(disconnect, wrapper);
-                    if (openRecents) {
-                        openPhase("disconnect-complete");
-                    }
                 } catch (Exception disconnectError) {
                     if (failure != null) {
                         failure.addSuppressed(disconnectError);
@@ -433,33 +293,14 @@ public final class AndroidRecentsDismiss {
             return;
         }
 
-        if (openRecents) {
-            System.out.printf(
-                    Locale.ROOT,
-                    "ANDROID_RECENTS_DIRECT_OPEN=pass resource=%s "
-                            + "bounds=%d,%d,%d,%d center=%d,%d "
-                            + "action=ui-automation-physical-click matches=1 events=2 "
-                            + "wait_for_animations=false lookup_elapsed_ms=%d "
-                            + "click_elapsed_ms=%d%n",
-                    RECENTS_BUTTON_VIEW_ID,
-                    openBounds.left,
-                    openBounds.top,
-                    openBounds.right,
-                    openBounds.bottom,
-                    openBounds.centerX(),
-                    openBounds.centerY(),
-                    lookupElapsedMillis,
-                    elapsedMillis);
-        } else {
-            System.out.printf(
-                    Locale.ROOT,
-                    "ANDROID_RECENTS_DIRECT_INJECTION=pass events=%d steps=%d step_ms=%d "
-                            + "wait_for_animations=false elapsed_ms=%d%n",
-                    GESTURE_EVENT_COUNT,
-                    GESTURE_STEPS,
-                    GESTURE_STEP_MILLIS,
-                    elapsedMillis);
-        }
+        System.out.printf(
+                Locale.ROOT,
+                "ANDROID_RECENTS_DIRECT_INJECTION=pass events=%d steps=%d step_ms=%d "
+                        + "wait_for_animations=false elapsed_ms=%d%n",
+                GESTURE_EVENT_COUNT,
+                GESTURE_STEPS,
+                GESTURE_STEP_MILLIS,
+                elapsedMillis);
         System.out.flush();
         System.exit(0);
     }

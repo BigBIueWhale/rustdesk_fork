@@ -4662,6 +4662,15 @@ if [ "$MODE" = flutter-peer-presentation ]; then
     exit 0
 fi
 
+run_admission_output="$(
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$VERIFY_REPO/scripts/test-verifier-vm-run-admission.sh"
+)" || fail 'numeric-nonroot verifier-VM run admission test failed'
+[ "$run_admission_output" = \
+  'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cleanup=joined' ] \
+    || fail "verifier-VM run admission result differs: $run_admission_output"
+printf '%s\n' "$run_admission_output"
+
 if /bin/bash "$VERIFY_SCRIPT" --self-test-workspace \
     >"$ROOT/root-entry.out" 2>"$ROOT/root-entry.err"; then
     fail 'VM root passed the main verifier entry'

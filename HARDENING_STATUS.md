@@ -1456,6 +1456,19 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   `0a12ed407e63129cac4065f4418911ab71adf3ca`: the installed CLI/LocalSystem service path exercised
   authorization refusal, credential mutation, live replica convergence, service restart, store reload, and
   stop finality for those package bytes. It remains a named single-build result, not current-master R-B2.
+- R-S11dh verifier-VM run admission now permits only one unreconciled `run.*` entry per run root.
+  `smoke-verifier-vm-authority.sh::reserve_verifier_run` retains and validates the private directory,
+  takes a nonblocking exclusive directory lock, checks for any existing run entry, and allocates the
+  sole run relative to that descriptor before releasing it. Refusal precedes input digest walks,
+  payload construction, VM-disk creation, or process launch; no automatic failed-evidence deletion or
+  bypass exists. Successful joined cleanup still removes its exact run; failure retains it and blocks
+  another attempt until explicitly reconciled. The real zero-NIC guest test exercised retained-directory,
+  ordinary-file, dangling-symlink, lock-contention, unsafe-mode, cleanup/readmission, and 16-concurrent-caller
+  cases with exactly one admission and no leaked admission descriptor. The complete authority transaction
+  passed in 71 seconds with no added host listener or process drift and joined, residue-free cleanup;
+  a concurrent outer invocation also refused without creating another root. User-authorized removal of
+  the 119 accumulated run roots recovered approximately 975 GiB; only reusable inputs and a bounded
+  interrupted-run log remain. This is harness storage/admission evidence, not product or release closure.
 - The R-S11dh authority smoke executed its real nonroot-host KVM/QEMU, networkless Debian guest, guest-only
   Docker daemon, and confined numeric-nonroot container lifecycle. Its exact kernel/initramfs are independently
   derived from the authenticated base, digest-pinned, retained by descriptor, and direct-booted; the guest proves

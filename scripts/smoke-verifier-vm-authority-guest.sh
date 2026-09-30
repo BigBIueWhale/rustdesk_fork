@@ -314,7 +314,7 @@ prepare_authority_probe_image() {
 }
 
 run_linux_flutter_artifact_tests() {
-    local work work_id principal refusal status source_before test_sha helper_sha
+    local work work_id principal refusal status source_before test_sha helper_sha context entry
     local test=$VERIFY_REPO/scripts/test-linux-flutter-artifact.py
     local helper=$VERIFY_REPO/scripts/linux-flutter-artifact.py
     local output=$ROOT/linux-flutter-artifact-tests.out
@@ -322,6 +322,7 @@ run_linux_flutter_artifact_tests() {
     local -a sources=("$test" "$helper" "$ENTRY_PREFLIGHT"
         "$VERIFY_REPO/scripts/publish-artifact-result.py"
         "$VERIFY_REPO/scripts/verify-private-tree-closure.py")
+    local -a command
 
     source_before="$(sha256sum "${sources[@]}")"
     test_sha="$(sha256sum "$test" | awk '{ print $1 }')"
@@ -335,26 +336,55 @@ run_linux_flutter_artifact_tests() {
         && [ "$(stat -c '%u:%g:%a' -- "$work")" = 4000:4000:700 ] \
         || fail 'Linux app-capsule test scratch authority differs'
     work_id="$(stat -c '%d:%i' -- "$work")"
+    context="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        /usr/bin/python3 -B -I -S - <<'PY'
+import json
+
+roles = (
+    "rust_archive", "flutter_archive", "flutter_tools_lock", "flutter_project_lock",
+    "llvm_archive", "frb_codegen", "vendor_closure", "vendor_config", "vcpkg_closure",
+    "pub_cache_closure",
+)
+print(json.dumps({
+    "source_commit": "0" * 40, "source_tree": "0" * 40,
+    "builder_config": "sha256:" + "0" * 64, "build_recipe_sha256": "0" * 64,
+    "rust_toolchain": "1.75.0-x86_64-unknown-linux-gnu", "flutter_version": "3.47.5",
+    "source_date_epoch": "unset", "inputs": {role: "0" * 64 for role in roles},
+}))
+PY
+    )" || fail 'Linux app-capsule refusal context could not be constructed'
     for principal in 0 4001; do
         if [ "$principal" -eq 0 ]; then
             refusal='verifier-VM entry preflight: the verifier principal must not be root'
         else
             refusal='verifier-VM entry preflight: VM Docker channel metadata differs'
         fi
-        status=0
-        setpriv --reuid="$principal" --regid="$principal" --clear-groups \
-            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
-            python3 -B -I -S "$test" \
-            >"$ROOT/linux-flutter-refusal-$principal.out" 2>"$ROOT/linux-flutter-refusal-$principal.err" \
-            || status=$?
-        [ "$status" -eq 1 ] && [ ! -s "$ROOT/linux-flutter-refusal-$principal.out" ] \
-            && [ "$(stat -c '%s' -- "$ROOT/linux-flutter-refusal-$principal.err")" -le 8192 ] \
-            && grep -Fxq "$refusal" "$ROOT/linux-flutter-refusal-$principal.err" \
-            || fail "Linux app-capsule entry refusal differs for UID $principal"
-        [ -z "$(find "$work" -mindepth 1 -print -quit)" ] \
-            && [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
-            && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
-            || fail 'refused Linux app-capsule entry changed scratch or Docker inventory'
+        for entry in test materializer; do
+            command=(python3 -B -I -S)
+            if [ "$entry" = test ]; then
+                command+=("$test")
+            else
+                command+=("$helper" materialize --context "$context"
+                    --root "$work/unopened" --root-identity 1:1
+                    --parent "$work" --parent-identity "$work_id"
+                    --manifest-sha256 0000000000000000000000000000000000000000000000000000000000000000)
+            fi
+            status=0
+            setpriv --reuid="$principal" --regid="$principal" --clear-groups \
+                env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
+                "${command[@]}" \
+                >"$ROOT/linux-flutter-refusal-$entry-$principal.out" \
+                2>"$ROOT/linux-flutter-refusal-$entry-$principal.err" || status=$?
+            [ "$status" -eq 1 ] && [ ! -s "$ROOT/linux-flutter-refusal-$entry-$principal.out" ] \
+                && [ "$(stat -c '%s' -- "$ROOT/linux-flutter-refusal-$entry-$principal.err")" -le 8192 ] \
+                && grep -Fxq "$refusal" "$ROOT/linux-flutter-refusal-$entry-$principal.err" \
+                || fail "Linux app-capsule $entry refusal differs for UID $principal"
+            [ -z "$(find "$work" -mindepth 1 -print -quit)" ] \
+                && [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+                && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+                || fail 'refused Linux app-capsule entry changed scratch or Docker inventory'
+        done
     done
     status=0
     setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -382,7 +412,7 @@ run_linux_flutter_artifact_tests() {
         || fail 'Linux app-capsule scratch remains after retirement'
     stop_docker_authority
     cat "$output"
-    printf 'LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=20 uid=4000 gid=4000 root=refused foreign=refused test_sha256=%s helper_sha256=%s source=readonly docker=retired network=none cleanup=joined\n' \
+    printf 'LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=20 uid=4000 gid=4000 root=refused foreign=refused materializer=refused-before-files test_sha256=%s helper_sha256=%s source=readonly docker=retired network=none cleanup=joined\n' \
         "$test_sha" "$helper_sha"
 }
 

@@ -1300,6 +1300,17 @@ these schedules do not establish representative high-load or sustained warm-life
 Next vary justified workload/lifetime conditions and locate actual backlog before changing ownership;
 do not repeat this unchanged baseline as causal proof. The earlier failure, conversion-pool hypothesis,
 and Windows relationship remain unresolved. No capacity, deadline, freshness or service behavior changed.
+The next Android peer workload uses a fixed 1920x1080 source with a nominal 33-ms pause and scaled
+counter bands. The shared desktop fixture keeps its 640x480 default; mismatched screens/arguments
+refuse. Source startup moves to immediately before the legitimate viewer submission, preserving the
+2-MiB publication-log bound without spending it during emulator boot or rejected-credential waits.
+The focused native X11 test now exercises actual full-HD pixels and the same whole-cycle alias refusal;
+the peer driver additionally requires measured mean source publication intervals of 33–50 ms and
+reports the maximum interval. **These changes are not yet runtime-validated.** Native oracle and
+retained-APK peer execution must pass before counting load evidence; nominal pacing is not delivered FPS.
+The supplementary `verify-flutter-peer-presentation.py:333` ordering check still requires the retired
+eight-bit wrap expression, contradicting the current full-counter source. Its classification/correction
+is OPEN; it cannot validate the current oracle and is not run as a substitute for native pixels.
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was
 false-green because readiness raced ahead of cleanup; the corrected test observes the actual drain

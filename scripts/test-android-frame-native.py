@@ -153,7 +153,7 @@ def main():
     try:
         with open("/tmp/frame-xvfb.log", "wb") as xvfb_log:
             children.append(subprocess.Popen([
-                "/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "640x480x24",
+                "/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "1920x1080x24",
                 "-nolisten", "tcp", "-ac", "-noreset",
             ], env=environment, stdout=xvfb_log, stderr=subprocess.STDOUT))
         while time.monotonic() - started < 10:
@@ -164,21 +164,31 @@ def main():
                     break
             time.sleep(0.05)
         require(display, "X11 Unix display is unavailable")
+        refusal = subprocess.run([str(fixture / "frame-source")], env=environment,
+                                 capture_output=True, text=True, timeout=5)
+        require(refusal.returncode != 0 and "screen dimensions differ" in refusal.stderr
+                and "FLUTTER_PEER_SOURCE_READY" not in refusal.stdout,
+                "fixture admitted a mismatched screen")
+        refusal = subprocess.run([str(fixture / "frame-source"), "--unknown"], env=environment,
+                                 capture_output=True, text=True, timeout=5)
+        require(refusal.returncode != 0 and "usage:" in refusal.stderr
+                and "FLUTTER_PEER_SOURCE_READY" not in refusal.stdout,
+                "fixture admitted an unknown workload")
         with source_path.open("wb") as source_log:
-            children.append(subprocess.Popen([str(fixture / "frame-source")], env=environment,
+            children.append(subprocess.Popen([str(fixture / "frame-source"), "--full-hd"], env=environment,
                                              stdout=source_log, stderr=subprocess.STDOUT))
         source_path.chmod(0o600)
         root = lib.XDefaultRootWindow(display)
 
         def capture():
-            image = lib.XGetImage(display, root, 0, 0, 640, 480, ctypes.c_ulong(-1).value, 2)
+            image = lib.XGetImage(display, root, 0, 0, 1920, 1080, ctypes.c_ulong(-1).value, 2)
             require(image, "actual X11 framebuffer capture failed")
             pixels = bytearray(bytes((197, 190, 184)) * (120 * 200))
             try:
-                for y in range(90):
+                for y in range(68):
                     for x in range(120):
-                        pixel = lib.XGetPixel(image, x * 640 // 120, y * 480 // 90)
-                        offset = ((200 - 1 - (55 + y)) * 120 + x) * 3
+                        pixel = lib.XGetPixel(image, x * 1920 // 120, y * 1080 // 68)
+                        offset = ((200 - 1 - (66 + y)) * 120 + x) * 3
                         pixels[offset:offset + 3] = bytes(((pixel >> 16) & 255,
                                                         (pixel >> 8) & 255, pixel & 255))
             finally:
@@ -256,8 +266,14 @@ def main():
         analysis = decoder.analyze(stale_record, history)
         require(analysis["chosen"] is None, "whole-cycle stale native pixels passed freshness")
         stale = next((entry for entry in analysis["candidates"] if entry["state"] == identity), None)
-        require(stale is not None and stale["age"] >= 64000, "stale native identity or real age was lost")
+        require(stale is not None and stale["age"] >= 256 * 33,
+                "stale native identity or whole-cycle real age was lost")
         require((fresh["state"] - identity) % 256 <= 8, "old modulo predicate would not alias")
+        intervals = max(history) - identity
+        interval_us = (history[max(history)] - history[identity] + intervals - 1) // intervals
+        require(33000 <= interval_us <= 50000, "full-HD source did not sustain the required publication load")
+        print("ANDROID_FRAME_NATIVE_WORKLOAD dimensions=1920x1080 nominal_interval_ms=33 "
+              f"mean_interval_us={interval_us} bands=scaled-40-percent", flush=True)
         print(f"ANDROID_FRAME_NATIVE_AB=pass old_predicate=accept new=refuse stale_age_ms={stale['age']} "
               f"old_identity={identity} fresh_identity={fresh['state']} fresh_age_ms={fresh['age']}", flush=True)
     finally:

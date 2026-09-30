@@ -23,7 +23,6 @@
 #define DISPLAY_OPEN_ATTEMPTS 200U
 #define STATE_CODE_BARS 24U
 #define STATE_CODE_ROWS 4U
-#define STATE_CODE_HEIGHT 192U
 
 static volatile sig_atomic_t stop_requested = 0;
 
@@ -105,16 +104,17 @@ static int state_code_bar_is_white(uint32_t state, unsigned int row, unsigned in
 }
 
 static int root_state_code_matches(Display *display, Window root, const Visual *visual,
-                                   uint32_t state) {
+                                   uint32_t state, unsigned int width,
+                                   unsigned int code_height) {
     unsigned int row, bar;
     for (row = 0U; row < STATE_CODE_ROWS; ++row) {
         for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
-            unsigned int x = ((bar * 2U + 1U) * SOURCE_WIDTH) /
+            unsigned int x = ((bar * 2U + 1U) * width) /
                              (STATE_CODE_BARS * 2U);
             const uint8_t *color =
                 state_code_bar_is_white(state, row, bar) != 0 ? code_white : code_black;
             if (!root_pixel_matches(display, root, (int)x,
-                                    (int)((row * 2U + 1U) * STATE_CODE_HEIGHT /
+                                    (int)((row * 2U + 1U) * code_height /
                                           (STATE_CODE_ROWS * 2U)),
                                     rgb_pixel(visual, color))) {
                 return 0;
@@ -136,7 +136,7 @@ static int root_pixel_matches(Display *display, Window root, int x, int y,
     return actual == expected;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
     Display *display = NULL;
     struct sigaction action = {0};
     unsigned int attempt;
@@ -149,8 +149,23 @@ int main(void) {
     GC graphics;
     uint32_t frame = 0U;
     int exit_status = 0;
+    unsigned int source_width = SOURCE_WIDTH;
+    unsigned int source_height = SOURCE_HEIGHT;
+    unsigned int frame_interval_ms = FRAME_INTERVAL_MS;
+    unsigned int code_height;
     const char *trace_value = getenv("RUSTDESK_PRESENTATION_TRACE");
     int trace_enabled = trace_value != NULL && strcmp(trace_value, "1") == 0;
+
+    if (argc == 2 && strcmp(argv[1], "--full-hd") == 0) {
+        source_width = 1920U;
+        source_height = 1080U;
+        frame_interval_ms = 33U;
+    } else if (argc != 1) {
+        fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd]\n", stderr);
+        return 1;
+    }
+    /* Preserve band visibility after the remote screen is fitted into a thumbnail. */
+    code_height = source_height * 2U / 5U;
 
     action.sa_handler = request_stop;
     sigemptyset(&action.sa_mask);
@@ -175,6 +190,12 @@ int main(void) {
     }
 
     screen = DefaultScreen(display);
+    if ((unsigned int)DisplayWidth(display, screen) != source_width ||
+        (unsigned int)DisplayHeight(display, screen) != source_height) {
+        fputs("FLUTTER_PEER_SOURCE_FAIL screen dimensions differ\n", stderr);
+        XCloseDisplay(display);
+        return 1;
+    }
     visual = DefaultVisual(display, screen);
     if (visual == NULL || (visual->class != TrueColor && visual->class != DirectColor)) {
         fputs("FLUTTER_PEER_SOURCE_FAIL true-color visual required\n", stderr);
@@ -184,7 +205,7 @@ int main(void) {
     root = RootWindow(display, screen);
     attributes.override_redirect = True;
     attributes.background_pixel = rgb_pixel(visual, palette[0]);
-    window = XCreateWindow(display, root, 0, 0, SOURCE_WIDTH, SOURCE_HEIGHT, 0,
+    window = XCreateWindow(display, root, 0, 0, source_width, source_height, 0,
                            DefaultDepth(display, screen), InputOutput, visual,
                            CWOverrideRedirect | CWBackPixel, &attributes);
     if (window == 0) {
@@ -199,7 +220,7 @@ int main(void) {
         XCloseDisplay(display);
         return 1;
     }
-    back_buffer = XCreatePixmap(display, window, SOURCE_WIDTH, SOURCE_HEIGHT,
+    back_buffer = XCreatePixmap(display, window, source_width, source_height,
                                 (unsigned int)DefaultDepth(display, screen));
     if (back_buffer == 0) {
         fputs("FLUTTER_PEER_SOURCE_FAIL back buffer creation\n", stderr);
@@ -212,7 +233,7 @@ int main(void) {
     XSync(display, False);
     printf("FLUTTER_PEER_SOURCE_READY display=%s dimensions=%ux%u interval_ms=%u "
            "identity=counter32 rows=4 bars=24 wrap=refused\n",
-           DisplayString(display), SOURCE_WIDTH, SOURCE_HEIGHT, FRAME_INTERVAL_MS);
+           DisplayString(display), source_width, source_height, frame_interval_ms);
     fflush(stdout);
 
     while (stop_requested == 0) {
@@ -222,21 +243,21 @@ int main(void) {
         uint64_t publication_us;
 
         XSetForeground(display, graphics, rgb_pixel(visual, palette[low]));
-        XFillRectangle(display, back_buffer, graphics, 0, 0, SOURCE_WIDTH / 2U,
-                       SOURCE_HEIGHT);
+        XFillRectangle(display, back_buffer, graphics, 0, 0, source_width / 2U,
+                       source_height);
         XSetForeground(display, graphics, rgb_pixel(visual, palette[high]));
-        XFillRectangle(display, back_buffer, graphics, SOURCE_WIDTH / 2U, 0,
-                       SOURCE_WIDTH / 2U, SOURCE_HEIGHT);
+        XFillRectangle(display, back_buffer, graphics, source_width / 2U, 0,
+                       source_width / 2U, source_height);
         for (row = 0U; row < STATE_CODE_ROWS; ++row) {
             for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
-                unsigned int start = (bar * SOURCE_WIDTH) / STATE_CODE_BARS;
-                unsigned int end = ((bar + 1U) * SOURCE_WIDTH) / STATE_CODE_BARS;
+                unsigned int start = (bar * source_width) / STATE_CODE_BARS;
+                unsigned int end = ((bar + 1U) * source_width) / STATE_CODE_BARS;
                 const uint8_t *color =
                     state_code_bar_is_white(frame, row, bar) != 0 ? code_white : code_black;
                 XSetForeground(display, graphics, rgb_pixel(visual, color));
                 XFillRectangle(display, back_buffer, graphics, (int)start,
-                               (int)(row * STATE_CODE_HEIGHT / STATE_CODE_ROWS),
-                               end - start, STATE_CODE_HEIGHT / STATE_CODE_ROWS);
+                               (int)(row * code_height / STATE_CODE_ROWS),
+                               end - start, code_height / STATE_CODE_ROWS);
             }
         }
         /*
@@ -251,16 +272,16 @@ int main(void) {
             exit_status = 1;
             break;
         }
-        XCopyArea(display, back_buffer, window, graphics, 0, 0, SOURCE_WIDTH, SOURCE_HEIGHT,
+        XCopyArea(display, back_buffer, window, graphics, 0, 0, source_width, source_height,
                   0, 0);
         XSync(display, False);
-        if (!root_pixel_matches(display, root, (int)(SOURCE_WIDTH / 4U),
-                                (int)(SOURCE_HEIGHT / 2U),
+        if (!root_pixel_matches(display, root, (int)(source_width / 4U),
+                                (int)(source_height / 2U),
                                 rgb_pixel(visual, palette[low])) ||
-            !root_pixel_matches(display, root, (int)(SOURCE_WIDTH * 3U / 4U),
-                                (int)(SOURCE_HEIGHT / 2U),
+            !root_pixel_matches(display, root, (int)(source_width * 3U / 4U),
+                                (int)(source_height / 2U),
                                 rgb_pixel(visual, palette[high])) ||
-            !root_state_code_matches(display, root, visual, frame)) {
+            !root_state_code_matches(display, root, visual, frame, source_width, code_height)) {
             fprintf(stderr, "FLUTTER_PEER_SOURCE_FAIL source window occluded frame=%u\n", frame);
             exit_status = 1;
             break;
@@ -277,7 +298,7 @@ int main(void) {
             break;
         }
         ++frame;
-        if (sleep_millis(FRAME_INTERVAL_MS) != 0) {
+        if (sleep_millis(frame_interval_ms) != 0) {
             fputs("FLUTTER_PEER_SOURCE_FAIL frame pacing\n", stderr);
             XFreePixmap(display, back_buffer);
             XFreeGC(display, graphics);

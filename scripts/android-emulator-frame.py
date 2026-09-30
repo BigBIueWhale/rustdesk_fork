@@ -190,7 +190,8 @@ def source_history(path: Path, now_monotonic_ns: int | None = None) -> dict[int,
     # The sole writer appends flushed records. Ignore only an unfinished final line.
     lines = data[:data.rfind(b"\n") + 1].splitlines()
     if not lines or re.fullmatch(
-        rb"FLUTTER_PEER_SOURCE_READY display=:[0-9]+ dimensions=640x480 interval_ms=250 "
+        rb"FLUTTER_PEER_SOURCE_READY display=:[0-9]+ "
+        rb"(?:dimensions=640x480 interval_ms=250|dimensions=1920x1080 interval_ms=33) "
         rb"identity=counter32 rows=4 bars=24 wrap=refused", lines[0]
     ) is None:
         raise InvalidFrame("source frame identity format differs")
@@ -471,6 +472,7 @@ def self_test() -> int:
             ((182, 182, 182), (195, 195, 195)),
         ),
         ((200, 120), (32, 9, 136, 102), 0xABCD123C, 1750, ((0, 0, 0), (255, 255, 255))),
+        ((120, 200), (0, 66, 120, 68), 0x01234567, 250, ((0, 0, 0), (255, 255, 255))),
     ):
         data = fixture_record(
             *dimensions,
@@ -572,8 +574,15 @@ def self_test() -> int:
         source.chmod(0o600)
         if source_history(source, now_monotonic_ns) != {0: 99000000}:
             raise AssertionError("complete source prefix was not admitted")
+        full_hd_ready = ready.replace(b"dimensions=640x480 interval_ms=250",
+                                      b"dimensions=1920x1080 interval_ms=33")
+        source.write_bytes(full_hd_ready + trace)
+        if source_history(source, now_monotonic_ns) != {0: 99000000}:
+            raise AssertionError("full-HD publication prefix was not admitted")
         for content in (ready, ready + trace + trace, ready + trace.replace(b"state=0", b"state=1"),
                         ready + trace.replace(b"99000000", b"101000000"),
+                        full_hd_ready.replace(b"interval_ms=33", b"interval_ms=250") + trace,
+                        ready.replace(b"interval_ms=250", b"interval_ms=33") + trace,
                         ready.replace(b"counter32", b"counter8") + trace):
             source.write_bytes(content)
             try:

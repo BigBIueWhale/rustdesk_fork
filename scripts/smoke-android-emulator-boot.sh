@@ -1445,7 +1445,7 @@ PY
     done
     export DISPLAY=:99
     LD_LIBRARY_PATH="$PEER_XVFB_ROOT/usr/lib/x86_64-linux-gnu" \
-        "$PEER_XVFB_ROOT/usr/bin/Xvfb" :99 -screen 0 640x480x24 \
+        "$PEER_XVFB_ROOT/usr/bin/Xvfb" :99 -screen 0 1920x1080x24 \
         -nolisten tcp -ac -noreset >"$PEER_XVFB_LOG" 2>&1 &
     XVFB_PID=$!
     XVFB_START="$(process_start_time "$XVFB_PID")" \
@@ -1458,14 +1458,6 @@ PY
     done
     [ -S /tmp/.X11-unix/X99 ] && [ ! -L /tmp/.X11-unix/X99 ] \
         || fail 'Android peer Xvfb Unix socket did not become ready'
-    RUSTDESK_PRESENTATION_TRACE=1 "$PEER_FRAME_SOURCE" \
-        >"$PEER_SOURCE_LOG" 2>&1 &
-    SOURCE_PID=$!
-    SOURCE_START="$(process_start_time "$SOURCE_PID")" \
-        || fail 'cannot bind the Android peer source generation'
-    "$PEER_READY" --wait-log "$SOURCE_PID" "$SOURCE_START" "$PEER_SOURCE_LOG" \
-        'FLUTTER_PEER_SOURCE_READY display=:99 dimensions=640x480 interval_ms=250 identity=counter32 rows=4 bars=24 wrap=refused' \
-        'Android peer changing-source readiness'
     install -d -m 0700 -- /tmp/android-peer-server-home
     HOME=/tmp/android-peer-server-home \
         "$PEER_TARGET/debug/examples/seed_password" "$PEER_PASSWORD" \
@@ -1505,7 +1497,6 @@ PY
     wait_peer_server_connections 0 exact \
         || fail 'the Android peer credential probe did not close exactly'
     printf 'ANDROID_PEER_RESPONDER_CPACE=pass initiator=linux-probe responder=production-peer credential=seeded correct=keyed listener=127.0.0.1:21118 connection_cleanup=closed password_transport=stdin\n'
-    printf 'ANDROID_PEER_INFRASTRUCTURE=ready server=production auth=cpace listener=127.0.0.1:21118 source=changing-x11 x11=unix-only container_network=none\n'
 fi
 
 "$ADB" server nodaemon >"$ADB_LOG" 2>&1 &
@@ -3440,6 +3431,19 @@ open_peer_connection() {
         pre_session_failures_before="$(peer_server_pre_session_failure_count)"
         key_failures_before="$(peer_server_key_failure_count)"
         keyed_sessions_before="$(peer_server_keyed_session_count)"
+        # Start the changing display workload only when the first legitimate viewer will use it.
+        # Boot and rejected-credential observation must not consume its bounded publication log.
+        [ -z "$SOURCE_PID" ] && [ -z "$SOURCE_START" ] \
+            || fail 'the Android peer changing-source generation is already owned'
+        RUSTDESK_PRESENTATION_TRACE=1 "$PEER_FRAME_SOURCE" --full-hd \
+            >"$PEER_SOURCE_LOG" 2>&1 &
+        SOURCE_PID=$!
+        SOURCE_START="$(process_start_time "$SOURCE_PID")" \
+            || fail 'cannot bind the Android peer source generation'
+        "$PEER_READY" --wait-log "$SOURCE_PID" "$SOURCE_START" "$PEER_SOURCE_LOG" \
+            'FLUTTER_PEER_SOURCE_READY display=:99 dimensions=1920x1080 interval_ms=33 identity=counter32 rows=4 bars=24 wrap=refused' \
+            'Android peer changing-source readiness'
+        printf 'ANDROID_PEER_INFRASTRUCTURE=ready server=production auth=cpace listener=127.0.0.1:21118 source=changing-x11 x11=unix-only container_network=none\n'
         inject_peer_password_submit "$PEER_PASSWORD" correct 1 \
             "$pre_session_failures_before" "$key_failures_before" \
             "$keyed_sessions_before" \
@@ -4131,6 +4135,28 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
         && [ "$(stat -c '%s' -- "$PEER_SEED_LOG")" -le 4096 ] \
         && [ ! -s "$PEER_XVFB_LOG" ] \
         || fail 'the controlled Android peer logs differ from their finite bounds'
+    python3 -B -I -S - "$FRAME_DECODER" "$PEER_SOURCE_LOG" <<'PY' \
+        || fail 'the full-HD Android source did not deliver its admitted publication workload'
+import importlib.util
+from pathlib import Path
+import sys
+
+spec = importlib.util.spec_from_file_location("frame_decoder", sys.argv[1])
+decoder = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(decoder)
+history = decoder.source_history(Path(sys.argv[2]))
+publications = list(history.values())
+if len(publications) < 257:
+    raise SystemExit("full-HD source has too few actual publications")
+intervals = len(publications) - 1
+mean_us = (publications[-1] - publications[0] + intervals - 1) // intervals
+if not 33000 <= mean_us <= 50000:
+    raise SystemExit(f"full-HD actual mean publication interval differs: {mean_us}")
+max_us = max(b - a for a, b in zip(publications, publications[1:]))
+print("ANDROID_PEER_INFRASTRUCTURE=workload dimensions=1920x1080 nominal_interval_ms=33 "
+      f"publications={len(publications)} mean_interval_us={mean_us} max_interval_us={max_us} "
+      "identity=counter32 source=monotonic-publication cleanup=joined")
+PY
     [ "$(awk 'FNR > 1 && $2 == "0100007F:527E" { count++ }
         END { print count + 0 }' /proc/net/tcp)" -eq 0 ] \
         || fail 'the controlled Android peer listener survived teardown'

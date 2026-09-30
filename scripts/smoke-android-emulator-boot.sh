@@ -44,6 +44,30 @@ readonly RUN_UID="$(id -u)"
 readonly RUN_GID="$(id -g)"
 [ "$RUN_UID:$RUN_GID" = 1000:1000 ] \
     || fail 'the emulator workload requires numeric uid/gid 1000:1000'
+timeout --signal=TERM --kill-after=2s 5s \
+    python3 -I -S - "$VERIFIER_VM_KERNEL_RELEASE" <<'PY'
+import fcntl
+import os
+import stat
+import sys
+
+if os.uname().release != sys.argv[1] or "rustdesk.verifier_vm=1" not in open("/proc/cmdline").read().split():
+    raise SystemExit("Android KVM is outside the authenticated guest kernel")
+descriptor = os.open("/dev/kvm", os.O_RDWR | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
+try:
+    device = os.fstat(descriptor)
+    if (not stat.S_ISCHR(device.st_mode) or (device.st_uid, device.st_gid) != (0, 1000)
+            or stat.S_IMODE(device.st_mode) != 0o660 or device.st_nlink != 1
+            or device.st_rdev != os.makedev(10, 232)):
+        raise SystemExit("Android KVM runtime device authority differs")
+    if fcntl.ioctl(descriptor, 0xAE00, 0) != 12:
+        raise SystemExit("Android KVM API version differs")
+    vm = fcntl.ioctl(descriptor, 0xAE01, 0)
+    os.close(vm)
+finally:
+    os.close(descriptor)
+print("ANDROID_EMULATOR_KVM_API=pass scope=guest-virtual api=12 vm_create=closed uid=1000 gid=1000")
+PY
 if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
    || [ "$WORKLOAD" = app-lifecycle ] \
    || [ "$WORKLOAD" = app-peer-lifecycle ]; then
@@ -319,9 +343,7 @@ readonly PEER_FRESHNESS_LIMIT_MS=2000
 # one quarter of that budget.
 readonly PEER_CAPTURE_LIMIT_MS=500
 readonly PEER_CONNECTION_WAIT_LIMIT_MS=30000
-# The nested, acceleration-off x86_64 emulator can spend multiple minutes in the
-# deliberately memory-hard Argon2id derivation under host contention.  These two
-# values are integration-finality ceilings, not native credential-latency claims;
+# These values are integration-finality ceilings, not native credential-latency claims;
 # presentation recovery and freshness retain their independent tight bounds above.
 readonly PEER_PASSWORD_CONNECTION_WAIT_LIMIT_MS=240000
 readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=240000
@@ -1506,7 +1528,7 @@ done
     -no-snapstorage \
     -no-metrics \
     -wipe-data \
-    -accel off \
+    -accel on \
     -gpu swiftshader \
     "${EMULATOR_GRPC_ARGS[@]}" \
     >"$EMULATOR_LOG" 2>&1 &
@@ -1515,6 +1537,43 @@ EMULATOR_START="$(process_start_time "$EMULATOR_PID")" \
     || fail 'cannot bind the emulator process generation'
 [[ "$EMULATOR_START" =~ ^[1-9][0-9]*$ ]] \
     || fail 'the emulator process start time is malformed'
+timeout --signal=TERM --kill-after=2s 22s \
+    python3 -I -S - "$EMULATOR_PID" "$EMULATOR_START" \
+        "$SDK_ROOT/emulator/qemu/linux-x86_64/qemu-system-x86_64" <<'PY'
+import os
+import sys
+import time
+
+pid, expected_start, executable = sys.argv[1:]
+root = f"/proc/{pid}"
+deadline = time.monotonic() + 20
+while time.monotonic() < deadline:
+    with open(f"{root}/stat") as source:
+        process = source.read().rsplit(")", 1)[1].split()
+    if process[19] != expected_start or process[0] == "Z":
+        raise SystemExit("Android KVM emulator generation retired or changed")
+    if os.readlink(f"{root}/exe") == executable:
+        targets = []
+        for name in os.listdir(f"{root}/fd"):
+            try:
+                targets.append(os.readlink(f"{root}/fd/{name}"))
+            except FileNotFoundError:
+                continue
+        if (targets.count("anon_inode:kvm-vm") == 1
+                and targets.count("anon_inode:kvm-vcpu:0") == 1
+                and targets.count("anon_inode:kvm-vcpu:1") == 1
+                and sum(target.startswith("anon_inode:kvm-vcpu:") for target in targets) == 2):
+            with open(f"{root}/stat") as source:
+                after = source.read().rsplit(")", 1)[1].split()
+            if (after[19] != expected_start or after[0] == "Z"
+                    or os.readlink(f"{root}/exe") != executable):
+                raise SystemExit("Android KVM emulator generation changed during observation")
+            print("ANDROID_EMULATOR_KVM_EXECUTION=pass backend=kvm scope=nested-guest vm_fds=1 vcpu_fds=2")
+            break
+    time.sleep(0.05)
+else:
+    raise SystemExit("Android emulator did not retain exactly one KVM VM and two vCPUs")
+PY
 
 if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     grpc_ready=0
@@ -3984,6 +4043,11 @@ PY
     fi
 fi
 
+if [ "$WORKLOAD" = boot ]; then
+    capture_ui_hierarchy "$WORK_ROOT/framework-boot-ui.xml" \
+        || fail 'the booted Android framework UI is unavailable or has an ANR'
+fi
+
 timeout --signal=TERM --kill-after=2s 20s \
     "$ADB" -s "$SERIAL" exec-out screencap -p >"$FRAMEBUFFER" \
     || fail 'cannot capture the booted Android framebuffer'
@@ -4064,7 +4128,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
    || [ "$WORKLOAD" = app-peer-lifecycle ]; then
     [ "$(sha256sum "$RUNTIME_TEST_APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
         || fail 'runtime-test APK changed during emulator execution'
-    printf 'ANDROID_EMULATOR_APP=pass emulator=%s api=%s abi=%s package=com.carriez.flutter_hbb activity=MainActivity launch_wait=%s state=resumed process=stable-five-seconds apk_sha256=%s signing=test-only acceleration=software gpu=swiftshader framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
+    printf 'ANDROID_EMULATOR_APP=pass emulator=%s api=%s abi=%s package=com.carriez.flutter_hbb activity=MainActivity launch_wait=%s state=resumed process=stable-five-seconds apk_sha256=%s signing=test-only acceleration=kvm-nested gpu=swiftshader framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
         "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$LAUNCH_WAIT_STATUS" "$APK_SHA256" \
         "$framebuffer_dimensions" "$SELINUX"
     if [ "$WORKLOAD" = app-recents ]; then
@@ -4129,6 +4193,6 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
         fi
     fi
 else
-    printf 'ANDROID_EMULATOR_BOOT=pass emulator=%s api=%s abi=%s acceleration=software gpu=swiftshader framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
+    printf 'ANDROID_EMULATOR_BOOT=pass emulator=%s api=%s abi=%s acceleration=kvm-nested gpu=swiftshader framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
         "$ANDROID_EMULATOR_VERSION" "$API" "$ABI" "$framebuffer_dimensions" "$SELINUX"
 fi

@@ -2462,6 +2462,58 @@ LAYOUT
         "$DEV_CHECK_IMAGE_CONFIG_ID" "$SHA256_CARGO_VENDOR_CLOSURE_V1"
 }
 
+provision_android_kvm() {
+    /usr/bin/timeout --signal=TERM --kill-after=2s 5s \
+        /usr/bin/python3 -I -S - "$EXPECTED_KERNEL_RELEASE" <<'PY'
+import os
+import stat
+import sys
+
+if (os.geteuid(), os.getegid()) != (0, 0) or os.uname().release != sys.argv[1]:
+    raise SystemExit("Android KVM provisioning requires the authenticated guest kernel and root")
+if "rustdesk.verifier_vm=1" not in open("/proc/cmdline").read().split():
+    raise SystemExit("Android KVM provisioning has no guest authority")
+if open("/sys/devices/virtual/misc/kvm/dev").read().strip() != "10:232":
+    raise SystemExit("Android KVM is not the guest kernel's virtual misc device")
+parent = os.lstat("/dev")
+if not stat.S_ISDIR(parent.st_mode) or parent.st_uid != 0 or parent.st_mode & 0o022:
+    raise SystemExit("Android KVM device parent authority differs")
+descriptor = os.open("/dev/kvm", os.O_RDWR | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
+try:
+    before = os.fstat(descriptor)
+    if (not stat.S_ISCHR(before.st_mode) or before.st_uid != 0 or before.st_nlink != 1
+            or stat.S_IMODE(before.st_mode) != 0o660 or before.st_rdev != os.makedev(10, 232)):
+        raise SystemExit("Android KVM guest device authority differs")
+    if any(name.startswith("system.posix_acl_") for name in os.listxattr(descriptor)):
+        raise SystemExit("Android KVM guest device has an ACL")
+    os.fchown(descriptor, 0, 1000)
+    after = os.fstat(descriptor)
+    path = os.lstat("/dev/kvm")
+    if (after.st_dev, after.st_ino, after.st_uid, after.st_gid, after.st_mode, after.st_nlink) != (
+            before.st_dev, before.st_ino, 0, 1000, before.st_mode, 1) or path != after:
+        raise SystemExit("Android KVM guest device grant changed identity or authority")
+finally:
+    os.close(descriptor)
+print("ANDROID_KVM_DEVICE=ready scope=guest-virtual owner=0:1000 mode=660 rdev=10:232")
+PY
+    setpriv --reuid=4001 --regid=4001 --clear-groups \
+        /usr/bin/timeout --signal=TERM --kill-after=2s 5s \
+        /usr/bin/python3 -I -S - <<'PY'
+import errno
+import os
+
+try:
+    descriptor = os.open("/dev/kvm", os.O_RDWR | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
+except OSError as error:
+    if error.errno != errno.EACCES:
+        raise
+else:
+    os.close(descriptor)
+    raise SystemExit("Foreign guest principal acquired Android KVM authority")
+print("ANDROID_KVM_FOREIGN=refused uid=4001 gid=4001 reason=kernel-access-denied")
+PY
+}
+
 run_android_emulator_boot() {
     local inputs=/mnt/rustdesk-sealed-inputs
     local source_root=$ROOT/android-emulator-source
@@ -2472,7 +2524,7 @@ run_android_emulator_boot() {
     local runtime_archive=$inputs/inputs/verifier-images/devcheck.docker.tar.gz
     local source_archive_sha source_before inputs_before input_mount_options
     local load_output inspect namespace_inspect container_status=0
-    local renderer_receipt result_line
+    local renderer_receipt result_line kvm_receipt
     local -a renderer_lines=() result_lines=()
 
     [[ "$ANDROID_EMULATOR_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -2595,6 +2647,7 @@ run_android_emulator_boot() {
             --security-opt=no-new-privileges \
             --security-opt=apparmor=docker-default \
             --user 1000:1000 \
+            --device /dev/kvm:/dev/kvm:rw \
             --mount "type=bind,source=$source_root,target=/source,readonly" \
             --mount "type=bind,source=$emulator_archive,target=/inputs/emulator.zip,readonly" \
             --mount "type=bind,source=$system_archive,target=/inputs/system-image.zip,readonly" \
@@ -2618,7 +2671,7 @@ run_android_emulator_boot() {
     namespace_inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' \
         "$CONTAINER_ID")"
-    [ "$namespace_inspect" = 'false||private||private|[]|{}' ] \
+    [ "$namespace_inspect" = 'false||private||private|[{"PathOnHost":"/dev/kvm","PathInContainer":"/dev/kvm","CgroupPermissions":"rw"}]|{}' ] \
         || fail "Android emulator container namespace/device/port authority differs: $namespace_inspect"
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
@@ -2634,8 +2687,15 @@ run_android_emulator_boot() {
     [ "$(grep -c '^ANDROID_EMULATOR_RENDERER=' "$output")" -eq 1 ] \
         || { tail -n 200 "$output" >&2; fail 'Android renderer receipt is malformed or duplicated'; }
     renderer_receipt=${renderer_lines[0]}
+    for kvm_receipt in \
+        'ANDROID_EMULATOR_KVM_API=pass scope=guest-virtual api=12 vm_create=closed uid=1000 gid=1000' \
+        'ANDROID_EMULATOR_KVM_EXECUTION=pass backend=kvm scope=nested-guest vm_fds=1 vcpu_fds=2'; do
+        [ "$(grep -Fxc "$kvm_receipt" "$output")" -eq 1 ] \
+            || fail 'Android emulator boot KVM evidence is absent or duplicated'
+        printf '%s\n' "$kvm_receipt"
+    done
     mapfile -t result_lines < <(grep -E \
-        '^ANDROID_EMULATOR_BOOT=pass emulator=37\.1\.11 api=34 abi=x86_64 acceleration=software gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
+        '^ANDROID_EMULATOR_BOOT=pass emulator=37\.1\.11 api=34 abi=x86_64 acceleration=kvm-nested gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
         "$output" || true)
     [ "${#result_lines[@]}" -eq 1 ] \
         || { tail -n 200 "$output" >&2; fail 'Android emulator boot receipt is absent or duplicated'; }
@@ -2665,7 +2725,7 @@ run_android_emulator_boot() {
     umount "$inputs" || fail 'cannot retire the sealed Android emulator input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$renderer_receipt" "$result_line"
-    printf 'ANDROID_EMULATOR_BOOT_VM=pass commit=%s tree=%s emulator=%s api=%s abi=x86_64 acceleration=software gpu=swiftshader runtime_index=%s runtime_config=%s uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+    printf 'ANDROID_EMULATOR_BOOT_VM=pass commit=%s tree=%s emulator=%s api=%s abi=x86_64 acceleration=kvm-nested gpu=swiftshader runtime_index=%s runtime_config=%s uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
         "$ANDROID_EMULATOR_VERSION" "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" \
         "$DEV_CHECK_IMAGE_ID" "$DEV_CHECK_IMAGE_CONFIG_ID"
@@ -2904,7 +2964,7 @@ run_android_emulator_app() {
     [ "$(grep -c '^ANDROID_EMULATOR_RENDERER=' "$output")" -eq 1 ] \
         || fail 'Android renderer receipt is duplicated'
     runtime_receipt="$(grep -E \
-        '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=software gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
+        '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=kvm-nested gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android emulator app runtime receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APP=' "$output")" -eq 1 ] \
@@ -3587,7 +3647,7 @@ run_android_emulator_runtime() {
     [ "$(grep -c '^ANDROID_EMULATOR_RENDERER=' "$output")" -eq 1 ] \
         || fail 'Android renderer receipt is duplicated'
     runtime_receipt="$(grep -E \
-        "^ANDROID_EMULATOR_APP=pass emulator=37\\.1\\.11 api=34 abi=x86_64 package=com\\.carriez\\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only acceleration=software gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$" \
+        "^ANDROID_EMULATOR_APP=pass emulator=37\\.1\\.11 api=34 abi=x86_64 package=com\\.carriez\\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only acceleration=kvm-nested gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$" \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android runtime app receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APP=' "$output")" -eq 1 ] \
@@ -4985,6 +5045,11 @@ fi
 if [ "$MODE" = android-owner-tests ]; then
     run_android_owner_tests
     exit 0
+fi
+
+if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
+   || [ "$MODE" = android-emulator-runtime ]; then
+    provision_android_kvm
 fi
 
 if [ "$MODE" = android-peer-build ]; then

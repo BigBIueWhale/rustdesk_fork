@@ -2952,6 +2952,23 @@ done
 require_exact_fixed_receipt \
     'VERIFIER_VM_GIT_RUNTIME=pass source=pinned-deb version=2.39.5 root=vm-ephemeral network=none' \
     'authenticated verifier-VM Git runtime marker'
+if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
+   || [ "$MODE" = android-emulator-runtime ]; then
+    require_exact_fixed_receipt \
+        'ANDROID_KVM_DEVICE=ready scope=guest-virtual owner=0:1000 mode=660 rdev=10:232' \
+        'guest-local Android KVM device authority'
+    require_exact_fixed_receipt \
+        'ANDROID_KVM_FOREIGN=refused uid=4001 gid=4001 reason=kernel-access-denied' \
+        'foreign-principal Android KVM refusal'
+fi
+if [ "$MODE" = android-emulator-boot ]; then
+    require_exact_fixed_receipt \
+        'ANDROID_EMULATOR_KVM_API=pass scope=guest-virtual api=12 vm_create=closed uid=1000 gid=1000' \
+        'nonroot container KVM API and VM finality'
+    require_exact_fixed_receipt \
+        'ANDROID_EMULATOR_KVM_EXECUTION=pass backend=kvm scope=nested-guest vm_fds=1 vcpu_fds=2' \
+        'exact emulator KVM VM/vCPU execution evidence'
+fi
 
 if [ "$MODE" = debian-systemd-lifecycle ]; then
     /usr/bin/grep -Eq \
@@ -3258,7 +3275,7 @@ elif [ "$MODE" = android-peer-build ]; then
 elif [ "$MODE" = android-emulator-boot ]; then
     require_android_renderer_receipt
     require_exact_fixed_receipt \
-        "ANDROID_EMULATOR_BOOT_VM=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE emulator=$ANDROID_EMULATOR_VERSION api=$ANDROID_EMULATOR_SYSTEM_IMAGE_API abi=x86_64 acceleration=software gpu=swiftshader runtime_index=$DEV_CHECK_IMAGE_ID runtime_config=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "ANDROID_EMULATOR_BOOT_VM=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE emulator=$ANDROID_EMULATOR_VERSION api=$ANDROID_EMULATOR_SYSTEM_IMAGE_API abi=x86_64 acceleration=kvm-nested gpu=swiftshader runtime_index=$DEV_CHECK_IMAGE_ID runtime_config=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'Android emulator boot VM receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
@@ -3449,7 +3466,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     fi
     mapfile -t android_runtime_app_receipts < <(
         /usr/bin/grep -Eo \
-            "ANDROID_EMULATOR_APP=pass emulator=37\\.1\\.11 api=34 abi=x86_64 package=com\\.carriez\\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only acceleration=software gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined" \
+            "ANDROID_EMULATOR_APP=pass emulator=37\\.1\\.11 api=34 abi=x86_64 package=com\\.carriez\\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only acceleration=kvm-nested gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined" \
             "$SERIAL_LOG" || true
     )
     [ "${#android_runtime_app_receipts[@]}" -eq 1 ] \
@@ -3837,7 +3854,7 @@ elif [ "$MODE" = android-peer-build ]; then
         "$ANDROID_ARTIFACT_SHA256" "$ANDROID_EMULATOR_SOURCE_COMMIT" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = android-emulator-boot ]; then
-    printf 'ANDROID_EMULATOR_BOOT_VM_OUTER=pass host_uid=%s commit=%s tree=%s emulator=%s api=%s abi=x86_64 acceleration=software gpu=swiftshader runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only product=android-framework-boot-and-framebuffer cleanup=joined elapsed_seconds=%s\n' \
+    printf 'ANDROID_EMULATOR_BOOT_VM_OUTER=pass host_uid=%s commit=%s tree=%s emulator=%s api=%s abi=x86_64 acceleration=kvm-nested gpu=swiftshader runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only product=android-framework-boot-and-framebuffer cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$ANDROID_EMULATOR_SOURCE_COMMIT" \
         "$ANDROID_EMULATOR_SOURCE_TREE" "$ANDROID_EMULATOR_VERSION" \
         "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" "$DEV_CHECK_IMAGE_CONFIG_ID" \

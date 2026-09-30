@@ -1095,8 +1095,18 @@ of exact pushed `e15d7b68` returned the same observation/config digest in 14 sec
 guest capability and access state, not usable nested KVM, a supported Android topology, healthy boot,
 or presentation.
 Google's emulator documentation warns against VM-nested acceleration; Linux documents nested KVM.
-Next prove a minimal guest-local device grant and actual KVM/emulator execution with no host-device
-passthrough or software fallback, then establish framework health before interpreting display timings.
+The candidate runtime now requires nested KVM rather than software CPU emulation. Only the authenticated
+disposable guest's root orchestration grants its own virtual misc device (10:232, root-owned mode 0660)
+to guest GID 1000; a distinct UID/GID-4001 principal must receive kernel access denial. Only the three
+numeric-nonroot emulator runtime envelopes admit that exact read/write device; build and observer
+containers remain device-free. The driver requires KVM API 12, closes a minimal VM descriptor, forces
+`-accel on`, and binds one KVM VM plus two vCPU descriptors to the exact pinned emulator executable and
+retained PID/start generation. There is no host-device passthrough, software-CPU fallback, new host
+permission, network change, or weakened product/resource/freshness bound. SwiftShader remains the GPU.
+Boot-only acceptance additionally samples the real framework UI through the sticky ANR refusal gate.
+**Native execution of this candidate is not yet observed.** Source/syntax review is not proof of usable
+nested KVM, healthy Android, a Google-supported topology, product presentation, or device performance.
+Next execute the pinned framework boot and exact-artifact peer replay before interpreting display timings.
 The attempted shared authority smoke hit its existing 90-second VM deadline after the 22 capsule
 cases and several authority entries passed; it is not a complete transaction or consumer verdict.
 The peer launcher now validates the externally digest-bound capsule manifest and all seven execution

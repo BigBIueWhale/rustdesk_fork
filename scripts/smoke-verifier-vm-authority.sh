@@ -789,6 +789,18 @@ android_owner_input_inventory() {
         "${ANDROID_OWNER_KOTLIN_JARS[@]}"
 }
 
+verify_committed_frame_source() {
+    local source=$1 relative expected actual
+    [[ "$source" == "$REPO_ROOT/"* ]] || fail 'frame-test source is outside the repository'
+    relative=${source#"$REPO_ROOT/"}
+    expected="$(git_closed -C "$REPO_ROOT" cat-file blob "$FRAME_TEST_COMMIT:$relative" \
+        | /usr/bin/sha256sum | /usr/bin/awk '{ print $1 }')" \
+        || fail "cannot resolve committed frame-test source: $relative"
+    actual="$(/usr/bin/sha256sum "$source" | /usr/bin/awk '{ print $1 }')" \
+        || fail "cannot digest frame-test source: $relative"
+    [ "$actual" = "$expected" ] || fail "frame-test source differs from committed bytes: $relative"
+}
+
 android_frame_input_inventory() {
     local file name size digest url extra count=0
     local -a files=(
@@ -818,6 +830,9 @@ android_frame_input_inventory() {
         [ -f "$file" ] && [ ! -L "$file" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%h' -- "$file")" = "$HOST_UID:$HOST_GID:1" ] \
             || fail 'Android frame-test input owner or type differs'
+        if [[ "$file" == "$SCRIPT_DIR/"* ]]; then
+            verify_committed_frame_source "$file"
+        fi
     done
     /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "${files[@]}"
     /usr/bin/sha256sum -- "${files[@]}"
@@ -1848,6 +1863,9 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     "$LIB_SOURCE" "$PIN_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
+    if [ "$MODE" = android-frame-tests ]; then
+        verify_committed_frame_source "$source"
+    fi
 done
 ANDROID_EMULATOR_OBSERVER_DEPENDENCIES_SHA256="$(/usr/bin/sha256sum \
     "$ANDROID_EMULATOR_OBSERVER_DEPENDENCIES" | /usr/bin/awk '{ print $1 }')" \

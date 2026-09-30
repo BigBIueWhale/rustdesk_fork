@@ -1173,18 +1173,31 @@ warnings as errors, executed decoder format/clock/authority cases, captured the 
 advanced its real counter beyond a complete old 256-state cycle, accepted the fresh full identity through
 the decoder and its CLI, and refused the original pixels even with a new observation timestamp. The
 negative requires a decoded known old identity with at least 64,000 ms actual content age, while the old
-modulo predicate accepts. It joined the exact source/Xvfb/container/Docker/QEMU owners, added no host
+modulo predicate accepts. Final harness `f3cce03b5e638113749f8ec7b3c9b6083fa38168`, tree
+`77dc49b265bed2c47e42ce8a15de66869e541fc2`, repeated the complete focused native transaction in
+116 seconds: actual old identity 0 had 65,105-ms content age and was refused, while identity 256 had
+175-ms age and was accepted; the old modulo predicate accepted the old image. The bounded A/B,
+decoder, native, guest-finality, listener and outer receipts were forwarded before scratch retirement.
+Both successful runs joined the exact source/Xvfb/container/Docker/QEMU owners, added no host
 listener, recorded zero pre-existing-process drift, proved unchanged inputs and self-retired its run root.
 First candidate `03e03985` passed the decoder cases and C compilation but refused execution from
 Docker's noexec `/tmp`; only a distinct 16-MiB guest-container `/build` scratch is executable. Its bounded
 failure serial is retained outside the reconciled failed root. This is native harness-source/decoder
 evidence, not RustDesk, Android lifecycle/compositor, network-transition/soak, or release proof. No Android
 replay under this format has run and no product closure is claimed. The outer now forwards the bounded
-A/B receipt so actual measurements remain available after successful scratch retirement.
+A/B receipt so actual measurements remain available after successful scratch retirement. The final
+forwarded receipt is retained as `.harness-state/verifier-vm/evidence/android-frame-f3cce03b.receipt`;
+this is a bounded receipt, not the retired full successful serial capture.
+The focused entry additionally compares every supplied repository source file with its exact blob
+at the independently recorded pushed commit, rather than treating Git's clean/index-cache status as
+byte provenance. The six source/decoder/Xvfb test inputs are also re-proved against those blobs after
+execution. Execution of that final source-admission strengthening is pending.
 
-Next work must validate the corrected source-to-display frame
-identity, including a whole-cycle stale-frame negative case, before further performance closure. Preserve
-source/digest-bound artifact reuse, read-only execution, no fallback, bounded output and joined cleanup.
+Next make the changed test source fixture independently source-bound and reusable with the immutable
+production-peer artifact, without rewriting or relabeling cached bytes, so Android can execute the
+corrected frame-identity contract. The native source/decoder A/B above does not substitute for that
+Android replay. Preserve source/digest-bound artifact reuse, read-only execution, no fallback, bounded
+output and joined cleanup.
 Make engine/framework/app/lifecycle stages observable before EOF: the runtime wrapper currently waits for
 container completion before fetching logs and the guest forwards only peer admission. Replace
 iteration-count waits advertised as seconds with actual monotonic deadlines. Then distinguish event,
@@ -1334,7 +1347,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
-| Android and iOS | **Android intermittent presentation remains OPEN.** Named APK `ca569086` has real build/install/launch and a passing peer/background/task-replacement/service-continuity baseline, but a later replay of those same bytes failed the 8,000-ms relaunch pixel oracle. Newer diagnostic APK `035c9a20` passed one six-replacement hardware-required peer schedule; the eight-bit repeating-pattern freshness oracle still permits whole-cycle aliasing and must be corrected. Establish exact-current repeated replacement/reconnect behavior, controlled capture/input callbacks, network transitions, stale-generation refusal, sustained CPU/memory/thread/handle/queue and latency bounds, physical devices, stable-signed artifacts, cold equality, independent reproduction, and external review. iOS still has no current package/device result. |
+| Android and iOS | **Android intermittent presentation remains OPEN.** Named APK `ca569086` has real build/install/launch and a passing peer/background/task-replacement/service-continuity baseline, but a later replay of those same bytes failed the 8,000-ms relaunch pixel oracle. Newer diagnostic APK `035c9a20` passed one six-replacement hardware-required peer schedule under the old alias-prone oracle. The corrected full-identity/monotonic-publication oracle passed isolated native source/decoder A/B testing; no Android replay under it has run. Establish exact-current repeated replacement/reconnect behavior, controlled capture/input callbacks, network transitions, stale-generation refusal, sustained CPU/memory/thread/handle/queue and latency bounds, physical devices, stable-signed artifacts, cold equality, independent reproduction, and external review. iOS still has no current package/device result. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg now has pin-bound recoverable devcheck and Apple verifier images. For each image, two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. Exact commit `f85e18e4` passed the complete current Apple three-target source-conformance/cross-compile workload in the no-NIC verifier VM after the focused Flutter gate first required the same shared display-verifier self-test. Current product/native workloads and fresh independently administered rebuilds remain required; neither verifier-image provenance nor Apple source/cross-compile success supplies native Apple behavior. |
 | Build/test execution authority (R-S11dh) | **STOP-SHIP: focused no-NIC authority smokes and substantial product/build evidence exist, but current release workloads remain incomplete.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; R-S11cj separately confines acquisition to an ordinary-user VM with outbound-only guest/container networking, no host forwarding, and joined finality. Product source `ca569086` passed the fresh model and Android APK build/install/render transactions; exact pushed harness `89a85f4b` passed the retained-APK production-peer lifecycle/presentation transaction. Current exact source `f85e18e4` passed the focused verifier-plus-138-test gate and three-target Apple source-conformance/cross-compile gate while preserving the strict host-listener audit and joined cleanup. Stable Android signing, physical devices, sustained resource/performance soak, native Apple work, Debian/Windows product workloads, cold release artifacts, complete prepared inputs, independently administered reproduction, and external review remain open. Source checks, cross-compiles, builder fingerprints, and historical lifecycle evidence are not release or native evidence. |

@@ -1361,7 +1361,7 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
         goto out;
     }
     XSync(display, False);
-    if (activate_named_control((unsigned int)viewer->pid, "Keyboard Settings") != 0 ||
+    if (activate_named_control((unsigned int)viewer->pid, "Keyboard settings") != 0 ||
         activate_named_control((unsigned int)viewer->pid, "Trackpad speed") != 0) {
         fputs("FLUTTER_PEER_X11_FAIL actual toolbar dialog activation\n", stderr);
         goto out;

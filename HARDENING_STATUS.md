@@ -1631,6 +1631,22 @@ execution of a separately source-bound corrected app remains required; the retai
 relabelled as corrected. This entry correction is not display-hang, overlay-reset or LPE causation.
 Native product/platform/installed/release work stays OPEN.
 
+Corrected app source `a4a6b2d0`, tree `eb842fa98c8cfac05169c18b29d09f15091c858b`, passed
+the separate real producer and joined inert publication in 1,150,890 host BOOTTIME ms. Its 74-file
+manifest is `ef3f592d2229e3abf71136f51b5a4fddf0c017c663817f70a8399be5f1e1f08c`;
+complete raw producer serial is `evidence/toolbar-contract-app-a4a6b2d0.serial.log`.
+Replaying those exact bytes without rebuilding took 115,210 ms and failed before action invocation:
+43 attempts/5,035 ms did not find the driver's `Keyboard Settings`. The complete native tree now
+exports seven enabled named toolbar controls, including `Keyboard settings`, each with two actions.
+`src/lang/en.rs` maps the original translation key to that lowercase displayed label. The controller
+now requests this exact English display string; no case-folding, key alias, coordinate fallback or
+query-bound change is added. Complete 230,288-byte raw serial and small viewer/capture/listener records
+are retained at `evidence/toolbar-contract-corrected-a4a6b2d0.*`. Both transactions had unchanged host
+listeners and joined owned teardown. The exact inactive failed disk was reconciled under the admission
+lock, recovering 2,969,014,272 allocated bytes. Action execution, dialog/rebuild behavior and complete
+consumer acceptance still require fresh native replay; no app or overlay-ownership change is inferred
+from this selector mismatch, and the wider OPEN matrix is unchanged.
+
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was
 false-green because readiness raced ahead of cleanup; the corrected test observes the actual drain

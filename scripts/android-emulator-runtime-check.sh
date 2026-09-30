@@ -836,9 +836,9 @@ if [ "$runtime_status" -ne 0 ]; then
     grep '^ANDROID_PEER_PROCESS_THREAD ' "$RUNTIME_LOG" \
         | tail -n 64 >&2 || true
     awk '
-        /^ANDROID_PEER_FRAMEBUFFER_PNG_BEGIN / { in_png = 1 }
+        /^ANDROID_PEER_FRAMEBUFFER_(PNG|RECORD)_BEGIN / { in_png = 1 }
         in_png { print }
-        /^ANDROID_PEER_FRAMEBUFFER_PNG_END / { in_png = 0 }
+        /^ANDROID_PEER_FRAMEBUFFER_(PNG|RECORD)_END( |$)/ { in_png = 0 }
     ' "$RUNTIME_LOG" >&2
     grep -E '^ANDROID_PEER_(FRAME_BASELINE |FRAME_SAMPLE |PRESENTATION_UI=)' \
         "$RUNTIME_LOG" | tail -n 140 >&2 || true

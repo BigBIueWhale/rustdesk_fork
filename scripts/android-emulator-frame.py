@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import base64
 import collections
+import hashlib
 import os
 import re
 import stat
@@ -383,6 +385,15 @@ def decode(path: Path, source_log: Path, diagnose: bool) -> int:
             f"barcode_geometries={analysis['geometries']} "
             f"top_colors={top_colors} candidates={candidates}"
         )
+        # Retain the exact decoder input, not a later screenshot or reconstructed pixels.
+        # Validated dimensions bound this failure-only payload to roughly 72 KiB.
+        print(
+            "ANDROID_PEER_FRAMEBUFFER_RECORD_BEGIN "
+            f"bytes={len(data)} sha256={hashlib.sha256(data).hexdigest()} "
+            "encoding=base64 source=decoder-input"
+        )
+        sys.stdout.write(base64.encodebytes(data).decode("ascii"))
+        print("ANDROID_PEER_FRAMEBUFFER_RECORD_END")
         return 0
     if candidate is None:
         print(

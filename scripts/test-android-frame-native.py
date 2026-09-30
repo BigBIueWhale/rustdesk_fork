@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the real X11 source and Android pixel decoder in an isolated container."""
 
+import base64
 import ctypes
 import hashlib
 import importlib.util
@@ -163,6 +164,18 @@ def main():
                               "decode", str(cli_frame), str(source_path)], check=True,
                              capture_output=True, text=True, timeout=5)
         require(cli.stdout.split()[0] == str(fresh["state"]), "actual decoder CLI lost full identity")
+        diagnostic = subprocess.run([
+            "/usr/bin/python3", "-B", "-I", "-S", str(module_path), "decode",
+            str(cli_frame), str(source_path), "diagnose",
+        ], check=True, capture_output=True, text=True, timeout=5)
+        lines = diagnostic.stdout.splitlines()
+        retained = cli_frame.read_bytes()
+        require(lines[1] == "ANDROID_PEER_FRAMEBUFFER_RECORD_BEGIN "
+                f"bytes={len(retained)} sha256={hashlib.sha256(retained).hexdigest()} "
+                "encoding=base64 source=decoder-input"
+                and lines[-1] == "ANDROID_PEER_FRAMEBUFFER_RECORD_END"
+                and base64.b64decode("".join(lines[2:-1]), validate=True) == retained,
+                "failure diagnostic did not retain the exact real decoder input")
         # Give old pixels a brand-new capture envelope: observation freshness cannot rescue content.
         stale_record = record(old_pixels, 3)
         analysis = decoder.analyze(stale_record, history)

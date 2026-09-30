@@ -1264,15 +1264,29 @@ runtime drain (120 seconds), and observer join (120 seconds), rather than counti
 Each state request includes its pre/post authority checks within the remaining deadline; expiry starts
 TERM cancellation of the synchronous local command and cannot promote a late readiness/exit result.
 Container retirement remains separately owned and joined, not a deadline-driven success or detach.
-The focused guest-clock/command tests and actual Android integration of this candidate remain pending.
-Then distinguish event,
-native mailbox, conversion completion, model commit, widget/paint and actual framebuffer progress across
+Exact pushed `47131e01` executed the ten mandatory guest-clock/command cases and the real retained-APK/peer
+inspector path. Its inner and guest schedules passed: 20 distinct states, six task/session replacements,
+preserved process/service/MediaProjection, recovery at most 840 ms, content age 550 ms and capture age 188 ms.
+RSS/thread growth was 4,028 KiB/four; handles remain unobserved. **The outer transaction failed:** its saved
+delta contains an unattributed new host-loopback listener at `127.0.0.1:7555`, so no complete host-isolation
+pass is claimed. No listener or service was changed to obtain a pass. Guest/container/VM owners joined;
+the bounded 85,612-byte serial and capture/delta records are retained at
+`evidence/android-deadlines-47131e01.*` (serial SHA-256
+`8f055f4f0b73deed34007f3ad46bf052ea5113d51f978007dc628fa1fcd3c93c`). The inactive disk was reconciled
+by exact identity under the admission lock, leaving no run root. The individual unit receipt was filtered
+from serial; its zero-status execution is required before the later admitted-peer and inner-success paths.
+Complete outer validation remains open. Then distinguish event, native mailbox, conversion completion,
+model commit, widget/paint and actual framebuffer progress across
 repeated task/session replacement under the corrected observer.
 The shared three-conversion pool's dependence on uncancellable Flutter futures is a liveness candidate,
 not proven causation; raising bounds, releasing permits before completion, reconnecting, or killing the
 persistent service is not a correctness fix. Physical devices, stable-signed releases, sustained
 resource/latency soak, network transitions, cross-version behavior, current Windows focus/minimize,
 Apple behavior, cold equality, independent reproduction, and external review remain open.
+Also investigate native image-resource cleanup when the diagnostic `onStage` callback throws in
+`flutter/lib/utils/image.dart::decodeImageFromPixels`; source inspection shows acquired buffers/codecs/images
+are not consistently disposed on those exceptional paths. This is an ownership finding, not established
+causation for the intermittent presentation failure or a demonstrated privilege escalation.
 
 Pub-cache and Gradle replacement cleanup is now one recoverable, acquisition-identity-owned transaction. A
 replacement refuses an existing root unless it is owned by the acquisition UID/GID and sealed mode 0500; the old

@@ -791,7 +791,10 @@ android_owner_input_inventory() {
 
 verify_committed_frame_source() {
     local source=$1 relative expected actual
-    [[ "$source" == "$REPO_ROOT/"* ]] || fail 'frame-test source is outside the repository'
+    source="$(/usr/bin/readlink -f -- "$source")" \
+        || fail 'cannot resolve the frame-test source path'
+    [[ "$source" == "$REPO_ROOT/"* ]] \
+        || fail "frame-test source is outside the repository: $source"
     relative=${source#"$REPO_ROOT/"}
     expected="$(git_closed -C "$REPO_ROOT" cat-file blob "$FRAME_TEST_COMMIT:$relative" \
         | /usr/bin/sha256sum | /usr/bin/awk '{ print $1 }')" \

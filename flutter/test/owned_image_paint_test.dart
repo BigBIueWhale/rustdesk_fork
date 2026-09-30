@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -41,6 +42,62 @@ Future<ui.Image> _solidRawBgraImage(ui.Color color) async {
 
 int _openHandles(ui.Image image) =>
     image.debugGetOpenHandleStackTraces()!.length;
+
+Future<Map<String, Object>> _conversionFailureHandles(String failingStage) async {
+  final previousCreate = ui.Image.onCreate;
+  final previousDispose = ui.Image.onDispose;
+  final created = Completer<ui.Image>();
+  final images = <ui.Image>[];
+  final disposals = <ui.Image>[];
+  final stages = <String>[];
+  ui.Image? result;
+  ui.Image.onCreate = (image) {
+    previousCreate?.call(image);
+    images.add(image);
+    if (!created.isCompleted) created.complete(image);
+  };
+  ui.Image.onDispose = (image) {
+    previousDispose?.call(image);
+    disposals.add(image);
+  };
+  try {
+    result = await decodeImageFromPixels(
+      Uint8List(16)..fillRange(0, 16, 255),
+      2,
+      2,
+      ui.PixelFormat.bgra8888,
+      onStage: (stage) {
+        stages.add(stage);
+        if (stage == failingStage) {
+          throw StateError('injected conversion observer failure at $stage');
+        }
+      },
+    );
+    // Observe the engine's exact callback, even if the faulty implementation
+    // returned before its outstanding frame completed. A quiet delay is not proof.
+    final image = await created.future.timeout(const Duration(seconds: 5));
+    expect(result, isNull);
+    expect(stages.where((stage) => stage == failingStage), hasLength(1));
+    expect(images, hasLength(1));
+    expect(image.width, 2);
+    expect(image.height, 2);
+    return <String, Object>{
+      'disposed': image.debugDisposed,
+      'openHandles': _openHandles(image),
+      'disposals': disposals.where((entry) => identical(entry, image)).length,
+    };
+  } finally {
+    try {
+      for (final image in images) {
+        if (!image.debugDisposed) image.dispose();
+      }
+      if (result != null && !result.debugDisposed) result.dispose();
+    } finally {
+      ui.Image.onCreate = previousCreate;
+      ui.Image.onDispose = previousDispose;
+    }
+  }
+}
 
 void main() {
   testWidgets('owned image paint fills loose stack bounds and retains pixels',
@@ -94,8 +151,24 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   }, timeout: const Timeout(Duration(seconds: 30)));
 
-  testWidgets('owned image paint retires exact handles after frame and unmount',
+  testWidgets('native image ownership survives conversion faults and paint retirement',
       (tester) async {
+    final failures = (await tester.runAsync(() async {
+      final observations = <String, Map<String, Object>>{};
+      for (final stage in ['image-frame-requested', 'image-frame-ready']) {
+        observations[stage] = await _conversionFailureHandles(stage);
+      }
+      return observations;
+    }))!;
+    expect(failures, <String, Map<String, Object>>{
+      for (final stage in ['image-frame-requested', 'image-frame-ready'])
+        stage: <String, Object>{
+          'disposed': true,
+          'openHandles': 0,
+          'disposals': 1,
+        },
+    });
+
     final first = (await tester.runAsync(
       () => _solidImage(const ui.Color(0xff00ff00)),
     ))!;

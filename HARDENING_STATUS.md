@@ -1287,6 +1287,10 @@ Also investigate native image-resource cleanup when the diagnostic `onStage` cal
 `flutter/lib/utils/image.dart::decodeImageFromPixels`; source inspection shows acquired buffers/codecs/images
 are not consistently disposed on those exceptional paths. This is an ownership finding, not established
 causation for the intermittent presentation failure or a demonstrated privilege escalation.
+The existing native image-ownership testcase now injects both late callback failures and observes the
+actual pinned engine's image creation, disposal and outstanding handles before doing its own cleanup.
+The old decoder remains unchanged for the first controlled negative run; native A/B execution and the
+ownership correction are pending. No conversion capacity, freshness bound or service lifecycle is changed.
 
 Pub-cache and Gradle replacement cleanup is now one recoverable, acquisition-identity-owned transaction. A
 replacement refuses an existing root unless it is owned by the acquisition UID/GID and sealed mode 0500; the old

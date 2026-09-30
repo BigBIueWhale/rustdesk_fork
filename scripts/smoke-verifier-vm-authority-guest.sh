@@ -5,6 +5,11 @@ umask 077
 FLUTTER_PEER_CANDIDATE=0
 FLUTTER_APP_BUILD_ONLY=0
 FLUTTER_APP_BUILD_CONTEXT=
+FLUTTER_APP_REPLAY=0
+FLUTTER_APP_COMMIT=
+FLUTTER_APP_TREE=
+FLUTTER_APP_RECIPE_SHA256=
+FLUTTER_APP_MANIFEST_SHA256=
 case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
@@ -59,12 +64,19 @@ case "$#:${8:-}" in
     12:--apple-conform)
         MODE=apple-conform
         ;;
-    12:--flutter-peer-presentation)
-        MODE=flutter-peer-presentation
-        ;;
-    12:--flutter-peer-presentation-candidate)
+    17:--linux-flutter-app-replay)
         MODE=flutter-peer-presentation
         FLUTTER_PEER_CANDIDATE=1
+        FLUTTER_APP_REPLAY=1
+        FLUTTER_APP_COMMIT=${13}
+        FLUTTER_APP_TREE=${14}
+        FLUTTER_APP_RECIPE_SHA256=${15}
+        FLUTTER_APP_MANIFEST_SHA256=${16}
+        FLUTTER_APP_BUILD_CONTEXT=${17}
+        [[ "$FLUTTER_APP_COMMIT" =~ ^[0-9a-f]{40}$ ]] && [[ "$FLUTTER_APP_TREE" =~ ^[0-9a-f]{40}$ ]] \
+            && [[ "$FLUTTER_APP_RECIPE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+            && [[ "$FLUTTER_APP_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+            && [ -n "$FLUTTER_APP_BUILD_CONTEXT" ] && [ "${#FLUTTER_APP_BUILD_CONTEXT}" -le 4096 ] || exit 2
         ;;
     13:--linux-flutter-app-build)
         MODE=flutter-peer-presentation
@@ -83,7 +95,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 peer-lifecycle PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 peer-lifecycle PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-flutter-app-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 CONTEXT | --linux-flutter-app-replay SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 APP_COMMIT APP_TREE APP_RECIPE_SHA256 APP_MANIFEST_SHA256 CONTEXT | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         echo 'The seven base arguments also accept --android-execution-probe, --android-runtime-log-tests, or --linux-flutter-artifact-tests.' >&2
         exit 2
         ;;
@@ -97,6 +109,8 @@ readonly EXPECTED_SHA256=$5
 readonly EXPECTED_KERNEL_RELEASE=$6
 readonly EXPECTED_ROOT_UUID=$7
 readonly MODE FLUTTER_PEER_CANDIDATE FLUTTER_APP_BUILD_ONLY FLUTTER_APP_BUILD_CONTEXT
+readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_TREE \
+    FLUTTER_APP_RECIPE_SHA256 FLUTTER_APP_MANIFEST_SHA256
 readonly RUST_TEST_SOURCE_ARCHIVE=${9:-}
 readonly RUST_TEST_SOURCE_COMMIT=${10:-}
 readonly RUST_TEST_SOURCE_TREE=${11:-}
@@ -208,6 +222,7 @@ FLUTTER_PEER_ONLINE_MOUNTED=0
 FLUTTER_PEER_CANDIDATE_MOUNTED=0
 FLUTTER_PEER_FAILURE_MOUNTED=0
 FLUTTER_APP_OUTPUT_MOUNTED=0
+FLUTTER_APP_INPUT_MOUNTED=0
 
 fail() {
     printf 'verifier-VM guest: %s\n' "$*" >&2
@@ -4610,6 +4625,7 @@ run_flutter_peer_presentation() {
     local candidate_root=/mnt/rustdesk-flutter-candidate-input
     local failure_root=/mnt/rustdesk-flutter-peer-failure
     local app_output=/mnt/rustdesk-linux-flutter-app-output
+    local app_input=/mnt/rustdesk-linux-flutter-app-input
     local inputs=$sealed_root
     local source_root=$ROOT/flutter-peer-source
     local peer_script=$source_root/scripts/smoke-flutter-peer-presentation.sh
@@ -4658,6 +4674,17 @@ run_flutter_peer_presentation() {
             && [ -z "$(find "$app_output" -mindepth 1 -print -quit)" ] \
             || fail 'Linux Flutter app output authority metadata differs'
     else
+    mkdir "$app_input"
+    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-linux-flutter-app-input "$app_input" \
+        || fail 'cannot mount the inert Linux Flutter app input authority'
+    FLUTTER_APP_INPUT_MOUNTED=1
+    mount_options="$(findmnt -n -o OPTIONS --target "$app_input")"
+    for option in ro nodev nosuid noexec; do
+        case ",$mount_options," in *,$option,*) ;; *) fail "Linux Flutter app input lacks $option" ;; esac
+    done
+    [ "$(stat -c '%u:%g:%a' -- "$app_input")" = 1000:1000:700 ] \
+        && [ "$(find "$app_input" -mindepth 1 -maxdepth 1 -printf '%f\n')" = linux-x86_64-flutter-app ] \
+        || fail 'Linux Flutter app input parent authority differs'
     mkdir "$failure_root"
     mount -t virtiofs -o rw,nodev,nosuid,noexec \
         rustdesk-flutter-failure-output "$failure_root" \
@@ -4678,7 +4705,7 @@ run_flutter_peer_presentation() {
         || fail 'VM-local Flutter core pattern differs'
     peer_environment=("RUSTDESK_FAILURE_ARTIFACT_DIR=$failure_root")
     fi
-    if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+    if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
         mkdir "$candidate_root"
         mount -t virtiofs -o ro,nodev,nosuid,noexec \
             rustdesk-flutter-candidate-input "$candidate_root" \
@@ -4722,11 +4749,13 @@ run_flutter_peer_presentation() {
         && [ "$(sha256sum "$devcheck_archive" | awk '{ print $1 }')" = \
              "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" ] \
         || fail 'sealed devcheck image archive differs'
+    if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$builder_archive")" = \
       "1000:1000:400:1:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
         && [ "$(sha256sum "$builder_archive" | awk '{ print $1 }')" = \
              "$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" ] \
         || fail 'sealed Debian-builder image archive differs'
+    fi
 
     mkdir "$source_root"
     tar -xf "$FLUTTER_PEER_SOURCE_ARCHIVE" --no-same-owner -C "$source_root" \
@@ -4788,6 +4817,7 @@ run_flutter_peer_presentation() {
     [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
         || fail "devcheck archive verification/load receipt differs: $load_output"
 
+    if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     load_output="$(
         setpriv --reuid=1000 --regid=1000 --clear-groups \
             env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
@@ -4810,6 +4840,7 @@ run_flutter_peer_presentation() {
     )" || fail 'certified Debian-builder image verification/load failed'
     [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
         || fail "Debian-builder image receipt differs: $load_output"
+    fi
 
     if /bin/bash "$FLUTTER_PEER_SCRIPT" --self-test-vm-authority \
         >"$ROOT/flutter-peer-root.out" 2>"$ROOT/flutter-peer-root.err"; then
@@ -4845,11 +4876,16 @@ run_flutter_peer_presentation() {
         --tree "$FLUTTER_PEER_SOURCE_TREE"
         --archive-sha256 "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256"
     )
-    if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+    if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
         peer_args+=(--flutter-presentation-candidate "$candidate_archive")
     fi
     if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
         peer_args+=(--build-app "$FLUTTER_APP_BUILD_CONTEXT")
+    else
+        peer_args+=(--replay-app "$FLUTTER_APP_BUILD_CONTEXT" \
+            --app-commit "$FLUTTER_APP_COMMIT" --app-tree "$FLUTTER_APP_TREE" \
+            --app-recipe-sha256 "$FLUTTER_APP_RECIPE_SHA256" \
+            --app-manifest-sha256 "$FLUTTER_APP_MANIFEST_SHA256")
     fi
     set +e
     setpriv --reuid=1000 --regid=1000 --clear-groups \
@@ -4869,8 +4905,14 @@ run_flutter_peer_presentation() {
         [ "$(grep -Ec "^LINUX_FLUTTER_APP_PREPARED=pass commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE pending=[.]linux-flutter-pending-[0-9a-f]{64} manifest_sha256=[0-9a-f]{64} recipe_sha256=$recipe_sha epoch=$SOURCE_DATE_EPOCH_PIN drivers=excluded network=none containers=joined$" "$output")" -eq 1 ] \
             || fail 'actual Linux Flutter app preparation receipt is absent or duplicated'
     else
+    [ "$(grep -Fxc "LINUX_FLUTTER_APP_ADMITTED=pass harness_commit=$FLUTTER_PEER_SOURCE_COMMIT app_commit=$FLUTTER_APP_COMMIT app_tree=$FLUTTER_APP_TREE manifest_sha256=$FLUTTER_APP_MANIFEST_SHA256 execution=vm-private build=absent" "$output")" -eq 1 ] \
+        && [ "$(grep -Fxc 'LINUX_FLUTTER_DRIVERS_COMPILED=pass files=3 builds=2 equality=bytes app=unbuilt' "$output")" -eq 1 ] \
+        || fail 'Linux replay app admission or native driver compilation receipt differs'
+    if grep -Eq '^LINUX_FLUTTER_APP_COMPILED=|^FLUTTER_PEER_BUILD_PHASE=' "$output"; then
+        fail 'Linux replay unexpectedly built an app'
+    fi
     [ "$(grep -Fxc \
-      "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_RUNTIME_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace" \
+      "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_RUNTIME_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace app_commit=$FLUTTER_APP_COMMIT app_tree=$FLUTTER_APP_TREE manifest_sha256=$FLUTTER_APP_MANIFEST_SHA256 build=absent" \
       "$output")" -eq 1 ] \
         || fail 'Flutter full-peer product verdict is absent or duplicated'
     [ "$(grep -Fxc 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=6 instrumentation=none' "$output")" -eq 1 ] \
@@ -4884,15 +4926,16 @@ run_flutter_peer_presentation() {
     fi
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         || fail 'Flutter full-peer workload left a container'
-    "$CLIENT" --host "unix://$SOCK" image rm \
-        "$DEV_CHECK_IMAGE_CONFIG_ID" "$DEB_BUILDER_CONFIG_ID" >/dev/null \
+    local -a retired_images=("$DEV_CHECK_IMAGE_CONFIG_ID")
+    [ "$FLUTTER_APP_BUILD_ONLY" -eq 0 ] || retired_images+=("$DEB_BUILDER_CONFIG_ID")
+    "$CLIENT" --host "unix://$SOCK" image rm "${retired_images[@]}" >/dev/null \
         || fail 'Flutter full-peer images could not be retired'
     [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
         || fail 'Flutter full-peer workload left an image'
     [ "$(sha256sum "$FLUTTER_PEER_SOURCE_ARCHIVE" | awk '{ print $1 }')" = \
       "$source_archive_sha" ] \
         || fail 'focused Flutter-peer source archive changed during execution'
-    if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+    if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$candidate_archive")" = \
           "1000:1000:400:1:$SIZE_FLUTTER_PRESENTATION_CANDIDATE" ] \
             && [ "$(sha256sum "$candidate_archive" | awk '{ print $1 }')" = \
@@ -4920,6 +4963,8 @@ run_flutter_peer_presentation() {
         umount "$app_output" || fail 'cannot retire the inert Linux Flutter app output mount'
         FLUTTER_APP_OUTPUT_MOUNTED=0
     else
+        umount "$app_input" || fail 'cannot retire the inert Linux Flutter app input mount'
+        FLUTTER_APP_INPUT_MOUNTED=0
         umount "$failure_root" || fail 'cannot retire the Flutter peer failure-output mount'
         FLUTTER_PEER_FAILURE_MOUNTED=0
     fi
@@ -4930,11 +4975,9 @@ run_flutter_peer_presentation() {
             "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \
             "$FLUTTER_PEER_RUNTIME_VERSION" "$SOURCE_DATE_EPOCH_PIN" "$DEB_BUILDER_CONFIG_ID"
     else
-    printf 'FLUTTER_PEER_PRESENTATION_VM=pass commit=%s tree=%s archive=%s flutter=%s tools=%s candidate=%s devcheck_index=%s devcheck_runtime=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 nofile=524544 root=refused foreign=refused caller=refused vm_network=none container_network=owned-none-namespace inputs=readonly-landlocked cleanup=joined\n' \
-        "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" \
-        "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" "$FLUTTER_PEER_RUNTIME_VERSION" \
-        "$FLUTTER_PEER_TOOLS_MODE" "$FLUTTER_PEER_CANDIDATE" "$DEV_CHECK_IMAGE_ID" \
-        "$DEV_CHECK_IMAGE_CONFIG_ID" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    printf 'LINUX_FLUTTER_APP_REPLAY_VM=pass harness_commit=%s harness_tree=%s archive=%s app_commit=%s app_tree=%s manifest_sha256=%s driver_runtime=%s uid=1000 gid=1000 root=refused foreign=refused caller=refused vm_network=none container_network=owned-none-namespace artifact=readonly-landlocked build=absent cleanup=joined\n' \
+        "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \
+        "$FLUTTER_APP_COMMIT" "$FLUTTER_APP_TREE" "$FLUTTER_APP_MANIFEST_SHA256" "$DEV_CHECK_IMAGE_CONFIG_ID"
     fi
 }
 
@@ -4978,6 +5021,10 @@ cleanup() {
     if [ "$FLUTTER_APP_OUTPUT_MOUNTED" -eq 1 ]; then
         umount /mnt/rustdesk-linux-flutter-app-output 2>/dev/null || status=1
         FLUTTER_APP_OUTPUT_MOUNTED=0
+    fi
+    if [ "$FLUTTER_APP_INPUT_MOUNTED" -eq 1 ]; then
+        umount /mnt/rustdesk-linux-flutter-app-input 2>/dev/null || status=1
+        FLUTTER_APP_INPUT_MOUNTED=0
     fi
     if [ "$RUST_AUDIT_VENDOR_MOUNTED" -eq 1 ]; then
         umount "$ROOT/rust-audit-source/online/cargo-vendor" 2>/dev/null || status=1

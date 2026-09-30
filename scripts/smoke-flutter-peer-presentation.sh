@@ -53,7 +53,6 @@ peer_vm_docker() {
 }
 
 PEER_VM_AUTHORITY_SELF_TEST=0
-SOURCE_AUTHORITY=git
 SUPPLIED_SOURCE_ARCHIVE=
 SUPPLIED_SOURCE_COMMIT=
 SUPPLIED_SOURCE_TREE=
@@ -62,37 +61,39 @@ FLUTTER_PRESENTATION_CANDIDATE=0
 SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE=
 BUILD_APP_ONLY=0
 APP_BUILD_CONTEXT=
+APP_COMMIT=
+APP_TREE=
+APP_RECIPE_SHA256=
+APP_MANIFEST_SHA256=
 case "$#:${1:-}" in
-  0:) ;;
   1:--self-test-vm-authority)
     PEER_VM_AUTHORITY_SELF_TEST=1
     ;;
-  8:--source-archive)
+  18:--source-archive)
     [ "$3" = --commit ] && [ "$5" = --tree ] && [ "$7" = --archive-sha256 ] \
-      || die 'source-archive authority argument order differs'
-    SOURCE_AUTHORITY=archive
-    SUPPLIED_SOURCE_ARCHIVE=$2
-    SUPPLIED_SOURCE_COMMIT=$4
-    SUPPLIED_SOURCE_TREE=$6
-    SUPPLIED_SOURCE_ARCHIVE_SHA256=$8
-    ;;
-  10:--source-archive)
-    [ "$3" = --commit ] && [ "$5" = --tree ] && [ "$7" = --archive-sha256 ] \
-      && [ "$9" = --flutter-presentation-candidate ] \
-      || die 'candidate source/archive authority argument order differs'
-    SOURCE_AUTHORITY=archive
+      && [ "$9" = --replay-app ] && [ "${11}" = --app-commit ] \
+      && [ "${13}" = --app-tree ] && [ "${15}" = --app-recipe-sha256 ] \
+      && [ "${17}" = --app-manifest-sha256 ] \
+      || die 'app replay source/archive authority argument order differs'
     SUPPLIED_SOURCE_ARCHIVE=$2
     SUPPLIED_SOURCE_COMMIT=$4
     SUPPLIED_SOURCE_TREE=$6
     SUPPLIED_SOURCE_ARCHIVE_SHA256=$8
     FLUTTER_PRESENTATION_CANDIDATE=1
-    SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE=${10}
+    APP_BUILD_CONTEXT=${10}
+    APP_COMMIT=${12}
+    APP_TREE=${14}
+    APP_RECIPE_SHA256=${16}
+    APP_MANIFEST_SHA256=${18}
+    [[ "$APP_COMMIT" =~ ^[0-9a-f]{40}$ ]] && [[ "$APP_TREE" =~ ^[0-9a-f]{40}$ ]] \
+      && [[ "$APP_RECIPE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+      && [[ "$APP_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+      || die 'app replay identity is malformed'
     ;;
   12:--source-archive)
     [ "$3" = --commit ] && [ "$5" = --tree ] && [ "$7" = --archive-sha256 ] \
       && [ "$9" = --flutter-presentation-candidate ] && [ "${11}" = --build-app ] \
       || die 'app producer source/archive authority argument order differs'
-    SOURCE_AUTHORITY=archive
     SUPPLIED_SOURCE_ARCHIVE=$2
     SUPPLIED_SOURCE_COMMIT=$4
     SUPPLIED_SOURCE_TREE=$6
@@ -104,10 +105,10 @@ case "$#:${1:-}" in
     ;;
   *) die 'accepts only --self-test-vm-authority or the exact source/archive authority' ;;
 esac
-readonly SOURCE_AUTHORITY SUPPLIED_SOURCE_ARCHIVE SUPPLIED_SOURCE_COMMIT \
+readonly SUPPLIED_SOURCE_ARCHIVE SUPPLIED_SOURCE_COMMIT \
   SUPPLIED_SOURCE_TREE SUPPLIED_SOURCE_ARCHIVE_SHA256 \
   FLUTTER_PRESENTATION_CANDIDATE SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE \
-  BUILD_APP_ONLY APP_BUILD_CONTEXT
+  BUILD_APP_ONLY APP_BUILD_CONTEXT APP_MANIFEST_SHA256
 if [ "$PEER_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
   authority_version="$(peer_vm_docker version \
     --format '{{.Client.Version}}|{{.Server.Version}}')" \
@@ -187,14 +188,9 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-require_cmd git tar sha256sum stat find chmod readlink cp du
+require_cmd tar sha256sum stat find chmod readlink cp du
 SOURCE_COMMIT=
 SOURCE_TREE=
-if [ "$SOURCE_AUTHORITY" = git ]; then
-  assert_clean_worktree
-  SOURCE_COMMIT="$(git rev-parse HEAD)"
-  SOURCE_TREE="$(git rev-parse 'HEAD^{tree}')"
-else
   case "$SUPPLIED_SOURCE_ARCHIVE" in /*) ;; *) die 'source archive path is not absolute' ;; esac
   [ "$SUPPLIED_SOURCE_ARCHIVE" = "$(readlink -f -- "$SUPPLIED_SOURCE_ARCHIVE" 2>/dev/null)" ] \
     || die 'source archive path is not canonical'
@@ -211,7 +207,6 @@ else
     || die 'supplied source archive digest differs'
   SOURCE_COMMIT=$SUPPLIED_SOURCE_COMMIT
   SOURCE_TREE=$SUPPLIED_SOURCE_TREE
-fi
 readonly SOURCE_COMMIT SOURCE_TREE
 [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
   && [[ "$SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
@@ -223,7 +218,7 @@ BUILD_FLUTTER_SIZE=$SIZE_FLUTTER_3_24_5
 BUILD_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK
 BUILD_FLUTTER_TOOLS_MODE=offline-resolved
 BUILD_FLUTTER_ARCHIVE="$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz"
-if [ "$FLUTTER_PRESENTATION_CANDIDATE" -eq 1 ]; then
+if [ "$BUILD_APP_ONLY" -eq 1 ]; then
   case "$SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE" in
     /*) ;;
     *) die 'Flutter presentation candidate path is not absolute' ;;
@@ -256,6 +251,13 @@ if [ "$FLUTTER_PRESENTATION_CANDIDATE" -eq 1 ]; then
   BUILD_PROJECT_LOCK_MODE=candidate-pinned
   BUILD_PROJECT_LOCK_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK
 fi
+if [ "$BUILD_APP_ONLY" -eq 0 ]; then
+  BUILD_FLUTTER_VERSION=$FLUTTER_PRESENTATION_CANDIDATE_VERSION
+  BUILD_FLUTTER_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE
+  BUILD_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_TOOLS_LOCK
+  EVIDENCE_PUB_CACHE_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE
+  BUILD_PROJECT_LOCK_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK
+fi
 readonly BUILD_FLUTTER_VERSION BUILD_FLUTTER_SHA256 BUILD_FLUTTER_SIZE \
   BUILD_FLUTTER_TOOLS_LOCK_SHA256 BUILD_FLUTTER_TOOLS_MODE BUILD_FLUTTER_ARCHIVE \
   EVIDENCE_PUB_CACHE EVIDENCE_PUB_CACHE_SHA256 \
@@ -283,15 +285,17 @@ for pin in \
   SHA256_FLUTTER_PEER_FRB_CODEGEN SIZE_FLUTTER_PEER_FRB_CODEGEN; do
   [ -n "${!pin:-}" ] || die "pins.env is missing $pin"
 done
+if [ "$BUILD_APP_ONLY" -eq 1 ]; then
 [ -d "$EVIDENCE_PUB_CACHE" ] && [ ! -L "$EVIDENCE_PUB_CACHE" ] \
   && [ "$(stat -c '%u:%g:%a' "$EVIDENCE_PUB_CACHE")" = \
     "$HOST_UID:$HOST_GID:500" ] \
   || die 'canonical selected-lock evidence Pub cache is unavailable or has changed metadata'
+readonly EVIDENCE_PUB_CACHE_ID="$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")"
+fi
 [ -d "$XVFB_INPUTS" ] && [ ! -L "$XVFB_INPUTS" ] \
   || die 'authenticated offline Xvfb package closure is missing or ambiguous'
 [ -d "$ATSPI_INPUTS" ] && [ ! -L "$ATSPI_INPUTS" ] \
   || die 'authenticated offline AT-SPI package closure is missing or ambiguous'
-readonly EVIDENCE_PUB_CACHE_ID="$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")"
 
 WORKSPACE="$(mktemp -d /tmp/rustdesk-flutter-peer-presentation.XXXXXXXXXX)"
 [ -d "$WORKSPACE" ] && [ ! -L "$WORKSPACE" ] \
@@ -306,12 +310,15 @@ require_exact_local_image() {
     || die "$label image content ID differs: expected $expected, got $actual"
 }
 
-require_exact_local_image deb-builder "$DEB_BUILDER_CONFIG_ID"
+[ "$BUILD_APP_ONLY" -eq 0 ] || require_exact_local_image deb-builder "$DEB_BUILDER_CONFIG_ID"
 require_exact_local_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"
 
 SOURCE_ARCHIVE=
 readonly SOURCE_SNAPSHOT="$WORKSPACE/source"
 readonly BUILD_OUTPUT="$WORKSPACE/output"
+APP_EXECUTION=
+readonly APP_CHECKSUMS="$WORKSPACE/app.sha256"
+readonly APP_INPUT=/mnt/rustdesk-linux-flutter-app-input/linux-x86_64-flutter-app
 readonly XVFB_DEBS="$WORKSPACE/xvfb-debs"
 readonly XVFB_ROOT="$WORKSPACE/xvfb-root"
 readonly ATSPI_DEBS="$WORKSPACE/atspi-debs"
@@ -371,30 +378,27 @@ for endpoint in SERVER VIEWER; do
 done
 readonly SERVER_MACHINE_ID_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$SERVER_MACHINE_ID")"
 readonly VIEWER_MACHINE_ID_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_MACHINE_ID")"
-if [ "$SOURCE_AUTHORITY" = git ]; then
-  SOURCE_ARCHIVE="$WORKSPACE/source.tar"
-  git archive --format=tar --output="$SOURCE_ARCHIVE" "$SOURCE_COMMIT"
-else
-  SOURCE_ARCHIVE=$SUPPLIED_SOURCE_ARCHIVE
-fi
+SOURCE_ARCHIVE=$SUPPLIED_SOURCE_ARCHIVE
 readonly SOURCE_ARCHIVE
 readonly SOURCE_ARCHIVE_SHA256="$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')"
-[ "$SOURCE_AUTHORITY" = git ] \
-  || [ "$SOURCE_ARCHIVE_SHA256" = "$SUPPLIED_SOURCE_ARCHIVE_SHA256" ] \
+[ "$SOURCE_ARCHIVE_SHA256" = "$SUPPLIED_SOURCE_ARCHIVE_SHA256" ] \
   || die 'source archive changed between admission and extraction'
 tar -xf "$SOURCE_ARCHIVE" -C "$SOURCE_SNAPSHOT"
 chmod -R a-w "$SOURCE_SNAPSHOT"
 [ -z "$(find "$SOURCE_SNAPSHOT" -perm /0222 -print -quit)" ] \
   || die 'exact source snapshot remained writable'
 
-BUILD_STAGE=build
+BUILD_STAGE=build-drivers
 BUILD_EPOCH_ARGS=()
-if [ "$BUILD_APP_ONLY" -eq 1 ]; then
   [[ "$SOURCE_DATE_EPOCH_PIN" =~ ^(0|[1-9][0-9]{0,18})$ ]] \
     || die 'app build epoch pin is malformed'
+if [ "$BUILD_APP_ONLY" -eq 1 ]; then
+  APP_COMMIT=$SOURCE_COMMIT
+  APP_TREE=$SOURCE_TREE
   APP_RECIPE_SHA256="$(sha256sum "$SOURCE_SNAPSHOT/scripts/smoke-flutter-peer-presentation-stage.sh" | awk '{print $1}')"
+fi
   expected_context="$(printf '{"source_commit":"%s","source_tree":"%s","builder_config":"%s","build_recipe_sha256":"%s","rust_toolchain":"%s.0-x86_64-unknown-linux-gnu","flutter_version":"%s","source_date_epoch":"%s","inputs":{"rust_archive":"%s","flutter_archive":"%s","flutter_tools_lock":"%s","flutter_project_lock":"%s","llvm_archive":"%s","frb_codegen":"%s","vendor_closure":"%s","vendor_config":"%s","vcpkg_closure":"%s","pub_cache_closure":"%s"}}' \
-    "$SOURCE_COMMIT" "$SOURCE_TREE" "$DEB_BUILDER_CONFIG_ID" "$APP_RECIPE_SHA256" \
+    "$APP_COMMIT" "$APP_TREE" "$DEB_BUILDER_CONFIG_ID" "$APP_RECIPE_SHA256" \
     "$RUST_VERSION" "$BUILD_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH_PIN" \
     "$SHA256_RUST_1_75" "$BUILD_FLUTTER_SHA256" "$BUILD_FLUTTER_TOOLS_LOCK_SHA256" \
     "$BUILD_PROJECT_LOCK_SHA256" "$SHA256_LLVM_15_0_6" "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
@@ -402,10 +406,11 @@ if [ "$BUILD_APP_ONLY" -eq 1 ]; then
     "$SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1" "$EVIDENCE_PUB_CACHE_SHA256")"
   [ "$APP_BUILD_CONTEXT" = "$expected_context" ] \
     || die 'independent app build context differs from the actual source and selected inputs'
+if [ "$BUILD_APP_ONLY" -eq 1 ]; then
   BUILD_STAGE=build-app
   BUILD_EPOCH_ARGS=(--env "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH_PIN")
 fi
-readonly BUILD_STAGE
+readonly BUILD_STAGE APP_COMMIT APP_TREE APP_RECIPE_SHA256
 
 run_owned_container() {
   local cid_file=$1 run_status=0 cleanup_status=0
@@ -422,7 +427,8 @@ inspect_container_contract() {
   local expected_passwd_source= expected_machine_id_source= expected_atspi_mounts=0 mounts_path
   local record_kind source destination writable extra
   local network ipc pid uts privileged read_only user ports devices caps security
-  local source_mounts=0 output_mounts=0 xvfb_root_mounts=0 xkbcomp_mounts=0 coord_mounts=0
+  local source_mounts=0 output_mounts=0 app_mounts=0 app_checksum_mounts=0
+  local xvfb_root_mounts=0 xkbcomp_mounts=0 coord_mounts=0
   local passwd_mounts=0 machine_id_mounts=0 diagnostic_mounts=0
   local atspi_root_mounts=0 atspi_launcher_mounts=0 atspi_registry_mounts=0
   local atspi_defaults_mounts=0 atspi_services_mounts=0
@@ -489,6 +495,16 @@ inspect_container_contract() {
           || die "$label output mount contract differs"
         output_mounts=$((output_mounts + 1))
         ;;
+      /app)
+        [ "$source" = "$APP_EXECUTION" ] && [ "$writable" = false ] \
+          || die "$label app execution mount contract differs"
+        app_mounts=$((app_mounts + 1))
+        ;;
+      /app.sha256)
+        [ "$source" = "$APP_CHECKSUMS" ] && [ "$writable" = false ] \
+          || die "$label app checksum mount contract differs"
+        app_checksum_mounts=$((app_checksum_mounts + 1))
+        ;;
       /xvfb-root)
         [ "$source" = "$XVFB_ROOT" ] && [ "$writable" = false ] \
           || die "$label Xvfb root mount contract differs"
@@ -554,7 +570,8 @@ inspect_container_contract() {
     esac
   done < "$mounts_path"
   [ "$receipt_ends" -eq 1 ] && [ "$source_mounts" -eq 1 ] \
-    && [ "$output_mounts" -eq 1 ] && [ "$xvfb_root_mounts" -eq 1 ] \
+    && [ "$output_mounts" -eq 1 ] && [ "$app_mounts" -eq 1 ] \
+    && [ "$app_checksum_mounts" -eq 1 ] && [ "$xvfb_root_mounts" -eq 1 ] \
     && [ "$xkbcomp_mounts" -eq 1 ] && [ "$coord_mounts" -eq 1 ] \
     && [ "$machine_id_mounts" -eq 1 ] \
     || die "$label runtime mount cardinality differs"
@@ -581,15 +598,18 @@ capture_viewer_failure() {
     || die 'Flutter peer failure destination was not freshly absent'
   mapfile -d '' -t core_files < <(find "$FAILURE_ARTIFACT_DIR" \
     -mindepth 1 -maxdepth 1 -type f -name 'core.*' -print0)
-  [ "${#core_files[@]}" -eq 1 ] \
-    || die "expected one bounded viewer core, found ${#core_files[@]}"
+  [ "${#core_files[@]}" -le 1 ] \
+    || die "viewer produced multiple bounded cores: ${#core_files[@]}"
   mkdir -m 0700 -- "$destination" "$destination/bundle" "$destination/bundle/lib"
-  mv -- "${core_files[0]}" "$destination/core"
-  cp -a -- "$BUILD_OUTPUT/bundle/rustdesk" "$destination/bundle/rustdesk"
-  cp -a -- "$BUILD_OUTPUT/bundle/lib/." "$destination/bundle/lib/"
+  if [ "${#core_files[@]}" -eq 1 ]; then
+    mv -- "${core_files[0]}" "$destination/core"
+  fi
+  cp -a -- "$APP_EXECUTION/bundle/rustdesk" "$destination/bundle/rustdesk"
+  cp -a -- "$APP_EXECUTION/bundle/lib/." "$destination/bundle/lib/"
   cp -- "$viewer_log" "$destination/viewer.log"
-  printf 'cycle=%s\nviewer_status=%s\nsource_commit=%s\nsource_tree=%s\nflutter=%s\ncore_pattern=/diagnostic/core.%%p\n' \
+  printf 'cycle=%s\nviewer_status=%s\nharness_commit=%s\nharness_tree=%s\napp_commit=%s\napp_tree=%s\napp_manifest_sha256=%s\nflutter=%s\ncore_pattern=/diagnostic/core.%%p\n' \
     "$cycle" "$viewer_status" "$SOURCE_COMMIT" "$SOURCE_TREE" \
+    "$APP_COMMIT" "$APP_TREE" "$APP_MANIFEST_SHA256" \
     "$BUILD_FLUTTER_VERSION" > "$destination/identity"
   (
     cd "$destination"
@@ -602,8 +622,8 @@ capture_viewer_failure() {
     || die 'Flutter peer failure evidence exceeds its 1.5 GiB bound'
   find "$destination" -type f -exec chmod 0400 -- {} +
   find "$destination" -type d -exec chmod 0500 -- {} +
-  printf 'FLUTTER_PEER_FAILURE_CAPTURED cycle=%s viewer_status=%s core=kernel bundle=exact bytes=%s\n' \
-    "$cycle" "$viewer_status" "$total_bytes"
+  printf 'FLUTTER_PEER_FAILURE_CAPTURED cycle=%s viewer_status=%s core_count=%s bundle=exact bytes=%s\n' \
+    "$cycle" "$viewer_status" "${#core_files[@]}" "$total_bytes"
 }
 
 run_input_check() {
@@ -638,8 +658,25 @@ run_input_check() {
     bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh input-check
 }
 
-echo '== independently verify every persistent input consumed by the build =='
-run_input_check "$WORKSPACE/input-pre.cid"
+if [ "$BUILD_APP_ONLY" -eq 1 ]; then
+  echo '== independently verify every persistent input consumed by the build =='
+  run_input_check "$WORKSPACE/input-pre.cid"
+else
+  echo '== admit the exact inert app and materialize execution bytes only in this VM =='
+  APP_EXECUTION="$(/usr/bin/python3 -I -S "$SOURCE_SNAPSHOT/scripts/linux-flutter-artifact.py" materialize \
+    --root "$APP_INPUT" --root-identity "$(stat -c '%d:%i' -- "$APP_INPUT")" \
+    --parent "$WORKSPACE" --parent-identity "$(stat -c '%d:%i' -- "$WORKSPACE")" \
+    --context "$expected_context" --manifest-sha256 "$APP_MANIFEST_SHA256")" \
+    || die 'source-bound app materialization failed'
+  [ "$APP_EXECUTION" = "$WORKSPACE/materialized-flutter-app" ] \
+    || die 'app materialization destination differs'
+  (cd "$APP_EXECUTION" && find . -type f -print0 | LC_ALL=C sort -z \
+    | xargs -0 sha256sum) > "$APP_CHECKSUMS"
+  chmod 0400 "$APP_CHECKSUMS"
+  printf 'LINUX_FLUTTER_APP_ADMITTED=pass harness_commit=%s app_commit=%s app_tree=%s manifest_sha256=%s execution=vm-private build=absent\n' \
+    "$SOURCE_COMMIT" "$APP_COMMIT" "$APP_TREE" "$APP_MANIFEST_SHA256"
+fi
+readonly APP_EXECUTION
 
 if [ "$BUILD_APP_ONLY" -eq 0 ]; then
 echo '== verify and extract the exact offline Xvfb closure in one networkless non-root container =='
@@ -705,6 +742,7 @@ grep -q '^FLUTTER_PEER_ATSPI_RUNTIME_OK session_bus=private accessibility_bus=un
   "$WORKSPACE/atspi-check.log" || die 'private AT-SPI activation verdict is missing'
 fi
 
+if [ "$BUILD_APP_ONLY" -eq 1 ]; then
 echo '== verify the canonical selected Pub cache without copying or mutating it =='
 run_owned_container "$WORKSPACE/pub-cache.cid" \
   --pull=never --network=none --read-only \
@@ -788,6 +826,18 @@ run_owned_container "$WORKSPACE/pub-cache-post.cid" \
 chmod -R u+rwX "$BUILD_WORK"
 rm -rf -- "$BUILD_WORK"
 BUILD_WORK=
+else
+  echo '== compile only current native test drivers, twice, without building the app =='
+  run_owned_container "$WORKSPACE/drivers.cid" \
+    --pull=never --network=none --read-only --user "$HOST_UID:$HOST_GID" \
+    --cap-drop=ALL --security-opt=no-new-privileges \
+    --pids-limit=128 --memory=1g --memory-swap=1g --cpus=2 \
+    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=64m \
+    --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$BUILD_OUTPUT,target=/out,bind-recursive=disabled" \
+    "$DEV_CHECK_IMAGE_CONFIG_ID" \
+    bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh build-drivers
+fi
 
 if [ "$BUILD_APP_ONLY" -eq 0 ]; then
 for cycle in 1 2 3 4 5 6; do
@@ -808,6 +858,8 @@ peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g \
   --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$BUILD_OUTPUT,target=/out,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$APP_EXECUTION,target=/app,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$APP_CHECKSUMS,target=/app.sha256,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
@@ -847,6 +899,8 @@ peer_vm_docker run --cidfile "$VIEWER_CID_FILE" \
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g \
   --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$BUILD_OUTPUT,target=/out,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$APP_EXECUTION,target=/app,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$APP_CHECKSUMS,target=/app.sha256,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
@@ -928,20 +982,14 @@ done
 echo 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=6 instrumentation=none'
 fi
 
-echo '== independently reverify every persistent build input after runtime =='
-run_input_check "$WORKSPACE/input-post.cid"
-if [ "$SOURCE_AUTHORITY" = git ]; then
-  [ "$(git rev-parse HEAD)" = "$SOURCE_COMMIT" ] \
-    && [ "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE" ] \
-    || die 'repository identity changed during the probe'
-  assert_clean_worktree
-  git archive --format=tar --output="$WORKSPACE/source-after.tar" "$SOURCE_COMMIT"
-  [ "$(sha256sum "$WORKSPACE/source-after.tar" | awk '{print $1}')" = \
-    "$SOURCE_ARCHIVE_SHA256" ] || die 'exact source archive changed during the probe'
+if [ "$BUILD_APP_ONLY" -eq 1 ]; then
+  echo '== independently reverify every persistent build input after runtime =='
+  run_input_check "$WORKSPACE/input-post.cid"
 else
-  [ "$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')" = \
-    "$SOURCE_ARCHIVE_SHA256" ] || die 'supplied source archive changed during the probe'
+  (cd "$APP_EXECUTION" && sha256sum --check --strict "$APP_CHECKSUMS" >/dev/null)
 fi
+[ "$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')" = \
+  "$SOURCE_ARCHIVE_SHA256" ] || die 'supplied source archive changed during the probe'
 if [ "$BUILD_APP_ONLY" -eq 1 ]; then
   prepared="$(/usr/bin/python3 -I -S "$SOURCE_SNAPSHOT/scripts/linux-flutter-artifact.py" prepare \
     --root "$BUILD_OUTPUT" --root-identity "$(stat -c '%d:%i' -- "$BUILD_OUTPUT")" \
@@ -957,6 +1005,7 @@ if [ "$BUILD_APP_ONLY" -eq 1 ]; then
     "$APP_RECIPE_SHA256" "$SOURCE_DATE_EPOCH_PIN"
   exit 0
 fi
-printf 'FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=%s tree=%s archive_sha256=%s flutter=%s tools=%s scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace\n' \
+printf 'FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=%s tree=%s archive_sha256=%s flutter=%s tools=%s scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace app_commit=%s app_tree=%s manifest_sha256=%s build=absent\n' \
   "$SOURCE_COMMIT" "$SOURCE_TREE" "$SOURCE_ARCHIVE_SHA256" \
-  "$BUILD_FLUTTER_VERSION" "$BUILD_FLUTTER_TOOLS_MODE"
+  "$BUILD_FLUTTER_VERSION" "$BUILD_FLUTTER_TOOLS_MODE" \
+  "$APP_COMMIT" "$APP_TREE" "$APP_MANIFEST_SHA256"

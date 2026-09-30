@@ -12,7 +12,7 @@ fail() {
 [ "$(id -g)" -ne 0 ] || fail 'refuses a root primary group'
 [ -z "${LD_PRELOAD:-}" ] || fail 'refuses an ambient preload'
 [ "$#" -eq 1 ] \
-  || fail 'expected one stage: input-check, atspi-check, pub-cache, pub-cache-check, build, build-app, server, or viewer'
+  || fail 'expected one stage: input-check, atspi-check, pub-cache, pub-cache-check, build-drivers, build-app, server, or viewer'
 
 verify_regular() {
   [ -f "$1" ] && [ ! -L "$1" ] || fail "missing regular input: $1"
@@ -186,13 +186,19 @@ exact_executable_process_count() {
 
 verify_runtime_bundle() {
   verify_regular /out/manifest.sha256
-  [ -z "$(find /out -xdev -type l -print -quit)" ] \
-    || fail 'runtime bundle contains a symlink'
+  verify_regular /app.sha256
+  [ -z "$(find /out /app -xdev ! -type d ! -type f -print -quit)" ] \
+    || fail 'runtime app or driver tree contains a link or special object'
+  [ "$(find /out -xdev -type f | wc -l)" -eq 4 ] \
+    && [ "$(wc -l < /out/manifest.sha256)" -eq 3 ] \
+    && [ "$(find /app -xdev -type f | wc -l)" -eq "$(wc -l < /app.sha256)" ] \
+    || fail 'runtime app or driver inventory differs'
   (cd /out && sha256sum --check --strict manifest.sha256 >/dev/null)
+  (cd /app && sha256sum --check --strict /app.sha256 >/dev/null)
   verify_regular /out/smoke-bind-loopback.so
   for executable in \
-    /out/bundle/rustdesk \
-    /out/smoke-readiness \
+    /app/bundle/rustdesk \
+    /app/smoke-readiness \
     /out/flutter-peer-source-x11 \
     /out/flutter-peer-presentation-x11 \
     /source/scripts/smoke-ready.sh \
@@ -473,11 +479,44 @@ PY
       "$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256"
     ;;
 
-  build|build-app)
-    if [ "$1" = build-app ]; then
-      [[ "${SOURCE_DATE_EPOCH:-}" =~ ^(0|[1-9][0-9]{0,18})$ ]] \
-        || fail 'app producer requires an explicit canonical build epoch'
-    fi
+  build-drivers)
+    [ -d /out ] && [ ! -L /out ] \
+      && [ "$(stat -c '%u:%g:%a' /out)" = "$(id -u):$(id -g):700" ] \
+      && [ -z "$(find /out -mindepth 1 -print -quit)" ] \
+      || fail 'driver output must be a fresh private directory'
+    for input in flutter-peer-source-x11.c flutter-peer-presentation-x11.c \
+        x11-frame-oracle.h smoke-bind-loopback.c; do
+      verify_regular "/source/scripts/$input"
+    done
+    for pass in 1 2; do
+      mkdir -m 0700 "/tmp/drivers.$pass"
+      /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror \
+        /source/scripts/flutter-peer-source-x11.c \
+        $(pkg-config --cflags --libs x11) -o "/tmp/drivers.$pass/flutter-peer-source-x11"
+      /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror \
+        /source/scripts/flutter-peer-presentation-x11.c \
+        $(pkg-config --cflags --libs x11 xtst atspi-2 gobject-2.0) \
+        -o "/tmp/drivers.$pass/flutter-peer-presentation-x11"
+      /usr/bin/cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
+        /source/scripts/smoke-bind-loopback.c \
+        -Wl,-z,relro,-z,now,-z,noexecstack -ldl \
+        -o "/tmp/drivers.$pass/smoke-bind-loopback.so"
+    done
+    for driver in flutter-peer-source-x11 flutter-peer-presentation-x11 smoke-bind-loopback.so; do
+      cmp -s "/tmp/drivers.1/$driver" "/tmp/drivers.2/$driver" \
+        || fail "driver compilation is not byte reproducible: $driver"
+      install -m 0500 "/tmp/drivers.2/$driver" "/out/$driver"
+    done
+    (cd /out && sha256sum flutter-peer-source-x11 flutter-peer-presentation-x11 \
+      smoke-bind-loopback.so) > /out/manifest.sha256
+    chmod 0400 /out/manifest.sha256
+    chmod 0500 /out
+    printf 'LINUX_FLUTTER_DRIVERS_COMPILED=pass files=3 builds=2 equality=bytes app=unbuilt\n'
+    ;;
+
+  build-app)
+    [[ "${SOURCE_DATE_EPOCH:-}" =~ ^(0|[1-9][0-9]{0,18})$ ]] \
+      || fail 'app producer requires an explicit canonical build epoch'
     for variable in \
       RUSTDESK_RUST_VERSION RUSTDESK_RUST_SHA256 RUSTDESK_RUST_SIZE \
       RUSTDESK_FLUTTER_ARCHIVE RUSTDESK_FLUTTER_VERSION \
@@ -503,10 +542,7 @@ PY
       /online/frb-tool/bin/flutter_rust_bridge_codegen \
       /source/Cargo.lock \
       /source/flutter/pubspec.lock \
-      /source/scripts/flutter-offline-shim.sh \
-      /source/scripts/flutter-peer-source-x11.c \
-      /source/scripts/x11-frame-oracle.h \
-      /source/scripts/flutter-peer-presentation-x11.c; do
+      /source/scripts/flutter-offline-shim.sh; do
       verify_regular "$input"
     done
     for directory in /online/cargo-vendor /online/vcpkg; do
@@ -852,18 +888,6 @@ PY
         | grep -Eq "[[:space:]]$symbol$" \
         || fail "texture plugin does not export $symbol"
     done
-    if [ "$1" = build ]; then
-    cc -std=c11 -O2 -Wall -Wextra -Werror \
-      "$BUILD_SOURCE/scripts/flutter-peer-source-x11.c" \
-      $(pkg-config --cflags --libs x11) -o /out/flutter-peer-source-x11
-    cc -std=c11 -O2 -Wall -Wextra -Werror \
-      "$BUILD_SOURCE/scripts/flutter-peer-presentation-x11.c" \
-      $(pkg-config --cflags --libs x11 xtst atspi-2 gobject-2.0) \
-      -o /out/flutter-peer-presentation-x11
-    cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
-      "$BUILD_SOURCE/scripts/smoke-bind-loopback.c" \
-      -Wl,-z,relro,-z,now,-z,noexecstack -ldl -o /out/smoke-bind-loopback.so
-    fi
     verify_regular "$BUILD_SOURCE/target/release/examples/smoke_readiness"
     cp "$BUILD_SOURCE/target/release/examples/smoke_readiness" /out/smoke-readiness
     mkdir /out/bundle
@@ -872,35 +896,11 @@ PY
       || fail 'build output contains a symlink'
     [ -z "$(find /out -xdev -type f -perm /6000 -print -quit)" ] \
       || fail 'build output contains a setuid or setgid file'
-    if [ "$1" = build-app ]; then
-      find /out -xdev -type f -exec chmod 0400 {} +
-      find /out -xdev -type d -exec chmod 0500 {} +
-      printf 'LINUX_FLUTTER_APP_COMPILED=pass rust=%s flutter=%s epoch=%s files=%s drivers=excluded exact_runner=true exact_core=true\n' \
-        "$RUSTDESK_RUST_VERSION" "$RUSTDESK_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH" \
-        "$(find /out -xdev -type f | wc -l)"
-      exit 0
-    fi
-    printf 'rust=%s flutter=%s flutter_tools=%s llvm=%s pub_cache_sha256=%s features=flutter,unix-file-copy-paste app=rustdesk\n' \
-      "$RUSTDESK_RUST_VERSION" "$RUSTDESK_FLUTTER_VERSION" \
-      "$RUSTDESK_FLUTTER_TOOLS_MODE" "$RUSTDESK_LLVM_VERSION" \
-      "$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" \
-      > /out/build.identity
-    find /out -xdev -type f -exec chmod 0444 {} +
-    chmod 0555 /out/smoke-readiness /out/flutter-peer-source-x11 \
-      /out/flutter-peer-presentation-x11 \
-      /out/bundle/rustdesk /out/bundle/lib/*.so*
-    (
-      cd /out
-      find bundle -type f -print0 | sort -z | xargs -0 sha256sum
-      sha256sum build.identity smoke-bind-loopback.so smoke-readiness flutter-peer-source-x11 \
-        flutter-peer-presentation-x11
-    ) > /out/manifest.sha256
-    chmod 0444 /out/manifest.sha256
-    find /out -xdev -type d -exec chmod 0555 {} +
-    printf 'FLUTTER_PEER_BUILD_OK rust=%s flutter=%s tools=%s files=%s exact_runner=true exact_core=true\n' \
-      "$RUSTDESK_RUST_VERSION" "$RUSTDESK_FLUTTER_VERSION" \
-      "$RUSTDESK_FLUTTER_TOOLS_MODE" \
-      "$(wc -l < /out/manifest.sha256)"
+    find /out -xdev -type f -exec chmod 0400 {} +
+    find /out -xdev -type d -exec chmod 0500 {} +
+    printf 'LINUX_FLUTTER_APP_COMPILED=pass rust=%s flutter=%s epoch=%s files=%s drivers=excluded exact_runner=true exact_core=true\n' \
+      "$RUSTDESK_RUST_VERSION" "$RUSTDESK_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH" \
+      "$(find /out -xdev -type f | wc -l)"
     ;;
 
   server)
@@ -909,9 +909,9 @@ PY
     assert_loopback_only_interface
     readonly READY=/source/scripts/smoke-ready.sh
     readonly XVFB=/xvfb-root/usr/bin/Xvfb
-    readonly APP=/out/bundle/rustdesk
+    readonly APP=/app/bundle/rustdesk
     readonly BIND_SHIM=/out/smoke-bind-loopback.so
-    readonly PROBE=/out/smoke-readiness
+    readonly PROBE=/app/smoke-readiness
     readonly SOURCE_FIXTURE=/out/flutter-peer-source-x11
     readonly COORD=/coord
     [ -d "$COORD" ] && [ ! -L "$COORD" ] \
@@ -921,7 +921,7 @@ PY
       || fail 'coordination root was not initially empty'
     export DISPLAY=:98 HOME=/tmp/server-home XDG_RUNTIME_DIR=/tmp/server-runtime
     export GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1
-    export LD_LIBRARY_PATH="/out/bundle/lib:/xvfb-root/usr/lib/x86_64-linux-gnu"
+    export LD_LIBRARY_PATH="/app/bundle/lib:/xvfb-root/usr/lib/x86_64-linux-gnu"
     mkdir -m 0700 "$HOME" "$XDG_RUNTIME_DIR"
     mkdir -m 1777 /tmp/.X11-unix
     XVFB_PID= XVFB_START= SOURCE_PID= SOURCE_START= SERVER_PID= SERVER_START= SERVER_LOG=
@@ -955,7 +955,7 @@ PY
       [ -z "$SERVER_PID" ] && [ -z "$SERVER_START" ] \
         || fail 'cannot overlap controlled-server generations'
       SERVER_LOG="/tmp/server.$generation.log"
-      (cd /out/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server) \
+      (cd /app/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server) \
         >"$SERVER_LOG" 2>&1 &
       SERVER_PID=$!
       SERVER_START=$("$READY" --identity "$SERVER_PID")
@@ -988,7 +988,7 @@ PY
       "$PROBE" "$(id -u)"
     set +e
     password_output="$(printf '%s\n' 'rustdesk-peer-9f2a7c4e' \
-      | (cd /out/bundle && "$APP" --password-stdin) 2>&1)"
+      | (cd /app/bundle && "$APP" --password-stdin) 2>&1)"
     password_status=$?
     set -e
     printf '%s\n' "$password_output"
@@ -1108,7 +1108,7 @@ PY
       || fail 'viewer accessibility activation environment differs'
     readonly READY=/source/scripts/smoke-ready.sh
     readonly XVFB=/xvfb-root/usr/bin/Xvfb
-    readonly APP=/out/bundle/rustdesk
+    readonly APP=/app/bundle/rustdesk
     readonly CONTROLLER=/out/flutter-peer-presentation-x11
     readonly COORD=/coord
     [ -f "$COORD/server.ready" ] && [ ! -L "$COORD/server.ready" ] \
@@ -1116,7 +1116,7 @@ PY
     [ ! -e "$COORD/stop" ] && [ ! -L "$COORD/stop" ] \
       || fail 'viewer stop marker was not freshly absent'
     export GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1
-    export LD_LIBRARY_PATH="/out/bundle/lib:/xvfb-root/usr/lib/x86_64-linux-gnu"
+    export LD_LIBRARY_PATH="/app/bundle/lib:/xvfb-root/usr/lib/x86_64-linux-gnu"
     [ -d "$HOME" ] && [ ! -L "$HOME" ] \
       && [ "$(stat -c '%u:%g:%a' "$HOME")" = "$(id -u):$(id -g):700" ] \
       && [ -d "$XDG_RUNTIME_DIR" ] && [ ! -L "$XDG_RUNTIME_DIR" ] \
@@ -1148,7 +1148,7 @@ PY
     start_xvfb :99 1280x800x24 /tmp/viewer-xvfb.log
     listener_is_exact || fail 'shared namespace lost the exact loopback server listener'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'shared namespace has a UDP socket before connect'
-    (cd /out/bundle && exec env RUST_LOG=info "$APP" --connect 127.0.0.1) \
+    (cd /app/bundle && exec env RUST_LOG=info "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
@@ -1214,6 +1214,6 @@ PY
     ;;
 
   *)
-    fail 'expected input-check, atspi-check, pub-cache, pub-cache-check, build, build-app, server, or viewer stage'
+    fail 'expected input-check, atspi-check, pub-cache, pub-cache-check, build-drivers, build-app, server, or viewer stage'
     ;;
 esac

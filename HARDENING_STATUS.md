@@ -1551,6 +1551,19 @@ No run or overlay remains. This closes the real producer boundary, not execution
 consumer integration, measured faster replay, product-delay causation, installed-service/LPE or release
 evidence. These remaining claims stay OPEN; no product behavior or acceptance bound changed.
 
+The canonical consumer is now `--linux-flutter-app-replay --app-commit COMMIT
+--app-manifest-sha256 SHA256`. The old coupled-build peer entries are removed. The outer authority
+derives the app tree and original build-recipe digest independently from the selected pushed commit;
+the current harness commit/tree remain distinct. Its retained inert capsule is exported read-only,
+Landlocked and guest-mounted noexec. Only the VM-gated materializer creates an execution copy.
+Replay loads no app-builder image and invokes no Rust/Flutter app build: three current native drivers
+are compiled twice in the confined guest devcheck container and must match byte-for-byte. Server/viewer
+containers mount app and drivers separately read-only and recheck complete execution checksums. Existing
+six-lifecycle pixel, dialog, focus, reconnect, resource and joined-cleanup criteria are unchanged.
+Ordinary viewer assertion failure may retain zero cores; capture records the actual core count rather
+than requiring a crash or calling a nonexistent core a kernel artifact. Source implementation is ready
+for exact-artifact execution; consumer acceptance and measured replay speed remain OPEN until that run.
+
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was
 false-green because readiness raced ahead of cleanup; the corrected test observes the actual drain

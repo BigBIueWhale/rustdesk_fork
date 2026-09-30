@@ -1457,7 +1457,7 @@ PY
     SOURCE_START="$(process_start_time "$SOURCE_PID")" \
         || fail 'cannot bind the Android peer source generation'
     "$PEER_READY" --wait-log "$SOURCE_PID" "$SOURCE_START" "$PEER_SOURCE_LOG" \
-        'FLUTTER_PEER_SOURCE_READY display=:99 dimensions=640x480 interval_ms=250 states=256' \
+        'FLUTTER_PEER_SOURCE_READY display=:99 dimensions=640x480 interval_ms=250 identity=counter32 rows=4 bars=24 wrap=refused' \
         'Android peer changing-source readiness'
     install -d -m 0700 -- /tmp/android-peer-server-home
     HOME=/tmp/android-peer-server-home \
@@ -2701,8 +2701,8 @@ peer_source_state() {
 }
 
 decode_peer_framebuffer() {
-    local framebuffer=$1 source_state=$2 mode=${3:-decode}
-    local -a arguments=(decode "$framebuffer" "$source_state")
+    local framebuffer=$1 mode=${2:-decode}
+    local -a arguments=(decode "$framebuffer" "$PEER_SOURCE_LOG")
     [ "$mode" = diagnose ] && arguments+=(diagnose)
     python3 -I -S "$FRAME_DECODER" "${arguments[@]}"
 }
@@ -2764,11 +2764,11 @@ capture_peer_freshness() {
         fi
         source_state="$(peer_source_state 2>/dev/null || true)"
         decoded=
-        if [[ "$source_state" =~ ^([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$ ]]; then
+        if [[ "$source_state" =~ ^[0-9]+$ ]] && [ "$source_state" -le 4294967295 ]; then
             last_source_state=$source_state
             source_seen=1
             if ! decoded="$(decode_peer_framebuffer \
-                "$FRAME_OBSERVER_FRAME" "$source_state" 2>/dev/null)"; then
+                "$FRAME_OBSERVER_FRAME" 2>/dev/null)"; then
                 printf 'ANDROID_PEER_OBSERVER=unavailable phase=%s reason=invalid-grpc-frame-record\n' \
                     "$phase"
                 observer_failure="Android emulator display observer returned an invalid frame for $phase"
@@ -2824,7 +2824,7 @@ capture_peer_freshness() {
                 observer_failure="Android emulator display observer exceeded its $PEER_CAPTURE_LIMIT_MS ms limit for $phase"
                 break
             fi
-            printf 'ANDROID_PEER_FRAME_SAMPLE phase=%s attempt=%s elapsed_ms=%s observer_age_ms=%s source_state=%s display_state=%s age=%s score=%s matched=%s layout=%s format=%s orientation=%s dimensions=%sx%s seq=%s timestamp_us=%s\n' \
+            printf 'ANDROID_PEER_FRAME_SAMPLE phase=%s attempt=%s elapsed_ms=%s observer_age_ms=%s source_state=%s display_state=%s age_ms=%s score=%s matched=%s layout=%s format=%s orientation=%s dimensions=%sx%s seq=%s timestamp_us=%s\n' \
                 "$phase" "$attempt" "$total_elapsed_ms" "$capture_elapsed_ms" \
                 "$source_state" "$state" "$age" "$score" "$matched" "$layout" \
                 "$format_name" "$orientation" "$width" "$height" "$sequence" \
@@ -2842,10 +2842,10 @@ capture_peer_freshness() {
                     break
                 fi
                 PEER_DISTINCT_FRAMES=$((PEER_DISTINCT_FRAMES + ${#seen[@]}))
-                [ "$((max_age * 250))" -le "$PEER_FRESHNESS_MAX_MS" ] \
-                    || PEER_FRESHNESS_MAX_MS=$((max_age * 250))
+                [ "$max_age" -le "$PEER_FRESHNESS_MAX_MS" ] \
+                    || PEER_FRESHNESS_MAX_MS=$max_age
                 printf 'ANDROID_PEER_FRESHNESS=pass phase=%s recovery_ms=%s max_age_ms=%s distinct=%s score=%s matched=%s layout=%s observer=emulator-grpc-rgb888 last_seq=%s\n' \
-                    "$phase" "$PEER_LAST_RECOVERY_MS" "$((max_age * 250))" \
+                    "$phase" "$PEER_LAST_RECOVERY_MS" "$max_age" \
                     "${#seen[@]}" "$score" "$matched" "$layout" "$sequence"
                 return 0
             fi
@@ -2904,7 +2904,7 @@ capture_peer_freshness() {
        && [ -f "$FRAME_OBSERVER_FRAME" ] \
        && [ ! -L "$FRAME_OBSERVER_FRAME" ]; then
         decode_peer_framebuffer \
-            "$FRAME_OBSERVER_FRAME" "$last_source_state" diagnose || true
+            "$FRAME_OBSERVER_FRAME" diagnose || true
     fi
     capture_ui_hierarchy complete && print_initial_ui_semantics
     capture_android_connection_diagnostic active || true

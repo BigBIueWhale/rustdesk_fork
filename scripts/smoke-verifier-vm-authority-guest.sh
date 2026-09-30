@@ -10,6 +10,9 @@ case "$#:${8:-}" in
     8:--android-execution-probe)
         MODE=android-execution-probe
         ;;
+    8:--android-frame-tests)
+        MODE=android-frame-tests
+        ;;
     12:--hbb-common-fs)
         MODE=hbb-common-fs
         ;;
@@ -266,6 +269,91 @@ provision_git_runtime() {
         /usr/bin/git --version)" = 'git version 2.39.5' ] \
         || fail 'provisioned Git runtime version differs'
     printf 'VERIFIER_VM_GIT_RUNTIME=pass source=pinned-deb version=2.39.5 root=vm-ephemeral network=none\n'
+}
+
+frame_docker() {
+    local status=0
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$ENTRY_PREFLIGHT" >/dev/null || return 1
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_CONFIG="$CONFIG_ROOT" "$CLIENT" --host "unix://$SOCK" "$@" || status=$?
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$ENTRY_PREFLIGHT" >/dev/null || return 1
+    return "$status"
+}
+
+run_android_frame_tests() {
+    local inputs=/mnt/rustdesk-verifier-inputs
+    local work=$ROOT/android-frame-tests load_output phase profile
+    local output=$ROOT/android-frame-tests.out status=0
+    local -a mounts command
+    load_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$OFFLINE_IMAGE_PROVENANCE" verify-load \
+                --archive "$inputs/devcheck.docker.tar.gz" \
+                --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+                --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" --role devcheck \
+                --expected-id "$DEV_CHECK_IMAGE_ID" \
+                --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+                --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" \
+                --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+                --cargo-sha "$SHA256_DEV_CHECK_CARGO" --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
+                --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" \
+                --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
+                --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" \
+                --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID"
+    )" || fail 'Android frame-test certified image could not be loaded'
+    [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
+        || fail 'Android frame-test image load receipt differs'
+    install -d -o 4000 -g 4000 -m 0700 "$work" "$work/xvfb-debs" "$work/xvfb-root"
+    for phase in prepare native; do
+        mounts=(--mount "type=bind,src=$VERIFY_REPO,dst=/work,readonly,bind-recursive=disabled")
+        if [ "$phase" = prepare ]; then
+            mounts+=(
+                --mount "type=bind,src=$inputs/xvfb-debs,dst=/xvfb-inputs,readonly,bind-recursive=disabled"
+                --mount "type=bind,src=$work/xvfb-debs,dst=/xvfb-debs,bind-recursive=disabled"
+                --mount "type=bind,src=$work/xvfb-root,dst=/xvfb-root,bind-recursive=disabled"
+            )
+            command=(/bin/bash /work/scripts/smoke-xvfb-prepare.sh)
+        else
+            mounts+=(
+                --mount "type=bind,src=$work/xvfb-root,dst=/xvfb-root,readonly,bind-recursive=disabled"
+                --mount "type=bind,src=$work/xvfb-root/usr/bin/xkbcomp,dst=/usr/bin/xkbcomp,readonly"
+            )
+            command=(/usr/bin/python3 -B -I -S /work/scripts/test-android-frame-native.py)
+        fi
+        CONTAINER_ID="$(frame_docker create --name "rustdesk-android-frame-$phase" \
+            --pull never --network none --user 4000:4000 --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --security-opt apparmor=docker-default \
+            --cpus 2 --memory 1g --memory-swap 1g --pids-limit 128 \
+            --tmpfs /tmp:rw,nosuid,nodev,size=256m,mode=700,uid=4000,gid=4000 \
+            --env LC_ALL=C --workdir /tmp "${mounts[@]}" --entrypoint '' \
+            "$DEV_CHECK_IMAGE_CONFIG_ID" "${command[@]}")" \
+            || fail 'Android frame-test container could not be created'
+        [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'Android frame-test container identity differs'
+        profile="$(frame_docker inspect --format \
+            '{{.HostConfig.NetworkMode}}|{{.HostConfig.Privileged}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}' "$CONTAINER_ID")"
+        [ "$profile" = 'none|false|true|4000:4000|1073741824|1073741824|2000000000|128|["ALL"]|["no-new-privileges","apparmor=docker-default"]|{}|[]||private||private' ] \
+            || fail 'Android frame-test container confinement differs'
+        printf 'ANDROID_FRAME_TESTS_PROGRESS stage=%s\n' "$phase"
+        status=0
+        frame_docker start --attach "$CONTAINER_ID" 2>&1 | tee "$output" || status=$?
+        [ "$status" -eq 0 ] && [ "$(stat -c '%s' -- "$output")" -le 65536 ] \
+            || fail 'Android frame-test container failed or exceeded output bound'
+        [ "$(frame_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+            || fail 'Android frame-test container did not finish cleanly'
+        if [ "$phase" = native ]; then
+            [ "$(grep -Fxc 'ANDROID_FRAME_NATIVE=pass source=x11 pixels=actual counter=uint32 age=monotonic whole_cycle=refused network=none uid=4000 cleanup=joined' "$output")" -eq 1 ] \
+                || fail 'Android native frame-test result is absent or duplicated'
+        fi
+        frame_docker rm "$CONTAINER_ID" >/dev/null || fail 'Android frame-test container retirement failed'
+        CONTAINER_ID=
+    done
+    stop_docker_authority
+    printf 'ANDROID_FRAME_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
 }
 
 network_inventory() {
@@ -3627,7 +3715,7 @@ run_android_emulator_runtime() {
     [ "$(grep -c '^ANDROID_EMULATOR_FRAME_ENDPOINT=' "$output")" -eq 1 ] \
         || fail 'Android frame-endpoint receipt is duplicated'
     frame_parser_receipt="$(grep -Fx \
-        'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass scenarios=11' \
+        'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass format=counter32 source=monotonic-publication alias=refused' \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android frame-parser receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=' "$output")" -eq 1 ] \
@@ -4921,6 +5009,11 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     run_debian_systemd_lifecycle
     printf 'VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=%s direct_boot=on boot_masks=on docker=%s vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off lifecycle=installed-debian-artifact\n' \
         "$EXPECTED_KERNEL_RELEASE" "$EXPECTED_VERSION"
+    exit 0
+fi
+
+if [ "$MODE" = android-frame-tests ]; then
+    run_android_frame_tests
     exit 0
 fi
 

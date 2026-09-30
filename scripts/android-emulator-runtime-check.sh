@@ -839,7 +839,7 @@ mapfile -t endpoint_receipts < <(grep -Fx \
 [ "${#endpoint_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android emulator frame-endpoint receipt is absent or duplicated'; }
 mapfile -t frame_parser_receipts < <(grep -Fx \
-    'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass scenarios=11' \
+    'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass format=counter32 source=monotonic-publication alias=refused' \
     "$OBSERVER_LOG" || true)
 [ "${#frame_parser_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$OBSERVER_LOG" >&2; die 'Android emulator frame-parser self-test receipt is absent or duplicated'; }
@@ -900,7 +900,7 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
 readonly peer_presentation_phase_pattern='(initial|background-resume-1-2s|background-resume-2-6s|background-resume-3-12s|task-relaunch-[1-6])'
 readonly peer_presentation_phase_inventory=$'background-resume-1-2s\nbackground-resume-2-6s\nbackground-resume-3-12s\ninitial\ntask-relaunch-1\ntask-relaunch-2\ntask-relaunch-3\ntask-relaunch-4\ntask-relaunch-5\ntask-relaunch-6'
 mapfile -t peer_frame_baselines < <(grep -E \
-    "^ANDROID_PEER_FRAME_BASELINE phase=$peer_presentation_phase_pattern observer_age_ms=[0-9]+ source_state=([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]) display_state=([0-9]+|unavailable) dimensions=(120x200|200x120) seq=[0-9]+ timestamp_us=[1-9][0-9]*$" \
+    "^ANDROID_PEER_FRAME_BASELINE phase=$peer_presentation_phase_pattern observer_age_ms=[0-9]+ source_state=[0-9]+ display_state=([0-9]+|unavailable) dimensions=(120x200|200x120) seq=[0-9]+ timestamp_us=[1-9][0-9]*$" \
     "$RUNTIME_LOG" || true)
 [ "${#peer_frame_baselines[@]}" -eq 10 ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android peer frame baselines are absent or duplicated'; }

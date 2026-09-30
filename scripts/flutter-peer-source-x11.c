@@ -3,11 +3,9 @@
 /*
  * Test-only source display for the full RustDesk peer-presentation probe.
  *
- * The two independently colored halves encode one of 256 ordered frame states. A bounded band at
- * the top repeats the same state as a high-contrast Manchester code so a scaled mobile observer
- * can distinguish the remote image from letterbox and toolbar pixels. The exact product captures
- * this X11 window; the observer compares the decoded pixels with the live source state to
- * distinguish a current picture from a merely changing but delayed picture.
+ * The colored halves retain the desktop palette probe. Four ordered Manchester bands encode
+ * the complete non-wrapping uint32 frame identity for the mobile observer. Each publication is
+ * bound to its monotonic start time; nominal frame pacing is not a freshness measurement.
  */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -23,8 +21,9 @@
 #define SOURCE_HEIGHT 480U
 #define FRAME_INTERVAL_MS 250U
 #define DISPLAY_OPEN_ATTEMPTS 200U
-#define STATE_CODE_BARS 20U
-#define STATE_CODE_HEIGHT 96U
+#define STATE_CODE_BARS 24U
+#define STATE_CODE_ROWS 4U
+#define STATE_CODE_HEIGHT 192U
 
 static volatile sig_atomic_t stop_requested = 0;
 
@@ -90,7 +89,7 @@ static unsigned long rgb_pixel(const Visual *visual, const uint8_t color[3]) {
 static int root_pixel_matches(Display *display, Window root, int x, int y,
                               unsigned long expected);
 
-static int state_code_bar_is_white(unsigned int state, unsigned int bar) {
+static int state_code_bar_is_white(uint32_t state, unsigned int row, unsigned int bar) {
     unsigned int pair;
     unsigned int bit;
     if (bar == 0U || bar == STATE_CODE_BARS - 1U) {
@@ -100,22 +99,27 @@ static int state_code_bar_is_white(unsigned int state, unsigned int bar) {
         return 1;
     }
     pair = (bar - 2U) / 2U;
-    bit = (state >> (7U - pair)) & 1U;
+    bit = (((row << 8U) | ((state >> (24U - row * 8U)) & 255U)) >>
+           (9U - pair)) & 1U;
     return ((bar - 2U) & 1U) == 0U ? (int)bit : (int)(bit ^ 1U);
 }
 
 static int root_state_code_matches(Display *display, Window root, const Visual *visual,
-                                   unsigned int state) {
-    unsigned int bar;
-    for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
+                                   uint32_t state) {
+    unsigned int row, bar;
+    for (row = 0U; row < STATE_CODE_ROWS; ++row) {
+      for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
         unsigned int x = ((bar * 2U + 1U) * SOURCE_WIDTH) /
                          (STATE_CODE_BARS * 2U);
         const uint8_t *color =
-            state_code_bar_is_white(state, bar) != 0 ? code_white : code_black;
-        if (!root_pixel_matches(display, root, (int)x, (int)(STATE_CODE_HEIGHT / 2U),
+            state_code_bar_is_white(state, row, bar) != 0 ? code_white : code_black;
+        if (!root_pixel_matches(display, root, (int)x,
+                                (int)((row * 2U + 1U) * STATE_CODE_HEIGHT /
+                                      (STATE_CODE_ROWS * 2U)),
                                 rgb_pixel(visual, color))) {
             return 0;
         }
+      }
     }
     return 1;
 }
@@ -143,7 +147,7 @@ int main(void) {
     Window window;
     Pixmap back_buffer;
     GC graphics;
-    unsigned int frame = 0U;
+    uint32_t frame = 0U;
     int exit_status = 0;
     const char *trace_value = getenv("RUSTDESK_PRESENTATION_TRACE");
     int trace_enabled = trace_value != NULL && strcmp(trace_value, "1") == 0;
@@ -206,14 +210,16 @@ int main(void) {
     }
     XMapRaised(display, window);
     XSync(display, False);
-    printf("FLUTTER_PEER_SOURCE_READY display=%s dimensions=%ux%u interval_ms=%u states=256\n",
+    printf("FLUTTER_PEER_SOURCE_READY display=%s dimensions=%ux%u interval_ms=%u "
+           "identity=counter32 rows=4 bars=24 wrap=refused\n",
            DisplayString(display), SOURCE_WIDTH, SOURCE_HEIGHT, FRAME_INTERVAL_MS);
     fflush(stdout);
 
     while (stop_requested == 0) {
         unsigned int low = frame & 15U;
         unsigned int high = (frame >> 4U) & 15U;
-        unsigned int bar;
+        unsigned int row, bar;
+        uint64_t publication_us;
 
         XSetForeground(display, graphics, rgb_pixel(visual, palette[low]));
         XFillRectangle(display, back_buffer, graphics, 0, 0, SOURCE_WIDTH / 2U,
@@ -221,14 +227,17 @@ int main(void) {
         XSetForeground(display, graphics, rgb_pixel(visual, palette[high]));
         XFillRectangle(display, back_buffer, graphics, SOURCE_WIDTH / 2U, 0,
                        SOURCE_WIDTH / 2U, SOURCE_HEIGHT);
-        for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
+        for (row = 0U; row < STATE_CODE_ROWS; ++row) {
+          for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
             unsigned int start = (bar * SOURCE_WIDTH) / STATE_CODE_BARS;
             unsigned int end = ((bar + 1U) * SOURCE_WIDTH) / STATE_CODE_BARS;
             const uint8_t *color =
-                state_code_bar_is_white(frame, bar) != 0 ? code_white : code_black;
+                state_code_bar_is_white(frame, row, bar) != 0 ? code_white : code_black;
             XSetForeground(display, graphics, rgb_pixel(visual, color));
-            XFillRectangle(display, back_buffer, graphics, (int)start, 0,
-                           end - start, STATE_CODE_HEIGHT);
+            XFillRectangle(display, back_buffer, graphics, (int)start,
+                           (int)(row * STATE_CODE_HEIGHT / STATE_CODE_ROWS),
+                           end - start, STATE_CODE_HEIGHT / STATE_CODE_ROWS);
+          }
         }
         /*
          * The observer and RustDesk capture are separate X clients. Publishing both color
@@ -236,6 +245,12 @@ int main(void) {
          * two same-cadence drawing requests.
          */
         XRaiseWindow(display, window);
+        publication_us = monotonic_micros();
+        if (publication_us == 0U) {
+            fputs("FLUTTER_PEER_SOURCE_FAIL publication clock\n", stderr);
+            exit_status = 1;
+            break;
+        }
         XCopyArea(display, back_buffer, window, graphics, 0, 0, SOURCE_WIDTH, SOURCE_HEIGHT,
                   0, 0);
         XSync(display, False);
@@ -253,10 +268,15 @@ int main(void) {
         if (trace_enabled != 0) {
             printf("RUSTDESK_PRESENTATION_TRACE stage=source-publish monotonic_us=%llu "
                    "state=%u low=%u high=%u\n",
-                   (unsigned long long)monotonic_micros(), frame, low, high);
+                   (unsigned long long)publication_us, frame, low, high);
             fflush(stdout);
         }
-        frame = (frame + 1U) & 255U;
+        if (frame == UINT32_MAX) {
+            fputs("FLUTTER_PEER_SOURCE_FAIL frame identity exhausted\n", stderr);
+            exit_status = 1;
+            break;
+        }
+        ++frame;
         if (sleep_millis(FRAME_INTERVAL_MS) != 0) {
             fputs("FLUTTER_PEER_SOURCE_FAIL frame pacing\n", stderr);
             XFreePixmap(display, back_buffer);

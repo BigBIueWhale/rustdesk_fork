@@ -1158,7 +1158,17 @@ retries automatically; no failed path installs keys. Only responder-side `Confir
 guess limiter. The focused 20-wire-test transaction at `2ab3efa0` passed in 138 seconds; it is not
 native UI/presentation evidence.
 
-Next work must replace the repeating-pattern freshness oracle with an unambiguous source-to-display frame
+The candidate observer correction now encodes all 32 frame-counter bits in four ordered Manchester
+bands and refuses wrap. The Android decoder requires a matching identity in the exact owned source's
+bounded, owner-only publication log, rejects incomplete/reordered bands and unknown/future identities,
+and measures elapsed monotonic time from publication start through decoding against the unchanged
+2,000-ms bound. Nominal 250-ms tick multiplication and modulo-age acceptance are removed. The source
+and driver require one explicit format; the retained old peer capsule is preserved but its source helper
+will refuse this readiness contract. `--android-frame-tests` supplies a focused zero-NIC VM/native-X11
+source-to-pixel-decoder test, including actual whole-cycle stale pixels redated with a fresh observation.
+Native execution of this candidate is pending; neither an Android replay nor product closure is claimed.
+
+Next work must validate the corrected source-to-display frame
 identity, including a whole-cycle stale-frame negative case, before further performance closure. Preserve
 source/digest-bound artifact reuse, read-only execution, no fallback, bounded output and joined cleanup.
 Make engine/framework/app/lifecycle stages observable before EOF: the runtime wrapper currently waits for

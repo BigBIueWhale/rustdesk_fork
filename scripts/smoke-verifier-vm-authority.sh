@@ -73,6 +73,11 @@ case "$#:${1:-}" in
             || { echo 'Android execution-probe input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-execution-probe
         ;;
+    1:--android-frame-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Android frame-test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-frame-tests
+        ;;
     1:--android-peer-build)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -370,6 +375,10 @@ elif [ "$MODE" = android-owner-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
+elif [ "$MODE" = android-frame-tests ]; then
+    readonly VM_TIMEOUT_SECONDS=240
+    readonly OVERLAY_SIZE=12G
+    readonly VM_MEMORY=4096
 elif [ "$MODE" = android-peer-build ]; then
     readonly VM_TIMEOUT_SECONDS=2400
     readonly OVERLAY_SIZE=40G
@@ -777,6 +786,40 @@ android_owner_input_inventory() {
         "${ANDROID_OWNER_KOTLIN_JARS[@]}"
     /usr/bin/sha256sum -- "$ANDROID_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE" \
         "${ANDROID_OWNER_KOTLIN_JARS[@]}"
+}
+
+android_frame_input_inventory() {
+    local file name size digest url extra count=0
+    local -a files=(
+        "$SCRIPT_DIR/android-emulator-frame.py" "$SCRIPT_DIR/flutter-peer-source-x11.c"
+        "$SCRIPT_DIR/test-android-frame-native.py" "$SCRIPT_DIR/smoke-xvfb-prepare.sh"
+        "$SCRIPT_DIR/smoke-xvfb-packages.tsv" "$SCRIPT_DIR/smoke-xvfb-files.tsv"
+        "$DEV_CHECK_IMAGE_ARCHIVE"
+    )
+    while IFS=$'\t' read -r name size digest url extra; do
+        [ -n "$name" ] || continue
+        [[ "$name" == \#* ]] && continue
+        [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] && [ -z "$extra" ] \
+            || fail 'Android frame-test package record differs'
+        file="$ONLINE_INPUTS/xvfb-debs/$name.deb"
+        [ -f "$file" ] && [ ! -L "$file" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$file")" = \
+                 "$HOST_UID:$HOST_GID:400:1:$size" ] \
+            || fail 'Android frame-test package authority differs'
+        verify_sha256 "$file" "$digest"
+        files+=("$file")
+        count=$((count + 1))
+    done <"$SCRIPT_DIR/smoke-xvfb-packages.tsv"
+    [ "$count" -eq 5 ] \
+        && [ "$(/usr/bin/find "$ONLINE_INPUTS/xvfb-debs" -mindepth 1 -maxdepth 1 -printf x)" = xxxxx ] \
+        || fail 'Android frame-test package closure differs'
+    for file in "${files[@]}"; do
+        [ -f "$file" ] && [ ! -L "$file" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%h' -- "$file")" = "$HOST_UID:$HOST_GID:1" ] \
+            || fail 'Android frame-test input owner or type differs'
+    done
+    /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "${files[@]}"
+    /usr/bin/sha256sum -- "${files[@]}"
 }
 
 android_emulator_input_inventory() {
@@ -1212,7 +1255,27 @@ if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
     [ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
         || fail 'Git replacement refs are forbidden'
 fi
+frame_inputs_before=
+FRAME_TEST_COMMIT=
+FRAME_TEST_TREE=
+if [ "$MODE" = android-frame-tests ]; then
+    [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
+        && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'Android frame tests require clean committed master'
+    FRAME_TEST_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')"
+    FRAME_TEST_TREE="$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')"
+    [ "$FRAME_TEST_COMMIT" = "$(git_closed -C "$REPO_ROOT" rev-parse refs/remotes/origin/master)" ] \
+        || fail 'Android frame tests require pushed master'
+fi
 reserve_verifier_run
+if [ "$MODE" = android-frame-tests ]; then
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$DEV_CHECK_IMAGE_ARCHIVE")" = \
+      "$HOST_UID:$HOST_GID:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        || fail 'Android frame-test image archive authority differs'
+    verify_sha256 "$DEV_CHECK_IMAGE_ARCHIVE" "$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
+    frame_inputs_before="$(android_frame_input_inventory)" \
+        || fail 'Android frame-test inputs cannot be captured'
+fi
 for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE" \
     "$DOCKER_BUNDLE:$SIZE_VERIFIER_VM_DOCKER_STATIC" \
     "$GIT_PACKAGE:$SIZE_VERIFIER_VM_GIT_PACKAGE"; do
@@ -2517,6 +2580,18 @@ elif [ "$MODE" = flutter-model-tests ]; then
 elif [ "$MODE" = android-owner-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$ANDROID_OWNER_SOURCE_ARCHIVE")
+elif [ "$MODE" = android-frame-tests ]; then
+    payload_identity=(-uid 4000 -gid 4000)
+    lifecycle_payload_grafts=(
+        "devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
+        "xvfb-debs=$ONLINE_INPUTS/xvfb-debs"
+        "repo/scripts/android-emulator-frame.py=$SCRIPT_DIR/android-emulator-frame.py"
+        "repo/scripts/flutter-peer-source-x11.c=$SCRIPT_DIR/flutter-peer-source-x11.c"
+        "repo/scripts/test-android-frame-native.py=$SCRIPT_DIR/test-android-frame-native.py"
+        "repo/scripts/smoke-xvfb-prepare.sh=$SCRIPT_DIR/smoke-xvfb-prepare.sh"
+        "repo/scripts/smoke-xvfb-packages.tsv=$SCRIPT_DIR/smoke-xvfb-packages.tsv"
+        "repo/scripts/smoke-xvfb-files.tsv=$SCRIPT_DIR/smoke-xvfb-files.tsv"
+    )
 elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
    || [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-peer-build ]; then
     payload_identity=(-uid 4000 -gid 4000)
@@ -2644,6 +2719,8 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     guest_invocation+=" --debian-systemd-lifecycle /mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz /mnt/rustdesk-verifier-inputs/artifact/rustdesk-x86_64.deb $LIFECYCLE_ARTIFACT_SHA256 $LIFECYCLE_COMMIT"
 elif [ "$MODE" = android-execution-probe ]; then
     guest_invocation+=' --android-execution-probe'
+elif [ "$MODE" = android-frame-tests ]; then
+    guest_invocation+=' --android-frame-tests'
 elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = cpace-recovery-tests ]; then
@@ -3010,6 +3087,17 @@ elif [ "$MODE" = android-execution-probe ]; then
         'Android execution-probe finality marker'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'Android execution-probe cloud-init completion marker'
+elif [ "$MODE" = android-frame-tests ]; then
+    require_exact_fixed_receipt \
+        'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass format=counter32 source=monotonic-publication alias=refused' \
+        'Android framebuffer decoder cases'
+    require_exact_fixed_receipt \
+        'ANDROID_FRAME_NATIVE=pass source=x11 pixels=actual counter=uint32 age=monotonic whole_cycle=refused network=none uid=4000 cleanup=joined' \
+        'native source-to-decoder whole-cycle refusal'
+    require_exact_fixed_receipt \
+        'ANDROID_FRAME_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
+        'Android frame-test guest finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Android frame-test completion'
 elif [ "$MODE" = authority-smoke ]; then
 require_exact_fixed_receipt \
     'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cleanup=joined' \
@@ -3444,7 +3532,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none' \
         'Android emulator frame-endpoint receipt'
     require_exact_fixed_receipt \
-        'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass scenarios=11' \
+        'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass format=counter32 source=monotonic-publication alias=refused' \
         'Android emulator frame-parser self-test receipt'
     require_exact_fixed_receipt \
         'ANDROID_EMULATOR_FRAME_OBSERVER_SELF_TEST=pass scenarios=7' \
@@ -3814,6 +3902,10 @@ fi
 external_listener_drift_count="$(/usr/bin/wc -l <"$EXTERNAL_LISTENER_DRIFT")"
 /usr/bin/printf 'VERIFIER_VM_HOST_LISTENER_AUDIT=pass complete_snapshots=before,during,after harness_additions=none preexisting_process_drift=%s\n' \
     "$external_listener_drift_count"
+if [ "$MODE" = android-frame-tests ]; then
+    [ "$(android_frame_input_inventory)" = "$frame_inputs_before" ] \
+        || fail 'Android frame-test inputs changed during execution'
+fi
 RUN_COMPLETE=1
 if [ "$MODE" = authority-smoke ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
@@ -3821,6 +3913,9 @@ if [ "$MODE" = authority-smoke ]; then
 elif [ "$MODE" = android-execution-probe ]; then
     printf 'ANDROID_EXECUTION_PROBE_OUTER=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=guest-only emulator=unexecuted module_loads=none device_changes=none cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$vm_elapsed_seconds"
+elif [ "$MODE" = android-frame-tests ]; then
+    printf 'ANDROID_FRAME_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FRAME_TEST_COMMIT" "$FRAME_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 mode=debian-systemd-lifecycle output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"

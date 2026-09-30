@@ -1258,8 +1258,14 @@ row-order defect and establishes one schedule for the retained diagnostic APK/pe
 intermittent defect, a current release artifact or sustained resource/latency bounds. Historical input
 without live publication history grants no freshness.
 Make engine/framework/app/lifecycle stages observable before EOF: the runtime wrapper currently waits for
-container completion before fetching logs and the guest forwards only peer admission. Replace
-iteration-count waits advertised as seconds with actual monotonic deadlines. Then distinguish event,
+container completion before fetching logs and the guest forwards only peer admission. The runtime wrapper
+now assigns actual guest elapsed-clock deadlines to first-frame startup (900 seconds), failed-startup
+runtime drain (120 seconds), and observer join (120 seconds), rather than counting polling iterations.
+Each state request includes its pre/post authority checks within the remaining deadline; expiry starts
+TERM cancellation of the synchronous local command and cannot promote a late readiness/exit result.
+Container retirement remains separately owned and joined, not a deadline-driven success or detach.
+The focused guest-clock/command tests and actual Android integration of this candidate remain pending.
+Then distinguish event,
 native mailbox, conversion completion, model commit, widget/paint and actual framebuffer progress across
 repeated task/session replacement under the corrected observer.
 The shared three-conversion pool's dependence on uncancellable Flutter futures is a liveness candidate,

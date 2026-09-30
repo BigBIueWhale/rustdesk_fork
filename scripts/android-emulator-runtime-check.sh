@@ -113,6 +113,64 @@ vm_docker() {
     return "$status"
 }
 
+runtime_monotonic_millis() {
+    local uptime ignored whole fraction
+    read -r uptime ignored < /proc/uptime || return 1
+    [[ "$uptime" =~ ^([0-9]+)\.([0-9]+)$ ]] || return 1
+    whole=${BASH_REMATCH[1]}
+    fraction=${BASH_REMATCH[2]}000
+    printf '%s\n' "$((10#$whole * 1000 + 10#${fraction:0:3}))"
+}
+
+runtime_deadline_command() {
+    local deadline=$1 now remaining duration status=0
+    shift
+    now=$(runtime_monotonic_millis) || return 125
+    remaining=$((deadline - now))
+    [ "$remaining" -gt 0 ] || return 124
+    printf -v duration '%d.%03d' "$((remaining / 1000))" "$((remaining % 1000))"
+    # TERM starts cancellation; timeout remains the synchronous command owner during drain.
+    LC_ALL=C /usr/bin/timeout --signal=TERM "$duration" "$@" || status=$?
+    [ "$status" -eq 0 ] || return "$status"
+    now=$(runtime_monotonic_millis) || return 125
+    [ "$now" -lt "$deadline" ] || return 124
+}
+
+runtime_container_state() {
+    local deadline=$1 container=$2 state status=0
+    runtime_deadline_command "$deadline" /bin/bash "$ENTRY_PREFLIGHT" >/dev/null \
+        || return "$?"
+    state=$(runtime_deadline_command "$deadline" \
+        /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        DOCKER_HOST="unix://$DOCKER_SOCKET" DOCKER_CONFIG="$DOCKER_CONFIG_ROOT" \
+        "$DOCKER_CLIENT" --host "unix://$DOCKER_SOCKET" \
+        --config "$DOCKER_CONFIG_ROOT" inspect --format '{{.State.Status}}' "$container") \
+        || status=$?
+    runtime_deadline_command "$deadline" /bin/bash "$ENTRY_PREFLIGHT" >/dev/null \
+        || return "$?"
+    [ "$status" -eq 0 ] || return "$status"
+    printf '%s\n' "$state"
+}
+
+wait_runtime_container_terminal() {
+    local container=$1 limit_ms=$2 now deadline state
+    now=$(runtime_monotonic_millis) || return 125
+    deadline=$((now + limit_ms))
+    while :; do
+        state=$(runtime_container_state "$deadline" "$container") || return "$?"
+        now=$(runtime_monotonic_millis) || return 125
+        [ "$now" -lt "$deadline" ] || return 124
+        case "$state" in
+            exited|dead) printf '%s\n' "$state"; return 0 ;;
+            created|running|restarting|removing|paused) ;;
+            *) printf 'Malformed Android container state: %s\n' "$state" >&2; return 65 ;;
+        esac
+        runtime_deadline_command "$deadline" /usr/bin/sleep 0.1 || return "$?"
+    done
+}
+
+/usr/bin/python3 -B -I -S "$SCRIPT_DIR/test-android-runtime-waits.py"
+
 vm_provenance() {
     local status=0
     /bin/bash "$ENTRY_PREFLIGHT" >/dev/null || return 1
@@ -706,17 +764,26 @@ vm_docker start "$OBSERVER_CONTAINER" >/dev/null \
 
 observer_ready=0
 observer_startup_failed=0
-for _ in $(seq 1 9000); do
+startup_wait_status=0
+startup_now=$(runtime_monotonic_millis) || die 'cannot read the runtime elapsed clock'
+startup_deadline=$((startup_now + 900000))
+while :; do
+    startup_now=$(runtime_monotonic_millis) || die 'cannot read the runtime elapsed clock'
+    [ "$startup_now" -lt "$startup_deadline" ] || { startup_wait_status=124; break; }
     if [ -f "$OBSERVER_ROOT/ready" ] && [ ! -L "$OBSERVER_ROOT/ready" ]; then
-        [ "$(stat -c '%u:%g:%a:%h' -- "$OBSERVER_ROOT/ready")" = \
-          1000:1000:600:1 ] \
+        ready_metadata=$(runtime_deadline_command "$startup_deadline" \
+            /usr/bin/stat -c '%u:%g:%a:%h' -- "$OBSERVER_ROOT/ready") \
+            || { startup_wait_status=$?; break; }
+        [ "$ready_metadata" = 1000:1000:600:1 ] \
             || die 'Android emulator frame-observer ready metadata differs'
+        startup_now=$(runtime_monotonic_millis) || die 'cannot read the runtime elapsed clock'
+        [ "$startup_now" -lt "$startup_deadline" ] \
+            || { startup_wait_status=124; break; }
         observer_ready=1
         break
     fi
-    observer_state="$(vm_docker inspect --format '{{.State.Status}}' \
-        "$OBSERVER_CONTAINER")" \
-        || die 'cannot inspect the Android emulator frame-observer startup state'
+    observer_state=$(runtime_container_state "$startup_deadline" "$OBSERVER_CONTAINER") \
+        || { startup_wait_status=$?; break; }
     case "$observer_state" in
         exited|dead)
             observer_startup_failed=1
@@ -725,38 +792,36 @@ for _ in $(seq 1 9000); do
         created|running|restarting|removing|paused) ;;
         *) die "Android emulator frame-observer startup state is malformed: $observer_state" ;;
     esac
-    runtime_state="$(vm_docker inspect --format '{{.State.Status}}' \
-        "$RUNTIME_CONTAINER")" \
-        || die 'cannot inspect the Android runtime startup state'
+    runtime_state=$(runtime_container_state "$startup_deadline" "$RUNTIME_CONTAINER") \
+        || { startup_wait_status=$?; break; }
     case "$runtime_state" in
         exited|dead) break ;;
         created|running|restarting|removing|paused) ;;
         *) die "Android runtime startup state is malformed: $runtime_state" ;;
     esac
-    sleep 0.1
+    runtime_deadline_command "$startup_deadline" /usr/bin/sleep 0.1 \
+        || { startup_wait_status=$?; break; }
 done
+if [ "$startup_wait_status" -ne 0 ]; then
+    vm_docker logs --tail 240 "$OBSERVER_CONTAINER" >"$OBSERVER_LOG" 2>&1 || true
+    vm_docker logs --tail 240 "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 || true
+    tail -n 240 "$OBSERVER_LOG" >&2
+    tail -n 240 "$RUNTIME_LOG" >&2
+fi
+[ "$startup_wait_status" -ne 124 ] \
+    || die 'Android emulator frame observer produced no external frame within 15 minutes'
+[ "$startup_wait_status" -eq 0 ] \
+    || die "Android emulator startup observation failed with status $startup_wait_status"
 if [ "$observer_startup_failed" -eq 1 ]; then
     runtime_startup_terminal=0
-    runtime_state=unknown
-    for _ in $(seq 1 1200); do
-        if ! runtime_state="$(vm_docker inspect --format '{{.State.Status}}' \
-            "$RUNTIME_CONTAINER")"; then
-            runtime_state=inspect-failed
-            break
-        fi
-        case "$runtime_state" in
-            exited|dead)
-                runtime_startup_terminal=1
-                break
-                ;;
-            created|running|restarting|removing|paused) ;;
-            *)
-                runtime_state="malformed:$runtime_state"
-                break
-                ;;
-        esac
-        sleep 0.1
-    done
+    runtime_terminal_status=0
+    runtime_state=$(wait_runtime_container_terminal "$RUNTIME_CONTAINER" 120000) \
+        || runtime_terminal_status=$?
+    case "$runtime_terminal_status" in
+        0) runtime_startup_terminal=1 ;;
+        124) runtime_state=deadline-expired ;;
+        *) runtime_state="observation-failed:$runtime_terminal_status" ;;
+    esac
     vm_docker logs --tail 320 "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 || true
     vm_docker logs --tail 320 "$OBSERVER_CONTAINER" >"$OBSERVER_LOG" 2>&1 || true
     runtime_final_state="$(vm_docker inspect --format \
@@ -773,14 +838,6 @@ if [ "$observer_startup_failed" -eq 1 ]; then
     tail -n 320 "$OBSERVER_LOG" >&2
     die "Android emulator frame observer exited before its first external frame (runtime startup state: $runtime_state)"
 fi
-if [ "$observer_ready" -eq 0 ] \
-   && [ "$(vm_docker inspect --format '{{.State.Status}}' \
-        "$RUNTIME_CONTAINER")" = running ]; then
-    vm_docker logs "$OBSERVER_CONTAINER" >"$OBSERVER_LOG" 2>&1 || true
-    tail -n 240 "$OBSERVER_LOG" >&2
-    die 'Android emulator frame observer produced no external frame within 15 minutes'
-fi
-
 if ! runtime_status="$(vm_docker wait "$RUNTIME_CONTAINER")"; then
     die 'cannot wait for the Android runtime container'
 fi
@@ -789,25 +846,15 @@ fi
 vm_docker logs "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 \
     || die 'cannot collect the Android runtime log'
 
-observer_joined=0
-for _ in $(seq 1 1200); do
-    observer_state="$(vm_docker inspect --format '{{.State.Status}}' \
-        "$OBSERVER_CONTAINER")" \
-        || die 'cannot inspect the Android emulator frame-observer state'
-    case "$observer_state" in
-        exited|dead)
-            observer_joined=1
-            break
-            ;;
-        created|running|restarting|removing|paused) ;;
-        *) die "Android emulator frame-observer state is malformed: $observer_state" ;;
-    esac
-    sleep 0.1
-done
+observer_join_status=0
+observer_state=$(wait_runtime_container_terminal "$OBSERVER_CONTAINER" 120000) \
+    || observer_join_status=$?
 vm_docker logs "$OBSERVER_CONTAINER" >"$OBSERVER_LOG" 2>&1 \
     || die 'cannot collect the Android emulator frame-observer log'
-[ "$observer_joined" -eq 1 ] \
+[ "$observer_join_status" -ne 124 ] \
     || { tail -n 240 "$OBSERVER_LOG" >&2; die 'Android emulator frame observer did not join within 120 seconds'; }
+[ "$observer_join_status" -eq 0 ] \
+    || { tail -n 240 "$OBSERVER_LOG" >&2; die "Android emulator observer shutdown observation failed with status $observer_join_status"; }
 observer_status="$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' \
     "$OBSERVER_CONTAINER")"
 else

@@ -92,7 +92,8 @@ void main() {
       expect(find.text(label), findsOneWidget);
       expect(find.text('inserted'), findsOneWidget);
       expect(inserted.mounted, isTrue);
-      expect(tester.getSize(find.byKey(const ValueKey('bottom-bar'))).height, 56);
+      expect(
+          tester.getSize(find.byKey(const ValueKey('bottom-bar'))).height, 56);
 
       overlayState.setMiddleBlocked(true);
       await tester.pump();

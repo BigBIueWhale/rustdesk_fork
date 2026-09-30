@@ -1283,9 +1283,30 @@ an empty reader PID; corrected native HUP/INT/TERM cases joined before workspace
 129/130/143 respectively. The complete zero-NIC authority transaction passed in 86 seconds with no
 host-listener addition or pre-existing-process drift and joined automatic run retirement. Bounded
 negative serial and forwarded positive receipts are retained at `evidence/runtime-acquisition-*`.
-These are real Bash/Python pipe/signal/filesystem cases with a fixture producer, not real Docker
-failed-stream cancellation. That API/finality evidence, intermittent-defect causation and current-release
-closure remain OPEN.
+These are real Bash/Python pipe/signal/filesystem cases with a fixture producer. Real Docker log
+API/finality coverage is separate below; intermittent-defect causation and current-release closure
+remain OPEN.
+The first real-Docker extension did observe live bytes before EOF, then forced the 1-MiB capture
+failure while the producer remained alive. The actual wrapper stopped the exact confined UID/GID-4000
+fixture through TERM, joined its reader with failure preserved, removed the workspace and retired the
+guest-only shell image. That named case passed at guest 28.15 seconds. **The complete surrounding smoke
+failed its unchanged 90-second VM deadline during later helper checks; no complete transaction is
+claimed.** Bounded raw serial is retained at `evidence/runtime-docker-log-first.serial.log` after
+identity-bound failed-disk reconciliation. `--android-runtime-log-tests` now separates real Docker
+log-lifetime execution from the default quick pipe/signal profile. The test requires an explicit
+caller-owned immutable guest image; one shared minimal-image setup replaces duplicate image import.
+The complete focused transaction passed in 40 seconds under the unchanged 90-second deadline:
+normal completion, live 1-MiB overflow and parent TERM while the actual follower was live all required
+exact status, reader/job join, zero cleanup error and workspace removal. Root and foreign principals
+were refused before test scratch/API work; the caller retired the image and joined the daemon.
+Guest/outer receipts bind the actual test and wrapper digests; before/during/after host listeners and
+inputs were unchanged, pre-existing-process drift was zero and the successful run self-retired.
+The shared default authority transaction passed after image-setup extraction in 85 seconds, including
+the one-run admission guard, unchanged host listeners/inputs and joined automatic scratch retirement.
+Focused forwarded receipts are retained at `evidence/runtime-log-focused-first.receipt`; selected shared
+receipts are at `evidence/runtime-log-shared-integration.receipt`, not full raw successful serial logs.
+These are shell-fixture/log-lifetime results, not Android app presentation, intermittent-defect
+causation, artifact replay or broader product/release closure, which remain OPEN.
 The corrected format passed that real-checker A/B and the complete 88-second authority transaction
 with unchanged host listeners, zero pre-existing-process drift and joined successful-run retirement.
 Bounded raw collision evidence is retained outside the reconciled failed run. None of these results

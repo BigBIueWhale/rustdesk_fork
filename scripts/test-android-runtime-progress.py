@@ -5,6 +5,7 @@ import ctypes
 import os
 from pathlib import Path
 import select
+import signal
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,13 @@ sys.dont_write_bytecode = True
 scripts = Path(__file__).resolve().parent
 subprocess.run(["/bin/bash", str(scripts / "verify-vm-entry-preflight.sh")],
                check=True, stdout=subprocess.DEVNULL)
+native_image = None
+if len(sys.argv) != 1:
+    if (len(sys.argv) != 3 or sys.argv[1] != "--native-docker"
+            or len(sys.argv[2]) != 71 or not sys.argv[2].startswith("sha256:")
+            or any(value not in "0123456789abcdef" for value in sys.argv[2][7:])):
+        raise RuntimeError("native Docker tests require one explicit immutable guest fixture image")
+    native_image = sys.argv[2]
 source = (scripts / "smoke-verifier-vm-authority-guest.sh").read_text()
 marker = "forward_android_runtime_progress() {\n"
 if source.count(marker) != 1:
@@ -302,5 +310,157 @@ exit 93
     finally:
         if libc.prctl(36, ctypes.c_ulong(0), 0, 0, 0) != 0:
             raise OSError(ctypes.get_errno(), "cannot restore fixture subreaper state")
+
+    if native_image is not None:
+        docker_marker = "vm_docker() {\n"
+        if wrapper.count(docker_marker) != 1 or wrapper.index(docker_marker) >= offsets[0]:
+            raise RuntimeError("real runtime Docker request owner is absent or duplicated")
+        docker_prefix = wrapper[wrapper.index(docker_marker):offsets[0]] + '''
+ENTRY_PREFLIGHT=$1/verify-vm-entry-preflight.sh
+DOCKER_SOCKET=/run/rustdesk-verifier-vm/docker.sock
+DOCKER_CONFIG_ROOT=/run/rustdesk-verifier-vm/docker-config
+DOCKER_CLIENT=/usr/bin/docker
+shift
+'''
+        cleanup_source = (cleanup_marker + wrapper.split(cleanup_marker, 1)[1]
+                          .split("\n}\n", 1)[0] + "\n}\n")
+        # Observe actual cleanup status after its join and workspace removal; do not alter them.
+        final_marker = '    exit "$status"\n'
+        if cleanup_source.count(final_marker) != 1:
+            raise RuntimeError("runtime cleanup finality hook is ambiguous")
+        cleanup_source = cleanup_source.replace(
+            final_marker,
+            '    printf "final:%s:%s:%s:%s\\n" "$cleanup_status" "$status" '
+            '"$RUNTIME_LOG_READER" "$(jobs -pr)" >&"$READY"\n' + final_marker, 1)
+        probe_program = '''
+chunk=$1
+uid= gid= cap= nnp= seccomp=
+while IFS=":" read -r key value; do
+    set -- $value
+    case "$key" in
+        Uid) uid="$1:$2:$3:$4" ;;
+        Gid) gid="$1:$2:$3:$4" ;;
+        CapEff) cap=$1 ;;
+        NoNewPrivs) nnp=$1 ;;
+        Seccomp) seccomp=$1 ;;
+    esac
+done </proc/self/status
+[ "$uid:$gid" = 4000:4000:4000:4000:4000:4000:4000:4000 ]
+[ "$cap:$nnp:$seccomp" = 0000000000000000:1:2 ]
+trap 'exit 0' TERM
+trap 'i=0; while [ "$i" -lt 1024 ]; do printf "%s" "$chunk"; i=$((i + 1)); done; printf z' USR1
+printf 'ANDROID_PEER_INFRASTRUCTURE=ready server=fixture\n'
+while :; do IFS= read -r ignored || :; done
+'''
+        for case in ("normal", "overflow", "cancel"):
+            workspace = root / ("docker-" + case)
+            workspace.mkdir(mode=0o700)
+            identity = workspace.stat()
+            ready_read, ready_write = os.pipe()
+            process = None
+            passed = False
+            try:
+                process = subprocess.Popen(
+                    ["/bin/bash", "--noprofile", "--norc", "-euo", "pipefail", "-c",
+                     docker_prefix + runtime_functions + cleanup_source + '''
+WORKSPACE=$1
+WORKSPACE_ID=$2
+IMAGE=$3
+PROBE_PROGRAM=$4
+SCRIPT_DIR=$5
+READY=$7
+CASE=$8
+RUNTIME_LOG=$WORKSPACE/runtime.log
+RUNTIME_LOG_READER=
+VERIFY_CONTAINER=
+XVFB_CONTAINER=
+OBSERVER_CONTAINER=
+RUNTIME_CONTAINER=
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+RUNTIME_CONTAINER=$(vm_docker create --pull=never --network=none --read-only \
+    --interactive --user 4000:4000 --pids-limit=16 --memory=64m --memory-swap=64m \
+    --cpus=0.5 --ulimit nofile=64:64 --ulimit core=0:0 --cap-drop=ALL \
+    --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
+    "$IMAGE" -euc "$PROBE_PROGRAM" runtime-probe "$6")
+[[ "$RUNTIME_CONTAINER" =~ ^[0-9a-f]{64}$ ]]
+profile=$(vm_docker inspect --format '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.Config.OpenStdin}}|{{.HostConfig.Privileged}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .Mounts}}' "$RUNTIME_CONTAINER")
+[ "$profile" = 'none|true|4000:4000|true|false|67108864|67108864|500000000|16|[]|{}|["ALL"]|["no-new-privileges","apparmor=docker-default"]||private||private|[]' ]
+vm_docker start "$RUNTIME_CONTAINER" >/dev/null
+start_runtime_log
+[ "$(vm_docker inspect --format '{{.State.Running}}' "$RUNTIME_CONTAINER")" = true ]
+printf 'following:%s\n' "$RUNTIME_LOG_READER" >&"$READY"
+IFS= read -r trigger
+[ "$trigger" = "$CASE" ]
+case "$CASE" in
+    normal) vm_docker stop --time 10 "$RUNTIME_CONTAINER" >/dev/null ;;
+    overflow) vm_docker exec "$RUNTIME_CONTAINER" /bin/dash -c 'kill -USR1 1' ;;
+    *) exit 94 ;;
+esac
+status=0
+join_runtime_log || status=$?
+if [ "$CASE" = overflow ]; then [ "$status" -eq 1 ]; else [ "$status" -eq 0 ]; fi
+[ -z "$RUNTIME_LOG_READER" ] && [ -z "$(jobs -pr)" ]
+[ "$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$RUNTIME_CONTAINER")" = exited:0 ]
+[ "$(stat -c %s "$RUNTIME_LOG")" -le 1048576 ]
+''', "runtime-docker-stream", str(scripts), str(workspace),
+                     f"{identity.st_dev}:{identity.st_ino}", native_image, probe_program,
+                     str(scripts), "x" * 1024, str(ready_write), case],
+                    pass_fds=(ready_write,), stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                os.close(ready_write)
+                ready_write = None
+                expected_stage = b"ANDROID_RUNTIME_STAGE stage=peer-infrastructure result=ready server=fixture\n"
+                if (not select.select([process.stdout], [], [], 8.0)[0]
+                        or os.read(process.stdout.fileno(), 4096) != expected_stage
+                        or process.poll() is not None):
+                    raise RuntimeError(f"real Docker {case} stream was not observed before EOF")
+                if (workspace / "runtime.log").read_bytes() != b"ANDROID_PEER_INFRASTRUCTURE=ready server=fixture\n":
+                    raise RuntimeError("real Docker log is not complete before EOF")
+                if not select.select([ready_read], [], [], 8.0)[0]:
+                    raise RuntimeError("real Docker producer did not reach its live following state")
+                following = os.read(ready_read, 64)
+                reader = following.removeprefix(b"following:").removesuffix(b"\n")
+                if not following.startswith(b"following:") or not reader.isdigit() or int(reader) <= 0:
+                    raise RuntimeError("real Docker following state has no retained reader")
+                if f"PPid:\t{process.pid}" not in Path(f"/proc/{int(reader)}/status").read_text().splitlines():
+                    raise RuntimeError("real Docker reader is not owned by its wrapper")
+                if case == "cancel":
+                    process.send_signal(signal.SIGTERM)
+                    output, errors = process.communicate(timeout=15)
+                else:
+                    output, errors = process.communicate(input=(case + "\n").encode(), timeout=15)
+                expected_status = 143 if case == "cancel" else 0
+                if (process.returncode != expected_status or output or workspace.exists()
+                        or os.read(ready_read, 64) != f"final:0:{expected_status}::\n".encode()
+                        or os.read(ready_read, 1)):
+                    raise RuntimeError(f"real Docker {case} did not join with exact finality")
+                if case == "overflow":
+                    if (len(errors) > 4096
+                            or b"RuntimeError: Android app runtime output exceeds its bound" not in errors):
+                        raise RuntimeError("real Docker overflow failure was not preserved")
+                elif errors:
+                    raise RuntimeError(f"real Docker {case} emitted unexpected errors: {errors[:4096]!r}")
+                passed = True
+            finally:
+                if ready_write is not None:
+                    os.close(ready_write)
+                if process is not None:
+                    if process.poll() is None:
+                        process.terminate()
+                    try:
+                        output, errors = process.communicate(timeout=15)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        output, errors = process.communicate(timeout=3)
+                    if not passed:
+                        print(f"ANDROID_RUNTIME_DOCKER_DIAGNOSTIC case={case} "
+                              f"status={process.returncode} stderr={errors[:4096]!r}", file=sys.stderr)
+                os.close(ready_read)
+        print("ANDROID_RUNTIME_DOCKER_LOG=pass cases=3 before_eof=observed normal=joined "
+              "failure=live-log-bound producer=term-stopped cancel=143 pipeline=joined "
+              "workspace=removed image=caller-owned", file=sys.stderr)
 print("ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof "
       "diagnostics=filtered cardinality=1 children=joined")

@@ -10,6 +10,9 @@ case "$#:${8:-}" in
     8:--android-execution-probe)
         MODE=android-execution-probe
         ;;
+    8:--android-runtime-log-tests)
+        MODE=android-runtime-log-tests
+        ;;
     8:--android-frame-tests)
         MODE=android-frame-tests
         ;;
@@ -69,7 +72,7 @@ case "$#:${8:-}" in
         ;;
     *)
         echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 peer-lifecycle PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
-        echo 'The seven base arguments also accept --android-execution-probe for a read-only guest capability inventory.' >&2
+        echo 'The seven base arguments also accept --android-execution-probe or --android-runtime-log-tests.' >&2
         exit 2
         ;;
 esac
@@ -281,6 +284,108 @@ frame_docker() {
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         /bin/bash "$ENTRY_PREFLIGHT" >/dev/null || return 1
     return "$status"
+}
+
+prepare_authority_probe_image() {
+    local library
+    cp --parents -L /bin/dash "$ROOT/rootfs"
+    while IFS= read -r library; do
+        [ -f "$library" ] || fail "shell dependency is absent: $library"
+        cp --parents -L "$library" "$ROOT/rootfs"
+    done < <(ldd /bin/dash | awk '/=> \// { print $3 } /^[[:space:]]*\// { print $1 }' | LC_ALL=C sort -u)
+    ln -s dash "$ROOT/rootfs/bin/sh"
+    # Imported files are root-owned and immutable, but traversable by the numeric nonroot user.
+    find "$ROOT/rootfs" -type d -exec chmod 0555 {} +
+    find "$ROOT/rootfs" -type f -exec chmod 0555 {} +
+    [ -z "$(find "$ROOT/rootfs" \( -type d -o -type f \) -perm /0222 -print -quit)" ] \
+        || fail 'probe root filesystem contains a writable directory or file'
+    [ "$(stat -c '%u:%g:%a' -- "$ROOT/rootfs")" = 0:0:555 ] \
+        || fail 'probe root filesystem root metadata differs'
+    tar --numeric-owner --owner=0 --group=0 -C "$ROOT/rootfs" -cf - . \
+        | "$CLIENT" --host "unix://$SOCK" import \
+            --change 'USER 4000:4000' \
+            --change 'ENTRYPOINT ["/bin/dash"]' \
+            - "$IMAGE" >"$ROOT/image-id"
+    [[ "$(<"$ROOT/image-id")" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || fail 'probe image ID is malformed'
+}
+
+run_android_runtime_log_tests() {
+    local work work_id
+    local test=$VERIFY_REPO/scripts/test-android-runtime-progress.py
+    local wrapper=$VERIFY_REPO/scripts/android-emulator-runtime-check.sh
+    local test_sha wrapper_sha image principal refusal status
+    local output=$ROOT/android-runtime-log-tests.out
+    local unit_receipt='ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof diagnostics=filtered cardinality=1 children=joined'
+    local native_receipt='ANDROID_RUNTIME_DOCKER_LOG=pass cases=3 before_eof=observed normal=joined failure=live-log-bound producer=term-stopped cancel=143 pipeline=joined workspace=removed image=caller-owned'
+
+    test_sha="$(sha256sum "$test" | awk '{ print $1 }')"
+    wrapper_sha="$(sha256sum "$wrapper" | awk '{ print $1 }')"
+    prepare_authority_probe_image
+    image="$(<"$ROOT/image-id")"
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
+    work="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/mktemp -d /tmp/android-runtime-log-tests.XXXXXXXXXX)" \
+        || fail 'runtime-log test scratch could not be created'
+    [[ "$work" =~ ^/tmp/android-runtime-log-tests\.[A-Za-z0-9]{10}$ ]] \
+        && [ "$(stat -c '%u:%g:%a' -- "$work")" = 4000:4000:700 ] \
+        || fail 'runtime-log test scratch authority differs'
+    work_id="$(stat -c '%d:%i' -- "$work")"
+    for principal in 0 4001; do
+        if [ "$principal" -eq 0 ]; then
+            refusal='verifier-VM entry preflight: the verifier principal must not be root'
+        else
+            refusal='verifier-VM entry preflight: VM Docker channel metadata differs'
+        fi
+        status=0
+        setpriv --reuid="$principal" --regid="$principal" --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
+            python3 -B -I -S "$test" --native-docker "$image" \
+            >"$ROOT/runtime-log-$principal.out" 2>"$ROOT/runtime-log-$principal.err" \
+            || status=$?
+        [ "$status" -eq 1 ] && [ ! -s "$ROOT/runtime-log-$principal.out" ] \
+            && [ "$(stat -c '%s' -- "$ROOT/runtime-log-$principal.err")" -le 8192 ] \
+            && grep -Fxq "$refusal" "$ROOT/runtime-log-$principal.err" \
+            || fail "runtime-log entry refusal differs for UID $principal"
+        [ -z "$(find "$work" -mindepth 1 -print -quit)" ] \
+            && [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+            && [ "$("$CLIENT" --host "unix://$SOCK" image ls -aq --no-trunc | sort -u)" = "$image" ] \
+            || fail 'refused runtime-log entry changed scratch or Docker inventory'
+    done
+    status=0
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
+        python3 -B -I -S "$test" --native-docker "$image" \
+        >"$output" 2>&1 || status=$?
+    [ "$(stat -c '%s' -- "$output")" -le 65536 ] \
+        || fail 'runtime-log test output exceeds its bound'
+    [ "$status" -eq 0 ] \
+        || { tail -n 80 "$output" >&2; fail "runtime-log tests exited with status $status"; }
+    grep -Fxq "$unit_receipt" "$output" \
+        && [ "$(grep -Fc 'ANDROID_RUNTIME_PROGRESS_TEST=' "$output")" -eq 1 ] \
+        && grep -Fxq "$native_receipt" "$output" \
+        && [ "$(grep -Fc 'ANDROID_RUNTIME_DOCKER_LOG=' "$output")" -eq 1 ] \
+        || fail 'runtime-log test results are absent, malformed or duplicated'
+    [ "$(sha256sum "$test" | awk '{ print $1 }')" = "$test_sha" ] \
+        && [ "$(sha256sum "$wrapper" | awk '{ print $1 }')" = "$wrapper_sha" ] \
+        || fail 'runtime-log test or production wrapper source changed'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        || fail 'runtime-log tests left a container'
+    frame_docker image rm "$image" >/dev/null \
+        || fail 'runtime-log fixture image could not be retired'
+    [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'runtime-log tests left an image'
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        python3 -B -I -S "$VERIFY_REPO/scripts/verify-private-tree-closure.py" \
+            --remove-empty-private-root "$work" --expected-identity "$work_id" \
+        || fail 'runtime-log test scratch could not be retired'
+    [ ! -e "$work" ] && [ ! -L "$work" ] \
+        || fail 'runtime-log scratch remains after retirement'
+    stop_docker_authority
+    printf '%s\n' "$unit_receipt" "$native_receipt"
+    printf 'ANDROID_RUNTIME_LOG_TESTS_VM=pass cases=3 uid=4000 gid=4000 root=refused foreign=refused test_sha256=%s wrapper_sha256=%s image=retired docker=retired network=none cleanup=joined\n' \
+        "$test_sha" "$wrapper_sha"
 }
 
 run_android_frame_tests() {
@@ -5033,6 +5138,11 @@ if [ "$MODE" = android-frame-tests ]; then
     exit 0
 fi
 
+if [ "$MODE" = android-runtime-log-tests ]; then
+    run_android_runtime_log_tests
+    exit 0
+fi
+
 if [ "$MODE" = android-execution-probe ]; then
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         /bin/bash "$ENTRY_PREFLIGHT"
@@ -5994,28 +6104,7 @@ fi
 printf '%s\n' "$dart_frb_source_gate_output"
 printf 'VERIFIER_VM_DART_FRB_SOURCE_GATE=pass mutations=%s\n' "$dart_frb_source_gate_mutations"
 
-cp --parents -L /bin/dash "$ROOT/rootfs"
-while IFS= read -r library; do
-    [ -f "$library" ] || fail "shell dependency is absent: $library"
-    cp --parents -L "$library" "$ROOT/rootfs"
-done < <(ldd /bin/dash | awk '/=> \// { print $3 } /^[[:space:]]*\// { print $1 }' | LC_ALL=C sort -u)
-ln -s dash "$ROOT/rootfs/bin/sh"
-# The staging parent remains root-private, while the filesystem imported into
-# the image must be traversable by its declared numeric non-root user. Make the
-# entire minimal image root-owned and immutable before serialization.
-find "$ROOT/rootfs" -type d -exec chmod 0555 {} +
-find "$ROOT/rootfs" -type f -exec chmod 0555 {} +
-[ -z "$(find "$ROOT/rootfs" \( -type d -o -type f \) -perm /0222 -print -quit)" ] \
-    || fail 'probe root filesystem contains a writable directory or file'
-[ "$(stat -c '%u:%g:%a' -- "$ROOT/rootfs")" = 0:0:555 ] \
-    || fail 'probe root filesystem root metadata differs'
-tar --numeric-owner --owner=0 --group=0 -C "$ROOT/rootfs" -cf - . \
-    | "$CLIENT" --host "unix://$SOCK" import \
-        --change 'USER 4000:4000' \
-        --change 'ENTRYPOINT ["/bin/dash"]' \
-        - "$IMAGE" >"$ROOT/image-id"
-[[ "$(<"$ROOT/image-id")" =~ ^sha256:[0-9a-f]{64}$ ]] \
-    || fail 'probe image ID is malformed'
+prepare_authority_probe_image
 
 if /bin/bash "$DEBIAN_BUILDER_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \
     >"$ROOT/root-debian-builder-entry.out" 2>"$ROOT/root-debian-builder-entry.err"; then

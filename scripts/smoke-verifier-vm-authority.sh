@@ -73,6 +73,11 @@ case "$#:${1:-}" in
             || { echo 'Android execution-probe input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-execution-probe
         ;;
+    1:--android-runtime-log-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Android runtime-log test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=android-runtime-log-tests
+        ;;
     1:--android-frame-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Android frame-test input/run overrides are forbidden' >&2; exit 2; }
@@ -170,6 +175,7 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
+        printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
         printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario peer-lifecycle --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
@@ -2743,6 +2749,8 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     guest_invocation+=" --debian-systemd-lifecycle /mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz /mnt/rustdesk-verifier-inputs/artifact/rustdesk-x86_64.deb $LIFECYCLE_ARTIFACT_SHA256 $LIFECYCLE_COMMIT"
 elif [ "$MODE" = android-execution-probe ]; then
     guest_invocation+=' --android-execution-probe'
+elif [ "$MODE" = android-runtime-log-tests ]; then
+    guest_invocation+=' --android-runtime-log-tests'
 elif [ "$MODE" = android-frame-tests ]; then
     guest_invocation+=' --android-frame-tests'
 elif [ "$MODE" = hbb-common-fs ]; then
@@ -3111,6 +3119,15 @@ elif [ "$MODE" = android-execution-probe ]; then
         'Android execution-probe finality marker'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'Android execution-probe cloud-init completion marker'
+elif [ "$MODE" = android-runtime-log-tests ]; then
+    runtime_log_unit_receipt='ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof diagnostics=filtered cardinality=1 children=joined'
+    runtime_log_native_receipt='ANDROID_RUNTIME_DOCKER_LOG=pass cases=3 before_eof=observed normal=joined failure=live-log-bound producer=term-stopped cancel=143 pipeline=joined workspace=removed image=caller-owned'
+    runtime_log_vm_receipt="ANDROID_RUNTIME_LOG_TESTS_VM=pass cases=3 uid=4000 gid=4000 root=refused foreign=refused test_sha256=$(/usr/bin/sha256sum "$SCRIPT_DIR/test-android-runtime-progress.py" | /usr/bin/awk '{ print $1 }') wrapper_sha256=$(/usr/bin/sha256sum "$SCRIPT_DIR/android-emulator-runtime-check.sh" | /usr/bin/awk '{ print $1 }') image=retired docker=retired network=none cleanup=joined"
+    require_exact_fixed_receipt "$runtime_log_unit_receipt" 'runtime-log pipe/signal result'
+    require_exact_fixed_receipt "$runtime_log_native_receipt" 'native Docker log-lifetime result'
+    require_exact_fixed_receipt "$runtime_log_vm_receipt" 'runtime-log source/finality result'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'runtime-log cloud-init completion'
+    printf '%s\n' "$runtime_log_unit_receipt" "$runtime_log_native_receipt" "$runtime_log_vm_receipt"
 elif [ "$MODE" = android-frame-tests ]; then
     mapfile -t frame_source_build < <(/usr/bin/grep -Eo \
         'X11_FRAME_SOURCE_BUILD=pass source_sha256=[0-9a-f]{64} sha256=[0-9a-f]{64} bytes=[1-9][0-9]* copies=2 equality=byte-identical network=none output=private' \
@@ -3963,6 +3980,9 @@ if [ "$MODE" = authority-smoke ]; then
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-execution-probe ]; then
     printf 'ANDROID_EXECUTION_PROBE_OUTER=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=guest-only emulator=unexecuted module_loads=none device_changes=none cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$vm_elapsed_seconds"
+elif [ "$MODE" = android-runtime-log-tests ]; then
+    printf 'ANDROID_RUNTIME_LOG_TESTS_OUTER=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=guest-only product=unexecuted scope=real-log-lifetime cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-frame-tests ]; then
     printf 'ANDROID_FRAME_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=unexecuted cleanup=joined elapsed_seconds=%s\n' \

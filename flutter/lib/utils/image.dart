@@ -31,87 +31,65 @@ Future<ui.Image?> decodeImageFromPixels(
     }
   }
 
-  final ui.ImmutableBuffer buffer;
+  ui.Image? image;
   try {
-    buffer = await ui.ImmutableBuffer.fromUint8List(pixels);
-    onStage?.call('image-buffer-ready');
-  } catch (e) {
-    onStage?.call('image-buffer-failed');
-    return null;
-  }
-
-  final ui.ImageDescriptor descriptor;
-  try {
-    descriptor = ui.ImageDescriptor.raw(
-      buffer,
-      width: width,
-      height: height,
-      rowBytes: rowBytes,
-      pixelFormat: format,
-    );
-    if (!allowUpscaling) {
-      if (targetWidth != null && targetWidth > descriptor.width) {
-        targetWidth = descriptor.width;
+    final buffer = await ui.ImmutableBuffer.fromUint8List(pixels);
+    try {
+      onStage?.call('image-buffer-ready');
+      final descriptor = ui.ImageDescriptor.raw(
+        buffer,
+        width: width,
+        height: height,
+        rowBytes: rowBytes,
+        pixelFormat: format,
+      );
+      try {
+        if (!allowUpscaling) {
+          if (targetWidth != null && targetWidth > descriptor.width) {
+            targetWidth = descriptor.width;
+          }
+          if (targetHeight != null && targetHeight > descriptor.height) {
+            targetHeight = descriptor.height;
+          }
+        }
+        onStage?.call('image-descriptor-ready');
+        final codec = await descriptor.instantiateCodec(
+          targetWidth: targetWidth,
+          targetHeight: targetHeight,
+        );
+        Future<ui.FrameInfo>? pendingFrame;
+        try {
+          try {
+            onStage?.call('image-codec-ready');
+            pendingFrame = codec.getNextFrame();
+          } finally {
+            // The engine owns the native codec until its callback completes;
+            // release the Dart handle immediately, as dart:ui does.
+            codec.dispose();
+          }
+          onStage?.call('image-frame-requested');
+        } finally {
+          // Observation failure cannot abandon an uncancellable engine result.
+          final frame = pendingFrame;
+          if (frame != null) image = (await frame).image;
+        }
+        onStage?.call('image-frame-ready');
+      } finally {
+        descriptor.dispose();
       }
-      if (targetHeight != null && targetHeight > descriptor.height) {
-        targetHeight = descriptor.height;
-      }
+    } finally {
+      buffer.dispose();
     }
-    onStage?.call('image-descriptor-ready');
+    final result = image;
+    image = null;
+    return result;
   } catch (e) {
-    onStage?.call('image-descriptor-failed');
-    print("ImageDescriptor.raw failed: $e");
-    buffer.dispose();
+    print("decodeImageFromPixels failed: $e");
+    onStage?.call('image-conversion-failed');
     return null;
+  } finally {
+    image?.dispose();
   }
-
-  final ui.Codec codec;
-  try {
-    codec = await descriptor.instantiateCodec(
-      targetWidth: targetWidth,
-      targetHeight: targetHeight,
-    );
-    onStage?.call('image-codec-ready');
-  } catch (e) {
-    onStage?.call('image-codec-failed');
-    print("instantiateCodec failed: $e");
-    buffer.dispose();
-    descriptor.dispose();
-    return null;
-  }
-
-  final Future<ui.FrameInfo> pendingFrame;
-  try {
-    pendingFrame = codec.getNextFrame();
-    onStage?.call('image-frame-requested');
-  } catch (e) {
-    onStage?.call('image-frame-request-failed');
-    print("getNextFrame failed: $e");
-    codec.dispose();
-    buffer.dispose();
-    descriptor.dispose();
-    return null;
-  }
-
-  // The pinned Flutter engine retains SingleFrameCodec natively until this
-  // exact callback completes. Release the Dart handle immediately, matching
-  // dart:ui's decodeImageFromPixels implementation.
-  codec.dispose();
-  final ui.FrameInfo frameInfo;
-  try {
-    frameInfo = await pendingFrame;
-    onStage?.call('image-frame-ready');
-  } catch (e) {
-    onStage?.call('image-frame-failed');
-    print("getNextFrame failed: $e");
-    buffer.dispose();
-    descriptor.dispose();
-    return null;
-  }
-
-  buffer.dispose();
-  descriptor.dispose();
-  return frameInfo.image;
 }
 
 class OwnedImagePaint extends StatefulWidget {

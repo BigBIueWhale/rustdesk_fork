@@ -1283,14 +1283,16 @@ not proven causation; raising bounds, releasing permits before completion, recon
 persistent service is not a correctness fix. Physical devices, stable-signed releases, sustained
 resource/latency soak, network transitions, cross-version behavior, current Windows focus/minimize,
 Apple behavior, cold equality, independent reproduction, and external review remain open.
-Also investigate native image-resource cleanup when the diagnostic `onStage` callback throws in
-`flutter/lib/utils/image.dart::decodeImageFromPixels`; source inspection shows acquired buffers/codecs/images
-are not consistently disposed on those exceptional paths. This is an ownership finding, not established
-causation for the intermittent presentation failure or a demonstrated privilege escalation.
-The existing native image-ownership testcase now injects both late callback failures and observes the
-actual pinned engine's image creation, disposal and outstanding handles before doing its own cleanup.
-The old decoder remains unchanged for the first controlled negative run; native A/B execution and the
-ownership correction are pending. No conversion capacity, freshness bound or service lifecycle is changed.
+Native image conversion exception ownership is a separate finding. Exact pushed `a7c080f7`
+ran the existing pinned Flutter VM gate with the old decoder and fault injection at both
+`image-frame-requested` and `image-frame-ready`. Both actual engine images were undisposed with one
+open handle and zero disposal events before test cleanup; this was a native assertion failure, not a
+compile failure. `decodeImageFromPixels` now owns buffer, descriptor and codec through lexical finalizers,
+always awaits an admitted native frame, and transfers its image only after successful cleanup; failure
+disposes the image even if the failure observer also throws. The unchanged native regression's corrected
+replay is pending. No conversion capacity, freshness bound or service lifecycle is changed. This finding
+does not establish natural callback failure, sustained native resource growth, intermittent-hang causation
+or a privilege escalation; opaque buffer/descriptor counts are not directly observed by the image oracle.
 
 Pub-cache and Gradle replacement cleanup is now one recoverable, acquisition-identity-owned transaction. A
 replacement refuses an existing root unless it is owned by the acquisition UID/GID and sealed mode 0500; the old

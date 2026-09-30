@@ -3156,6 +3156,14 @@ elif [ "$MODE" = android-frame-tests ]; then
     require_exact_fixed_receipt \
         'ANDROID_FRAME_NATIVE_X11_CASES=pass full_bits=32 reordered=refused incomplete=refused ambiguous=refused unknown=refused clock=refused mode=refused link=refused fifo=refused history=bounded uncertainty=sticky cleanup=joined' \
         'shared C frame-oracle identity/authority cases'
+    require_exact_fixed_receipt \
+        'X11_FRAME_NATIVE_GEOMETRY=pass clipped=decoded letterbox=decoded hidden=refused occluded=refused unmapped=refused windows=joined' \
+        'shared C visible-pixel geometry cases'
+    require_exact_fixed_receipt \
+        'ANDROID_FRAME_NATIVE_X11_GEOMETRY_AB=pass old=BadMatch new=decoded display=1280x800 window=1300x740 content=640x480 network=none' \
+        'shared C native oversized-window A/B'
+    printf 'X11_FRAME_NATIVE_GEOMETRY=pass clipped=decoded letterbox=decoded hidden=refused occluded=refused unmapped=refused windows=joined\n'
+    printf 'ANDROID_FRAME_NATIVE_X11_GEOMETRY_AB=pass old=BadMatch new=decoded display=1280x800 window=1300x740 content=640x480 network=none\n'
     mapfile -t frame_x11_ab < <(/usr/bin/grep -Eo \
         'ANDROID_FRAME_NATIVE_X11_AB=pass old_predicate=accept new=refuse old_identity=[0-9]+ fresh_identity=[0-9]+ stale_age_ms=[0-9]+ fresh_age_ms=[0-9]+ late_attach=refused capture=actual-x11' \
         "$SERIAL_LOG" || true)

@@ -256,8 +256,8 @@ static int x11_frame_row(const uint8_t *pixels, unsigned int y, unsigned int lef
 
 static int64_t x11_frame_decode(const uint8_t pixels[X11_FRAME_BYTES]) {
     int64_t identity = -1;
-    /* Remote content is centered; tolerate three sampled pixels of layout rounding. */
-    for (unsigned int span = X11_FRAME_WIDTH * 3U / 5U; span <= X11_FRAME_WIDTH; span += 2U) {
+    /* Centered content may be letterboxed. Require at least two samples per Manchester bar. */
+    for (unsigned int span = 24U * 2U; span <= X11_FRAME_WIDTH; span += 2U) {
         int centered = (int)(X11_FRAME_WIDTH - span) / 2;
         for (int left = centered - 3; left <= centered + 3; ++left) {
             struct { int code; unsigned int top, end; } runs[X11_FRAME_HEIGHT];
@@ -320,22 +320,53 @@ static uint8_t x11_frame_component(unsigned long pixel, unsigned long mask) {
 
 static int64_t x11_frame_capture(Display *display, Window window,
                                  uint8_t pixels[X11_FRAME_BYTES], uint64_t *captured_us) {
-    XWindowAttributes attributes;
+    XWindowAttributes attributes, root_attributes, after;
+    Window child;
+    int root_x, root_y, after_x, after_y;
+    int64_t left, top, right, bottom;
     XImage *image;
     if (XGetWindowAttributes(display, window, &attributes) == 0 || attributes.visual == NULL ||
+        attributes.map_state != IsViewable ||
         attributes.width < (int)X11_FRAME_WIDTH || attributes.height < (int)X11_FRAME_HEIGHT ||
         attributes.width > 4096 || attributes.height > 4096) {
         return -1;
     }
-    image = XGetImage(display, window, 0, 0, (unsigned int)attributes.width,
-                      (unsigned int)attributes.height, AllPlanes, ZPixmap);
+    if (XGetWindowAttributes(display, attributes.root, &root_attributes) == 0 ||
+        root_attributes.width <= 0 || root_attributes.height <= 0 ||
+        !XTranslateCoordinates(display, window, attributes.root, 0, 0, &root_x, &root_y, &child)) {
+        return -1;
+    }
+    left = root_x < 0 ? -(int64_t)root_x : 0;
+    top = root_y < 0 ? -(int64_t)root_y : 0;
+    right = (int64_t)root_attributes.width - root_x;
+    bottom = (int64_t)root_attributes.height - root_y;
+    if (right > attributes.width) right = attributes.width;
+    if (bottom > attributes.height) bottom = attributes.height;
+    if (left >= right || top >= bottom) return -1;
+    /* Read actual visible pixels, never undefined obscured/off-screen window contents. */
+    image = XGetImage(display, attributes.root, (int)(root_x + left), (int)(root_y + top),
+                      (unsigned int)(right - left), (unsigned int)(bottom - top), AllPlanes, ZPixmap);
     if (image == NULL) return -1;
     *captured_us = x11_frame_monotonic_us();
+    if (XGetWindowAttributes(display, window, &after) == 0 ||
+        after.map_state != IsViewable || after.root != attributes.root ||
+        after.width != attributes.width || after.height != attributes.height ||
+        !XTranslateCoordinates(display, window, attributes.root, 0, 0, &after_x, &after_y, &child) ||
+        after_x != root_x || after_y != root_y) {
+        XDestroyImage(image);
+        return -1;
+    }
     for (unsigned int y = 0U; y < X11_FRAME_HEIGHT; ++y) {
         for (unsigned int x = 0U; x < X11_FRAME_WIDTH; ++x) {
-            unsigned long pixel = XGetPixel(image, (int)(x * (unsigned int)attributes.width / X11_FRAME_WIDTH),
-                                            (int)(y * (unsigned int)attributes.height / X11_FRAME_HEIGHT));
+            int sampled_x = (int)(x * (unsigned int)attributes.width / X11_FRAME_WIDTH);
+            int sampled_y = (int)(y * (unsigned int)attributes.height / X11_FRAME_HEIGHT);
             uint8_t *rgb = pixels + (y * X11_FRAME_WIDTH + x) * 3U;
+            unsigned long pixel;
+            if (sampled_x < left || sampled_x >= right || sampled_y < top || sampled_y >= bottom) {
+                memset(rgb, 128, 3U); /* Unobserved pixels cannot supply contrasting code bits. */
+                continue;
+            }
+            pixel = XGetPixel(image, sampled_x - (int)left, sampled_y - (int)top);
             rgb[0] = x11_frame_component(pixel, image->red_mask);
             rgb[1] = x11_frame_component(pixel, image->green_mask);
             rgb[2] = x11_frame_component(pixel, image->blue_mask);

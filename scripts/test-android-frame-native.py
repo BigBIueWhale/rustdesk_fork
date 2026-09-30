@@ -182,6 +182,23 @@ def main():
                     break
             time.sleep(0.05)
         require(display, "X11 Unix display is unavailable")
+        with open("/tmp/frame-geometry-xvfb.log", "wb") as geometry_log:
+            children.append(subprocess.Popen([
+                "/xvfb-root/usr/bin/Xvfb", ":99", "-screen", "0", "1280x800x24",
+                "-nolisten", "tcp", "-ac", "-noreset",
+            ], env=environment, stdout=geometry_log, stderr=subprocess.STDOUT))
+        geometry_started = time.monotonic()
+        while not Path("/tmp/.X11-unix/X99").is_socket():
+            require(children[-1].poll() is None and time.monotonic() - geometry_started < 5,
+                    "geometry X11 display did not start")
+            time.sleep(0.05)
+        old_geometry = subprocess.run([str(oracle_binaries[0]), "--old-window-image"],
+                                      env=environment, capture_output=True, text=True, timeout=5)
+        require(old_geometry.returncode == 1 and "BadMatch" in old_geometry.stderr
+                and "X_GetImage" in old_geometry.stderr, "old oversized-window failure was not reproduced")
+        subprocess.run([str(oracle_binaries[0]), "--geometry"], env=environment, check=True, timeout=5)
+        print("ANDROID_FRAME_NATIVE_X11_GEOMETRY_AB=pass old=BadMatch new=decoded display=1280x800 "
+              "window=1300x740 content=640x480 network=none", flush=True)
         refusal = subprocess.run([str(fixture / "frame-source")], env=environment,
                                  capture_output=True, text=True, timeout=5)
         require(refusal.returncode != 0 and "screen dimensions differ" in refusal.stderr

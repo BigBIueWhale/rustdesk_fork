@@ -9,12 +9,13 @@
     } \
 } while (0)
 
-static void make_pixels(uint8_t *pixels, uint32_t identity, unsigned int top) {
+static void make_pixels(uint8_t *pixels, uint32_t identity, unsigned int top,
+                         unsigned int left, unsigned int span) {
     for (unsigned int band = 0U; band < 4U; ++band) {
         unsigned int code = (band << 8U) | ((identity >> (24U - band * 8U)) & 255U);
         for (unsigned int y = top + band * 12U; y < top + (band + 1U) * 12U; ++y) {
-            for (unsigned int x = 0U; x < X11_FRAME_WIDTH; ++x) {
-                unsigned int bar = x * 24U / X11_FRAME_WIDTH;
+            for (unsigned int x = left; x < left + span; ++x) {
+                unsigned int bar = (x - left) * 24U / span;
                 int white = bar == 1U || bar == 22U;
                 if (bar >= 2U && bar < 22U) {
                     unsigned int bit = 9U - (bar - 2U) / 2U;
@@ -53,7 +54,7 @@ static int unit_cases(void) {
     REQUIRE(now > 5000000U);
     for (size_t index = 0U; index < sizeof(identities) / sizeof(identities[0]); ++index) {
         memset(pixels, 180, sizeof(pixels));
-        make_pixels(pixels, identities[index], 0U);
+        make_pixels(pixels, identities[index], 0U, 0U, X11_FRAME_WIDTH);
         REQUIRE(x11_frame_decode(pixels) == (int64_t)identities[index]);
     }
     memcpy(row, pixels, sizeof(row));
@@ -61,13 +62,16 @@ static int unit_cases(void) {
     memcpy(pixels + sizeof(row), row, sizeof(row));
     REQUIRE(x11_frame_decode(pixels) < 0); /* Reordered ordinals. */
     memset(pixels, 180, sizeof(pixels));
-    make_pixels(pixels, 256U, 0U);
+    make_pixels(pixels, 256U, 0U, 0U, X11_FRAME_WIDTH);
     memset(pixels + 24U * X11_FRAME_WIDTH * 3U, 180, sizeof(row));
     REQUIRE(x11_frame_decode(pixels) < 0); /* Missing band. */
     memset(pixels, 180, sizeof(pixels));
-    make_pixels(pixels, 256U, 0U);
-    make_pixels(pixels, 65536U, 60U);
+    make_pixels(pixels, 256U, 0U, 0U, X11_FRAME_WIDTH);
+    make_pixels(pixels, 65536U, 60U, 0U, X11_FRAME_WIDTH);
     REQUIRE(x11_frame_decode(pixels) < 0); /* Two plausible complete identities. */
+    memset(pixels, 180, sizeof(pixels));
+    make_pixels(pixels, 0x01020304U, 0U, 50U, 100U);
+    REQUIRE(x11_frame_decode(pixels) == 0x01020304);
 
     REQUIRE(mkdtemp(directory) != NULL);
     REQUIRE(snprintf(path, sizeof(path), "%s/frame-source.log", directory) > 0);
@@ -128,6 +132,100 @@ static int unit_cases(void) {
     return 0;
 }
 
+static void paint_geometry(Display *display, Window window, GC graphics, uint32_t identity) {
+    for (unsigned int band = 0U; band < 4U; ++band) {
+        unsigned int code = (band << 8U) | ((identity >> (24U - band * 8U)) & 255U);
+        for (unsigned int bar = 0U; bar < 24U; ++bar) {
+            int white = bar == 1U || bar == 22U;
+            unsigned int start = bar * 640U / 24U, end = (bar + 1U) * 640U / 24U;
+            if (bar >= 2U && bar < 22U) {
+                white = ((code >> (9U - (bar - 2U) / 2U)) & 1U) == ((bar & 1U) == 0U);
+            }
+            XSetForeground(display, graphics, white ? WhitePixel(display, DefaultScreen(display)) :
+                                                       BlackPixel(display, DefaultScreen(display)));
+            XFillRectangle(display, window, graphics, (int)(330U + start),
+                            (int)(100U + band * 48U), end - start, 48U);
+        }
+    }
+}
+
+static int geometry_case(int old_window_request) {
+    Display *display = XOpenDisplay(":99");
+    Window root, window, cover = 0;
+    GC graphics;
+    uint8_t pixels[X11_FRAME_BYTES];
+    uint64_t captured_us = 0U;
+    const uint32_t identity = 0x01020304U;
+    if (display == NULL) return -1;
+    root = DefaultRootWindow(display);
+    if (DisplayWidth(display, DefaultScreen(display)) != 1280 ||
+        DisplayHeight(display, DefaultScreen(display)) != 800) {
+        XCloseDisplay(display);
+        return -1;
+    }
+    window = XCreateSimpleWindow(display, root, -10, 20, 1300U, 740U, 0U,
+                                  BlackPixel(display, DefaultScreen(display)),
+                                  BlackPixel(display, DefaultScreen(display)));
+    if (window == 0) {
+        XCloseDisplay(display);
+        return -1;
+    }
+    graphics = XCreateGC(display, window, 0, NULL);
+    if (graphics == NULL) {
+        XDestroyWindow(display, window);
+        XCloseDisplay(display);
+        return -1;
+    }
+    XMapRaised(display, window);
+    paint_geometry(display, window, graphics, identity);
+    XSync(display, False);
+    if (old_window_request) {
+        XImage *old = XGetImage(display, window, 0, 0, 1300U, 740U, AllPlanes, ZPixmap);
+        if (old != NULL) XDestroyImage(old);
+        XFreeGC(display, graphics);
+        XDestroyWindow(display, window);
+        XCloseDisplay(display);
+        return -1; /* Expected default BadMatch handler exits before this point. */
+    }
+    int result = -1;
+    if (x11_frame_capture(display, window, pixels, &captured_us) != identity) goto finished;
+    cover = XCreateSimpleWindow(display, root, 320, 120, 640U, 192U, 0U,
+                                BlackPixel(display, DefaultScreen(display)),
+                                BlackPixel(display, DefaultScreen(display)));
+    if (cover == 0) goto finished;
+    XMapRaised(display, cover);
+    XSync(display, False);
+    if (x11_frame_capture(display, window, pixels, &captured_us) >= 0) goto finished;
+    XDestroyWindow(display, cover);
+    cover = 0;
+    paint_geometry(display, window, graphics, identity);
+    XSync(display, False);
+    if (x11_frame_capture(display, window, pixels, &captured_us) != identity) goto finished;
+    XMoveWindow(display, window, -1400, 20);
+    XSync(display, False);
+    if (x11_frame_capture(display, window, pixels, &captured_us) >= 0) goto finished;
+    XMoveWindow(display, window, -500, 20);
+    XSync(display, False);
+    if (x11_frame_capture(display, window, pixels, &captured_us) >= 0) goto finished;
+    XMoveWindow(display, window, -10, 20);
+    XUnmapWindow(display, window);
+    XSync(display, False);
+    if (x11_frame_capture(display, window, pixels, &captured_us) >= 0) goto finished;
+    result = 0;
+finished:
+    if (cover != 0) XDestroyWindow(display, cover);
+    XFreeGC(display, graphics);
+    XDestroyWindow(display, window);
+    XSync(display, False);
+    if (XCloseDisplay(display) != 0) result = -1;
+    if (result == 0) {
+        puts("X11_FRAME_NATIVE_GEOMETRY=pass clipped=decoded letterbox=decoded hidden=refused "
+             "occluded=refused unmapped=refused windows=joined");
+        fflush(stdout);
+    }
+    return result;
+}
+
 static int native_case(const char *directory) {
     SourceHistory history = {0}, late_history = {0};
     uint8_t old_pixels[X11_FRAME_BYTES], fresh_pixels[X11_FRAME_BYTES];
@@ -173,9 +271,10 @@ finished:
 }
 
 int main(int argc, char **argv) {
-    if (argc != 2 || getuid() != 4000 || geteuid() != 4000 || getgid() != 4000 || getegid() != 4000 ||
-        unit_cases() != 0 || native_case(argv[1]) != 0) {
+    if (argc != 2 || getuid() != 4000 || geteuid() != 4000 || getgid() != 4000 || getegid() != 4000) {
         return 1;
     }
-    return 0;
+    if (strcmp(argv[1], "--old-window-image") == 0) return geometry_case(1) != 0;
+    if (strcmp(argv[1], "--geometry") == 0) return unit_cases() != 0 || geometry_case(0) != 0;
+    return native_case(argv[1]) != 0;
 }

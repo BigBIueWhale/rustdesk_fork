@@ -1336,7 +1336,7 @@ native execution, not replacement source-string assertions. The guard's other VM
 checks remain; several candidate-admission diagnostic strings are also stale, so the whole guard is
 not currently claimed green or used as a substitute for native pixels.
 
-**Linux publication-age oracle — FOCUSED NATIVE PASS; FULL-PEER REPLAY PENDING.**
+**Linux publication-age oracle — NAMED FOCUSED PASS; FULL-PEER CAPTURE FAILURE, GEOMETRY FIX PENDING VALIDATION.**
 The repeating palette decoder, 256 first-sighting slots and reconnect history reset are removed.
 `x11-frame-oracle.h`, shared by the actual controller and its native test, decodes four complete,
 ordered counter bands and refuses ambiguous/incomplete/reordered pixels. Age requires that full
@@ -1366,6 +1366,22 @@ lifetime. Preserve the 1,000-ms freshness and 2,500-ms recovery limits, exact co
 identity, resource bounds and joined cleanup. No product, capacity, deadline or persistent-service
 behavior changes. Earlier Linux palette ages remain invalid publication-age evidence; Android/Windows
 intermittent-defect causation and longer-lived Android testing remain separate OPEN work.
+
+The subsequent exact `bc6d76d2` real-peer integration built the current 78-file Linux bundle
+with Flutter 3.47.5, revalidated its read-only Pub cache and authenticated the first peer through
+the actual password prompt. It then failed before any initial-pixel or focus verdict:
+`XGetImage` returned `BadMatch` for the 1,300×740 viewer on the 1,280×800 test screen.
+The complete 329,215-byte serial is retained at `evidence/linux-peer-bc6d76d2.serial.log`,
+SHA-256 `0ee704d94fc13532e982567e5e40201782386a01765bb75d4716991402a1cb7a`;
+its bounded failure receipt records terminal statuses and identical listener inventories.
+This is an observer geometry failure, not product-delay or LPE causation. Current source instead
+reads the actual visible root-framebuffer intersection, rechecks window geometry, marks unseen
+pixels as non-contrasting uncertainty, and supports centered letterboxing from the code's
+two-samples-per-bar minimum rather than assuming content fills at least 60% of a window.
+The focused native test now requires the exact oversized-window old-BadMatch/new-decode case
+plus occluded, hidden and unmapped refusal, before the timed source-age test starts.
+**Those new geometry cases have not run yet.** Do not resize the VM screen to hide the invalid
+request, ignore X errors, relax identity/age/contrast/deadline bounds, or infer peer closure.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

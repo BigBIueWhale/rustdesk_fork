@@ -12,7 +12,7 @@ fail() {
 [ "$(id -g)" -ne 0 ] || fail 'refuses a root primary group'
 [ -z "${LD_PRELOAD:-}" ] || fail 'refuses an ambient preload'
 [ "$#" -eq 1 ] \
-  || fail 'expected one stage: input-check, atspi-check, pub-cache, pub-cache-check, build, server, or viewer'
+  || fail 'expected one stage: input-check, atspi-check, pub-cache, pub-cache-check, build, build-app, server, or viewer'
 
 verify_regular() {
   [ -f "$1" ] && [ ! -L "$1" ] || fail "missing regular input: $1"
@@ -473,7 +473,11 @@ PY
       "$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256"
     ;;
 
-  build)
+  build|build-app)
+    if [ "$1" = build-app ]; then
+      [[ "${SOURCE_DATE_EPOCH:-}" =~ ^(0|[1-9][0-9]{0,18})$ ]] \
+        || fail 'app producer requires an explicit canonical build epoch'
+    fi
     for variable in \
       RUSTDESK_RUST_VERSION RUSTDESK_RUST_SHA256 RUSTDESK_RUST_SIZE \
       RUSTDESK_FLUTTER_ARCHIVE RUSTDESK_FLUTTER_VERSION \
@@ -848,6 +852,7 @@ PY
         | grep -Eq "[[:space:]]$symbol$" \
         || fail "texture plugin does not export $symbol"
     done
+    if [ "$1" = build ]; then
     cc -std=c11 -O2 -Wall -Wextra -Werror \
       "$BUILD_SOURCE/scripts/flutter-peer-source-x11.c" \
       $(pkg-config --cflags --libs x11) -o /out/flutter-peer-source-x11
@@ -858,6 +863,7 @@ PY
     cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
       "$BUILD_SOURCE/scripts/smoke-bind-loopback.c" \
       -Wl,-z,relro,-z,now,-z,noexecstack -ldl -o /out/smoke-bind-loopback.so
+    fi
     verify_regular "$BUILD_SOURCE/target/release/examples/smoke_readiness"
     cp "$BUILD_SOURCE/target/release/examples/smoke_readiness" /out/smoke-readiness
     mkdir /out/bundle
@@ -866,6 +872,14 @@ PY
       || fail 'build output contains a symlink'
     [ -z "$(find /out -xdev -type f -perm /6000 -print -quit)" ] \
       || fail 'build output contains a setuid or setgid file'
+    if [ "$1" = build-app ]; then
+      find /out -xdev -type f -exec chmod 0400 {} +
+      find /out -xdev -type d -exec chmod 0500 {} +
+      printf 'LINUX_FLUTTER_APP_COMPILED=pass rust=%s flutter=%s epoch=%s files=%s drivers=excluded exact_runner=true exact_core=true\n' \
+        "$RUSTDESK_RUST_VERSION" "$RUSTDESK_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH" \
+        "$(find /out -xdev -type f | wc -l)"
+      exit 0
+    fi
     printf 'rust=%s flutter=%s flutter_tools=%s llvm=%s pub_cache_sha256=%s features=flutter,unix-file-copy-paste app=rustdesk\n' \
       "$RUSTDESK_RUST_VERSION" "$RUSTDESK_FLUTTER_VERSION" \
       "$RUSTDESK_FLUTTER_TOOLS_MODE" "$RUSTDESK_LLVM_VERSION" \
@@ -1200,6 +1214,6 @@ PY
     ;;
 
   *)
-    fail 'expected input-check, atspi-check, pub-cache, pub-cache-check, build, server, or viewer stage'
+    fail 'expected input-check, atspi-check, pub-cache, pub-cache-check, build, build-app, server, or viewer stage'
     ;;
 esac

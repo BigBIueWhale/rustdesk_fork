@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Exact-commit full RustDesk capture-to-Flutter peer-presentation evidence, admitted only inside
-# the authenticated no-NIC verifier VM and confined to its guest-owned Docker daemon.
+# Source-bound app production and full RustDesk capture-to-Flutter peer evidence, admitted only
+# inside the authenticated no-NIC verifier VM and confined to its guest-owned Docker daemon.
 set -euo pipefail
 export PATH=/usr/bin:/bin
 export LC_ALL=C
@@ -60,6 +60,8 @@ SUPPLIED_SOURCE_TREE=
 SUPPLIED_SOURCE_ARCHIVE_SHA256=
 FLUTTER_PRESENTATION_CANDIDATE=0
 SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE=
+BUILD_APP_ONLY=0
+APP_BUILD_CONTEXT=
 case "$#:${1:-}" in
   0:) ;;
   1:--self-test-vm-authority)
@@ -86,11 +88,26 @@ case "$#:${1:-}" in
     FLUTTER_PRESENTATION_CANDIDATE=1
     SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE=${10}
     ;;
+  12:--source-archive)
+    [ "$3" = --commit ] && [ "$5" = --tree ] && [ "$7" = --archive-sha256 ] \
+      && [ "$9" = --flutter-presentation-candidate ] && [ "${11}" = --build-app ] \
+      || die 'app producer source/archive authority argument order differs'
+    SOURCE_AUTHORITY=archive
+    SUPPLIED_SOURCE_ARCHIVE=$2
+    SUPPLIED_SOURCE_COMMIT=$4
+    SUPPLIED_SOURCE_TREE=$6
+    SUPPLIED_SOURCE_ARCHIVE_SHA256=$8
+    FLUTTER_PRESENTATION_CANDIDATE=1
+    SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE=${10}
+    BUILD_APP_ONLY=1
+    APP_BUILD_CONTEXT=${12}
+    ;;
   *) die 'accepts only --self-test-vm-authority or the exact source/archive authority' ;;
 esac
 readonly SOURCE_AUTHORITY SUPPLIED_SOURCE_ARCHIVE SUPPLIED_SOURCE_COMMIT \
   SUPPLIED_SOURCE_TREE SUPPLIED_SOURCE_ARCHIVE_SHA256 \
-  FLUTTER_PRESENTATION_CANDIDATE SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE
+  FLUTTER_PRESENTATION_CANDIDATE SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE \
+  BUILD_APP_ONLY APP_BUILD_CONTEXT
 if [ "$PEER_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
   authority_version="$(peer_vm_docker version \
     --format '{{.Client.Version}}|{{.Server.Version}}')" \
@@ -104,6 +121,15 @@ if [ "$PEER_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
 fi
 
 FAILURE_ARTIFACT_DIR=${RUSTDESK_FAILURE_ARTIFACT_DIR:-}
+APP_OUTPUT_PARENT=/mnt/rustdesk-linux-flutter-artifact-output
+if [ "$BUILD_APP_ONLY" -eq 1 ]; then
+  [ -z "$FAILURE_ARTIFACT_DIR" ] \
+    && [ -d "$APP_OUTPUT_PARENT" ] && [ ! -L "$APP_OUTPUT_PARENT" ] \
+    && [ "$(readlink -f -- "$APP_OUTPUT_PARENT")" = "$APP_OUTPUT_PARENT" ] \
+    && [ "$(stat -c '%u:%g:%a' -- "$APP_OUTPUT_PARENT")" = "$HOST_UID:$HOST_GID:700" ] \
+    && [ -z "$(find "$APP_OUTPUT_PARENT" -mindepth 1 -print -quit)" ] \
+    || die 'Linux Flutter app output authority differs'
+else
 [ "$FAILURE_ARTIFACT_DIR" = /mnt/rustdesk-flutter-peer-failure ] \
   && [ "$FAILURE_ARTIFACT_DIR" = "$(readlink -f -- "$FAILURE_ARTIFACT_DIR" 2>/dev/null)" ] \
   && [ -d "$FAILURE_ARTIFACT_DIR" ] && [ ! -L "$FAILURE_ARTIFACT_DIR" ] \
@@ -111,7 +137,8 @@ FAILURE_ARTIFACT_DIR=${RUSTDESK_FAILURE_ARTIFACT_DIR:-}
     "$HOST_UID:$HOST_GID:700" ] \
   && [ -z "$(find "$FAILURE_ARTIFACT_DIR" -mindepth 1 -print -quit)" ] \
   || die 'bounded Flutter peer failure-output authority differs'
-readonly FAILURE_ARTIFACT_DIR
+fi
+readonly FAILURE_ARTIFACT_DIR APP_OUTPUT_PARENT
 
 EVIDENCE_PUB_CACHE="$ONLINE_DIR/pub-cache"
 EVIDENCE_PUB_CACHE_SHA256="$SHA256_PUB_CACHE_CLOSURE_V1"
@@ -360,6 +387,26 @@ chmod -R a-w "$SOURCE_SNAPSHOT"
 [ -z "$(find "$SOURCE_SNAPSHOT" -perm /0222 -print -quit)" ] \
   || die 'exact source snapshot remained writable'
 
+BUILD_STAGE=build
+BUILD_EPOCH_ARGS=()
+if [ "$BUILD_APP_ONLY" -eq 1 ]; then
+  [[ "$SOURCE_DATE_EPOCH_PIN" =~ ^(0|[1-9][0-9]{0,18})$ ]] \
+    || die 'app build epoch pin is malformed'
+  APP_RECIPE_SHA256="$(sha256sum "$SOURCE_SNAPSHOT/scripts/smoke-flutter-peer-presentation-stage.sh" | awk '{print $1}')"
+  expected_context="$(printf '{"source_commit":"%s","source_tree":"%s","builder_config":"%s","build_recipe_sha256":"%s","rust_toolchain":"%s.0-x86_64-unknown-linux-gnu","flutter_version":"%s","source_date_epoch":"%s","inputs":{"rust_archive":"%s","flutter_archive":"%s","flutter_tools_lock":"%s","flutter_project_lock":"%s","llvm_archive":"%s","frb_codegen":"%s","vendor_closure":"%s","vendor_config":"%s","vcpkg_closure":"%s","pub_cache_closure":"%s"}}' \
+    "$SOURCE_COMMIT" "$SOURCE_TREE" "$DEB_BUILDER_CONFIG_ID" "$APP_RECIPE_SHA256" \
+    "$RUST_VERSION" "$BUILD_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH_PIN" \
+    "$SHA256_RUST_1_75" "$BUILD_FLUTTER_SHA256" "$BUILD_FLUTTER_TOOLS_LOCK_SHA256" \
+    "$BUILD_PROJECT_LOCK_SHA256" "$SHA256_LLVM_15_0_6" "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
+    "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_CARGO_VENDOR_CONFIG" \
+    "$SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1" "$EVIDENCE_PUB_CACHE_SHA256")"
+  [ "$APP_BUILD_CONTEXT" = "$expected_context" ] \
+    || die 'independent app build context differs from the actual source and selected inputs'
+  BUILD_STAGE=build-app
+  BUILD_EPOCH_ARGS=(--env "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH_PIN")
+fi
+readonly BUILD_STAGE
+
 run_owned_container() {
   local cid_file=$1 run_status=0 cleanup_status=0
   shift
@@ -594,6 +641,7 @@ run_input_check() {
 echo '== independently verify every persistent input consumed by the build =='
 run_input_check "$WORKSPACE/input-pre.cid"
 
+if [ "$BUILD_APP_ONLY" -eq 0 ]; then
 echo '== verify and extract the exact offline Xvfb closure in one networkless non-root container =='
 run_owned_container "$WORKSPACE/xvfb.cid" \
   --pull=never --network=none --read-only \
@@ -655,6 +703,7 @@ cat "$WORKSPACE/atspi-check.log"
   || die "private AT-SPI activation preflight exited $atspi_check_status"
 grep -q '^FLUTTER_PEER_ATSPI_RUNTIME_OK session_bus=private accessibility_bus=unix launcher=exact registry=exact x11=joined inet=0 udp=0$' \
   "$WORKSPACE/atspi-check.log" || die 'private AT-SPI activation verdict is missing'
+fi
 
 echo '== verify the canonical selected Pub cache without copying or mutating it =='
 run_owned_container "$WORKSPACE/pub-cache.cid" \
@@ -716,8 +765,9 @@ run_owned_container "$WORKSPACE/build.cid" \
   --env "RUSTDESK_EVIDENCE_PUB_CACHE_SHA256=$EVIDENCE_PUB_CACHE_SHA256" \
   --env "RUSTDESK_PROJECT_LOCK_MODE=$BUILD_PROJECT_LOCK_MODE" \
   --env "RUSTDESK_PROJECT_LOCK_SHA256=$BUILD_PROJECT_LOCK_SHA256" \
+  "${BUILD_EPOCH_ARGS[@]}" \
   "$DEB_BUILDER_CONFIG_ID" \
-  bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh build
+  bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh "$BUILD_STAGE"
 
 echo '== reverify the canonical selected Pub cache after the offline build =='
 run_owned_container "$WORKSPACE/pub-cache-post.cid" \
@@ -739,6 +789,7 @@ chmod -R u+rwX "$BUILD_WORK"
 rm -rf -- "$BUILD_WORK"
 BUILD_WORK=
 
+if [ "$BUILD_APP_ONLY" -eq 0 ]; then
 for cycle in 1 2 3 4 5 6; do
 COORD="$WORKSPACE/coord.$cycle"
 mkdir "$COORD"
@@ -875,6 +926,7 @@ printf 'FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=%s instrumentation=none viewer=joine
   "$cycle"
 done
 echo 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=6 instrumentation=none'
+fi
 
 echo '== independently reverify every persistent build input after runtime =='
 run_input_check "$WORKSPACE/input-post.cid"
@@ -889,6 +941,21 @@ if [ "$SOURCE_AUTHORITY" = git ]; then
 else
   [ "$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')" = \
     "$SOURCE_ARCHIVE_SHA256" ] || die 'supplied source archive changed during the probe'
+fi
+if [ "$BUILD_APP_ONLY" -eq 1 ]; then
+  prepared="$(/usr/bin/python3 -I -S "$SOURCE_SNAPSHOT/scripts/linux-flutter-artifact.py" prepare \
+    --root "$BUILD_OUTPUT" --root-identity "$(stat -c '%d:%i' -- "$BUILD_OUTPUT")" \
+    --parent "$APP_OUTPUT_PARENT" --parent-identity "$(stat -c '%d:%i' -- "$APP_OUTPUT_PARENT")" \
+    --context "$APP_BUILD_CONTEXT")" || die 'actual app capsule preparation failed'
+  read -r app_pending app_identity app_digest extra <<<"$prepared"
+  [[ "$app_pending" =~ ^\.linux-flutter-pending-[0-9a-f]{64}$ ]] \
+    && [[ "$app_identity" =~ ^[0-9]+:[0-9]+$ ]] \
+    && [[ "$app_digest" =~ ^[0-9a-f]{64}$ ]] && [ -z "$extra" ] \
+    || die 'actual app capsule preparation receipt differs'
+  printf 'LINUX_FLUTTER_APP_PREPARED=pass commit=%s tree=%s pending=%s manifest_sha256=%s recipe_sha256=%s epoch=%s drivers=excluded network=none containers=joined\n' \
+    "$SOURCE_COMMIT" "$SOURCE_TREE" "$app_pending" "$app_digest" \
+    "$APP_RECIPE_SHA256" "$SOURCE_DATE_EPOCH_PIN"
+  exit 0
 fi
 printf 'FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=%s tree=%s archive_sha256=%s flutter=%s tools=%s scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace\n' \
   "$SOURCE_COMMIT" "$SOURCE_TREE" "$SOURCE_ARCHIVE_SHA256" \

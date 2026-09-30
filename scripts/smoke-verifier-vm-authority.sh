@@ -20,6 +20,7 @@ LIFECYCLE_ARTIFACT_SHA256=
 LIFECYCLE_COMMIT=
 DEV_CHECK_ARCHIVE=
 FLUTTER_PEER_CANDIDATE=0
+FLUTTER_APP_BUILD_ONLY=0
 ANDROID_RUNTIME_ARTIFACT_COMMIT=
 ANDROID_RUNTIME_APK_SHA256=
 ANDROID_RUNTIME_SCENARIO=
@@ -166,6 +167,13 @@ case "$#:${1:-}" in
         MODE=flutter-peer-presentation
         FLUTTER_PEER_CANDIDATE=1
         ;;
+    1:--linux-flutter-app-build)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Linux Flutter app-build input/run overrides are forbidden' >&2; exit 2; }
+        MODE=flutter-peer-presentation
+        FLUTTER_PEER_CANDIDATE=1
+        FLUTTER_APP_BUILD_ONLY=1
+        ;;
     9:--debian-systemd-lifecycle)
         [ "$2" = --release-deb ] && [ "$4" = --sha256 ] \
             && [ "$6" = --commit ] && [ "$8" = --devcheck-archive ] \
@@ -180,6 +188,7 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
+        printf 'Source-bound Linux app producer: %s --linux-flutter-app-build\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
@@ -188,7 +197,7 @@ case "$#:${1:-}" in
         ;;
 esac
 readonly MODE LIFECYCLE_ARTIFACT LIFECYCLE_ARTIFACT_SHA256 LIFECYCLE_COMMIT \
-    DEV_CHECK_ARCHIVE FLUTTER_PEER_CANDIDATE ANDROID_RUNTIME_ARTIFACT_COMMIT \
+    DEV_CHECK_ARCHIVE FLUTTER_PEER_CANDIDATE FLUTTER_APP_BUILD_ONLY ANDROID_RUNTIME_ARTIFACT_COMMIT \
     ANDROID_RUNTIME_APK_SHA256 ANDROID_RUNTIME_SCENARIO \
     ANDROID_RUNTIME_PEER_COMMIT ANDROID_RUNTIME_PEER_MANIFEST_SHA256
 readonly INPUT_ROOT="${VERIFIER_VM_INPUT_ROOT:-$REPO_ROOT/.harness-state/verifier-vm}"
@@ -218,6 +227,7 @@ readonly FLUTTER_PEER_CANDIDATE_ROOT="$REPO_ROOT/online/candidates/flutter-prese
 readonly FLUTTER_PEER_CANDIDATE_ARCHIVE="$FLUTTER_PEER_CANDIDATE_ROOT/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz"
 readonly FLUTTER_PEER_CANDIDATE_LOCK="$FLUTTER_PEER_CANDIDATE_ROOT/pubspec.lock.discovery"
 readonly FLUTTER_PEER_CANDIDATE_PUB_CACHE="$FLUTTER_PEER_CANDIDATE_ROOT/pub-cache"
+readonly FLUTTER_APP_STATE_ROOT="$REPO_ROOT/.harness-state/linux-flutter-app-artifacts"
 readonly RUST_TEST_ARCHIVE="$ONLINE_INPUTS/rust-${RUST_VERSION}.tar.xz"
 readonly FLUTTER_TEST_ARCHIVE="$ONLINE_INPUTS/flutter-${FLUTTER_VERSION}.tar.xz"
 readonly LLVM_TEST_ARCHIVE="$ONLINE_INPUTS/llvm-${LLVM_VERSION}.tar.xz"
@@ -331,6 +341,11 @@ else
     readonly ANDROID_ARTIFACT_STATE_ROOT="$REPO_ROOT/.harness-state/android-emulator-artifacts"
 fi
 readonly ANDROID_ARTIFACT_DESTINATION=android-x86_64-test
+if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+    readonly ARTIFACT_PUBLICATION_STATE_ROOT="$FLUTTER_APP_STATE_ROOT"
+else
+    readonly ARTIFACT_PUBLICATION_STATE_ROOT="$ANDROID_ARTIFACT_STATE_ROOT"
+fi
 readonly OFFLINE_IMAGE_PROVENANCE_SOURCE="$SCRIPT_DIR/offline-image-provenance.py"
 readonly ONLINE_FETCH_SOURCE="$SCRIPT_DIR/online-fetch.sh"
 readonly ONLINE_FETCH_VM_SOURCE="$SCRIPT_DIR/online-fetch-vm.sh"
@@ -454,6 +469,10 @@ ARTIFACT_OUTPUT_PARENT_ID=
 ARTIFACT_PUBLISHED=0
 ARTIFACT_STATE_ROOT_CREATED=0
 ARTIFACT_STATE_ROOT_ID=
+FLUTTER_APP_BUILD_CONTEXT=
+FLUTTER_APP_RECIPE_SHA256=
+FLUTTER_APP_PENDING=
+FLUTTER_APP_MANIFEST_SHA256=
 ANDROID_ARTIFACT_PENDING=
 ANDROID_ARTIFACT_SHA256=
 ANDROID_ARTIFACT_INPUT_ROOT=
@@ -491,6 +510,14 @@ reserve_verifier_run() {
         || fail 'retained verifier-VM run-root authority differs'
     /usr/bin/flock --exclusive --nonblock "$descriptor" \
         || fail 'another verifier is reserving a run; retry after its admission completes'
+    if [ "${FLUTTER_APP_BUILD_ONLY:-0}" -eq 1 ] && { [ -e "$FLUTTER_APP_STATE_ROOT" ] || [ -L "$FLUTTER_APP_STATE_ROOT" ]; }; then
+        [ -d "$FLUTTER_APP_STATE_ROOT" ] && [ ! -L "$FLUTTER_APP_STATE_ROOT" ] \
+            && [ "$(/usr/bin/readlink -f -- "$FLUTTER_APP_STATE_ROOT")" = "$FLUTTER_APP_STATE_ROOT" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$FLUTTER_APP_STATE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
+            || fail 'Linux Flutter app artifact state authority differs'
+        [ -z "$(/usr/bin/find "$FLUTTER_APP_STATE_ROOT" -mindepth 1 -maxdepth 1 -print -quit)" ] \
+            || fail 'an earlier Linux Flutter app artifact remains; reuse it or explicitly reconcile it before building another'
+    fi
     if [ "${MODE:-}" = android-peer-build ] && { [ -e "$ANDROID_ARTIFACT_STATE_ROOT" ] || [ -L "$ANDROID_ARTIFACT_STATE_ROOT" ]; }; then
         [ -d "$ANDROID_ARTIFACT_STATE_ROOT" ] && [ ! -L "$ANDROID_ARTIFACT_STATE_ROOT" ] \
             && [ "$(/usr/bin/readlink -f -- "$ANDROID_ARTIFACT_STATE_ROOT")" = "$ANDROID_ARTIFACT_STATE_ROOT" ] \
@@ -1119,6 +1146,34 @@ publish_android_peer_artifact() {
     ARTIFACT_PUBLISHED=1
 }
 
+publish_linux_flutter_app_artifact() {
+    local pending_path pending_id destination
+    [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] \
+        && [[ "$FLUTTER_APP_PENDING" =~ ^\.linux-flutter-pending-[0-9a-f]{64}$ ]] \
+        && [[ "$FLUTTER_APP_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        && [ -n "$FLUTTER_APP_BUILD_CONTEXT" ] \
+        || fail 'Linux Flutter app publication authority is incomplete'
+    [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ARTIFACT_OUTPUT_PARENT")" = \
+      "$ARTIFACT_OUTPUT_PARENT_ID:$HOST_UID:$HOST_GID:700" ] \
+        && [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$ARTIFACT_OUTPUT_FD")" = \
+             "$ARTIFACT_OUTPUT_PARENT_ID" ] \
+        || fail 'Linux Flutter app output authority changed'
+    pending_path="$ARTIFACT_OUTPUT_PARENT/$FLUTTER_APP_PENDING"
+    [ -d "$pending_path" ] && [ ! -L "$pending_path" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$pending_path")" = "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'Linux Flutter app pending authority differs'
+    pending_id="$(/usr/bin/stat -c '%d:%i' -- "$pending_path")"
+    destination="$(/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C \
+        /usr/bin/python3 -I -S "$LINUX_FLUTTER_ARTIFACT_SOURCE" commit \
+            --parent "$ARTIFACT_OUTPUT_PARENT" --parent-identity "$ARTIFACT_OUTPUT_PARENT_ID" \
+            --pending "$FLUTTER_APP_PENDING" --pending-identity "$pending_id" \
+            --context "$FLUTTER_APP_BUILD_CONTEXT" --manifest-sha256 "$FLUTTER_APP_MANIFEST_SHA256")" \
+        || fail 'Linux Flutter app capsule could not be committed'
+    [ "$destination" = "$ARTIFACT_OUTPUT_PARENT/linux-x86_64-flutter-app" ] \
+        || fail 'Linux Flutter app publication returned a different destination'
+    ARTIFACT_PUBLISHED=1
+}
+
 android_peer_input_inventory() {
     /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
     /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
@@ -1218,18 +1273,25 @@ cleanup() {
         if [ -d "$ARTIFACT_OUTPUT_PARENT" ] && [ ! -L "$ARTIFACT_OUTPUT_PARENT" ] \
            && [ "$(/usr/bin/stat -c '%d:%i' -- "$ARTIFACT_OUTPUT_PARENT" 2>/dev/null)" = \
                 "$ARTIFACT_OUTPUT_PARENT_ID" ]; then
+            if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] \
+               && [ -n "$(/usr/bin/find "$ARTIFACT_OUTPUT_PARENT" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+                printf 'verifier-VM authority smoke: retaining uncommitted app evidence at %s\n' \
+                    "$ARTIFACT_OUTPUT_PARENT" >&2
+            else
             /usr/bin/python3 -I -S "$CLEANUP_HELPER" \
                 --remove-private-root "$ARTIFACT_OUTPUT_PARENT" \
                 --expected-identity "$ARTIFACT_OUTPUT_PARENT_ID" \
                 || cleanup_failed=1
+            fi
         else
             cleanup_failed=1
         fi
     fi
     if [ "$ARTIFACT_PUBLISHED" -eq 0 ] \
-       && [ "$ARTIFACT_STATE_ROOT_CREATED" -eq 1 ]; then
+       && [ "$ARTIFACT_STATE_ROOT_CREATED" -eq 1 ] \
+       && [ ! -e "$ARTIFACT_OUTPUT_PARENT" ] && [ ! -L "$ARTIFACT_OUTPUT_PARENT" ]; then
         /usr/bin/python3 -I -S "$CLEANUP_HELPER" \
-            --remove-empty-private-root "$ANDROID_ARTIFACT_STATE_ROOT" \
+            --remove-empty-private-root "$ARTIFACT_PUBLICATION_STATE_ROOT" \
             --expected-identity "$ARTIFACT_STATE_ROOT_ID" \
             || cleanup_failed=1
     fi
@@ -2049,6 +2111,18 @@ if [ "$MODE" = flutter-peer-presentation ]; then
         || fail 'Git replacement refs are forbidden'
 fi
 
+if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+    FLUTTER_APP_RECIPE_SHA256="$(/usr/bin/sha256sum "$SCRIPT_DIR/smoke-flutter-peer-presentation-stage.sh" | /usr/bin/awk '{print $1}')"
+    FLUTTER_APP_BUILD_CONTEXT="$(printf '{"source_commit":"%s","source_tree":"%s","builder_config":"%s","build_recipe_sha256":"%s","rust_toolchain":"%s.0-x86_64-unknown-linux-gnu","flutter_version":"%s","source_date_epoch":"%s","inputs":{"rust_archive":"%s","flutter_archive":"%s","flutter_tools_lock":"%s","flutter_project_lock":"%s","llvm_archive":"%s","frb_codegen":"%s","vendor_closure":"%s","vendor_config":"%s","vcpkg_closure":"%s","pub_cache_closure":"%s"}}' \
+        "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" "$DEB_BUILDER_CONFIG_ID" \
+        "$FLUTTER_APP_RECIPE_SHA256" "$RUST_VERSION" "$FLUTTER_PEER_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH_PIN" \
+        "$SHA256_RUST_1_75" "$FLUTTER_PEER_FLUTTER_SHA256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_TOOLS_LOCK" \
+        "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" "$SHA256_LLVM_15_0_6" "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
+        "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_CARGO_VENDOR_CONFIG" \
+        "$SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE")"
+    [[ "$FLUTTER_APP_BUILD_CONTEXT" != *"'"* ]] && [[ "$FLUTTER_APP_BUILD_CONTEXT" != *$'\n'* ]] \
+        || fail 'Linux Flutter app build context is not one shell-inert argument'
+fi
 DART_SOURCE_COMMIT=
 DART_SOURCE_TREE=
 DART_SOURCE_ARCHIVE_SHA256=
@@ -2306,7 +2380,7 @@ readonly ARTIFACT_VIRTIOFSD_LOG=$RUN/virtiofsd-artifact.log
 readonly ARTIFACT_INPUT_VIRTIOFS_SOCKET=$RUN/vfs-artifact-input.sock
 readonly ARTIFACT_INPUT_VIRTIOFSD_LOG=$RUN/virtiofsd-artifact-input.log
 
-if [ "$MODE" = flutter-peer-presentation ]; then
+if [ "$MODE" = flutter-peer-presentation ] && [ "$FLUTTER_APP_BUILD_ONLY" -eq 0 ]; then
     /usr/bin/install -d -m 0700 -- "$FLUTTER_FAILURE_ROOT"
     [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$FLUTTER_FAILURE_ROOT")" = \
       "$HOST_UID:$HOST_GID:700" ] \
@@ -2314,35 +2388,38 @@ if [ "$MODE" = flutter-peer-presentation ]; then
         || fail 'Flutter peer failure-output authority metadata differs'
 fi
 
-if [ "$MODE" = android-emulator-app ] || [ "$MODE" = android-peer-build ]; then
-    if [ -e "$ANDROID_ARTIFACT_STATE_ROOT" ] \
-       || [ -L "$ANDROID_ARTIFACT_STATE_ROOT" ]; then
-        [ -d "$ANDROID_ARTIFACT_STATE_ROOT" ] \
-            && [ ! -L "$ANDROID_ARTIFACT_STATE_ROOT" ] \
-            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ANDROID_ARTIFACT_STATE_ROOT")" = \
+if [ "$MODE" = android-emulator-app ] || [ "$MODE" = android-peer-build ] \
+   || [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+    if [ -e "$ARTIFACT_PUBLICATION_STATE_ROOT" ] \
+       || [ -L "$ARTIFACT_PUBLICATION_STATE_ROOT" ]; then
+        [ -d "$ARTIFACT_PUBLICATION_STATE_ROOT" ] \
+            && [ ! -L "$ARTIFACT_PUBLICATION_STATE_ROOT" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ARTIFACT_PUBLICATION_STATE_ROOT")" = \
                  "$HOST_UID:$HOST_GID:700" ] \
-            || fail 'Android artifact state root metadata differs'
+            || fail 'artifact state root metadata differs'
     else
-        /usr/bin/install -d -m 0700 -- "$ANDROID_ARTIFACT_STATE_ROOT"
+        /usr/bin/install -d -m 0700 -- "$ARTIFACT_PUBLICATION_STATE_ROOT"
         ARTIFACT_STATE_ROOT_CREATED=1
     fi
-    ARTIFACT_STATE_ROOT_ID="$(/usr/bin/stat -c '%d:%i' -- "$ANDROID_ARTIFACT_STATE_ROOT")"
-    [ -z "$(/usr/bin/findmnt -rn -o TARGET --submounts "$ANDROID_ARTIFACT_STATE_ROOT")" ] \
-        || fail 'Android artifact state root contains a descendant mount'
-    ARTIFACT_OUTPUT_PARENT="$ANDROID_ARTIFACT_STATE_ROOT/$ANDROID_EMULATOR_SOURCE_COMMIT"
+    ARTIFACT_STATE_ROOT_ID="$(/usr/bin/stat -c '%d:%i' -- "$ARTIFACT_PUBLICATION_STATE_ROOT")"
+    [ -z "$(/usr/bin/findmnt -rn -o TARGET --submounts "$ARTIFACT_PUBLICATION_STATE_ROOT")" ] \
+        || fail 'artifact state root contains a descendant mount'
+    output_commit=$ANDROID_EMULATOR_SOURCE_COMMIT
+    [ "$FLUTTER_APP_BUILD_ONLY" -eq 0 ] || output_commit=$FLUTTER_PEER_SOURCE_COMMIT
+    ARTIFACT_OUTPUT_PARENT="$ARTIFACT_PUBLICATION_STATE_ROOT/$output_commit"
     [ ! -e "$ARTIFACT_OUTPUT_PARENT" ] && [ ! -L "$ARTIFACT_OUTPUT_PARENT" ] \
-        || fail 'commit-bound Android artifact output already exists'
+        || fail 'commit-bound artifact output already exists'
     /usr/bin/install -d -m 0700 -- "$ARTIFACT_OUTPUT_PARENT"
     ARTIFACT_OUTPUT_PARENT_ID="$(/usr/bin/stat -c '%d:%i' -- "$ARTIFACT_OUTPUT_PARENT")"
     [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ARTIFACT_OUTPUT_PARENT")" = \
       "$HOST_UID:$HOST_GID:700" ] \
         && [ -z "$(/usr/bin/find "$ARTIFACT_OUTPUT_PARENT" -mindepth 1 -print -quit)" ] \
-        || fail 'commit-bound Android artifact output metadata differs'
+        || fail 'commit-bound artifact output metadata differs'
     exec {ARTIFACT_OUTPUT_FD}<"$ARTIFACT_OUTPUT_PARENT" \
-        || fail 'cannot retain the commit-bound Android artifact output'
+        || fail 'cannot retain the commit-bound artifact output'
     [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$ARTIFACT_OUTPUT_FD")" = \
       "$ARTIFACT_OUTPUT_PARENT_ID" ] \
-        || fail 'retained Android artifact output identity differs'
+        || fail 'retained artifact output identity differs'
 fi
 
 linux_flutter_sources_before="$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" "$LINUX_FLUTTER_ARTIFACT_TEST")"
@@ -2798,7 +2875,9 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         guest_invocation+=" $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256"
     fi
 elif [ "$MODE" = flutter-peer-presentation ]; then
-    if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
+    if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+        guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT'"
+    elif [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
         guest_invocation+=" --flutter-peer-presentation-candidate /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256"
     else
         guest_invocation+=" --flutter-peer-presentation /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256"
@@ -2882,7 +2961,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
             -device "vhost-user-fs-pci,chardev=flutter-candidate-input,tag=rustdesk-flutter-candidate-input,queue-size=1024"
         )
     fi
-    if [ "$MODE" = flutter-peer-presentation ]; then
+    if [ "$MODE" = flutter-peer-presentation ] && [ "$FLUTTER_APP_BUILD_ONLY" -eq 0 ]; then
         start_virtiofsd bounded-result "$FLUTTER_FAILURE_ROOT" \
             "$(/usr/bin/stat -c '%d:%i' -- "$FLUTTER_FAILURE_ROOT")" \
             "$FLUTTER_FAILURE_VIRTIOFS_SOCKET" "$FLUTTER_FAILURE_VIRTIOFSD_LOG"
@@ -2890,13 +2969,16 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
             -chardev "socket,id=flutter-failure-output,path=$FLUTTER_FAILURE_VIRTIOFS_SOCKET"
             -device "vhost-user-fs-pci,chardev=flutter-failure-output,tag=rustdesk-flutter-failure-output,queue-size=1024"
         )
-    elif [ "$MODE" = android-emulator-app ] || [ "$MODE" = android-peer-build ]; then
+    elif [ "$MODE" = android-emulator-app ] || [ "$MODE" = android-peer-build ] \
+         || [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
         start_virtiofsd bounded-result "$ARTIFACT_OUTPUT_PARENT" \
             "$ARTIFACT_OUTPUT_PARENT_ID" \
             "$ARTIFACT_VIRTIOFS_SOCKET" "$ARTIFACT_VIRTIOFSD_LOG"
+        artifact_output_tag=rustdesk-android-artifact-output
+        [ "$FLUTTER_APP_BUILD_ONLY" -eq 0 ] || artifact_output_tag=rustdesk-linux-flutter-artifact-output
         focused_qemu_args+=(
             -chardev "socket,id=artifact-output,path=$ARTIFACT_VIRTIOFS_SOCKET"
-            -device "vhost-user-fs-pci,chardev=artifact-output,tag=rustdesk-android-artifact-output,queue-size=1024"
+            -device "vhost-user-fs-pci,chardev=artifact-output,tag=$artifact_output_tag,queue-size=1024"
         )
     elif [ "$MODE" = android-emulator-runtime ]; then
         start_virtiofsd sealed-input "$ANDROID_ARTIFACT_INPUT_ROOT" \
@@ -3149,6 +3231,9 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     printf '%s\n' "$runtime_log_unit_receipt" "$runtime_log_native_receipt" "$runtime_log_vm_receipt"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     linux_flutter_test_receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=20 publication=noclobber admission=exact execution=guest-only cleanup=joined'
+    require_exact_fixed_receipt \
+        'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 app_capsule=refused cleanup=joined' \
+        'Linux app build/run admission result'
     linux_flutter_vm_receipt="LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=20 uid=4000 gid=4000 root=refused foreign=refused materializer=refused-before-files test_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_TEST" | /usr/bin/awk '{ print $1 }') helper_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" | /usr/bin/awk '{ print $1 }') source=readonly docker=retired network=none cleanup=joined"
     require_exact_fixed_receipt "$linux_flutter_test_receipt" 'native Linux app-capsule result'
     require_exact_fixed_receipt "$linux_flutter_vm_receipt" 'Linux app-capsule source/finality result'
@@ -3212,9 +3297,9 @@ elif [ "$MODE" = android-frame-tests ]; then
     printf 'ANDROID_FRAME_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
 elif [ "$MODE" = authority-smoke ]; then
 require_exact_fixed_receipt \
-    'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cleanup=joined' \
+    'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 app_capsule=refused cleanup=joined' \
     'verifier-VM run admission result'
-printf 'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cleanup=joined\n'
+printf 'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 app_capsule=refused cleanup=joined\n'
 require_exact_fixed_receipt \
     'ANDROID_PEER_ARTIFACT=pass fixture=system-elf files=7 cases=22 publication=noclobber admission=exact execution=guest-only cleanup=joined' \
     'Android peer artifact authority result'
@@ -3765,6 +3850,23 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'Android emulator runtime cloud-init completion marker'
+elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+    mapfile -t app_artifact_receipts < <(
+        /usr/bin/grep -Eo \
+            "LINUX_FLUTTER_APP_PREPARED=pass commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE pending=[.]linux-flutter-pending-[0-9a-f]{64} manifest_sha256=[0-9a-f]{64} recipe_sha256=$FLUTTER_APP_RECIPE_SHA256 epoch=$SOURCE_DATE_EPOCH_PIN drivers=excluded network=none containers=joined" \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#app_artifact_receipts[@]}" -eq 1 ] || fail 'actual Linux Flutter app preparation receipt is absent or duplicated'
+    [[ "${app_artifact_receipts[0]}" =~ pending=([a-z0-9.-]+)[[:space:]]manifest_sha256=([0-9a-f]{64})[[:space:]]recipe_sha256= ]] \
+        || fail 'actual Linux Flutter app preparation receipt is malformed'
+    FLUTTER_APP_PENDING=${BASH_REMATCH[1]}
+    FLUTTER_APP_MANIFEST_SHA256=${BASH_REMATCH[2]}
+    require_exact_fixed_receipt "${app_artifact_receipts[0]}" 'actual Linux Flutter app preparation receipt'
+    require_exact_fixed_receipt \
+        "LINUX_FLUTTER_APP_BUILD_VM=pass commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_FLUTTER_VERSION epoch=$SOURCE_DATE_EPOCH_PIN builder=$DEB_BUILDER_CONFIG_ID root=refused foreign=refused caller=refused network=none inputs=readonly-landlocked drivers=excluded cleanup=joined" \
+        'Linux Flutter app build VM receipt'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux Flutter app build cloud-init completion marker'
+    printf '%s\n' "${app_artifact_receipts[0]}"
 elif [ "$MODE" = flutter-peer-presentation ]; then
     require_exact_fixed_receipt \
         "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_FLUTTER_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace" \
@@ -4035,6 +4137,14 @@ if [ "$MODE" = linux-flutter-artifact-tests ]; then
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
         || fail 'Linux app-capsule admitted commit/tree changed during execution'
 fi
+if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+    [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FLUTTER_PEER_SOURCE_COMMIT" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FLUTTER_PEER_SOURCE_TREE" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse refs/remotes/origin/master)" = "$FLUTTER_PEER_SOURCE_COMMIT" ] \
+        && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'Linux Flutter app build source changed during execution'
+    publish_linux_flutter_app_artifact
+fi
 RUN_COMPLETE=1
 if [ "$MODE" = authority-smoke ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
@@ -4110,6 +4220,11 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         "$ANDROID_EMULATOR_VERSION" "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" \
         "$ANDROID_BUILDER_CONFIG_ID" "$DEV_CHECK_IMAGE_CONFIG_ID" \
         "$android_runtime_product" "$vm_elapsed_seconds"
+elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+    printf 'LINUX_FLUTTER_APP_BUILD_VM_OUTER=pass host_uid=%s commit=%s tree=%s manifest_sha256=%s flutter=%s epoch=%s builder=%s drivers=excluded artifact=inert network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" \
+        "$FLUTTER_APP_MANIFEST_SHA256" "$FLUTTER_PEER_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH_PIN" \
+        "$DEB_BUILDER_CONFIG_ID" "$vm_elapsed_seconds"
 elif [ "$MODE" = flutter-peer-presentation ]; then
     printf 'FLUTTER_PEER_PRESENTATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s flutter=%s tools=%s candidate=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only product=linux-x11-full-peer-focus-reconnect-resource cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" \

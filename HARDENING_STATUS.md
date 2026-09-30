@@ -1523,6 +1523,14 @@ Its complete 65,429-byte serial and before/during listener records are retained 
 reconciled inactive failed disk. This fixture uses a guest-system ELF, not RustDesk. Real app producer
 publication, consumer integration and measured faster replay remain OPEN, as do the dialog-entry failure,
 Android/Windows defect, installed/native matrix and release obligations. No product behavior is changed.
+The explicit `--linux-flutter-app-build` producer now selects the real offline app/readiness compilation
+without display-fixture compilation or peer execution. It requires clean pushed source and the pinned
+Flutter 3.47.5 closure, passes the canonical epoch into the compiler, independently compares build context
+in the guest, and prepares only inert app bytes. Joined outer publication re-admits the exact context and
+manifest without clobbering. Any retained app-state entry refuses another producer under the run-reservation
+lock before VM allocation; ambiguous nonempty pending state is preserved. The focused capsule profile also
+executes the real run-admission tests, including app directory/file/dangling-symlink refusals. These producer
+and admission changes still require their committed-source native transactions; no new pass is claimed yet.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

@@ -3,6 +3,8 @@ set -euo pipefail
 umask 077
 
 FLUTTER_PEER_CANDIDATE=0
+FLUTTER_APP_BUILD_ONLY=0
+FLUTTER_APP_BUILD_CONTEXT=
 case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
@@ -64,6 +66,13 @@ case "$#:${8:-}" in
         MODE=flutter-peer-presentation
         FLUTTER_PEER_CANDIDATE=1
         ;;
+    13:--linux-flutter-app-build)
+        MODE=flutter-peer-presentation
+        FLUTTER_PEER_CANDIDATE=1
+        FLUTTER_APP_BUILD_ONLY=1
+        FLUTTER_APP_BUILD_CONTEXT=${13}
+        [ -n "$FLUTTER_APP_BUILD_CONTEXT" ] && [ "${#FLUTTER_APP_BUILD_CONTEXT}" -le 4096 ] || exit 2
+        ;;
     12:--debian-systemd-lifecycle)
         MODE=debian-systemd-lifecycle
         ;;
@@ -87,7 +96,7 @@ readonly EXPECTED_SIZE=$4
 readonly EXPECTED_SHA256=$5
 readonly EXPECTED_KERNEL_RELEASE=$6
 readonly EXPECTED_ROOT_UUID=$7
-readonly MODE FLUTTER_PEER_CANDIDATE
+readonly MODE FLUTTER_PEER_CANDIDATE FLUTTER_APP_BUILD_ONLY FLUTTER_APP_BUILD_CONTEXT
 readonly RUST_TEST_SOURCE_ARCHIVE=${9:-}
 readonly RUST_TEST_SOURCE_COMMIT=${10:-}
 readonly RUST_TEST_SOURCE_TREE=${11:-}
@@ -198,6 +207,7 @@ FLUTTER_PEER_SOURCE_MOUNTED=0
 FLUTTER_PEER_ONLINE_MOUNTED=0
 FLUTTER_PEER_CANDIDATE_MOUNTED=0
 FLUTTER_PEER_FAILURE_MOUNTED=0
+FLUTTER_APP_OUTPUT_MOUNTED=0
 
 fail() {
     printf 'verifier-VM guest: %s\n' "$*" >&2
@@ -321,7 +331,9 @@ run_linux_flutter_artifact_tests() {
     local receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=20 publication=noclobber admission=exact execution=guest-only cleanup=joined'
     local -a sources=("$test" "$helper" "$ENTRY_PREFLIGHT"
         "$VERIFY_REPO/scripts/publish-artifact-result.py"
-        "$VERIFY_REPO/scripts/verify-private-tree-closure.py")
+        "$VERIFY_REPO/scripts/verify-private-tree-closure.py"
+        "$VERIFY_REPO/scripts/test-verifier-vm-run-admission.sh"
+        "$VERIFY_REPO/scripts/smoke-verifier-vm-authority.sh")
     local -a command
 
     source_before="$(sha256sum "${sources[@]}")"
@@ -329,6 +341,9 @@ run_linux_flutter_artifact_tests() {
     helper_sha="$(sha256sum "$helper" | awk '{ print $1 }')"
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$VERIFY_REPO/scripts/test-verifier-vm-run-admission.sh" \
+        || fail 'Linux app build/run admission cases failed'
     work="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
         /usr/bin/mktemp -d /tmp/linux-flutter-artifact-tests.XXXXXXXXXX)" \
         || fail 'Linux app-capsule test scratch could not be created'
@@ -4594,6 +4609,7 @@ run_flutter_peer_presentation() {
     local sealed_root=/mnt/rustdesk-sealed-inputs
     local candidate_root=/mnt/rustdesk-flutter-candidate-input
     local failure_root=/mnt/rustdesk-flutter-peer-failure
+    local app_output=/mnt/rustdesk-linux-flutter-artifact-output
     local inputs=$sealed_root
     local source_root=$ROOT/flutter-peer-source
     local peer_script=$source_root/scripts/smoke-flutter-peer-presentation.sh
@@ -4602,6 +4618,7 @@ run_flutter_peer_presentation() {
     local output=$ROOT/flutter-peer-presentation.out
     local source_archive_sha load_output mount_options peer_status=0 trace_abort
     local -a peer_args=()
+    local -a peer_environment=()
 
     [[ "$FLUTTER_PEER_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         && [[ "$FLUTTER_PEER_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
@@ -4628,6 +4645,19 @@ run_flutter_peer_presentation() {
 
     [ "$(stat -c '%u:%g:%a' -- "$sealed_root")" = 1000:1000:700 ] \
         || fail 'sealed Flutter-peer authority root metadata differs'
+    if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+        mkdir "$app_output"
+        mount -t virtiofs -o rw,nodev,nosuid,noexec rustdesk-linux-flutter-artifact-output "$app_output" \
+            || fail 'cannot mount the inert Linux Flutter app output authority'
+        FLUTTER_APP_OUTPUT_MOUNTED=1
+        mount_options="$(findmnt -n -o OPTIONS --target "$app_output")"
+        for option in rw nodev nosuid noexec; do
+            case ",$mount_options," in *,$option,*) ;; *) fail "Linux Flutter app output lacks $option" ;; esac
+        done
+        [ "$(stat -c '%u:%g:%a' -- "$app_output")" = 1000:1000:700 ] \
+            && [ -z "$(find "$app_output" -mindepth 1 -print -quit)" ] \
+            || fail 'Linux Flutter app output authority metadata differs'
+    else
     mkdir "$failure_root"
     mount -t virtiofs -o rw,nodev,nosuid,noexec \
         rustdesk-flutter-failure-output "$failure_root" \
@@ -4646,6 +4676,8 @@ run_flutter_peer_presentation() {
         || fail 'cannot establish the VM-local bounded Flutter core pattern'
     [ "$(cat /proc/sys/kernel/core_pattern)" = '/diagnostic/core.%p' ] \
         || fail 'VM-local Flutter core pattern differs'
+    peer_environment=("RUSTDESK_FAILURE_ARTIFACT_DIR=$failure_root")
+    fi
     if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
         mkdir "$candidate_root"
         mount -t virtiofs -o ro,nodev,nosuid,noexec \
@@ -4816,10 +4848,13 @@ run_flutter_peer_presentation() {
     if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
         peer_args+=(--flutter-presentation-candidate "$candidate_archive")
     fi
+    if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+        peer_args+=(--build-app "$FLUTTER_APP_BUILD_CONTEXT")
+    fi
     set +e
     setpriv --reuid=1000 --regid=1000 --clear-groups \
         env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
-        RUSTDESK_FAILURE_ARTIFACT_DIR="$failure_root" \
+        "${peer_environment[@]}" \
         /bin/bash "$peer_script" "${peer_args[@]}" \
         2>&1 | tee "$output"
     peer_status=${PIPESTATUS[0]}
@@ -4828,6 +4863,12 @@ run_flutter_peer_presentation() {
         || { tail -n 240 "$output" >&2; fail "Flutter full-peer workload exited with status $peer_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 8388608 ] \
         || fail 'Flutter full-peer workload output exceeds its bound'
+    if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+        local recipe_sha
+        recipe_sha="$(sha256sum "$source_root/scripts/smoke-flutter-peer-presentation-stage.sh" | awk '{print $1}')"
+        [ "$(grep -Ec "^LINUX_FLUTTER_APP_PREPARED=pass commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE pending=[.]linux-flutter-pending-[0-9a-f]{64} manifest_sha256=[0-9a-f]{64} recipe_sha256=$recipe_sha epoch=$SOURCE_DATE_EPOCH_PIN drivers=excluded network=none containers=joined$" "$output")" -eq 1 ] \
+            || fail 'actual Linux Flutter app preparation receipt is absent or duplicated'
+    else
     [ "$(grep -Fxc \
       "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_RUNTIME_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-focus-reconnect-resource network=owned-none-namespace" \
       "$output")" -eq 1 ] \
@@ -4840,6 +4881,7 @@ run_flutter_peer_presentation() {
           "$output")" -eq 1 ] \
             || fail "Flutter full-peer lifecycle cycle $cycle is absent or duplicated"
     done
+    fi
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         || fail 'Flutter full-peer workload left a container'
     "$CLIENT" --host "unix://$SOCK" image rm \
@@ -4874,16 +4916,26 @@ run_flutter_peer_presentation() {
         umount "$candidate_root" || fail 'cannot retire the sealed Flutter candidate mount'
         FLUTTER_PEER_CANDIDATE_MOUNTED=0
     fi
-    umount "$failure_root" \
-        || fail 'cannot retire the Flutter peer failure-output mount'
-    FLUTTER_PEER_FAILURE_MOUNTED=0
+    if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+        umount "$app_output" || fail 'cannot retire the inert Linux Flutter app output mount'
+        FLUTTER_APP_OUTPUT_MOUNTED=0
+    else
+        umount "$failure_root" || fail 'cannot retire the Flutter peer failure-output mount'
+        FLUTTER_PEER_FAILURE_MOUNTED=0
+    fi
     umount "$sealed_root" || fail 'cannot retire the sealed Flutter-peer input mount'
     SEALED_INPUTS_MOUNTED=0
+    if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+        printf 'LINUX_FLUTTER_APP_BUILD_VM=pass commit=%s tree=%s archive=%s flutter=%s epoch=%s builder=%s root=refused foreign=refused caller=refused network=none inputs=readonly-landlocked drivers=excluded cleanup=joined\n' \
+            "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \
+            "$FLUTTER_PEER_RUNTIME_VERSION" "$SOURCE_DATE_EPOCH_PIN" "$DEB_BUILDER_CONFIG_ID"
+    else
     printf 'FLUTTER_PEER_PRESENTATION_VM=pass commit=%s tree=%s archive=%s flutter=%s tools=%s candidate=%s devcheck_index=%s devcheck_runtime=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 nofile=524544 root=refused foreign=refused caller=refused vm_network=none container_network=owned-none-namespace inputs=readonly-landlocked cleanup=joined\n' \
         "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" \
         "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" "$FLUTTER_PEER_RUNTIME_VERSION" \
         "$FLUTTER_PEER_TOOLS_MODE" "$FLUTTER_PEER_CANDIDATE" "$DEV_CHECK_IMAGE_ID" \
         "$DEV_CHECK_IMAGE_CONFIG_ID" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    fi
 }
 
 cleanup() {
@@ -4922,6 +4974,10 @@ cleanup() {
     if [ "$FLUTTER_PEER_FAILURE_MOUNTED" -eq 1 ]; then
         umount /mnt/rustdesk-flutter-peer-failure 2>/dev/null || status=1
         FLUTTER_PEER_FAILURE_MOUNTED=0
+    fi
+    if [ "$FLUTTER_APP_OUTPUT_MOUNTED" -eq 1 ]; then
+        umount /mnt/rustdesk-linux-flutter-artifact-output 2>/dev/null || status=1
+        FLUTTER_APP_OUTPUT_MOUNTED=0
     fi
     if [ "$RUST_AUDIT_VENDOR_MOUNTED" -eq 1 ]; then
         umount "$ROOT/rust-audit-source/online/cargo-vendor" 2>/dev/null || status=1
@@ -5429,7 +5485,7 @@ run_admission_output="$(
         /bin/bash "$VERIFY_REPO/scripts/test-verifier-vm-run-admission.sh"
 )" || fail 'numeric-nonroot verifier-VM run admission test failed'
 [ "$run_admission_output" = \
-  'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cleanup=joined' ] \
+  'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 app_capsule=refused cleanup=joined' ] \
     || fail "verifier-VM run admission result differs: $run_admission_output"
 printf '%s\n' "$run_admission_output"
 

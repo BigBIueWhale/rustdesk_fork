@@ -17,27 +17,45 @@ void main() {
       'blockable overlay keeps one mounted owner and rebuilds its underlying route',
       (tester) async {
     final overlayState = BlockableOverlayState();
+    final routeKey = GlobalKey<ScaffoldState>();
     late StateSetter rebuild;
     var label = 'first';
+    var expandedLayout = false;
+    var routeTaps = 0;
+    var blockerTaps = 0;
+    overlayState.onMiddleBlockedClick = () {
+      blockerTaps++;
+      overlayState.setMiddleBlocked(false);
+    };
 
     await tester.pumpWidget(MaterialApp(
       home: StatefulBuilder(builder: (context, setState) {
         rebuild = setState;
-        return BlockableOverlay(
+        final overlay = BlockableOverlay(
           state: overlayState,
           underlying: Scaffold(
-            body: Center(child: Text(label)),
+            key: routeKey,
+            body: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => routeTaps++,
+              child: Center(child: Text(label)),
+            ),
             bottomNavigationBar: const SizedBox(
               key: ValueKey('bottom-bar'),
               height: 56,
             ),
           ),
         );
+        return expandedLayout
+            ? SizedBox.expand(child: overlay)
+            : Center(child: overlay);
       }),
     ));
 
     final firstOwner = overlayState.key!.currentState;
+    final firstRoute = routeKey.currentState;
     expect(firstOwner, isNotNull);
+    expect(firstRoute, isNotNull);
     expect(find.text('first'), findsOneWidget);
     expect(tester.getSize(find.byKey(const ValueKey('bottom-bar'))).height, 56);
 
@@ -61,10 +79,42 @@ void main() {
     expect(find.text('inserted'), findsOneWidget);
     expect(tester.getSize(find.byKey(const ValueKey('bottom-bar'))).height, 56);
 
+    for (var move = 1; move <= 6; move++) {
+      rebuild(() {
+        expandedLayout = !expandedLayout;
+        label = 'route $move';
+      });
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(overlayState.key!.currentState, same(firstOwner));
+      expect(routeKey.currentState, same(firstRoute));
+      expect(find.text(label), findsOneWidget);
+      expect(find.text('inserted'), findsOneWidget);
+      expect(inserted.mounted, isTrue);
+      expect(tester.getSize(find.byKey(const ValueKey('bottom-bar'))).height, 56);
+
+      overlayState.setMiddleBlocked(true);
+      await tester.pump();
+      await tester.tap(find.text(label));
+      await tester.pump();
+      expect(blockerTaps, move);
+      expect(routeTaps, move - 1);
+
+      await tester.tap(find.text(label));
+      await tester.pump();
+      expect(routeTaps, move);
+    }
+
     inserted
       ..remove()
       ..dispose();
     await tester.pumpWidget(const SizedBox.shrink());
+    expect(tester.takeException(), isNull);
+    expect(firstOwner!.mounted, isFalse);
+    expect(firstRoute!.mounted, isFalse);
+    expect(inserted.mounted, isFalse);
+    expect(overlayState.key!.currentState, isNull);
   });
 
   testWidgets('middle blocker owns the tap before revealing the route',

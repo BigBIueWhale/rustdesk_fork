@@ -1413,6 +1413,17 @@ This closes this named corrected Linux observer/peer schedule, not the original 
 Android/Windows defect, high-load/soak, installed-service, cross-version, Apple or release matrix.
 Do not resize the screen to hide invalid requests, ignore X errors, relax bounds or infer platform closure.
 
+**Shared route-overlay entry ownership — OPEN, NATIVE REGRESSION PENDING.** The earlier Linux
+failure log contains `OverlayEntry.remove` throwing during `_BlockableOverlayBodyState.dispose`.
+The global key belongs to its child `Overlay`, while the separately-lived parent owns the base
+entries. Reparenting can retain that child state while discarding its entry owner; replacement
+`initialEntries` are ignored by an already initialized overlay. Desktop Remote/ViewCamera move
+the same overlay key between empty and image-ready layouts. The existing widget regression now
+requires six global-key moves with the exact overlay and route states, inserted entry, blocker,
+route updates and complete unmount retained. Execute it against unchanged product code before
+changing ownership. This is a concrete shared cleanup path to test, not established causation
+of the Android/Windows presentation hang or a new privilege-escalation finding.
+
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was
 false-green because readiness raced ahead of cleanup; the corrected test observes the actual drain

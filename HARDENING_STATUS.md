@@ -1590,11 +1590,19 @@ lock, recovering 2,967,588,864 allocated bytes; no run/overlay remains. This pro
 consumer execution and ordinary-failure capture, not the remaining six-cycle acceptance, dialog
 ownership defect, original Android/Windows causation, installed-service/LPE or release obligations.
 The controller now classifies bounded-tree/peer/property query refusal, records activation attempts
-and actual monotonic elapsed time, and preserves menu descriptions/action counts plus showing state
-in the failure-only native tree diagnostic. Viewer output is forwarded after its container exits;
+and actual monotonic elapsed time, and includes showing state and menu-item description/action-count
+diagnostics in the failure-only native tree. Viewer output is forwarded after its container exits;
 adjacent guest serial timestamps are not event-time evidence for an immediate query refusal.
 The selector, five-second query budget, exact process/unique-name/action authority and all acceptance
-criteria remain unchanged. Native classification from the same immutable app remains pending.
+criteria remain unchanged. The same immutable app replay at pushed harness `6b45f98a` reported
+`Keyboard Settings` not found after 42 attempts and 5,023 monotonic milliseconds, without a query
+or action refusal. The exact role/property cause remains open; the menu-item-specific diagnostic
+did not cover the observed role-27 nodes, so absent descriptions/action counts are not a product
+finding. Complete 221,475-byte serial is `evidence/toolbar-query-6b45f98a.serial.log`, SHA-256
+`84aa233d1d07031494c272d2ea588d157a1607f3740a59e24a8fddb9947f2116`; small viewer/capture/listener
+records are retained separately. After an actual duplicate invocation refused with the sole run
+identity unchanged, user-authorized locked cleanup of inactive `run.E4dYGvTAD7` recovered
+2,969,096,192 allocated bytes. All 74 retained app files were independently rehashed unchanged.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was
@@ -1720,7 +1728,15 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   passed in 71 seconds with no added host listener or process drift and joined, residue-free cleanup;
   a concurrent outer invocation also refused without creating another root. User-authorized removal of
   the 119 accumulated run roots recovered approximately 975 GiB; only reusable inputs and a bounded
-  interrupted-run log remain. This is harness storage/admission evidence, not product or release closure.
+  interrupted-run log remain. On 2026-10-01, the only newer inactive failed run was explicitly removed
+  under the same admission lock after retaining bounded diagnostics, reclaiming another 2,969,096,192
+  allocated bytes. There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier
+  inputs and small evidence records occupy 613,711,872 allocated bytes (0.572 GiB). The actual outer
+  duplicate invocation returned status 1 before allocation and left the sole run identity/count
+  unchanged. The failure-retention message now explicitly warns that this retained directory blocks
+  new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,
+  host RustDesk, Haggai, or unrelated cache was used or modified. This is harness storage/admission
+  evidence, not product or release closure.
 - The R-S11dh authority smoke executed its real nonroot-host KVM/QEMU, networkless Debian guest, guest-only
   Docker daemon, and confined numeric-nonroot container lifecycle. Its exact kernel/initramfs are independently
   derived from the authenticated base, digest-pinned, retained by descriptor, and direct-booted; the guest proves

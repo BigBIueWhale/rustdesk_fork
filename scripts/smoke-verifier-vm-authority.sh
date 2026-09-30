@@ -1307,7 +1307,7 @@ cleanup() {
                 --remove-private-root "$RUN" --expected-identity "$RUN_ID" \
                 || cleanup_failed=1
         else
-            printf 'verifier-VM authority smoke: retaining failed private evidence at %s\n' \
+            printf 'verifier-VM authority smoke: retaining failed private evidence at %s; new runs are blocked until this directory is explicitly reconciled after its owned processes have exited\n' \
                 "$RUN" >&2
         fi
     elif [ -n "$RUN" ]; then

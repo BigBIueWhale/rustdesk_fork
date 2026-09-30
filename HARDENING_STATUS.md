@@ -1497,7 +1497,7 @@ the admission-directory lock. Product behavior is unchanged. Correct the native 
 actual readiness/rebuild trigger before changing ownership; window geometry alone, copied build logic
 or selector failure cannot establish the production defect, original display-delay cause or an LPE.
 
-**Linux Flutter build/replay separation — CAPSULE CONTRACT NATIVE PASS; REAL APP HANDOFF OPEN.**
+**Linux Flutter build/replay separation — CAPSULE AND REAL PRODUCER NATIVE PASS; CONSUMER REPLAY OPEN.**
 `scripts/linux-flutter-artifact.py` seals the complete app `bundle/` and matching `smoke-readiness`
 independently of current test drivers. A closed manifest binds every file and directory, source commit/tree,
 builder config, recipe, toolchain versions, epoch selection and ten input roles; admission also requires an
@@ -1520,8 +1520,8 @@ geometry cases, unchanged inputs/listeners, zero process drift and joined retire
 `fc11586dac912e67a89bb0e62b763cdde1673639047f93f538c86726b40c88cf`. The normal authority smoke
 hit its unchanged 90-second deadline during later Windows-helper checks: no complete integration pass.
 Its complete 65,429-byte serial and before/during listener records are retained outside the exact
-reconciled inactive failed disk. This fixture uses a guest-system ELF, not RustDesk. Real app producer
-publication, consumer integration and measured faster replay remain OPEN, as do the dialog-entry failure,
+reconciled inactive failed disk. This fixture uses a guest-system ELF, not RustDesk. Consumer integration
+and measured faster replay remain OPEN, as do the dialog-entry failure,
 Android/Windows defect, installed/native matrix and release obligations. No product behavior is changed.
 The explicit `--linux-flutter-app-build` producer now selects the real offline app/readiness compilation
 without display-fixture compilation or peer execution. It requires clean pushed source and the pinned
@@ -1529,8 +1529,27 @@ Flutter 3.47.5 closure, passes the canonical epoch into the compiler, independen
 in the guest, and prepares only inert app bytes. Joined outer publication re-admits the exact context and
 manifest without clobbering. Any retained app-state entry refuses another producer under the run-reservation
 lock before VM allocation; ambiguous nonempty pending state is preserved. The focused capsule profile also
-executes the real run-admission tests, including app directory/file/dangling-symlink refusals. These producer
-and admission changes still require their committed-source native transactions; no new pass is claimed yet.
+executes the real run-admission tests, including app directory/file/dangling-symlink refusals. Exact pushed
+`ddc58d87` passed that complete 22-second focused transaction: all 20 capsule cases, forbidden-principal
+refusals and the 16-caller/one-winner admission test. Complete 69,018-byte raw serial is retained at
+`evidence/linux-app-admission-ddc58d87.serial.log`, SHA-256
+`ea3f495f23eab4a51107f691fd4ca0a326e9d63e84e32dc217070dea8aec0fba`.
+After an initial pre-boot failure from an overlong virtiofs tag, exact corrected pushed producer
+`5d1e331615ec8193657d5b2a5624783a4b13ceac`, tree `f56dc57c9c74bdfb5bcba6870c88b040009de8a7`,
+passed actual app/readiness compilation, preparation and joined inert publication in 1,157 seconds.
+The manifest SHA-256 `ed9d7a54a377d923a125ac275ddb7feb954ecddd110b783668afe3445ac72a48` binds
+74 product/readiness files, the selected builder/toolchains, canonical epoch and ten input roles.
+The sole sealed capsule occupies 58,503,168 allocated bytes (~55.8 MiB); files remain mode 0400 and
+directories mode 0500. Complete 277,603-byte raw serial is retained at
+`evidence/linux-app-build-5d1e3316.serial.log`, SHA-256
+`dec20ab207e62e77a0520ab582dcf3ec0d45280c6c763d24a47621e620748c3f`.
+Both complete transactions had unchanged inputs and before/during/after host listeners, zero
+pre-existing-process drift, joined owners and automatic successful-run retirement. Actual duplicate
+verifier admission refused while the build was live; duplicate producer requests refused both during
+the build and after publication, with run/artifact inventories unchanged and no new VM allocation.
+No run or overlay remains. This closes the real producer boundary, not execution of these app bytes,
+consumer integration, measured faster replay, product-delay causation, installed-service/LPE or release
+evidence. These remaining claims stay OPEN; no product behavior or acceptance bound changed.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

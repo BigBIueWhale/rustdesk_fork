@@ -4609,7 +4609,7 @@ run_flutter_peer_presentation() {
     local sealed_root=/mnt/rustdesk-sealed-inputs
     local candidate_root=/mnt/rustdesk-flutter-candidate-input
     local failure_root=/mnt/rustdesk-flutter-peer-failure
-    local app_output=/mnt/rustdesk-linux-flutter-artifact-output
+    local app_output=/mnt/rustdesk-linux-flutter-app-output
     local inputs=$sealed_root
     local source_root=$ROOT/flutter-peer-source
     local peer_script=$source_root/scripts/smoke-flutter-peer-presentation.sh
@@ -4647,7 +4647,7 @@ run_flutter_peer_presentation() {
         || fail 'sealed Flutter-peer authority root metadata differs'
     if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
         mkdir "$app_output"
-        mount -t virtiofs -o rw,nodev,nosuid,noexec rustdesk-linux-flutter-artifact-output "$app_output" \
+        mount -t virtiofs -o rw,nodev,nosuid,noexec rustdesk-linux-flutter-app-output "$app_output" \
             || fail 'cannot mount the inert Linux Flutter app output authority'
         FLUTTER_APP_OUTPUT_MOUNTED=1
         mount_options="$(findmnt -n -o OPTIONS --target "$app_output")"
@@ -4976,7 +4976,7 @@ cleanup() {
         FLUTTER_PEER_FAILURE_MOUNTED=0
     fi
     if [ "$FLUTTER_APP_OUTPUT_MOUNTED" -eq 1 ]; then
-        umount /mnt/rustdesk-linux-flutter-artifact-output 2>/dev/null || status=1
+        umount /mnt/rustdesk-linux-flutter-app-output 2>/dev/null || status=1
         FLUTTER_APP_OUTPUT_MOUNTED=0
     fi
     if [ "$RUST_AUDIT_VENDOR_MOUNTED" -eq 1 ]; then

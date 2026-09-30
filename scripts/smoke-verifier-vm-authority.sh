@@ -2975,7 +2975,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
             "$ARTIFACT_OUTPUT_PARENT_ID" \
             "$ARTIFACT_VIRTIOFS_SOCKET" "$ARTIFACT_VIRTIOFSD_LOG"
         artifact_output_tag=rustdesk-android-artifact-output
-        [ "$FLUTTER_APP_BUILD_ONLY" -eq 0 ] || artifact_output_tag=rustdesk-linux-flutter-artifact-output
+        [ "$FLUTTER_APP_BUILD_ONLY" -eq 0 ] || artifact_output_tag=rustdesk-linux-flutter-app-output
         focused_qemu_args+=(
             -chardev "socket,id=artifact-output,path=$ARTIFACT_VIRTIOFS_SOCKET"
             -device "vhost-user-fs-pci,chardev=artifact-output,tag=$artifact_output_tag,queue-size=1024"

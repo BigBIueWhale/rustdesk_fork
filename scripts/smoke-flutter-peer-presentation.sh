@@ -121,7 +121,7 @@ if [ "$PEER_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
 fi
 
 FAILURE_ARTIFACT_DIR=${RUSTDESK_FAILURE_ARTIFACT_DIR:-}
-APP_OUTPUT_PARENT=/mnt/rustdesk-linux-flutter-artifact-output
+APP_OUTPUT_PARENT=/mnt/rustdesk-linux-flutter-app-output
 if [ "$BUILD_APP_ONLY" -eq 1 ]; then
   [ -z "$FAILURE_ARTIFACT_DIR" ] \
     && [ -d "$APP_OUTPUT_PARENT" ] && [ ! -L "$APP_OUTPUT_PARENT" ] \

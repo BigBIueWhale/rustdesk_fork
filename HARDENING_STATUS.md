@@ -1618,9 +1618,18 @@ but no dialog/resize/focus/reconnect or complete peer pass occurred. Complete 23
 `e89c62bdca0a823554821aa8c2a4cf0626474d64b50f9baf014758a4aba34999`; bounded viewer/capture/listener
 records are separate. Listener inventories were identical, owned orchestration joined, all 74 cached
 app files rehashed unchanged, and exact locked failed-root cleanup recovered 2,967,957,504 allocated
-bytes. No run/overlay remains. The toolkit dependency's SVG contributes an image semantic node and
-the app supplies its title only through Tooltip; this source tracing does not yet prove which engine
-export layer omits a label or the original display-hang cause. Native product/LPE/release work stays OPEN.
+bytes. No run/overlay remains. The pinned Linux engine's `fl_view_accessible_handle_update_semantics`
+exports `node->label` as the accessible name, while its native action mapping names activation `Tap`
+and separately exports `Focus`. Tooltip-only titles and the decorative SVG's empty image label therefore
+do not provide the required control name. Both toolbar icon-button helpers now supply one localized
+semantic label, exclude decorative child semantics only when that label is nonempty, and suppress
+duplicate tooltip semantics; empty-title monitor controls retain their visible text. The controller
+resolves exactly one `Tap` in a bounded native action list and rechecks its count/name before invocation,
+rather than requiring one total action or assuming index zero. Exact PID, unique visible control,
+query deadline, dialog identity, connection, pixel and resource criteria are unchanged. Fresh native
+execution of a separately source-bound corrected app remains required; the retained older app is not
+relabelled as corrected. This entry correction is not display-hang, overlay-reset or LPE causation.
+Native product/platform/installed/release work stays OPEN.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

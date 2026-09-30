@@ -2707,6 +2707,7 @@ class _IconMenuButtonState extends State<_IconMenuButton> {
   @override
   Widget build(BuildContext context) {
     assert(widget.assetName != null || widget.icon != null);
+    final label = translate(widget.tooltip);
     final icon = widget.icon ??
         SvgPicture.asset(
           widget.assetName!,
@@ -2714,7 +2715,7 @@ class _IconMenuButtonState extends State<_IconMenuButton> {
           width: _ToolbarTheme.buttonSize,
           height: _ToolbarTheme.buttonSize,
         );
-    var button = SizedBox(
+    final button = SizedBox(
       width: widget.width ?? _ToolbarTheme.buttonSize,
       height: _ToolbarTheme.buttonSize,
       child: MenuItemButton(
@@ -2727,24 +2728,24 @@ class _IconMenuButtonState extends State<_IconMenuButton> {
               }),
           onPressed: widget.onPressed,
           child: Tooltip(
-            message: translate(widget.tooltip),
-            child: Material(
-                type: MaterialType.transparency,
-                child: Ink(
-                    decoration: BoxDecoration(
-                      borderRadius:
-                          BorderRadius.circular(_ToolbarTheme.iconRadius),
-                      color: hover ? widget.hoverColor : widget.color,
-                    ),
-                    child: icon)),
+            message: label,
+            excludeFromSemantics: true,
+            child: Semantics(
+              label: label,
+              excludeSemantics: label.isNotEmpty,
+              child: Material(
+                  type: MaterialType.transparency,
+                  child: Ink(
+                      decoration: BoxDecoration(
+                        borderRadius:
+                            BorderRadius.circular(_ToolbarTheme.iconRadius),
+                        color: hover ? widget.hoverColor : widget.color,
+                      ),
+                      child: icon))),
           )),
     ).marginSymmetric(
         horizontal: widget.hMargin ?? _ToolbarTheme.buttonHMargin,
         vertical: widget.vMargin ?? _ToolbarTheme.buttonVMargin);
-    button = Tooltip(
-      message: widget.tooltip,
-      child: button,
-    );
     if (widget.topLevel) {
       return MenuBar(children: [button]);
     } else {
@@ -2792,6 +2793,7 @@ class _IconSubmenuButtonState extends State<_IconSubmenuButton> {
   @override
   Widget build(BuildContext context) {
     assert(widget.svg != null || widget.icon != null);
+    final label = translate(widget.tooltip);
     final icon = widget.icon ??
         SvgPicture.asset(
           widget.svg!,
@@ -2810,16 +2812,20 @@ class _IconSubmenuButtonState extends State<_IconSubmenuButton> {
                   hover = value;
                 }),
             child: Tooltip(
-                message: translate(widget.tooltip),
-                child: Material(
-                    type: MaterialType.transparency,
-                    child: Ink(
-                        decoration: BoxDecoration(
-                          borderRadius:
-                              BorderRadius.circular(_ToolbarTheme.iconRadius),
-                          color: hover ? widget.hoverColor : widget.color,
-                        ),
-                        child: icon))),
+                message: label,
+                excludeFromSemantics: true,
+                child: Semantics(
+                    label: label,
+                    excludeSemantics: label.isNotEmpty,
+                    child: Material(
+                        type: MaterialType.transparency,
+                        child: Ink(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(
+                                  _ToolbarTheme.iconRadius),
+                              color: hover ? widget.hoverColor : widget.color,
+                            ),
+                            child: icon)))),
             menuChildren: widget
                 .menuChildrenGetter(this)
                 .map((e) => _buildPointerTrackWidget(e, widget.ffi))

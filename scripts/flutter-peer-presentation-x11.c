@@ -37,6 +37,7 @@
 #define ACCESSIBLE_CHILD_LIMIT 512
 #define ACCESSIBLE_DEPTH_LIMIT 64U
 #define ACCESSIBLE_NAME_LIMIT 96U
+#define ACCESSIBLE_ACTION_LIMIT 32
 #define AUTH_WAIT_MS 30000U
 #define RECOVERY_LIMIT_MS 2500U
 #define RECONNECT_LIMIT_MS 45000U
@@ -590,6 +591,9 @@ static int activate_named_control(unsigned int expected_pid, const char *name) {
         int status = -1;
         int enabled, sensitive;
         gint actions = -1;
+        gint action_names = 0;
+        gint tap_index = -1;
+        unsigned int tap_matches = 0U;
         gboolean invoked = FALSE;
         attempts += 1U;
         if (query_named_control(expected_pid, name, deadline, &control) != 0) {
@@ -608,17 +612,43 @@ static int activate_named_control(unsigned int expected_pid, const char *name) {
         sensitive = states != NULL && atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE);
         if (action != NULL && enabled && sensitive) {
             actions = atspi_action_get_n_actions(action, &error);
-            if (actions == 1 && error == NULL) {
-                invoked = atspi_action_do_action(action, 0, &error);
-                if (invoked && error == NULL && monotonic_millis() < deadline) status = 0;
+            if (error == NULL && actions > 0 && actions <= ACCESSIBLE_ACTION_LIMIT) {
+                for (gint index = 0; index < actions && monotonic_millis() < deadline; ++index) {
+                    gchar *action_name = atspi_action_get_action_name(action, index, &error);
+                    if (error != NULL || action_name == NULL ||
+                        strnlen(action_name, ACCESSIBLE_NAME_LIMIT + 1U) > ACCESSIBLE_NAME_LIMIT) {
+                        g_free(action_name);
+                        break;
+                    }
+                    fprintf(stderr, "FLUTTER_PEER_CONTROL_ACTION control=\"%s\" index=%d",
+                            name, index);
+                    print_sanitized_accessible_string("name", action_name);
+                    action_names += 1;
+                    if (strcmp(action_name, "Tap") == 0) {
+                        tap_index = index;
+                        tap_matches += 1U;
+                    }
+                    g_free(action_name);
+                }
+                if (error == NULL && action_names == actions && tap_matches == 1U &&
+                    monotonic_millis() < deadline &&
+                    atspi_action_get_n_actions(action, &error) == actions && error == NULL) {
+                    gchar *action_name = atspi_action_get_action_name(action, tap_index, &error);
+                    if (error == NULL && action_name != NULL && strcmp(action_name, "Tap") == 0 &&
+                        monotonic_millis() < deadline) {
+                        invoked = atspi_action_do_action(action, tap_index, &error);
+                        if (invoked && error == NULL && monotonic_millis() < deadline) status = 0;
+                    }
+                    g_free(action_name);
+                }
             }
         }
         fprintf(stderr, "FLUTTER_PEER_CONTROL_ACTIVATION control=\"%s\" result=%s "
                 "attempts=%u elapsed_ms=%llu enabled=%d sensitive=%d actions=%d "
-                "invoked=%d error_code=%d\n",
+                "tap_matches=%u tap_index=%d invoked=%d error_code=%d\n",
                 name, status == 0 ? "activated" : "action-refused", attempts,
                 (unsigned long long)(monotonic_millis() - started),
-                enabled, sensitive, actions, invoked,
+                enabled, sensitive, actions, tap_matches, tap_index, invoked,
                 error != NULL ? error->code : 0);
         if (error != NULL) g_error_free(error);
         if (action != NULL) g_object_unref(action);

@@ -1606,7 +1606,21 @@ identity unchanged, user-authorized locked cleanup of inactive `run.E4dYGvTAD7` 
 The role-27 nodes are images, not menu items. Failure diagnostics now collect bounded descriptions
 and action-interface/count properties from every exact-process node, rather than guessing which
 role carries the toolbar label. The native header's image/menu/menu-item constants are recorded;
-the failure tree has a five-second elapsed-clock budget. Same-artifact property observation is pending.
+the failure tree has a five-second elapsed-clock budget. Exact pushed `9e2af2e5` replayed the unchanged
+app in 118,340 host BOOTTIME milliseconds without an app rebuild; the three drivers compiled twice
+byte-equal. Native header values were image=27/menu=33/menu-item=35. All 53 observed descriptions were
+empty; the seven enabled toolbar images had empty names and two actions each. Activation remained
+not-found after 42 attempts/5,004 ms. This rules out name-versus-description selection alone and exposes
+the controller's separate unsupported `actions == 1` assumption; actual action-name selection and usable
+label export still need correction. First-fresh pixels measured 241 ms with maximum sampled age 291 ms,
+but no dialog/resize/focus/reconnect or complete peer pass occurred. Complete 231,439-byte serial is
+`evidence/toolbar-properties-9e2af2e5.serial.log`, SHA-256
+`e89c62bdca0a823554821aa8c2a4cf0626474d64b50f9baf014758a4aba34999`; bounded viewer/capture/listener
+records are separate. Listener inventories were identical, owned orchestration joined, all 74 cached
+app files rehashed unchanged, and exact locked failed-root cleanup recovered 2,967,957,504 allocated
+bytes. No run/overlay remains. The toolkit dependency's SVG contributes an image semantic node and
+the app supplies its title only through Tooltip; this source tracing does not yet prove which engine
+export layer omits a label or the original display-hang cause. Native product/LPE/release work stays OPEN.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

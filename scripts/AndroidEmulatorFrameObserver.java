@@ -160,6 +160,15 @@ public final class AndroidEmulatorFrameObserver {
         if (payload.size() != expectedBytes) {
             throw new IllegalArgumentException("emulator frame byte length differs");
         }
+        // Normalize the pinned emulator's top-down buffer to our bottom-up record.
+        byte[] pixels = payload.toByteArray();
+        int rowBytes = width * 3;
+        byte[] row = new byte[rowBytes];
+        for (int top = 0, bottom = height - 1; top < bottom; top++, bottom--) {
+            System.arraycopy(pixels, top * rowBytes, row, 0, rowBytes);
+            System.arraycopy(pixels, bottom * rowBytes, pixels, top * rowBytes, rowBytes);
+            System.arraycopy(row, 0, pixels, bottom * rowBytes, rowBytes);
+        }
         return new Frame(
                 sequence,
                 timestampUs,
@@ -167,7 +176,7 @@ public final class AndroidEmulatorFrameObserver {
                 observedMonotonicNs,
                 width,
                 height,
-                payload.toByteArray());
+                pixels);
     }
 
     private static byte[] encode(Frame frame) {
@@ -350,33 +359,57 @@ public final class AndroidEmulatorFrameObserver {
         return 0;
     }
 
+    private static Image assertRowOrder(Path root, int width, int height) throws Exception {
+        int rowBytes = width * 3;
+        byte[] pixels = new byte[rowBytes * height];
+        for (int row = 0; row < height; row++) {
+            for (int column = 0; column < rowBytes; column++) {
+                pixels[row * rowBytes + column] = (byte) ((row * 37 + column * 11) & 255);
+            }
+        }
+        Image image =
+                Image.newBuilder()
+                        .setFormat(
+                                ImageFormat.newBuilder()
+                                        .setFormat(ImageFormat.ImgFormat.RGB888)
+                                        .setWidth(width)
+                                        .setHeight(height))
+                        .setImage(ByteString.copyFrom(pixels))
+                        .setSeq(7)
+                        .setTimestampUs(System.currentTimeMillis() * 1_000L)
+                        .build();
+        Frame frame = validate(image, 6, false);
+        writeAtomically(root, "latest.frame", encode(frame));
+        byte[] encoded = Files.readAllBytes(root.resolve("latest.frame"));
+        int offset = encoded.length - pixels.length;
+        if (frame.width() != width || frame.height() != height
+                || frame.pixels().length != pixels.length || offset <= 0
+                || !new String(encoded, 0, offset, StandardCharsets.US_ASCII)
+                        .startsWith("RUSTDESK_ANDROID_FRAME_V1\n")
+                || !new String(encoded, 0, offset, StandardCharsets.US_ASCII)
+                        .endsWith("format=rgb888 orientation=bottom-up bytes=" + pixels.length + "\n")) {
+            throw new AssertionError("atomic frame record metadata differs");
+        }
+        for (int row = 0; row < height; row++) {
+            for (int column = 0; column < rowBytes; column++) {
+                int index = row * rowBytes + column;
+                byte expected = pixels[(height - row - 1) * rowBytes + column];
+                if (frame.pixels()[index] != expected || encoded[offset + index] != expected) {
+                    throw new AssertionError("bottom-up frame row or RGB byte order differs");
+                }
+            }
+        }
+        return image;
+    }
+
     private static int selfTest() throws Exception {
         Path root = Files.createTempDirectory("android-frame-observer-");
         Files.setPosixFilePermissions(root, PosixFilePermissions.fromString("rwx------"));
         int scenarios = 0;
         try {
-            ImageFormat format =
-                    ImageFormat.newBuilder()
-                            .setFormat(ImageFormat.ImgFormat.RGB888)
-                            .setWidth(120)
-                            .setHeight(200)
-                            .build();
-            byte[] pixels = new byte[120 * 200 * 3];
-            Image valid =
-                    Image.newBuilder()
-                            .setFormat(format)
-                            .setImage(ByteString.copyFrom(pixels))
-                            .setSeq(7)
-                            .setTimestampUs(System.currentTimeMillis() * 1_000L)
-                            .build();
-            Frame frame = validate(valid, 6, false);
-            writeAtomically(root, "latest.frame", encode(frame));
-            byte[] encoded = Files.readAllBytes(root.resolve("latest.frame"));
-            if (!new String(encoded, 0, "RUSTDESK_ANDROID_FRAME_V1\n".length(),
-                            StandardCharsets.US_ASCII)
-                    .equals("RUSTDESK_ANDROID_FRAME_V1\n")) {
-                throw new AssertionError("atomic frame record magic differs");
-            }
+            Image valid = assertRowOrder(root, 120, 200);
+            assertRowOrder(root, 200, 120);
+            ImageFormat format = valid.getFormat();
             scenarios++;
             try {
                 validate(valid, 7, false);

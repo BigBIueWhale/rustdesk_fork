@@ -809,6 +809,7 @@ android_frame_input_inventory() {
     local -a files=(
         "$SCRIPT_DIR/android-emulator-frame.py" "$SCRIPT_DIR/flutter-peer-source-x11.c"
         "$SCRIPT_DIR/test-android-frame-native.py" "$SCRIPT_DIR/smoke-xvfb-prepare.sh"
+        "$SCRIPT_DIR/build-x11-frame-source.py"
         "$SCRIPT_DIR/smoke-xvfb-packages.tsv" "$SCRIPT_DIR/smoke-xvfb-files.tsv"
         "$DEV_CHECK_IMAGE_ARCHIVE"
     )
@@ -2610,6 +2611,7 @@ elif [ "$MODE" = android-frame-tests ]; then
         "repo/scripts/android-emulator-frame.py=$SCRIPT_DIR/android-emulator-frame.py"
         "repo/scripts/flutter-peer-source-x11.c=$SCRIPT_DIR/flutter-peer-source-x11.c"
         "repo/scripts/test-android-frame-native.py=$SCRIPT_DIR/test-android-frame-native.py"
+        "repo/scripts/build-x11-frame-source.py=$SCRIPT_DIR/build-x11-frame-source.py"
         "repo/scripts/smoke-xvfb-prepare.sh=$SCRIPT_DIR/smoke-xvfb-prepare.sh"
         "repo/scripts/smoke-xvfb-packages.tsv=$SCRIPT_DIR/smoke-xvfb-packages.tsv"
         "repo/scripts/smoke-xvfb-files.tsv=$SCRIPT_DIR/smoke-xvfb-files.tsv"
@@ -3110,6 +3112,14 @@ elif [ "$MODE" = android-execution-probe ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'Android execution-probe cloud-init completion marker'
 elif [ "$MODE" = android-frame-tests ]; then
+    mapfile -t frame_source_build < <(/usr/bin/grep -Eo \
+        'X11_FRAME_SOURCE_BUILD=pass source_sha256=[0-9a-f]{64} sha256=[0-9a-f]{64} bytes=[1-9][0-9]* copies=2 equality=byte-identical network=none output=private' \
+        "$SERIAL_LOG" || true)
+    [ "${#frame_source_build[@]}" -eq 1 ] \
+        && [[ "${frame_source_build[0]}" == \
+             "X11_FRAME_SOURCE_BUILD=pass source_sha256=$(/usr/bin/sha256sum "$SCRIPT_DIR/flutter-peer-source-x11.c" | /usr/bin/awk '{ print $1 }') "* ]] \
+        || fail 'independent frame-source build receipt is absent or differs'
+    printf '%s\n' "${frame_source_build[0]}"
     mapfile -t frame_native_ab < <(/usr/bin/grep -Eo \
         'ANDROID_FRAME_NATIVE_AB=pass old_predicate=accept new=refuse stale_age_ms=[0-9]+ old_identity=[0-9]+ fresh_identity=[0-9]+ fresh_age_ms=[0-9]+' \
         "$SERIAL_LOG" || true)
@@ -3427,6 +3437,16 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         require_exact_fixed_receipt \
             "ANDROID_PEER_ARTIFACT_ADMITTED=pass commit=$ANDROID_RUNTIME_PEER_COMMIT tree=$ANDROID_RUNTIME_PEER_TREE manifest_sha256=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 builder=$DEV_CHECK_IMAGE_CONFIG_ID files=7 build=absent execution=readonly-guest-copy" \
             'source-bound production peer admission receipt'
+        android_frame_source_sha="$(git_closed -C "$REPO_ROOT" cat-file blob \
+            "$ANDROID_EMULATOR_SOURCE_COMMIT:scripts/flutter-peer-source-x11.c" \
+            | /usr/bin/sha256sum | /usr/bin/awk '{ print $1 }')" \
+            || fail 'cannot resolve committed Android display fixture source'
+        mapfile -t android_frame_source_receipts < <(/usr/bin/grep -Eo \
+            "X11_FRAME_SOURCE_BUILD=pass source_sha256=$android_frame_source_sha sha256=[0-9a-f]{64} bytes=[1-9][0-9]* copies=2 equality=byte-identical network=none output=private" \
+            "$SERIAL_LOG" || true)
+        [ "${#android_frame_source_receipts[@]}" -eq 1 ] \
+            || fail 'independent Android display fixture receipt is absent or duplicated'
+        printf '%s\n' "${android_frame_source_receipts[0]}"
     fi
     require_exact_fixed_receipt \
         "VERIFIER_VM_ENTRY_AUTHORITY=pass uid=1000 gid=1000 network=none docker=$VERIFIER_VM_DOCKER_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root" \

@@ -3137,6 +3137,9 @@ forward_android_runtime_progress() {
             'ANDROID_PEER_ARTIFACT_ADMITTED=pass '*)
                 printf 'ANDROID_RUNTIME_PROGRESS event=peer-admitted build=absent\n'
                 ;;
+            'X11_FRAME_SOURCE_BUILD=pass '*)
+                printf 'ANDROID_RUNTIME_PROGRESS event=frame-source-built copies=2\n'
+                ;;
         esac
     done
 }
@@ -3161,7 +3164,7 @@ run_android_emulator_runtime() {
     local source_archive_sha input_mount_options artifact_mount_options online_mount_options
     local builder_load runtime_load workload_status=0 source_before inputs_before artifact_before
     local staged_apk_before
-    local entry_receipt apk_receipt renderer_receipt runtime_receipt peer_artifact_receipt
+    local entry_receipt apk_receipt renderer_receipt runtime_receipt peer_artifact_receipt frame_source_receipt
     local -a runtime_arguments=()
     local lifecycle_receipt peer_receipt focused_recents_receipt check_receipt
     local resource_bound_receipt
@@ -3252,6 +3255,7 @@ run_android_emulator_runtime() {
             || fail "Android emulator runtime workload metadata differs: $workload"
     done
     for workload in pins.env lib.sh online-android-sdk-output.py \
+        build-x11-frame-source.py \
         android-peer-artifact.py \
         online-gradle-output.py \
         AndroidRecentsDismiss.java \
@@ -3288,6 +3292,7 @@ run_android_emulator_runtime() {
         "$source_root/scripts/online-input-provenance.py" \
         "$source_root/scripts/online-gradle-output.py" \
         "$source_root/scripts/flutter-peer-source-x11.c" \
+        "$source_root/scripts/build-x11-frame-source.py" \
         "$source_root/scripts/smoke-bind-loopback.c" \
         "$source_root/scripts/smoke-server-launcher.c" \
         "$source_root/scripts/smoke-xvfb-files.tsv" \
@@ -3582,6 +3587,11 @@ run_android_emulator_runtime() {
             "$output")" || fail 'Android peer artifact admission receipt is absent'
         [ "$(grep -c '^ANDROID_PEER_ARTIFACT_ADMITTED=' "$output")" -eq 1 ] \
             || fail 'Android peer artifact admission receipt is duplicated'
+        frame_source_receipt="$(grep -E \
+            "^X11_FRAME_SOURCE_BUILD=pass source_sha256=$(sha256sum "$source_root/scripts/flutter-peer-source-x11.c" | awk '{ print $1 }') sha256=[0-9a-f]{64} bytes=[1-9][0-9]* copies=2 equality=byte-identical network=none output=private$" \
+            "$output")" || fail 'independent Android display fixture build receipt differs'
+        [ "$(grep -c '^X11_FRAME_SOURCE_BUILD=' "$output")" -eq 1 ] \
+            || fail 'independent Android display fixture receipt is duplicated'
     fi
     entry_receipt="$(grep -Fx \
         "VERIFIER_VM_ENTRY_AUTHORITY=pass uid=1000 gid=1000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root" \
@@ -3850,6 +3860,7 @@ run_android_emulator_runtime() {
           "$source_root/scripts/online-input-provenance.py" \
           "$source_root/scripts/online-gradle-output.py" \
           "$source_root/scripts/flutter-peer-source-x11.c" \
+          "$source_root/scripts/build-x11-frame-source.py" \
           "$source_root/scripts/smoke-bind-loopback.c" \
           "$source_root/scripts/smoke-server-launcher.c" \
           "$source_root/scripts/smoke-xvfb-files.tsv" \
@@ -3905,7 +3916,7 @@ run_android_emulator_runtime() {
         "${recents_action_receipts[@]}" "${recents_outcome_receipts[@]}" \
         "$renderer_receipt" "$runtime_receipt"
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
-        printf '%s\n' "$peer_artifact_receipt"
+        printf '%s\n' "$peer_artifact_receipt" "$frame_source_receipt"
         printf '%s\n' "$frame_endpoint_receipt" "$frame_parser_receipt" \
             "$frame_observer_self_test_receipt" "$frame_observer_build_receipt" \
             "$frame_observer_receipt" "$lifecycle_receipt" \

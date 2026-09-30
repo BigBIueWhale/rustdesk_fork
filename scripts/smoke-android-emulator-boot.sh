@@ -1325,6 +1325,13 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     readonly PEER_CONFIRMATION_UNAVAILABLE_REASON="The peer did not provide CPace key confirmation after this viewer sent its confirmation. The peer may have rejected a stale or wrong password, or the connection may have ended. Re-enter the box's password if it changed; otherwise retry the connection. No session was authorized."
     readonly PEER_SEED_LOG=$WORK_ROOT/peer-seed.log
     readonly PEER_SOURCE_LOG=$WORK_ROOT/peer-source.log
+    readonly PEER_FRAME_SOURCE=/inputs/frame-source
+    [[ "${ANDROID_FRAME_SOURCE_SHA256:-}" =~ ^[0-9a-f]{64}$ ]] \
+        && [[ "${ANDROID_FRAME_SOURCE_BYTES:-}" =~ ^[1-9][0-9]*$ ]] \
+        && [ "$ANDROID_FRAME_SOURCE_BYTES" -le 1048576 ] \
+        || fail 'independent Android X11 fixture authority is absent or malformed'
+    verify_regular_input "$PEER_FRAME_SOURCE" 500 "$ANDROID_FRAME_SOURCE_BYTES" \
+        "$ANDROID_FRAME_SOURCE_SHA256" 'independent Android X11 fixture'
     readonly PEER_SERVER_LOG=$WORK_ROOT/peer-server.log
     readonly PEER_XVFB_LOG=$WORK_ROOT/peer-xvfb.log
     [ -f "$FRAME_DECODER" ] && [ ! -L "$FRAME_DECODER" ] \
@@ -1429,7 +1436,7 @@ PY
         "$PEER_TARGET/debug/examples/seed_password" \
         "$PEER_TARGET/debug/examples/probe_client" \
         "$PEER_TARGET/debug/examples/smoke_readiness" \
-        "$PEER_TARGET/flutter-peer-source-x11" \
+        "$PEER_FRAME_SOURCE" \
         "$PEER_TARGET/smoke-bind-loopback.so" \
         "$PEER_TARGET/smoke-server-launcher" \
         "$PEER_XVFB_ROOT/usr/bin/Xvfb" /usr/bin/xkbcomp "$PEER_READY"; do
@@ -1451,7 +1458,7 @@ PY
     done
     [ -S /tmp/.X11-unix/X99 ] && [ ! -L /tmp/.X11-unix/X99 ] \
         || fail 'Android peer Xvfb Unix socket did not become ready'
-    RUSTDESK_PRESENTATION_TRACE=1 "$PEER_TARGET/flutter-peer-source-x11" \
+    RUSTDESK_PRESENTATION_TRACE=1 "$PEER_FRAME_SOURCE" \
         >"$PEER_SOURCE_LOG" 2>&1 &
     SOURCE_PID=$!
     SOURCE_START="$(process_start_time "$SOURCE_PID")" \

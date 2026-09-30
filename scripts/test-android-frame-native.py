@@ -2,6 +2,7 @@
 """Exercise the real X11 source and Android pixel decoder in an isolated container."""
 
 import ctypes
+import hashlib
 import importlib.util
 import os
 from pathlib import Path
@@ -22,10 +23,38 @@ def main():
     decoder = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(decoder)
     decoder.self_test()
-    subprocess.run([
-        "/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-O2",
-        "/work/scripts/flutter-peer-source-x11.c", "-lX11", "-o", "/build/frame-source",
-    ], check=True, timeout=20)
+    fixture = Path("/build/fixture")
+    fixture.mkdir(mode=0o700)
+    source_sha = hashlib.sha256(Path("/work/scripts/flutter-peer-source-x11.c").read_bytes()).hexdigest()
+    build_command = ["/usr/bin/python3", "-B", "-I", "-S",
+                     "/work/scripts/build-x11-frame-source.py",
+                     "/work/scripts/flutter-peer-source-x11.c", str(fixture), source_sha]
+    subprocess.run(build_command, check=True, timeout=45)
+    fixture_bytes = (fixture / "frame-source").read_bytes()
+    refusal = subprocess.run(build_command, capture_output=True, text=True, timeout=5)
+    require(refusal.returncode != 0 and "empty private directory" in refusal.stderr
+            and (fixture / "frame-source").read_bytes() == fixture_bytes,
+            "fixture builder replaced retained output")
+    wrong_output = Path("/build/wrong-digest")
+    wrong_output.mkdir(mode=0o700)
+    refusal = subprocess.run(build_command[:-2] + [str(wrong_output), "0" * 64],
+                             capture_output=True, text=True, timeout=5)
+    require(refusal.returncode != 0 and "source digest differs" in refusal.stderr
+            and not list(wrong_output.iterdir()), "fixture builder admitted wrong source")
+    alias = Path("/build/output-alias")
+    alias.symlink_to(wrong_output, target_is_directory=True)
+    refusal = subprocess.run(build_command[:-2] + [str(alias), source_sha],
+                             capture_output=True, text=True, timeout=5)
+    require(refusal.returncode != 0 and "paths are not canonical" in refusal.stderr
+            and not list(wrong_output.iterdir()), "fixture builder admitted an output alias")
+    fifo = Path("/build/source-fifo")
+    os.mkfifo(fifo, mode=0o600)
+    refusal = subprocess.run(build_command[:-3] + [str(fifo), str(wrong_output), source_sha],
+                             capture_output=True, text=True, timeout=5)
+    require(refusal.returncode != 0 and "file authority differs" in refusal.stderr
+            and not list(wrong_output.iterdir()), "fixture builder blocked or admitted a FIFO")
+    alias.unlink()
+    fifo.unlink()
     environment = {"PATH": "/usr/bin:/bin", "HOME": "/tmp", "DISPLAY": ":98",
                    "LC_ALL": "C", "RUSTDESK_PRESENTATION_TRACE": "1",
                    "LD_LIBRARY_PATH": "/xvfb-root/usr/lib/x86_64-linux-gnu"}
@@ -60,7 +89,7 @@ def main():
             time.sleep(0.05)
         require(display, "X11 Unix display is unavailable")
         with source_path.open("wb") as source_log:
-            children.append(subprocess.Popen(["/build/frame-source"], env=environment,
+            children.append(subprocess.Popen([str(fixture / "frame-source")], env=environment,
                                              stdout=source_log, stderr=subprocess.STDOUT))
         source_path.chmod(0o600)
         root = lib.XDefaultRootWindow(display)
@@ -155,6 +184,8 @@ def main():
                 child.kill()
                 child.wait(timeout=5)
     require(all(child.returncode == 0 for child in children), "native child did not retire cleanly")
+    require((fixture / "frame-source").read_bytes() == fixture_bytes,
+            "independent fixture changed during native execution")
     history = decoder.source_history(source_path)
     require(source_path.read_bytes().endswith(
         f"FLUTTER_PEER_SOURCE_COMPLETE frames={len(history)}\n".encode()), "source finality is absent")

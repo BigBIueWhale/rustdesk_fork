@@ -237,6 +237,9 @@ readonly OBSERVER_LOG=$WORKSPACE/observer.log
 readonly RECENTS_DRIVER_ROOT=$WORKSPACE/recents-driver
 readonly RECENTS_DRIVER_JAR=$RECENTS_DRIVER_ROOT/recents-dismiss.jar
 readonly OBSERVER_ROOT=$WORKSPACE/observer
+readonly FRAME_SOURCE_ROOT=$WORKSPACE/frame-source
+readonly FRAME_SOURCE=$FRAME_SOURCE_ROOT/frame-source
+readonly FRAME_SOURCE_C=$SCRIPT_DIR/flutter-peer-source-x11.c
 readonly SERVER_TARGET=$WORKSPACE/materialized-peer
 readonly XVFB_DEBS=$WORKSPACE/xvfb-debs
 readonly XVFB_ROOT=$WORKSPACE/xvfb-root
@@ -245,9 +248,19 @@ readonly SERVER_MACHINE_ID_VALUE=727573746465736b2d73657276657231
 install -d -m 0700 -- "$RECENTS_DRIVER_ROOT"
 SERVER_MACHINE_ID_ID=
 PEER_EXECUTION_INVENTORY=
+FRAME_SOURCE_SHA256=
+FRAME_SOURCE_BYTES=
+FRAME_SOURCE_C_ID=
+FRAME_SOURCE_C_SHA256=
+FRAME_SOURCE_ID=
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
     install -d -m 0700 -- "$OBSERVER_ROOT" "$XVFB_DEBS" \
-        "$XVFB_ROOT"
+        "$XVFB_ROOT" "$FRAME_SOURCE_ROOT"
+    [ -f "$FRAME_SOURCE_C" ] && [ ! -L "$FRAME_SOURCE_C" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$FRAME_SOURCE_C")" = 1000:1000:400:1 ] \
+        || die 'independent X11 fixture source authority differs'
+    FRAME_SOURCE_C_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$FRAME_SOURCE_C")"
+    FRAME_SOURCE_C_SHA256="$(sha256sum "$FRAME_SOURCE_C" | awk '{ print $1 }')"
     [[ "$SERVER_MACHINE_ID_VALUE" =~ ^[0-9a-f]{32}$ ]] \
         || die 'private Android peer machine identity is malformed'
     printf '%s\n' "$SERVER_MACHINE_ID_VALUE" > "$SERVER_MACHINE_ID.tmp"
@@ -393,9 +406,14 @@ XVFB_CONTAINER="$(vm_docker create \
     --mount "type=bind,source=$ONLINE_DIR/xvfb-debs,target=/xvfb-inputs,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$XVFB_DEBS,target=/xvfb-debs,bind-recursive=disabled" \
     --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,bind-recursive=disabled" \
+    --mount "type=bind,source=$FRAME_SOURCE_ROOT,target=/frame-source,bind-recursive=disabled" \
     --workdir /work \
     "$DEV_CHECK_IMAGE_CONFIG_ID" \
-    /bin/bash --noprofile --norc /work/scripts/smoke-xvfb-prepare.sh)"
+    /bin/bash --noprofile --norc -euo pipefail -c '
+        /bin/bash /work/scripts/smoke-xvfb-prepare.sh
+        /usr/bin/python3 -B -I -S /work/scripts/build-x11-frame-source.py \
+            /work/scripts/flutter-peer-source-x11.c /frame-source "$1"
+    ' frame-source "$FRAME_SOURCE_C_SHA256")"
 [[ "$XVFB_CONTAINER" =~ ^[0-9a-f]{64}$ ]] \
     || die 'Android peer Xvfb preparation container ID is malformed'
 xvfb_authority="$(vm_docker inspect --format \
@@ -417,7 +435,27 @@ vm_docker start --attach "$XVFB_CONTAINER" >"$XVFB_LOG" 2>&1 || xvfb_status=$?
     || die 'Android peer Xvfb preparation container did not exit cleanly'
 vm_docker rm "$XVFB_CONTAINER" >/dev/null
 XVFB_CONTAINER=
+mapfile -t frame_source_build_receipts < <(grep -E \
+    "^X11_FRAME_SOURCE_BUILD=pass source_sha256=$FRAME_SOURCE_C_SHA256 sha256=[0-9a-f]{64} bytes=[1-9][0-9]* copies=2 equality=byte-identical network=none output=private$" \
+    "$XVFB_LOG" || true)
+[ "${#frame_source_build_receipts[@]}" -eq 1 ] \
+    && [ "$(grep -c '^X11_FRAME_SOURCE_BUILD=' "$XVFB_LOG")" -eq 1 ] \
+    || die 'independent X11 fixture build receipt differs'
+frame_build_identity_pattern=' sha256=([0-9a-f]{64}) bytes=([1-9][0-9]*) '
+[[ "${frame_source_build_receipts[0]}" =~ $frame_build_identity_pattern ]] \
+    || die 'independent X11 fixture identity is malformed'
+FRAME_SOURCE_SHA256=${BASH_REMATCH[1]}
+FRAME_SOURCE_BYTES=${BASH_REMATCH[2]}
+[ "$(stat -c '%u:%g:%a:%h:%s' -- "$FRAME_SOURCE")" = \
+  "1000:1000:500:1:$FRAME_SOURCE_BYTES" ] \
+    && [ "$FRAME_SOURCE_BYTES" -le 1048576 ] \
+    && [ "$(sha256sum "$FRAME_SOURCE" | awk '{ print $1 }')" = "$FRAME_SOURCE_SHA256" ] \
+    && [ "$(find "$FRAME_SOURCE_ROOT" -mindepth 1 -maxdepth 1 -printf '%f\n')" = frame-source ] \
+    || die 'independent X11 fixture artifact differs'
+FRAME_SOURCE_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$FRAME_SOURCE")"
+printf '%s\n' "${frame_source_build_receipts[0]}"
 fi
+readonly FRAME_SOURCE_SHA256 FRAME_SOURCE_BYTES FRAME_SOURCE_C_ID FRAME_SOURCE_C_SHA256 FRAME_SOURCE_ID
 
 runtime_mounts=(
     --mount "type=bind,source=$REPO_ROOT,target=/source,readonly,bind-recursive=disabled"
@@ -431,6 +469,7 @@ runtime_environment=()
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
     runtime_mounts+=(
         --mount "type=bind,source=$SERVER_TARGET,target=/smoke-target,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$FRAME_SOURCE,target=/inputs/frame-source,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$PEER_ROOT/peer-manifest.json,target=/inputs/peer-manifest.json,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled"
@@ -441,6 +480,8 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         --env "ANDROID_PEER_MANIFEST_SHA256=$PEER_MANIFEST_SHA256"
         --env "ANDROID_PEER_SOURCE_COMMIT=$PEER_COMMIT"
         --env "ANDROID_PEER_SOURCE_TREE=$PEER_TREE"
+        --env "ANDROID_FRAME_SOURCE_SHA256=$FRAME_SOURCE_SHA256"
+        --env "ANDROID_FRAME_SOURCE_BYTES=$FRAME_SOURCE_BYTES"
     )
 fi
 readonly -a runtime_mounts runtime_environment
@@ -506,6 +547,12 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
     [ "$runtime_peer_mounts" = \
       "bind	$SERVER_TARGET	/smoke-target	false" ] \
         || die 'Android peer execution mount is not the admitted read-only copy'
+    runtime_frame_source_mounts="$(vm_docker inspect --format \
+        '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
+        "$RUNTIME_CONTAINER" | awk -F '\t' '$3 == "/inputs/frame-source" { print }')"
+    [ "$runtime_frame_source_mounts" = \
+      "bind	$FRAME_SOURCE	/inputs/frame-source	false" ] \
+        || die 'independent X11 fixture execution mount is not read-only'
     runtime_observer_mounts="$(vm_docker inspect --format \
         '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
         "$RUNTIME_CONTAINER" | awk -F '\t' '$3 == "/observer" { print }')"
@@ -1110,6 +1157,11 @@ RUNTIME_CONTAINER=
     || die 'Android emulator runtime check left a container'
 
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
+    [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$FRAME_SOURCE")" = "$FRAME_SOURCE_ID" ] \
+        && [ "$(sha256sum "$FRAME_SOURCE" | awk '{ print $1 }')" = "$FRAME_SOURCE_SHA256" ] \
+        && [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$FRAME_SOURCE_C")" = "$FRAME_SOURCE_C_ID" ] \
+        && [ "$(sha256sum "$FRAME_SOURCE_C" | awk '{ print $1 }')" = "$FRAME_SOURCE_C_SHA256" ] \
+        || die 'independent X11 fixture source or executable changed during replay'
     [ "$PEER_EXECUTION_INVENTORY" = "$(find "$SERVER_TARGET" -xdev -mindepth 0 -printf '%p\0' \
         | LC_ALL=C sort -z | xargs -0 stat -c '%d:%i:%u:%g:%a:%h:%s')" ] \
         || die 'admitted Android peer execution layout changed during the read-only run'

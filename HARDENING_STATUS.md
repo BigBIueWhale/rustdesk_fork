@@ -1199,11 +1199,17 @@ outer script's relative pathname before VM/payload/disk creation; canonical path
 that diagnostic and its exact empty run was removed. Three complete focused native passes support the
 oracle only; they do not supply an Android app result or resolve the intermittent product defect.
 
-Next make the changed test source fixture independently source-bound and reusable with the immutable
-production-peer artifact, without rewriting or relabeling cached bytes, so Android can execute the
-corrected frame-identity contract. The native source/decoder A/B above does not substitute for that
-Android replay. Preserve source/digest-bound artifact reuse, read-only execution, no fallback, bounded
-output and joined cleanup.
+The display test fixture now has independent build/execution authority. `build-x11-frame-source.py`
+admits the exact current harness's owned read-only C source by digest, compiles two copies with fixed
+flags/environment in the authenticated networkless devcheck container, requires byte equality, and
+leaves one mode-0500 ELF. The Android wrapper builds this tiny fixture alongside Xvfb preparation,
+binds it separately read-only by exact digest/size, and verifies the source and output after replay.
+The driver executes only that fixture; it still authenticates the immutable seven-file production
+capsule but does not execute its obsolete display helper. No cached APK/peer bytes or source labels
+are rewritten, no RustDesk rebuild is added, and no persistent fixture cache accumulates. The shared
+builder's focused actual-X11/decoder test includes wrong-source, retained-output,
+output-alias and real FIFO refusals. This new fixture integration is execution-pending; the earlier
+native source/decoder A/B does not substitute for an Android replay under it.
 Make engine/framework/app/lifecycle stages observable before EOF: the runtime wrapper currently waits for
 container completion before fetching logs and the guest forwards only peer admission. Replace
 iteration-count waits advertised as seconds with actual monotonic deadlines. Then distinguish event,

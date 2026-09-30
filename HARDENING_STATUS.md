@@ -1413,7 +1413,7 @@ This closes this named corrected Linux observer/peer schedule, not the original 
 Android/Windows defect, high-load/soak, installed-service, cross-version, Apple or release matrix.
 Do not resize the screen to hide invalid requests, ignore X errors, relax bounds or infer platform closure.
 
-**Shared route-overlay entry ownership — NATIVE OLD FAILURE; CORRECTION VALIDATION OPEN.**
+**Shared route-overlay entry ownership — NATIVE WIDGET A/B PASS; APP/PLATFORM REPLAY OPEN.**
 Exact `a19fc73e` executed the regression on pinned Flutter 3.24.5: the first global-key move
 lost `route 1`, then cleanup hit `OverlayEntry.remove`'s `_overlay != null` assertion at our
 disposal method. The earlier Flutter 3.47.5 peer log contains the corresponding release-mode
@@ -1423,10 +1423,23 @@ overlay ignored replacement `initialEntries`. Current source gives the globally 
 current widget, and remove/dispose once before superclass retirement. The separate child overlay
 and local ObjectKey owner are absent; no catch, SDK conditional or recreation fallback is added.
 The unchanged regression requires six moves with exact overlay/route states, inserted entry,
-blocker/tap behavior, route updates and complete unmount. Positive native execution remains pending.
-Complete negative serial is retained outside scratch. This shared widget is used by desktop and
-mobile Remote/ViewCamera, but this is not Android/Windows hang causation, device/native-platform
-coverage, sustained resources, release closure or a newly demonstrated privilege escalation.
+blocker/tap behavior, route updates and complete unmount. Exact correction
+`229396967a98dee2fa2ec07034254601c3900483`, tree `a0f3595af0ff17e44f730213ff83994703fd7ba2`,
+passed all 18 suites/138 tests in the complete 366-second zero-NIC transaction. Test bytes were
+identical to the native negative; generated bridges, pinned Flutter 3.24.5/Rust 1.75/LLVM inputs,
+strict no-skip result acceptance, final input revalidation and joined cleanup passed. No harness
+listener was added; the outer audit recorded `preexisting_process_drift=1`, not zero. Its detailed
+host delta retired with successful scratch, so it is not independently retained for inspection.
+Complete negative/positive raw guest serials are `evidence/overlay-old-a19fc73e.serial.log`
+(158,480 bytes, SHA-256 `e7b2c2408bef964731331918b66e0a5d37491de1d748ce0a0ad106e6403b99c5`)
+and `evidence/overlay-owner-22939696.serial.log` (66,846 bytes, SHA-256
+`35fa84a93d9ffd3d6985d21b195ef298f1f1bc1b3f4d8050f2dc44fa6757cb64`); the positive outer
+receipt is separately retained. Successful scratch self-retired; no run overlay remains. The raw
+serial contains aggregate positive acceptance, not the retired complete native test JSON.
+This closes the shared widget ownership/reparent/unmount regression on the pinned Linux-host
+Flutter engine, not Android/Windows hang causation, actual APK/device or Flutter 3.47.5 full-peer
+execution of the correction, sustained resources, release closure or a demonstrated LPE.
+The widget is shared by desktop/mobile Remote/ViewCamera; platform app replay remains required.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

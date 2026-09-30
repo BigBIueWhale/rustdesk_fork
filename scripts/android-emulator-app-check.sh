@@ -531,9 +531,18 @@ RUNTIME_CONTAINER="$(vm_docker create \
 runtime_authority="$(vm_docker inspect --format \
     '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{.HostConfig.ShmSize}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}' \
     "$RUNTIME_CONTAINER")"
-[ "$runtime_authority" = \
-  'none|true|1000:1000|12884901888|12884901888|4000000000|768|1073741824|["ALL"]|["no-new-privileges","apparmor=docker-default"]|{}|[{"PathOnHost":"/dev/kvm","PathInContainer":"/dev/kvm","CgroupPermissions":"rw"}]' ] \
+[ "${runtime_authority%|*}" = \
+  'none|true|1000:1000|12884901888|12884901888|4000000000|768|1073741824|["ALL"]|["no-new-privileges","apparmor=docker-default"]|{}' ] \
     || die "Android runtime container authority differs: $runtime_authority"
+python3 -I -S - "${runtime_authority##*|}" <<'PY' \
+    || die 'Android runtime container device authority differs'
+import json
+import sys
+
+expected = [{"PathOnHost": "/dev/kvm", "PathInContainer": "/dev/kvm", "CgroupPermissions": "rw"}]
+if json.loads(sys.argv[1]) != expected:
+    raise SystemExit("Android runtime requires exactly the guest KVM read/write mapping")
+PY
 runtime_status=0
 vm_docker start --attach "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 || runtime_status=$?
 [ "$runtime_status" -eq 0 ] \

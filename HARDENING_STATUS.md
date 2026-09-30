@@ -1116,6 +1116,12 @@ pinned `-no-window` headless executable and retains bounded refusal diagnostics.
 hardware-required boot path for this exact topology, not Google support, APK/peer presentation, physical
 devices, performance/resource soak, or release closure. Next execute the exact-artifact peer replay and
 measure framework/presentation behavior before interpreting display timings.
+The first hardware-required cached-artifact replay at `5dcabe72` admitted and materialized the exact
+production peer without rebuilding, then refused before emulator launch because device inspection
+compared JSON object-key order. Its actual mapping was the sole guest `/dev/kvm` read/write device.
+All three runtime callers now compare the complete device list/mapping as structured data, retaining
+exact cardinality, paths, permissions and property set; extra devices/fields or permission changes
+still refuse. The corrected replay remains unexecuted; this failure supplied no Android product verdict.
 The attempted shared authority smoke hit its existing 90-second VM deadline after the 22 capsule
 cases and several authority entries passed; it is not a complete transaction or consumer verdict.
 The peer launcher now validates the externally digest-bound capsule manifest and all seven execution

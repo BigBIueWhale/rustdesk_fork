@@ -2523,7 +2523,7 @@ run_android_emulator_boot() {
     local adb=$inputs/inputs/android-sdk/platform-tools/adb
     local runtime_archive=$inputs/inputs/verifier-images/devcheck.docker.tar.gz
     local source_archive_sha source_before inputs_before input_mount_options
-    local load_output inspect namespace_inspect container_status=0
+    local load_output inspect namespace_inspect device_inspect container_status=0
     local renderer_receipt result_line kvm_receipt
     local -a renderer_lines=() result_lines=()
 
@@ -2669,10 +2669,21 @@ run_android_emulator_boot() {
       'none|true|1000:1000|12884901888|12884901888|4000000000|768|1073741824|["ALL"]|["no-new-privileges","apparmor=docker-default"]' ] \
         || fail "Android emulator boot container authority differs: $inspect"
     namespace_inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
-        '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' \
+        '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.PortBindings}}' \
         "$CONTAINER_ID")"
-    [ "$namespace_inspect" = 'false||private||private|[{"PathOnHost":"/dev/kvm","PathInContainer":"/dev/kvm","CgroupPermissions":"rw"}]|{}' ] \
-        || fail "Android emulator container namespace/device/port authority differs: $namespace_inspect"
+    [ "$namespace_inspect" = 'false||private||private|{}' ] \
+        || fail "Android emulator container namespace/port authority differs: $namespace_inspect"
+    device_inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{json .HostConfig.Devices}}' "$CONTAINER_ID")"
+    python3 -I -S - "$device_inspect" <<'PY' \
+        || fail 'Android emulator boot container device authority differs'
+import json
+import sys
+
+expected = [{"PathOnHost": "/dev/kvm", "PathInContainer": "/dev/kvm", "CgroupPermissions": "rw"}]
+if json.loads(sys.argv[1]) != expected:
+    raise SystemExit("Android runtime requires exactly the guest KVM read/write mapping")
+PY
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
     [ "$container_status" -eq 0 ] \

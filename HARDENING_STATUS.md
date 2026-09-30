@@ -1290,14 +1290,18 @@ open handle and zero disposal events before test cleanup; this was a native asse
 compile failure. `decodeImageFromPixels` now owns buffer, descriptor and codec through lexical finalizers,
 always awaits an admitted native frame, and transfers its image only after successful cleanup; failure
 disposes the image even if the failure observer also throws. Exact pushed `e8014db8` passed the unchanged
-regression and all 18 suites/138 tests in the complete 359-second zero-NIC VM transaction, including
-unchanged host listeners and joined, residue-free cleanup. The native oracle now additionally snapshots
-creation and disposal at the caller's return boundary, refusing early return followed by late cleanup.
-Exact pushed `0b722666` passed that whole transaction in 360 seconds. The return-boundary disposal snapshot
-now uses the exact created image's disposed flag rather than a global disposal-event count; its final
-identity-scoped replay is pending. No conversion capacity, freshness bound or service lifecycle is changed.
-This finding
-does not establish natural callback failure, sustained native resource growth, intermittent-hang causation
+regression; final oracle source `6d6dc16f` passed all 18 suites/138 tests in a complete 360-second zero-NIC
+VM transaction. Both late-fault paths required one actual image, that exact image already disposed when
+the caller resumed, zero open handles and exactly one identity-matching disposal. Normal raw-pixel paint
+and clone retirement also passed. Before/during/after host listeners and sealed inputs were unchanged,
+all VM/container owners joined, and the successful run self-retired. Bounded negative serial and final
+forwarded receipt are retained at `evidence/image-fault-old-a7c080f7.*` and
+`evidence/image-fault-identity-6d6dc16f.receipt`; the full successful serial was automatically retired.
+The negative suite took 16.3 seconds within a roughly 338-second guest transaction; the corrected full
+transactions took about six minutes. Faster prepared-input replay and live preparation-stage profiling
+remain infrastructure work, not a fast-inner-loop claim.
+No conversion capacity, freshness bound or service lifecycle is changed. This finding does not establish
+natural callback failure, sustained native resource growth, intermittent-hang causation
 or a privilege escalation; opaque buffer/descriptor counts are not directly observed by the image oracle.
 
 Pub-cache and Gradle replacement cleanup is now one recoverable, acquisition-identity-owned transaction. A

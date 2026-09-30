@@ -74,7 +74,7 @@ Future<Map<String, Object>> _conversionFailureHandles(String failingStage) async
       },
     );
     final imagesAtReturn = images.length;
-    final disposalsAtReturn = disposals.length;
+    final disposedAtReturn = images.length == 1 && images.single.debugDisposed;
     // Observe the engine's exact callback, even if the faulty implementation
     // returned before its outstanding frame completed. A quiet delay is not proof.
     final image = await created.future.timeout(const Duration(seconds: 5));
@@ -85,7 +85,7 @@ Future<Map<String, Object>> _conversionFailureHandles(String failingStage) async
     expect(image.height, 2);
     return <String, Object>{
       'imagesAtReturn': imagesAtReturn,
-      'disposalsAtReturn': disposalsAtReturn,
+      'disposedAtReturn': disposedAtReturn,
       'disposed': image.debugDisposed,
       'openHandles': _openHandles(image),
       'disposals': disposals.where((entry) => identical(entry, image)).length,
@@ -168,7 +168,7 @@ void main() {
       for (final stage in ['image-frame-requested', 'image-frame-ready'])
         stage: <String, Object>{
           'imagesAtReturn': 1,
-          'disposalsAtReturn': 1,
+          'disposedAtReturn': true,
           'disposed': true,
           'openHandles': 0,
           'disposals': 1,

@@ -35,7 +35,7 @@ not a claim that every target OS has executed them.
 | Retained evidence | What it establishes—and does not establish |
 | --- | --- |
 | Portable Linux server transaction (`250e775b9a88a62a980937e1f278ad053f2d9d58`) | Real nonroot parked/listening, CPace, Remote/FileTransfer admission, capacity/refusal, and joined-shutdown behavior in confinement. It is not an installed root service or current release artifact. |
-| Named Linux full-peer lifecycles (`bc2d94f9164751ff1b2c9bb6fec367653b20083f`) | One exact Flutter 3.47.5 bundle passed six uninstrumented lifecycles in a complete 1,592-second zero-NIC transaction. Real password prompts, visible X11 pixels, eighteen 2/6/12-second focus-loss cycles on unchanged connections, eighteen server-generation reconnects, sampled resources, and joined viewer/server teardown passed. The shared full-counter publication-history oracle replaces the earlier repeating palette/first-sighting ages; measured accepted pixel age was at most 498 ms. Complete raw serial is retained below. This is a named Linux 640x480/4-Hz scenario, not Android/Windows causation, sustained soak, cross-version, installed-service, cold-equality, or release-artifact closure. |
+| Named Linux full-peer lifecycles (`86728112ab3d4c7a2ed09ed2aa02609e3e0ef94d`) | One exact Flutter 3.47.5 bundle including the corrected shared overlay passed six uninstrumented lifecycles in a complete 1,574-second zero-NIC transaction. Real password prompts, visible X11 pixels, eighteen 2/6/12-second focus-loss cycles on unchanged connections, eighteen server-generation reconnects, sampled resources, and joined viewer/server teardown passed. The shared full-counter publication-history oracle replaces the earlier repeating palette/first-sighting ages; measured accepted pixel age was at most 466 ms. Complete raw serial and outer receipt are retained below. This is a named Linux 640x480/4-Hz scenario, not Android/Windows causation, sustained soak, cross-version, installed-service, cold-equality, or release-artifact closure. |
 | Exact-current Linux filesystem regressions (`76cc2fefc6470aeaeb76b50d34b4dc377b39ba49`) | A zero-NIC VM and networkless guest-only container executed all 57 `hbb_common::fs` tests on pinned Rust 1.75, including retained-directory, symlink-parent, path-swap, bounded-depth, create, remove, and rename authority cases. This is Linux library behavior, not Windows junction/handle, installed peer, end-to-end transfer, or release-artifact evidence. |
 | Exact clean Flutter model transaction (`ca5690869c4c665c2d5a17a8e6baeeb664afbb78`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 18 focused suites and 138 tests in 278 seconds on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. In addition to presentation-generation and completion-order coverage, the executed tests prove one isolate-wide three-conversion authority across distinct queue/session replacement, latest-only pending data, FIFO live waiters, exact cancelled-waiter removal, and visible bounded-waiter exhaustion. No host listener was added and cleanup joined. This is exact Dart/model and generated-bridge evidence, not target-native behavior by itself. |
 | Exact Android owner states (`a2cbbbd27228aa053994a2f65ee075baf7e88f68`) | A zero-NIC VM and networkless guest-only container compiled seven exact production Kotlin state classes with pinned Kotlin 2.0.21 and passed 15 scenarios with 293 assertions over closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation. This is pure owner-state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, JNI, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
@@ -1413,7 +1413,7 @@ This closes this named corrected Linux observer/peer schedule, not the original 
 Android/Windows defect, high-load/soak, installed-service, cross-version, Apple or release matrix.
 Do not resize the screen to hide invalid requests, ignore X errors, relax bounds or infer platform closure.
 
-**Shared route-overlay entry ownership — NATIVE WIDGET A/B PASS; APP/PLATFORM REPLAY OPEN.**
+**Shared route-overlay entry ownership — NATIVE WIDGET A/B AND NAMED LINUX APP PASS; OTHER PLATFORM/CAUSATION OPEN.**
 Exact `a19fc73e` executed the regression on pinned Flutter 3.24.5: the first global-key move
 lost `route 1`, then cleanup hit `OverlayEntry.remove`'s `_overlay != null` assertion at our
 disposal method. The earlier Flutter 3.47.5 peer log contains the corresponding release-mode
@@ -1437,9 +1437,27 @@ and `evidence/overlay-owner-22939696.serial.log` (66,846 bytes, SHA-256
 receipt is separately retained. Successful scratch self-retired; no run overlay remains. The raw
 serial contains aggregate positive acceptance, not the retired complete native test JSON.
 This closes the shared widget ownership/reparent/unmount regression on the pinned Linux-host
-Flutter engine, not Android/Windows hang causation, actual APK/device or Flutter 3.47.5 full-peer
-execution of the correction, sustained resources, release closure or a demonstrated LPE.
-The widget is shared by desktop/mobile Remote/ViewCamera; platform app replay remains required.
+Flutter engine. Corrected source `86728112ab3d4c7a2ed09ed2aa02609e3e0ef94d`, tree
+`38bf567634d4b596aaeb2b77c8a82860bc7224ea`, also passed the complete 1,574-second Flutter 3.47.5
+Linux app integration: one 78-file bundle, six uninstrumented peer lifecycles, eighteen stable-connection
+focus-loss cases, eighteen server-generation reconnects, input revalidation and joined cleanup.
+Forty-two resource samples observed RSS 345,584–387,740 KiB, threads 51–66 and 46 descriptors within
+the unchanged bounds. Accepted publication age was at most 466 ms, background age 347 ms; first-fresh
+initial/focus/reconnect observations were 6–122/5–12/61–217 ms, not unconditional end-to-end latency.
+No host listener or pre-existing-process drift was observed; successful scratch self-retired.
+Complete raw serial is `evidence/overlay-peer-86728112.serial.log` (680,315 bytes, SHA-256
+`b5378d71d71e615b793254f27887f7285c4deaff5124e63ec0c64d4f5d84e9da`); its exact outer receipt is
+separately retained. Per-app logs and the build manifest retired with scratch and are not retained.
+The widget is shared by desktop/mobile Remote/ViewCamera. Actual APK/device and Windows replay,
+Android/Windows hang causation, sustained resources, release closure and LPE evidence remain OPEN.
+
+**Next shared-dialog ownership regression — OPEN.** `common.dart`'s captured dialog `close` callback
+removes the registry/back-interceptor by tag without proving that its captured dialog still owns that tag.
+After replacement, a late predecessor callback can remove the replacement's ownership record while
+leaving its entry/future live. Extend the real widget regression to invoke that stale callback, then
+require ordinary dismissal to complete/unmount the replacement. No native negative or correction is
+yet claimed. Desktop build-time overlay resets also require a readiness/rebuild reproduction; neither
+source concern establishes the original display-delay cause or a privilege escalation.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

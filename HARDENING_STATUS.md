@@ -1454,9 +1454,12 @@ Android/Windows hang causation, sustained resources, release closure and LPE evi
 **Next shared-dialog ownership regression — OPEN.** `common.dart`'s captured dialog `close` callback
 removes the registry/back-interceptor by tag without proving that its captured dialog still owns that tag.
 After replacement, a late predecessor callback can remove the replacement's ownership record while
-leaving its entry/future live. Extend the real widget regression to invoke that stale callback, then
-require ordinary dismissal to complete/unmount the replacement. No native negative or correction is
-yet claimed. Desktop build-time overlay resets also require a readiness/rebuild reproduction; neither
+leaving its entry/future live. Name-based back cleanup also crosses manager ownership when two managers
+reuse a local tag. The existing real widget regression now invokes the predecessor close, requires
+ordinary dismissal to complete/unmount the replacement, and dispatches the actual back-interceptor
+list after another manager retires the same tag. Only default navigation is a counted fixture sink.
+Product remains unchanged for native negative execution; no native result or correction is yet claimed.
+Desktop build-time overlay resets also require a readiness/rebuild reproduction; neither
 source concern establishes the original display-delay cause or a privilege escalation.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the

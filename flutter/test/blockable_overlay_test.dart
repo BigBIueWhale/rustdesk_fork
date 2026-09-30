@@ -1,3 +1,4 @@
+import 'package:back_button_interceptor/back_button_interceptor.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart';
@@ -161,6 +162,15 @@ void main() {
     final overlayState = BlockableOverlayState();
     final manager = OverlayDialogManager();
     manager.setOverlayState(overlayState);
+    late void Function([dynamic]) closeFirst;
+    final originalPopRoute = BackButtonInterceptor.handlePopRouteFunction;
+    var defaultBackEvents = 0;
+    BackButtonInterceptor.handlePopRouteFunction = () async {
+      defaultBackEvents++;
+    };
+    addTearDown(() {
+      BackButtonInterceptor.handlePopRouteFunction = originalPopRoute;
+    });
 
     await tester.pumpWidget(MaterialApp(
       home: BlockableOverlay(
@@ -170,7 +180,10 @@ void main() {
     ));
 
     final first = manager.show<String>(
-      (_, __, ___) => const _TestDialog('first dialog'),
+      (_, close, ___) {
+        closeFirst = close;
+        return const _TestDialog('first dialog');
+      },
       tag: 'connection-state',
     );
     await tester.pump();
@@ -186,13 +199,59 @@ void main() {
     expect(find.text('first dialog'), findsNothing);
     expect(find.text('replacement dialog'), findsOneWidget);
 
+    closeFirst('stale completion');
+    await tester.pump();
+    final replacementStillOwned = manager.existing('connection-state');
+
     manager.dismissByTag('connection-state');
     await tester.pump();
-    expect(await replacement, isNull);
-    expect(find.text('replacement dialog'), findsNothing);
+    final replacementRemoved =
+        find.text('replacement dialog').evaluate().isEmpty;
+
+    final otherManager = OverlayDialogManager();
+    otherManager.setOverlayState(overlayState);
+    final local = manager.show<String>(
+      (_, __, ___) => const _TestDialog('local dialog'),
+      tag: 'shared-tag',
+      backDismiss: true,
+    );
+    final independent = otherManager.show<String>(
+      (_, __, ___) => const _TestDialog('independent dialog'),
+      tag: 'shared-tag',
+      backDismiss: true,
+    );
+    await tester.pump();
+    manager.dismissAll();
+    await tester.pump();
+    expect(await local, isNull);
+    expect(find.text('independent dialog'), findsOneWidget);
+
+    await BackButtonInterceptor.popRoute();
+    await tester.pump();
+    final independentBackDismissed = !otherManager.existing('shared-tag') &&
+        find.text('independent dialog').evaluate().isEmpty;
+    otherManager.dismissAll();
+    await tester.pump();
+    expect(await independent, isNull);
 
     manager.dismissByTag('connection-state');
     manager.dismissAll();
     await tester.pumpWidget(const SizedBox.shrink());
+    expect(tester.takeException(), isNull);
+    expect(
+      <String, Object>{
+        'replacement still owned after stale close': replacementStillOwned,
+        'replacement removed by its owner': replacementRemoved,
+        'independent back handler survived': independentBackDismissed,
+        'default back events': defaultBackEvents,
+      },
+      <String, Object>{
+        'replacement still owned after stale close': true,
+        'replacement removed by its owner': true,
+        'independent back handler survived': true,
+        'default back events': 0,
+      },
+    );
+    expect(await replacement, isNull);
   });
 }

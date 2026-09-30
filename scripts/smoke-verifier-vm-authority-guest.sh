@@ -3140,6 +3140,10 @@ forward_android_runtime_progress() {
             'X11_FRAME_SOURCE_BUILD=pass '*)
                 printf 'ANDROID_RUNTIME_PROGRESS event=frame-source-built copies=2\n'
                 ;;
+            'ANDROID_RUNTIME_STAGE '*)
+                printf 'ANDROID_RUNTIME_PROGRESS event=runtime-stage %s\n' \
+                    "${line#ANDROID_RUNTIME_STAGE }"
+                ;;
         esac
     done
 }

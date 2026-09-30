@@ -1257,8 +1257,16 @@ retired raw serial, are retained as `evidence/android-peer-ec5544d6.receipt` (9,
 row-order defect and establishes one schedule for the retained diagnostic APK/peer, not the original
 intermittent defect, a current release artifact or sustained resource/latency bounds. Historical input
 without live publication history grants no freshness.
-Make engine/framework/app/lifecycle stages observable before EOF: the runtime wrapper currently waits for
-container completion before fetching logs and the guest forwards only peer admission. The runtime wrapper
+The runtime wrapper now retains one live log pipeline after container start, captures private bytes
+under a live 1 MiB bound with exclusive no-follow creation, and forwards selected nonsecret engine,
+peer, presentation and lifecycle stages through the guest under a distinct diagnostic prefix.
+Normal completion and cancellation join the reader before parsing or workspace removal; reader failure
+cancels only the owned runtime and cannot become acceptance. Actual VM pipe cases passed before EOF,
+including private-byte preservation, final-receipt filtering, exact/over-bound output, no-clobber,
+producer failure and joined pipeline status. The complete authority transaction passed in 89 seconds
+with unchanged host listeners, zero pre-existing-process drift and residue-free joined cleanup.
+Actual Docker/Android stage forwarding and cancellation finality remain pending; these pipe tests do not
+resolve the intermittent product defect. The runtime wrapper
 now assigns actual guest elapsed-clock deadlines to first-frame startup (900 seconds), failed-startup
 runtime drain (120 seconds), and observer join (120 seconds), rather than counting polling iterations.
 Each state request includes its pre/post authority checks within the remaining deadline; expiry starts

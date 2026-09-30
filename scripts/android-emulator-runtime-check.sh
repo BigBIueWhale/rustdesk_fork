@@ -113,6 +113,84 @@ vm_docker() {
     return "$status"
 }
 
+capture_runtime_log() {
+    local status=0
+    /usr/bin/python3 -B -u -I -S -c '
+import os
+import stat
+import sys
+
+limit = 1048576
+events = {
+    b"ANDROID_EMULATOR_KVM_API", b"ANDROID_EMULATOR_KVM_EXECUTION",
+    b"ANDROID_EMULATOR_FRAME_ENDPOINT", b"ANDROID_EMULATOR_RENDERER",
+    b"ANDROID_PEER_INFRASTRUCTURE", b"ANDROID_CONTROLLED_CPACE",
+    b"ANDROID_RECENTS_GESTURE_DRIVER", b"ANDROID_RECENTS_DISMISS_ACTION",
+    b"ANDROID_RECENTS_DISMISS_OUTCOME", b"ANDROID_PEER_CONNECTION_WAIT",
+    b"ANDROID_PEER_CONNECTION_READY", b"ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT",
+    b"ANDROID_PEER_CREDENTIAL_RECOVERY", b"ANDROID_PEER_PRESENTATION_STAGE",
+    b"ANDROID_PEER_FRESHNESS", b"ANDROID_PEER_RESOURCE_SAMPLE",
+}
+
+def forward(line):
+    if len(line) > 4096 or any(value < 32 or value > 126 for value in line):
+        return
+    name = line.split(b" ", 1)[0].split(b"=", 1)[0]
+    if name in events:
+        sys.stdout.buffer.write(b"ANDROID_RUNTIME_STAGE " + line + b"\n")
+        sys.stdout.buffer.flush()
+
+descriptor = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                     | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+with os.fdopen(descriptor, "wb", buffering=0) as output:
+    metadata = os.fstat(output.fileno())
+    if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+            or (metadata.st_uid, metadata.st_gid) != (os.getuid(), os.getgid())):
+        raise RuntimeError("runtime log authority differs")
+    total = 0
+    pending = b""
+    while True:
+        chunk = sys.stdin.buffer.read1(4096)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise RuntimeError("Android app runtime output exceeds its bound")
+        if output.write(chunk) != len(chunk):
+            raise RuntimeError("runtime log write is incomplete")
+        lines = (pending + chunk).split(b"\n")
+        pending = lines.pop()
+        for line in lines:
+            forward(line)
+    if pending:
+        forward(pending)
+' "$1" || status=$?
+    if [ "$status" -ne 0 ]; then
+        # End the producer even if it becomes silent after the failed log write.
+        vm_docker stop --time 10 "$RUNTIME_CONTAINER" >/dev/null || true
+    fi
+    return "$status"
+}
+
+stream_runtime_log() {
+    local status=0
+    vm_docker logs --follow "$RUNTIME_CONTAINER" 2>&1 \
+        | capture_runtime_log "$RUNTIME_LOG" || status=$?
+    if [ "$status" -ne 0 ]; then
+        vm_docker stop --time 10 "$RUNTIME_CONTAINER" >/dev/null || true
+    fi
+    return "$status"
+}
+
+join_runtime_log() {
+    local status=0
+    [ -n "$RUNTIME_LOG_READER" ] || return 0
+    wait "$RUNTIME_LOG_READER" || status=$?
+    RUNTIME_LOG_READER=
+    return "$status"
+}
+
 runtime_monotonic_millis() {
     local uptime ignored whole fraction
     read -r uptime ignored < /proc/uptime || return 1
@@ -227,14 +305,17 @@ VERIFY_CONTAINER=
 XVFB_CONTAINER=
 RUNTIME_CONTAINER=
 OBSERVER_CONTAINER=
+RUNTIME_LOG_READER=
 cleanup() {
     local status=$? cleanup_status=0 container
-    trap - EXIT HUP INT TERM
+    trap - EXIT
+    trap '' HUP INT TERM
     for container in "$OBSERVER_CONTAINER" "$RUNTIME_CONTAINER" "$XVFB_CONTAINER" \
         "$VERIFY_CONTAINER"; do
         [ -n "$container" ] || continue
         vm_docker rm -f "$container" >/dev/null 2>&1 || cleanup_status=1
     done
+    join_runtime_log || cleanup_status=1
     if [ -n "$WORKSPACE" ]; then
         if [ -z "$WORKSPACE_ID" ] || [ ! -d "$WORKSPACE" ] || [ -L "$WORKSPACE" ] \
            || [ "$(stat -c '%d:%i' -- "$WORKSPACE" 2>/dev/null)" != "$WORKSPACE_ID" ]; then
@@ -621,6 +702,8 @@ fi
 
 vm_docker start "$RUNTIME_CONTAINER" >/dev/null \
     || die 'cannot start the Android runtime container'
+stream_runtime_log &
+RUNTIME_LOG_READER=$!
 
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
 OBSERVER_CONTAINER="$(vm_docker create \
@@ -804,9 +887,8 @@ while :; do
 done
 if [ "$startup_wait_status" -ne 0 ]; then
     vm_docker logs --tail 240 "$OBSERVER_CONTAINER" >"$OBSERVER_LOG" 2>&1 || true
-    vm_docker logs --tail 240 "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 || true
     tail -n 240 "$OBSERVER_LOG" >&2
-    tail -n 240 "$RUNTIME_LOG" >&2
+    [ ! -f "$RUNTIME_LOG" ] || tail -n 240 "$RUNTIME_LOG" >&2
 fi
 [ "$startup_wait_status" -ne 124 ] \
     || die 'Android emulator frame observer produced no external frame within 15 minutes'
@@ -822,7 +904,6 @@ if [ "$observer_startup_failed" -eq 1 ]; then
         124) runtime_state=deadline-expired ;;
         *) runtime_state="observation-failed:$runtime_terminal_status" ;;
     esac
-    vm_docker logs --tail 320 "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 || true
     vm_docker logs --tail 320 "$OBSERVER_CONTAINER" >"$OBSERVER_LOG" 2>&1 || true
     runtime_final_state="$(vm_docker inspect --format \
         '{{.State.Status}}:{{.State.ExitCode}}' "$RUNTIME_CONTAINER" 2>/dev/null \
@@ -833,7 +914,7 @@ if [ "$observer_startup_failed" -eq 1 ]; then
     printf 'Android emulator startup failure states: runtime=%s observer=%s runtime_terminal=%s\n' \
         "$runtime_final_state" "$observer_final_state" "$runtime_startup_terminal" >&2
     printf '%s\n' '--- Android runtime log (last 320 lines) ---' >&2
-    tail -n 320 "$RUNTIME_LOG" >&2
+    [ ! -f "$RUNTIME_LOG" ] || tail -n 320 "$RUNTIME_LOG" >&2
     printf '%s\n' '--- Android frame-observer log (last 320 lines) ---' >&2
     tail -n 320 "$OBSERVER_LOG" >&2
     die "Android emulator frame observer exited before its first external frame (runtime startup state: $runtime_state)"
@@ -843,8 +924,7 @@ if ! runtime_status="$(vm_docker wait "$RUNTIME_CONTAINER")"; then
 fi
 [[ "$runtime_status" =~ ^[0-9]+$ ]] \
     || die "Android runtime container returned a malformed status: $runtime_status"
-vm_docker logs "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 \
-    || die 'cannot collect the Android runtime log'
+join_runtime_log || die 'Android runtime log reader failed'
 
 observer_join_status=0
 observer_state=$(wait_runtime_container_terminal "$OBSERVER_CONTAINER" 120000) \
@@ -863,8 +943,7 @@ else
     fi
     [[ "$runtime_status" =~ ^[0-9]+$ ]] \
         || die "focused Android runtime container returned a malformed status: $runtime_status"
-    vm_docker logs "$RUNTIME_CONTAINER" >"$RUNTIME_LOG" 2>&1 \
-        || die 'cannot collect the focused Android runtime log'
+    join_runtime_log || die 'focused Android runtime log reader failed'
     observer_status=not-applicable
 fi
 if [ "$runtime_status" -ne 0 ]; then

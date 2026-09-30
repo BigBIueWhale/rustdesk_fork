@@ -1226,7 +1226,13 @@ counter bands; it is not the raw observer record or an authoritative presentatio
 The 226,803-byte raw serial is retained at `evidence/android-peer-fa5dab91.serial.log` after
 identity-bound retirement of the inactive VM disk. This is an observer/input mismatch to investigate,
 not established product causation. Failure diagnostics now retain the exact bounded raw decoder input
-and digest through both wrappers; focused native and Android execution of that retention are pending.
+and digest through both wrappers. Exact pushed `b126297e` passed the 119-second focused actual-X11
+diagnostic round-trip and stale/fresh A/B (65,189-ms refusal, 144-ms acceptance). Its next Android replay
+again failed initial classification, but forwarded the complete 72,204-byte rejected input with matching
+SHA-256 `45a449f9a67d9221a824cfec0466a6f4760035a163a2baf6881c9778901a21f2`.
+Raw serial `evidence/android-peer-b126297e.serial.log` is retained outside its retired VM root.
+The focused native test now includes those exact historical bytes for band-geometry diagnosis;
+that offline replay is pending and cannot grant freshness without the live source publication history.
 Make engine/framework/app/lifecycle stages observable before EOF: the runtime wrapper currently waits for
 container completion before fetching logs and the guest forwards only peer admission. Replace
 iteration-count waits advertised as seconds with actual monotonic deadlines. Then distinguish event,

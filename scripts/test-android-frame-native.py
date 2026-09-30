@@ -3,6 +3,7 @@
 
 import base64
 import ctypes
+import gzip
 import hashlib
 import importlib.util
 import os
@@ -17,6 +18,79 @@ def require(value, message):
         raise RuntimeError(message)
 
 
+
+def inspect_retained_android_frame(decoder):
+    # Exact failed Android decoder input from b126297e, not its later ADB PNG.
+    # Freeze only the historical envelope clock; no publication history grants freshness.
+    data = gzip.decompress(base64.b64decode(
+        """H4sIAAAAAAAAA+2d22/b5h2GKcnumuR/KDxgbR2L1MFpanuAsRRIBwxF18F2Gh1ICUnq1b6w5drq
+hiU3a4ANSLGbAd12scPFejNgh7sBmxdZoijHbVFg6y6KtiiwFe2wHoat6IZhWy1xv4+kZIqSKMoW
+SYl5H7wgePgO5MPPH0UWQZcuLa9cfHT5sfwjX7649MSXLua/uPTI44/mn0ye3ll9ZjF5fn5hqri+
+sbpTvLKxlX92ZzE5t5CYOzd/LvnwXPLcwkJyqnB1Z3X7a6tP5Ve3CtfWrEXOJxKJoyIbhc1CsbC5
+fi2/ubN4fiG58PBDC7PzD83OTX19/ani2mJyNjG1trr+9FpxcZbqfbWwvXGluLj99NX5+fmpwvb6
+6mbxSnG9sLl4tVAsFjaEZ7emrn6juLqzOEfFE6c/CwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAO5i4vH49PS032cRZK5fvy5JEsdx6XTa73MJMpFIhCRvbW1xGo1G
+QzUR0uCaNJroR7l26vW6ubrlaOBbtmAprHPjxg0nLXc2ZTkryzmbqwe+ZXvP6+vrc3Nz4XD4woUL
+g97BznM217XcysC3bO95oJY7mxrWOQeg5c6O4Bmex7flzo7gGZ7Ht+XOjuB5vDzbX8Jo2giS565d
+jIiNAHhuFYPnzsLDbblXs6NjIwCebSSPjo0AeMZ4tikMz8NqubMjeIZnt22MjudeH1RbJ9mr+pja
+6KVi9D3rjYyX565a4Bmeh2ID8wY8e+PZpjo82xS2b7nrWQXJs43krmfl0h3sWjdInu1tdBaG5+PZ
+sFHR9ax88WyZzMPhsLlx/VBraTnJrnJa2Isd6JztCw/q2eaofeEheu46CPt6dvJj297GSTwPOm/Y
+HIXnY7fsl2e9zHA9n9yGZ57tj1oYtfF8chvBmTcaxkIvMwqeQ1rszvm4LduYtD9q7znMhc1R65rQ
+huG25Zm26qwjoxhdJS0bdZViajlCBULtTekF6OLoqF5AL9PWUUPV97faNzerXWDYFNPaOHmeNEf9
+VFUPm6lbE+HuoTK0DHETtNI4VFkaRkIh2j+pFWhvqq7W6SirdQ/HTepljnrRCoSM/RN6qFm12ax2
+FyZNYUOZLoLdbG2l3mgYo6LRZZDYe3Zn3mBjKBRu/tUZf3unzakfqvoobWhyWOpMpi4kpJXRlqf0
+woeHRhmyGuHOtDWlN1I3CoS5M5PcmXD70VY4o+VTYe5UiLu3oTdLJ6PdLI671xTmdoLjPsNxES3q
+YcMYCZYRogkPtV/ukMez9bbW2Umz8/7PBBeJcOFWlPxZPdXctKeRzlalGS18j0RN66ykIs3sizMH
+mUQ6tpuJ7Ym8TMnGSizCXlqoZPlalpdpJR3buxwvXUreXkmWV5J7y4nySqK8nJCXkpTqSkJhSZb0
+oyuJveUkO0rLldnfsT20kqg+GZcvx8v65iVtMxUvi0I5y1cpYrTGOhKqaf7O5QR1tLsSe2Ulriwl
+KFW2TFa17owoOUFP7+t1KdRjjEVMaIkZm2xPXNvTXBrOWSq5mUouLvK3RbpSXhGjima7qq3QHlni
+y/qeDF+je5EWXkrFaqmYkhKUVGxfSy0Vr6TipXSslIrT7aikYnIqVm0uFdpzOVFi+4V9bU+FbhkJ
+p02yyjrlW0vqqEJJx/fS8d2UcId11DWC4p9nPTEHEcyey7m4xJckXa8lQolFW2ejTpBZ2CDXoxh7
+rKlkaZSyFaqlZAQlrSXDUs20rVSbkhVzv9lWWFPd47dnhzdCn2FoMJ+Vc4LIlzJCN89dzFdsC9Ta
+Y0hjVmOVruneRSu9+xp5z7pqY72Si8oSzRvl3p5l8Wio07WzGbX35SvtMXsuayG3shZjs8fdlJuq
+e979cfNMU/CsGJWbf8Ini6CFby5bnkmvUNOiNGNs9vYs249nvx0OFs1zsp9nue1v2cEftXkSoLm0
+16ThdLKC5xN6ZvOGs3aC4bltEvbWs8N2xtxzlZ6Duaj+q/XYl2wf4znYI3fDvEEPoTvi2Vruc+LM
+nZRQsx3S8HxSz/v5+7NRejVT4NmlaO8SMzUxSS9u9JrukmeX4ru9wTxL00ru/nTsICvUpOM++uHZ
+wXhmj8Icv5cVZHh2zzNNypU8L0XLPV/NRjW+2xt0PGue6T2l5ru6YHumeTmtfe30XV1QPRvJwbMX
+keHZk9D8nOUxP7ueUj6qPQfxe8MDz1V4djtKTqD5eTj/PQWeu0X7XRdVpCS9dIsxRfJbXZA9Sw/W
+cg+khZez/AE8uzme2e9neu/Oavt8txdUz6bvG/hd5+54xvcNbzzj+4ZHwXu3J8H3DW+C7xvepGQ8
+B/He7bZnfN/wIvi+4XbwfcM7z9KDCr5veDGe2e/nHL5vuOwZ3zc8G8/4vuGN55rE3lPwPuh6csyz
+GCXf/tsLsGeZfeeHZ9dTzvMi+0fcbN7I6P/Uehziu7fBx3O0NT/Ds3upSO2ex+QF3HdvgyXHy3ny
+XNH1Yjy7FzZvCGUxJkt+qwu2Z5o3xOhLIn+Qi/pvL8Ce9ecgvYLDs9ue08Ke5Le3u8NzdbwG83h6
+5sfRs8v/u3sAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQcKaAJ3DPqAiCIAiCnCRfeEF9
+4sfW0E73evzrJ+rv31P/8Be24rDK2s/Vm7tHoU1/pd13Uw1vG+uhbfW+5/pXeesj9Ss/sYZ22tfK
+vqi+/I41mRcddPehSuieiTc/7F/l1p7ayTd/49TJex+r7348ZM/kliDV+kpou3+VV9/tvjNkW6ve
+UH/xmnrnT2xMvv+JevBntnlY79+dTssz0bfKr/7Iil37mfrr1488//I1p06E51X+1mAaIzvWlV6q
+HUq28Wxfizy//Tdm+F//ZaEV2nTi+bEfWuPQ86d19fPfPfJMOx1K+/6++r3aYJ6JiR11smg3DLzz
+/NFxPHfi0DPxv0O2+fd/Dzaef7CvvjCg59Z52ksOeTJvEN+6bWzqU6hLnqO3utSKOp4K2Lzx/MCe
+7UPPwZD5OXizf5XdN9VX3mEPCx1aoc3dN/rUokceFbMk89P+3b3xQZuu1993dF3P/dbRTewa9hz8
+x5A9HzsPfFt9/EcstOJ2Xx/805BMKw6rJL/jvyIEQRAEuTvzf4V2zEsMGgEA"""
+    ))
+    require(len(data) == 72204 and hashlib.sha256(data).hexdigest()
+            == "45a449f9a67d9221a824cfec0466a6f4760035a163a2baf6881c9778901a21f2",
+            "retained Android input bytes differ")
+    metadata = decoder.METADATA.fullmatch(data.split(b"\n", 2)[1] + b"\n")
+    require(metadata is not None, "retained Android metadata differs")
+    observed = int(metadata.group(4))
+    record = decoder.parse_record(data, observed)
+    require((record["width"], record["height"]) == (120, 200),
+            "retained Android dimensions differ")
+    pixels = memoryview(record["pixels"])
+    runs = []
+    for y in range(200):
+        row = decoder.decode_state_code_row(pixels, 120, 200, y, 0, 120)
+        state = None if row is None else row[0]
+        if runs and runs[-1][0] == state:
+            runs[-1][1] += 1
+        else:
+            runs.append([state, 1, y])
+    analysis = decoder.analyze(record, {}, observed)
+    require(analysis["chosen"] is None, "historical pixels acquired freshness without history")
+    summary = ",".join(f"{state}:{count}@{top}" for state, count, top in runs)
+    print("ANDROID_FRAME_RETAINED_GEOMETRY source=actual-android-decoder-input "
+          f"bytes={len(data)} seq={record['sequence']} "
+          f"candidates={len(analysis['candidates'])} full_span_runs={summary}", flush=True)
+
 def main():
     require(os.getuid() == 4000 and os.getgid() == 4000, "numeric nonroot principal differs")
     module_path = Path("/work/scripts/android-emulator-frame.py")
@@ -24,6 +98,7 @@ def main():
     decoder = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(decoder)
     decoder.self_test()
+    inspect_retained_android_frame(decoder)
     fixture = Path("/build/fixture")
     fixture.mkdir(mode=0o700)
     source_sha = hashlib.sha256(Path("/work/scripts/flutter-peer-source-x11.c").read_bytes()).hexdigest()

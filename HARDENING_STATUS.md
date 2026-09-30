@@ -1603,6 +1603,10 @@ finding. Complete 221,475-byte serial is `evidence/toolbar-query-6b45f98a.serial
 records are retained separately. After an actual duplicate invocation refused with the sole run
 identity unchanged, user-authorized locked cleanup of inactive `run.E4dYGvTAD7` recovered
 2,969,096,192 allocated bytes. All 74 retained app files were independently rehashed unchanged.
+The role-27 nodes are images, not menu items. Failure diagnostics now collect bounded descriptions
+and action-interface/count properties from every exact-process node, rather than guessing which
+role carries the toolbar label. The native header's image/menu/menu-item constants are recorded;
+the failure tree has a five-second elapsed-clock budget. Same-artifact property observation is pending.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

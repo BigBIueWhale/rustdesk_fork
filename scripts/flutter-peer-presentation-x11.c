@@ -79,6 +79,7 @@ typedef struct {
 
 typedef struct {
     unsigned int nodes;
+    uint64_t diagnostic_deadline;
     unsigned int application_roots;
     unsigned int password_nodes;
     unsigned int visible_passwords;
@@ -173,6 +174,7 @@ static int scan_password_prompt_node(AtspiAccessible *accessible, unsigned int e
     int focusable;
 
     if (depth > ACCESSIBLE_DEPTH_LIMIT || scan->nodes >= ACCESSIBLE_NODE_LIMIT ||
+        (emit_diagnostic != 0 && monotonic_millis() >= scan->diagnostic_deadline) ||
         atspi_process_id(accessible, &pid) != 0 || pid != expected_pid) {
         return -1;
     }
@@ -248,9 +250,10 @@ static int scan_password_prompt_node(AtspiAccessible *accessible, unsigned int e
                 atspi_state_set_contains(states, ATSPI_STATE_SHOWING), focusable, focused);
         print_sanitized_accessible_string("name", name);
         g_free(name);
-        if (role == ATSPI_ROLE_MENU_ITEM) {
+        {
             gchar *description = atspi_accessible_get_description(accessible, &error);
             AtspiAction *action = atspi_accessible_get_action_iface(accessible);
+            int action_interface = action != NULL;
             gint actions = -1;
             if (error == NULL && action != NULL) {
                 actions = atspi_action_get_n_actions(action, &error);
@@ -262,7 +265,9 @@ static int scan_password_prompt_node(AtspiAccessible *accessible, unsigned int e
                 g_object_unref(states);
                 return -1;
             }
-            fprintf(stderr, "FLUTTER_PEER_ATSPI_MENU depth=%u actions=%d", depth, actions);
+            fprintf(stderr, "FLUTTER_PEER_ATSPI_PROPERTIES node=%u depth=%u role=%d "
+                    "action_interface=%d actions=%d", scan->nodes, depth, (int)role,
+                    action_interface, actions);
             print_sanitized_accessible_string("description", description);
             g_free(description);
         }
@@ -304,6 +309,13 @@ static int scan_password_prompt(unsigned int expected_pid, PasswordPromptScan *s
     gint index;
 
     memset(scan, 0, sizeof(*scan));
+    if (emit_diagnostic != 0) {
+        scan->diagnostic_deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+        fprintf(stderr, "FLUTTER_PEER_ATSPI_ROLE_VALUES image=%d menu=%d menu_item=%d "
+                "diagnostic_budget_ms=%u\n", (int)ATSPI_ROLE_IMAGE,
+                (int)ATSPI_ROLE_MENU, (int)ATSPI_ROLE_MENU_ITEM,
+                DIALOG_CONTROL_WAIT_MS);
+    }
     scan->first_focused_role = ATSPI_ROLE_INVALID;
     scan->first_password_character_count = -1;
     if (atspi_get_desktop_count() != 1) {

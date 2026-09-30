@@ -1269,7 +1269,23 @@ Actual replay at `6053e998` streamed stages from guest 264 seconds and passed in
 joining, pixels and lifecycle gates, but the outer correctly rejected a duplicated renderer receipt:
 the live diagnostic retained the final receipt's name and payload. Diagnostics now use distinct
 lowercase stage/result fields; the regression executes the actual unchanged outer receipt checker
-against both formats. Corrected end-to-end acceptance and native cancellation finality remain pending.
+against both formats. Exact pushed `f74470dd` then passed the complete 991-second retained-APK/peer
+replay, including live stages, joined reader, all inner/guest/outer checks, unchanged inputs and
+host listeners, zero pre-existing-process drift and automatic run retirement. It observed 20 distinct
+frame identities, three background cycles and six replacements; maximum background/task recovery was
+810/860 ms, content age 434 ms and capture age 212 ms. RSS/thread growth was 6,028 KiB/four, with handles
+unobserved. Its bounded terminal receipt is `evidence/android-runtime-f74470dd.receipt`, not full raw serial.
+`start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
+ordinary traps with the child retained, and then applies any recorded cancellation. The first test was
+false-green because readiness raced ahead of cleanup; the corrected test observes the actual drain
+boundary and kernel parent identity while holding the producer open. Unprotected startup failed with
+an empty reader PID; corrected native HUP/INT/TERM cases joined before workspace removal and preserved
+129/130/143 respectively. The complete zero-NIC authority transaction passed in 86 seconds with no
+host-listener addition or pre-existing-process drift and joined automatic run retirement. Bounded
+negative serial and forwarded positive receipts are retained at `evidence/runtime-acquisition-*`.
+These are real Bash/Python pipe/signal/filesystem cases with a fixture producer, not real Docker
+failed-stream cancellation. That API/finality evidence, intermittent-defect causation and current-release
+closure remain OPEN.
 The corrected format passed that real-checker A/B and the complete 88-second authority transaction
 with unchanged host listeners, zero pre-existing-process drift and joined successful-run retirement.
 Bounded raw collision evidence is retained outside the reconciled failed run. None of these results

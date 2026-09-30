@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Observe sparse progress before producer EOF, using the real guest filter."""
 
+import ctypes
 import os
 from pathlib import Path
 import select
@@ -20,7 +21,7 @@ if source.count(marker) != 1:
 function = marker + source.split(marker, 1)[1].split("\n}\n", 1)[0] + "\n}\n"
 wrapper = (scripts / "android-emulator-runtime-check.sh").read_text()
 offsets = []
-for name in ("capture_runtime_log", "stream_runtime_log", "join_runtime_log",
+for name in ("capture_runtime_log", "stream_runtime_log", "join_runtime_log", "start_runtime_log",
              "runtime_monotonic_millis"):
     marker = name + "() {\n"
     if wrapper.count(marker) != 1:
@@ -168,8 +169,7 @@ vm_docker() {
         *) return 90 ;;
     esac
 }
-stream_runtime_log &
-RUNTIME_LOG_READER=$!
+start_runtime_log
 status=0
 join_runtime_log || status=$?
 [ -z "$RUNTIME_LOG_READER" ] || exit 91
@@ -185,5 +185,122 @@ exit "$status"
             raise RuntimeError("joined runtime log is incomplete")
         if completed.stdout != b"ANDROID_RUNTIME_STAGE stage=peer-infrastructure result=ready server=fixture\n":
             raise RuntimeError("runtime stream stage cardinality differs")
+
+    # Keep deliberately orphaned counterfactual children inside this test's ownership.
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(36, ctypes.c_ulong(1), 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
+        raise OSError(ctypes.get_errno(), "cannot own acquisition-fixture descendants")
+    cleanup_marker = "cleanup() {\n"
+    if wrapper.count(cleanup_marker) != 1:
+        raise RuntimeError("runtime cleanup owner is absent or duplicated")
+    cleanup_function = (cleanup_marker + wrapper.split(cleanup_marker, 1)[1]
+                        .split("\n}\n", 1)[0] + "\n}\n")
+    drain_marker = "    join_runtime_log || cleanup_status=1\n"
+    if cleanup_function.count(drain_marker) != 1:
+        raise RuntimeError("runtime cleanup drain hook is ambiguous")
+    cleanup_function = cleanup_function.replace(
+        drain_marker,
+        '    printf "drain:%s\\n" "$RUNTIME_LOG_READER" >&"$DRAIN"\n'
+        + drain_marker + '    printf "drained\\n" >&"$DRAIN"\n', 1)
+    if runtime_functions.count("    RUNTIME_LOG_READER=$!\n") != 1:
+        raise RuntimeError("runtime reader acquisition hook is ambiguous")
+    injected = runtime_functions.replace(
+        "    RUNTIME_LOG_READER=$!\n",
+        '    /bin/kill -s "$CANCEL" "$$"\n    RUNTIME_LOG_READER=$!\n', 1)
+    try:
+        for cancel, status in (("HUP", 129), ("INT", 130), ("TERM", 143)):
+            workspace = root / ("acquisition-" + cancel)
+            workspace.mkdir(mode=0o700)
+            identity = workspace.stat()
+            control_read, control_write = os.pipe()
+            ready_read, ready_write = os.pipe()
+            drain_read, drain_write = os.pipe()
+            process = None
+            try:
+                process = subprocess.Popen(
+                    ["/bin/bash", "--noprofile", "--norc", "-euo", "pipefail", "-c",
+                     injected + cleanup_function + '''
+WORKSPACE=$1
+WORKSPACE_ID=$2
+SCRIPT_DIR=$3
+CONTROL=$4
+READY=$5
+CANCEL=$6
+DRAIN=$7
+RUNTIME_LOG=$WORKSPACE/runtime.log
+RUNTIME_LOG_READER=
+VERIFY_CONTAINER=
+XVFB_CONTAINER=
+OBSERVER_CONTAINER=
+RUNTIME_CONTAINER=owned-fixture
+vm_docker() {
+    case "$*" in
+        "logs --follow owned-fixture")
+            printf 'ready\n' >&"$READY"
+            IFS= read -r ignored <&"$CONTROL" || true
+            printf 'ANDROID_PEER_INFRASTRUCTURE=ready server=fixture\n'
+            ;;
+        "rm -f owned-fixture"|"stop --time 10 owned-fixture") ;;
+        *) return 90 ;;
+    esac
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+start_runtime_log
+exit 93
+''', "runtime-acquisition", str(workspace),
+                     f"{identity.st_dev}:{identity.st_ino}", str(scripts),
+                     str(control_read), str(ready_write), cancel, str(drain_write)],
+                    pass_fds=(control_read, ready_write, drain_write),
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                os.close(control_read)
+                control_read = None
+                os.close(ready_write)
+                ready_write = None
+                os.close(drain_write)
+                drain_write = None
+                if not select.select([ready_read], [], [], 1.0)[0] or os.read(ready_read, 6) != b"ready\n":
+                    raise RuntimeError("acquisition producer was not admitted")
+                if not select.select([drain_read], [], [], 1.0)[0]:
+                    raise RuntimeError("acquisition cancellation did not reach its drain")
+                drain = os.read(drain_read, 64)
+                reader = drain.removeprefix(b"drain:").removesuffix(b"\n")
+                if not drain.startswith(b"drain:") or not reader.isdigit() or int(reader) <= 0:
+                    raise RuntimeError("acquisition cancellation reached drain without its reader PID")
+                owner = Path(f"/proc/{int(reader)}/status").read_text().splitlines()
+                if f"PPid:\t{process.pid}" not in owner:
+                    raise RuntimeError("acquisition drain does not own the exact reader child")
+                # The producer is held open at the actual drain, not an earlier readiness race.
+                if process.poll() is not None or not workspace.is_dir():
+                    raise RuntimeError("acquisition cancellation returned before child EOF")
+                os.close(control_write)
+                control_write = None
+                output, errors = process.communicate(timeout=3)
+                if process.returncode != status or errors or workspace.exists():
+                    raise RuntimeError("acquisition cancellation did not join and preserve its status")
+                if output != b"ANDROID_RUNTIME_STAGE stage=peer-infrastructure result=ready server=fixture\n":
+                    raise RuntimeError("acquisition reader was not joined byte-completely")
+                if os.read(drain_read, 64) != b"drained\n" or os.read(drain_read, 1):
+                    raise RuntimeError("acquisition drain did not complete exactly once after child EOF")
+            finally:
+                for descriptor in (control_read, control_write, ready_read, ready_write,
+                                   drain_read, drain_write):
+                    if descriptor is not None:
+                        os.close(descriptor)
+                if process is not None:
+                    if process.poll() is None:
+                        process.terminate()
+                    process.communicate(timeout=3)
+                # Reap only descendants of this isolated fixture process, including a broken owner.
+                while True:
+                    try:
+                        os.waitpid(-1, 0)
+                    except ChildProcessError:
+                        break
+    finally:
+        if libc.prctl(36, ctypes.c_ulong(0), 0, 0, 0) != 0:
+            raise OSError(ctypes.get_errno(), "cannot restore fixture subreaper state")
 print("ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof "
       "diagnostics=filtered cardinality=1 children=joined")

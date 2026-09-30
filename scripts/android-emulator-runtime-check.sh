@@ -198,6 +198,19 @@ join_runtime_log() {
     return "$status"
 }
 
+start_runtime_log() {
+    local cancel_status=0
+    trap 'cancel_status=129' HUP
+    trap 'cancel_status=130' INT
+    trap 'cancel_status=143' TERM
+    stream_runtime_log &
+    RUNTIME_LOG_READER=$!
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    [ "$cancel_status" -eq 0 ] || exit "$cancel_status"
+}
+
 runtime_monotonic_millis() {
     local uptime ignored whole fraction
     read -r uptime ignored < /proc/uptime || return 1
@@ -709,8 +722,7 @@ fi
 
 vm_docker start "$RUNTIME_CONTAINER" >/dev/null \
     || die 'cannot start the Android runtime container'
-stream_runtime_log &
-RUNTIME_LOG_READER=$!
+start_runtime_log
 
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
 OBSERVER_CONTAINER="$(vm_docker create \

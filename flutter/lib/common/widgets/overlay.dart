@@ -648,13 +648,13 @@ class BlockableOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _BlockableOverlayBody(
-        key: ObjectKey(state),
+        key: state.key,
         underlying: underlying,
         state: state,
       );
 }
 
-class _BlockableOverlayBody extends StatefulWidget {
+class _BlockableOverlayBody extends Overlay {
   final Widget underlying;
   final BlockableOverlayState state;
 
@@ -662,23 +662,25 @@ class _BlockableOverlayBody extends StatefulWidget {
       {super.key, required this.underlying, required this.state});
 
   @override
-  State<_BlockableOverlayBody> createState() => _BlockableOverlayBodyState();
+  OverlayState createState() => _BlockableOverlayBodyState();
 }
 
-class _BlockableOverlayBodyState extends State<_BlockableOverlayBody> {
+class _BlockableOverlayBodyState extends OverlayState {
+  _BlockableOverlayBody get _body => widget as _BlockableOverlayBody;
+
   late final OverlayEntry _underlyingEntry = OverlayEntry(
     canSizeOverlay: true,
-    builder: (_) => widget.underlying,
+    builder: (_) => _body.underlying,
   );
   late final OverlayEntry _middleEntry = OverlayEntry(
     builder: (_) => Obx(() {
-      final blocked = widget.state.middleBlocked.value;
+      final blocked = _body.state.middleBlocked.value;
       return IgnorePointer(
         ignoring: !blocked,
         child: Listener(
           behavior: HitTestBehavior.opaque,
           onPointerDown: (_) {
-            widget.state.onMiddleBlockedClick?.call();
+            _body.state.onMiddleBlockedClick?.call();
           },
           child: const SizedBox.expand(),
         ),
@@ -687,7 +689,13 @@ class _BlockableOverlayBodyState extends State<_BlockableOverlayBody> {
   );
 
   @override
-  void didUpdateWidget(_BlockableOverlayBody oldWidget) {
+  void initState() {
+    super.initState();
+    insertAll([_underlyingEntry, _middleEntry]);
+  }
+
+  @override
+  void didUpdateWidget(covariant _BlockableOverlayBody oldWidget) {
     super.didUpdateWidget(oldWidget);
     _underlyingEntry.markNeedsBuild();
     _middleEntry.markNeedsBuild();
@@ -703,10 +711,4 @@ class _BlockableOverlayBodyState extends State<_BlockableOverlayBody> {
       ..dispose();
     super.dispose();
   }
-
-  @override
-  Widget build(BuildContext context) => Overlay(
-        key: widget.state.key,
-        initialEntries: [_underlyingEntry, _middleEntry],
-      );
 }

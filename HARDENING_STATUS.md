@@ -1413,16 +1413,20 @@ This closes this named corrected Linux observer/peer schedule, not the original 
 Android/Windows defect, high-load/soak, installed-service, cross-version, Apple or release matrix.
 Do not resize the screen to hide invalid requests, ignore X errors, relax bounds or infer platform closure.
 
-**Shared route-overlay entry ownership — OPEN, NATIVE REGRESSION PENDING.** The earlier Linux
-failure log contains `OverlayEntry.remove` throwing during `_BlockableOverlayBodyState.dispose`.
-The global key belongs to its child `Overlay`, while the separately-lived parent owns the base
-entries. Reparenting can retain that child state while discarding its entry owner; replacement
-`initialEntries` are ignored by an already initialized overlay. Desktop Remote/ViewCamera move
-the same overlay key between empty and image-ready layouts. The existing widget regression now
-requires six global-key moves with the exact overlay and route states, inserted entry, blocker,
-route updates and complete unmount retained. Execute it against unchanged product code before
-changing ownership. This is a concrete shared cleanup path to test, not established causation
-of the Android/Windows presentation hang or a new privilege-escalation finding.
+**Shared route-overlay entry ownership — NATIVE OLD FAILURE; CORRECTION VALIDATION OPEN.**
+Exact `a19fc73e` executed the regression on pinned Flutter 3.24.5: the first global-key move
+lost `route 1`, then cleanup hit `OverlayEntry.remove`'s `_overlay != null` assertion at our
+disposal method. The earlier Flutter 3.47.5 peer log contains the corresponding release-mode
+null-check failure. The child overlay could move without its parent entry owner, and an existing
+overlay ignored replacement `initialEntries`. Current source gives the globally keyed private
+`OverlayState` ownership of both base entries: insert once in initialization, rebuild from its
+current widget, and remove/dispose once before superclass retirement. The separate child overlay
+and local ObjectKey owner are absent; no catch, SDK conditional or recreation fallback is added.
+The unchanged regression requires six moves with exact overlay/route states, inserted entry,
+blocker/tap behavior, route updates and complete unmount. Positive native execution remains pending.
+Complete negative serial is retained outside scratch. This shared widget is used by desktop and
+mobile Remote/ViewCamera, but this is not Android/Windows hang causation, device/native-platform
+coverage, sustained resources, release closure or a newly demonstrated privilege escalation.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

@@ -1481,8 +1481,12 @@ allocate a new owner in the image-ready build path behind a global three-second 
 First-image completion already performs its own readiness dismissal. The real Linux peer controller
 now requires actual toolbar dialog activation, the same native accessibility object and changed
 dialog layout through three observed window resizes, explicit Escape retirement and an unchanged
-authenticated TCP connection. Compilation and real-app execution of this new case are pending;
-product behavior remains unchanged for reproduction. Window geometry alone, copied build logic,
+authenticated TCP connection. Exact `cc63e172` passed the focused zero-NIC transaction in 68 seconds:
+the actual controller compiled with warnings as errors and the shared actual-X11 pixel-oracle tests
+passed, with unchanged inputs/listeners, zero pre-existing-process drift and joined scratch retirement.
+This profile does not execute the GTK dialog case; real-app execution remains pending. Only forwarded
+results are available because separate raw-log retention failed. Product behavior remains unchanged
+for reproduction. Window geometry alone, copied build logic,
 or a selector failure cannot establish the production defect. Neither source concern establishes
 the original display-delay cause or a privilege escalation.
 

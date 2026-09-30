@@ -1265,8 +1265,15 @@ cancels only the owned runtime and cannot become acceptance. Actual VM pipe case
 including private-byte preservation, final-receipt filtering, exact/over-bound output, no-clobber,
 producer failure and joined pipeline status. The complete authority transaction passed in 89 seconds
 with unchanged host listeners, zero pre-existing-process drift and residue-free joined cleanup.
-Actual Docker/Android stage forwarding and cancellation finality remain pending; these pipe tests do not
-resolve the intermittent product defect. The runtime wrapper
+Actual replay at `6053e998` streamed stages from guest 264 seconds and passed inner/guest reader
+joining, pixels and lifecycle gates, but the outer correctly rejected a duplicated renderer receipt:
+the live diagnostic retained the final receipt's name and payload. Diagnostics now use distinct
+lowercase stage/result fields; the regression executes the actual unchanged outer receipt checker
+against both formats. Corrected end-to-end acceptance and native cancellation finality remain pending.
+The corrected format passed that real-checker A/B and the complete 88-second authority transaction
+with unchanged host listeners, zero pre-existing-process drift and joined successful-run retirement.
+Bounded raw collision evidence is retained outside the reconciled failed run. None of these results
+resolves the intermittent product defect. The runtime wrapper
 now assigns actual guest elapsed-clock deadlines to first-frame startup (900 seconds), failed-startup
 runtime drain (120 seconds), and observer join (120 seconds), rather than counting polling iterations.
 Each state request includes its pre/post authority checks within the remaining deadline; expiry starts

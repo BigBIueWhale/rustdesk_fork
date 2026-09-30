@@ -135,9 +135,16 @@ events = {
 def forward(line):
     if len(line) > 4096 or any(value < 32 or value > 126 for value in line):
         return
-    name = line.split(b" ", 1)[0].split(b"=", 1)[0]
+    token, _, detail = line.partition(b" ")
+    name, _, result = token.partition(b"=")
     if name in events:
-        sys.stdout.buffer.write(b"ANDROID_RUNTIME_STAGE " + line + b"\n")
+        stage = name[len(b"ANDROID_"):].lower().replace(b"_", b"-")
+        summary = b"stage=" + stage
+        if result:
+            summary += b" result=" + result
+        if detail:
+            summary += b" " + detail
+        sys.stdout.buffer.write(b"ANDROID_RUNTIME_STAGE " + summary + b"\n")
         sys.stdout.buffer.flush()
 
 descriptor = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL

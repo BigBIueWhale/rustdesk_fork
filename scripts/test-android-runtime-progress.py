@@ -72,12 +72,41 @@ observe(["/bin/bash", "--noprofile", "--norc", "-euo", "pipefail", "-c",
 with tempfile.TemporaryDirectory(prefix="android-runtime-progress.") as root:
     root = Path(root)
     stage = b"ANDROID_EMULATOR_KVM_EXECUTION=pass backend=kvm scope=nested-guest vm_fds=1 vcpu_fds=2"
-    result = b"ANDROID_RUNTIME_PROGRESS event=runtime-stage " + stage + b"\n"
+    result = (b"ANDROID_RUNTIME_PROGRESS event=runtime-stage stage=emulator-kvm-execution "
+              b"result=pass backend=kvm scope=nested-guest vm_fds=1 vcpu_fds=2\n")
     payload = b"private diagnostic\x00\xff\n" + stage + b"\n"
     log = root / "live.log"
     observe(["/bin/bash", "--noprofile", "--norc", "-euo", "pipefail", "-c",
              runtime_functions + function + 'capture_runtime_log "$1" | forward_android_runtime_progress',
              "runtime-progress", str(log)], True, payload, result, log)
+    renderer = (b"ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader "
+                b"angle=absent gles_sha256=" + b"a" * 64 + b"\n")
+    diagnostic = (b"ANDROID_RUNTIME_PROGRESS event=runtime-stage stage=emulator-renderer "
+                  b"result=pass requested=swiftshader observed=swiftshader angle=absent "
+                  b"gles_sha256=" + b"a" * 64 + b"\n")
+    log = root / "renderer.log"
+    observe(["/bin/bash", "--noprofile", "--norc", "-euo", "pipefail", "-c",
+             runtime_functions + function + 'capture_runtime_log "$1" | forward_android_runtime_progress',
+             "runtime-progress", str(log)], True, renderer, diagnostic, log)
+    outer = (scripts / "smoke-verifier-vm-authority.sh").read_text()
+    marker = "require_android_renderer_receipt() {\n"
+    if outer.count(marker) != 1:
+        raise RuntimeError("outer renderer receipt owner is absent or duplicated")
+    receipt_function = marker + outer.split(marker, 1)[1].split("\n}\n", 1)[0] + "\n}\n"
+    for old, live in ((True, b"ANDROID_RUNTIME_PROGRESS event=runtime-stage " + renderer),
+                      (False, diagnostic)):
+        serial = root / ("renderer-old.serial" if old else "renderer-new.serial")
+        serial.write_bytes(b"cloud-init: " + live + b"cloud-init: " + renderer)
+        completed = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-euo", "pipefail", "-c",
+             'fail() { printf "%s\n" "$*" >&2; exit 1; }\n' + receipt_function
+             + 'SERIAL_LOG=$1\nrequire_android_renderer_receipt',
+             "runtime-receipt", str(serial)], capture_output=True, timeout=3)
+        if old:
+            if completed.returncode == 0 or b"receipt is absent or duplicated" not in completed.stderr:
+                raise RuntimeError("acceptance-shaped progress did not fail the real outer checker")
+        elif completed.returncode or completed.stderr or completed.stdout:
+            raise RuntimeError("typed diagnostic collided with the final outer receipt")
     # The private log remains byte-complete; acceptance-shaped output is not forwarded.
     log = root / "filtered.log"
     payload = b"ANDROID_EMULATOR_APP=pass forged=not-an-acceptance\n"
@@ -154,7 +183,7 @@ exit "$status"
             raise RuntimeError("runtime producer failure cancellation differs")
         if log.read_bytes() != b"ANDROID_PEER_INFRASTRUCTURE=ready server=fixture\n":
             raise RuntimeError("joined runtime log is incomplete")
-        if completed.stdout != b"ANDROID_RUNTIME_STAGE ANDROID_PEER_INFRASTRUCTURE=ready server=fixture\n":
+        if completed.stdout != b"ANDROID_RUNTIME_STAGE stage=peer-infrastructure result=ready server=fixture\n":
             raise RuntimeError("runtime stream stage cardinality differs")
 print("ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof "
       "diagnostics=filtered cardinality=1 children=joined")

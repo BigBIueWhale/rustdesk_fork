@@ -1231,8 +1231,16 @@ diagnostic round-trip and stale/fresh A/B (65,189-ms refusal, 144-ms acceptance)
 again failed initial classification, but forwarded the complete 72,204-byte rejected input with matching
 SHA-256 `45a449f9a67d9221a824cfec0466a6f4760035a163a2baf6881c9778901a21f2`.
 Raw serial `evidence/android-peer-b126297e.serial.log` is retained outside its retired VM root.
-The focused native test now includes those exact historical bytes for band-geometry diagnosis;
-that offline replay is pending and cannot grant freshness without the live source publication history.
+The focused native test includes those exact historical bytes for band-geometry diagnosis. Exact pushed
+`e6ce7dc760db204c0f7ebc09d6971885ef44af9d`, tree `dcc94ef1ac65860ce2239464fd2e6b541f28191c`,
+passed the complete transaction in 131 seconds (65,273-ms stale refusal, 167-ms fresh acceptance).
+Its real captured input decoded four intact nine-pixel full-width runs in ordinal order 3, 2, 1, 0,
+not fragmented bands. `AndroidEmulatorFrameObserver.validate` preserves the raw buffer while `encode`
+labels it bottom-up; the decoder reverses its rows. The actual pinned emulator buffer is top-down,
+contrary to the schema comment. This explains the corrected-format initial classification failures,
+not the original intermittent product defect. Normalize once at the observer boundary to the single
+canonical bottom-up contract, then rerun the actual retained-artifact lifecycle schedule. That correction
+and product evidence remain OPEN; historical input without live publication history grants no freshness.
 Make engine/framework/app/lifecycle stages observable before EOF: the runtime wrapper currently waits for
 container completion before fetching logs and the guest forwards only peer admission. Replace
 iteration-count waits advertised as seconds with actual monotonic deadlines. Then distinguish event,

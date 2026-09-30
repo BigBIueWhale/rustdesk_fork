@@ -20,14 +20,15 @@ def identity(info):
             info.st_nlink, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
 
-def read_file(path, modes, limit):
+def read_file(path, modes, limit, readonly=False):
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
     with os.fdopen(descriptor, "rb") as handle:
         info = os.fstat(handle.fileno())
         require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
                 and info.st_gid == os.getgid() and info.st_nlink == 1
-                and stat.S_IMODE(info.st_mode) in modes and 1 <= info.st_size <= limit,
-                "fixture file authority differs")
+                and stat.S_IMODE(info.st_mode) in modes and 1 <= info.st_size <= limit
+                and (not readonly or os.fstatvfs(handle.fileno()).f_flag & os.ST_RDONLY),
+                f"fixture file authority differs: {path}")
         raw = handle.read(limit + 1)
         require(len(raw) == info.st_size and identity(os.fstat(handle.fileno())) == identity(info),
                 "fixture input changed during reading")
@@ -41,7 +42,8 @@ def build(source, output, expected_sha):
     require(re.fullmatch(r"[0-9a-f]{64}", expected_sha), "fixture source digest is malformed")
     require(str(source.resolve()) == str(source) and str(output.resolve()) == str(output),
             "fixture paths are not canonical")
-    raw, source_id = read_file(source, (0o400, 0o444), 65536)
+    source_modes = (0o400, 0o444, 0o600, 0o644, 0o664)
+    raw, source_id = read_file(source, source_modes, 65536, readonly=True)
     require(hashlib.sha256(raw).hexdigest() == expected_sha, "fixture source digest differs")
     descriptor = os.open(output, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
@@ -65,7 +67,7 @@ def build(source, output, expected_sha):
         b, _ = read_file(output / "frame-b", (0o700,), 1048576)
         require(a == b and a[:7] == b"\x7fELF\x02\x01\x01" and b[18:20] == b"\x3e\x00",
                 "fixture copies differ or are not Linux x86_64 ELF")
-        require(read_file(source, (0o400, 0o444), 65536) == (raw, source_id),
+        require(read_file(source, source_modes, 65536, readonly=True) == (raw, source_id),
                 "fixture source changed during compilation")
         current = os.stat(output, follow_symlinks=False)
         require((current.st_dev, current.st_ino) == output_id and not output.is_symlink()

@@ -767,12 +767,18 @@ typedef DialogBuilder = Widget Function(
 class Dialog<T> {
   OverlayEntry? entry;
   Completer<T?> completer = Completer<T?>();
+  InterceptorFunction? _backInterceptor;
 
   Dialog();
 
   void complete(T? res) {
     final retiringEntry = entry;
     entry = null;
+    final retiringInterceptor = _backInterceptor;
+    _backInterceptor = null;
+    if (retiringInterceptor != null) {
+      BackButtonInterceptor.remove(retiringInterceptor);
+    }
     if (retiringEntry == null && completer.isCompleted) return;
     try {
       if (!completer.isCompleted) {
@@ -829,17 +835,15 @@ class OverlayDialogManager {
   }
 
   void dismissAll() {
-    final dialogs = Map<String, Dialog>.of(_dialogs);
+    final dialogs = _dialogs.values.toList();
     _dialogs.clear();
-    dialogs.forEach((key, value) {
-      value.complete(null);
-      BackButtonInterceptor.removeByName(key);
-    });
+    for (final dialog in dialogs) {
+      dialog.complete(null);
+    }
   }
 
   void dismissByTag(String tag) {
     _dialogs.remove(tag)?.complete(null);
-    BackButtonInterceptor.removeByName(tag);
   }
 
   Future<T?> show<T>(DialogBuilder builder,
@@ -867,20 +871,20 @@ class OverlayDialogManager {
     final previous = _dialogs.remove(dialogTag);
     if (previous != null) {
       previous.complete(null);
-      BackButtonInterceptor.removeByName(dialogTag);
     }
 
     final dialog = Dialog<T>();
     _dialogs[dialogTag] = dialog;
 
     close([res]) {
-      _dialogs.remove(dialogTag);
+      if (identical(_dialogs[dialogTag], dialog)) {
+        _dialogs.remove(dialogTag);
+      }
       try {
         dialog.complete(res);
       } catch (e) {
         debugPrint("Dialog complete catch error: $e");
       }
-      BackButtonInterceptor.removeByName(dialogTag);
     }
 
     dialog.entry = OverlayEntry(builder: (context) {
@@ -904,12 +908,15 @@ class OverlayDialogManager {
               })));
     });
     overlayState.insert(dialog.entry!);
-    BackButtonInterceptor.add((stopDefaultButtonEvent, routeInfo) {
+    bool backInterceptor(bool stopDefaultButtonEvent, RouteInfo routeInfo) {
       if (backDismiss) {
         close();
       }
       return true;
-    }, name: dialogTag);
+    }
+
+    dialog._backInterceptor = backInterceptor;
+    BackButtonInterceptor.add(backInterceptor);
     return dialog.completer.future;
   }
 

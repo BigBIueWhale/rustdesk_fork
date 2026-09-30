@@ -1451,14 +1451,21 @@ separately retained. Per-app logs and the build manifest retired with scratch an
 The widget is shared by desktop/mobile Remote/ViewCamera. Actual APK/device and Windows replay,
 Android/Windows hang causation, sustained resources, release closure and LPE evidence remain OPEN.
 
-**Next shared-dialog ownership regression — OPEN.** `common.dart`'s captured dialog `close` callback
-removes the registry/back-interceptor by tag without proving that its captured dialog still owns that tag.
-After replacement, a late predecessor callback can remove the replacement's ownership record while
-leaving its entry/future live. Name-based back cleanup also crosses manager ownership when two managers
-reuse a local tag. The existing real widget regression now invokes the predecessor close, requires
-ordinary dismissal to complete/unmount the replacement, and dispatches the actual back-interceptor
-list after another manager retires the same tag. Only default navigation is a counted fixture sink.
-Product remains unchanged for native negative execution; no native result or correction is yet claimed.
+**Shared-dialog callback/back ownership — NATIVE NEGATIVE; CORRECTION VERIFICATION OPEN.** Exact
+tests-only candidate `7d2df099a42a320c42ab846fa5d877d9ca51d9a8` executed the unchanged product on
+pinned Flutter 3.24.5. A late predecessor close removed the replacement's ownership record, ordinary
+dismissal left its entry visible, and retiring a same-tag dialog in another manager removed the
+independent back handler: actual results were `false/false/false` and one default-navigation event,
+against required `true/true/true` and zero. This was a native assertion, not compile/format failure.
+The 138,024-byte complete raw serial is retained at `evidence/dialog-old-7d2df099.serial.log`, SHA-256
+`c2c0bb8652ccd147847698b1adc0e2fad63c0111296015159755c8ff907afd25`; the bounded failure receipt and
+capture/listener snapshots are separate. Host listener inventories were identical; the exact inactive
+failed disk was identity-bound reconciled under the one-run lock. No complete outer pass is claimed.
+Current source gives each dialog its exact back-callback ownership and removes it by function reference
+during retirement. A captured close removes the registry entry only while its captured dialog is the
+current owner; tags remain manager-local lookup labels, never global back-handler authority. The same
+real widget regression dispatches the actual interceptor list; only default navigation is a counted
+fixture sink. Test bytes are unchanged from the native negative. Positive native verification is pending.
 Desktop build-time overlay resets also require a readiness/rebuild reproduction; neither
 source concern establishes the original display-delay cause or a privilege escalation.
 

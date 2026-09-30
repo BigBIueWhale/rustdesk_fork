@@ -1082,8 +1082,8 @@ no ANR since boot despite the actual dialog/events; that summary cannot override
 observer received/published 245/221 frames and joined. Peer admission progress arrived at guest 265 s
 before EOF; the failed VM transaction ended at 753 s with joined owned processes and identical
 host listener inventories. Bounded raw serial evidence is retained outside the retired failed VM root.
-Healthy Android execution and presentation remain OPEN. No APK/peer code, cryptographic work factor,
-presentation/freshness budget, or persistent service was changed.
+Sustained healthy Android execution and product presentation remain OPEN. No APK/peer code, cryptographic
+work factor, presentation/freshness budget, or persistent service was changed.
 The focused `smoke-verifier-vm-authority.sh --android-execution-probe` now observes the real pinned
 guest as UID/GID 4000, with VM-entry proof before and after the read-only inventory. Its first
 13-second transaction observed four CPUs with `vmx`, kernel `6.1.0-50-cloud-amd64` configured with
@@ -1095,7 +1095,7 @@ of exact pushed `e15d7b68` returned the same observation/config digest in 14 sec
 guest capability and access state, not usable nested KVM, a supported Android topology, healthy boot,
 or presentation.
 Google's emulator documentation warns against VM-nested acceleration; Linux documents nested KVM.
-The candidate runtime now requires nested KVM rather than software CPU emulation. Only the authenticated
+The runtime now requires nested KVM rather than software CPU emulation. Only the authenticated
 disposable guest's root orchestration grants its own virtual misc device (10:232, root-owned mode 0660)
 to guest GID 1000; a distinct UID/GID-4001 principal must receive kernel access denial. Only the three
 numeric-nonroot emulator runtime envelopes admit that exact read/write device; build and observer
@@ -1103,15 +1103,19 @@ containers remain device-free. The driver requires KVM API 12, closes a minimal 
 `-accel on`, and binds one KVM VM plus two vCPU descriptors to the exact pinned emulator executable and
 retained PID/start generation. There is no host-device passthrough, software-CPU fallback, new host
 permission, network change, or weakened product/resource/freshness bound. SwiftShader remains the GPU.
-Boot-only acceptance additionally samples the real framework UI through the sticky ANR refusal gate.
-The first native candidate `baa4a69f` proved the guest grant, foreign refusal and container API/VM-create,
-but failed its exact-engine descriptor check; it is not a framework-boot pass. The gate incorrectly
-expected the graphical executable despite `-no-window` selecting the pinned headless engine. The current
-candidate binds only that headless executable and reports its observed engine/KVM descriptors on refusal;
-the boot UI call now uses the helper's actual `complete` selector. Neither correction removes a check.
-**The corrected candidate has no complete native verdict yet.** Source/syntax review is not proof of
-healthy Android, a Google-supported topology, product presentation, or device performance.
-Next execute the pinned framework boot and exact-artifact peer replay before interpreting display timings.
+Exact pushed `ad775e8ff20b006748a8ad9cd854c8c728f79287`, tree
+`e991a3284d0a9411255497e1672d0b2bfe761618`, passed the complete pinned framework-boot transaction in
+99 seconds: actual guest grant and foreign EACCES, nonroot container API/VM-create/close, exact owned
+headless-engine VM/vCPU descriptors, framework readiness, enforcing SELinux, a real 480x800 framebuffer
+capture, and complete framework UI sampling through the sticky ANR refusal gate. This is absence of an
+ANR at that UI sample, not a never-ANR or sustained framework-health result. Immutable inputs, before/
+during/after host listeners, zero pre-existing-process drift, joined VM/container/Docker/exporter cleanup,
+and automatic successful-run retirement passed. No run root remains. First candidate `baa4a69f` failed
+the strict engine check rather than passing on API capability alone; the corrected gate binds only the
+pinned `-no-window` headless executable and retains bounded refusal diagnostics. This establishes the
+hardware-required boot path for this exact topology, not Google support, APK/peer presentation, physical
+devices, performance/resource soak, or release closure. Next execute the exact-artifact peer replay and
+measure framework/presentation behavior before interpreting display timings.
 The attempted shared authority smoke hit its existing 90-second VM deadline after the 22 capsule
 cases and several authority entries passed; it is not a complete transaction or consumer verdict.
 The peer launcher now validates the externally digest-bound capsule manifest and all seven execution

@@ -35,7 +35,7 @@ not a claim that every target OS has executed them.
 | Retained evidence | What it establishes—and does not establish |
 | --- | --- |
 | Portable Linux server transaction (`250e775b9a88a62a980937e1f278ad053f2d9d58`) | Real nonroot parked/listening, CPace, Remote/FileTransfer admission, capacity/refusal, and joined-shutdown behavior in confinement. It is not an installed root service or current release artifact. |
-| Named Linux full-peer lifecycles (`3e5d9d0ec2263888957f16bc69dd6445ccd1ce63`) | Six uninstrumented lifecycles from one exact Flutter 3.47.5 bundle exercised the real password prompt, capture-to-X11-pixel delivery, 2/6/12-second focus-loss cycles, same-connection recovery, three server-generation reconnects, sampled resource bounds, and joined viewer/server teardown. Earlier `5f4c4bd4` was contradicted by a later teardown abort; `3e5d9d0e` supplies the exact renderer/engine-finality correction and named six-cycle result below. Those runs used a repeating eight-bit palette and first-observation times, so they do not establish unambiguous source-publication age. Exact `e54a3dd7` passed the corrected shared C oracle's focused native test, not the real peer. Current-source full-peer, Windows/Android/Apple, sustained soak, cross-version, installed-service, and release-artifact evidence remain open. |
+| Named Linux full-peer lifecycles (`bc2d94f9164751ff1b2c9bb6fec367653b20083f`) | One exact Flutter 3.47.5 bundle passed six uninstrumented lifecycles in a complete 1,592-second zero-NIC transaction. Real password prompts, visible X11 pixels, eighteen 2/6/12-second focus-loss cycles on unchanged connections, eighteen server-generation reconnects, sampled resources, and joined viewer/server teardown passed. The shared full-counter publication-history oracle replaces the earlier repeating palette/first-sighting ages; measured accepted pixel age was at most 498 ms. Complete raw serial is retained below. This is a named Linux 640x480/4-Hz scenario, not Android/Windows causation, sustained soak, cross-version, installed-service, cold-equality, or release-artifact closure. |
 | Exact-current Linux filesystem regressions (`76cc2fefc6470aeaeb76b50d34b4dc377b39ba49`) | A zero-NIC VM and networkless guest-only container executed all 57 `hbb_common::fs` tests on pinned Rust 1.75, including retained-directory, symlink-parent, path-swap, bounded-depth, create, remove, and rename authority cases. This is Linux library behavior, not Windows junction/handle, installed peer, end-to-end transfer, or release-artifact evidence. |
 | Exact clean Flutter model transaction (`ca5690869c4c665c2d5a17a8e6baeeb664afbb78`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 18 focused suites and 138 tests in 278 seconds on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. In addition to presentation-generation and completion-order coverage, the executed tests prove one isolate-wide three-conversion authority across distinct queue/session replacement, latest-only pending data, FIFO live waiters, exact cancelled-waiter removal, and visible bounded-waiter exhaustion. No host listener was added and cleanup joined. This is exact Dart/model and generated-bridge evidence, not target-native behavior by itself. |
 | Exact Android owner states (`a2cbbbd27228aa053994a2f65ee075baf7e88f68`) | A zero-NIC VM and networkless guest-only container compiled seven exact production Kotlin state classes with pinned Kotlin 2.0.21 and passed 15 scenarios with 293 assertions over closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation. This is pure owner-state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, JNI, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
@@ -1336,7 +1336,7 @@ native execution, not replacement source-string assertions. The guard's other VM
 checks remain; several candidate-admission diagnostic strings are also stale, so the whole guard is
 not currently claimed green or used as a substitute for native pixels.
 
-**Linux publication-age oracle — FOCUSED GEOMETRY/AGE PASS; CORRECTED FULL-PEER REPLAY PENDING.**
+**Linux publication-age oracle — FOCUSED NATIVE AND NAMED FULL-PEER PASS; BROADER PRESENTATION OPEN.**
 The repeating palette decoder, 256 first-sighting slots and reconnect history reset are removed.
 `x11-frame-oracle.h`, shared by the actual controller and its native test, decodes four complete,
 ordered counter bands and refuses ambiguous/incomplete/reordered pixels. Age requires that full
@@ -1360,12 +1360,11 @@ and fresh identity 263 at 154 ms against the same X11 producer; no Android app r
 Exact forwarded receipts are retained at `evidence/x11-oracle-e54a3dd7.receipt`; complete raw guest
 serial was not retained before automatic success retirement. Inputs remained unchanged, host
 listener/process audits showed no addition or drift, every owner joined and no run/overlay remains.
-This validates the shared C measurement, **not the real Linux RustDesk peer or original hang**.
-Execute that peer before claiming focus/reconnect/presentation freshness or extending connection
-lifetime. Preserve the 1,000-ms freshness and 2,500-ms recovery limits, exact connection
-identity, resource bounds and joined cleanup. No product, capacity, deadline or persistent-service
-behavior changes. Earlier Linux palette ages remain invalid publication-age evidence; Android/Windows
-intermittent-defect causation and longer-lived Android testing remain separate OPEN work.
+This focused result alone validates the shared C measurement, not the peer or original hang.
+The full-peer result below uses unchanged 1,000-ms freshness and 2,500-ms recovery limits,
+exact connection identity, resource bounds and joined cleanup. No product, capacity, deadline
+or persistent-service behavior changes. Earlier Linux palette ages remain invalid publication-age
+evidence; Android/Windows causation and longer-lived Android testing remain separate OPEN work.
 
 The subsequent exact `bc6d76d2` real-peer integration built the current 78-file Linux bundle
 with Flutter 3.47.5, revalidated its read-only Pub cache and authenticated the first peer through
@@ -1391,9 +1390,28 @@ the actual controller compiled. Actual C stale identity 4 measured 9,788 ms vers
 Complete 68,101-byte raw serial is retained at `evidence/x11-geometry-481e11ca.serial.log`,
 SHA-256 `8f575227374521c9ce18a3e7dc6769101ee25b4a439507031daa92e03f6cac61`.
 The outer input/listener/finality gates passed, every owner joined and scratch self-retired.
-This supersedes the observer-level geometry uncertainty, **not the failed real-peer result**.
-Rerun the corrected real peer under unchanged limits. Do not resize the VM screen to hide invalid
-requests, ignore X errors, relax identity/age/contrast/deadline bounds, or infer platform closure.
+This focused pass supersedes observer-level geometry uncertainty, not the failed peer result.
+The subsequent exact `bc2d94f9164751ff1b2c9bb6fec367653b20083f`, tree
+`66b1d06df25b8b3ecb5d3ee5bdf1076930d0d61e`, passed the corrected full-peer transaction
+in 1,592 seconds. One 78-file production bundle was built once with Rust 1.75/Flutter 3.47.5
+and exercised through six uninstrumented Linux viewer/server lifecycles. All actual password
+prompts, eighteen 2/6/12-second focus-loss observations on unchanged TCP connections, eighteen
+server-generation reconnects with cached credentials, and joined viewer/server teardown passed.
+Initial first-fresh pixels measured 6–216 ms, post-focus first-fresh pixels 6–15 ms, and
+post-reconnect first-fresh pixels 133–226 ms; changing-frame completion remained separately
+required. Accepted publication-bound age was at most 498 ms, background age at most 354 ms;
+every sampled background observation was fresh. These are sampled synthetic 640x480/4-Hz
+measurements, not unconditional end-to-end latency, delivered FPS, or sustained warm-lifetime proof.
+Seven resource samples per lifecycle observed RSS 350,288–391,740 KiB, threads 53–65 and
+46 descriptors, within the unchanged growth limits. Full input revalidation, no added host
+listener or pre-existing-process drift, and joined guest-only Docker/QEMU/virtiofs cleanup passed.
+The successful run root self-retired. Complete 677,716-byte raw serial is retained at
+`evidence/linux-visible-peer-bc2d94f9.serial.log`, SHA-256
+`a09fd48d606fd5ce86cc39dc2974a6f4dc1306b6b37077b54d33b4aad4ea77ed`;
+the separately retained outer receipt records exit 0 and host-isolation acceptance.
+This closes this named corrected Linux observer/peer schedule, not the original intermittent
+Android/Windows defect, high-load/soak, installed-service, cross-version, Apple or release matrix.
+Do not resize the screen to hide invalid requests, ignore X errors, relax bounds or infer platform closure.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was
@@ -1618,7 +1636,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg now has pin-bound recoverable devcheck and Apple verifier images. For each image, two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. Exact commit `f85e18e4` passed the complete current Apple three-target source-conformance/cross-compile workload in the no-NIC verifier VM after the focused Flutter gate first required the same shared display-verifier self-test. Current product/native workloads and fresh independently administered rebuilds remain required; neither verifier-image provenance nor Apple source/cross-compile success supplies native Apple behavior. |
 | Build/test execution authority (R-S11dh) | **STOP-SHIP: focused no-NIC authority smokes and substantial product/build evidence exist, but current release workloads remain incomplete.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; R-S11cj separately confines acquisition to an ordinary-user VM with outbound-only guest/container networking, no host forwarding, and joined finality. Product source `ca569086` passed the fresh model and Android APK build/install/render transactions; exact pushed harness `89a85f4b` passed the retained-APK production-peer lifecycle/presentation transaction. Current exact source `f85e18e4` passed the focused verifier-plus-138-test gate and three-target Apple source-conformance/cross-compile gate while preserving the strict host-listener audit and joined cleanup. Stable Android signing, physical devices, sustained resource/performance soak, native Apple work, Debian/Windows product workloads, cold release artifacts, complete prepared inputs, independently administered reproduction, and external review remain open. Source checks, cross-compiles, builder fingerprints, and historical lifecycle evidence are not release or native evidence. |
-| Product-level behavior | **OPEN / RELEASE-BLOCKING:** a passing Android schedule is contradicted by a later same-APK display-only relaunch failure; neither earlier timing/resource receipts nor source/model bounds close the intermittent defect. The separate Linux palette/first-sighting oracle is replaced by full-counter publication-bound age; exact `e54a3dd7` passed its shared C native cases, but real-peer replay is still pending and earlier palette ages cannot establish freshness. Preserve complete sampled event/mailbox/conversion/model/widget diagnostics, reuse a source-bound production-peer artifact without rebuilding each replay, and observe actual pixels across repeated replacement/background cycles. Full capture-to-compositor/actual-present monotonic instrumentation, sustained freshness/performance/resource soak, network transitions, broad reconnect finality, cross-version interoperability, physical Android, current Windows focus/minimize, and Apple behavior remain required. Correctness applies to the whole connection flow, not only the reported complaints; no compile, model, source-string, frame-receipt, or protocol-only result substitutes for these native obligations. |
+| Product-level behavior | **OPEN / RELEASE-BLOCKING:** a passing Android schedule is contradicted by a later same-APK display-only relaunch failure; neither earlier timing/resource receipts nor source/model bounds close the intermittent defect. The separate Linux palette/first-sighting oracle is replaced by full-counter publication-bound age. Exact `481e11ca` passed shared C native geometry/age cases; exact `bc2d94f9` passed six real-peer lifecycles under that observer, with complete raw serial retained. Earlier palette ages still cannot establish freshness, and this short 640x480/4-Hz Linux schedule is not Android/Windows causation or sustained behavior. Preserve complete sampled event/mailbox/conversion/model/widget diagnostics, reuse a source-bound production-peer artifact without rebuilding each replay, and observe actual pixels across repeated replacement/background cycles. Full capture-to-compositor/actual-present monotonic instrumentation, sustained freshness/performance/resource soak, network transitions, broad reconnect finality, cross-version interoperability, physical Android, current Windows focus/minimize, and Apple behavior remain required. Correctness applies to the whole connection flow, not only the reported complaints; no compile, model, source-string, frame-receipt, or protocol-only result substitutes for these native obligations. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
 NATIVE EVIDENCE OPEN.** `src/server.rs`, `src/direct_service.rs`, and `src/ipc.rs` perform startup

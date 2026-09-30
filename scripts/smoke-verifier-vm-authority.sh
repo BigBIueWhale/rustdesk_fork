@@ -78,6 +78,11 @@ case "$#:${1:-}" in
             || { echo 'Android runtime-log test input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-runtime-log-tests
         ;;
+    1:--linux-flutter-artifact-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'Linux Flutter artifact-test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=linux-flutter-artifact-tests
+        ;;
     1:--android-frame-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Android frame-test input/run overrides are forbidden' >&2; exit 2; }
@@ -176,6 +181,7 @@ case "$#:${1:-}" in
         ;;
     *)
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
+        printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
         printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario peer-lifecycle --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
@@ -261,6 +267,8 @@ readonly RUN_ADMISSION_TEST="$SCRIPT_DIR/test-verifier-vm-run-admission.sh"
 readonly ANDROID_PEER_ARTIFACT_SOURCE="$SCRIPT_DIR/android-peer-artifact.py"
 readonly ANDROID_PEER_ARTIFACT_TEST="$SCRIPT_DIR/test-android-peer-artifact.py"
 readonly ANDROID_RUNTIME_PROGRESS_TEST="$SCRIPT_DIR/test-android-runtime-progress.py"
+readonly LINUX_FLUTTER_ARTIFACT_SOURCE="$SCRIPT_DIR/linux-flutter-artifact.py"
+readonly LINUX_FLUTTER_ARTIFACT_TEST="$SCRIPT_DIR/test-linux-flutter-artifact.py"
 readonly FORK_VERSION_SOURCE="$SCRIPT_DIR/fork-version.sh"
 readonly APPLE_CHECK_SOURCE="$SCRIPT_DIR/apple-conform-check.sh"
 readonly APPLE_TOOLCHAIN_RELEASE_SOURCE="$SCRIPT_DIR/apple-toolchain-release.py"
@@ -795,19 +803,19 @@ android_owner_input_inventory() {
         "${ANDROID_OWNER_KOTLIN_JARS[@]}"
 }
 
-verify_committed_frame_source() {
+verify_committed_test_source() {
     local source=$1 relative expected actual
     source="$(/usr/bin/readlink -f -- "$source")" \
-        || fail 'cannot resolve the frame-test source path'
+        || fail 'cannot resolve the focused-test source path'
     [[ "$source" == "$REPO_ROOT/"* ]] \
-        || fail "frame-test source is outside the repository: $source"
+        || fail "focused-test source is outside the repository: $source"
     relative=${source#"$REPO_ROOT/"}
-    expected="$(git_closed -C "$REPO_ROOT" cat-file blob "$FRAME_TEST_COMMIT:$relative" \
+    expected="$(git_closed -C "$REPO_ROOT" cat-file blob "$FOCUSED_TEST_COMMIT:$relative" \
         | /usr/bin/sha256sum | /usr/bin/awk '{ print $1 }')" \
-        || fail "cannot resolve committed frame-test source: $relative"
+        || fail "cannot resolve committed focused-test source: $relative"
     actual="$(/usr/bin/sha256sum "$source" | /usr/bin/awk '{ print $1 }')" \
-        || fail "cannot digest frame-test source: $relative"
-    [ "$actual" = "$expected" ] || fail "frame-test source differs from committed bytes: $relative"
+        || fail "cannot digest focused-test source: $relative"
+    [ "$actual" = "$expected" ] || fail "focused-test source differs from committed bytes: $relative"
 }
 
 android_frame_input_inventory() {
@@ -843,7 +851,7 @@ android_frame_input_inventory() {
             && [ "$(/usr/bin/stat -c '%u:%g:%h' -- "$file")" = "$HOST_UID:$HOST_GID:1" ] \
             || fail 'Android frame-test input owner or type differs'
         if [[ "$file" == "$SCRIPT_DIR/"* ]]; then
-            verify_committed_frame_source "$file"
+            verify_committed_test_source "$file"
         fi
     done
     /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "${files[@]}"
@@ -1284,16 +1292,16 @@ if [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
         || fail 'Git replacement refs are forbidden'
 fi
 frame_inputs_before=
-FRAME_TEST_COMMIT=
-FRAME_TEST_TREE=
-if [ "$MODE" = android-frame-tests ]; then
+FOCUSED_TEST_COMMIT=
+FOCUSED_TEST_TREE=
+if [ "$MODE" = android-frame-tests ] || [ "$MODE" = linux-flutter-artifact-tests ]; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
-        || fail 'Android frame tests require clean committed master'
-    FRAME_TEST_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')"
-    FRAME_TEST_TREE="$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')"
-    [ "$FRAME_TEST_COMMIT" = "$(git_closed -C "$REPO_ROOT" rev-parse refs/remotes/origin/master)" ] \
-        || fail 'Android frame tests require pushed master'
+        || fail 'focused native tests require clean committed master'
+    FOCUSED_TEST_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')"
+    FOCUSED_TEST_TREE="$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')"
+    [ "$FOCUSED_TEST_COMMIT" = "$(git_closed -C "$REPO_ROOT" rev-parse refs/remotes/origin/master)" ] \
+        || fail 'focused native tests require pushed master'
 fi
 reserve_verifier_run
 if [ "$MODE" = android-frame-tests ]; then
@@ -1870,13 +1878,14 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     "$ONLINE_FETCH_RENAME_CHECKER" \
     "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" \
     "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" \
+    "$LINUX_FLUTTER_ARTIFACT_SOURCE" "$LINUX_FLUTTER_ARTIFACT_TEST" \
     "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" \
     "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" \
     "$LIB_SOURCE" "$PIN_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
-    if [ "$MODE" = android-frame-tests ]; then
-        verify_committed_frame_source "$source"
+    if [ "$MODE" = android-frame-tests ] || [ "$MODE" = linux-flutter-artifact-tests ]; then
+        verify_committed_test_source "$source"
     fi
 done
 ANDROID_EMULATOR_OBSERVER_DEPENDENCIES_SHA256="$(/usr/bin/sha256sum \
@@ -2336,6 +2345,7 @@ if [ "$MODE" = android-emulator-app ] || [ "$MODE" = android-peer-build ]; then
         || fail 'retained Android artifact output identity differs'
 fi
 
+linux_flutter_sources_before="$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" "$LINUX_FLUTTER_ARTIFACT_TEST")"
 base_before="$(/usr/bin/sha512sum "$BASE")"
 docker_before="$(/usr/bin/sha256sum "$DOCKER_BUNDLE")"
 git_package_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$GIT_PACKAGE"):$(/usr/bin/sha256sum "$GIT_PACKAGE")"
@@ -2734,6 +2744,8 @@ fi
     "repo/scripts/android-peer-artifact.py=$ANDROID_PEER_ARTIFACT_SOURCE" \
     "repo/scripts/test-android-peer-artifact.py=$ANDROID_PEER_ARTIFACT_TEST" \
     "repo/scripts/test-android-runtime-progress.py=$ANDROID_RUNTIME_PROGRESS_TEST" \
+    "repo/scripts/linux-flutter-artifact.py=$LINUX_FLUTTER_ARTIFACT_SOURCE" \
+    "repo/scripts/test-linux-flutter-artifact.py=$LINUX_FLUTTER_ARTIFACT_TEST" \
     "repo/scripts/smoke-verifier-vm-authority-guest.sh=$GUEST_SCRIPT" \
     "repo/scripts/lib.sh=$LIB_SOURCE" "repo/scripts/pins.env=$PIN_SOURCE" \
     "repo/requirements.html=$REQUIREMENTS_SOURCE" \
@@ -2756,6 +2768,8 @@ elif [ "$MODE" = android-execution-probe ]; then
     guest_invocation+=' --android-execution-probe'
 elif [ "$MODE" = android-runtime-log-tests ]; then
     guest_invocation+=' --android-runtime-log-tests'
+elif [ "$MODE" = linux-flutter-artifact-tests ]; then
+    guest_invocation+=' --linux-flutter-artifact-tests'
 elif [ "$MODE" = android-frame-tests ]; then
     guest_invocation+=' --android-frame-tests'
 elif [ "$MODE" = hbb-common-fs ]; then
@@ -3133,6 +3147,13 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     require_exact_fixed_receipt "$runtime_log_vm_receipt" 'runtime-log source/finality result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'runtime-log cloud-init completion'
     printf '%s\n' "$runtime_log_unit_receipt" "$runtime_log_native_receipt" "$runtime_log_vm_receipt"
+elif [ "$MODE" = linux-flutter-artifact-tests ]; then
+    linux_flutter_test_receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=20 publication=noclobber admission=exact execution=guest-only cleanup=joined'
+    linux_flutter_vm_receipt="LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=20 uid=4000 gid=4000 root=refused foreign=refused test_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_TEST" | /usr/bin/awk '{ print $1 }') helper_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" | /usr/bin/awk '{ print $1 }') source=readonly docker=retired network=none cleanup=joined"
+    require_exact_fixed_receipt "$linux_flutter_test_receipt" 'native Linux app-capsule result'
+    require_exact_fixed_receipt "$linux_flutter_vm_receipt" 'Linux app-capsule source/finality result'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux app-capsule cloud-init completion'
+    printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = android-frame-tests ]; then
     mapfile -t frame_source_build < <(/usr/bin/grep -Eo \
         'X11_FRAME_SOURCE_BUILD=pass source_sha256=[0-9a-f]{64} sha256=[0-9a-f]{64} bytes=[1-9][0-9]* copies=2 equality=byte-identical network=none output=private' \
@@ -4007,6 +4028,13 @@ if [ "$MODE" = android-frame-tests ]; then
     [ "$(android_frame_input_inventory)" = "$frame_inputs_before" ] \
         || fail 'Android frame-test inputs changed during execution'
 fi
+[ "$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" "$LINUX_FLUTTER_ARTIFACT_TEST")" = "$linux_flutter_sources_before" ] \
+    || fail 'Linux app-capsule source changed during execution'
+if [ "$MODE" = linux-flutter-artifact-tests ]; then
+    [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
+        || fail 'Linux app-capsule admitted commit/tree changed during execution'
+fi
 RUN_COMPLETE=1
 if [ "$MODE" = authority-smoke ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
@@ -4019,7 +4047,10 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
         "$HOST_UID" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-frame-tests ]; then
     printf 'ANDROID_FRAME_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
-        "$HOST_UID" "$FRAME_TEST_COMMIT" "$FRAME_TEST_TREE" "$vm_elapsed_seconds"
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+elif [ "$MODE" = linux-flutter-artifact-tests ]; then
+    printf 'LINUX_FLUTTER_ARTIFACT_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=unexecuted scope=filesystem-elf-capsule cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 mode=debian-systemd-lifecycle output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"

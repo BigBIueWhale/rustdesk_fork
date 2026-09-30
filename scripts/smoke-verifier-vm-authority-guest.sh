@@ -13,6 +13,9 @@ case "$#:${8:-}" in
     8:--android-runtime-log-tests)
         MODE=android-runtime-log-tests
         ;;
+    8:--linux-flutter-artifact-tests)
+        MODE=linux-flutter-artifact-tests
+        ;;
     8:--android-frame-tests)
         MODE=android-frame-tests
         ;;
@@ -72,7 +75,7 @@ case "$#:${8:-}" in
         ;;
     *)
         echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 peer-lifecycle PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-peer-presentation-candidate SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
-        echo 'The seven base arguments also accept --android-execution-probe or --android-runtime-log-tests.' >&2
+        echo 'The seven base arguments also accept --android-execution-probe, --android-runtime-log-tests, or --linux-flutter-artifact-tests.' >&2
         exit 2
         ;;
 esac
@@ -308,6 +311,79 @@ prepare_authority_probe_image() {
             - "$IMAGE" >"$ROOT/image-id"
     [[ "$(<"$ROOT/image-id")" =~ ^sha256:[0-9a-f]{64}$ ]] \
         || fail 'probe image ID is malformed'
+}
+
+run_linux_flutter_artifact_tests() {
+    local work work_id principal refusal status source_before test_sha helper_sha
+    local test=$VERIFY_REPO/scripts/test-linux-flutter-artifact.py
+    local helper=$VERIFY_REPO/scripts/linux-flutter-artifact.py
+    local output=$ROOT/linux-flutter-artifact-tests.out
+    local receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=20 publication=noclobber admission=exact execution=guest-only cleanup=joined'
+    local -a sources=("$test" "$helper" "$ENTRY_PREFLIGHT"
+        "$VERIFY_REPO/scripts/publish-artifact-result.py"
+        "$VERIFY_REPO/scripts/verify-private-tree-closure.py")
+
+    source_before="$(sha256sum "${sources[@]}")"
+    test_sha="$(sha256sum "$test" | awk '{ print $1 }')"
+    helper_sha="$(sha256sum "$helper" | awk '{ print $1 }')"
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
+    work="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/mktemp -d /tmp/linux-flutter-artifact-tests.XXXXXXXXXX)" \
+        || fail 'Linux app-capsule test scratch could not be created'
+    [[ "$work" =~ ^/tmp/linux-flutter-artifact-tests\.[A-Za-z0-9]{10}$ ]] \
+        && [ "$(stat -c '%u:%g:%a' -- "$work")" = 4000:4000:700 ] \
+        || fail 'Linux app-capsule test scratch authority differs'
+    work_id="$(stat -c '%d:%i' -- "$work")"
+    for principal in 0 4001; do
+        if [ "$principal" -eq 0 ]; then
+            refusal='verifier-VM entry preflight: the verifier principal must not be root'
+        else
+            refusal='verifier-VM entry preflight: VM Docker channel metadata differs'
+        fi
+        status=0
+        setpriv --reuid="$principal" --regid="$principal" --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
+            python3 -B -I -S "$test" \
+            >"$ROOT/linux-flutter-refusal-$principal.out" 2>"$ROOT/linux-flutter-refusal-$principal.err" \
+            || status=$?
+        [ "$status" -eq 1 ] && [ ! -s "$ROOT/linux-flutter-refusal-$principal.out" ] \
+            && [ "$(stat -c '%s' -- "$ROOT/linux-flutter-refusal-$principal.err")" -le 8192 ] \
+            && grep -Fxq "$refusal" "$ROOT/linux-flutter-refusal-$principal.err" \
+            || fail "Linux app-capsule entry refusal differs for UID $principal"
+        [ -z "$(find "$work" -mindepth 1 -print -quit)" ] \
+            && [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+            && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+            || fail 'refused Linux app-capsule entry changed scratch or Docker inventory'
+    done
+    status=0
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
+        python3 -B -I -S "$test" >"$output" 2>&1 || status=$?
+    [ "$(stat -c '%s' -- "$output")" -le 65536 ] \
+        || fail 'Linux app-capsule test output exceeds its bound'
+    [ "$status" -eq 0 ] \
+        || { tail -n 80 "$output" >&2; fail "Linux app-capsule tests exited with status $status"; }
+    grep -Fxq "$receipt" "$output" \
+        && [ "$(grep -Fc 'LINUX_FLUTTER_ARTIFACT=' "$output")" -eq 1 ] \
+        || fail 'Linux app-capsule result is absent, malformed or duplicated'
+    [ "$(sha256sum "${sources[@]}")" = "$source_before" ] \
+        || fail 'Linux app-capsule admitted source changed'
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'Linux app-capsule tests left a container or image'
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        python3 -B -I -S "$VERIFY_REPO/scripts/verify-private-tree-closure.py" \
+            --remove-empty-private-root "$work" --expected-identity "$work_id" \
+        || fail 'Linux app-capsule test scratch could not be retired'
+    [ ! -e "$work" ] && [ ! -L "$work" ] \
+        || fail 'Linux app-capsule scratch remains after retirement'
+    stop_docker_authority
+    cat "$output"
+    printf 'LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=20 uid=4000 gid=4000 root=refused foreign=refused test_sha256=%s helper_sha256=%s source=readonly docker=retired network=none cleanup=joined\n' \
+        "$test_sha" "$helper_sha"
 }
 
 run_android_runtime_log_tests() {
@@ -4936,6 +5012,7 @@ for verify_source in verify.sh verify-release.sh build-release.sh \
     verify-android-emulator-apk.py \
     verify-android-apk-manifest.py publish-artifact-result.py \
     android-peer-artifact.py test-android-peer-artifact.py test-android-runtime-progress.py \
+    linux-flutter-artifact.py test-linux-flutter-artifact.py \
     dart-audit.sh dart-audit-result.py \
     verify-dart-verifier-authority.py verify-dart-audit-authority.py \
     smoke-verifier-vm-authority.sh smoke-verifier-vm-authority-guest.sh \
@@ -5130,6 +5207,11 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     run_debian_systemd_lifecycle
     printf 'VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=%s direct_boot=on boot_masks=on docker=%s vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off lifecycle=installed-debian-artifact\n' \
         "$EXPECTED_KERNEL_RELEASE" "$EXPECTED_VERSION"
+    exit 0
+fi
+
+if [ "$MODE" = linux-flutter-artifact-tests ]; then
+    run_linux_flutter_artifact_tests
     exit 0
 fi
 

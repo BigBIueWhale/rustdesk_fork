@@ -1,0 +1,503 @@
+#!/usr/bin/env python3
+"""Seal and admit a source-bound Linux Flutter app, independently of test drivers."""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import resource
+import stat
+import subprocess
+import sys
+from contextlib import ExitStack
+
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location(
+    "linux_flutter_publication", Path(__file__).with_name("publish-artifact-result.py")
+)
+if spec is None or spec.loader is None:
+    raise RuntimeError("cannot load the artifact publication implementation")
+publication = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = publication
+spec.loader.exec_module(publication)
+
+MANIFEST = "app-manifest.json"
+DESTINATION = "linux-x86_64-flutter-app"
+MATERIALIZED = "materialized-flutter-app"
+PENDING_RE = re.compile(r"^\.linux-flutter-pending-[0-9a-f]{64}$")
+MAX_FILES = 512
+MAX_DIRECTORIES = 128
+MAX_DEPTH = 16
+MAX_PATH_BYTES = 1024
+MAX_FILE_BYTES = 512 * 1024 * 1024
+MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024
+MAX_MANIFEST_BYTES = 512 * 1024
+INPUTS = frozenset((
+    "rust_archive", "flutter_archive", "flutter_tools_lock", "flutter_project_lock",
+    "llvm_archive", "frb_codegen", "vendor_closure", "vendor_config", "vcpkg_closure",
+    "pub_cache_closure",
+))
+CONTEXT_FIELDS = frozenset((
+    "source_commit", "source_tree", "builder_config", "build_recipe_sha256",
+    "rust_toolchain", "flutter_version", "source_date_epoch", "inputs",
+))
+REQUIRED_FILES = frozenset((
+    "smoke-readiness", "bundle/rustdesk", "bundle/lib/librustdesk.so",
+    "bundle/lib/libflutter_linux_gtk.so", "bundle/lib/libapp.so",
+    "bundle/lib/libtexture_rgba_renderer_plugin.so", "bundle/data/icudtl.dat",
+))
+DESCRIPTOR_LIMIT = 4 * (MAX_FILES + MAX_DIRECTORIES) + 128
+
+
+def fail(message):
+    publication.fail(message)
+
+
+def validate_context(context):
+    if type(context) is not dict or set(context) != CONTEXT_FIELDS:
+        fail("Linux app build context fields differ")
+    patterns = {
+        "source_commit": r"[0-9a-f]{40}", "source_tree": r"[0-9a-f]{40}",
+        "builder_config": r"sha256:[0-9a-f]{64}", "build_recipe_sha256": r"[0-9a-f]{64}",
+        "rust_toolchain": r"[1-9][0-9]*\.[0-9]+\.0-x86_64-unknown-linux-gnu",
+        "flutter_version": r"[1-9][0-9]*\.[0-9]+\.[0-9]+",
+        "source_date_epoch": r"unset|0|[1-9][0-9]{0,18}",
+    }
+    for key, pattern in patterns.items():
+        if type(context[key]) is not str or re.fullmatch(pattern, context[key]) is None:
+            fail(f"Linux app build context is malformed: {key}")
+    inputs = context["inputs"]
+    if type(inputs) is not dict or set(inputs) != INPUTS:
+        fail("Linux app build input roles differ")
+    for value in inputs.values():
+        if type(value) is not str or publication.SHA256_RE.fullmatch(value) is None:
+            fail("Linux app build input digest is malformed")
+
+
+def require_descriptor_capacity():
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if hard != resource.RLIM_INFINITY and hard < DESCRIPTOR_LIMIT:
+        fail("Linux app descriptor capacity is unavailable")
+    if soft != resource.RLIM_INFINITY and soft < DESCRIPTOR_LIMIT:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (DESCRIPTOR_LIMIT, hard))
+    with os.scandir("/proc/self/fd") as entries:
+        if sum(1 for _ in entries) > 64:
+            fail("Linux app inherited descriptor inventory exceeds its reserve")
+
+
+def mount_id(descriptor):
+    with open(f"/proc/self/fdinfo/{descriptor}", "rb", buffering=0) as stream:
+        raw = stream.read(65537)
+    values = [line[8:] for line in raw.splitlines() if line.startswith(b"mnt_id:\t")]
+    if len(raw) > 65536 or len(values) != 1 or re.fullmatch(br"[1-9][0-9]*", values[0]) is None:
+        fail("Linux app mount identity is unavailable")
+    return int(values[0])
+
+
+def open_root(path, expected, mode, stack):
+    if os.getuid() == 0 or os.getgid() == 0:
+        fail("Linux app artifact authority must not be root")
+    if not os.path.isabs(path) or os.path.realpath(path) != path or path == "/":
+        fail("Linux app root is not absolute and canonical")
+    before = os.lstat(path)
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    stack.callback(os.close, descriptor)
+    opened = os.fstat(descriptor)
+    if (
+        publication.stable_file(before) != publication.stable_file(opened)
+        or publication.identity(opened) != expected
+        or not stat.S_ISDIR(opened.st_mode)
+        or (opened.st_uid, opened.st_gid, stat.S_IMODE(opened.st_mode))
+        != (os.getuid(), os.getgid(), mode)
+    ):
+        fail("Linux app root authority differs")
+    publication.reject_access_acl(descriptor, "Linux app root", include_default=True)
+    if os.path.realpath(path) != path or publication.stable_file(os.lstat(path)) != publication.stable_file(opened):
+        fail("Linux app root edge changed")
+    return descriptor
+
+
+def names(descriptor):
+    result = []
+    with os.scandir(descriptor) as entries:
+        for entry in entries:
+            if len(result) >= MAX_FILES + MAX_DIRECTORIES + 1:
+                fail("Linux app directory inventory exceeds its bound")
+            name = entry.name
+            if name in (".", "..") or any(ord(character) < 32 or ord(character) == 127 for character in name):
+                fail("Linux app entry name is invalid")
+            result.append(name)
+    return tuple(sorted(result))
+
+
+def executable(relative):
+    if relative in ("smoke-readiness", "bundle/rustdesk"):
+        return True
+    if relative.startswith("bundle/lib/") and re.fullmatch(
+        r"lib[A-Za-z0-9_.+-]+\.so(?:\.[0-9]+)*", relative[len("bundle/lib/"):]
+    ) is not None:
+        return True
+    if relative == "bundle/data/icudtl.dat" or relative.startswith("bundle/data/flutter_assets/"):
+        return False
+    fail(f"Linux app file is outside the product layout: {relative}")
+
+
+def consume(descriptor, info, is_executable, output=None):
+    digest = hashlib.sha256()
+    prefix = bytearray()
+    remaining = info.st_size
+    while remaining:
+        chunk = os.read(descriptor, min(1024 * 1024, remaining))
+        if not chunk:
+            fail("Linux app file ended before its recorded size")
+        if len(prefix) < 64:
+            prefix.extend(chunk[:64 - len(prefix)])
+        digest.update(chunk)
+        if output is not None:
+            publication.write_all(output, chunk, "Linux app file")
+        remaining -= len(chunk)
+    if os.read(descriptor, 1) or publication.stable_file(info) != publication.stable_file(os.fstat(descriptor)):
+        fail("Linux app file changed while being read")
+    if is_executable and (
+        len(prefix) < 64 or prefix[:6] != b"\x7fELF\x02\x01"
+        or int.from_bytes(prefix[16:18], "little") not in (2, 3)
+        or int.from_bytes(prefix[18:20], "little") != 62
+    ):
+        fail("Linux app executable is not an x86_64 ELF image")
+    return {"bytes": info.st_size, "sha256": digest.hexdigest()}
+
+
+class Tree:
+    def __init__(self, root, stack, *, capsule, executable_files=False):
+        self.root = root
+        self.stack = stack
+        self.device = os.fstat(root).st_dev
+        self.mount = mount_id(root)
+        self.directories = {"": root}
+        self.inventories = {}
+        self.edges = []
+        self.files = {}
+        self.total = 0
+        self.executable_files = executable_files
+        expected = {"bundle", "smoke-readiness"}
+        if capsule:
+            expected.add(MANIFEST)
+        if set(names(root)) != expected:
+            fail("Linux app root inventory differs")
+        self.walk(root, "", 0, capsule)
+        if not REQUIRED_FILES.issubset(self.files):
+            fail("Linux app required product file is missing")
+        self.reprove()
+
+    def walk(self, directory, prefix, depth, capsule):
+        inventory = names(directory)
+        self.inventories[directory] = (os.fstat(directory), inventory)
+        for name in inventory:
+            relative = f"{prefix}/{name}" if prefix else name
+            if len(os.fsencode(relative)) > MAX_PATH_BYTES:
+                fail("Linux app path exceeds its bound")
+            before = os.stat(name, dir_fd=directory, follow_symlinks=False)
+            is_directory = stat.S_ISDIR(before.st_mode)
+            flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
+            if is_directory:
+                flags |= os.O_DIRECTORY
+            elif not stat.S_ISREG(before.st_mode):
+                fail("Linux app contains a link or special filesystem object")
+            descriptor = os.open(name, flags, dir_fd=directory)
+            self.stack.callback(os.close, descriptor)
+            opened = os.fstat(descriptor)
+            mode = 0o500 if is_directory or (
+                self.executable_files and relative != MANIFEST and executable(relative)
+            ) else 0o400
+            if (
+                publication.stable_file(before) != publication.stable_file(opened)
+                or opened.st_dev != self.device or mount_id(descriptor) != self.mount
+                or (opened.st_uid, opened.st_gid) != (os.getuid(), os.getgid())
+                or stat.S_IMODE(opened.st_mode) != mode
+                or (not is_directory and opened.st_nlink != 1)
+            ):
+                fail("Linux app entry authority differs")
+            publication.reject_access_acl(descriptor, "Linux app entry", include_default=is_directory)
+            self.edges.append((directory, name, descriptor, opened))
+            if is_directory:
+                if depth >= MAX_DEPTH or len(self.directories) >= MAX_DIRECTORIES:
+                    fail("Linux app directory/depth bound exceeded")
+                if relative not in ("bundle", "bundle/lib", "bundle/data", "bundle/data/flutter_assets") \
+                        and not relative.startswith("bundle/data/flutter_assets/"):
+                    fail("Linux app directory is outside the product layout")
+                self.directories[relative] = descriptor
+                self.walk(descriptor, relative, depth + 1, capsule)
+            elif relative == MANIFEST and capsule:
+                if not 0 < opened.st_size <= MAX_MANIFEST_BYTES:
+                    fail("Linux app manifest size differs")
+            else:
+                if len(self.files) >= MAX_FILES or not 0 <= opened.st_size <= MAX_FILE_BYTES:
+                    fail("Linux app file/size bound exceeded")
+                self.total += opened.st_size
+                if self.total > MAX_TOTAL_BYTES:
+                    fail("Linux app aggregate size exceeds its bound")
+                self.files[relative] = (descriptor, opened, executable(relative))
+
+    def reprove(self):
+        for descriptor, (info, inventory) in self.inventories.items():
+            if publication.stable_file(info) != publication.stable_file(os.fstat(descriptor)) \
+                    or names(descriptor) != inventory or mount_id(descriptor) != self.mount:
+                fail("Linux app directory changed during admission")
+        for parent, name, descriptor, info in self.edges:
+            if (
+                publication.stable_file(info) != publication.stable_file(os.fstat(descriptor))
+                or publication.stable_file(info) != publication.stable_file(
+                    os.stat(name, dir_fd=parent, follow_symlinks=False)
+                ) or mount_id(descriptor) != self.mount
+            ):
+                fail("Linux app entry changed during admission")
+
+
+def seal_file(descriptor, size, mode):
+    os.fchmod(descriptor, mode)
+    os.fsync(descriptor)
+    info = os.fstat(descriptor)
+    if (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode), info.st_nlink, info.st_size) \
+            != (os.getuid(), os.getgid(), mode, 1, size):
+        fail("Linux app copied file metadata differs")
+    publication.reject_access_acl(descriptor, "Linux app copy", include_default=False)
+
+
+def copy_tree(tree, target, stack, *, inert):
+    directories = {"": target}
+    for relative in sorted(tree.directories, key=lambda value: (value.count("/"), value)):
+        if not relative:
+            continue
+        parent, _, basename = relative.rpartition("/")
+        os.mkdir(basename, 0o700, dir_fd=directories[parent])
+        descriptor = os.open(basename, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW,
+                             dir_fd=directories[parent])
+        stack.callback(os.close, descriptor)
+        directories[relative] = descriptor
+    records = {}
+    for relative, (descriptor, info, is_executable) in tree.files.items():
+        parent, _, basename = relative.rpartition("/")
+        output = publication.create_output_file(directories[parent], basename)
+        try:
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            records[relative] = consume(descriptor, info, is_executable, output)
+            seal_file(output, info.st_size, 0o500 if is_executable and not inert else 0o400)
+        finally:
+            os.close(output)
+    for relative in sorted(directories, key=lambda value: value.count("/"), reverse=True):
+        if relative:
+            os.fchmod(directories[relative], 0o500)
+        os.fsync(directories[relative])
+    tree.reprove()
+    return records
+
+
+def no_duplicates(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            fail("Linux app manifest has a duplicate key")
+        result[key] = value
+    return result
+
+
+def admit(root, context, digest, stack):
+    validate_context(context)
+    if type(digest) is not str or publication.SHA256_RE.fullmatch(digest) is None:
+        fail("Linux app manifest digest is malformed")
+    tree = Tree(root, stack, capsule=True)
+    raw = publication.read_exact_file(root, MANIFEST, maximum=MAX_MANIFEST_BYTES, label="Linux app manifest")
+    if hashlib.sha256(raw).hexdigest() != digest:
+        fail("Linux app manifest digest differs")
+    manifest = json.loads(raw, object_pairs_hook=no_duplicates)
+    if (
+        type(manifest) is not dict or set(manifest) != {"schema", "context", "directories", "files"}
+        or type(manifest["schema"]) is not int or manifest["schema"] != 1
+        or manifest["context"] != context or type(manifest["files"]) is not dict
+        or set(manifest["files"]) != set(tree.files)
+        or type(manifest["directories"]) is not list
+        or manifest["directories"] != sorted(relative for relative in tree.directories if relative)
+    ):
+        fail("Linux app manifest contract differs")
+    for relative, (descriptor, info, is_executable) in tree.files.items():
+        record = manifest["files"][relative]
+        if (
+            type(record) is not dict or set(record) != {"bytes", "sha256"}
+            or type(record["bytes"]) is not int or not 0 <= record["bytes"] <= MAX_FILE_BYTES
+            or type(record["sha256"]) is not str or publication.SHA256_RE.fullmatch(record["sha256"]) is None
+        ):
+            fail("Linux app file record differs")
+        if consume(descriptor, info, is_executable) != record:
+            fail("Linux app file digest differs")
+        os.lseek(descriptor, 0, os.SEEK_SET)
+    tree.reprove()
+    return tree, manifest
+
+
+def lock_empty_parent(parent):
+    try:
+        fcntl.flock(parent, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        fail("Linux app publication is already owned")
+    if names(parent):
+        fail("an earlier Linux app artifact remains; reuse or explicitly reconcile it")
+
+
+def prepare(source_path, source_identity, parent_path, parent_identity, context):
+    validate_context(context)
+    require_descriptor_capacity()
+    with ExitStack() as stack:
+        source = open_root(source_path, source_identity, 0o500, stack)
+        tree = Tree(source, stack, capsule=False)
+        parent = open_root(parent_path, parent_identity, 0o700, stack)
+        lock_empty_parent(parent)
+        pending = ".linux-flutter-pending-" + os.urandom(32).hex()
+        os.mkdir(pending, 0o700, dir_fd=parent)
+        path = os.path.join(parent_path, pending)
+        expected = publication.identity(os.stat(pending, dir_fd=parent, follow_symlinks=False))
+        output = open_root(path, expected, 0o700, stack)
+        records = copy_tree(tree, output, stack, inert=True)
+        raw = json.dumps({"schema": 1, "context": context,
+                         "directories": sorted(relative for relative in tree.directories if relative),
+                         "files": records},
+                         sort_keys=True, separators=(",", ":")).encode("ascii") + b"\n"
+        if len(raw) > MAX_MANIFEST_BYTES:
+            fail("Linux app manifest exceeds its bound")
+        descriptor = publication.create_output_file(output, MANIFEST)
+        try:
+            publication.write_all(descriptor, raw, "Linux app manifest")
+            seal_file(descriptor, len(raw), 0o400)
+        finally:
+            os.close(descriptor)
+        digest = hashlib.sha256(raw).hexdigest()
+        admit(output, context, digest, stack)
+        tree.reprove()
+        os.fsync(output)
+        os.fsync(parent)
+        open_root(source_path, source_identity, 0o500, stack)
+        open_root(parent_path, parent_identity, 0o700, stack)
+        open_root(path, expected, 0o700, stack)
+        return pending, expected, digest
+
+
+def commit(parent_path, parent_identity, pending, pending_identity, context, digest):
+    require_descriptor_capacity()
+    if type(pending) is not str or PENDING_RE.fullmatch(pending) is None:
+        fail("Linux app pending name is malformed")
+    with ExitStack() as stack:
+        parent = open_root(parent_path, parent_identity, 0o700, stack)
+        try:
+            fcntl.flock(parent, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            fail("Linux app publication is already owned")
+        if names(parent) != (pending,):
+            fail("Linux app pending parent inventory differs")
+        path = os.path.join(parent_path, pending)
+        root = open_root(path, pending_identity, 0o700, stack)
+        tree, _ = admit(root, context, digest, stack)
+        publication.require_absent(parent, DESTINATION, "Linux app destination")
+        tree.reprove()
+        os.fchmod(root, 0o500)
+        os.fsync(root)
+        open_root(path, pending_identity, 0o500, stack)
+        open_root(parent_path, parent_identity, 0o700, stack)
+        publication.rename_noreplace(parent, pending, DESTINATION)
+        os.fsync(parent)
+        final_path = os.path.join(parent_path, DESTINATION)
+        open_root(final_path, pending_identity, 0o500, stack)
+        admit(root, context, digest, stack)
+        publication.require_absent(parent, pending, "Linux app retired pending root")
+        if names(parent) != (DESTINATION,):
+            fail("Linux app published parent inventory differs")
+        return final_path
+
+
+def materialize(path, root_identity, parent_path, parent_identity, context, digest):
+    subprocess.run(["/bin/bash", str(Path(__file__).with_name("verify-vm-entry-preflight.sh"))],
+                   check=True, stdout=subprocess.DEVNULL)
+    require_descriptor_capacity()
+    with ExitStack() as stack:
+        root = open_root(path, root_identity, 0o500, stack)
+        tree, manifest = admit(root, context, digest, stack)
+        parent = open_root(parent_path, parent_identity, 0o700, stack)
+        publication.require_absent(parent, MATERIALIZED, "Linux app execution workspace")
+        os.mkdir(MATERIALIZED, 0o700, dir_fd=parent)
+        target_path = os.path.join(parent_path, MATERIALIZED)
+        expected = publication.identity(os.stat(MATERIALIZED, dir_fd=parent, follow_symlinks=False))
+        target = open_root(target_path, expected, 0o700, stack)
+        if copy_tree(tree, target, stack, inert=False) != manifest["files"]:
+            fail("Linux app changed during materialization")
+        os.fchmod(target, 0o500)
+        os.fsync(target)
+        os.fsync(parent)
+        execution = Tree(target, stack, capsule=False, executable_files=True)
+        if sorted(relative for relative in execution.directories if relative) != manifest["directories"]:
+            fail("Linux app materialized directory inventory differs")
+        records = {relative: consume(descriptor, info, is_executable)
+                   for relative, (descriptor, info, is_executable) in execution.files.items()}
+        if records != manifest["files"]:
+            fail("Linux app materialized file inventory or digest differs")
+        execution.reprove()
+        tree.reprove()
+        open_root(path, root_identity, 0o500, stack)
+        open_root(parent_path, parent_identity, 0o700, stack)
+        open_root(target_path, expected, 0o500, stack)
+        return target_path
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("prepare", "commit", "materialize"))
+    parser.add_argument("--context", required=True)
+    parser.add_argument("--root")
+    parser.add_argument("--root-identity")
+    parser.add_argument("--parent", required=True)
+    parser.add_argument("--parent-identity", required=True)
+    parser.add_argument("--pending")
+    parser.add_argument("--pending-identity")
+    parser.add_argument("--manifest-sha256")
+    arguments = parser.parse_args()
+    if len(arguments.context.encode("utf-8")) > 4096:
+        fail("Linux app context exceeds its bound")
+    context = json.loads(arguments.context, object_pairs_hook=no_duplicates)
+    validate_context(context)
+    parent = publication.parse_identity(arguments.parent_identity, "Linux app parent")
+    if arguments.action == "prepare":
+        if arguments.pending is not None or arguments.pending_identity is not None or arguments.manifest_sha256 is not None:
+            fail("Linux app prepare accepts no pending or manifest authority")
+        if arguments.root is None or arguments.root_identity is None:
+            fail("Linux app prepare requires source authority")
+        pending, expected, digest = prepare(arguments.root,
+            publication.parse_identity(arguments.root_identity, "Linux app source"),
+            arguments.parent, parent, context)
+        print(f"{pending} {expected[0]}:{expected[1]} {digest}")
+    elif arguments.action == "commit":
+        if arguments.root is not None or arguments.root_identity is not None:
+            fail("Linux app commit accepts no source authority")
+        if arguments.pending is None or arguments.pending_identity is None or arguments.manifest_sha256 is None:
+            fail("Linux app commit requires pending and manifest authority")
+        print(commit(arguments.parent, parent, arguments.pending,
+            publication.parse_identity(arguments.pending_identity, "Linux app pending"),
+            context, arguments.manifest_sha256))
+    else:
+        if arguments.pending is not None or arguments.pending_identity is not None:
+            fail("Linux app materialize accepts no pending authority")
+        if arguments.root is None or arguments.root_identity is None or arguments.manifest_sha256 is None:
+            fail("Linux app materialize requires capsule and manifest authority")
+        print(materialize(arguments.root,
+            publication.parse_identity(arguments.root_identity, "Linux app capsule"),
+            arguments.parent, parent, context, arguments.manifest_sha256))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (publication.PublicationError, OSError, ValueError, RecursionError, subprocess.CalledProcessError) as error:
+        print(f"Linux Flutter artifact: {error}", file=sys.stderr)
+        raise SystemExit(1)

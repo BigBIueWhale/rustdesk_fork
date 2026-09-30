@@ -1497,6 +1497,20 @@ the admission-directory lock. Product behavior is unchanged. Correct the native 
 actual readiness/rebuild trigger before changing ownership; window geometry alone, copied build logic
 or selector failure cannot establish the production defect, original display-delay cause or an LPE.
 
+**Linux Flutter build/replay separation — CAPSULE CONTRACT IMPLEMENTED; NATIVE RUN PENDING.**
+`scripts/linux-flutter-artifact.py` seals the complete app `bundle/` and matching `smoke-readiness`
+independently of current test drivers. A closed manifest binds every file and directory, source commit/tree,
+builder config, recipe, toolchain versions, epoch selection and ten input roles; admission also requires an
+independently supplied manifest digest. Private descriptor-bound, mount-closed, single-link, ACL-free inputs
+are bounded and re-proved. Publication is locked and no-clobber; retained pending/output state refuses a
+second preparation. Cached bytes stay non-executable mode 0400, and only authenticated zero-NIC VM
+materialization creates an owner-only execution copy. The focused `--linux-flutter-artifact-tests` profile
+requires clean pushed source, committed-byte admission, root/foreign refusal, real filesystem/ELF cases,
+read-only source, listener invariance and joined scratch/VM cleanup. Syntax/AST parsing is not native proof;
+the first native run is pending. Its fixture uses a guest-system ELF, not RustDesk. Real app producer
+publication, consumer integration and measured faster replay remain OPEN, as do the dialog-entry failure,
+Android/Windows defect, installed/native matrix and release obligations. No product behavior is changed.
+
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was
 false-green because readiness raced ahead of cleanup; the corrected test observes the actual drain

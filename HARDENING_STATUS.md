@@ -1484,11 +1484,18 @@ dialog layout through three observed window resizes, explicit Escape retirement 
 authenticated TCP connection. Exact `cc63e172` passed the focused zero-NIC transaction in 68 seconds:
 the actual controller compiled with warnings as errors and the shared actual-X11 pixel-oracle tests
 passed, with unchanged inputs/listeners, zero pre-existing-process drift and joined scratch retirement.
-This profile does not execute the GTK dialog case; real-app execution remains pending. Only forwarded
-results are available because separate raw-log retention failed. Product behavior remains unchanged
-for reproduction. Window geometry alone, copied build logic,
-or a selector failure cannot establish the production defect. Neither source concern establishes
-the original display-delay cause or a privilege escalation.
+This profile does not execute the GTK dialog case; only forwarded results remain from that focused run
+because separate raw-log retention failed. Exact `9f17ae10` then built the actual 78-file Linux bundle,
+authenticated through the real password prompt and observed initial changing pixels (first fresh 251 ms,
+maximum publication age 373 ms), but failed toolbar activation before opening the dialog or resizing.
+The target's visible toolbar menu items had empty accessibility names, so the named selector could not
+reach “Keyboard Settings.” This is a fixture-entry failure, not a reproduced overlay-reset defect or
+a complete peer/outer pass. Complete 355,677-byte raw serial and capture/listener records are retained
+at `evidence/dialog-resize-9f17ae10.*`; before/during/after listener inventories are byte-identical.
+Owned VM/capture/exporter processes exited, and the exact inactive failed disk was reconciled under
+the admission-directory lock. Product behavior is unchanged. Correct the native entry and observe an
+actual readiness/rebuild trigger before changing ownership; window geometry alone, copied build logic
+or selector failure cannot establish the production defect, original display-delay cause or an LPE.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

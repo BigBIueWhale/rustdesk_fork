@@ -1539,7 +1539,7 @@ EMULATOR_START="$(process_start_time "$EMULATOR_PID")" \
     || fail 'the emulator process start time is malformed'
 timeout --signal=TERM --kill-after=2s 22s \
     python3 -I -S - "$EMULATOR_PID" "$EMULATOR_START" \
-        "$SDK_ROOT/emulator/qemu/linux-x86_64/qemu-system-x86_64" <<'PY'
+        "$SDK_ROOT/emulator/qemu/linux-x86_64/qemu-system-x86_64-headless" <<'PY'
 import os
 import sys
 import time
@@ -1547,18 +1547,22 @@ import time
 pid, expected_start, executable = sys.argv[1:]
 root = f"/proc/{pid}"
 deadline = time.monotonic() + 20
+observed_executable = ""
+kvm_targets = []
 while time.monotonic() < deadline:
     with open(f"{root}/stat") as source:
         process = source.read().rsplit(")", 1)[1].split()
     if process[19] != expected_start or process[0] == "Z":
         raise SystemExit("Android KVM emulator generation retired or changed")
-    if os.readlink(f"{root}/exe") == executable:
+    observed_executable = os.readlink(f"{root}/exe")
+    if observed_executable == executable:
         targets = []
         for name in os.listdir(f"{root}/fd"):
             try:
                 targets.append(os.readlink(f"{root}/fd/{name}"))
             except FileNotFoundError:
                 continue
+        kvm_targets = sorted(target for target in targets if target.startswith("anon_inode:kvm-"))
         if (targets.count("anon_inode:kvm-vm") == 1
                 and targets.count("anon_inode:kvm-vcpu:0") == 1
                 and targets.count("anon_inode:kvm-vcpu:1") == 1
@@ -1572,7 +1576,8 @@ while time.monotonic() < deadline:
             break
     time.sleep(0.05)
 else:
-    raise SystemExit("Android emulator did not retain exactly one KVM VM and two vCPUs")
+    raise SystemExit("Android emulator did not retain exactly one KVM VM and two vCPUs: "
+                     f"executable={observed_executable!r} kvm_descriptors={kvm_targets!r}")
 PY
 
 if [ "$WORKLOAD" = app-peer-lifecycle ]; then
@@ -4044,7 +4049,7 @@ PY
 fi
 
 if [ "$WORKLOAD" = boot ]; then
-    capture_ui_hierarchy "$WORK_ROOT/framework-boot-ui.xml" \
+    capture_ui_hierarchy complete \
         || fail 'the booted Android framework UI is unavailable or has an ANR'
 fi
 

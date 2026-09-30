@@ -1104,8 +1104,13 @@ containers remain device-free. The driver requires KVM API 12, closes a minimal 
 retained PID/start generation. There is no host-device passthrough, software-CPU fallback, new host
 permission, network change, or weakened product/resource/freshness bound. SwiftShader remains the GPU.
 Boot-only acceptance additionally samples the real framework UI through the sticky ANR refusal gate.
-**Native execution of this candidate is not yet observed.** Source/syntax review is not proof of usable
-nested KVM, healthy Android, a Google-supported topology, product presentation, or device performance.
+The first native candidate `baa4a69f` proved the guest grant, foreign refusal and container API/VM-create,
+but failed its exact-engine descriptor check; it is not a framework-boot pass. The gate incorrectly
+expected the graphical executable despite `-no-window` selecting the pinned headless engine. The current
+candidate binds only that headless executable and reports its observed engine/KVM descriptors on refusal;
+the boot UI call now uses the helper's actual `complete` selector. Neither correction removes a check.
+**The corrected candidate has no complete native verdict yet.** Source/syntax review is not proof of
+healthy Android, a Google-supported topology, product presentation, or device performance.
 Next execute the pinned framework boot and exact-artifact peer replay before interpreting display timings.
 The attempted shared authority smoke hit its existing 90-second VM deadline after the 22 capsule
 cases and several authority entries passed; it is not a complete transaction or consumer verdict.

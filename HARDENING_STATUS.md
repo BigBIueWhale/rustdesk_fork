@@ -1497,7 +1497,7 @@ the admission-directory lock. Product behavior is unchanged. Correct the native 
 actual readiness/rebuild trigger before changing ownership; window geometry alone, copied build logic
 or selector failure cannot establish the production defect, original display-delay cause or an LPE.
 
-**Linux Flutter build/replay separation — FIRST CAPSULE NATIVE PASS; REAL APP HANDOFF OPEN.**
+**Linux Flutter build/replay separation — CAPSULE CONTRACT NATIVE PASS; REAL APP HANDOFF OPEN.**
 `scripts/linux-flutter-artifact.py` seals the complete app `bundle/` and matching `smoke-readiness`
 independently of current test drivers. A closed manifest binds every file and directory, source commit/tree,
 builder config, recipe, toolchain versions, epoch selection and ten input roles; admission also requires an
@@ -1506,18 +1506,21 @@ are bounded and re-proved. Publication is locked and no-clobber; retained pendin
 second preparation. Cached bytes stay non-executable mode 0400, and only authenticated zero-NIC VM
 materialization creates an owner-only execution copy. The focused `--linux-flutter-artifact-tests` profile
 requires clean pushed source, committed-byte admission, root/foreign refusal, real filesystem/ELF cases,
-read-only source, listener invariance and joined scratch/VM cleanup. Exact pushed `dae88087`, tree
-`79bf5372195ea2db9c0ac355991632542109df82`, passed all 20 real filesystem/CLI/ELF cases in the complete
-24-second transaction. Root/foreign test entry was refused, source and host listeners were unchanged,
-pre-existing-process drift was zero and scratch self-retired. Only forwarded terminal receipts remain;
-the separately started keeper missed its full raw serial. The affected shared X11 profile passed in
-73 seconds, including actual controller compilation and stale/fresh/geometry cases; its complete raw
+read-only source, listener invariance and joined scratch/VM cleanup. Exact pushed `abd5853d`, tree
+`d215b1486f1f139ac867910ac6ab2980c9624e20`, passed all 20 real filesystem/CLI/ELF cases in the complete
+24-second transaction. Both test entry and the actual materializer CLI refused root and UID/GID 4001
+at VM entry before file access, leaving scratch and Docker inventories unchanged. Test cases themselves
+took 10.045 seconds. Inputs and before/during/after host listeners were unchanged, pre-existing-process
+drift was zero, all owners joined and the successful run self-retired. Complete raw serial is
+`evidence/linux-flutter-artifact-abd5853d.serial.log` (67,895 bytes, SHA-256
+`8573e544de785fa6ee547aea048ad5e1f8e1e98493f68e14eeb9ddceb61f67a9`). The affected shared X11
+profile at `dae88087` passed in 73 seconds, including actual controller compilation and stale/fresh/
+geometry cases, unchanged inputs/listeners, zero process drift and joined retirement; its complete raw
 70,324-byte serial is `evidence/x11-capsule-integration-dae88087.serial.log`, SHA-256
 `fc11586dac912e67a89bb0e62b763cdde1673639047f93f538c86726b40c88cf`. The normal authority smoke
 hit its unchanged 90-second deadline during later Windows-helper checks: no complete integration pass.
 Its complete 65,429-byte serial and before/during listener records are retained outside the exact
-reconciled inactive failed disk. The additional direct-materializer root/foreign refusal checks are
-pending native execution. This fixture uses a guest-system ELF, not RustDesk. Real app producer
+reconciled inactive failed disk. This fixture uses a guest-system ELF, not RustDesk. Real app producer
 publication, consumer integration and measured faster replay remain OPEN, as do the dialog-entry failure,
 Android/Windows defect, installed/native matrix and release obligations. No product behavior is changed.
 

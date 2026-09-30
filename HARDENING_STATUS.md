@@ -1336,7 +1336,7 @@ native execution, not replacement source-string assertions. The guard's other VM
 checks remain; several candidate-admission diagnostic strings are also stale, so the whole guard is
 not currently claimed green or used as a substitute for native pixels.
 
-**Linux publication-age oracle — NAMED FOCUSED PASS; FULL-PEER CAPTURE FAILURE, GEOMETRY FIX PENDING VALIDATION.**
+**Linux publication-age oracle — FOCUSED GEOMETRY/AGE PASS; CORRECTED FULL-PEER REPLAY PENDING.**
 The repeating palette decoder, 256 first-sighting slots and reconnect history reset are removed.
 `x11-frame-oracle.h`, shared by the actual controller and its native test, decodes four complete,
 ordered counter bands and refuses ambiguous/incomplete/reordered pixels. Age requires that full
@@ -1380,8 +1380,20 @@ pixels as non-contrasting uncertainty, and supports centered letterboxing from t
 two-samples-per-bar minimum rather than assuming content fills at least 60% of a window.
 The focused native test now requires the exact oversized-window old-BadMatch/new-decode case
 plus occluded, hidden and unmapped refusal, before the timed source-age test starts.
-**Those new geometry cases have not run yet.** Do not resize the VM screen to hide the invalid
-request, ignore X errors, relax identity/age/contrast/deadline bounds, or infer peer closure.
+Exact pushed `481e11ca`, tree `ebf86724ca5115bbaddf6c9ce249206d7eda5db2`, passed the
+complete focused transaction in 62 seconds. The old request reproduced `BadMatch`; the new
+capture decoded the same 1,300×740 window with centered 640×480 content on 1,280×800, and refused
+occluded, hidden/partly hidden and unmapped content. Both 31,120-byte C test builds matched
+SHA-256 `04986f81d92d141ec93c95465ba7a35c9deb629a719ae97743a94d6f206cd81d`;
+the actual controller compiled. Actual C stale identity 4 measured 9,788 ms versus fresh identity
+261 at 18 ms; late attachment did not rejuvenate it. The existing Android decoder measured
+10,500 ms stale versus 157 ms fresh against the same source, without running an Android app.
+Complete 68,101-byte raw serial is retained at `evidence/x11-geometry-481e11ca.serial.log`,
+SHA-256 `8f575227374521c9ce18a3e7dc6769101ee25b4a439507031daa92e03f6cac61`.
+The outer input/listener/finality gates passed, every owner joined and scratch self-retired.
+This supersedes the observer-level geometry uncertainty, **not the failed real-peer result**.
+Rerun the corrected real peer under unchanged limits. Do not resize the VM screen to hide invalid
+requests, ignore X errors, relax identity/age/contrast/deadline bounds, or infer platform closure.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

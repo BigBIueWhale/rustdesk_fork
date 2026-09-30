@@ -134,6 +134,22 @@ def main():
     environment = {"PATH": "/usr/bin:/bin", "HOME": "/tmp", "DISPLAY": ":98",
                    "LC_ALL": "C", "RUSTDESK_PRESENTATION_TRACE": "1",
                    "LD_LIBRARY_PATH": "/xvfb-root/usr/lib/x86_64-linux-gnu"}
+    oracle_binaries = [Path(f"/build/x11-frame-oracle-{index}") for index in range(2)]
+    for binary in oracle_binaries:
+        subprocess.run(["/usr/bin/cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+                        "/work/scripts/test-x11-frame-oracle.c", "-lX11", "-o", str(binary)],
+                       env=environment, check=True, timeout=30)
+        binary.chmod(0o500)
+    oracle_bytes = oracle_binaries[0].read_bytes()
+    require(oracle_bytes == oracle_binaries[1].read_bytes(), "C frame oracle builds differ")
+    controller_flags = subprocess.run([
+        "/usr/bin/pkg-config", "--cflags", "--libs", "x11", "xtst", "atspi-2", "gobject-2.0",
+    ], env=environment, check=True, capture_output=True, text=True, timeout=5).stdout.split()
+    subprocess.run(["/usr/bin/cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+                    "/work/scripts/flutter-peer-presentation-x11.c", *controller_flags,
+                    "-o", "/build/x11-controller"], env=environment, check=True, timeout=30)
+    print("ANDROID_FRAME_NATIVE_X11_BUILD copies=2 equal=true controller=compiled "
+          f"sha256={hashlib.sha256(oracle_bytes).hexdigest()} bytes={len(oracle_bytes)}", flush=True)
     children = []
     display = None
     lib = ctypes.CDLL("libX11.so.6")
@@ -148,7 +164,9 @@ def main():
     lib.XGetPixel.restype = ctypes.c_ulong
     lib.XDestroyImage.argtypes = [ctypes.c_void_p]
     lib.XCloseDisplay.argtypes = [ctypes.c_void_p]
-    source_path = Path("/tmp/frame-source.log")
+    source_directory = Path("/tmp/frame-source")
+    source_directory.mkdir(mode=0o700)
+    source_path = source_directory / "frame-source.log"
     started = time.monotonic()
     try:
         with open("/tmp/frame-xvfb.log", "wb") as xvfb_log:
@@ -219,6 +237,8 @@ def main():
         require(initial is not None, "fresh native source pixels were not decoded")
         identity = initial["state"]
         print(f"ANDROID_FRAME_NATIVE_PROGRESS stage=initial identity={identity}", flush=True)
+        subprocess.run([str(oracle_binaries[0]), str(source_directory)],
+                       env=environment, check=True, timeout=30)
         reported = 0
         history = {}
         while time.monotonic() - started < 100:
@@ -290,6 +310,8 @@ def main():
     require(all(child.returncode == 0 for child in children), "native child did not retire cleanly")
     require((fixture / "frame-source").read_bytes() == fixture_bytes,
             "independent fixture changed during native execution")
+    require(all(binary.read_bytes() == oracle_bytes for binary in oracle_binaries),
+            "C frame oracle changed during native execution")
     history = decoder.source_history(source_path)
     require(source_path.read_bytes().endswith(
         f"FLUTTER_PEER_SOURCE_COMPLETE frames={len(history)}\n".encode()), "source finality is absent")

@@ -24,6 +24,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include "x11-frame-oracle.h"
 
 #define WINDOW_WAIT_MS 45000U
 #define PASSWORD_PROMPT_WAIT_MS 30000U
@@ -46,27 +47,11 @@
 #define RESOURCE_THREAD_GROWTH_LIMIT 8U
 #define RESOURCE_FD_GROWTH_LIMIT 16U
 #define RESOURCE_RSS_GROWTH_KIB_LIMIT 131072ULL
-#define PALETTE_DISTANCE_LIMIT_SQUARED (92U * 92U)
 
 static const unsigned int blur_hold_ms[FOCUS_CYCLE_COUNT] = {2000U, 6000U, 12000U};
 
-static const uint8_t palette[16][3] = {
-    {232U, 36U, 36U},   {36U, 224U, 48U},   {36U, 64U, 232U},
-    {232U, 220U, 36U},  {224U, 36U, 220U},  {36U, 220U, 220U},
-    {240U, 120U, 24U},  {128U, 40U, 232U},  {24U, 132U, 232U},
-    {232U, 40U, 128U},  {132U, 232U, 24U},  {24U, 232U, 132U},
-    {196U, 92U, 44U},   {44U, 196U, 92U},   {92U, 44U, 196U},
-    {196U, 196U, 196U},
-};
-
 static const char test_password[] = "rustdesk-peer-9f2a7c4e";
 _Static_assert(sizeof(test_password) - 1U == 22U, "test password length must remain exact");
-
-typedef struct {
-    uint64_t first_seen_ms[256];
-    uint64_t last_seen_ms[256];
-    int initialized[256];
-} SourceHistory;
 
 typedef struct {
     Window window;
@@ -419,142 +404,17 @@ static void exit_atspi_after_failure(void) {
     }
 }
 
-static uint8_t component_from_pixel(unsigned long pixel, unsigned long mask) {
-    unsigned int shift = 0U;
-    unsigned long normalized;
-    unsigned long value;
-    if (mask == 0UL) {
-        return 0U;
-    }
-    while (((mask >> shift) & 1UL) == 0UL) {
-        ++shift;
-    }
-    normalized = mask >> shift;
-    value = (pixel & mask) >> shift;
-    return (uint8_t)((value * 255UL + normalized / 2UL) / normalized);
+static int64_t source_state(Display *display) {
+    uint8_t pixels[X11_FRAME_BYTES];
+    uint64_t captured_us = 0U;
+    return x11_frame_capture(display, RootWindow(display, DefaultScreen(display)),
+                              pixels, &captured_us);
 }
 
-static int nearest_palette(uint8_t red, uint8_t green, uint8_t blue, unsigned int *distance) {
-    unsigned int best = UINT_MAX;
-    int best_index = -1;
-    int index;
-    for (index = 0; index < 16; ++index) {
-        int dr = (int)red - (int)palette[index][0];
-        int dg = (int)green - (int)palette[index][1];
-        int db = (int)blue - (int)palette[index][2];
-        unsigned int candidate = (unsigned int)(dr * dr + dg * dg + db * db);
-        if (candidate < best) {
-            best = candidate;
-            best_index = index;
-        }
-    }
-    *distance = best;
-    return best_index;
-}
-
-static int classify_point(Display *display, Window window, int x, int y) {
-    XWindowAttributes attributes;
-    XImage *image;
-    unsigned long pixel;
-    uint8_t red;
-    uint8_t green;
-    uint8_t blue;
-    unsigned int distance;
-    int index;
-    if (XGetWindowAttributes(display, window, &attributes) == 0 || attributes.visual == NULL) {
-        return -1;
-    }
-    image = XGetImage(display, window, x, y, 1U, 1U, AllPlanes, ZPixmap);
-    if (image == NULL) {
-        return -1;
-    }
-    pixel = XGetPixel(image, 0, 0);
-    red = component_from_pixel(pixel, attributes.visual->red_mask);
-    green = component_from_pixel(pixel, attributes.visual->green_mask);
-    blue = component_from_pixel(pixel, attributes.visual->blue_mask);
-    XDestroyImage(image);
-    index = nearest_palette(red, green, blue, &distance);
-    if (distance > PALETTE_DISTANCE_LIMIT_SQUARED) {
-        return -1;
-    }
-    return index;
-}
-
-static int classify_region(Display *display, Window window, unsigned int width,
-                           unsigned int height, unsigned int x_percent) {
-    unsigned int counts[16] = {0U};
-    unsigned int row;
-    unsigned int column;
-    unsigned int classified = 0U;
-    unsigned int best_count = 0U;
-    int best_index = -1;
-    for (row = 0U; row < 5U; ++row) {
-        for (column = 0U; column < 5U; ++column) {
-            int x = (int)((width * x_percent) / 100U) + (int)column - 2;
-            int y = (int)((height * 58U) / 100U) + (int)row - 2;
-            int index = classify_point(display, window, x, y);
-            if (index >= 0) {
-                counts[index] += 1U;
-                classified += 1U;
-            }
-        }
-    }
-    for (row = 0U; row < 16U; ++row) {
-        if (counts[row] > best_count) {
-            best_count = counts[row];
-            best_index = (int)row;
-        }
-    }
-    if (classified < 15U || best_count < 12U) {
-        return -1;
-    }
-    return best_index;
-}
-
-static int source_state(Display *display) {
-    Window root = RootWindow(display, DefaultScreen(display));
-    XWindowAttributes attributes;
-    int low;
-    int high;
-    if (XGetWindowAttributes(display, root, &attributes) == 0) {
-        return -1;
-    }
-    low = classify_point(display, root, attributes.width / 4, attributes.height / 2);
-    high = classify_point(display, root, (attributes.width * 3) / 4, attributes.height / 2);
-    if (low < 0 || high < 0) {
-        return -1;
-    }
-    return high * 16 + low;
-}
-
-static int viewer_state(Display *display, const ViewerWindow *viewer) {
-    int low = classify_region(display, viewer->window, viewer->width, viewer->height, 34U);
-    int high = classify_region(display, viewer->window, viewer->width, viewer->height, 66U);
-    if (low < 0 || high < 0) {
-        return -1;
-    }
-    return high * 16 + low;
-}
-
-static int observe_source(Display *source, SourceHistory *history, uint64_t now) {
-    int state = source_state(source);
-    if (state >= 0) {
-        if (history->initialized[state] == 0) {
-            history->first_seen_ms[state] = now;
-            history->initialized[state] = 1;
-        }
-        history->last_seen_ms[state] = now;
-    }
-    return state;
-}
-
-static int state_age(const SourceHistory *history, int state, uint64_t now, uint64_t *age) {
-    if (state < 0 || state > 255 || history->initialized[state] == 0 ||
-        history->first_seen_ms[state] > now) {
-        return -1;
-    }
-    *age = now - history->first_seen_ms[state];
-    return 0;
+static int64_t viewer_state(Display *display, const ViewerWindow *viewer,
+                             uint64_t *captured_us) {
+    uint8_t pixels[X11_FRAME_BYTES];
+    return x11_frame_capture(display, viewer->window, pixels, captured_us);
 }
 
 static int read_text_property(Display *display, Window window, Atom property,
@@ -740,24 +600,29 @@ static int type_password(Display *display) {
     return 0;
 }
 
-static int wait_for_current_frames(Display *source, Display *display, const ViewerWindow *viewer,
+static int wait_for_current_frames(Display *display, const ViewerWindow *viewer,
                                    SourceHistory *history, unsigned int timeout_ms,
                                    unsigned int required_distinct, uint64_t *first_fresh_ms,
                                    uint64_t *maximum_age_ms) {
     uint64_t start = monotonic_millis();
     uint64_t deadline = start + timeout_ms;
-    int last_state = -1;
+    int64_t last_state = -1;
     unsigned int distinct = 0U;
     int saw_fresh = 0;
     *first_fresh_ms = 0U;
     *maximum_age_ms = 0U;
     while (monotonic_millis() < deadline) {
-        uint64_t now = monotonic_millis();
-        int state;
+        uint64_t now, captured_us = 0U;
+        int64_t state;
         uint64_t age;
-        observe_source(source, history, now);
-        state = viewer_state(display, viewer);
-        if (state_age(history, state, now, &age) == 0 && age <= FRESH_LIMIT_MS) {
+        int age_valid;
+        state = viewer_state(display, viewer, &captured_us);
+        age_valid = x11_frame_age(history, "/coord", state, captured_us, &age) == 0;
+        now = monotonic_millis();
+        if (history->failed || now >= deadline) {
+            return -1;
+        }
+        if (age_valid && age <= FRESH_LIMIT_MS) {
             if (saw_fresh == 0) {
                 *first_fresh_ms = now - start;
                 saw_fresh = 1;
@@ -790,7 +655,7 @@ static int observe_current_frames_for_duration(Display *source, Display *display
     uint64_t start = monotonic_millis();
     uint64_t deadline = start + duration_ms;
     uint64_t last_fresh = start;
-    int last_state = -1;
+    int64_t last_state = -1;
     const char *trace_value = getenv("RUSTDESK_PRESENTATION_TRACE");
     int trace_enabled = trace_value != NULL && strcmp(trace_value, "1") == 0;
 
@@ -798,17 +663,23 @@ static int observe_current_frames_for_duration(Display *source, Display *display
     *maximum_age_ms = 0U;
     *distinct_states = 0U;
     while (monotonic_millis() < deadline) {
-        uint64_t now = monotonic_millis();
+        uint64_t now, captured_us = 0U;
         uint64_t age;
         uint64_t gap;
-        int state;
-        int observed_source_state;
+        int64_t state;
+        int64_t observed_source_state = -1;
         int age_valid;
         int fresh;
 
-        observed_source_state = observe_source(source, history, now);
-        state = viewer_state(display, viewer);
-        age_valid = state_age(history, state, now, &age) == 0;
+        if (trace_enabled) {
+            observed_source_state = source_state(source);
+        }
+        state = viewer_state(display, viewer, &captured_us);
+        age_valid = x11_frame_age(history, "/coord", state, captured_us, &age) == 0;
+        now = monotonic_millis();
+        if (history->failed) {
+            return -1;
+        }
         fresh = age_valid && age <= FRESH_LIMIT_MS;
         if (fresh) {
             last_fresh = now;
@@ -826,8 +697,8 @@ static int observe_current_frames_for_duration(Display *source, Display *display
         }
         if (trace_enabled != 0) {
             printf("RUSTDESK_PRESENTATION_TRACE stage=observer monotonic_ms=%llu "
-                   "source_state=%d viewer_state=%d age_ms=%lld fresh=%d gap_ms=%llu\n",
-                   (unsigned long long)now, observed_source_state, state,
+                   "source_state=%lld viewer_state=%lld age_ms=%lld fresh=%d gap_ms=%llu\n",
+                   (unsigned long long)now, (long long)observed_source_state, (long long)state,
                    age_valid ? (long long)age : -1LL, fresh,
                    (unsigned long long)gap);
             fflush(stdout);
@@ -1328,7 +1199,7 @@ int main(int argc, char **argv) {
     puts("FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true "
          "retired=true typed_via_xtest=true argv_password=false");
 
-    if (wait_for_current_frames(source, display, &viewer, &history, AUTH_WAIT_MS, 4U,
+    if (wait_for_current_frames(display, &viewer, &history, AUTH_WAIT_MS, 4U,
                                 &initial_fresh_ms, &initial_max_age) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL authenticated current pixels unavailable\n", stderr);
         close_viewer(display, viewer.window);
@@ -1405,7 +1276,7 @@ int main(int argc, char **argv) {
             XCloseDisplay(source);
             return 1;
         }
-        if (wait_for_current_frames(source, display, &viewer, &history, RECOVERY_LIMIT_MS, 3U,
+        if (wait_for_current_frames(display, &viewer, &history, RECOVERY_LIMIT_MS, 3U,
                                     &recovery_ms, &recovery_max_age) != 0) {
             fprintf(stderr,
                     "FLUTTER_PEER_X11_FAIL focus recovery exceeded %u ms cycle=%u\n",
@@ -1455,7 +1326,6 @@ int main(int argc, char **argv) {
     for (unsigned int sequence = 1U; sequence <= RECONNECT_COUNT; ++sequence) {
         unsigned int generation = sequence + 1U;
         ConnectionIdentity replacement = {{0}, {0}, 0UL};
-        SourceHistory reconnect_history = {0};
         ViewerWindow reconnected_viewer = {0};
         uint64_t first_fresh_ms;
         uint64_t maximum_age_ms;
@@ -1491,7 +1361,7 @@ int main(int argc, char **argv) {
             return 1;
         }
         viewer = reconnected_viewer;
-        if (wait_for_current_frames(source, display, &viewer, &reconnect_history,
+        if (wait_for_current_frames(display, &viewer, &history,
                                     AUTH_WAIT_MS, 4U, &first_fresh_ms,
                                     &maximum_age_ms) != 0) {
             fprintf(stderr,
@@ -1521,7 +1391,6 @@ int main(int argc, char **argv) {
                (unsigned long long)first_fresh_ms,
                (unsigned long long)maximum_age_ms);
         current_connection = replacement;
-        history = reconnect_history;
     }
     if (close(coord) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL coordination authority close\n", stderr);

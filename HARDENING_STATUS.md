@@ -1330,26 +1330,31 @@ outer terminal acceptance is `evidence/android-hd-peer-51e06274.outer.receipt`. 
 neither high-entropy video, sustained warm lifetime, physical devices, current-release behavior nor
 shared Windows causation. Next vary a justified lifetime/load condition and preserve actual backlog;
 do not infer a product fix or weaken ownership, capacities, freshness or deadlines from green schedules.
-The supplementary `verify-flutter-peer-presentation.py:333` ordering check still requires the retired
-eight-bit wrap expression, contradicting the current full-counter source. Its classification/correction
-is OPEN; it cannot validate the current oracle and is not run as a substitute for native pixels.
+The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local
+`XGetImage` wording check are deleted. Pixel identity and age require the shared C implementation's
+native execution, not replacement source-string assertions. The guard's other VM/input/renderer
+checks remain; several candidate-admission diagnostic strings are also stale, so the whole guard is
+not currently claimed green or used as a substitute for native pixels.
 
-**Linux publication-age oracle remains OPEN.** The shared source publishes full non-wrapping counters,
-but `flutter-peer-presentation-x11.c:514-537` still decodes only two colour nibbles, and its
-`SourceHistory` at lines 65-69 retains just 256 palette slots. `observe_source`/`state_age` at
-lines 539-557 timestamp the first observer sighting, not the source publication. Thus a whole-cycle
-delayed stream can alias the current palette; newly observed stale source pixels can receive a fresh
-timestamp; and a later legitimate palette recurrence can be falsely aged from its first-ever sighting.
-Reconnect also creates a fresh history rather than preserving publication identity. These are
-source-established oracle defects, not a new native reproduction, product-hang cause or LPE finding.
-The Android full-counter/publication-log correction does not cover this separate C observer.
-Before extending Linux connection lifetime or counting its age fields as freshness, replace the
-palette/history abstraction with all four ordered counter bands and the exact owned producer's
-bounded monotonic publication history. Exercise real X11 stale/fresh whole-cycle A/B, late observer
-attachment, reconnect, incomplete/reordered/unknown identity and source-history authority refusals;
-then rerun the real peer. Preserve the 1,000-ms freshness and 2,500-ms recovery limits, exact connection
-identity, resource bounds and joined cleanup. No counter wrap, nominal-tick age, first-seen reset,
-capacity increase or product change is a substitute. Longer-lived Android testing remains separate.
+**Linux publication-age oracle — SOURCE CORRECTED; NATIVE AND FULL-PEER REPLAY PENDING.**
+The repeating palette decoder, 256 first-sighting slots and reconnect history reset are removed.
+`x11-frame-oracle.h`, shared by the actual controller and its native test, decodes four complete,
+ordered counter bands and refuses ambiguous/incomplete/reordered pixels. Age requires that full
+identity in the exact fixture's monotonic publication log and includes capture/decoding/lookup time;
+unknown or future identities cannot become fresh. The private parent and owner-only, single-link,
+no-follow regular log retain their identities across incremental append reads, with a 2-MiB/32,768-frame
+bound, strictly increasing publication clocks and sticky refusal after authority or history failure.
+The server publishes that log in the private shared coordination directory; all reconnects retain
+one publication history. No clock is minted from first observation or nominal frame cadence.
+The focused native profile now compiles the actual controller and two byte-equal C test binaries.
+It requires synthetic high-counter/geometry/authority cases plus actual X11 whole-cycle stale/fresh
+and late-attachment refusal through the same C oracle before its existing final acceptance.
+These are implemented test requirements, **not results yet**. Execute the focused VM transaction,
+then the real Linux peer, before counting corrected age fields as native freshness or extending
+connection lifetime. Preserve the 1,000-ms freshness and 2,500-ms recovery limits, exact connection
+identity, resource bounds and joined cleanup. No product, capacity, deadline or persistent-service
+behavior changes. Earlier Linux palette ages remain invalid publication-age evidence; Android/Windows
+intermittent-defect causation and longer-lived Android testing remain separate OPEN work.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was
@@ -1574,7 +1579,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg now has pin-bound recoverable devcheck and Apple verifier images. For each image, two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. Exact commit `f85e18e4` passed the complete current Apple three-target source-conformance/cross-compile workload in the no-NIC verifier VM after the focused Flutter gate first required the same shared display-verifier self-test. Current product/native workloads and fresh independently administered rebuilds remain required; neither verifier-image provenance nor Apple source/cross-compile success supplies native Apple behavior. |
 | Build/test execution authority (R-S11dh) | **STOP-SHIP: focused no-NIC authority smokes and substantial product/build evidence exist, but current release workloads remain incomplete.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; R-S11cj separately confines acquisition to an ordinary-user VM with outbound-only guest/container networking, no host forwarding, and joined finality. Product source `ca569086` passed the fresh model and Android APK build/install/render transactions; exact pushed harness `89a85f4b` passed the retained-APK production-peer lifecycle/presentation transaction. Current exact source `f85e18e4` passed the focused verifier-plus-138-test gate and three-target Apple source-conformance/cross-compile gate while preserving the strict host-listener audit and joined cleanup. Stable Android signing, physical devices, sustained resource/performance soak, native Apple work, Debian/Windows product workloads, cold release artifacts, complete prepared inputs, independently administered reproduction, and external review remain open. Source checks, cross-compiles, builder fingerprints, and historical lifecycle evidence are not release or native evidence. |
-| Product-level behavior | **OPEN / RELEASE-BLOCKING:** a passing Android schedule is contradicted by a later same-APK display-only relaunch failure; neither earlier timing/resource receipts nor source/model bounds close the intermittent defect. The separate Linux palette/first-sighting oracle cannot establish publication age and must be corrected and natively replayed before using it for longer-lived freshness evidence. Preserve complete sampled event/mailbox/conversion/model/widget diagnostics, reuse a source-bound production-peer artifact without rebuilding each replay, and observe actual pixels across repeated replacement/background cycles. Full capture-to-compositor/actual-present monotonic instrumentation, sustained freshness/performance/resource soak, network transitions, broad reconnect finality, cross-version interoperability, physical Android, current Windows focus/minimize, and Apple behavior remain required. Correctness applies to the whole connection flow, not only the reported complaints; no compile, model, source-string, frame-receipt, or protocol-only result substitutes for these native obligations. |
+| Product-level behavior | **OPEN / RELEASE-BLOCKING:** a passing Android schedule is contradicted by a later same-APK display-only relaunch failure; neither earlier timing/resource receipts nor source/model bounds close the intermittent defect. The separate Linux palette/first-sighting oracle is replaced in source by full-counter publication-bound age, but its new shared C native cases and real-peer replay are still pending; earlier palette ages cannot establish freshness. Preserve complete sampled event/mailbox/conversion/model/widget diagnostics, reuse a source-bound production-peer artifact without rebuilding each replay, and observe actual pixels across repeated replacement/background cycles. Full capture-to-compositor/actual-present monotonic instrumentation, sustained freshness/performance/resource soak, network transitions, broad reconnect finality, cross-version interoperability, physical Android, current Windows focus/minimize, and Apple behavior remain required. Correctness applies to the whole connection flow, not only the reported complaints; no compile, model, source-string, frame-receipt, or protocol-only result substitutes for these native obligations. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
 NATIVE EVIDENCE OPEN.** `src/server.rs`, `src/direct_service.rs`, and `src/ipc.rs` perform startup

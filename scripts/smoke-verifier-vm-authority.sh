@@ -814,6 +814,8 @@ android_frame_input_inventory() {
     local file name size digest url extra count=0
     local -a files=(
         "$SCRIPT_DIR/android-emulator-frame.py" "$SCRIPT_DIR/flutter-peer-source-x11.c"
+        "$SCRIPT_DIR/x11-frame-oracle.h" "$SCRIPT_DIR/test-x11-frame-oracle.c"
+        "$SCRIPT_DIR/flutter-peer-presentation-x11.c"
         "$SCRIPT_DIR/test-android-frame-native.py" "$SCRIPT_DIR/smoke-xvfb-prepare.sh"
         "$SCRIPT_DIR/build-x11-frame-source.py"
         "$SCRIPT_DIR/smoke-xvfb-packages.tsv" "$SCRIPT_DIR/smoke-xvfb-files.tsv"
@@ -2616,6 +2618,9 @@ elif [ "$MODE" = android-frame-tests ]; then
         "xvfb-debs=$ONLINE_INPUTS/xvfb-debs"
         "repo/scripts/android-emulator-frame.py=$SCRIPT_DIR/android-emulator-frame.py"
         "repo/scripts/flutter-peer-source-x11.c=$SCRIPT_DIR/flutter-peer-source-x11.c"
+        "repo/scripts/x11-frame-oracle.h=$SCRIPT_DIR/x11-frame-oracle.h"
+        "repo/scripts/test-x11-frame-oracle.c=$SCRIPT_DIR/test-x11-frame-oracle.c"
+        "repo/scripts/flutter-peer-presentation-x11.c=$SCRIPT_DIR/flutter-peer-presentation-x11.c"
         "repo/scripts/test-android-frame-native.py=$SCRIPT_DIR/test-android-frame-native.py"
         "repo/scripts/build-x11-frame-source.py=$SCRIPT_DIR/build-x11-frame-source.py"
         "repo/scripts/smoke-xvfb-prepare.sh=$SCRIPT_DIR/smoke-xvfb-prepare.sh"
@@ -3143,6 +3148,26 @@ elif [ "$MODE" = android-frame-tests ]; then
     [ "${#frame_native_ab[@]}" -eq 1 ] \
         || fail 'native frame A/B receipt is absent or duplicated'
     printf '%s\n' "${frame_native_ab[0]}"
+    mapfile -t frame_x11_build < <(/usr/bin/grep -Eo \
+        'ANDROID_FRAME_NATIVE_X11_BUILD copies=2 equal=true controller=compiled sha256=[0-9a-f]{64} bytes=[1-9][0-9]*' \
+        "$SERIAL_LOG" || true)
+    [ "${#frame_x11_build[@]}" -eq 1 ] \
+        || fail 'shared C frame-oracle build receipt is absent or duplicated'
+    require_exact_fixed_receipt \
+        'ANDROID_FRAME_NATIVE_X11_CASES=pass full_bits=32 reordered=refused incomplete=refused ambiguous=refused unknown=refused clock=refused mode=refused link=refused fifo=refused history=bounded uncertainty=sticky cleanup=joined' \
+        'shared C frame-oracle identity/authority cases'
+    mapfile -t frame_x11_ab < <(/usr/bin/grep -Eo \
+        'ANDROID_FRAME_NATIVE_X11_AB=pass old_predicate=accept new=refuse old_identity=[0-9]+ fresh_identity=[0-9]+ stale_age_ms=[0-9]+ fresh_age_ms=[0-9]+ late_attach=refused capture=actual-x11' \
+        "$SERIAL_LOG" || true)
+    [ "${#frame_x11_ab[@]}" -eq 1 ] \
+        && [[ "${frame_x11_ab[0]}" =~ old_identity=([0-9]+)\ fresh_identity=([0-9]+)\ stale_age_ms=([0-9]+)\ fresh_age_ms=([0-9]+)\ late_attach= ]] \
+        || fail 'shared C native frame A/B receipt is absent, duplicated or malformed'
+    [ "${BASH_REMATCH[3]}" -ge 8448 ] && [ "${BASH_REMATCH[4]}" -le 1000 ] \
+        && [ "$((${BASH_REMATCH[2]} - ${BASH_REMATCH[1]}))" -ge 256 ] \
+        && [ "$((${BASH_REMATCH[2]} - ${BASH_REMATCH[1]}))" -le 264 ] \
+        || fail 'shared C native stale/fresh frame measurements differ'
+    printf '%s\n' "${frame_x11_build[0]}" "${frame_x11_ab[0]}"
+    printf 'ANDROID_FRAME_NATIVE_X11_CASES=pass full_bits=32 reordered=refused incomplete=refused ambiguous=refused unknown=refused clock=refused mode=refused link=refused fifo=refused history=bounded uncertainty=sticky cleanup=joined\n'
     require_exact_fixed_receipt \
         'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass format=counter32 source=monotonic-publication alias=refused' \
         'Android framebuffer decoder cases'

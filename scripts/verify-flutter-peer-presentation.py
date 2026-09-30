@@ -28,7 +28,6 @@ PATHS = {
     "guest": "scripts/smoke-verifier-vm-authority-guest.sh",
     "pins": "scripts/pins.env",
     "controller": "scripts/flutter-peer-presentation-x11.c",
-    "source": "scripts/flutter-peer-source-x11.c",
     "runner": "flutter/linux/my_application.cc",
     "multi_window": "flutter/third_party/desktop_multi_window/linux/flutter_window.cc",
     "verify": "scripts/verify.sh",
@@ -73,7 +72,6 @@ def validate(sources: dict[str, str]) -> None:
     guest = sources["guest"]
     pins = sources["pins"]
     controller = sources["controller"]
-    pixel_source = sources["source"]
     runner = sources["runner"]
     multi_window = sources["multi_window"]
 
@@ -317,7 +315,6 @@ def validate(sources: dict[str, str]) -> None:
     require_pin(pins, "SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE", r"[0-9a-f]{64}")
 
     for token in (
-        "XGetImage(",
         "XTestFakeKeyEvent(",
         "atspi_text_get_character_count(",
         "wait_for_current_frames(",
@@ -329,17 +326,6 @@ def validate(sources: dict[str, str]) -> None:
         "RECOVERY_LIMIT_MS 2500U",
     ):
         require(controller, token, "native presentation observer")
-    require_order(
-        pixel_source,
-        (
-            "back_buffer = XCreatePixmap(",
-            "XFillRectangle(display, back_buffer, graphics",
-            "XCopyArea(display, back_buffer, window, graphics",
-            "XSync(display, False);",
-            "frame = (frame + 1U) & 255U;",
-        ),
-        "atomically published changing source pixels",
-    )
     forbid(controller, "system(", "controller shell escape")
 
     require(

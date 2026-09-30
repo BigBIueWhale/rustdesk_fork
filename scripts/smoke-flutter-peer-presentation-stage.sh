@@ -501,6 +501,7 @@ PY
       /source/flutter/pubspec.lock \
       /source/scripts/flutter-offline-shim.sh \
       /source/scripts/flutter-peer-source-x11.c \
+      /source/scripts/x11-frame-oracle.h \
       /source/scripts/flutter-peer-presentation-x11.c; do
       verify_regular "$input"
     done
@@ -960,11 +961,14 @@ PY
         || fail "controlled server generation $generation retained a socket after teardown"
     }
     start_xvfb :98 640x480x24 /tmp/server-xvfb.log
-    "$SOURCE_FIXTURE" >/tmp/source.log 2>&1 &
+    set -o noclobber
+    RUSTDESK_PRESENTATION_TRACE=1 "$SOURCE_FIXTURE" >"$COORD/frame-source.log" 2>&1 &
     SOURCE_PID=$!
+    set +o noclobber
     SOURCE_START=$("$READY" --identity "$SOURCE_PID")
-    "$READY" --wait-log "$SOURCE_PID" "$SOURCE_START" /tmp/source.log \
-      FLUTTER_PEER_SOURCE_READY 'peer source readiness'
+    "$READY" --wait-log "$SOURCE_PID" "$SOURCE_START" "$COORD/frame-source.log" \
+      'FLUTTER_PEER_SOURCE_READY display=:98 dimensions=640x480 interval_ms=250 identity=counter32 rows=4 bars=24 wrap=refused' \
+      'peer source readiness'
     start_server_generation 1
     "$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START" "$SERVER_LOG" \
       "$PROBE" "$(id -u)"
@@ -1026,7 +1030,7 @@ PY
       "$READY" --is-running "$SERVER_PID" "$SERVER_START" \
         || { cat "$SERVER_LOG" >&2; fail 'server exited before viewer completion'; }
       "$READY" --is-running "$SOURCE_PID" "$SOURCE_START" \
-        || { cat /tmp/source.log >&2; fail 'source fixture exited before viewer completion'; }
+        || { cat "$COORD/frame-source.log" >&2; fail 'source fixture exited before viewer completion'; }
       sleep 0.1
     done
     [ "$stop_seen" -eq 1 ] || fail 'viewer completion marker timed out'
@@ -1035,7 +1039,7 @@ PY
     if [ "$(<"$COORD/stop")" != viewer-complete ]; then
       echo 'FLUTTER_PEER_SERVER_DIAGNOSTIC_BEGIN' >&2
       echo 'FLUTTER_PEER_SOURCE_DIAGNOSTIC_BEGIN' >&2
-      tail -n 160 /tmp/source.log >&2
+      tail -n 160 "$COORD/frame-source.log" >&2
       echo 'FLUTTER_PEER_SOURCE_DIAGNOSTIC_END' >&2
       cat "$SERVER_LOG" >&2
       emit_runtime_logs SERVER "$HOME/.local/share/logs"
@@ -1047,8 +1051,8 @@ PY
     "$READY" --stop "$SOURCE_PID" "$SOURCE_START"
     wait "$SOURCE_PID"
     SOURCE_PID= SOURCE_START=
-    grep -q '^FLUTTER_PEER_SOURCE_COMPLETE ' /tmp/source.log \
-      || { cat /tmp/source.log >&2; fail 'source fixture did not close exactly'; }
+    grep -q '^FLUTTER_PEER_SOURCE_COMPLETE ' "$COORD/frame-source.log" \
+      || { cat "$COORD/frame-source.log" >&2; fail 'source fixture did not close exactly'; }
     "$READY" --stop "$XVFB_PID" "$XVFB_START"
     wait "$XVFB_PID" 2>/dev/null || true
     XVFB_PID= XVFB_START=

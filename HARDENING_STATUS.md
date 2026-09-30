@@ -1476,8 +1476,15 @@ acceptance is separately retained. Positive serial contains aggregate test accep
 retired native JSON or detailed host snapshots. This closes the shared ownership regression on
 the pinned Linux-host Flutter engine/plugin dispatch, not actual Android hardware back delivery,
 current APK/device or Windows app behavior, the original display hang, sustained resources or LPE.
-Desktop build-time overlay resets also require a readiness/rebuild reproduction; neither
-source concern establishes the original display-delay cause or a privilege escalation.
+**Desktop build-time overlay reset — OPEN.** Remote and ViewCamera still dismiss all dialogs and
+allocate a new owner in the image-ready build path behind a global three-second privacy timestamp.
+First-image completion already performs its own readiness dismissal. The real Linux peer controller
+now requires actual toolbar dialog activation, the same native accessibility object and changed
+dialog layout through three observed window resizes, explicit Escape retirement and an unchanged
+authenticated TCP connection. Compilation and real-app execution of this new case are pending;
+product behavior remains unchanged for reproduction. Window geometry alone, copied build logic,
+or a selector failure cannot establish the production defect. Neither source concern establishes
+the original display-delay cause or a privilege escalation.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

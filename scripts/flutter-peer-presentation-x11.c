@@ -47,6 +47,8 @@
 #define RESOURCE_THREAD_GROWTH_LIMIT 8U
 #define RESOURCE_FD_GROWTH_LIMIT 16U
 #define RESOURCE_RSS_GROWTH_KIB_LIMIT 131072ULL
+#define DIALOG_CONTROL_WAIT_MS 5000U
+#define DIALOG_STABLE_SCANS 5U
 
 static const unsigned int blur_hold_ms[FOCUS_CYCLE_COUNT] = {2000U, 6000U, 12000U};
 
@@ -91,6 +93,14 @@ typedef struct {
     int first_password_focused;
     gint first_password_character_count;
 } PasswordPromptScan;
+
+typedef struct {
+    const char *name;
+    unsigned int nodes;
+    unsigned int matches;
+    uint64_t deadline;
+    AtspiAccessible *match;
+} NamedControlScan;
 
 static int sleep_millis(unsigned int millis) {
     struct timespec delay = {
@@ -402,6 +412,175 @@ static void exit_atspi_after_failure(void) {
     if (atspi_exit() != 0) {
         fputs("FLUTTER_PEER_X11_FAIL private AT-SPI teardown after primary failure\n", stderr);
     }
+}
+
+static int scan_named_control_node(AtspiAccessible *accessible, unsigned int expected_pid,
+                                    unsigned int depth, NamedControlScan *scan) {
+    GError *error = NULL;
+    unsigned int pid;
+    AtspiStateSet *states;
+    gchar *name;
+    gint children;
+    if (depth > ACCESSIBLE_DEPTH_LIMIT || scan->nodes >= ACCESSIBLE_NODE_LIMIT ||
+        monotonic_millis() >= scan->deadline ||
+        atspi_process_id(accessible, &pid) != 0 || pid != expected_pid) {
+        return -1;
+    }
+    scan->nodes += 1U;
+    atspi_accessible_clear_cache(accessible);
+    states = atspi_accessible_get_state_set(accessible);
+    if (states == NULL) {
+        return -1;
+    }
+    if (atspi_state_set_contains(states, ATSPI_STATE_VISIBLE) &&
+        atspi_state_set_contains(states, ATSPI_STATE_SHOWING)) {
+        name = atspi_accessible_get_name(accessible, &error);
+        if (error != NULL) {
+            g_error_free(error);
+            g_object_unref(states);
+            return -1;
+        }
+        if (name != NULL && strnlen(name, ACCESSIBLE_NAME_LIMIT + 1U) <= ACCESSIBLE_NAME_LIMIT &&
+            strcmp(name, scan->name) == 0) {
+            scan->matches += 1U;
+            if (scan->match == NULL) {
+                scan->match = g_object_ref(accessible);
+            }
+        }
+        g_free(name);
+    }
+    g_object_unref(states);
+    if (scan->matches > 1U || monotonic_millis() >= scan->deadline) {
+        return -1;
+    }
+    children = atspi_accessible_get_child_count(accessible, &error);
+    if (error != NULL || children < 0 || children > ACCESSIBLE_CHILD_LIMIT) {
+        if (error != NULL) g_error_free(error);
+        return -1;
+    }
+    for (gint index = 0; index < children; ++index) {
+        AtspiAccessible *child = atspi_accessible_get_child_at_index(accessible, index, &error);
+        int status;
+        if (error != NULL || child == NULL) {
+            if (error != NULL) g_error_free(error);
+            if (child != NULL) g_object_unref(child);
+            return -1;
+        }
+        status = scan_named_control_node(child, expected_pid, depth + 1U, scan);
+        g_object_unref(child);
+        if (status != 0) return -1;
+    }
+    return 0;
+}
+
+static int query_named_control(unsigned int expected_pid, const char *name, uint64_t deadline,
+                                AtspiAccessible **match) {
+    NamedControlScan scan = {.name = name, .deadline = deadline};
+    AtspiAccessible *desktop;
+    GError *error = NULL;
+    gint children;
+    unsigned int applications = 0U;
+    int status = -1;
+    *match = NULL;
+    if (atspi_get_desktop_count() != 1 || (desktop = atspi_get_desktop(0)) == NULL) return -1;
+    atspi_accessible_clear_cache(desktop);
+    children = atspi_accessible_get_child_count(desktop, &error);
+    if (error != NULL || children < 0 || children > ACCESSIBLE_CHILD_LIMIT) goto out;
+    for (gint index = 0; index < children; ++index) {
+        AtspiAccessible *application = atspi_accessible_get_child_at_index(desktop, index, &error);
+        unsigned int pid;
+        int application_status;
+        if (error != NULL || application == NULL) {
+            if (application != NULL) g_object_unref(application);
+            goto out;
+        }
+        application_status = atspi_process_id(application, &pid);
+        if (application_status == 0 && pid == expected_pid) {
+            applications += 1U;
+            application_status = scan_named_control_node(application, expected_pid, 0U, &scan);
+        }
+        g_object_unref(application);
+        if (application_status != 0) goto out;
+    }
+    if (applications == 1U && monotonic_millis() < deadline) {
+        *match = scan.match;
+        scan.match = NULL;
+        status = 0;
+    }
+out:
+    if (error != NULL) g_error_free(error);
+    if (scan.match != NULL) g_object_unref(scan.match);
+    g_object_unref(desktop);
+    return status;
+}
+
+static int activate_named_control(unsigned int expected_pid, const char *name) {
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline) {
+        AtspiAccessible *control = NULL;
+        AtspiAction *action;
+        AtspiStateSet *states;
+        GError *error = NULL;
+        int status = -1;
+        if (query_named_control(expected_pid, name, deadline, &control) != 0) return -1;
+        if (control == NULL) {
+            if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) return -1;
+            continue;
+        }
+        states = atspi_accessible_get_state_set(control);
+        action = atspi_accessible_get_action_iface(control);
+        if (states != NULL && action != NULL &&
+            atspi_state_set_contains(states, ATSPI_STATE_ENABLED) &&
+            atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) &&
+            atspi_action_get_n_actions(action, &error) == 1 && error == NULL &&
+            atspi_action_do_action(action, 0, &error) && error == NULL &&
+            monotonic_millis() < deadline) {
+            status = 0;
+        }
+        if (error != NULL) g_error_free(error);
+        if (action != NULL) g_object_unref(action);
+        if (states != NULL) g_object_unref(states);
+        g_object_unref(control);
+        return status;
+    }
+    return -1;
+}
+
+static int require_same_dialog(unsigned int expected_pid, AtspiAccessible *expected) {
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    for (unsigned int sample = 0U; sample < DIALOG_STABLE_SCANS; ++sample) {
+        AtspiAccessible *actual = NULL;
+        int status = query_named_control(expected_pid, "Trackpad speed", deadline, &actual);
+        int same = actual == expected;
+        int present = actual != NULL;
+        if (actual != NULL) g_object_unref(actual);
+        if (status != 0 || same == 0) {
+            fprintf(stderr, "FLUTTER_PEER_X11_FAIL dialog identity observation=%s\n",
+                    status != 0 ? "unavailable" : present != 0 ? "replaced" : "absent");
+            return -1;
+        }
+        if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) return -1;
+    }
+    return monotonic_millis() < deadline ? 0 : -1;
+}
+
+static int read_control_position(AtspiAccessible *control, int *x, int *y) {
+    AtspiComponent *component = atspi_accessible_get_component_iface(control);
+    AtspiRect *rect;
+    GError *error = NULL;
+    int status = -1;
+    if (component == NULL) return -1;
+    atspi_accessible_clear_cache(control);
+    rect = atspi_component_get_extents(component, ATSPI_COORD_TYPE_SCREEN, &error);
+    if (error == NULL && rect != NULL && rect->width > 0 && rect->height > 0) {
+        *x = rect->x;
+        *y = rect->y;
+        status = 0;
+    }
+    if (error != NULL) g_error_free(error);
+    if (rect != NULL) g_boxed_free(ATSPI_TYPE_RECT, rect);
+    g_object_unref(component);
+    return status;
 }
 
 static int64_t source_state(Display *display) {
@@ -1046,6 +1225,126 @@ static int close_viewer(Display *display, Window window) {
     return 0;
 }
 
+static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
+                                    const ConnectionIdentity *connection) {
+    const unsigned int widths[] = {1100U, 1200U, viewer->width};
+    const unsigned int heights[] = {650U, 700U, viewer->height};
+    AtspiAccessible *caption = NULL;
+    uint64_t deadline;
+    Window child;
+    int root_x, root_y;
+    int caption_x, caption_y;
+    ConnectionIdentity after = {{0}, {0}, 0UL};
+    int status = -1;
+
+    puts("FLUTTER_PEER_DIALOG_RESIZE_BEGIN dialog=trackpad_speed source=actual_toolbar");
+    fflush(stdout);
+    if (XTranslateCoordinates(display, viewer->window, RootWindow(display, DefaultScreen(display)),
+                              (int)viewer->width / 2, 60, &root_x, &root_y, &child) == 0 ||
+        XTestFakeMotionEvent(display, DefaultScreen(display), root_x, root_y, CurrentTime) == 0) {
+        goto out;
+    }
+    XSync(display, False);
+    if (activate_named_control((unsigned int)viewer->pid, "Keyboard Settings") != 0 ||
+        activate_named_control((unsigned int)viewer->pid, "Trackpad speed") != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL actual toolbar dialog activation\n", stderr);
+        goto out;
+    }
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline && caption == NULL) {
+        if (query_named_control((unsigned int)viewer->pid, "Trackpad speed", deadline,
+                                &caption) != 0 ||
+            sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
+    }
+    if (caption == NULL || require_same_dialog((unsigned int)viewer->pid, caption) != 0 ||
+        read_control_position(caption, &caption_x, &caption_y) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL actual dialog did not become stable\n", stderr);
+        goto out;
+    }
+    puts("FLUTTER_PEER_DIALOG_READY dialog=trackpad_speed native_accessible=true");
+    fflush(stdout);
+    for (unsigned int resize = 0U; resize < 3U; ++resize) {
+        XWindowAttributes attributes;
+        int layout_changed = 0;
+        int current_x = caption_x, current_y = caption_y;
+        XResizeWindow(display, viewer->window, widths[resize], heights[resize]);
+        XSync(display, False);
+        if (XGetWindowAttributes(display, viewer->window, &attributes) == 0 ||
+            attributes.map_state != IsViewable || attributes.width != (int)widths[resize] ||
+            attributes.height != (int)heights[resize]) {
+            fputs("FLUTTER_PEER_X11_FAIL actual window resize was not observed\n", stderr);
+            goto out;
+        }
+        deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+        while (monotonic_millis() < deadline) {
+            AtspiAccessible *actual = NULL;
+            int query_status = query_named_control((unsigned int)viewer->pid, "Trackpad speed",
+                                                    deadline, &actual);
+            int same = actual == caption;
+            int present = actual != NULL;
+            if (actual != NULL) g_object_unref(actual);
+            if (query_status != 0 || same == 0) {
+                fprintf(stderr, "FLUTTER_PEER_X11_FAIL resize=%u dialog_observation=%s\n",
+                        resize + 1U, query_status != 0 ? "unavailable" :
+                        present != 0 ? "replaced" : "absent");
+                goto out;
+            }
+            if (read_control_position(caption, &current_x, &current_y) != 0) {
+                fprintf(stderr, "FLUTTER_PEER_X11_FAIL resize=%u native_layout=unavailable\n",
+                        resize + 1U);
+                goto out;
+            }
+            if (current_x != caption_x || current_y != caption_y) {
+                layout_changed = 1;
+                break;
+            }
+            if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) break;
+        }
+        if (layout_changed == 0 || monotonic_millis() >= deadline ||
+            require_same_dialog((unsigned int)viewer->pid, caption) != 0) {
+            fprintf(stderr, "FLUTTER_PEER_X11_FAIL resize=%u layout_changed=%d "
+                    "deadline_expired=%d dialog_layout_identity_check=failed\n",
+                    resize + 1U, layout_changed, monotonic_millis() >= deadline);
+            goto out;
+        }
+        caption_x = current_x;
+        caption_y = current_y;
+        printf("FLUTTER_PEER_DIALOG_RESIZE_OK sequence=%u dimensions=%ux%u "
+               "same_accessible=true native_layout_changed=true\n",
+               resize + 1U, widths[resize], heights[resize]);
+        fflush(stdout);
+    }
+    if (fake_key(display, XK_Escape) != 0) goto out;
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    unsigned int absent_scans = 0U;
+    while (monotonic_millis() < deadline && absent_scans < DIALOG_STABLE_SCANS) {
+        AtspiAccessible *actual = NULL;
+        int query_status = query_named_control((unsigned int)viewer->pid, "Trackpad speed",
+                                                deadline, &actual);
+        int absent = actual == NULL;
+        if (actual != NULL) g_object_unref(actual);
+        if (query_status != 0) goto out;
+        absent_scans = absent != 0 ? absent_scans + 1U : 0U;
+        if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
+    }
+    if (absent_scans != DIALOG_STABLE_SCANS || monotonic_millis() >= deadline ||
+        read_connection_identity(&after) != 0 ||
+        same_connection(connection, &after) == 0) goto out;
+    puts("FLUTTER_PEER_DIALOG_RESIZE_TRANSACTION_OK resizes=3 same_accessible=true explicit_escape=true "
+         "stable_connection=true");
+    status = 0;
+out:
+    if (caption != NULL) g_object_unref(caption);
+    if (status != 0) {
+        PasswordPromptScan diagnostic;
+        fputs("FLUTTER_PEER_X11_FAIL native dialog resize transaction aborted\n", stderr);
+        if (scan_password_prompt((unsigned int)viewer->pid, &diagnostic, 1) != 0) {
+            fputs("FLUTTER_PEER_X11_FAIL dialog accessibility diagnostic unavailable\n", stderr);
+        }
+    }
+    return status;
+}
+
 int main(int argc, char **argv) {
     const char *source_name;
     const char *viewer_name;
@@ -1190,18 +1489,13 @@ int main(int argc, char **argv) {
         XCloseDisplay(source);
         return 1;
     }
-    if (atspi_exit() != 0) {
-        fputs("FLUTTER_PEER_X11_FAIL private AT-SPI teardown\n", stderr);
-        XCloseDisplay(display);
-        XCloseDisplay(source);
-        return 1;
-    }
     puts("FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true "
          "retired=true typed_via_xtest=true argv_password=false");
 
     if (wait_for_current_frames(display, &viewer, &history, AUTH_WAIT_MS, 4U,
                                 &initial_fresh_ms, &initial_max_age) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL authenticated current pixels unavailable\n", stderr);
+        exit_atspi_after_failure();
         close_viewer(display, viewer.window);
         XCloseDisplay(display);
         XCloseDisplay(source);
@@ -1211,6 +1505,7 @@ int main(int argc, char **argv) {
            (unsigned long long)initial_fresh_ms, (unsigned long long)initial_max_age);
     if (read_connection_identity(&current_connection) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL exact authenticated TCP identity unavailable\n", stderr);
+        exit_atspi_after_failure();
         close_viewer(display, viewer.window);
         XCloseDisplay(display);
         XCloseDisplay(source);
@@ -1218,12 +1513,37 @@ int main(int argc, char **argv) {
     }
     if (read_process_resources(viewer_pid, &baseline_resources) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL initial viewer resources unavailable\n", stderr);
+        exit_atspi_after_failure();
         close_viewer(display, viewer.window);
         XCloseDisplay(display);
         XCloseDisplay(source);
         return 1;
     }
     print_resources("initial", 0U, &baseline_resources);
+
+    if (exercise_dialog_resize(display, &viewer, &current_connection) != 0) {
+        exit_atspi_after_failure();
+        close_viewer(display, viewer.window);
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return 1;
+    }
+    if (atspi_exit() != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL private AT-SPI teardown\n", stderr);
+        close_viewer(display, viewer.window);
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return 1;
+    }
+    if (wait_for_current_frames(display, &viewer, &history, RECOVERY_LIMIT_MS, 3U,
+                                &initial_fresh_ms, &initial_max_age) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL current pixels unavailable after explicit dialog close\n",
+              stderr);
+        close_viewer(display, viewer.window);
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return 1;
+    }
 
     for (unsigned int cycle = 0U; cycle < FOCUS_CYCLE_COUNT; ++cycle) {
         Window sink = create_focus_sink(display);

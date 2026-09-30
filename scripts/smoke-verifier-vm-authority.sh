@@ -170,6 +170,7 @@ case "$#:${1:-}" in
             || { echo 'Debian systemd lifecycle requires private VM input and run roots' >&2; exit 2; }
         ;;
     *)
+        printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
         printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario peer-lifecycle --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --flutter-peer-presentation | --flutter-peer-presentation-candidate | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
@@ -3088,6 +3089,12 @@ elif [ "$MODE" = android-execution-probe ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'Android execution-probe cloud-init completion marker'
 elif [ "$MODE" = android-frame-tests ]; then
+    mapfile -t frame_native_ab < <(/usr/bin/grep -Eo \
+        'ANDROID_FRAME_NATIVE_AB=pass old_predicate=accept new=refuse stale_age_ms=[0-9]+ old_identity=[0-9]+ fresh_identity=[0-9]+ fresh_age_ms=[0-9]+' \
+        "$SERIAL_LOG" || true)
+    [ "${#frame_native_ab[@]}" -eq 1 ] \
+        || fail 'native frame A/B receipt is absent or duplicated'
+    printf '%s\n' "${frame_native_ab[0]}"
     require_exact_fixed_receipt \
         'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass format=counter32 source=monotonic-publication alias=refused' \
         'Android framebuffer decoder cases'
@@ -3098,6 +3105,9 @@ elif [ "$MODE" = android-frame-tests ]; then
         'ANDROID_FRAME_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
         'Android frame-test guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Android frame-test completion'
+    printf 'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass format=counter32 source=monotonic-publication alias=refused\n'
+    printf 'ANDROID_FRAME_NATIVE=pass source=x11 pixels=actual counter=uint32 age=monotonic whole_cycle=refused network=none uid=4000 cleanup=joined\n'
+    printf 'ANDROID_FRAME_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
 elif [ "$MODE" = authority-smoke ]; then
 require_exact_fixed_receipt \
     'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cleanup=joined' \

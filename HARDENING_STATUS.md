@@ -1158,7 +1158,7 @@ retries automatically; no failed path installs keys. Only responder-side `Confir
 guess limiter. The focused 20-wire-test transaction at `2ab3efa0` passed in 138 seconds; it is not
 native UI/presentation evidence.
 
-The candidate observer correction now encodes all 32 frame-counter bits in four ordered Manchester
+The observer correction now encodes all 32 frame-counter bits in four ordered Manchester
 bands and refuses wrap. The Android decoder requires a matching identity in the exact owned source's
 bounded, owner-only publication log, rejects incomplete/reordered bands and unknown/future identities,
 and measures elapsed monotonic time from publication start through decoding against the unchanged
@@ -1166,7 +1166,21 @@ and measures elapsed monotonic time from publication start through decoding agai
 and driver require one explicit format; the retained old peer capsule is preserved but its source helper
 will refuse this readiness contract. `--android-frame-tests` supplies a focused zero-NIC VM/native-X11
 source-to-pixel-decoder test, including actual whole-cycle stale pixels redated with a fresh observation.
-Native execution of this candidate is pending; neither an Android replay nor product closure is claimed.
+Exact pushed candidate `f92c3e89764dc5b1cd6abeffb57cc0b299ba6d9e`, tree
+`571d9c7dd511c3d80f2573d03d4bacba92a5a6b7`, passed that complete native transaction in 113 seconds.
+It loaded the pinned devcheck image and five-package Xvfb closure, compiled the real C source with
+warnings as errors, executed decoder format/clock/authority cases, captured the actual source's pixels,
+advanced its real counter beyond a complete old 256-state cycle, accepted the fresh full identity through
+the decoder and its CLI, and refused the original pixels even with a new observation timestamp. The
+negative requires a decoded known old identity with at least 64,000 ms actual content age, while the old
+modulo predicate accepts. It joined the exact source/Xvfb/container/Docker/QEMU owners, added no host
+listener, recorded zero pre-existing-process drift, proved unchanged inputs and self-retired its run root.
+First candidate `03e03985` passed the decoder cases and C compilation but refused execution from
+Docker's noexec `/tmp`; only a distinct 16-MiB guest-container `/build` scratch is executable. Its bounded
+failure serial is retained outside the reconciled failed root. This is native harness-source/decoder
+evidence, not RustDesk, Android lifecycle/compositor, network-transition/soak, or release proof. No Android
+replay under this format has run and no product closure is claimed. The outer now forwards the bounded
+A/B receipt so actual measurements remain available after successful scratch retirement.
 
 Next work must validate the corrected source-to-display frame
 identity, including a whole-cycle stale-frame negative case, before further performance closure. Preserve

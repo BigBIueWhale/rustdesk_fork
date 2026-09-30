@@ -108,18 +108,18 @@ static int root_state_code_matches(Display *display, Window root, const Visual *
                                    uint32_t state) {
     unsigned int row, bar;
     for (row = 0U; row < STATE_CODE_ROWS; ++row) {
-      for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
-        unsigned int x = ((bar * 2U + 1U) * SOURCE_WIDTH) /
-                         (STATE_CODE_BARS * 2U);
-        const uint8_t *color =
-            state_code_bar_is_white(state, row, bar) != 0 ? code_white : code_black;
-        if (!root_pixel_matches(display, root, (int)x,
-                                (int)((row * 2U + 1U) * STATE_CODE_HEIGHT /
-                                      (STATE_CODE_ROWS * 2U)),
-                                rgb_pixel(visual, color))) {
-            return 0;
+        for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
+            unsigned int x = ((bar * 2U + 1U) * SOURCE_WIDTH) /
+                             (STATE_CODE_BARS * 2U);
+            const uint8_t *color =
+                state_code_bar_is_white(state, row, bar) != 0 ? code_white : code_black;
+            if (!root_pixel_matches(display, root, (int)x,
+                                    (int)((row * 2U + 1U) * STATE_CODE_HEIGHT /
+                                          (STATE_CODE_ROWS * 2U)),
+                                    rgb_pixel(visual, color))) {
+                return 0;
+            }
         }
-      }
     }
     return 1;
 }
@@ -228,16 +228,16 @@ int main(void) {
         XFillRectangle(display, back_buffer, graphics, SOURCE_WIDTH / 2U, 0,
                        SOURCE_WIDTH / 2U, SOURCE_HEIGHT);
         for (row = 0U; row < STATE_CODE_ROWS; ++row) {
-          for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
-            unsigned int start = (bar * SOURCE_WIDTH) / STATE_CODE_BARS;
-            unsigned int end = ((bar + 1U) * SOURCE_WIDTH) / STATE_CODE_BARS;
-            const uint8_t *color =
-                state_code_bar_is_white(frame, row, bar) != 0 ? code_white : code_black;
-            XSetForeground(display, graphics, rgb_pixel(visual, color));
-            XFillRectangle(display, back_buffer, graphics, (int)start,
-                           (int)(row * STATE_CODE_HEIGHT / STATE_CODE_ROWS),
-                           end - start, STATE_CODE_HEIGHT / STATE_CODE_ROWS);
-          }
+            for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
+                unsigned int start = (bar * SOURCE_WIDTH) / STATE_CODE_BARS;
+                unsigned int end = ((bar + 1U) * SOURCE_WIDTH) / STATE_CODE_BARS;
+                const uint8_t *color =
+                    state_code_bar_is_white(frame, row, bar) != 0 ? code_white : code_black;
+                XSetForeground(display, graphics, rgb_pixel(visual, color));
+                XFillRectangle(display, back_buffer, graphics, (int)start,
+                               (int)(row * STATE_CODE_HEIGHT / STATE_CODE_ROWS),
+                               end - start, STATE_CODE_HEIGHT / STATE_CODE_ROWS);
+            }
         }
         /*
          * The observer and RustDesk capture are separate X clients. Publishing both color

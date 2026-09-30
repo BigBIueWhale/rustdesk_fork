@@ -1561,8 +1561,33 @@ are compiled twice in the confined guest devcheck container and must match byte-
 containers mount app and drivers separately read-only and recheck complete execution checksums. Existing
 six-lifecycle pixel, dialog, focus, reconnect, resource and joined-cleanup criteria are unchanged.
 Ordinary viewer assertion failure may retain zero cores; capture records the actual core count rather
-than requiring a crash or calling a nonexistent core a kernel artifact. Source implementation is ready
-for exact-artifact execution; consumer acceptance and measured replay speed remain OPEN until that run.
+than requiring a crash or calling a nonexistent core a kernel artifact.
+Exact pushed harness `c3f170119188a2cffb81c8abca168c984a7c395e`, tree
+`6425f991d0f9eebf1fcf47f5fa2454dfe3e64ad5`, passed the complete focused capsule/admission transaction
+in 23 seconds: all 20 real cases in 9.322 seconds, root/foreign materializer refusal, the real 16-caller/
+one-winner run test, unchanged inputs/listeners, zero process drift and joined automatic retirement.
+Complete 67,883-byte raw serial is `evidence/linux-app-consumer-admission-c3f17011.serial.log`, SHA-256
+`f309c26d4de51d362a9607b12dc802f781eb0c3796d792790fff0a8e9183cc9e`.
+The real consumer then admitted and executed the retained `5d1e3316` app with manifest
+`ed9d7a54a377d923a125ac275ddb7feb954ecddd110b783668afe3445ac72a48`, without rebuilding.
+The two native driver compilations matched and completed in approximately 1.9 guest seconds.
+Actual password authentication and initial changing pixels passed: first-fresh 101 ms, maximum
+publication-bound age 342 ms, four distinct states on the synthetic 640x480/4-Hz source. The next
+toolbar activation failed before opening the dialog or testing resize/focus/reconnect; visible menu
+items again had empty names. Exact query-failure classification remains required, not a speculative
+product change. Failure capture retained 56,004,140 bytes with actual core count zero. The guest
+reported status 1 and reached terminal poweroff at 107.2 guest seconds; no complete peer/outer pass
+or total-wall-time speed claim is made. Complete 220,771-byte raw serial is
+`evidence/linux-app-replay-c3f17011.serial.log`, SHA-256
+`24b34ad80c7db33fd87e02603a01fd7c80d00864e4d12093c1d8b0033821d97d`; viewer identity/log/checksums
+and capture/listener records are retained separately. Before/during/after listeners are byte-identical,
+new-listener and external-drift records empty, and all owned orchestration is terminal. An actual
+duplicate replay refused before allocation with the sole run identity unchanged. All 74 retained app
+files were independently rehashed against the manifest afterward and remain inert and unchanged.
+After bounded evidence retention, the exact inactive failed root was reconciled under the admission
+lock, recovering 2,967,588,864 allocated bytes; no run/overlay remains. This proves real partial
+consumer execution and ordinary-failure capture, not the remaining six-cycle acceptance, dialog
+ownership defect, original Android/Windows causation, installed-service/LPE or release obligations.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

@@ -1289,8 +1289,12 @@ ran the existing pinned Flutter VM gate with the old decoder and fault injection
 open handle and zero disposal events before test cleanup; this was a native assertion failure, not a
 compile failure. `decodeImageFromPixels` now owns buffer, descriptor and codec through lexical finalizers,
 always awaits an admitted native frame, and transfers its image only after successful cleanup; failure
-disposes the image even if the failure observer also throws. The unchanged native regression's corrected
-replay is pending. No conversion capacity, freshness bound or service lifecycle is changed. This finding
+disposes the image even if the failure observer also throws. Exact pushed `e8014db8` passed the unchanged
+regression and all 18 suites/138 tests in the complete 359-second zero-NIC VM transaction, including
+unchanged host listeners and joined, residue-free cleanup. The native oracle now additionally snapshots
+creation and disposal at the caller's return boundary, refusing early return followed by late cleanup;
+that strengthened replay is pending. No conversion capacity, freshness bound or service lifecycle is changed.
+This finding
 does not establish natural callback failure, sustained native resource growth, intermittent-hang causation
 or a privilege escalation; opaque buffer/descriptor counts are not directly observed by the image oracle.
 

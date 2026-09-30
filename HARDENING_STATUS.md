@@ -1191,7 +1191,13 @@ this is a bounded receipt, not the retired full successful serial capture.
 The focused entry additionally compares every supplied repository source file with its exact blob
 at the independently recorded pushed commit, rather than treating Git's clean/index-cache status as
 byte provenance. The six source/decoder/Xvfb test inputs are also re-proved against those blobs after
-execution. Execution of that final source-admission strengthening is pending.
+execution. Exact pushed `cae99b572a29f76a54e81fe4b578cf613cbfac22`, tree
+`694c50f1ef58f7631d7db829e67328449a594a2d`, passed that strengthened complete transaction in
+118 seconds: identity 0 at 65,018 ms was refused and identity 256 at 154 ms accepted. Its forwarded
+receipt is retained at `evidence/android-frame-cae99b57.receipt`. A prior admission attempt refused the
+outer script's relative pathname before VM/payload/disk creation; canonical path resolution corrected
+that diagnostic and its exact empty run was removed. Three complete focused native passes support the
+oracle only; they do not supply an Android app result or resolve the intermittent product defect.
 
 Next make the changed test source fixture independently source-bound and reusable with the immutable
 production-peer artifact, without rewriting or relabeling cached bytes, so Android can execute the

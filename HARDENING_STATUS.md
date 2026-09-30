@@ -1208,8 +1208,16 @@ The driver executes only that fixture; it still authenticates the immutable seve
 capsule but does not execute its obsolete display helper. No cached APK/peer bytes or source labels
 are rewritten, no RustDesk rebuild is added, and no persistent fixture cache accumulates. The shared
 builder's focused actual-X11/decoder test includes wrong-source, retained-output,
-output-alias and real FIFO refusals. This new fixture integration is execution-pending; the earlier
-native source/decoder A/B does not substitute for an Android replay under it.
+output-alias and real FIFO refusals. Exact pushed `4b598d36df809a50efcac2a9dba60fbd1a47b2e3`,
+tree `505ada600e4f08fb6844145abf4bff25ed92ffc6`, passed that complete focused native transaction
+in 119 seconds. Its two identical 17,432-byte binaries had SHA-256
+`8346546e4cee0b81d882730c6a2a2944dca072640004e44d3d62e5f48f07956a`; actual identity 0
+at 65,048 ms was refused and identity 256 at 176 ms accepted. Source admission now proves the
+descriptor's read-only mount, not just permission bits: the first candidate correctly refused the
+ISO's original mode 0664 before this distinction was implemented. Bounded raw failure evidence and
+the successful forwarded receipt are retained outside the retired runs. All native owners joined,
+host listeners and inputs were unchanged, and no run remains. This proves the shared fixture build
+and actual X11/decoder contract; Android replay integration and the intermittent product issue remain OPEN.
 Make engine/framework/app/lifecycle stages observable before EOF: the runtime wrapper currently waits for
 container completion before fetching logs and the guest forwards only peer admission. Replace
 iteration-count waits advertised as seconds with actual monotonic deadlines. Then distinguish event,

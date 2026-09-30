@@ -134,11 +134,11 @@ static int atspi_process_id(AtspiAccessible *accessible, unsigned int *pid) {
     return 0;
 }
 
-static void print_sanitized_accessible_name(const char *name) {
+static void print_sanitized_accessible_string(const char *field, const char *name) {
     size_t index;
     size_t length;
 
-    fputs(" name=\"", stderr);
+    fprintf(stderr, " %s=\"", field);
     if (name == NULL) {
         fputs("<null>", stderr);
     } else {
@@ -242,10 +242,30 @@ static int scan_password_prompt_node(AtspiAccessible *accessible, unsigned int e
         }
         fprintf(stderr,
                 "FLUTTER_PEER_ATSPI_NODE depth=%u role=%d "
-                "editable=%d enabled=%d sensitive=%d visible=%d focusable=%d focused=%d",
-                depth, (int)role, editable, enabled, sensitive, visible, focusable, focused);
-        print_sanitized_accessible_name(name);
+                "editable=%d enabled=%d sensitive=%d visible=%d showing=%d "
+                "focusable=%d focused=%d",
+                depth, (int)role, editable, enabled, sensitive, visible,
+                atspi_state_set_contains(states, ATSPI_STATE_SHOWING), focusable, focused);
+        print_sanitized_accessible_string("name", name);
         g_free(name);
+        if (role == ATSPI_ROLE_MENU_ITEM) {
+            gchar *description = atspi_accessible_get_description(accessible, &error);
+            AtspiAction *action = atspi_accessible_get_action_iface(accessible);
+            gint actions = -1;
+            if (error == NULL && action != NULL) {
+                actions = atspi_action_get_n_actions(action, &error);
+            }
+            if (action != NULL) g_object_unref(action);
+            if (error != NULL) {
+                g_error_free(error);
+                g_free(description);
+                g_object_unref(states);
+                return -1;
+            }
+            fprintf(stderr, "FLUTTER_PEER_ATSPI_MENU depth=%u actions=%d", depth, actions);
+            print_sanitized_accessible_string("description", description);
+            g_free(description);
+        }
     }
     g_object_unref(states);
 
@@ -414,6 +434,16 @@ static void exit_atspi_after_failure(void) {
     }
 }
 
+static int named_control_refusal(const NamedControlScan *scan, const char *reason,
+                                  unsigned int depth, GError *error) {
+    fprintf(stderr, "FLUTTER_PEER_CONTROL_QUERY_FAIL control=\"%s\" reason=%s "
+            "depth=%u nodes=%u matches=%u error_code=%d\n",
+            scan->name, reason, depth, scan->nodes, scan->matches,
+            error != NULL ? error->code : 0);
+    if (error != NULL) g_error_free(error);
+    return -1;
+}
+
 static int scan_named_control_node(AtspiAccessible *accessible, unsigned int expected_pid,
                                     unsigned int depth, NamedControlScan *scan) {
     GError *error = NULL;
@@ -421,24 +451,32 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
     AtspiStateSet *states;
     gchar *name;
     gint children;
-    if (depth > ACCESSIBLE_DEPTH_LIMIT || scan->nodes >= ACCESSIBLE_NODE_LIMIT ||
-        monotonic_millis() >= scan->deadline ||
-        atspi_process_id(accessible, &pid) != 0 || pid != expected_pid) {
-        return -1;
+    if (depth > ACCESSIBLE_DEPTH_LIMIT) {
+        return named_control_refusal(scan, "depth-bound", depth, NULL);
+    }
+    if (scan->nodes >= ACCESSIBLE_NODE_LIMIT) {
+        return named_control_refusal(scan, "node-bound", depth, NULL);
+    }
+    if (monotonic_millis() >= scan->deadline) {
+        return named_control_refusal(scan, "deadline", depth, NULL);
+    }
+    pid = atspi_accessible_get_process_id(accessible, &error);
+    if (error != NULL || pid != expected_pid) {
+        return named_control_refusal(scan, error != NULL ? "peer-query" : "foreign-peer",
+                                     depth, error);
     }
     scan->nodes += 1U;
     atspi_accessible_clear_cache(accessible);
     states = atspi_accessible_get_state_set(accessible);
     if (states == NULL) {
-        return -1;
+        return named_control_refusal(scan, "states-unavailable", depth, NULL);
     }
     if (atspi_state_set_contains(states, ATSPI_STATE_VISIBLE) &&
         atspi_state_set_contains(states, ATSPI_STATE_SHOWING)) {
         name = atspi_accessible_get_name(accessible, &error);
         if (error != NULL) {
-            g_error_free(error);
             g_object_unref(states);
-            return -1;
+            return named_control_refusal(scan, "name-query", depth, error);
         }
         if (name != NULL && strnlen(name, ACCESSIBLE_NAME_LIMIT + 1U) <= ACCESSIBLE_NAME_LIMIT &&
             strcmp(name, scan->name) == 0) {
@@ -451,20 +489,20 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
     }
     g_object_unref(states);
     if (scan->matches > 1U || monotonic_millis() >= scan->deadline) {
-        return -1;
+        return named_control_refusal(scan, scan->matches > 1U ? "duplicate-name" : "deadline",
+                                     depth, NULL);
     }
     children = atspi_accessible_get_child_count(accessible, &error);
     if (error != NULL || children < 0 || children > ACCESSIBLE_CHILD_LIMIT) {
-        if (error != NULL) g_error_free(error);
-        return -1;
+        return named_control_refusal(scan, error != NULL ? "children-query" : "children-bound",
+                                     depth, error);
     }
     for (gint index = 0; index < children; ++index) {
         AtspiAccessible *child = atspi_accessible_get_child_at_index(accessible, index, &error);
         int status;
         if (error != NULL || child == NULL) {
-            if (error != NULL) g_error_free(error);
             if (child != NULL) g_object_unref(child);
-            return -1;
+            return named_control_refusal(scan, "child-query", depth, error);
         }
         status = scan_named_control_node(child, expected_pid, depth + 1U, scan);
         g_object_unref(child);
@@ -481,12 +519,17 @@ static int query_named_control(unsigned int expected_pid, const char *name, uint
     gint children;
     unsigned int applications = 0U;
     int status = -1;
+    const char *reason = "desktop-unavailable";
     *match = NULL;
-    if (atspi_get_desktop_count() != 1 || (desktop = atspi_get_desktop(0)) == NULL) return -1;
+    if (atspi_get_desktop_count() != 1 || (desktop = atspi_get_desktop(0)) == NULL) {
+        return named_control_refusal(&scan, reason, 0U, NULL);
+    }
     atspi_accessible_clear_cache(desktop);
+    reason = "desktop-children-query";
     children = atspi_accessible_get_child_count(desktop, &error);
     if (error != NULL || children < 0 || children > ACCESSIBLE_CHILD_LIMIT) goto out;
     for (gint index = 0; index < children; ++index) {
+        reason = "application-child-query";
         AtspiAccessible *application = atspi_accessible_get_child_at_index(desktop, index, &error);
         unsigned int pid;
         int application_status;
@@ -494,20 +537,29 @@ static int query_named_control(unsigned int expected_pid, const char *name, uint
             if (application != NULL) g_object_unref(application);
             goto out;
         }
+        reason = "application-peer-query";
         application_status = atspi_process_id(application, &pid);
         if (application_status == 0 && pid == expected_pid) {
             applications += 1U;
+            reason = "application-scan";
             application_status = scan_named_control_node(application, expected_pid, 0U, &scan);
         }
         g_object_unref(application);
         if (application_status != 0) goto out;
     }
+    reason = applications != 1U ? "application-count" : "deadline";
     if (applications == 1U && monotonic_millis() < deadline) {
         *match = scan.match;
         scan.match = NULL;
         status = 0;
     }
 out:
+    if (status != 0) {
+        fprintf(stderr, "FLUTTER_PEER_CONTROL_QUERY_SUMMARY control=\"%s\" reason=%s "
+                "applications=%u nodes=%u matches=%u error_code=%d\n",
+                name, reason, applications, scan.nodes, scan.matches,
+                error != NULL ? error->code : 0);
+    }
     if (error != NULL) g_error_free(error);
     if (scan.match != NULL) g_object_unref(scan.match);
     g_object_unref(desktop);
@@ -515,34 +567,56 @@ out:
 }
 
 static int activate_named_control(unsigned int expected_pid, const char *name) {
-    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    uint64_t started = monotonic_millis();
+    uint64_t deadline = started + DIALOG_CONTROL_WAIT_MS;
+    unsigned int attempts = 0U;
     while (monotonic_millis() < deadline) {
         AtspiAccessible *control = NULL;
         AtspiAction *action;
         AtspiStateSet *states;
         GError *error = NULL;
         int status = -1;
-        if (query_named_control(expected_pid, name, deadline, &control) != 0) return -1;
+        int enabled, sensitive;
+        gint actions = -1;
+        gboolean invoked = FALSE;
+        attempts += 1U;
+        if (query_named_control(expected_pid, name, deadline, &control) != 0) {
+            fprintf(stderr, "FLUTTER_PEER_CONTROL_ACTIVATION control=\"%s\" result=query-refused "
+                    "attempts=%u elapsed_ms=%llu\n", name, attempts,
+                    (unsigned long long)(monotonic_millis() - started));
+            return -1;
+        }
         if (control == NULL) {
             if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) return -1;
             continue;
         }
         states = atspi_accessible_get_state_set(control);
         action = atspi_accessible_get_action_iface(control);
-        if (states != NULL && action != NULL &&
-            atspi_state_set_contains(states, ATSPI_STATE_ENABLED) &&
-            atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) &&
-            atspi_action_get_n_actions(action, &error) == 1 && error == NULL &&
-            atspi_action_do_action(action, 0, &error) && error == NULL &&
-            monotonic_millis() < deadline) {
-            status = 0;
+        enabled = states != NULL && atspi_state_set_contains(states, ATSPI_STATE_ENABLED);
+        sensitive = states != NULL && atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE);
+        if (action != NULL && enabled && sensitive) {
+            actions = atspi_action_get_n_actions(action, &error);
+            if (actions == 1 && error == NULL) {
+                invoked = atspi_action_do_action(action, 0, &error);
+                if (invoked && error == NULL && monotonic_millis() < deadline) status = 0;
+            }
         }
+        fprintf(stderr, "FLUTTER_PEER_CONTROL_ACTIVATION control=\"%s\" result=%s "
+                "attempts=%u elapsed_ms=%llu enabled=%d sensitive=%d actions=%d "
+                "invoked=%d error_code=%d\n",
+                name, status == 0 ? "activated" : "action-refused", attempts,
+                (unsigned long long)(monotonic_millis() - started),
+                enabled, sensitive, actions, invoked,
+                error != NULL ? error->code : 0);
         if (error != NULL) g_error_free(error);
         if (action != NULL) g_object_unref(action);
         if (states != NULL) g_object_unref(states);
         g_object_unref(control);
         return status;
     }
+    fprintf(stderr, "FLUTTER_PEER_CONTROL_ACTIVATION control=\"%s\" result=not-found "
+            "attempts=%u elapsed_ms=%llu\n", name, attempts,
+            (unsigned long long)(monotonic_millis() - started));
     return -1;
 }
 

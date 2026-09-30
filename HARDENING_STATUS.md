@@ -1488,8 +1488,9 @@ This profile does not execute the GTK dialog case; only forwarded results remain
 because separate raw-log retention failed. Exact `9f17ae10` then built the actual 78-file Linux bundle,
 authenticated through the real password prompt and observed initial changing pixels (first fresh 251 ms,
 maximum publication age 373 ms), but failed toolbar activation before opening the dialog or resizing.
-The target's visible toolbar menu items had empty accessibility names, so the named selector could not
-reach “Keyboard Settings.” This is a fixture-entry failure, not a reproduced overlay-reset defect or
+The target's visible toolbar menu items had empty accessibility names. Activation of “Keyboard Settings”
+failed, but that observation does not classify the exact query/action failure. This is a fixture-entry
+failure, not a reproduced overlay-reset defect or
 a complete peer/outer pass. Complete 355,677-byte raw serial and capture/listener records are retained
 at `evidence/dialog-resize-9f17ae10.*`; before/during/after listener inventories are byte-identical.
 Owned VM/capture/exporter processes exited, and the exact inactive failed disk was reconciled under
@@ -1588,6 +1589,12 @@ After bounded evidence retention, the exact inactive failed root was reconciled 
 lock, recovering 2,967,588,864 allocated bytes; no run/overlay remains. This proves real partial
 consumer execution and ordinary-failure capture, not the remaining six-cycle acceptance, dialog
 ownership defect, original Android/Windows causation, installed-service/LPE or release obligations.
+The controller now classifies bounded-tree/peer/property query refusal, records activation attempts
+and actual monotonic elapsed time, and preserves menu descriptions/action counts plus showing state
+in the failure-only native tree diagnostic. Viewer output is forwarded after its container exits;
+adjacent guest serial timestamps are not event-time evidence for an immediate query refusal.
+The selector, five-second query budget, exact process/unique-name/action authority and all acceptance
+criteria remain unchanged. Native classification from the same immutable app remains pending.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

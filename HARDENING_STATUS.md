@@ -1451,7 +1451,7 @@ separately retained. Per-app logs and the build manifest retired with scratch an
 The widget is shared by desktop/mobile Remote/ViewCamera. Actual APK/device and Windows replay,
 Android/Windows hang causation, sustained resources, release closure and LPE evidence remain OPEN.
 
-**Shared-dialog callback/back ownership — NATIVE NEGATIVE; CORRECTION VERIFICATION OPEN.** Exact
+**Shared-dialog callback/back ownership — NATIVE WIDGET A/B PASS; BROADER APP/CAUSATION OPEN.** Exact
 tests-only candidate `7d2df099a42a320c42ab846fa5d877d9ca51d9a8` executed the unchanged product on
 pinned Flutter 3.24.5. A late predecessor close removed the replacement's ownership record, ordinary
 dismissal left its entry visible, and retiring a same-tag dialog in another manager removed the
@@ -1465,7 +1465,17 @@ Current source gives each dialog its exact back-callback ownership and removes i
 during retirement. A captured close removes the registry entry only while its captured dialog is the
 current owner; tags remain manager-local lookup labels, never global back-handler authority. The same
 real widget regression dispatches the actual interceptor list; only default navigation is a counted
-fixture sink. Test bytes are unchanged from the native negative. Positive native verification is pending.
+fixture sink. Test bytes are unchanged from the native negative. Exact corrected source
+`12f49e655db735f7f9980b452a8bbe65b4fdbb3d`, tree `41a169f2db5cf72afbdd05e0ccb8780c22660212`,
+passed all 18 suites/138 tests in the complete 375-second zero-NIC transaction. Generated bridges,
+pinned Flutter 3.24.5/Rust 1.75/LLVM inputs, strict no-skip acceptance, final input revalidation,
+zero host-listener addition/pre-existing-process drift and joined cleanup passed. The successful
+run self-retired. Complete 66,786-byte raw serial is `evidence/dialog-owner-12f49e65.serial.log`,
+SHA-256 `b390fd9e0fc75effb03932f7ca147b3cd9a16b40f10e3cd8ab29dfc54d42a56a`; its exact outer
+acceptance is separately retained. Positive serial contains aggregate test acceptance, not the
+retired native JSON or detailed host snapshots. This closes the shared ownership regression on
+the pinned Linux-host Flutter engine/plugin dispatch, not actual Android hardware back delivery,
+current APK/device or Windows app behavior, the original display hang, sustained resources or LPE.
 Desktop build-time overlay resets also require a readiness/rebuild reproduction; neither
 source concern establishes the original display-delay cause or a privilege escalation.
 

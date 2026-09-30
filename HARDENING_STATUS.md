@@ -35,7 +35,7 @@ not a claim that every target OS has executed them.
 | Retained evidence | What it establishes—and does not establish |
 | --- | --- |
 | Portable Linux server transaction (`250e775b9a88a62a980937e1f278ad053f2d9d58`) | Real nonroot parked/listening, CPace, Remote/FileTransfer admission, capacity/refusal, and joined-shutdown behavior in confinement. It is not an installed root service or current release artifact. |
-| Exact-current Linux full-peer presentation (`5f4c4bd4b5d22bfff04cfea49b598c9ac93a5a67`) | Six uninstrumented lifecycles from one exact Flutter 3.47.5 bundle each exercised the real password prompt, capture-to-X11-pixel delivery, 2/6/12-second focus-loss cycles, same-connection recovery, three server-generation reconnects, bounded resources, and joined viewer/server teardown. It is not Windows/Android/Apple, sustained soak, cross-version, installed-service, or release-artifact evidence. |
+| Named Linux full-peer lifecycles (`3e5d9d0ec2263888957f16bc69dd6445ccd1ce63`) | Six uninstrumented lifecycles from one exact Flutter 3.47.5 bundle exercised the real password prompt, capture-to-X11-pixel delivery, 2/6/12-second focus-loss cycles, same-connection recovery, three server-generation reconnects, sampled resource bounds, and joined viewer/server teardown. Earlier `5f4c4bd4` was contradicted by a later teardown abort; `3e5d9d0e` supplies the exact renderer/engine-finality correction and named six-cycle result below. The Linux pixel oracle still uses a repeating eight-bit palette and first-observation times, so these runs do not establish unambiguous source-publication age. Current-source, Windows/Android/Apple, sustained soak, cross-version, installed-service, and release-artifact evidence remain open. |
 | Exact-current Linux filesystem regressions (`76cc2fefc6470aeaeb76b50d34b4dc377b39ba49`) | A zero-NIC VM and networkless guest-only container executed all 57 `hbb_common::fs` tests on pinned Rust 1.75, including retained-directory, symlink-parent, path-swap, bounded-depth, create, remove, and rename authority cases. This is Linux library behavior, not Windows junction/handle, installed peer, end-to-end transfer, or release-artifact evidence. |
 | Exact clean Flutter model transaction (`ca5690869c4c665c2d5a17a8e6baeeb664afbb78`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 18 focused suites and 138 tests in 278 seconds on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. In addition to presentation-generation and completion-order coverage, the executed tests prove one isolate-wide three-conversion authority across distinct queue/session replacement, latest-only pending data, FIFO live waiters, exact cancelled-waiter removal, and visible bounded-waiter exhaustion. No host listener was added and cleanup joined. This is exact Dart/model and generated-bridge evidence, not target-native behavior by itself. |
 | Exact Android owner states (`a2cbbbd27228aa053994a2f65ee075baf7e88f68`) | A zero-NIC VM and networkless guest-only container compiled seven exact production Kotlin state classes with pinned Kotlin 2.0.21 and passed 15 scenarios with 293 assertions over closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation. This is pure owner-state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, JNI, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
@@ -1333,6 +1333,24 @@ do not infer a product fix or weaken ownership, capacities, freshness or deadlin
 The supplementary `verify-flutter-peer-presentation.py:333` ordering check still requires the retired
 eight-bit wrap expression, contradicting the current full-counter source. Its classification/correction
 is OPEN; it cannot validate the current oracle and is not run as a substitute for native pixels.
+
+**Linux publication-age oracle remains OPEN.** The shared source publishes full non-wrapping counters,
+but `flutter-peer-presentation-x11.c:514-537` still decodes only two colour nibbles, and its
+`SourceHistory` at lines 65-69 retains just 256 palette slots. `observe_source`/`state_age` at
+lines 539-557 timestamp the first observer sighting, not the source publication. Thus a whole-cycle
+delayed stream can alias the current palette; newly observed stale source pixels can receive a fresh
+timestamp; and a later legitimate palette recurrence can be falsely aged from its first-ever sighting.
+Reconnect also creates a fresh history rather than preserving publication identity. These are
+source-established oracle defects, not a new native reproduction, product-hang cause or LPE finding.
+The Android full-counter/publication-log correction does not cover this separate C observer.
+Before extending Linux connection lifetime or counting its age fields as freshness, replace the
+palette/history abstraction with all four ordered counter bands and the exact owned producer's
+bounded monotonic publication history. Exercise real X11 stale/fresh whole-cycle A/B, late observer
+attachment, reconnect, incomplete/reordered/unknown identity and source-history authority refusals;
+then rerun the real peer. Preserve the 1,000-ms freshness and 2,500-ms recovery limits, exact connection
+identity, resource bounds and joined cleanup. No counter wrap, nominal-tick age, first-seen reset,
+capacity increase or product change is a substitute. Longer-lived Android testing remains separate.
+
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was
 false-green because readiness raced ahead of cleanup; the corrected test observes the actual drain
@@ -1556,7 +1574,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg now has pin-bound recoverable devcheck and Apple verifier images. For each image, two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. Exact commit `f85e18e4` passed the complete current Apple three-target source-conformance/cross-compile workload in the no-NIC verifier VM after the focused Flutter gate first required the same shared display-verifier self-test. Current product/native workloads and fresh independently administered rebuilds remain required; neither verifier-image provenance nor Apple source/cross-compile success supplies native Apple behavior. |
 | Build/test execution authority (R-S11dh) | **STOP-SHIP: focused no-NIC authority smokes and substantial product/build evidence exist, but current release workloads remain incomplete.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; R-S11cj separately confines acquisition to an ordinary-user VM with outbound-only guest/container networking, no host forwarding, and joined finality. Product source `ca569086` passed the fresh model and Android APK build/install/render transactions; exact pushed harness `89a85f4b` passed the retained-APK production-peer lifecycle/presentation transaction. Current exact source `f85e18e4` passed the focused verifier-plus-138-test gate and three-target Apple source-conformance/cross-compile gate while preserving the strict host-listener audit and joined cleanup. Stable Android signing, physical devices, sustained resource/performance soak, native Apple work, Debian/Windows product workloads, cold release artifacts, complete prepared inputs, independently administered reproduction, and external review remain open. Source checks, cross-compiles, builder fingerprints, and historical lifecycle evidence are not release or native evidence. |
-| Product-level behavior | **OPEN / RELEASE-BLOCKING:** a passing Android schedule is contradicted by a later same-APK display-only relaunch failure; neither earlier timing/resource receipts nor source/model bounds close the intermittent defect. Preserve complete sampled event/mailbox/conversion/model/widget diagnostics, reuse a source-bound production-peer artifact without rebuilding each replay, and observe actual pixels across repeated replacement/background cycles. Full capture-to-compositor/actual-present monotonic instrumentation, sustained freshness/performance/resource soak, network transitions, broad reconnect finality, cross-version interoperability, physical Android, current Windows focus/minimize, and Apple behavior remain required. Correctness applies to the whole connection flow, not only the reported complaints; no compile, model, source-string, frame-receipt, or protocol-only result substitutes for these native obligations. |
+| Product-level behavior | **OPEN / RELEASE-BLOCKING:** a passing Android schedule is contradicted by a later same-APK display-only relaunch failure; neither earlier timing/resource receipts nor source/model bounds close the intermittent defect. The separate Linux palette/first-sighting oracle cannot establish publication age and must be corrected and natively replayed before using it for longer-lived freshness evidence. Preserve complete sampled event/mailbox/conversion/model/widget diagnostics, reuse a source-bound production-peer artifact without rebuilding each replay, and observe actual pixels across repeated replacement/background cycles. Full capture-to-compositor/actual-present monotonic instrumentation, sustained freshness/performance/resource soak, network transitions, broad reconnect finality, cross-version interoperability, physical Android, current Windows focus/minimize, and Apple behavior remain required. Correctness applies to the whole connection flow, not only the reported complaints; no compile, model, source-string, frame-receipt, or protocol-only result substitutes for these native obligations. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED
 NATIVE EVIDENCE OPEN.** `src/server.rs`, `src/direct_service.rs`, and `src/ipc.rs` perform startup
@@ -4648,10 +4666,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   service, binary, configuration, listener, display, firewall/UFW/nftables/iptables state, or host
   network state was inspected or changed for this source slice.
 
-- **R-S11gc/R-S11e-216 Linux full-peer presentation — EXACT-CURRENT PRODUCT RUNTIME GREEN;
-  CURRENT ARTIFACT, INSTALLED, CROSS-PLATFORM, AND SOAK EVIDENCE OPEN.**
+- **R-S11gc/R-S11e-216 Linux full-peer presentation — NAMED PRODUCT RUNTIME EVIDENCE;
+  PUBLICATION-AGE ORACLE, CURRENT ARTIFACT, INSTALLED, CROSS-PLATFORM, AND SOAK EVIDENCE OPEN.**
 
-  **What the current runtime establishes.** No-NIC verifier-VM transaction `run.e47T6SGHQP` built
+  **What the named runtime establishes.** No-NIC verifier-VM transaction `run.e47T6SGHQP` built
   clean pushed product commit `76d8a32c2775f0d13c0c05a9fbc8d82939ad866e`, tree
   `92e483393489c82b85d82017526013b1a25ae0af`, and canonical source archive SHA-256
   `340cd5787d5a403667d643b87b9c896185c4dca0ba1225f4f1c5952d00b497c5` into the release Rust
@@ -4664,10 +4682,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   A changing 256-state X11 source traversed actual capture, software encode, keyed TCP, viewer VP9
   decode, Rust-to-Dart texture publication, the production Linux texture plugin, Flutter, and
-  observed X11 pixels. First fresh pixels arrived in 83 ms; four distinct current frames were
-  observed; the initial observation's maximum age was 671 ms; blurred age during 2,000 ms of
-  external focus loss was 83 ms; pointer-return recovery was 0 ms; and the focus round's maximum age
-  was 252 ms. The authenticated TCP tuple and inode stayed identical, so reconnect could not explain
+  observed X11 palette changes. The controller's historical age fields use first observer sightings,
+  not full-counter source-publication clocks; the repeating palette cannot prove unambiguous content
+  age. The run nevertheless exercised actual pixels, external focus loss and real pointer return.
+  The authenticated TCP tuple and inode stayed identical, so reconnect could not explain
   recovery. Viewer, server, source, both Xvfb owners, listener, guest Docker, QEMU, and virtiofsd
   reached joined terminal receipts. The transaction completed in 762 seconds. One
   `dbus-run-session` unknown-child diagnostic occurred during teardown, so this is not claimed as a

@@ -24,7 +24,7 @@ def main():
     decoder.self_test()
     subprocess.run([
         "/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-O2",
-        "/work/scripts/flutter-peer-source-x11.c", "-lX11", "-o", "/tmp/frame-source",
+        "/work/scripts/flutter-peer-source-x11.c", "-lX11", "-o", "/build/frame-source",
     ], check=True, timeout=20)
     environment = {"PATH": "/usr/bin:/bin", "HOME": "/tmp", "DISPLAY": ":98",
                    "LC_ALL": "C", "RUSTDESK_PRESENTATION_TRACE": "1",
@@ -60,7 +60,7 @@ def main():
             time.sleep(0.05)
         require(display, "X11 Unix display is unavailable")
         with source_path.open("wb") as source_log:
-            children.append(subprocess.Popen(["/tmp/frame-source"], env=environment,
+            children.append(subprocess.Popen(["/build/frame-source"], env=environment,
                                              stdout=source_log, stderr=subprocess.STDOUT))
         source_path.chmod(0o600)
         root = lib.XDefaultRootWindow(display)

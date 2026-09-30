@@ -322,6 +322,7 @@ run_android_frame_tests() {
             mounts+=(
                 --mount "type=bind,src=$work/xvfb-root,dst=/xvfb-root,readonly,bind-recursive=disabled"
                 --mount "type=bind,src=$work/xvfb-root/usr/bin/xkbcomp,dst=/usr/bin/xkbcomp,readonly"
+                --tmpfs /build:rw,exec,nosuid,nodev,size=16m,mode=700,uid=4000,gid=4000
             )
             command=(/usr/bin/python3 -B -I -S /work/scripts/test-android-frame-native.py)
         fi

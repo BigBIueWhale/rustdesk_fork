@@ -1765,6 +1765,22 @@ Primary sources: [pinned gclient](https://chromium.googlesource.com/chromium/too
 [root DEPS](https://github.com/flutter/flutter/blob/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/DEPS), and
 [recursive Vulkan DEPS](https://chromium.googlesource.com/vulkan-deps/+/a9e2ca3b57aba86a22a2df1b84bf12f8cc98806e/DEPS).
 
+The closed `--maintenance-stage-flutter-linux-engine-graph` acquisition now selects this
+fixed profile with the authenticated depot-tools parser, verifies each full Git commit/tree
+and root DEPS, includes the ten recursive Vulkan sources, and resolves every CIPD selector
+before acquiring packages by immutable instance. It executes only the authenticated parser,
+fixed Git and publisher-digest client in the existing numeric-nonroot confined acquisition
+VM/container; no wrappers, updates or hooks run. The candidate is no-clobber and refuses a
+second producer before VM allocation. Private guest scratch uses a 32-GiB disposable disk;
+archives are bounded at four GiB each and 24 GiB including reserved manifest capacity.
+The final guest publisher rehashes every inert mode-0400 archive and checks the complete
+inventory/context. Package archives normalize ownership, modes and epoch and omit CIPD's
+installation metadata; their recorded SHA256 binds those canonical bytes, not a publisher ZIP.
+The [CIPD instance contract](https://chromium.googlesource.com/infra/luci/luci-go/+/main/cipd/common/iid.go)
+admits both legacy full SHA1 IDs and SHA256-plus-algorithm IDs; aliases are not installation
+authority. **Native graph/acquisition execution is not yet claimed.** Hooks, sysroot/Pub input
+closure, offline GN/engine build, source geometry correction and complete consumer remain OPEN.
+
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
 consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

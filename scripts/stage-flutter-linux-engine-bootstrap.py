@@ -197,11 +197,11 @@ def acquire(args, record, root):
           + " downloaded_code_executed=no complete_engine_closure=no", flush=True)
 
 
-def probe(args, root):
+def tools(args, root, path="/output"):
     require(sorted(os.listdir(root)) == ["cipd-client", "depot-tools.tar", "manifest.json"],
             "sealed bootstrap inventory differs")
     require(0 < args.tools_manifest_size <= 16384, "bootstrap manifest exceeds bound")
-    payload = read_file("/output/manifest.json", args.tools_manifest_size,
+    payload = read_file(path + "/manifest.json", args.tools_manifest_size,
                         args.tools_manifest_sha256)
     manifest = json.loads(payload)
     require(manifest["format"] == "rustdesk-flutter-engine-bootstrap-tools-v1"
@@ -215,11 +215,16 @@ def probe(args, root):
             and manifest["cipd_sha256"] == args.cipd_sha256
             and manifest["complete_engine_closure"] is False,
             "bootstrap execution selections differ")
-    read_file("/output/depot-tools.tar", manifest["depot_archive_size"],
-              manifest["depot_archive_sha256"])
-    client = read_file("/output/cipd-client", manifest["cipd_size"], args.cipd_sha256)
+    archive = read_file(path + "/depot-tools.tar", manifest["depot_archive_size"],
+                        manifest["depot_archive_sha256"])
+    client = read_file(path + "/cipd-client", manifest["cipd_size"], args.cipd_sha256)
     require(client[:6] == b"\x7fELF\x02\x01" and client[18:20] == b"\x3e\x00",
             "CIPD client is not Linux x86_64 ELF")
+    return manifest, archive, client
+
+
+def probe(args, root):
+    _, _, client = tools(args, root)
     fd = os.open("/build/cipd", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o500)
     with os.fdopen(fd, "wb") as output:
         output.write(client)

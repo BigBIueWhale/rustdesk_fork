@@ -12,7 +12,8 @@ case "$#:${1:-}" in
     0:) ;;
     1:--stage-tools) MODE=tools ;;
     1:--probe-tools) MODE=probe ;;
-    *) echo 'engine bootstrap expects no arguments, --stage-tools or --probe-tools' >&2; exit 2 ;;
+    1:--stage-graph) MODE=graph ;;
+    *) echo 'engine bootstrap expects no arguments, --stage-tools, --probe-tools or --stage-graph' >&2; exit 2 ;;
 esac
 # shellcheck source=scripts/pins.env
 source "$SCRIPT_DIR/pins.env"
@@ -47,17 +48,26 @@ else
         --cipd-version "$FLUTTER_ENGINE_CIPD_VERSION"
         --cipd-instance "$FLUTTER_ENGINE_CIPD_INSTANCE"
         --cipd-sha256 "$SHA256_FLUTTER_ENGINE_CIPD_CLIENT")
-    if [ "$MODE" = probe ]; then
-        PHASE=probe
+    if [ "$MODE" = probe ] || [ "$MODE" = graph ]; then
+        [ "$MODE" != probe ] || PHASE=probe
         ARGUMENTS+=(--tools-source-commit "$FLUTTER_ENGINE_BOOTSTRAP_TOOLS_SOURCE_COMMIT"
             --tools-manifest-size "$SIZE_FLUTTER_ENGINE_BOOTSTRAP_TOOLS_MANIFEST"
             --tools-manifest-sha256 "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_TOOLS_MANIFEST")
+    fi
+    if [ "$MODE" = graph ]; then
+        OUTPUT="$REPO/online/candidates/flutter-linux-engine-graph"
+        HELPER="$SCRIPT_DIR/stage-flutter-linux-engine-graph.py"
+        PHASE=graph
+        ARGUMENTS+=(--epoch "$SOURCE_DATE_EPOCH_PIN")
     fi
 fi
 readonly INPUT INPUT_PARENT INPUT_DEST INPUT_SIZE OUTPUT HELPER MODE PHASE
 WORK=
 WORK_ID=
 CONTAINER_ID=
+COMMON_HELPER=
+TOOLS=
+GRAPH_WORK=
 
 fail() { printf 'engine bootstrap discovery: %s\n' "$*" >&2; exit 1; }
 
@@ -117,6 +127,13 @@ done
     && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$INPUT")" = \
          "$UID_NUMBER:$GID_NUMBER:400:1:$INPUT_SIZE" ] \
     || fail 'source-bound bootstrap input metadata differs'
+if [ "$MODE" = graph ]; then
+    COMMON_HELPER="$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py"
+    TOOLS="$REPO/online/candidates/flutter-linux-engine-bootstrap-tools"
+    [ -d "$TOOLS" ] && [ ! -L "$TOOLS" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$TOOLS")" = "$UID_NUMBER:$GID_NUMBER:700" ] \
+        || fail 'sealed graph bootstrap input is absent or ambiguous'
+fi
 WORK="$(/usr/bin/mktemp -d /var/tmp/rustdesk-engine-discovery.XXXXXXXXXX)"
 WORK_ID="$(/usr/bin/stat -c '%d:%i' -- "$WORK")"
 /usr/bin/install -d -m 0700 "$WORK/docker"
@@ -124,7 +141,9 @@ WORK_ID="$(/usr/bin/stat -c '%d:%i' -- "$WORK")"
 # Reuse the actual acquisition entry and provenance loader, not a parallel image loader.
 /bin/bash "$SCRIPT_DIR/online-fetch.sh" --devcheck-image
 [ "$MODE" = probe ] || /usr/bin/mkdir -m 0700 -- "$OUTPUT"
-helper_before="$(/usr/bin/sha256sum "$HELPER")"
+helper_sources=("$HELPER")
+[ "$MODE" != graph ] || helper_sources+=("$COMMON_HELPER")
+helper_before="$(/usr/bin/sha256sum "${helper_sources[@]}")"
 phase=$PHASE
 network=bridge
 output_mount="type=bind,src=$OUTPUT,dst=/output,bind-nonrecursive"
@@ -138,7 +157,21 @@ if [ "$MODE" != discovery ]; then
     tmp_size=512m
     phase_arguments=(--phase "$phase")
 fi
+if [ "$MODE" = graph ]; then
+    memory=2g
+    memory_bytes=2147483648
+    tmp_size=16m
+    GRAPH_WORK="$WORK/graph-work"
+    /usr/bin/mkdir -m 0700 -- "$GRAPH_WORK"
+fi
 scratch=(--tmpfs "/tmp:rw,noexec,nosuid,nodev,size=$tmp_size,mode=700,uid=$UID_NUMBER,gid=$GID_NUMBER")
+extra_mounts=()
+if [ "$MODE" = graph ]; then
+    extra_mounts=(
+        --mount "type=bind,src=$COMMON_HELPER,dst=/bootstrap-common.py,readonly,bind-nonrecursive"
+        --mount "type=bind,src=$TOOLS,dst=/tools,readonly,bind-nonrecursive"
+        --mount "type=bind,src=$GRAPH_WORK,dst=/work,bind-nonrecursive")
+fi
 if [ "$MODE" != discovery ]; then
     if [ "$phase" = probe ]; then
         network=none
@@ -155,6 +188,7 @@ docker_client create --cidfile "$WORK/container.id" --pull=never \
     --mount "type=bind,src=$INPUT,dst=$INPUT_DEST,readonly,bind-nonrecursive" \
     --mount "type=bind,src=$HELPER,dst=/bootstrap.py,readonly,bind-nonrecursive" \
     --mount "$output_mount" \
+    "${extra_mounts[@]}" \
     --env PYTHONDONTWRITEBYTECODE=1 \
     --entrypoint /usr/bin/python3 "$DEV_CHECK_IMAGE_ID" -I -S /bootstrap.py \
     "${ARGUMENTS[@]}" "${phase_arguments[@]}" >/dev/null
@@ -163,7 +197,7 @@ CONTAINER_ID="$(/usr/bin/cat "$WORK/container.id")"
 docker_client inspect "$CONTAINER_ID" >"$WORK/inspect.json"
 /usr/bin/python3 -I -S - "$WORK/inspect.json" "$UID_NUMBER:$GID_NUMBER" \
     "$DEV_CHECK_IMAGE_ID" "$INPUT" "$HELPER" "$OUTPUT" "$INPUT_DEST" "$network" "$phase" \
-    "$memory_bytes" "$tmp_size" <<'PY'
+    "$memory_bytes" "$tmp_size" "$COMMON_HELPER" "$TOOLS" "$GRAPH_WORK" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding='utf-8') as source:
     records = json.load(source)
@@ -192,6 +226,11 @@ if sys.argv[9] == 'probe':
 expected = {sys.argv[7]: (sys.argv[4], False),
             '/bootstrap.py': (sys.argv[5], False),
             '/output': (sys.argv[6], sys.argv[9] != 'probe')}
+if sys.argv[9] == 'graph':
+    expected.update({'/bootstrap-common.py': (sys.argv[12], False),
+                     '/tools': (sys.argv[13], False), '/work': (sys.argv[14], True)})
+else:
+    assert sys.argv[12:] == ['', '', '']
 binds = {}
 for mount in record['Mounts']:
     if mount['Type'] == 'tmpfs':
@@ -211,7 +250,57 @@ docker_client start --attach "$CONTAINER_ID"
 docker_client rm "$CONTAINER_ID" >/dev/null
 /usr/bin/rm -- "$WORK/container.id"
 CONTAINER_ID=
-[ "$(/usr/bin/sha256sum "$HELPER")" = "$helper_before" ] || fail 'discovery source changed'
+[ "$(/usr/bin/sha256sum "${helper_sources[@]}")" = "$helper_before" ] || fail 'discovery source changed'
+if [ "$MODE" = graph ]; then
+    /usr/bin/python3 -I -S - "$OUTPUT" "$RUSTDESK_ONLINE_FETCH_VM_SOURCE_COMMIT" \
+        "$FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION" \
+        "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_DISCOVERY" \
+        "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_TOOLS_MANIFEST" <<'PY'
+import hashlib, json, os, re, stat, sys
+root = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+fields = ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink',
+          'st_size', 'st_mtime_ns', 'st_ctime_ns')
+try:
+    def verify(name, maximum, expected=None):
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+        with os.fdopen(fd, 'rb') as source:
+            before = os.fstat(source.fileno())
+            assert stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+            assert (before.st_uid, before.st_gid, stat.S_IMODE(before.st_mode)) == (os.getuid(), os.getgid(), 0o400)
+            assert 0 < before.st_size <= maximum
+            if expected is None:
+                payload = source.read(maximum + 1)
+                assert len(payload) == before.st_size
+                result = json.loads(payload)
+            else:
+                assert before.st_size == expected['bytes']
+                assert hashlib.file_digest(source, 'sha256').hexdigest() == expected['sha256']
+                result = before.st_size
+            after = os.fstat(source.fileno())
+            assert all(getattr(before, key) == getattr(after, key) for key in fields)
+            return result
+    manifest = verify('manifest.json', 1048576)
+    assert manifest['format'] == 'rustdesk-flutter-linux-engine-graph-v1'
+    assert [manifest[key] for key in ('source_commit', 'framework_revision', 'discovery_sha256', 'tools_manifest_sha256')] == sys.argv[2:]
+    assert manifest['complete_engine_closure'] is False and manifest['hooks_executed'] is False
+    assert 0 < len(manifest['git']) <= 256 and len(manifest['cipd']) <= 256
+    expected_names = {'manifest.json'}
+    total = 0
+    for kind in ('git', 'cipd'):
+        for index, entry in enumerate(manifest[kind]):
+            name = '%s-%03d.tar' % (kind, index)
+            assert entry['file'] == name and name not in expected_names
+            assert re.fullmatch('[0-9a-f]{64}', entry['sha256'])
+            total += verify(name, 4294967296, entry)
+            expected_names.add(name)
+    assert set(os.listdir(root)) == expected_names
+    assert total == manifest['acquired_bytes'] and total + os.stat('manifest.json', dir_fd=root).st_size <= 25769803776
+    print('ENGINE_GRAPH_PUBLICATION=pass files=' + str(len(expected_names)) + ' bytes=' + str(total) + ' hooks=deferred complete_engine_closure=no')
+finally:
+    os.close(root)
+PY
+    exit 0
+fi
 if [ "$MODE" != discovery ]; then
     [ "$(/usr/bin/find "$OUTPUT" -mindepth 1 -maxdepth 1 -printf '%f\n' | /usr/bin/sort)" = \
       $'cipd-client\ndepot-tools.tar\nmanifest.json' ] || fail 'bootstrap tool inventory differs'

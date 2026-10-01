@@ -27,6 +27,7 @@ case "$#:${1:-}" in
     1:--maintenance-build-deb-builder-bootstrap-candidate|\
     1:--maintenance-discover-flutter-linux-engine-bootstrap|\
     1:--maintenance-stage-flutter-linux-engine-bootstrap|\
+    1:--maintenance-probe-flutter-linux-engine-bootstrap|\
     1:--maintenance-build-android-builder-bootstrap-candidate|\
     1:--maintenance-build-win-helper-bootstrap-candidate|\
     1:--maintenance-promote-deb-builder-bootstrap-candidate|\
@@ -88,7 +89,8 @@ if [ "$MODE" = authority-smoke ]; then
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
 elif [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
-     || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ]; then
+     || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ] \
+     || [ "$REQUEST" = --maintenance-probe-flutter-linux-engine-bootstrap ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=4096
@@ -605,9 +607,18 @@ if [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
    || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ]; then
     candidate="$REPO_ROOT/online/candidates/flutter-linux-engine-bootstrap"
     [ "$REQUEST" != --maintenance-stage-flutter-linux-engine-bootstrap ] \
-        || candidate="$candidate-tools"
+        || candidate="${candidate}-tools"
     [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
         || fail 'engine bootstrap discovery already exists; review or explicitly reconcile it before another acquisition'
+fi
+if [ "$REQUEST" = --maintenance-probe-flutter-linux-engine-bootstrap ]; then
+    candidate="$REPO_ROOT/online/candidates/flutter-linux-engine-bootstrap-tools"
+    [ -d "$candidate" ] && [ ! -L "$candidate" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$candidate")" = "$HOST_UID:$HOST_GID:700" ] \
+        && [ -f "$candidate/manifest.json" ] && [ ! -L "$candidate/manifest.json" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$candidate/manifest.json")" = \
+             "$HOST_UID:$HOST_GID:400:1:$SIZE_FLUTTER_ENGINE_BOOTSTRAP_TOOLS_MANIFEST" ] \
+        || fail 'sealed engine bootstrap candidate is absent or ambiguous'
 fi
 if [ -e "$RUN_ROOT" ] || [ -L "$RUN_ROOT" ]; then
     [ -d "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ] \

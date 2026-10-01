@@ -11,7 +11,8 @@ MODE=discovery
 case "$#:${1:-}" in
     0:) ;;
     1:--stage-tools) MODE=tools ;;
-    *) echo 'engine bootstrap expects no arguments or --stage-tools' >&2; exit 2 ;;
+    1:--probe-tools) MODE=probe ;;
+    *) echo 'engine bootstrap expects no arguments, --stage-tools or --probe-tools' >&2; exit 2 ;;
 esac
 # shellcheck source=scripts/pins.env
 source "$SCRIPT_DIR/pins.env"
@@ -24,7 +25,7 @@ if [ "$MODE" = discovery ]; then
     INPUT_SIZE=$SIZE_FLUTTER_PRESENTATION_CANDIDATE
     OUTPUT="$REPO/online/candidates/flutter-linux-engine-bootstrap"
     HELPER="$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py"
-    PHASES=(discovery)
+    PHASE=discovery
     ARGUMENTS=(--source-commit "$RUSTDESK_ONLINE_FETCH_VM_SOURCE_COMMIT"
         --framework-revision "$FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION"
         --sdk-size "$SIZE_FLUTTER_PRESENTATION_CANDIDATE"
@@ -36,7 +37,7 @@ else
     INPUT_SIZE=$SIZE_FLUTTER_ENGINE_BOOTSTRAP_DISCOVERY
     OUTPUT="$REPO/online/candidates/flutter-linux-engine-bootstrap-tools"
     HELPER="$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py"
-    PHASES=(acquire probe)
+    PHASE=acquire
     ARGUMENTS=(--source-commit "$RUSTDESK_ONLINE_FETCH_VM_SOURCE_COMMIT"
         --framework-revision "$FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION"
         --discovery-size "$SIZE_FLUTTER_ENGINE_BOOTSTRAP_DISCOVERY"
@@ -46,8 +47,14 @@ else
         --cipd-version "$FLUTTER_ENGINE_CIPD_VERSION"
         --cipd-instance "$FLUTTER_ENGINE_CIPD_INSTANCE"
         --cipd-sha256 "$SHA256_FLUTTER_ENGINE_CIPD_CLIENT")
+    if [ "$MODE" = probe ]; then
+        PHASE=probe
+        ARGUMENTS+=(--tools-source-commit "$FLUTTER_ENGINE_BOOTSTRAP_TOOLS_SOURCE_COMMIT"
+            --tools-manifest-size "$SIZE_FLUTTER_ENGINE_BOOTSTRAP_TOOLS_MANIFEST"
+            --tools-manifest-sha256 "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_TOOLS_MANIFEST")
+    fi
 fi
-readonly INPUT INPUT_PARENT INPUT_DEST INPUT_SIZE OUTPUT HELPER MODE
+readonly INPUT INPUT_PARENT INPUT_DEST INPUT_SIZE OUTPUT HELPER MODE PHASE
 WORK=
 WORK_ID=
 CONTAINER_ID=
@@ -94,7 +101,13 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-[ ! -e "$OUTPUT" ] && [ ! -L "$OUTPUT" ] || fail 'discovery output is already occupied'
+if [ "$MODE" = probe ]; then
+    [ -d "$OUTPUT" ] && [ ! -L "$OUTPUT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$OUTPUT")" = "$UID_NUMBER:$GID_NUMBER:700" ] \
+        || fail 'sealed bootstrap candidate is absent or ambiguous'
+else
+    [ ! -e "$OUTPUT" ] && [ ! -L "$OUTPUT" ] || fail 'discovery output is already occupied'
+fi
 for root in "$REPO/online/candidates" "$INPUT_PARENT"; do
     [ -d "$root" ] && [ ! -L "$root" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$root")" = "$UID_NUMBER:$GID_NUMBER:700" ] \
@@ -110,23 +123,23 @@ WORK_ID="$(/usr/bin/stat -c '%d:%i' -- "$WORK")"
 /usr/bin/printf '{}\n' >"$WORK/docker/config.json"
 # Reuse the actual acquisition entry and provenance loader, not a parallel image loader.
 /bin/bash "$SCRIPT_DIR/online-fetch.sh" --devcheck-image
-/usr/bin/mkdir -m 0700 -- "$OUTPUT"
+[ "$MODE" = probe ] || /usr/bin/mkdir -m 0700 -- "$OUTPUT"
 helper_before="$(/usr/bin/sha256sum "$HELPER")"
-for phase in "${PHASES[@]}"; do
+phase=$PHASE
 network=bridge
 output_mount="type=bind,src=$OUTPUT,dst=/output,bind-nonrecursive"
 phase_arguments=()
 memory=512m
 memory_bytes=536870912
 tmp_size=16m
-if [ "$MODE" = tools ]; then
+if [ "$MODE" != discovery ]; then
     memory=1g
     memory_bytes=1073741824
     tmp_size=512m
     phase_arguments=(--phase "$phase")
 fi
 scratch=(--tmpfs "/tmp:rw,noexec,nosuid,nodev,size=$tmp_size,mode=700,uid=$UID_NUMBER,gid=$GID_NUMBER")
-if [ "$MODE" = tools ]; then
+if [ "$MODE" != discovery ]; then
     if [ "$phase" = probe ]; then
         network=none
         output_mount+=,readonly
@@ -198,9 +211,8 @@ docker_client start --attach "$CONTAINER_ID"
 docker_client rm "$CONTAINER_ID" >/dev/null
 /usr/bin/rm -- "$WORK/container.id"
 CONTAINER_ID=
-done
 [ "$(/usr/bin/sha256sum "$HELPER")" = "$helper_before" ] || fail 'discovery source changed'
-if [ "$MODE" = tools ]; then
+if [ "$MODE" != discovery ]; then
     [ "$(/usr/bin/find "$OUTPUT" -mindepth 1 -maxdepth 1 -printf '%f\n' | /usr/bin/sort)" = \
       $'cipd-client\ndepot-tools.tar\nmanifest.json' ] || fail 'bootstrap tool inventory differs'
     for file in cipd-client depot-tools.tar manifest.json; do

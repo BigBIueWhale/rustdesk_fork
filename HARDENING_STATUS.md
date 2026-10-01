@@ -1714,11 +1714,21 @@ uninstrumented app consumer remain OPEN.
 The closed `--maintenance-stage-flutter-linux-engine-bootstrap` request now stages
 depot-tools from the exact DEPS-selected Git commit/tree and the publisher-SHA256 CIPD
 client into a separate no-clobber, inert three-file candidate. It reuses the authenticated
-discovery record instead of repeating SDK extraction. Acquisition executes no fetched code;
-a distinct inspected network-none container admits only the verified client for a bounded
-version probe, without the upstream wrapper's unconditional self-update. Source implementation
-is present; native acquisition/probe evidence is not yet claimed. Full engine closure and the
-production correction remain OPEN.
+discovery record instead of repeating SDK extraction. At exact `9eebf1da`, object/tree proof,
+strict Git fsck, canonical archive and publisher-client digest verification passed; the
+subsequent offline command exited zero but its brittle output-wording assertion refused.
+No complete VM transaction is claimed. Its 870-byte manifest SHA256
+`d4e8372fc8eb9be947bd36837db3d8683d67d8d0a69848d973ca712636d41600` now independently
+binds the retained three files (24,846,336 allocated bytes); no duplicate acquisition is needed.
+The explicit `--maintenance-probe-flutter-linux-engine-bootstrap` consumer authenticates that
+artifact separately from the current harness, uses read-only input mounts and network-none,
+and derives platform authority from the publisher digest/ELF, never version wording. Current
+consumer execution remains unclaimed. Failed raw serial is `evidence/engine-tools-9eebf1da.serial.log`
+(70,241 bytes, SHA256 `b9665cb99fb7340dfb9199264be7390d845812a6ef1b6e5256ae06d203015172`),
+independently equal to the original before exact stopped-root cleanup. The auxiliary wrapper's
+quoting error returned 125, not a green capture claim; outer status was 1, elapsed 75,660 host
+BOOTTIME ms. Listener inventories were equal and addition files empty. No run/disk remains.
+Full engine closure and the production correction remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

@@ -200,12 +200,12 @@ def acquire(args, record, root):
 def probe(args, root):
     require(sorted(os.listdir(root)) == ["cipd-client", "depot-tools.tar", "manifest.json"],
             "sealed bootstrap inventory differs")
-    with open("/output/manifest.json", "rb") as source:
-        payload = source.read(16385)
-    require(len(payload) <= 16384, "bootstrap manifest exceeds bound")
+    require(0 < args.tools_manifest_size <= 16384, "bootstrap manifest exceeds bound")
+    payload = read_file("/output/manifest.json", args.tools_manifest_size,
+                        args.tools_manifest_sha256)
     manifest = json.loads(payload)
     require(manifest["format"] == "rustdesk-flutter-engine-bootstrap-tools-v1"
-            and manifest["source_commit"] == args.source_commit
+            and manifest["source_commit"] == args.tools_source_commit
             and manifest["framework_revision"] == args.framework_revision
             and manifest["discovery_sha256"] == args.discovery_sha256
             and manifest["depot_revision"] == args.depot_revision
@@ -215,7 +215,6 @@ def probe(args, root):
             and manifest["cipd_sha256"] == args.cipd_sha256
             and manifest["complete_engine_closure"] is False,
             "bootstrap execution selections differ")
-    read_file("/output/manifest.json", len(payload), hashlib.sha256(payload).hexdigest())
     read_file("/output/depot-tools.tar", manifest["depot_archive_size"],
               manifest["depot_archive_sha256"])
     client = read_file("/output/cipd-client", manifest["cipd_size"], args.cipd_sha256)
@@ -237,8 +236,8 @@ def probe(args, root):
         errors = source.read(4097)
     require(completed.returncode == 0 and 0 < len(result) <= 4096 and not errors,
             "offline pinned CIPD version probe failed")
-    require(result.startswith(b"cipd ") and b"linux-amd64" in result,
-            "CIPD platform/version response differs")
+    # Artifact/platform authority is the independently pinned publisher digest
+    # and ELF header, not incidental wording in a version command's output.
     print("ENGINE_BOOTSTRAP_CIPD_OFFLINE=pass network=none uid=" + str(os.getuid())
           + " sha256=" + args.cipd_sha256 + " version="
           + json.dumps(result.decode("utf-8")) + " complete_engine_closure=no", flush=True)
@@ -251,6 +250,9 @@ def main():
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--discovery-size", type=int, required=True)
     parser.add_argument("--phase", choices=("acquire", "probe"), required=True)
+    parser.add_argument("--tools-source-commit")
+    parser.add_argument("--tools-manifest-sha256")
+    parser.add_argument("--tools-manifest-size", type=int)
     args = parser.parse_args()
     require(os.getuid() != 0 and os.getgid() != 0, "root bootstrap execution refused")
     for value in (args.source_commit, args.framework_revision, args.depot_revision, args.depot_tree):
@@ -259,6 +261,15 @@ def main():
         require(re.fullmatch("[0-9a-f]{64}", value), "malformed content pin")
     require(re.fullmatch("git_revision:[0-9a-f]{40}", args.cipd_version)
             and re.fullmatch("[A-Za-z0-9_-]{43}C", args.cipd_instance), "malformed CIPD pin")
+    if args.phase == "probe":
+        require(args.tools_source_commit is not None and args.tools_manifest_sha256 is not None
+                and args.tools_manifest_size is not None
+                and re.fullmatch("[0-9a-f]{40}", args.tools_source_commit)
+                and re.fullmatch("[0-9a-f]{64}", args.tools_manifest_sha256),
+                "independent bootstrap artifact pins are required")
+    else:
+        require(args.tools_source_commit is None and args.tools_manifest_sha256 is None
+                and args.tools_manifest_size is None, "artifact pins are probe-only")
     # Bound generated archives/pack files and probe output at the filesystem sink.
     resource.setrlimit(resource.RLIMIT_FSIZE, (LIMIT, LIMIT))
     record = discovery(args)

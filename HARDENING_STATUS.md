@@ -1511,6 +1511,11 @@ separately as a negative baseline, not relabelled or substituted for the correct
 After the valid negative replay and joined cleanup, a locked no-clobber rename moved `a4a6b2d0`
 to `.harness-state/linux-flutter-app-archive/` without copying or modifying app bytes. All 74 files
 and the original manifest independently rehashed unchanged. One corrected-source producer remains pending.
+Both producer attempts at `e46dba42` stopped before QEMU boot/app compilation when the strict
+exporter preflight observed changing, unattributable external Node loopback listeners. Bounded
+inventory/exporter evidence is retained under `evidence/toolbar-disclosure-app-e46dba42-preflight*`;
+both exact scratch roots were reconciled after owner exit. No producer is running, and no listener
+check, external process or host service was changed to obtain acceptance.
 
 The sole consumer is `--linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256`.
 It independently derives the app tree/recipe from that pushed commit, keeping current harness
@@ -1720,7 +1725,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest joined cleanup is recorded in the app-replay disposition above.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 618,930,176 allocated bytes (0.576 GiB). The actual outer
+  small evidence records occupy 619,016,192 allocated bytes (0.577 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

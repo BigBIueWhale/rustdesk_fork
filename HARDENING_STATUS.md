@@ -1635,6 +1635,12 @@ and the external audit, not as a live replay diary.
 
 Next test a correct local geometry-provider path against the observed self-wait in a focused
 target-native A/B, or establish an equally authoritative target-native layout observation.
+The temporary guest-only counterfactual matches the native plug ID to its exact socket/widget
+association, supplies the socket parent binding omitted by Flutter's copied GTK implementation,
+and routes root geometry through that local GTK owner on each query. Weak references do not retain
+retired views; unknown, stale or ambiguous associations refuse. Coordinates and existing controller
+criteria remain native and unchanged. This experiment is not a production workaround and cannot
+grant full consumer acceptance, even if the instrumented controller succeeds. Native result pending.
 Do not increase timeouts, guess coordinates or accept invalid extents. Then observe an actual
 production image-ready rebuild trigger before
 changing desktop dialog ownership and complete the required consumer lifecycles. The older

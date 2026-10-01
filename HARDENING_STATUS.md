@@ -2108,7 +2108,7 @@ No deadline/resource increase, host installation, alternate provider or product 
 is introduced. NO_AT_BRIDGE deliberately excludes AT-SPI routing from this unit test.
 Actual FlView/provider teardown, full transforms and engine/app integration remain OPEN.
 
-**Direct GTK/provider candidate — IMPLEMENTED; NATIVE RESULT PENDING.** The dependency patch
+**Direct GTK-owned provider/full transforms — FOCUSED NATIVE PASS; ENGINE/APP INTEGRATION OPEN.** The dependency patch
 replaces the standalone plug/socket route with GTK's widget-owned `FlViewAccessible`, bound
 once after the engine/view ID exists. Early access stays closed; widget unbinding revokes the
 complete tree before callbacks. Nodes retain full rects and transforms, compose checked live
@@ -2122,9 +2122,30 @@ widget across native callbacks. The plug/socket files and translation-only sette
 The native fixture preserves the original parent-relative and retired-ancestor assertions,
 adds mapped widgets, full transforms/rounding/hit testing, invalid ancestry/bounds, hide/show,
 and teardown-time whole-tree action refusal. One source-bound binary must pass every case at
-GTK scales 1 and 2; four migrated upstream test objects must compile. No native pass, engine
-link, actual FlView lifecycle, shipped app/self-wait fix, product/LPE or platform closure is
-claimed before execution. Existing assertion, runtime/resource and deadline bounds remain.
+GTK scales 1 and 2; four migrated upstream test objects compile. Existing assertion,
+runtime/resource and deadline bounds remain. Exact corrected fixture/source
+`9f3f0df2e5260a9eb029434ae9f0e7f7e0776ff0`, tree
+`c97a6a1fa7caf96c0ee9c9fcdfe50840c29cf22f`, passed the complete focused transaction:
+tool 75731 terminal 0, outer/capture 0/0 in 108,800 host BOOTTIME ms (outer 98 seconds).
+Seven original/eight patched production objects and strict fifteen-file patch application
+passed. The same 1,407,768-byte native ELF, SHA256
+`74cbdb7031ca79e78c474afa7b562b33454deb0c87f094ac67f0511237fa478b`, executed
+every named GTK/node/root/generation/text/geometry case at both scales. Original assertions
+observed PARENT `(5,7,20,10)`, position `(5,7)`, interior contains true; the retained
+retired-ancestor child returned all-unavailable extents/size and contains false. Full transforms,
+fractional rounding, actual GTK origins/scale, child hit testing, invalid bounds/ancestry,
+hide/show recovery, live focus, and whole-tree revocation before widget-teardown callbacks
+passed under fatal GLib criticals. The four upstream node/text/root/view translation units
+compiled with exact original GN recipes; their suites and the full engine did not run.
+Complete 90,297-byte raw serial is `evidence/engine-direct-gtk-9f3f0df2.serial.log`, SHA256
+`a35864bc6bcd584df39df1283cb909baaf64ced890edf9a819ac44a5a15cb7eb`;
+whole-FD capture and outer records are sealed 0400. The complete transaction proved unchanged
+inputs, no host-listener addition or pre-existing-process drift, and joined guest/container/
+Xvfb/QEMU/exporter cleanup. Exact `run.aJws9X2lbG` (`66306:105159805`) self-retired.
+Detailed host snapshots retired with scratch; only aggregate audit acceptance is retained.
+NO_AT_BRIDGE excludes AT-SPI routing. This closes the named real-GTK unit boundary, not the
+full engine link, actual FlView restart/disposal, shipped app/self-wait correction, complete
+consumer, Wayland-native behavior, product/LPE, Android/Windows causation or release matrix.
 First exact candidate `a55bc603`, tree `d86dea29da21ac786c451593f94fc769ab12c40c`,
 passed all original/candidate production-object compiles and strict fifteen-file patch apply,
 but the fixture compile refused a new GTK-window/local-array name collision. No candidate
@@ -2137,10 +2158,9 @@ additions/drift empty; exact stopped `run.rhRo6QXFpb` (`66306:105159802`) was re
 under the run-root lock, reclaiming 12,995,813,376 allocated bytes. Zero run/overlay remains.
 The fixture's GTK owner is renamed `toplevel`; assertions and production bytes are unchanged.
 
-Next execute this candidate's focused native profile, then finish the reviewed, source-bound
-dependency correction and cover every required
-component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
-consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept
+Next link the reviewed source-bound engine and execute actual FlView/AT-SPI/app lifetime and
+geometry, including Wayland and edge cases, then complete the uninstrumented consumer.
+Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept
 invalid extents. The successful resize case did not establish an image-ready build reset. Observe an actual
 production image-ready rebuild trigger before
 changing desktop dialog ownership and complete the required consumer lifecycles. The older
@@ -2276,8 +2296,8 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   disposition above; earlier failed runs were explicitly reconciled, most recently
   `run.rhRo6QXFpb` (identity `66306:105159802`), reclaiming 12,995,813,376 allocated bytes.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 626,192,384 allocated bytes (0.583 GiB). The successful
-  `18194742` generation-owner run joined and automatically removed its exact scratch root. The actual outer
+  small evidence records occupy 626,294,784 allocated bytes (0.583 GiB). The successful
+  `9f3f0df2` direct-GTK provider run joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

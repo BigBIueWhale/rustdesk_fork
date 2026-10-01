@@ -2400,20 +2400,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view.cc b/engine/src/flu
 diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc
 --- a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc
 +++ b/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc
-@@ -2,12 +2,6 @@
- // Use of this source code is governed by a BSD-style license that can be
- // found in the LICENSE file.
-
--// Workaround missing C code compatibility in ATK header.
--// Fixed in https://gitlab.gnome.org/GNOME/at-spi2-core/-/merge_requests/219
--extern "C" {
--#include <atk/atk.h>
--}
--
- #include "flutter/shell/platform/linux/fl_accessible_node.h"
- #include "flutter/shell/platform/linux/fl_accessible_text_field.h"
- #include "flutter/shell/platform/linux/fl_view_accessible.h"
-@@ -17,21 +11,33 @@
+@@ -17,21 +17,33 @@
  static constexpr int32_t kRootSemanticsNodeId = 0;
 
  struct _FlViewAccessible {
@@ -2449,7 +2436,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
  // Enum copied from ATK 2.50, as the version we are building against doesn't
  // have this.
  typedef enum {
-@@ -42,19 +48,22 @@
+@@ -42,19 +54,22 @@
 
  static FlAccessibleNode* create_node(FlViewAccessible* self,
                                       FlutterSemanticsNode2* semantics) {
@@ -2476,7 +2463,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
    return FL_ACCESSIBLE_NODE(
        g_hash_table_lookup(self->semantics_nodes_by_id, GINT_TO_POINTER(id)));
  }
-@@ -69,6 +78,10 @@
+@@ -69,6 +84,10 @@
    }
 
    node = create_node(self, semantics);
@@ -2487,7 +2474,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
    if (semantics->id == kRootSemanticsNodeId) {
      fl_accessible_node_set_parent(node, ATK_OBJECT(self), 0);
    }
-@@ -78,11 +91,11 @@
+@@ -78,11 +97,11 @@
 
    // Update when root node is created.
    if (!self->root_node_created && semantics->id == kRootSemanticsNodeId) {
@@ -2501,7 +2488,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
  }
 
  // Implements AtkObject::get_n_children
-@@ -117,62 +130,289 @@
+@@ -117,62 +136,289 @@
  // Implements AtkObject::ref_state_set
  static AtkStateSet* fl_view_accessible_ref_state_set(AtkObject* accessible) {
    FlViewAccessible* self = FL_VIEW_ACCESSIBLE(accessible);
@@ -2805,7 +2792,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
      fl_accessible_node_set_value(atk_node, node->value);
      fl_accessible_node_set_text_selection(atk_node, node->text_selection_base,
                                            node->text_selection_extent);
-@@ -180,13 +420,21 @@
+@@ -180,13 +426,21 @@
 
      FlValue* children = fl_value_new_int32_list(
          node->children_in_traversal_order, node->child_count);
@@ -2829,7 +2816,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 
          FlAccessibleNode* parent = FL_ACCESSIBLE_NODE(key);
 
-@@ -208,13 +456,17 @@
+@@ -208,13 +462,17 @@
 
          return TRUE;
        },

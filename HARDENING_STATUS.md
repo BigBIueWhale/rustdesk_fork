@@ -2193,7 +2193,21 @@ GN's primary desc-builder/command sources establish that copy-output distinction
 driver now reads its structured JSON, independently checks the single target and exact
 template, and validates all 26 resolved outputs; no filename or cardinality criterion is
 relaxed. Exact stopped scratch was identity-bound reconciled after evidence/absence proof.
-Full build/publication, shared integration and consumer results are PENDING. Linking alone cannot
+Exact `62dd0ce3` accepted the structured original GN description and attempted all 4,436
+full-build steps, then failed the final GTK shared-library LTO link: the patch had removed
+the original ATK C-linkage include block, while the pinned sysroot's version declarations
+still require it. The linker reported undefined C++ `atk_get_major_version()` and
+`atk_get_minor_version()` against the library's C exports. No artifact was published.
+Outer/capture were 1/0 in 721,390 host BOOTTIME ms; complete 218,664-byte serial is
+`evidence/engine-link-62dd0ce3.serial.log`, SHA256
+`9816b1f220e4f5b6013dd167528b7b7d889edea5170935f136596a8faaeb22f9`.
+Complete listener/exporter and owner-absence evidence is sealed; identical listener snapshots
+and absent owners/image handles/mounts/sockets preceded locked exact scratch reconciliation,
+reclaiming 13,415,931,904 allocated bytes. The patch now preserves that original block;
+the focused real-root fixture calls live and retired announcements, requiring one real
+live signal and no post-retirement signal so this path cannot disappear from its link.
+No link flags, dependencies, library versions, assertion or resource bounds are relaxed.
+Corrected full build/publication, shared integration and consumer results are PENDING. Linking alone cannot
 prove real FlView restart, AT-SPI geometry, app presentation, shipped SDK integration,
 Wayland behavior, reproducibility equality or Android/Windows causation; these remain OPEN.
 Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

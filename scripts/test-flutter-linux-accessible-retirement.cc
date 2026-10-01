@@ -264,8 +264,22 @@ static void test_root(FlEngine* engine) {
   g_signal_handler_disconnect(accessible, handler);
   update_tree(accessible, "healthy root");
   g_assert_cmpint(atk_object_get_n_accessible_children(ATK_OBJECT(accessible)), ==, 1);
+  // Keep the real ATK version-query/announcement path in this focused link.
+  guint announcements = 0;
+  const gulong announcement_handler = g_signal_connect(
+      accessible, "announcement",
+      G_CALLBACK(+[](AtkObject*, const gchar* message, guint* count) {
+        g_assert_cmpstr(message, ==, "healthy announcement");
+        (*count)++;
+      }), &announcements);
+  g_assert_cmpuint(announcement_handler, !=, 0);
+  fl_view_accessible_send_announcement(accessible, "healthy announcement", FALSE);
+  g_assert_cmpuint(announcements, ==, 1);
   fl_view_accessible_retire(accessible);
   fl_view_accessible_retire(accessible);
+  fl_view_accessible_send_announcement(accessible, "late announcement", FALSE);
+  g_assert_cmpuint(announcements, ==, 1);
+  g_signal_handler_disconnect(accessible, announcement_handler);
   update_tree(accessible, "late root");
   g_assert_cmpint(atk_object_get_n_accessible_children(ATK_OBJECT(accessible)), ==, 0);
   g_assert_false(atk_action_do_action(ATK_ACTION(fresh_child), 0));

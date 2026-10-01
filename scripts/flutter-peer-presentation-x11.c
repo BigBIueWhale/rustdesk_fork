@@ -827,6 +827,50 @@ unavailable:
             phase, pid);
 }
 
+static void diagnose_shared_bus_extents(AtspiAccessible *control) {
+    AtspiObject *object = ATSPI_OBJECT(control);
+    DBusConnection *bus = atspi_get_a11y_bus();
+    DBusMessage *request = NULL, *reply = NULL;
+    DBusError error = DBUS_ERROR_INIT;
+    dbus_uint32_t coordinates = ATSPI_COORD_TYPE_SCREEN;
+    dbus_int32_t values[4] = {-1, -1, -1, -1};
+    uint64_t started = monotonic_millis();
+    const char *result = "target-unavailable";
+    const char *transport = "unavailable";
+    if (bus == NULL || object->app == NULL || object->app->bus == NULL ||
+        object->app->bus_name == NULL || object->path == NULL) goto out;
+    transport = object->app->bus == bus ? "shared" : "private";
+    request = dbus_message_new_method_call(object->app->bus_name, object->path,
+                                           "org.a11y.atspi.Component", "GetExtents");
+    result = "request-unavailable";
+    if (request == NULL || !dbus_message_append_args(request, DBUS_TYPE_UINT32, &coordinates,
+                                                    DBUS_TYPE_INVALID)) goto out;
+    reply = dbus_connection_send_with_reply_and_block(bus, request, 1000, &error);
+    result = "reply-unavailable";
+    if (reply == NULL) goto out;
+    result = "reply-shape";
+    if (dbus_message_get_type(reply) == DBUS_MESSAGE_TYPE_METHOD_RETURN &&
+        strcmp(dbus_message_get_signature(reply), "(iiii)") == 0) {
+        DBusMessageIter outer, fields;
+        if (!dbus_message_iter_init(reply, &outer)) goto out;
+        dbus_message_iter_recurse(&outer, &fields);
+        for (unsigned int index = 0U; index < 4U; ++index) {
+            dbus_message_iter_get_basic(&fields, &values[index]);
+            dbus_message_iter_next(&fields);
+        }
+        result = "rectangle";
+    }
+out:
+    fprintf(stderr, "FLUTTER_PEER_DIALOG_SHARED_BUS_DIAGNOSTIC result=%s primary_transport=%s "
+            "elapsed_ms=%llu x=%d y=%d width=%d height=%d", result, transport,
+            (unsigned long long)(monotonic_millis() - started), values[0], values[1],
+            values[2], values[3]);
+    print_sanitized_accessible_string("error", dbus_error_is_set(&error) ? error.message : NULL);
+    if (reply != NULL) dbus_message_unref(reply);
+    if (request != NULL) dbus_message_unref(request);
+    dbus_error_free(&error);
+}
+
 static int read_control_position(unsigned int pid, AtspiAccessible *control, int *x, int *y) {
     AtspiComponent *component = atspi_accessible_get_component_iface(control);
     AtspiRect *rect;
@@ -855,6 +899,7 @@ static int read_control_position(unsigned int pid, AtspiAccessible *control, int
                 error != NULL ? error->domain : 0U,
                 error != NULL ? error->code : 0);
         print_sanitized_accessible_string("error", error != NULL ? error->message : NULL);
+        diagnose_shared_bus_extents(control);
     }
     if (error != NULL) g_error_free(error);
     if (rect != NULL) g_boxed_free(ATSPI_TYPE_RECT, rect);

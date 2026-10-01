@@ -1695,7 +1695,19 @@ The next diagnostic retains a bounded, exact-process caption-parent chain (expli
 not proof of the provider's internal parent graph), detects proxy cycles without rebinding the caption,
 and records the viewer main thread's start identity, CPU ticks and kernel wait channel immediately
 around the unchanged extent call. Diagnostic refusal remains explicit; it cannot provide geometry or
-acceptance. Parent references are all released. Native execution and call-wait causation remain OPEN.
+acceptance. Parent references are all released. Exact `1ac29da5` compiled all three drivers twice
+byte-equal and replayed the unchanged app in 117,960 host BOOTTIME ms. The 13-node cache-eligible
+chain had no repeated proxy and ended at a missing parent. All original stable-caption checks passed;
+GetExtents timed out in 1,001 ms while the exact main-thread start identity and CPU ticks stayed
+unchanged and both wait samples were `do_sys_poll`. This weakens a main-thread CPU-spin explanation,
+not proof of request delivery or internal parent topology. Complete 214,630-byte serial and bounded
+diagnostics are retained at `evidence/dialog-wait-1ac29da5.*`. Listeners were identical, owned teardown
+joined, all 74 app files rehashed unchanged, and exact failed-root reconciliation reclaimed 2,967,314,432
+allocated bytes. No run/overlay remains. After a failed original call, the next diagnostic asks the same
+exact object for the same closed rectangle over the existing shared accessibility bus with the same
+one-second call bound; it never supplies acceptance geometry or changes the original failure result.
+This compares the two routes without treating an alternate-route result as a correctness fix. Native replay is pending;
+call-wait, product, platform and release causation remain OPEN.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

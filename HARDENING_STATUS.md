@@ -1478,252 +1478,90 @@ the pinned Linux-host Flutter engine/plugin dispatch, not actual Android hardwar
 current APK/device or Windows app behavior, the original display hang, sustained resources or LPE.
 **Desktop build-time overlay reset — OPEN.** Remote and ViewCamera still dismiss all dialogs and
 allocate a new owner in the image-ready build path behind a global three-second privacy timestamp.
-First-image completion already performs its own readiness dismissal. The real Linux peer controller
-now requires actual toolbar dialog activation, the same native accessibility object and changed
-dialog layout through three observed window resizes, explicit Escape retirement and an unchanged
-authenticated TCP connection. Exact `cc63e172` passed the focused zero-NIC transaction in 68 seconds:
-the actual controller compiled with warnings as errors and the shared actual-X11 pixel-oracle tests
-passed, with unchanged inputs/listeners, zero pre-existing-process drift and joined scratch retirement.
-This profile does not execute the GTK dialog case; only forwarded results remain from that focused run
-because separate raw-log retention failed. Exact `9f17ae10` then built the actual 78-file Linux bundle,
-authenticated through the real password prompt and observed initial changing pixels (first fresh 251 ms,
-maximum publication age 373 ms), but failed toolbar activation before opening the dialog or resizing.
-The target's visible toolbar menu items had empty accessibility names. Activation of “Keyboard Settings”
-failed, but that observation does not classify the exact query/action failure. This is a fixture-entry
-failure, not a reproduced overlay-reset defect or
-a complete peer/outer pass. Complete 355,677-byte raw serial and capture/listener records are retained
-at `evidence/dialog-resize-9f17ae10.*`; before/during/after listener inventories are byte-identical.
-Owned VM/capture/exporter processes exited, and the exact inactive failed disk was reconciled under
-the admission-directory lock. Product behavior is unchanged. Correct the native entry and observe an
-actual readiness/rebuild trigger before changing ownership; window geometry alone, copied build logic
-or selector failure cannot establish the production defect, original display-delay cause or an LPE.
+First-image completion already performs its own readiness dismissal. The Linux peer controller
+requires actual toolbar activation, the same native accessibility object and changed dialog layout
+through three observed window resizes, explicit Escape retirement and an unchanged authenticated
+TCP connection. Current native entry succeeds, but geometry blocks this scenario as recorded below.
+Compilation and pixel-oracle tests do not execute the GTK dialog case. Observe an actual production
+image-ready rebuild trigger before changing ownership: window resizing, copied build logic and
+earlier selector failures do not establish the production defect, original display-delay cause or LPE.
 
-**Linux Flutter build/replay separation — CAPSULE AND REAL PRODUCER NATIVE PASS; CONSUMER REPLAY OPEN.**
-`scripts/linux-flutter-artifact.py` seals the complete app `bundle/` and matching `smoke-readiness`
-independently of current test drivers. A closed manifest binds every file and directory, source commit/tree,
-builder config, recipe, toolchain versions, epoch selection and ten input roles; admission also requires an
-independently supplied manifest digest. Private descriptor-bound, mount-closed, single-link, ACL-free inputs
-are bounded and re-proved. Publication is locked and no-clobber; retained pending/output state refuses a
-second preparation. Cached bytes stay non-executable mode 0400, and only authenticated zero-NIC VM
-materialization creates an owner-only execution copy. The focused `--linux-flutter-artifact-tests` profile
-requires clean pushed source, committed-byte admission, root/foreign refusal, real filesystem/ELF cases,
-read-only source, listener invariance and joined scratch/VM cleanup. Exact pushed `abd5853d`, tree
-`d215b1486f1f139ac867910ac6ab2980c9624e20`, passed all 20 real filesystem/CLI/ELF cases in the complete
-24-second transaction. Both test entry and the actual materializer CLI refused root and UID/GID 4001
-at VM entry before file access, leaving scratch and Docker inventories unchanged. Test cases themselves
-took 10.045 seconds. Inputs and before/during/after host listeners were unchanged, pre-existing-process
-drift was zero, all owners joined and the successful run self-retired. Complete raw serial is
-`evidence/linux-flutter-artifact-abd5853d.serial.log` (67,895 bytes, SHA-256
-`8573e544de785fa6ee547aea048ad5e1f8e1e98493f68e14eeb9ddceb61f67a9`). The affected shared X11
-profile at `dae88087` passed in 73 seconds, including actual controller compilation and stale/fresh/
-geometry cases, unchanged inputs/listeners, zero process drift and joined retirement; its complete raw
-70,324-byte serial is `evidence/x11-capsule-integration-dae88087.serial.log`, SHA-256
-`fc11586dac912e67a89bb0e62b763cdde1673639047f93f538c86726b40c88cf`. The normal authority smoke
-hit its unchanged 90-second deadline during later Windows-helper checks: no complete integration pass.
-Its complete 65,429-byte serial and before/during listener records are retained outside the exact
-reconciled inactive failed disk. This fixture uses a guest-system ELF, not RustDesk. Consumer integration
-and measured faster replay remain OPEN, as do the dialog-entry failure,
-Android/Windows defect, installed/native matrix and release obligations. No product behavior is changed.
-The explicit `--linux-flutter-app-build` producer now selects the real offline app/readiness compilation
-without display-fixture compilation or peer execution. It requires clean pushed source and the pinned
-Flutter 3.47.5 closure, passes the canonical epoch into the compiler, independently compares build context
-in the guest, and prepares only inert app bytes. Joined outer publication re-admits the exact context and
-manifest without clobbering. Any retained app-state entry refuses another producer under the run-reservation
-lock before VM allocation; ambiguous nonempty pending state is preserved. The focused capsule profile also
-executes the real run-admission tests, including app directory/file/dangling-symlink refusals. Exact pushed
-`ddc58d87` passed that complete 22-second focused transaction: all 20 capsule cases, forbidden-principal
-refusals and the 16-caller/one-winner admission test. Complete 69,018-byte raw serial is retained at
-`evidence/linux-app-admission-ddc58d87.serial.log`, SHA-256
-`ea3f495f23eab4a51107f691fd4ca0a326e9d63e84e32dc217070dea8aec0fba`.
-After an initial pre-boot failure from an overlong virtiofs tag, exact corrected pushed producer
-`5d1e331615ec8193657d5b2a5624783a4b13ceac`, tree `f56dc57c9c74bdfb5bcba6870c88b040009de8a7`,
-passed actual app/readiness compilation, preparation and joined inert publication in 1,157 seconds.
-The manifest SHA-256 `ed9d7a54a377d923a125ac275ddb7feb954ecddd110b783668afe3445ac72a48` binds
-74 product/readiness files, the selected builder/toolchains, canonical epoch and ten input roles.
-The sole sealed capsule occupies 58,503,168 allocated bytes (~55.8 MiB); files remain mode 0400 and
-directories mode 0500. Complete 277,603-byte raw serial is retained at
-`evidence/linux-app-build-5d1e3316.serial.log`, SHA-256
-`dec20ab207e62e77a0520ab582dcf3ec0d45280c6c763d24a47621e620748c3f`.
-Both complete transactions had unchanged inputs and before/during/after host listeners, zero
-pre-existing-process drift, joined owners and automatic successful-run retirement. Actual duplicate
-verifier admission refused while the build was live; duplicate producer requests refused both during
-the build and after publication, with run/artifact inventories unchanged and no new VM allocation.
-No run or overlay remains. This closes the real producer boundary, not execution of these app bytes,
-consumer integration, measured faster replay, product-delay causation, installed-service/LPE or release
-evidence. These remaining claims stay OPEN; no product behavior or acceptance bound changed.
+**Linux Flutter build/replay separation — CAPSULE/PRODUCER NATIVE PASS; DIALOG/COMPLETE CONSUMER OPEN.**
 
-The canonical consumer is now `--linux-flutter-app-replay --app-commit COMMIT
---app-manifest-sha256 SHA256`. The old coupled-build peer entries are removed. The outer authority
-derives the app tree and original build-recipe digest independently from the selected pushed commit;
-the current harness commit/tree remain distinct. Its retained inert capsule is exported read-only,
-Landlocked and guest-mounted noexec. Only the VM-gated materializer creates an execution copy.
-Replay loads no app-builder image and invokes no Rust/Flutter app build: three current native drivers
-are compiled twice in the confined guest devcheck container and must match byte-for-byte. Server/viewer
-containers mount app and drivers separately read-only and recheck complete execution checksums. Existing
-six-lifecycle pixel, dialog, focus, reconnect, resource and joined-cleanup criteria are unchanged.
-Ordinary viewer assertion failure may retain zero cores; capture records the actual core count rather
-than requiring a crash or calling a nonexistent core a kernel artifact.
-Exact pushed harness `c3f170119188a2cffb81c8abca168c984a7c395e`, tree
-`6425f991d0f9eebf1fcf47f5fa2454dfe3e64ad5`, passed the complete focused capsule/admission transaction
-in 23 seconds: all 20 real cases in 9.322 seconds, root/foreign materializer refusal, the real 16-caller/
-one-winner run test, unchanged inputs/listeners, zero process drift and joined automatic retirement.
-Complete 67,883-byte raw serial is `evidence/linux-app-consumer-admission-c3f17011.serial.log`, SHA-256
-`f309c26d4de51d362a9607b12dc802f781eb0c3796d792790fff0a8e9183cc9e`.
-The real consumer then admitted and executed the retained `5d1e3316` app with manifest
-`ed9d7a54a377d923a125ac275ddb7feb954ecddd110b783668afe3445ac72a48`, without rebuilding.
-The two native driver compilations matched and completed in approximately 1.9 guest seconds.
-Actual password authentication and initial changing pixels passed: first-fresh 101 ms, maximum
-publication-bound age 342 ms, four distinct states on the synthetic 640x480/4-Hz source. The next
-toolbar activation failed before opening the dialog or testing resize/focus/reconnect; visible menu
-items again had empty names. Exact query-failure classification remains required, not a speculative
-product change. Failure capture retained 56,004,140 bytes with actual core count zero. The guest
-reported status 1 and reached terminal poweroff at 107.2 guest seconds; no complete peer/outer pass
-or total-wall-time speed claim is made. Complete 220,771-byte raw serial is
-`evidence/linux-app-replay-c3f17011.serial.log`, SHA-256
-`24b34ad80c7db33fd87e02603a01fd7c80d00864e4d12093c1d8b0033821d97d`; viewer identity/log/checksums
-and capture/listener records are retained separately. Before/during/after listeners are byte-identical,
-new-listener and external-drift records empty, and all owned orchestration is terminal. An actual
-duplicate replay refused before allocation with the sole run identity unchanged. All 74 retained app
-files were independently rehashed against the manifest afterward and remain inert and unchanged.
-After bounded evidence retention, the exact inactive failed root was reconciled under the admission
-lock, recovering 2,967,588,864 allocated bytes; no run/overlay remains. This proves real partial
-consumer execution and ordinary-failure capture, not the remaining six-cycle acceptance, dialog
-ownership defect, original Android/Windows causation, installed-service/LPE or release obligations.
-The controller now classifies bounded-tree/peer/property query refusal, records activation attempts
-and actual monotonic elapsed time, and includes showing state and menu-item description/action-count
-diagnostics in the failure-only native tree. Viewer output is forwarded after its container exits;
-adjacent guest serial timestamps are not event-time evidence for an immediate query refusal.
-The selector, five-second query budget, exact process/unique-name/action authority and all acceptance
-criteria remain unchanged. The same immutable app replay at pushed harness `6b45f98a` reported
-`Keyboard Settings` not found after 42 attempts and 5,023 monotonic milliseconds, without a query
-or action refusal. The exact role/property cause remains open; the menu-item-specific diagnostic
-did not cover the observed role-27 nodes, so absent descriptions/action counts are not a product
-finding. Complete 221,475-byte serial is `evidence/toolbar-query-6b45f98a.serial.log`, SHA-256
-`84aa233d1d07031494c272d2ea588d157a1607f3740a59e24a8fddb9947f2116`; small viewer/capture/listener
-records are retained separately. After an actual duplicate invocation refused with the sole run
-identity unchanged, user-authorized locked cleanup of inactive `run.E4dYGvTAD7` recovered
-2,969,096,192 allocated bytes. All 74 retained app files were independently rehashed unchanged.
-The role-27 nodes are images, not menu items. Failure diagnostics now collect bounded descriptions
-and action-interface/count properties from every exact-process node, rather than guessing which
-role carries the toolbar label. The native header's image/menu/menu-item constants are recorded;
-the failure tree has a five-second elapsed-clock budget. Exact pushed `9e2af2e5` replayed the unchanged
-app in 118,340 host BOOTTIME milliseconds without an app rebuild; the three drivers compiled twice
-byte-equal. Native header values were image=27/menu=33/menu-item=35. All 53 observed descriptions were
-empty; the seven enabled toolbar images had empty names and two actions each. Activation remained
-not-found after 42 attempts/5,004 ms. This rules out name-versus-description selection alone and exposes
-the controller's separate unsupported `actions == 1` assumption; actual action-name selection and usable
-label export still need correction. First-fresh pixels measured 241 ms with maximum sampled age 291 ms,
-but no dialog/resize/focus/reconnect or complete peer pass occurred. Complete 231,439-byte serial is
-`evidence/toolbar-properties-9e2af2e5.serial.log`, SHA-256
-`e89c62bdca0a823554821aa8c2a4cf0626474d64b50f9baf014758a4aba34999`; bounded viewer/capture/listener
-records are separate. Listener inventories were identical, owned orchestration joined, all 74 cached
-app files rehashed unchanged, and exact locked failed-root cleanup recovered 2,967,957,504 allocated
-bytes. No run/overlay remains. The pinned Linux engine's `fl_view_accessible_handle_update_semantics`
-exports `node->label` as the accessible name, while its native action mapping names activation `Tap`
-and separately exports `Focus`. Tooltip-only titles and the decorative SVG's empty image label therefore
-do not provide the required control name. Both toolbar icon-button helpers now supply one localized
-semantic label, exclude decorative child semantics only when that label is nonempty, and suppress
-duplicate tooltip semantics; empty-title monitor controls retain their visible text. The controller
-resolves exactly one `Tap` in a bounded native action list and rechecks its count/name before invocation,
-rather than requiring one total action or assuming index zero. Exact PID, unique visible control,
-query deadline, dialog identity, connection, pixel and resource criteria are unchanged. Fresh native
-execution of a separately source-bound corrected app remains required; the retained older app is not
-relabelled as corrected. This entry correction is not display-hang, overlay-reset or LPE causation.
-Native product/platform/installed/release work stays OPEN.
+`scripts/linux-flutter-artifact.py` seals the complete app bundle and matching readiness helper
+independently of current test drivers. The closed manifest binds every file/directory, source
+commit/tree, builder configuration, original recipe, toolchains, epoch and ten input roles.
+Admission requires an independently supplied manifest digest and descriptor-bound, mount-closed,
+single-link, ACL-free, bounded inputs. Publication is locked and no-clobber; retained pending/output
+state refuses a second producer under the run-admission lock. Cached files are inert mode 0400,
+directories mode 0500; only the authenticated zero-NIC VM materializer creates execution copies.
+The focused capsule profile executed 20 real filesystem/CLI/ELF cases plus root/foreign refusal;
+`c3f17011` passed its complete 23-second capsule/admission transaction, including the real
+16-caller/one-winner run test. Fixture ELF execution establishes capsule authority, not RustDesk
+behavior. Raw evidence is `evidence/linux-app-consumer-admission-c3f17011.serial.log`.
 
-Corrected app source `a4a6b2d0`, tree `eb842fa98c8cfac05169c18b29d09f15091c858b`, passed
-the separate real producer and joined inert publication in 1,150,890 host BOOTTIME ms. Its 74-file
-manifest is `ef3f592d2229e3abf71136f51b5a4fddf0c017c663817f70a8399be5f1e1f08c`;
-complete raw producer serial is `evidence/toolbar-contract-app-a4a6b2d0.serial.log`.
-Replaying those exact bytes without rebuilding took 115,210 ms and failed before action invocation:
-43 attempts/5,035 ms did not find the driver's `Keyboard Settings`. The complete native tree now
-exports seven enabled named toolbar controls, including `Keyboard settings`, each with two actions.
-`src/lang/en.rs` maps the original translation key to that lowercase displayed label. The controller
-now requests this exact English display string; no case-folding, key alias, coordinate fallback or
-query-bound change is added. Complete 230,288-byte raw serial and small viewer/capture/listener records
-are retained at `evidence/toolbar-contract-corrected-a4a6b2d0.*`. Both transactions had unchanged host
-listeners and joined owned teardown. The exact inactive failed disk was reconciled under the admission
-lock, recovering 2,969,014,272 allocated bytes. Action execution, dialog/rebuild behavior and complete
-consumer acceptance still require fresh native replay; no app or overlay-ownership change is inferred
-from this selector mismatch, and the wider OPEN matrix is unchanged.
-Exact harness `f781784d` then replayed the same app in 117,930 host BOOTTIME ms without rebuilding.
-Both real controls exposed `Tap` and `Focus`; the unique Tap activated `Keyboard settings` in 69 ms
-and `Trackpad speed` in 28 ms. The run nevertheless failed at `actual dialog did not become stable`,
-before any resize, focus or reconnect scenario. This proves named native action invocation only:
-the existing diagnostic did not distinguish caption absence, identity instability or extent failure,
-and its subsequent native tree scan was unavailable. Focused diagnostics now report caption sampling,
-failed component/extents and initial desktop-query refusal without changing any acceptance bound.
-Complete 206,975-byte serial and bounded viewer/capture/listener records are retained at
-`evidence/keyboard-label-f781784d.*`. Host listener inventories were identical, owned teardown joined,
-and exact locked failed-root reconciliation recovered 2,969,096,192 allocated bytes. The platform,
-dialog/rebuild, original-hang, installed-service/LPE and release claims remain OPEN.
-Native diagnostic replay at `e7377076` completed with failure in 114,990 host BOOTTIME ms.
-Its first caption match appeared after 128 ms, then the strict identity check observed replacement;
-the failure tree contained the actual noninteractive title beneath the visible `Alert` scope.
-The unscoped lookup can select the departing menu item with the same text. `CustomAlertDialog` uses
-the real `AlertDialog`; pinned Flutter 3.47.5 explicitly gives its Linux route the localized alert label
-and separate child nodes. Caption lookup now requires that unique visible native `Alert` ancestry,
-refuses duplicate scopes, and still requires one caption, the exact PID and retained identity through
-all subsequent observations. It does not restart identity tracking after binding or accept menu text
-as a dialog. Complete 193,598-byte serial is `evidence/dialog-entry-e7377076.serial.log`; small
-diagnostics are separately retained. Listeners were unchanged, owned teardown joined, and locked
-inactive-root cleanup recovered 2,967,736,320 allocated bytes. No product ownership change or
-original-hang causation is inferred from this transition.
-Exact scoped harness `d0105c2d` replayed the same app without rebuilding in 121,550 host BOOTTIME ms.
-Caption selection found the actual `Alert`-scoped title after two samples/280 ms, and all five strict
-identity observations passed. Its next native extent call returned a rectangle with width/height -1
-and error code 1; no resize, focus or reconnect ran. This proves scoped entry and stable identity,
-not native geometry, dialog/rebuild behavior or a complete consumer pass. The error's code alone
-does not establish a crash, unsupported method or timeout. Failure diagnostics now include the bounded,
-sanitized error message and distinguish geometry unavailability from identity instability; all
-acceptance conditions remain unchanged. Complete 200,750-byte raw serial is retained at
-`evidence/dialog-scope-d0105c2d.serial.log` with separate bounded viewer/capture/listener records.
-Host listener inventories were identical, drift records empty and owned teardown joined. Exact
-locked inactive-root reconciliation recovered 2,967,601,152 allocated bytes; no run/overlay remains.
-Native extent classification and broader product/platform/installed/LPE/release claims remain OPEN.
-Exact diagnostic harness `1cd862bb` repeated scoped caption selection and all five identity checks
-without rebuilding the app, then classified the same native extent failure as `timeout from dbind`.
-The 114,950-ms transaction is not a geometry/resize, complete peer or product-causation pass.
-Complete 202,267-byte serial and bounded diagnostics are retained at `evidence/dialog-extents-1cd862bb.*`.
-Inputs stayed source-bound, host listeners were identical, drift records empty and all owners joined;
-locked inactive-root cleanup reclaimed 2,967,867,392 allocated bytes. All 74 inert app files rehashed
-unchanged after both replays. Zero run/overlay remains. Trace the actual native geometry-call wait
-before changing the observer or product; a larger timeout, guessed coordinates or invalid extent
-acceptance would not establish correctness. The original Android/Windows defect remains OPEN.
+The current retained app is source `a4a6b2d0f381118e8d018c3e7fb0b3e1f02f8e0c`, tree
+`eb842fa98c8cfac05169c18b29d09f15091c858b`. Its separate producer completed compilation and
+joined inert publication in 1,150,890 host BOOTTIME ms. The 74-file app/readiness manifest SHA-256 is
+`ef3f592d2229e3abf71136f51b5a4fddf0c017c663817f70a8399be5f1e1f08c`; original recipe SHA-256 is
+`e7623169128c5d4e5960dc19e46db7a6b0dc6b779fb0fbe68fe1516809e769b4`.
+The capsule occupies 58,503,168 allocated bytes. Producer raw evidence is
+`evidence/toolbar-contract-app-a4a6b2d0.serial.log`. The older `5d1e3316` app is preserved
+separately as a negative baseline, not relabelled or substituted for the corrected artifact.
 
-The next diagnostic retains a bounded, exact-process caption-parent chain (explicitly cache-eligible,
-not proof of the provider's internal parent graph), detects proxy cycles without rebinding the caption,
-and records the viewer main thread's start identity, CPU ticks and kernel wait channel immediately
-around the unchanged extent call. Diagnostic refusal remains explicit; it cannot provide geometry or
-acceptance. Parent references are all released. Exact `1ac29da5` compiled all three drivers twice
-byte-equal and replayed the unchanged app in 117,960 host BOOTTIME ms. The 13-node cache-eligible
-chain had no repeated proxy and ended at a missing parent. All original stable-caption checks passed;
-GetExtents timed out in 1,001 ms while the exact main-thread start identity and CPU ticks stayed
-unchanged and both wait samples were `do_sys_poll`. This weakens a main-thread CPU-spin explanation,
-not proof of request delivery or internal parent topology. Complete 214,630-byte serial and bounded
-diagnostics are retained at `evidence/dialog-wait-1ac29da5.*`. Listeners were identical, owned teardown
-joined, all 74 app files rehashed unchanged, and exact failed-root reconciliation reclaimed 2,967,314,432
-allocated bytes. No run/overlay remains. After a failed original call, the next diagnostic asks the same
-exact object for the same closed rectangle over the existing shared accessibility bus with the same
-one-second call bound; it never supplies acceptance geometry or changes the original failure result.
-Exact `71094e26` replayed those app bytes without rebuilding in 118,150 host BOOTTIME ms. All three
-drivers compiled twice byte-equal; real password input, four changing pixels, both Tap actions and
-the five same-caption observations passed. The private call timed out in 1,001 ms and the same
-shared-bus request received no reply in 1,002 ms. Main-thread CPU ticks remained unchanged with
-`do_sys_poll` at both samples. A simple private-route-only failure is not supported. Complete
-211,353-byte serial and bounded records are retained at `evidence/dialog-shared-71094e26.*`;
-listeners were identical, owners joined, all 74 app files rehashed unchanged and exact inactive-root
-cleanup reclaimed 2,967,773,184 allocated bytes. Zero run/overlay remains.
-The geometry hook is installed by GNOME's socket adaptor `Embedded` handler, not the bridge hook
-initializer. It synchronously asks the embedding socket for GetExtents over the shared bus; Flutter
-creates its plug/socket embedding in-process. A self-directed blocking wait is therefore a specific
-candidate, not established causation. The completed alternate-route diagnostic is removed. Its
-replacement observes only self-directed GetExtents headers for the exact selected application bus
-name, through one acknowledged match and filter on the existing shared connection. It reads no
-message body, opens no connection/process/thread, returns no geometry, and keeps the original query
-and failure predicate. Dispatch/output are bounded, match removal is acknowledged and the filter is
-removed before its stack owner retires; uncertain cleanup cannot pass. Native execution is pending.
-Call-wait, actual rebuild/dialog behavior, Android/Windows, platform/LPE and release claims remain OPEN.
+The sole consumer is `--linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256`.
+It independently derives the app tree/recipe from that pushed commit, keeping current harness
+identity distinct. The retained capsule is exported read-only, Landlocked and guest-mounted noexec.
+Replay loads no app-builder image and performs no Rust/Flutter app build. Three current native
+drivers compile twice byte-equal in the confined guest devcheck container; execution mounts app and
+drivers separately read-only and rechecks complete checksums. Actual password input, publication-bound
+pixels, dialog identity/layout, unchanged TCP identity, focus, reconnect, sampled resources and
+joined cleanup remain required. No selector, geometry, timeout or connection fallback is supported.
+
+Toolbar controls now export localized semantic labels rather than decorative empty image names.
+The controller selects and rechecks exactly one named `Tap` from the bounded action list; it does
+not assume the sole action/index zero. It uses the actual English label `Keyboard settings`, and
+binds the unique visible `Trackpad speed` caption only within the exact-process `Alert` scope,
+excluding the departing menu item. These native entry corrections are executed; they do not
+establish an overlay-ownership fix or the original display-hang cause.
+
+**Current native blocker:** exact harness `20ba622b` replayed those app bytes without rebuilding
+in 115,390 host BOOTTIME ms and exited 1. Both real Tap actions, actual password authentication,
+four changing pixel states (first fresh 59 ms, maximum accepted publication age 422 ms), scoped
+caption and all five stable-identity observations passed. Its original SCREEN GetExtents call
+timed out in 1,001 ms with width/height -1. The exact viewer main thread retained its start identity
+and unchanged CPU ticks, with `do_sys_poll` before/after. The existing-bus header-only match observed
+one GetExtents request whose sender and destination were the same selected app unique name.
+Setup/removal were acknowledged and the filter removed before owner retirement. The header was
+dispatched during the post-call drain: its callback time is not proof of the exact send time or
+provider stack. Earlier `71094e26` requests failed on both private and shared routes, so a simple
+private-route-only explanation is not supported. No resize/focus/reconnect, complete consumer,
+product-delay causation or LPE result follows.
+
+GNOME's socket adaptor `Embedded` handler installs a plug geometry getter that synchronously asks
+the embedding socket for GetExtents. Flutter's Linux plug/socket embedding is in-process, and the
+blocking D-Bus API does not dispatch unrelated incoming handlers. Together with the native self-call,
+this is a specific non-reentrant self-wait candidate, not completed causal/A/B proof.
+Primary sources: [GNOME socket adaptor](https://raw.githubusercontent.com/GNOME/at-spi2-core/AT_SPI2_CORE_2_46_0/atk-adaptor/adaptors/socket-adaptor.c),
+[Flutter socket embedding](https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/engine/src/flutter/shell/platform/linux/fl_socket_accessible.cc),
+[D-Bus blocking-call contract](https://dbus.freedesktop.org/doc/api/html/group__DBusConnection.html).
+
+Complete latest raw serial is `evidence/dialog-self-20ba622b.serial.log` (212,114 bytes, SHA-256
+`029165b118a4f2f18d14b63b6c0e2e4a6fe5e2ff774a4e319d961a5bf6fbb64f`); bounded viewer, capture
+and listener records share that prefix. Capture passed; before/during/after listeners were
+byte-identical, addition/drift records empty and owned VM/exporter/capture processes joined.
+All 74 inert app files independently rehashed unchanged. After bounded retention, exact locked
+inactive-root cleanup reclaimed 2,967,248,896 allocated bytes; no run/overlay remains.
+Superseded selector, proxy and transport diagnostics remain in Git history, retained raw evidence
+and the external audit, not as a live replay diary.
+
+Next establish the native geometry-provider failure or replace the measurement with an equally
+authoritative target-native layout observation; do not increase timeouts, guess coordinates or
+accept invalid extents. Then observe an actual production image-ready rebuild trigger before
+changing desktop dialog ownership and complete the required consumer lifecycles. The older
+named Linux peer passes remain limited to their exact source/scenarios. Original Android/Windows
+causation, sustained resources, current installed-service/LPE, native platform, reproducibility,
+release and documentation obligations remain OPEN.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was
@@ -1848,11 +1686,10 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   cases with exactly one admission and no leaked admission descriptor. The complete authority transaction
   passed in 71 seconds with no added host listener or process drift and joined, residue-free cleanup;
   a concurrent outer invocation also refused without creating another root. User-authorized removal of
-  the 119 accumulated run roots recovered approximately 975 GiB; only reusable inputs and a bounded
-  interrupted-run log remain. On 2026-10-01, the only newer inactive failed run was explicitly removed
-  under the same admission lock after retaining bounded diagnostics, reclaiming another 2,969,096,192
-  allocated bytes. There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier
-  inputs and small evidence records occupy 613,711,872 allocated bytes (0.572 GiB). The actual outer
+  the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
+  diagnostics are retained. Latest joined cleanup is recorded in the app-replay disposition above.
+  There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
+  small evidence records occupy 616,824,832 allocated bytes (0.574 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

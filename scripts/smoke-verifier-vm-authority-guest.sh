@@ -347,12 +347,23 @@ prepare_authority_probe_image() {
 }
 
 run_linux_flutter_engine_prepare() {
-    local role mountpoint options load_output inspect output=$ROOT/engine-prepare.out
+    local role mountpoint options load_output inspect principal refusal output=$ROOT/engine-prepare.out
     local helper=$VERIFY_REPO/scripts/prepare-flutter-linux-engine.py
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
     local work=$ROOT/engine-prepare-work helper_before status=0
     helper_before="$(sha256sum "$helper")"
     [ -f "$helper" ] && [ ! -L "$helper" ] || fail 'engine preparation source is absent'
+    for principal in 0:0 4001:4001; do
+        status=0
+        setpriv --reuid="${principal%:*}" --regid="${principal#*:}" --clear-groups \
+            /usr/bin/python3 -I -S "$helper" >"$ROOT/engine-principal-refusal" 2>&1 || status=$?
+        refusal="$(<"$ROOT/engine-principal-refusal")"
+        [ "$status" -eq 1 ] \
+            && [ "$refusal" = 'engine preparation: engine preparation requires UID/GID 1000' ] \
+            && [ ! -e "$work" ] \
+            || fail "engine preparation principal refusal differs: $principal status=$status $refusal"
+    done
+    printf 'ENGINE_PREPARE_PRINCIPALS=pass root=refused foreign=refused work=absent\n'
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$archive")" = "1000:1000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
         && [ "$(sha256sum "$archive" | awk '{print $1}')" = "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" ] \
         || fail 'engine preparation image archive differs'
@@ -414,7 +425,7 @@ run_linux_flutter_engine_prepare() {
     [ "$inspect" = 'false||private||private|[]|{}' ] \
         || fail 'engine preparation namespace/device/port envelope differs'
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
-        '{{range .Mounts}}{{.Type}}|{{.Source}}|{{.Destination}}|{{.RW}}{{println}}{{end}}' "$CONTAINER_ID" \
+        '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" \
         | LC_ALL=C sort)"
     [ "$inspect" = "$(printf '%s\n' \
         "bind|$helper|/authority/prepare.py|false" \
@@ -424,6 +435,7 @@ run_linux_flutter_engine_prepare() {
         'bind|/mnt/rustdesk-engine-git-metadata|/inputs/git-metadata|false' \
         'bind|/mnt/rustdesk-engine-sysroots|/inputs/sysroots|false' | LC_ALL=C sort)" ] \
         || fail "engine preparation mount envelope differs: $inspect"
+    status=0
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" >"$output" 2>&1 || status=$?
     cat "$output"
     [ "$status" -eq 0 ] || fail "engine preparation exited $status"

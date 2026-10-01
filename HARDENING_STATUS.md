@@ -1891,7 +1891,15 @@ pinned candidates through separate read-only Landlocked exports into a zero-NIC 
 a networkless UID/GID-1000 devcheck container. It materializes bounded source/sysroot
 archives without traversing links during writes, restores the three original Git indexes
 and version identities, and runs all six unchanged hooks with a fresh private Pub cache.
-Native execution is still pending; this source path is not complete engine-build closure.
+The first native run at `ce79a21f` verified VM/image/input authority and the actual six
+mounts, then refused before helper execution because the inspection template added a
+blank line. Its 68,091-byte full serial is `evidence/engine-prepare-ce79a21f.serial.log`
+(SHA256 `1ce50511f17fe2b765d4fddebb88a441b35112e5eedede582b44bb0e93d4805a`).
+Outer/capture status was 1/0 in 36,200 host BOOTTIME ms; listeners were byte-identical,
+owned processes joined and exact stopped scratch was retired under the admission lock.
+The template now emits separators only between mounts; the six exact bindings remain
+required. Original extraction/hooks still require native execution, and this is not
+complete engine-build closure.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

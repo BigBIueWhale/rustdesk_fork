@@ -3430,6 +3430,7 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
 elif [ "$MODE" = linux-flutter-engine-prepare ]; then
     engine_prepare_receipt='FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 indexes=original pub=path-only network=none engine_build=unexecuted'
     engine_prepare_vm_receipt="FLUTTER_ENGINE_PREPARE_VM=pass commit=$FOCUSED_TEST_COMMIT tree=$FOCUSED_TEST_TREE helper_sha256=$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" | /usr/bin/awk '{print $1}') runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined"
+    require_exact_fixed_receipt 'ENGINE_PREPARE_PRINCIPALS=pass root=refused foreign=refused work=absent' 'engine preparation principal refusals'
     require_exact_fixed_receipt 'ENGINE_PREPARE_EXTRACTION_TEST=pass cases=10 links=preserved unsafe=refused cleanup=joined' 'native engine extraction cases'
     require_exact_fixed_receipt "$engine_prepare_receipt" 'original engine setup hooks'
     require_exact_fixed_receipt "$engine_prepare_vm_receipt" 'engine preparation source/finality'

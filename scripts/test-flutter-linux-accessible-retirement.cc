@@ -20,6 +20,7 @@ struct _FlEngine {
   gchar* last_text;
   gint selection_base;
   gint selection_extent;
+  FlutterSemanticsAction last_action;
   FlAccessibleNode* retire_on_dispatch;
   gboolean dispose_on_dispatch;
 };
@@ -725,14 +726,15 @@ static void test_byte_bounded_insertion(FlSemanticsGeneration* generation,
     gint bytes;
     const gchar* expected;
     gint characters;
+    gint utf16_units;
   } cases[] = {
-      {"xyTAIL", 2, "axyb", 2},
-      {"\xc3\xa9TAIL", 2, "a\xc3\xa9" "b", 1},
-      {"\xe7\x95\x8cTAIL", 3, "a\xe7\x95\x8c" "b", 1},
-      {"\xf0\x9f\x99\x82TAIL", 4, "a\xf0\x9f\x99\x82" "b", 1},
-      {"e\xcc\x81TAIL", 3, "ae\xcc\x81" "b", 2},
-      {"\xc3\xa9\xe7\x95\x8cTAIL", 5, "a\xc3\xa9\xe7\x95\x8c" "b", 2},
-      {"\xc3\xa9", -1, "a\xc3\xa9" "b", 1},
+      {"xyTAIL", 2, "axyb", 2, 2},
+      {"\xc3\xa9TAIL", 2, "a\xc3\xa9" "b", 1, 1},
+      {"\xe7\x95\x8cTAIL", 3, "a\xe7\x95\x8c" "b", 1, 1},
+      {"\xf0\x9f\x99\x82TAIL", 4, "a\xf0\x9f\x99\x82" "b", 1, 2},
+      {"e\xcc\x81TAIL", 3, "ae\xcc\x81" "b", 2, 2},
+      {"\xc3\xa9\xe7\x95\x8cTAIL", 5, "a\xc3\xa9\xe7\x95\x8c" "b", 2, 2},
+      {"\xc3\xa9", -1, "a\xc3\xa9" "b", 1, 1},
   };
   for (const auto& entry : cases) {
     g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(generation, 10);
@@ -746,6 +748,8 @@ static void test_byte_bounded_insertion(FlSemanticsGeneration* generation,
     g_assert_cmpstr(engine->last_text, ==, entry.expected);
     g_assert_cmpint(atk_text_get_character_count(ATK_TEXT(text)), ==, 2 + entry.characters);
     g_assert_cmpint(position, ==, 1 + entry.characters);
+    g_assert_cmpint(engine->selection_base, ==, 1 + entry.utf16_units);
+    g_assert_cmpint(engine->selection_extent, ==, 1 + entry.utf16_units);
     g_assert_cmpuint(engine->dispatches, ==, dispatches + 2);
   }
   const struct { const gchar* input; gint bytes; gint position; } refused[] = {
@@ -769,10 +773,127 @@ static void test_byte_bounded_insertion(FlSemanticsGeneration* generation,
   }
 }
 
+static void test_unicode_selection(FlSemanticsGeneration* generation,
+                                    FlEngine* engine) {
+  // Semantics uses Dart UTF-16 indices; ATK uses Unicode code-point offsets,
+  // not bytes or grapheme clusters. Exercise the real queries and codec boundary.
+  const struct {
+    const gchar* value;
+    gint flutter_base, flutter_extent, atk_base, atk_extent;
+    const gchar* selected;
+  } cases[] = {
+      {"a🙂b", 1, 3, 1, 2, "🙂"},
+      {"a🙂b", 3, 1, 2, 1, "🙂"},
+      {"é界", 0, 2, 0, 2, "é界"},
+      {"é🙂", 1, 4, 1, 3, "́🙂"},
+      {"🙂‍🙂", 0, 5, 0, 3, "🙂‍🙂"},
+      {"🇮🇱", 0, 4, 0, 2, "🇮🇱"},
+  };
+  for (const auto& entry : cases) {
+    g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(generation, 10);
+    fl_accessible_node_set_value(text, entry.value);
+    gint notified_caret = -1;
+    g_signal_connect(text, "text-caret-moved",
+                     G_CALLBACK(+[](AtkObject*, gint offset, gint* caret) {
+                       *caret = offset;
+                     }), &notified_caret);
+    fl_accessible_node_set_text_selection(text, entry.flutter_base, entry.flutter_extent);
+    gint start = -1, end = -1;
+    g_autofree gchar* selected = atk_text_get_selection(ATK_TEXT(text), 0, &start, &end);
+    std::printf("ENGINE_TEXT_SELECTION_OBSERVED flutter=%d,%d atk=%d,%d caret=%d selected=%s\n",
+                entry.flutter_base, entry.flutter_extent, start, end,
+                atk_text_get_caret_offset(ATK_TEXT(text)), selected ? selected : "(null)");
+    std::fflush(stdout);
+    g_assert_cmpstr(selected, ==, entry.selected);
+    g_assert_cmpint(start, ==, MIN(entry.atk_base, entry.atk_extent));
+    g_assert_cmpint(end, ==, MAX(entry.atk_base, entry.atk_extent));
+    g_assert_cmpint(atk_text_get_caret_offset(ATK_TEXT(text)), ==, entry.atk_extent);
+    g_assert_cmpint(notified_caret, ==, entry.atk_extent);
+    g_assert_cmpint(atk_text_get_n_selections(ATK_TEXT(text)), ==, 1);
+    guint dispatches = engine->dispatches;
+    g_assert_true(atk_text_remove_selection(ATK_TEXT(text), 0));
+    g_assert_cmpuint(engine->dispatches, ==, dispatches + 1);
+    g_assert_cmpint(engine->selection_base, ==, entry.flutter_extent);
+    g_assert_cmpint(engine->selection_extent, ==, entry.flutter_extent);
+    g_signal_handlers_disconnect_by_data(text, &notified_caret);
+  }
+  g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(generation, 10);
+  fl_accessible_node_set_value(text, "a🙂b");
+  const gint flutter_carets[] = {0, 1, 3, 4};
+  for (gint caret = 0; caret < 4; caret++) {
+    fl_accessible_node_set_text_selection(text, flutter_carets[caret], flutter_carets[caret]);
+    g_assert_cmpint(atk_text_get_caret_offset(ATK_TEXT(text)), ==, caret);
+    g_assert_cmpint(atk_text_get_n_selections(ATK_TEXT(text)), ==, 0);
+    const guint dispatches = engine->dispatches;
+    g_assert_true(atk_text_set_caret_offset(ATK_TEXT(text), caret));
+    g_assert_cmpuint(engine->dispatches, ==, dispatches + 1);
+    g_assert_cmpint(engine->selection_base, ==, flutter_carets[caret]);
+    g_assert_cmpint(engine->selection_extent, ==, flutter_carets[caret]);
+  }
+  g_assert_true(atk_text_add_selection(ATK_TEXT(text), 1, 2));
+  g_assert_cmpint(engine->selection_base, ==, 1);
+  g_assert_cmpint(engine->selection_extent, ==, 3);
+  g_assert_true(atk_text_set_selection(ATK_TEXT(text), 0, 2, 3));
+  g_assert_cmpint(engine->selection_base, ==, 3);
+  g_assert_cmpint(engine->selection_extent, ==, 4);
+  const FlutterSemanticsAction actions[] = {
+      kFlutterSemanticsActionCopy, kFlutterSemanticsActionCut, kFlutterSemanticsActionPaste};
+  for (const auto action : actions) {
+    const guint dispatches = engine->dispatches;
+    if (action == kFlutterSemanticsActionCopy) {
+      atk_editable_text_copy_text(ATK_EDITABLE_TEXT(text), 2, 3);
+    } else if (action == kFlutterSemanticsActionCut) {
+      atk_editable_text_cut_text(ATK_EDITABLE_TEXT(text), 2, 3);
+    } else {
+      atk_editable_text_paste_text(ATK_EDITABLE_TEXT(text), 2);
+    }
+    g_assert_cmpuint(engine->dispatches, ==, dispatches + 2);
+    g_assert_cmpint(engine->last_action, ==, action);
+    g_assert_cmpint(engine->selection_base, ==, 3);
+    g_assert_cmpint(engine->selection_extent, ==, action == kFlutterSemanticsActionPaste ? 3 : 4);
+  }
+  const gint invalid_flutter[][2] = {
+      {-1, -1}, {-1, 3}, {1, -1}, {-2, -2}, {2, 3}, {1, 2},
+      {5, 5}, {1, G_MAXINT}, {G_MAXINT, 1}};
+  for (const auto& selection : invalid_flutter) {
+    fl_accessible_node_set_text_selection(text, 1, 3);
+    const guint dispatches = engine->dispatches;
+    fl_accessible_node_set_text_selection(text, selection[0], selection[1]);
+    g_assert_cmpint(atk_text_get_caret_offset(ATK_TEXT(text)), ==, -1);
+    g_assert_cmpint(atk_text_get_n_selections(ATK_TEXT(text)), ==, 0);
+    gint start = 99, end = 98;
+    g_autofree gchar* selected = atk_text_get_selection(ATK_TEXT(text), 0, &start, &end);
+    g_assert_null(selected);
+    g_assert_cmpint(start, ==, -1);
+    g_assert_cmpint(end, ==, -1);
+    g_assert_false(atk_text_remove_selection(ATK_TEXT(text), 0));
+    g_assert_cmpuint(engine->dispatches, ==, dispatches);
+  }
+  const gint invalid_atk[] = {-1, 4, G_MAXINT};
+  for (const gint offset : invalid_atk) {
+    const guint dispatches = engine->dispatches;
+    g_assert_false(atk_text_set_caret_offset(ATK_TEXT(text), offset));
+    g_assert_false(atk_text_add_selection(ATK_TEXT(text), 0, offset));
+    g_assert_false(atk_text_set_selection(ATK_TEXT(text), 0, offset, 1));
+    atk_editable_text_copy_text(ATK_EDITABLE_TEXT(text), 0, offset);
+    atk_editable_text_cut_text(ATK_EDITABLE_TEXT(text), offset, 1);
+    atk_editable_text_paste_text(ATK_EDITABLE_TEXT(text), offset);
+    g_assert_cmpuint(engine->dispatches, ==, dispatches);
+  }
+  fl_accessible_node_set_value(text, "a🙂bc");
+  const guint dispatches = engine->dispatches;
+  atk_editable_text_delete_text(ATK_EDITABLE_TEXT(text), 2, 3);
+  g_assert_cmpstr(engine->last_text, ==, "a🙂c");
+  g_assert_cmpint(engine->selection_base, ==, 3);
+  g_assert_cmpint(engine->selection_extent, ==, 3);
+  g_assert_cmpuint(engine->dispatches, ==, dispatches + 2);
+}
+
 static void test_text_field(FlEngine* engine) {
   g_autoptr(GtkWidget) widget = new_generation_widget();
   g_autoptr(FlSemanticsGeneration) generation = fl_semantics_generation_new(
       GTK_ACCESSIBLE(gtk_widget_get_accessible(widget)), engine, 7);
+  test_unicode_selection(generation, engine);
   test_byte_bounded_insertion(generation, engine);
   // Live edits must still send the actual standard-codec payloads in order.
   g_autoptr(FlAccessibleNode) live = fl_accessible_text_field_new(generation, 10);
@@ -855,6 +976,7 @@ static void test_text_field(FlEngine* engine) {
     }
 
     g_autoptr(FlAccessibleNode) selection = fl_accessible_text_field_new(generation, 10);
+    fl_accessible_node_set_value(selection, "original");
     TextRetirement context = {engine, dispose != 0, 0};
     guint caret_notifications = 0;
     g_signal_connect(selection, "text-selection-changed", G_CALLBACK(retire_text), &context);
@@ -915,6 +1037,10 @@ extern "C" void fl_engine_dispatch_semantics_action(
   if (node_id == 9 || node_id == 11) {
     g_assert_cmpint(action, ==, kFlutterSemanticsActionTap);
     g_assert_null(data);
+  } else if (action == kFlutterSemanticsActionCopy || action == kFlutterSemanticsActionCut ||
+             action == kFlutterSemanticsActionPaste) {
+    g_assert_cmpuint(node_id, ==, 10);
+    g_assert_null(data);
   } else {
     g_assert_cmpuint(node_id, ==, 10);
     g_assert_nonnull(data);
@@ -941,6 +1067,7 @@ extern "C" void fl_engine_dispatch_semantics_action(
       engine->selection_extent = fl_value_get_int(extent);
     }
   }
+  engine->last_action = action;
   engine->dispatches++;
 #if !defined(LEGACY_BASELINE)
   FlAccessibleNode* retire = engine->retire_on_dispatch;

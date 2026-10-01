@@ -1657,6 +1657,18 @@ Complete 206,975-byte serial and bounded viewer/capture/listener records are ret
 `evidence/keyboard-label-f781784d.*`. Host listener inventories were identical, owned teardown joined,
 and exact locked failed-root reconciliation recovered 2,969,096,192 allocated bytes. The platform,
 dialog/rebuild, original-hang, installed-service/LPE and release claims remain OPEN.
+Native diagnostic replay at `e7377076` completed with failure in 114,990 host BOOTTIME ms.
+Its first caption match appeared after 128 ms, then the strict identity check observed replacement;
+the failure tree contained the actual noninteractive title beneath the visible `Alert` scope.
+The unscoped lookup can select the departing menu item with the same text. `CustomAlertDialog` uses
+the real `AlertDialog`; pinned Flutter 3.47.5 explicitly gives its Linux route the localized alert label
+and separate child nodes. Caption lookup now requires that unique visible native `Alert` ancestry,
+refuses duplicate scopes, and still requires one caption, the exact PID and retained identity through
+all subsequent observations. It does not restart identity tracking after binding or accept menu text
+as a dialog. Complete 193,598-byte serial is `evidence/dialog-entry-e7377076.serial.log`; small
+diagnostics are separately retained. Listeners were unchanged, owned teardown joined, and locked
+inactive-root cleanup recovered 2,967,736,320 allocated bytes. Fresh scoped-caption replay remains
+required; no product ownership change or original-hang causation is inferred from this transition.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

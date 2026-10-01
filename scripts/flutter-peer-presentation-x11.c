@@ -100,6 +100,8 @@ typedef struct {
     const char *name;
     unsigned int nodes;
     unsigned int matches;
+    unsigned int dialog_scopes;
+    int dialog_caption;
     uint64_t deadline;
     AtspiAccessible *match;
 } NamedControlScan;
@@ -484,7 +486,7 @@ static int named_control_refusal(const NamedControlScan *scan, const char *reaso
 }
 
 static int scan_named_control_node(AtspiAccessible *accessible, unsigned int expected_pid,
-                                    unsigned int depth, NamedControlScan *scan) {
+                                    unsigned int depth, NamedControlScan *scan, int dialog_scope) {
     GError *error = NULL;
     unsigned int pid;
     AtspiStateSet *states;
@@ -517,16 +519,25 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
             g_object_unref(states);
             return named_control_refusal(scan, "name-query", depth, error);
         }
-        if (name != NULL && strnlen(name, ACCESSIBLE_NAME_LIMIT + 1U) <= ACCESSIBLE_NAME_LIMIT &&
-            strcmp(name, scan->name) == 0) {
-            scan->matches += 1U;
-            if (scan->match == NULL) {
-                scan->match = g_object_ref(accessible);
+        if (name != NULL && strnlen(name, ACCESSIBLE_NAME_LIMIT + 1U) <= ACCESSIBLE_NAME_LIMIT) {
+            if (scan->dialog_caption != 0 && strcmp(name, "Alert") == 0) {
+                scan->dialog_scopes += 1U;
+                dialog_scope = 1;
+            }
+            if (strcmp(name, scan->name) == 0 &&
+                (scan->dialog_caption == 0 || dialog_scope != 0)) {
+                scan->matches += 1U;
+                if (scan->match == NULL) {
+                    scan->match = g_object_ref(accessible);
+                }
             }
         }
         g_free(name);
     }
     g_object_unref(states);
+    if (scan->dialog_scopes > 1U) {
+        return named_control_refusal(scan, "duplicate-dialog-scope", depth, NULL);
+    }
     if (scan->matches > 1U || monotonic_millis() >= scan->deadline) {
         return named_control_refusal(scan, scan->matches > 1U ? "duplicate-name" : "deadline",
                                      depth, NULL);
@@ -543,16 +554,16 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
             if (child != NULL) g_object_unref(child);
             return named_control_refusal(scan, "child-query", depth, error);
         }
-        status = scan_named_control_node(child, expected_pid, depth + 1U, scan);
+        status = scan_named_control_node(child, expected_pid, depth + 1U, scan, dialog_scope);
         g_object_unref(child);
         if (status != 0) return -1;
     }
     return 0;
 }
 
-static int query_named_control(unsigned int expected_pid, const char *name, uint64_t deadline,
-                                AtspiAccessible **match) {
-    NamedControlScan scan = {.name = name, .deadline = deadline};
+static int query_named_accessible(unsigned int expected_pid, const char *name, uint64_t deadline,
+                                   AtspiAccessible **match, int dialog_caption) {
+    NamedControlScan scan = {.name = name, .deadline = deadline, .dialog_caption = dialog_caption};
     AtspiAccessible *desktop;
     GError *error = NULL;
     gint children;
@@ -581,7 +592,7 @@ static int query_named_control(unsigned int expected_pid, const char *name, uint
         if (application_status == 0 && pid == expected_pid) {
             applications += 1U;
             reason = "application-scan";
-            application_status = scan_named_control_node(application, expected_pid, 0U, &scan);
+            application_status = scan_named_control_node(application, expected_pid, 0U, &scan, 0);
         }
         g_object_unref(application);
         if (application_status != 0) goto out;
@@ -605,6 +616,11 @@ out:
     return status;
 }
 
+static int query_dialog_caption(unsigned int expected_pid, uint64_t deadline,
+                                 AtspiAccessible **match) {
+    return query_named_accessible(expected_pid, "Trackpad speed", deadline, match, 1);
+}
+
 static int activate_named_control(unsigned int expected_pid, const char *name) {
     uint64_t started = monotonic_millis();
     uint64_t deadline = started + DIALOG_CONTROL_WAIT_MS;
@@ -622,7 +638,7 @@ static int activate_named_control(unsigned int expected_pid, const char *name) {
         unsigned int tap_matches = 0U;
         gboolean invoked = FALSE;
         attempts += 1U;
-        if (query_named_control(expected_pid, name, deadline, &control) != 0) {
+        if (query_named_accessible(expected_pid, name, deadline, &control, 0) != 0) {
             fprintf(stderr, "FLUTTER_PEER_CONTROL_ACTIVATION control=\"%s\" result=query-refused "
                     "attempts=%u elapsed_ms=%llu\n", name, attempts,
                     (unsigned long long)(monotonic_millis() - started));
@@ -692,7 +708,7 @@ static int require_same_dialog(unsigned int expected_pid, AtspiAccessible *expec
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     for (unsigned int sample = 0U; sample < DIALOG_STABLE_SCANS; ++sample) {
         AtspiAccessible *actual = NULL;
-        int status = query_named_control(expected_pid, "Trackpad speed", deadline, &actual);
+        int status = query_dialog_caption(expected_pid, deadline, &actual);
         int same = actual == expected;
         int present = actual != NULL;
         if (actual != NULL) g_object_unref(actual);
@@ -1407,11 +1423,10 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
     deadline = caption_wait_started + DIALOG_CONTROL_WAIT_MS;
     while (monotonic_millis() < deadline && caption == NULL) {
         caption_attempts += 1U;
-        if (query_named_control((unsigned int)viewer->pid, "Trackpad speed", deadline,
-                                &caption) != 0 ||
+        if (query_dialog_caption((unsigned int)viewer->pid, deadline, &caption) != 0 ||
             sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
     }
-    fprintf(stderr, "FLUTTER_PEER_DIALOG_CAPTION found=%d attempts=%u elapsed_ms=%llu\n",
+    fprintf(stderr, "FLUTTER_PEER_DIALOG_CAPTION found=%d scope=Alert attempts=%u elapsed_ms=%llu\n",
             caption != NULL, caption_attempts,
             (unsigned long long)(monotonic_millis() - caption_wait_started));
     if (caption == NULL || require_same_dialog((unsigned int)viewer->pid, caption) != 0 ||
@@ -1436,8 +1451,7 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
         deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
         while (monotonic_millis() < deadline) {
             AtspiAccessible *actual = NULL;
-            int query_status = query_named_control((unsigned int)viewer->pid, "Trackpad speed",
-                                                    deadline, &actual);
+            int query_status = query_dialog_caption((unsigned int)viewer->pid, deadline, &actual);
             int same = actual == caption;
             int present = actual != NULL;
             if (actual != NULL) g_object_unref(actual);
@@ -1477,8 +1491,7 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
     unsigned int absent_scans = 0U;
     while (monotonic_millis() < deadline && absent_scans < DIALOG_STABLE_SCANS) {
         AtspiAccessible *actual = NULL;
-        int query_status = query_named_control((unsigned int)viewer->pid, "Trackpad speed",
-                                                deadline, &actual);
+        int query_status = query_dialog_caption((unsigned int)viewer->pid, deadline, &actual);
         int absent = actual == NULL;
         if (actual != NULL) g_object_unref(actual);
         if (query_status != 0) goto out;

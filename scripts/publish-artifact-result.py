@@ -77,9 +77,17 @@ ANDROID_X86_64_TEST = ArtifactContract(
         rb"^([0-9a-f]{64})  rustdesk-x86_64-runtime-test\.apk\n$"
     ),
 )
+FLUTTER_LINUX_ENGINE = ArtifactContract(
+    kind="flutter-linux-engine",
+    artifact="flutter-linux-engine.tar",
+    checksum="flutter-linux-engine.tar.sha256",
+    pending_prefix=".flutter-engine-output-pending-",
+    pending_pattern=re.compile(r"^\.flutter-engine-output-pending-[0-9a-f]{64}$"),
+    checksum_line_pattern=re.compile(rb"^([0-9a-f]{64})  flutter-linux-engine\.tar\n$"),
+)
 CONTRACTS = {
     contract.kind: contract
-    for contract in (DEBIAN_X86_64, ANDROID_ARM64, ANDROID_X86_64_TEST)
+    for contract in (DEBIAN_X86_64, ANDROID_ARM64, ANDROID_X86_64_TEST, FLUTTER_LINUX_ENGINE)
 }
 
 

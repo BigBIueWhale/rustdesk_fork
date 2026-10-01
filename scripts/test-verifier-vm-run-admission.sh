@@ -173,6 +173,7 @@ invoke() {
         MODE=${3:-authority-smoke}
         ANDROID_ARTIFACT_STATE_ROOT=${4:-}
         FLUTTER_APP_STATE_ROOT=${4:-}
+        FLUTTER_ENGINE_STATE_ROOT=${4:-}
         FLUTTER_APP_BUILD_ONLY=${5:-0}
         reserve_verifier_run
         for descriptor in /proc/$$/fd/*; do
@@ -244,6 +245,9 @@ run_admission_cases() {
             [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
             [ "$(/usr/bin/find "$capsule" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
             require_refusal "$root" 'an earlier Linux Flutter app artifact remains' flutter-peer-presentation "$capsule" 1
+            [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
+            [ "$(/usr/bin/find "$capsule" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
+            require_refusal "$root" 'an earlier Flutter engine artifact remains' linux-flutter-engine-build "$capsule"
             [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
             [ "$(/usr/bin/find "$capsule" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
         done

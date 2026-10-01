@@ -2160,6 +2160,22 @@ The fixture's GTK owner is renamed `toplevel`; assertions and production bytes a
 
 Next link the reviewed source-bound engine and execute actual FlView/AT-SPI/app lifetime and
 geometry, including Wayland and edge cases, then complete the uninstrumented consumer.
+The explicit `--linux-flutter-engine-build` integration profile now follows the unchanged
+focused preparation/native unit stage with the original release GN/Ninja GTK library,
+matching `gen_snapshot` and public-header targets. Its separate two-hour build deadline,
+four jobs, 12-GiB container/16-GiB VM and 32-GiB disposable disk do not expand the ordinary
+five-minute preparation profile. Progress is bounded and emitted during the owned command;
+all inputs remain pin-bound/read-only and both VM/container networking remain absent.
+One inert archive records exact fork commit/tree, original framework/content/Git/sysroot
+closure, patch/helper/GN identities and every output digest. The existing descriptor-owned
+no-clobber publisher is extended with this fixed artifact contract; publication follows
+joined VM/exporter and input/listener/source revalidation. A retained artifact or pending
+entry refuses another producer under the existing run-admission lock, before allocation.
+Existing filesystem/CLI publication cases now also exercise the engine contract, and run
+admission cases include retained directory/file/dangling-symlink engine outputs. Full build,
+publication, shared integration and consumer results are PENDING. Linking alone cannot
+prove real FlView restart, AT-SPI geometry, app presentation, shipped SDK integration,
+Wayland behavior, reproducibility equality or Android/Windows causation; these remain OPEN.
 Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept
 invalid extents. The successful resize case did not establish an image-ready build reset. Observe an actual
 production image-ready rebuild trigger before

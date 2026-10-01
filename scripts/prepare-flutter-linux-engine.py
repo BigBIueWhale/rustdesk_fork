@@ -211,12 +211,14 @@ def authenticated(path, size, digest):
         raise
 
 
-def command(arguments, cwd, env, deadline):
+def command(arguments, cwd, env, deadline, *, integration=False):
     require(time.monotonic() < deadline, "engine preparation deadline expired")
     child = subprocess.Popen(arguments, cwd=cwd, env=env, close_fds=True,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     selector = selectors.DefaultSelector()
     output = bytearray()
+    started = time.monotonic()
+    reported = started
     try:
         selector.register(child.stdout, selectors.EVENT_READ)
         while selector.get_map():
@@ -228,10 +230,18 @@ def command(arguments, cwd, env, deadline):
                     selector.unregister(key.fileobj)
                 else:
                     output.extend(block)
-                    require(len(output) <= 262144, "engine preparation command output exceeds bound")
+                    require(len(output) <= (4 * 1024 * 1024 if integration else 262144),
+                            "engine preparation command output exceeds bound")
+            if integration and time.monotonic() - reported >= 10:
+                # Bounded diagnostics are not success receipts. Emit even during a
+                # long link, retaining the exact child rather than launching again.
+                reported = time.monotonic()
+                print("ENGINE_BUILD_PROGRESS elapsed_seconds=" + str(int(reported - started))
+                      + " output_bytes=" + str(len(output)) + " tail="
+                      + json.dumps(output[-512:].decode(errors="replace")), flush=True)
         status = child.wait(timeout=max(0.001, deadline - time.monotonic()))
         require(status == 0, "engine command failed: " + repr(arguments) + "\n"
-                + output[:65536].decode(errors="replace"))
+                + output[-65536:].decode(errors="replace"))
         return bytes(output)
     finally:
         if child.poll() is None:
@@ -318,7 +328,7 @@ def native_display(env, deadline):
                 print("ENGINE_XVFB_OWNER=joined network=unix-only", flush=True)
 
 
-def prepare():
+def prepare(build_context=None):
     deadline = time.monotonic() + 240
     with open("/authority/pins.env", "rb") as source:
         pin_bytes = source.read(131073)
@@ -637,6 +647,112 @@ raise SystemExit(subprocess.call([
           "view_teardown=unexecuted engine_restart=unexecuted app_replay=unexecuted", flush=True)
     print("FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 "
           "indexes=original pub=path-only network=none engine_build=unexecuted", flush=True)
+    if build_context is not None:
+        build_engine(engine, framework, env, pin, patch_bytes, build_context)
+
+
+def build_engine(engine, framework, env, pin, patch_bytes, context):
+    """Explicit integration build; no workload or deadline expansion in prepare()."""
+    deadline = time.monotonic() + 7200
+    publisher = "/authority/publish.py"
+    command(["/usr/bin/python3", "-I", "-S", publisher, "--self-test"], "/work", env, deadline)
+    output = Path(engine) / "out/host_release"
+    ninja = framework + "/third_party/ninja/ninja"
+    targets = ["libflutter_linux_gtk.so", "gen_snapshot",
+               "obj/flutter/shell/platform/linux/publish_headers_linux.stamp"]
+    plan = command([ninja, "-C", str(output), "-n", *targets], engine, env, deadline,
+                   integration=True)
+    require(plan and len(plan.splitlines()) <= 32768, "engine link plan is empty or exceeds bound")
+    print("ENGINE_BUILD_START targets=gtk,gen_snapshot,headers jobs=4 plan_lines="
+          + str(len(plan.splitlines())) + " plan_sha256=" + hashlib.sha256(plan).hexdigest(), flush=True)
+    result = command([ninja, "-C", str(output), "-j4", *targets], engine, env, deadline,
+                     integration=True)
+    print("ENGINE_BUILD_COMMAND=pass output_bytes=" + str(len(result))
+          + " output_sha256=" + hashlib.sha256(result).hexdigest(), flush=True)
+    # A second dry run must prove all selected original recipes are current.
+    require(command([ninja, "-C", str(output), "-n", *targets], engine, env, deadline)
+            .splitlines()[-1:] == [b"ninja: no work to do."], "engine targets are not current")
+    names = ["libflutter_linux_gtk.so", "gen_snapshot"]
+    header_paths = sorted((output / "flutter_linux").glob("*.h"))
+    require(len(header_paths) == 26 and all(path.is_file() and not path.is_symlink()
+                                         for path in header_paths), "engine public header inventory differs")
+    names.extend("flutter_linux/" + path.name for path in header_paths)
+    manifest = {
+        "format": "rustdesk-flutter-linux-engine-artifact-v1",
+        "source_commit": context[0], "source_tree": context[1],
+        "framework_revision": pin("FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION"),
+        "original_source_content_hash": pin("FLUTTER_ENGINE_SOURCE_CONTENT_HASH"),
+        "graph_manifest_sha256": pin("SHA256_FLUTTER_ENGINE_GRAPH_MANIFEST"),
+        "metadata_manifest_sha256": pin("SHA256_FLUTTER_ENGINE_GIT_METADATA_MANIFEST"),
+        "sysroots_manifest_sha256": pin("SHA256_FLUTTER_ENGINE_SYSROOTS_MANIFEST"),
+        "builder_config": pin("DEV_CHECK_IMAGE_CONFIG_ID"),
+        "helper_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "patch_sha256": hashlib.sha256(patch_bytes).hexdigest(),
+        "gn_args_sha256": hashlib.sha256((output / "args.gn").read_bytes()).hexdigest(),
+        "targets": targets, "files": {}, "app_execution": "unexecuted",
+    }
+    archive = Path("/work/flutter-linux-engine.tar")
+    with ExitStack() as resources:
+        opened = {}
+        total = 0
+        for name in names:
+            fd = os.open(output / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+            source = resources.enter_context(os.fdopen(fd, "rb"))
+            before = os.fstat(fd)
+            require(stat.S_ISREG(before.st_mode) and before.st_uid == before.st_gid == 1000
+                    and before.st_nlink == 1 and 0 < before.st_size <= FILE_LIMIT,
+                    "engine artifact authority differs: " + name)
+            total += before.st_size
+            require(total <= FILE_LIMIT - 1048576, "engine artifact byte budget exhausted")
+            if name in names[:2]:
+                prefix = source.read(64)
+                require(len(prefix) == 64 and prefix[:6] == b"\x7fELF\x02\x01"
+                        and int.from_bytes(prefix[18:20], "little") == 62,
+                        "engine output is not an x86_64 ELF: " + name)
+                source.seek(0)
+            digest = hashlib.file_digest(source, "sha256").hexdigest()
+            require(unchanged(before, os.fstat(fd)), "engine output changed")
+            manifest["files"][name] = {"bytes": before.st_size, "sha256": digest}
+            source.seek(0)
+            opened[name] = (source, before)
+        manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2) + "\n").encode()
+        require(len(manifest_bytes) <= 65536, "engine artifact manifest exceeds bound")
+        fd = os.open(archive, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o400)
+        with os.fdopen(fd, "wb") as destination, tarfile.open(fileobj=destination, mode="w") as tar:
+            for name, (source, before) in opened.items():
+                member = tarfile.TarInfo(name)
+                member.size, member.mode = before.st_size, 0o400
+                tar.addfile(member, source)
+                require(unchanged(before, os.fstat(source.fileno())), "engine artifact changed while sealing")
+            member = tarfile.TarInfo("engine-manifest.json")
+            member.size, member.mode = len(manifest_bytes), 0o400
+            tar.addfile(member, io.BytesIO(manifest_bytes))
+            destination.flush()
+            os.fsync(destination.fileno())
+    with archive.open("rb") as source:
+        digest = hashlib.file_digest(source, "sha256").hexdigest()
+    require(0 < archive.stat().st_size <= FILE_LIMIT, "engine archive exceeds bound")
+    # Publication is inert data into the exact private output, never host code.
+    output_root = "/output"
+    before = os.lstat(output_root)
+    require(stat.S_ISDIR(before.st_mode) and before.st_uid == before.st_gid == 1000
+            and stat.S_IMODE(before.st_mode) == 0o700 and not os.listdir(output_root),
+            "engine publication root authority differs")
+    preparation = command([
+        "/usr/bin/python3", "-I", "-S", publisher, "--prepare",
+        "--artifact-kind", "flutter-linux-engine", "--source", str(archive),
+        "--source-identity", str(archive.stat().st_dev) + ":" + str(archive.stat().st_ino),
+        "--source-sha256", digest, "--output-parent", output_root,
+        "--output-parent-identity", str(before.st_dev) + ":" + str(before.st_ino),
+        "--destination", "linux-x86_64-engine",
+    ], "/work", env, deadline).decode().strip()
+    require(re.fullmatch(r"\.flutter-engine-output-pending-[0-9a-f]{64} [0-9]+:[1-9][0-9]*",
+                         preparation), "engine artifact preparation receipt differs")
+    print("FLUTTER_ENGINE_ARTIFACT_PREPARED=pass commit=" + context[0] + " tree=" + context[1]
+          + " pending=" + preparation.split()[0] + " sha256=" + digest
+          + " manifest_sha256=" + hashlib.sha256(manifest_bytes).hexdigest()
+          + " bytes=" + str(archive.stat().st_size) + " files=" + str(len(names))
+          + " app_execution=unexecuted", flush=True)
 
 
 def self_test():
@@ -701,7 +817,13 @@ def self_test():
 
 
 def main():
-    require(sys.argv == [sys.argv[0]], "engine preparation takes no caller-selected paths or commands")
+    build_context = None
+    if len(sys.argv) == 4 and sys.argv[1] == "--build":
+        require(all(re.fullmatch(r"[0-9a-f]{40}", value) for value in sys.argv[2:]),
+                "engine build source identity differs")
+        build_context = sys.argv[2:]
+    else:
+        require(sys.argv == [sys.argv[0]], "engine preparation takes no caller-selected paths or commands")
     require(os.getuid() == os.getgid() == 1000, "engine preparation requires UID/GID 1000")
     status = Path("/proc/self/status").read_text()
     require(re.search(r"^CapEff:\s+0000000000000000$", status, re.MULTILINE)
@@ -712,7 +834,7 @@ def main():
             "engine preparation AppArmor profile differs")
     resource.setrlimit(resource.RLIMIT_FSIZE, (FILE_LIMIT, FILE_LIMIT))
     self_test()
-    prepare()
+    prepare(build_context)
 
 
 if __name__ == "__main__":

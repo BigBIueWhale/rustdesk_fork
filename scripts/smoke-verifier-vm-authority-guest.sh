@@ -26,8 +26,8 @@ case "$#:${8:-}" in
     8:--android-frame-tests)
         MODE=android-frame-tests
         ;;
-    10:--linux-flutter-engine-prepare)
-        MODE=linux-flutter-engine-prepare
+    10:--linux-flutter-engine-prepare|10:--linux-flutter-engine-build)
+        MODE=${8#--}
         ENGINE_PREPARE_COMMIT=${9}
         ENGINE_PREPARE_TREE=${10}
         [[ "$ENGINE_PREPARE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -231,6 +231,7 @@ FLUTTER_PEER_FAILURE_MOUNTED=0
 FLUTTER_APP_OUTPUT_MOUNTED=0
 FLUTTER_APP_INPUT_MOUNTED=0
 ENGINE_INPUT_MOUNTS=()
+ENGINE_OUTPUT_MOUNTED=0
 
 fail() {
     printf 'verifier-VM guest: %s\n' "$*" >&2
@@ -393,6 +394,27 @@ run_linux_flutter_engine_prepare() {
     local test=$VERIFY_REPO/scripts/test-flutter-linux-accessible-retirement.cc
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
     local work=$ROOT/engine-prepare-work helper_before status=0
+    local memory=2g memory_bytes=2147483648 cpus=2 nano_cpus=2000000000
+    local -a helper_args=() output_mounts=()
+    if [ "$MODE" = linux-flutter-engine-build ]; then
+        memory=12g; memory_bytes=12884901888; cpus=4; nano_cpus=4000000000
+        helper_args=(--build "$ENGINE_PREPARE_COMMIT" "$ENGINE_PREPARE_TREE")
+        mkdir /mnt/rustdesk-flutter-engine-output
+        mount -t virtiofs -o rw,nodev,nosuid,noexec rustdesk-flutter-engine-output /mnt/rustdesk-flutter-engine-output \
+            || fail 'cannot mount inert engine artifact output'
+        ENGINE_OUTPUT_MOUNTED=1
+        options="$(findmnt -n -o OPTIONS --target /mnt/rustdesk-flutter-engine-output)"
+        for option in rw nodev nosuid noexec; do
+            case ",$options," in *,$option,*) ;; *) fail "engine output lacks $option" ;; esac
+        done
+        [ "$(stat -c '%u:%g:%a' -- /mnt/rustdesk-flutter-engine-output)" = 1000:1000:700 ] \
+            && [ -z "$(find /mnt/rustdesk-flutter-engine-output -mindepth 1 -print -quit)" ] \
+            || fail 'engine output authority differs'
+        output_mounts=(
+            --mount "type=bind,source=/mnt/rustdesk-flutter-engine-output,target=/output,bind-recursive=disabled"
+            --mount "type=bind,source=$VERIFY_REPO/scripts/publish-artifact-result.py,target=/authority/publish.py,readonly"
+        )
+    fi
     helper_before="$(sha256sum "$helper" "$patch" "$test" "$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh" \
         "$VERIFY_REPO/scripts/smoke-xvfb-packages.tsv" "$VERIFY_REPO/scripts/smoke-xvfb-files.tsv")"
     [ -f "$helper" ] && [ ! -L "$helper" ] || fail 'engine preparation source is absent'
@@ -431,6 +453,7 @@ run_linux_flutter_engine_prepare() {
     mkdir "$work"
     chown 1000:1000 "$work"
     local -a mounts=(
+        "${output_mounts[@]}"
         --mount "type=bind,source=$helper,target=/authority/prepare.py,readonly"
         --mount "type=bind,source=$patch,target=/authority/retirement.patch,readonly"
         --mount "type=bind,source=$test,target=/authority/node-test.cc,readonly"
@@ -458,16 +481,16 @@ run_linux_flutter_engine_prepare() {
         "$CLIENT" --host "unix://$SOCK" create --name rustdesk-engine-prepare \
             --pull=never --network=none --read-only --user 1000:1000 \
             --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
-            --memory=2g --memory-swap=2g --cpus=2 --pids-limit=128 \
+            --memory="$memory" --memory-swap="$memory" --cpus="$cpus" --pids-limit=128 \
             --ulimit nofile=1024:1024 --ulimit core=0:0 --ulimit fsize=536870912:536870912 \
             --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,mode=700,uid=1000,gid=1000 \
             --workdir /work "${mounts[@]}" \
-            "$DEV_CHECK_IMAGE_CONFIG_ID" /usr/bin/python3 -I -S /authority/prepare.py
+            "$DEV_CHECK_IMAGE_CONFIG_ID" /usr/bin/python3 -I -S /authority/prepare.py "${helper_args[@]}"
     )" || fail 'cannot create the confined engine preparation container'
     [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'engine preparation container ID differs'
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.Image}}|{{.Config.User}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' "$CONTAINER_ID")"
-    [ "$inspect" = "$DEV_CHECK_IMAGE_CONFIG_ID|1000:1000|none|true|2147483648|2147483648|2000000000|128|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]" ] \
+    [ "$inspect" = "$DEV_CHECK_IMAGE_CONFIG_ID|1000:1000|none|true|$memory_bytes|$memory_bytes|$nano_cpus|128|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]" ] \
         || fail "engine preparation container envelope differs: $inspect"
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' "$CONTAINER_ID")"
@@ -476,7 +499,8 @@ run_linux_flutter_engine_prepare() {
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" \
         | LC_ALL=C sort)"
-    [ "$inspect" = "$(printf '%s\n' \
+    local expected_mounts
+    expected_mounts="$(printf '%s\n' \
         "bind|$helper|/authority/prepare.py|false" \
         "bind|$patch|/authority/retirement.patch|false" \
         "bind|$test|/authority/node-test.cc|false" \
@@ -487,7 +511,12 @@ run_linux_flutter_engine_prepare() {
         "bind|$work|/work|true" \
         'bind|/mnt/rustdesk-engine-graph|/inputs/graph|false' \
         'bind|/mnt/rustdesk-engine-git-metadata|/inputs/git-metadata|false' \
-        'bind|/mnt/rustdesk-engine-sysroots|/inputs/sysroots|false' | LC_ALL=C sort)" ] \
+        'bind|/mnt/rustdesk-engine-sysroots|/inputs/sysroots|false')"
+    if [ "$MODE" = linux-flutter-engine-build ]; then
+        expected_mounts+=$'\n'"bind|/mnt/rustdesk-flutter-engine-output|/output|true"
+        expected_mounts+=$'\n'"bind|$VERIFY_REPO/scripts/publish-artifact-result.py|/authority/publish.py|false"
+    fi
+    [ "$inspect" = "$(printf '%s\n' "$expected_mounts" | LC_ALL=C sort)" ] \
         || fail "engine preparation mount envelope differs: $inspect"
     status=0
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" || status=$?
@@ -509,6 +538,10 @@ run_linux_flutter_engine_prepare() {
         umount "$mountpoint" || fail 'cannot retire an engine input mount'
     done
     ENGINE_INPUT_MOUNTS=()
+    if [ "$ENGINE_OUTPUT_MOUNTED" -eq 1 ]; then
+        umount /mnt/rustdesk-flutter-engine-output || fail 'cannot retire engine artifact output'
+        ENGINE_OUTPUT_MOUNTED=0
+    fi
     printf 'FLUTTER_ENGINE_PREPARE_VM=pass commit=%s tree=%s helper_sha256=%s runtime=%s uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined\n' \
         "$ENGINE_PREPARE_COMMIT" "$ENGINE_PREPARE_TREE" "$(sha256sum "$helper" | awk '{print $1}')" \
         "$DEV_CHECK_IMAGE_CONFIG_ID"
@@ -5160,6 +5193,10 @@ run_flutter_peer_presentation() {
 cleanup() {
     local status=$? daemon_status=0
     trap - EXIT HUP INT TERM
+    if [ "$ENGINE_OUTPUT_MOUNTED" -eq 1 ]; then
+        umount /mnt/rustdesk-flutter-engine-output 2>/dev/null || status=1
+        ENGINE_OUTPUT_MOUNTED=0
+    fi
     if [ "$LIFECYCLE_LIBS_MOUNTED" -eq 1 ]; then
         umount /var/tmp/rustdesk-systemd-lifecycle/runtime-libs 2>/dev/null \
             || status=1
@@ -5489,7 +5526,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = android-emulator-runtime ] \
    || [ "$MODE" = flutter-peer-presentation ] \
    || [ "$MODE" = rust-audit ] \
-   || [ "$MODE" = linux-flutter-engine-prepare ]; then
+   || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     docker_socket_gid=1000
 fi
 chown "0:$docker_socket_gid" "$SOCK"
@@ -5524,7 +5561,7 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     exit 0
 fi
 
-if [ "$MODE" = linux-flutter-engine-prepare ]; then
+if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     run_linux_flutter_engine_prepare
     exit 0
 fi

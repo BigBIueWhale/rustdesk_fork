@@ -92,6 +92,11 @@ case "$#:${1:-}" in
             || { echo 'engine preparation input/run overrides are forbidden' >&2; exit 2; }
         MODE=linux-flutter-engine-prepare
         ;;
+    1:--linux-flutter-engine-build)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'engine build input/run overrides are forbidden' >&2; exit 2; }
+        MODE=linux-flutter-engine-build
+        ;;
     1:--android-frame-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Android frame-test input/run overrides are forbidden' >&2; exit 2; }
@@ -196,6 +201,7 @@ case "$#:${1:-}" in
         ;;
     *)
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
+        printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
@@ -345,13 +351,16 @@ readonly ANDROID_EMULATOR_OBSERVER_DEPENDENCIES="$SCRIPT_DIR/android-emulator-fr
 readonly ANDROID_EMULATOR_APK_VERIFIER="$SCRIPT_DIR/verify-android-emulator-apk.py"
 readonly ANDROID_APK_MANIFEST_VERIFIER="$SCRIPT_DIR/verify-android-apk-manifest.py"
 readonly ARTIFACT_RESULT_PUBLISHER_SOURCE="$SCRIPT_DIR/publish-artifact-result.py"
+readonly FLUTTER_ENGINE_STATE_ROOT="$REPO_ROOT/.harness-state/flutter-linux-engine-artifacts"
 if [ "$MODE" = android-peer-build ]; then
     readonly ANDROID_ARTIFACT_STATE_ROOT="$REPO_ROOT/.harness-state/android-peer-artifacts"
 else
     readonly ANDROID_ARTIFACT_STATE_ROOT="$REPO_ROOT/.harness-state/android-emulator-artifacts"
 fi
 readonly ANDROID_ARTIFACT_DESTINATION=android-x86_64-test
-if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+if [ "$MODE" = linux-flutter-engine-build ]; then
+    readonly ARTIFACT_PUBLICATION_STATE_ROOT="$FLUTTER_ENGINE_STATE_ROOT"
+elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     readonly ARTIFACT_PUBLICATION_STATE_ROOT="$FLUTTER_APP_STATE_ROOT"
 else
     readonly ARTIFACT_PUBLICATION_STATE_ROOT="$ANDROID_ARTIFACT_STATE_ROOT"
@@ -429,6 +438,10 @@ elif [ "$MODE" = linux-flutter-engine-prepare ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=4096
+elif [ "$MODE" = linux-flutter-engine-build ]; then
+    readonly VM_TIMEOUT_SECONDS=7800
+    readonly OVERLAY_SIZE=32G
+    readonly VM_MEMORY=16384
 elif [ "$MODE" = android-peer-build ]; then
     readonly VM_TIMEOUT_SECONDS=2400
     readonly OVERLAY_SIZE=40G
@@ -536,6 +549,14 @@ reserve_verifier_run() {
         || fail 'retained verifier-VM run-root authority differs'
     /usr/bin/flock --exclusive --nonblock "$descriptor" \
         || fail 'another verifier is reserving a run; retry after its admission completes'
+    if [ "${MODE:-}" = linux-flutter-engine-build ] && { [ -e "$FLUTTER_ENGINE_STATE_ROOT" ] || [ -L "$FLUTTER_ENGINE_STATE_ROOT" ]; }; then
+        [ -d "$FLUTTER_ENGINE_STATE_ROOT" ] && [ ! -L "$FLUTTER_ENGINE_STATE_ROOT" ] \
+            && [ "$(/usr/bin/readlink -f -- "$FLUTTER_ENGINE_STATE_ROOT")" = "$FLUTTER_ENGINE_STATE_ROOT" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$FLUTTER_ENGINE_STATE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
+            || fail 'Flutter engine artifact state authority differs'
+        [ -z "$(/usr/bin/find "$FLUTTER_ENGINE_STATE_ROOT" -mindepth 1 -maxdepth 1 -print -quit)" ] \
+            || fail 'an earlier Flutter engine artifact remains; reuse it or explicitly reconcile it before building another'
+    fi
     if [ "${FLUTTER_APP_BUILD_ONLY:-0}" -eq 1 ] && { [ -e "$FLUTTER_APP_STATE_ROOT" ] || [ -L "$FLUTTER_APP_STATE_ROOT" ]; }; then
         [ -d "$FLUTTER_APP_STATE_ROOT" ] && [ ! -L "$FLUTTER_APP_STATE_ROOT" ] \
             && [ "$(/usr/bin/readlink -f -- "$FLUTTER_APP_STATE_ROOT")" = "$FLUTTER_APP_STATE_ROOT" ] \
@@ -1411,9 +1432,9 @@ cleanup() {
         if [ -d "$ARTIFACT_OUTPUT_PARENT" ] && [ ! -L "$ARTIFACT_OUTPUT_PARENT" ] \
            && [ "$(/usr/bin/stat -c '%d:%i' -- "$ARTIFACT_OUTPUT_PARENT" 2>/dev/null)" = \
                 "$ARTIFACT_OUTPUT_PARENT_ID" ]; then
-            if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] \
+            if { [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$MODE" = linux-flutter-engine-build ]; } \
                && [ -n "$(/usr/bin/find "$ARTIFACT_OUTPUT_PARENT" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-                printf 'verifier-VM authority smoke: retaining uncommitted app evidence at %s\n' \
+                printf 'verifier-VM authority smoke: retaining uncommitted artifact evidence at %s\n' \
                     "$ARTIFACT_OUTPUT_PARENT" >&2
             else
             /usr/bin/python3 -I -S "$CLEANUP_HELPER" \
@@ -1495,7 +1516,7 @@ frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
 if [ "$MODE" = android-frame-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-   || [ "$MODE" = linux-flutter-engine-prepare ]; then
+   || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'focused native tests require clean committed master'
@@ -1507,7 +1528,7 @@ fi
 reserve_verifier_run
 engine_prepare_inputs_before=
 engine_prepare_source_before=
-if [ "$MODE" = linux-flutter-engine-prepare ]; then
+if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     [ "$HOST_UID:$HOST_GID" = 1000:1000 ] || fail 'engine candidate consumer requires UID/GID 1000'
     verify_committed_test_source "$ENGINE_PREPARE_SOURCE"
     verify_committed_test_source "$ENGINE_RETIREMENT_PATCH"
@@ -2110,7 +2131,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
     if [ "$MODE" = android-frame-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-       || [ "$MODE" = linux-flutter-engine-prepare ]; then
+       || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
     fi
 done
@@ -2581,6 +2602,7 @@ if [ "$MODE" = flutter-peer-presentation ] && [ "$FLUTTER_APP_BUILD_ONLY" -eq 0 
 fi
 
 if [ "$MODE" = android-emulator-app ] || [ "$MODE" = android-peer-build ] \
+   || [ "$MODE" = linux-flutter-engine-build ] \
    || [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     if [ -e "$ARTIFACT_PUBLICATION_STATE_ROOT" ] \
        || [ -L "$ARTIFACT_PUBLICATION_STATE_ROOT" ]; then
@@ -2596,7 +2618,8 @@ if [ "$MODE" = android-emulator-app ] || [ "$MODE" = android-peer-build ] \
     ARTIFACT_STATE_ROOT_ID="$(/usr/bin/stat -c '%d:%i' -- "$ARTIFACT_PUBLICATION_STATE_ROOT")"
     [ -z "$(/usr/bin/findmnt -rn -o TARGET --submounts "$ARTIFACT_PUBLICATION_STATE_ROOT")" ] \
         || fail 'artifact state root contains a descendant mount'
-    output_commit=$ANDROID_EMULATOR_SOURCE_COMMIT
+    output_commit=${ANDROID_EMULATOR_SOURCE_COMMIT:-}
+    [ "$MODE" != linux-flutter-engine-build ] || output_commit=$FOCUSED_TEST_COMMIT
     [ "$FLUTTER_APP_BUILD_ONLY" -eq 0 ] || output_commit=$FLUTTER_PEER_SOURCE_COMMIT
     ARTIFACT_OUTPUT_PARENT="$ARTIFACT_PUBLICATION_STATE_ROOT/$output_commit"
     [ ! -e "$ARTIFACT_OUTPUT_PARENT" ] && [ ! -L "$ARTIFACT_OUTPUT_PARENT" ] \
@@ -2705,7 +2728,7 @@ capture_listener_details >"$LISTENERS_BEFORE_DETAIL"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
     || fail 'pass-private overlay metadata differs'
 
-if [ "$MODE" = linux-flutter-engine-prepare ]; then
+if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     /usr/bin/install -d -m 0700 -- "$RUN/virtiofsd-package"
     /usr/bin/dpkg-deb --extract "$VIRTIOFSD_PACKAGE" "$RUN/virtiofsd-package" \
         || fail 'cannot extract the authenticated engine-input exporter privately'
@@ -2881,7 +2904,7 @@ fi
 
 payload_identity=()
 lifecycle_payload_grafts=()
-if [ "$MODE" = linux-flutter-engine-prepare ]; then
+if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     payload_identity=(-uid 1000 -gid 1000)
     lifecycle_payload_grafts=(
         "devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
@@ -3054,8 +3077,8 @@ fi
 /usr/bin/mkdir "$RUN/seed"
 /usr/bin/chmod 0700 "$RUN/seed"
 guest_invocation="bash /mnt/rustdesk-verifier-inputs/guest.sh /mnt/rustdesk-verifier-inputs/docker.tgz /mnt/rustdesk-verifier-inputs/repo/scripts/verify-vm-entry-preflight.sh $VERIFIER_VM_DOCKER_VERSION $SIZE_VERIFIER_VM_DOCKER_STATIC $SHA256_VERIFIER_VM_DOCKER_STATIC $VERIFIER_VM_KERNEL_RELEASE $VERIFIER_VM_ROOT_FILESYSTEM_UUID"
-if [ "$MODE" = linux-flutter-engine-prepare ]; then
-    guest_invocation+=" --linux-flutter-engine-prepare $FOCUSED_TEST_COMMIT $FOCUSED_TEST_TREE"
+if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
+    guest_invocation+=" --$MODE $FOCUSED_TEST_COMMIT $FOCUSED_TEST_TREE"
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
     guest_invocation+=" --debian-systemd-lifecycle /mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz /mnt/rustdesk-verifier-inputs/artifact/rustdesk-x86_64.deb $LIFECYCLE_ARTIFACT_SHA256 $LIFECYCLE_COMMIT"
 elif [ "$MODE" = android-execution-probe ]; then
@@ -3147,7 +3170,7 @@ exec {INITRD_FD}<"$INITRD" || fail 'cannot retain the exact verifier-VM initramf
     || fail 'retained initramfs descriptor identity differs'
 memory_args=(-m "$VM_MEMORY")
 focused_qemu_args=()
-if [ "$MODE" = linux-flutter-engine-prepare ]; then
+if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     for engine_role in graph git-metadata sysroots; do
         case "$engine_role" in
             graph) engine_root=$ENGINE_GRAPH_ROOT ;;
@@ -3162,6 +3185,14 @@ if [ "$MODE" = linux-flutter-engine-prepare ]; then
             -device "vhost-user-fs-pci,chardev=engine-$engine_role,tag=rustdesk-engine-$engine_role,queue-size=1024"
         )
     done
+    if [ "$MODE" = linux-flutter-engine-build ]; then
+        start_virtiofsd bounded-result "$ARTIFACT_OUTPUT_PARENT" "$ARTIFACT_OUTPUT_PARENT_ID" \
+            "$ARTIFACT_VIRTIOFS_SOCKET" "$ARTIFACT_VIRTIOFSD_LOG"
+        focused_qemu_args+=(
+            -chardev "socket,id=engine-output,path=$ARTIFACT_VIRTIOFS_SOCKET"
+            -device 'vhost-user-fs-pci,chardev=engine-output,tag=rustdesk-flutter-engine-output,queue-size=1024'
+        )
+    fi
     memory_args=(-m "$VM_MEMORY" -object "memory-backend-memfd,id=mem,size=${VM_MEMORY}M,share=on" -numa node,memdev=mem)
     capture_listeners >"$LISTENERS_DURING"
     /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_DURING" >"$NEW_DURING"
@@ -3474,7 +3505,7 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     require_exact_fixed_receipt "$runtime_log_vm_receipt" 'runtime-log source/finality result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'runtime-log cloud-init completion'
     printf '%s\n' "$runtime_log_unit_receipt" "$runtime_log_native_receipt" "$runtime_log_vm_receipt"
-elif [ "$MODE" = linux-flutter-engine-prepare ]; then
+elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     engine_prepare_receipt='FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 indexes=original pub=path-only network=none engine_build=unexecuted'
     engine_prepare_vm_receipt="FLUTTER_ENGINE_PREPARE_VM=pass commit=$FOCUSED_TEST_COMMIT tree=$FOCUSED_TEST_TREE helper_sha256=$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" | /usr/bin/awk '{print $1}') runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined"
     require_exact_fixed_receipt 'ENGINE_PREPARE_PRINCIPALS=pass root=refused foreign=refused work=absent' 'engine preparation principal refusals'
@@ -3487,6 +3518,17 @@ elif [ "$MODE" = linux-flutter-engine-prepare ]; then
     require_exact_fixed_receipt "$engine_prepare_receipt" 'original engine setup hooks'
     require_exact_fixed_receipt "$engine_prepare_vm_receipt" 'engine preparation source/finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'engine preparation cloud-init completion'
+    if [ "$MODE" = linux-flutter-engine-build ]; then
+        mapfile -t engine_artifacts < <(/usr/bin/grep -Eo \
+            "FLUTTER_ENGINE_ARTIFACT_PREPARED=pass commit=$FOCUSED_TEST_COMMIT tree=$FOCUSED_TEST_TREE pending=[.]flutter-engine-output-pending-[0-9a-f]{64} sha256=[0-9a-f]{64} manifest_sha256=[0-9a-f]{64} bytes=[1-9][0-9]* files=28 app_execution=unexecuted" "$SERIAL_LOG" || true)
+        [ "${#engine_artifacts[@]}" -eq 1 ] || fail 'engine artifact receipt is absent or duplicated'
+        require_exact_fixed_receipt "${engine_artifacts[0]}" 'engine artifact build source/digest'
+        [[ "${engine_artifacts[0]}" =~ pending=([^[:space:]]+)[[:space:]]sha256=([0-9a-f]{64}) ]] \
+            || fail 'engine artifact receipt differs'
+        ENGINE_ARTIFACT_PENDING=${BASH_REMATCH[1]}
+        ENGINE_ARTIFACT_SHA256=${BASH_REMATCH[2]}
+        printf '%s\n' "${engine_artifacts[0]}"
+    fi
     printf '%s\n' "$engine_prepare_receipt" "$engine_prepare_vm_receipt"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     linux_flutter_test_receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=20 publication=noclobber admission=exact execution=guest-only cleanup=joined'
@@ -4409,7 +4451,7 @@ if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
         || fail 'Linux Flutter app build source changed during execution'
     publish_linux_flutter_app_artifact
 fi
-if [ "$MODE" = linux-flutter-engine-prepare ]; then
+if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     [ "$(engine_prepare_input_inventory)" = "$engine_prepare_inputs_before" ] \
         && [ "$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST")" = "$engine_prepare_source_before" ] \
         || fail 'engine preparation input/source postcondition differs'
@@ -4418,6 +4460,23 @@ if [ "$MODE" = linux-flutter-engine-prepare ]; then
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse refs/remotes/origin/master)" = "$FOCUSED_TEST_COMMIT" ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'engine preparation pushed source changed during execution'
+    if [ "$MODE" = linux-flutter-engine-build ]; then
+        [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ARTIFACT_OUTPUT_PARENT")" = \
+          "$ARTIFACT_OUTPUT_PARENT_ID:$HOST_UID:$HOST_GID:700" ] \
+            && [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$ARTIFACT_OUTPUT_FD")" = "$ARTIFACT_OUTPUT_PARENT_ID" ] \
+            || fail 'engine artifact output authority changed'
+        pending_path="$ARTIFACT_OUTPUT_PARENT/$ENGINE_ARTIFACT_PENDING"
+        [ -d "$pending_path" ] && [ ! -L "$pending_path" ] \
+            && [ "$(/usr/bin/sha256sum "$pending_path/flutter-linux-engine.tar" | /usr/bin/awk '{print $1}')" = "$ENGINE_ARTIFACT_SHA256" ] \
+            || fail 'engine artifact bytes differ from the complete VM receipt'
+        /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C /usr/bin/python3 -I -S \
+            "$ARTIFACT_RESULT_PUBLISHER_SOURCE" --commit --artifact-kind flutter-linux-engine \
+            --output-parent "$ARTIFACT_OUTPUT_PARENT" --output-parent-identity "$ARTIFACT_OUTPUT_PARENT_ID" \
+            --pending "$ENGINE_ARTIFACT_PENDING" --pending-identity "$(/usr/bin/stat -c '%d:%i' -- "$pending_path")" \
+            --destination linux-x86_64-engine \
+            || fail 'engine artifact inert no-clobber publication failed'
+        ARTIFACT_PUBLISHED=1
+    fi
 fi
 RUN_COMPLETE=1
 if [ "$MODE" = authority-smoke ]; then
@@ -4426,6 +4485,9 @@ if [ "$MODE" = authority-smoke ]; then
 elif [ "$MODE" = android-execution-probe ]; then
     printf 'ANDROID_EXECUTION_PROBE_OUTER=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=guest-only emulator=unexecuted module_loads=none device_changes=none cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$vm_elapsed_seconds"
+elif [ "$MODE" = linux-flutter-engine-build ]; then
+    printf 'FLUTTER_ENGINE_BUILD_OUTER=pass host_uid=%s commit=%s tree=%s sha256=%s network=none listeners=no-harness-addition inputs=readonly-landlocked artifact=inert app_execution=unexecuted cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$ENGINE_ARTIFACT_SHA256" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-flutter-engine-prepare ]; then
     printf 'FLUTTER_ENGINE_PREPARE_OUTER=pass host_uid=%s commit=%s tree=%s graph=%s metadata=%s sysroots=%s network=none listeners=no-harness-addition inputs=readonly-landlocked engine_build=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \

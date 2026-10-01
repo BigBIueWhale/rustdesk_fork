@@ -1831,6 +1831,12 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,
   host RustDesk, Haggai, or unrelated cache was used or modified. This is harness storage/admission
   evidence, not product or release closure.
+  The separate outbound acquisition entry now uses the same descriptor-relative, nonblocking
+  one-run reservation for `online-fetch-runs`, before input digest walks, boot derivation,
+  payload construction or process launch. Its prior unguarded allocation is removed. Failed
+  evidence remains explicit and blocks another acquisition; successful joined retirement is
+  unchanged. Native retained/unsafe/lock/readmission and concurrent cases for this exact
+  production function, plus actual outer acquisition integration, are pending execution.
 - The R-S11dh VM-entry preflight now parses the kernel's complete `/proc/PID/stat`
   record after the final closing parenthesis, not whitespace field 22, for both daemon-generation
   checks. Canonical PID, bounded record, fixed-field shape/state and decimal start time are required;

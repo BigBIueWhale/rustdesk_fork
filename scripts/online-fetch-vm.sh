@@ -121,6 +121,43 @@ fail() {
     exit 1
 }
 
+reserve_verifier_run() {
+    local descriptor root_id entry allocated
+    [ -d "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ] \
+        && [ "$(/usr/bin/readlink -f -- "$RUN_ROOT")" = "$RUN_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$RUN_ROOT")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail "run-root authority differs: $RUN_ROOT"
+    root_id=$(/usr/bin/stat -c '%d:%i' -- "$RUN_ROOT") \
+        || fail 'cannot identify the acquisition-VM run root'
+    exec {descriptor}<"$RUN_ROOT" \
+        || fail 'cannot retain the acquisition-VM run root'
+    [ -d "/proc/$$/fd/$descriptor" ] \
+        && [ "$(/usr/bin/stat -Lc '%d:%i:%u:%g:%a' -- \
+             "/proc/$$/fd/$descriptor")" = "$root_id:$HOST_UID:$HOST_GID:700" ] \
+        || fail 'retained acquisition-VM run-root authority differs'
+    /usr/bin/flock --exclusive --nonblock "$descriptor" \
+        || fail 'another verifier is reserving a run; retry after its admission completes'
+    for entry in "/proc/$$/fd/$descriptor"/run.*; do
+        [ -e "$entry" ] || [ -L "$entry" ] || continue
+        fail "earlier verifier run remains: $RUN_ROOT/${entry##*/}; inspect it and clear it only after its owned processes have exited"
+    done
+    allocated=$(/usr/bin/mktemp -d "/proc/$$/fd/$descriptor/run.XXXXXXXXXX") \
+        || fail 'cannot create the private acquisition-VM run'
+    RUN="$RUN_ROOT/${allocated##*/}"
+    RUN_ID=$(/usr/bin/stat -c '%d:%i' -- "$allocated") \
+        || fail 'cannot identify the private acquisition-VM run'
+    [ -d "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ] \
+        && [ "$(/usr/bin/readlink -f -- "$RUN_ROOT")" = "$RUN_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$RUN_ROOT")" = \
+             "$root_id:$HOST_UID:$HOST_GID:700" ] \
+        && [ -d "$RUN" ] && [ ! -L "$RUN" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$RUN")" = \
+             "$RUN_ID:$HOST_UID:$HOST_GID:700" ] \
+        || fail 'reserved acquisition-VM run authority differs'
+    exec {descriptor}<&- || fail 'cannot close the acquisition-VM admission descriptor'
+}
+
 git_closed() {
     /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
         GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
@@ -501,7 +538,7 @@ cleanup() {
                 "$RUN/source.bundle"; do
                 remove_owned_large_file "$large" || cleanup_failed=1
             done
-            printf 'online-fetch VM: retained bounded failure evidence at %s\n' "$RUN" >&2
+            printf 'online-fetch VM: retained bounded failure evidence at %s; this blocks new runs until its owned processes have exited and it is explicitly reconciled\n' "$RUN" >&2
         fi
     elif [ -n "$RUN" ]; then
         cleanup_failed=1
@@ -528,7 +565,7 @@ trap 'exit 143' TERM
     || fail 'guest authority environment is reserved for the disposable VM'
 [ "$(/usr/bin/uname -s):$(/usr/bin/uname -m)" = Linux:x86_64 ] \
     || fail 'online acquisition VM requires a Linux x86_64 orchestration host'
-for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/comm /usr/bin/cut /usr/bin/dpkg-deb /usr/bin/find /usr/bin/findmnt /usr/bin/git \
+for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/comm /usr/bin/cut /usr/bin/dpkg-deb /usr/bin/find /usr/bin/findmnt /usr/bin/flock /usr/bin/git \
     /usr/bin/grep /usr/bin/id /usr/bin/install /usr/bin/mkdir /usr/bin/mktemp \
     /usr/bin/mv /usr/bin/python3 /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 \
     /usr/bin/readlink /usr/bin/rm /usr/bin/sed /usr/bin/seq /usr/bin/sha256sum \
@@ -545,6 +582,26 @@ done
 [ -d "$INPUT_ROOT" ] && [ ! -L "$INPUT_ROOT" ] \
     && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$INPUT_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
     || fail 'authenticated VM inputs are absent; run scripts/online-fetch.sh --verifier-vm-inputs'
+[ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
+    || fail 'online acquisition requires the one checked-out master authority'
+SOURCE_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
+    || fail 'cannot resolve the acquisition source commit'
+SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
+    || fail 'cannot resolve the acquisition source tree'
+[ "$SOURCE_COMMIT" = "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/heads/master)" ] \
+    || fail 'checked-out source differs from master'
+[ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+    || fail 'online acquisition requires a clean source tree'
+[ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
+    || fail 'Git replacement refs are forbidden'
+if [ -e "$RUN_ROOT" ] || [ -L "$RUN_ROOT" ]; then
+    [ -d "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$RUN_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'online-fetch VM run root metadata differs'
+else
+    /usr/bin/install -d -m 0700 -- "$RUN_ROOT"
+fi
+reserve_verifier_run
 for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE" \
     "$DOCKER_BUNDLE:$SIZE_VERIFIER_VM_DOCKER_STATIC" \
     "$BUILDX_BINARY:$SIZE_VERIFIER_VM_BUILDX" \
@@ -601,26 +658,6 @@ done
 verify_sha256 "$KERNEL" "$SHA256_VERIFIER_VM_KERNEL"
 verify_sha256 "$INITRD" "$SHA256_VERIFIER_VM_INITRD"
 
-[ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
-    || fail 'online acquisition requires the one checked-out master authority'
-SOURCE_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" \
-    || fail 'cannot resolve the acquisition source commit'
-SOURCE_TREE="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" \
-    || fail 'cannot resolve the acquisition source tree'
-[ "$SOURCE_COMMIT" = "$(git_closed -C "$REPO_ROOT" rev-parse --verify refs/heads/master)" ] \
-    || fail 'checked-out source differs from master'
-[ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
-    || fail 'online acquisition requires a clean source tree'
-[ -z "$(git_closed -C "$REPO_ROOT" for-each-ref --format='%(refname)' refs/replace)" ] \
-    || fail 'Git replacement refs are forbidden'
-
-if [ -e "$RUN_ROOT" ] || [ -L "$RUN_ROOT" ]; then
-    [ -d "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ] \
-        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$RUN_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
-        || fail 'online-fetch VM run root metadata differs'
-else
-    /usr/bin/install -d -m 0700 -- "$RUN_ROOT"
-fi
 if [ -e "$RECEIPT_ROOT" ] || [ -L "$RECEIPT_ROOT" ]; then
     [ -d "$RECEIPT_ROOT" ] && [ ! -L "$RECEIPT_ROOT" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$RECEIPT_ROOT")" \
@@ -630,11 +667,6 @@ else
     /usr/bin/install -d -m 0700 -- "$RECEIPT_ROOT"
 fi
 RECEIPT_ROOT_ID="$(/usr/bin/stat -c '%d:%i' -- "$RECEIPT_ROOT")"
-RUN="$(/usr/bin/mktemp -d "$RUN_ROOT/run.XXXXXXXXXX")" \
-    || fail 'cannot create the private online-fetch VM run'
-RUN_ID="$(/usr/bin/stat -c '%d:%i' -- "$RUN")"
-[ "$(/usr/bin/stat -c '%u:%g:%a' -- "$RUN")" = "$HOST_UID:$HOST_GID:700" ] \
-    || fail 'online-fetch VM run metadata differs'
 
 readonly OVERLAY=$RUN/overlay.qcow2
 readonly PAYLOAD=$RUN/payload.iso

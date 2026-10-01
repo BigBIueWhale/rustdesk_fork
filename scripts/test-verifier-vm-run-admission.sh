@@ -26,11 +26,13 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-/usr/bin/awk '
-    /^reserve_verifier_run\(\) \{$/ { found++; copy = 1 }
-    copy { print; if ($0 == "}") copy = 0 }
-    END { if (found != 1 || copy) exit 1 }
-' "$SCRIPT_DIR/smoke-verifier-vm-authority.sh" >"$workspace/function.sh"
+for entry in smoke-verifier-vm-authority online-fetch-vm; do
+    /usr/bin/awk '
+        /^reserve_verifier_run\(\) \{$/ { found++; copy = 1 }
+        copy { print; if ($0 == "}") copy = 0 }
+        END { if (found != 1 || copy) exit 1 }
+    ' "$SCRIPT_DIR/$entry.sh" >"$workspace/$entry.function.sh"
+done
 
 /usr/bin/awk '
     /^process_start_time\(\) \{$/ { found++; copy = 1 }
@@ -113,7 +115,7 @@ invoke() {
             fi
         done
         printf "%s %s\n" "$RUN" "$RUN_ID"
-    ' run-admission "$workspace/function.sh" "$1" "${2:-authority-smoke}" "${3:-}" "${4:-0}"
+    ' run-admission "$function_file" "$1" "${2:-authority-smoke}" "${3:-}" "${4:-0}"
 }
 
 require_refusal() {
@@ -126,87 +128,106 @@ require_refusal() {
     /usr/bin/grep -Fq -- "$expected" "$workspace/refusal.err"
 }
 
-root=$workspace/retained
-/usr/bin/mkdir -m 0700 -- "$root"
-result=$(invoke "$root")
-run=${result% *}
-run_id=${result##* }
-[[ "$run" == "$root"/run.* ]]
-[ "$run_id" = "$(/usr/bin/stat -c '%d:%i' -- "$run")" ]
-[ "$(/usr/bin/stat -c '%u:%g:%a' -- "$run")" = "$uid:$gid:700" ]
-require_refusal "$root" 'earlier verifier run remains'
-[ "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -name 'run.*' | /usr/bin/wc -l)" -eq 1 ]
-/usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
-    --remove-private-root "$run" --expected-identity "$run_id"
-result=$(invoke "$root")
-run=${result% *}
-run_id=${result##* }
-/usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
-    --remove-private-root "$run" --expected-identity "$run_id"
-
-for kind in file symlink; do
-    root=$workspace/$kind
+run_admission_cases() {
+    local entry=$1 scope=$workspace/$1
+    local function_file=$workspace/$1.function.sh
+    local root result run run_id kind capsule lock_fd index pid winners
+    local -a pids
+    /usr/bin/mkdir -m 0700 -- "$scope"
+    root=$scope/retained
     /usr/bin/mkdir -m 0700 -- "$root"
-    if [ "$kind" = file ]; then
-        : >"$root/run.retained"
-    else
-        /usr/bin/ln -s -- missing "$root/run.retained"
-    fi
+    result=$(invoke "$root")
+    run=${result% *}
+    run_id=${result##* }
+    [[ "$run" == "$root"/run.* ]]
+    [ "$run_id" = "$(/usr/bin/stat -c '%d:%i' -- "$run")" ]
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$run")" = "$uid:$gid:700" ]
     require_refusal "$root" 'earlier verifier run remains'
-    [ "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
-done
+    [ "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -name 'run.*' | /usr/bin/wc -l)" -eq 1 ]
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
+        --remove-private-root "$run" --expected-identity "$run_id"
+    result=$(invoke "$root")
+    run=${result% *}
+    run_id=${result##* }
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
+        --remove-private-root "$run" --expected-identity "$run_id"
 
-for kind in directory file symlink; do
-    root=$workspace/peer-run-$kind
-    capsule=$workspace/peer-capsule-$kind
-    /usr/bin/mkdir -m 0700 -- "$root" "$capsule"
-    case "$kind" in
-        directory) /usr/bin/mkdir -m 0700 -- "$capsule/retained" ;;
-        file) : >"$capsule/retained" ;;
-        symlink) /usr/bin/ln -s -- missing "$capsule/retained" ;;
-    esac
-    require_refusal "$root" 'an earlier Android peer artifact remains' android-peer-build "$capsule"
-    [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
-    [ "$(/usr/bin/find "$capsule" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
-    require_refusal "$root" 'an earlier Linux Flutter app artifact remains' flutter-peer-presentation "$capsule" 1
-    [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
-    [ "$(/usr/bin/find "$capsule" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
-done
+    for kind in file symlink; do
+        root=$scope/$kind
+        /usr/bin/mkdir -m 0700 -- "$root"
+        if [ "$kind" = file ]; then
+            : >"$root/run.retained"
+        else
+            /usr/bin/ln -s -- missing "$root/run.retained"
+        fi
+        require_refusal "$root" 'earlier verifier run remains'
+        [ "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
+    done
 
-root=$workspace/locked
-/usr/bin/mkdir -m 0700 -- "$root"
-exec {lock_fd}<"$root"
-/usr/bin/flock --exclusive --nonblock "$lock_fd"
-require_refusal "$root" 'another verifier is reserving a run'
-[ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
-exec {lock_fd}<&-
-
-root=$workspace/unsafe
-/usr/bin/mkdir -m 0755 -- "$root"
-require_refusal "$root" 'run-root authority differs'
-[ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
-
-root=$workspace/concurrent
-/usr/bin/mkdir -m 0700 -- "$root"
-pids=()
-for index in $(/usr/bin/seq 1 16); do
-    invoke "$root" >"$workspace/concurrent.$index.out" \
-        2>"$workspace/concurrent.$index.err" &
-    pids+=("$!")
-done
-winners=0
-for pid in "${pids[@]}"; do
-    if wait "$pid"; then winners=$((winners + 1)); fi
-done
-[ "$winners" -eq 1 ]
-[ "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -name 'run.*' | /usr/bin/wc -l)" -eq 1 ]
-for index in $(/usr/bin/seq 1 16); do
-    if [ -s "$workspace/concurrent.$index.out" ]; then
-        [ ! -s "$workspace/concurrent.$index.err" ]
-    else
-        /usr/bin/grep -Eq \
-            'earlier verifier run remains|another verifier is reserving a run' \
-            "$workspace/concurrent.$index.err"
+    if [ "$entry" = smoke-verifier-vm-authority ]; then
+        for kind in directory file symlink; do
+            root=$scope/peer-run-$kind
+            capsule=$scope/peer-capsule-$kind
+            /usr/bin/mkdir -m 0700 -- "$root" "$capsule"
+            case "$kind" in
+                directory) /usr/bin/mkdir -m 0700 -- "$capsule/retained" ;;
+                file) : >"$capsule/retained" ;;
+                symlink) /usr/bin/ln -s -- missing "$capsule/retained" ;;
+            esac
+            require_refusal "$root" 'an earlier Android peer artifact remains' android-peer-build "$capsule"
+            [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
+            [ "$(/usr/bin/find "$capsule" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
+            require_refusal "$root" 'an earlier Linux Flutter app artifact remains' flutter-peer-presentation "$capsule" 1
+            [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
+            [ "$(/usr/bin/find "$capsule" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
+        done
     fi
-done
+
+    root=$scope/locked
+    /usr/bin/mkdir -m 0700 -- "$root"
+    exec {lock_fd}<"$root"
+    /usr/bin/flock --exclusive --nonblock "$lock_fd"
+    require_refusal "$root" 'another verifier is reserving a run'
+    [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
+    exec {lock_fd}<&-
+
+    root=$scope/unsafe
+    /usr/bin/mkdir -m 0755 -- "$root"
+    require_refusal "$root" 'run-root authority differs'
+    [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
+
+    root=$scope/concurrent
+    /usr/bin/mkdir -m 0700 -- "$root"
+    pids=()
+    for index in $(/usr/bin/seq 1 16); do
+        invoke "$root" >"$scope/concurrent.$index.out" \
+            2>"$scope/concurrent.$index.err" &
+        pids+=("$!")
+    done
+    winners=0
+    for pid in "${pids[@]}"; do
+        if wait "$pid"; then winners=$((winners + 1)); fi
+    done
+    [ "$winners" -eq 1 ]
+    [ "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -name 'run.*' | /usr/bin/wc -l)" -eq 1 ]
+    for index in $(/usr/bin/seq 1 16); do
+        if [ -s "$scope/concurrent.$index.out" ]; then
+            [ ! -s "$scope/concurrent.$index.err" ]
+        else
+            /usr/bin/grep -Eq \
+                'earlier verifier run remains|another verifier is reserving a run' \
+                "$scope/concurrent.$index.err"
+        fi
+    done
+    printf 'VERIFIER_VM_RUN_ADMISSION_NATIVE entry=%s retained=refused file=refused symlink=refused lock=refused unsafe=refused readmission=pass concurrent=16 winners=1 descriptor=closed\n' "$entry" >&2
+}
+run_admission_cases smoke-verifier-vm-authority
+run_admission_cases online-fetch-vm
+
+root=$workspace/acquisition-old-primitive
+/usr/bin/mkdir -m 0700 -- "$root"
+/usr/bin/mktemp -d "$root/run.XXXXXXXXXX" >/dev/null
+/usr/bin/mktemp -d "$root/run.XXXXXXXXXX" >/dev/null
+[ "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -name 'run.*' | /usr/bin/wc -l)" -eq 2 ]
+printf 'ONLINE_FETCH_VM_RUN_ADMISSION_NATIVE_AB old_unguarded_mktemp=2 corrected_retained=refused corrected_concurrent=16 winners=1\n' >&2
 success=1

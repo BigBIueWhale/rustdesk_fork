@@ -1660,15 +1660,29 @@ or an LPE finding. GTK's [socket parent binding](https://raw.githubusercontent.c
 and ATK's [parent-derived geometry](https://raw.githubusercontent.com/GNOME/at-spi2-core/AT_SPI2_CORE_2_46_0/atk/atksocket.c)
 support the local-provider design; the exact experimental recipe is preserved in Git, not as a product mode.
 
-**Direct-tree dependency review — SOURCE FINDINGS; NATIVE CONTRACT PROBE PENDING.** The pinned
+**Direct-tree dependency review — NATIVE GTK CONTRACT OBSERVED; PRODUCT CORRECTION OPEN.** The pinned
 engine creates its accessible after assigning the engine/view ID, but a GTK widget-accessible
 replacement may be initialized during `fl_view_init` before those fields exist. Its semantics nodes
 hold a weak engine, not exact view lifetime; retained-node action retirement needs explicit coverage.
 GTK 3.24.38's widget provider branches only for WINDOW coordinates, not PARENT, and returns without
 setting extents when its widget is gone. ATK's wrapper does not initialize outputs when that vfunc
 exists. Therefore inheriting GTK geometry alone is not a complete replacement contract.
-The temporary native GTK probe uses actual widgets in the authenticated frame-test VM, not a mock
-Flutter implementation; it observes coordinate and retained-accessible behavior before retirement.
+Primary contracts: [GTK widget provider](https://raw.githubusercontent.com/GNOME/gtk/3.24.38/gtk/a11y/gtkwidgetaccessible.c)
+and [ATK component wrapper](https://raw.githubusercontent.com/GNOME/at-spi2-core/AT_SPI2_CORE_2_46_0/atk/atkcomponent.c).
+Exact `c4c2171853cc2d2cea88decd340c0db742a72952`, tree
+`6744647321659b5e9232c41b7ddb0ec12df49d3c`, executed actual GTK widgets under UID/GID 4000 in
+the zero-NIC VM in 67,650 host BOOTTIME ms. SCREEN was (160,200,120,90), WINDOW (60,80,120,90),
+but PARENT returned SCREEN rather than the measured parent-relative (60,80,120,90). Position/size
+were (160,200)/(120,90); hiding returned G_MININT positions with the size intact. After widget
+destruction, the retained accessible had no widget and left all four sentinel outputs untouched.
+Thus the direct provider must define PARENT conversion and initialize unavailable geometry itself,
+with invalid-state propagation through descendants; inheritance alone is disproven for these cases.
+The complete 68,389-byte raw serial is `evidence/gtk-contract-c4c21718.serial.log`, SHA-256
+`271de0e8ac4f811a2f0f0d7860784ec90bbc770f07a09324481b6e015952988f`. Existing frame-oracle
+criteria also passed unchanged. Host listeners/inputs were unchanged, process drift was zero,
+owned teardown joined and scratch self-retired. The temporary probe is deleted; its recipe is in
+Git, and the frame-test script equals its pre-experiment bytes. This is native GTK-provider evidence,
+not Flutter/AT-SPI integration, scale/transform proof, RustDesk execution or product closure.
 The SDK archive inventory contains the Linux engine source but no Dart `dart_api.h`, Skia
 `SkCanvas.h`, GoogleTest `gtest.h`, or GN binary under `engine/`; its `tools/gn` is only the wrapper.
 The pinned Linux GN target links `embedder_as_internal_library`, not a replaceable GTK-only shim.
@@ -1811,7 +1825,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest joined cleanup is recorded in the app-replay disposition above.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 621,371,392 allocated bytes (0.579 GiB). The actual outer
+  small evidence records occupy 621,441,024 allocated bytes (0.579 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

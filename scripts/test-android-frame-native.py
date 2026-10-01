@@ -91,119 +91,6 @@ x5A9HzsPfFt9/EcstOJ2Xx/805BMKw6rJL/jvyIEQRAEuTvzf4V2zEsMGgEA"""
           f"bytes={len(data)} seq={record['sequence']} "
           f"candidates={len(analysis['candidates'])} full_span_runs={summary}", flush=True)
 
-def inspect_native_gtk_contract():
-    """Observe the pinned GTK provider, not a replacement Flutter implementation."""
-    pointer = ctypes.c_void_p
-    integer = ctypes.c_int
-    integer_pointer = ctypes.POINTER(integer)
-    gtk = ctypes.CDLL("libgtk-3.so.0")
-    atk = ctypes.CDLL("libatk-1.0.so.0")
-    gobject = ctypes.CDLL("libgobject-2.0.so.0")
-    glib = ctypes.CDLL("libglib-2.0.so.0")
-
-    def bind(library, name, arguments, result=None):
-        function = getattr(library, name)
-        function.argtypes = arguments
-        function.restype = result
-        return function
-
-    initialize = bind(gtk, "gtk_init_check", [pointer, pointer], integer)
-    window_new = bind(gtk, "gtk_window_new", [integer], pointer)
-    fixed_new = bind(gtk, "gtk_fixed_new", [], pointer)
-    box_new = bind(gtk, "gtk_box_new", [integer, integer], pointer)
-    add = bind(gtk, "gtk_container_add", [pointer, pointer])
-    put = bind(gtk, "gtk_fixed_put", [pointer, pointer, integer, integer])
-    size_request = bind(gtk, "gtk_widget_set_size_request", [pointer, integer, integer])
-    move = bind(gtk, "gtk_window_move", [pointer, integer, integer])
-    show = bind(gtk, "gtk_widget_show_all", [pointer])
-    hide = bind(gtk, "gtk_widget_hide", [pointer])
-    destroy = bind(gtk, "gtk_widget_destroy", [pointer])
-    get_accessible = bind(gtk, "gtk_widget_get_accessible", [pointer], pointer)
-    get_widget = bind(gtk, "gtk_accessible_get_widget", [pointer], pointer)
-    mapped = bind(gtk, "gtk_widget_get_mapped", [pointer], integer)
-    iterate = bind(glib, "g_main_context_iteration", [pointer, integer], integer)
-    retain = bind(gobject, "g_object_ref", [pointer], pointer)
-    release = bind(gobject, "g_object_unref", [pointer])
-    get_extents = bind(atk, "atk_component_get_extents",
-                       [pointer, integer_pointer, integer_pointer,
-                        integer_pointer, integer_pointer, integer])
-    get_position = bind(atk, "atk_component_get_position",
-                        [pointer, integer_pointer, integer_pointer, integer])
-    get_size = bind(atk, "atk_component_get_size",
-                    [pointer, integer_pointer, integer_pointer])
-    sentinel = 123456789
-
-    def extents(accessible, coordinates):
-        values = [integer(sentinel) for _ in range(4)]
-        get_extents(accessible, *(ctypes.byref(value) for value in values), coordinates)
-        return tuple(value.value for value in values)
-
-    # No bridge is needed: this probe queries the native provider itself.
-    saved = {key: os.environ.get(key) for key in ("DISPLAY", "GDK_BACKEND", "NO_AT_BRIDGE")}
-    os.environ.update(DISPLAY=":98", GDK_BACKEND="x11", NO_AT_BRIDGE="1")
-    window = accessible = None
-    try:
-        require(initialize(None, None), "native GTK initialization failed")
-        window = window_new(0)
-        parent = fixed_new()
-        child = box_new(0, 0)
-        require(window and parent and child, "native GTK widget allocation failed")
-        add(window, parent)
-        put(parent, child, 60, 80)
-        size_request(child, 120, 90)
-        move(window, 100, 120)
-        accessible = retain(get_accessible(child))
-        parent_accessible = get_accessible(parent)
-        require(accessible and parent_accessible, "native GTK accessibility allocation failed")
-        show(window)
-        deadline = time.monotonic() + 3
-        while time.monotonic() < deadline:
-            iterate(None, 0)
-            if mapped(child) and extents(accessible, 1) == (60, 80, 120, 90):
-                break
-            time.sleep(0.005)
-        require(mapped(child), "native GTK child did not map")
-        screen = extents(accessible, 0)
-        relative_window = extents(accessible, 1)
-        relative_parent = extents(accessible, 2)
-        parent_screen = extents(parent_accessible, 0)
-        expected_parent = (screen[0] - parent_screen[0], screen[1] - parent_screen[1],
-                           screen[2], screen[3])
-        require(screen == (160, 200, 120, 90) and relative_window == (60, 80, 120, 90),
-                "native GTK screen/window geometry differs")
-        require(relative_parent == screen and relative_parent != expected_parent
-                and expected_parent == (60, 80, 120, 90),
-                "native GTK parent-coordinate omission was not reproduced")
-        position = [integer(sentinel) for _ in range(2)]
-        get_position(accessible, *(ctypes.byref(value) for value in position), 0)
-        size = [integer(sentinel) for _ in range(2)]
-        get_size(accessible, *(ctypes.byref(value) for value in size))
-        hide(child)
-        hidden = extents(accessible, 0)
-        require(hidden == (-(2 ** 31), -(2 ** 31), 120, 90),
-                "native GTK hidden geometry differs")
-        destroy(window)
-        window = None
-        require(not get_widget(accessible), "retained GTK accessible kept a destroyed widget")
-        retired = extents(accessible, 0)
-        require(retired == (sentinel,) * 4, "native GTK defunct output behavior differs")
-        print("ANDROID_FRAME_NATIVE_PROGRESS stage=gtk-contract-observed "
-              f"screen={screen} window={relative_window} parent={relative_parent} "
-              f"expected_parent={expected_parent} position={tuple(v.value for v in position)} "
-              f"size={tuple(v.value for v in size)} hidden={hidden} retired={retired} "
-              "owner=destroyed-retained-accessible bridge=disabled scope=gtk-only", flush=True)
-    finally:
-        if window:
-            destroy(window)
-        if accessible:
-            release(accessible)
-        for key, value in saved.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-
-
 def main():
     require(os.getuid() == 4000 and os.getgid() == 4000, "numeric nonroot principal differs")
     module_path = Path("/work/scripts/android-emulator-frame.py")
@@ -295,7 +182,6 @@ def main():
                     break
             time.sleep(0.05)
         require(display, "X11 Unix display is unavailable")
-        inspect_native_gtk_contract()
         with open("/tmp/frame-geometry-xvfb.log", "wb") as geometry_log:
             children.append(subprocess.Popen([
                 "/xvfb-root/usr/bin/Xvfb", ":99", "-screen", "0", "1280x800x24",

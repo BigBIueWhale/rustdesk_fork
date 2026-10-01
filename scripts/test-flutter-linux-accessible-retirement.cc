@@ -40,15 +40,16 @@ static void retire_on_child_removal(AtkObject* object, guint, gpointer, gpointer
   fl_accessible_node_retire(FL_ACCESSIBLE_NODE(object));
 }
 
-static void update_tree(FlViewAccessible* accessible, const char* label) {
+static void update_tree(FlViewAccessible* accessible, const char* label,
+                        gboolean siblings = FALSE) {
   FlutterSemanticsFlags flags = {};
-  int32_t children[] = {9};
+  int32_t children[] = {9, 11};
   FlutterSemanticsNode2 root = {};
   root.id = 0;
   root.label = label;
   root.value = "";
   root.flags2 = &flags;
-  root.child_count = 1;
+  root.child_count = siblings ? 2 : 1;
   root.children_in_traversal_order = children;
   FlutterSemanticsNode2 child = {};
   child.id = 9;
@@ -56,15 +57,80 @@ static void update_tree(FlViewAccessible* accessible, const char* label) {
   child.value = "";
   child.flags2 = &flags;
   child.actions = kFlutterSemanticsActionTap;
-  FlutterSemanticsNode2* nodes[] = {&root, &child};
+  FlutterSemanticsNode2 sibling = child;
+  sibling.id = 11;
+  FlutterSemanticsNode2* nodes[] = {&root, &child, &sibling};
   FlutterSemanticsUpdate2 update = {};
-  update.node_count = 2;
+  update.node_count = siblings ? 3 : 2;
   update.nodes = nodes;
   fl_view_accessible_handle_update_semantics(accessible, &update);
 }
 
 static void reset_on_root_add(AtkObject* accessible, guint, gpointer, gpointer) {
   fl_view_accessible_reset(FL_VIEW_ACCESSIBLE(accessible));
+}
+
+struct TreeRevocation {
+  FlEngine* engine;
+  FlAccessibleNode* first;
+  FlAccessibleNode* second;
+  guint notifications;
+};
+
+static void probe_tree_revocation(AtkObject*, const gchar*, gboolean state,
+                                   TreeRevocation* context) {
+  g_assert_true(state);
+  context->notifications++;
+  const guint dispatches = context->engine->dispatches;
+  const gboolean first = atk_action_do_action(ATK_ACTION(context->first), 0);
+  const gboolean second = atk_action_do_action(ATK_ACTION(context->second), 0);
+  fl_accessible_node_perform_action(context->first, kFlutterSemanticsActionTap, nullptr);
+  fl_accessible_node_perform_action(context->second, kFlutterSemanticsActionTap, nullptr);
+  if (first || second || context->engine->dispatches != dispatches) {
+    std::printf("ENGINE_ACCESSIBLE_TREE_REVOCATION_FAILURE notification=%u first=%d second=%d dispatches=%u\n",
+                context->notifications, first, second,
+                context->engine->dispatches - dispatches);
+    std::fflush(stdout);
+  }
+  g_assert_false(first);
+  g_assert_false(second);
+  g_assert_cmpuint(context->engine->dispatches, ==, dispatches);
+}
+
+static void test_tree_revocation(FlEngine* engine) {
+  for (guint operation = 0; operation < 3; operation++) {
+    g_autoptr(FlViewAccessible) accessible = fl_view_accessible_new(engine, 7);
+    update_tree(accessible, "whole tree", TRUE);
+    g_autoptr(AtkObject) root = atk_object_ref_accessible_child(ATK_OBJECT(accessible), 0);
+    g_assert_nonnull(root);
+    g_autoptr(AtkObject) first = atk_object_ref_accessible_child(root, 0);
+    g_autoptr(AtkObject) second = atk_object_ref_accessible_child(root, 1);
+    g_assert_nonnull(first);
+    g_assert_nonnull(second);
+    g_assert_true(atk_action_do_action(ATK_ACTION(first), 0));
+    g_assert_true(atk_action_do_action(ATK_ACTION(second), 0));
+    TreeRevocation context = {engine, FL_ACCESSIBLE_NODE(first), FL_ACCESSIBLE_NODE(second), 0};
+    g_signal_connect(first, "state-change::defunct", G_CALLBACK(probe_tree_revocation), &context);
+    g_signal_connect(second, "state-change::defunct", G_CALLBACK(probe_tree_revocation), &context);
+    const guint dispatches = engine->dispatches;
+    switch (operation) {
+      case 0:
+        fl_view_accessible_reset(accessible);
+        break;
+      case 1:
+        fl_view_accessible_retire(accessible);
+        break;
+      case 2:
+        g_object_run_dispose(G_OBJECT(accessible));
+        break;
+    }
+    g_assert_cmpuint(context.notifications, ==, 2);
+    g_assert_cmpuint(engine->dispatches, ==, dispatches);
+    g_signal_handlers_disconnect_by_data(first, &context);
+    g_signal_handlers_disconnect_by_data(second, &context);
+  }
+  std::puts("ENGINE_ACCESSIBLE_TREE_REVOCATION=pass unit=real-root first_notification=closed indexed_direct=refused reset_retire_dispose=closed");
+  std::fflush(stdout);
 }
 
 static void test_root(FlEngine* engine) {
@@ -317,7 +383,7 @@ extern "C" void fl_engine_dispatch_semantics_action(
     FlEngine* engine, FlutterViewId view_id, uint64_t node_id,
     FlutterSemanticsAction action, GBytes* data) {
   g_assert_cmpint(view_id, ==, 7);
-  if (node_id == 9) {
+  if (node_id == 9 || node_id == 11) {
     g_assert_cmpint(action, ==, kFlutterSemanticsActionTap);
     g_assert_null(data);
   } else {
@@ -432,6 +498,7 @@ int main() {
   std::puts("ENGINE_ACCESSIBLE_RETIREMENT=pass unit=real-node boundary=recording-engine idempotent=true stale=refused fresh=allowed geometry=defunct reentrant=true disposed=true");
   std::fflush(stdout);
   test_root(engine);
+  test_tree_revocation(engine);
   test_text_field(engine);
 #endif
   return 0;

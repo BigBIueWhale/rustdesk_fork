@@ -463,6 +463,8 @@ raise SystemExit(subprocess.call([
                     "idempotent=true stale=refused fresh=allowed geometry=defunct reentrant=true disposed=true\n"
                     "ENGINE_ACCESSIBLE_ROOT_RETIREMENT=pass unit=real-root boundary=recording-engine "
                     "reset=true replacement=true reentrant=true disposed=true\n"
+                    "ENGINE_ACCESSIBLE_TREE_REVOCATION=pass unit=real-root first_notification=closed "
+                    "indexed_direct=refused reset_retire_dispose=closed\n"
                     "ENGINE_ACCESSIBLE_TEXT_FIELD_RETIREMENT=pass unit=real-text-field "
                     "retired_disposed=closed live_edits=allowed reentrant_buffer=closed "
                     "reentrant_selection=closed reentrant_dispatch=closed "

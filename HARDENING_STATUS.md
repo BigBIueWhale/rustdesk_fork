@@ -2012,6 +2012,14 @@ sibling; the named after-reset tests do not prove that edge closed. Unicode inse
 and nested live-edit ordering also need their own native cases, not inference from ASCII
 retirement/disposal tests. No Android/Windows presentation causation is established.
 
+**Whole-tree revocation — NATIVE FALSIFICATION PENDING.** The next committed fixture
+connects real defunct notifications on two live sibling nodes and attempts both indexed and
+direct actions on both siblings from the first notification. Reset, view retirement and root
+disposal must revoke the complete old tree before any callback can dispatch an action; a
+healthy pre-reset tree must still dispatch both actions. Current per-node retirement is
+expected to fail this condition. Preserve any actual dispatch receipt and keep the item OPEN;
+the existing after-reset pass does not establish atomic revocation.
+
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
 consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

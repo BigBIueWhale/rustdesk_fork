@@ -1914,8 +1914,12 @@ The consumer now uses unchanged upstream GN argument/version functions and the p
 binary with its supported `--script-executable=/usr/bin/python3` option: one explicit interpreter
 from the authenticated image, no alias or download-on-demand wrapper. It requests Linux x64
 release/unit tests/no RBE, checks original revision/content arguments, and resolves actual GTK
-library and native-test outputs. The corrected step still requires its own committed-source
-native transaction; graph generation is not compilation or product behavior.
+library and native-test outputs. At `4e5d6126` the actual generator and revision checks passed,
+then our one-output assertion incorrectly refused the toolchain's declared `.TOC`/unstripped
+outputs. The complete output inventory is now required, and the same narrow consumer compiles
+the three original production view/accessibility translation units with pinned Ninja/Clang,
+retaining object digests in serial. These corrected steps still require their own committed-source
+native transaction; graph/object generation is not a linked engine or product behavior.
 The full engine build, production geometry correction and complete app replay remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required

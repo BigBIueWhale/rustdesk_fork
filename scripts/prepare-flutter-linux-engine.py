@@ -406,16 +406,37 @@ raise SystemExit(subprocess.call([
     for key, value in expected_args.items():
         require(re.findall(r"^" + key + r"\s*=\s*(.+)$", args_text, re.MULTILINE) == [value],
                 "generated GN argument differs: " + key)
-    for target, output in (("flutter_linux_gtk", "libflutter_linux_gtk.so"),
-                           ("flutter_linux_unittests", "flutter_linux_unittests")):
+    for target, outputs in (
+            ("flutter_linux_gtk", ("libflutter_linux_gtk.so", "libflutter_linux_gtk.so.TOC")),
+            ("flutter_linux_unittests", ("flutter_linux_unittests",
+                                        "exe.unstripped/flutter_linux_unittests"))):
         result = command(["flutter/third_party/gn/gn", "desc", "out/host_release",
                           "//flutter/shell/platform/linux:" + target, "outputs",
                           "--script-executable=/usr/bin/python3"],
                          engine, env, deadline)
-        require([line.strip() for line in result.decode().splitlines()] ==
-                ["//out/host_release/" + output], "original GN target output differs: " + target)
+        require(sorted(line.strip() for line in result.decode().splitlines()) ==
+                sorted("//out/host_release/" + output for output in outputs),
+                "original GN target output differs: " + target + " " + repr(result[:4096]))
     print("ENGINE_PREPARE_GN=pass runtime=release targets=flutter_linux_gtk,flutter_linux_unittests "
           "generator=original engine_build=unexecuted", flush=True)
+    objects = ["obj/flutter/shell/platform/linux/flutter_linux_sources." + unit + ".o"
+               for unit in ("fl_view", "fl_view_accessible", "fl_accessible_node")]
+    print("ENGINE_PREPARE_COMPILE_START production_units=3", flush=True)
+    command([framework + "/third_party/ninja/ninja", "-C", "out/host_release", "-j2",
+             *objects], engine, env, deadline)
+    for name in objects:
+        fd = os.open(engine + "/out/host_release/" + name,
+                     os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        with os.fdopen(fd, "rb") as source:
+            before = os.fstat(fd)
+            require(stat.S_ISREG(before.st_mode) and before.st_uid == before.st_gid == 1000
+                    and before.st_nlink == 1 and 0 < before.st_size <= FILE_LIMIT,
+                    "compiled object authority differs")
+            digest = hashlib.file_digest(source, "sha256").hexdigest()
+            require(unchanged(before, os.fstat(fd)), "compiled object changed")
+        print(f"ENGINE_PREPARE_OBJECT=pass path={name} bytes={before.st_size} sha256={digest}", flush=True)
+    print("ENGINE_PREPARE_COMPILE=pass production_units=3 engine_link=unexecuted tests=unexecuted",
+          flush=True)
     print("FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 "
           "indexes=original pub=path-only network=none engine_build=unexecuted", flush=True)
 

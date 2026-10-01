@@ -1904,6 +1904,14 @@ outer/capture status was 1/0 in 78,100 host BOOTTIME ms. Listeners were unchange
 all owned processes joined, and exact stopped scratch retired under the admission lock.
 Earlier template/encoding failures remain in retained evidence and the audit, not this ledger.
 No original hook or final link installation ran; complete offline preparation remains OPEN.
+The next `434022aa` run completed both Bullseye sysroots before refusing the RISC-V
+sysroot's mode-02775 `var/local` directory. Materialization now accepts that metadata but
+still creates directories as 0700 and regular files as 0644/0755, never copying set-ID,
+ownership or ACL authority; the native positive fixture requires those stripped modes.
+Its 74,999-byte full serial is `evidence/engine-prepare-434022aa.serial.log` (SHA256
+`ca0b3d915d3aa6b9afe7816317a445836193ec1684b678c690d21b88b9532ff4`),
+outer/capture 1/0 in 84,190 ms. Inputs stayed read-only, listeners unchanged, and exact
+joined scratch retired. No hook result is claimed.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

@@ -115,8 +115,7 @@ class Tree:
                 require(path[:len(scope)] == scope and path, "archive prefix differs")
                 require(member.isdir() or member.isreg() or member.issym() or member.islnk(),
                         "special archive member refused")
-                require(member.sparse is None and not member.mode & 0o6000,
-                        "sparse or set-ID archive member refused")
+                require(member.sparse is None, "sparse archive member refused")
                 require(not metadata or member.isdir() or member.isreg(), "Git metadata link refused")
                 require(not metadata or (raw and raw[0] == ".git"), "Git metadata prefix differs")
                 kind = "dir" if member.isdir() else "file" if member.isreg() else "link"
@@ -375,10 +374,10 @@ def self_test():
     def archive(entries):
         output = io.BytesIO()
         with tarfile.open(fileobj=output, mode="w") as tar:
-            for name, kind, value in entries:
+            for name, kind, value, *mode in entries:
                 member = tarfile.TarInfo(name)
                 member.type = kind
-                member.mode = 0o644
+                member.mode = mode[0] if mode else 0o644
                 if kind == tarfile.REGTYPE:
                     member.size = len(value)
                     tar.addfile(member, io.BytesIO(value))
@@ -388,10 +387,11 @@ def self_test():
         output.seek(0)
         return output
 
-    positive = [("usr/bin/tool", tarfile.REGTYPE, b"original"),
+    positive = [("usr/bin/tool", tarfile.REGTYPE, b"original", 0o6755),
                 ("bin", tarfile.SYMTYPE, "usr/bin"),
                 ("usr/bin/alias", tarfile.LNKTYPE, "./usr/bin/tool"),
-                (r"lib/systemd/system/system-systemd\x2dcryptsetup.slice", tarfile.REGTYPE, b"unit")]
+                (r"lib/systemd/system/system-systemd\x2dcryptsetup.slice", tarfile.REGTYPE, b"unit"),
+                ("var/local", tarfile.DIRTYPE, "", 0o2755)]
     negatives = [
         [("../escape", tarfile.REGTYPE, b"x")],
         [("/escape", tarfile.REGTYPE, b"x")],
@@ -421,6 +421,9 @@ def self_test():
                     require(tool.read_bytes() == b"original" and os.stat(tool).st_ino == os.stat(alias).st_ino
                             and os.stat(tool).st_nlink == 2 and os.readlink(case / "sysroot/bin") == "usr/bin",
                             "legitimate links lost their semantics")
+                    require(stat.S_IMODE(os.stat(tool).st_mode) == 0o755
+                            and stat.S_IMODE(os.stat(case / "sysroot/var/local").st_mode) == 0o700,
+                            "archive privilege bits reached the materialized tree")
                     require((case / "sysroot" / r"lib/systemd/system/system-systemd\x2dcryptsetup.slice")
                             .read_bytes() == b"unit", "literal Linux backslash filename changed")
             finally:

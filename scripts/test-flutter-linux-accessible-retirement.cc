@@ -461,16 +461,16 @@ static void assert_hit(AtkObject* parent, AtkObject* child,
 }
 
 static void test_node_geometry(FlEngine* engine) {
-  g_autoptr(GtkWidget) window = GTK_WIDGET(g_object_ref_sink(gtk_window_new(GTK_WINDOW_TOPLEVEL)));
+  g_autoptr(GtkWidget) toplevel = GTK_WIDGET(g_object_ref_sink(gtk_window_new(GTK_WINDOW_TOPLEVEL)));
   GtkWidget* fixed = gtk_fixed_new();
-  gtk_container_add(GTK_CONTAINER(window), fixed);
+  gtk_container_add(GTK_CONTAINER(toplevel), fixed);
   g_autoptr(GtkWidget) widget = new_bound_view(engine);
   gtk_widget_set_size_request(widget, 120, 90);
   gtk_fixed_put(GTK_FIXED(fixed), widget, 30, 40);
-  gtk_window_set_default_size(GTK_WINDOW(window), 200, 180);
-  gtk_window_move(GTK_WINDOW(window), 100, 120);
-  gtk_widget_show_all(window);
-  gdk_display_sync(gtk_widget_get_display(window));
+  gtk_window_set_default_size(GTK_WINDOW(toplevel), 200, 180);
+  gtk_window_move(GTK_WINDOW(toplevel), 100, 120);
+  gtk_widget_show_all(toplevel);
+  gdk_display_sync(gtk_widget_get_display(toplevel));
   g_assert_true(gtk_widget_get_mapped(widget));
   g_assert_true(gtk_widget_get_realized(widget));
   const gint scale = gtk_widget_get_scale_factor(widget);
@@ -478,7 +478,7 @@ static void test_node_geometry(FlEngine* engine) {
   g_assert_cmpint(scale, ==, std::atoi(g_getenv("GDK_SCALE")));
   g_assert_true(scale == 1 || scale == 2);
   gint screen_x = 0, screen_y = 0;
-  gdk_window_get_origin(gtk_widget_get_window(window), &screen_x, &screen_y);
+  gdk_window_get_origin(gtk_widget_get_window(toplevel), &screen_x, &screen_y);
   g_autoptr(FlViewAccessible) accessible = FL_VIEW_ACCESSIBLE(
       g_object_ref(gtk_widget_get_accessible(widget)));
   GeometryTree tree(scale);
@@ -677,7 +677,7 @@ static void test_node_geometry(FlEngine* engine) {
   g_signal_connect(parent, "state-change::defunct", G_CALLBACK(probe_tree_revocation), &context);
   g_signal_connect(child, "state-change::defunct", G_CALLBACK(probe_tree_revocation), &context);
   const guint dispatches = engine->dispatches;
-  gtk_widget_destroy(window);
+  gtk_widget_destroy(toplevel);
   g_assert_cmpuint(context.notifications, ==, 2);
   g_assert_cmpuint(engine->dispatches, ==, dispatches);
   g_assert_null(gtk_accessible_get_widget(GTK_ACCESSIBLE(accessible)));

@@ -2125,6 +2125,17 @@ and teardown-time whole-tree action refusal. One source-bound binary must pass e
 GTK scales 1 and 2; four migrated upstream test objects must compile. No native pass, engine
 link, actual FlView lifecycle, shipped app/self-wait fix, product/LPE or platform closure is
 claimed before execution. Existing assertion, runtime/resource and deadline bounds remain.
+First exact candidate `a55bc603`, tree `d86dea29da21ac786c451593f94fc769ab12c40c`,
+passed all original/candidate production-object compiles and strict fifteen-file patch apply,
+but the fixture compile refused a new GTK-window/local-array name collision. No candidate
+GTK scenario or upstream test compile ran. Tool 47459 was terminal 1, outer/capture 1/0
+in 98,940 host BOOTTIME ms. Full 96,649-byte serial is
+`evidence/engine-direct-gtk-a55bc603.serial.log`, SHA256
+`d070d77e657d298e5002b40573dba86b600cc22414b43fe215f7c39a4a66b098`;
+complete capture/listener/exporter/absence records are sealed 0400. Listeners were identical,
+additions/drift empty; exact stopped `run.rhRo6QXFpb` (`66306:105159802`) was reconciled
+under the run-root lock, reclaiming 12,995,813,376 allocated bytes. Zero run/overlay remains.
+The fixture's GTK owner is renamed `toplevel`; assertions and production bytes are unchanged.
 
 Next execute this candidate's focused native profile, then finish the reviewed, source-bound
 dependency correction and cover every required
@@ -2263,9 +2274,9 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest successful joined cleanup is recorded in the generation-owner
   disposition above; earlier failed runs were explicitly reconciled, most recently
-  `run.WPoC1eFb4R` (identity `66306:105159708`), reclaiming 13,021,159,424 allocated bytes.
+  `run.rhRo6QXFpb` (identity `66306:105159802`), reclaiming 12,995,813,376 allocated bytes.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 626,012,160 allocated bytes (0.583 GiB). The successful
+  small evidence records occupy 626,192,384 allocated bytes (0.583 GiB). The successful
   `18194742` generation-owner run joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks

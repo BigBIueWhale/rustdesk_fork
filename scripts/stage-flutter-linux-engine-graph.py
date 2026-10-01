@@ -229,14 +229,19 @@ def acquire_git(entry, number, record, output_root, total):
         git(work, "init", "--bare", "--template=", work)
         git(work, "fetch", "--quiet", "--no-progress", "--depth=1", "--no-tags",
             entry["url"], entry["revision"])
-        require(git(work, "rev-parse", "FETCH_HEAD^{commit}").decode().strip()
-                == entry["revision"], "dependency commit differs")
-        tree = git(work, "rev-parse", entry["revision"] + "^{tree}").decode().strip()
+        object_type = git(work, "cat-file", "-t", entry["revision"]).decode().strip()
+        require(object_type in ("commit", "tag"), "dependency pin is not a commit or tag object")
+        commit = git(work, "rev-parse", entry["revision"] + "^{commit}").decode().strip()
+        require(re.fullmatch("[0-9a-f]{40}", commit)
+                and git(work, "rev-parse", "FETCH_HEAD^{commit}").decode().strip() == commit,
+                "fetched dependency does not match the exact pinned object")
+        require(object_type != "commit" or commit == entry["revision"], "dependency commit differs")
+        tree = git(work, "rev-parse", commit + "^{tree}").decode().strip()
         require(re.fullmatch("[0-9a-f]{40}", tree), "dependency tree is malformed")
         git(work, "fsck", "--strict", "--no-reflogs")
         deps = None
         if entry["destination"] in (".", VULKAN):
-            deps = git(work, "show", entry["revision"] + ":DEPS").decode("utf-8")
+            deps = git(work, "show", commit + ":DEPS").decode("utf-8")
         if entry["destination"] == ".":
             require(deps == record["deps"]["text"], "framework root DEPS differs")
         filename = "git-%03d.tar" % number
@@ -245,12 +250,13 @@ def acquire_git(entry, number, record, output_root, total):
         try:
             with common["output_file"](output_root, filename) as output:
                 git(work, "archive", "--format=tar", "--prefix=" + prefix,
-                    entry["revision"], output=output)
+                    commit, output=output)
                 output.flush()
                 os.fsync(output.fileno())
         finally:
             resource.setrlimit(resource.RLIMIT_FSIZE, (FILE_LIMIT, FILE_LIMIT))
-    return {**entry, "tree": tree, **digest_file("/output/" + filename)}, deps
+    return {**entry, "object_type": object_type, "commit": commit,
+            "tree": tree, **digest_file("/output/" + filename)}, deps
 
 
 def package_archive(root, path, epoch, total):

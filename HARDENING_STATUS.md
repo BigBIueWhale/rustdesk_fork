@@ -1778,8 +1778,22 @@ inventory/context. Package archives normalize ownership, modes and epoch and omi
 installation metadata; their recorded SHA256 binds those canonical bytes, not a publisher ZIP.
 The [CIPD instance contract](https://chromium.googlesource.com/infra/luci/luci-go/+/main/cipd/common/iid.go)
 admits both legacy full SHA1 IDs and SHA256-plus-algorithm IDs; aliases are not installation
-authority. **Native graph/acquisition execution is not yet claimed.** Hooks, sysroot/Pub input
-closure, offline GN/engine build, source geometry correction and complete consumer remain OPEN.
+authority. First native candidate `31f38ca3` selected 72 root Git sources and 11 packages,
+sealed 36 archives, then refused HarfBuzz because the source-selected full object ID is an
+annotated tag, not its peeled commit. The correction retains the exact object pin/type,
+requires its peeled commit to equal FETCH_HEAD's commit, strictly verifies the fetched
+objects, and records both identities; it never substitutes a branch or new revision.
+[Publisher tag metadata](https://flutter.googlesource.com/third_party/harfbuzz/+refs/tags/13.2.1?format=JSON)
+binds `49844c32a7a3f6be371355a1213c952a3f4a44e7` to commit
+`6f4c5cec306d31e6822303f5ba248a14293d588e`. The failed transaction ended status 1 in
+119,780 host BOOTTIME ms with capture status zero, identical listener inventories and
+joined owners. Complete 69,423-byte raw serial is `evidence/engine-graph-31f38ca3.serial.log`
+(SHA256 `5defb369f2b193861549ab8761cfa69e117abd9eb972d1fc92845bdf8cbb5ee2`);
+bounded stdout/stderr/listener and partial-archive digest records are retained separately.
+Exact locked reconciliation removed only the stopped run and incomplete 1,251,213,312-byte
+candidate after evidence retention; no run/disk remains. **Complete native graph/package
+acquisition is not yet proved.** Hooks, sysroot/Pub input closure, offline GN/engine build,
+source geometry correction and complete consumer remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

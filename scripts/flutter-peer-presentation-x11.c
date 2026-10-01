@@ -722,7 +722,112 @@ static int require_same_dialog(unsigned int expected_pid, AtspiAccessible *expec
     return monotonic_millis() < deadline ? 0 : -1;
 }
 
-static int read_control_position(AtspiAccessible *control, int *x, int *y) {
+static void print_dialog_parent_chain(unsigned int expected_pid, AtspiAccessible *control) {
+    AtspiAccessible *ancestors[ACCESSIBLE_DEPTH_LIMIT + 1U] = {0};
+    unsigned int count = 1U;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    const char *result = "depth-bound";
+    GError *error = NULL;
+    ancestors[0] = g_object_ref(control);
+    for (unsigned int index = 0U; index < ACCESSIBLE_DEPTH_LIMIT + 1U; ++index) {
+        AtspiAccessible *current = ancestors[index];
+        AtspiAccessible *parent;
+        unsigned int pid;
+        AtspiRole role;
+        if (monotonic_millis() >= deadline) {
+            result = "deadline";
+            break;
+        }
+        pid = atspi_accessible_get_process_id(current, &error);
+        if (error != NULL || pid != expected_pid) {
+            result = error != NULL ? "peer-query" : "foreign-peer";
+            break;
+        }
+        role = atspi_accessible_get_role(current, &error);
+        if (error != NULL) {
+            result = "role-query";
+            break;
+        }
+        fprintf(stderr, "FLUTTER_PEER_DIALOG_PARENT index=%u role=%d object=%p cache_eligible=true\n",
+                index, (int)role, (void *)current);
+        if (role == ATSPI_ROLE_APPLICATION) {
+            result = "application-root";
+            break;
+        }
+        parent = atspi_accessible_get_parent(current, &error);
+        if (error != NULL || parent == NULL) {
+            result = error != NULL ? "parent-query" : "missing-parent";
+            if (parent != NULL) g_object_unref(parent);
+            break;
+        }
+        unsigned int previous;
+        for (previous = 0U; previous < count; ++previous) {
+            if (ancestors[previous] == parent) break;
+        }
+        if (previous < count || count == ACCESSIBLE_DEPTH_LIMIT + 1U) {
+            if (previous < count) {
+                fprintf(stderr, "FLUTTER_PEER_DIALOG_PARENT_CYCLE from=%u to=%u\n",
+                        index, previous);
+                result = "cycle";
+            }
+            g_object_unref(parent);
+            break;
+        }
+        ancestors[count++] = parent;
+    }
+    fprintf(stderr, "FLUTTER_PEER_DIALOG_PARENT_RESULT result=%s nodes=%u error_code=%d",
+            result, count, error != NULL ? error->code : 0);
+    print_sanitized_accessible_string("error", error != NULL ? error->message : NULL);
+    if (error != NULL) g_error_free(error);
+    for (unsigned int index = 0U; index < count; ++index) g_object_unref(ancestors[index]);
+}
+
+static void print_viewer_main_thread(unsigned int pid, const char *phase) {
+    char path[64], buffer[1024], wait_channel[96];
+    char *right, *save = NULL, *token;
+    unsigned long long user_ticks = 0ULL, system_ticks = 0ULL, start_ticks = 0ULL;
+    FILE *stream;
+    int complete;
+    if (snprintf(path, sizeof(path), "/proc/%u/task/%u/stat", pid, pid) <= 0 ||
+        (stream = fopen(path, "r")) == NULL) goto unavailable;
+    complete = fgets(buffer, sizeof(buffer), stream) != NULL &&
+               strchr(buffer, '\n') != NULL && fgetc(stream) == EOF && !ferror(stream);
+    if (fclose(stream) != 0 || !complete || (right = strrchr(buffer, ')')) == NULL) {
+        goto unavailable;
+    }
+    token = strtok_r(right + 1, " \n", &save);
+    for (unsigned int field = 3U; field <= 22U; ++field) {
+        if (token == NULL) goto unavailable;
+        if (field == 14U || field == 15U || field == 22U) {
+            char *end;
+            unsigned long long value;
+            errno = 0;
+            value = strtoull(token, &end, 10);
+            if (errno != 0 || end == token || *end != '\0' || token[0] == '-') {
+                goto unavailable;
+            }
+            if (field == 14U) user_ticks = value;
+            else if (field == 15U) system_ticks = value;
+            else start_ticks = value;
+        }
+        token = strtok_r(NULL, " \n", &save);
+    }
+    if (snprintf(path, sizeof(path), "/proc/%u/task/%u/wchan", pid, pid) <= 0 ||
+        (stream = fopen(path, "r")) == NULL) goto unavailable;
+    complete = fgets(wait_channel, sizeof(wait_channel), stream) != NULL &&
+               fgetc(stream) == EOF && !ferror(stream);
+    if (fclose(stream) != 0 || !complete) goto unavailable;
+    fprintf(stderr, "FLUTTER_PEER_DIALOG_MAIN_THREAD phase=%s monotonic_ms=%llu pid=%u "
+            "start_ticks=%llu user_ticks=%llu system_ticks=%llu", phase,
+            (unsigned long long)monotonic_millis(), pid, start_ticks, user_ticks, system_ticks);
+    print_sanitized_accessible_string("wait_channel", wait_channel);
+    return;
+unavailable:
+    fprintf(stderr, "FLUTTER_PEER_DIALOG_MAIN_THREAD phase=%s pid=%u observation=unavailable\n",
+            phase, pid);
+}
+
+static int read_control_position(unsigned int pid, AtspiAccessible *control, int *x, int *y) {
     AtspiComponent *component = atspi_accessible_get_component_iface(control);
     AtspiRect *rect;
     GError *error = NULL;
@@ -732,7 +837,11 @@ static int read_control_position(AtspiAccessible *control, int *x, int *y) {
         return -1;
     }
     atspi_accessible_clear_cache(control);
+    print_viewer_main_thread(pid, "before-extents");
+    uint64_t started = monotonic_millis();
     rect = atspi_component_get_extents(component, ATSPI_COORD_TYPE_SCREEN, &error);
+    uint64_t elapsed = monotonic_millis() - started;
+    print_viewer_main_thread(pid, "after-extents");
     if (error == NULL && rect != NULL && rect->width > 0 && rect->height > 0) {
         *x = rect->x;
         *y = rect->y;
@@ -740,8 +849,9 @@ static int read_control_position(AtspiAccessible *control, int *x, int *y) {
     }
     if (status != 0) {
         fprintf(stderr, "FLUTTER_PEER_DIALOG_EXTENTS_FAIL component=present rect=%d "
-                "width=%d height=%d error_domain=%u error_code=%d", rect != NULL,
+                "width=%d height=%d elapsed_ms=%llu error_domain=%u error_code=%d", rect != NULL,
                 rect != NULL ? rect->width : -1, rect != NULL ? rect->height : -1,
+                (unsigned long long)elapsed,
                 error != NULL ? error->domain : 0U,
                 error != NULL ? error->code : 0);
         print_sanitized_accessible_string("error", error != NULL ? error->message : NULL);
@@ -1431,11 +1541,12 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
     fprintf(stderr, "FLUTTER_PEER_DIALOG_CAPTION found=%d scope=Alert attempts=%u elapsed_ms=%llu\n",
             caption != NULL, caption_attempts,
             (unsigned long long)(monotonic_millis() - caption_wait_started));
+    if (caption != NULL) print_dialog_parent_chain((unsigned int)viewer->pid, caption);
     if (caption == NULL || require_same_dialog((unsigned int)viewer->pid, caption) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL actual dialog did not become stable\n", stderr);
         goto out;
     }
-    if (read_control_position(caption, &caption_x, &caption_y) != 0) {
+    if (read_control_position((unsigned int)viewer->pid, caption, &caption_x, &caption_y) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL actual dialog layout unavailable\n", stderr);
         goto out;
     }
@@ -1466,7 +1577,7 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
                         present != 0 ? "replaced" : "absent");
                 goto out;
             }
-            if (read_control_position(caption, &current_x, &current_y) != 0) {
+            if (read_control_position((unsigned int)viewer->pid, caption, &current_x, &current_y) != 0) {
                 fprintf(stderr, "FLUTTER_PEER_X11_FAIL resize=%u native_layout=unavailable\n",
                         resize + 1U);
                 goto out;

@@ -1691,6 +1691,12 @@ unchanged after both replays. Zero run/overlay remains. Trace the actual native 
 before changing the observer or product; a larger timeout, guessed coordinates or invalid extent
 acceptance would not establish correctness. The original Android/Windows defect remains OPEN.
 
+The next diagnostic retains a bounded, exact-process caption-parent chain (explicitly cache-eligible,
+not proof of the provider's internal parent graph), detects proxy cycles without rebinding the caption,
+and records the viewer main thread's start identity, CPU ticks and kernel wait channel immediately
+around the unchanged extent call. Diagnostic refusal remains explicit; it cannot provide geometry or
+acceptance. Parent references are all released. Native execution and call-wait causation remain OPEN.
+
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was
 false-green because readiness raced ahead of cleanup; the corrected test observes the actual drain

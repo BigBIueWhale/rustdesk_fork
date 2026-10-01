@@ -505,14 +505,18 @@ def acquire_metadata(args, selected, output_root):
                     and git(restored, "remote") == b"", "restored original Git identity differs")
             git(restored, "fsck", "--strict", "--no-reflogs")
             if entry["destination"] == ".":
+                require(git(restored, "show", "HEAD:bin/internal/engine.version")
+                        == (args.sdk_engine_version + "\n").encode(),
+                        "restored original SDK engine selection differs")
                 script = git(restored, "show", "HEAD:bin/internal/content_aware_hash.sh")
                 require(0 < len(script) <= 16384, "original content-hash script exceeds bound")
                 script_path = restored / "bin/internal/content_aware_hash.sh"
                 script_path.parent.mkdir(mode=0o700, parents=True)
                 with open(script_path, "xb") as output:
                     output.write(script)
-                require(command(["/bin/bash", str(script_path)], cwd=restored).decode().strip()
-                        == args.engine_content_hash, "restored original engine content hash differs")
+                content_hash = command(["/bin/bash", str(script_path)], cwd=restored).decode().strip()
+                require(content_hash == args.engine_content_hash,
+                        "restored original engine content hash differs: " + content_hash)
             artifacts.append({"destination": entry["destination"], "url": entry["url"],
                               "commit": entry["commit"], "tree": entry["tree"],
                               "source_archive_sha256": entry["sha256"],
@@ -524,7 +528,8 @@ def acquire_metadata(args, selected, output_root):
                 "source_commit": args.source_commit, "framework_revision": args.framework_revision,
                 "discovery_sha256": args.discovery_sha256, "tools_manifest_sha256": args.tools_manifest_sha256,
                 "graph_source_commit": args.graph_source_commit, "graph_manifest_sha256": args.graph_manifest_sha256,
-                "engine_content_hash": args.engine_content_hash, "source_date_epoch": args.epoch,
+                "engine_content_hash": args.engine_content_hash,
+                "sdk_engine_version": args.sdk_engine_version, "source_date_epoch": args.epoch,
                 "git": artifacts, "cipd": [], "acquired_bytes": total,
                 "complete_engine_closure": False, "hooks_executed": False}
     with common["output_file"](output_root, "manifest.json") as output:
@@ -536,6 +541,7 @@ def acquire_metadata(args, selected, output_root):
     metadata_graph(args)
     common["discovery"](args)
     print("ENGINE_GIT_METADATA=pass git=3 restored=3 content_hash=" + args.engine_content_hash
+          + " sdk_engine_version=" + args.sdk_engine_version
           + " bytes=" + str(total) + " complete_engine_closure=no", flush=True)
 
 
@@ -548,7 +554,7 @@ def main():
     for name in ("discovery-size", "tools-manifest-size", "epoch"):
         arguments.add_argument("--" + name, type=int, required=True)
     arguments.add_argument("--phase", choices=("graph", "git-metadata"), required=True)
-    for name in ("graph-source-commit", "graph-manifest-sha256", "engine-content-hash"):
+    for name in ("graph-source-commit", "graph-manifest-sha256", "engine-content-hash", "sdk-engine-version"):
         arguments.add_argument("--" + name)
     arguments.add_argument("--graph-manifest-size", type=int)
     args = arguments.parse_args()
@@ -563,9 +569,11 @@ def main():
             and re.fullmatch("[A-Za-z0-9_-]{43}C", args.cipd_instance), "malformed client pin")
     if args.phase == "git-metadata":
         require(args.graph_source_commit is not None and args.engine_content_hash is not None
+                and args.sdk_engine_version is not None
                 and args.graph_manifest_sha256 is not None and args.graph_manifest_size is not None
                 and re.fullmatch("[0-9a-f]{40}", args.graph_source_commit)
                 and re.fullmatch("[0-9a-f]{40}", args.engine_content_hash)
+                and re.fullmatch("[0-9a-f]{40}", args.sdk_engine_version)
                 and re.fullmatch("[0-9a-f]{64}", args.graph_manifest_sha256)
                 and 0 < args.graph_manifest_size <= 1048576, "independent graph pins are required")
         global FILE_LIMIT, TOTAL_LIMIT, DEADLINE
@@ -574,7 +582,8 @@ def main():
         DEADLINE = time.monotonic() + 600
     else:
         require(args.graph_source_commit is None and args.graph_manifest_sha256 is None
-                and args.graph_manifest_size is None and args.engine_content_hash is None,
+                and args.graph_manifest_size is None and args.engine_content_hash is None
+                and args.sdk_engine_version is None,
                 "metadata pins are metadata-only")
     os.umask(0o077)
     sys.dont_write_bytecode = True

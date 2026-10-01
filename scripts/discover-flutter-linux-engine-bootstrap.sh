@@ -66,7 +66,8 @@ else
             ARGUMENTS+=(--graph-source-commit "$FLUTTER_ENGINE_GRAPH_SOURCE_COMMIT"
                 --graph-manifest-size "$SIZE_FLUTTER_ENGINE_GRAPH_MANIFEST"
                 --graph-manifest-sha256 "$SHA256_FLUTTER_ENGINE_GRAPH_MANIFEST"
-                --engine-content-hash "$FLUTTER_PRESENTATION_CANDIDATE_ENGINE_REVISION")
+                --engine-content-hash "$FLUTTER_ENGINE_SOURCE_CONTENT_HASH"
+                --sdk-engine-version "$FLUTTER_PRESENTATION_CANDIDATE_ENGINE_REVISION")
         fi
     fi
 fi
@@ -289,7 +290,7 @@ if [ "$MODE" = graph ] || [ "$MODE" = git-metadata ]; then
         "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_DISCOVERY" \
         "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_TOOLS_MANIFEST" "$MODE" \
         "$SHA256_FLUTTER_ENGINE_GRAPH_MANIFEST" "$FLUTTER_ENGINE_GRAPH_SOURCE_COMMIT" \
-        "$FLUTTER_PRESENTATION_CANDIDATE_ENGINE_REVISION" <<'PY'
+        "$FLUTTER_ENGINE_SOURCE_CONTENT_HASH" "$FLUTTER_PRESENTATION_CANDIDATE_ENGINE_REVISION" <<'PY'
 import hashlib, json, os, re, stat, sys
 root = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
 fields = ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink',
@@ -321,7 +322,7 @@ try:
     assert 0 < len(manifest['git']) <= 256 and len(manifest['cipd']) <= 256
     if metadata:
         assert len(manifest['git']) == 3 and not manifest['cipd']
-        assert [manifest[key] for key in ('graph_manifest_sha256', 'graph_source_commit', 'engine_content_hash')] == sys.argv[7:10]
+        assert [manifest[key] for key in ('graph_manifest_sha256', 'graph_source_commit', 'engine_content_hash', 'sdk_engine_version')] == sys.argv[7:11]
         assert [entry['destination'] for entry in manifest['git']] == ['.', 'engine/src/flutter/third_party/dart', 'engine/src/flutter/third_party/skia']
     expected_names = {'manifest.json'}
     total = 0

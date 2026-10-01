@@ -1823,12 +1823,22 @@ independent graph manifest, fetches exact shallow objects, checks original trees
 and retains only fixed HEAD/config/shallow plus one original object pack/index per repository.
 No remote, hook, alternate, replacement, synthetic commit or version-check bypass is admitted.
 Each canonical archive is restored into a fresh private guest workspace and must reproduce
-the original HEAD/tree/timestamps and strict fsck; Flutter's original content-hash script
-must reproduce the independently pinned SDK hash. The existing graph is not changed or
-reacquired. Output is bounded at one GiB/archive and three GiB total; retained candidate/run
-state refuses another producer. Bash syntax/diff checks pass; native acquisition/restoration
-and complete transaction are **UNEXECUTED** at this source record. Sysroot/Pub/hooks,
-offline engine build, geometry correction and uninstrumented consumer remain OPEN.
+the original HEAD/tree/timestamps and strict fsck. The first native transaction at `c3bd73b0`
+restored the root objects but failed its incorrect source-hash-equals-SDK-version assertion
+in 65,300 host BOOTTIME ms (outer 1/capture 0); no complete publication is claimed. Full raw
+serial is `evidence/engine-git-metadata-c3bd73b0.serial.log` (68,540 bytes, SHA256
+`019ad5e948d1b9e795c5b3c8834a3757fa3e7dc5bb3085c2b19ceb4a5bd2ac0a`).
+The original `update_engine_version.sh` gives the tracked `engine.version` precedence for a
+shipped SDK, whereas `tools/gn` invokes `content_aware_hash.sh` on original tree entries.
+The corrected contract separately pins source content hash
+`ab598368592da0064197e2bc15c7f5b0a2c6bb1f` and unchanged SDK selection
+`af7e796e161ae0bb1ff0758c71a7105418bd9ded`, requiring restored original Git/script evidence
+for both. The source hash is independently derived from the publisher's exact root/bin/internal
+tree objects, not accepted from the failed command. No original source, SDK pin or check is bypassed.
+The completed graph is unchanged; output stays bounded at one GiB/archive and three GiB total.
+Retained candidate/run state refuses another producer. Failure evidence was retained before
+identity-bound stopped-root/partial reconciliation. Corrected native execution is **UNEXECUTED**;
+sysroot/Pub/hooks, offline engine build, geometry correction and uninstrumented consumer remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

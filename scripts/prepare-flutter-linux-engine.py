@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import resource
 import selectors
+import shlex
 import stat
 import subprocess
 import sys
@@ -424,9 +425,9 @@ raise SystemExit(subprocess.call([
     print("ENGINE_PREPARE_COMPILE_START production_units=3", flush=True)
     command([framework + "/third_party/ninja/ninja", "-C", "out/host_release", "-j2",
              *objects], engine, env, deadline)
-    for name in objects:
+    def artifact_receipt(name, stage):
         fd = os.open(engine + "/out/host_release/" + name,
-                     os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+                     os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
         with os.fdopen(fd, "rb") as source:
             before = os.fstat(fd)
             require(stat.S_ISREG(before.st_mode) and before.st_uid == before.st_gid == 1000
@@ -434,9 +435,57 @@ raise SystemExit(subprocess.call([
                     "compiled object authority differs")
             digest = hashlib.file_digest(source, "sha256").hexdigest()
             require(unchanged(before, os.fstat(fd)), "compiled object changed")
-        print(f"ENGINE_PREPARE_OBJECT=pass path={name} bytes={before.st_size} sha256={digest}", flush=True)
+        print(f"ENGINE_PREPARE_OBJECT=pass stage={stage} path={name} "
+              f"bytes={before.st_size} sha256={digest}", flush=True)
+
+    for name in objects:
+        artifact_receipt(name, "original")
     print("ENGINE_PREPARE_COMPILE=pass production_units=3 engine_link=unexecuted tests=unexecuted",
           flush=True)
+    clang = engine + "/flutter/buildtools/linux-x64/clang/bin/clang++"
+    flags = shlex.split(command(["/usr/bin/pkg-config", "--cflags", "--libs", "gtk+-3.0"],
+                                engine, env, deadline).decode())
+
+    def node_test(baseline):
+        binary = engine + "/out/host_release/node-retirement-" + ("baseline" if baseline else "candidate")
+        command([clang, "-std=c++17", "-DFLUTTER_LINUX_COMPILATION",
+                 "-DFLUTTER_ENGINE_NO_PROTOTYPES", "-UG_DISABLE_ASSERT", "-I" + engine,
+                 *(["-DLEGACY_BASELINE"] if baseline else []),
+                 "/authority/node-test.cc", engine + "/out/host_release/" + objects[2],
+                 "-flto", "-fuse-ld=lld", *flags, "-o", binary], engine, env, deadline)
+        output = command([binary], engine, env, deadline)
+        expected = ("ENGINE_ACCESSIBLE_RETIREMENT_BASELINE=observed parent=gone engine=live action=dispatched"
+                    if baseline else "ENGINE_ACCESSIBLE_RETIREMENT=pass unit=real-node boundary=recording-engine "
+                    "idempotent=true stale=refused fresh=allowed geometry=defunct")
+        require(output == (expected + "\n").encode(), "native node retirement receipt differs")
+        artifact_receipt(binary.rsplit("/", 1)[1], "baseline-test" if baseline else "candidate-test")
+        print(expected, flush=True)
+
+    node_test(True)
+    patch_path = Path("/authority/retirement.patch")
+    patch_bytes = patch_path.read_bytes()
+    require(0 < len(patch_bytes) <= 65536, "retirement patch exceeds bound")
+    git = ["/usr/bin/git", "--no-replace-objects", "-c", "core.hooksPath=/dev/null"]
+    command(git + ["apply", "--recount", "--check", "--whitespace=error-all", str(patch_path)],
+            framework, env, deadline)
+    command(git + ["apply", "--recount", "--whitespace=error-all", str(patch_path)],
+            framework, env, deadline)
+    expected_paths = ["engine/src/flutter/shell/platform/linux/" + name for name in
+                      ("fl_accessible_node.cc", "fl_accessible_node.h", "fl_view.cc",
+                       "fl_view_accessible.cc", "fl_view_accessible.h")]
+    changed = command(git + ["diff", "--name-only", "--", "engine/src/flutter/shell/platform/linux"],
+                      framework, env, deadline).decode().splitlines()
+    require(sorted(changed) == sorted(expected_paths), "retirement patch source scope differs")
+    command(git + ["diff", "--check"], framework, env, deadline)
+    print("ENGINE_ACCESSIBLE_RETIREMENT_PATCH=applied sha256="
+          + hashlib.sha256(patch_bytes).hexdigest() + " files=5 sdk_archive=unchanged", flush=True)
+    command([framework + "/third_party/ninja/ninja", "-C", "out/host_release", "-j2", *objects],
+            engine, env, deadline)
+    for name in objects:
+        artifact_receipt(name, "retirement-candidate")
+    node_test(False)
+    print("ENGINE_ACCESSIBLE_RETIREMENT_COMPILE=pass production_units=3 "
+          "view_teardown=unexecuted engine_restart=unexecuted app_replay=unexecuted", flush=True)
     print("FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 "
           "indexes=original pub=path-only network=none engine_build=unexecuted", flush=True)
 

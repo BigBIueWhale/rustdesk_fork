@@ -349,9 +349,11 @@ prepare_authority_probe_image() {
 run_linux_flutter_engine_prepare() {
     local role mountpoint options load_output inspect principal refusal
     local helper=$VERIFY_REPO/scripts/prepare-flutter-linux-engine.py
+    local patch=$VERIFY_REPO/res/flutter/linux-accessibility-retirement.patch
+    local test=$VERIFY_REPO/scripts/test-flutter-linux-accessible-retirement.cc
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
     local work=$ROOT/engine-prepare-work helper_before status=0
-    helper_before="$(sha256sum "$helper")"
+    helper_before="$(sha256sum "$helper" "$patch" "$test")"
     [ -f "$helper" ] && [ ! -L "$helper" ] || fail 'engine preparation source is absent'
     for principal in 0:0 4001:4001; do
         status=0
@@ -388,6 +390,8 @@ run_linux_flutter_engine_prepare() {
     chown 1000:1000 "$work"
     local -a mounts=(
         --mount "type=bind,source=$helper,target=/authority/prepare.py,readonly"
+        --mount "type=bind,source=$patch,target=/authority/retirement.patch,readonly"
+        --mount "type=bind,source=$test,target=/authority/node-test.cc,readonly"
         --mount "type=bind,source=$VERIFY_REPO/scripts/pins.env,target=/authority/pins.env,readonly"
         --mount "type=bind,source=$work,target=/work"
     )
@@ -429,6 +433,8 @@ run_linux_flutter_engine_prepare() {
         | LC_ALL=C sort)"
     [ "$inspect" = "$(printf '%s\n' \
         "bind|$helper|/authority/prepare.py|false" \
+        "bind|$patch|/authority/retirement.patch|false" \
+        "bind|$test|/authority/node-test.cc|false" \
         "bind|$VERIFY_REPO/scripts/pins.env|/authority/pins.env|false" \
         "bind|$work|/work|true" \
         'bind|/mnt/rustdesk-engine-graph|/inputs/graph|false' \
@@ -446,7 +452,7 @@ run_linux_flutter_engine_prepare() {
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
         || fail 'engine preparation left container/image state'
-    [ "$(sha256sum "$helper")" = "$helper_before" ] || fail 'engine preparation source changed'
+    [ "$(sha256sum "$helper" "$patch" "$test")" = "$helper_before" ] || fail 'engine preparation source changed'
     setpriv --reuid=1000 --regid=1000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT"
     stop_docker_authority
     for mountpoint in "${ENGINE_INPUT_MOUNTS[@]}"; do

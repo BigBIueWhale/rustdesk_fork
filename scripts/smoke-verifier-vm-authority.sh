@@ -380,6 +380,8 @@ readonly CLEANUP_HELPER="$SCRIPT_DIR/verify-private-tree-closure.py"
 readonly LIB_SOURCE="$SCRIPT_DIR/lib.sh"
 readonly PIN_SOURCE="$SCRIPT_DIR/pins.env"
 readonly ENGINE_PREPARE_SOURCE="$SCRIPT_DIR/prepare-flutter-linux-engine.py"
+readonly ENGINE_RETIREMENT_PATCH="$REPO_ROOT/res/flutter/linux-accessibility-retirement.patch"
+readonly ENGINE_RETIREMENT_TEST="$SCRIPT_DIR/test-flutter-linux-accessible-retirement.cc"
 readonly ENGINE_GRAPH_ROOT="$REPO_ROOT/online/candidates/flutter-linux-engine-graph"
 readonly ENGINE_METADATA_ROOT="$REPO_ROOT/online/candidates/flutter-linux-engine-git-metadata"
 readonly ENGINE_SYSROOTS_ROOT="$REPO_ROOT/online/candidates/flutter-linux-engine-sysroots"
@@ -1471,7 +1473,9 @@ engine_prepare_source_before=
 if [ "$MODE" = linux-flutter-engine-prepare ]; then
     [ "$HOST_UID:$HOST_GID" = 1000:1000 ] || fail 'engine candidate consumer requires UID/GID 1000'
     verify_committed_test_source "$ENGINE_PREPARE_SOURCE"
-    engine_prepare_source_before="$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE")"
+    verify_committed_test_source "$ENGINE_RETIREMENT_PATCH"
+    verify_committed_test_source "$ENGINE_RETIREMENT_TEST"
+    engine_prepare_source_before="$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST")"
     for input in \
         "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
         "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE" \
@@ -2845,6 +2849,8 @@ if [ "$MODE" = linux-flutter-engine-prepare ]; then
     lifecycle_payload_grafts=(
         "devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
         "repo/scripts/prepare-flutter-linux-engine.py=$ENGINE_PREPARE_SOURCE"
+        "repo/res/flutter/linux-accessibility-retirement.patch=$ENGINE_RETIREMENT_PATCH"
+        "repo/scripts/test-flutter-linux-accessible-retirement.cc=$ENGINE_RETIREMENT_TEST"
     )
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
     payload_identity=(-uid 4000 -gid 4000)
@@ -4359,7 +4365,7 @@ if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
 fi
 if [ "$MODE" = linux-flutter-engine-prepare ]; then
     [ "$(engine_prepare_input_inventory)" = "$engine_prepare_inputs_before" ] \
-        && [ "$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE")" = "$engine_prepare_source_before" ] \
+        && [ "$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST")" = "$engine_prepare_source_before" ] \
         || fail 'engine preparation input/source postcondition differs'
     [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \

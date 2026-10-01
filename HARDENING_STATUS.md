@@ -1925,6 +1925,19 @@ These are unmodified production object compilations, not a linked engine, execut
 unit tests, a geometry correction, or product behavior.
 The full engine build, production geometry correction and complete app replay remain OPEN.
 
+**Retained-node lifetime correction — SOURCE CANDIDATE; NATIVE TEST PENDING.**
+`res/flutter/linux-accessibility-retirement.patch` adds permanent node retirement to the
+source-bound dependency: action dispatch is revoked, retained nodes become defunct, and
+geometry becomes unavailable. A tree reset detaches its old node map before notifications;
+view retirement closes semantics admission before retiring that map. `FlView` resets the
+tree before engine restart and retires it before releasing the view ID. This is applied only
+to disposable engine source by the offline consumer, never to a host SDK/service or retained
+app. The focused test links the real GN-built node implementation to one explicitly recording
+engine boundary and contrasts the old parent-gone/live-engine dispatch with permanent
+retirement plus a healthy fresh node. Native execution and patched-unit compilation are
+pending. This is not a running engine, actual view teardown/restart, full engine link, shipped
+dependency, removed-subtree retirement, geometry/self-wait correction, or product/LPE closure.
+
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
 consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

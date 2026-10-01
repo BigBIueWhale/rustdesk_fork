@@ -1925,7 +1925,7 @@ These are unmodified production object compilations, not a linked engine, execut
 unit tests, a geometry correction, or product behavior.
 The full engine build, production geometry correction and complete app replay remain OPEN.
 
-**Retained-node lifetime correction — BASIC NATIVE UNIT PASS; EXPANDED CANDIDATE PENDING.**
+**Retained-node lifetime correction — BASIC NATIVE UNIT PASS; EXPANDED PATCH APPLICATION FAILED.**
 `res/flutter/linux-accessibility-retirement.patch` adds permanent node retirement to the
 source-bound dependency: action dispatch is revoked, retained nodes become defunct, and
 geometry becomes unavailable. A tree reset detaches its old node map before notifications;
@@ -1943,7 +1943,18 @@ SHA256 `436974117e0f0f2980f959979e0adc251765265423f137b8f48f43b1147e65f0`.
 The expanded candidate retains admitted update objects and exact map generation across
 callbacks, stops child mutation after synchronous retirement, initializes weak references in
 instance init and clears them only at finalization, and rejects post-dispose mutations/queries.
-Its real removal-callback retirement and disposed-node unit cases still require native execution.
+Exact expanded `da50ceea`, tree `db1e1b85938b14b64d64a19da219bfd80f65214c`,
+failed the unchanged guest's `git apply --recount --check` on the node/root source hunks,
+before patched-object compilation or expanded unit execution. Original preparation, three
+original-object compiles and the parent-gone baseline passed; no expanded candidate pass is
+claimed. Tool 83960 was terminal 1; outer/capture 1/0 in 96,340 host BOOTTIME ms.
+Full 78,194-byte serial is `evidence/engine-node-reentrant-da50ceea.serial.log`, SHA256
+`d193bead37524e7d8d5df81593a83514e96e4b29655b77a7d84bb5e86fdfa7ec`;
+matching outer, capture, listener and exporter records are retained read-only. After proving
+the outer owner absent, no owned processes/sockets/mounts/open VM images, unchanged host
+listeners and exact private-tree authority, failed run `66306:182977664` was reconciled
+under the admission lock, recovering 12,980,174,848 allocated bytes. Its real callback-
+retirement and disposed-node unit cases still require a corrected committed patch and execution.
 This is not a running engine, actual view teardown/restart, full engine link, shipped
 dependency, removed-subtree retirement, geometry/self-wait correction, or product/LPE closure.
 
@@ -2081,9 +2092,10 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   passed in 71 seconds with no added host listener or process drift and joined, residue-free cleanup;
   a concurrent outer invocation also refused without creating another root. User-authorized removal of
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
-  diagnostics are retained. Latest joined cleanup is recorded in the app-replay disposition above.
+  diagnostics are retained. Latest stopped-run cleanup is recorded in the expanded node-patch
+  disposition above.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 624,357,376 allocated bytes (0.581 GiB). The actual outer
+  small evidence records occupy 624,615,424 allocated bytes (0.582 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

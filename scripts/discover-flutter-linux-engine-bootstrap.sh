@@ -14,7 +14,8 @@ case "$#:${1:-}" in
     1:--probe-tools) MODE=probe ;;
     1:--stage-graph) MODE=graph ;;
     1:--stage-git-metadata) MODE=git-metadata ;;
-    *) echo 'engine bootstrap expects no arguments, --stage-tools, --probe-tools, --stage-graph or --stage-git-metadata' >&2; exit 2 ;;
+    1:--stage-sysroots) MODE=sysroots ;;
+    *) echo 'engine bootstrap expects no arguments, --stage-tools, --probe-tools, --stage-graph, --stage-git-metadata or --stage-sysroots' >&2; exit 2 ;;
 esac
 # shellcheck source=scripts/pins.env
 source "$SCRIPT_DIR/pins.env"
@@ -32,6 +33,27 @@ if [ "$MODE" = discovery ]; then
         --framework-revision "$FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION"
         --sdk-size "$SIZE_FLUTTER_PRESENTATION_CANDIDATE"
         --sdk-sha256 "$SHA256_FLUTTER_PRESENTATION_CANDIDATE")
+elif [ "$MODE" = sysroots ]; then
+    INPUT_PARENT="$REPO/online/candidates/flutter-linux-engine-graph"
+    INPUT="$INPUT_PARENT/manifest.json"
+    INPUT_DEST=/graph-manifest.json
+    INPUT_SIZE=$SIZE_FLUTTER_ENGINE_GRAPH_MANIFEST
+    OUTPUT="$REPO/online/candidates/flutter-linux-engine-sysroots"
+    HELPER="$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py"
+    PHASE=sysroots
+    ARGUMENTS=(--source-commit "$RUSTDESK_ONLINE_FETCH_VM_SOURCE_COMMIT"
+        --framework-revision "$FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION"
+        --graph-source-commit "$FLUTTER_ENGINE_GRAPH_SOURCE_COMMIT"
+        --graph-manifest-size "$SIZE_FLUTTER_ENGINE_GRAPH_MANIFEST"
+        --graph-manifest-sha256 "$SHA256_FLUTTER_ENGINE_GRAPH_MANIFEST"
+        --discovery-sha256 "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_DISCOVERY"
+        --tools-manifest-sha256 "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_TOOLS_MANIFEST"
+        --amd64-size "$SIZE_FLUTTER_ENGINE_SYSROOT_AMD64"
+        --amd64-sha256 "$SHA256_FLUTTER_ENGINE_SYSROOT_AMD64"
+        --arm64-size "$SIZE_FLUTTER_ENGINE_SYSROOT_ARM64"
+        --arm64-sha256 "$SHA256_FLUTTER_ENGINE_SYSROOT_ARM64"
+        --riscv64-size "$SIZE_FLUTTER_ENGINE_SYSROOT_RISCV64"
+        --riscv64-sha256 "$SHA256_FLUTTER_ENGINE_SYSROOT_RISCV64")
 else
     INPUT="$REPO/online/candidates/flutter-linux-engine-bootstrap/discovery.json"
     INPUT_PARENT="$REPO/online/candidates/flutter-linux-engine-bootstrap"
@@ -79,6 +101,7 @@ COMMON_HELPER=
 TOOLS=
 GRAPH_WORK=
 GRAPH_MANIFEST=
+ROOT_SOURCE=
 
 fail() { printf 'engine bootstrap discovery: %s\n' "$*" >&2; exit 1; }
 
@@ -157,6 +180,13 @@ if [ "$MODE" = git-metadata ]; then
              "$UID_NUMBER:$GID_NUMBER:400:1:$SIZE_FLUTTER_ENGINE_GRAPH_MANIFEST" ] \
         || fail 'sealed engine graph manifest is absent or ambiguous'
 fi
+if [ "$MODE" = sysroots ]; then
+    ROOT_SOURCE="$INPUT_PARENT/git-000.tar"
+    [ -f "$ROOT_SOURCE" ] && [ ! -L "$ROOT_SOURCE" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$ROOT_SOURCE")" = \
+             "$UID_NUMBER:$GID_NUMBER:400:1" ] \
+        || fail 'sealed original engine source archive is absent or ambiguous'
+fi
 WORK="$(/usr/bin/mktemp -d /var/tmp/rustdesk-engine-discovery.XXXXXXXXXX)"
 WORK_ID="$(/usr/bin/stat -c '%d:%i' -- "$WORK")"
 /usr/bin/install -d -m 0700 "$WORK/docker"
@@ -174,7 +204,7 @@ phase_arguments=()
 memory=512m
 memory_bytes=536870912
 tmp_size=16m
-if [ "$MODE" != discovery ]; then
+if [ "$MODE" != discovery ] && [ "$MODE" != sysroots ]; then
     memory=1g
     memory_bytes=1073741824
     tmp_size=512m
@@ -189,6 +219,9 @@ if [ "$MODE" = graph ] || [ "$MODE" = git-metadata ]; then
 fi
 scratch=(--tmpfs "/tmp:rw,noexec,nosuid,nodev,size=$tmp_size,mode=700,uid=$UID_NUMBER,gid=$GID_NUMBER")
 extra_mounts=()
+if [ "$MODE" = sysroots ]; then
+    extra_mounts=(--mount "type=bind,src=$ROOT_SOURCE,dst=/root-source.tar,readonly,bind-nonrecursive")
+fi
 if [ "$MODE" = graph ] || [ "$MODE" = git-metadata ]; then
     extra_mounts=(
         --mount "type=bind,src=$COMMON_HELPER,dst=/bootstrap-common.py,readonly,bind-nonrecursive"
@@ -224,7 +257,7 @@ CONTAINER_ID="$(/usr/bin/cat "$WORK/container.id")"
 docker_client inspect "$CONTAINER_ID" >"$WORK/inspect.json"
 /usr/bin/python3 -I -S - "$WORK/inspect.json" "$UID_NUMBER:$GID_NUMBER" \
     "$DEV_CHECK_IMAGE_ID" "$INPUT" "$HELPER" "$OUTPUT" "$INPUT_DEST" "$network" "$phase" \
-    "$memory_bytes" "$tmp_size" "$COMMON_HELPER" "$TOOLS" "$GRAPH_WORK" "$GRAPH_MANIFEST" <<'PY'
+    "$memory_bytes" "$tmp_size" "$COMMON_HELPER" "$TOOLS" "$GRAPH_WORK" "$GRAPH_MANIFEST" "$ROOT_SOURCE" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding='utf-8') as source:
     records = json.load(source)
@@ -262,8 +295,13 @@ if sys.argv[9] in ('graph', 'git-metadata'):
     else:
         assert sys.argv[13] == ''
         expected['/graph-manifest.json'] = (sys.argv[15], False)
+elif sys.argv[9] == 'sysroots':
+    assert sys.argv[12:16] == ['', '', '', ''] and sys.argv[16]
+    expected['/root-source.tar'] = (sys.argv[16], False)
 else:
-    assert sys.argv[12:] == ['', '', '', '']
+    assert sys.argv[12:] == ['', '', '', '', '']
+if sys.argv[9] != 'sysroots':
+    assert sys.argv[16] == ''
 binds = {}
 for mount in record['Mounts']:
     if mount['Type'] == 'tmpfs':
@@ -284,6 +322,54 @@ docker_client rm "$CONTAINER_ID" >/dev/null
 /usr/bin/rm -- "$WORK/container.id"
 CONTAINER_ID=
 [ "$(/usr/bin/sha256sum "${helper_sources[@]}")" = "$helper_before" ] || fail 'discovery source changed'
+if [ "$MODE" = sysroots ]; then
+    /usr/bin/python3 -I -S - "$OUTPUT" "$RUSTDESK_ONLINE_FETCH_VM_SOURCE_COMMIT" \
+        "$FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION" "$FLUTTER_ENGINE_GRAPH_SOURCE_COMMIT" \
+        "$SHA256_FLUTTER_ENGINE_GRAPH_MANIFEST" "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_DISCOVERY" \
+        "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_TOOLS_MANIFEST" \
+        "$SIZE_FLUTTER_ENGINE_SYSROOT_AMD64" "$SHA256_FLUTTER_ENGINE_SYSROOT_AMD64" \
+        "$SIZE_FLUTTER_ENGINE_SYSROOT_ARM64" "$SHA256_FLUTTER_ENGINE_SYSROOT_ARM64" \
+        "$SIZE_FLUTTER_ENGINE_SYSROOT_RISCV64" "$SHA256_FLUTTER_ENGINE_SYSROOT_RISCV64" <<'PY'
+import hashlib, json, os, stat, sys
+root = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+try:
+    def verify(name, size, digest=None):
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root)
+        with os.fdopen(fd, 'rb') as source:
+            before = os.fstat(source.fileno())
+            assert stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+            assert (before.st_uid, before.st_gid, stat.S_IMODE(before.st_mode)) == (os.getuid(), os.getgid(), 0o400)
+            assert 0 < before.st_size <= size
+            if digest is None:
+                result = json.load(source)
+            else:
+                assert before.st_size == size
+                assert hashlib.file_digest(source, 'sha256').hexdigest() == digest
+                result = size
+            after = os.fstat(source.fileno())
+            assert all(getattr(before, key) == getattr(after, key) for key in ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns'))
+            return result
+    manifest = verify('manifest.json', 65536)
+    assert manifest['format'] == 'rustdesk-flutter-linux-engine-sysroots-v1'
+    assert [manifest[key] for key in ('source_commit', 'framework_revision', 'graph_source_commit', 'graph_manifest_sha256', 'discovery_sha256', 'tools_manifest_sha256')] == sys.argv[2:8]
+    assert all(manifest[key] is False for key in ('archives_extracted', 'hooks_executed', 'downloaded_code_executed', 'complete_engine_closure'))
+    keys = ['bullseye_amd64', 'bullseye_arm64', 'trixie_riscv64']
+    assert [entry['key'] for entry in manifest['sysroots']] == keys
+    names, total = {'manifest.json'}, 0
+    for index, entry in enumerate(manifest['sysroots']):
+        size, digest = int(sys.argv[8 + index * 2]), sys.argv[9 + index * 2]
+        name = 'debian_' + keys[index] + '_sysroot.tar.xz'
+        assert entry['file'] == name and entry['sha256'] == digest and entry['bytes'] == size
+        total += verify(name, size, digest)
+        names.add(name)
+    assert set(os.listdir(root)) == names and total == manifest['acquired_bytes']
+    assert total + os.stat('manifest.json', dir_fd=root).st_size <= 67108864
+    print('ENGINE_SYSROOT_PUBLICATION=pass files=4 bytes=' + str(total) + ' extracted=no hooks=deferred complete_engine_closure=no')
+finally:
+    os.close(root)
+PY
+    exit 0
+fi
 if [ "$MODE" = graph ] || [ "$MODE" = git-metadata ]; then
     /usr/bin/python3 -I -S - "$OUTPUT" "$RUSTDESK_ONLINE_FETCH_VM_SOURCE_COMMIT" \
         "$FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION" \

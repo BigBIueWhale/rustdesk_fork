@@ -1858,6 +1858,22 @@ path overrides for DEPS-managed packages; test their actual offline resolves bef
 another hosted Pub acquisition is needed. Sysroot/Pub/hooks, offline engine build, production
 geometry correction and complete uninstrumented consumer remain OPEN.
 
+**Source-selected sysroot acquisition — IMPLEMENTED; NATIVE TRANSACTION UNEXECUTED.**
+The closed `--maintenance-stage-flutter-linux-engine-sysroots` operation authenticates
+the independent graph manifest and its original root-source archive, reads only the
+original `sysroots.json` as data, and checks all three selected x64/arm64/riscv64 hooks
+against separately pinned publisher SHA256/byte counts. It streams only fixed HTTPS
+digest-addressed objects, refuses redirects/proxies and size/digest drift, and publishes
+three inert mode-0400 archives plus one manifest without replacing an earlier candidate.
+The existing acquisition VM/entry/image authority remains mandatory; the confined
+numeric-nonroot container has four exact binds (graph/source/helper read-only, output
+writable), no devices or ports, a 512-MiB memory limit and a 64-MiB aggregate output
+budget. The focused VM has an eight-GiB disposable disk and a 300-second transaction
+deadline. No upstream installer, extraction or downloaded code runs. Actual acquisition,
+final independent rehash and joined cleanup must pass before this prerequisite is closed.
+Safe offline sysroot materialization, original hooks/Pub resolution, the engine build,
+production geometry correction and complete uninstrumented consumer remain OPEN.
+
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
 consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

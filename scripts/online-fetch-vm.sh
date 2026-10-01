@@ -30,6 +30,7 @@ case "$#:${1:-}" in
     1:--maintenance-probe-flutter-linux-engine-bootstrap|\
     1:--maintenance-stage-flutter-linux-engine-graph|\
     1:--maintenance-stage-flutter-linux-engine-git-metadata|\
+    1:--maintenance-stage-flutter-linux-engine-sysroots|\
     1:--maintenance-build-android-builder-bootstrap-candidate|\
     1:--maintenance-build-win-helper-bootstrap-candidate|\
     1:--maintenance-promote-deb-builder-bootstrap-candidate|\
@@ -104,6 +105,10 @@ elif [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ]; the
     readonly VM_TIMEOUT_SECONDS=900
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=4096
+elif [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-sysroots ]; then
+    readonly VM_TIMEOUT_SECONDS=300
+    readonly OVERLAY_SIZE=8G
+    readonly VM_MEMORY=2048
 else
     readonly VM_TIMEOUT_SECONDS=43200
     readonly OVERLAY_SIZE=64G
@@ -626,10 +631,11 @@ if [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ]; then
     [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
         || fail 'engine source/package graph already exists; review or explicitly reconcile it before another acquisition'
 fi
-if [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ]; then
-    candidate="$REPO_ROOT/online/candidates/flutter-linux-engine-git-metadata"
+if [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ] \
+   || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-sysroots ]; then
+    candidate="$REPO_ROOT/online/candidates/flutter-linux-engine-${REQUEST##*engine-}"
     [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
-        || fail 'engine Git metadata already exists; reuse or explicitly reconcile it before another acquisition'
+        || fail "engine ${REQUEST##*engine-} already exists; reuse or explicitly reconcile it before another acquisition"
     graph="$REPO_ROOT/online/candidates/flutter-linux-engine-graph"
     [ -d "$graph" ] && [ ! -L "$graph" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$graph")" = "$HOST_UID:$HOST_GID:700" ] \
@@ -696,6 +702,7 @@ for source in "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$BOOT_DERIVER" \
     "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" \
     "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" \
     "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" \
+    "$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py" \
     "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py"; do
     [ -f "$source" ] && [ ! -L "$source" ] || fail "VM source is absent or ambiguous: $source"
 done
@@ -806,6 +813,7 @@ if [ "$MODE" != authority-smoke ]; then
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ] \
+       || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-sysroots ] \
        || [ -e "$cache_child" ] || [ -L "$cache_child" ]; then
         if [ -e "$cache_child" ] || [ -L "$cache_child" ]; then
             [ -d "$cache_child" ] && [ ! -L "$cache_child" ] \
@@ -882,7 +890,7 @@ git_package_before="$(/usr/bin/sha256sum "$GIT_PACKAGE")"
 virtiofsd_package_before="$(/usr/bin/sha512sum "$VIRTIOFSD_PACKAGE")"
 kernel_before="$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/sha256sum "$INITRD")"
-source_before="$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/discover-flutter-android-maven.py" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")"
+source_before="$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/discover-flutter-android-maven.py" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" "$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")"
 capture_process_generations >"$LISTENER_PROCESSES_BEFORE"
 capture_listeners >"$LISTENERS_BEFORE"
 capture_listener_details >"$LISTENERS_BEFORE_DETAIL"
@@ -1162,7 +1170,7 @@ fi
     && [ "$(/usr/bin/sha256sum "$KERNEL")" = "$kernel_before" ] \
     && [ "$(/usr/bin/sha256sum "$INITRD")" = "$initrd_before" ] \
     || fail 'authenticated VM input changed during acquisition'
-[ "$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/discover-flutter-android-maven.py" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")" = "$source_before" ] \
+[ "$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/discover-flutter-android-maven.py" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" "$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")" = "$source_before" ] \
     || fail 'live orchestration source changed during acquisition'
 [ "$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}')" = "$SOURCE_COMMIT" ] \
     && [ "$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{tree}')" = "$SOURCE_TREE" ] \

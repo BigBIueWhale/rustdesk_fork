@@ -1646,6 +1646,17 @@ listeners and joined owned teardown. The exact inactive failed disk was reconcil
 lock, recovering 2,969,014,272 allocated bytes. Action execution, dialog/rebuild behavior and complete
 consumer acceptance still require fresh native replay; no app or overlay-ownership change is inferred
 from this selector mismatch, and the wider OPEN matrix is unchanged.
+Exact harness `f781784d` then replayed the same app in 117,930 host BOOTTIME ms without rebuilding.
+Both real controls exposed `Tap` and `Focus`; the unique Tap activated `Keyboard settings` in 69 ms
+and `Trackpad speed` in 28 ms. The run nevertheless failed at `actual dialog did not become stable`,
+before any resize, focus or reconnect scenario. This proves named native action invocation only:
+the existing diagnostic did not distinguish caption absence, identity instability or extent failure,
+and its subsequent native tree scan was unavailable. Focused diagnostics now report caption sampling,
+failed component/extents and initial desktop-query refusal without changing any acceptance bound.
+Complete 206,975-byte serial and bounded viewer/capture/listener records are retained at
+`evidence/keyboard-label-f781784d.*`. Host listener inventories were identical, owned teardown joined,
+and exact locked failed-root reconciliation recovered 2,969,096,192 allocated bytes. The platform,
+dialog/rebuild, original-hang, installed-service/LPE and release claims remain OPEN.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

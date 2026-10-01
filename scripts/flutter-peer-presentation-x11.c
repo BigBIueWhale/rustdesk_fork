@@ -308,6 +308,7 @@ static int scan_password_prompt(unsigned int expected_pid, PasswordPromptScan *s
     GError *error = NULL;
     gint child_count;
     gint index;
+    gint desktop_count;
 
     memset(scan, 0, sizeof(*scan));
     if (emit_diagnostic != 0) {
@@ -319,21 +320,37 @@ static int scan_password_prompt(unsigned int expected_pid, PasswordPromptScan *s
     }
     scan->first_focused_role = ATSPI_ROLE_INVALID;
     scan->first_password_character_count = -1;
-    if (atspi_get_desktop_count() != 1) {
+    desktop_count = atspi_get_desktop_count();
+    if (desktop_count != 1) {
+        if (emit_diagnostic != 0) {
+            fprintf(stderr, "FLUTTER_PEER_ATSPI_SCAN_FAIL stage=desktop-count count=%d\n",
+                    desktop_count);
+        }
         return -1;
     }
     desktop = atspi_get_desktop(0);
     if (desktop == NULL) {
+        if (emit_diagnostic != 0) {
+            fputs("FLUTTER_PEER_ATSPI_SCAN_FAIL stage=desktop-object\n", stderr);
+        }
         return -1;
     }
     atspi_accessible_clear_cache(desktop);
     child_count = atspi_accessible_get_child_count(desktop, &error);
     if (error != NULL) {
+        if (emit_diagnostic != 0) {
+            fprintf(stderr, "FLUTTER_PEER_ATSPI_SCAN_FAIL stage=desktop-children error_code=%d\n",
+                    error->code);
+        }
         g_error_free(error);
         g_object_unref(desktop);
         return -1;
     }
     if (child_count < 0 || child_count > ACCESSIBLE_CHILD_LIMIT) {
+        if (emit_diagnostic != 0) {
+            fprintf(stderr, "FLUTTER_PEER_ATSPI_SCAN_FAIL stage=desktop-child-bound children=%d\n",
+                    child_count);
+        }
         g_object_unref(desktop);
         return -1;
     }
@@ -357,11 +374,20 @@ static int scan_password_prompt(unsigned int expected_pid, PasswordPromptScan *s
         }
         g_object_unref(application);
         if (status != 0) {
+            if (emit_diagnostic != 0) {
+                fprintf(stderr, "FLUTTER_PEER_ATSPI_SCAN_FAIL stage=application-scan "
+                        "index=%d applications=%u nodes=%u\n",
+                        index, scan->application_roots, scan->nodes);
+            }
             g_object_unref(desktop);
             return -1;
         }
     }
     g_object_unref(desktop);
+    if (emit_diagnostic != 0 && scan->application_roots == 0U) {
+        fprintf(stderr, "FLUTTER_PEER_ATSPI_SCAN_FAIL stage=application-count "
+                "applications=0 desktop_children=%d\n", child_count);
+    }
     return scan->application_roots > 0U ? 0 : -1;
 }
 
@@ -685,13 +711,22 @@ static int read_control_position(AtspiAccessible *control, int *x, int *y) {
     AtspiRect *rect;
     GError *error = NULL;
     int status = -1;
-    if (component == NULL) return -1;
+    if (component == NULL) {
+        fputs("FLUTTER_PEER_DIALOG_EXTENTS_FAIL component=unavailable\n", stderr);
+        return -1;
+    }
     atspi_accessible_clear_cache(control);
     rect = atspi_component_get_extents(component, ATSPI_COORD_TYPE_SCREEN, &error);
     if (error == NULL && rect != NULL && rect->width > 0 && rect->height > 0) {
         *x = rect->x;
         *y = rect->y;
         status = 0;
+    }
+    if (status != 0) {
+        fprintf(stderr, "FLUTTER_PEER_DIALOG_EXTENTS_FAIL component=present rect=%d "
+                "width=%d height=%d error_code=%d\n", rect != NULL,
+                rect != NULL ? rect->width : -1, rect != NULL ? rect->height : -1,
+                error != NULL ? error->code : 0);
     }
     if (error != NULL) g_error_free(error);
     if (rect != NULL) g_boxed_free(ATSPI_TYPE_RECT, rect);
@@ -1347,6 +1382,8 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
     const unsigned int heights[] = {650U, 700U, viewer->height};
     AtspiAccessible *caption = NULL;
     uint64_t deadline;
+    uint64_t caption_wait_started;
+    unsigned int caption_attempts = 0U;
     Window child;
     int root_x, root_y;
     int caption_x, caption_y;
@@ -1366,12 +1403,17 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
         fputs("FLUTTER_PEER_X11_FAIL actual toolbar dialog activation\n", stderr);
         goto out;
     }
-    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    caption_wait_started = monotonic_millis();
+    deadline = caption_wait_started + DIALOG_CONTROL_WAIT_MS;
     while (monotonic_millis() < deadline && caption == NULL) {
+        caption_attempts += 1U;
         if (query_named_control((unsigned int)viewer->pid, "Trackpad speed", deadline,
                                 &caption) != 0 ||
             sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
     }
+    fprintf(stderr, "FLUTTER_PEER_DIALOG_CAPTION found=%d attempts=%u elapsed_ms=%llu\n",
+            caption != NULL, caption_attempts,
+            (unsigned long long)(monotonic_millis() - caption_wait_started));
     if (caption == NULL || require_same_dialog((unsigned int)viewer->pid, caption) != 0 ||
         read_control_position(caption, &caption_x, &caption_y) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL actual dialog did not become stable\n", stderr);

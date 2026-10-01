@@ -1795,6 +1795,23 @@ candidate after evidence retention; no run/disk remains. **Complete native graph
 acquisition is not yet proved.** Hooks, sysroot/Pub input closure, offline GN/engine build,
 source geometry correction and complete consumer remain OPEN.
 
+Corrected-object candidate `4ae7fa8b` acquired all 82 root/recursive Git archives, then
+refused an oversized CIPD `describe` receipt; no package or complete graph was published.
+The transaction ended outer 1/capture 0 in 214,650 host BOOTTIME ms. Complete 70,054-byte
+raw serial is `evidence/engine-graph-4ae7fa8b.serial.log`, SHA256
+`5490811d48101012f32f935743609216bad37cd3c4bf2fc3fb2cf7b096400ca0`.
+Listener inventories were identical, owners joined, and exact locked reconciliation reclaimed
+3,765,227,520 allocated bytes after retaining bounded streams/listeners and all 82 archive digests.
+An actual duplicate invocation refused before allocation and preserved the sole run identity.
+The client's pinned infra revision selects LUCI `7bb5d7de170f73cf8a22b78c14503502ca5222a7`;
+its [exact command contract](https://chromium.googlesource.com/infra/luci/luci-go/+/7bb5d7de170f73cf8a22b78c14503502ca5222a7/cipd/client/cli/main.go)
+distinguishes full instance descriptions from `resolve`'s one-package nested pin receipt.
+Acquisition now uses that narrow operation before source-archive allocation, requires its exact
+inventory/package/immutable-ID shape, and reads both resolution and install receipts through
+bounded no-follow, single-link, current-principal descriptors with unchanged metadata. No size
+limit, pin, authentication or installation check is relaxed. This correction's native execution
+remains OPEN; the failed 82-archive candidate is not a reusable complete closure.
+
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
 consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

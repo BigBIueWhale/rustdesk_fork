@@ -150,6 +150,47 @@ def digest_file(path):
     return {"bytes": before.st_size, "sha256": digest, "file": Path(path).name}
 
 
+def cipd_receipt(path):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as source:
+        before = os.fstat(source.fileno())
+        require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+                and before.st_uid == os.getuid() and before.st_gid == os.getgid()
+                and stat.S_IMODE(before.st_mode) == 0o600
+                and 0 < before.st_size <= 262144, "CIPD receipt authority or size differs")
+        payload = source.read(262145)
+        require(len(payload) == before.st_size
+                and unchanged(before, os.fstat(source.fileno())), "CIPD receipt changed")
+    receipt = json.loads(payload)
+    require(isinstance(receipt, dict) and set(receipt) == {"result"}, "CIPD receipt failed")
+    return receipt["result"]
+
+
+def resolve_packages(packages):
+    # Resolve the small exact pin receipt, not an unbounded instance description.
+    for number, package in enumerate(packages):
+        expanded = command(["/work/cipd", "expand-package-name", package["package"]]).decode().strip()
+        relative(expanded)
+        print("ENGINE_GRAPH_RESOLVE=" + expanded, flush=True)
+        filename = "/work/resolve-%03d.json" % number
+        command(["/work/cipd", "resolve", expanded, "-version", package["version"],
+                 "-json-output", filename, "-log-level", "error"])
+        result = cipd_receipt(filename)
+        require(isinstance(result, dict) and set(result) == {""}
+                and isinstance(result[""], list) and len(result[""]) == 1,
+                "CIPD resolution inventory differs")
+        entry = result[""][0]
+        require(isinstance(entry, dict) and set(entry) == {"package", "pin"}
+                and entry["package"] == expanded, "CIPD resolution package differs")
+        pin = entry["pin"]
+        require(isinstance(pin, dict) and set(pin) == {"package", "instance_id"}
+                and pin["package"] == expanded
+                and re.fullmatch(r"(?:[0-9a-f]{40}|[A-Za-z0-9_-]{43}C)", pin["instance_id"]),
+                "resolved package identity differs")
+        package.update({"package_pattern": package["package"],
+                        "package": expanded, "instance_id": pin["instance_id"]})
+
+
 def unpack_parser(archive):
     names = set()
     total = 0
@@ -369,6 +410,8 @@ def main():
                 "duplicate source destination")
         print("ENGINE_GRAPH_SELECTED=root-git:" + str(len(sources)) +
               " cipd:" + str(len(packages)) + " recursive:vulkan hooks:deferred", flush=True)
+        # Resolve once before allocating source archives; installation never re-reads aliases.
+        resolve_packages(packages)
         staged, total = [], 0
         for number, entry in enumerate(sources):
             artifact, deps = acquire_git(entry, number, record, roots["output"], total)
@@ -382,21 +425,6 @@ def main():
                 sources.extend(sorted(children, key=lambda item: item["destination"]))
                 require(len({item["destination"] for item in sources}) == len(sources)
                         and len(sources) <= 256, "recursive source graph is ambiguous")
-        # Resolve every selector before any package acquisition; aliases are never re-read.
-        for number, package in enumerate(packages):
-            expanded = command(["/work/cipd", "expand-package-name", package["package"]]).decode().strip()
-            relative(expanded)
-            filename = "/work/resolve-%03d.json" % number
-            command(["/work/cipd", "describe", expanded, "-version", package["version"],
-                     "-json-output", filename, "-log-level", "error"])
-            with open(filename, encoding="utf-8") as source:
-                require(os.fstat(source.fileno()).st_size <= 262144, "CIPD resolution exceeds bound")
-                pin = json.load(source)["result"]["pin"]
-            require(pin["package"] == expanded
-                    and re.fullmatch(r"(?:[0-9a-f]{40}|[A-Za-z0-9_-]{43}C)", pin["instance_id"]),
-                    "resolved package identity differs")
-            package.update({"package_pattern": package["package"],
-                            "package": expanded, "instance_id": pin["instance_id"]})
         package_artifacts = []
         for number, package in enumerate(packages):
             print("ENGINE_GRAPH_CIPD=" + package["package"] + "@" + package["instance_id"], flush=True)
@@ -409,9 +437,7 @@ def main():
                 receipt = Path(work) / "receipt.json"
                 command(["/work/cipd", "ensure", "-root", str(installed), "-ensure-file", str(ensure),
                          "-json-output", str(receipt), "-log-level", "error"])
-                with open(receipt, encoding="utf-8") as source:
-                    require(os.fstat(source.fileno()).st_size <= 262144, "CIPD install receipt exceeds bound")
-                    pins = json.load(source)["result"]
+                pins = cipd_receipt(receipt)
                 require(pins == {"": [{"package": package["package"], "instance_id": package["instance_id"]}]},
                         "installed immutable package receipt differs")
                 path = "/output/cipd-%03d.tar" % number

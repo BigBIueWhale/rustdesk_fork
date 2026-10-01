@@ -39,7 +39,14 @@ done
     copy { print; if ($0 == "}") copy = 0 }
     END { if (found != 1 || copy) exit 1 }
 ' "$SCRIPT_DIR/verify-vm-entry-preflight.sh" >"$workspace/process-start.sh"
-/usr/bin/python3 -I -S - "$workspace/process-start.sh" <<'PY'
+for entry in smoke-verifier-vm-authority online-fetch-vm; do
+    /usr/bin/awk '
+        /^(process_stat_fields|process_start_time|is_live_process_generation|is_exact_virtiofsd_process|is_owned_virtiofsd_generation|is_exact_process|is_virtiofsd_generation)\(\) \{$/ { found++; copy = 1 }
+        copy { print; if ($0 == "}") copy = 0 }
+        END { if (found != 5 || copy) exit 1 }
+    ' "$SCRIPT_DIR/$entry.sh" >"$workspace/$entry.process.sh"
+done
+/usr/bin/python3 -I -S - "$workspace" <<'PY'
 import ctypes
 import os
 from pathlib import Path
@@ -52,48 +59,107 @@ libc.prctl.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong,
 libc.prctl.restype = ctypes.c_int
 original_name = Path('/proc/self/comm').read_bytes()[:-1]
 pid = str(os.getpid())
+executable = str(Path('/proc/self/exe').resolve(strict=True))
 environment = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'HOME': '/nonexistent'}
+names = [('normal', b'rd-kernel-proof'), ('space', b'rd a b'),
+         ('parenthesis', b'rd ) ( a b'), ('newline', b'rd)\n x y'),
+         ('tab-carriage', b'rd\t x\r y')]
 
 def rename(name):
     if libc.prctl(15, ctypes.cast(ctypes.c_char_p(name), ctypes.c_void_p), 0, 0, 0):
         raise OSError(ctypes.get_errno(), 'PR_SET_NAME failed')
 
-def inspect(value):
+def inspect(action, value, start='', role=executable):
     return subprocess.run([
-        '/bin/bash', '--noprofile', '--norc', '-c',
-        'set -euo pipefail; source "$1"; process_start_time "$2"',
-        'process-start', sys.argv[1], value,
+        '/bin/bash', '--noprofile', '--norc', '-c', '''
+set -euo pipefail
+source "$1"
+VIRTIOFSD_BINARY=$5
+case "$2" in
+    start) process_start_time "$3" ;;
+    live) is_live_process_generation "$3" "$4" ;;
+    role)
+        if declare -F is_exact_virtiofsd_process >/dev/null; then
+            is_exact_virtiofsd_process "$3" "$4"
+        else
+            is_exact_process "$3" "$4" "$5"
+        fi ;;
+    owned)
+        if declare -F is_owned_virtiofsd_generation >/dev/null; then
+            is_owned_virtiofsd_generation "$3" "$4"
+        else
+            is_virtiofsd_generation "$3" "$4"
+        fi ;;
+    *) exit 1 ;;
+esac
+''', 'process-stat', source, action, value, start, role,
     ], env=environment, capture_output=True, timeout=5)
 
-def legacy():
-    return subprocess.run(['/usr/bin/awk', '{ print $22 }', f'/proc/{pid}/stat'],
-                          env=environment, check=True, capture_output=True, timeout=5).stdout
+def legacy(field, value):
+    return subprocess.run(['/usr/bin/awk', '{ print $' + field + ' }',
+                           f'/proc/{value}/stat'], env=environment, check=True,
+                          capture_output=True, timeout=5).stdout
 
 try:
-    rename(b'rd-kernel-proof')
-    baseline = legacy()
-    assert baseline.strip().isdigit() and int(baseline) > 0
-    names = [('normal', b'rd-kernel-proof'), ('space', b'rd a b'),
-             ('parenthesis', b'rd ) ( a b'), ('newline', b'rd)\n x y'),
-             ('tab-carriage', b'rd\t x\r y')]
-    for label, name in names:
-        rename(name)
-        current = inspect(pid)
-        old = legacy()
-        assert current.returncode == 0 and current.stdout == baseline, (label, current, baseline)
-        assert (old == baseline) == (label == 'normal'), (label, old, baseline)
-        print(f'VERIFIER_VM_PROCESS_STAT_NATIVE case={label} start={int(baseline)} '
-              f'legacy={"same" if old == baseline else "wrong"} corrected=same',
+    for entry in ('verify-vm-entry-preflight', 'smoke-verifier-vm-authority', 'online-fetch-vm'):
+        has_generation_checks = entry != 'verify-vm-entry-preflight'
+        source = str(Path(sys.argv[1]) / (entry + '.process.sh' if has_generation_checks else 'process-start.sh'))
+        generation_actions = ('live', 'role', 'owned') if has_generation_checks else ()
+        rename(b'rd-kernel-proof')
+        baseline = legacy('22', pid)
+        assert baseline.strip().isdigit() and int(baseline) > 0
+        for label, name in names:
+            rename(name)
+            current = inspect('start', pid)
+            old = legacy('22', pid)
+            assert current.returncode == 0 and current.stdout == baseline, (entry, label, current)
+            assert (old == baseline) == (label == 'normal'), (entry, label, old)
+            for action in generation_actions:
+                accepted = inspect(action, pid, baseline.decode().strip())
+                assert accepted.returncode == 0 and not accepted.stdout, (entry, label, action, accepted)
+                stale = inspect(action, pid, str(int(baseline) + 1))
+                assert stale.returncode != 0 and not stale.stdout, (entry, label, action, stale)
+            if has_generation_checks:
+                wrong_role = inspect('role', pid, baseline.decode().strip(), '/nonexistent')
+                assert wrong_role.returncode != 0 and not wrong_role.stdout, wrong_role
+
+            child = os.fork()
+            if child == 0:
+                try:
+                    rename(name)
+                    os._exit(0)
+                except BaseException:
+                    os._exit(1)
+            try:
+                exited = os.waitid(os.P_PID, child, os.WEXITED | os.WNOWAIT)
+                assert exited.si_code == os.CLD_EXITED and exited.si_status == 0, exited
+                fields = Path(f'/proc/{child}/stat').read_bytes().rpartition(b') ')[2].split()
+                assert fields[0] == b'Z' and fields[19].isdigit(), fields
+                zombie_start = fields[19].decode()
+                parsed = inspect('start', str(child))
+                assert parsed.returncode == 0 and parsed.stdout == fields[19] + b'\n', parsed
+                for action in generation_actions:
+                    refused = inspect(action, str(child), zombie_start)
+                    assert refused.returncode != 0 and not refused.stdout, (entry, label, action, refused)
+                old_state = legacy('3', str(child))
+                assert (old_state == b'Z\n') == (label == 'normal'), (entry, label, old_state)
+            finally:
+                joined_pid, joined_status = os.waitpid(child, 0)
+                assert joined_pid == child and joined_status == 0, (joined_pid, joined_status)
+            print(f'VERIFIER_VM_PROCESS_STAT_NATIVE entry={entry} case={label} '
+                  f'start=same zombie_start=same generation_checks={has_generation_checks} child=joined',
+                  file=sys.stderr, flush=True)
+        missing_pid = str(int(Path('/proc/sys/kernel/pid_max').read_text()) + 1)
+        for invalid in ('0', 'self', '../self', '-1', pid + 'x', missing_pid):
+            for action in ('start',) + generation_actions:
+                refused = inspect(action, invalid, baseline.decode().strip())
+                assert refused.returncode != 0 and not refused.stdout, (entry, invalid, action, refused)
+        print(f'VERIFIER_VM_PROCESS_STAT_NATIVE=pass entry={entry} '
+              'comm_cases=5 zombie_cases=5 legacy_start_mismatches=4 legacy_zombie_mismatches=4 '
+              f'generation_checks={has_generation_checks} pid=refused missing=refused uid=nonroot cleanup=joined',
               file=sys.stderr, flush=True)
-    missing_pid = str(int(Path('/proc/sys/kernel/pid_max').read_text()) + 1)
-    for invalid in ('0', 'self', '../self', '-1', pid + 'x', missing_pid):
-        refusal = inspect(invalid)
-        assert refusal.returncode != 0 and not refusal.stdout, (invalid, refusal)
 finally:
     rename(original_name)
-print('VERIFIER_VM_PROCESS_STAT_NATIVE=pass source=kernel comm_cases=5 '
-      'legacy_mismatches=4 pid_validation=refused missing=refused uid=nonroot cleanup=joined',
-      file=sys.stderr, flush=True)
 PY
 
 invoke() {

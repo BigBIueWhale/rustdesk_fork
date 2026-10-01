@@ -2073,8 +2073,15 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   `evidence/process-stat-integration-4bda02dc.serial.log`, SHA-256
   `1f66576a273fc5f0894ead3ca7d363cfa081063e28317c371236a28c39a775f1`.
   This is a parser correction, not a pidfd/reuse-race or LPE closure claim.
-  Other host/guest/acquisition process-stat start/state readers still use whitespace fields and
-  remain OPEN for migration; no test result for this receiver will close those callers.
+- The verifier and acquisition outer launchers now parse bounded, complete kernel stat records
+  after the final task-name parenthesis instead of whitespace fields 22/3. Helper liveness
+  requires a matching start time and non-zombie state from the same record; invalid or unreadable
+  identity refuses. The existing VM-only regression is consolidated across all three parsers and
+  includes five real task-name cases, five unreaped-child cases, stale-generation/executable
+  refusal and invalid/missing PIDs. Native execution of this extension is PENDING. Numeric-PID
+  signalling/reuse races, other guest readers, installed/native LPE and release closure remain OPEN.
+  Other guest and authority process-stat readers remain OPEN for audit/migration; these results
+  do not close untested callers or numeric-PID signal authority.
   Kernel contracts: [proc field definition](https://docs.kernel.org/filesystems/proc.html)
   and [Linux 6.1 stat producer](https://raw.githubusercontent.com/torvalds/linux/v6.1/fs/proc/array.c).
 - The R-S11dh authority smoke executed its real nonroot-host KVM/QEMU, networkless Debian guest, guest-only

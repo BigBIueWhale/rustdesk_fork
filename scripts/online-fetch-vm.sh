@@ -190,10 +190,37 @@ git_closed() {
         /usr/bin/git --no-replace-objects -c core.hooksPath=/dev/null "$@"
 }
 
+process_stat_fields() {
+    local pid record suffix
+    local -a fields
+    [ "$#" -eq 1 ] || return 1
+    pid=$1
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    record=$(<"/proc/$pid/stat") || return 1
+    [ "${#record}" -le 4096 ] || return 1
+    [[ "$record" == "$pid ("*") "* ]] || return 1
+    # comm is unescaped; only the final closing parenthesis starts the fixed fields.
+    suffix=${record##*) }
+    [[ "$suffix" != *$'\n'* && "$suffix" != *$'\r'* ]] || return 1
+    IFS=' ' read -r -a fields <<<"$suffix"
+    [ "${#fields[@]}" -ge 20 ] || return 1
+    [[ "${fields[0]}" =~ ^[RSDZTWtXxIKP]$ ]] \
+        && [[ "${fields[19]}" =~ ^[0-9]+$ ]] || return 1
+    printf '%s %s\n' "${fields[0]}" "${fields[19]}"
+}
+
 process_start_time() {
-    local pid=$1
-    [ -r "/proc/$pid/stat" ] || return 1
-    /usr/bin/awk '{print $22}' "/proc/$pid/stat"
+    local fields
+    [ "$#" -eq 1 ] || return 1
+    fields=$(process_stat_fields "$1") || return 1
+    printf '%s\n' "${fields#* }"
+}
+
+is_live_process_generation() {
+    local fields
+    [ "$#" -eq 2 ] || return 1
+    fields=$(process_stat_fields "$1") || return 1
+    [ "${fields#* }" = "$2" ] && [ "${fields%% *}" != Z ]
 }
 
 is_exact_process() {
@@ -221,9 +248,7 @@ is_virtiofsd_generation() {
     [ "$#" -eq 2 ] || return 1
     local pid=$1 start=$2
     [ -n "$pid" ] && [ -n "$start" ] \
-        && [ -r "/proc/$pid/stat" ] \
-        && [ "$(process_start_time "$pid" 2>/dev/null)" = "$start" ] \
-        && [ "$(/usr/bin/awk '{print $3}' "/proc/$pid/stat" 2>/dev/null)" != Z ]
+        && is_live_process_generation "$pid" "$start" 2>/dev/null
 }
 
 terminate_virtiofsd_generation() {

@@ -660,18 +660,27 @@ def build_engine(engine, framework, env, pin, patch_bytes, context):
     print("ENGINE_ARTIFACT_PUBLICATION_TEST=pass contracts=4 filesystem=real cleanup=joined", flush=True)
     output = Path(engine) / "out/host_release"
     ninja = framework + "/third_party/ninja/ninja"
-    header_outputs = command([
+    header_description = json.loads(command([
         "flutter/third_party/gn/gn", "desc", "out/host_release",
         "//flutter/shell/platform/linux:publish_headers_linux", "outputs",
-        "--script-executable=/usr/bin/python3",
-    ], engine, env, deadline).decode().splitlines()
+        "--format=json", "--script-executable=/usr/bin/python3",
+    ], engine, env, deadline))
+    require(type(header_description) is dict and set(header_description)
+            == {"//flutter/shell/platform/linux:publish_headers_linux"},
+            "GN header target description differs: " + repr(header_description))
+    header_record = header_description["//flutter/shell/platform/linux:publish_headers_linux"]
+    require(type(header_record) is dict and set(header_record) == {"outputs", "output_patterns"}
+            and header_record["output_patterns"]
+                == ["//out/host_release/flutter_linux/{{source_file_part}}"],
+            "GN header output pattern differs: " + repr(header_record))
+    header_outputs = header_record["outputs"]
     public_headers = (Path(engine) / "flutter/shell/platform/linux/BUILD.gn").read_text()
     declared = re.findall(r'"public/flutter_linux/([a-z0-9_]+\.h)"',
                           public_headers.split("_public_headers = [", 1)[1].split("]", 1)[0])
     require(len(declared) == len(set(declared)) == 26
             and sorted(line.strip() for line in header_outputs)
                 == sorted("//out/host_release/flutter_linux/" + name for name in declared),
-            "original GN public header outputs differ")
+            "original GN public header outputs differ: " + repr(header_record))
     targets = ["libflutter_linux_gtk.so", "gen_snapshot",
                *["flutter_linux/" + name for name in sorted(declared)]]
     plan = command([ninja, "-C", str(output), "-n", *targets], engine, env, deadline,

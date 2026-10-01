@@ -2184,6 +2184,15 @@ Exact stopped scratch was reconciled with identical listener snapshots and absen
 processes/image handles/mounts/sockets, reclaiming 12,987,510,784 bytes. No run/overlay remains.
 The driver now queries and validates all 26 original GN header outputs against the declared
 public-header list before forming the exact Ninja targets; no guessed alias or fallback.
+The second exact `8b84b4a0` transaction again passed preparation/native/publication cases,
+then refused the copy target's human-readable description, which includes both the output
+pattern and resolved file list. No full compilation occurred. Outer/capture were 1/0 in
+103,390 ms; full 90,190-byte serial is `evidence/engine-link-8b84b4a0.serial.log`, SHA256
+`bb633381caa8e5d8cc80a189cf4821fa17b9a676548b348345e44b735905f8bb`.
+GN's primary desc-builder/command sources establish that copy-output distinction. The
+driver now reads its structured JSON, independently checks the single target and exact
+template, and validates all 26 resolved outputs; no filename or cardinality criterion is
+relaxed. Exact stopped scratch was identity-bound reconciled after evidence/absence proof.
 Full build/publication, shared integration and consumer results are PENDING. Linking alone cannot
 prove real FlView restart, AT-SPI geometry, app presentation, shipped SDK integration,
 Wayland behavior, reproducibility equality or Android/Windows causation; these remain OPEN.

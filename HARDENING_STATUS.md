@@ -2012,13 +2012,25 @@ sibling; the named after-reset tests do not prove that edge closed. Unicode inse
 and nested live-edit ordering also need their own native cases, not inference from ASCII
 retirement/disposal tests. No Android/Windows presentation causation is established.
 
-**Whole-tree revocation — NATIVE FALSIFICATION PENDING.** The next committed fixture
-connects real defunct notifications on two live sibling nodes and attempts both indexed and
-direct actions on both siblings from the first notification. Reset, view retirement and root
-disposal must revoke the complete old tree before any callback can dispatch an action; a
-healthy pre-reset tree must still dispatch both actions. Current per-node retirement is
-expected to fail this condition. Preserve any actual dispatch receipt and keep the item OPEN;
-the existing after-reset pass does not establish atomic revocation.
+**Whole-tree revocation — NATIVE FAILURE CONFIRMED; CORRECTION OPEN.** The fixture connects
+real defunct notifications on two live sibling nodes and attempts both indexed and direct
+actions on both siblings from the first notification. Reset, view retirement and root disposal
+must revoke the complete old tree before any callback can dispatch an action; a healthy tree
+must still dispatch both actions. Exact `d8fb0c63515a2fe326678991000cee7bb7d2a697`, tree
+`a228a666f9bea45d1d6c839f23e08043ebb5f936`, compiled the seven original/candidate objects,
+passed baseline/base/root cases and positive sibling dispatch, then failed the first reset
+callback: `first=0 second=1 dispatches=2`. The sibling's indexed and direct actions actually
+reached the recording engine after reset began. Tool 20449 was terminal 1; outer/capture 1/0
+in 99,190 host BOOTTIME ms. Later retire/dispose and text-field cases did not execute.
+Full 81,859-byte serial is `evidence/engine-tree-revocation-d8fb0c63.serial.log`, SHA256
+`22a7aed081fdb958e22f5d1985fb1cca4e92657817af4d390994253034a41fec`;
+complete outer/capture/listener/exporter and stopped-owner records are retained mode 0400.
+Exact failed scratch was reconciled under the admission lock with unchanged listener snapshots,
+reclaiming 12,980,150,272 allocated bytes. This is a native reset-time generation-authority
+defect, not a proven LPE or Android/Windows cause. Replace independent engine/view authority
+in node construction with one live generation owner, revoked before callbacks; an admitted
+action must revalidate that owner at the actual dispatch sink. Do not omit notifications or
+retain an ownerless compatibility path. The assertions remain required for the correction.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
@@ -2156,9 +2168,9 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest successful joined cleanup is recorded in the expanded
   node-unit disposition above; subsequent failed runs were explicitly reconciled, most recently
-  `run.u39X2NGANP` (identity `66306:182977793`), reclaiming 12,971,032,576 allocated bytes.
+  `run.H6aEL3YL7a` (identity `66306:182977819`), reclaiming 12,980,150,272 allocated bytes.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 625,119,232 allocated bytes (0.582 GiB). The latest successful
+  small evidence records occupy 625,274,880 allocated bytes (0.582 GiB). The latest successful
   text-field unit run also joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks

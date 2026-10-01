@@ -2063,14 +2063,29 @@ Full engine link, actual FlView teardown/restart, subtree/type-change retirement
 Unicode/nested edits, shipped app replay, installed-service/LPE and Android/Windows causation remain
 OPEN. That pass used the production patch/native fixture bytes from `ce2782cf`.
 
-**Node coordinate/ancestor geometry — NEW NATIVE REGRESSION; EXECUTION PENDING.**
-The real-node fixture now queries explicit immediate-parent extents through GetExtents,
-position and contains, then retires only the retained ancestor while the child/tree generation
-remain live and requires unavailable SCREEN/WINDOW extents, size and containment. It records
-all observations before asserting. The current implementation adds parent coordinates even
-for PARENT and ignores parent dimensions/unavailability; a native failure is expected, not
-waived. The production patch is unchanged. This is the next falsification step toward the full
-direct GTK provider, not a coordinate/transform fix, widget geometry or app/integration result.
+**Node coordinate/ancestor geometry — RETAINED NATIVE FAILURE; PRODUCTION CORRECTION OPEN.**
+Exact regression `5bac005b0d64c72a71f6d7f24b2d8a0cc121f9da`, tree
+`e5291a6e55be1e8bfbafc42e5df4d37fb4193409`, compiled seven original/eight candidate
+production objects, strictly applied the unchanged twelve-file patch and passed the five existing
+node/root/tree/generation/text-field cases. The new real-node probe then observed PARENT extents
+`(45,57,20,10)` and position `(45,57)` for explicit immediate-parent offsets `(5,7)`; contains
+incorrectly refused the interior point `(6,8)`. With only the retained ancestor retired and the
+child/tree generation still live, SCREEN/WINDOW returned `(4,6,20,10)`, size remained `(20,10)`
+and contains accepted `(6,8)`. All observations were recorded before assertion `45 == 5` failed;
+later geometry assertions and upstream test-object compiles did not execute. No complete pass.
+Tool 31932 was terminal 1; outer/capture 1/0 in 103,670 host BOOTTIME ms. Native candidate:
+1,369,184 bytes, SHA256 `852b5060872021af5645134d1d9bd7df98f4cb4ee3716a2d44f21f3ab66c1122`.
+Complete 82,521-byte serial is `evidence/engine-node-geometry-5bac005b.serial.log`, SHA256
+`7776a75b6cd2d47873796c323728174738d370dc72de427b3bc5840b0ac6688e`; complete capture,
+outer, listener/exporter and stopped-owner records are sealed 0400. Before/during/after listeners
+were identical, additions/drift empty. Exact stopped `run.wOdPsiZPL6` (`66306:105159692`) was
+reconciled under the admission lock after owner/process/socket/mount/image-handle absence proof,
+reclaiming 12,977,991,680 allocated bytes. Zero run/overlay entries remain. This is real ATK node
+behavior with one recording-engine boundary, not physical-widget geometry, a running engine,
+root self-wait correction, app/installed-service/LPE evidence or Android/Windows causation.
+The production patch and all earlier assertions/bounds are unchanged. Keep these new assertions;
+replace the provider's geometry/lifetime model rather than accepting fabricated extents. Full
+transforms/scale/rounding/overflow, every component operation and uninstrumented replay remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
@@ -2208,9 +2223,9 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest successful joined cleanup is recorded in the generation-owner
   disposition above; earlier failed runs were explicitly reconciled, most recently
-  `run.OcltxVpnqi` (identity `66306:110366303`), reclaiming 12,975,562,752 allocated bytes.
+  `run.wOdPsiZPL6` (identity `66306:105159692`), reclaiming 12,977,991,680 allocated bytes.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 625,684,480 allocated bytes (0.583 GiB). The successful
+  small evidence records occupy 625,844,224 allocated bytes (0.583 GiB). The successful
   `18194742` generation-owner run joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks

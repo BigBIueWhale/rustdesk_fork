@@ -1037,6 +1037,20 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.h b/engi
 
  /**
   * fl_accessible_node_set_flags:
+@@ -146,10 +142,10 @@
+ /**
+  * fl_accessible_node_set_text_selection:
+  * @node: an #FlAccessibleNode.
+- * @base: the position at which the text selection originates.
+- * @extent: the position at which the text selection terminates.
++ * @base: the Flutter UTF-16 code-unit offset at which selection originates.
++ * @extent: the Flutter UTF-16 code-unit offset at which selection terminates.
+  *
+- * Sets the text selection of this node.
++ * Sets the Flutter text selection for the node's current value.
+  */
+ void fl_accessible_node_set_text_selection(FlAccessibleNode* node,
+                                            gint base,
 @@ -172,8 +168,10 @@
   * @data: (allow-none): data associated with the action.
   *
@@ -1048,7 +1062,6 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.h b/engi
 +gboolean fl_accessible_node_perform_action(FlAccessibleNode* node,
                                         FlutterSemanticsAction action,
                                         GBytes* data);
-
 diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc b/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc
 --- a/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc
 +++ b/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc
@@ -1262,13 +1275,69 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc 
 diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc b/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
 --- a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
 +++ b/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
-@@ -35,9 +35,17 @@
+@@ -18,6 +18,7 @@
+ struct _FlAccessibleTextField {
+   FlAccessibleNode parent_instance;
+
++  // Canonical ATK character offsets, never Flutter UTF-16 indices.
+   gint selection_base;
+   gint selection_extent;
+   GtkEntryBuffer* buffer;
+@@ -35,9 +36,65 @@
          G_IMPLEMENT_INTERFACE(ATK_TYPE_EDITABLE_TEXT,
                                fl_accessible_editable_text_iface_init))
 
 +static gboolean has_live_buffer(FlAccessibleTextField* self) {
 +  return self->buffer != nullptr &&
 +         fl_accessible_node_is_live(FL_ACCESSIBLE_NODE(self));
++}
++
++// ATK offsets count code points; Flutter selections count UTF-16 code units.
++static gint utf16_to_character_offset(GtkEntryBuffer* buffer, gint offset) {
++  const gchar* value = gtk_entry_buffer_get_text(buffer);
++  if (offset < 0 || !g_utf8_validate(value, -1, nullptr)) {
++    return -1;
++  }
++  gint utf16_offset = 0;
++  gint character_offset = 0;
++  for (const gchar* p = value;; p = g_utf8_next_char(p)) {
++    if (utf16_offset == offset) {
++      return character_offset;
++    }
++    if (*p == '\0') {
++      return -1;
++    }
++    const gint units = g_utf8_get_char(p) > 0xffff ? 2 : 1;
++    if (units > G_MAXINT - utf16_offset) {
++      return -1;
++    }
++    utf16_offset += units;
++    character_offset++;
++    if (utf16_offset > offset) {
++      // An offset inside a surrogate pair has no ATK character boundary.
++      return -1;
++    }
++  }
++}
++
++static gint character_to_utf16_offset(GtkEntryBuffer* buffer, gint offset) {
++  const gchar* value = gtk_entry_buffer_get_text(buffer);
++  if (offset < 0 ||
++      static_cast<guint>(offset) > gtk_entry_buffer_get_length(buffer) ||
++      !g_utf8_validate(value, -1, nullptr)) {
++    return -1;
++  }
++  gint utf16_offset = 0;
++  const gchar* p = value;
++  for (gint character_offset = 0; character_offset < offset; character_offset++) {
++    const gint units = g_utf8_get_char(p) > 0xffff ? 2 : 1;
++    if (units > G_MAXINT - utf16_offset) {
++      return -1;
++    }
++    utf16_offset += units;
++    p = g_utf8_next_char(p);
++  }
++  return utf16_offset;
 +}
 +
  static gchar* get_substring(FlAccessibleTextField* self,
@@ -1280,7 +1349,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
    const gchar* value = gtk_entry_buffer_get_text(self->buffer);
    glong length = g_utf8_strlen(value, -1);
    if (end == -1) {
-@@ -209,20 +217,31 @@
+@@ -209,39 +266,60 @@
    return nullptr;
  }
 
@@ -1316,10 +1385,18 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
 +  }
 +  g_autoptr(FlAccessibleTextField) owner =
 +      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
++  const gint utf16_base = character_to_utf16_offset(self->buffer, base);
++  const gint utf16_extent = character_to_utf16_offset(self->buffer, extent);
++  if (utf16_base < 0 || utf16_extent < 0) {
++    return FALSE;
++  }
    g_autoptr(FlValue) value = fl_value_new_map();
-   fl_value_set_string_take(value, "base", fl_value_new_int(base));
-   fl_value_set_string_take(value, "extent", fl_value_new_int(extent));
-@@ -231,17 +250,22 @@
+-  fl_value_set_string_take(value, "base", fl_value_new_int(base));
+-  fl_value_set_string_take(value, "extent", fl_value_new_int(extent));
++  fl_value_set_string_take(value, "base", fl_value_new_int(utf16_base));
++  fl_value_set_string_take(value, "extent", fl_value_new_int(utf16_extent));
+
+   g_autoptr(FlStandardMessageCodec) codec = fl_standard_message_codec_new();
    g_autoptr(GBytes) message =
        fl_message_codec_encode_message(FL_MESSAGE_CODEC(codec), value, nullptr);
 
@@ -1351,7 +1428,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
  }
 
  // Implements FlAccessibleNode::set_value.
-@@ -250,11 +274,17 @@
+@@ -250,11 +328,17 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(node));
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(node);
 
@@ -1371,7 +1448,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
  }
 
  // Implements FlAccessibleNode::set_text_selection.
-@@ -264,6 +294,11 @@
+@@ -264,6 +348,16 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(node));
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(node);
 
@@ -1380,10 +1457,15 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
 +  }
 +  g_autoptr(FlAccessibleTextField) owner =
 +      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
++  base = utf16_to_character_offset(self->buffer, base);
++  extent = utf16_to_character_offset(self->buffer, extent);
++  if (base < 0 || extent < 0) {
++    base = extent = -1;
++  }
    gboolean caret_moved = extent != self->selection_extent;
    gboolean has_selection = base != extent;
    gboolean had_selection = self->selection_base != self->selection_extent;
-@@ -277,7 +312,8 @@
+@@ -277,7 +371,8 @@
      g_signal_emit_by_name(self, "text-selection-changed", nullptr);
    }
 
@@ -1393,7 +1475,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
      g_signal_emit_by_name(self, "text-caret-moved", extent, nullptr);
    }
  }
-@@ -293,7 +329,7 @@
+@@ -293,7 +388,7 @@
  }
 
  // Overrides FlAccessibleNode::perform_action.
@@ -1402,7 +1484,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
                                               FlutterSemanticsAction action,
                                               GBytes* data) {
    FlAccessibleNodeClass* parent_class =
-@@ -310,12 +346,10 @@
+@@ -310,12 +405,10 @@
        g_autoptr(FlStandardMessageCodec) codec = fl_standard_message_codec_new();
        g_autoptr(GBytes) message = fl_message_codec_encode_message(
            FL_MESSAGE_CODEC(codec), extend_selection, nullptr);
@@ -1417,7 +1499,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
    }
  }
 
-@@ -324,7 +358,7 @@
+@@ -324,7 +417,7 @@
    g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), 0);
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
 
@@ -1426,7 +1508,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
  }
 
  // Implements AtkText::get_text.
-@@ -347,6 +381,16 @@
+@@ -347,6 +440,16 @@
    g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), nullptr);
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
 
@@ -1443,7 +1525,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
    switch (granularity) {
      case ATK_TEXT_GRANULARITY_CHAR:
        return get_char_at_offset(self, offset, start_offset, end_offset);
-@@ -370,6 +414,12 @@
+@@ -370,6 +473,12 @@
      AtkTextBoundary boundary_type,
      gint* start_offset,
      gint* end_offset) {
@@ -1456,7 +1538,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
    switch (boundary_type) {
      case ATK_TEXT_BOUNDARY_CHAR:
        return fl_accessible_text_field_get_string_at_offset(
-@@ -401,7 +451,7 @@
+@@ -401,7 +510,7 @@
    g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), -1);
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
 
@@ -1465,7 +1547,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
  }
 
  // Implements AtkText::set_caret_offset.
-@@ -410,8 +460,7 @@
+@@ -410,8 +519,7 @@
    g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), false);
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
 
@@ -1475,7 +1557,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
  }
 
  // Implements AtkText::get_n_selections.
-@@ -419,7 +468,7 @@
+@@ -419,7 +527,7 @@
    g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), 0);
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
 
@@ -1484,7 +1566,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
      return 0;
    }
 
-@@ -434,7 +483,14 @@
+@@ -434,7 +542,14 @@
    g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), nullptr);
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
 
@@ -1500,7 +1582,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
      return nullptr;
    }
 
-@@ -458,12 +514,11 @@
+@@ -458,12 +573,11 @@
    g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), false);
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
 
@@ -1515,7 +1597,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
  }
 
  // Implements AtkText::remove_selection.
-@@ -472,13 +527,13 @@
+@@ -472,13 +586,13 @@
    g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), false);
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
 
@@ -1533,7 +1615,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
  }
 
  // Implements AtkText::set_selection.
-@@ -489,12 +544,11 @@
+@@ -489,12 +603,11 @@
    g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), false);
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
 
@@ -1548,7 +1630,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
  }
 
  // Implements AtkEditableText::set_text_contents.
-@@ -515,11 +569,30 @@
+@@ -515,11 +628,30 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
 
@@ -1584,7 +1666,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
  }
 
  // Implements AtkEditableText::delete_text.
-@@ -529,9 +602,17 @@
+@@ -529,9 +661,17 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
 
@@ -1605,7 +1687,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
    perform_set_selection_action(self, start_pos, start_pos);
  }
 
-@@ -542,7 +623,11 @@
+@@ -542,7 +682,11 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
 
@@ -1618,7 +1700,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
 
    fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(editable_text),
                                      kFlutterSemanticsActionCopy, nullptr);
-@@ -555,7 +640,11 @@
+@@ -555,7 +699,11 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
 
@@ -1631,7 +1713,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
 
    fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(editable_text),
                                      kFlutterSemanticsActionCut, nullptr);
-@@ -567,7 +656,11 @@
+@@ -567,7 +715,11 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
 
@@ -1644,7 +1726,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
 
    fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(editable_text),
                                      kFlutterSemanticsActionPaste, nullptr);
-@@ -575,7 +668,7 @@
+@@ -575,7 +727,7 @@
 
  static void fl_accessible_text_field_class_init(
      FlAccessibleTextFieldClass* klass) {
@@ -1653,7 +1735,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
    FL_ACCESSIBLE_NODE_CLASS(klass)->set_value =
        fl_accessible_text_field_set_value;
    FL_ACCESSIBLE_NODE_CLASS(klass)->set_text_selection =
-@@ -623,6 +716,11 @@
+@@ -623,6 +775,11 @@
        self->buffer, "inserted-text",
        G_CALLBACK(+[](FlAccessibleTextField* self, guint position, gchar* chars,
                       guint n_chars) {
@@ -1665,7 +1747,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
          g_signal_emit_by_name(self, "text-insert", position, n_chars, chars,
                                nullptr);
        }),
-@@ -631,6 +729,11 @@
+@@ -631,6 +788,11 @@
    g_signal_connect_object(self->buffer, "deleted-text",
                            G_CALLBACK(+[](FlAccessibleTextField* self,
                                           guint position, guint n_chars) {
@@ -1677,7 +1759,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
                              g_autofree gchar* chars = atk_text_get_text(
                                  ATK_TEXT(self), position, position + n_chars);
                              g_signal_emit_by_name(self, "text-remove", position,
-@@ -639,10 +742,15 @@
+@@ -639,10 +801,15 @@
                            self, G_CONNECT_SWAPPED);
  }
 
@@ -1760,7 +1842,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
 
    // "" -> "Flutter"
    {
-@@ -83,8 +100,10 @@
+@@ -83,8 +100,11 @@
  // AtkText::text-selection-changed and AtkText::text-caret-moved signals as
  // expected.
  TEST_F(FlAccessibleTextFieldTest, SetTextSelection) {
@@ -1769,10 +1851,11 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
++  fl_accessible_node_set_value(node, "Flutter");
 
    // [-1,-1] -> [2,3]
    {
-@@ -156,8 +175,10 @@
+@@ -156,8 +176,10 @@
          return kSuccess;
        }));
 
@@ -1784,7 +1867,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
    fl_accessible_node_set_actions(
        node, static_cast<FlutterSemanticsAction>(
                  kFlutterSemanticsActionMoveCursorForwardByCharacter |
-@@ -178,8 +199,10 @@
+@@ -178,8 +200,10 @@
 
  // Tests AtkText::get_character_count.
  TEST_F(FlAccessibleTextFieldTest, GetCharacterCount) {
@@ -1796,7 +1879,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
 
    EXPECT_EQ(atk_text_get_character_count(ATK_TEXT(node)), 0);
 
-@@ -190,8 +213,10 @@
+@@ -190,8 +214,10 @@
 
  // Tests AtkText::get_text.
  TEST_F(FlAccessibleTextFieldTest, GetText) {
@@ -1808,7 +1891,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
 
    g_autofree gchar* empty = atk_text_get_text(ATK_TEXT(node), 0, -1);
    EXPECT_STREQ(empty, "");
-@@ -210,8 +235,10 @@
+@@ -210,8 +236,10 @@
 
  // Tests AtkText::get_text with out-of-bounds offsets.
  TEST_F(FlAccessibleTextFieldTest, GetTextBoundsChecking) {
@@ -1820,7 +1903,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
 
    fl_accessible_node_set_value(node, "Hello");
 
-@@ -235,8 +262,10 @@
+@@ -235,8 +263,11 @@
 
  // Tests AtkText::get_caret_offset.
  TEST_F(FlAccessibleTextFieldTest, GetCaretOffset) {
@@ -1829,10 +1912,11 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
++  fl_accessible_node_set_value(node, "Flutter");
 
    EXPECT_EQ(atk_text_get_caret_offset(ATK_TEXT(node)), -1);
 
-@@ -265,8 +294,10 @@
+@@ -265,8 +296,11 @@
          return kSuccess;
        }));
 
@@ -1841,10 +1925,11 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
++  fl_accessible_node_set_value(node, "Flutter");
 
    EXPECT_TRUE(atk_text_set_caret_offset(ATK_TEXT(node), 3));
    EXPECT_EQ(base, 3);
-@@ -275,8 +306,10 @@
+@@ -275,8 +309,11 @@
 
  // Tests AtkText::get_n_selections.
  TEST_F(FlAccessibleTextFieldTest, GetNSelections) {
@@ -1853,10 +1938,11 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
++  fl_accessible_node_set_value(node, "Flutter");
 
    EXPECT_EQ(atk_text_get_n_selections(ATK_TEXT(node)), 0);
 
-@@ -287,8 +320,10 @@
+@@ -287,8 +324,10 @@
 
  // Tests AtkText::get_selection.
  TEST_F(FlAccessibleTextFieldTest, GetSelection) {
@@ -1868,7 +1954,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
 
    EXPECT_EQ(atk_text_get_selection(ATK_TEXT(node), 0, nullptr, nullptr),
              nullptr);
-@@ -339,8 +374,10 @@
+@@ -339,8 +378,11 @@
          return kSuccess;
        }));
 
@@ -1877,10 +1963,11 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
++  fl_accessible_node_set_value(node, "Flutter");
 
    EXPECT_TRUE(atk_text_add_selection(ATK_TEXT(node), 2, 4));
    EXPECT_EQ(base, 2);
-@@ -374,8 +411,10 @@
+@@ -374,8 +416,11 @@
          return kSuccess;
        }));
 
@@ -1889,10 +1976,11 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
++  fl_accessible_node_set_value(node, "Flutter");
 
    // no selection
    EXPECT_FALSE(atk_text_remove_selection(ATK_TEXT(node), 0));
-@@ -415,8 +454,10 @@
+@@ -415,8 +460,11 @@
          return kSuccess;
        }));
 
@@ -1901,10 +1989,11 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
++  fl_accessible_node_set_value(node, "Flutter");
 
    // selection num != 0
    EXPECT_FALSE(atk_text_set_selection(ATK_TEXT(node), 1, 2, 4));
-@@ -449,8 +490,10 @@
+@@ -449,8 +497,10 @@
          return kSuccess;
        }));
 
@@ -1916,7 +2005,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
 
    atk_editable_text_set_text_contents(ATK_EDITABLE_TEXT(node), "Flutter");
    EXPECT_STREQ(text, "Flutter");
-@@ -487,8 +530,10 @@
+@@ -487,8 +537,10 @@
          return kSuccess;
        }));
 
@@ -1928,7 +2017,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
    fl_accessible_node_set_value(node, "Fler");
 
    gint pos = 2;
-@@ -532,8 +577,10 @@
+@@ -532,8 +584,11 @@
          return kSuccess;
        }));
 
@@ -1937,10 +2026,11 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
++  fl_accessible_node_set_value(node, "Flutter");
 
    atk_editable_text_copy_text(ATK_EDITABLE_TEXT(node), 2, 5);
    EXPECT_EQ(base, 2);
-@@ -552,8 +599,10 @@
+@@ -552,8 +607,10 @@
  }
 
  TEST_F(FlAccessibleTextFieldTest, TextBoundary) {
@@ -1952,7 +2042,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
 
    fl_accessible_node_set_value(node,
                                 "Lorem ipsum.\nDolor sit amet. Praesent commodo?"
-@@ -670,8 +719,10 @@
+@@ -670,8 +727,10 @@
 
  // Tests that get_string_at_offset handles offset beyond text length.
  TEST_F(FlAccessibleTextFieldTest, TextBoundaryOffsetBeyondEnd) {
@@ -1964,7 +2054,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
 
    fl_accessible_node_set_value(node, "Hello");
 
-@@ -702,8 +753,10 @@
+@@ -702,8 +761,10 @@
 
  // Tests that get_string_at_offset handles offset at position zero.
  TEST_F(FlAccessibleTextFieldTest, TextBoundaryOffsetAtStart) {
@@ -1976,7 +2066,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
 
    fl_accessible_node_set_value(node, "Hello");
 
-@@ -726,8 +779,10 @@
+@@ -726,8 +787,10 @@
 
  // Tests that get_string_at_offset handles empty text.
  TEST_F(FlAccessibleTextFieldTest, TextBoundaryEmptyText) {
@@ -1988,7 +2078,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
 
    // Empty text - should not crash.
    gint start_offset = -1, end_offset = -1;
-@@ -746,8 +801,10 @@
+@@ -746,8 +809,10 @@
 
  // Tests that get_string_at_offset handles offset at exact text length.
  TEST_F(FlAccessibleTextFieldTest, TextBoundaryOffsetAtEnd) {
@@ -2000,7 +2090,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_te
 
    fl_accessible_node_set_value(node, "Hello world");
 
-@@ -774,8 +831,10 @@
+@@ -774,8 +839,10 @@
  // Tests that line and paragraph boundaries are computed in character offsets
  // rather than byte offsets when the text contains multi-byte UTF-8 characters.
  TEST_F(FlAccessibleTextFieldTest, TextBoundaryMultiByte) {

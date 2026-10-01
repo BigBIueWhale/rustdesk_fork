@@ -1984,7 +1984,7 @@ stopped run was reconciled under the admission lock after verifying its owner, i
 sockets and mounts were gone; 12,971,032,576 allocated bytes were reclaimed. This is a native
 text-field availability failure, not product/LPE closure or an Android/Windows diagnosis.
 
-**Text-field terminal resource correction — SOURCE CANDIDATE; NATIVE RETEST PENDING.**
+**Text-field terminal resource correction — NATIVE UNIT PASS; ENGINE/VIEW/APP INTEGRATION OPEN.**
 Node retirement now owns one irreversible cleanup path, with a subclass resource hook before
 defunct notification; disposal uses that same path. The text-field hook detaches its buffer,
 disconnects buffer notifications and clears selection state. ATK queries report unavailable
@@ -1993,9 +1993,24 @@ selection notifications and action sequences retain the exact self/buffer resour
 and stop continuation after retirement, including caller-reference loss. The native fixture
 requires live encoded edits, explicit retirement and repeated disposal, buffer/selection/action
 callback retirement or disposal, late-edit refusal and joined last-caller-reference release.
-The existing fatal-critical policy and old failing disposal assertions remain. This candidate
-is not yet a native pass, whole-tree atomic revocation, a direct GTK provider, a running engine
-or an app/installed-service result. Whole-tree generation authority and geometry remain OPEN.
+The existing fatal-critical policy and old failing disposal assertions remain. Exact
+`fd695a50fd4a6b1078c90b04e278101ae0f62d17`, tree
+`4d74cd0a21ba147f5d7f3a662969169839249c9e`, passed strict patch application, all seven
+original/candidate production-object compiles and every named node/root/text-field case.
+Tool 77085 was terminal 0; outer/capture 0/0 in 102,590 host BOOTTIME ms (outer 92 seconds).
+The native candidate is 1,346,720 bytes, SHA256
+`1b45671435f5e402882559c3ca522cdc9bc8befa2d1ec98c7ccd08842cd71631`.
+Full 83,311-byte serial is `evidence/engine-text-lifetime-fd695a50.serial.log`, SHA256
+`69bcffaa2380bb86ea85feb3ab237c414592e27edcf087e40a2d61dbd9e689ee`;
+matching outer/capture records are retained mode 0400. Inputs remained read-only, the full
+host-listener audit reported no additions or pre-existing-process drift, all owned work joined
+and the run automatically retired. This is real ATK/GObject behavior with one recording-engine
+boundary, not whole-tree atomic revocation, a direct GTK provider, a running engine or an
+app/installed-service result. Whole-tree generation authority and geometry remain OPEN: an
+early defunct callback during the current per-node reset could still call a not-yet-retired
+sibling; the named after-reset tests do not prove that edge closed. Unicode insertion length
+and nested live-edit ordering also need their own native cases, not inference from ASCII
+retirement/disposal tests. No Android/Windows presentation causation is established.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
@@ -2135,7 +2150,8 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   node-unit disposition above; subsequent failed runs were explicitly reconciled, most recently
   `run.u39X2NGANP` (identity `66306:182977793`), reclaiming 12,971,032,576 allocated bytes.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 625,025,024 allocated bytes (0.582 GiB). The actual outer
+  small evidence records occupy 625,119,232 allocated bytes (0.582 GiB). The latest successful
+  text-field unit run also joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

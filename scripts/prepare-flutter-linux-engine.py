@@ -466,9 +466,9 @@ raise SystemExit(subprocess.call([
     patch_bytes = patch_path.read_bytes()
     require(0 < len(patch_bytes) <= 65536, "retirement patch exceeds bound")
     git = ["/usr/bin/git", "--no-replace-objects", "-c", "core.hooksPath=/dev/null"]
-    command(git + ["apply", "--recount", "--check", "--whitespace=error-all", str(patch_path)],
+    command(git + ["apply", "--check", "--whitespace=error-all", str(patch_path)],
             framework, env, deadline)
-    command(git + ["apply", "--recount", "--whitespace=error-all", str(patch_path)],
+    command(git + ["apply", "--whitespace=error-all", str(patch_path)],
             framework, env, deadline)
     expected_paths = ["engine/src/flutter/shell/platform/linux/" + name for name in
                       ("fl_accessible_node.cc", "fl_accessible_node.h", "fl_view.cc",

@@ -1925,7 +1925,7 @@ These are unmodified production object compilations, not a linked engine, execut
 unit tests, a geometry correction, or product behavior.
 The full engine build, production geometry correction and complete app replay remain OPEN.
 
-**Retained-node lifetime correction — BASIC NATIVE UNIT PASS; EXPANDED PATCH APPLICATION FAILED.**
+**Retained-node lifetime correction — BASIC NATIVE UNIT PASS; CORRECTED EXPANDED RETRY PENDING.**
 `res/flutter/linux-accessibility-retirement.patch` adds permanent node retirement to the
 source-bound dependency: action dispatch is revoked, retained nodes become defunct, and
 geometry becomes unavailable. A tree reset detaches its old node map before notifications;
@@ -1955,6 +1955,11 @@ the outer owner absent, no owned processes/sockets/mounts/open VM images, unchan
 listeners and exact private-tree authority, failed run `66306:182977664` was reconciled
 under the admission lock, recovering 12,980,174,848 allocated bytes. Its real callback-
 retirement and disposed-node unit cases still require a corrected committed patch and execution.
+The retry corrects the out-of-order node hunks, mismatched parent-signature indentation,
+missing root-disposal trailing context and overlapping constructor/reset fragments. Every
+hunk now has exact original-source positions and line counts; the consumer uses ordinary
+strict `git apply --check` and apply, without recounting malformed headers. This is patch
+preparation, not a native result. Lifetime rules and the fatal-GLib-critical test are unchanged.
 This is not a running engine, actual view teardown/restart, full engine link, shipped
 dependency, removed-subtree retirement, geometry/self-wait correction, or product/LPE closure.
 

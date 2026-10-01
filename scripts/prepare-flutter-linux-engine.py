@@ -678,6 +678,48 @@ def engine_output(output, public, name):
                     "engine header source changed: " + name)
 
 
+def seal_engine_outputs(output, public, names, manifest, archive):
+    with ExitStack() as resources:
+        opened = {}
+        total = 0
+        for name in names:
+            source, before = resources.enter_context(engine_output(
+                output, public, name))
+            total += before.st_size
+            require(total <= FILE_LIMIT - 1048576, "engine artifact byte budget exhausted")
+            if name in names[:2]:
+                prefix = source.read(64)
+                require(len(prefix) == 64 and prefix[:6] == b"\x7fELF\x02\x01"
+                        and int.from_bytes(prefix[18:20], "little") == 62,
+                        "engine output is not an x86_64 ELF: " + name)
+                source.seek(0)
+            digest = hashlib.file_digest(source, "sha256").hexdigest()
+            require(unchanged(before, os.fstat(source.fileno())), "engine output changed")
+            manifest["files"][name] = {"bytes": before.st_size, "sha256": digest}
+            source.seek(0)
+            opened[name] = (source, before)
+        manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2) + "\n").encode()
+        require(len(manifest_bytes) <= 65536, "engine artifact manifest exceeds bound")
+        fd = os.open(archive, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o400)
+        with os.fdopen(fd, "wb") as destination:
+            with tarfile.open(fileobj=destination, mode="w") as tar:
+                for name, (source, before) in opened.items():
+                    member = tarfile.TarInfo(name)
+                    member.size, member.mode = before.st_size, 0o400
+                    tar.addfile(member, source)
+                    require(unchanged(before, os.fstat(source.fileno())),
+                            "engine artifact changed while sealing")
+                member = tarfile.TarInfo("engine-manifest.json")
+                member.size, member.mode = len(manifest_bytes), 0o400
+                tar.addfile(member, io.BytesIO(manifest_bytes))
+            destination.flush()
+            os.fsync(destination.fileno())
+    with archive.open("rb") as source:
+        digest = hashlib.file_digest(source, "sha256").hexdigest()
+    require(0 < archive.stat().st_size <= FILE_LIMIT, "engine archive exceeds bound")
+    return digest, manifest_bytes
+
+
 def build_engine(engine, framework, env, pin, patch_bytes, context):
     """Explicit integration build; no workload or deadline expansion in prepare()."""
     deadline = time.monotonic() + 7200
@@ -743,42 +785,8 @@ def build_engine(engine, framework, env, pin, patch_bytes, context):
         "targets": targets, "files": {}, "app_execution": "unexecuted",
     }
     archive = Path("/work/flutter-linux-engine.tar")
-    with ExitStack() as resources:
-        opened = {}
-        total = 0
-        for name in names:
-            source, before = resources.enter_context(engine_output(
-                output, Path(engine) / "flutter/shell/platform/linux/public", name))
-            total += before.st_size
-            require(total <= FILE_LIMIT - 1048576, "engine artifact byte budget exhausted")
-            if name in names[:2]:
-                prefix = source.read(64)
-                require(len(prefix) == 64 and prefix[:6] == b"\x7fELF\x02\x01"
-                        and int.from_bytes(prefix[18:20], "little") == 62,
-                        "engine output is not an x86_64 ELF: " + name)
-                source.seek(0)
-            digest = hashlib.file_digest(source, "sha256").hexdigest()
-            require(unchanged(before, os.fstat(fd)), "engine output changed")
-            manifest["files"][name] = {"bytes": before.st_size, "sha256": digest}
-            source.seek(0)
-            opened[name] = (source, before)
-        manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2) + "\n").encode()
-        require(len(manifest_bytes) <= 65536, "engine artifact manifest exceeds bound")
-        fd = os.open(archive, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o400)
-        with os.fdopen(fd, "wb") as destination, tarfile.open(fileobj=destination, mode="w") as tar:
-            for name, (source, before) in opened.items():
-                member = tarfile.TarInfo(name)
-                member.size, member.mode = before.st_size, 0o400
-                tar.addfile(member, source)
-                require(unchanged(before, os.fstat(source.fileno())), "engine artifact changed while sealing")
-            member = tarfile.TarInfo("engine-manifest.json")
-            member.size, member.mode = len(manifest_bytes), 0o400
-            tar.addfile(member, io.BytesIO(manifest_bytes))
-            destination.flush()
-            os.fsync(destination.fileno())
-    with archive.open("rb") as source:
-        digest = hashlib.file_digest(source, "sha256").hexdigest()
-    require(0 < archive.stat().st_size <= FILE_LIMIT, "engine archive exceeds bound")
+    digest, manifest_bytes = seal_engine_outputs(
+        output, Path(engine) / "flutter/shell/platform/linux/public", names, manifest, archive)
     # Publication is inert data into the exact private output, never host code.
     output_root = "/output"
     before = os.lstat(output_root)
@@ -862,8 +870,45 @@ def engine_output_self_test():
         read("gen_snapshot")
         os.link(binary, alias)
         refused(lambda: read("gen_snapshot"))
-    print("ENGINE_ARTIFACT_INPUT_TEST=pass cases=8 headers=source-bound "
-          "compiled=single-link mutation=refused cleanup=joined", flush=True)
+        alias.unlink()
+        generated.unlink()
+        os.link(original, generated)
+        elf = bytearray(64)
+        elf[:6] = b"\x7fELF\x02\x01"
+        elf[18:20] = (62).to_bytes(2, "little")
+        binary.write_bytes(elf + b"snapshot fixture")
+        library = output / "libflutter_linux_gtk.so"
+        library.write_bytes(elf + b"GTK fixture")
+        names = [library.name, binary.name, name]
+        manifest = {"files": {}}
+        archive = root / "engine.tar"
+        digest, manifest_bytes = seal_engine_outputs(output, public, names, manifest, archive)
+        require(archive.stat().st_nlink == 1 and stat.S_IMODE(archive.stat().st_mode) == 0o400
+                and hashlib.sha256(archive.read_bytes()).hexdigest() == digest,
+                "engine archive authority or digest differs")
+        with tarfile.open(archive, "r") as tar:
+            members = tar.getmembers()
+            require([member.name for member in members] == names + ["engine-manifest.json"]
+                    and all(member.isreg() and member.mode == 0o400 and member.uid == member.gid == 0
+                            and member.mtime == 0 and not member.linkname for member in members),
+                    "engine archive preserved links or noncanonical metadata")
+            for member in members:
+                with tar.extractfile(member) as source:
+                    data = source.read()
+                if member.name == "engine-manifest.json":
+                    require(data == manifest_bytes and json.loads(data) == manifest,
+                            "engine manifest bytes differ")
+                else:
+                    require(data == (output / member.name).read_bytes()
+                            and manifest["files"][member.name] == {
+                                "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()},
+                            "engine archived output data differs")
+        refused(lambda: seal_engine_outputs(output, public, names, manifest, archive))
+        require(hashlib.sha256(archive.read_bytes()).hexdigest() == digest,
+                "engine archive collision changed retained data")
+    print("ENGINE_ARTIFACT_INPUT_TEST=pass cases=10 headers=source-bound "
+          "compiled=single-link mutation=refused archive=regular noclobber=refused cleanup=joined",
+          flush=True)
 
 
 def self_test():

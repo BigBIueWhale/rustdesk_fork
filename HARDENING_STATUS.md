@@ -2221,10 +2221,18 @@ run, reclaiming 13,469,368,320 allocated bytes. No failed VM disk remains.
 The collector now admits a header only as an exact two-link alias of its declared source
 header, retaining both descriptors and checking complete metadata through sealing. Compiled
 ELFs remain single-link; the final archive still contains only canonical regular file bytes,
-not links. Its header inventory must equal all 26 declared names. Eight mandatory real-filesystem
-cases exercise valid source aliases, excess/foreign aliases, symlinks, mutation, single-link
-header refusal and compiled-output link policy before preparation. Corrected collection/publication
-and shared integration results are PENDING; fixture tests are not product execution.
+not links. Its header inventory must equal all 26 declared names. Exact `7eb3fb4a` passed the
+eight real-filesystem opener cases, all native GTK cases and the full engine link, then collection
+failed on a stale local `fd` reference introduced during extraction of that opener. No artifact was
+published. Full 129,563-byte raw serial is `evidence/engine-link-7eb3fb4a.serial.log`, SHA256
+`5de49460f4f6a331b0c1652836c4eb735670f927eedcf2b8bc9ca86beda85b01`; outer/capture were 1/0
+in 720,840 ms. Complete evidence and unchanged listeners preceded exact stopped-run reconciliation,
+reclaiming 13,470,359,552 allocated bytes. No run/overlay remains. Collection now uses its retained
+stream descriptor; the complete production collector/sealer is also executed by the mandatory
+fast fixture, including actual regular-member archive bytes, per-file/manifest hashes, canonical
+metadata and no-clobber refusal. Tar finalization precedes flush/fsync. The ten filesystem/sealing
+cases precede preparation; synthetic ELF-header fixtures prove this boundary, not executable
+artifacts. Corrected native collection/publication and shared integration are PENDING.
 Full consumer results remain PENDING. Linking alone cannot
 prove real FlView restart, AT-SPI geometry, app presentation, shipped SDK integration,
 Wayland behavior, reproducibility equality or Android/Windows causation; these remain OPEN.

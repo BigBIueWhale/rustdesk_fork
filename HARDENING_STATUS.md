@@ -1500,14 +1500,17 @@ The focused capsule profile executed 20 real filesystem/CLI/ELF cases plus root/
 16-caller/one-winner run test. Fixture ELF execution establishes capsule authority, not RustDesk
 behavior. Raw evidence is `evidence/linux-app-consumer-admission-c3f17011.serial.log`.
 
-The current retained app is source `a4a6b2d0f381118e8d018c3e7fb0b3e1f02f8e0c`, tree
+The archived negative-baseline app is source `a4a6b2d0f381118e8d018c3e7fb0b3e1f02f8e0c`, tree
 `eb842fa98c8cfac05169c18b29d09f15091c858b`. Its separate producer completed compilation and
 joined inert publication in 1,150,890 host BOOTTIME ms. The 74-file app/readiness manifest SHA-256 is
 `ef3f592d2229e3abf71136f51b5a4fddf0c017c663817f70a8399be5f1e1f08c`; original recipe SHA-256 is
 `e7623169128c5d4e5960dc19e46db7a6b0dc6b779fb0fbe68fe1516809e769b4`.
-The capsule occupies 58,503,168 allocated bytes. Producer raw evidence is
+The sealed commit directory occupies 58,499,072 allocated bytes. Producer raw evidence is
 `evidence/toolbar-contract-app-a4a6b2d0.serial.log`. The older `5d1e3316` app is preserved
 separately as a negative baseline, not relabelled or substituted for the corrected artifact.
+After the valid negative replay and joined cleanup, a locked no-clobber rename moved `a4a6b2d0`
+to `.harness-state/linux-flutter-app-archive/` without copying or modifying app bytes. All 74 files
+and the original manifest independently rehashed unchanged. One corrected-source producer remains pending.
 
 The sole consumer is `--linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256`.
 It independently derives the app tree/recipe from that pushed commit, keeping current harness
@@ -1533,25 +1536,26 @@ teardown, including every intervening failure path. Completed ancestry/thread/se
 are removed. Native execution confirms the independent measurements precede dialog entry; neither
 the complete consumer nor the geometry blocker is resolved.
 
-**Current consumer result — PARTIAL; EXIT 1:** exact harness `a0931883`, tree
-`9da80609bec8f024539dd14197008db6f8428189`, replayed the sealed app without rebuilding in
-144,690 host BOOTTIME ms. All three drivers compiled twice byte-equal. Real password input and
-initial changing pixels passed (first fresh 25 ms, accepted age at most 350 ms). The first lifecycle's
-three 2/6/12-second background observations passed on the same connection: 9/24/48 distinct states,
-maximum accepted ages 342/318/328 ms and focus first-fresh observations 6/6/7 ms. Three exact-server
-reconnects retained the viewer window and cached credential; first-fresh observations were
-220/178/182 ms, accepted ages 310/445/449 ms. Seven resource samples observed RSS
-356,452–375,864 KiB, 55–65 threads and 47 descriptors within the unchanged bounds.
+**Current consumer result — VALID DISCLOSURE NEGATIVE; PARTIAL; EXIT 1:** exact harness `e7704032`
+replayed the sealed old app without rebuilding in 144,450 host BOOTTIME ms. All three drivers
+compiled twice byte-equal. Real password input and initial changing pixels passed (first fresh 6 ms,
+accepted age at most 352 ms). The first lifecycle's three 2/6/12-second background observations
+passed on the same connection: 8/24/48 distinct states, maximum accepted ages 324/365/333 ms and
+focus first-fresh observations 5/7/6 ms. Three exact-server reconnects retained the viewer window
+and cached credential; first-fresh observations were 218/156/208 ms, accepted ages 442/343/436 ms.
+Seven resource samples observed RSS 345,148–373,820 KiB, 54–65 threads and 47 descriptors within
+the unchanged bounds.
 These are sampled synthetic 640x480/4-Hz results for one lifecycle, not sustained or end-to-end proof.
-Dialog entry then refused: `Keyboard settings` was absent after 46 queries in 5,090 ms. No Tap,
+Disclosure then refused: the actual English `Show toolbar` was absent after 45 queries in 5,007 ms. No Tap,
 caption, geometry, resize, post-dialog-resource or full-success verdict occurred in this run.
 The production toolbar has an auto-collapse path; establish and operate its real disclosure control
 after focus/reconnect instead of assuming its initial expanded state or guessing a new coordinate.
 The show/hide button now exports its existing localized state-dependent name through Semantics,
 excluding duplicate tooltip semantics and retaining the original callback. The controller requires
 the exact-process English `Show toolbar` Tap followed by the actual `Keyboard settings` Tap; its fixed
-top-edge pointer-position assumption is deleted. Native old-app negative and corrected-app replay
-are pending. No auto-collapse, docking, policy, connection, resource or geometry behavior is changed.
+top-edge pointer-position assumption is deleted. The valid old-app negative above is established;
+corrected-app build/replay remains pending. No auto-collapse, docking, policy, connection, resource
+or geometry behavior is changed.
 First attempt `f7b02a8f` used the untranslated source key `Show Toolbar`; its not-found result is
 invalid comparative evidence. Its bounded serial is `evidence/toolbar-disclosure-old-f7b02a8f.serial.log`;
 owners joined and the failed disk was reconciled. The controller now uses en.rs's actual English label.
@@ -1571,14 +1575,14 @@ Primary sources: [GNOME socket adaptor](https://raw.githubusercontent.com/GNOME/
 [Flutter socket embedding](https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/engine/src/flutter/shell/platform/linux/fl_socket_accessible.cc),
 [D-Bus blocking-call contract](https://dbus.freedesktop.org/doc/api/html/group__DBusConnection.html).
 
-Complete current raw serial is `evidence/connection-first-a0931883.serial.log` (508,577 bytes,
-SHA-256 `2a8cb7e0afc12645055649bdec24d0c854aeca37a72bfa4033b5a70297e91539`); bounded viewer,
+Complete current raw serial is `evidence/toolbar-disclosure-negative-e7704032.serial.log` (510,597 bytes,
+SHA-256 `baa0f9139cfb44c5f0189b8325567a81e4e5015b252fc171495cc882c31cbb29`); bounded viewer,
 capture and listener records share that prefix. The earlier self-call serial remains
 `evidence/dialog-self-20ba622b.serial.log` (212,114 bytes, SHA-256
 `029165b118a4f2f18d14b63b6c0e2e4a6fe5e2ff774a4e319d961a5bf6fbb64f`). Current capture passed;
 before/during/after listeners were byte-identical, addition/drift records empty and owned processes
 joined. All 74 inert app files independently rehashed unchanged. Exact locked inactive-root cleanup
-reclaimed 2,972,532,736 allocated bytes; no run/overlay remains. No duplicate app bundle is retained.
+reclaimed 2,970,701,824 allocated bytes; no run/overlay remains. No duplicate app bundle is retained.
 Superseded selector, proxy and transport diagnostics remain in Git history, retained raw evidence
 and the external audit, not as a live replay diary.
 
@@ -1716,7 +1720,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest joined cleanup is recorded in the app-replay disposition above.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 617,525,248 allocated bytes (0.575 GiB). The actual outer
+  small evidence records occupy 618,930,176 allocated bytes (0.576 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

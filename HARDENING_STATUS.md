@@ -1956,6 +1956,13 @@ Next exercise the actual root map/reset/reentrant update path, not only the base
 Text-field subclass disposal clears its GtkEntryBuffer while its ATK text/edit methods
 still use that buffer; retained post-dispose text queries are an additional source-derived
 availability hazard requiring a native case and correct lifetime closure, not a proven LPE.
+The next focused driver links actual root/text-field/value/message-codec production objects
+under the same sole recording-engine boundary. It requires reset/replacement identity,
+retirement during root creation, post-dispose defunct root state, and safe closed text-field
+queries/edits. The helper now digests each unit binary before execution, so an assertion or
+critical failure remains bound to its exact artifact. Seven original/candidate units are
+compiled; deadlines, isolation and inputs are unchanged. This expanded native transaction
+is pending, and expected assertions are not a pass or a product correction.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

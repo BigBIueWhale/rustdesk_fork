@@ -421,8 +421,10 @@ raise SystemExit(subprocess.call([
     print("ENGINE_PREPARE_GN=pass runtime=release targets=flutter_linux_gtk,flutter_linux_unittests "
           "generator=original engine_build=unexecuted", flush=True)
     objects = ["obj/flutter/shell/platform/linux/flutter_linux_sources." + unit + ".o"
-               for unit in ("fl_view", "fl_view_accessible", "fl_accessible_node")]
-    print("ENGINE_PREPARE_COMPILE_START production_units=3", flush=True)
+               for unit in ("fl_view", "fl_view_accessible", "fl_accessible_node",
+                            "fl_accessible_text_field", "fl_value", "fl_message_codec",
+                            "fl_standard_message_codec")]
+    print("ENGINE_PREPARE_COMPILE_START production_units=7", flush=True)
     command([framework + "/third_party/ninja/ninja", "-C", "out/host_release", "-j2",
              *objects], engine, env, deadline)
     def artifact_receipt(name, stage):
@@ -440,7 +442,7 @@ raise SystemExit(subprocess.call([
 
     for name in objects:
         artifact_receipt(name, "original")
-    print("ENGINE_PREPARE_COMPILE=pass production_units=3 engine_link=unexecuted tests=unexecuted",
+    print("ENGINE_PREPARE_COMPILE=pass production_units=7 engine_link=unexecuted tests=unexecuted",
           flush=True)
     clang = engine + "/flutter/buildtools/linux-x64/clang/bin/clang++"
     flags = shlex.split(command(["/usr/bin/pkg-config", "--cflags", "--libs", "gtk+-3.0"],
@@ -451,14 +453,19 @@ raise SystemExit(subprocess.call([
         command([clang, "-std=c++17", "-DFLUTTER_LINUX_COMPILATION",
                  "-DFLUTTER_ENGINE_NO_PROTOTYPES", "-UG_DISABLE_ASSERT", "-I" + engine,
                  *(["-DLEGACY_BASELINE"] if baseline else []),
-                 "/authority/node-test.cc", engine + "/out/host_release/" + objects[2],
+                 "/authority/node-test.cc",
+                 *[engine + "/out/host_release/" + name for name in objects[1:]],
                  "-flto", "-fuse-ld=lld", *flags, "-o", binary], engine, env, deadline)
+        artifact_receipt(binary.rsplit("/", 1)[1], "baseline-test" if baseline else "candidate-test")
         output = command([binary], engine, env, deadline)
         expected = ("ENGINE_ACCESSIBLE_RETIREMENT_BASELINE=observed parent=gone engine=live action=dispatched"
                     if baseline else "ENGINE_ACCESSIBLE_RETIREMENT=pass unit=real-node boundary=recording-engine "
-                    "idempotent=true stale=refused fresh=allowed geometry=defunct reentrant=true disposed=true")
+                    "idempotent=true stale=refused fresh=allowed geometry=defunct reentrant=true disposed=true\n"
+                    "ENGINE_ACCESSIBLE_ROOT_RETIREMENT=pass unit=real-root boundary=recording-engine "
+                    "reset=true replacement=true reentrant=true disposed=true\n"
+                    "ENGINE_ACCESSIBLE_TEXT_FIELD_RETIREMENT=pass unit=real-text-field "
+                    "disposed_queries=closed late_edits=refused")
         require(output == (expected + "\n").encode(), "native node retirement receipt differs")
-        artifact_receipt(binary.rsplit("/", 1)[1], "baseline-test" if baseline else "candidate-test")
         print(expected, flush=True)
 
     node_test(True)
@@ -484,7 +491,7 @@ raise SystemExit(subprocess.call([
     for name in objects:
         artifact_receipt(name, "retirement-candidate")
     node_test(False)
-    print("ENGINE_ACCESSIBLE_RETIREMENT_COMPILE=pass production_units=3 "
+    print("ENGINE_ACCESSIBLE_RETIREMENT_COMPILE=pass production_units=7 "
           "view_teardown=unexecuted engine_restart=unexecuted app_replay=unexecuted", flush=True)
     print("FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 "
           "indexes=original pub=path-only network=none engine_build=unexecuted", flush=True)

@@ -219,7 +219,8 @@ def command(arguments, cwd, env, deadline):
     try:
         selector.register(child.stdout, selectors.EVENT_READ)
         while selector.get_map():
-            require(time.monotonic() < deadline, "engine preparation command timed out")
+            require(time.monotonic() < deadline, "engine preparation command timed out: "
+                    + repr(arguments) + "\n" + output[-16384:].decode(errors="replace"))
             for key, _ in selector.select(0.1):
                 block = os.read(key.fd, 65536)
                 if not block:
@@ -502,13 +503,36 @@ raise SystemExit(subprocess.call([
     upstream_tests = ["obj/flutter/shell/platform/linux/flutter_linux_unittests." + unit + ".o"
                       for unit in ("fl_accessible_node_test", "fl_accessible_text_field_test")]
     command([framework + "/third_party/ninja/ninja", "-C", "out/host_release", "-j2",
-             *objects, *upstream_tests],
+             *objects],
             engine, env, deadline)
     for name in objects:
         artifact_receipt(name, "retirement-candidate")
-    for name in upstream_tests:
-        artifact_receipt(name, "upstream-test-compile")
     node_test(False)
+    # Compile the migrated consumers with their exact generated command, not
+    # the unittest executable's order-only engine/fixture build dependencies.
+    # This proves translation-unit compatibility, never suite or engine linking.
+    for name in upstream_tests:
+        query = command([framework + "/third_party/ninja/ninja", "-C", "out/host_release",
+                         "-t", "query", name], engine, env, deadline)
+        print("ENGINE_UPSTREAM_TEST_QUERY path=" + name + "\n"
+              + query[:8192].decode(errors="replace"), flush=True)
+        recipe = command([framework + "/third_party/ninja/ninja", "-C", "out/host_release",
+                          "-t", "commands", "-s", name], engine, env, deadline)
+        require(len(recipe) <= 65536 and len(recipe.splitlines()) == 1,
+                "upstream object command is not one bounded invocation")
+        arguments = shlex.split(recipe.decode())
+        cwd = Path(engine) / "out/host_release"
+        unit = name.rsplit(".", 2)[1]
+        require(arguments and (cwd / arguments[0]).resolve(strict=True) == Path(clang)
+                and arguments.count("-c") == arguments.count("-o") == 1
+                and (cwd / arguments[arguments.index("-c") + 1]).resolve(strict=True)
+                    == Path(engine) / "flutter/shell/platform/linux" / (unit + ".cc")
+                and (cwd / arguments[arguments.index("-o") + 1]).resolve() == cwd / name,
+                "upstream object compiler/source/output differs")
+        print("ENGINE_UPSTREAM_TEST_COMPILE_START path=" + name
+              + " recipe_sha256=" + hashlib.sha256(recipe).hexdigest(), flush=True)
+        command(arguments, cwd, env, deadline)
+        artifact_receipt(name, "upstream-test-compile")
     print("ENGINE_ACCESSIBLE_RETIREMENT_COMPILE=pass production_units=8 upstream_test_objects=2 "
           "view_teardown=unexecuted engine_restart=unexecuted app_replay=unexecuted", flush=True)
     print("FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 "

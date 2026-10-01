@@ -2041,6 +2041,20 @@ use its live availability. Original constructor consumers are migrated with expl
 the focused profile also compiles those upstream test objects and executes owner-loss, raw
 default-closed, repeated-disposal and retirement-during-reset cases. This is unexecuted candidate
 source until an exact isolated native run passes, not a shipped engine/app or LPE result.
+Exact `ce2782cf`, tree `df620688edef0961e6a62780ebd8a7e43eaed1a4`, passed original-object
+compilation, the stale-action baseline and strict twelve-file patch application, then exhausted
+the existing command deadline while compiling production plus upstream test objects together.
+No corrected native assertion ran; tool 44414 ended 1, outer/capture 1/0 in 276,530 host
+BOOTTIME ms. Full 79,062-byte serial is `evidence/engine-generation-owner-ce2782cf.serial.log`,
+SHA256 `00dd6ffea3fd5191174a47d7ff4622c9078b1601d420ca6a6c8f99207d5d1570`;
+complete capture/listener/exporter records are retained mode 0400. Locked stopped-root cleanup
+reclaimed 13,015,732,224 allocated bytes with identical listeners and no remaining run/overlay.
+The focused profile now compiles production objects and runs the unchanged native assertions
+before compiling the two migrated test translation units with their exact GN/Ninja-generated
+single-object commands. Compiler/source/output are validated; flags are not replaced and missing
+headers fail. This is compile-only consumer evidence, not execution of upstream suites or their
+engine/fixture dependency graph. Original production Ninja dependency closure, resources,
+deadline and behavioral assertions remain unchanged. The next native result is still PENDING.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

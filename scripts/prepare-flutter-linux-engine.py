@@ -523,12 +523,13 @@ raise SystemExit(subprocess.call([
         arguments = shlex.split(recipe.decode())
         cwd = Path(engine) / "out/host_release"
         unit = name.rsplit(".", 2)[1]
-        require(arguments and (cwd / arguments[0]).resolve(strict=True) == Path(clang)
+        require(arguments and (cwd / arguments[0]).resolve(strict=True)
+                    == Path(clang).resolve(strict=True)
                 and arguments.count("-c") == arguments.count("-o") == 1
                 and (cwd / arguments[arguments.index("-c") + 1]).resolve(strict=True)
                     == Path(engine) / "flutter/shell/platform/linux" / (unit + ".cc")
                 and (cwd / arguments[arguments.index("-o") + 1]).resolve() == cwd / name,
-                "upstream object compiler/source/output differs")
+                "upstream object compiler/source/output differs: " + repr(arguments))
         print("ENGINE_UPSTREAM_TEST_COMPILE_START path=" + name
               + " recipe_sha256=" + hashlib.sha256(recipe).hexdigest(), flush=True)
         command(arguments, cwd, env, deadline)

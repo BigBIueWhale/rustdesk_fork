@@ -2032,15 +2032,15 @@ in node construction with one live generation owner, revoked before callbacks; a
 action must revalidate that owner at the actual dispatch sink. Do not omit notifications or
 retain an ownerless compatibility path. The assertions remain required for the correction.
 
-**Generation-owned authority correction — CANDIDATE; NATIVE RESULT PENDING.** The dependency
+**Generation-owned authority correction — NATIVE ASSERTIONS PASS; COMPLETE PROFILE PENDING.** The dependency
 patch replaces node-local engine/view-ID construction and properties with weak references to
 one tree-owned `FlSemanticsGeneration`. Reset closes that generation before releasing nodes
 or emitting callbacks; replacement admission resumes only after retirement notifications finish.
 The dispatch sink revalidates the generation, and retained base/text-field queries and edits
 use its live availability. Original constructor consumers are migrated with explicit owners;
 the focused profile also compiles those upstream test objects and executes owner-loss, raw
-default-closed, repeated-disposal and retirement-during-reset cases. This is unexecuted candidate
-source until an exact isolated native run passes, not a shipped engine/app or LPE result.
+default-closed, repeated-disposal and retirement-during-reset cases. Named native results below
+remain unit evidence, not a shipped engine/app or LPE result.
 Exact `ce2782cf`, tree `df620688edef0961e6a62780ebd8a7e43eaed1a4`, passed original-object
 compilation, the stale-action baseline and strict twelve-file patch application, then exhausted
 the existing command deadline while compiling production plus upstream test objects together.
@@ -2055,6 +2055,19 @@ single-object commands. Compiler/source/output are validated; flags are not repl
 headers fail. This is compile-only consumer evidence, not execution of upstream suites or their
 engine/fixture dependency graph. Original production Ninja dependency closure, resources,
 deadline and behavioral assertions remain unchanged. The next native result is still PENDING.
+Exact `a69f5814`, tree `f28312f7f9736d1d7f5cc2c14ba8a4b501d937c1`, compiled all eight
+candidate production objects and passed every unchanged node/root/whole-tree/generation/text-field
+assertion. Its 1,364,576-byte native candidate SHA256 is
+`ec2e6fb408caf530e2fb838d7c5c22c31a3fc85102b3a0f7f8bc5c418abc3c1f`.
+The complete profile still failed: compiler validation compared a resolved path with unresolved
+`clang++`, which the pinned archive links to `llvm`. The check now resolves both exact paths;
+compiler/source/output authority and the generated flags remain required, with no fallback.
+Tool 72004 ended 1; outer/capture 1/0 in 116,170 host BOOTTIME ms. Full 82,600-byte serial is
+`evidence/engine-generation-owner-a69f5814.serial.log`, SHA256
+`4fe0989f0360eaaf41b9e5ad16fe4867cc17493385f70077feabdba5fb8fb1d7`;
+complete records are sealed mode 0400. Exact stopped-root retirement reclaimed 12,975,562,752
+allocated bytes under the admission lock with identical listeners and no remaining run/overlay.
+The two upstream test-object compiles and complete profile result remain PENDING.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

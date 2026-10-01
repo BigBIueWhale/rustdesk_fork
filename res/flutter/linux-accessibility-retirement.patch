@@ -1062,6 +1062,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.h b/engi
 +gboolean fl_accessible_node_perform_action(FlAccessibleNode* node,
                                         FlutterSemanticsAction action,
                                         GBytes* data);
+
 diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc b/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc
 --- a/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc
 +++ b/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc

@@ -189,13 +189,14 @@ verify_runtime_bundle() {
   verify_regular /app.sha256
   [ -z "$(find /out /app -xdev ! -type d ! -type f -print -quit)" ] \
     || fail 'runtime app or driver tree contains a link or special object'
-  [ "$(find /out -xdev -type f | wc -l)" -eq 4 ] \
-    && [ "$(wc -l < /out/manifest.sha256)" -eq 3 ] \
+  [ "$(find /out -xdev -type f | wc -l)" -eq 5 ] \
+    && [ "$(wc -l < /out/manifest.sha256)" -eq 4 ] \
     && [ "$(find /app -xdev -type f | wc -l)" -eq "$(wc -l < /app.sha256)" ] \
     || fail 'runtime app or driver inventory differs'
   (cd /out && sha256sum --check --strict manifest.sha256 >/dev/null)
   (cd /app && sha256sum --check --strict /app.sha256 >/dev/null)
   verify_regular /out/smoke-bind-loopback.so
+  verify_regular /out/smoke-atk-geometry-trace.so
   for executable in \
     /app/bundle/rustdesk \
     /app/smoke-readiness \
@@ -485,7 +486,7 @@ PY
       && [ -z "$(find /out -mindepth 1 -print -quit)" ] \
       || fail 'driver output must be a fresh private directory'
     for input in flutter-peer-source-x11.c flutter-peer-presentation-x11.c \
-        x11-frame-oracle.h smoke-bind-loopback.c; do
+        x11-frame-oracle.h smoke-bind-loopback.c smoke-atk-geometry-trace.c; do
       verify_regular "/source/scripts/$input"
     done
     for pass in 1 2; do
@@ -501,17 +502,23 @@ PY
         /source/scripts/smoke-bind-loopback.c \
         -Wl,-z,relro,-z,now,-z,noexecstack -ldl \
         -o "/tmp/drivers.$pass/smoke-bind-loopback.so"
+      /usr/bin/cc -std=c11 -shared -fPIC -O2 -fno-omit-frame-pointer \
+        -Wall -Wextra -Werror /source/scripts/smoke-atk-geometry-trace.c \
+        $(pkg-config --cflags --libs atk dbus-1) \
+        -Wl,-z,relro,-z,now,-z,noexecstack -ldl -pthread \
+        -o "/tmp/drivers.$pass/smoke-atk-geometry-trace.so"
     done
-    for driver in flutter-peer-source-x11 flutter-peer-presentation-x11 smoke-bind-loopback.so; do
+    for driver in flutter-peer-source-x11 flutter-peer-presentation-x11 \
+        smoke-bind-loopback.so smoke-atk-geometry-trace.so; do
       cmp -s "/tmp/drivers.1/$driver" "/tmp/drivers.2/$driver" \
         || fail "driver compilation is not byte reproducible: $driver"
       install -m 0500 "/tmp/drivers.2/$driver" "/out/$driver"
     done
     (cd /out && sha256sum flutter-peer-source-x11 flutter-peer-presentation-x11 \
-      smoke-bind-loopback.so) > /out/manifest.sha256
+      smoke-bind-loopback.so smoke-atk-geometry-trace.so) > /out/manifest.sha256
     chmod 0400 /out/manifest.sha256
     chmod 0500 /out
-    printf 'LINUX_FLUTTER_DRIVERS_COMPILED=pass files=3 builds=2 equality=bytes app=unbuilt\n'
+    printf 'LINUX_FLUTTER_DRIVERS_COMPILED=pass files=4 builds=2 equality=bytes app=unbuilt instrumentation=atk-geometry-trace\n'
     ;;
 
   build-app)
@@ -1148,16 +1155,26 @@ PY
     start_xvfb :99 1280x800x24 /tmp/viewer-xvfb.log
     listener_is_exact || fail 'shared namespace lost the exact loopback server listener'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'shared namespace has a UDP socket before connect'
-    (cd /app/bundle && exec env RUST_LOG=info "$APP" --connect 127.0.0.1) \
+    (cd /app/bundle && exec env RUST_LOG=info \
+      LD_PRELOAD=/out/smoke-atk-geometry-trace.so "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
+    wait_process_maps_exact_file "$VIEWER_PID" "$VIEWER_START" \
+      /out/smoke-atk-geometry-trace.so \
+      || fail 'diagnostic viewer did not map the manifested ATK geometry tracer'
+    printf 'ATK_GEOMETRY_TRACE_MAPPED pid=%s start=%s scope=viewer-only forwarding=unchanged diagnostics=nonsecret-bounded\n' \
+      "$VIEWER_PID" "$VIEWER_START"
     set +e
     controller_output="$(timeout --signal=TERM --kill-after=3s 180s \
       "$CONTROLLER" :98 :99 "$VIEWER_PID" 2>&1)"
     controller_status=$?
     set -e
     printf '%s\n' "$controller_output"
+    if [ "$controller_status" -eq 0 ]; then
+      printf 'ATK_GEOMETRY_DIAGNOSTIC_ONLY full_consumer_acceptance=refused\n' >&2
+      controller_status=125
+    fi
     if [ "$controller_status" -ne 0 ]; then
       cat /tmp/viewer.log >&2 || true
       cat /tmp/viewer-xvfb.log >&2 || true

@@ -1612,6 +1612,13 @@ and the external audit, not as a live replay diary.
 
 Next capture the exact native geometry-provider call stack and test the self-wait candidate in a
 focused no-NIC replay, or establish an equally authoritative target-native layout observation.
+The temporary current harness compiles a fourth byte-equal diagnostic ELF and preloads it only
+into the private viewer, proving its exact mapping before control. It forwards ATK extents and
+blocking D-Bus calls unchanged and records at most four self-directed GetExtents calls, sixteen
+component types/providers and thirty-two module-offset frames per call, without message bodies,
+object labels or memory dumps. This replay is explicitly instrumented and cannot supply complete
+consumer acceptance, even if the unchanged controller succeeds. Remove the temporary probe after
+retaining its evidence; no native stack or causal verdict is claimed before execution.
 Do not increase timeouts, guess coordinates or accept invalid extents. Then observe an actual
 production image-ready rebuild trigger before
 changing desktop dialog ownership and complete the required consumer lifecycles. The older

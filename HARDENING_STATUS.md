@@ -1837,8 +1837,26 @@ for both. The source hash is independently derived from the publisher's exact ro
 tree objects, not accepted from the failed command. No original source, SDK pin or check is bypassed.
 The completed graph is unchanged; output stays bounded at one GiB/archive and three GiB total.
 Retained candidate/run state refuses another producer. Failure evidence was retained before
-identity-bound stopped-root/partial reconciliation. Corrected native execution is **UNEXECUTED**;
-sysroot/Pub/hooks, offline engine build, geometry correction and uninstrumented consumer remain OPEN.
+identity-bound stopped-root/partial reconciliation. Exact corrected `2786f46095480bf2c5991eb056772805405950e9`,
+tree `b03510f009d3076d6b4deb9c230a57c683a62cd3`, passed the complete native acquisition,
+three restorations, original-script/version checks and final publisher rehash in 88 harness
+seconds (94,530 host BOOTTIME ms, outer/capture 0/0). The 5,345-byte manifest SHA256
+`5c27fb0744950fd25513f3a98bafc0d17d2b9bed1f7e446c4d50cc2cf0bd6da4` binds three archives
+totalling 154,347,520 bytes; independent read-only verification rehashed each and matched
+all source/graph/tool/discovery identities and the exact mode-0400/single-link inventory.
+Full 67,249-byte raw serial is `evidence/engine-git-metadata-2786f460.serial.log`, SHA256
+`aee70bdf2d485dda606cc9588a35665002ee3ce85e32ddcaf8c2bc31c0820248`, matching the VM receipt.
+Inputs/listeners were unchanged, external listener-drift bytes zero, all owned processes joined
+and successful scratch self-retired. An actual duplicate producer refused status 1 before
+allocation; candidate identity/manifest stayed unchanged. Its auxiliary checker first failed
+on an incorrect expected diagnostic; reinspection of saved output and state passed, without
+repeating the producer. No run/overlay remains; the completed inert candidate occupies
+154,370,048 allocated bytes (~0.144 GiB). This closes the original version-metadata prerequisite,
+not complete build closure. Source materialization must establish original tracked indexes
+before hooks that query `git ls-files`. Pinned engine and Dart workspace specifications use
+path overrides for DEPS-managed packages; test their actual offline resolves before assuming
+another hosted Pub acquisition is needed. Sysroot/Pub/hooks, offline engine build, production
+geometry correction and complete uninstrumented consumer remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

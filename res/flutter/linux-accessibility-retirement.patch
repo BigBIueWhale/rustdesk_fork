@@ -4,21 +4,61 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
 @@ -51,6 +51,7 @@
    // Weak reference to the engine this node is created for.
    GWeakRef engine;
- 
+
 +  gboolean retired;
 +
    /// The unique identifier of the view to which this node belongs.
    FlutterViewId view_id;
- 
+
 @@ -136,6 +138,6 @@
  static ActionData* get_action(FlAccessibleNodePrivate* priv, gint index) {
 -  if (index < 0 || static_cast<guint>(index) >= priv->actions->len) {
 +  if (priv->retired || index < 0 || static_cast<guint>(index) >= priv->actions->len) {
      return nullptr;
    }
+@@ -190,6 +193,7 @@
+ static void fl_accessible_node_dispose(GObject* object) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(object);
+
++  fl_accessible_node_retire(FL_ACCESSIBLE_NODE(object));
+-  g_weak_ref_clear(&priv->engine);
+-  g_weak_ref_clear(&priv->parent);
+   g_clear_pointer(&priv->name, g_free);
+@@ -202,6 +204,14 @@
+   G_OBJECT_CLASS(fl_accessible_node_parent_class)->dispose(object);
+ }
+
++static void fl_accessible_node_finalize(GObject* object) {
++  FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(object);
++  g_weak_ref_clear(&priv->engine);
++  g_weak_ref_clear(&priv->parent);
++  G_OBJECT_CLASS(fl_accessible_node_parent_class)->finalize(object);
++}
++
+ // Implements AtkObject::get_name.
+@@ -213,6 +217,9 @@
+ static AtkObject* fl_accessible_node_get_parent(AtkObject* accessible) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(accessible);
++  if (priv->retired) {
++    return nullptr;
++  }
+   g_autoptr(AtkObject) parent = ATK_OBJECT(g_weak_ref_get(&priv->parent));
+   return parent;
+ }
+@@ -227,6 +234,6 @@
+ static gint fl_accessible_node_get_n_children(AtkObject* accessible) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(accessible);
+-  return priv->children->len;
++  return priv->retired ? 0 : priv->children->len;
+ }
+@@ -237,6 +244,6 @@
+-  if (i < 0 || static_cast<guint>(i) >= priv->children->len) {
++  if (priv->retired || i < 0 || static_cast<guint>(i) >= priv->children->len) {
+     return nullptr;
+   }
 @@ -260,6 +262,12 @@
    AtkStateSet* state_set = atk_state_set_new();
- 
+
 +  if (priv->retired) {
 +    atk_state_set_add_state(state_set, ATK_STATE_DEFUNCT);
 +    return state_set;
@@ -29,7 +69,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
    }
 @@ -312,6 +320,12 @@
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(component);
- 
+
 +  if (priv->retired) {
 +    *x = *y = *width = *height = -1;
 +    return;
@@ -44,10 +84,69 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
 -  return priv->actions->len;
 +  return priv->retired ? 0 : priv->actions->len;
  }
+@@ -503,6 +543,7 @@
+   G_OBJECT_CLASS(klass)->set_property = fl_accessible_node_set_property;
+   G_OBJECT_CLASS(klass)->dispose = fl_accessible_node_dispose;
++  G_OBJECT_CLASS(klass)->finalize = fl_accessible_node_finalize;
+   ATK_OBJECT_CLASS(klass)->get_name = fl_accessible_node_get_name;
+@@ -343,6 +362,9 @@
+ static gboolean fl_accessible_node_do_action(AtkAction* action, gint i) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(action);
++  if (priv->retired) {
++    return FALSE;
++  }
+
+   g_autoptr(FlEngine) engine = FL_ENGINE(g_weak_ref_get(&priv->engine));
+@@ -737,6 +754,9 @@
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
++  if (priv->retired) {
++    return;
++  }
+   g_weak_ref_set(&priv->parent, parent);
+   priv->index = index;
+ }
+@@ -744,6 +760,11 @@
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
+
++  if (priv->retired) {
++    return;
++  }
++  g_autoptr(FlAccessibleNode) owner = FL_ACCESSIBLE_NODE(g_object_ref(self));
++
+   // Remove nodes that are no longer required.
+   for (guint i = 0; i < priv->children->len;) {
+-    AtkObject* object = ATK_OBJECT(g_ptr_array_index(priv->children, i));
++    g_autoptr(AtkObject) object =
++        ATK_OBJECT(g_object_ref(g_ptr_array_index(priv->children, i)));
+     if (has_child(children, object)) {
+@@ -753,6 +776,9 @@
+       g_signal_emit_by_name(self, "children-changed::remove", i, object,
+                             nullptr);
++      if (priv->retired) {
++        return;
++      }
+       g_ptr_array_remove_index(priv->children, i);
+     }
+   }
+@@ -761,6 +787,10 @@
+   // Add new nodes.
+   for (guint i = 0; i < children->len; i++) {
+-    AtkObject* object = ATK_OBJECT(g_ptr_array_index(children, i));
++    g_autoptr(AtkObject) object =
++        ATK_OBJECT(g_object_ref(g_ptr_array_index(children, i)));
+     if (!has_child(priv->children, object)) {
+       g_ptr_array_add(priv->children, g_object_ref(object));
+       g_signal_emit_by_name(self, "children-changed::add", i, object, nullptr);
++      if (priv->retired) {
++        return;
++      }
+     }
+   }
+ }
 @@ -730,6 +744,26 @@
    return self;
  }
- 
+
 +void fl_accessible_node_retire(FlAccessibleNode* self) {
 +  g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
 +  FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
@@ -66,10 +165,67 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
 +
  void fl_accessible_node_set_parent(FlAccessibleNode* self,
                                     AtkObject* parent,
-                                    gint index) {
+                                     gint index) {
+@@ -767,6 +815,9 @@
+ void fl_accessible_node_set_name(FlAccessibleNode* self, const gchar* name) {
+   g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
++  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++    return;
++  }
+
+   return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_name(self, name);
+ }
+@@ -778,6 +829,9 @@
+   g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
++  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++    return;
++  }
+
+   return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_extents(self, x, y, width,
+                                                          height);
+@@ -787,6 +841,9 @@
+   g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
++  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++    return;
++  }
+
+   return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_flags(self, flags);
+ }
+@@ -795,6 +852,9 @@
+   g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
++  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++    return;
++  }
+
+   return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_actions(self, actions);
+ }
+@@ -800,6 +860,9 @@
+   g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
++  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++    return;
++  }
+
+   return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_value(self, value);
+ }
+@@ -808,6 +871,9 @@
+   g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
++  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++    return;
++  }
+
+   return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_text_selection(self, base,
+                                                                 extent);
+@@ -817,6 +883,9 @@
+   g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
++  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++    return;
++  }
+
+   return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_text_direction(self,
+                                                                 direction);
 @@ -823,6 +857,10 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
- 
+
 +  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
 +    return;
 +  }
@@ -82,7 +238,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.h b/engi
 @@ -72,6 +72,10 @@
                                           FlutterViewId view_id,
                                           int32_t node_id);
- 
+
 +// Permanently revokes action authority and marks a retained node defunct.
 +// A new semantics generation must create a new object, never revive this one.
 +void fl_accessible_node_retire(FlAccessibleNode* node);
@@ -100,7 +256,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 +  gboolean retired;
 +  gboolean resetting;
  };
- 
+
  G_DEFINE_TYPE(FlViewAccessible, fl_view_accessible, ATK_TYPE_PLUG)
 @@ -57,6 +60,9 @@
  static FlAccessibleNode* lookup_node(FlViewAccessible* self, int32_t id) {
@@ -110,18 +266,64 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
    return FL_ACCESSIBLE_NODE(
        g_hash_table_lookup(self->semantics_nodes_by_id, GINT_TO_POINTER(id)));
  }
+@@ -75,6 +80,8 @@
+   node = create_node(self, semantics);
++  if (node == nullptr) {
++    return nullptr;
++  }
++  g_autoptr(FlAccessibleNode) owner = FL_ACCESSIBLE_NODE(g_object_ref(node));
+   if (semantics->id == kRootSemanticsNodeId) {
+     fl_accessible_node_set_parent(node, ATK_OBJECT(self), 0);
+   }
+@@ -86,6 +95,7 @@
+   if (!self->root_node_created && semantics->id == kRootSemanticsNodeId) {
+-    g_signal_emit_by_name(self, "children-changed::add", 0, node, nullptr);
+     self->root_node_created = true;
++    g_signal_emit_by_name(self, "children-changed::add", 0, node, nullptr);
+   }
+
+-  return node;
++  return lookup_node(self, semantics->id) == node ? node : nullptr;
+ }
 @@ -131,6 +133,7 @@
  static void fl_view_accessible_dispose(GObject* object) {
    FlViewAccessible* self = FL_VIEW_ACCESSIBLE(object);
- 
+
 +  fl_view_accessible_retire(self);
    g_clear_pointer(&self->semantics_nodes_by_id, g_hash_table_unref);
- 
-   g_weak_ref_clear(&self->engine);
+
+-  g_weak_ref_clear(&self->engine);
+@@ -140,6 +149,14 @@
+   G_OBJECT_CLASS(fl_view_accessible_parent_class)->dispose(object);
+ }
+
++static void fl_view_accessible_finalize(GObject* object) {
++  FlViewAccessible* self = FL_VIEW_ACCESSIBLE(object);
++  g_weak_ref_clear(&self->engine);
++  G_OBJECT_CLASS(fl_view_accessible_parent_class)->finalize(object);
++}
++
+ static void fl_view_accessible_class_init(FlViewAccessibleClass* klass) {
+@@ -150,6 +167,7 @@
+   G_OBJECT_CLASS(klass)->dispose = fl_view_accessible_dispose;
++  G_OBJECT_CLASS(klass)->finalize = fl_view_accessible_finalize;
+ }
+@@ -155,6 +178,7 @@
+ static void fl_view_accessible_init(FlViewAccessible* self) {
++  g_weak_ref_init(&self->engine, nullptr);
+   self->semantics_nodes_by_id = g_hash_table_new_full(
+       g_direct_hash, g_direct_equal, nullptr, g_object_unref);
+ }
+@@ -166,6 +190,6 @@
+-  g_weak_ref_init(&self->engine, engine);
++  g_weak_ref_set(&self->engine, engine);
+   self->view_id = view_id;
+   return self;
+ }
 @@ -169,6 +172,43 @@
    return self;
  }
- 
+
 +void fl_view_accessible_reset(FlViewAccessible* self) {
 +  g_return_if_fail(FL_IS_VIEW_ACCESSIBLE(self));
 +  if (self->resetting || self->semantics_nodes_by_id == nullptr) {
@@ -164,20 +366,70 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
      const FlutterSemanticsUpdate2* update) {
 @@ -176,6 +216,9 @@
    g_return_if_fail(FL_IS_VIEW_ACCESSIBLE(self));
- 
+
 +  if (self->retired || self->resetting) {
 +    return;
 +  }
++  g_autoptr(FlViewAccessible) owner = FL_VIEW_ACCESSIBLE(g_object_ref(self));
++  g_autoptr(GHashTable) generation = g_hash_table_ref(self->semantics_nodes_by_id);
    g_autoptr(GHashTable) pending_children =
-       g_hash_table_new_full(g_direct_hash, g_direct_equal, nullptr,
+-      g_hash_table_new_full(g_direct_hash, g_direct_equal, nullptr,
++      g_hash_table_new_full(g_direct_hash, g_direct_equal, g_object_unref,
                              reinterpret_cast<GDestroyNotify>(fl_value_unref));
+@@ -184,6 +230,15 @@
+   for (size_t i = 0; i < update->node_count; i++) {
++    if (self->semantics_nodes_by_id != generation) {
++      return;
++    }
+     FlutterSemanticsNode2* node = update->nodes[i];
+-    FlAccessibleNode* atk_node = get_node(self, node);
++    FlAccessibleNode* borrowed = get_node(self, node);
++    if (borrowed == nullptr) {
++      return;
++    }
++    g_autoptr(FlAccessibleNode) atk_node = FL_ACCESSIBLE_NODE(g_object_ref(borrowed));
+
+     fl_accessible_node_set_flags(atk_node, node->flags2);
++    if (self->semantics_nodes_by_id != generation) {
++      return;
++    }
+     fl_accessible_node_set_actions(atk_node, node->actions);
+@@ -204,6 +260,13 @@
+     FlValue* children = fl_value_new_int32_list(
+         node->children_in_traversal_order, node->child_count);
+-    g_hash_table_insert(pending_children, atk_node, children);
++    g_hash_table_insert(pending_children, g_object_ref(atk_node), children);
+   }
+
++  struct PendingChildrenContext {
++    FlViewAccessible* self;
++    GHashTable* generation;
++  } context = {self, generation};
+   g_hash_table_foreach_remove(
+       pending_children,
+@@ -212,6 +275,12 @@
+       [](gpointer key, gpointer value, gpointer user_data) -> gboolean {
+-        FlViewAccessible* self = FL_VIEW_ACCESSIBLE(user_data);
++        auto* context = static_cast<PendingChildrenContext*>(user_data);
++        FlViewAccessible* self = context->self;
++        if (self->semantics_nodes_by_id != context->generation) {
++          return TRUE;
++        }
+
+         FlAccessibleNode* parent = FL_ACCESSIBLE_NODE(key);
+@@ -239,6 +310,6 @@
+         return TRUE;
+       },
+-      self);
++      &context);
+ }
 diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.h b/engine/src/flutter/shell/platform/linux/fl_view_accessible.h
 --- a/engine/src/flutter/shell/platform/linux/fl_view_accessible.h
 +++ b/engine/src/flutter/shell/platform/linux/fl_view_accessible.h
 @@ -57,6 +57,12 @@
  FlViewAccessible* fl_view_accessible_new(FlEngine* engine,
                                           FlutterViewId view_id);
- 
+
 +// Drops the previous semantics generation without reviving retained nodes.
 +void fl_view_accessible_reset(FlViewAccessible* accessible);
 +

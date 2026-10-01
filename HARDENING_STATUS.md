@@ -1925,7 +1925,7 @@ These are unmodified production object compilations, not a linked engine, execut
 unit tests, a geometry correction, or product behavior.
 The full engine build, production geometry correction and complete app replay remain OPEN.
 
-**Retained-node lifetime correction — SOURCE CANDIDATE; NATIVE TEST PENDING.**
+**Retained-node lifetime correction — BASIC NATIVE UNIT PASS; EXPANDED CANDIDATE PENDING.**
 `res/flutter/linux-accessibility-retirement.patch` adds permanent node retirement to the
 source-bound dependency: action dispatch is revoked, retained nodes become defunct, and
 geometry becomes unavailable. A tree reset detaches its old node map before notifications;
@@ -1934,8 +1934,17 @@ tree before engine restart and retires it before releasing the view ID. This is 
 to disposable engine source by the offline consumer, never to a host SDK/service or retained
 app. The focused test links the real GN-built node implementation to one explicitly recording
 engine boundary and contrasts the old parent-gone/live-engine dispatch with permanent
-retirement plus a healthy fresh node. Native execution and patched-unit compilation are
-pending. This is not a running engine, actual view teardown/restart, full engine link, shipped
+retirement plus a healthy fresh node. Exact `4da7f30e`, tree
+`7bf957e7aa19d6249a287c9d74719d50e9b3f06f`, passed that real ATK/GObject A/B and all
+three patched production-unit compiles in 102,310 host BOOTTIME ms (outer/capture 0/0),
+with read-only inputs, no added host listener/process drift and joined automatic scratch
+retirement. Full 81,214-byte serial is `evidence/engine-node-retire-4da7f30e.serial.log`,
+SHA256 `436974117e0f0f2980f959979e0adc251765265423f137b8f48f43b1147e65f0`.
+The expanded candidate retains admitted update objects and exact map generation across
+callbacks, stops child mutation after synchronous retirement, initializes weak references in
+instance init and clears them only at finalization, and rejects post-dispose mutations/queries.
+Its real removal-callback retirement and disposed-node unit cases still require native execution.
+This is not a running engine, actual view teardown/restart, full engine link, shipped
 dependency, removed-subtree retirement, geometry/self-wait correction, or product/LPE closure.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required

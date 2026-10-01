@@ -456,7 +456,7 @@ raise SystemExit(subprocess.call([
         output = command([binary], engine, env, deadline)
         expected = ("ENGINE_ACCESSIBLE_RETIREMENT_BASELINE=observed parent=gone engine=live action=dispatched"
                     if baseline else "ENGINE_ACCESSIBLE_RETIREMENT=pass unit=real-node boundary=recording-engine "
-                    "idempotent=true stale=refused fresh=allowed geometry=defunct")
+                    "idempotent=true stale=refused fresh=allowed geometry=defunct reentrant=true disposed=true")
         require(output == (expected + "\n").encode(), "native node retirement receipt differs")
         artifact_receipt(binary.rsplit("/", 1)[1], "baseline-test" if baseline else "candidate-test")
         print(expected, flush=True)

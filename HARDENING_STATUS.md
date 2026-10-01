@@ -1891,22 +1891,19 @@ pinned candidates through separate read-only Landlocked exports into a zero-NIC 
 a networkless UID/GID-1000 devcheck container. It materializes bounded source/sysroot
 archives without traversing links during writes, restores the three original Git indexes
 and version identities, and runs all six unchanged hooks with a fresh private Pub cache.
-The first native run at `ce79a21f` verified VM/image/input authority and the actual six
-mounts, then refused before helper execution because the inspection template added a
-blank line. Its 68,091-byte full serial is `evidence/engine-prepare-ce79a21f.serial.log`
-(SHA256 `1ce50511f17fe2b765d4fddebb88a441b35112e5eedede582b44bb0e93d4805a`).
-Outer/capture status was 1/0 in 36,200 host BOOTTIME ms; listeners were byte-identical,
-owned processes joined and exact stopped scratch was retired under the admission lock.
-The template now emits separators only between mounts; the six exact bindings remain
-required. Original extraction/hooks still require native execution, and this is not
-complete engine-build closure.
-At `6f6d1ec6`, VM-root/foreign entry refusals, exact container mounts and all ten native
-extraction cases passed; preparation then refused its ASCII read of UTF-8 pin comments.
-The pin read now bounds raw bytes and decodes UTF-8 strictly, while pin values retain
-their closed ASCII shape. Full 67,639-byte serial is `evidence/engine-prepare-6f6d1ec6.serial.log`
-(SHA256 `c336afbc7e001587023f9a8723068bbdd1dfa99e55fcd1751fa15604dd08590f`);
-outer/capture status was 1/0 in 35,930 ms. Listeners were unchanged and exact stopped
-scratch retired. No original hook ran; the next transaction streams bounded stages live.
+At `f96b0b98`, principal refusals, exact mounts and ten extraction cases passed, and
+regular extraction completed for all 82 Git, 11 CIPD and three original metadata archives.
+The first sysroot then refused a legitimate systemd filename containing a literal backslash;
+the Linux-only reader now preserves it as an ordinary byte, as required by the
+[POSIX filename contract](https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_146).
+Traversal, absolute paths, escaping/cyclic links, special files and writes below links
+remain refused. The native positive fixture now includes that exact filename form.
+Full 74,283-byte serial is `evidence/engine-prepare-f96b0b98.serial.log` (SHA256
+`f3471583d7dedaa03f735b7da525075fcfd23ae1301cacef79cb91eccb3b0d3b`);
+outer/capture status was 1/0 in 78,100 host BOOTTIME ms. Listeners were unchanged,
+all owned processes joined, and exact stopped scratch retired under the admission lock.
+Earlier template/encoding failures remain in retained evidence and the audit, not this ledger.
+No original hook or final link installation ran; complete offline preparation remains OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

@@ -43,7 +43,7 @@ def unchanged(before, after):
 
 def parts(name, root=False):
     require(isinstance(name, str) and 0 < len(name.encode()) <= 1024
-            and not name.startswith("/") and "\\" not in name
+            and not name.startswith("/")
             and not any(ord(c) < 32 or ord(c) == 127 for c in name), "unsafe archive path")
     if name.startswith("./"):
         name = name[2:]
@@ -137,7 +137,7 @@ class Tree:
                 else:
                     target = member.linkname
                     require(0 < len(target.encode()) <= 1024 and not target.startswith("/")
-                            and "\\" not in target and not any(ord(c) < 32 or ord(c) == 127
+                            and not any(ord(c) < 32 or ord(c) == 127
                                                                for c in target), "unsafe link target")
                     self.links.append((path, target, member.islnk(), scope, local))
         # No archive may write through a deferred symlink (even if it appeared last).
@@ -390,7 +390,8 @@ def self_test():
 
     positive = [("usr/bin/tool", tarfile.REGTYPE, b"original"),
                 ("bin", tarfile.SYMTYPE, "usr/bin"),
-                ("usr/bin/alias", tarfile.LNKTYPE, "./usr/bin/tool")]
+                ("usr/bin/alias", tarfile.LNKTYPE, "./usr/bin/tool"),
+                (r"lib/systemd/system/system-systemd\x2dcryptsetup.slice", tarfile.REGTYPE, b"unit")]
     negatives = [
         [("../escape", tarfile.REGTYPE, b"x")],
         [("/escape", tarfile.REGTYPE, b"x")],
@@ -420,6 +421,8 @@ def self_test():
                     require(tool.read_bytes() == b"original" and os.stat(tool).st_ino == os.stat(alias).st_ino
                             and os.stat(tool).st_nlink == 2 and os.readlink(case / "sysroot/bin") == "usr/bin",
                             "legitimate links lost their semantics")
+                    require((case / "sysroot" / r"lib/systemd/system/system-systemd\x2dcryptsetup.slice")
+                            .read_bytes() == b"unit", "literal Linux backslash filename changed")
             finally:
                 tree.close()
     print("ENGINE_PREPARE_EXTRACTION_TEST=pass cases=10 links=preserved unsafe=refused cleanup=joined", flush=True)

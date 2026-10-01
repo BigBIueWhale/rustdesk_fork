@@ -13,7 +13,8 @@ case "$#:${1:-}" in
     1:--stage-tools) MODE=tools ;;
     1:--probe-tools) MODE=probe ;;
     1:--stage-graph) MODE=graph ;;
-    *) echo 'engine bootstrap expects no arguments, --stage-tools, --probe-tools or --stage-graph' >&2; exit 2 ;;
+    1:--stage-git-metadata) MODE=git-metadata ;;
+    *) echo 'engine bootstrap expects no arguments, --stage-tools, --probe-tools, --stage-graph or --stage-git-metadata' >&2; exit 2 ;;
 esac
 # shellcheck source=scripts/pins.env
 source "$SCRIPT_DIR/pins.env"
@@ -48,17 +49,25 @@ else
         --cipd-version "$FLUTTER_ENGINE_CIPD_VERSION"
         --cipd-instance "$FLUTTER_ENGINE_CIPD_INSTANCE"
         --cipd-sha256 "$SHA256_FLUTTER_ENGINE_CIPD_CLIENT")
-    if [ "$MODE" = probe ] || [ "$MODE" = graph ]; then
+    if [ "$MODE" = probe ] || [ "$MODE" = graph ] || [ "$MODE" = git-metadata ]; then
         [ "$MODE" != probe ] || PHASE=probe
         ARGUMENTS+=(--tools-source-commit "$FLUTTER_ENGINE_BOOTSTRAP_TOOLS_SOURCE_COMMIT"
             --tools-manifest-size "$SIZE_FLUTTER_ENGINE_BOOTSTRAP_TOOLS_MANIFEST"
             --tools-manifest-sha256 "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_TOOLS_MANIFEST")
     fi
-    if [ "$MODE" = graph ]; then
+    if [ "$MODE" = graph ] || [ "$MODE" = git-metadata ]; then
         OUTPUT="$REPO/online/candidates/flutter-linux-engine-graph"
         HELPER="$SCRIPT_DIR/stage-flutter-linux-engine-graph.py"
         PHASE=graph
         ARGUMENTS+=(--epoch "$SOURCE_DATE_EPOCH_PIN")
+        if [ "$MODE" = git-metadata ]; then
+            OUTPUT="$REPO/online/candidates/flutter-linux-engine-git-metadata"
+            PHASE=git-metadata
+            ARGUMENTS+=(--graph-source-commit "$FLUTTER_ENGINE_GRAPH_SOURCE_COMMIT"
+                --graph-manifest-size "$SIZE_FLUTTER_ENGINE_GRAPH_MANIFEST"
+                --graph-manifest-sha256 "$SHA256_FLUTTER_ENGINE_GRAPH_MANIFEST"
+                --engine-content-hash "$FLUTTER_PRESENTATION_CANDIDATE_ENGINE_REVISION")
+        fi
     fi
 fi
 readonly INPUT INPUT_PARENT INPUT_DEST INPUT_SIZE OUTPUT HELPER MODE PHASE
@@ -68,6 +77,7 @@ CONTAINER_ID=
 COMMON_HELPER=
 TOOLS=
 GRAPH_WORK=
+GRAPH_MANIFEST=
 
 fail() { printf 'engine bootstrap discovery: %s\n' "$*" >&2; exit 1; }
 
@@ -127,12 +137,24 @@ done
     && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$INPUT")" = \
          "$UID_NUMBER:$GID_NUMBER:400:1:$INPUT_SIZE" ] \
     || fail 'source-bound bootstrap input metadata differs'
-if [ "$MODE" = graph ]; then
+if [ "$MODE" = graph ] || [ "$MODE" = git-metadata ]; then
     COMMON_HELPER="$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py"
+fi
+if [ "$MODE" = graph ]; then
     TOOLS="$REPO/online/candidates/flutter-linux-engine-bootstrap-tools"
     [ -d "$TOOLS" ] && [ ! -L "$TOOLS" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$TOOLS")" = "$UID_NUMBER:$GID_NUMBER:700" ] \
         || fail 'sealed graph bootstrap input is absent or ambiguous'
+fi
+if [ "$MODE" = git-metadata ]; then
+    graph_root="$REPO/online/candidates/flutter-linux-engine-graph"
+    GRAPH_MANIFEST="$graph_root/manifest.json"
+    [ -d "$graph_root" ] && [ ! -L "$graph_root" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$graph_root")" = "$UID_NUMBER:$GID_NUMBER:700" ] \
+        && [ -f "$GRAPH_MANIFEST" ] && [ ! -L "$GRAPH_MANIFEST" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$GRAPH_MANIFEST")" = \
+             "$UID_NUMBER:$GID_NUMBER:400:1:$SIZE_FLUTTER_ENGINE_GRAPH_MANIFEST" ] \
+        || fail 'sealed engine graph manifest is absent or ambiguous'
 fi
 WORK="$(/usr/bin/mktemp -d /var/tmp/rustdesk-engine-discovery.XXXXXXXXXX)"
 WORK_ID="$(/usr/bin/stat -c '%d:%i' -- "$WORK")"
@@ -142,7 +164,7 @@ WORK_ID="$(/usr/bin/stat -c '%d:%i' -- "$WORK")"
 /bin/bash "$SCRIPT_DIR/online-fetch.sh" --devcheck-image
 [ "$MODE" = probe ] || /usr/bin/mkdir -m 0700 -- "$OUTPUT"
 helper_sources=("$HELPER")
-[ "$MODE" != graph ] || helper_sources+=("$COMMON_HELPER")
+[ -z "$COMMON_HELPER" ] || helper_sources+=("$COMMON_HELPER")
 helper_before="$(/usr/bin/sha256sum "${helper_sources[@]}")"
 phase=$PHASE
 network=bridge
@@ -157,7 +179,7 @@ if [ "$MODE" != discovery ]; then
     tmp_size=512m
     phase_arguments=(--phase "$phase")
 fi
-if [ "$MODE" = graph ]; then
+if [ "$MODE" = graph ] || [ "$MODE" = git-metadata ]; then
     memory=2g
     memory_bytes=2147483648
     tmp_size=16m
@@ -166,11 +188,15 @@ if [ "$MODE" = graph ]; then
 fi
 scratch=(--tmpfs "/tmp:rw,noexec,nosuid,nodev,size=$tmp_size,mode=700,uid=$UID_NUMBER,gid=$GID_NUMBER")
 extra_mounts=()
-if [ "$MODE" = graph ]; then
+if [ "$MODE" = graph ] || [ "$MODE" = git-metadata ]; then
     extra_mounts=(
         --mount "type=bind,src=$COMMON_HELPER,dst=/bootstrap-common.py,readonly,bind-nonrecursive"
-        --mount "type=bind,src=$TOOLS,dst=/tools,readonly,bind-nonrecursive"
         --mount "type=bind,src=$GRAPH_WORK,dst=/work,bind-nonrecursive")
+    if [ "$MODE" = graph ]; then
+        extra_mounts+=(--mount "type=bind,src=$TOOLS,dst=/tools,readonly,bind-nonrecursive")
+    else
+        extra_mounts+=(--mount "type=bind,src=$GRAPH_MANIFEST,dst=/graph-manifest.json,readonly,bind-nonrecursive")
+    fi
 fi
 if [ "$MODE" != discovery ]; then
     if [ "$phase" = probe ]; then
@@ -197,7 +223,7 @@ CONTAINER_ID="$(/usr/bin/cat "$WORK/container.id")"
 docker_client inspect "$CONTAINER_ID" >"$WORK/inspect.json"
 /usr/bin/python3 -I -S - "$WORK/inspect.json" "$UID_NUMBER:$GID_NUMBER" \
     "$DEV_CHECK_IMAGE_ID" "$INPUT" "$HELPER" "$OUTPUT" "$INPUT_DEST" "$network" "$phase" \
-    "$memory_bytes" "$tmp_size" "$COMMON_HELPER" "$TOOLS" "$GRAPH_WORK" <<'PY'
+    "$memory_bytes" "$tmp_size" "$COMMON_HELPER" "$TOOLS" "$GRAPH_WORK" "$GRAPH_MANIFEST" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding='utf-8') as source:
     records = json.load(source)
@@ -226,11 +252,17 @@ if sys.argv[9] == 'probe':
 expected = {sys.argv[7]: (sys.argv[4], False),
             '/bootstrap.py': (sys.argv[5], False),
             '/output': (sys.argv[6], sys.argv[9] != 'probe')}
-if sys.argv[9] == 'graph':
+if sys.argv[9] in ('graph', 'git-metadata'):
     expected.update({'/bootstrap-common.py': (sys.argv[12], False),
-                     '/tools': (sys.argv[13], False), '/work': (sys.argv[14], True)})
+                     '/work': (sys.argv[14], True)})
+    if sys.argv[9] == 'graph':
+        assert sys.argv[15] == ''
+        expected['/tools'] = (sys.argv[13], False)
+    else:
+        assert sys.argv[13] == ''
+        expected['/graph-manifest.json'] = (sys.argv[15], False)
 else:
-    assert sys.argv[12:] == ['', '', '']
+    assert sys.argv[12:] == ['', '', '', '']
 binds = {}
 for mount in record['Mounts']:
     if mount['Type'] == 'tmpfs':
@@ -251,11 +283,13 @@ docker_client rm "$CONTAINER_ID" >/dev/null
 /usr/bin/rm -- "$WORK/container.id"
 CONTAINER_ID=
 [ "$(/usr/bin/sha256sum "${helper_sources[@]}")" = "$helper_before" ] || fail 'discovery source changed'
-if [ "$MODE" = graph ]; then
+if [ "$MODE" = graph ] || [ "$MODE" = git-metadata ]; then
     /usr/bin/python3 -I -S - "$OUTPUT" "$RUSTDESK_ONLINE_FETCH_VM_SOURCE_COMMIT" \
         "$FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION" \
         "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_DISCOVERY" \
-        "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_TOOLS_MANIFEST" <<'PY'
+        "$SHA256_FLUTTER_ENGINE_BOOTSTRAP_TOOLS_MANIFEST" "$MODE" \
+        "$SHA256_FLUTTER_ENGINE_GRAPH_MANIFEST" "$FLUTTER_ENGINE_GRAPH_SOURCE_COMMIT" \
+        "$FLUTTER_PRESENTATION_CANDIDATE_ENGINE_REVISION" <<'PY'
 import hashlib, json, os, re, stat, sys
 root = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
 fields = ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink',
@@ -280,10 +314,15 @@ try:
             assert all(getattr(before, key) == getattr(after, key) for key in fields)
             return result
     manifest = verify('manifest.json', 1048576)
-    assert manifest['format'] == 'rustdesk-flutter-linux-engine-graph-v1'
-    assert [manifest[key] for key in ('source_commit', 'framework_revision', 'discovery_sha256', 'tools_manifest_sha256')] == sys.argv[2:]
+    metadata = sys.argv[6] == 'git-metadata'
+    assert manifest['format'] == ('rustdesk-flutter-linux-engine-git-metadata-v1' if metadata else 'rustdesk-flutter-linux-engine-graph-v1')
+    assert [manifest[key] for key in ('source_commit', 'framework_revision', 'discovery_sha256', 'tools_manifest_sha256')] == sys.argv[2:6]
     assert manifest['complete_engine_closure'] is False and manifest['hooks_executed'] is False
     assert 0 < len(manifest['git']) <= 256 and len(manifest['cipd']) <= 256
+    if metadata:
+        assert len(manifest['git']) == 3 and not manifest['cipd']
+        assert [manifest[key] for key in ('graph_manifest_sha256', 'graph_source_commit', 'engine_content_hash')] == sys.argv[7:10]
+        assert [entry['destination'] for entry in manifest['git']] == ['.', 'engine/src/flutter/third_party/dart', 'engine/src/flutter/third_party/skia']
     expected_names = {'manifest.json'}
     total = 0
     for kind in ('git', 'cipd'):
@@ -291,11 +330,11 @@ try:
             name = '%s-%03d.tar' % (kind, index)
             assert entry['file'] == name and name not in expected_names
             assert re.fullmatch('[0-9a-f]{64}', entry['sha256'])
-            total += verify(name, 4294967296, entry)
+            total += verify(name, 1073741824 if metadata else 4294967296, entry)
             expected_names.add(name)
     assert set(os.listdir(root)) == expected_names
-    assert total == manifest['acquired_bytes'] and total + os.stat('manifest.json', dir_fd=root).st_size <= 25769803776
-    print('ENGINE_GRAPH_PUBLICATION=pass files=' + str(len(expected_names)) + ' bytes=' + str(total) + ' hooks=deferred complete_engine_closure=no')
+    assert total == manifest['acquired_bytes'] and total + os.stat('manifest.json', dir_fd=root).st_size <= (3221225472 if metadata else 25769803776)
+    print(('ENGINE_GIT_METADATA_PUBLICATION' if metadata else 'ENGINE_GRAPH_PUBLICATION') + '=pass files=' + str(len(expected_names)) + ' bytes=' + str(total) + ' hooks=deferred complete_engine_closure=no')
 finally:
     os.close(root)
 PY

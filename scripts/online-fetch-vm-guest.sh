@@ -283,6 +283,7 @@ case "$REQUEST" in
     --maintenance-stage-flutter-linux-engine-bootstrap|\
     --maintenance-probe-flutter-linux-engine-bootstrap|\
     --maintenance-stage-flutter-linux-engine-graph|\
+    --maintenance-stage-flutter-linux-engine-git-metadata|\
     --maintenance-build-android-builder-bootstrap-candidate|\
     --maintenance-build-win-helper-bootstrap-candidate|\
     --maintenance-promote-deb-builder-bootstrap-candidate|\
@@ -813,6 +814,8 @@ elif [ "$REQUEST" = --maintenance-probe-flutter-linux-engine-bootstrap ]; then
     root_probe=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh" --probe-tools)
 elif [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ]; then
     root_probe=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh" --stage-graph)
+elif [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ]; then
+    root_probe=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh" --stage-git-metadata)
 fi
 if /usr/bin/env -i PATH=/usr/bin:/bin HOME=/root "${INNER_ENV[@]}" \
     "${root_probe[@]}" \
@@ -852,6 +855,8 @@ run_online_fetch() {
         command=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh" --probe-tools)
     elif [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ]; then
         command=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh" --stage-graph)
+    elif [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ]; then
+        command=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh" --stage-git-metadata)
     fi
     [ -z "$TRANSACTION_PID" ] \
         && [ "${#RESULT_READER_PIDS[@]}" -eq 0 ] \

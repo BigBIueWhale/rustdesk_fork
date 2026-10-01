@@ -29,6 +29,7 @@ case "$#:${1:-}" in
     1:--maintenance-stage-flutter-linux-engine-bootstrap|\
     1:--maintenance-probe-flutter-linux-engine-bootstrap|\
     1:--maintenance-stage-flutter-linux-engine-graph|\
+    1:--maintenance-stage-flutter-linux-engine-git-metadata|\
     1:--maintenance-build-android-builder-bootstrap-candidate|\
     1:--maintenance-build-win-helper-bootstrap-candidate|\
     1:--maintenance-promote-deb-builder-bootstrap-candidate|\
@@ -98,6 +99,10 @@ elif [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
 elif [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ]; then
     readonly VM_TIMEOUT_SECONDS=3600
     readonly OVERLAY_SIZE=32G
+    readonly VM_MEMORY=4096
+elif [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ]; then
+    readonly VM_TIMEOUT_SECONDS=900
+    readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=4096
 else
     readonly VM_TIMEOUT_SECONDS=43200
@@ -621,6 +626,18 @@ if [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ]; then
     [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
         || fail 'engine source/package graph already exists; review or explicitly reconcile it before another acquisition'
 fi
+if [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ]; then
+    candidate="$REPO_ROOT/online/candidates/flutter-linux-engine-git-metadata"
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        || fail 'engine Git metadata already exists; reuse or explicitly reconcile it before another acquisition'
+    graph="$REPO_ROOT/online/candidates/flutter-linux-engine-graph"
+    [ -d "$graph" ] && [ ! -L "$graph" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$graph")" = "$HOST_UID:$HOST_GID:700" ] \
+        && [ -f "$graph/manifest.json" ] && [ ! -L "$graph/manifest.json" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$graph/manifest.json")" = \
+             "$HOST_UID:$HOST_GID:400:1:$SIZE_FLUTTER_ENGINE_GRAPH_MANIFEST" ] \
+        || fail 'sealed engine graph manifest is absent or ambiguous'
+fi
 if [ "$REQUEST" = --maintenance-probe-flutter-linux-engine-bootstrap ] \
    || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ]; then
     candidate="$REPO_ROOT/online/candidates/flutter-linux-engine-bootstrap-tools"
@@ -788,6 +805,7 @@ if [ "$MODE" != authority-smoke ]; then
        || [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ] \
+       || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ] \
        || [ -e "$cache_child" ] || [ -L "$cache_child" ]; then
         if [ -e "$cache_child" ] || [ -L "$cache_child" ]; then
             [ -d "$cache_child" ] && [ ! -L "$cache_child" ] \

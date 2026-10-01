@@ -1817,6 +1817,19 @@ archives do not provide those Git objects. Close that exact metadata/input contr
 repositories, ambient Git lookup, or disabled version checks, then materialize and build offline.
 Production geometry correction and the complete uninstrumented consumer remain OPEN.
 
+The closed `--maintenance-stage-flutter-linux-engine-git-metadata` operation separately
+packages the three original graph-selected Flutter/Dart/Skia commits. It authenticates the
+independent graph manifest, fetches exact shallow objects, checks original trees and fsck,
+and retains only fixed HEAD/config/shallow plus one original object pack/index per repository.
+No remote, hook, alternate, replacement, synthetic commit or version-check bypass is admitted.
+Each canonical archive is restored into a fresh private guest workspace and must reproduce
+the original HEAD/tree/timestamps and strict fsck; Flutter's original content-hash script
+must reproduce the independently pinned SDK hash. The existing graph is not changed or
+reacquired. Output is bounded at one GiB/archive and three GiB total; retained candidate/run
+state refuses another producer. Bash syntax/diff checks pass; native acquisition/restoration
+and complete transaction are **UNEXECUTED** at this source record. Sysroot/Pub/hooks,
+offline engine build, geometry correction and uninstrumented consumer remain OPEN.
+
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
 consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

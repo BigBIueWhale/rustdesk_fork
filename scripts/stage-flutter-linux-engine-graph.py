@@ -362,6 +362,183 @@ def write_package_archive(entries, root, path, epoch):
             require(unchanged(before, entry.lstat()), "CIPD package entry changed")
 
 
+def metadata_graph(args):
+    graph = json.loads(common["read_file"]("/graph-manifest.json", args.graph_manifest_size,
+                                          args.graph_manifest_sha256))
+    require(graph["format"] == "rustdesk-flutter-linux-engine-graph-v1"
+            and graph["source_commit"] == args.graph_source_commit
+            and graph["framework_revision"] == args.framework_revision
+            and graph["discovery_sha256"] == args.discovery_sha256
+            and graph["tools_manifest_sha256"] == args.tools_manifest_sha256
+            and graph["source_date_epoch"] == args.epoch
+            and graph["complete_engine_closure"] is False
+            and graph["hooks_executed"] is False
+            and len(graph["git"]) == 82 and len(graph["cipd"]) == 11,
+            "independent engine graph context differs")
+    roles = ((".", "https://github.com/flutter/flutter.git"),
+             ("engine/src/flutter/third_party/dart", "https://dart.googlesource.com/sdk.git"),
+             ("engine/src/flutter/third_party/skia", "https://skia.googlesource.com/skia.git"))
+    selected = []
+    for destination, url in roles:
+        entries = [entry for entry in graph["git"] if entry["destination"] == destination]
+        require(len(entries) == 1, "Git metadata source is absent or ambiguous")
+        entry = entries[0]
+        require(entry["url"] == url and entry["object_type"] == "commit"
+                and entry["revision"] == entry["commit"]
+                and re.fullmatch("[0-9a-f]{40}", entry["commit"])
+                and re.fullmatch("[0-9a-f]{40}", entry["tree"]),
+                "Git metadata source pin differs")
+        selected.append(entry)
+    require(selected[0]["commit"] == args.framework_revision, "root metadata revision differs")
+    return selected
+
+
+def copy_metadata_file(source_path, destination):
+    fd = os.open(source_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as source, open(destination, "xb") as output:
+        before = os.fstat(source.fileno())
+        require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+                and (before.st_uid, before.st_gid) == (os.getuid(), os.getgid())
+                and 0 < before.st_size <= FILE_LIMIT, "Git metadata file authority differs")
+        digest = hashlib.sha256()
+        count = 0
+        while True:
+            block = source.read(1048576)
+            if not block:
+                break
+            count += len(block)
+            require(count <= before.st_size, "Git metadata file grew")
+            output.write(block)
+            digest.update(block)
+        require(count == before.st_size and unchanged(before, os.fstat(source.fileno())),
+                "Git metadata file changed")
+    return {"bytes": count, "sha256": digest.hexdigest()}
+
+
+def restore_metadata(path, destination, files, epoch):
+    # Fixed inventory: no generic extraction, links, hooks, config includes or alternates.
+    directories = {".git", ".git/objects", ".git/objects/pack", ".git/refs"}
+    seen = set()
+    with tarfile.open(path, "r:") as archive:
+        for member in archive:
+            name = member.name.rstrip("/")
+            require(name in directories | set(files) and name not in seen
+                    and member.uid == 0 and member.gid == 0 and member.mtime == epoch
+                    and not member.pax_headers, "Git metadata archive inventory differs")
+            seen.add(name)
+            target = destination / name
+            if name in directories:
+                require(member.isdir() and member.mode == 0o755 and member.size == 0,
+                        "Git metadata directory differs")
+                target.mkdir(mode=0o700)
+            else:
+                expected = files[name]
+                require(member.isfile() and member.mode == 0o644
+                        and member.size == expected["bytes"], "Git metadata archive file differs")
+                with archive.extractfile(member) as source, open(target, "xb") as output:
+                    digest = hashlib.sha256()
+                    count = 0
+                    while True:
+                        block = source.read(1048576)
+                        if not block:
+                            break
+                        count += len(block)
+                        require(count <= expected["bytes"], "Git metadata restore exceeds bound")
+                        digest.update(block)
+                        output.write(block)
+                    require(count == expected["bytes"] and digest.hexdigest() == expected["sha256"],
+                            "Git metadata restore bytes differ")
+    require(seen == directories | set(files), "Git metadata archive is incomplete")
+
+
+def acquire_metadata(args, selected, output_root):
+    artifacts, total = [], 0
+    for number, entry in enumerate(selected):
+        print("ENGINE_GIT_METADATA_FETCH=" + entry["destination"], flush=True)
+        with tempfile.TemporaryDirectory(prefix="metadata-", dir="/work") as temporary:
+            work = Path(temporary)
+            fetched = work / "fetched.git"
+            fetched.mkdir(mode=0o700)
+            git(fetched, "init", "--bare", "--template=", str(fetched))
+            git(fetched, "fetch", "--quiet", "--no-progress", "--depth=1", "--no-tags",
+                entry["url"], entry["commit"])
+            require(git(fetched, "rev-parse", "FETCH_HEAD^{commit}").decode().strip() == entry["commit"]
+                    and git(fetched, "rev-parse", entry["commit"] + "^{tree}").decode().strip() == entry["tree"]
+                    and (fetched / "shallow").read_bytes() == (entry["commit"] + "\n").encode(),
+                    "original Git commit/tree/shallow boundary differs")
+            git(fetched, "update-ref", "--no-deref", "HEAD", entry["commit"])
+            git(fetched, "fsck", "--strict", "--no-reflogs")
+            timestamp = git(fetched, "log", "-1", "--format=%ct%n%cd%n%cD", "HEAD")
+            git(fetched, "-c", "repack.writeBitmaps=false", "repack", "-a", "-d", "-f", "-F", "-n", "-q",
+                "--threads=1", "--window=10", "--depth=50", "--window-memory=128m")
+            packs = sorted((fetched / "objects/pack").iterdir())
+            require(len(packs) == 2 and packs[0].suffix == ".idx" and packs[1].suffix == ".pack"
+                    and packs[0].stem == packs[1].stem
+                    and re.fullmatch(r"pack-[0-9a-f]{40}", packs[0].stem),
+                    "original Git pack inventory differs")
+            packaged = work / "packaged"
+            packaged.mkdir(mode=0o700)
+            for name in (".git", ".git/objects", ".git/objects/pack", ".git/refs"):
+                (packaged / name).mkdir(mode=0o700)
+            files = {}
+            fixed = {".git/HEAD": (entry["commit"] + "\n").encode(),
+                     ".git/shallow": (entry["commit"] + "\n").encode(),
+                     ".git/config": b"[core]\n\trepositoryformatversion = 0\n\tbare = false\n\tfilemode = true\n"}
+            for name, payload in fixed.items():
+                with open(packaged / name, "xb") as output:
+                    output.write(payload)
+                files[name] = {"bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
+            for pack in packs:
+                name = ".git/objects/pack/" + pack.name
+                files[name] = copy_metadata_file(pack, packaged / name)
+            path = "/output/git-%03d.tar" % number
+            package_archive(packaged, path, args.epoch, total)
+            artifact = digest_file(path)
+            total += artifact["bytes"]
+            restored = work / "restored"
+            restored.mkdir(mode=0o700)
+            restore_metadata(path, restored, files, args.epoch)
+            require(git(restored, "rev-parse", "HEAD").decode().strip() == entry["commit"]
+                    and git(restored, "rev-parse", "HEAD^{tree}").decode().strip() == entry["tree"]
+                    and git(restored, "log", "-1", "--format=%ct%n%cd%n%cD", "HEAD") == timestamp
+                    and git(restored, "rev-list", "--count", "HEAD") == b"1\n"
+                    and git(restored, "remote") == b"", "restored original Git identity differs")
+            git(restored, "fsck", "--strict", "--no-reflogs")
+            if entry["destination"] == ".":
+                script = git(restored, "show", "HEAD:bin/internal/content_aware_hash.sh")
+                require(0 < len(script) <= 16384, "original content-hash script exceeds bound")
+                script_path = restored / "bin/internal/content_aware_hash.sh"
+                script_path.parent.mkdir(mode=0o700, parents=True)
+                with open(script_path, "xb") as output:
+                    output.write(script)
+                require(command(["/bin/bash", str(script_path)], cwd=restored).decode().strip()
+                        == args.engine_content_hash, "restored original engine content hash differs")
+            artifacts.append({"destination": entry["destination"], "url": entry["url"],
+                              "commit": entry["commit"], "tree": entry["tree"],
+                              "source_archive_sha256": entry["sha256"],
+                              "original_timestamps": timestamp.decode().splitlines(),
+                              "metadata_files": files, **artifact})
+            print("ENGINE_GIT_METADATA_RESTORE=pass destination=" + entry["destination"]
+                  + " commit=" + entry["commit"] + " tree=" + entry["tree"], flush=True)
+    manifest = {"format": "rustdesk-flutter-linux-engine-git-metadata-v1",
+                "source_commit": args.source_commit, "framework_revision": args.framework_revision,
+                "discovery_sha256": args.discovery_sha256, "tools_manifest_sha256": args.tools_manifest_sha256,
+                "graph_source_commit": args.graph_source_commit, "graph_manifest_sha256": args.graph_manifest_sha256,
+                "engine_content_hash": args.engine_content_hash, "source_date_epoch": args.epoch,
+                "git": artifacts, "cipd": [], "acquired_bytes": total,
+                "complete_engine_closure": False, "hooks_executed": False}
+    with common["output_file"](output_root, "manifest.json") as output:
+        payload = (json.dumps(manifest, sort_keys=True, indent=2) + "\n").encode()
+        require(len(payload) <= 1048576, "Git metadata manifest exceeds bound")
+        output.write(payload)
+        common["seal"](output)
+    os.fsync(output_root)
+    metadata_graph(args)
+    common["discovery"](args)
+    print("ENGINE_GIT_METADATA=pass git=3 restored=3 content_hash=" + args.engine_content_hash
+          + " bytes=" + str(total) + " complete_engine_closure=no", flush=True)
+
+
 def main():
     arguments = argparse.ArgumentParser(description=__doc__)
     for name in ("source-commit", "framework-revision", "discovery-sha256", "depot-revision",
@@ -370,7 +547,10 @@ def main():
         arguments.add_argument("--" + name, required=True)
     for name in ("discovery-size", "tools-manifest-size", "epoch"):
         arguments.add_argument("--" + name, type=int, required=True)
-    arguments.add_argument("--phase", choices=("graph",), required=True)
+    arguments.add_argument("--phase", choices=("graph", "git-metadata"), required=True)
+    for name in ("graph-source-commit", "graph-manifest-sha256", "engine-content-hash"):
+        arguments.add_argument("--" + name)
+    arguments.add_argument("--graph-manifest-size", type=int)
     args = arguments.parse_args()
     require(os.getuid() != 0 and os.getgid() != 0, "root graph acquisition refused")
     require(0 <= args.epoch <= 2147483647, "invalid source epoch")
@@ -381,6 +561,21 @@ def main():
         require(re.fullmatch("[0-9a-f]{64}", value), "malformed graph content pin")
     require(re.fullmatch("git_revision:[0-9a-f]{40}", args.cipd_version)
             and re.fullmatch("[A-Za-z0-9_-]{43}C", args.cipd_instance), "malformed client pin")
+    if args.phase == "git-metadata":
+        require(args.graph_source_commit is not None and args.engine_content_hash is not None
+                and args.graph_manifest_sha256 is not None and args.graph_manifest_size is not None
+                and re.fullmatch("[0-9a-f]{40}", args.graph_source_commit)
+                and re.fullmatch("[0-9a-f]{40}", args.engine_content_hash)
+                and re.fullmatch("[0-9a-f]{64}", args.graph_manifest_sha256)
+                and 0 < args.graph_manifest_size <= 1048576, "independent graph pins are required")
+        global FILE_LIMIT, TOTAL_LIMIT, DEADLINE
+        FILE_LIMIT = 1024 ** 3
+        TOTAL_LIMIT = 3 * 1024 ** 3
+        DEADLINE = time.monotonic() + 600
+    else:
+        require(args.graph_source_commit is None and args.graph_manifest_sha256 is None
+                and args.graph_manifest_size is None and args.engine_content_hash is None,
+                "metadata pins are metadata-only")
     os.umask(0o077)
     sys.dont_write_bytecode = True
     os.environ.clear()
@@ -389,13 +584,16 @@ def main():
     record = common["discovery"](args)
     roots = {}
     try:
-        for name in ("tools", "output", "work"):
+        for name in (("output", "work") if args.phase == "git-metadata" else ("tools", "output", "work")):
             roots[name] = os.open("/" + name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
             meta = os.fstat(roots[name])
             require((meta.st_uid, meta.st_gid, stat.S_IMODE(meta.st_mode))
                     == (os.getuid(), os.getgid(), 0o700), "graph directory authority differs")
         require(not os.listdir(roots["output"]) and not os.listdir(roots["work"]),
                 "graph workspace/output is occupied")
+        if args.phase == "git-metadata":
+            acquire_metadata(args, metadata_graph(args), roots["output"])
+            return
         _, archive, client = common["tools"](args, roots["tools"], "/tools")
         parser = unpack_parser(archive)
         with open("/work/cipd", "xb") as output:

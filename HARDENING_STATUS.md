@@ -2078,7 +2078,21 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   requires a matching start time and non-zombie state from the same record; invalid or unreadable
   identity refuses. The existing VM-only regression is consolidated across all three parsers and
   includes five real task-name cases, five unreaped-child cases, stale-generation/executable
-  refusal and invalid/missing PIDs. Native execution of this extension is PENDING. Numeric-PID
+  refusal and invalid/missing PIDs. Exact pushed `757d955d063120dd3d8b337b3588544bf8fc8005`, tree
+  `d93b2fc8519192080a3de18e72f1c02b40858fbd`, passed the native extension in the zero-NIC
+  focused transaction (25,360 host BOOTTIME ms), complete shared authority integration
+  (79,290 ms), and actual outbound-only acquisition authority smoke (29,920 ms).
+  All three parsers preserved start time for every live/zombie name; both outer helper predicates
+  accepted the live fixture and rejected stale generation, wrong executable and every zombie.
+  The original awk mismatched all four irregular names. Full raw serials under `evidence/`:
+  `outer-process-stat-focused-757d955d.serial.log` (71,703 bytes, SHA256
+  `3dd32cbfd900549b999eadd98ad6bc87093a096c526e384d97ddb368edb016f0`);
+  `outer-process-stat-integration-757d955d.serial.log` (81,870 bytes, SHA256
+  `c9cb7aaebc4edfc28853a83c69819b3a6db6bf354148481aa58fbde354973531`);
+  `outer-process-stat-acquisition-757d955d.serial.log` (66,396 bytes, SHA256
+  `975b7a493016e2fc914865f434632907343f0e652b864cfdb5f7f7dd40ab40e8`).
+  Inputs/listeners were unchanged, native process drift and acquisition listener drift zero,
+  owned cleanup joined and each scratch self-retired. No run/overlay remains. Numeric-PID
   signalling/reuse races, other guest readers, installed/native LPE and release closure remain OPEN.
   Other guest and authority process-stat readers remain OPEN for audit/migration; these results
   do not close untested callers or numeric-PID signal authority.

@@ -1711,6 +1711,15 @@ evidence retained and stopped scratch reconciled. Full recursive source, immutab
 Linux hooks/sysroot/Pub closure, offline GN/engine build and the source correction/complete
 uninstrumented app consumer remain OPEN.
 
+The closed `--maintenance-stage-flutter-linux-engine-bootstrap` request now stages
+depot-tools from the exact DEPS-selected Git commit/tree and the publisher-SHA256 CIPD
+client into a separate no-clobber, inert three-file candidate. It reuses the authenticated
+discovery record instead of repeating SDK extraction. Acquisition executes no fetched code;
+a distinct inspected network-none container admits only the verified client for a bounded
+version probe, without the upstream wrapper's unconditional self-update. Source implementation
+is present; native acquisition/probe evidence is not yet claimed. Full engine closure and the
+production correction remain OPEN.
+
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
 consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

@@ -280,6 +280,7 @@ case "$REQUEST" in
     __full__|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-discover-rust-android-x86-input|--maintenance-discover-flutter-android-maven|--maintenance-stage-android-emulator-inputs|--maintenance-stage-rust-android-x86-input|--maintenance-stage-vcpkg-x64-android|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|\
     --maintenance-build-deb-builder-bootstrap-candidate|\
     --maintenance-discover-flutter-linux-engine-bootstrap|\
+    --maintenance-stage-flutter-linux-engine-bootstrap|\
     --maintenance-build-android-builder-bootstrap-candidate|\
     --maintenance-build-win-helper-bootstrap-candidate|\
     --maintenance-promote-deb-builder-bootstrap-candidate|\
@@ -804,6 +805,8 @@ readonly INNER_ENV=(
 root_probe=(/bin/bash "$REPO/scripts/online-fetch.sh" --vm-authority-probe)
 if [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ]; then
     root_probe=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh")
+elif [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ]; then
+    root_probe=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh" --stage-tools)
 fi
 if /usr/bin/env -i PATH=/usr/bin:/bin HOME=/root "${INNER_ENV[@]}" \
     "${root_probe[@]}" \
@@ -837,6 +840,8 @@ run_online_fetch() {
     [ "$REQUEST" = __full__ ] || command+=("$REQUEST")
     if [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ]; then
         command=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh")
+    elif [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ]; then
+        command=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh" --stage-tools)
     fi
     [ -z "$TRANSACTION_PID" ] \
         && [ "${#RESULT_READER_PIDS[@]}" -eq 0 ] \

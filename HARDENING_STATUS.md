@@ -2032,6 +2032,16 @@ in node construction with one live generation owner, revoked before callbacks; a
 action must revalidate that owner at the actual dispatch sink. Do not omit notifications or
 retain an ownerless compatibility path. The assertions remain required for the correction.
 
+**Generation-owned authority correction — CANDIDATE; NATIVE RESULT PENDING.** The dependency
+patch replaces node-local engine/view-ID construction and properties with weak references to
+one tree-owned `FlSemanticsGeneration`. Reset closes that generation before releasing nodes
+or emitting callbacks; replacement admission resumes only after retirement notifications finish.
+The dispatch sink revalidates the generation, and retained base/text-field queries and edits
+use its live availability. Original constructor consumers are migrated with explicit owners;
+the focused profile also compiles those upstream test objects and executes owner-loss, raw
+default-closed, repeated-disposal and retirement-during-reset cases. This is unexecuted candidate
+source until an exact isolated native run passes, not a shipped engine/app or LPE result.
+
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
 consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

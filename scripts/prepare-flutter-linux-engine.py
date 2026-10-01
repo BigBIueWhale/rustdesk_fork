@@ -464,7 +464,9 @@ raise SystemExit(subprocess.call([
                     "ENGINE_ACCESSIBLE_ROOT_RETIREMENT=pass unit=real-root boundary=recording-engine "
                     "reset=true replacement=true reentrant=true disposed=true\n"
                     "ENGINE_ACCESSIBLE_TREE_REVOCATION=pass unit=real-root first_notification=closed "
-                    "indexed_direct=refused reset_retire_dispose=closed\n"
+                    "indexed_direct=refused reset_retire_dispose=closed reentrant_owner=closed\n"
+                    "ENGINE_SEMANTICS_GENERATION=pass default=closed owner_loss=closed "
+                    "retired_disposed=closed retained_text=closed old_properties=absent\n"
                     "ENGINE_ACCESSIBLE_TEXT_FIELD_RETIREMENT=pass unit=real-text-field "
                     "retired_disposed=closed live_edits=allowed reentrant_buffer=closed "
                     "reentrant_selection=closed reentrant_dispatch=closed "
@@ -475,28 +477,39 @@ raise SystemExit(subprocess.call([
     node_test(True)
     patch_path = Path("/authority/retirement.patch")
     patch_bytes = patch_path.read_bytes()
-    require(0 < len(patch_bytes) <= 65536, "retirement patch exceeds bound")
+    require(0 < len(patch_bytes) <= 96 * 1024, "retirement patch exceeds bound")
     git = ["/usr/bin/git", "--no-replace-objects", "-c", "core.hooksPath=/dev/null"]
     command(git + ["apply", "--check", "--whitespace=error-all", str(patch_path)],
             framework, env, deadline)
     command(git + ["apply", "--whitespace=error-all", str(patch_path)],
             framework, env, deadline)
     expected_paths = ["engine/src/flutter/shell/platform/linux/" + name for name in
-                      ("fl_accessible_node.cc", "fl_accessible_node.h",
-                       "fl_accessible_text_field.cc", "fl_view.cc",
-                       "fl_view_accessible.cc", "fl_view_accessible.h")]
+                      ("BUILD.gn", "fl_accessible_node.cc", "fl_accessible_node.h",
+                       "fl_accessible_node_test.cc", "fl_accessible_text_field.cc",
+                       "fl_accessible_text_field.h", "fl_accessible_text_field_test.cc",
+                       "fl_semantics_generation.cc", "fl_semantics_generation.h",
+                       "fl_view.cc", "fl_view_accessible.cc", "fl_view_accessible.h")]
     changed = command(git + ["diff", "--name-only", "--", "engine/src/flutter/shell/platform/linux"],
                       framework, env, deadline).decode().splitlines()
+    changed += command(git + ["ls-files", "--others", "--exclude-standard", "--",
+                              "engine/src/flutter/shell/platform/linux"],
+                       framework, env, deadline).decode().splitlines()
     require(sorted(changed) == sorted(expected_paths), "retirement patch source scope differs")
     command(git + ["diff", "--check"], framework, env, deadline)
     print("ENGINE_ACCESSIBLE_RETIREMENT_PATCH=applied sha256="
-          + hashlib.sha256(patch_bytes).hexdigest() + " files=6 sdk_archive=unchanged", flush=True)
-    command([framework + "/third_party/ninja/ninja", "-C", "out/host_release", "-j2", *objects],
+          + hashlib.sha256(patch_bytes).hexdigest() + " files=12 sdk_archive=unchanged", flush=True)
+    objects.append("obj/flutter/shell/platform/linux/flutter_linux_sources.fl_semantics_generation.o")
+    upstream_tests = ["obj/flutter/shell/platform/linux/flutter_linux_unittests." + unit + ".o"
+                      for unit in ("fl_accessible_node_test", "fl_accessible_text_field_test")]
+    command([framework + "/third_party/ninja/ninja", "-C", "out/host_release", "-j2",
+             *objects, *upstream_tests],
             engine, env, deadline)
     for name in objects:
         artifact_receipt(name, "retirement-candidate")
+    for name in upstream_tests:
+        artifact_receipt(name, "upstream-test-compile")
     node_test(False)
-    print("ENGINE_ACCESSIBLE_RETIREMENT_COMPILE=pass production_units=7 "
+    print("ENGINE_ACCESSIBLE_RETIREMENT_COMPILE=pass production_units=8 upstream_test_objects=2 "
           "view_teardown=unexecuted engine_restart=unexecuted app_replay=unexecuted", flush=True)
     print("FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 "
           "indexes=original pub=path-only network=none engine_build=unexecuted", flush=True)

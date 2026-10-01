@@ -75,6 +75,8 @@ struct TreeRevocation {
   FlAccessibleNode* first;
   FlAccessibleNode* second;
   guint notifications;
+  FlViewAccessible* accessible;
+  guint operation;
 };
 
 static void probe_tree_revocation(AtkObject*, const gchar*, gboolean state,
@@ -95,10 +97,23 @@ static void probe_tree_revocation(AtkObject*, const gchar*, gboolean state,
   g_assert_false(first);
   g_assert_false(second);
   g_assert_cmpuint(context->engine->dispatches, ==, dispatches);
+  FlAccessibleNode* nodes[] = {context->first, context->second};
+  for (FlAccessibleNode* node : nodes) {
+    g_autoptr(AtkStateSet) state = atk_object_ref_state_set(ATK_OBJECT(node));
+    g_assert_true(atk_state_set_contains_state(state, ATK_STATE_DEFUNCT));
+    g_assert_null(atk_object_get_name(ATK_OBJECT(node)));
+    g_assert_cmpint(atk_text_get_character_count(ATK_TEXT(node)), ==, 0);
+    g_assert_cmpint(atk_action_get_n_actions(ATK_ACTION(node)), ==, 0);
+  }
+  if (context->notifications == 1 && context->operation == 3) {
+    fl_view_accessible_retire(context->accessible);
+  } else if (context->notifications == 1 && context->operation == 4) {
+    g_object_run_dispose(G_OBJECT(context->accessible));
+  }
 }
 
 static void test_tree_revocation(FlEngine* engine) {
-  for (guint operation = 0; operation < 3; operation++) {
+  for (guint operation = 0; operation < 5; operation++) {
     g_autoptr(FlViewAccessible) accessible = fl_view_accessible_new(engine, 7);
     update_tree(accessible, "whole tree", TRUE);
     g_autoptr(AtkObject) root = atk_object_ref_accessible_child(ATK_OBJECT(accessible), 0);
@@ -109,12 +124,15 @@ static void test_tree_revocation(FlEngine* engine) {
     g_assert_nonnull(second);
     g_assert_true(atk_action_do_action(ATK_ACTION(first), 0));
     g_assert_true(atk_action_do_action(ATK_ACTION(second), 0));
-    TreeRevocation context = {engine, FL_ACCESSIBLE_NODE(first), FL_ACCESSIBLE_NODE(second), 0};
+    TreeRevocation context = {engine, FL_ACCESSIBLE_NODE(first), FL_ACCESSIBLE_NODE(second),
+                              0, accessible, operation};
     g_signal_connect(first, "state-change::defunct", G_CALLBACK(probe_tree_revocation), &context);
     g_signal_connect(second, "state-change::defunct", G_CALLBACK(probe_tree_revocation), &context);
     const guint dispatches = engine->dispatches;
     switch (operation) {
       case 0:
+      case 3:
+      case 4:
         fl_view_accessible_reset(accessible);
         break;
       case 1:
@@ -128,8 +146,12 @@ static void test_tree_revocation(FlEngine* engine) {
     g_assert_cmpuint(engine->dispatches, ==, dispatches);
     g_signal_handlers_disconnect_by_data(first, &context);
     g_signal_handlers_disconnect_by_data(second, &context);
+    if (operation >= 3) {
+      update_tree(accessible, "retired during reset", TRUE);
+      g_assert_cmpint(atk_object_get_n_accessible_children(ATK_OBJECT(accessible)), ==, 0);
+    }
   }
-  std::puts("ENGINE_ACCESSIBLE_TREE_REVOCATION=pass unit=real-root first_notification=closed indexed_direct=refused reset_retire_dispose=closed");
+  std::puts("ENGINE_ACCESSIBLE_TREE_REVOCATION=pass unit=real-root first_notification=closed indexed_direct=refused reset_retire_dispose=closed reentrant_owner=closed");
   std::fflush(stdout);
 }
 
@@ -235,6 +257,50 @@ struct TextRetirement {
   guint notifications;
 };
 
+static void test_generation(FlEngine* engine) {
+  g_autoptr(FlSemanticsGeneration) raw = FL_SEMANTICS_GENERATION(
+      g_object_new(fl_semantics_generation_get_type(), nullptr));
+  g_assert_false(fl_semantics_generation_is_active(raw));
+  g_assert_null(fl_accessible_node_new(raw, 9));
+  g_autoptr(FlAccessibleNode) ownerless = FL_ACCESSIBLE_NODE(
+      g_object_new(fl_accessible_node_get_type(), nullptr));
+  g_assert_false(fl_accessible_node_is_live(ownerless));
+  g_assert_false(fl_accessible_node_perform_action(ownerless, kFlutterSemanticsActionTap, nullptr));
+  g_assert_null(g_object_class_find_property(G_OBJECT_GET_CLASS(ownerless), "engine"));
+  g_assert_null(g_object_class_find_property(G_OBJECT_GET_CLASS(ownerless), "view-id"));
+  for (guint operation = 0; operation < 3; operation++) {
+    g_autoptr(FlSemanticsGeneration) generation = fl_semantics_generation_new(engine, 7);
+    g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 9);
+    g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(generation, 10);
+    fl_accessible_node_set_actions(node, kFlutterSemanticsActionTap);
+    fl_accessible_node_set_value(text, "original");
+    fl_accessible_node_set_text_selection(text, 1, 3);
+    g_assert_true(atk_action_do_action(ATK_ACTION(node), 0));
+    g_assert_cmpint(atk_text_get_character_count(ATK_TEXT(text)), ==, 8);
+    const guint dispatches = engine->dispatches;
+    if (operation == 0) {
+      fl_semantics_generation_retire(generation);
+      fl_semantics_generation_retire(generation);
+    } else if (operation == 1) {
+      g_clear_object(&generation);
+    } else {
+      g_object_run_dispose(G_OBJECT(generation));
+      g_object_run_dispose(G_OBJECT(generation));
+    }
+    g_assert_false(fl_accessible_node_is_live(node));
+    g_assert_false(atk_action_do_action(ATK_ACTION(node), 0));
+    g_assert_false(fl_accessible_node_perform_action(node, kFlutterSemanticsActionTap, nullptr));
+    if (generation != nullptr) {
+      g_assert_false(fl_semantics_generation_is_active(generation));
+      g_assert_null(fl_accessible_node_new(generation, 9));
+    }
+    assert_text_field_closed(text, engine);
+    g_assert_cmpuint(engine->dispatches, ==, dispatches);
+  }
+  std::puts("ENGINE_SEMANTICS_GENERATION=pass default=closed owner_loss=closed retired_disposed=closed retained_text=closed old_properties=absent");
+  std::fflush(stdout);
+}
+
 static void retire_text(AtkObject* object, TextRetirement* context) {
   context->notifications++;
   if (context->dispose) {
@@ -245,8 +311,9 @@ static void retire_text(AtkObject* object, TextRetirement* context) {
 }
 
 static void test_text_field(FlEngine* engine) {
+  g_autoptr(FlSemanticsGeneration) generation = fl_semantics_generation_new(engine, 7);
   // Live edits must still send the actual standard-codec payloads in order.
-  g_autoptr(FlAccessibleNode) live = fl_accessible_text_field_new(engine, 7, 10);
+  g_autoptr(FlAccessibleNode) live = fl_accessible_text_field_new(generation, 10);
   fl_accessible_node_set_value(live, "original");
   fl_accessible_node_set_text_selection(live, 2, 4);
   g_assert_cmpint(atk_text_get_character_count(ATK_TEXT(live)), ==, 8);
@@ -277,7 +344,7 @@ static void test_text_field(FlEngine* engine) {
   g_assert_cmpint(engine->selection_extent, ==, 3);
 
   for (guint dispose = 0; dispose < 2; dispose++) {
-    g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(engine, 7, 10);
+    g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(generation, 10);
     fl_accessible_node_set_value(text, "original");
     fl_accessible_node_set_text_selection(text, 1, 3);
     TextRetirement context = {engine, dispose != 0, 0};
@@ -303,7 +370,7 @@ static void test_text_field(FlEngine* engine) {
   // GTK signals are synchronous: retirement/disposal must stop the admitted edit.
   for (guint dispose = 0; dispose < 2; dispose++) {
     for (guint remove = 0; remove < 2; remove++) {
-      g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(engine, 7, 10);
+      g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(generation, 10);
       fl_accessible_node_set_value(text, "original");
       TextRetirement context = {engine, dispose != 0, 0};
       g_signal_connect(text, remove ? "text-remove" : "text-insert",
@@ -325,7 +392,7 @@ static void test_text_field(FlEngine* engine) {
       g_signal_handlers_disconnect_by_data(text, &context);
     }
 
-    g_autoptr(FlAccessibleNode) selection = fl_accessible_text_field_new(engine, 7, 10);
+    g_autoptr(FlAccessibleNode) selection = fl_accessible_text_field_new(generation, 10);
     TextRetirement context = {engine, dispose != 0, 0};
     guint caret_notifications = 0;
     g_signal_connect(selection, "text-selection-changed", G_CALLBACK(retire_text), &context);
@@ -340,7 +407,7 @@ static void test_text_field(FlEngine* engine) {
     g_signal_handlers_disconnect_by_data(selection, &caret_notifications);
 
     for (guint copy = 0; copy < 2; copy++) {
-      g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(engine, 7, 10);
+      g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(generation, 10);
       fl_accessible_node_set_value(text, "original");
       engine->retire_on_dispatch = text;
       engine->dispose_on_dispatch = dispose != 0;
@@ -358,7 +425,7 @@ static void test_text_field(FlEngine* engine) {
     }
   }
   // A signal may drop the caller's last reference. The admitted method owns self.
-  FlAccessibleNode* unowned = fl_accessible_text_field_new(engine, 7, 10);
+  FlAccessibleNode* unowned = fl_accessible_text_field_new(generation, 10);
   fl_accessible_node_set_value(unowned, "original");
   gpointer weak = unowned;
   g_object_add_weak_pointer(G_OBJECT(unowned), &weak);
@@ -429,7 +496,12 @@ extern "C" void fl_engine_dispatch_semantics_action(
 int main() {
   g_log_set_always_fatal(static_cast<GLogLevelFlags>(G_LOG_FATAL_MASK | G_LOG_LEVEL_CRITICAL));
   g_autoptr(FlEngine) engine = FL_ENGINE(g_object_new(fl_engine_get_type(), nullptr));
+#if defined(LEGACY_BASELINE)
   g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 7, 9);
+#else
+  g_autoptr(FlSemanticsGeneration) generation = fl_semantics_generation_new(engine, 7);
+  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 9);
+#endif
   g_autoptr(AtkObject) parent = ATK_OBJECT(g_object_new(ATK_TYPE_OBJECT, nullptr));
   fl_accessible_node_set_parent(node, parent, 0);
   fl_accessible_node_set_actions(node, kFlutterSemanticsActionTap);
@@ -468,13 +540,13 @@ int main() {
   g_assert_false(atk_action_do_action(ATK_ACTION(node), 0));
   g_assert_cmpuint(engine->dispatches, ==, 1);
 
-  g_autoptr(FlAccessibleNode) fresh = fl_accessible_node_new(engine, 7, 9);
+  g_autoptr(FlAccessibleNode) fresh = fl_accessible_node_new(generation, 9);
   fl_accessible_node_set_actions(fresh, kFlutterSemanticsActionTap);
   g_assert_true(atk_action_do_action(ATK_ACTION(fresh), 0));
   g_assert_cmpuint(engine->dispatches, ==, 2);
 
   // Exercise synchronous retirement from the real children-changed callback.
-  g_autoptr(FlAccessibleNode) reentrant = fl_accessible_node_new(engine, 7, 9);
+  g_autoptr(FlAccessibleNode) reentrant = fl_accessible_node_new(generation, 9);
   g_autoptr(GPtrArray) children = g_ptr_array_new_with_free_func(g_object_unref);
   g_ptr_array_add(children, g_object_ref(fresh));
   fl_accessible_node_set_children(reentrant, children);
@@ -499,6 +571,7 @@ int main() {
   std::fflush(stdout);
   test_root(engine);
   test_tree_revocation(engine);
+  test_generation(engine);
   test_text_field(engine);
 #endif
   return 0;

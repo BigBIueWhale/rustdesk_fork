@@ -1,63 +1,148 @@
+diff --git a/engine/src/flutter/shell/platform/linux/BUILD.gn b/engine/src/flutter/shell/platform/linux/BUILD.gn
+--- a/engine/src/flutter/shell/platform/linux/BUILD.gn
++++ b/engine/src/flutter/shell/platform/linux/BUILD.gn
+@@ -96,6 +96,7 @@
+              "fl_method_codec_private.h",
+              "fl_plugin_registrar_private.h",
+              "fl_pointer_manager.h",
++             "fl_semantics_generation.h",
+              "fl_task_runner.h",
+              "fl_view_monitor.h",
+              "fl_view_private.h",
+@@ -154,6 +155,7 @@
+     "fl_pointer_manager.cc",
+     "fl_renderable.cc",
+     "fl_scrolling_manager.cc",
++    "fl_semantics_generation.cc",
+     "fl_settings.cc",
+     "fl_settings_channel.cc",
+     "fl_settings_handler.cc",
 diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc
 --- a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc
 +++ b/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc
-@@ -47,6 +47,8 @@
-   // Weak reference to the engine this node is created for.
-   GWeakRef engine;
+@@ -3,7 +3,6 @@
+ // found in the LICENSE file.
 
+ #include "flutter/shell/platform/linux/fl_accessible_node.h"
+-#include "flutter/shell/platform/linux/fl_engine_private.h"
+
+ // Maps Flutter semantics actions to ATK actions.
+ typedef struct {
+@@ -44,11 +43,8 @@
+ struct FlAccessibleNodePrivate {
+   AtkObject parent_instance;
+
+-  // Weak reference to the engine this node is created for.
+-  GWeakRef engine;
+-
+-  /// The unique identifier of the view to which this node belongs.
+-  FlutterViewId view_id;
++  GWeakRef generation;
 +  gboolean retired;
-+
-   /// The unique identifier of the view to which this node belongs.
-   FlutterViewId view_id;
 
-@@ -131,7 +133,7 @@
+   // Weak reference to the parent node of this one or %NULL.
+   GWeakRef parent;
+@@ -63,7 +59,7 @@
+   FlutterSemanticsFlags flags;
+ };
+
+-enum { PROP_0, PROP_ENGINE, PROP_VIEW_ID, PROP_ID, PROP_LAST };
++enum { PROP_0, PROP_GENERATION, PROP_ID, PROP_LAST };
+
+ #define FL_ACCESSIBLE_NODE_GET_PRIVATE(node)                          \
+   ((FlAccessibleNodePrivate*)fl_accessible_node_get_instance_private( \
+@@ -86,6 +82,16 @@
+                 G_IMPLEMENT_INTERFACE(ATK_TYPE_TEXT,
+                                       fl_accessible_node_text_interface_init))
+
++static gboolean is_live(FlAccessibleNodePrivate* priv) {
++  if (priv->retired) {
++    return FALSE;
++  }
++  g_autoptr(FlSemanticsGeneration) generation =
++      FL_SEMANTICS_GENERATION(g_weak_ref_get(&priv->generation));
++  return generation != nullptr &&
++         fl_semantics_generation_is_active(generation);
++}
++
+ // Returns TRUE if [flags] indicate this element is checkable.
+ static gboolean is_checkable(FlutterSemanticsFlags flags) {
+   return flags.is_checked != kFlutterCheckStateNone ||
+@@ -131,7 +137,7 @@
 
  // Gets the nth action.
  static ActionData* get_action(FlAccessibleNodePrivate* priv, gint index) {
 -  if (index < 0 || static_cast<guint>(index) >= priv->actions->len) {
-+  if (priv->retired || index < 0 || static_cast<guint>(index) >= priv->actions->len) {
++  if (!is_live(priv) || index < 0 || static_cast<guint>(index) >= priv->actions->len) {
      return nullptr;
    }
    return static_cast<ActionData*>(g_ptr_array_index(priv->actions, index));
-@@ -170,15 +172,16 @@
+@@ -154,11 +160,8 @@
+                                             GParamSpec* pspec) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(object);
+   switch (prop_id) {
+-    case PROP_ENGINE:
+-      g_weak_ref_set(&priv->engine, g_value_get_object(value));
+-      break;
+-    case PROP_VIEW_ID:
+-      priv->view_id = g_value_get_int64(value);
++    case PROP_GENERATION:
++      g_weak_ref_set(&priv->generation, g_value_get_object(value));
+       break;
+     case PROP_ID:
+       priv->node_id = g_value_get_int(value);
+@@ -170,26 +173,30 @@
  }
 
  static void fl_accessible_node_dispose(GObject* object) {
 -  FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(object);
-+  fl_accessible_node_retire(FL_ACCESSIBLE_NODE(object));
-
-+  G_OBJECT_CLASS(fl_accessible_node_parent_class)->dispose(object);
-+}
-+
-+static void fl_accessible_node_finalize(GObject* object) {
-+  FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(object);
-   g_weak_ref_clear(&priv->engine);
-   g_weak_ref_clear(&priv->parent);
+-
+-  g_weak_ref_clear(&priv->engine);
+-  g_weak_ref_clear(&priv->parent);
 -  g_clear_pointer(&priv->name, g_free);
 -  g_clear_pointer(&priv->actions, g_ptr_array_unref);
 -  g_clear_pointer(&priv->children, g_ptr_array_unref);
--
--  G_OBJECT_CLASS(fl_accessible_node_parent_class)->dispose(object);
-+  G_OBJECT_CLASS(fl_accessible_node_parent_class)->finalize(object);
++  fl_accessible_node_retire(FL_ACCESSIBLE_NODE(object));
+
+   G_OBJECT_CLASS(fl_accessible_node_parent_class)->dispose(object);
  }
 
++static void fl_accessible_node_finalize(GObject* object) {
++  FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(object);
++  g_weak_ref_clear(&priv->generation);
++  g_weak_ref_clear(&priv->parent);
++  G_OBJECT_CLASS(fl_accessible_node_parent_class)->finalize(object);
++}
++
  // Implements AtkObject::get_name.
-@@ -190,6 +193,9 @@
+ static const gchar* fl_accessible_node_get_name(AtkObject* accessible) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(accessible);
+-  return priv->name;
++  return is_live(priv) ? priv->name : nullptr;
+ }
+
  // Implements AtkObject::get_parent.
  static AtkObject* fl_accessible_node_get_parent(AtkObject* accessible) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(accessible);
-+  if (priv->retired) {
++  if (!is_live(priv)) {
 +    return nullptr;
 +  }
    g_autoptr(AtkObject) parent = ATK_OBJECT(g_weak_ref_get(&priv->parent));
    return parent;
  }
-@@ -203,14 +209,14 @@
+@@ -197,20 +204,20 @@
+ // Implements AtkObject::get_index_in_parent.
+ static gint fl_accessible_node_get_index_in_parent(AtkObject* accessible) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(accessible);
+-  return priv->index;
++  return is_live(priv) ? priv->index : -1;
+ }
+
  // Implements AtkObject::get_n_children.
  static gint fl_accessible_node_get_n_children(AtkObject* accessible) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(accessible);
 -  return priv->children->len;
-+  return priv->retired ? 0 : priv->children->len;
++  return !is_live(priv) ? 0 : priv->children->len;
  }
 
  // Implements AtkObject::ref_child.
@@ -65,15 +150,25 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(accessible);
 
 -  if (i < 0 || static_cast<guint>(i) >= priv->children->len) {
-+  if (priv->retired || i < 0 || static_cast<guint>(i) >= priv->children->len) {
++  if (!is_live(priv) || i < 0 || static_cast<guint>(i) >= priv->children->len) {
      return nullptr;
    }
 
-@@ -261,6 +267,11 @@
+@@ -220,6 +227,9 @@
+ // Implements AtkObject::get_role.
+ static AtkRole fl_accessible_node_get_role(AtkObject* accessible) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(accessible);
++  if (!is_live(priv)) {
++    return ATK_ROLE_UNKNOWN;
++  }
+   if (priv->flags.is_button) {
+     return ATK_ROLE_PUSH_BUTTON;
+   }
+@@ -261,6 +271,11 @@
 
    AtkStateSet* state_set = atk_state_set_new();
 
-+  if (priv->retired) {
++  if (!is_live(priv)) {
 +    atk_state_set_add_state(state_set, ATK_STATE_DEFUNCT);
 +    return state_set;
 +  }
@@ -81,38 +176,222 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
    if (!priv->flags.is_obscured) {
      atk_state_set_add_state(state_set, ATK_STATE_SHOWING);
    }
-@@ -307,6 +318,11 @@
+@@ -306,19 +321,45 @@
+                                            gint* height,
                                             AtkCoordType coord_type) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(component);
-
-+  if (priv->retired) {
-+    *x = *y = *width = *height = -1;
++  if (x != nullptr) {
++    *x = -1;
++  }
++  if (y != nullptr) {
++    *y = -1;
++  }
++  if (width != nullptr) {
++    *width = -1;
++  }
++  if (height != nullptr) {
++    *height = -1;
++  }
++  if (!is_live(priv)) {
 +    return;
 +  }
-+
-   *x = 0;
-   *y = 0;
+
+-  *x = 0;
+-  *y = 0;
++  g_autoptr(FlAccessibleNode) owner =
++      FL_ACCESSIBLE_NODE(g_object_ref(component));
++  gint parent_x = 0, parent_y = 0;
    g_autoptr(AtkObject) parent = ATK_OBJECT(g_weak_ref_get(&priv->parent));
-@@ -329,6 +345,9 @@
+   if (parent != nullptr) {
+-    atk_component_get_extents(ATK_COMPONENT(parent), x, y, nullptr, nullptr,
+-                              coord_type);
++    atk_component_get_extents(ATK_COMPONENT(parent), &parent_x, &parent_y,
++                              nullptr, nullptr, coord_type);
+   }
+-
+-  *x += priv->x;
+-  *y += priv->y;
+-  *width = priv->width;
+-  *height = priv->height;
++  if (!is_live(priv)) {
++    return;
++  }
++  if (x != nullptr) {
++    *x = parent_x + priv->x;
++  }
++  if (y != nullptr) {
++    *y = parent_y + priv->y;
++  }
++  if (width != nullptr) {
++    *width = priv->width;
++  }
++  if (height != nullptr) {
++    *height = priv->height;
++  }
+ }
+
+ // Implements AtkComponent::get_layer.
+@@ -329,9 +370,7 @@
  // Implements AtkAction::do_action.
  static gboolean fl_accessible_node_do_action(AtkAction* action, gint i) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(action);
-+  if (priv->retired) {
-+    return FALSE;
-+  }
+-
+-  g_autoptr(FlEngine) engine = FL_ENGINE(g_weak_ref_get(&priv->engine));
+-  if (engine == nullptr) {
++  if (!is_live(priv)) {
+     return FALSE;
+   }
 
-   g_autoptr(FlEngine) engine = FL_ENGINE(g_weak_ref_get(&priv->engine));
-   if (engine == nullptr) {
-@@ -348,7 +367,7 @@
+@@ -340,15 +379,14 @@
+     return FALSE;
+   }
+
+-  fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(action), data->action,
+-                                    nullptr);
+-  return TRUE;
++  return fl_accessible_node_perform_action(
++      FL_ACCESSIBLE_NODE(action), data->action, nullptr);
+ }
+
  // Implements AtkAction::get_n_actions.
  static gint fl_accessible_node_get_n_actions(AtkAction* action) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(action);
 -  return priv->actions->len;
-+  return priv->retired ? 0 : priv->actions->len;
++  return !is_live(priv) ? 0 : priv->actions->len;
  }
 
  // Implements AtkAction::get_name.
-@@ -494,6 +513,7 @@
+@@ -395,52 +433,84 @@
+                                               FlutterSemanticsFlags* flags) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
+
++  g_autoptr(FlAccessibleNode) owner = FL_ACCESSIBLE_NODE(g_object_ref(self));
+   FlutterSemanticsFlags old_flags = priv->flags;
+-  priv->flags = *flags;
++  FlutterSemanticsFlags new_flags = *flags;
++  priv->flags = new_flags;
+
+-  if (flag_changed(old_flags.is_obscured, flags->is_obscured)) {
++  if (flag_changed(old_flags.is_obscured, new_flags.is_obscured)) {
+     atk_object_notify_state_change(ATK_OBJECT(self), ATK_STATE_SHOWING,
+-                                   !flags->is_obscured);
++                                   !new_flags.is_obscured);
+   }
+-  if (flag_changed(old_flags.is_hidden, flags->is_hidden)) {
++  if (!is_live(priv)) {
++    return;
++  }
++  if (flag_changed(old_flags.is_hidden, new_flags.is_hidden)) {
+     atk_object_notify_state_change(ATK_OBJECT(self), ATK_STATE_VISIBLE,
+-                                   !flags->is_hidden);
++                                   !new_flags.is_hidden);
+   }
+-  if (flag_changed(is_checkable(old_flags), is_checkable(priv->flags))) {
++  if (!is_live(priv)) {
++    return;
++  }
++  if (flag_changed(is_checkable(old_flags), is_checkable(new_flags))) {
+     atk_object_notify_state_change(ATK_OBJECT(self), ATK_STATE_CHECKABLE,
+-                                   is_checkable(priv->flags));
++                                   is_checkable(new_flags));
+   }
+-  if (flag_changed(is_checked(old_flags), is_checked(priv->flags))) {
++  if (!is_live(priv)) {
++    return;
++  }
++  if (flag_changed(is_checked(old_flags), is_checked(new_flags))) {
+     atk_object_notify_state_change(ATK_OBJECT(self), ATK_STATE_CHECKED,
+-                                   is_checked(priv->flags));
++                                   is_checked(new_flags));
+   }
+-  if (flag_changed(is_focusable(old_flags), is_focusable(priv->flags))) {
++  if (!is_live(priv)) {
++    return;
++  }
++  if (flag_changed(is_focusable(old_flags), is_focusable(new_flags))) {
+     atk_object_notify_state_change(ATK_OBJECT(self), ATK_STATE_FOCUSABLE,
+-                                   is_focusable(priv->flags));
++                                   is_focusable(new_flags));
+   }
+-  if (flag_changed(is_focused(old_flags), is_focused(priv->flags))) {
++  if (!is_live(priv)) {
++    return;
++  }
++  if (flag_changed(is_focused(old_flags), is_focused(new_flags))) {
+     atk_object_notify_state_change(ATK_OBJECT(self), ATK_STATE_FOCUSED,
+-                                   is_focused(priv->flags));
++                                   is_focused(new_flags));
+   }
+-  if (flag_changed(is_selected(old_flags), is_selected(priv->flags))) {
++  if (!is_live(priv)) {
++    return;
++  }
++  if (flag_changed(is_selected(old_flags), is_selected(new_flags))) {
+     atk_object_notify_state_change(ATK_OBJECT(self), ATK_STATE_SELECTED,
+-                                   is_selected(priv->flags));
++                                   is_selected(new_flags));
+   }
+-  if (flag_changed(is_sensitive(old_flags), is_sensitive(priv->flags))) {
++  if (!is_live(priv)) {
++    return;
++  }
++  if (flag_changed(is_sensitive(old_flags), is_sensitive(new_flags))) {
+     atk_object_notify_state_change(ATK_OBJECT(self), ATK_STATE_SENSITIVE,
+-                                   is_sensitive(priv->flags));
++                                   is_sensitive(new_flags));
+   }
+-  if (flag_changed(is_enabled(old_flags), is_enabled(priv->flags))) {
++  if (!is_live(priv)) {
++    return;
++  }
++  if (flag_changed(is_enabled(old_flags), is_enabled(new_flags))) {
+     atk_object_notify_state_change(ATK_OBJECT(self), ATK_STATE_ENABLED,
+-                                   is_enabled(priv->flags));
++                                   is_enabled(new_flags));
+   }
+-  if (flag_changed(old_flags.is_read_only, flags->is_read_only)) {
++  if (!is_live(priv)) {
++    return;
++  }
++  if (flag_changed(old_flags.is_read_only, new_flags.is_read_only)) {
+     atk_object_notify_state_change(ATK_OBJECT(self), ATK_STATE_READ_ONLY,
+-                                   flags->is_read_only);
++                                   new_flags.is_read_only);
+   }
+-  if (flag_changed(old_flags.is_text_field, flags->is_text_field)) {
++  if (!is_live(priv)) {
++    return;
++  }
++  if (flag_changed(old_flags.is_text_field, new_flags.is_text_field)) {
+     atk_object_notify_state_change(ATK_OBJECT(self), ATK_STATE_EDITABLE,
+-                                   flags->is_text_field);
++                                   new_flags.is_text_field);
+   }
+ }
+
+@@ -478,22 +548,22 @@
+     FlutterTextDirection direction) {}
+
+ // Implements FlAccessibleNode::perform_action.
+-static void fl_accessible_node_perform_action_impl(
++static gboolean fl_accessible_node_perform_action_impl(
+     FlAccessibleNode* self,
+     FlutterSemanticsAction action,
+     GBytes* data) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
+-  g_autoptr(FlEngine) engine = FL_ENGINE(g_weak_ref_get(&priv->engine));
+-  if (engine == nullptr) {
+-    return;
+-  }
+-  fl_engine_dispatch_semantics_action(engine, priv->view_id, priv->node_id,
+-                                      action, data);
++  g_autoptr(FlSemanticsGeneration) generation =
++      FL_SEMANTICS_GENERATION(g_weak_ref_get(&priv->generation));
++  return generation != nullptr &&
++         fl_semantics_generation_perform_action(
++             generation, priv->node_id, action, data);
+ }
+
  static void fl_accessible_node_class_init(FlAccessibleNodeClass* klass) {
    G_OBJECT_CLASS(klass)->set_property = fl_accessible_node_set_property;
    G_OBJECT_CLASS(klass)->dispose = fl_accessible_node_dispose;
@@ -120,10 +399,105 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
    ATK_OBJECT_CLASS(klass)->get_name = fl_accessible_node_get_name;
    ATK_OBJECT_CLASS(klass)->get_parent = fl_accessible_node_get_parent;
    ATK_OBJECT_CLASS(klass)->get_index_in_parent =
-@@ -728,11 +748,40 @@
-   return self;
+@@ -519,18 +589,13 @@
+       fl_accessible_node_perform_action_impl;
+
+   g_object_class_install_property(
+-      G_OBJECT_CLASS(klass), PROP_ENGINE,
++      G_OBJECT_CLASS(klass), PROP_GENERATION,
+       g_param_spec_object(
+-          "engine", "engine", "Flutter engine", fl_engine_get_type(),
++          "generation", "generation", "Semantics tree generation",
++          fl_semantics_generation_get_type(),
+           static_cast<GParamFlags>(G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY |
+                                    G_PARAM_STATIC_STRINGS)));
+   g_object_class_install_property(
+-      G_OBJECT_CLASS(klass), PROP_VIEW_ID,
+-      g_param_spec_int64(
+-          "view-id", "view-id", "View ID that this node belongs to", 0,
+-          G_MAXINT64, 0,
+-          static_cast<GParamFlags>(G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY)));
+-  g_object_class_install_property(
+       G_OBJECT_CLASS(klass), PROP_ID,
+       g_param_spec_int(
+           "node-id", "node-id", "Accessibility node ID", 0, G_MAXINT, 0,
+@@ -553,7 +618,7 @@
+ // Returns the number of UTF-8 characters in this node's text content. A
+ // Flutter semantics node's text content is its accessibility name.
+ static gint fl_accessible_node_get_text_length(FlAccessibleNodePrivate* priv) {
+-  return priv->name != nullptr
++  return is_live(priv) && priv->name != nullptr
+              ? static_cast<gint>(g_utf8_strlen(priv->name, -1))
+              : 0;
+ }
+@@ -569,7 +634,7 @@
+                                           gint start_offset,
+                                           gint end_offset) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(text);
+-  if (priv->name == nullptr) {
++  if (!is_live(priv) || priv->name == nullptr) {
+     return g_strdup("");
+   }
+
+@@ -587,7 +652,7 @@
+ static gunichar fl_accessible_node_get_character_at_offset(AtkText* text,
+                                                            gint offset) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(text);
+-  if (priv->name == nullptr || offset < 0 ||
++  if (!is_live(priv) || priv->name == nullptr || offset < 0 ||
+       offset >= fl_accessible_node_get_text_length(priv)) {
+     return 0;
+   }
+@@ -633,6 +698,15 @@
+     gint* start_offset,
+     gint* end_offset) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(text);
++  if (!is_live(priv)) {
++    if (start_offset != nullptr) {
++      *start_offset = -1;
++    }
++    if (end_offset != nullptr) {
++      *end_offset = -1;
++    }
++    return nullptr;
++  }
+   gint count = fl_accessible_node_get_text_length(priv);
+   if (offset < 0 || offset >= count) {
+     if (start_offset != nullptr) {
+@@ -713,26 +787,63 @@
+
+ static void fl_accessible_node_init(FlAccessibleNode* self) {
+   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
+-  g_weak_ref_init(&priv->engine, nullptr);
++  g_weak_ref_init(&priv->generation, nullptr);
+   g_weak_ref_init(&priv->parent, nullptr);
+   priv->actions = g_ptr_array_new();
+   priv->children = g_ptr_array_new_with_free_func(g_object_unref);
  }
 
+-FlAccessibleNode* fl_accessible_node_new(FlEngine* engine,
+-                                         FlutterViewId view_id,
++FlAccessibleNode* fl_accessible_node_new(FlSemanticsGeneration* generation,
+                                          int32_t node_id) {
+-  FlAccessibleNode* self = FL_ACCESSIBLE_NODE(
+-      g_object_new(fl_accessible_node_get_type(), "engine", engine, "view-id",
+-                   view_id, "node-id", node_id, nullptr));
+-  return self;
++  g_return_val_if_fail(FL_IS_SEMANTICS_GENERATION(generation), nullptr);
++  g_return_val_if_fail(node_id >= 0, nullptr);
++  if (!fl_semantics_generation_is_active(generation)) {
++    return nullptr;
++  }
++  return FL_ACCESSIBLE_NODE(
++      g_object_new(fl_accessible_node_get_type(), "generation", generation,
++                   "node-id", node_id, nullptr));
+ }
+
++gboolean fl_accessible_node_is_live(FlAccessibleNode* self) {
++  g_return_val_if_fail(FL_IS_ACCESSIBLE_NODE(self), FALSE);
++  return is_live(FL_ACCESSIBLE_NODE_GET_PRIVATE(self));
++}
++
 +void fl_accessible_node_retire(FlAccessibleNode* self) {
 +  g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
 +  FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
@@ -133,7 +507,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
 +
 +  g_autoptr(FlAccessibleNode) owner = FL_ACCESSIBLE_NODE(g_object_ref(self));
 +  priv->retired = TRUE;
-+  g_weak_ref_set(&priv->engine, nullptr);
++  g_weak_ref_set(&priv->generation, nullptr);
 +  g_weak_ref_set(&priv->parent, nullptr);
 +  priv->index = -1;
 +  g_clear_pointer(&priv->name, g_free);
@@ -155,17 +529,17 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
                                     gint index) {
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
-+  if (priv->retired) {
++  if (!is_live(priv)) {
 +    return;
 +  }
    g_weak_ref_set(&priv->parent, parent);
    priv->index = index;
  }
-@@ -742,30 +791,46 @@
+@@ -742,30 +853,46 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
 
-+  if (priv->retired) {
++  if (!is_live(priv)) {
 +    return;
 +  }
 +  g_autoptr(FlAccessibleNode) owner = FL_ACCESSIBLE_NODE(g_object_ref(self));
@@ -180,7 +554,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
      } else {
        g_signal_emit_by_name(self, "children-changed::remove", i, object,
                              nullptr);
-+      if (priv->retired) {
++      if (!is_live(priv)) {
 +        return;
 +      }
        g_ptr_array_remove_index(priv->children, i);
@@ -195,7 +569,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
      if (!has_child(priv->children, object)) {
        g_ptr_array_add(priv->children, g_object_ref(object));
        g_signal_emit_by_name(self, "children-changed::add", i, object, nullptr);
-+      if (priv->retired) {
++      if (!is_live(priv)) {
 +        return;
 +      }
      }
@@ -204,37 +578,37 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
 
  void fl_accessible_node_set_name(FlAccessibleNode* self, const gchar* name) {
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
-+  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++  if (!fl_accessible_node_is_live(self)) {
 +    return;
 +  }
 
    return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_name(self, name);
  }
-@@ -776,6 +841,9 @@
+@@ -776,6 +903,9 @@
                                      gint width,
                                      gint height) {
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
-+  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++  if (!fl_accessible_node_is_live(self)) {
 +    return;
 +  }
 
    return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_extents(self, x, y, width,
                                                           height);
-@@ -784,6 +852,9 @@
+@@ -784,6 +914,9 @@
  void fl_accessible_node_set_flags(FlAccessibleNode* self,
                                    FlutterSemanticsFlags* flags) {
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
-+  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++  if (!fl_accessible_node_is_live(self)) {
 +    return;
 +  }
 
    return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_flags(self, flags);
  }
-@@ -791,12 +862,18 @@
+@@ -791,12 +924,18 @@
  void fl_accessible_node_set_actions(FlAccessibleNode* self,
                                      FlutterSemanticsAction actions) {
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
-+  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++  if (!fl_accessible_node_is_live(self)) {
 +    return;
 +  }
 
@@ -243,47 +617,67 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
 
  void fl_accessible_node_set_value(FlAccessibleNode* self, const gchar* value) {
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
-+  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++  if (!fl_accessible_node_is_live(self)) {
 +    return;
 +  }
 
    return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_value(self, value);
  }
-@@ -805,6 +882,9 @@
+@@ -805,6 +944,9 @@
                                             gint base,
                                             gint extent) {
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
-+  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++  if (!fl_accessible_node_is_live(self)) {
 +    return;
 +  }
 
    return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_text_selection(self, base,
                                                                  extent);
-@@ -813,6 +893,9 @@
+@@ -813,15 +955,21 @@
  void fl_accessible_node_set_text_direction(FlAccessibleNode* self,
                                             FlutterTextDirection direction) {
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
-+  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
++  if (!fl_accessible_node_is_live(self)) {
 +    return;
 +  }
 
    return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_text_direction(self,
                                                                  direction);
-@@ -823,5 +906,9 @@
-                                        GBytes* data) {
-   g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
+ }
 
-+  if (FL_ACCESSIBLE_NODE_GET_PRIVATE(self)->retired) {
-+    return;
+-void fl_accessible_node_perform_action(FlAccessibleNode* self,
+-                                       FlutterSemanticsAction action,
+-                                       GBytes* data) {
+-  g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
+-
++gboolean fl_accessible_node_perform_action(FlAccessibleNode* self,
++                                          FlutterSemanticsAction action,
++                                          GBytes* data) {
++  g_return_val_if_fail(FL_IS_ACCESSIBLE_NODE(self), FALSE);
++  if (!fl_accessible_node_is_live(self)) {
++    return FALSE;
 +  }
-+
++  g_autoptr(FlAccessibleNode) owner = FL_ACCESSIBLE_NODE(g_object_ref(self));
    return FL_ACCESSIBLE_NODE_GET_CLASS(self)->perform_action(self, action, data);
  }
 diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.h b/engine/src/flutter/shell/platform/linux/fl_accessible_node.h
 --- a/engine/src/flutter/shell/platform/linux/fl_accessible_node.h
 +++ b/engine/src/flutter/shell/platform/linux/fl_accessible_node.h
-@@ -50,6 +50,9 @@
-   void (*perform_action)(FlAccessibleNode* node,
+@@ -9,7 +9,7 @@
+ #include <gio/gio.h>
+
+ #include "flutter/shell/platform/embedder/embedder.h"
+-#include "flutter/shell/platform/linux/public/flutter_linux/fl_engine.h"
++#include "flutter/shell/platform/linux/fl_semantics_generation.h"
+
+ G_BEGIN_DECLS
+
+@@ -47,26 +47,37 @@
+   void (*set_text_direction)(FlAccessibleNode* node,
+                              FlutterTextDirection direction);
+
+-  void (*perform_action)(FlAccessibleNode* node,
++  gboolean (*perform_action)(FlAccessibleNode* node,
                           FlutterSemanticsAction action,
                           GBytes* data);
 +
@@ -292,21 +686,1101 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.h b/engi
  };
 
  /**
-@@ -67,6 +70,10 @@
-                                          FlutterViewId view_id,
+  * fl_accessible_node_new:
+- * @engine: the #FlEngine this node came from.
+- * @view_id: the view ID this object represents.
++ * @generation: the live semantics tree generation.
+  * @node_id: the semantics node ID this object represents.
+  *
+  * Creates a new accessibility object that exposes Flutter accessibility
+  * information to ATK.
+  *
+- * Returns: a new #FlAccessibleNode.
++ * The tree must retain @generation for the node's live lifetime.
++ *
++ * Returns: (nullable): a new #FlAccessibleNode, or %NULL if the generation
++ * is no longer active.
+  */
+-FlAccessibleNode* fl_accessible_node_new(FlEngine* engine,
+-                                         FlutterViewId view_id,
++FlAccessibleNode* fl_accessible_node_new(FlSemanticsGeneration* generation,
                                           int32_t node_id);
 
 +// Permanently revokes action authority and marks a retained node defunct.
 +// A new semantics generation must create a new object, never revive this one.
 +void fl_accessible_node_retire(FlAccessibleNode* node);
 +
++// Whether the node still belongs to an active semantics tree.
++gboolean fl_accessible_node_is_live(FlAccessibleNode* node);
++
  /**
   * fl_accessible_node_set_parent:
   * @node: an #FlAccessibleNode.
+@@ -172,8 +183,10 @@
+  * @data: (allow-none): data associated with the action.
+  *
+  * Performs a semantic action for this node.
++ *
++ * Returns: whether the live generation admitted the action to engine dispatch.
+  */
+-void fl_accessible_node_perform_action(FlAccessibleNode* node,
++gboolean fl_accessible_node_perform_action(FlAccessibleNode* node,
+                                        FlutterSemanticsAction action,
+                                        GBytes* data);
+
+diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc b/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc
+--- a/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc
++++ b/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc
+@@ -17,12 +17,14 @@
+ // Checks can build a tree of nodes.
+ TEST_F(FlAccessibleNodeTest, BuildTree) {
+   int64_t view_id = 123;
+-  g_autoptr(FlAccessibleNode) root = fl_accessible_node_new(engine, view_id, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, view_id);
++  g_autoptr(FlAccessibleNode) root = fl_accessible_node_new(generation, 0);
+   g_autoptr(FlAccessibleNode) child1 =
+-      fl_accessible_node_new(engine, view_id, 1);
++      fl_accessible_node_new(generation, 1);
+   fl_accessible_node_set_parent(child1, ATK_OBJECT(root), 0);
+   g_autoptr(FlAccessibleNode) child2 =
+-      fl_accessible_node_new(engine, view_id, 1);
++      fl_accessible_node_new(generation, 1);
+   fl_accessible_node_set_parent(child2, ATK_OBJECT(root), 1);
+   g_autoptr(GPtrArray) children =
+       g_ptr_array_new_with_free_func(g_object_unref);
+@@ -51,14 +53,18 @@
+
+ // Checks node name is exposed to ATK.
+ TEST_F(FlAccessibleNodeTest, SetName) {
+-  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
+   fl_accessible_node_set_name(node, "test");
+   EXPECT_STREQ(atk_object_get_name(ATK_OBJECT(node)), "test");
+ }
+
+ // Checks node extents are exposed to ATK.
+ TEST_F(FlAccessibleNodeTest, SetExtents) {
+-  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
+   fl_accessible_node_set_extents(node, 1, 2, 3, 4);
+   gint x, y, width, height;
+   atk_component_get_extents(ATK_COMPONENT(node), &x, &y, &width, &height,
+@@ -71,7 +77,9 @@
+
+ // Checks the Flutter focused flag are mapped to ATK flags.
+ TEST_F(FlAccessibleNodeTest, FocusedFlags) {
+-  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
+
+   FlutterSemanticsFlags flags1 = {};
+   flags1.is_focused = kFlutterTristateNone;
+@@ -104,7 +112,9 @@
+
+ // Checks the Flutter checked and toggled flags are mapped to ATK flags.
+ TEST_F(FlAccessibleNodeTest, CheckedAndToggledFlags) {
+-  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
+
+   FlutterSemanticsFlags flags1 = {};
+   flags1.is_checked = kFlutterCheckStateNone;
+@@ -158,7 +168,9 @@
+
+ // Checks the Flutter selected flag is mapped to ATK flags.
+ TEST_F(FlAccessibleNodeTest, SelectedFlags) {
+-  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
+
+   FlutterSemanticsFlags flags1 = {};
+   flags1.is_selected = kFlutterTristateNone;
+@@ -186,7 +198,9 @@
+
+ // Checks the Flutter enabled flag is mapped to ATK flags.
+ TEST_F(FlAccessibleNodeTest, EnabledFlags) {
+-  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
+
+   FlutterSemanticsFlags flags1 = {};
+   flags1.is_enabled = kFlutterTristateNone;
+@@ -219,7 +233,9 @@
+
+ // Checks the Flutter obscured flag is mapped to ATK flags.
+ TEST_F(FlAccessibleNodeTest, ObscuredFlags) {
+-  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
+
+   FlutterSemanticsFlags flags1 = {};
+   flags1.is_obscured = true;
+@@ -240,7 +256,9 @@
+
+ // Checks the Flutter hidden flag is mapped to ATK flags.
+ TEST_F(FlAccessibleNodeTest, HiddenFlags) {
+-  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
+
+   FlutterSemanticsFlags flags1 = {};
+   flags1.is_hidden = true;
+@@ -261,7 +279,9 @@
+
+ // Checks the Flutter read only flag is mapped to ATK flags.
+ TEST_F(FlAccessibleNodeTest, ReadOnlyFlags) {
+-  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
+
+   FlutterSemanticsFlags flags1 = {};
+   flags1.is_read_only = false;
+@@ -282,7 +302,9 @@
+
+ // Checks the Flutter text field flag is mapped to ATK flags.
+ TEST_F(FlAccessibleNodeTest, TextFieldFlags) {
+-  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
+
+   FlutterSemanticsFlags flags1 = {};
+   flags1.is_text_field = false;
+@@ -303,7 +325,9 @@
+
+ // Checks Flutter flags are mapped to appropriate ATK roles.
+ TEST_F(FlAccessibleNodeTest, GetRole) {
+-  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
+
+   FlutterSemanticsFlags flags1 = {};
+   flags1.is_button = true;
+@@ -346,7 +370,9 @@
+ // Checks the node's name is exposed through the AtkText interface so that
+ // screen readers can read the text content of objects such as headings.
+ TEST_F(FlAccessibleNodeTest, ExposesTextViaAtkText) {
+-  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
+   fl_accessible_node_set_name(node, "Section One");
+
+   EXPECT_EQ(atk_text_get_character_count(ATK_TEXT(node)), 11);
+@@ -398,7 +424,9 @@
+
+ // Checks Flutter actions are mapped to the appropriate ATK actions.
+ TEST_F(FlAccessibleNodeTest, SetActions) {
+-  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
+   fl_accessible_node_set_actions(
+       node, static_cast<FlutterSemanticsAction>(
+                 kFlutterSemanticsActionTap | kFlutterSemanticsActionLongPress));
+@@ -414,8 +442,10 @@
+ TEST_F(FlAccessibleNodeTest, SurvivesEngineDestruction) {
+   g_autoptr(FlDartProject) project = fl_dart_project_new();
+   FlEngine* local_engine = fl_engine_new(project);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(local_engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_node_new(local_engine, 123, 0);
++      fl_accessible_node_new(generation, 0);
+   fl_accessible_node_set_actions(node, kFlutterSemanticsActionTap);
+
+   // Destroy the engine while the node is still alive.
+@@ -428,8 +458,10 @@
+ // Accessing a node after its parent is destroyed must not dereference freed
+ // memory.
+ TEST_F(FlAccessibleNodeTest, SurvivesParentDestruction) {
+-  FlAccessibleNode* root = fl_accessible_node_new(engine, 123, 0);
+-  g_autoptr(FlAccessibleNode) child = fl_accessible_node_new(engine, 123, 1);
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
++  FlAccessibleNode* root = fl_accessible_node_new(generation, 0);
++  g_autoptr(FlAccessibleNode) child = fl_accessible_node_new(generation, 1);
+   fl_accessible_node_set_parent(child, ATK_OBJECT(root), 0);
+
+   // Destroy the parent while the child is still alive.
+diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc b/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
+--- a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
++++ b/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
+@@ -35,9 +35,17 @@
+         G_IMPLEMENT_INTERFACE(ATK_TYPE_EDITABLE_TEXT,
+                               fl_accessible_editable_text_iface_init))
+
++static gboolean has_live_buffer(FlAccessibleTextField* self) {
++  return self->buffer != nullptr &&
++         fl_accessible_node_is_live(FL_ACCESSIBLE_NODE(self));
++}
++
+ static gchar* get_substring(FlAccessibleTextField* self,
+                             glong start,
+                             glong end) {
++  if (!has_live_buffer(self)) {
++    return g_strdup("");
++  }
+   const gchar* value = gtk_entry_buffer_get_text(self->buffer);
+   glong length = g_utf8_strlen(value, -1);
+   if (end == -1) {
+@@ -209,20 +217,31 @@
+   return nullptr;
+ }
+
+-static void perform_set_text_action(FlAccessibleTextField* self,
+-                                    const char* text) {
++static gboolean perform_set_text_action(FlAccessibleTextField* self,
++                                        const char* text) {
++  if (!has_live_buffer(self)) {
++    return FALSE;
++  }
++  g_autoptr(FlAccessibleTextField) owner =
++      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
+   g_autoptr(FlValue) value = fl_value_new_string(text);
+   g_autoptr(FlStandardMessageCodec) codec = fl_standard_message_codec_new();
+   g_autoptr(GBytes) message =
+       fl_message_codec_encode_message(FL_MESSAGE_CODEC(codec), value, nullptr);
+
+-  fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(self),
+-                                    kFlutterSemanticsActionSetText, message);
++  return fl_accessible_node_perform_action(
++             FL_ACCESSIBLE_NODE(self), kFlutterSemanticsActionSetText, message) &&
++         has_live_buffer(self);
+ }
+
+-static void perform_set_selection_action(FlAccessibleTextField* self,
+-                                         gint base,
+-                                         gint extent) {
++static gboolean perform_set_selection_action(FlAccessibleTextField* self,
++                                             gint base,
++                                             gint extent) {
++  if (!has_live_buffer(self)) {
++    return FALSE;
++  }
++  g_autoptr(FlAccessibleTextField) owner =
++      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
+   g_autoptr(FlValue) value = fl_value_new_map();
+   fl_value_set_string_take(value, "base", fl_value_new_int(base));
+   fl_value_set_string_take(value, "extent", fl_value_new_int(extent));
+@@ -231,17 +250,22 @@
+   g_autoptr(GBytes) message =
+       fl_message_codec_encode_message(FL_MESSAGE_CODEC(codec), value, nullptr);
+
+-  fl_accessible_node_perform_action(
+-      FL_ACCESSIBLE_NODE(self), kFlutterSemanticsActionSetSelection, message);
++  return fl_accessible_node_perform_action(
++             FL_ACCESSIBLE_NODE(self), kFlutterSemanticsActionSetSelection,
++             message) &&
++         has_live_buffer(self);
+ }
+
+-// Implements GObject::dispose.
+-static void fl_accessible_text_field_dispose(GObject* object) {
+-  FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(object);
+-
+-  g_clear_object(&self->buffer);
+-
+-  G_OBJECT_CLASS(fl_accessible_text_field_parent_class)->dispose(object);
++// Implements FlAccessibleNode::retire.
++static void fl_accessible_text_field_retire(FlAccessibleNode* node) {
++  FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(node);
++  g_autoptr(GtkEntryBuffer) buffer = self->buffer;
++  self->buffer = nullptr;
++  self->selection_base = -1;
++  self->selection_extent = -1;
++  if (buffer != nullptr) {
++    g_signal_handlers_disconnect_by_data(buffer, self);
++  }
+ }
+
+ // Implements FlAccessibleNode::set_value.
+@@ -250,11 +274,17 @@
+   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(node));
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(node);
+
+-  if (g_strcmp0(gtk_entry_buffer_get_text(self->buffer), value) == 0) {
++  if (!has_live_buffer(self)) {
+     return;
+   }
++  g_autoptr(FlAccessibleTextField) owner =
++      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
++  g_autoptr(GtkEntryBuffer) buffer = GTK_ENTRY_BUFFER(g_object_ref(self->buffer));
++  if (g_strcmp0(gtk_entry_buffer_get_text(buffer), value) == 0) {
++    return;
++  }
+
+-  gtk_entry_buffer_set_text(self->buffer, value, -1);
++  gtk_entry_buffer_set_text(buffer, value, -1);
+ }
+
+ // Implements FlAccessibleNode::set_text_selection.
+@@ -264,6 +294,11 @@
+   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(node));
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(node);
+
++  if (!has_live_buffer(self)) {
++    return;
++  }
++  g_autoptr(FlAccessibleTextField) owner =
++      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
+   gboolean caret_moved = extent != self->selection_extent;
+   gboolean has_selection = base != extent;
+   gboolean had_selection = self->selection_base != self->selection_extent;
+@@ -277,7 +312,8 @@
+     g_signal_emit_by_name(self, "text-selection-changed", nullptr);
+   }
+
+-  if (caret_moved) {
++  if (caret_moved && has_live_buffer(self) &&
++      self->selection_base == base && self->selection_extent == extent) {
+     g_signal_emit_by_name(self, "text-caret-moved", extent, nullptr);
+   }
+ }
+@@ -293,7 +329,7 @@
+ }
+
+ // Overrides FlAccessibleNode::perform_action.
+-void fl_accessible_text_field_perform_action(FlAccessibleNode* self,
++gboolean fl_accessible_text_field_perform_action(FlAccessibleNode* self,
+                                              FlutterSemanticsAction action,
+                                              GBytes* data) {
+   FlAccessibleNodeClass* parent_class =
+@@ -310,12 +346,10 @@
+       g_autoptr(FlStandardMessageCodec) codec = fl_standard_message_codec_new();
+       g_autoptr(GBytes) message = fl_message_codec_encode_message(
+           FL_MESSAGE_CODEC(codec), extend_selection, nullptr);
+-      parent_class->perform_action(self, action, message);
+-      break;
++      return parent_class->perform_action(self, action, message);
+     }
+     default:
+-      parent_class->perform_action(self, action, data);
+-      break;
++      return parent_class->perform_action(self, action, data);
+   }
+ }
+
+@@ -324,7 +358,7 @@
+   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), 0);
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
+
+-  return gtk_entry_buffer_get_length(self->buffer);
++  return has_live_buffer(self) ? gtk_entry_buffer_get_length(self->buffer) : 0;
+ }
+
+ // Implements AtkText::get_text.
+@@ -347,6 +381,16 @@
+   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), nullptr);
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
+
++  if (start_offset != nullptr) {
++    *start_offset = -1;
++  }
++  if (end_offset != nullptr) {
++    *end_offset = -1;
++  }
++  if (!has_live_buffer(self)) {
++    return nullptr;
++  }
++
+   switch (granularity) {
+     case ATK_TEXT_GRANULARITY_CHAR:
+       return get_char_at_offset(self, offset, start_offset, end_offset);
+@@ -370,6 +414,12 @@
+     AtkTextBoundary boundary_type,
+     gint* start_offset,
+     gint* end_offset) {
++  if (start_offset != nullptr) {
++    *start_offset = -1;
++  }
++  if (end_offset != nullptr) {
++    *end_offset = -1;
++  }
+   switch (boundary_type) {
+     case ATK_TEXT_BOUNDARY_CHAR:
+       return fl_accessible_text_field_get_string_at_offset(
+@@ -401,7 +451,7 @@
+   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), -1);
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
+
+-  return self->selection_extent;
++  return has_live_buffer(self) ? self->selection_extent : -1;
+ }
+
+ // Implements AtkText::set_caret_offset.
+@@ -410,8 +460,7 @@
+   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), false);
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
+
+-  perform_set_selection_action(self, offset, offset);
+-  return TRUE;
++  return perform_set_selection_action(self, offset, offset);
+ }
+
+ // Implements AtkText::get_n_selections.
+@@ -419,7 +468,7 @@
+   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), 0);
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
+
+-  if (self->selection_base == self->selection_extent) {
++  if (!has_live_buffer(self) || self->selection_base == self->selection_extent) {
+     return 0;
+   }
+
+@@ -434,7 +483,14 @@
+   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), nullptr);
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
+
+-  if (selection_num != 0 || self->selection_base == self->selection_extent) {
++  if (start_offset != nullptr) {
++    *start_offset = -1;
++  }
++  if (end_offset != nullptr) {
++    *end_offset = -1;
++  }
++  if (!has_live_buffer(self) || selection_num != 0 ||
++      self->selection_base == self->selection_extent) {
+     return nullptr;
+   }
+
+@@ -458,12 +514,11 @@
+   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), false);
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
+
+-  if (self->selection_base != self->selection_extent) {
++  if (!has_live_buffer(self) || self->selection_base != self->selection_extent) {
+     return FALSE;
+   }
+
+-  perform_set_selection_action(self, start_offset, end_offset);
+-  return TRUE;
++  return perform_set_selection_action(self, start_offset, end_offset);
+ }
+
+ // Implements AtkText::remove_selection.
+@@ -472,13 +527,13 @@
+   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), false);
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
+
+-  if (selection_num != 0 || self->selection_base == self->selection_extent) {
++  if (!has_live_buffer(self) || selection_num != 0 ||
++      self->selection_base == self->selection_extent) {
+     return FALSE;
+   }
+
+-  perform_set_selection_action(self, self->selection_extent,
+-                               self->selection_extent);
+-  return TRUE;
++  return perform_set_selection_action(self, self->selection_extent,
++                                     self->selection_extent);
+ }
+
+ // Implements AtkText::set_selection.
+@@ -489,12 +544,11 @@
+   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), false);
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
+
+-  if (selection_num != 0) {
++  if (!has_live_buffer(self) || selection_num != 0) {
+     return FALSE;
+   }
+
+-  perform_set_selection_action(self, start_offset, end_offset);
+-  return TRUE;
++  return perform_set_selection_action(self, start_offset, end_offset);
+ }
+
+ // Implements AtkEditableText::set_text_contents.
+@@ -515,11 +569,21 @@
+   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
+
+-  *position +=
+-      gtk_entry_buffer_insert_text(self->buffer, *position, string, length);
+-
+-  perform_set_text_action(self, gtk_entry_buffer_get_text(self->buffer));
+-  perform_set_selection_action(self, *position, *position);
++  if (!has_live_buffer(self)) {
++    return;
++  }
++  g_autoptr(FlAccessibleTextField) owner =
++      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
++  g_autoptr(GtkEntryBuffer) buffer = GTK_ENTRY_BUFFER(g_object_ref(self->buffer));
++  const gint next_position = *position +
++      gtk_entry_buffer_insert_text(buffer, *position, string, length);
++  if (self->buffer != buffer ||
++      !perform_set_text_action(self, gtk_entry_buffer_get_text(buffer))) {
++    return;
++  }
++  if (perform_set_selection_action(self, next_position, next_position)) {
++    *position = next_position;
++  }
+ }
+
+ // Implements AtkEditableText::delete_text.
+@@ -529,9 +593,17 @@
+   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
+
+-  gtk_entry_buffer_delete_text(self->buffer, start_pos, end_pos - start_pos);
+-
+-  perform_set_text_action(self, gtk_entry_buffer_get_text(self->buffer));
++  if (!has_live_buffer(self)) {
++    return;
++  }
++  g_autoptr(FlAccessibleTextField) owner =
++      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
++  g_autoptr(GtkEntryBuffer) buffer = GTK_ENTRY_BUFFER(g_object_ref(self->buffer));
++  gtk_entry_buffer_delete_text(buffer, start_pos, end_pos - start_pos);
++  if (self->buffer != buffer ||
++      !perform_set_text_action(self, gtk_entry_buffer_get_text(buffer))) {
++    return;
++  }
+   perform_set_selection_action(self, start_pos, start_pos);
+ }
+
+@@ -542,7 +614,11 @@
+   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
+
+-  perform_set_selection_action(self, start_pos, end_pos);
++  g_autoptr(FlAccessibleTextField) owner =
++      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
++  if (!perform_set_selection_action(self, start_pos, end_pos)) {
++    return;
++  }
+
+   fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(editable_text),
+                                     kFlutterSemanticsActionCopy, nullptr);
+@@ -555,7 +631,11 @@
+   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
+
+-  perform_set_selection_action(self, start_pos, end_pos);
++  g_autoptr(FlAccessibleTextField) owner =
++      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
++  if (!perform_set_selection_action(self, start_pos, end_pos)) {
++    return;
++  }
+
+   fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(editable_text),
+                                     kFlutterSemanticsActionCut, nullptr);
+@@ -567,7 +647,11 @@
+   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
+   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
+
+-  perform_set_selection_action(self, position, position);
++  g_autoptr(FlAccessibleTextField) owner =
++      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
++  if (!perform_set_selection_action(self, position, position)) {
++    return;
++  }
+
+   fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(editable_text),
+                                     kFlutterSemanticsActionPaste, nullptr);
+@@ -575,7 +659,7 @@
+
+ static void fl_accessible_text_field_class_init(
+     FlAccessibleTextFieldClass* klass) {
+-  G_OBJECT_CLASS(klass)->dispose = fl_accessible_text_field_dispose;
++  FL_ACCESSIBLE_NODE_CLASS(klass)->retire = fl_accessible_text_field_retire;
+   FL_ACCESSIBLE_NODE_CLASS(klass)->set_value =
+       fl_accessible_text_field_set_value;
+   FL_ACCESSIBLE_NODE_CLASS(klass)->set_text_selection =
+@@ -623,6 +707,11 @@
+       self->buffer, "inserted-text",
+       G_CALLBACK(+[](FlAccessibleTextField* self, guint position, gchar* chars,
+                      guint n_chars) {
++        if (!has_live_buffer(self)) {
++          return;
++        }
++        g_autoptr(FlAccessibleTextField) owner =
++            FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
+         g_signal_emit_by_name(self, "text-insert", position, n_chars, chars,
+                               nullptr);
+       }),
+@@ -631,6 +720,11 @@
+   g_signal_connect_object(self->buffer, "deleted-text",
+                           G_CALLBACK(+[](FlAccessibleTextField* self,
+                                          guint position, guint n_chars) {
++                            if (!has_live_buffer(self)) {
++                              return;
++                            }
++                            g_autoptr(FlAccessibleTextField) owner =
++                                FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
+                             g_autofree gchar* chars = atk_text_get_text(
+                                 ATK_TEXT(self), position, position + n_chars);
+                             g_signal_emit_by_name(self, "text-remove", position,
+@@ -639,10 +733,15 @@
+                           self, G_CONNECT_SWAPPED);
+ }
+
+-FlAccessibleNode* fl_accessible_text_field_new(FlEngine* engine,
+-                                               FlutterViewId view_id,
+-                                               int32_t id) {
++FlAccessibleNode* fl_accessible_text_field_new(
++    FlSemanticsGeneration* generation,
++    int32_t id) {
++  g_return_val_if_fail(FL_IS_SEMANTICS_GENERATION(generation), nullptr);
++  g_return_val_if_fail(id >= 0, nullptr);
++  if (!fl_semantics_generation_is_active(generation)) {
++    return nullptr;
++  }
+   return FL_ACCESSIBLE_NODE(g_object_new(fl_accessible_text_field_get_type(),
+-                                         "engine", engine, "view-id", view_id,
++                                         "generation", generation,
+                                          "node-id", id, nullptr));
+ }
+diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.h b/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.h
+--- a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.h
++++ b/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.h
+@@ -19,17 +19,18 @@
+
+ /**
+  * fl_accessible_text_field_new:
+- * @engine: the #FlEngine this node came from.
+- * @view_id: the ID of the view that contains this semantics node.
++ * @generation: the live semantics tree generation.
+  * @id: the semantics node ID this object represents.
+  *
+  * Creates a new accessibility object that exposes an editable Flutter text
+  * field to ATK.
+  *
+- * Returns: a new #FlAccessibleNode.
++ * The tree must retain @generation for the node's live lifetime.
++ *
++ * Returns: (nullable): a new #FlAccessibleNode, or %NULL if the generation
++ * is no longer active.
+  */
+-FlAccessibleNode* fl_accessible_text_field_new(FlEngine* engine,
+-                                               FlutterViewId view_id,
++FlAccessibleNode* fl_accessible_text_field_new(FlSemanticsGeneration* generation,
+                                                int32_t id);
+
+ G_END_DECLS
+diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_test.cc b/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_test.cc
+--- a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_test.cc
++++ b/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_test.cc
+@@ -27,8 +27,10 @@
+ // Tests that semantic node value updates from Flutter emit AtkText::text-insert
+ // and AtkText::text-remove signals as expected.
+ TEST_F(FlAccessibleTextFieldTest, SetValue) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   // "" -> "Flutter"
+   {
+@@ -83,8 +85,10 @@
+ // AtkText::text-selection-changed and AtkText::text-caret-moved signals as
+ // expected.
+ TEST_F(FlAccessibleTextFieldTest, SetTextSelection) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   // [-1,-1] -> [2,3]
+   {
+@@ -156,8 +160,10 @@
+         return kSuccess;
+       }));
+
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+   fl_accessible_node_set_actions(
+       node, static_cast<FlutterSemanticsAction>(
+                 kFlutterSemanticsActionMoveCursorForwardByCharacter |
+@@ -178,8 +184,10 @@
+
+ // Tests AtkText::get_character_count.
+ TEST_F(FlAccessibleTextFieldTest, GetCharacterCount) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   EXPECT_EQ(atk_text_get_character_count(ATK_TEXT(node)), 0);
+
+@@ -190,8 +198,10 @@
+
+ // Tests AtkText::get_text.
+ TEST_F(FlAccessibleTextFieldTest, GetText) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   g_autofree gchar* empty = atk_text_get_text(ATK_TEXT(node), 0, -1);
+   EXPECT_STREQ(empty, "");
+@@ -210,8 +220,10 @@
+
+ // Tests AtkText::get_text with out-of-bounds offsets.
+ TEST_F(FlAccessibleTextFieldTest, GetTextBoundsChecking) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   fl_accessible_node_set_value(node, "Hello");
+
+@@ -235,8 +247,10 @@
+
+ // Tests AtkText::get_caret_offset.
+ TEST_F(FlAccessibleTextFieldTest, GetCaretOffset) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   EXPECT_EQ(atk_text_get_caret_offset(ATK_TEXT(node)), -1);
+
+@@ -265,8 +279,10 @@
+         return kSuccess;
+       }));
+
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   EXPECT_TRUE(atk_text_set_caret_offset(ATK_TEXT(node), 3));
+   EXPECT_EQ(base, 3);
+@@ -275,8 +291,10 @@
+
+ // Tests AtkText::get_n_selections.
+ TEST_F(FlAccessibleTextFieldTest, GetNSelections) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   EXPECT_EQ(atk_text_get_n_selections(ATK_TEXT(node)), 0);
+
+@@ -287,8 +305,10 @@
+
+ // Tests AtkText::get_selection.
+ TEST_F(FlAccessibleTextFieldTest, GetSelection) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   EXPECT_EQ(atk_text_get_selection(ATK_TEXT(node), 0, nullptr, nullptr),
+             nullptr);
+@@ -339,8 +359,10 @@
+         return kSuccess;
+       }));
+
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   EXPECT_TRUE(atk_text_add_selection(ATK_TEXT(node), 2, 4));
+   EXPECT_EQ(base, 2);
+@@ -374,8 +396,10 @@
+         return kSuccess;
+       }));
+
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   // no selection
+   EXPECT_FALSE(atk_text_remove_selection(ATK_TEXT(node), 0));
+@@ -415,8 +439,10 @@
+         return kSuccess;
+       }));
+
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   // selection num != 0
+   EXPECT_FALSE(atk_text_set_selection(ATK_TEXT(node), 1, 2, 4));
+@@ -449,8 +475,10 @@
+         return kSuccess;
+       }));
+
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   atk_editable_text_set_text_contents(ATK_EDITABLE_TEXT(node), "Flutter");
+   EXPECT_STREQ(text, "Flutter");
+@@ -487,8 +515,10 @@
+         return kSuccess;
+       }));
+
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+   fl_accessible_node_set_value(node, "Fler");
+
+   gint pos = 2;
+@@ -532,8 +562,10 @@
+         return kSuccess;
+       }));
+
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   atk_editable_text_copy_text(ATK_EDITABLE_TEXT(node), 2, 5);
+   EXPECT_EQ(base, 2);
+@@ -552,8 +584,10 @@
+ }
+
+ TEST_F(FlAccessibleTextFieldTest, TextBoundary) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   fl_accessible_node_set_value(node,
+                                "Lorem ipsum.\nDolor sit amet. Praesent commodo?"
+@@ -670,8 +704,10 @@
+
+ // Tests that get_string_at_offset handles offset beyond text length.
+ TEST_F(FlAccessibleTextFieldTest, TextBoundaryOffsetBeyondEnd) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   fl_accessible_node_set_value(node, "Hello");
+
+@@ -702,8 +738,10 @@
+
+ // Tests that get_string_at_offset handles offset at position zero.
+ TEST_F(FlAccessibleTextFieldTest, TextBoundaryOffsetAtStart) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   fl_accessible_node_set_value(node, "Hello");
+
+@@ -726,8 +764,10 @@
+
+ // Tests that get_string_at_offset handles empty text.
+ TEST_F(FlAccessibleTextFieldTest, TextBoundaryEmptyText) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   // Empty text - should not crash.
+   gint start_offset = -1, end_offset = -1;
+@@ -746,8 +786,10 @@
+
+ // Tests that get_string_at_offset handles offset at exact text length.
+ TEST_F(FlAccessibleTextFieldTest, TextBoundaryOffsetAtEnd) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   fl_accessible_node_set_value(node, "Hello world");
+
+@@ -774,8 +816,10 @@
+ // Tests that line and paragraph boundaries are computed in character offsets
+ // rather than byte offsets when the text contains multi-byte UTF-8 characters.
+ TEST_F(FlAccessibleTextFieldTest, TextBoundaryMultiByte) {
++  g_autoptr(FlSemanticsGeneration) generation =
++      fl_semantics_generation_new(engine, 123);
+   g_autoptr(FlAccessibleNode) node =
+-      fl_accessible_text_field_new(engine, 123, 1);
++      fl_accessible_text_field_new(generation, 1);
+
+   // "Café" is 4 characters but 5 bytes (é is 2 bytes).
+   // "Münch" is 5 characters but 6 bytes (ü is 2 bytes).
+diff --git a/engine/src/flutter/shell/platform/linux/fl_semantics_generation.cc b/engine/src/flutter/shell/platform/linux/fl_semantics_generation.cc
+new file mode 100644
+--- /dev/null
++++ b/engine/src/flutter/shell/platform/linux/fl_semantics_generation.cc
+@@ -0,0 +1,83 @@
++// Copyright 2013 The Flutter Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "flutter/shell/platform/linux/fl_semantics_generation.h"
++#include "flutter/shell/platform/linux/fl_engine_private.h"
++
++struct _FlSemanticsGeneration {
++  GObject parent_instance;
++
++  GWeakRef engine;
++  FlutterViewId view_id;
++  gboolean retired;
++};
++
++G_DEFINE_TYPE(FlSemanticsGeneration, fl_semantics_generation, G_TYPE_OBJECT)
++
++static void fl_semantics_generation_dispose(GObject* object) {
++  fl_semantics_generation_retire(FL_SEMANTICS_GENERATION(object));
++  G_OBJECT_CLASS(fl_semantics_generation_parent_class)->dispose(object);
++}
++
++static void fl_semantics_generation_finalize(GObject* object) {
++  FlSemanticsGeneration* self = FL_SEMANTICS_GENERATION(object);
++  g_weak_ref_clear(&self->engine);
++  G_OBJECT_CLASS(fl_semantics_generation_parent_class)->finalize(object);
++}
++
++static void fl_semantics_generation_class_init(
++    FlSemanticsGenerationClass* klass) {
++  G_OBJECT_CLASS(klass)->dispose = fl_semantics_generation_dispose;
++  G_OBJECT_CLASS(klass)->finalize = fl_semantics_generation_finalize;
++}
++
++static void fl_semantics_generation_init(FlSemanticsGeneration* self) {
++  g_weak_ref_init(&self->engine, nullptr);
++  self->retired = TRUE;
++}
++
++FlSemanticsGeneration* fl_semantics_generation_new(FlEngine* engine,
++                                                   FlutterViewId view_id) {
++  g_return_val_if_fail(FL_IS_ENGINE(engine), nullptr);
++  g_return_val_if_fail(view_id >= 0, nullptr);
++  FlSemanticsGeneration* self = FL_SEMANTICS_GENERATION(
++      g_object_new(fl_semantics_generation_get_type(), nullptr));
++  g_weak_ref_set(&self->engine, engine);
++  self->view_id = view_id;
++  self->retired = FALSE;
++  return self;
++}
++
++void fl_semantics_generation_retire(FlSemanticsGeneration* self) {
++  g_return_if_fail(FL_IS_SEMANTICS_GENERATION(self));
++  self->retired = TRUE;
++  g_weak_ref_set(&self->engine, nullptr);
++}
++
++gboolean fl_semantics_generation_is_active(FlSemanticsGeneration* self) {
++  g_return_val_if_fail(FL_IS_SEMANTICS_GENERATION(self), FALSE);
++  if (self->retired) {
++    return FALSE;
++  }
++  g_autoptr(FlEngine) engine = FL_ENGINE(g_weak_ref_get(&self->engine));
++  return engine != nullptr;
++}
++
++gboolean fl_semantics_generation_perform_action(
++    FlSemanticsGeneration* self,
++    int32_t node_id,
++    FlutterSemanticsAction action,
++    GBytes* data) {
++  g_return_val_if_fail(FL_IS_SEMANTICS_GENERATION(self), FALSE);
++  if (self->retired) {
++    return FALSE;
++  }
++  g_autoptr(FlEngine) engine = FL_ENGINE(g_weak_ref_get(&self->engine));
++  if (engine == nullptr || self->retired) {
++    return FALSE;
++  }
++  fl_engine_dispatch_semantics_action(engine, self->view_id, node_id, action,
++                                      data);
++  return TRUE;
++}
+diff --git a/engine/src/flutter/shell/platform/linux/fl_semantics_generation.h b/engine/src/flutter/shell/platform/linux/fl_semantics_generation.h
+new file mode 100644
+--- /dev/null
++++ b/engine/src/flutter/shell/platform/linux/fl_semantics_generation.h
+@@ -0,0 +1,37 @@
++// Copyright 2013 The Flutter Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef FLUTTER_SHELL_PLATFORM_LINUX_FL_SEMANTICS_GENERATION_H_
++#define FLUTTER_SHELL_PLATFORM_LINUX_FL_SEMANTICS_GENERATION_H_
++
++#include "flutter/shell/platform/embedder/embedder.h"
++#include "flutter/shell/platform/linux/public/flutter_linux/fl_engine.h"
++
++G_BEGIN_DECLS
++
++G_DECLARE_FINAL_TYPE(FlSemanticsGeneration,
++                     fl_semantics_generation,
++                     FL,
++                     SEMANTICS_GENERATION,
++                     GObject)
++
++// Owned by one semantics tree. All operations run on the GTK thread.
++FlSemanticsGeneration* fl_semantics_generation_new(FlEngine* engine,
++                                                   FlutterViewId view_id);
++
++// Irreversibly closes the complete tree, without emitting callbacks.
++void fl_semantics_generation_retire(FlSemanticsGeneration* generation);
++
++gboolean fl_semantics_generation_is_active(FlSemanticsGeneration* generation);
++
++// Returns whether the action was admitted to the engine dispatch sink.
++gboolean fl_semantics_generation_perform_action(
++    FlSemanticsGeneration* generation,
++    int32_t node_id,
++    FlutterSemanticsAction action,
++    GBytes* data);
++
++G_END_DECLS
++
++#endif  // FLUTTER_SHELL_PLATFORM_LINUX_FL_SEMANTICS_GENERATION_H_
 diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc
 --- a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc
 +++ b/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc
-@@ -29,5 +29,8 @@
+@@ -23,11 +23,16 @@
+
+   FlutterViewId view_id;
+
++  FlSemanticsGeneration* generation;
++
+   // Semantics nodes keyed by ID
+   GHashTable* semantics_nodes_by_id;
+
    // Flag to track when root node is created.
    gboolean root_node_created;
 +
@@ -315,7 +1789,26 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
  };
 
  G_DEFINE_TYPE(FlViewAccessible, fl_view_accessible, ATK_TYPE_PLUG)
-@@ -57,4 +60,7 @@
+@@ -42,19 +47,22 @@
+
+ static FlAccessibleNode* create_node(FlViewAccessible* self,
+                                      FlutterSemanticsNode2* semantics) {
+-  g_autoptr(FlEngine) engine = FL_ENGINE(g_weak_ref_get(&self->engine));
+-  if (engine == nullptr) {
++  if (self->generation == nullptr ||
++      !fl_semantics_generation_is_active(self->generation)) {
+     return nullptr;
+   }
+
+   if (semantics->flags2->is_text_field) {
+-    return fl_accessible_text_field_new(engine, self->view_id, semantics->id);
++    return fl_accessible_text_field_new(self->generation, semantics->id);
+   }
+
+-  return fl_accessible_node_new(engine, self->view_id, semantics->id);
++  return fl_accessible_node_new(self->generation, semantics->id);
+ }
+
  static FlAccessibleNode* lookup_node(FlViewAccessible* self, int32_t id) {
 +  if (self->semantics_nodes_by_id == nullptr) {
 +    return nullptr;
@@ -323,7 +1816,9 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
    return FL_ACCESSIBLE_NODE(
        g_hash_table_lookup(self->semantics_nodes_by_id, GINT_TO_POINTER(id)));
  }
-@@ -71,4 +77,8 @@
+@@ -69,6 +77,10 @@
+   }
+
    node = create_node(self, semantics);
 +  if (node == nullptr) {
 +    return nullptr;
@@ -332,7 +1827,9 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
    if (semantics->id == kRootSemanticsNodeId) {
      fl_accessible_node_set_parent(node, ATK_OBJECT(self), 0);
    }
-@@ -80,7 +90,7 @@
+@@ -78,11 +90,11 @@
+
+   // Update when root node is created.
    if (!self->root_node_created && semantics->id == kRootSemanticsNodeId) {
 -    g_signal_emit_by_name(self, "children-changed::add", 0, node, nullptr);
      self->root_node_created = true;
@@ -342,7 +1839,10 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 -  return node;
 +  return lookup_node(self, semantics->id) == node ? node : nullptr;
  }
-@@ -118,5 +128,10 @@
+
+ // Implements AtkObject::get_n_children
+@@ -117,20 +129,30 @@
+ // Implements AtkObject::ref_state_set
  static AtkStateSet* fl_view_accessible_ref_state_set(AtkObject* accessible) {
    FlViewAccessible* self = FL_VIEW_ACCESSIBLE(accessible);
 +  if (self->retired) {
@@ -354,7 +1854,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 -  return node != nullptr ? atk_object_ref_state_set(ATK_OBJECT(node)) : nullptr;
 +  return node != nullptr ? atk_object_ref_state_set(ATK_OBJECT(node)) : atk_state_set_new();
  }
-@@ -124,11 +139,16 @@
+
  static void fl_view_accessible_dispose(GObject* object) {
    FlViewAccessible* self = FL_VIEW_ACCESSIBLE(object);
 
@@ -373,20 +1873,31 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 +}
 +
  static void fl_view_accessible_class_init(FlViewAccessibleClass* klass) {
-@@ -140,2 +160,3 @@
+   ATK_OBJECT_CLASS(klass)->get_n_children = fl_view_accessible_get_n_children;
+   ATK_OBJECT_CLASS(klass)->ref_child = fl_view_accessible_ref_child;
+@@ -138,35 +160,108 @@
+   ATK_OBJECT_CLASS(klass)->ref_state_set = fl_view_accessible_ref_state_set;
+
    G_OBJECT_CLASS(klass)->dispose = fl_view_accessible_dispose;
 +  G_OBJECT_CLASS(klass)->finalize = fl_view_accessible_finalize;
  }
-@@ -143,4 +164,5 @@
+
  static void fl_view_accessible_init(FlViewAccessible* self) {
 +  g_weak_ref_init(&self->engine, nullptr);
    self->semantics_nodes_by_id = g_hash_table_new_full(
        g_direct_hash, g_direct_equal, nullptr, g_object_unref);
  }
-@@ -152,8 +174,45 @@
+
+ FlViewAccessible* fl_view_accessible_new(FlEngine* engine,
+                                          FlutterViewId view_id) {
++  g_return_val_if_fail(FL_IS_ENGINE(engine), nullptr);
++  g_return_val_if_fail(view_id >= 0, nullptr);
+   FlViewAccessible* self =
+       FL_VIEW_ACCESSIBLE(g_object_new(fl_view_accessible_get_type(), nullptr));
 -  g_weak_ref_init(&self->engine, engine);
 +  g_weak_ref_set(&self->engine, engine);
    self->view_id = view_id;
++  self->generation = fl_semantics_generation_new(engine, view_id);
    return self;
  }
 
@@ -395,10 +1906,14 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 +  if (self->resetting || self->semantics_nodes_by_id == nullptr) {
 +    return;
 +  }
++  g_autoptr(FlViewAccessible) owner = FL_VIEW_ACCESSIBLE(g_object_ref(self));
 +  self->resetting = TRUE;
++  if (self->generation != nullptr) {
++    fl_semantics_generation_retire(self->generation);
++    g_clear_object(&self->generation);
++  }
 +  g_autoptr(GHashTable) nodes = self->semantics_nodes_by_id;
-+  self->semantics_nodes_by_id = self->retired ? nullptr : g_hash_table_new_full(
-+      g_direct_hash, g_direct_equal, nullptr, g_object_unref);
++  self->semantics_nodes_by_id = nullptr;
 +  self->root_node_created = FALSE;
 +  g_autoptr(FlAccessibleNode) root = FL_ACCESSIBLE_NODE(
 +      g_hash_table_lookup(nodes, GINT_TO_POINTER(kRootSemanticsNodeId)));
@@ -411,10 +1926,18 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 +        fl_accessible_node_retire(FL_ACCESSIBLE_NODE(value));
 +      }, nullptr);
 +  g_hash_table_remove_all(nodes);
-+  self->resetting = FALSE;
 +  if (root != nullptr) {
 +    g_signal_emit_by_name(self, "children-changed::remove", 0, root, nullptr);
 +  }
++  if (!self->retired) {
++    g_autoptr(FlEngine) engine = FL_ENGINE(g_weak_ref_get(&self->engine));
++    if (engine != nullptr) {
++      self->generation = fl_semantics_generation_new(engine, self->view_id);
++    }
++    self->semantics_nodes_by_id = g_hash_table_new_full(
++        g_direct_hash, g_direct_equal, nullptr, g_object_unref);
++  }
++  self->resetting = FALSE;
 +}
 +
 +void fl_view_accessible_retire(FlViewAccessible* self) {
@@ -424,13 +1947,16 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 +  }
 +  self->retired = TRUE;
 +  g_weak_ref_set(&self->engine, nullptr);
++  if (self->generation != nullptr) {
++    fl_semantics_generation_retire(self->generation);
++    g_clear_object(&self->generation);
++  }
 +  fl_view_accessible_reset(self);
 +}
 +
  void fl_view_accessible_handle_update_semantics(
      FlViewAccessible* self,
      const FlutterSemanticsUpdate2* update) {
-@@ -160,5 +219,10 @@
    g_return_if_fail(FL_IS_VIEW_ACCESSIBLE(self));
 
 +  if (self->retired || self->resetting) {
@@ -442,7 +1968,6 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 -      g_hash_table_new_full(g_direct_hash, g_direct_equal, nullptr,
 +      g_hash_table_new_full(g_direct_hash, g_direct_equal, g_object_unref,
                              reinterpret_cast<GDestroyNotify>(fl_value_unref));
-@@ -165,6 +229,16 @@
    for (size_t i = 0; i < update->node_count; i++) {
 +    if (self->semantics_nodes_by_id != generation) {
 +      return;
@@ -460,7 +1985,10 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 +      return;
 +    }
      fl_accessible_node_set_actions(atk_node, node->actions);
-@@ -181,7 +255,11 @@
+     fl_accessible_node_set_name(atk_node, node->label);
+     fl_accessible_node_set_extents(
+@@ -180,13 +275,21 @@
+
      FlValue* children = fl_value_new_int32_list(
          node->children_in_traversal_order, node->child_count);
 -    g_hash_table_insert(pending_children, atk_node, children);
@@ -473,7 +2001,6 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 +  } context = {self, generation};
    g_hash_table_foreach_remove(
        pending_children,
-@@ -188,4 +266,8 @@
        [](gpointer key, gpointer value, gpointer user_data) -> gboolean {
 -        FlViewAccessible* self = FL_VIEW_ACCESSIBLE(user_data);
 +        auto* context = static_cast<PendingChildrenContext*>(user_data);
@@ -483,12 +2010,16 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 +        }
 
          FlAccessibleNode* parent = FL_ACCESSIBLE_NODE(key);
-@@ -209,4 +291,4 @@
+
+@@ -208,7 +311,7 @@
+
          return TRUE;
        },
 -      self);
 +      &context);
  }
+
+ void fl_view_accessible_send_announcement(FlViewAccessible* self,
 diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.h b/engine/src/flutter/shell/platform/linux/fl_view_accessible.h
 --- a/engine/src/flutter/shell/platform/linux/fl_view_accessible.h
 +++ b/engine/src/flutter/shell/platform/linux/fl_view_accessible.h
@@ -523,364 +2054,3 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view.cc b/engine/src/flu
    if (self->engine != nullptr) {
      // If this view holds the text input focus, clear the handler's widget
      // pointer so it does not dangle once this view is finalized.
-diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc b/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
---- a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
-+++ b/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
-@@ -38,6 +38,9 @@
- static gchar* get_substring(FlAccessibleTextField* self,
-                             glong start,
-                             glong end) {
-+  if (self->buffer == nullptr) {
-+    return g_strdup("");
-+  }
-   const gchar* value = gtk_entry_buffer_get_text(self->buffer);
-   glong length = g_utf8_strlen(value, -1);
-   if (end == -1) {
-@@ -209,8 +212,13 @@
-   return nullptr;
- }
-
--static void perform_set_text_action(FlAccessibleTextField* self,
--                                    const char* text) {
-+static gboolean perform_set_text_action(FlAccessibleTextField* self,
-+                                        const char* text) {
-+  if (self->buffer == nullptr) {
-+    return FALSE;
-+  }
-+  g_autoptr(FlAccessibleTextField) owner =
-+      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
-   g_autoptr(FlValue) value = fl_value_new_string(text);
-   g_autoptr(FlStandardMessageCodec) codec = fl_standard_message_codec_new();
-   g_autoptr(GBytes) message =
-@@ -218,11 +226,17 @@
-
-   fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(self),
-                                     kFlutterSemanticsActionSetText, message);
-+  return self->buffer != nullptr;
- }
-
--static void perform_set_selection_action(FlAccessibleTextField* self,
--                                         gint base,
--                                         gint extent) {
-+static gboolean perform_set_selection_action(FlAccessibleTextField* self,
-+                                             gint base,
-+                                             gint extent) {
-+  if (self->buffer == nullptr) {
-+    return FALSE;
-+  }
-+  g_autoptr(FlAccessibleTextField) owner =
-+      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
-   g_autoptr(FlValue) value = fl_value_new_map();
-   fl_value_set_string_take(value, "base", fl_value_new_int(base));
-   fl_value_set_string_take(value, "extent", fl_value_new_int(extent));
-@@ -233,15 +247,19 @@
-
-   fl_accessible_node_perform_action(
-       FL_ACCESSIBLE_NODE(self), kFlutterSemanticsActionSetSelection, message);
-+  return self->buffer != nullptr;
- }
-
--// Implements GObject::dispose.
--static void fl_accessible_text_field_dispose(GObject* object) {
--  FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(object);
--
--  g_clear_object(&self->buffer);
--
--  G_OBJECT_CLASS(fl_accessible_text_field_parent_class)->dispose(object);
-+// Implements FlAccessibleNode::retire.
-+static void fl_accessible_text_field_retire(FlAccessibleNode* node) {
-+  FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(node);
-+  g_autoptr(GtkEntryBuffer) buffer = self->buffer;
-+  self->buffer = nullptr;
-+  self->selection_base = -1;
-+  self->selection_extent = -1;
-+  if (buffer != nullptr) {
-+    g_signal_handlers_disconnect_by_data(buffer, self);
-+  }
- }
-
- // Implements FlAccessibleNode::set_value.
-@@ -250,11 +268,17 @@
-   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(node));
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(node);
-
--  if (g_strcmp0(gtk_entry_buffer_get_text(self->buffer), value) == 0) {
-+  if (self->buffer == nullptr) {
-     return;
-   }
-+  g_autoptr(FlAccessibleTextField) owner =
-+      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
-+  g_autoptr(GtkEntryBuffer) buffer = GTK_ENTRY_BUFFER(g_object_ref(self->buffer));
-+  if (g_strcmp0(gtk_entry_buffer_get_text(buffer), value) == 0) {
-+    return;
-+  }
-
--  gtk_entry_buffer_set_text(self->buffer, value, -1);
-+  gtk_entry_buffer_set_text(buffer, value, -1);
- }
-
- // Implements FlAccessibleNode::set_text_selection.
-@@ -264,6 +288,11 @@
-   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(node));
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(node);
-
-+  if (self->buffer == nullptr) {
-+    return;
-+  }
-+  g_autoptr(FlAccessibleTextField) owner =
-+      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
-   gboolean caret_moved = extent != self->selection_extent;
-   gboolean has_selection = base != extent;
-   gboolean had_selection = self->selection_base != self->selection_extent;
-@@ -277,7 +306,8 @@
-     g_signal_emit_by_name(self, "text-selection-changed", nullptr);
-   }
-
--  if (caret_moved) {
-+  if (caret_moved && self->buffer != nullptr &&
-+      self->selection_base == base && self->selection_extent == extent) {
-     g_signal_emit_by_name(self, "text-caret-moved", extent, nullptr);
-   }
- }
-@@ -324,7 +354,7 @@
-   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), 0);
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
-
--  return gtk_entry_buffer_get_length(self->buffer);
-+  return self->buffer != nullptr ? gtk_entry_buffer_get_length(self->buffer) : 0;
- }
-
- // Implements AtkText::get_text.
-@@ -347,6 +377,16 @@
-   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), nullptr);
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
-
-+  if (start_offset != nullptr) {
-+    *start_offset = -1;
-+  }
-+  if (end_offset != nullptr) {
-+    *end_offset = -1;
-+  }
-+  if (self->buffer == nullptr) {
-+    return nullptr;
-+  }
-+
-   switch (granularity) {
-     case ATK_TEXT_GRANULARITY_CHAR:
-       return get_char_at_offset(self, offset, start_offset, end_offset);
-@@ -370,6 +410,12 @@
-     AtkTextBoundary boundary_type,
-     gint* start_offset,
-     gint* end_offset) {
-+  if (start_offset != nullptr) {
-+    *start_offset = -1;
-+  }
-+  if (end_offset != nullptr) {
-+    *end_offset = -1;
-+  }
-   switch (boundary_type) {
-     case ATK_TEXT_BOUNDARY_CHAR:
-       return fl_accessible_text_field_get_string_at_offset(
-@@ -410,8 +456,7 @@
-   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), false);
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
-
--  perform_set_selection_action(self, offset, offset);
--  return TRUE;
-+  return perform_set_selection_action(self, offset, offset);
- }
-
- // Implements AtkText::get_n_selections.
-@@ -419,7 +464,7 @@
-   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), 0);
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
-
--  if (self->selection_base == self->selection_extent) {
-+  if (self->buffer == nullptr || self->selection_base == self->selection_extent) {
-     return 0;
-   }
-
-@@ -434,7 +479,14 @@
-   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), nullptr);
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
-
--  if (selection_num != 0 || self->selection_base == self->selection_extent) {
-+  if (start_offset != nullptr) {
-+    *start_offset = -1;
-+  }
-+  if (end_offset != nullptr) {
-+    *end_offset = -1;
-+  }
-+  if (self->buffer == nullptr || selection_num != 0 ||
-+      self->selection_base == self->selection_extent) {
-     return nullptr;
-   }
-
-@@ -458,12 +510,11 @@
-   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), false);
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
-
--  if (self->selection_base != self->selection_extent) {
-+  if (self->buffer == nullptr || self->selection_base != self->selection_extent) {
-     return FALSE;
-   }
-
--  perform_set_selection_action(self, start_offset, end_offset);
--  return TRUE;
-+  return perform_set_selection_action(self, start_offset, end_offset);
- }
-
- // Implements AtkText::remove_selection.
-@@ -472,13 +523,13 @@
-   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), false);
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
-
--  if (selection_num != 0 || self->selection_base == self->selection_extent) {
-+  if (self->buffer == nullptr || selection_num != 0 ||
-+      self->selection_base == self->selection_extent) {
-     return FALSE;
-   }
-
--  perform_set_selection_action(self, self->selection_extent,
--                               self->selection_extent);
--  return TRUE;
-+  return perform_set_selection_action(self, self->selection_extent,
-+                                     self->selection_extent);
- }
-
- // Implements AtkText::set_selection.
-@@ -489,12 +540,11 @@
-   g_return_val_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(text), false);
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(text);
-
--  if (selection_num != 0) {
-+  if (self->buffer == nullptr || selection_num != 0) {
-     return FALSE;
-   }
-
--  perform_set_selection_action(self, start_offset, end_offset);
--  return TRUE;
-+  return perform_set_selection_action(self, start_offset, end_offset);
- }
-
- // Implements AtkEditableText::set_text_contents.
-@@ -515,11 +565,21 @@
-   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
-
--  *position +=
--      gtk_entry_buffer_insert_text(self->buffer, *position, string, length);
--
--  perform_set_text_action(self, gtk_entry_buffer_get_text(self->buffer));
--  perform_set_selection_action(self, *position, *position);
-+  if (self->buffer == nullptr) {
-+    return;
-+  }
-+  g_autoptr(FlAccessibleTextField) owner =
-+      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
-+  g_autoptr(GtkEntryBuffer) buffer = GTK_ENTRY_BUFFER(g_object_ref(self->buffer));
-+  const gint next_position = *position +
-+      gtk_entry_buffer_insert_text(buffer, *position, string, length);
-+  if (self->buffer != buffer ||
-+      !perform_set_text_action(self, gtk_entry_buffer_get_text(buffer))) {
-+    return;
-+  }
-+  if (perform_set_selection_action(self, next_position, next_position)) {
-+    *position = next_position;
-+  }
- }
-
- // Implements AtkEditableText::delete_text.
-@@ -529,9 +589,17 @@
-   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
-
--  gtk_entry_buffer_delete_text(self->buffer, start_pos, end_pos - start_pos);
--
--  perform_set_text_action(self, gtk_entry_buffer_get_text(self->buffer));
-+  if (self->buffer == nullptr) {
-+    return;
-+  }
-+  g_autoptr(FlAccessibleTextField) owner =
-+      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
-+  g_autoptr(GtkEntryBuffer) buffer = GTK_ENTRY_BUFFER(g_object_ref(self->buffer));
-+  gtk_entry_buffer_delete_text(buffer, start_pos, end_pos - start_pos);
-+  if (self->buffer != buffer ||
-+      !perform_set_text_action(self, gtk_entry_buffer_get_text(buffer))) {
-+    return;
-+  }
-   perform_set_selection_action(self, start_pos, start_pos);
- }
-
-@@ -542,7 +610,11 @@
-   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
-
--  perform_set_selection_action(self, start_pos, end_pos);
-+  g_autoptr(FlAccessibleTextField) owner =
-+      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
-+  if (!perform_set_selection_action(self, start_pos, end_pos)) {
-+    return;
-+  }
-
-   fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(editable_text),
-                                     kFlutterSemanticsActionCopy, nullptr);
-@@ -555,7 +627,11 @@
-   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
-
--  perform_set_selection_action(self, start_pos, end_pos);
-+  g_autoptr(FlAccessibleTextField) owner =
-+      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
-+  if (!perform_set_selection_action(self, start_pos, end_pos)) {
-+    return;
-+  }
-
-   fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(editable_text),
-                                     kFlutterSemanticsActionCut, nullptr);
-@@ -567,7 +643,11 @@
-   g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
-   FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
-
--  perform_set_selection_action(self, position, position);
-+  g_autoptr(FlAccessibleTextField) owner =
-+      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
-+  if (!perform_set_selection_action(self, position, position)) {
-+    return;
-+  }
-
-   fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(editable_text),
-                                     kFlutterSemanticsActionPaste, nullptr);
-@@ -575,7 +655,7 @@
-
- static void fl_accessible_text_field_class_init(
-     FlAccessibleTextFieldClass* klass) {
--  G_OBJECT_CLASS(klass)->dispose = fl_accessible_text_field_dispose;
-+  FL_ACCESSIBLE_NODE_CLASS(klass)->retire = fl_accessible_text_field_retire;
-   FL_ACCESSIBLE_NODE_CLASS(klass)->set_value =
-       fl_accessible_text_field_set_value;
-   FL_ACCESSIBLE_NODE_CLASS(klass)->set_text_selection =
-@@ -623,6 +703,11 @@
-       self->buffer, "inserted-text",
-       G_CALLBACK(+[](FlAccessibleTextField* self, guint position, gchar* chars,
-                      guint n_chars) {
-+        if (self->buffer == nullptr) {
-+          return;
-+        }
-+        g_autoptr(FlAccessibleTextField) owner =
-+            FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
-         g_signal_emit_by_name(self, "text-insert", position, n_chars, chars,
-                               nullptr);
-       }),
-@@ -631,6 +716,11 @@
-   g_signal_connect_object(self->buffer, "deleted-text",
-                           G_CALLBACK(+[](FlAccessibleTextField* self,
-                                          guint position, guint n_chars) {
-+                            if (self->buffer == nullptr) {
-+                              return;
-+                            }
-+                            g_autoptr(FlAccessibleTextField) owner =
-+                                FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
-                             g_autofree gchar* chars = atk_text_get_text(
-                                 ATK_TEXT(self), position, position + n_chars);
-                             g_signal_emit_by_name(self, "text-remove", position,

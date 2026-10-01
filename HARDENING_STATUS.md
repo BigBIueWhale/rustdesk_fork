@@ -1667,8 +1667,20 @@ refuses duplicate scopes, and still requires one caption, the exact PID and reta
 all subsequent observations. It does not restart identity tracking after binding or accept menu text
 as a dialog. Complete 193,598-byte serial is `evidence/dialog-entry-e7377076.serial.log`; small
 diagnostics are separately retained. Listeners were unchanged, owned teardown joined, and locked
-inactive-root cleanup recovered 2,967,736,320 allocated bytes. Fresh scoped-caption replay remains
-required; no product ownership change or original-hang causation is inferred from this transition.
+inactive-root cleanup recovered 2,967,736,320 allocated bytes. No product ownership change or
+original-hang causation is inferred from this transition.
+Exact scoped harness `d0105c2d` replayed the same app without rebuilding in 121,550 host BOOTTIME ms.
+Caption selection found the actual `Alert`-scoped title after two samples/280 ms, and all five strict
+identity observations passed. Its next native extent call returned a rectangle with width/height -1
+and error code 1; no resize, focus or reconnect ran. This proves scoped entry and stable identity,
+not native geometry, dialog/rebuild behavior or a complete consumer pass. The error's code alone
+does not establish a crash, unsupported method or timeout. Failure diagnostics now include the bounded,
+sanitized error message and distinguish geometry unavailability from identity instability; all
+acceptance conditions remain unchanged. Complete 200,750-byte raw serial is retained at
+`evidence/dialog-scope-d0105c2d.serial.log` with separate bounded viewer/capture/listener records.
+Host listener inventories were identical, drift records empty and owned teardown joined. Exact
+locked inactive-root reconciliation recovered 2,967,601,152 allocated bytes; no run/overlay remains.
+Native extent classification and broader product/platform/installed/LPE/release claims remain OPEN.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

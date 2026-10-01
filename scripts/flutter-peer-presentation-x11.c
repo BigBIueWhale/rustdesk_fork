@@ -740,9 +740,11 @@ static int read_control_position(AtspiAccessible *control, int *x, int *y) {
     }
     if (status != 0) {
         fprintf(stderr, "FLUTTER_PEER_DIALOG_EXTENTS_FAIL component=present rect=%d "
-                "width=%d height=%d error_code=%d\n", rect != NULL,
+                "width=%d height=%d error_domain=%u error_code=%d", rect != NULL,
                 rect != NULL ? rect->width : -1, rect != NULL ? rect->height : -1,
+                error != NULL ? error->domain : 0U,
                 error != NULL ? error->code : 0);
+        print_sanitized_accessible_string("error", error != NULL ? error->message : NULL);
     }
     if (error != NULL) g_error_free(error);
     if (rect != NULL) g_boxed_free(ATSPI_TYPE_RECT, rect);
@@ -1429,9 +1431,12 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
     fprintf(stderr, "FLUTTER_PEER_DIALOG_CAPTION found=%d scope=Alert attempts=%u elapsed_ms=%llu\n",
             caption != NULL, caption_attempts,
             (unsigned long long)(monotonic_millis() - caption_wait_started));
-    if (caption == NULL || require_same_dialog((unsigned int)viewer->pid, caption) != 0 ||
-        read_control_position(caption, &caption_x, &caption_y) != 0) {
+    if (caption == NULL || require_same_dialog((unsigned int)viewer->pid, caption) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL actual dialog did not become stable\n", stderr);
+        goto out;
+    }
+    if (read_control_position(caption, &caption_x, &caption_y) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL actual dialog layout unavailable\n", stderr);
         goto out;
     }
     puts("FLUTTER_PEER_DIALOG_READY dialog=trackpad_speed native_accessible=true");

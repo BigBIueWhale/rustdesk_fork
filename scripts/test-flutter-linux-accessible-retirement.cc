@@ -301,6 +301,65 @@ static void test_generation(FlEngine* engine) {
   std::fflush(stdout);
 }
 
+static void test_node_geometry(FlEngine* engine) {
+  g_autoptr(FlSemanticsGeneration) generation = fl_semantics_generation_new(engine, 7);
+  g_autoptr(FlAccessibleNode) parent = fl_accessible_node_new(generation, 9);
+  g_autoptr(FlAccessibleNode) child = fl_accessible_node_new(generation, 11);
+  fl_accessible_node_set_extents(parent, 40, 50, 100, 80);
+  fl_accessible_node_set_extents(child, 5, 7, 20, 10);
+  fl_accessible_node_set_parent(child, ATK_OBJECT(parent), 0);
+  g_autoptr(GPtrArray) children = g_ptr_array_new_with_free_func(g_object_unref);
+  g_ptr_array_add(children, g_object_ref(child));
+  fl_accessible_node_set_children(parent, children);
+  g_assert_true(atk_object_get_parent(ATK_OBJECT(child)) == ATK_OBJECT(parent));
+
+  // The public setter defines offsets relative to the immediate parent. These
+  // are real node queries, not a claim about GtkWidget/root screen geometry.
+  gint relative[] = {99, 98, 97, 96};
+  atk_component_get_extents(ATK_COMPONENT(child), &relative[0], &relative[1],
+                            &relative[2], &relative[3], ATK_XY_PARENT);
+  gint position[] = {99, 98};
+  atk_component_get_position(ATK_COMPONENT(child), &position[0], &position[1], ATK_XY_PARENT);
+  const gboolean contains = atk_component_contains(ATK_COMPONENT(child), 6, 8, ATK_XY_PARENT);
+
+  // Keep both objects and the generation alive while only the ancestor retires.
+  // Its unavailable geometry must not become a usable child rectangle.
+  fl_accessible_node_retire(parent);
+  g_assert_false(fl_accessible_node_is_live(parent));
+  g_assert_true(fl_accessible_node_is_live(child));
+  g_assert_true(fl_semantics_generation_is_active(generation));
+  gint screen[] = {99, 98, 97, 96}, window[] = {99, 98, 97, 96};
+  atk_component_get_extents(ATK_COMPONENT(child), &screen[0], &screen[1],
+                            &screen[2], &screen[3], ATK_XY_SCREEN);
+  atk_component_get_extents(ATK_COMPONENT(child), &window[0], &window[1],
+                            &window[2], &window[3], ATK_XY_WINDOW);
+  gint size[] = {99, 98};
+  atk_component_get_size(ATK_COMPONENT(child), &size[0], &size[1]);
+  const gboolean retired_contains = atk_component_contains(ATK_COMPONENT(child), 6, 8, ATK_XY_WINDOW);
+  // Preserve every observation before the first assertion can terminate the test.
+  std::printf("ENGINE_ACCESSIBLE_NODE_GEOMETRY_OBSERVED parent=%d,%d,%d,%d position=%d,%d contains=%d retired_screen=%d,%d,%d,%d retired_window=%d,%d,%d,%d retired_size=%d,%d retired_contains=%d\n",
+              relative[0], relative[1], relative[2], relative[3], position[0], position[1], contains,
+              screen[0], screen[1], screen[2], screen[3], window[0], window[1], window[2], window[3],
+              size[0], size[1], retired_contains);
+  std::fflush(stdout);
+  g_assert_cmpint(relative[0], ==, 5);
+  g_assert_cmpint(relative[1], ==, 7);
+  g_assert_cmpint(relative[2], ==, 20);
+  g_assert_cmpint(relative[3], ==, 10);
+  g_assert_cmpint(position[0], ==, 5);
+  g_assert_cmpint(position[1], ==, 7);
+  g_assert_true(contains);
+  for (guint i = 0; i < 4; i++) {
+    g_assert_cmpint(screen[i], ==, -1);
+    g_assert_cmpint(window[i], ==, -1);
+  }
+  g_assert_cmpint(size[0], ==, -1);
+  g_assert_cmpint(size[1], ==, -1);
+  g_assert_false(retired_contains);
+  std::puts("ENGINE_ACCESSIBLE_NODE_GEOMETRY=pass unit=real-node parent_relative=true retired_ancestor=unavailable position_size=consistent contains=closed");
+  std::fflush(stdout);
+}
+
 static void retire_text(AtkObject* object, TextRetirement* context) {
   context->notifications++;
   if (context->dispose) {
@@ -573,6 +632,7 @@ int main() {
   test_tree_revocation(engine);
   test_generation(engine);
   test_text_field(engine);
+  test_node_geometry(engine);
 #endif
   return 0;
 }

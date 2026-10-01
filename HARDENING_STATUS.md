@@ -2061,7 +2061,16 @@ Prior failures remain in `evidence/engine-generation-owner-{ce2782cf,a69f5814}.*
 combined-build timeout before corrected execution, then compiler-path comparison after native pass.
 Full engine link, actual FlView teardown/restart, subtree/type-change retirement, live geometry,
 Unicode/nested edits, shipped app replay, installed-service/LPE and Android/Windows causation remain
-OPEN. Product patch/native fixture bytes are unchanged since `ce2782cf`.
+OPEN. That pass used the production patch/native fixture bytes from `ce2782cf`.
+
+**Node coordinate/ancestor geometry — NEW NATIVE REGRESSION; EXECUTION PENDING.**
+The real-node fixture now queries explicit immediate-parent extents through GetExtents,
+position and contains, then retires only the retained ancestor while the child/tree generation
+remain live and requires unavailable SCREEN/WINDOW extents, size and containment. It records
+all observations before asserting. The current implementation adds parent coordinates even
+for PARENT and ignores parent dimensions/unavailability; a native failure is expected, not
+waived. The production patch is unchanged. This is the next falsification step toward the full
+direct GTK provider, not a coordinate/transform fix, widget geometry or app/integration result.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

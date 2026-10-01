@@ -471,7 +471,11 @@ raise SystemExit(subprocess.call([
                     "ENGINE_ACCESSIBLE_TEXT_FIELD_RETIREMENT=pass unit=real-text-field "
                     "retired_disposed=closed live_edits=allowed reentrant_buffer=closed "
                     "reentrant_selection=closed reentrant_dispatch=closed "
-                    "caller_release=joined late_edits=refused")
+                    "caller_release=joined late_edits=refused\n"
+                    "ENGINE_ACCESSIBLE_NODE_GEOMETRY_OBSERVED parent=5,7,20,10 position=5,7 contains=1 "
+                    "retired_screen=-1,-1,-1,-1 retired_window=-1,-1,-1,-1 retired_size=-1,-1 retired_contains=0\n"
+                    "ENGINE_ACCESSIBLE_NODE_GEOMETRY=pass unit=real-node parent_relative=true "
+                    "retired_ancestor=unavailable position_size=consistent contains=closed")
         require(output == (expected + "\n").encode(), "native node retirement receipt differs")
         print(expected, flush=True)
 

@@ -800,10 +800,10 @@ static void test_unicode_selection(FlSemanticsGeneration* generation,
     fl_accessible_node_set_text_selection(text, entry.flutter_base, entry.flutter_extent);
     gint start = -1, end = -1;
     g_autofree gchar* selected = atk_text_get_selection(ATK_TEXT(text), 0, &start, &end);
-    std::printf("ENGINE_TEXT_SELECTION_OBSERVED flutter=%d,%d atk=%d,%d caret=%d selected=%s\n",
+    std::fprintf(stderr, "ENGINE_TEXT_SELECTION_OBSERVED flutter=%d,%d atk=%d,%d caret=%d selected=%s\n",
                 entry.flutter_base, entry.flutter_extent, start, end,
                 atk_text_get_caret_offset(ATK_TEXT(text)), selected ? selected : "(null)");
-    std::fflush(stdout);
+    std::fflush(stderr);
     g_assert_cmpstr(selected, ==, entry.selected);
     g_assert_cmpint(start, ==, MIN(entry.atk_base, entry.atk_extent));
     g_assert_cmpint(end, ==, MAX(entry.atk_base, entry.atk_extent));

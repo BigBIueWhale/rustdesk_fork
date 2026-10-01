@@ -1961,8 +1961,18 @@ under the same sole recording-engine boundary. It requires reset/replacement ide
 retirement during root creation, post-dispose defunct root state, and safe closed text-field
 queries/edits. The helper now digests each unit binary before execution, so an assertion or
 critical failure remains bound to its exact artifact. Seven original/candidate units are
-compiled; deadlines, isolation and inputs are unchanged. This expanded native transaction
-is pending, and expected assertions are not a pass or a product correction.
+compiled; deadlines, isolation and inputs are unchanged. Exact `db15d7e3`, tree
+`560ae059c52fffb753dfb91018dbc9b069aa5bbf`, compiled all seven original/candidate units
+and passed the baseline/base-node cases, then failed the retained disposed-root state query:
+the real implementation returned null. Tool 38363 was terminal 1; outer/capture 1/0 in
+100,450 host BOOTTIME ms. The text-field case did not execute. Full 81,440-byte raw serial
+is `evidence/engine-root-text-db15d7e3.serial.log`, SHA256
+`ee1819224d3b9680f9c032ee21811129a16e8e5f992cc26825a563421a377147`.
+Matching complete capture/outer/listener/exporter records are retained mode 0400; stopped
+scratch was identity-bound reconciled under the admission lock, with listeners unchanged.
+The next candidate returns an owned defunct state for retired roots and an empty state set
+for a still-live root with no semantics node. Its unchanged native assertions remain pending;
+no root/text-field or broader product pass is claimed.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
@@ -2101,7 +2111,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   diagnostics are retained. Latest successful joined cleanup is recorded in the expanded
   node-unit disposition above; the preceding failed-patch run was explicitly reconciled.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 624,705,536 allocated bytes (0.582 GiB). The actual outer
+  small evidence records occupy 624,861,184 allocated bytes (0.582 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

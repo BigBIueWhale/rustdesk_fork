@@ -2207,7 +2207,25 @@ reclaiming 13,415,931,904 allocated bytes. The patch now preserves that original
 the focused real-root fixture calls live and retired announcements, requiring one real
 live signal and no post-retirement signal so this path cannot disappear from its link.
 No link flags, dependencies, library versions, assertion or resource bounds are relaxed.
-Corrected full build/publication, shared integration and consumer results are PENDING. Linking alone cannot
+Exact `27f2a4f7` passed the corrected native announcement/lifetime/geometry cases at both GTK scales,
+all four upstream object compiles, and the complete original 4,436-step engine build and subsequent
+no-work dry plan. Artifact collection then refused `flutter_linux/fl_application.h`; the overall
+transaction failed, and no artifact was published. The original GN copy rule uses a hardlink, whereas
+the collector required every output to be single-link. Full 128,189-byte raw serial is
+`evidence/engine-link-27f2a4f7.serial.log`, SHA256
+`c22d43df2c2b88822d5d40a7a05f306759dc917a30886ec0567c845e3f37a4b7`;
+outer/capture were 1/0 in 724,040 host BOOTTIME ms. Complete listener/exporter and scoped
+absence records are sealed; identical listener snapshots and absent owned processes, image
+handles, mounts and sockets preceded locked identity-bound reconciliation of the sole stopped
+run, reclaiming 13,469,368,320 allocated bytes. No failed VM disk remains.
+The collector now admits a header only as an exact two-link alias of its declared source
+header, retaining both descriptors and checking complete metadata through sealing. Compiled
+ELFs remain single-link; the final archive still contains only canonical regular file bytes,
+not links. Its header inventory must equal all 26 declared names. Eight mandatory real-filesystem
+cases exercise valid source aliases, excess/foreign aliases, symlinks, mutation, single-link
+header refusal and compiled-output link policy before preparation. Corrected collection/publication
+and shared integration results are PENDING; fixture tests are not product execution.
+Full consumer results remain PENDING. Linking alone cannot
 prove real FlView restart, AT-SPI geometry, app presentation, shipped SDK integration,
 Wayland behavior, reproducibility equality or Android/Windows causation; these remain OPEN.
 Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

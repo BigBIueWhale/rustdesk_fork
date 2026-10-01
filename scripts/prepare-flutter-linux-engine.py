@@ -651,6 +651,33 @@ raise SystemExit(subprocess.call([
         build_engine(engine, framework, env, pin, patch_bytes, build_context)
 
 
+@contextmanager
+def engine_output(output, public, name):
+    header = re.fullmatch(r"flutter_linux/[a-z0-9_]+\.h", name) is not None
+    require(header or name in ("libflutter_linux_gtk.so", "gen_snapshot"),
+            "engine output role differs")
+    with ExitStack() as resources:
+        fd = os.open(output / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+        source = resources.enter_context(os.fdopen(fd, "rb"))
+        before = os.fstat(fd)
+        require(stat.S_ISREG(before.st_mode) and before.st_uid == before.st_gid == 1000
+                and before.st_nlink == (2 if header else 1)
+                and 0 < before.st_size <= FILE_LIMIT, "engine artifact authority differs: " + name)
+        if header:
+            # The original GN copy rule hardlinks within this private build tree.
+            # Its one source alias is allowed only after proving the exact inode.
+            original_fd = os.open(public / name,
+                                  os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+            original = resources.enter_context(os.fdopen(original_fd, "rb"))
+            require(unchanged(before, os.fstat(original_fd)),
+                    "engine header source identity differs: " + name)
+        yield source, before
+        require(unchanged(before, os.fstat(fd)), "engine output changed: " + name)
+        if header:
+            require(unchanged(before, os.fstat(original.fileno())),
+                    "engine header source changed: " + name)
+
+
 def build_engine(engine, framework, env, pin, patch_bytes, context):
     """Explicit integration build; no workload or deadline expansion in prepare()."""
     deadline = time.monotonic() + 7200
@@ -697,8 +724,9 @@ def build_engine(engine, framework, env, pin, patch_bytes, context):
             .splitlines()[-1:] == [b"ninja: no work to do."], "engine targets are not current")
     names = ["libflutter_linux_gtk.so", "gen_snapshot"]
     header_paths = sorted((output / "flutter_linux").glob("*.h"))
-    require(len(header_paths) == 26 and all(path.is_file() and not path.is_symlink()
-                                         for path in header_paths), "engine public header inventory differs")
+    require([path.name for path in header_paths] == sorted(declared)
+            and all(path.is_file() and not path.is_symlink() for path in header_paths),
+            "engine public header inventory differs")
     names.extend("flutter_linux/" + path.name for path in header_paths)
     manifest = {
         "format": "rustdesk-flutter-linux-engine-artifact-v1",
@@ -719,12 +747,8 @@ def build_engine(engine, framework, env, pin, patch_bytes, context):
         opened = {}
         total = 0
         for name in names:
-            fd = os.open(output / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
-            source = resources.enter_context(os.fdopen(fd, "rb"))
-            before = os.fstat(fd)
-            require(stat.S_ISREG(before.st_mode) and before.st_uid == before.st_gid == 1000
-                    and before.st_nlink == 1 and 0 < before.st_size <= FILE_LIMIT,
-                    "engine artifact authority differs: " + name)
+            source, before = resources.enter_context(engine_output(
+                output, Path(engine) / "flutter/shell/platform/linux/public", name))
             total += before.st_size
             require(total <= FILE_LIMIT - 1048576, "engine artifact byte budget exhausted")
             if name in names[:2]:
@@ -776,6 +800,70 @@ def build_engine(engine, framework, env, pin, patch_bytes, context):
           + " manifest_sha256=" + hashlib.sha256(manifest_bytes).hexdigest()
           + " bytes=" + str(archive.stat().st_size) + " files=" + str(len(names))
           + " app_execution=unexecuted", flush=True)
+
+
+def engine_output_self_test():
+    def refused(action):
+        try:
+            action()
+        except (ValueError, OSError):
+            return
+        raise ValueError("unsafe engine output was admitted")
+
+    with tempfile.TemporaryDirectory(prefix="engine-output-", dir="/work") as root:
+        root = Path(root)
+        output, public = root / "out", root / "public"
+        for parent in (output, public):
+            (parent / "flutter_linux").mkdir(parents=True, mode=0o700)
+        name = "flutter_linux/fl_application.h"
+        original, generated = public / name, output / name
+        original.write_bytes(b"source-selected header\n")
+        os.link(original, generated)
+
+        def read(name=name):
+            with engine_output(output, public, name) as (source, before):
+                require(source.read() and before.st_size > 0, "engine output data was lost")
+
+        read()
+        require(original.stat().st_nlink == generated.stat().st_nlink == 2,
+                "GN header fixture is not a real hardlink")
+        alias = root / "alias"
+        os.link(generated, alias)
+        refused(read)
+        alias.unlink()
+
+        generated.unlink()
+        os.link(original, alias)
+        unrelated = root / "unrelated"
+        unrelated.write_bytes(original.read_bytes())
+        os.link(unrelated, generated)
+        refused(read)
+        generated.unlink()
+        alias.unlink()
+        os.link(original, generated)
+
+        generated.unlink()
+        generated.symlink_to(original)
+        refused(read)
+        generated.unlink()
+        os.link(original, generated)
+
+        def mutate():
+            with engine_output(output, public, name):
+                original.write_bytes(b"changed through the source alias\n")
+        refused(mutate)
+
+        generated.unlink()
+        generated.write_bytes(original.read_bytes())
+        refused(read)
+
+        binary = output / "gen_snapshot"
+        binary.write_bytes(b"single-link compiled output")
+        read("gen_snapshot")
+        os.link(binary, alias)
+        refused(lambda: read("gen_snapshot"))
+    print("ENGINE_ARTIFACT_INPUT_TEST=pass cases=8 headers=source-bound "
+          "compiled=single-link mutation=refused cleanup=joined", flush=True)
 
 
 def self_test():
@@ -857,6 +945,7 @@ def main():
             "engine preparation AppArmor profile differs")
     resource.setrlimit(resource.RLIMIT_FSIZE, (FILE_LIMIT, FILE_LIMIT))
     self_test()
+    engine_output_self_test()
     prepare(build_context)
 
 

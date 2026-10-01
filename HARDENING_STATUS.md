@@ -1970,9 +1970,32 @@ is `evidence/engine-root-text-db15d7e3.serial.log`, SHA256
 `ee1819224d3b9680f9c032ee21811129a16e8e5f992cc26825a563421a377147`.
 Matching complete capture/outer/listener/exporter records are retained mode 0400; stopped
 scratch was identity-bound reconciled under the admission lock, with listeners unchanged.
-The next candidate returns an owned defunct state for retired roots and an empty state set
-for a still-live root with no semantics node. Its unchanged native assertions remain pending;
-no root/text-field or broader product pass is claimed.
+Exact `497e5e6b`, tree `04fd80d1e180ad231e4cd769affd126d7acaface`, returns an owned
+defunct state for retired roots and an empty state set for a still-live root with no semantics
+node. The unchanged native node and root reset/replacement/reentrant/disposal cases passed,
+then the real text-field post-dispose character-count query failed with a fatal
+`gtk_entry_buffer_get_length` critical because its buffer had been cleared. Tool 36600 was
+terminal 1; outer/capture 1/0 in 96,220 host BOOTTIME ms. Later text/edit assertions did not
+execute; the whole transaction failed. Full 82,827-byte raw serial is
+`evidence/engine-root-state-497e5e6b.serial.log`, SHA256
+`d757ca24d97ff2b58993a15b4683d7a7d4ce1c90b0dc6b880b13eac4ca36c0bd`.
+Matching complete capture/outer/listener/exporter records are retained mode 0400. The exact
+stopped run was reconciled under the admission lock after verifying its owner, image handles,
+sockets and mounts were gone; 12,971,032,576 allocated bytes were reclaimed. This is a native
+text-field availability failure, not product/LPE closure or an Android/Windows diagnosis.
+
+**Text-field terminal resource correction — SOURCE CANDIDATE; NATIVE RETEST PENDING.**
+Node retirement now owns one irreversible cleanup path, with a subclass resource hook before
+defunct notification; disposal uses that same path. The text-field hook detaches its buffer,
+disconnects buffer notifications and clears selection state. ATK queries report unavailable
+text/selection safely and edits refuse after retirement. Admitted synchronous buffer edits,
+selection notifications and action sequences retain the exact self/buffer resources they use
+and stop continuation after retirement, including caller-reference loss. The native fixture
+requires live encoded edits, explicit retirement and repeated disposal, buffer/selection/action
+callback retirement or disposal, late-edit refusal and joined last-caller-reference release.
+The existing fatal-critical policy and old failing disposal assertions remain. This candidate
+is not yet a native pass, whole-tree atomic revocation, a direct GTK provider, a running engine
+or an app/installed-service result. Whole-tree generation authority and geometry remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
@@ -2109,9 +2132,10 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   a concurrent outer invocation also refused without creating another root. User-authorized removal of
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest successful joined cleanup is recorded in the expanded
-  node-unit disposition above; the preceding failed-patch run was explicitly reconciled.
+  node-unit disposition above; subsequent failed runs were explicitly reconciled, most recently
+  `run.u39X2NGANP` (identity `66306:182977793`), reclaiming 12,971,032,576 allocated bytes.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 624,861,184 allocated bytes (0.582 GiB). The actual outer
+  small evidence records occupy 625,025,024 allocated bytes (0.582 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

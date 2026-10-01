@@ -4,18 +4,36 @@
 #include "flutter/shell/platform/linux/fl_accessible_node.h"
 #include "flutter/shell/platform/linux/fl_accessible_text_field.h"
 #include "flutter/shell/platform/linux/fl_view_accessible.h"
+#include "flutter/shell/platform/linux/public/flutter_linux/fl_standard_message_codec.h"
+#include "flutter/shell/platform/linux/public/flutter_linux/fl_value.h"
 
 #include <cstdio>
 
 struct _FlEngine {
   GObject parent_instance;
   guint dispatches;
+  gchar* last_text;
+  gint selection_base;
+  gint selection_extent;
+  FlAccessibleNode* retire_on_dispatch;
+  gboolean dispose_on_dispatch;
 };
 
 G_DEFINE_TYPE(FlEngine, fl_engine, G_TYPE_OBJECT)
 
-static void fl_engine_class_init(FlEngineClass*) {}
-static void fl_engine_init(FlEngine* self) { self->dispatches = 0; }
+static void fl_engine_finalize(GObject* object) {
+  g_free(FL_ENGINE(object)->last_text);
+  G_OBJECT_CLASS(fl_engine_parent_class)->finalize(object);
+}
+
+static void fl_engine_class_init(FlEngineClass* klass) {
+  G_OBJECT_CLASS(klass)->finalize = fl_engine_finalize;
+}
+
+static void fl_engine_init(FlEngine* self) {
+  self->selection_base = -1;
+  self->selection_extent = -1;
+}
 
 #if !defined(LEGACY_BASELINE)
 static void retire_on_child_removal(AtkObject* object, guint, gpointer, gpointer) {
@@ -101,34 +119,245 @@ static void test_root(FlEngine* engine) {
   std::fflush(stdout);
 }
 
-static void test_text_field(FlEngine* engine) {
-  g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(engine, 7, 10);
-  fl_accessible_node_set_value(text, "original");
-  g_assert_cmpint(atk_text_get_character_count(ATK_TEXT(text)), ==, 8);
-  g_object_run_dispose(G_OBJECT(text));
+static void assert_text_field_closed(FlAccessibleNode* text, FlEngine* engine) {
+  const guint dispatches = engine->dispatches;
   g_assert_cmpint(atk_text_get_character_count(ATK_TEXT(text)), ==, 0);
   g_autofree gchar* value = atk_text_get_text(ATK_TEXT(text), 0, -1);
   g_assert_cmpstr(value, ==, "");
+  g_assert_cmpuint(atk_text_get_character_at_offset(ATK_TEXT(text), 0), ==, 0);
+  g_assert_cmpint(atk_text_get_caret_offset(ATK_TEXT(text)), ==, -1);
+  g_assert_cmpint(atk_text_get_n_selections(ATK_TEXT(text)), ==, 0);
+  const AtkTextGranularity granularities[] = {
+      ATK_TEXT_GRANULARITY_CHAR, ATK_TEXT_GRANULARITY_WORD,
+      ATK_TEXT_GRANULARITY_SENTENCE, ATK_TEXT_GRANULARITY_LINE,
+      ATK_TEXT_GRANULARITY_PARAGRAPH};
+  for (const auto granularity : granularities) {
+    gint start = 99, end = 98;
+    g_autofree gchar* part = atk_text_get_string_at_offset(
+        ATK_TEXT(text), 0, granularity, &start, &end);
+    g_assert_null(part);
+    g_assert_cmpint(start, ==, -1);
+    g_assert_cmpint(end, ==, -1);
+  }
+  gint start = 99, end = 98;
+  g_autofree gchar* selection = atk_text_get_selection(ATK_TEXT(text), 0, &start, &end);
+  g_assert_null(selection);
+  g_assert_cmpint(start, ==, -1);
+  g_assert_cmpint(end, ==, -1);
   g_assert_false(atk_text_set_caret_offset(ATK_TEXT(text), 0));
+  g_assert_false(atk_text_add_selection(ATK_TEXT(text), 0, 1));
+  g_assert_false(atk_text_remove_selection(ATK_TEXT(text), 0));
+  g_assert_false(atk_text_set_selection(ATK_TEXT(text), 0, 0, 1));
   gint position = 0;
-  const guint dispatches = engine->dispatches;
   atk_editable_text_insert_text(ATK_EDITABLE_TEXT(text), "late", 4, &position);
   atk_editable_text_delete_text(ATK_EDITABLE_TEXT(text), 0, 1);
   atk_editable_text_set_text_contents(ATK_EDITABLE_TEXT(text), "late");
+  atk_editable_text_copy_text(ATK_EDITABLE_TEXT(text), 0, 1);
+  atk_editable_text_cut_text(ATK_EDITABLE_TEXT(text), 0, 1);
+  atk_editable_text_paste_text(ATK_EDITABLE_TEXT(text), 0);
+  fl_accessible_node_set_value(text, "late semantics");
+  fl_accessible_node_set_text_selection(text, 0, 2);
   g_assert_cmpint(position, ==, 0);
   g_assert_cmpuint(engine->dispatches, ==, dispatches);
-  std::puts("ENGINE_ACCESSIBLE_TEXT_FIELD_RETIREMENT=pass unit=real-text-field disposed_queries=closed late_edits=refused");
+  g_assert_cmpint(atk_text_get_character_count(ATK_TEXT(text)), ==, 0);
+  g_assert_cmpint(atk_text_get_caret_offset(ATK_TEXT(text)), ==, -1);
+}
+
+struct TextRetirement {
+  FlEngine* engine;
+  gboolean dispose;
+  guint notifications;
+};
+
+static void retire_text(AtkObject* object, TextRetirement* context) {
+  context->notifications++;
+  if (context->dispose) {
+    g_object_run_dispose(G_OBJECT(object));
+  } else {
+    fl_accessible_node_retire(FL_ACCESSIBLE_NODE(object));
+  }
+}
+
+static void test_text_field(FlEngine* engine) {
+  // Live edits must still send the actual standard-codec payloads in order.
+  g_autoptr(FlAccessibleNode) live = fl_accessible_text_field_new(engine, 7, 10);
+  fl_accessible_node_set_value(live, "original");
+  fl_accessible_node_set_text_selection(live, 2, 4);
+  g_assert_cmpint(atk_text_get_character_count(ATK_TEXT(live)), ==, 8);
+  gint start = -1, end = -1;
+  g_autofree gchar* selected = atk_text_get_selection(ATK_TEXT(live), 0, &start, &end);
+  g_assert_cmpstr(selected, ==, "ig");
+  g_assert_cmpint(start, ==, 2);
+  g_assert_cmpint(end, ==, 4);
+  gint position = 2;
+  guint dispatches = engine->dispatches;
+  atk_editable_text_insert_text(ATK_EDITABLE_TEXT(live), "x", 1, &position);
+  g_assert_cmpint(position, ==, 3);
+  g_assert_cmpuint(engine->dispatches, ==, dispatches + 2);
+  g_assert_cmpstr(engine->last_text, ==, "orxiginal");
+  g_assert_cmpint(engine->selection_base, ==, 3);
+  g_assert_cmpint(engine->selection_extent, ==, 3);
+  atk_editable_text_delete_text(ATK_EDITABLE_TEXT(live), 0, 1);
+  g_assert_cmpuint(engine->dispatches, ==, dispatches + 4);
+  g_assert_cmpstr(engine->last_text, ==, "rxiginal");
+  g_assert_cmpint(engine->selection_base, ==, 0);
+  g_assert_cmpint(engine->selection_extent, ==, 0);
+  g_assert_true(atk_text_set_caret_offset(ATK_TEXT(live), 2));
+  fl_accessible_node_set_text_selection(live, 2, 2);
+  g_assert_true(atk_text_add_selection(ATK_TEXT(live), 1, 3));
+  fl_accessible_node_set_text_selection(live, 1, 3);
+  g_assert_true(atk_text_remove_selection(ATK_TEXT(live), 0));
+  g_assert_cmpint(engine->selection_base, ==, 3);
+  g_assert_cmpint(engine->selection_extent, ==, 3);
+
+  for (guint dispose = 0; dispose < 2; dispose++) {
+    g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(engine, 7, 10);
+    fl_accessible_node_set_value(text, "original");
+    fl_accessible_node_set_text_selection(text, 1, 3);
+    TextRetirement context = {engine, dispose != 0, 0};
+    g_signal_connect(text, "state-change::defunct",
+                     G_CALLBACK(+[](AtkObject* object, const gchar*, gboolean state,
+                                    TextRetirement* context) {
+                       g_assert_true(state);
+                       context->notifications++;
+                       assert_text_field_closed(FL_ACCESSIBLE_NODE(object), context->engine);
+                     }), &context);
+    if (dispose) {
+      g_object_run_dispose(G_OBJECT(text));
+      g_object_run_dispose(G_OBJECT(text));
+    } else {
+      fl_accessible_node_retire(text);
+      fl_accessible_node_retire(text);
+    }
+    g_assert_cmpuint(context.notifications, ==, 1);
+    assert_text_field_closed(text, engine);
+    g_signal_handlers_disconnect_by_data(text, &context);
+  }
+
+  // GTK signals are synchronous: retirement/disposal must stop the admitted edit.
+  for (guint dispose = 0; dispose < 2; dispose++) {
+    for (guint remove = 0; remove < 2; remove++) {
+      g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(engine, 7, 10);
+      fl_accessible_node_set_value(text, "original");
+      TextRetirement context = {engine, dispose != 0, 0};
+      g_signal_connect(text, remove ? "text-remove" : "text-insert",
+                       G_CALLBACK(+[](AtkObject* object, gint, gint, const gchar*,
+                                      TextRetirement* context) {
+                         retire_text(object, context);
+                       }), &context);
+      dispatches = engine->dispatches;
+      position = 2;
+      if (remove) {
+        atk_editable_text_delete_text(ATK_EDITABLE_TEXT(text), 0, 1);
+      } else {
+        atk_editable_text_insert_text(ATK_EDITABLE_TEXT(text), "x", 1, &position);
+      }
+      g_assert_cmpuint(context.notifications, ==, 1);
+      g_assert_cmpint(position, ==, 2);
+      g_assert_cmpuint(engine->dispatches, ==, dispatches);
+      assert_text_field_closed(text, engine);
+      g_signal_handlers_disconnect_by_data(text, &context);
+    }
+
+    g_autoptr(FlAccessibleNode) selection = fl_accessible_text_field_new(engine, 7, 10);
+    TextRetirement context = {engine, dispose != 0, 0};
+    guint caret_notifications = 0;
+    g_signal_connect(selection, "text-selection-changed", G_CALLBACK(retire_text), &context);
+    g_signal_connect(selection, "text-caret-moved",
+                     G_CALLBACK(+[](AtkObject*, gint, guint* count) { (*count)++; }),
+                     &caret_notifications);
+    fl_accessible_node_set_text_selection(selection, 0, 2);
+    g_assert_cmpuint(context.notifications, ==, 1);
+    g_assert_cmpuint(caret_notifications, ==, 0);
+    assert_text_field_closed(selection, engine);
+    g_signal_handlers_disconnect_by_data(selection, &context);
+    g_signal_handlers_disconnect_by_data(selection, &caret_notifications);
+
+    for (guint copy = 0; copy < 2; copy++) {
+      g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(engine, 7, 10);
+      fl_accessible_node_set_value(text, "original");
+      engine->retire_on_dispatch = text;
+      engine->dispose_on_dispatch = dispose != 0;
+      dispatches = engine->dispatches;
+      position = 2;
+      if (copy) {
+        atk_editable_text_copy_text(ATK_EDITABLE_TEXT(text), 0, 1);
+      } else {
+        atk_editable_text_insert_text(ATK_EDITABLE_TEXT(text), "x", 1, &position);
+      }
+      g_assert_null(engine->retire_on_dispatch);
+      g_assert_cmpuint(engine->dispatches, ==, dispatches + 1);
+      g_assert_cmpint(position, ==, 2);
+      assert_text_field_closed(text, engine);
+    }
+  }
+  // A signal may drop the caller's last reference. The admitted method owns self.
+  FlAccessibleNode* unowned = fl_accessible_text_field_new(engine, 7, 10);
+  fl_accessible_node_set_value(unowned, "original");
+  gpointer weak = unowned;
+  g_object_add_weak_pointer(G_OBJECT(unowned), &weak);
+  g_signal_connect(unowned, "text-insert",
+                   G_CALLBACK(+[](AtkObject*, gint, gint, const gchar*,
+                                  FlAccessibleNode** owner) {
+                     g_clear_object(owner);
+                   }), &unowned);
+  dispatches = engine->dispatches;
+  position = 2;
+  atk_editable_text_insert_text(ATK_EDITABLE_TEXT(unowned), "x", 1, &position);
+  g_assert_null(unowned);
+  g_assert_null(weak);
+  g_assert_cmpint(position, ==, 3);
+  g_assert_cmpuint(engine->dispatches, ==, dispatches + 2);
+  std::puts("ENGINE_ACCESSIBLE_TEXT_FIELD_RETIREMENT=pass unit=real-text-field retired_disposed=closed live_edits=allowed reentrant_buffer=closed reentrant_selection=closed reentrant_dispatch=closed caller_release=joined late_edits=refused");
 }
 #endif
 
 // The one replaced boundary is explicit: observe real node dispatch calls.
 extern "C" void fl_engine_dispatch_semantics_action(
     FlEngine* engine, FlutterViewId view_id, uint64_t node_id,
-    FlutterSemanticsAction action, GBytes*) {
+    FlutterSemanticsAction action, GBytes* data) {
   g_assert_cmpint(view_id, ==, 7);
-  g_assert_cmpuint(node_id, ==, 9);
-  g_assert_cmpint(action, ==, kFlutterSemanticsActionTap);
+  if (node_id == 9) {
+    g_assert_cmpint(action, ==, kFlutterSemanticsActionTap);
+    g_assert_null(data);
+  } else {
+    g_assert_cmpuint(node_id, ==, 10);
+    g_assert_nonnull(data);
+    g_autoptr(FlStandardMessageCodec) codec = fl_standard_message_codec_new();
+    g_autoptr(GError) error = nullptr;
+    g_autoptr(FlValue) value =
+        fl_message_codec_decode_message(FL_MESSAGE_CODEC(codec), data, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(value);
+    if (action == kFlutterSemanticsActionSetText) {
+      g_assert_cmpint(fl_value_get_type(value), ==, FL_VALUE_TYPE_STRING);
+      g_free(engine->last_text);
+      engine->last_text = g_strdup(fl_value_get_string(value));
+    } else {
+      g_assert_cmpint(action, ==, kFlutterSemanticsActionSetSelection);
+      g_assert_cmpint(fl_value_get_type(value), ==, FL_VALUE_TYPE_MAP);
+      FlValue* base = fl_value_lookup_string(value, "base");
+      FlValue* extent = fl_value_lookup_string(value, "extent");
+      g_assert_nonnull(base);
+      g_assert_nonnull(extent);
+      g_assert_cmpint(fl_value_get_type(base), ==, FL_VALUE_TYPE_INT);
+      g_assert_cmpint(fl_value_get_type(extent), ==, FL_VALUE_TYPE_INT);
+      engine->selection_base = fl_value_get_int(base);
+      engine->selection_extent = fl_value_get_int(extent);
+    }
+  }
   engine->dispatches++;
+#if !defined(LEGACY_BASELINE)
+  FlAccessibleNode* retire = engine->retire_on_dispatch;
+  engine->retire_on_dispatch = nullptr;
+  if (retire != nullptr) {
+    if (engine->dispose_on_dispatch) {
+      g_object_run_dispose(G_OBJECT(retire));
+    } else {
+      fl_accessible_node_retire(retire);
+    }
+  }
+#endif
 }
 
 int main() {

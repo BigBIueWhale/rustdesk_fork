@@ -464,7 +464,9 @@ raise SystemExit(subprocess.call([
                     "ENGINE_ACCESSIBLE_ROOT_RETIREMENT=pass unit=real-root boundary=recording-engine "
                     "reset=true replacement=true reentrant=true disposed=true\n"
                     "ENGINE_ACCESSIBLE_TEXT_FIELD_RETIREMENT=pass unit=real-text-field "
-                    "disposed_queries=closed late_edits=refused")
+                    "retired_disposed=closed live_edits=allowed reentrant_buffer=closed "
+                    "reentrant_selection=closed reentrant_dispatch=closed "
+                    "caller_release=joined late_edits=refused")
         require(output == (expected + "\n").encode(), "native node retirement receipt differs")
         print(expected, flush=True)
 
@@ -478,14 +480,15 @@ raise SystemExit(subprocess.call([
     command(git + ["apply", "--whitespace=error-all", str(patch_path)],
             framework, env, deadline)
     expected_paths = ["engine/src/flutter/shell/platform/linux/" + name for name in
-                      ("fl_accessible_node.cc", "fl_accessible_node.h", "fl_view.cc",
+                      ("fl_accessible_node.cc", "fl_accessible_node.h",
+                       "fl_accessible_text_field.cc", "fl_view.cc",
                        "fl_view_accessible.cc", "fl_view_accessible.h")]
     changed = command(git + ["diff", "--name-only", "--", "engine/src/flutter/shell/platform/linux"],
                       framework, env, deadline).decode().splitlines()
     require(sorted(changed) == sorted(expected_paths), "retirement patch source scope differs")
     command(git + ["diff", "--check"], framework, env, deadline)
     print("ENGINE_ACCESSIBLE_RETIREMENT_PATCH=applied sha256="
-          + hashlib.sha256(patch_bytes).hexdigest() + " files=5 sdk_archive=unchanged", flush=True)
+          + hashlib.sha256(patch_bytes).hexdigest() + " files=6 sdk_archive=unchanged", flush=True)
     command([framework + "/third_party/ninja/ninja", "-C", "out/host_release", "-j2", *objects],
             engine, env, deadline)
     for name in objects:

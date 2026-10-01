@@ -1825,7 +1825,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest joined cleanup is recorded in the app-replay disposition above.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 621,441,024 allocated bytes (0.579 GiB). The actual outer
+  small evidence records occupy 621,686,784 allocated bytes (0.579 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,
@@ -1848,8 +1848,15 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   only its existing admission receipt; native cases still passed, but the transaction exited 1.
   Complete 67,203-byte failure serial and bounded listener/capture records are retained at
   `evidence/process-stat-integration-3e3a8ccb.*`; the exact stopped scratch was reconciled.
-  Native diagnostics now use stderr, preserving the sole stdout receipt. Corrected shared
-  integration is pending. This is a parser correction, not a pidfd/reuse-race or LPE closure claim.
+  Native diagnostics now use stderr, preserving the sole stdout receipt. Exact corrected source
+  `4bda02dc34c45988da8d86c8c6bf62b5d25f776c`, tree `f2f604225d04d22f65898a6994ae4188a202a972`,
+  passed the complete shared authority integration in 92,610 host BOOTTIME ms (88 harness seconds),
+  including the same native A/B, admission and all existing entry/runtime/source gates. Inputs and
+  host listeners were unchanged, process drift was zero, owned cleanup joined and scratch
+  self-retired. Complete 77,108-byte raw serial is
+  `evidence/process-stat-integration-4bda02dc.serial.log`, SHA-256
+  `1f66576a273fc5f0894ead3ca7d363cfa081063e28317c371236a28c39a775f1`.
+  This is a parser correction, not a pidfd/reuse-race or LPE closure claim.
   Other host/guest/acquisition process-stat start/state readers still use whitespace fields and
   remain OPEN for migration; no test result for this receiver will close those callers.
   Kernel contracts: [proc field definition](https://docs.kernel.org/filesystems/proc.html)

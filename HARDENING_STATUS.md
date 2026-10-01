@@ -1740,7 +1740,7 @@ quoting error returned 125, not a green capture claim; outer status was 1, elaps
 BOOTTIME ms. Listener inventories were equal and addition files empty. No run/disk remains.
 Full engine closure and the production correction remain OPEN.
 
-**Engine acquisition design — REVIEWED; GRAPH/FETCH/BUILD EXECUTION OPEN.** The exact retained
+**Engine acquisition — GRAPH/PACKAGE TRANSACTION PASS; COMPLETE BUILD CLOSURE OPEN.** The exact retained
 depot-tools source requires `target_os=['unix']` when `target_os_only=True`: `SetConfig` does
 not normalize `linux`, while `get_builtin_vars` derives `checkout_linux` from `unix`.
 Host-based root-DEPS conditions still enable Android/Fuchsia downloads on Linux x64 unless
@@ -1778,39 +1778,44 @@ inventory/context. Package archives normalize ownership, modes and epoch and omi
 installation metadata; their recorded SHA256 binds those canonical bytes, not a publisher ZIP.
 The [CIPD instance contract](https://chromium.googlesource.com/infra/luci/luci-go/+/main/cipd/common/iid.go)
 admits both legacy full SHA1 IDs and SHA256-plus-algorithm IDs; aliases are not installation
-authority. First native candidate `31f38ca3` selected 72 root Git sources and 11 packages,
-sealed 36 archives, then refused HarfBuzz because the source-selected full object ID is an
-annotated tag, not its peeled commit. The correction retains the exact object pin/type,
-requires its peeled commit to equal FETCH_HEAD's commit, strictly verifies the fetched
-objects, and records both identities; it never substitutes a branch or new revision.
+authority. Git acquisition retains the exact source-selected object pin/type, requires its
+peeled commit to equal FETCH_HEAD's commit, strictly verifies the fetched objects, and records
+both identities; it never substitutes a branch or new revision.
 [Publisher tag metadata](https://flutter.googlesource.com/third_party/harfbuzz/+refs/tags/13.2.1?format=JSON)
 binds `49844c32a7a3f6be371355a1213c952a3f4a44e7` to commit
-`6f4c5cec306d31e6822303f5ba248a14293d588e`. The failed transaction ended status 1 in
-119,780 host BOOTTIME ms with capture status zero, identical listener inventories and
-joined owners. Complete 69,423-byte raw serial is `evidence/engine-graph-31f38ca3.serial.log`
-(SHA256 `5defb369f2b193861549ab8761cfa69e117abd9eb972d1fc92845bdf8cbb5ee2`);
-bounded stdout/stderr/listener and partial-archive digest records are retained separately.
-Exact locked reconciliation removed only the stopped run and incomplete 1,251,213,312-byte
-candidate after evidence retention; no run/disk remains. **Complete native graph/package
-acquisition is not yet proved.** Hooks, sysroot/Pub input closure, offline GN/engine build,
-source geometry correction and complete consumer remain OPEN.
-
-Corrected-object candidate `4ae7fa8b` acquired all 82 root/recursive Git archives, then
-refused an oversized CIPD `describe` receipt; no package or complete graph was published.
-The transaction ended outer 1/capture 0 in 214,650 host BOOTTIME ms. Complete 70,054-byte
-raw serial is `evidence/engine-graph-4ae7fa8b.serial.log`, SHA256
-`5490811d48101012f32f935743609216bad37cd3c4bf2fc3fb2cf7b096400ca0`.
-Listener inventories were identical, owners joined, and exact locked reconciliation reclaimed
-3,765,227,520 allocated bytes after retaining bounded streams/listeners and all 82 archive digests.
-An actual duplicate invocation refused before allocation and preserved the sole run identity.
+`6f4c5cec306d31e6822303f5ba248a14293d588e`.
 The client's pinned infra revision selects LUCI `7bb5d7de170f73cf8a22b78c14503502ca5222a7`;
 its [exact command contract](https://chromium.googlesource.com/infra/luci/luci-go/+/7bb5d7de170f73cf8a22b78c14503502ca5222a7/cipd/client/cli/main.go)
 distinguishes full instance descriptions from `resolve`'s one-package nested pin receipt.
 Acquisition now uses that narrow operation before source-archive allocation, requires its exact
 inventory/package/immutable-ID shape, and reads both resolution and install receipts through
 bounded no-follow, single-link, current-principal descriptors with unchanged metadata. No size
-limit, pin, authentication or installation check is relaxed. This correction's native execution
-remains OPEN; the failed 82-archive candidate is not a reusable complete closure.
+limit, pin, authentication or installation check is relaxed.
+
+Exact pushed `07c08021be2414acdb4f03f30d96f973c47688e2`, tree
+`a0e6a61ebb32e10078e487dcbcaaff0378504d21`, passed the complete acquisition/guest/outer
+transaction in 314 harness seconds (320,610 host BOOTTIME ms, outer/capture 0/0).
+Its 94-file candidate contains 82 Git and 11 CIPD archives, 8,038,420,480 payload bytes;
+the 49,753-byte manifest SHA256 is
+`c57a93ded5af7e19085540fda1409ac711eaa8bc5eae6d75ec4f62c259562a41`.
+Independent read-only verification rehashed all 93 archives and proved the complete mode-0400,
+single-link, current-principal inventory and unchanged metadata. Original selectors/patterns,
+immutable instances, object/commit/tree identities, GN variables and six deferred hooks are retained.
+Full 67,117-byte raw serial is `evidence/engine-graph-07c08021.serial.log`, SHA256
+`f5eaef668956a040de9422c2b43eafca40064ff0f2c0c714f1e2fb0478939472`, matching the VM receipt.
+Inputs/listeners were unchanged, listener-drift bytes zero, all owners joined and the run
+self-retired. No run/overlay remains. An actual duplicate refused before allocation and left
+the completed candidate unchanged. Earlier failed partials were identity-bound removed after
+evidence retention, not reused; their bounded records remain in the audit/evidence, not this ledger.
+The sole completed candidate occupies 8,038,645,760 allocated bytes (~7.49 GiB).
+
+**Complete engine build closure remains OPEN.** No hook ran and the manifest explicitly says
+`complete_engine_closure=false`. Source review of the acquired root confirms three SHA256-bound
+sysroot downloads and offline package/version/Pub hooks. `tools/gn::setup_git_versions` also
+requires original engine/Skia/Dart Git identities and the root content-aware hash; plain source
+archives do not provide those Git objects. Close that exact metadata/input contract without fake
+repositories, ambient Git lookup, or disabled version checks, then materialize and build offline.
+Production geometry correction and the complete uninstrumented consumer remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

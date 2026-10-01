@@ -369,8 +369,27 @@ def prepare():
                     "generated package root is not a materialized DEPS package")
     engine = framework + "/engine/src"
     print("ENGINE_PREPARE_GN_START runtime=release generator=original", flush=True)
-    command(["/usr/bin/python3", "flutter/tools/gn", "--runtime-mode=release",
-             "--enable-unittests", "--no-rbe"], engine, env, deadline)
+    # Keep upstream's argument/version selection. GN's supported interpreter option
+    # selects this pinned image's Python, never depot-tools' downloading wrapper.
+    gn_driver = """
+import runpy
+import subprocess
+
+original = runpy.run_path('flutter/tools/gn', run_name='rustdesk_engine_gn')
+args = original['parse_args'](['flutter/tools/gn', '--runtime-mode=release',
+                               '--enable-unittests', '--no-rbe'])
+original['validate_args'](args)
+output = original['get_out_dir'](args)
+if output != 'out/host_release':
+    raise SystemExit('original GN output directory differs')
+values = original['to_command_line'](original['to_gn_args'](args))
+raise SystemExit(subprocess.call([
+    'flutter/third_party/gn/gn', 'gen', '--check', '--export-compile-commands',
+    '--export-compile-commands=default', output, '--args=' + ' '.join(values),
+    '--tracelog=' + output + '/gn_trace.json', '--script-executable=/usr/bin/python3',
+]))
+"""
+    command(["/usr/bin/python3", "-I", "-S", "-c", gn_driver], engine, env, deadline)
     args_path = Path(engine) / "out/host_release/args.gn"
     require(args_path.stat().st_size <= 131072, "generated GN arguments exceed bound")
     args_text = args_path.read_text()
@@ -390,7 +409,8 @@ def prepare():
     for target, output in (("flutter_linux_gtk", "libflutter_linux_gtk.so"),
                            ("flutter_linux_unittests", "flutter_linux_unittests")):
         result = command(["flutter/third_party/gn/gn", "desc", "out/host_release",
-                          "//flutter/shell/platform/linux:" + target, "outputs"],
+                          "//flutter/shell/platform/linux:" + target, "outputs",
+                          "--script-executable=/usr/bin/python3"],
                          engine, env, deadline)
         require([line.strip() for line in result.decode().splitlines()] ==
                 ["//out/host_release/" + output], "original GN target output differs: " + target)

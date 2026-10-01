@@ -1903,10 +1903,19 @@ processes joined and the successful scratch self-retired. Full 76,340-byte seria
 `907d336196f45e2f445d16f0e5ce34db844c0b067b28d85ae55619dc39867b81`; outer/capture
 records share that prefix. Earlier actual input/metadata failures remain in the audit and
 bounded evidence, not this current-state entry. This closes materialization/hooks only.
-The consumer now additionally runs the unchanged upstream GN generator for Linux x64 release
-with unit tests and remote execution disabled, checks original revision/content arguments,
-and resolves the real GTK library and native unit-test outputs. This extension still requires
-its own committed-source native transaction; GN generation is not compilation or product behavior.
+The first real GN attempt at `686829d1` failed because `.gn` selected absent `vpython3`,
+before sysroot inspection or graph generation. Full 79,505-byte serial is retained at
+`evidence/engine-gn-686829d1.serial.log`, SHA256
+`18d95505c34bf4fff9886c71269a627751419643fba25f02860cb4040a893305`; outer/capture
+1/0 in 95,710 ms. All earlier preparation gates passed again. Owned processes joined;
+listener-drift evidence, including one attested pre-existing owner's new loopback listener,
+is retained separately and is not called zero drift. Exact stopped scratch was retired.
+The consumer now uses unchanged upstream GN argument/version functions and the pinned GN
+binary with its supported `--script-executable=/usr/bin/python3` option: one explicit interpreter
+from the authenticated image, no alias or download-on-demand wrapper. It requests Linux x64
+release/unit tests/no RBE, checks original revision/content arguments, and resolves actual GTK
+library and native-test outputs. The corrected step still requires its own committed-source
+native transaction; graph generation is not compilation or product behavior.
 The full engine build, production geometry correction and complete app replay remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required

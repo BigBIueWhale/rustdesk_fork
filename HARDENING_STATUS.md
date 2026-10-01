@@ -1900,6 +1900,13 @@ owned processes joined and exact stopped scratch was retired under the admission
 The template now emits separators only between mounts; the six exact bindings remain
 required. Original extraction/hooks still require native execution, and this is not
 complete engine-build closure.
+At `6f6d1ec6`, VM-root/foreign entry refusals, exact container mounts and all ten native
+extraction cases passed; preparation then refused its ASCII read of UTF-8 pin comments.
+The pin read now bounds raw bytes and decodes UTF-8 strictly, while pin values retain
+their closed ASCII shape. Full 67,639-byte serial is `evidence/engine-prepare-6f6d1ec6.serial.log`
+(SHA256 `c336afbc7e001587023f9a8723068bbdd1dfa99e55fcd1751fa15604dd08590f`);
+outer/capture status was 1/0 in 35,930 ms. Listeners were unchanged and exact stopped
+scratch retired. No original hook ran; the next transaction streams bounded stages live.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

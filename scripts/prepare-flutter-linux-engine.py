@@ -241,9 +241,10 @@ def command(arguments, cwd, env, deadline):
 
 def prepare():
     deadline = time.monotonic() + 240
-    with open("/authority/pins.env", encoding="ascii") as source:
-        pin_text = source.read(131073)
-    require(len(pin_text) <= 131072, "pin file exceeds bound")
+    with open("/authority/pins.env", "rb") as source:
+        pin_bytes = source.read(131073)
+    require(len(pin_bytes) <= 131072, "pin file exceeds bound")
+    pin_text = pin_bytes.decode("utf-8")
 
     def pin(name):
         matches = re.findall(r'^' + re.escape(name) + r'="([A-Za-z0-9:._+-]+)"(?:\s*#.*)?$',

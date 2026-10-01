@@ -347,7 +347,7 @@ prepare_authority_probe_image() {
 }
 
 run_linux_flutter_engine_prepare() {
-    local role mountpoint options load_output inspect principal refusal output=$ROOT/engine-prepare.out
+    local role mountpoint options load_output inspect principal refusal
     local helper=$VERIFY_REPO/scripts/prepare-flutter-linux-engine.py
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
     local work=$ROOT/engine-prepare-work helper_before status=0
@@ -436,10 +436,8 @@ run_linux_flutter_engine_prepare() {
         'bind|/mnt/rustdesk-engine-sysroots|/inputs/sysroots|false' | LC_ALL=C sort)" ] \
         || fail "engine preparation mount envelope differs: $inspect"
     status=0
-    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" >"$output" 2>&1 || status=$?
-    cat "$output"
+    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" || status=$?
     [ "$status" -eq 0 ] || fail "engine preparation exited $status"
-    [ "$(stat -c '%s' -- "$output")" -le 1048576 ] || fail 'engine preparation output exceeds bound'
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'engine preparation container is not successfully terminal'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null

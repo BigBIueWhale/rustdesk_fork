@@ -16,7 +16,7 @@ import urllib.request
 DEPS_SHA256 = "495c99dafa4dab8e538c10679ef56242defa6d7f7c81aca5849057a582be12d5"
 DEPOT_REVISION = "580b4ff3f5cd0dcaa2eacda28cefe0f45320e8f7"
 CIPD_VERSION = "git_revision:200dbdf0e967e81388359d3f85f095d39b35db67"
-CIPD_SHA256 = "341314febc2b0e447914a20a3b845eb15052957451b30ed27b6221e8ddf9e0ed0"
+CIPD_SHA256 = "341314febc2b0e447914a20a3b845eb5052957451b30ed27b6221e8ddf9e0ed0"
 METADATA_LIMIT = 131072
 OUTPUT_LIMIT = 262144
 
@@ -123,6 +123,10 @@ def main():
     parser.add_argument("--sdk-size", required=True, type=int)
     args = parser.parse_args()
     require(os.getuid() != 0 and os.getgid() != 0, "root discovery refused")
+    require(re.fullmatch("[0-9a-f]{64}", DEPS_SHA256)
+            and re.fullmatch("[0-9a-f]{64}", CIPD_SHA256)
+            and re.fullmatch("[0-9a-f]{40}", DEPOT_REVISION),
+            "malformed bootstrap metadata constant")
     for revision in (args.source_commit, args.framework_revision):
         require(re.fullmatch("[0-9a-f]{40}", revision), "malformed revision")
     require(re.fullmatch("[0-9a-f]{64}", args.sdk_sha256) and args.sdk_size > 0,

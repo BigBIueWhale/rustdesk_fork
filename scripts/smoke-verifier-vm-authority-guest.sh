@@ -26,6 +26,13 @@ case "$#:${8:-}" in
     8:--android-frame-tests)
         MODE=android-frame-tests
         ;;
+    10:--linux-flutter-engine-prepare)
+        MODE=linux-flutter-engine-prepare
+        ENGINE_PREPARE_COMMIT=${9}
+        ENGINE_PREPARE_TREE=${10}
+        [[ "$ENGINE_PREPARE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+            && [[ "$ENGINE_PREPARE_TREE" =~ ^[0-9a-f]{40}$ ]] || exit 2
+        ;;
     12:--hbb-common-fs)
         MODE=hbb-common-fs
         ;;
@@ -223,6 +230,7 @@ FLUTTER_PEER_CANDIDATE_MOUNTED=0
 FLUTTER_PEER_FAILURE_MOUNTED=0
 FLUTTER_APP_OUTPUT_MOUNTED=0
 FLUTTER_APP_INPUT_MOUNTED=0
+ENGINE_INPUT_MOUNTS=()
 
 fail() {
     printf 'verifier-VM guest: %s\n' "$*" >&2
@@ -336,6 +344,108 @@ prepare_authority_probe_image() {
             - "$IMAGE" >"$ROOT/image-id"
     [[ "$(<"$ROOT/image-id")" =~ ^sha256:[0-9a-f]{64}$ ]] \
         || fail 'probe image ID is malformed'
+}
+
+run_linux_flutter_engine_prepare() {
+    local role mountpoint options load_output inspect output=$ROOT/engine-prepare.out
+    local helper=$VERIFY_REPO/scripts/prepare-flutter-linux-engine.py
+    local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
+    local work=$ROOT/engine-prepare-work helper_before status=0
+    helper_before="$(sha256sum "$helper")"
+    [ -f "$helper" ] && [ ! -L "$helper" ] || fail 'engine preparation source is absent'
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$archive")" = "1000:1000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        && [ "$(sha256sum "$archive" | awk '{print $1}')" = "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" ] \
+        || fail 'engine preparation image archive differs'
+    setpriv --reuid=1000 --regid=1000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT"
+    load_output="$(
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            DOCKER_HOST="unix://$SOCK" DOCKER_CONFIG="$CONFIG_ROOT" \
+            python3 -I -S "$OFFLINE_IMAGE_PROVENANCE" verify-load \
+                --archive "$archive" --archive-sha "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
+                --archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE" --role devcheck \
+                --expected-id "$DEV_CHECK_IMAGE_ID" --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+                --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+                --cargo-sha "$SHA256_DEV_CHECK_CARGO" --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
+                --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
+                --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" \
+                --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID"
+    )" || fail 'engine preparation image verification/load failed'
+    [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
+        || fail 'engine preparation image load receipt differs'
+    mkdir "$work"
+    chown 1000:1000 "$work"
+    local -a mounts=(
+        --mount "type=bind,source=$helper,target=/authority/prepare.py,readonly"
+        --mount "type=bind,source=$VERIFY_REPO/scripts/pins.env,target=/authority/pins.env,readonly"
+        --mount "type=bind,source=$work,target=/work"
+    )
+    for role in graph git-metadata sysroots; do
+        mountpoint="/mnt/rustdesk-engine-$role"
+        mkdir "$mountpoint"
+        mount -t virtiofs -o ro,nodev,nosuid,noexec "rustdesk-engine-$role" "$mountpoint" \
+            || fail "cannot mount the engine $role input"
+        ENGINE_INPUT_MOUNTS+=("$mountpoint")
+        options="$(findmnt -n -o OPTIONS --target "$mountpoint")"
+        for option in ro nodev nosuid noexec; do
+            case ",$options," in *,$option,*) ;; *) fail "engine $role input lacks $option" ;; esac
+        done
+        [ "$(stat -c '%u:%g:%a' -- "$mountpoint")" = 1000:1000:700 ] \
+            || fail "engine $role input principal differs"
+        mounts+=(--mount "type=bind,source=$mountpoint,target=/inputs/$role,readonly")
+    done
+    CONTAINER_ID="$(
+        "$CLIENT" --host "unix://$SOCK" create --name rustdesk-engine-prepare \
+            --pull=never --network=none --read-only --user 1000:1000 \
+            --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
+            --memory=2g --memory-swap=2g --cpus=2 --pids-limit=128 \
+            --ulimit nofile=1024:1024 --ulimit core=0:0 --ulimit fsize=536870912:536870912 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,mode=700,uid=1000,gid=1000 \
+            --workdir /work "${mounts[@]}" \
+            "$DEV_CHECK_IMAGE_CONFIG_ID" /usr/bin/python3 -I -S /authority/prepare.py
+    )" || fail 'cannot create the confined engine preparation container'
+    [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'engine preparation container ID differs'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.Image}}|{{.Config.User}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' "$CONTAINER_ID")"
+    [ "$inspect" = "$DEV_CHECK_IMAGE_CONFIG_ID|1000:1000|none|true|2147483648|2147483648|2000000000|128|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]" ] \
+        || fail "engine preparation container envelope differs: $inspect"
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' "$CONTAINER_ID")"
+    [ "$inspect" = 'false||private||private|[]|{}' ] \
+        || fail 'engine preparation namespace/device/port envelope differs'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{range .Mounts}}{{.Type}}|{{.Source}}|{{.Destination}}|{{.RW}}{{println}}{{end}}' "$CONTAINER_ID" \
+        | LC_ALL=C sort)"
+    [ "$inspect" = "$(printf '%s\n' \
+        "bind|$helper|/authority/prepare.py|false" \
+        "bind|$VERIFY_REPO/scripts/pins.env|/authority/pins.env|false" \
+        "bind|$work|/work|true" \
+        'bind|/mnt/rustdesk-engine-graph|/inputs/graph|false' \
+        'bind|/mnt/rustdesk-engine-git-metadata|/inputs/git-metadata|false' \
+        'bind|/mnt/rustdesk-engine-sysroots|/inputs/sysroots|false' | LC_ALL=C sort)" ] \
+        || fail "engine preparation mount envelope differs: $inspect"
+    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" >"$output" 2>&1 || status=$?
+    cat "$output"
+    [ "$status" -eq 0 ] || fail "engine preparation exited $status"
+    [ "$(stat -c '%s' -- "$output")" -le 1048576 ] || fail 'engine preparation output exceeds bound'
+    [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+        || fail 'engine preparation container is not successfully terminal'
+    "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+    CONTAINER_ID=
+    "$CLIENT" --host "unix://$SOCK" image rm "$DEV_CHECK_IMAGE_CONFIG_ID" >/dev/null
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'engine preparation left container/image state'
+    [ "$(sha256sum "$helper")" = "$helper_before" ] || fail 'engine preparation source changed'
+    setpriv --reuid=1000 --regid=1000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT"
+    stop_docker_authority
+    for mountpoint in "${ENGINE_INPUT_MOUNTS[@]}"; do
+        umount "$mountpoint" || fail 'cannot retire an engine input mount'
+    done
+    ENGINE_INPUT_MOUNTS=()
+    printf 'FLUTTER_ENGINE_PREPARE_VM=pass commit=%s tree=%s helper_sha256=%s runtime=%s uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined\n' \
+        "$ENGINE_PREPARE_COMMIT" "$ENGINE_PREPARE_TREE" "$(sha256sum "$helper" | awk '{print $1}')" \
+        "$DEV_CHECK_IMAGE_CONFIG_ID"
 }
 
 run_linux_flutter_artifact_tests() {
@@ -5062,6 +5172,10 @@ cleanup() {
         umount /mnt/rustdesk-sealed-inputs 2>/dev/null || status=1
         SEALED_INPUTS_MOUNTED=0
     fi
+    for engine_mount in "${ENGINE_INPUT_MOUNTS[@]}"; do
+        umount "$engine_mount" 2>/dev/null || status=1
+    done
+    ENGINE_INPUT_MOUNTS=()
     if [ "$status" -ne 0 ] && [ -f "$LOG" ]; then
         tail -n 160 "$LOG" >&2 || true
     fi
@@ -5308,7 +5422,8 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = android-emulator-app ] \
    || [ "$MODE" = android-emulator-runtime ] \
    || [ "$MODE" = flutter-peer-presentation ] \
-   || [ "$MODE" = rust-audit ]; then
+   || [ "$MODE" = rust-audit ] \
+   || [ "$MODE" = linux-flutter-engine-prepare ]; then
     docker_socket_gid=1000
 fi
 chown "0:$docker_socket_gid" "$SOCK"
@@ -5340,6 +5455,11 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     run_debian_systemd_lifecycle
     printf 'VERIFIER_VM_AUTHORITY_SMOKE=pass guest=debian-12 kernel=%s direct_boot=on boot_masks=on docker=%s vm_network=none daemon_bridge=none daemon_forwarding=off daemon_firewall=off lifecycle=installed-debian-artifact\n' \
         "$EXPECTED_KERNEL_RELEASE" "$EXPECTED_VERSION"
+    exit 0
+fi
+
+if [ "$MODE" = linux-flutter-engine-prepare ]; then
+    run_linux_flutter_engine_prepare
     exit 0
 fi
 

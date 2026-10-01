@@ -1886,6 +1886,13 @@ occupies 60,178,432 allocated bytes (~0.056 GiB). This closes acquisition only.
 Safe offline sysroot materialization, original hooks/Pub resolution, the engine build,
 production geometry correction and complete uninstrumented consumer remain OPEN.
 
+The focused `--linux-flutter-engine-prepare` consumer now admits the three independently
+pinned candidates through separate read-only Landlocked exports into a zero-NIC VM and
+a networkless UID/GID-1000 devcheck container. It materializes bounded source/sysroot
+archives without traversing links during writes, restores the three original Git indexes
+and version identities, and runs all six unchanged hooks with a fresh private Pub cache.
+Native execution is still pending; this source path is not complete engine-build closure.
+
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
 consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

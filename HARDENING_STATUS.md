@@ -1740,6 +1740,31 @@ quoting error returned 125, not a green capture claim; outer status was 1, elaps
 BOOTTIME ms. Listener inventories were equal and addition files empty. No run/disk remains.
 Full engine closure and the production correction remain OPEN.
 
+**Engine acquisition design — REVIEWED; GRAPH/FETCH/BUILD EXECUTION OPEN.** The exact retained
+depot-tools source requires `target_os=['unix']` when `target_os_only=True`: `SetConfig` does
+not normalize `linux`, while `get_builtin_vars` derives `checkout_linux` from `unix`.
+Host-based root-DEPS conditions still enable Android/Fuchsia downloads on Linux x64 unless
+explicitly overridden. `download_jdk=False` does not disable the root JDK entry, and the
+Java formatter is unconditional; do not claim their exclusion without a reviewed explicit
+dependency decision. Retain the Linux compiler even though its CIPD package is named under
+`fuchsia/`. The sole recursive DEPS, Vulkan at `a9e2ca3b57aba86a22a2df1b84bf12f8cc98806e`,
+adds ten commit-pinned Git entries relative to its own directory; those are part of the closure.
+Use the pinned Python entry directly, not the auto-updating gclient/vpython wrapper, and
+disable metrics before import. Suppress both ordinary and pre-DEPS hooks during acquisition.
+Resolve CIPD selectors once before fetching and consume those immutable instance IDs:
+upstream `revinfo` resolves configured selectors, not installed package identity.
+`flatten` processes every platform by default, and its `--pin-all-deps` URL mutation does
+not rewrite the CIPD package versions serialized by `ToLines`; neither supplies that closure.
+The upstream host check is a separate first-level `verify` operation, not recursive network
+enforcement. Validate every selected root/recursive URL, destination and full commit before
+fetching; preserve GN variables and separately close sysroot/Pub hook inputs before offline
+build execution. These are source-derived implementation constraints, not native graph,
+acquisition, engine-build, accessibility, Android/Windows-causation or release evidence.
+Primary sources: [pinned gclient](https://chromium.googlesource.com/chromium/tools/depot_tools/+/580b4ff3f5cd0dcaa2eacda28cefe0f45320e8f7/gclient.py),
+[pinned CIPD integration](https://chromium.googlesource.com/chromium/tools/depot_tools/+/580b4ff3f5cd0dcaa2eacda28cefe0f45320e8f7/gclient_scm.py),
+[root DEPS](https://github.com/flutter/flutter/blob/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/DEPS), and
+[recursive Vulkan DEPS](https://chromium.googlesource.com/vulkan-deps/+/a9e2ca3b57aba86a22a2df1b84bf12f8cc98806e/DEPS).
+
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
 consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

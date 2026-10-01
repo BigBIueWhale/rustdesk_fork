@@ -1809,7 +1809,7 @@ the completed candidate unchanged. Earlier failed partials were identity-bound r
 evidence retention, not reused; their bounded records remain in the audit/evidence, not this ledger.
 The sole completed candidate occupies 8,038,645,760 allocated bytes (~7.49 GiB).
 
-**Complete engine build closure remains OPEN.** No hook ran and the manifest explicitly says
+**Complete engine build closure remains OPEN.** Acquisition ran no hooks and its manifest says
 `complete_engine_closure=false`. Source review of the acquired root confirms three SHA256-bound
 sysroot downloads and offline package/version/Pub hooks. `tools/gn::setup_git_versions` also
 requires original engine/Skia/Dart Git identities and the root content-aware hash; plain source
@@ -1855,7 +1855,7 @@ repeating the producer. No run/overlay remains; the completed inert candidate oc
 not complete build closure. Source materialization must establish original tracked indexes
 before hooks that query `git ls-files`. Pinned engine and Dart workspace specifications use
 path overrides for DEPS-managed packages; test their actual offline resolves before assuming
-another hosted Pub acquisition is needed. Sysroot/Pub/hooks, offline engine build, production
+another hosted Pub acquisition is needed. Offline GN/engine build, production
 geometry correction and complete uninstrumented consumer remain OPEN.
 
 **Source-selected sysroots — ACQUISITION PASS; OFFLINE BUILD CLOSURE OPEN.**
@@ -1883,44 +1883,31 @@ Inputs/listeners were unchanged, external listener-drift bytes zero, all owned p
 and successful scratch self-retired. An actual duplicate producer refused status 1 before
 allocation and preserved the candidate. No run/overlay remains; this sole inert candidate
 occupies 60,178,432 allocated bytes (~0.056 GiB). This closes acquisition only.
-Safe offline sysroot materialization, original hooks/Pub resolution, the engine build,
-production geometry correction and complete uninstrumented consumer remain OPEN.
+The offline materialization/hook result is recorded below; the engine build, production
+geometry correction and complete uninstrumented consumer remain OPEN.
 
-The focused `--linux-flutter-engine-prepare` consumer now admits the three independently
-pinned candidates through separate read-only Landlocked exports into a zero-NIC VM and
-a networkless UID/GID-1000 devcheck container. It materializes bounded source/sysroot
-archives without traversing links during writes, restores the three original Git indexes
-and version identities, and runs all six unchanged hooks with a fresh private Pub cache.
-At `f96b0b98`, principal refusals, exact mounts and ten extraction cases passed, and
-regular extraction completed for all 82 Git, 11 CIPD and three original metadata archives.
-The first sysroot then refused a legitimate systemd filename containing a literal backslash;
-the Linux-only reader now preserves it as an ordinary byte, as required by the
-[POSIX filename contract](https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_146).
-Traversal, absolute paths, escaping/cyclic links, special files and writes below links
-remain refused. The native positive fixture now includes that exact filename form.
-Full 74,283-byte serial is `evidence/engine-prepare-f96b0b98.serial.log` (SHA256
-`f3471583d7dedaa03f735b7da525075fcfd23ae1301cacef79cb91eccb3b0d3b`);
-outer/capture status was 1/0 in 78,100 host BOOTTIME ms. Listeners were unchanged,
-all owned processes joined, and exact stopped scratch retired under the admission lock.
-Earlier template/encoding failures remain in retained evidence and the audit, not this ledger.
-No original hook or final link installation ran; complete offline preparation remains OPEN.
-The next `434022aa` run completed both Bullseye sysroots before refusing the RISC-V
-sysroot's mode-02775 `var/local` directory. Materialization now accepts that metadata but
-still creates directories as 0700 and regular files as 0644/0755, never copying set-ID,
-ownership or ACL authority; the native positive fixture requires those stripped modes.
-Its 74,999-byte full serial is `evidence/engine-prepare-434022aa.serial.log` (SHA256
-`ca0b3d915d3aa6b9afe7816317a445836193ec1684b678c690d21b88b9532ff4`),
-outer/capture 1/0 in 84,190 ms. Inputs stayed read-only, listeners unchanged, and exact
-joined scratch retired. No hook result is claimed.
-At `871c5669`, all 286,969 entries, 8,600,939,366 regular bytes and 4,222 links
-materialized. Original root HEAD/tree/timestamps and SDK selection checks passed, then
-`diff-files` refused the freshly populated index's unmatched stat cache. Original index
-restoration now includes `update-index --refresh` before the unchanged tree-ID and diff
-checks; it does not stage changed content or ignore missing files. Full 74,965-byte
-serial is `evidence/engine-prepare-871c5669.serial.log` (SHA256
-`19bf1089c15a252f7f6f19bceb24af855111871a38d720bd86d0f78bc9510305`),
-outer/capture 1/0 in 84,090 ms, unchanged listeners and exact joined scratch retirement.
-Original hooks and complete preparation remain OPEN.
+**Offline materialization and original hooks — NATIVE PASS; GN/BUILD OPEN.** Exact pushed
+`0213a9017eeb6a1a4879ac52682c41060e972c32`, tree `12482c38746dc6b3bd046ac934496272dfb4a850`,
+passed `--linux-flutter-engine-prepare` in 117,450 host BOOTTIME ms (outer/capture 0/0).
+Three independently pinned candidates were read-only Landlocked exports into a zero-NIC
+VM and networkless UID/GID-1000 devcheck container. Actual root/foreign entry refusals,
+six exact mounts, ten filesystem extraction cases, all 286,969 entries/8,600,939,366 regular
+bytes/4,222 links, three original Git HEAD/tree/index/timestamp identities, content hash and
+distinct shipped SDK selection passed. All six unchanged hooks completed with only local
+DEPS path packages and a fresh Pub cache; no hosted/Git cache or network fallback was used.
+Writes never traverse archive links, modes strip set-ID/ownership authority, and original
+index stat refresh neither stages changed content nor ignores missing files. Inputs and
+before/during/after host listeners stayed unchanged, process drift was zero, all owned
+processes joined and the successful scratch self-retired. Full 76,340-byte serial is
+`evidence/engine-prepare-0213a901.serial.log`, SHA256
+`907d336196f45e2f445d16f0e5ce34db844c0b067b28d85ae55619dc39867b81`; outer/capture
+records share that prefix. Earlier actual input/metadata failures remain in the audit and
+bounded evidence, not this current-state entry. This closes materialization/hooks only.
+The consumer now additionally runs the unchanged upstream GN generator for Linux x64 release
+with unit tests and remote execution disabled, checks original revision/content arguments,
+and resolves the real GTK library and native unit-test outputs. This extension still requires
+its own committed-source native transaction; GN generation is not compilation or product behavior.
+The full engine build, production geometry correction and complete app replay remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

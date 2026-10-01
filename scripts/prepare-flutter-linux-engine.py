@@ -367,6 +367,35 @@ def prepare():
             root = (config_path.parent / unquote(uri.path)).resolve(strict=True)
             require(root.is_relative_to(framework) and (root / "pubspec.yaml").is_file(),
                     "generated package root is not a materialized DEPS package")
+    engine = framework + "/engine/src"
+    print("ENGINE_PREPARE_GN_START runtime=release generator=original", flush=True)
+    command(["/usr/bin/python3", "flutter/tools/gn", "--runtime-mode=release",
+             "--enable-unittests", "--no-rbe"], engine, env, deadline)
+    args_path = Path(engine) / "out/host_release/args.gn"
+    require(args_path.stat().st_size <= 131072, "generated GN arguments exceed bound")
+    args_text = args_path.read_text()
+    expected_args = {
+        "flutter_runtime_mode": '"release"', "enable_unittests": "true",
+        "target_os": '"linux"', "target_cpu": '"x64"',
+        "content_hash": '"' + metadata["engine_content_hash"] + '"',
+        "engine_version": '"' + metadata["framework_revision"] + '"',
+        "dart_version": '"' + next(entry["commit"] for entry in metadata["git"]
+                                   if entry["destination"].endswith("/dart")) + '"',
+        "skia_version": '"' + next(entry["commit"] for entry in metadata["git"]
+                                   if entry["destination"].endswith("/skia")) + '"',
+    }
+    for key, value in expected_args.items():
+        require(re.findall(r"^" + key + r"\s*=\s*(.+)$", args_text, re.MULTILINE) == [value],
+                "generated GN argument differs: " + key)
+    for target, output in (("flutter_linux_gtk", "libflutter_linux_gtk.so"),
+                           ("flutter_linux_unittests", "flutter_linux_unittests")):
+        result = command(["flutter/third_party/gn/gn", "desc", "out/host_release",
+                          "//flutter/shell/platform/linux:" + target, "outputs"],
+                         engine, env, deadline)
+        require([line.strip() for line in result.decode().splitlines()] ==
+                ["//out/host_release/" + output], "original GN target output differs: " + target)
+    print("ENGINE_PREPARE_GN=pass runtime=release targets=flutter_linux_gtk,flutter_linux_unittests "
+          "generator=original engine_build=unexecuted", flush=True)
     print("FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 "
           "indexes=original pub=path-only network=none engine_build=unexecuted", flush=True)
 

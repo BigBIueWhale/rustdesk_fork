@@ -1722,8 +1722,18 @@ No complete VM transaction is claimed. Its 870-byte manifest SHA256
 binds the retained three files (24,846,336 allocated bytes); no duplicate acquisition is needed.
 The explicit `--maintenance-probe-flutter-linux-engine-bootstrap` consumer authenticates that
 artifact separately from the current harness, uses read-only input mounts and network-none,
-and derives platform authority from the publisher digest/ELF, never version wording. Current
-consumer execution remains unclaimed. Failed raw serial is `evidence/engine-tools-9eebf1da.serial.log`
+and derives platform authority from the publisher digest/ELF, never version wording. Exact
+`9cc6a98d81e1825681bc16a646c9f9843fa00314`, tree `4b046a08fe1e6ef6682e80cc7d0367619209236c`,
+passed the complete fresh-VM consumer in 58 harness seconds (65,750 host BOOTTIME ms).
+The verified client returned `cipd 2.6.16`, status zero and empty stderr; all candidate/discovery
+bytes rehashed unchanged. Inspected network-none/read-only/numeric-nonroot execution, VM
+entry/image/source/input proof, zero external listener-drift bytes and joined automatic run
+retirement passed. Full raw serial is `evidence/engine-tools-probe-9cc6a98d.serial.log`
+(66,678 bytes, SHA256 `9fb5ac622184effc6cc3f01e69299e9ace0995a2603adcd1ff3b54d9280fef38`),
+independently matching the success receipt; the corrected retention wrapper also returned zero.
+An actual duplicate producer request refused before VM allocation and left all three files
+unchanged. This is bootstrap-client readiness, not gclient sync, an engine build or product/LPE
+evidence. Failed raw serial is `evidence/engine-tools-9eebf1da.serial.log`
 (70,241 bytes, SHA256 `b9665cb99fb7340dfb9199264be7390d845812a6ef1b6e5256ae06d203015172`),
 independently equal to the original before exact stopped-root cleanup. The auxiliary wrapper's
 quoting error returned 125, not a green capture claim; outer status was 1, elapsed 75,660 host

@@ -32,6 +32,66 @@ trap 'exit 143' TERM
     END { if (found != 1 || copy) exit 1 }
 ' "$SCRIPT_DIR/smoke-verifier-vm-authority.sh" >"$workspace/function.sh"
 
+/usr/bin/awk '
+    /^process_start_time\(\) \{$/ { found++; copy = 1 }
+    copy { print; if ($0 == "}") copy = 0 }
+    END { if (found != 1 || copy) exit 1 }
+' "$SCRIPT_DIR/verify-vm-entry-preflight.sh" >"$workspace/process-start.sh"
+/usr/bin/python3 -I -S - "$workspace/process-start.sh" <<'PY'
+import ctypes
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+libc = ctypes.CDLL(None, use_errno=True)
+libc.prctl.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong,
+                      ctypes.c_ulong, ctypes.c_ulong]
+libc.prctl.restype = ctypes.c_int
+original_name = Path('/proc/self/comm').read_bytes()[:-1]
+pid = str(os.getpid())
+environment = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'HOME': '/nonexistent'}
+
+def rename(name):
+    if libc.prctl(15, ctypes.cast(ctypes.c_char_p(name), ctypes.c_void_p), 0, 0, 0):
+        raise OSError(ctypes.get_errno(), 'PR_SET_NAME failed')
+
+def inspect(value):
+    return subprocess.run([
+        '/bin/bash', '--noprofile', '--norc', '-c',
+        'set -euo pipefail; source "$1"; process_start_time "$2"',
+        'process-start', sys.argv[1], value,
+    ], env=environment, capture_output=True, timeout=5)
+
+def legacy():
+    return subprocess.run(['/usr/bin/awk', '{ print $22 }', f'/proc/{pid}/stat'],
+                          env=environment, check=True, capture_output=True, timeout=5).stdout
+
+try:
+    rename(b'rd-kernel-proof')
+    baseline = legacy()
+    assert baseline.strip().isdigit() and int(baseline) > 0
+    names = [('normal', b'rd-kernel-proof'), ('space', b'rd a b'),
+             ('parenthesis', b'rd ) ( a b'), ('newline', b'rd)\n x y'),
+             ('tab-carriage', b'rd\t x\r y')]
+    for label, name in names:
+        rename(name)
+        current = inspect(pid)
+        old = legacy()
+        assert current.returncode == 0 and current.stdout == baseline, (label, current, baseline)
+        assert (old == baseline) == (label == 'normal'), (label, old, baseline)
+        print(f'VERIFIER_VM_PROCESS_STAT_NATIVE case={label} start={int(baseline)} '
+              f'legacy={"same" if old == baseline else "wrong"} corrected=same', flush=True)
+    missing_pid = str(int(Path('/proc/sys/kernel/pid_max').read_text()) + 1)
+    for invalid in ('0', 'self', '../self', '-1', pid + 'x', missing_pid):
+        refusal = inspect(invalid)
+        assert refusal.returncode != 0 and not refusal.stdout, (invalid, refusal)
+finally:
+    rename(original_name)
+print('VERIFIER_VM_PROCESS_STAT_NATIVE=pass source=kernel comm_cases=5 '
+      'legacy_mismatches=4 pid_validation=refused missing=refused uid=nonroot cleanup=joined', flush=True)
+PY
+
 invoke() {
     /bin/bash --noprofile --norc -c '
         set -euo pipefail

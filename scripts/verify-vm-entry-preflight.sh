@@ -24,6 +24,25 @@ fail() {
     exit 1
 }
 
+process_start_time() {
+    local pid record suffix
+    local -a fields
+    [ "$#" -eq 1 ] || return 1
+    pid=$1
+    [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    record=$(<"/proc/$pid/stat") || return 1
+    [ "${#record}" -le 4096 ] || return 1
+    [[ "$record" == "$pid ("*") "* ]] || return 1
+    # comm is unescaped; only the final closing parenthesis starts the fixed fields.
+    suffix=${record##*) }
+    [[ "$suffix" != *$'\n'* && "$suffix" != *$'\r'* ]] || return 1
+    IFS=' ' read -r -a fields <<<"$suffix"
+    [ "${#fields[@]}" -ge 20 ] || return 1
+    [[ "${fields[0]}" =~ ^[RSDZTWtXxIKP]$ ]] \
+        && [[ "${fields[19]}" =~ ^[0-9]+$ ]] || return 1
+    printf '%s\n' "${fields[19]}"
+}
+
 [ "$#" -eq 0 ] || fail 'arguments are forbidden'
 [ "$UID_NOW" -ne 0 ] || fail 'the verifier principal must not be root'
 [ "$GID_NOW" -ne 0 ] || fail 'the verifier principal must not have a root primary group'
@@ -104,7 +123,7 @@ IFS=' ' read -r identity_pid identity_start identity_daemon_sha \
 [[ "$identity_client_sha" =~ ^client_sha256=[0-9a-f]{64}$ ]] \
     || fail 'VM Docker client-generation digest is malformed'
 [ -z "${identity_extra:-}" ] || fail 'VM Docker generation record has trailing fields'
-live_start="$(/usr/bin/awk '{ print $22 }' "/proc/$daemon_pid/stat" 2>/dev/null)" \
+live_start="$(process_start_time "$daemon_pid" 2>/dev/null)" \
     || fail 'VM Docker live generation cannot be read'
 [ "$identity_start" = "start=$live_start" ] || fail 'VM Docker live generation changed'
 [ "$identity_daemon_sha" = \
@@ -173,7 +192,7 @@ client_version="$(
 )" || fail 'fixed VM Docker client cannot reach the guest-only daemon'
 [ "$client_version" = "$EXPECTED_DOCKER_VERSION|$EXPECTED_DOCKER_VERSION" ] \
     || fail "VM Docker client/server version differs: $client_version"
-final_live_start="$(/usr/bin/awk '{ print $22 }' "/proc/$daemon_pid/stat" 2>/dev/null)" \
+final_live_start="$(process_start_time "$daemon_pid" 2>/dev/null)" \
     || fail 'VM Docker final generation cannot be read'
 [ "$identity_start" = "start=$final_live_start" ] \
     || fail 'VM Docker generation changed during preflight'

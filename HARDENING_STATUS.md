@@ -1832,6 +1832,18 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   host RustDesk, Haggai, or unrelated cache was used or modified. This is harness storage/admission
   evidence, not product or release closure.
 - The R-S11dh authority smoke executed its real nonroot-host KVM/QEMU, networkless Debian guest, guest-only
+  execution boundary. Its VM-entry preflight now parses the kernel's complete `/proc/PID/stat`
+  record after the final closing parenthesis, not whitespace field 22, for both daemon-generation
+  checks. Canonical PID, bounded record, fixed-field shape/state and decimal start time are required;
+  unavailable or malformed identity refuses. The native regression extracts that exact production
+  function and uses a real nonroot guest process with five PR_SET_NAME cases, comparing unchanged
+  lifetime identity against the old whitespace parser and refusing invalid/missing PIDs. Native
+  execution is pending. This is a parser correction, not a pidfd/reuse-race or LPE closure claim.
+  Other host/guest/acquisition process-stat start/state readers still use whitespace fields and
+  remain OPEN for migration; no test result for this receiver will close those callers.
+  Kernel contracts: [proc field definition](https://docs.kernel.org/filesystems/proc.html)
+  and [Linux 6.1 stat producer](https://raw.githubusercontent.com/torvalds/linux/v6.1/fs/proc/array.c).
+- The R-S11dh authority smoke executed its real nonroot-host KVM/QEMU, networkless Debian guest, guest-only
   Docker daemon, and confined numeric-nonroot container lifecycle. Its exact kernel/initramfs are independently
   derived from the authenticated base, digest-pinned, retained by descriptor, and direct-booted; the guest proves
   the exact kernel command line and runtime unit masks. Expanded twelve-entry passes complete in about 20–49 seconds and

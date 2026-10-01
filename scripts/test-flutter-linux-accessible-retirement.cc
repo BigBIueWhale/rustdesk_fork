@@ -716,10 +716,64 @@ static void retire_text(AtkObject* object, TextRetirement* context) {
   }
 }
 
+static void test_byte_bounded_insertion(FlSemanticsGeneration* generation,
+                                         FlEngine* engine) {
+  // ATK's length is bytes; GTK's insertion count and returned position are
+  // Unicode characters. Inspect the real buffer and decoded engine payload.
+  const struct {
+    const gchar* input;
+    gint bytes;
+    const gchar* expected;
+    gint characters;
+  } cases[] = {
+      {"xyTAIL", 2, "axyb", 2},
+      {"\xc3\xa9TAIL", 2, "a\xc3\xa9" "b", 1},
+      {"\xe7\x95\x8cTAIL", 3, "a\xe7\x95\x8c" "b", 1},
+      {"\xf0\x9f\x99\x82TAIL", 4, "a\xf0\x9f\x99\x82" "b", 1},
+      {"e\xcc\x81TAIL", 3, "ae\xcc\x81" "b", 2},
+      {"\xc3\xa9\xe7\x95\x8cTAIL", 5, "a\xc3\xa9\xe7\x95\x8c" "b", 2},
+      {"\xc3\xa9", -1, "a\xc3\xa9" "b", 1},
+  };
+  for (const auto& entry : cases) {
+    g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(generation, 10);
+    fl_accessible_node_set_value(text, "ab");
+    gint position = 1;
+    const guint dispatches = engine->dispatches;
+    atk_editable_text_insert_text(ATK_EDITABLE_TEXT(text), entry.input,
+                                  entry.bytes, &position);
+    g_autofree gchar* actual = atk_text_get_text(ATK_TEXT(text), 0, -1);
+    g_assert_cmpstr(actual, ==, entry.expected);
+    g_assert_cmpstr(engine->last_text, ==, entry.expected);
+    g_assert_cmpint(atk_text_get_character_count(ATK_TEXT(text)), ==, 2 + entry.characters);
+    g_assert_cmpint(position, ==, 1 + entry.characters);
+    g_assert_cmpuint(engine->dispatches, ==, dispatches + 2);
+  }
+  const struct { const gchar* input; gint bytes; gint position; } refused[] = {
+      {"", 0, 1}, {"unused", 0, 1}, {"", -1, 1},
+      {"\xc3\xa9", 1, 1}, {"\xe7\x95\x8c", 2, 1},
+      {"\xf0\x9f\x99\x82", 3, 1}, {"\xc0\xaf", 2, 1},
+      {"\xed\xa0\x80", 3, 1}, {"x", 2, 1}, {"x", -2, 1},
+      {"x", 1, -1}, {"x", 1, 3}, {"x", 1, G_MAXINT},
+  };
+  for (const auto& entry : refused) {
+    g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(generation, 10);
+    fl_accessible_node_set_value(text, "ab");
+    gint position = entry.position;
+    const guint dispatches = engine->dispatches;
+    atk_editable_text_insert_text(ATK_EDITABLE_TEXT(text), entry.input,
+                                  entry.bytes, &position);
+    g_autofree gchar* actual = atk_text_get_text(ATK_TEXT(text), 0, -1);
+    g_assert_cmpstr(actual, ==, "ab");
+    g_assert_cmpint(position, ==, entry.position);
+    g_assert_cmpuint(engine->dispatches, ==, dispatches);
+  }
+}
+
 static void test_text_field(FlEngine* engine) {
   g_autoptr(GtkWidget) widget = new_generation_widget();
   g_autoptr(FlSemanticsGeneration) generation = fl_semantics_generation_new(
       GTK_ACCESSIBLE(gtk_widget_get_accessible(widget)), engine, 7);
+  test_byte_bounded_insertion(generation, engine);
   // Live edits must still send the actual standard-codec payloads in order.
   g_autoptr(FlAccessibleNode) live = fl_accessible_text_field_new(generation, 10);
   fl_accessible_node_set_value(live, "original");

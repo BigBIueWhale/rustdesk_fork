@@ -1530,20 +1530,30 @@ reconnects before the potentially blocking dialog geometry transaction. All orig
 pixel, connection and resource criteria remain mandatory for full success; resources are checked
 again after dialog/AT-SPI retirement. One AT-SPI initialization remains owned until its sole final
 teardown, including every intervening failure path. Completed ancestry/thread/self-call diagnostics
-are removed. Native execution of this ordering is pending; it does not resolve the geometry blocker.
+are removed. Native execution confirms the independent measurements precede dialog entry; neither
+the complete consumer nor the geometry blocker is resolved.
 
-**Current native blocker:** exact harness `20ba622b` replayed those app bytes without rebuilding
-in 115,390 host BOOTTIME ms and exited 1. Both real Tap actions, actual password authentication,
-four changing pixel states (first fresh 59 ms, maximum accepted publication age 422 ms), scoped
-caption and all five stable-identity observations passed. Its original SCREEN GetExtents call
-timed out in 1,001 ms with width/height -1. The exact viewer main thread retained its start identity
-and unchanged CPU ticks, with `do_sys_poll` before/after. The existing-bus header-only match observed
-one GetExtents request whose sender and destination were the same selected app unique name.
-Setup/removal were acknowledged and the filter removed before owner retirement. The header was
-dispatched during the post-call drain: its callback time is not proof of the exact send time or
-provider stack. Earlier `71094e26` requests failed on both private and shared routes, so a simple
-private-route-only explanation is not supported. No resize/focus/reconnect, complete consumer,
-product-delay causation or LPE result follows.
+**Current consumer result — PARTIAL; EXIT 1:** exact harness `a0931883`, tree
+`9da80609bec8f024539dd14197008db6f8428189`, replayed the sealed app without rebuilding in
+144,690 host BOOTTIME ms. All three drivers compiled twice byte-equal. Real password input and
+initial changing pixels passed (first fresh 25 ms, accepted age at most 350 ms). The first lifecycle's
+three 2/6/12-second background observations passed on the same connection: 9/24/48 distinct states,
+maximum accepted ages 342/318/328 ms and focus first-fresh observations 6/6/7 ms. Three exact-server
+reconnects retained the viewer window and cached credential; first-fresh observations were
+220/178/182 ms, accepted ages 310/445/449 ms. Seven resource samples observed RSS
+356,452–375,864 KiB, 55–65 threads and 47 descriptors within the unchanged bounds.
+These are sampled synthetic 640x480/4-Hz results for one lifecycle, not sustained or end-to-end proof.
+Dialog entry then refused: `Keyboard settings` was absent after 46 queries in 5,090 ms. No Tap,
+caption, geometry, resize, post-dialog-resource or full-success verdict occurred in this run.
+The production toolbar has an auto-collapse path; establish and operate its real disclosure control
+after focus/reconnect instead of assuming its initial expanded state or guessing a new coordinate.
+
+**Geometry remains OPEN:** earlier exact harness `20ba622b` reached both real Tap actions, scoped
+caption and all five stable-identity checks, then SCREEN GetExtents timed out in 1,001 ms with
+invalid extents. The exact viewer main thread retained its identity/CPU ticks and `do_sys_poll`.
+The acknowledged, subsequently removed existing-bus header match observed a self-directed GetExtents
+request. Its post-call-drain callback time is not the send time or provider stack. Private and shared
+routes both failed at `71094e26`; a simple private-route-only explanation is unsupported.
 
 GNOME's socket adaptor `Embedded` handler installs a plug geometry getter that synchronously asks
 the embedding socket for GetExtents. Flutter's Linux plug/socket embedding is in-process, and the
@@ -1553,17 +1563,19 @@ Primary sources: [GNOME socket adaptor](https://raw.githubusercontent.com/GNOME/
 [Flutter socket embedding](https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/engine/src/flutter/shell/platform/linux/fl_socket_accessible.cc),
 [D-Bus blocking-call contract](https://dbus.freedesktop.org/doc/api/html/group__DBusConnection.html).
 
-Complete latest raw serial is `evidence/dialog-self-20ba622b.serial.log` (212,114 bytes, SHA-256
-`029165b118a4f2f18d14b63b6c0e2e4a6fe5e2ff774a4e319d961a5bf6fbb64f`); bounded viewer, capture
-and listener records share that prefix. Capture passed; before/during/after listeners were
-byte-identical, addition/drift records empty and owned VM/exporter/capture processes joined.
-All 74 inert app files independently rehashed unchanged. After bounded retention, exact locked
-inactive-root cleanup reclaimed 2,967,248,896 allocated bytes; no run/overlay remains.
+Complete current raw serial is `evidence/connection-first-a0931883.serial.log` (508,577 bytes,
+SHA-256 `2a8cb7e0afc12645055649bdec24d0c854aeca37a72bfa4033b5a70297e91539`); bounded viewer,
+capture and listener records share that prefix. The earlier self-call serial remains
+`evidence/dialog-self-20ba622b.serial.log` (212,114 bytes, SHA-256
+`029165b118a4f2f18d14b63b6c0e2e4a6fe5e2ff774a4e319d961a5bf6fbb64f`). Current capture passed;
+before/during/after listeners were byte-identical, addition/drift records empty and owned processes
+joined. All 74 inert app files independently rehashed unchanged. Exact locked inactive-root cleanup
+reclaimed 2,972,532,736 allocated bytes; no run/overlay remains. No duplicate app bundle is retained.
 Superseded selector, proxy and transport diagnostics remain in Git history, retained raw evidence
 and the external audit, not as a live replay diary.
 
-Next establish the native geometry-provider failure or replace the measurement with an equally
-authoritative target-native layout observation; do not increase timeouts, guess coordinates or
+Next establish real toolbar disclosure after lifecycle transitions, then the native geometry-provider
+failure or an equally authoritative target-native layout observation; do not increase timeouts, guess coordinates or
 accept invalid extents. Then observe an actual production image-ready rebuild trigger before
 changing desktop dialog ownership and complete the required consumer lifecycles. The older
 named Linux peer passes remain limited to their exact source/scenarios. Original Android/Windows
@@ -1696,7 +1708,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest joined cleanup is recorded in the app-replay disposition above.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 616,824,832 allocated bytes (0.574 GiB). The actual outer
+  small evidence records occupy 617,525,248 allocated bytes (0.575 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

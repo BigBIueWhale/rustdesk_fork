@@ -2006,13 +2006,13 @@ matching outer/capture records are retained mode 0400. Inputs remained read-only
 host-listener audit reported no additions or pre-existing-process drift, all owned work joined
 and the run automatically retired. This is real ATK/GObject behavior with one recording-engine
 boundary, not whole-tree atomic revocation, a direct GTK provider, a running engine or an
-app/installed-service result. Whole-tree generation authority and geometry remain OPEN: an
-early defunct callback during the current per-node reset could still call a not-yet-retired
-sibling; the named after-reset tests do not prove that edge closed. Unicode insertion length
-and nested live-edit ordering also need their own native cases, not inference from ASCII
+app/installed-service result. That test did not cover an early defunct callback calling a
+not-yet-retired sibling; the generation-owned correction and native result below address that
+unit boundary. Production geometry and view integration remain OPEN. Unicode insertion length
+and nested live-edit ordering need their own native cases, not inference from these ASCII
 retirement/disposal tests. No Android/Windows presentation causation is established.
 
-**Whole-tree revocation — NATIVE FAILURE CONFIRMED; CORRECTION OPEN.** The fixture connects
+**Whole-tree revocation — RETAINED NATIVE NEGATIVE; CORRECTION TESTED BELOW.** The fixture connects
 real defunct notifications on two live sibling nodes and attempts both indexed and direct
 actions on both siblings from the first notification. Reset, view retirement and root disposal
 must revoke the complete old tree before any callback can dispatch an action; a healthy tree
@@ -2027,47 +2027,41 @@ Full 81,859-byte serial is `evidence/engine-tree-revocation-d8fb0c63.serial.log`
 complete outer/capture/listener/exporter and stopped-owner records are retained mode 0400.
 Exact failed scratch was reconciled under the admission lock with unchanged listener snapshots,
 reclaiming 12,980,150,272 allocated bytes. This is a native reset-time generation-authority
-defect, not a proven LPE or Android/Windows cause. Replace independent engine/view authority
-in node construction with one live generation owner, revoked before callbacks; an admitted
-action must revalidate that owner at the actual dispatch sink. Do not omit notifications or
-retain an ownerless compatibility path. The assertions remain required for the correction.
+defect, not a proven LPE or Android/Windows cause. The generation-owned correction below
+replaces independent engine/view authority, closes it before callbacks and revalidates it at
+dispatch. The first-callback rejection assertions are unchanged; notifications are not omitted
+and no ownerless compatibility path is retained.
 
-**Generation-owned authority correction — NATIVE ASSERTIONS PASS; COMPLETE PROFILE PENDING.** The dependency
-patch replaces node-local engine/view-ID construction and properties with weak references to
-one tree-owned `FlSemanticsGeneration`. Reset closes that generation before releasing nodes
-or emitting callbacks; replacement admission resumes only after retirement notifications finish.
-The dispatch sink revalidates the generation, and retained base/text-field queries and edits
-use its live availability. Original constructor consumers are migrated with explicit owners;
-the focused profile also compiles those upstream test objects and executes owner-loss, raw
-default-closed, repeated-disposal and retirement-during-reset cases. Named native results below
-remain unit evidence, not a shipped engine/app or LPE result.
-Exact `ce2782cf`, tree `df620688edef0961e6a62780ebd8a7e43eaed1a4`, passed original-object
-compilation, the stale-action baseline and strict twelve-file patch application, then exhausted
-the existing command deadline while compiling production plus upstream test objects together.
-No corrected native assertion ran; tool 44414 ended 1, outer/capture 1/0 in 276,530 host
-BOOTTIME ms. Full 79,062-byte serial is `evidence/engine-generation-owner-ce2782cf.serial.log`,
-SHA256 `00dd6ffea3fd5191174a47d7ff4622c9078b1601d420ca6a6c8f99207d5d1570`;
-complete capture/listener/exporter records are retained mode 0400. Locked stopped-root cleanup
-reclaimed 13,015,732,224 allocated bytes with identical listeners and no remaining run/overlay.
-The focused profile now compiles production objects and runs the unchanged native assertions
-before compiling the two migrated test translation units with their exact GN/Ninja-generated
-single-object commands. Compiler/source/output are validated; flags are not replaced and missing
-headers fail. This is compile-only consumer evidence, not execution of upstream suites or their
-engine/fixture dependency graph. Original production Ninja dependency closure, resources,
-deadline and behavioral assertions remain unchanged. The next native result is still PENDING.
-Exact `a69f5814`, tree `f28312f7f9736d1d7f5cc2c14ba8a4b501d937c1`, compiled all eight
-candidate production objects and passed every unchanged node/root/whole-tree/generation/text-field
-assertion. Its 1,364,576-byte native candidate SHA256 is
+**Generation-owned authority correction — FOCUSED NATIVE PROFILE PASS; ENGINE/VIEW/APP INTEGRATION OPEN.**
+`res/flutter/linux-accessibility-retirement.patch` replaces engine/view-ID node constructors and
+properties with weak leases on one tree-owned `FlSemanticsGeneration`. Reset closes it before node
+release or callbacks; replacement opens after notifications finish. Dispatch, retained queries and
+edits revalidate that owner. Raw construction and owner loss are closed, with no old API fallback.
+The generation is GTK-thread confined, not a cross-thread claim.
+Exact `18194742be8ec7c335bfbfc39c4c93e3bdf2ed20`, tree
+`a8e008a2e7cc52f497c675c496ad277d13569445`, passed the complete focused
+`smoke-verifier-vm-authority.sh --linux-flutter-engine-prepare`: tool 72985 terminal 0,
+outer/capture 0/0 in 154,380 host BOOTTIME ms (outer 131 seconds). Strict twelve-file patch apply,
+seven original/eight candidate production-object compiles, the old stale-action baseline and all
+unchanged native assertions passed. First-DEFUNCT indexed/direct actions on both siblings produced
+no dispatch through reset/retire/dispose and reentrant owner retirement/disposal; positive actions,
+replacement, default closure, owner loss, retained text and edit-resource ownership also passed.
+GLib criticals remain fatal; assertion/resource/deadline bounds are unchanged.
+The 1,364,576-byte native candidate SHA256 is
 `ec2e6fb408caf530e2fb838d7c5c22c31a3fc85102b3a0f7f8bc5c418abc3c1f`.
-The complete profile still failed: compiler validation compared a resolved path with unresolved
-`clang++`, which the pinned archive links to `llvm`. The check now resolves both exact paths;
-compiler/source/output authority and the generated flags remain required, with no fallback.
-Tool 72004 ended 1; outer/capture 1/0 in 116,170 host BOOTTIME ms. Full 82,600-byte serial is
-`evidence/engine-generation-owner-a69f5814.serial.log`, SHA256
-`4fe0989f0360eaaf41b9e5ad16fe4867cc17493385f70077feabdba5fb8fb1d7`;
-complete records are sealed mode 0400. Exact stopped-root retirement reclaimed 12,975,562,752
-allocated bytes under the admission lock with identical listeners and no remaining run/overlay.
-The two upstream test-object compiles and complete profile result remain PENDING.
+Both migrated upstream test translation units compiled with exact GN/Ninja recipes and canonical
+compiler/source/output proof. Their suites, fixture graph and engine link did not execute.
+Complete 86,329-byte raw serial is `evidence/engine-generation-owner-18194742.serial.log`, SHA256
+`05265e0d6c2f01ef0a70cde4a5ccd97035a1aeba379499f7094a8639a35934a5`;
+matching outer/complete-FD capture records are sealed 0400. Zero-NIC VM, networkless UID/GID-1000
+container, read-only Landlocked inputs, no host-listener addition/process drift and joined cleanup
+passed. Exact `run.T0QAnTJMsM` (`66306:110366408`) self-retired. Detailed host snapshots retired
+with scratch; the retained outer log proves aggregate audit acceptance, not independent snapshots.
+Prior failures remain in `evidence/engine-generation-owner-{ce2782cf,a69f5814}.*` and the audit:
+combined-build timeout before corrected execution, then compiler-path comparison after native pass.
+Full engine link, actual FlView teardown/restart, subtree/type-change retirement, live geometry,
+Unicode/nested edits, shipped app replay, installed-service/LPE and Android/Windows causation remain
+OPEN. Product patch/native fixture bytes are unchanged since `ce2782cf`.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
@@ -2203,12 +2197,12 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   passed in 71 seconds with no added host listener or process drift and joined, residue-free cleanup;
   a concurrent outer invocation also refused without creating another root. User-authorized removal of
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
-  diagnostics are retained. Latest successful joined cleanup is recorded in the expanded
-  node-unit disposition above; subsequent failed runs were explicitly reconciled, most recently
-  `run.H6aEL3YL7a` (identity `66306:182977819`), reclaiming 12,980,150,272 allocated bytes.
+  diagnostics are retained. Latest successful joined cleanup is recorded in the generation-owner
+  disposition above; earlier failed runs were explicitly reconciled, most recently
+  `run.OcltxVpnqi` (identity `66306:110366303`), reclaiming 12,975,562,752 allocated bytes.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 625,274,880 allocated bytes (0.582 GiB). The latest successful
-  text-field unit run also joined and automatically removed its exact scratch root. The actual outer
+  small evidence records occupy 625,684,480 allocated bytes (0.583 GiB). The successful
+  `18194742` generation-owner run joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

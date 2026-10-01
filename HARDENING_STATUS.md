@@ -1825,7 +1825,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest joined cleanup is recorded in the app-replay disposition above.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 621,686,784 allocated bytes (0.579 GiB). The actual outer
+  small evidence records occupy 621,838,336 allocated bytes (0.579 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,
@@ -1835,8 +1835,21 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   one-run reservation for `online-fetch-runs`, before input digest walks, boot derivation,
   payload construction or process launch. Its prior unguarded allocation is removed. Failed
   evidence remains explicit and blocks another acquisition; successful joined retirement is
-  unchanged. Native retained/unsafe/lock/readmission and concurrent cases for this exact
-  production function, plus actual outer acquisition integration, are pending execution.
+  unchanged. Exact pushed `1156b66cfb2455118a2f4de99a4c49c2db1809fd`, tree
+  `66ef79ef19492c936d31cf6395b27f4f6635ec39`, passed both production functions' real
+  retained/file/symlink/unsafe/lock/readmission and 16-caller/one-winner cases in the zero-NIC
+  VM in 26,790 host BOOTTIME ms. The old unguarded allocation primitive admitted two real
+  directories. The actual outbound-only acquisition authority smoke passed in 35,180 ms;
+  a second actual outer invocation refused with status 1 before input digests and preserved
+  the sole live run identity/count. Both runs self-retired after joined cleanup with unchanged
+  inputs and no harness-added host listener. The native audit reported process drift zero;
+  the acquisition receipt records listener-drift bytes zero. Complete native/integration raw serials
+  are `evidence/acquisition-admission-1156b66c.serial.log` (68,857 bytes, SHA-256
+  `8dd9287ee2cdaac28f3ac52195201c18c457a73abbccdc2cd6bde4c8ef45c8bd`) and
+  `evidence/acquisition-entry-1156b66c.serial.log` (66,357 bytes, SHA-256
+  `a9f9027915961ef6363152c553d59ad7b89253889d0125c452b744a90dc62a56`);
+  duplicate diagnostics are retained separately. This closes acquisition run admission,
+  not engine-input acquisition, Flutter/product behavior, LPE or release evidence.
 - The R-S11dh VM-entry preflight now parses the kernel's complete `/proc/PID/stat`
   record after the final closing parenthesis, not whitespace field 22, for both daemon-generation
   checks. Canonical PID, bounded record, fixed-field shape/state and decimal start time are required;

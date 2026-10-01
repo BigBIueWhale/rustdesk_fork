@@ -81,7 +81,8 @@ try:
         assert current.returncode == 0 and current.stdout == baseline, (label, current, baseline)
         assert (old == baseline) == (label == 'normal'), (label, old, baseline)
         print(f'VERIFIER_VM_PROCESS_STAT_NATIVE case={label} start={int(baseline)} '
-              f'legacy={"same" if old == baseline else "wrong"} corrected=same', flush=True)
+              f'legacy={"same" if old == baseline else "wrong"} corrected=same',
+              file=sys.stderr, flush=True)
     missing_pid = str(int(Path('/proc/sys/kernel/pid_max').read_text()) + 1)
     for invalid in ('0', 'self', '../self', '-1', pid + 'x', missing_pid):
         refusal = inspect(invalid)
@@ -89,7 +90,8 @@ try:
 finally:
     rename(original_name)
 print('VERIFIER_VM_PROCESS_STAT_NATIVE=pass source=kernel comm_cases=5 '
-      'legacy_mismatches=4 pid_validation=refused missing=refused uid=nonroot cleanup=joined', flush=True)
+      'legacy_mismatches=4 pid_validation=refused missing=refused uid=nonroot cleanup=joined',
+      file=sys.stderr, flush=True)
 PY
 
 invoke() {

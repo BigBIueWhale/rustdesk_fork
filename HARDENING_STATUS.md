@@ -1831,14 +1831,25 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,
   host RustDesk, Haggai, or unrelated cache was used or modified. This is harness storage/admission
   evidence, not product or release closure.
-- The R-S11dh authority smoke executed its real nonroot-host KVM/QEMU, networkless Debian guest, guest-only
-  execution boundary. Its VM-entry preflight now parses the kernel's complete `/proc/PID/stat`
+- The R-S11dh VM-entry preflight now parses the kernel's complete `/proc/PID/stat`
   record after the final closing parenthesis, not whitespace field 22, for both daemon-generation
   checks. Canonical PID, bounded record, fixed-field shape/state and decimal start time are required;
   unavailable or malformed identity refuses. The native regression extracts that exact production
   function and uses a real nonroot guest process with five PR_SET_NAME cases, comparing unchanged
-  lifetime identity against the old whitespace parser and refusing invalid/missing PIDs. Native
-  execution is pending. This is a parser correction, not a pidfd/reuse-race or LPE closure claim.
+  lifetime identity against the old whitespace parser and refusing invalid/missing PIDs. Exact
+  pushed `3e3a8ccb`, tree `bd31944e306113fd1a82db6b7b903eef1472e440`, passed all five native
+  cases: the old parser mismatched in all four irregular cases; the corrected parser preserved
+  one kernel start time. Invalid/missing PIDs refused. The complete focused capsule/admission
+  transaction passed in 26,970 host BOOTTIME ms, with unchanged inputs/listeners, zero process
+  drift, joined cleanup and automatic scratch retirement. Complete 68,417-byte raw serial is
+  `evidence/process-stat-3e3a8ccb.serial.log`, SHA-256
+  `b58838de88c5d95a3d599bc8dffeb07ea7ddb1505cdb779f801e9f1ac1a41536`.
+  The shared authority integration then refused the newly expanded stdout, which must contain
+  only its existing admission receipt; native cases still passed, but the transaction exited 1.
+  Complete 67,203-byte failure serial and bounded listener/capture records are retained at
+  `evidence/process-stat-integration-3e3a8ccb.*`; the exact stopped scratch was reconciled.
+  Native diagnostics now use stderr, preserving the sole stdout receipt. Corrected shared
+  integration is pending. This is a parser correction, not a pidfd/reuse-race or LPE closure claim.
   Other host/guest/acquisition process-stat start/state readers still use whitespace fields and
   remain OPEN for migration; no test result for this receiver will close those callers.
   Kernel contracts: [proc field definition](https://docs.kernel.org/filesystems/proc.html)

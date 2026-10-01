@@ -1925,7 +1925,7 @@ These are unmodified production object compilations, not a linked engine, execut
 unit tests, a geometry correction, or product behavior.
 The full engine build, production geometry correction and complete app replay remain OPEN.
 
-**Retained-node lifetime correction — BASIC NATIVE UNIT PASS; CORRECTED EXPANDED RETRY PENDING.**
+**Retained-node lifetime correction — EXPANDED NATIVE NODE UNIT PASS; ROOT/VIEW INTEGRATION OPEN.**
 `res/flutter/linux-accessibility-retirement.patch` adds permanent node retirement to the
 source-bound dependency: action dispatch is revoked, retained nodes become defunct, and
 geometry becomes unavailable. A tree reset detaches its old node map before notifications;
@@ -1934,34 +1934,28 @@ tree before engine restart and retires it before releasing the view ID. This is 
 to disposable engine source by the offline consumer, never to a host SDK/service or retained
 app. The focused test links the real GN-built node implementation to one explicitly recording
 engine boundary and contrasts the old parent-gone/live-engine dispatch with permanent
-retirement plus a healthy fresh node. Exact `4da7f30e`, tree
-`7bf957e7aa19d6249a287c9d74719d50e9b3f06f`, passed that real ATK/GObject A/B and all
-three patched production-unit compiles in 102,310 host BOOTTIME ms (outer/capture 0/0),
-with read-only inputs, no added host listener/process drift and joined automatic scratch
-retirement. Full 81,214-byte serial is `evidence/engine-node-retire-4da7f30e.serial.log`,
-SHA256 `436974117e0f0f2980f959979e0adc251765265423f137b8f48f43b1147e65f0`.
+retirement plus a healthy fresh node.
 The expanded candidate retains admitted update objects and exact map generation across
 callbacks, stops child mutation after synchronous retirement, initializes weak references in
 instance init and clears them only at finalization, and rejects post-dispose mutations/queries.
-Exact expanded `da50ceea`, tree `db1e1b85938b14b64d64a19da219bfd80f65214c`,
-failed the unchanged guest's `git apply --recount --check` on the node/root source hunks,
-before patched-object compilation or expanded unit execution. Original preparation, three
-original-object compiles and the parent-gone baseline passed; no expanded candidate pass is
-claimed. Tool 83960 was terminal 1; outer/capture 1/0 in 96,340 host BOOTTIME ms.
-Full 78,194-byte serial is `evidence/engine-node-reentrant-da50ceea.serial.log`, SHA256
-`d193bead37524e7d8d5df81593a83514e96e4b29655b77a7d84bb5e86fdfa7ec`;
-matching outer, capture, listener and exporter records are retained read-only. After proving
-the outer owner absent, no owned processes/sockets/mounts/open VM images, unchanged host
-listeners and exact private-tree authority, failed run `66306:182977664` was reconciled
-under the admission lock, recovering 12,980,174,848 allocated bytes. Its real callback-
-retirement and disposed-node unit cases still require a corrected committed patch and execution.
-The retry corrects the out-of-order node hunks, mismatched parent-signature indentation,
-missing root-disposal trailing context and overlapping constructor/reset fragments. Every
-hunk now has exact original-source positions and line counts; the consumer uses ordinary
-strict `git apply --check` and apply, without recounting malformed headers. This is patch
-preparation, not a native result. Lifetime rules and the fatal-GLib-critical test are unchanged.
+Exact `3168876578dd5213064f12f280818fa597c10ddf`, tree
+`2e99940af93ba128d28e315e2df46bd19c552f02`, passed ordinary strict patch application,
+three original and three corrected production-object compiles, and the real-node A/B,
+synchronous removal-callback retirement and retained post-dispose cases, with GLib critical
+errors fatal. Tool 2599 was terminal 0; outer/capture 0/0 in 106,720 host BOOTTIME ms
+(outer 96 seconds). Original extraction, Git/version, six hooks and GN gates passed;
+inputs remained read-only, the complete host-listener audit reported no additions or
+pre-existing-process drift, all owners joined and scratch self-retired. Full 79,462-byte
+serial is `evidence/engine-node-reentrant-31688765.serial.log`, SHA256
+`a722341e687ff2811607a25def447754643daecbbaaafc881d57b4e50528ef7b`;
+matching capture/outer records are retained mode 0400. Earlier patch-application failure
+and exact stopped-run reconciliation remain in bounded evidence and the audit, not a pass.
 This is not a running engine, actual view teardown/restart, full engine link, shipped
 dependency, removed-subtree retirement, geometry/self-wait correction, or product/LPE closure.
+Next exercise the actual root map/reset/reentrant update path, not only the base node.
+Text-field subclass disposal clears its GtkEntryBuffer while its ATK text/edit methods
+still use that buffer; retained post-dispose text queries are an additional source-derived
+availability hazard requiring a native case and correct lifetime closure, not a proven LPE.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
@@ -2097,10 +2091,10 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   passed in 71 seconds with no added host listener or process drift and joined, residue-free cleanup;
   a concurrent outer invocation also refused without creating another root. User-authorized removal of
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
-  diagnostics are retained. Latest stopped-run cleanup is recorded in the expanded node-patch
-  disposition above.
+  diagnostics are retained. Latest successful joined cleanup is recorded in the expanded
+  node-unit disposition above; the preceding failed-patch run was explicitly reconciled.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 624,615,424 allocated bytes (0.582 GiB). The actual outer
+  small evidence records occupy 624,705,536 allocated bytes (0.582 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

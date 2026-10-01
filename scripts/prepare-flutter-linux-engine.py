@@ -655,11 +655,25 @@ def build_engine(engine, framework, env, pin, patch_bytes, context):
     """Explicit integration build; no workload or deadline expansion in prepare()."""
     deadline = time.monotonic() + 7200
     publisher = "/authority/publish.py"
-    command(["/usr/bin/python3", "-I", "-S", publisher, "--self-test"], "/work", env, deadline)
+    require(command(["/usr/bin/python3", "-I", "-S", publisher, "--self-test"], "/work", env, deadline)
+            == b"publish-artifact-result self-test: ok\n", "engine publication tests did not pass")
+    print("ENGINE_ARTIFACT_PUBLICATION_TEST=pass contracts=4 filesystem=real cleanup=joined", flush=True)
     output = Path(engine) / "out/host_release"
     ninja = framework + "/third_party/ninja/ninja"
+    header_outputs = command([
+        "flutter/third_party/gn/gn", "desc", "out/host_release",
+        "//flutter/shell/platform/linux:publish_headers_linux", "outputs",
+        "--script-executable=/usr/bin/python3",
+    ], engine, env, deadline).decode().splitlines()
+    public_headers = (Path(engine) / "flutter/shell/platform/linux/BUILD.gn").read_text()
+    declared = re.findall(r'"public/flutter_linux/([a-z0-9_]+\.h)"',
+                          public_headers.split("_public_headers = [", 1)[1].split("]", 1)[0])
+    require(len(declared) == len(set(declared)) == 26
+            and sorted(line.strip() for line in header_outputs)
+                == sorted("//out/host_release/flutter_linux/" + name for name in declared),
+            "original GN public header outputs differ")
     targets = ["libflutter_linux_gtk.so", "gen_snapshot",
-               "obj/flutter/shell/platform/linux/publish_headers_linux.stamp"]
+               *["flutter_linux/" + name for name in sorted(declared)]]
     plan = command([ninja, "-C", str(output), "-n", *targets], engine, env, deadline,
                    integration=True)
     require(plan and len(plan.splitlines()) <= 32768, "engine link plan is empty or exceeds bound")

@@ -3519,6 +3519,7 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
     require_exact_fixed_receipt "$engine_prepare_vm_receipt" 'engine preparation source/finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'engine preparation cloud-init completion'
     if [ "$MODE" = linux-flutter-engine-build ]; then
+        require_exact_fixed_receipt 'ENGINE_ARTIFACT_PUBLICATION_TEST=pass contracts=4 filesystem=real cleanup=joined' 'engine publication filesystem cases'
         mapfile -t engine_artifacts < <(/usr/bin/grep -Eo \
             "FLUTTER_ENGINE_ARTIFACT_PREPARED=pass commit=$FOCUSED_TEST_COMMIT tree=$FOCUSED_TEST_TREE pending=[.]flutter-engine-output-pending-[0-9a-f]{64} sha256=[0-9a-f]{64} manifest_sha256=[0-9a-f]{64} bytes=[1-9][0-9]* files=28 app_execution=unexecuted" "$SERIAL_LOG" || true)
         [ "${#engine_artifacts[@]}" -eq 1 ] || fail 'engine artifact receipt is absent or duplicated'

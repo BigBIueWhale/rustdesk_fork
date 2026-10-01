@@ -2171,9 +2171,20 @@ closure, patch/helper/GN identities and every output digest. The existing descri
 no-clobber publisher is extended with this fixed artifact contract; publication follows
 joined VM/exporter and input/listener/source revalidation. A retained artifact or pending
 entry refuses another producer under the existing run-admission lock, before allocation.
-Existing filesystem/CLI publication cases now also exercise the engine contract, and run
-admission cases include retained directory/file/dangling-symlink engine outputs. Full build,
-publication, shared integration and consumer results are PENDING. Linking alone cannot
+Existing filesystem/CLI publication cases now also exercise the engine contract. Exact
+`0d25f0f1` passed the complete 25-second native capsule/admission transaction, including
+retained directory/file/dangling-symlink engine outputs and the existing 16-caller guard.
+The first engine transaction passed preparation, both GTK scales and the four-contract
+publisher self-test, then refused the integration driver's assumed copy stamp: the original
+GN graph has header outputs rather than that Ninja target. No full compile/link occurred.
+Outer/capture were 1/0 in 103,160 host BOOTTIME ms; complete raw serial is retained at
+`evidence/engine-link-0d25f0f1.serial.log` (SHA256
+`e2bdff1ea753c1fbc92b3e965e07f2d7afa4e4b5ad33826e6d22aa7b200e481c`).
+Exact stopped scratch was reconciled with identical listener snapshots and absent owned
+processes/image handles/mounts/sockets, reclaiming 12,987,510,784 bytes. No run/overlay remains.
+The driver now queries and validates all 26 original GN header outputs against the declared
+public-header list before forming the exact Ninja targets; no guessed alias or fallback.
+Full build/publication, shared integration and consumer results are PENDING. Linking alone cannot
 prove real FlView restart, AT-SPI geometry, app presentation, shipped SDK integration,
 Wayland behavior, reproducibility equality or Android/Windows causation; these remain OPEN.
 Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

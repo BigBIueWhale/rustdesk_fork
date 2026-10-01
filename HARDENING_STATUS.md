@@ -1858,7 +1858,7 @@ path overrides for DEPS-managed packages; test their actual offline resolves bef
 another hosted Pub acquisition is needed. Sysroot/Pub/hooks, offline engine build, production
 geometry correction and complete uninstrumented consumer remain OPEN.
 
-**Source-selected sysroot acquisition — IMPLEMENTED; NATIVE TRANSACTION UNEXECUTED.**
+**Source-selected sysroots — ACQUISITION PASS; OFFLINE BUILD CLOSURE OPEN.**
 The closed `--maintenance-stage-flutter-linux-engine-sysroots` operation authenticates
 the independent graph manifest and its original root-source archive, reads only the
 original `sysroots.json` as data, and checks all three selected x64/arm64/riscv64 hooks
@@ -1869,8 +1869,20 @@ The existing acquisition VM/entry/image authority remains mandatory; the confine
 numeric-nonroot container has four exact binds (graph/source/helper read-only, output
 writable), no devices or ports, a 512-MiB memory limit and a 64-MiB aggregate output
 budget. The focused VM has an eight-GiB disposable disk and a 300-second transaction
-deadline. No upstream installer, extraction or downloaded code runs. Actual acquisition,
-final independent rehash and joined cleanup must pass before this prerequisite is closed.
+deadline. No upstream installer, extraction or downloaded code runs. Exact pushed
+`8be82d536b5fff90b6851469bb57a17f657db270`, tree `4e03163f548fe4db40648bc2abd6b3671063f552`,
+passed the actual acquisition/final publisher/guest/outer transaction in 54 harness seconds
+(60,210 host BOOTTIME ms, outer/capture 0/0). The independently rehashed 2,617-byte manifest
+SHA256 `1d01e4c42df21288346eebb8b07697cfb3d30e74c422f7b6e132c884515d7eb3` binds three archives
+totalling 60,164,652 bytes. Read-only verification checked the complete four-file mode-0400,
+single-link inventory, original-source JSON digest and exact graph/tool/discovery context;
+metadata remained unchanged. Full 66,599-byte raw serial is
+`evidence/engine-sysroots-8be82d53.serial.log`, SHA256
+`0e292cadf686d61bb8fb230ed2b6c393f9e0643477019c972664ce441298cab2`, matching the VM receipt.
+Inputs/listeners were unchanged, external listener-drift bytes zero, all owned processes joined
+and successful scratch self-retired. An actual duplicate producer refused status 1 before
+allocation and preserved the candidate. No run/overlay remains; this sole inert candidate
+occupies 60,178,432 allocated bytes (~0.056 GiB). This closes acquisition only.
 Safe offline sysroot materialization, original hooks/Pub resolution, the engine build,
 production geometry correction and complete uninstrumented consumer remain OPEN.
 

@@ -1681,6 +1681,15 @@ acceptance conditions remain unchanged. Complete 200,750-byte raw serial is reta
 Host listener inventories were identical, drift records empty and owned teardown joined. Exact
 locked inactive-root reconciliation recovered 2,967,601,152 allocated bytes; no run/overlay remains.
 Native extent classification and broader product/platform/installed/LPE/release claims remain OPEN.
+Exact diagnostic harness `1cd862bb` repeated scoped caption selection and all five identity checks
+without rebuilding the app, then classified the same native extent failure as `timeout from dbind`.
+The 114,950-ms transaction is not a geometry/resize, complete peer or product-causation pass.
+Complete 202,267-byte serial and bounded diagnostics are retained at `evidence/dialog-extents-1cd862bb.*`.
+Inputs stayed source-bound, host listeners were identical, drift records empty and all owners joined;
+locked inactive-root cleanup reclaimed 2,967,867,392 allocated bytes. All 74 inert app files rehashed
+unchanged after both replays. Zero run/overlay remains. Trace the actual native geometry-call wait
+before changing the observer or product; a larger timeout, guessed coordinates or invalid extent
+acceptance would not establish correctness. The original Android/Windows defect remains OPEN.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

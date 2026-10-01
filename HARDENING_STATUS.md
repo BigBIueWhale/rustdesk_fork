@@ -2158,6 +2158,31 @@ additions/drift empty; exact stopped `run.rhRo6QXFpb` (`66306:105159802`) was re
 under the run-root lock, reclaiming 12,995,813,376 allocated bytes. Zero run/overlay remains.
 The fixture's GTK owner is renamed `toplevel`; assertions and production bytes are unchanged.
 
+**ATK byte-bounded insertion — NATIVE A/B PASS; SELECTION/APP INTEGRATION OPEN.**
+The text provider passed ATK's byte length directly to GTK's character-count input.
+Tests-only source `334f2a8233962900ba4d03d0783ef59f55463b2d` reproduced an actual
+two-byte-prefix insertion of `aéTb` instead of `aéb`. The native assertion failed;
+the outer also refused newly observed unattributed loopback listeners. No complete
+negative transaction is claimed and no external service was changed.
+The production patch now validates exactly the requested UTF-8 byte range and cursor
+before mutation, converts bytes to characters once, checks cursor arithmetic, and
+preserves exact self/buffer/generation ownership across callbacks. Empty or zero-result
+insertions dispatch nothing; malformed/split input and invalid positions are not repaired
+or clamped. Corrected source `73b590c846a0ac13135d1f94d72d3ae2f5d50981`, tree
+`0c0b97e51fd8759db848945089cd897feb242245`, passed the unchanged seven valid and thirteen
+no-mutation cases plus every existing native lifetime/geometry assertion at GTK scales
+1 and 2 in 115,470 host BOOTTIME ms (outer/capture 0/0). The same 1,413,968-byte native
+ELF had SHA256 `2a1ad4fc4964e2913253f78c50a9f107c8f4aa8e30aea0ee08a2aa2f998f344b`.
+Strict patch application, eight patched production objects and four upstream test-object
+compiles passed; upstream suites, whole engine and actual FlView/app did not execute.
+Complete negative/positive raw serials are `evidence/engine-utf8-old-334f2a82.serial.log`
+(84,633 bytes, SHA256 `64fb60bcc25b401f73510bef316748bc85edfd881bd868940aa764f54d173934`)
+and `evidence/engine-utf8-fix-73b590c8.serial.log` (91,147 bytes, SHA256
+`eba08eb7178b6a0480ce22e33d69496b7c4cfbad166423c25cc62b04601f2c6e`). The positive
+zero-NIC/network-none transaction had unchanged inputs, no added host listener or
+process drift, joined owners and automatic scratch retirement. UTF-16 Flutter selection
+mapping, nested live edits, app integration, LPE and Android/Windows causation remain OPEN.
+
 **Source-bound core engine — FULL BUILD/INERT PUBLICATION PASS; SDK/APP INTEGRATION OPEN.**
 Exact pushed `e5e5736aaa45c093e1885519c76bdd71d6ada9ae`, tree
 `81bbd3f89c9d2e7032c58ba60ab3a0e02dcfe37b`, passed the complete
@@ -2211,8 +2236,18 @@ lifetime and geometry.** This archive is only the core engine, not a complete Fl
 Original GN must additionally supply the generated `flutter_patched_sdk`, `sky_engine`, ICU
 and used host tools. Flutter bootstrap/Pub use `bin/cache/dart-sdk`, and Pub locates `sky_engine`
 under `bin/cache/pkg`; local-engine flags do not automatically bind those roles to the generated
-outputs. Preserve exact original Dart/frontend provenance and reuse this source-bound core,
-rather than rebuilding an unchanged engine or mixing stock caches, old AOT code or fabricated stamps.
+outputs. Independent inert archive reads now establish that the source-selected CIPD Dart SDK
+and shipped bootstrap SDK have identical complete normalized path inventories and all 1,047
+regular files' sizes/bytes (113 directories, no other member types). The sorted regular-file
+manifest SHA256 is `2392ae9f43abccf94978452b16fcc427053b958eb06774055d075f56676a41b7`;
+archive identities and exact comparison command are retained in the external audit. This
+supports retaining the authenticated shipped bootstrap/Pub Dart SDK unchanged, not generated
+platform/sky/ICU/host-tool closure. No duplicate SDK or fabricated cache stamp is needed.
+The retained `e5e5736a` core predates the insertion correction above; it remains an immutable
+named baseline, not current-provider evidence. The next coherent toolkit producer must build
+the matching corrected core and required original-GN tool/SDK outputs together after explicitly
+reconciling the old artifact state, without overwriting or relabelling it. Do not repeat a full
+core build for a focused native-unit check or mix stock engine caches and old AOT code.
 Actual FlView restart/disposal, removed-subtree/type-change authority, Unicode/nested edits,
 AT-SPI self-wait/geometry, Wayland, shipped SDK integration and the full uninstrumented consumer
 remain OPEN. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept
@@ -2345,11 +2380,11 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   passed in 71 seconds with no added host listener or process drift and joined, residue-free cleanup;
   a concurrent outer invocation also refused without creating another root. User-authorized removal of
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
-  diagnostics are retained. Latest successful joined cleanup is recorded in the generation-owner
+  diagnostics are retained. Latest successful joined cleanup is recorded in the byte-bounded insertion
   disposition above; earlier failed runs were explicitly reconciled, most recently
-  `run.rhRo6QXFpb` (identity `66306:105159802`), reclaiming 12,995,813,376 allocated bytes.
+  `run.AxLKPdkduE` (identity `66306:105159951`), reclaiming 13,003,747,328 allocated bytes.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 626,294,784 allocated bytes (0.583 GiB). The successful
+  small evidence records occupy 628,031,488 allocated bytes (0.585 GiB). The successful
   `9f3f0df2` direct-GTK provider run joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks

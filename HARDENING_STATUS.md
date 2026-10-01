@@ -1599,7 +1599,30 @@ Primary sources: [GNOME socket adaptor](https://raw.githubusercontent.com/GNOME/
 [Flutter socket embedding](https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/engine/src/flutter/shell/platform/linux/fl_socket_accessible.cc),
 [D-Bus blocking-call contract](https://dbus.freedesktop.org/doc/api/html/group__DBusConnection.html).
 
-Complete current raw serial is `evidence/toolbar-disclosure-positive-eeaaa0ec.serial.log` (496,003 bytes,
+**Native provider-path evidence:** exact diagnostic harness `98b210ce`, tree
+`898974b31343d0649c54085a564f750fc26c919f`, replayed the unchanged `eeaaa0ec` app in
+147,740 host BOOTTIME ms. Four native drivers compiled twice byte-equal; no app build occurred.
+The separately manifested forwarding tracer was mapped only into the exact viewer generation.
+At the real dialog GetExtents failure, the main thread (guest PID/TID 233/233) entered a blocking,
+self-addressed `org.a11y.atspi.Component.GetExtents` call with the original timeout argument -1.
+The complete twelve-component synchronous chain was eleven `FlAccessibleNode` instances
+(Flutter provider offset `4f6450`) followed by `FlViewAccessible`, whose actual geometry vfunc
+was in `libatk-bridge-2.0.so.0` at offset `1d760`. The caller frame in that bridge was `1d7e7`,
+followed by ATK and repeated Flutter parent-geometry frames. The backtrace stopped at its explicit
+32-frame bound; no return was observed before owned teardown. The unchanged controller timed out
+after 1,001 ms with invalid extents, before any resize. This supplies the previously missing native
+provider ownership/call chain and supports the non-reentrant self-wait mechanism; a corrected-path
+causal A/B is still required. It is not Android/Windows causation, an LPE finding, full-consumer
+success or uninstrumented performance evidence. Complete 511,045-byte raw serial is
+`evidence/geometry-provider-98b210ce.serial.log`, SHA-256
+`05fd03325e3be421e52afb0dfa4d06574e3b09b47c4a69f1c9c33ce83ee4c12c`.
+Bounded viewer, capture and listener records share that prefix. Capture passed, before/during/after
+listeners were byte-identical, addition/drift records empty and all owners joined. Independent
+74-file capsule rehash passed before and after execution. Exact locked cleanup reclaimed
+2,972,758,016 allocated bytes; no run/overlay remains. The temporary tracer and all runtime wiring
+are deleted after retention; both runtime scripts equal their pre-diagnostic bytes.
+
+Uninstrumented disclosure raw serial is `evidence/toolbar-disclosure-positive-eeaaa0ec.serial.log` (496,003 bytes,
 SHA-256 `e178d3036ec74583981eca56548944ed15584b62fa78787e5287eecd5ca38d21`); bounded viewer,
 capture and listener records share that prefix. The earlier self-call serial remains
 `evidence/dialog-self-20ba622b.serial.log` (212,114 bytes, SHA-256
@@ -1610,15 +1633,8 @@ reclaimed 3,083,468,800 allocated bytes; no run/overlay remains. No duplicate ap
 Superseded selector, proxy and transport diagnostics remain in Git history, retained raw evidence
 and the external audit, not as a live replay diary.
 
-Next capture the exact native geometry-provider call stack and test the self-wait candidate in a
-focused no-NIC replay, or establish an equally authoritative target-native layout observation.
-The temporary current harness compiles a fourth byte-equal diagnostic ELF and preloads it only
-into the private viewer, proving its exact mapping before control. It forwards ATK extents and
-blocking D-Bus calls unchanged and records at most four self-directed GetExtents calls, sixteen
-component types/providers and thirty-two module-offset frames per call, without message bodies,
-object labels or memory dumps. This replay is explicitly instrumented and cannot supply complete
-consumer acceptance, even if the unchanged controller succeeds. Remove the temporary probe after
-retaining its evidence; no native stack or causal verdict is claimed before execution.
+Next test a correct local geometry-provider path against the observed self-wait in a focused
+target-native A/B, or establish an equally authoritative target-native layout observation.
 Do not increase timeouts, guess coordinates or accept invalid extents. Then observe an actual
 production image-ready rebuild trigger before
 changing desktop dialog ownership and complete the required consumer lifecycles. The older
@@ -1752,7 +1768,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest joined cleanup is recorded in the app-replay disposition above.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 619,974,656 allocated bytes (0.577 GiB). The actual outer
+  small evidence records occupy 620,670,976 allocated bytes (0.578 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

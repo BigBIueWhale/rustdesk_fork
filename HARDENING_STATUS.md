@@ -1886,7 +1886,7 @@ occupies 60,178,432 allocated bytes (~0.056 GiB). This closes acquisition only.
 The offline materialization/hook result is recorded below; the engine build, production
 geometry correction and complete uninstrumented consumer remain OPEN.
 
-**Offline materialization and original hooks — NATIVE PASS; GN/BUILD OPEN.** Exact pushed
+**Offline materialization and original hooks — NATIVE PASS.** Exact pushed
 `0213a9017eeb6a1a4879ac52682c41060e972c32`, tree `12482c38746dc6b3bd046ac934496272dfb4a850`,
 passed `--linux-flutter-engine-prepare` in 117,450 host BOOTTIME ms (outer/capture 0/0).
 Three independently pinned candidates were read-only Landlocked exports into a zero-NIC
@@ -1903,23 +1903,26 @@ processes joined and the successful scratch self-retired. Full 76,340-byte seria
 `907d336196f45e2f445d16f0e5ce34db844c0b067b28d85ae55619dc39867b81`; outer/capture
 records share that prefix. Earlier actual input/metadata failures remain in the audit and
 bounded evidence, not this current-state entry. This closes materialization/hooks only.
-The first real GN attempt at `686829d1` failed because `.gn` selected absent `vpython3`,
-before sysroot inspection or graph generation. Full 79,505-byte serial is retained at
-`evidence/engine-gn-686829d1.serial.log`, SHA256
-`18d95505c34bf4fff9886c71269a627751419643fba25f02860cb4040a893305`; outer/capture
-1/0 in 95,710 ms. All earlier preparation gates passed again. Owned processes joined;
-listener-drift evidence, including one attested pre-existing owner's new loopback listener,
-is retained separately and is not called zero drift. Exact stopped scratch was retired.
-The consumer now uses unchanged upstream GN argument/version functions and the pinned GN
-binary with its supported `--script-executable=/usr/bin/python3` option: one explicit interpreter
-from the authenticated image, no alias or download-on-demand wrapper. It requests Linux x64
-release/unit tests/no RBE, checks original revision/content arguments, and resolves actual GTK
-library and native-test outputs. At `4e5d6126` the actual generator and revision checks passed,
-then our one-output assertion incorrectly refused the toolchain's declared `.TOC`/unstripped
-outputs. The complete output inventory is now required, and the same narrow consumer compiles
-the three original production view/accessibility translation units with pinned Ninja/Clang,
-retaining object digests in serial. These corrected steps still require their own committed-source
-native transaction; graph/object generation is not a linked engine or product behavior.
+
+**Original GN graph and three production translation units — NATIVE PASS; LINK/BEHAVIOR OPEN.**
+Exact pushed `464f5c89189777acb0d100ea39fc8a527d34d238`, tree
+`7e52e571175b1e6441d2fea0bb1496204e09cedf`, passed the same isolated transaction in
+99,400 host BOOTTIME ms (outer/capture 0/0; outer 89 seconds), without raising resource
+or deadline limits. Unchanged upstream GN argument/version functions and the pinned GN
+binary use its supported `--script-executable=/usr/bin/python3` option, with no interpreter
+alias, download wrapper, synthetic Git or version-check bypass. Linux x64 release/unit-test/
+no-RBE graph generation, original revision/content arguments, and complete declared GTK
+library/native-test output inventories passed. Pinned Ninja/Clang compiled the original
+`fl_view`, `fl_view_accessible` and `fl_accessible_node` production objects; their actual
+sizes and SHA256 digests are retained in full 77,545-byte serial
+`evidence/engine-gn-compile-464f5c89.serial.log`, SHA256
+`7fc03a2dadfe86c849a680bb3d0c1a37e28ddfa3a5564bdbe2f73b40e70ee1e7`.
+Matching outer/capture records are retained. Preparation/hooks passed again, inputs stayed
+read-only, the complete host-listener audit reported no additions or pre-existing-process
+drift, every owned process joined, and scratch self-retired. Earlier interpreter/inventory
+failures and their exact stopped-run retirements remain in the audit and bounded evidence.
+These are unmodified production object compilations, not a linked engine, executed native
+unit tests, a geometry correction, or product behavior.
 The full engine build, production geometry correction and complete app replay remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
@@ -2058,7 +2061,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest joined cleanup is recorded in the app-replay disposition above.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 621,838,336 allocated bytes (0.579 GiB). The actual outer
+  small evidence records occupy 624,357,376 allocated bytes (0.581 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

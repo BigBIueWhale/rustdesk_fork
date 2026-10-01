@@ -827,66 +827,122 @@ unavailable:
             phase, pid);
 }
 
-static void diagnose_shared_bus_extents(AtspiAccessible *control) {
-    AtspiObject *object = ATSPI_OBJECT(control);
-    DBusConnection *bus = atspi_get_a11y_bus();
+typedef struct {
+    DBusConnection *bus;
+    char peer[ACCESSIBLE_NAME_LIMIT];
+    char rule[512];
+    unsigned int messages;
+    int cleanup_failed;
+} GeometryWatch;
+
+static DBusHandlerResult observe_self_geometry(DBusConnection *bus, DBusMessage *message,
+                                               void *data) {
+    GeometryWatch *watch = data;
+    const char *sender = dbus_message_get_sender(message);
+    const char *destination = dbus_message_get_destination(message);
+    (void)bus;
+    if (!dbus_message_is_method_call(message, "org.a11y.atspi.Component", "GetExtents") ||
+        sender == NULL || destination == NULL || strcmp(sender, watch->peer) != 0 ||
+        strcmp(destination, watch->peer) != 0) return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
+    if (watch->messages < 16U) {
+        watch->messages += 1U;
+        fprintf(stderr, "FLUTTER_PEER_GEOMETRY_SELF_CALL sequence=%u monotonic_ms=%llu "
+                "sender=%s destination=%s serial=%u", watch->messages,
+                (unsigned long long)monotonic_millis(), sender, destination,
+                dbus_message_get_serial(message));
+        print_sanitized_accessible_string("path", dbus_message_get_path(message));
+    }
+    /* This is an eavesdropped copy for another endpoint; never reply to it. */
+    return DBUS_HANDLER_RESULT_HANDLED;
+}
+
+static int geometry_match(GeometryWatch *watch, const char *method) {
     DBusMessage *request = NULL, *reply = NULL;
     DBusError error = DBUS_ERROR_INIT;
-    dbus_uint32_t coordinates = ATSPI_COORD_TYPE_SCREEN;
-    dbus_int32_t values[4] = {-1, -1, -1, -1};
-    uint64_t started = monotonic_millis();
-    const char *result = "target-unavailable";
-    const char *transport = "unavailable";
-    if (bus == NULL || object->app == NULL || object->app->bus == NULL ||
-        object->app->bus_name == NULL || object->path == NULL) goto out;
-    transport = object->app->bus == bus ? "shared" : "private";
-    request = dbus_message_new_method_call(object->app->bus_name, object->path,
-                                           "org.a11y.atspi.Component", "GetExtents");
-    result = "request-unavailable";
-    if (request == NULL || !dbus_message_append_args(request, DBUS_TYPE_UINT32, &coordinates,
+    const char *rule = watch->rule;
+    int status = -1;
+    request = dbus_message_new_method_call(DBUS_SERVICE_DBUS, DBUS_PATH_DBUS,
+                                          DBUS_INTERFACE_DBUS, method);
+    if (request == NULL || !dbus_message_append_args(request, DBUS_TYPE_STRING, &rule,
                                                     DBUS_TYPE_INVALID)) goto out;
-    reply = dbus_connection_send_with_reply_and_block(bus, request, 1000, &error);
-    result = "reply-unavailable";
+    reply = dbus_connection_send_with_reply_and_block(watch->bus, request, 1000, &error);
     if (reply == NULL) goto out;
-    result = "reply-shape";
     if (dbus_message_get_type(reply) == DBUS_MESSAGE_TYPE_METHOD_RETURN &&
-        strcmp(dbus_message_get_signature(reply), "(iiii)") == 0) {
-        DBusMessageIter outer, fields;
-        if (!dbus_message_iter_init(reply, &outer)) goto out;
-        dbus_message_iter_recurse(&outer, &fields);
-        for (unsigned int index = 0U; index < 4U; ++index) {
-            dbus_message_iter_get_basic(&fields, &values[index]);
-            dbus_message_iter_next(&fields);
-        }
-        result = "rectangle";
-    }
+        strcmp(dbus_message_get_signature(reply), "") == 0) status = 0;
 out:
-    fprintf(stderr, "FLUTTER_PEER_DIALOG_SHARED_BUS_DIAGNOSTIC result=%s primary_transport=%s "
-            "elapsed_ms=%llu x=%d y=%d width=%d height=%d", result, transport,
-            (unsigned long long)(monotonic_millis() - started), values[0], values[1],
-            values[2], values[3]);
+    fprintf(stderr, "FLUTTER_PEER_GEOMETRY_WATCH method=%s result=%s", method,
+            status == 0 ? "acknowledged" : "unavailable");
     print_sanitized_accessible_string("error", dbus_error_is_set(&error) ? error.message : NULL);
     if (reply != NULL) dbus_message_unref(reply);
     if (request != NULL) dbus_message_unref(request);
     dbus_error_free(&error);
+    return status;
+}
+
+static void start_geometry_watch(AtspiAccessible *control, GeometryWatch *watch) {
+    AtspiObject *object = ATSPI_OBJECT(control);
+    const char *peer = object->app != NULL ? object->app->bus_name : NULL;
+    int length;
+    watch->bus = atspi_get_a11y_bus();
+    if (watch->bus == NULL || peer == NULL || peer[0] != ':' ||
+        strnlen(peer, sizeof(watch->peer)) >= sizeof(watch->peer) ||
+        !dbus_validate_bus_name(peer, NULL)) goto unavailable;
+    strcpy(watch->peer, peer);
+    length = snprintf(watch->rule, sizeof(watch->rule),
+                      "eavesdrop='true',type='method_call',sender='%s',destination='%s',"
+                      "interface='org.a11y.atspi.Component',member='GetExtents'", peer, peer);
+    if (length <= 0 || (size_t)length >= sizeof(watch->rule) ||
+        !dbus_connection_add_filter(watch->bus, observe_self_geometry, watch, NULL)) {
+        goto unavailable;
+    }
+    if (geometry_match(watch, "AddMatch") == 0) return;
+    watch->cleanup_failed = geometry_match(watch, "RemoveMatch") != 0;
+    dbus_connection_remove_filter(watch->bus, observe_self_geometry, watch);
+unavailable:
+    watch->bus = NULL;
+    fputs("FLUTTER_PEER_GEOMETRY_WATCH observation=unavailable\n", stderr);
+}
+
+static void stop_geometry_watch(GeometryWatch *watch) {
+    if (watch->bus == NULL) return;
+    uint64_t deadline = monotonic_millis() + 1000U;
+    unsigned int dispatched = 0U;
+    if (dbus_connection_read_write(watch->bus, 0)) {
+        while (dbus_connection_get_dispatch_status(watch->bus) == DBUS_DISPATCH_DATA_REMAINS &&
+               dispatched < ACCESSIBLE_NODE_LIMIT && monotonic_millis() < deadline) {
+            dbus_connection_dispatch(watch->bus);
+            dispatched += 1U;
+        }
+    }
+    int removed = geometry_match(watch, "RemoveMatch") == 0;
+    watch->cleanup_failed = removed == 0;
+    dbus_connection_remove_filter(watch->bus, observe_self_geometry, watch);
+    fprintf(stderr, "FLUTTER_PEER_GEOMETRY_WATCH self_calls_logged=%u dispatched=%u "
+            "rule_removed=%d filter_removed=true headers_only=true\n",
+            watch->messages, dispatched, removed);
+    watch->bus = NULL;
 }
 
 static int read_control_position(unsigned int pid, AtspiAccessible *control, int *x, int *y) {
     AtspiComponent *component = atspi_accessible_get_component_iface(control);
     AtspiRect *rect;
     GError *error = NULL;
+    GeometryWatch watch = {0};
     int status = -1;
     if (component == NULL) {
         fputs("FLUTTER_PEER_DIALOG_EXTENTS_FAIL component=unavailable\n", stderr);
         return -1;
     }
     atspi_accessible_clear_cache(control);
+    start_geometry_watch(control, &watch);
     print_viewer_main_thread(pid, "before-extents");
     uint64_t started = monotonic_millis();
     rect = atspi_component_get_extents(component, ATSPI_COORD_TYPE_SCREEN, &error);
     uint64_t elapsed = monotonic_millis() - started;
     print_viewer_main_thread(pid, "after-extents");
-    if (error == NULL && rect != NULL && rect->width > 0 && rect->height > 0) {
+    stop_geometry_watch(&watch);
+    if (error == NULL && rect != NULL && rect->width > 0 && rect->height > 0 &&
+        watch.cleanup_failed == 0) {
         *x = rect->x;
         *y = rect->y;
         status = 0;
@@ -899,7 +955,6 @@ static int read_control_position(unsigned int pid, AtspiAccessible *control, int
                 error != NULL ? error->domain : 0U,
                 error != NULL ? error->code : 0);
         print_sanitized_accessible_string("error", error != NULL ? error->message : NULL);
-        diagnose_shared_bus_extents(control);
     }
     if (error != NULL) g_error_free(error);
     if (rect != NULL) g_boxed_free(ATSPI_TYPE_RECT, rect);

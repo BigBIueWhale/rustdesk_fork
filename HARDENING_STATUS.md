@@ -1706,8 +1706,24 @@ joined, all 74 app files rehashed unchanged, and exact failed-root reconciliatio
 allocated bytes. No run/overlay remains. After a failed original call, the next diagnostic asks the same
 exact object for the same closed rectangle over the existing shared accessibility bus with the same
 one-second call bound; it never supplies acceptance geometry or changes the original failure result.
-This compares the two routes without treating an alternate-route result as a correctness fix. Native replay is pending;
-call-wait, product, platform and release causation remain OPEN.
+Exact `71094e26` replayed those app bytes without rebuilding in 118,150 host BOOTTIME ms. All three
+drivers compiled twice byte-equal; real password input, four changing pixels, both Tap actions and
+the five same-caption observations passed. The private call timed out in 1,001 ms and the same
+shared-bus request received no reply in 1,002 ms. Main-thread CPU ticks remained unchanged with
+`do_sys_poll` at both samples. A simple private-route-only failure is not supported. Complete
+211,353-byte serial and bounded records are retained at `evidence/dialog-shared-71094e26.*`;
+listeners were identical, owners joined, all 74 app files rehashed unchanged and exact inactive-root
+cleanup reclaimed 2,967,773,184 allocated bytes. Zero run/overlay remains.
+The geometry hook is installed by GNOME's socket adaptor `Embedded` handler, not the bridge hook
+initializer. It synchronously asks the embedding socket for GetExtents over the shared bus; Flutter
+creates its plug/socket embedding in-process. A self-directed blocking wait is therefore a specific
+candidate, not established causation. The completed alternate-route diagnostic is removed. Its
+replacement observes only self-directed GetExtents headers for the exact selected application bus
+name, through one acknowledged match and filter on the existing shared connection. It reads no
+message body, opens no connection/process/thread, returns no geometry, and keeps the original query
+and failure predicate. Dispatch/output are bounded, match removal is acknowledged and the filter is
+removed before its stack owner retires; uncertain cleanup cannot pass. Native execution is pending.
+Call-wait, actual rebuild/dialog behavior, Android/Windows, platform/LPE and release claims remain OPEN.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

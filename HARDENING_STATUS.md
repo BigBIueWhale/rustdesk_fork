@@ -1660,6 +1660,21 @@ or an LPE finding. GTK's [socket parent binding](https://raw.githubusercontent.c
 and ATK's [parent-derived geometry](https://raw.githubusercontent.com/GNOME/at-spi2-core/AT_SPI2_CORE_2_46_0/atk/atksocket.c)
 support the local-provider design; the exact experimental recipe is preserved in Git, not as a product mode.
 
+**Direct-tree dependency review — SOURCE FINDINGS; NATIVE CONTRACT PROBE PENDING.** The pinned
+engine creates its accessible after assigning the engine/view ID, but a GTK widget-accessible
+replacement may be initialized during `fl_view_init` before those fields exist. Its semantics nodes
+hold a weak engine, not exact view lifetime; retained-node action retirement needs explicit coverage.
+GTK 3.24.38's widget provider branches only for WINDOW coordinates, not PARENT, and returns without
+setting extents when its widget is gone. ATK's wrapper does not initialize outputs when that vfunc
+exists. Therefore inheriting GTK geometry alone is not a complete replacement contract.
+The temporary native GTK probe uses actual widgets in the authenticated frame-test VM, not a mock
+Flutter implementation; it observes coordinate and retained-accessible behavior before retirement.
+The SDK archive inventory contains the Linux engine source but no Dart `dart_api.h`, Skia
+`SkCanvas.h`, GoogleTest `gtest.h`, or GN binary under `engine/`; its `tools/gn` is only the wrapper.
+The pinned Linux GN target links `embedder_as_internal_library`, not a replaceable GTK-only shim.
+Restore the authenticated engine dependency/build closure before compiling a source correction;
+no preload, private-ABI interposition, assumed upstream fix or unexecuted patch is a shipped fix.
+
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
 consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

@@ -2087,16 +2087,26 @@ The production patch and all earlier assertions/bounds are unchanged. Keep these
 replace the provider's geometry/lifetime model rather than accepting fabricated extents. Full
 transforms/scale/rounding/overflow, every component operation and uninstrumented replay remain OPEN.
 
-**Real GTK native fixture environment — IMPLEMENTED; EXECUTION PENDING.** The existing
+**Real GTK native fixture environment — NATIVE LIFETIME PASS; PROFILE FAILS ON OPEN GEOMETRY.** The existing
 engine-prepare transaction now stages the unchanged five-package pinned Xvfb closure in a
 separate networkless, numeric-nonroot, read-only-root preparation container. The engine
 consumer receives only read-only tool/file-manifest mounts and owns its display server through
 an explicit readiness pipe and joined teardown, including native assertion failure. INET
-sockets are refused. The candidate first creates/maps/destroys actual GTK widgets and checks
-that the retained accessible loses its widget, before all existing native lifetime and
-unchanged failing geometry assertions. No deadline/resource increase, host installation,
-alternate renderer/provider or product correction is introduced. Target-native execution,
-actual FlView/provider teardown, full transforms and engine/app integration remain OPEN.
+sockets are refused. Exact `1b848405569feda9d285efeed6cdef8153098b65`, tree
+`64dc8f0d101f793411b1d868fad164361d81d4da`, executed this profile in 98,860 host
+BOOTTIME ms (tool 43048 terminal 1, outer/capture 1/0). Real X11 initialization,
+realized/mapped GTK widgets, retained-accessible unbinding after destruction and Xvfb join
+passed. All five earlier native lifetime cases then passed before the unchanged `(45 == 5)`
+geometry assertion failed with the same recorded values. No complete profile, later geometry
+assertions or upstream test-object execution is claimed. Native ELF: 1,372,872 bytes, SHA256
+`78ff881e3db38fb81d569a478d809b176d4cb79d0d4871935642ddade0e47c96`.
+Complete 86,184-byte serial is `evidence/engine-gtk-owner-1b848405.serial.log`, SHA256
+`1f852c9809d9ae7c9730d871598ed569a7033c8d1e560f9849d986684d1d594d`; full capture,
+outer/listener/exporter and absence records are sealed 0400. Listener inventories were
+identical; exact stopped scratch was reconciled under the admission lock, leaving no run/overlay.
+No deadline/resource increase, host installation, alternate provider or product correction
+is introduced. NO_AT_BRIDGE deliberately excludes AT-SPI routing from this unit test.
+Actual FlView/provider teardown, full transforms and engine/app integration remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
@@ -2234,9 +2244,9 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest successful joined cleanup is recorded in the generation-owner
   disposition above; earlier failed runs were explicitly reconciled, most recently
-  `run.wOdPsiZPL6` (identity `66306:105159692`), reclaiming 12,977,991,680 allocated bytes.
+  `run.WPoC1eFb4R` (identity `66306:105159708`), reclaiming 13,021,159,424 allocated bytes.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 625,844,224 allocated bytes (0.583 GiB). The successful
+  small evidence records occupy 626,012,160 allocated bytes (0.583 GiB). The successful
   `18194742` generation-owner run joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks

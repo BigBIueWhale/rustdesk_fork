@@ -2087,6 +2087,17 @@ The production patch and all earlier assertions/bounds are unchanged. Keep these
 replace the provider's geometry/lifetime model rather than accepting fabricated extents. Full
 transforms/scale/rounding/overflow, every component operation and uninstrumented replay remain OPEN.
 
+**Real GTK native fixture environment — IMPLEMENTED; EXECUTION PENDING.** The existing
+engine-prepare transaction now stages the unchanged five-package pinned Xvfb closure in a
+separate networkless, numeric-nonroot, read-only-root preparation container. The engine
+consumer receives only read-only tool/file-manifest mounts and owns its display server through
+an explicit readiness pipe and joined teardown, including native assertion failure. INET
+sockets are refused. The candidate first creates/maps/destroys actual GTK widgets and checks
+that the retained accessible loses its widget, before all existing native lifetime and
+unchanged failing geometry assertions. No deadline/resource increase, host installation,
+alternate renderer/provider or product correction is introduced. Target-native execution,
+actual FlView/provider teardown, full transforms and engine/app integration remain OPEN.
+
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
 consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

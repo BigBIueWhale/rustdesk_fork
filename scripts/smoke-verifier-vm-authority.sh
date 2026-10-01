@@ -592,6 +592,43 @@ engine_prepare_input_inventory() {
     done
     /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
     /usr/bin/sha256sum -- "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+    engine_xvfb_input_inventory
+}
+
+engine_xvfb_input_inventory() {
+    local root=$ONLINE_INPUTS/xvfb-debs file name size digest url extra count=0
+    local -a files=("$SCRIPT_DIR/smoke-xvfb-prepare.sh"
+        "$SCRIPT_DIR/smoke-xvfb-packages.tsv" "$SCRIPT_DIR/smoke-xvfb-files.tsv")
+    [ -d "$root" ] && [ ! -L "$root" ] \
+        && [ "$(/usr/bin/readlink -f -- "$root")" = "$root" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$root")" = "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'engine Xvfb input-root authority differs'
+    for file in "${files[@]}"; do
+        [ -f "$file" ] && [ ! -L "$file" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%h' -- "$file")" = "$HOST_UID:$HOST_GID:1" ] \
+            || fail 'engine Xvfb source authority differs'
+        verify_committed_test_source "$file"
+    done
+    while IFS=$'\t' read -r name size digest url extra; do
+        [ -n "$name" ] || continue
+        [[ "$name" == \#* ]] && continue
+        [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] && [ -z "$extra" ] \
+            || fail 'engine Xvfb package record differs'
+        file="$root/$name.deb"
+        [ -f "$file" ] && [ ! -L "$file" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$file")" = \
+                 "$HOST_UID:$HOST_GID:400:1:$size" ] \
+            || fail 'engine Xvfb package authority differs'
+        verify_sha256 "$file" "$digest"
+        files+=("$file")
+        count=$((count + 1))
+    done <"$SCRIPT_DIR/smoke-xvfb-packages.tsv"
+    [ "$count" -eq 5 ] \
+        && [ "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -printf x)" = xxxxx ] \
+        || fail 'engine Xvfb package closure differs'
+    /usr/bin/stat -c '%n:%d:%i:%u:%g:%a' -- "$root"
+    /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "${files[@]}"
+    /usr/bin/sha256sum -- "${files[@]}"
 }
 
 ANDROID_OWNER_KOTLIN_JARS=()
@@ -2851,6 +2888,10 @@ if [ "$MODE" = linux-flutter-engine-prepare ]; then
         "repo/scripts/prepare-flutter-linux-engine.py=$ENGINE_PREPARE_SOURCE"
         "repo/res/flutter/linux-accessibility-retirement.patch=$ENGINE_RETIREMENT_PATCH"
         "repo/scripts/test-flutter-linux-accessible-retirement.cc=$ENGINE_RETIREMENT_TEST"
+        "xvfb-debs=$ONLINE_INPUTS/xvfb-debs"
+        "repo/scripts/smoke-xvfb-prepare.sh=$SCRIPT_DIR/smoke-xvfb-prepare.sh"
+        "repo/scripts/smoke-xvfb-packages.tsv=$SCRIPT_DIR/smoke-xvfb-packages.tsv"
+        "repo/scripts/smoke-xvfb-files.tsv=$SCRIPT_DIR/smoke-xvfb-files.tsv"
     )
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
     payload_identity=(-uid 4000 -gid 4000)
@@ -3438,6 +3479,8 @@ elif [ "$MODE" = linux-flutter-engine-prepare ]; then
     engine_prepare_vm_receipt="FLUTTER_ENGINE_PREPARE_VM=pass commit=$FOCUSED_TEST_COMMIT tree=$FOCUSED_TEST_TREE helper_sha256=$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" | /usr/bin/awk '{print $1}') runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined"
     require_exact_fixed_receipt 'ENGINE_PREPARE_PRINCIPALS=pass root=refused foreign=refused work=absent' 'engine preparation principal refusals'
     require_exact_fixed_receipt 'ENGINE_PREPARE_EXTRACTION_TEST=pass cases=10 links=preserved unsafe=refused cleanup=joined' 'native engine extraction cases'
+    require_exact_fixed_receipt 'ENGINE_GTK_WIDGET_LIFETIME=pass backend=x11 mapped=true retained_accessible=unbound destroyed=true' 'real GTK widget lifetime'
+    require_exact_fixed_receipt 'ENGINE_XVFB_OWNER=joined network=unix-only' 'native display-server ownership'
     require_exact_fixed_receipt "$engine_prepare_receipt" 'original engine setup hooks'
     require_exact_fixed_receipt "$engine_prepare_vm_receipt" 'engine preparation source/finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'engine preparation cloud-init completion'

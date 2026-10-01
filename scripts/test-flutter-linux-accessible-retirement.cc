@@ -1,6 +1,7 @@
 // Executes the real node, root and text-field implementations with a recording
 // engine boundary. This is an ATK/GObject unit test, not a running Flutter engine,
-// GtkWidget/view teardown test, privileged receiver test, or app replay.
+// FlView teardown test, privileged receiver test, or app replay. The candidate
+// first exercises real GTK widget/accessibility lifetime on its owned X server.
 #include "flutter/shell/platform/linux/fl_accessible_node.h"
 #include "flutter/shell/platform/linux/fl_accessible_text_field.h"
 #include "flutter/shell/platform/linux/fl_view_accessible.h"
@@ -8,6 +9,7 @@
 #include "flutter/shell/platform/linux/public/flutter_linux/fl_value.h"
 
 #include <cstdio>
+#include <gtk/gtk-a11y.h>
 
 struct _FlEngine {
   GObject parent_instance;
@@ -36,6 +38,27 @@ static void fl_engine_init(FlEngine* self) {
 }
 
 #if !defined(LEGACY_BASELINE)
+static void test_gtk_widget_lifetime() {
+  g_assert_true(gtk_init_check(nullptr, nullptr));
+  GtkWidget* window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+  g_object_ref_sink(window);
+  GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_container_add(GTK_CONTAINER(window), box);
+  gtk_widget_show_all(window);
+  gdk_display_sync(gtk_widget_get_display(window));
+  g_assert_true(gtk_widget_get_realized(box));
+  g_assert_true(gtk_widget_get_mapped(box));
+  g_assert_nonnull(gtk_widget_get_window(box));
+  g_autoptr(AtkObject) accessible = ATK_OBJECT(g_object_ref(gtk_widget_get_accessible(box)));
+  g_assert_true(GTK_IS_ACCESSIBLE(accessible));
+  g_assert_true(gtk_accessible_get_widget(GTK_ACCESSIBLE(accessible)) == box);
+  gtk_widget_destroy(window);
+  g_assert_null(gtk_accessible_get_widget(GTK_ACCESSIBLE(accessible)));
+  g_object_unref(window);
+  std::puts("ENGINE_GTK_WIDGET_LIFETIME=pass backend=x11 mapped=true retained_accessible=unbound destroyed=true");
+  std::fflush(stdout);
+}
+
 static void retire_on_child_removal(AtkObject* object, guint, gpointer, gpointer) {
   fl_accessible_node_retire(FL_ACCESSIBLE_NODE(object));
 }
@@ -554,6 +577,9 @@ extern "C" void fl_engine_dispatch_semantics_action(
 
 int main() {
   g_log_set_always_fatal(static_cast<GLogLevelFlags>(G_LOG_FATAL_MASK | G_LOG_LEVEL_CRITICAL));
+#if !defined(LEGACY_BASELINE)
+  test_gtk_widget_lifetime();
+#endif
   g_autoptr(FlEngine) engine = FL_ENGINE(g_object_new(fl_engine_get_type(), nullptr));
 #if defined(LEGACY_BASELINE)
   g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 7, 9);

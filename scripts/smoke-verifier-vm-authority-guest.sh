@@ -346,6 +346,46 @@ prepare_authority_probe_image() {
         || fail 'probe image ID is malformed'
 }
 
+prepare_engine_xvfb() {
+    local work=$ROOT/engine-xvfb inspect status=0
+    install -d -o 1000 -g 1000 -m 0700 "$work" "$work/debs" "$work/root"
+    CONTAINER_ID="$(
+        "$CLIENT" --host "unix://$SOCK" create --name rustdesk-engine-xvfb-prepare \
+            --pull=never --network=none --read-only --user 1000:1000 \
+            --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
+            --memory=512m --memory-swap=512m --cpus=2 --pids-limit=128 \
+            --ulimit nofile=1024:1024 --ulimit core=0:0 --ulimit fsize=536870912:536870912 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,mode=700,uid=1000,gid=1000 \
+            --mount "type=bind,source=$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh,target=/work/scripts/smoke-xvfb-prepare.sh,readonly" \
+            --mount "type=bind,source=$VERIFY_REPO/scripts/smoke-xvfb-packages.tsv,target=/work/scripts/smoke-xvfb-packages.tsv,readonly" \
+            --mount "type=bind,source=$VERIFY_REPO/scripts/smoke-xvfb-files.tsv,target=/work/scripts/smoke-xvfb-files.tsv,readonly" \
+            --mount "type=bind,source=/mnt/rustdesk-verifier-inputs/xvfb-debs,target=/xvfb-inputs,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$work/debs,target=/xvfb-debs,bind-recursive=disabled" \
+            --mount "type=bind,source=$work/root,target=/xvfb-root,bind-recursive=disabled" \
+            --workdir /tmp "$DEV_CHECK_IMAGE_CONFIG_ID" /bin/bash /work/scripts/smoke-xvfb-prepare.sh
+    )" || fail 'cannot create the confined engine Xvfb preparation container'
+    [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'engine Xvfb preparation container ID differs'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.Image}}|{{.Config.User}}|{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' "$CONTAINER_ID")"
+    [ "$inspect" = "$DEV_CHECK_IMAGE_CONFIG_ID|1000:1000|none|true|536870912|536870912|2000000000|128|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]|false||private||private|[]|{}" ] \
+        || fail 'engine Xvfb preparation container envelope differs'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" | LC_ALL=C sort)"
+    [ "$inspect" = "$(printf '%s\n' \
+        "bind|$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh|/work/scripts/smoke-xvfb-prepare.sh|false" \
+        "bind|$VERIFY_REPO/scripts/smoke-xvfb-packages.tsv|/work/scripts/smoke-xvfb-packages.tsv|false" \
+        "bind|$VERIFY_REPO/scripts/smoke-xvfb-files.tsv|/work/scripts/smoke-xvfb-files.tsv|false" \
+        'bind|/mnt/rustdesk-verifier-inputs/xvfb-debs|/xvfb-inputs|false' \
+        "bind|$work/debs|/xvfb-debs|true" "bind|$work/root|/xvfb-root|true" | LC_ALL=C sort)" ] \
+        || fail 'engine Xvfb preparation mount envelope differs'
+    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" || status=$?
+    [ "$status" -eq 0 ] \
+        && [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+        || fail "engine Xvfb preparation exited $status"
+    "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+    CONTAINER_ID=
+}
+
 run_linux_flutter_engine_prepare() {
     local role mountpoint options load_output inspect principal refusal
     local helper=$VERIFY_REPO/scripts/prepare-flutter-linux-engine.py
@@ -353,7 +393,8 @@ run_linux_flutter_engine_prepare() {
     local test=$VERIFY_REPO/scripts/test-flutter-linux-accessible-retirement.cc
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
     local work=$ROOT/engine-prepare-work helper_before status=0
-    helper_before="$(sha256sum "$helper" "$patch" "$test")"
+    helper_before="$(sha256sum "$helper" "$patch" "$test" "$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh" \
+        "$VERIFY_REPO/scripts/smoke-xvfb-packages.tsv" "$VERIFY_REPO/scripts/smoke-xvfb-files.tsv")"
     [ -f "$helper" ] && [ ! -L "$helper" ] || fail 'engine preparation source is absent'
     for principal in 0:0 4001:4001; do
         status=0
@@ -386,6 +427,7 @@ run_linux_flutter_engine_prepare() {
     )" || fail 'engine preparation image verification/load failed'
     [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
         || fail 'engine preparation image load receipt differs'
+    prepare_engine_xvfb
     mkdir "$work"
     chown 1000:1000 "$work"
     local -a mounts=(
@@ -393,6 +435,9 @@ run_linux_flutter_engine_prepare() {
         --mount "type=bind,source=$patch,target=/authority/retirement.patch,readonly"
         --mount "type=bind,source=$test,target=/authority/node-test.cc,readonly"
         --mount "type=bind,source=$VERIFY_REPO/scripts/pins.env,target=/authority/pins.env,readonly"
+        --mount "type=bind,source=$VERIFY_REPO/scripts/smoke-xvfb-files.tsv,target=/authority/xvfb-files.tsv,readonly"
+        --mount "type=bind,source=$ROOT/engine-xvfb/root,target=/xvfb-root,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$ROOT/engine-xvfb/root/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly"
         --mount "type=bind,source=$work,target=/work"
     )
     for role in graph git-metadata sysroots; do
@@ -436,6 +481,9 @@ run_linux_flutter_engine_prepare() {
         "bind|$patch|/authority/retirement.patch|false" \
         "bind|$test|/authority/node-test.cc|false" \
         "bind|$VERIFY_REPO/scripts/pins.env|/authority/pins.env|false" \
+        "bind|$VERIFY_REPO/scripts/smoke-xvfb-files.tsv|/authority/xvfb-files.tsv|false" \
+        "bind|$ROOT/engine-xvfb/root|/xvfb-root|false" \
+        "bind|$ROOT/engine-xvfb/root/usr/bin/xkbcomp|/usr/bin/xkbcomp|false" \
         "bind|$work|/work|true" \
         'bind|/mnt/rustdesk-engine-graph|/inputs/graph|false' \
         'bind|/mnt/rustdesk-engine-git-metadata|/inputs/git-metadata|false' \
@@ -452,7 +500,9 @@ run_linux_flutter_engine_prepare() {
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
         || fail 'engine preparation left container/image state'
-    [ "$(sha256sum "$helper" "$patch" "$test")" = "$helper_before" ] || fail 'engine preparation source changed'
+    [ "$(sha256sum "$helper" "$patch" "$test" "$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh" \
+        "$VERIFY_REPO/scripts/smoke-xvfb-packages.tsv" "$VERIFY_REPO/scripts/smoke-xvfb-files.tsv")" = "$helper_before" ] \
+        || fail 'engine preparation source changed'
     setpriv --reuid=1000 --regid=1000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT"
     stop_docker_authority
     for mountpoint in "${ENGINE_INPUT_MOUNTS[@]}"; do

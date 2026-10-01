@@ -2,6 +2,7 @@
 """Materialize authenticated engine inputs and run their original hooks offline."""
 
 import hashlib
+from contextlib import ExitStack, contextmanager
 import io
 import json
 import os
@@ -240,6 +241,83 @@ def command(arguments, cwd, env, deadline):
         selector.close()
 
 
+def require_no_inet_sockets():
+    for protocol in ("tcp", "tcp6", "udp", "udp6"):
+        path = Path("/proc/net") / protocol
+        if path.exists():
+            rows = path.read_text().splitlines()[1:]
+            require(not rows, "native GTK fixture opened an INET socket: " + protocol)
+
+
+@contextmanager
+def native_display(env, deadline):
+    records = Path("/authority/xvfb-files.tsv").read_text().splitlines()
+    files = [line.split("\t") for line in records if line and not line.startswith("#")]
+    require(len(files) == 5 and all(len(row) == 4 for row in files), "Xvfb file closure differs")
+    for name, size, mode, digest in files:
+        require(parts(name) and re.fullmatch("[0-9a-f]{64}", digest), "Xvfb file record differs")
+        fd = os.open("/xvfb-root/" + name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+        with os.fdopen(fd, "rb") as source:
+            before = os.fstat(fd)
+            require(stat.S_ISREG(before.st_mode) and before.st_uid == before.st_gid == 1000
+                    and before.st_nlink == 1 and before.st_size == int(size)
+                    and stat.S_IMODE(before.st_mode) == int(mode, 8)
+                    and hashlib.file_digest(source, "sha256").hexdigest() == digest
+                    and unchanged(before, os.fstat(fd)), "Xvfb executable/library authority differs")
+    require_no_inet_sockets()
+    with ExitStack() as resources:
+        log = resources.enter_context(tempfile.TemporaryFile(dir="/work"))
+        selector = resources.enter_context(selectors.DefaultSelector())
+        read_fd, write_fd = os.pipe2(os.O_CLOEXEC | os.O_NONBLOCK)
+        resources.callback(os.close, read_fd)
+        resources.callback(lambda: os.close(write_fd) if write_fd >= 0 else None)
+        child = None
+        try:
+            child = subprocess.Popen([
+                "/xvfb-root/usr/bin/Xvfb", "-displayfd", str(write_fd),
+                "-screen", "0", "640x480x24", "-nolisten", "tcp", "-noreset", "-ac",
+            ], env={**env, "LD_LIBRARY_PATH": "/xvfb-root/usr/lib/x86_64-linux-gnu"},
+                close_fds=True, pass_fds=(write_fd,), stdout=log, stderr=log)
+            os.close(write_fd)
+            write_fd = -1
+            selector.register(read_fd, selectors.EVENT_READ)
+            ready_deadline = min(deadline, time.monotonic() + 20)
+            ready = bytearray()
+            while not ready.endswith(b"\n"):
+                require(time.monotonic() < ready_deadline and child.poll() is None,
+                        "native Xvfb exited or missed readiness")
+                require(os.fstat(log.fileno()).st_size <= 65536, "Xvfb diagnostics exceed bound")
+                for _, _ in selector.select(min(0.1, max(0, ready_deadline - time.monotonic()))):
+                    block = os.read(read_fd, 32)
+                    require(block, "Xvfb closed its readiness channel")
+                    ready.extend(block)
+                    require(len(ready) <= 6, "Xvfb display number exceeds bound")
+            require(re.fullmatch(rb"[0-9]{1,5}\n", ready) and int(ready) <= 65535,
+                    "Xvfb readiness record differs")
+            require_no_inet_sockets()
+            print("ENGINE_XVFB_READY=pass display=" + ready.decode().strip()
+                  + " network=unix-only owner=retained", flush=True)
+            yield {**env, "DISPLAY": ":" + ready.decode().strip(), "GDK_BACKEND": "x11",
+                   "NO_AT_BRIDGE": "1", "GSETTINGS_BACKEND": "memory"}
+            require(child.poll() is None, "Xvfb exited during the native fixture")
+        finally:
+            if child is not None:
+                if child.poll() is None:
+                    child.terminate()
+                    try:
+                        child.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        child.kill()
+                child.wait()
+                log.seek(0)
+                diagnostics = log.read(65537)
+                require(len(diagnostics) <= 65536, "Xvfb diagnostics exceed bound")
+                if diagnostics:
+                    print("ENGINE_XVFB_DIAGNOSTICS\n" + diagnostics.decode(errors="replace"), flush=True)
+                require_no_inet_sockets()
+                print("ENGINE_XVFB_OWNER=joined network=unix-only", flush=True)
+
+
 def prepare():
     deadline = time.monotonic() + 240
     with open("/authority/pins.env", "rb") as source:
@@ -458,9 +536,15 @@ raise SystemExit(subprocess.call([
                  *[engine + "/out/host_release/" + name for name in objects[1:]],
                  "-flto", "-fuse-ld=lld", *flags, "-o", binary], engine, env, deadline)
         artifact_receipt(binary.rsplit("/", 1)[1], "baseline-test" if baseline else "candidate-test")
-        output = command([binary], engine, env, deadline)
+        if baseline:
+            output = command([binary], engine, env, deadline)
+        else:
+            with native_display(env, deadline) as display_env:
+                output = command([binary], engine, display_env, deadline)
         expected = ("ENGINE_ACCESSIBLE_RETIREMENT_BASELINE=observed parent=gone engine=live action=dispatched"
-                    if baseline else "ENGINE_ACCESSIBLE_RETIREMENT=pass unit=real-node boundary=recording-engine "
+                    if baseline else "ENGINE_GTK_WIDGET_LIFETIME=pass backend=x11 mapped=true "
+                    "retained_accessible=unbound destroyed=true\n"
+                    "ENGINE_ACCESSIBLE_RETIREMENT=pass unit=real-node boundary=recording-engine "
                     "idempotent=true stale=refused fresh=allowed geometry=defunct reentrant=true disposed=true\n"
                     "ENGINE_ACCESSIBLE_ROOT_RETIREMENT=pass unit=real-root boundary=recording-engine "
                     "reset=true replacement=true reentrant=true disposed=true\n"

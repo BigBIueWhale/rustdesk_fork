@@ -722,227 +722,20 @@ static int require_same_dialog(unsigned int expected_pid, AtspiAccessible *expec
     return monotonic_millis() < deadline ? 0 : -1;
 }
 
-static void print_dialog_parent_chain(unsigned int expected_pid, AtspiAccessible *control) {
-    AtspiAccessible *ancestors[ACCESSIBLE_DEPTH_LIMIT + 1U] = {0};
-    unsigned int count = 1U;
-    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
-    const char *result = "depth-bound";
-    GError *error = NULL;
-    ancestors[0] = g_object_ref(control);
-    for (unsigned int index = 0U; index < ACCESSIBLE_DEPTH_LIMIT + 1U; ++index) {
-        AtspiAccessible *current = ancestors[index];
-        AtspiAccessible *parent;
-        unsigned int pid;
-        AtspiRole role;
-        if (monotonic_millis() >= deadline) {
-            result = "deadline";
-            break;
-        }
-        pid = atspi_accessible_get_process_id(current, &error);
-        if (error != NULL || pid != expected_pid) {
-            result = error != NULL ? "peer-query" : "foreign-peer";
-            break;
-        }
-        role = atspi_accessible_get_role(current, &error);
-        if (error != NULL) {
-            result = "role-query";
-            break;
-        }
-        fprintf(stderr, "FLUTTER_PEER_DIALOG_PARENT index=%u role=%d object=%p cache_eligible=true\n",
-                index, (int)role, (void *)current);
-        if (role == ATSPI_ROLE_APPLICATION) {
-            result = "application-root";
-            break;
-        }
-        parent = atspi_accessible_get_parent(current, &error);
-        if (error != NULL || parent == NULL) {
-            result = error != NULL ? "parent-query" : "missing-parent";
-            if (parent != NULL) g_object_unref(parent);
-            break;
-        }
-        unsigned int previous;
-        for (previous = 0U; previous < count; ++previous) {
-            if (ancestors[previous] == parent) break;
-        }
-        if (previous < count || count == ACCESSIBLE_DEPTH_LIMIT + 1U) {
-            if (previous < count) {
-                fprintf(stderr, "FLUTTER_PEER_DIALOG_PARENT_CYCLE from=%u to=%u\n",
-                        index, previous);
-                result = "cycle";
-            }
-            g_object_unref(parent);
-            break;
-        }
-        ancestors[count++] = parent;
-    }
-    fprintf(stderr, "FLUTTER_PEER_DIALOG_PARENT_RESULT result=%s nodes=%u error_code=%d",
-            result, count, error != NULL ? error->code : 0);
-    print_sanitized_accessible_string("error", error != NULL ? error->message : NULL);
-    if (error != NULL) g_error_free(error);
-    for (unsigned int index = 0U; index < count; ++index) g_object_unref(ancestors[index]);
-}
-
-static void print_viewer_main_thread(unsigned int pid, const char *phase) {
-    char path[64], buffer[1024], wait_channel[96];
-    char *right, *save = NULL, *token;
-    unsigned long long user_ticks = 0ULL, system_ticks = 0ULL, start_ticks = 0ULL;
-    FILE *stream;
-    int complete;
-    if (snprintf(path, sizeof(path), "/proc/%u/task/%u/stat", pid, pid) <= 0 ||
-        (stream = fopen(path, "r")) == NULL) goto unavailable;
-    complete = fgets(buffer, sizeof(buffer), stream) != NULL &&
-               strchr(buffer, '\n') != NULL && fgetc(stream) == EOF && !ferror(stream);
-    if (fclose(stream) != 0 || !complete || (right = strrchr(buffer, ')')) == NULL) {
-        goto unavailable;
-    }
-    token = strtok_r(right + 1, " \n", &save);
-    for (unsigned int field = 3U; field <= 22U; ++field) {
-        if (token == NULL) goto unavailable;
-        if (field == 14U || field == 15U || field == 22U) {
-            char *end;
-            unsigned long long value;
-            errno = 0;
-            value = strtoull(token, &end, 10);
-            if (errno != 0 || end == token || *end != '\0' || token[0] == '-') {
-                goto unavailable;
-            }
-            if (field == 14U) user_ticks = value;
-            else if (field == 15U) system_ticks = value;
-            else start_ticks = value;
-        }
-        token = strtok_r(NULL, " \n", &save);
-    }
-    if (snprintf(path, sizeof(path), "/proc/%u/task/%u/wchan", pid, pid) <= 0 ||
-        (stream = fopen(path, "r")) == NULL) goto unavailable;
-    complete = fgets(wait_channel, sizeof(wait_channel), stream) != NULL &&
-               fgetc(stream) == EOF && !ferror(stream);
-    if (fclose(stream) != 0 || !complete) goto unavailable;
-    fprintf(stderr, "FLUTTER_PEER_DIALOG_MAIN_THREAD phase=%s monotonic_ms=%llu pid=%u "
-            "start_ticks=%llu user_ticks=%llu system_ticks=%llu", phase,
-            (unsigned long long)monotonic_millis(), pid, start_ticks, user_ticks, system_ticks);
-    print_sanitized_accessible_string("wait_channel", wait_channel);
-    return;
-unavailable:
-    fprintf(stderr, "FLUTTER_PEER_DIALOG_MAIN_THREAD phase=%s pid=%u observation=unavailable\n",
-            phase, pid);
-}
-
-typedef struct {
-    DBusConnection *bus;
-    char peer[ACCESSIBLE_NAME_LIMIT];
-    char rule[512];
-    unsigned int messages;
-    int cleanup_failed;
-} GeometryWatch;
-
-static DBusHandlerResult observe_self_geometry(DBusConnection *bus, DBusMessage *message,
-                                               void *data) {
-    GeometryWatch *watch = data;
-    const char *sender = dbus_message_get_sender(message);
-    const char *destination = dbus_message_get_destination(message);
-    (void)bus;
-    if (!dbus_message_is_method_call(message, "org.a11y.atspi.Component", "GetExtents") ||
-        sender == NULL || destination == NULL || strcmp(sender, watch->peer) != 0 ||
-        strcmp(destination, watch->peer) != 0) return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-    if (watch->messages < 16U) {
-        watch->messages += 1U;
-        fprintf(stderr, "FLUTTER_PEER_GEOMETRY_SELF_CALL sequence=%u monotonic_ms=%llu "
-                "sender=%s destination=%s serial=%u", watch->messages,
-                (unsigned long long)monotonic_millis(), sender, destination,
-                dbus_message_get_serial(message));
-        print_sanitized_accessible_string("path", dbus_message_get_path(message));
-    }
-    /* This is an eavesdropped copy for another endpoint; never reply to it. */
-    return DBUS_HANDLER_RESULT_HANDLED;
-}
-
-static int geometry_match(GeometryWatch *watch, const char *method) {
-    DBusMessage *request = NULL, *reply = NULL;
-    DBusError error = DBUS_ERROR_INIT;
-    const char *rule = watch->rule;
-    int status = -1;
-    request = dbus_message_new_method_call(DBUS_SERVICE_DBUS, DBUS_PATH_DBUS,
-                                          DBUS_INTERFACE_DBUS, method);
-    if (request == NULL || !dbus_message_append_args(request, DBUS_TYPE_STRING, &rule,
-                                                    DBUS_TYPE_INVALID)) goto out;
-    reply = dbus_connection_send_with_reply_and_block(watch->bus, request, 1000, &error);
-    if (reply == NULL) goto out;
-    if (dbus_message_get_type(reply) == DBUS_MESSAGE_TYPE_METHOD_RETURN &&
-        strcmp(dbus_message_get_signature(reply), "") == 0) status = 0;
-out:
-    fprintf(stderr, "FLUTTER_PEER_GEOMETRY_WATCH method=%s result=%s", method,
-            status == 0 ? "acknowledged" : "unavailable");
-    print_sanitized_accessible_string("error", dbus_error_is_set(&error) ? error.message : NULL);
-    if (reply != NULL) dbus_message_unref(reply);
-    if (request != NULL) dbus_message_unref(request);
-    dbus_error_free(&error);
-    return status;
-}
-
-static void start_geometry_watch(AtspiAccessible *control, GeometryWatch *watch) {
-    AtspiObject *object = ATSPI_OBJECT(control);
-    const char *peer = object->app != NULL ? object->app->bus_name : NULL;
-    int length;
-    watch->bus = atspi_get_a11y_bus();
-    if (watch->bus == NULL || peer == NULL || peer[0] != ':' ||
-        strnlen(peer, sizeof(watch->peer)) >= sizeof(watch->peer) ||
-        !dbus_validate_bus_name(peer, NULL)) goto unavailable;
-    strcpy(watch->peer, peer);
-    length = snprintf(watch->rule, sizeof(watch->rule),
-                      "eavesdrop='true',type='method_call',sender='%s',destination='%s',"
-                      "interface='org.a11y.atspi.Component',member='GetExtents'", peer, peer);
-    if (length <= 0 || (size_t)length >= sizeof(watch->rule) ||
-        !dbus_connection_add_filter(watch->bus, observe_self_geometry, watch, NULL)) {
-        goto unavailable;
-    }
-    if (geometry_match(watch, "AddMatch") == 0) return;
-    watch->cleanup_failed = geometry_match(watch, "RemoveMatch") != 0;
-    dbus_connection_remove_filter(watch->bus, observe_self_geometry, watch);
-unavailable:
-    watch->bus = NULL;
-    fputs("FLUTTER_PEER_GEOMETRY_WATCH observation=unavailable\n", stderr);
-}
-
-static void stop_geometry_watch(GeometryWatch *watch) {
-    if (watch->bus == NULL) return;
-    uint64_t deadline = monotonic_millis() + 1000U;
-    unsigned int dispatched = 0U;
-    if (dbus_connection_read_write(watch->bus, 0)) {
-        while (dbus_connection_get_dispatch_status(watch->bus) == DBUS_DISPATCH_DATA_REMAINS &&
-               dispatched < ACCESSIBLE_NODE_LIMIT && monotonic_millis() < deadline) {
-            dbus_connection_dispatch(watch->bus);
-            dispatched += 1U;
-        }
-    }
-    int removed = geometry_match(watch, "RemoveMatch") == 0;
-    watch->cleanup_failed = removed == 0;
-    dbus_connection_remove_filter(watch->bus, observe_self_geometry, watch);
-    fprintf(stderr, "FLUTTER_PEER_GEOMETRY_WATCH self_calls_logged=%u dispatched=%u "
-            "rule_removed=%d filter_removed=true headers_only=true\n",
-            watch->messages, dispatched, removed);
-    watch->bus = NULL;
-}
-
-static int read_control_position(unsigned int pid, AtspiAccessible *control, int *x, int *y) {
+static int read_control_position(AtspiAccessible *control, int *x, int *y) {
     AtspiComponent *component = atspi_accessible_get_component_iface(control);
     AtspiRect *rect;
     GError *error = NULL;
-    GeometryWatch watch = {0};
     int status = -1;
     if (component == NULL) {
         fputs("FLUTTER_PEER_DIALOG_EXTENTS_FAIL component=unavailable\n", stderr);
         return -1;
     }
     atspi_accessible_clear_cache(control);
-    start_geometry_watch(control, &watch);
-    print_viewer_main_thread(pid, "before-extents");
     uint64_t started = monotonic_millis();
     rect = atspi_component_get_extents(component, ATSPI_COORD_TYPE_SCREEN, &error);
     uint64_t elapsed = monotonic_millis() - started;
-    print_viewer_main_thread(pid, "after-extents");
-    stop_geometry_watch(&watch);
-    if (error == NULL && rect != NULL && rect->width > 0 && rect->height > 0 &&
-        watch.cleanup_failed == 0) {
+    if (error == NULL && rect != NULL && rect->width > 0 && rect->height > 0) {
         *x = rect->x;
         *y = rect->y;
         status = 0;
@@ -1641,12 +1434,11 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
     fprintf(stderr, "FLUTTER_PEER_DIALOG_CAPTION found=%d scope=Alert attempts=%u elapsed_ms=%llu\n",
             caption != NULL, caption_attempts,
             (unsigned long long)(monotonic_millis() - caption_wait_started));
-    if (caption != NULL) print_dialog_parent_chain((unsigned int)viewer->pid, caption);
     if (caption == NULL || require_same_dialog((unsigned int)viewer->pid, caption) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL actual dialog did not become stable\n", stderr);
         goto out;
     }
-    if (read_control_position((unsigned int)viewer->pid, caption, &caption_x, &caption_y) != 0) {
+    if (read_control_position(caption, &caption_x, &caption_y) != 0) {
         fputs("FLUTTER_PEER_X11_FAIL actual dialog layout unavailable\n", stderr);
         goto out;
     }
@@ -1677,7 +1469,7 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
                         present != 0 ? "replaced" : "absent");
                 goto out;
             }
-            if (read_control_position((unsigned int)viewer->pid, caption, &current_x, &current_y) != 0) {
+            if (read_control_position(caption, &current_x, &current_y) != 0) {
                 fprintf(stderr, "FLUTTER_PEER_X11_FAIL resize=%u native_layout=unavailable\n",
                         resize + 1U);
                 goto out;
@@ -1908,6 +1700,195 @@ int main(int argc, char **argv) {
     }
     print_resources("initial", 0U, &baseline_resources);
 
+    for (unsigned int cycle = 0U; cycle < FOCUS_CYCLE_COUNT; ++cycle) {
+        Window sink = create_focus_sink(display);
+        uint64_t background_max_gap;
+        uint64_t background_max_age;
+        unsigned int background_distinct;
+        uint64_t recovery_ms;
+        uint64_t recovery_max_age;
+        ConnectionIdentity connection_after = {{0}, {0}, 0UL};
+
+        if (sink == 0) {
+            fputs("FLUTTER_PEER_X11_FAIL focus sink creation\n", stderr);
+            exit_atspi_after_failure();
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        printf("FLUTTER_PEER_BACKGROUND_OBSERVATION_BEGIN cycle=%u blurred_ms=%u "
+               "monotonic_ms=%llu\n",
+               cycle + 1U, blur_hold_ms[cycle],
+               (unsigned long long)monotonic_millis());
+        fflush(stdout);
+        if (observe_current_frames_for_duration(
+                source, display, &viewer, &history, blur_hold_ms[cycle],
+                &background_max_gap, &background_max_age, &background_distinct) != 0) {
+            fprintf(stderr,
+                    "FLUTTER_PEER_X11_FAIL background freshness exceeded %u ms "
+                    "cycle=%u blurred_ms=%u maximum_gap_ms=%llu maximum_age_ms=%llu "
+                    "distinct=%u monotonic_ms=%llu\n",
+                    FRESH_LIMIT_MS, cycle + 1U, blur_hold_ms[cycle],
+                    (unsigned long long)background_max_gap,
+                    (unsigned long long)background_max_age, background_distinct,
+                    (unsigned long long)monotonic_millis());
+            XDestroyWindow(display, sink);
+            exit_atspi_after_failure();
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        printf("FLUTTER_PEER_BACKGROUND_FRESHNESS_OK cycle=%u blurred_ms=%u "
+               "maximum_gap_ms=%llu maximum_age_ms=%llu distinct=%u\n",
+               cycle + 1U, blur_hold_ms[cycle],
+               (unsigned long long)background_max_gap,
+               (unsigned long long)background_max_age, background_distinct);
+        if (return_focus_with_pointer(display, &viewer) != 0) {
+            fputs("FLUTTER_PEER_X11_FAIL real focus/pointer return\n", stderr);
+            XDestroyWindow(display, sink);
+            exit_atspi_after_failure();
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        if (wait_for_current_frames(display, &viewer, &history, RECOVERY_LIMIT_MS, 3U,
+                                    &recovery_ms, &recovery_max_age) != 0) {
+            fprintf(stderr,
+                    "FLUTTER_PEER_X11_FAIL focus recovery exceeded %u ms cycle=%u\n",
+                    RECOVERY_LIMIT_MS, cycle + 1U);
+            XDestroyWindow(display, sink);
+            exit_atspi_after_failure();
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        if (read_connection_identity(&connection_after) != 0 ||
+            same_connection(&current_connection, &connection_after) == 0) {
+            fputs("FLUTTER_PEER_X11_FAIL focus cycle replaced the authenticated TCP connection\n",
+                  stderr);
+            XDestroyWindow(display, sink);
+            exit_atspi_after_failure();
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        if (read_process_resources(viewer_pid, &current_resources) != 0 ||
+            resources_are_bounded(&baseline_resources, &current_resources) == 0) {
+            fputs("FLUTTER_PEER_X11_FAIL viewer resources exceeded focus-cycle bounds\n",
+                  stderr);
+            XDestroyWindow(display, sink);
+            exit_atspi_after_failure();
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        print_resources("focus", cycle + 1U, &current_resources);
+        printf("FLUTTER_PEER_FOCUS_RECOVERY_OK cycle=%u blurred_ms=%u recovery_ms=%llu "
+               "maximum_age_ms=%llu real_pointer=true stable_connection=true\n",
+               cycle + 1U, blur_hold_ms[cycle], (unsigned long long)recovery_ms,
+               (unsigned long long)recovery_max_age);
+        XDestroyWindow(display, sink);
+    }
+
+    coord = open_coord_root();
+    if (coord < 0) {
+        fputs("FLUTTER_PEER_X11_FAIL coordination authority unavailable\n", stderr);
+        exit_atspi_after_failure();
+        close_viewer(display, viewer.window);
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return 1;
+    }
+    for (unsigned int sequence = 1U; sequence <= RECONNECT_COUNT; ++sequence) {
+        unsigned int generation = sequence + 1U;
+        ConnectionIdentity replacement = {{0}, {0}, 0UL};
+        ViewerWindow reconnected_viewer = {0};
+        uint64_t first_fresh_ms;
+        uint64_t maximum_age_ms;
+
+        if (request_server_restart(coord, generation) != 0 ||
+            wait_for_server_restart(coord, generation) != 0) {
+            fprintf(stderr,
+                    "FLUTTER_PEER_X11_FAIL server restart transaction generation=%u\n",
+                    generation);
+            close(coord);
+            exit_atspi_after_failure();
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        if (wait_for_replacement_connection(&current_connection, &replacement) != 0) {
+            fprintf(stderr,
+                    "FLUTTER_PEER_X11_FAIL viewer did not reconnect generation=%u\n",
+                    generation);
+            close(coord);
+            exit_atspi_after_failure();
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        if (find_viewer_window(display, viewer_pid, &reconnected_viewer) != 0 ||
+            reconnected_viewer.window != viewer.window) {
+            fputs("FLUTTER_PEER_X11_FAIL reconnect replaced the exact viewer window\n", stderr);
+            close(coord);
+            exit_atspi_after_failure();
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        viewer = reconnected_viewer;
+        if (wait_for_current_frames(display, &viewer, &history,
+                                    AUTH_WAIT_MS, 4U, &first_fresh_ms,
+                                    &maximum_age_ms) != 0) {
+            fprintf(stderr,
+                    "FLUTTER_PEER_X11_FAIL current pixels unavailable after reconnect "
+                    "generation=%u\n",
+                    generation);
+            close(coord);
+            exit_atspi_after_failure();
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        if (read_process_resources(viewer_pid, &current_resources) != 0 ||
+            resources_are_bounded(&baseline_resources, &current_resources) == 0) {
+            fputs("FLUTTER_PEER_X11_FAIL viewer resources exceeded reconnect bounds\n", stderr);
+            close(coord);
+            exit_atspi_after_failure();
+            close_viewer(display, viewer.window);
+            XCloseDisplay(display);
+            XCloseDisplay(source);
+            return 1;
+        }
+        print_resources("reconnect", sequence, &current_resources);
+        printf("FLUTTER_PEER_RECONNECT_OK sequence=%u generation=%u old_inode=%lu "
+               "new_inode=%lu first_fresh_ms=%llu maximum_age_ms=%llu "
+               "same_window=true cached_credential=true\n",
+               sequence, generation, current_connection.inode, replacement.inode,
+               (unsigned long long)first_fresh_ms,
+               (unsigned long long)maximum_age_ms);
+        current_connection = replacement;
+    }
+    if (close(coord) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL coordination authority close\n", stderr);
+        exit_atspi_after_failure();
+        close_viewer(display, viewer.window);
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return 1;
+    }
+    coord = -1;
+    /* Measure connection/display behavior before potentially blocking geometry queries. */
     if (exercise_dialog_resize(display, &viewer, &current_connection) != 0) {
         exit_atspi_after_failure();
         close_viewer(display, viewer.window);
@@ -1931,182 +1912,16 @@ int main(int argc, char **argv) {
         XCloseDisplay(source);
         return 1;
     }
-
-    for (unsigned int cycle = 0U; cycle < FOCUS_CYCLE_COUNT; ++cycle) {
-        Window sink = create_focus_sink(display);
-        uint64_t background_max_gap;
-        uint64_t background_max_age;
-        unsigned int background_distinct;
-        uint64_t recovery_ms;
-        uint64_t recovery_max_age;
-        ConnectionIdentity connection_after = {{0}, {0}, 0UL};
-
-        if (sink == 0) {
-            fputs("FLUTTER_PEER_X11_FAIL focus sink creation\n", stderr);
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
-        }
-        printf("FLUTTER_PEER_BACKGROUND_OBSERVATION_BEGIN cycle=%u blurred_ms=%u "
-               "monotonic_ms=%llu\n",
-               cycle + 1U, blur_hold_ms[cycle],
-               (unsigned long long)monotonic_millis());
-        fflush(stdout);
-        if (observe_current_frames_for_duration(
-                source, display, &viewer, &history, blur_hold_ms[cycle],
-                &background_max_gap, &background_max_age, &background_distinct) != 0) {
-            fprintf(stderr,
-                    "FLUTTER_PEER_X11_FAIL background freshness exceeded %u ms "
-                    "cycle=%u blurred_ms=%u maximum_gap_ms=%llu maximum_age_ms=%llu "
-                    "distinct=%u monotonic_ms=%llu\n",
-                    FRESH_LIMIT_MS, cycle + 1U, blur_hold_ms[cycle],
-                    (unsigned long long)background_max_gap,
-                    (unsigned long long)background_max_age, background_distinct,
-                    (unsigned long long)monotonic_millis());
-            XDestroyWindow(display, sink);
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
-        }
-        printf("FLUTTER_PEER_BACKGROUND_FRESHNESS_OK cycle=%u blurred_ms=%u "
-               "maximum_gap_ms=%llu maximum_age_ms=%llu distinct=%u\n",
-               cycle + 1U, blur_hold_ms[cycle],
-               (unsigned long long)background_max_gap,
-               (unsigned long long)background_max_age, background_distinct);
-        if (return_focus_with_pointer(display, &viewer) != 0) {
-            fputs("FLUTTER_PEER_X11_FAIL real focus/pointer return\n", stderr);
-            XDestroyWindow(display, sink);
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
-        }
-        if (wait_for_current_frames(display, &viewer, &history, RECOVERY_LIMIT_MS, 3U,
-                                    &recovery_ms, &recovery_max_age) != 0) {
-            fprintf(stderr,
-                    "FLUTTER_PEER_X11_FAIL focus recovery exceeded %u ms cycle=%u\n",
-                    RECOVERY_LIMIT_MS, cycle + 1U);
-            XDestroyWindow(display, sink);
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
-        }
-        if (read_connection_identity(&connection_after) != 0 ||
-            same_connection(&current_connection, &connection_after) == 0) {
-            fputs("FLUTTER_PEER_X11_FAIL focus cycle replaced the authenticated TCP connection\n",
-                  stderr);
-            XDestroyWindow(display, sink);
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
-        }
-        if (read_process_resources(viewer_pid, &current_resources) != 0 ||
-            resources_are_bounded(&baseline_resources, &current_resources) == 0) {
-            fputs("FLUTTER_PEER_X11_FAIL viewer resources exceeded focus-cycle bounds\n",
-                  stderr);
-            XDestroyWindow(display, sink);
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
-        }
-        print_resources("focus", cycle + 1U, &current_resources);
-        printf("FLUTTER_PEER_FOCUS_RECOVERY_OK cycle=%u blurred_ms=%u recovery_ms=%llu "
-               "maximum_age_ms=%llu real_pointer=true stable_connection=true\n",
-               cycle + 1U, blur_hold_ms[cycle], (unsigned long long)recovery_ms,
-               (unsigned long long)recovery_max_age);
-        XDestroyWindow(display, sink);
-    }
-
-    coord = open_coord_root();
-    if (coord < 0) {
-        fputs("FLUTTER_PEER_X11_FAIL coordination authority unavailable\n", stderr);
+    if (read_process_resources(viewer_pid, &current_resources) != 0 ||
+        resources_are_bounded(&baseline_resources, &current_resources) == 0) {
+        fputs("FLUTTER_PEER_X11_FAIL viewer resources exceeded dialog-retirement bounds\n", stderr);
         close_viewer(display, viewer.window);
         XCloseDisplay(display);
         XCloseDisplay(source);
         return 1;
     }
-    for (unsigned int sequence = 1U; sequence <= RECONNECT_COUNT; ++sequence) {
-        unsigned int generation = sequence + 1U;
-        ConnectionIdentity replacement = {{0}, {0}, 0UL};
-        ViewerWindow reconnected_viewer = {0};
-        uint64_t first_fresh_ms;
-        uint64_t maximum_age_ms;
-
-        if (request_server_restart(coord, generation) != 0 ||
-            wait_for_server_restart(coord, generation) != 0) {
-            fprintf(stderr,
-                    "FLUTTER_PEER_X11_FAIL server restart transaction generation=%u\n",
-                    generation);
-            close(coord);
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
-        }
-        if (wait_for_replacement_connection(&current_connection, &replacement) != 0) {
-            fprintf(stderr,
-                    "FLUTTER_PEER_X11_FAIL viewer did not reconnect generation=%u\n",
-                    generation);
-            close(coord);
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
-        }
-        if (find_viewer_window(display, viewer_pid, &reconnected_viewer) != 0 ||
-            reconnected_viewer.window != viewer.window) {
-            fputs("FLUTTER_PEER_X11_FAIL reconnect replaced the exact viewer window\n", stderr);
-            close(coord);
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
-        }
-        viewer = reconnected_viewer;
-        if (wait_for_current_frames(display, &viewer, &history,
-                                    AUTH_WAIT_MS, 4U, &first_fresh_ms,
-                                    &maximum_age_ms) != 0) {
-            fprintf(stderr,
-                    "FLUTTER_PEER_X11_FAIL current pixels unavailable after reconnect "
-                    "generation=%u\n",
-                    generation);
-            close(coord);
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
-        }
-        if (read_process_resources(viewer_pid, &current_resources) != 0 ||
-            resources_are_bounded(&baseline_resources, &current_resources) == 0) {
-            fputs("FLUTTER_PEER_X11_FAIL viewer resources exceeded reconnect bounds\n", stderr);
-            close(coord);
-            close_viewer(display, viewer.window);
-            XCloseDisplay(display);
-            XCloseDisplay(source);
-            return 1;
-        }
-        print_resources("reconnect", sequence, &current_resources);
-        printf("FLUTTER_PEER_RECONNECT_OK sequence=%u generation=%u old_inode=%lu "
-               "new_inode=%lu first_fresh_ms=%llu maximum_age_ms=%llu "
-               "same_window=true cached_credential=true\n",
-               sequence, generation, current_connection.inode, replacement.inode,
-               (unsigned long long)first_fresh_ms,
-               (unsigned long long)maximum_age_ms);
-        current_connection = replacement;
-    }
-    if (close(coord) != 0) {
-        fputs("FLUTTER_PEER_X11_FAIL coordination authority close\n", stderr);
-        close_viewer(display, viewer.window);
-        XCloseDisplay(display);
-        XCloseDisplay(source);
-        return 1;
-    }
-    coord = -1;
+    printf("FLUTTER_PEER_DIALOG_RESOURCES_OK rss_kib=%llu threads=%u fds=%u\n",
+           current_resources.rss_kib, current_resources.threads, current_resources.descriptors);
     puts("FLUTTER_PEER_RESOURCE_BOUNDS_OK reconnects=3 focus_cycles=3 "
          "threads_growth_max=8 fds_growth_max=16 rss_growth_kib_max=131072");
     if (close_viewer(display, viewer.window) != 0) {

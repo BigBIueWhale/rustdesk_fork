@@ -1525,6 +1525,13 @@ binds the unique visible `Trackpad speed` caption only within the exact-process 
 excluding the departing menu item. These native entry corrections are executed; they do not
 establish an overlay-ownership fix or the original display-hang cause.
 
+The controller now measures its three focus/background cycles and three server-generation
+reconnects before the potentially blocking dialog geometry transaction. All original dialog,
+pixel, connection and resource criteria remain mandatory for full success; resources are checked
+again after dialog/AT-SPI retirement. One AT-SPI initialization remains owned until its sole final
+teardown, including every intervening failure path. Completed ancestry/thread/self-call diagnostics
+are removed. Native execution of this ordering is pending; it does not resolve the geometry blocker.
+
 **Current native blocker:** exact harness `20ba622b` replayed those app bytes without rebuilding
 in 115,390 host BOOTTIME ms and exited 1. Both real Tap actions, actual password authentication,
 four changing pixel states (first fresh 59 ms, maximum accepted publication age 422 ms), scoped

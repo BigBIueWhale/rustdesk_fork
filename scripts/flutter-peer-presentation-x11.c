@@ -1411,7 +1411,7 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
 
     puts("FLUTTER_PEER_DIALOG_RESIZE_BEGIN dialog=trackpad_speed source=actual_toolbar");
     fflush(stdout);
-    if (activate_named_control((unsigned int)viewer->pid, "Show Toolbar") != 0 ||
+    if (activate_named_control((unsigned int)viewer->pid, "Show toolbar") != 0 ||
         activate_named_control((unsigned int)viewer->pid, "Keyboard settings") != 0) {
         fputs("FLUTTER_PEER_X11_FAIL actual toolbar disclosure\n", stderr);
         goto out;

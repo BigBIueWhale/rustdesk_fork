@@ -1549,9 +1549,12 @@ The production toolbar has an auto-collapse path; establish and operate its real
 after focus/reconnect instead of assuming its initial expanded state or guessing a new coordinate.
 The show/hide button now exports its existing localized state-dependent name through Semantics,
 excluding duplicate tooltip semantics and retaining the original callback. The controller requires
-the exact-process `Show Toolbar` Tap followed by the actual `Keyboard settings` Tap; its fixed
+the exact-process English `Show toolbar` Tap followed by the actual `Keyboard settings` Tap; its fixed
 top-edge pointer-position assumption is deleted. Native old-app negative and corrected-app replay
 are pending. No auto-collapse, docking, policy, connection, resource or geometry behavior is changed.
+First attempt `f7b02a8f` used the untranslated source key `Show Toolbar`; its not-found result is
+invalid comparative evidence. Its bounded serial is `evidence/toolbar-disclosure-old-f7b02a8f.serial.log`;
+owners joined and the failed disk was reconciled. The controller now uses en.rs's actual English label.
 
 **Geometry remains OPEN:** earlier exact harness `20ba622b` reached both real Tap actions, scoped
 caption and all five stable-identity checks, then SCREEN GetExtents timed out in 1,001 ms with

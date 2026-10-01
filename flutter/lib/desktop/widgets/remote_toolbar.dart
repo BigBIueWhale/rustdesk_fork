@@ -3273,14 +3273,22 @@ class _DraggableShowHideState extends State<_DraggableShowHide> {
           () => setState(() {
             widget.toolbarState.switchCollapse(widget.sessionId);
           }),
-          Obx((() => Tooltip(
-                message: translate(
-                    collapse.isFalse ? 'Hide Toolbar' : 'Show Toolbar'),
+          Obx(() {
+            final label = translate(
+                collapse.isFalse ? 'Hide Toolbar' : 'Show Toolbar');
+            return Tooltip(
+              message: label,
+              excludeFromSemantics: true,
+              child: Semantics(
+                label: label,
+                excludeSemantics: true,
                 child: Icon(
                   _toolbarCollapseIcon(widget.edge.value, collapse.isTrue),
                   size: iconSize,
                 ),
-              ))),
+              ),
+            );
+          }),
         ),
         if (isWebDesktop)
           Obx(() {

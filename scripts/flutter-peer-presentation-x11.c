@@ -1405,22 +1405,20 @@ static int exercise_dialog_resize(Display *display, ViewerWindow *viewer,
     uint64_t deadline;
     uint64_t caption_wait_started;
     unsigned int caption_attempts = 0U;
-    Window child;
-    int root_x, root_y;
     int caption_x, caption_y;
     ConnectionIdentity after = {{0}, {0}, 0UL};
     int status = -1;
 
     puts("FLUTTER_PEER_DIALOG_RESIZE_BEGIN dialog=trackpad_speed source=actual_toolbar");
     fflush(stdout);
-    if (XTranslateCoordinates(display, viewer->window, RootWindow(display, DefaultScreen(display)),
-                              (int)viewer->width / 2, 60, &root_x, &root_y, &child) == 0 ||
-        XTestFakeMotionEvent(display, DefaultScreen(display), root_x, root_y, CurrentTime) == 0) {
+    if (activate_named_control((unsigned int)viewer->pid, "Show Toolbar") != 0 ||
+        activate_named_control((unsigned int)viewer->pid, "Keyboard settings") != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL actual toolbar disclosure\n", stderr);
         goto out;
     }
-    XSync(display, False);
-    if (activate_named_control((unsigned int)viewer->pid, "Keyboard settings") != 0 ||
-        activate_named_control((unsigned int)viewer->pid, "Trackpad speed") != 0) {
+    puts("FLUTTER_PEER_TOOLBAR_DISCLOSURE_OK show_control=actual_tap keyboard_settings=activated");
+    fflush(stdout);
+    if (activate_named_control((unsigned int)viewer->pid, "Trackpad speed") != 0) {
         fputs("FLUTTER_PEER_X11_FAIL actual toolbar dialog activation\n", stderr);
         goto out;
     }

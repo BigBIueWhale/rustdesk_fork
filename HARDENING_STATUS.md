@@ -1688,6 +1688,15 @@ The SDK archive inventory contains the Linux engine source but no Dart `dart_api
 The pinned Linux GN target links `embedder_as_internal_library`, not a replaceable GTK-only shim.
 Restore the authenticated engine dependency/build closure before compiling a source correction;
 no preload, private-ABI interposition, assumed upstream fix or unexecuted patch is a shipped fix.
+The separate `--maintenance-discover-flutter-linux-engine-bootstrap` acquisition operation
+authenticates the entire retained SDK, requires its root DEPS bytes to equal the exact upstream
+framework commit, and captures that graph plus pinned depot-tools/CIPD publisher metadata in one
+bounded, owner-only, no-clobber discovery record. It executes no fetched code and promotes no
+build input. The container is numeric-nonroot, read-only-root/capability-free, with only SDK/helper
+read mounts and its exact output directory writable; the existing outbound-only VM/entry/image
+provenance authority is reused. This operation is not yet runtime-validated. Full recursive source,
+immutable CIPD instances, Linux hooks/sysroot/Pub closure, offline GN/engine build and the source
+correction/complete uninstrumented app consumer remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

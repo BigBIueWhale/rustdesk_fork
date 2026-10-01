@@ -279,6 +279,7 @@ done
 case "$REQUEST" in
     __full__|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-discover-rust-android-x86-input|--maintenance-discover-flutter-android-maven|--maintenance-stage-android-emulator-inputs|--maintenance-stage-rust-android-x86-input|--maintenance-stage-vcpkg-x64-android|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|\
     --maintenance-build-deb-builder-bootstrap-candidate|\
+    --maintenance-discover-flutter-linux-engine-bootstrap|\
     --maintenance-build-android-builder-bootstrap-candidate|\
     --maintenance-build-win-helper-bootstrap-candidate|\
     --maintenance-promote-deb-builder-bootstrap-candidate|\
@@ -800,8 +801,12 @@ readonly INNER_ENV=(
     RUSTDESK_ONLINE_FETCH_VM_SOURCE_TREE="$EXPECTED_SOURCE_TREE"
     RUSTDESK_ONLINE_FETCH_VM_RETIRED_POLICY="$([ "$REQUEST" = __authority_smoke__ ] && printf required || printf ephemeral)"
 )
+root_probe=(/bin/bash "$REPO/scripts/online-fetch.sh" --vm-authority-probe)
+if [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ]; then
+    root_probe=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh")
+fi
 if /usr/bin/env -i PATH=/usr/bin:/bin HOME=/root "${INNER_ENV[@]}" \
-    /bin/bash "$REPO/scripts/online-fetch.sh" --vm-authority-probe \
+    "${root_probe[@]}" \
     >"$ROOT/root.out" 2>"$ROOT/root.err"; then
     fail 'VM-local root passed the online-fetch entry preflight'
 fi
@@ -830,6 +835,9 @@ run_online_fetch() {
     local stderr_overflow=$ROOT/transaction.stderr.overflow
     local transaction_status=0 reader_status=0 reader_pid path
     [ "$REQUEST" = __full__ ] || command+=("$REQUEST")
+    if [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ]; then
+        command=(/bin/bash "$REPO/scripts/discover-flutter-linux-engine-bootstrap.sh")
+    fi
     [ -z "$TRANSACTION_PID" ] \
         && [ "${#RESULT_READER_PIDS[@]}" -eq 0 ] \
         && [ "${#RESULT_CAPTURE_PATHS[@]}" -eq 0 ] \

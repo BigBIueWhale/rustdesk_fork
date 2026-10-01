@@ -1582,7 +1582,7 @@ First attempt `f7b02a8f` used the untranslated source key `Show Toolbar`; its no
 invalid comparative evidence. Its bounded serial is `evidence/toolbar-disclosure-old-f7b02a8f.serial.log`;
 owners joined and the failed disk was reconciled. The controller now uses en.rs's actual English label.
 
-**Geometry remains OPEN:** earlier exact harness `20ba622b` reached both real Tap actions, scoped
+**Production geometry remains OPEN:** earlier exact harness `20ba622b` reached both real Tap actions, scoped
 caption and all five stable-identity checks, then SCREEN GetExtents timed out in 1,001 ms with
 invalid extents. The exact viewer main thread retained its identity/CPU ticks and `do_sys_poll`.
 The acknowledged, subsequently removed existing-bus header match observed a self-directed GetExtents
@@ -1611,8 +1611,8 @@ was in `libatk-bridge-2.0.so.0` at offset `1d760`. The caller frame in that brid
 followed by ATK and repeated Flutter parent-geometry frames. The backtrace stopped at its explicit
 32-frame bound; no return was observed before owned teardown. The unchanged controller timed out
 after 1,001 ms with invalid extents, before any resize. This supplies the previously missing native
-provider ownership/call chain and supports the non-reentrant self-wait mechanism; a corrected-path
-causal A/B is still required. It is not Android/Windows causation, an LPE finding, full-consumer
+provider ownership/call chain and supports the non-reentrant self-wait mechanism; the local-path
+counterfactual below tests that mechanism, not a shipped dependency correction. It is not Android/Windows causation, an LPE finding, full-consumer
 success or uninstrumented performance evidence. Complete 511,045-byte raw serial is
 `evidence/geometry-provider-98b210ce.serial.log`, SHA-256
 `05fd03325e3be421e52afb0dfa4d06574e3b09b47c4a69f1c9c33ce83ee4c12c`.
@@ -1633,15 +1633,37 @@ reclaimed 3,083,468,800 allocated bytes; no run/overlay remains. No duplicate ap
 Superseded selector, proxy and transport diagnostics remain in Git history, retained raw evidence
 and the external audit, not as a live replay diary.
 
-Next test a correct local geometry-provider path against the observed self-wait in a focused
-target-native A/B, or establish an equally authoritative target-native layout observation.
-The temporary guest-only counterfactual matches the native plug ID to its exact socket/widget
-association, supplies the socket parent binding omitted by Flutter's copied GTK implementation,
-and routes root geometry through that local GTK owner on each query. Weak references do not retain
-retired views; unknown, stale or ambiguous associations refuse. Coordinates and existing controller
-criteria remain native and unchanged. This experiment is not a production workaround and cannot
-grant full consumer acceptance, even if the instrumented controller succeeds. Native result pending.
-Do not increase timeouts, guess coordinates or accept invalid extents. Then observe an actual
+**Local GTK geometry counterfactual — SAME-APP RESIZE PASS; PRODUCTION CORRECTION OPEN.** Exact
+diagnostic `b643fa3687ad7c9675d9a5effc593ecd1283f4c7`, tree
+`79e5a04d3395e74c8a5afc5049d65914c6041a7f`, replayed the same sealed `eeaaa0ec` app without
+rebuilding in 144,830 host BOOTTIME ms. All four drivers compiled twice byte-equal; controller
+source is byte-identical to the uninstrumented negative. The exact viewer PID 233/start 7504
+mapped the manifested counterfactual, which matched native plug IDs to exact socket/widget objects,
+used weak lifetime references, refused stale/ambiguous associations and never guessed coordinates.
+Both native sockets reported absent parents before the binding. Four root queries then returned
+fresh GTK allocations at screen origin (0,40): 1300x740, 1100x650, 1200x700, 1300x740.
+The unchanged controller completed all three real resizes with the same caption accessible and
+changed native layout, explicit Escape retirement, unchanged authenticated TCP identity, subsequent
+publication-bound pixels and post-dialog resources (411,316 KiB RSS, 56 threads, 46 descriptors).
+Its status was zero; the stage deliberately returned diagnostic-only status 125, and the outer
+transaction ended 1. This is one instrumented controller result, not six-cycle/uninstrumented
+consumer or performance closure. Correcting both the missing socket parent and the self-waiting
+root route establishes the joint local-path counterfactual; parent binding alone was not tested.
+The temporary ELF and all runtime wiring are deleted; both scripts equal their pre-experiment bytes.
+Complete 510,237-byte raw serial is `evidence/local-geometry-b643fa36.serial.log`, SHA-256
+`a9fae181fccede7b663702c9f048374ffa48599e4efd493fdd71aeea6f674016`. Bounded viewer/capture/listener
+records share that prefix. Capture and byte comparison passed; listeners were byte-identical and
+addition/drift records empty. All owned processes joined. Independent context/inventory/74-file
+rehash passed before and after; exact locked scratch cleanup reclaimed 2,970,288,128 allocated bytes.
+No run/overlay remains. This is a Linux dependency geometry finding, not Android/Windows causation
+or an LPE finding. GTK's [socket parent binding](https://raw.githubusercontent.com/GNOME/gtk/3.24.38/gtk/a11y/gtksocketaccessible.c)
+and ATK's [parent-derived geometry](https://raw.githubusercontent.com/GNOME/at-spi2-core/AT_SPI2_CORE_2_46_0/atk/atksocket.c)
+support the local-provider design; the exact experimental recipe is preserved in Git, not as a product mode.
+
+Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
+component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
+consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept
+invalid extents. The successful resize case did not establish an image-ready build reset. Observe an actual
 production image-ready rebuild trigger before
 changing desktop dialog ownership and complete the required consumer lifecycles. The older
 named Linux peer passes remain limited to their exact source/scenarios. Original Android/Windows
@@ -1774,7 +1796,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest joined cleanup is recorded in the app-replay disposition above.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 620,670,976 allocated bytes (0.578 GiB). The actual outer
+  small evidence records occupy 621,371,392 allocated bytes (0.579 GiB). The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks
   new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,

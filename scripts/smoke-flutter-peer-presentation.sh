@@ -847,7 +847,7 @@ SERVER_CID_FILE="$WORKSPACE/server.$cycle.cid"
 VIEWER_CID_FILE="$WORKSPACE/viewer.$cycle.cid"
 SERVER_LOG="$WORKSPACE/server.$cycle.log"
 VIEWER_LOG="$WORKSPACE/viewer.$cycle.log"
-printf '== peer runtime cycle %s/6, instrumentation=atk-local-geometry, network=none ==\n' "$cycle"
+printf '== peer runtime cycle %s/6, instrumentation=none, network=none ==\n' "$cycle"
 CID_FILES+=("$SERVER_CID_FILE")
 peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
   --pull=never --network=none --read-only \
@@ -976,10 +976,10 @@ grep -q '^FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joined
   || die 'server result receipt differs'
 cleanup_container "$VIEWER_CID_FILE"
 cleanup_container "$SERVER_CID_FILE"
-printf 'FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=%s instrumentation=atk-local-geometry viewer=joined server=joined\n' \
+printf 'FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=%s instrumentation=none viewer=joined server=joined\n' \
   "$cycle"
 done
-echo 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=6 instrumentation=atk-local-geometry'
+echo 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=6 instrumentation=none'
 fi
 
 if [ "$BUILD_APP_ONLY" -eq 1 ]; then

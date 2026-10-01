@@ -2108,7 +2108,26 @@ No deadline/resource increase, host installation, alternate provider or product 
 is introduced. NO_AT_BRIDGE deliberately excludes AT-SPI routing from this unit test.
 Actual FlView/provider teardown, full transforms and engine/app integration remain OPEN.
 
-Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
+**Direct GTK/provider candidate — IMPLEMENTED; NATIVE RESULT PENDING.** The dependency patch
+replaces the standalone plug/socket route with GTK's widget-owned `FlViewAccessible`, bound
+once after the engine/view ID exists. Early access stays closed; widget unbinding revokes the
+complete tree before callbacks. Nodes retain full rects and transforms, compose checked live
+ancestry before rounding, divide the actual GTK scale once, and derive SCREEN/WINDOW/PARENT
+positions from the real widget. Missing/mixed/cyclic/retired ancestry, invalid/nonfinite or
+singular/projective-horizon transforms and integer overflow return unavailable geometry.
+Wayland SCREEN coordinates refuse rather than accepting GDK's synthetic global origin;
+WINDOW/PARENT remain local. Position, size, contains and direct-child hit testing share this
+geometry. GTK focus/container mutation is gated by the live mapped owner and retains the
+widget across native callbacks. The plug/socket files and translation-only setter are deleted.
+The native fixture preserves the original parent-relative and retired-ancestor assertions,
+adds mapped widgets, full transforms/rounding/hit testing, invalid ancestry/bounds, hide/show,
+and teardown-time whole-tree action refusal. One source-bound binary must pass every case at
+GTK scales 1 and 2; four migrated upstream test objects must compile. No native pass, engine
+link, actual FlView lifecycle, shipped app/self-wait fix, product/LPE or platform closure is
+claimed before execution. Existing assertion, runtime/resource and deadline bounds remain.
+
+Next execute this candidate's focused native profile, then finish the reviewed, source-bound
+dependency correction and cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented
 consumer. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept
 invalid extents. The successful resize case did not establish an image-ready build reset. Observe an actual

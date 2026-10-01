@@ -536,11 +536,6 @@ raise SystemExit(subprocess.call([
                  *[engine + "/out/host_release/" + name for name in objects[1:]],
                  "-flto", "-fuse-ld=lld", *flags, "-o", binary], engine, env, deadline)
         artifact_receipt(binary.rsplit("/", 1)[1], "baseline-test" if baseline else "candidate-test")
-        if baseline:
-            output = command([binary], engine, env, deadline)
-        else:
-            with native_display(env, deadline) as display_env:
-                output = command([binary], engine, display_env, deadline)
         expected = ("ENGINE_ACCESSIBLE_RETIREMENT_BASELINE=observed parent=gone engine=live action=dispatched"
                     if baseline else "ENGINE_GTK_WIDGET_LIFETIME=pass backend=x11 mapped=true "
                     "retained_accessible=unbound destroyed=true\n"
@@ -559,14 +554,27 @@ raise SystemExit(subprocess.call([
                     "ENGINE_ACCESSIBLE_NODE_GEOMETRY_OBSERVED parent=5,7,20,10 position=5,7 contains=1 "
                     "retired_screen=-1,-1,-1,-1 retired_window=-1,-1,-1,-1 retired_size=-1,-1 retired_contains=0\n"
                     "ENGINE_ACCESSIBLE_NODE_GEOMETRY=pass unit=real-node parent_relative=true "
-                    "retired_ancestor=unavailable position_size=consistent contains=closed")
-        require(output == (expected + "\n").encode(), "native node retirement receipt differs")
+                    "retired_ancestor=unavailable position_size=consistent contains=closed\n"
+                    "ENGINE_ACCESSIBLE_WIDGET_GEOMETRY=pass owner=gtk-bound early_binding=closed "
+                    "transforms=full parent_hit_test=consistent invalid=closed hidden=unavailable teardown=revoked")
+        if baseline:
+            output = command([binary], engine, env, deadline)
+            require(output == (expected + "\n").encode(), "native node retirement receipt differs")
+        else:
+            with native_display(env, deadline) as display_env:
+                for scale in (1, 2):
+                    output = command([binary], engine, {**display_env, "GDK_SCALE": str(scale)}, deadline)
+                    require(output == (expected + "\n").encode(),
+                            "native GTK geometry receipt differs at scale " + str(scale))
+                    print("ENGINE_ACCESSIBLE_GTK_SCALE=pass scale=" + str(scale)
+                          + " artifact=same scenarios=complete", flush=True)
+        # Forward the common receipts once; the exact outer checker rejects duplicates.
         print(expected, flush=True)
 
     node_test(True)
     patch_path = Path("/authority/retirement.patch")
     patch_bytes = patch_path.read_bytes()
-    require(0 < len(patch_bytes) <= 96 * 1024, "retirement patch exceeds bound")
+    require(0 < len(patch_bytes) <= 128 * 1024, "retirement patch exceeds bound")
     git = ["/usr/bin/git", "--no-replace-objects", "-c", "core.hooksPath=/dev/null"]
     command(git + ["apply", "--check", "--whitespace=error-all", str(patch_path)],
             framework, env, deadline)
@@ -577,7 +585,9 @@ raise SystemExit(subprocess.call([
                        "fl_accessible_node_test.cc", "fl_accessible_text_field.cc",
                        "fl_accessible_text_field.h", "fl_accessible_text_field_test.cc",
                        "fl_semantics_generation.cc", "fl_semantics_generation.h",
-                       "fl_view.cc", "fl_view_accessible.cc", "fl_view_accessible.h")]
+                       "fl_socket_accessible.cc", "fl_socket_accessible.h",
+                       "fl_view.cc", "fl_view_accessible.cc", "fl_view_accessible.h",
+                       "fl_view_accessible_test.cc")]
     changed = command(git + ["diff", "--name-only", "--", "engine/src/flutter/shell/platform/linux"],
                       framework, env, deadline).decode().splitlines()
     changed += command(git + ["ls-files", "--others", "--exclude-standard", "--",
@@ -586,10 +596,11 @@ raise SystemExit(subprocess.call([
     require(sorted(changed) == sorted(expected_paths), "retirement patch source scope differs")
     command(git + ["diff", "--check"], framework, env, deadline)
     print("ENGINE_ACCESSIBLE_RETIREMENT_PATCH=applied sha256="
-          + hashlib.sha256(patch_bytes).hexdigest() + " files=12 sdk_archive=unchanged", flush=True)
+          + hashlib.sha256(patch_bytes).hexdigest() + " files=15 sdk_archive=unchanged", flush=True)
     objects.append("obj/flutter/shell/platform/linux/flutter_linux_sources.fl_semantics_generation.o")
     upstream_tests = ["obj/flutter/shell/platform/linux/flutter_linux_unittests." + unit + ".o"
-                      for unit in ("fl_accessible_node_test", "fl_accessible_text_field_test")]
+                      for unit in ("fl_accessible_node_test", "fl_accessible_text_field_test",
+                                   "fl_view_accessible_test", "fl_view_test")]
     command([framework + "/third_party/ninja/ninja", "-C", "out/host_release", "-j2",
              *objects],
             engine, env, deadline)
@@ -622,7 +633,7 @@ raise SystemExit(subprocess.call([
               + " recipe_sha256=" + hashlib.sha256(recipe).hexdigest(), flush=True)
         command(arguments, cwd, env, deadline)
         artifact_receipt(name, "upstream-test-compile")
-    print("ENGINE_ACCESSIBLE_RETIREMENT_COMPILE=pass production_units=8 upstream_test_objects=2 "
+    print("ENGINE_ACCESSIBLE_RETIREMENT_COMPILE=pass production_units=8 upstream_test_objects=4 "
           "view_teardown=unexecuted engine_restart=unexecuted app_replay=unexecuted", flush=True)
     print("FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 "
           "indexes=original pub=path-only network=none engine_build=unexecuted", flush=True)

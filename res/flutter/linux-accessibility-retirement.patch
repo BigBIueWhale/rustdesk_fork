@@ -9,7 +9,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/BUILD.gn b/engine/src/flutt
               "fl_task_runner.h",
               "fl_view_monitor.h",
               "fl_view_private.h",
-@@ -154,6 +155,7 @@
+@@ -154,11 +155,11 @@
      "fl_pointer_manager.cc",
      "fl_renderable.cc",
      "fl_scrolling_manager.cc",
@@ -17,18 +17,26 @@ diff --git a/engine/src/flutter/shell/platform/linux/BUILD.gn b/engine/src/flutt
      "fl_settings.cc",
      "fl_settings_channel.cc",
      "fl_settings_handler.cc",
+     "fl_settings_portal.cc",
+-    "fl_socket_accessible.cc",
+     "fl_standard_message_codec.cc",
+     "fl_standard_method_codec.cc",
+     "fl_string_codec.cc",
 diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc
 --- a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc
 +++ b/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc
-@@ -3,7 +3,6 @@
+@@ -3,8 +3,9 @@
  // found in the LICENSE file.
 
  #include "flutter/shell/platform/linux/fl_accessible_node.h"
 -#include "flutter/shell/platform/linux/fl_engine_private.h"
 
++#include <cmath>
++
  // Maps Flutter semantics actions to ATK actions.
  typedef struct {
-@@ -44,11 +43,8 @@
+   FlutterSemanticsAction action;
+@@ -44,11 +45,8 @@
  struct FlAccessibleNodePrivate {
    AtkObject parent_instance;
 
@@ -42,7 +50,17 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
 
    // Weak reference to the parent node of this one or %NULL.
    GWeakRef parent;
-@@ -63,7 +59,7 @@
+@@ -56,14 +54,16 @@
+   int32_t node_id;
+   gchar* name;
+   gint index;
+-  gint x, y, width, height;
++  FlutterRect rect;
++  FlutterTransformation transform;
++  gboolean geometry_set;
+   GPtrArray* actions;
+   gsize actions_length;
+   GPtrArray* children;
    FlutterSemanticsFlags flags;
  };
 
@@ -51,7 +69,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
 
  #define FL_ACCESSIBLE_NODE_GET_PRIVATE(node)                          \
    ((FlAccessibleNodePrivate*)fl_accessible_node_get_instance_private( \
-@@ -86,6 +82,16 @@
+@@ -86,6 +86,16 @@
                  G_IMPLEMENT_INTERFACE(ATK_TYPE_TEXT,
                                        fl_accessible_node_text_interface_init))
 
@@ -68,7 +86,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
  // Returns TRUE if [flags] indicate this element is checkable.
  static gboolean is_checkable(FlutterSemanticsFlags flags) {
    return flags.is_checked != kFlutterCheckStateNone ||
-@@ -131,7 +137,7 @@
+@@ -131,7 +141,7 @@
 
  // Gets the nth action.
  static ActionData* get_action(FlAccessibleNodePrivate* priv, gint index) {
@@ -77,7 +95,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
      return nullptr;
    }
    return static_cast<ActionData*>(g_ptr_array_index(priv->actions, index));
-@@ -154,11 +160,8 @@
+@@ -154,11 +164,8 @@
                                              GParamSpec* pspec) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(object);
    switch (prop_id) {
@@ -91,7 +109,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
        break;
      case PROP_ID:
        priv->node_id = g_value_get_int(value);
-@@ -170,26 +173,30 @@
+@@ -170,26 +177,30 @@
  }
 
  static void fl_accessible_node_dispose(GObject* object) {
@@ -130,7 +148,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
    g_autoptr(AtkObject) parent = ATK_OBJECT(g_weak_ref_get(&priv->parent));
    return parent;
  }
-@@ -197,20 +204,20 @@
+@@ -197,20 +208,20 @@
  // Implements AtkObject::get_index_in_parent.
  static gint fl_accessible_node_get_index_in_parent(AtkObject* accessible) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(accessible);
@@ -154,7 +172,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
      return nullptr;
    }
 
-@@ -220,6 +227,9 @@
+@@ -220,6 +231,9 @@
  // Implements AtkObject::get_role.
  static AtkRole fl_accessible_node_get_role(AtkObject* accessible) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(accessible);
@@ -164,7 +182,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
    if (priv->flags.is_button) {
      return ATK_ROLE_PUSH_BUTTON;
    }
-@@ -261,6 +271,11 @@
+@@ -261,6 +275,11 @@
 
    AtkStateSet* state_set = atk_state_set_new();
 
@@ -176,62 +194,274 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
    if (!priv->flags.is_obscured) {
      atk_state_set_add_state(state_set, ATK_STATE_SHOWING);
    }
-@@ -306,19 +321,45 @@
-                                            gint* height,
-                                            AtkCoordType coord_type) {
-   FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(component);
-+  if (x != nullptr) {
-+    *x = -1;
-+  }
-+  if (y != nullptr) {
-+    *y = -1;
-+  }
-+  if (width != nullptr) {
-+    *width = -1;
-+  }
-+  if (height != nullptr) {
-+    *height = -1;
-+  }
-+  if (!is_live(priv)) {
-+    return;
-+  }
+@@ -298,29 +317,250 @@
+   return state_set;
+ }
 
++struct SemanticsMatrix {
++  double values[3][3];
++};
++
++static SemanticsMatrix semantics_matrix(const FlutterTransformation& transform) {
++  return {{{transform.scaleX, transform.skewX, transform.transX},
++           {transform.skewY, transform.scaleY, transform.transY},
++           {transform.pers0, transform.pers1, transform.pers2}}};
++}
++
++static gboolean multiply_matrix(const SemanticsMatrix& parent,
++                                 const SemanticsMatrix& local,
++                                 SemanticsMatrix* result) {
++  *result = {};
++  for (guint row = 0; row < 3; row++) {
++    for (guint column = 0; column < 3; column++) {
++      for (guint k = 0; k < 3; k++) {
++        result->values[row][column] += parent.values[row][k] * local.values[k][column];
++      }
++      if (!std::isfinite(result->values[row][column])) {
++        return FALSE;
++      }
++    }
++  }
++  return TRUE;
++}
++
++static gboolean transform_rect(const FlutterRect& rect,
++                                const SemanticsMatrix& matrix,
++                                FlutterRect* bounds) {
++  if (!std::isfinite(rect.left) || !std::isfinite(rect.top) ||
++      !std::isfinite(rect.right) || !std::isfinite(rect.bottom) ||
++      rect.right < rect.left || rect.bottom < rect.top) {
++    return FALSE;
++  }
++  const auto& m = matrix.values;
++  double determinant =
++      m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
++      m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
++      m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
++  if (!std::isfinite(determinant) || determinant == 0) {
++    return FALSE;
++  }
++  double sign = 0;
++  for (guint i = 0; i < 4; i++) {
++    double x = (i & 1) ? rect.right : rect.left;
++    double y = (i & 2) ? rect.bottom : rect.top;
++    double w = m[2][0] * x + m[2][1] * y + m[2][2];
++    if (!std::isfinite(w) || w == 0 || (i != 0 && std::signbit(w) != std::signbit(sign))) {
++      // A projective horizon crossing the rect has no finite bounding box.
++      return FALSE;
++    }
++    sign = w;
++    double projected_x = (m[0][0] * x + m[0][1] * y + m[0][2]) / w;
++    double projected_y = (m[1][0] * x + m[1][1] * y + m[1][2]) / w;
++    if (!std::isfinite(projected_x) || !std::isfinite(projected_y)) {
++      return FALSE;
++    }
++    if (i == 0) {
++      *bounds = {projected_x, projected_y, projected_x, projected_y};
++    } else {
++      bounds->left = MIN(bounds->left, projected_x);
++      bounds->top = MIN(bounds->top, projected_y);
++      bounds->right = MAX(bounds->right, projected_x);
++      bounds->bottom = MAX(bounds->bottom, projected_y);
++    }
++  }
++  return TRUE;
++}
++
++static gboolean round_bounds(const FlutterRect& bounds, gint scale,
++                              gint* result) {
++  double left = std::floor(bounds.left / scale);
++  double top = std::floor(bounds.top / scale);
++  double right = std::ceil(bounds.right / scale);
++  double bottom = std::ceil(bounds.bottom / scale);
++  if (left < G_MININT || left > G_MAXINT || top < G_MININT || top > G_MAXINT ||
++      right < G_MININT || right > G_MAXINT || bottom < G_MININT || bottom > G_MAXINT ||
++      right - left > G_MAXINT || bottom - top > G_MAXINT) {
++    return FALSE;
++  }
++  result[0] = static_cast<gint>(left);
++  result[1] = static_cast<gint>(top);
++  result[2] = static_cast<gint>(right - left);
++  result[3] = static_cast<gint>(bottom - top);
++  return TRUE;
++}
++
++static gboolean get_node_geometry(FlAccessibleNode* self,
++                                   AtkCoordType coord_type,
++                                   gint* result) {
++  FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
++  if (!is_live(priv)) {
++    return FALSE;
++  }
++  g_autoptr(FlSemanticsGeneration) generation =
++      FL_SEMANTICS_GENERATION(g_weak_ref_get(&priv->generation));
++  g_autoptr(GtkAccessible) root = fl_semantics_generation_ref_owner(generation);
++  FlSemanticsViewGeometry view;
++  if (root == nullptr || !fl_semantics_generation_get_view_geometry(
++          generation, coord_type == ATK_XY_PARENT ? ATK_XY_WINDOW : coord_type, &view)) {
++    return FALSE;
++  }
++
++  // Retain every ancestor and reject missing edges, mixed generations and cycles.
++  // No recursive ATK geometry calls or partially rounded parent boxes are used.
++  g_autoptr(GPtrArray) ancestors = g_ptr_array_new_with_free_func(g_object_unref);
++  g_autoptr(GHashTable) visited = g_hash_table_new(g_direct_hash, g_direct_equal);
++  g_autoptr(AtkObject) current = ATK_OBJECT(g_object_ref(self));
++  while (current != ATK_OBJECT(root)) {
++    if (!FL_IS_ACCESSIBLE_NODE(current) || g_hash_table_contains(visited, current)) {
++      return FALSE;
++    }
++    g_hash_table_add(visited, current);
++    FlAccessibleNodePrivate* node = FL_ACCESSIBLE_NODE_GET_PRIVATE(current);
++    g_autoptr(FlSemanticsGeneration) lease =
++        FL_SEMANTICS_GENERATION(g_weak_ref_get(&node->generation));
++    if (!is_live(node) || lease != generation || !node->geometry_set) {
++      return FALSE;
++    }
++    g_autoptr(AtkObject) parent = ATK_OBJECT(g_weak_ref_get(&node->parent));
++    if (parent == nullptr) {
++      return FALSE;
++    }
++    if (FL_IS_ACCESSIBLE_NODE(parent)) {
++      FlAccessibleNodePrivate* parent_node = FL_ACCESSIBLE_NODE_GET_PRIVATE(parent);
++      if (!is_live(parent_node) || !has_child(parent_node->children, current)) {
++        return FALSE;
++      }
++    } else if (parent == ATK_OBJECT(root)) {
++      g_autoptr(AtkObject) root_node = atk_object_ref_accessible_child(parent, 0);
++      if (root_node != current) {
++        return FALSE;
++      }
++    } else {
++      return FALSE;
++    }
++    g_ptr_array_add(ancestors, g_object_ref(current));
++    g_clear_object(&current);
++    current = ATK_OBJECT(g_steal_pointer(&parent));
++  }
++
++  SemanticsMatrix matrix = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
++  gint parent_bounds[4] = {0, 0, 0, 0};
++  for (guint i = ancestors->len; i > 0; i--) {
++    FlAccessibleNodePrivate* node = FL_ACCESSIBLE_NODE_GET_PRIVATE(
++        g_ptr_array_index(ancestors, i - 1));
++    SemanticsMatrix composed;
++    FlutterRect bounds;
++    if (!multiply_matrix(matrix, semantics_matrix(node->transform), &composed) ||
++        !transform_rect(node->rect, composed, &bounds)) {
++      return FALSE;
++    }
++    matrix = composed;
++    if (i == 2 && !round_bounds(bounds, view.scale, parent_bounds)) {
++      return FALSE;
++    }
++    if (i == 1 && !round_bounds(bounds, view.scale, result)) {
++      return FALSE;
++    }
++  }
++  gint64 x = static_cast<gint64>(result[0]) +
++      (coord_type == ATK_XY_PARENT ? -static_cast<gint64>(parent_bounds[0]) : view.x);
++  gint64 y = static_cast<gint64>(result[1]) +
++      (coord_type == ATK_XY_PARENT ? -static_cast<gint64>(parent_bounds[1]) : view.y);
++  if (x < G_MININT || x > G_MAXINT || y < G_MININT || y > G_MAXINT ||
++      x + result[2] > G_MAXINT || y + result[3] > G_MAXINT ||
++      !fl_semantics_generation_is_active(generation)) {
++    return FALSE;
++  }
++  result[0] = static_cast<gint>(x);
++  result[1] = static_cast<gint>(y);
++  return TRUE;
++}
++
+ // Implements AtkComponent::get_extents.
+ static void fl_accessible_node_get_extents(AtkComponent* component,
+-                                           gint* x,
+-                                           gint* y,
+-                                           gint* width,
+-                                           gint* height,
++                                           gint* x, gint* y,
++                                           gint* width, gint* height,
+                                            AtkCoordType coord_type) {
+-  FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(component);
+-
 -  *x = 0;
 -  *y = 0;
-+  g_autoptr(FlAccessibleNode) owner =
-+      FL_ACCESSIBLE_NODE(g_object_ref(component));
-+  gint parent_x = 0, parent_y = 0;
-   g_autoptr(AtkObject) parent = ATK_OBJECT(g_weak_ref_get(&priv->parent));
-   if (parent != nullptr) {
+-  g_autoptr(AtkObject) parent = ATK_OBJECT(g_weak_ref_get(&priv->parent));
+-  if (parent != nullptr) {
 -    atk_component_get_extents(ATK_COMPONENT(parent), x, y, nullptr, nullptr,
 -                              coord_type);
-+    atk_component_get_extents(ATK_COMPONENT(parent), &parent_x, &parent_y,
-+                              nullptr, nullptr, coord_type);
++  if (x != nullptr) *x = -1;
++  if (y != nullptr) *y = -1;
++  if (width != nullptr) *width = -1;
++  if (height != nullptr) *height = -1;
++  gint bounds[4];
++  if (!get_node_geometry(FL_ACCESSIBLE_NODE(component), coord_type, bounds)) {
++    return;
    }
--
++  if (x != nullptr) *x = bounds[0];
++  if (y != nullptr) *y = bounds[1];
++  if (width != nullptr) *width = bounds[2];
++  if (height != nullptr) *height = bounds[3];
++}
+
 -  *x += priv->x;
 -  *y += priv->y;
 -  *width = priv->width;
 -  *height = priv->height;
-+  if (!is_live(priv)) {
-+    return;
-+  }
-+  if (x != nullptr) {
-+    *x = parent_x + priv->x;
-+  }
-+  if (y != nullptr) {
-+    *y = parent_y + priv->y;
-+  }
-+  if (width != nullptr) {
-+    *width = priv->width;
-+  }
-+  if (height != nullptr) {
-+    *height = priv->height;
-+  }
++static void fl_accessible_node_get_position(AtkComponent* component,
++                                           gint* x, gint* y,
++                                           AtkCoordType coord_type) {
++  fl_accessible_node_get_extents(component, x, y, nullptr, nullptr, coord_type);
  }
 
++static void fl_accessible_node_get_size(AtkComponent* component,
++                                       gint* width, gint* height) {
++  fl_accessible_node_get_extents(component, nullptr, nullptr, width, height, ATK_XY_WINDOW);
++}
++
++static gboolean fl_accessible_node_contains(AtkComponent* component,
++                                           gint x, gint y,
++                                           AtkCoordType coord_type) {
++  gint bounds[4];
++  return get_node_geometry(FL_ACCESSIBLE_NODE(component), coord_type, bounds) &&
++         bounds[2] > 0 && bounds[3] > 0 &&
++         static_cast<gint64>(x) >= bounds[0] && static_cast<gint64>(y) >= bounds[1] &&
++         static_cast<gint64>(x) < static_cast<gint64>(bounds[0]) + bounds[2] &&
++         static_cast<gint64>(y) < static_cast<gint64>(bounds[1]) + bounds[3];
++}
++
++static AtkObject* fl_accessible_node_ref_accessible_at_point(
++    AtkComponent* component, gint x, gint y, AtkCoordType coord_type) {
++  if (!fl_accessible_node_contains(component, x, y, coord_type)) {
++    return nullptr;
++  }
++  if (coord_type == ATK_XY_PARENT) {
++    gint left, top;
++    fl_accessible_node_get_position(component, &left, &top, coord_type);
++    gint64 local_x = static_cast<gint64>(x) - left;
++    gint64 local_y = static_cast<gint64>(y) - top;
++    if (local_x < G_MININT || local_x > G_MAXINT ||
++        local_y < G_MININT || local_y > G_MAXINT) {
++      return nullptr;
++    }
++    x = static_cast<gint>(local_x);
++    y = static_cast<gint>(local_y);
++  }
++  FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(component);
++  for (guint i = 0; i < priv->children->len; i++) {
++    AtkObject* child = ATK_OBJECT(g_ptr_array_index(priv->children, i));
++    if (ATK_IS_COMPONENT(child) &&
++        atk_component_contains(ATK_COMPONENT(child), x, y, coord_type)) {
++      return ATK_OBJECT(g_object_ref(child));
++    }
++  }
++  return nullptr;
++}
++
  // Implements AtkComponent::get_layer.
-@@ -329,9 +370,7 @@
+ static AtkLayer fl_accessible_node_get_layer(AtkComponent* component) {
+   return ATK_LAYER_WIDGET;
+@@ -329,9 +569,7 @@
  // Implements AtkAction::do_action.
  static gboolean fl_accessible_node_do_action(AtkAction* action, gint i) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(action);
@@ -242,7 +472,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
      return FALSE;
    }
 
-@@ -340,15 +379,14 @@
+@@ -340,15 +578,14 @@
      return FALSE;
    }
 
@@ -261,7 +491,27 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
  }
 
  // Implements AtkAction::get_name.
-@@ -395,52 +433,84 @@
+@@ -371,19 +608,6 @@
+   priv->name = g_strdup(name);
+ }
+
+-// Implements FlAccessibleNode::set_extents.
+-static void fl_accessible_node_set_extents_impl(FlAccessibleNode* self,
+-                                                gint x,
+-                                                gint y,
+-                                                gint width,
+-                                                gint height) {
+-  FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
+-  priv->x = x;
+-  priv->y = y;
+-  priv->width = width;
+-  priv->height = height;
+-}
+-
+ // Check two boolean flags are different, in a way that handles true values
+ // being different (e.g. 1 and 2).
+ static bool flag_changed(bool old_flag, bool new_flag) {
+@@ -395,52 +619,84 @@
                                                FlutterSemanticsFlags* flags) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
 
@@ -369,7 +619,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
    }
  }
 
-@@ -478,22 +548,22 @@
+@@ -478,22 +734,22 @@
      FlutterTextDirection direction) {}
 
  // Implements FlAccessibleNode::perform_action.
@@ -399,7 +649,16 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
    ATK_OBJECT_CLASS(klass)->get_name = fl_accessible_node_get_name;
    ATK_OBJECT_CLASS(klass)->get_parent = fl_accessible_node_get_parent;
    ATK_OBJECT_CLASS(klass)->get_index_in_parent =
-@@ -519,18 +589,13 @@
+@@ -503,8 +759,6 @@
+   ATK_OBJECT_CLASS(klass)->get_role = fl_accessible_node_get_role;
+   ATK_OBJECT_CLASS(klass)->ref_state_set = fl_accessible_node_ref_state_set;
+   FL_ACCESSIBLE_NODE_CLASS(klass)->set_name = fl_accessible_node_set_name_impl;
+-  FL_ACCESSIBLE_NODE_CLASS(klass)->set_extents =
+-      fl_accessible_node_set_extents_impl;
+   FL_ACCESSIBLE_NODE_CLASS(klass)->set_flags =
+       fl_accessible_node_set_flags_impl;
+   FL_ACCESSIBLE_NODE_CLASS(klass)->set_actions =
+@@ -519,18 +773,13 @@
        fl_accessible_node_perform_action_impl;
 
    g_object_class_install_property(
@@ -421,7 +680,18 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
        G_OBJECT_CLASS(klass), PROP_ID,
        g_param_spec_int(
            "node-id", "node-id", "Accessibility node ID", 0, G_MAXINT, 0,
-@@ -553,7 +618,7 @@
+@@ -541,6 +790,10 @@
+ static void fl_accessible_node_component_interface_init(
+     AtkComponentIface* iface) {
+   iface->get_extents = fl_accessible_node_get_extents;
++  iface->get_position = fl_accessible_node_get_position;
++  iface->get_size = fl_accessible_node_get_size;
++  iface->contains = fl_accessible_node_contains;
++  iface->ref_accessible_at_point = fl_accessible_node_ref_accessible_at_point;
+   iface->get_layer = fl_accessible_node_get_layer;
+ }
+
+@@ -553,7 +806,7 @@
  // Returns the number of UTF-8 characters in this node's text content. A
  // Flutter semantics node's text content is its accessibility name.
  static gint fl_accessible_node_get_text_length(FlAccessibleNodePrivate* priv) {
@@ -430,7 +700,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
               ? static_cast<gint>(g_utf8_strlen(priv->name, -1))
               : 0;
  }
-@@ -569,7 +634,7 @@
+@@ -569,7 +822,7 @@
                                            gint start_offset,
                                            gint end_offset) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(text);
@@ -439,7 +709,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
      return g_strdup("");
    }
 
-@@ -587,7 +652,7 @@
+@@ -587,7 +840,7 @@
  static gunichar fl_accessible_node_get_character_at_offset(AtkText* text,
                                                             gint offset) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(text);
@@ -448,7 +718,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
        offset >= fl_accessible_node_get_text_length(priv)) {
      return 0;
    }
-@@ -633,6 +698,15 @@
+@@ -633,6 +886,15 @@
      gint* start_offset,
      gint* end_offset) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(text);
@@ -464,7 +734,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
    gint count = fl_accessible_node_get_text_length(priv);
    if (offset < 0 || offset >= count) {
      if (start_offset != nullptr) {
-@@ -713,26 +787,63 @@
+@@ -713,26 +975,63 @@
 
  static void fl_accessible_node_init(FlAccessibleNode* self) {
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
@@ -535,7 +805,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
    g_weak_ref_set(&priv->parent, parent);
    priv->index = index;
  }
-@@ -742,30 +853,46 @@
+@@ -742,48 +1041,70 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
    FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
 
@@ -584,17 +854,29 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
 
    return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_name(self, name);
  }
-@@ -776,6 +903,9 @@
-                                     gint width,
-                                     gint height) {
+
+-void fl_accessible_node_set_extents(FlAccessibleNode* self,
+-                                    gint x,
+-                                    gint y,
+-                                    gint width,
+-                                    gint height) {
++void fl_accessible_node_set_geometry(FlAccessibleNode* self,
++                                     const FlutterRect* rect,
++                                     const FlutterTransformation* transform) {
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
-+  if (!fl_accessible_node_is_live(self)) {
+-
+-  return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_extents(self, x, y, width,
+-                                                         height);
++  g_return_if_fail(rect != nullptr && transform != nullptr);
++  FlAccessibleNodePrivate* priv = FL_ACCESSIBLE_NODE_GET_PRIVATE(self);
++  if (!is_live(priv)) {
 +    return;
 +  }
++  priv->rect = *rect;
++  priv->transform = *transform;
++  priv->geometry_set = TRUE;
+ }
 
-   return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_extents(self, x, y, width,
-                                                          height);
-@@ -784,6 +914,9 @@
  void fl_accessible_node_set_flags(FlAccessibleNode* self,
                                    FlutterSemanticsFlags* flags) {
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
@@ -604,7 +886,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
 
    return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_flags(self, flags);
  }
-@@ -791,12 +924,18 @@
+@@ -791,12 +1112,18 @@
  void fl_accessible_node_set_actions(FlAccessibleNode* self,
                                      FlutterSemanticsAction actions) {
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
@@ -623,7 +905,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
 
    return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_value(self, value);
  }
-@@ -805,6 +944,9 @@
+@@ -805,6 +1132,9 @@
                                             gint base,
                                             gint extent) {
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
@@ -633,7 +915,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc b/eng
 
    return FL_ACCESSIBLE_NODE_GET_CLASS(self)->set_text_selection(self, base,
                                                                  extent);
-@@ -813,15 +955,21 @@
+@@ -813,15 +1143,21 @@
  void fl_accessible_node_set_text_direction(FlAccessibleNode* self,
                                             FlutterTextDirection direction) {
    g_return_if_fail(FL_IS_ACCESSIBLE_NODE(self));
@@ -672,7 +954,19 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.h b/engi
 
  G_BEGIN_DECLS
 
-@@ -47,26 +47,37 @@
+@@ -35,11 +35,6 @@
+   AtkObjectClass parent_class;
+
+   void (*set_name)(FlAccessibleNode* node, const gchar* name);
+-  void (*set_extents)(FlAccessibleNode* node,
+-                      gint x,
+-                      gint y,
+-                      gint width,
+-                      gint height);
+   void (*set_flags)(FlAccessibleNode* node, FlutterSemanticsFlags* flags);
+   void (*set_actions)(FlAccessibleNode* node, FlutterSemanticsAction actions);
+   void (*set_value)(FlAccessibleNode* node, const gchar* value);
+@@ -47,26 +42,37 @@
    void (*set_text_direction)(FlAccessibleNode* node,
                               FlutterTextDirection direction);
 
@@ -716,7 +1010,34 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.h b/engi
  /**
   * fl_accessible_node_set_parent:
   * @node: an #FlAccessibleNode.
-@@ -172,8 +183,10 @@
+@@ -98,21 +104,11 @@
+  */
+ void fl_accessible_node_set_name(FlAccessibleNode* node, const gchar* name);
+
+-/**
+- * fl_accessible_node_set_extents:
+- * @node: an #FlAccessibleNode.
+- * @x: x co-ordinate of this node relative to its parent.
+- * @y: y co-ordinate of this node relative to its parent.
+- * @width: width of this node in pixels.
+- * @height: height of this node in pixels.
+- *
+- * Sets the position and size of this node.
+- */
+-void fl_accessible_node_set_extents(FlAccessibleNode* node,
+-                                    gint x,
+-                                    gint y,
+-                                    gint width,
+-                                    gint height);
++// Stores the unrounded semantics rect and full local-to-parent transformation.
++// Geometry queries compose the entire live ancestry before converting to GTK.
++void fl_accessible_node_set_geometry(FlAccessibleNode* node,
++                                     const FlutterRect* rect,
++                                     const FlutterTransformation* transform);
+
+ /**
+  * fl_accessible_node_set_flags:
+@@ -172,8 +168,10 @@
   * @data: (allow-none): data associated with the action.
   *
   * Performs a semantic action for this node.
@@ -731,13 +1052,33 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node.h b/engi
 diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc b/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc
 --- a/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc
 +++ b/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc
-@@ -17,12 +17,14 @@
+@@ -10,19 +10,34 @@
+ #include "flutter/shell/platform/linux/testing/mock_gtk.h"
+
+ class FlAccessibleNodeTest : public flutter::testing::LinuxTest {
++ public:
++  FlAccessibleNodeTest() {
++    widget = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
++    g_object_ref_sink(widget);
++    owner = GTK_ACCESSIBLE(gtk_widget_get_accessible(widget));
++  }
++  ~FlAccessibleNodeTest() override {
++    gtk_widget_destroy(widget);
++    g_object_unref(widget);
++  }
++
+  protected:
++  GtkWidget* widget;
++  GtkAccessible* owner;
+   ::testing::NiceMock<flutter::testing::MockGtk> mock_gtk;
+ };
+
  // Checks can build a tree of nodes.
  TEST_F(FlAccessibleNodeTest, BuildTree) {
    int64_t view_id = 123;
 -  g_autoptr(FlAccessibleNode) root = fl_accessible_node_new(engine, view_id, 0);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, view_id);
++      fl_semantics_generation_new(owner, engine, view_id);
 +  g_autoptr(FlAccessibleNode) root = fl_accessible_node_new(generation, 0);
    g_autoptr(FlAccessibleNode) child1 =
 -      fl_accessible_node_new(engine, view_id, 1);
@@ -749,168 +1090,170 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_node_test.cc 
    fl_accessible_node_set_parent(child2, ATK_OBJECT(root), 1);
    g_autoptr(GPtrArray) children =
        g_ptr_array_new_with_free_func(g_object_unref);
-@@ -51,14 +53,18 @@
+@@ -51,27 +66,18 @@
 
  // Checks node name is exposed to ATK.
  TEST_F(FlAccessibleNodeTest, SetName) {
 -  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
 +  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
    fl_accessible_node_set_name(node, "test");
    EXPECT_STREQ(atk_object_get_name(ATK_OBJECT(node)), "test");
  }
 
- // Checks node extents are exposed to ATK.
- TEST_F(FlAccessibleNodeTest, SetExtents) {
+-// Checks node extents are exposed to ATK.
+-TEST_F(FlAccessibleNodeTest, SetExtents) {
 -  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
-+  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
-+  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
-   fl_accessible_node_set_extents(node, 1, 2, 3, 4);
-   gint x, y, width, height;
-   atk_component_get_extents(ATK_COMPONENT(node), &x, &y, &width, &height,
-@@ -71,7 +77,9 @@
-
+-  fl_accessible_node_set_extents(node, 1, 2, 3, 4);
+-  gint x, y, width, height;
+-  atk_component_get_extents(ATK_COMPONENT(node), &x, &y, &width, &height,
+-                            ATK_XY_PARENT);
+-  EXPECT_EQ(x, 1);
+-  EXPECT_EQ(y, 2);
+-  EXPECT_EQ(width, 3);
+-  EXPECT_EQ(height, 4);
+-}
+-
  // Checks the Flutter focused flag are mapped to ATK flags.
  TEST_F(FlAccessibleNodeTest, FocusedFlags) {
 -  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
 +  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
 
    FlutterSemanticsFlags flags1 = {};
    flags1.is_focused = kFlutterTristateNone;
-@@ -104,7 +112,9 @@
+@@ -104,7 +110,9 @@
 
  // Checks the Flutter checked and toggled flags are mapped to ATK flags.
  TEST_F(FlAccessibleNodeTest, CheckedAndToggledFlags) {
 -  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
 +  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
 
    FlutterSemanticsFlags flags1 = {};
    flags1.is_checked = kFlutterCheckStateNone;
-@@ -158,7 +168,9 @@
+@@ -158,7 +166,9 @@
 
  // Checks the Flutter selected flag is mapped to ATK flags.
  TEST_F(FlAccessibleNodeTest, SelectedFlags) {
 -  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
 +  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
 
    FlutterSemanticsFlags flags1 = {};
    flags1.is_selected = kFlutterTristateNone;
-@@ -186,7 +198,9 @@
+@@ -186,7 +196,9 @@
 
  // Checks the Flutter enabled flag is mapped to ATK flags.
  TEST_F(FlAccessibleNodeTest, EnabledFlags) {
 -  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
 +  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
 
    FlutterSemanticsFlags flags1 = {};
    flags1.is_enabled = kFlutterTristateNone;
-@@ -219,7 +233,9 @@
+@@ -219,7 +231,9 @@
 
  // Checks the Flutter obscured flag is mapped to ATK flags.
  TEST_F(FlAccessibleNodeTest, ObscuredFlags) {
 -  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
 +  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
 
    FlutterSemanticsFlags flags1 = {};
    flags1.is_obscured = true;
-@@ -240,7 +256,9 @@
+@@ -240,7 +254,9 @@
 
  // Checks the Flutter hidden flag is mapped to ATK flags.
  TEST_F(FlAccessibleNodeTest, HiddenFlags) {
 -  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
 +  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
 
    FlutterSemanticsFlags flags1 = {};
    flags1.is_hidden = true;
-@@ -261,7 +279,9 @@
+@@ -261,7 +277,9 @@
 
  // Checks the Flutter read only flag is mapped to ATK flags.
  TEST_F(FlAccessibleNodeTest, ReadOnlyFlags) {
 -  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
 +  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
 
    FlutterSemanticsFlags flags1 = {};
    flags1.is_read_only = false;
-@@ -282,7 +302,9 @@
+@@ -282,7 +300,9 @@
 
  // Checks the Flutter text field flag is mapped to ATK flags.
  TEST_F(FlAccessibleNodeTest, TextFieldFlags) {
 -  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
 +  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
 
    FlutterSemanticsFlags flags1 = {};
    flags1.is_text_field = false;
-@@ -303,7 +325,9 @@
+@@ -303,7 +323,9 @@
 
  // Checks Flutter flags are mapped to appropriate ATK roles.
  TEST_F(FlAccessibleNodeTest, GetRole) {
 -  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
 +  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
 
    FlutterSemanticsFlags flags1 = {};
    flags1.is_button = true;
-@@ -346,7 +370,9 @@
+@@ -346,7 +368,9 @@
  // Checks the node's name is exposed through the AtkText interface so that
  // screen readers can read the text content of objects such as headings.
  TEST_F(FlAccessibleNodeTest, ExposesTextViaAtkText) {
 -  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
 +  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
    fl_accessible_node_set_name(node, "Section One");
 
    EXPECT_EQ(atk_text_get_character_count(ATK_TEXT(node)), 11);
-@@ -398,7 +424,9 @@
+@@ -398,7 +422,9 @@
 
  // Checks Flutter actions are mapped to the appropriate ATK actions.
  TEST_F(FlAccessibleNodeTest, SetActions) {
 -  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 123, 0);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
 +  g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 0);
    fl_accessible_node_set_actions(
        node, static_cast<FlutterSemanticsAction>(
                  kFlutterSemanticsActionTap | kFlutterSemanticsActionLongPress));
-@@ -414,8 +442,10 @@
+@@ -414,8 +440,10 @@
  TEST_F(FlAccessibleNodeTest, SurvivesEngineDestruction) {
    g_autoptr(FlDartProject) project = fl_dart_project_new();
    FlEngine* local_engine = fl_engine_new(project);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(local_engine, 123);
++      fl_semantics_generation_new(owner, local_engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_node_new(local_engine, 123, 0);
 +      fl_accessible_node_new(generation, 0);
    fl_accessible_node_set_actions(node, kFlutterSemanticsActionTap);
 
    // Destroy the engine while the node is still alive.
-@@ -428,8 +458,10 @@
+@@ -428,8 +456,10 @@
  // Accessing a node after its parent is destroyed must not dereference freed
  // memory.
  TEST_F(FlAccessibleNodeTest, SurvivesParentDestruction) {
 -  FlAccessibleNode* root = fl_accessible_node_new(engine, 123, 0);
 -  g_autoptr(FlAccessibleNode) child = fl_accessible_node_new(engine, 123, 1);
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
 +  FlAccessibleNode* root = fl_accessible_node_new(generation, 0);
 +  g_autoptr(FlAccessibleNode) child = fl_accessible_node_new(generation, 1);
    fl_accessible_node_set_parent(child, ATK_OBJECT(root), 0);
@@ -1375,264 +1718,285 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.h 
 diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_test.cc b/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_test.cc
 --- a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_test.cc
 +++ b/engine/src/flutter/shell/platform/linux/fl_accessible_text_field_test.cc
-@@ -27,8 +27,10 @@
+@@ -22,13 +22,30 @@
+                                          nullptr);
+ }
+
+-class FlAccessibleTextFieldTest : public flutter::testing::LinuxTest {};
++class FlAccessibleTextFieldTest : public flutter::testing::LinuxTest {
++ public:
++  FlAccessibleTextFieldTest() {
++    widget = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
++    g_object_ref_sink(widget);
++    owner = GTK_ACCESSIBLE(gtk_widget_get_accessible(widget));
++  }
++  ~FlAccessibleTextFieldTest() override {
++    gtk_widget_destroy(widget);
++    g_object_unref(widget);
++  }
+
++ protected:
++  GtkWidget* widget;
++  GtkAccessible* owner;
++};
++
  // Tests that semantic node value updates from Flutter emit AtkText::text-insert
  // and AtkText::text-remove signals as expected.
  TEST_F(FlAccessibleTextFieldTest, SetValue) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    // "" -> "Flutter"
    {
-@@ -83,8 +85,10 @@
+@@ -83,8 +100,10 @@
  // AtkText::text-selection-changed and AtkText::text-caret-moved signals as
  // expected.
  TEST_F(FlAccessibleTextFieldTest, SetTextSelection) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    // [-1,-1] -> [2,3]
    {
-@@ -156,8 +160,10 @@
+@@ -156,8 +175,10 @@
          return kSuccess;
        }));
 
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
    fl_accessible_node_set_actions(
        node, static_cast<FlutterSemanticsAction>(
                  kFlutterSemanticsActionMoveCursorForwardByCharacter |
-@@ -178,8 +184,10 @@
+@@ -178,8 +199,10 @@
 
  // Tests AtkText::get_character_count.
  TEST_F(FlAccessibleTextFieldTest, GetCharacterCount) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    EXPECT_EQ(atk_text_get_character_count(ATK_TEXT(node)), 0);
 
-@@ -190,8 +198,10 @@
+@@ -190,8 +213,10 @@
 
  // Tests AtkText::get_text.
  TEST_F(FlAccessibleTextFieldTest, GetText) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    g_autofree gchar* empty = atk_text_get_text(ATK_TEXT(node), 0, -1);
    EXPECT_STREQ(empty, "");
-@@ -210,8 +220,10 @@
+@@ -210,8 +235,10 @@
 
  // Tests AtkText::get_text with out-of-bounds offsets.
  TEST_F(FlAccessibleTextFieldTest, GetTextBoundsChecking) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    fl_accessible_node_set_value(node, "Hello");
 
-@@ -235,8 +247,10 @@
+@@ -235,8 +262,10 @@
 
  // Tests AtkText::get_caret_offset.
  TEST_F(FlAccessibleTextFieldTest, GetCaretOffset) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    EXPECT_EQ(atk_text_get_caret_offset(ATK_TEXT(node)), -1);
 
-@@ -265,8 +279,10 @@
+@@ -265,8 +294,10 @@
          return kSuccess;
        }));
 
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    EXPECT_TRUE(atk_text_set_caret_offset(ATK_TEXT(node), 3));
    EXPECT_EQ(base, 3);
-@@ -275,8 +291,10 @@
+@@ -275,8 +306,10 @@
 
  // Tests AtkText::get_n_selections.
  TEST_F(FlAccessibleTextFieldTest, GetNSelections) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    EXPECT_EQ(atk_text_get_n_selections(ATK_TEXT(node)), 0);
 
-@@ -287,8 +305,10 @@
+@@ -287,8 +320,10 @@
 
  // Tests AtkText::get_selection.
  TEST_F(FlAccessibleTextFieldTest, GetSelection) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    EXPECT_EQ(atk_text_get_selection(ATK_TEXT(node), 0, nullptr, nullptr),
              nullptr);
-@@ -339,8 +359,10 @@
+@@ -339,8 +374,10 @@
          return kSuccess;
        }));
 
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    EXPECT_TRUE(atk_text_add_selection(ATK_TEXT(node), 2, 4));
    EXPECT_EQ(base, 2);
-@@ -374,8 +396,10 @@
+@@ -374,8 +411,10 @@
          return kSuccess;
        }));
 
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    // no selection
    EXPECT_FALSE(atk_text_remove_selection(ATK_TEXT(node), 0));
-@@ -415,8 +439,10 @@
+@@ -415,8 +454,10 @@
          return kSuccess;
        }));
 
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    // selection num != 0
    EXPECT_FALSE(atk_text_set_selection(ATK_TEXT(node), 1, 2, 4));
-@@ -449,8 +475,10 @@
+@@ -449,8 +490,10 @@
          return kSuccess;
        }));
 
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    atk_editable_text_set_text_contents(ATK_EDITABLE_TEXT(node), "Flutter");
    EXPECT_STREQ(text, "Flutter");
-@@ -487,8 +515,10 @@
+@@ -487,8 +530,10 @@
          return kSuccess;
        }));
 
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
    fl_accessible_node_set_value(node, "Fler");
 
    gint pos = 2;
-@@ -532,8 +562,10 @@
+@@ -532,8 +577,10 @@
          return kSuccess;
        }));
 
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    atk_editable_text_copy_text(ATK_EDITABLE_TEXT(node), 2, 5);
    EXPECT_EQ(base, 2);
-@@ -552,8 +584,10 @@
+@@ -552,8 +599,10 @@
  }
 
  TEST_F(FlAccessibleTextFieldTest, TextBoundary) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    fl_accessible_node_set_value(node,
                                 "Lorem ipsum.\nDolor sit amet. Praesent commodo?"
-@@ -670,8 +704,10 @@
+@@ -670,8 +719,10 @@
 
  // Tests that get_string_at_offset handles offset beyond text length.
  TEST_F(FlAccessibleTextFieldTest, TextBoundaryOffsetBeyondEnd) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    fl_accessible_node_set_value(node, "Hello");
 
-@@ -702,8 +738,10 @@
+@@ -702,8 +753,10 @@
 
  // Tests that get_string_at_offset handles offset at position zero.
  TEST_F(FlAccessibleTextFieldTest, TextBoundaryOffsetAtStart) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    fl_accessible_node_set_value(node, "Hello");
 
-@@ -726,8 +764,10 @@
+@@ -726,8 +779,10 @@
 
  // Tests that get_string_at_offset handles empty text.
  TEST_F(FlAccessibleTextFieldTest, TextBoundaryEmptyText) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    // Empty text - should not crash.
    gint start_offset = -1, end_offset = -1;
-@@ -746,8 +786,10 @@
+@@ -746,8 +801,10 @@
 
  // Tests that get_string_at_offset handles offset at exact text length.
  TEST_F(FlAccessibleTextFieldTest, TextBoundaryOffsetAtEnd) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
 
    fl_accessible_node_set_value(node, "Hello world");
 
-@@ -774,8 +816,10 @@
+@@ -774,8 +831,10 @@
  // Tests that line and paragraph boundaries are computed in character offsets
  // rather than byte offsets when the text contains multi-byte UTF-8 characters.
  TEST_F(FlAccessibleTextFieldTest, TextBoundaryMultiByte) {
 +  g_autoptr(FlSemanticsGeneration) generation =
-+      fl_semantics_generation_new(engine, 123);
++      fl_semantics_generation_new(owner, engine, 123);
    g_autoptr(FlAccessibleNode) node =
 -      fl_accessible_text_field_new(engine, 123, 1);
 +      fl_accessible_text_field_new(generation, 1);
@@ -1643,7 +2007,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_semantics_generation.cc 
 new file mode 100644
 --- /dev/null
 +++ b/engine/src/flutter/shell/platform/linux/fl_semantics_generation.cc
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,181 @@
 +// Copyright 2013 The Flutter Authors. All rights reserved.
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -1651,9 +2015,14 @@ new file mode 100644
 +#include "flutter/shell/platform/linux/fl_semantics_generation.h"
 +#include "flutter/shell/platform/linux/fl_engine_private.h"
 +
++#ifdef GDK_WINDOWING_X11
++#include <gdk/gdkx.h>
++#endif
++
 +struct _FlSemanticsGeneration {
 +  GObject parent_instance;
 +
++  GWeakRef owner;
 +  GWeakRef engine;
 +  FlutterViewId view_id;
 +  gboolean retired;
@@ -1668,6 +2037,7 @@ new file mode 100644
 +
 +static void fl_semantics_generation_finalize(GObject* object) {
 +  FlSemanticsGeneration* self = FL_SEMANTICS_GENERATION(object);
++  g_weak_ref_clear(&self->owner);
 +  g_weak_ref_clear(&self->engine);
 +  G_OBJECT_CLASS(fl_semantics_generation_parent_class)->finalize(object);
 +}
@@ -1679,16 +2049,23 @@ new file mode 100644
 +}
 +
 +static void fl_semantics_generation_init(FlSemanticsGeneration* self) {
++  g_weak_ref_init(&self->owner, nullptr);
 +  g_weak_ref_init(&self->engine, nullptr);
 +  self->retired = TRUE;
 +}
 +
-+FlSemanticsGeneration* fl_semantics_generation_new(FlEngine* engine,
++FlSemanticsGeneration* fl_semantics_generation_new(GtkAccessible* owner,
++                                                   FlEngine* engine,
 +                                                   FlutterViewId view_id) {
++  g_return_val_if_fail(GTK_IS_ACCESSIBLE(owner), nullptr);
 +  g_return_val_if_fail(FL_IS_ENGINE(engine), nullptr);
 +  g_return_val_if_fail(view_id >= 0, nullptr);
++  if (gtk_accessible_get_widget(owner) == nullptr) {
++    return nullptr;
++  }
 +  FlSemanticsGeneration* self = FL_SEMANTICS_GENERATION(
 +      g_object_new(fl_semantics_generation_get_type(), nullptr));
++  g_weak_ref_set(&self->owner, owner);
 +  g_weak_ref_set(&self->engine, engine);
 +  self->view_id = view_id;
 +  self->retired = FALSE;
@@ -1698,6 +2075,7 @@ new file mode 100644
 +void fl_semantics_generation_retire(FlSemanticsGeneration* self) {
 +  g_return_if_fail(FL_IS_SEMANTICS_GENERATION(self));
 +  self->retired = TRUE;
++  g_weak_ref_set(&self->owner, nullptr);
 +  g_weak_ref_set(&self->engine, nullptr);
 +}
 +
@@ -1707,7 +2085,91 @@ new file mode 100644
 +    return FALSE;
 +  }
 +  g_autoptr(FlEngine) engine = FL_ENGINE(g_weak_ref_get(&self->engine));
-+  return engine != nullptr;
++  g_autoptr(GtkAccessible) owner = GTK_ACCESSIBLE(g_weak_ref_get(&self->owner));
++  return engine != nullptr && owner != nullptr &&
++         gtk_accessible_get_widget(owner) != nullptr;
++}
++
++GtkAccessible* fl_semantics_generation_ref_owner(FlSemanticsGeneration* self) {
++  g_return_val_if_fail(FL_IS_SEMANTICS_GENERATION(self), nullptr);
++  if (!fl_semantics_generation_is_active(self)) {
++    return nullptr;
++  }
++  return GTK_ACCESSIBLE(g_weak_ref_get(&self->owner));
++}
++
++gboolean fl_semantics_generation_get_view_geometry(
++    FlSemanticsGeneration* self,
++    AtkCoordType coord_type,
++    FlSemanticsViewGeometry* geometry) {
++  g_return_val_if_fail(geometry != nullptr, FALSE);
++  *geometry = {-1, -1, -1, -1, -1};
++  g_autoptr(GtkAccessible) owner = fl_semantics_generation_ref_owner(self);
++  if (owner == nullptr) {
++    return FALSE;
++  }
++  GtkWidget* widget = gtk_accessible_get_widget(owner);
++  if (widget == nullptr || !gtk_widget_get_realized(widget) ||
++      !gtk_widget_get_mapped(widget) || !gtk_widget_is_drawable(widget)) {
++    return FALSE;
++  }
++  g_autoptr(GtkWidget) widget_owner = GTK_WIDGET(g_object_ref(widget));
++  GtkWidget* toplevel = gtk_widget_get_toplevel(widget);
++  if (!gtk_widget_is_toplevel(toplevel) ||
++      !gtk_widget_get_realized(toplevel)) {
++    return FALSE;
++  }
++  gint x = 0, y = 0;
++  if (coord_type == ATK_XY_PARENT) {
++    GtkWidget* parent = gtk_widget_get_parent(widget);
++    if (parent == nullptr ||
++        !gtk_widget_translate_coordinates(widget, parent, 0, 0, &x, &y)) {
++      return FALSE;
++    }
++  } else if (coord_type == ATK_XY_WINDOW || coord_type == ATK_XY_SCREEN) {
++    if (!gtk_widget_translate_coordinates(widget, toplevel, 0, 0, &x, &y)) {
++      return FALSE;
++    }
++    if (coord_type == ATK_XY_SCREEN) {
++      // Wayland has no global surface coordinates; its synthetic origin is not
++      // screen geometry. WINDOW and PARENT remain supported on that backend.
++#ifdef GDK_WINDOWING_X11
++      if (!GDK_IS_X11_DISPLAY(gtk_widget_get_display(widget))) {
++        return FALSE;
++      }
++#else
++      return FALSE;
++#endif
++      GdkWindow* window = gtk_widget_get_window(toplevel);
++      if (window == nullptr || gdk_window_is_destroyed(window)) {
++        return FALSE;
++      }
++      gint origin_x = 0, origin_y = 0;
++      // GDK documents the return value as meaningless.
++      gdk_window_get_origin(window, &origin_x, &origin_y);
++      gint64 screen_x = static_cast<gint64>(x) + origin_x;
++      gint64 screen_y = static_cast<gint64>(y) + origin_y;
++      if (screen_x < G_MININT || screen_x > G_MAXINT ||
++          screen_y < G_MININT || screen_y > G_MAXINT) {
++        return FALSE;
++      }
++      x = static_cast<gint>(screen_x);
++      y = static_cast<gint>(screen_y);
++    }
++  } else {
++    return FALSE;
++  }
++  GtkAllocation allocation;
++  gtk_widget_get_allocation(widget, &allocation);
++  gint scale = gtk_widget_get_scale_factor(widget);
++  if (allocation.width < 0 || allocation.height < 0 || scale <= 0 ||
++      static_cast<gint64>(x) + allocation.width > G_MAXINT ||
++      static_cast<gint64>(y) + allocation.height > G_MAXINT ||
++      !fl_semantics_generation_is_active(self)) {
++    return FALSE;
++  }
++  *geometry = {x, y, allocation.width, allocation.height, scale};
++  return TRUE;
 +}
 +
 +gboolean fl_semantics_generation_perform_action(
@@ -1716,11 +2178,11 @@ new file mode 100644
 +    FlutterSemanticsAction action,
 +    GBytes* data) {
 +  g_return_val_if_fail(FL_IS_SEMANTICS_GENERATION(self), FALSE);
-+  if (self->retired) {
++  if (!fl_semantics_generation_is_active(self)) {
 +    return FALSE;
 +  }
 +  g_autoptr(FlEngine) engine = FL_ENGINE(g_weak_ref_get(&self->engine));
-+  if (engine == nullptr || self->retired) {
++  if (engine == nullptr || !fl_semantics_generation_is_active(self)) {
 +    return FALSE;
 +  }
 +  fl_engine_dispatch_semantics_action(engine, self->view_id, node_id, action,
@@ -1731,13 +2193,15 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_semantics_generation.h b
 new file mode 100644
 --- /dev/null
 +++ b/engine/src/flutter/shell/platform/linux/fl_semantics_generation.h
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,53 @@
 +// Copyright 2013 The Flutter Authors. All rights reserved.
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
 +
 +#ifndef FLUTTER_SHELL_PLATFORM_LINUX_FL_SEMANTICS_GENERATION_H_
 +#define FLUTTER_SHELL_PLATFORM_LINUX_FL_SEMANTICS_GENERATION_H_
++
++#include <gtk/gtk-a11y.h>
 +
 +#include "flutter/shell/platform/embedder/embedder.h"
 +#include "flutter/shell/platform/linux/public/flutter_linux/fl_engine.h"
@@ -1751,8 +2215,22 @@ new file mode 100644
 +                     GObject)
 +
 +// Owned by one semantics tree. All operations run on the GTK thread.
-+FlSemanticsGeneration* fl_semantics_generation_new(FlEngine* engine,
++FlSemanticsGeneration* fl_semantics_generation_new(GtkAccessible* owner,
++                                                   FlEngine* engine,
 +                                                   FlutterViewId view_id);
++
++// Returns the exact GTK owner with a strong reference, or NULL after revocation.
++GtkAccessible* fl_semantics_generation_ref_owner(FlSemanticsGeneration* generation);
++
++struct FlSemanticsViewGeometry {
++  gint x, y, width, height, scale;
++};
++
++// Geometry is in GTK logical coordinates. Unmapped/unbound owners are unavailable.
++gboolean fl_semantics_generation_get_view_geometry(
++    FlSemanticsGeneration* generation,
++    AtkCoordType coord_type,
++    FlSemanticsViewGeometry* geometry);
 +
 +// Irreversibly closes the complete tree, without emitting callbacks.
 +void fl_semantics_generation_retire(FlSemanticsGeneration* generation);
@@ -1769,10 +2247,180 @@ new file mode 100644
 +G_END_DECLS
 +
 +#endif  // FLUTTER_SHELL_PLATFORM_LINUX_FL_SEMANTICS_GENERATION_H_
+diff --git a/engine/src/flutter/shell/platform/linux/fl_socket_accessible.cc b/engine/src/flutter/shell/platform/linux/fl_socket_accessible.cc
+deleted file mode 100644
+--- a/engine/src/flutter/shell/platform/linux/fl_socket_accessible.cc
++++ /dev/null
+@@ -1,57 +0,0 @@
+-// Copyright 2013 The Flutter Authors. All rights reserved.
+-// Use of this source code is governed by a BSD-style license that can be
+-// found in the LICENSE file.
+-
+-#include "flutter/shell/platform/linux/fl_socket_accessible.h"
+-
+-// This is a copy of GtkSocketAccessible, which requires GTK 3.24.30
+-
+-struct _FlSocketAccessible {
+-  GtkContainerAccessible parent;
+-  AtkObject* accessible_socket;
+-};
+-
+-G_DEFINE_TYPE(FlSocketAccessible,
+-              fl_socket_accessible,
+-              GTK_TYPE_CONTAINER_ACCESSIBLE)
+-
+-static AtkObject* fl_socket_accessible_ref_child(AtkObject* object, int i) {
+-  FlSocketAccessible* self = FL_SOCKET_ACCESSIBLE(object);
+-  return i == 0 ? ATK_OBJECT(g_object_ref(self->accessible_socket)) : nullptr;
+-}
+-
+-static int fl_socket_accessible_get_n_children(AtkObject* object) {
+-  return 1;
+-}
+-
+-static void fl_socket_accessible_dispose(GObject* object) {
+-  FlSocketAccessible* self = FL_SOCKET_ACCESSIBLE(object);
+-
+-  g_clear_object(&self->accessible_socket);
+-
+-  G_OBJECT_CLASS(fl_socket_accessible_parent_class)->dispose(object);
+-}
+-
+-static void fl_socket_accessible_initialize(AtkObject* object, gpointer data) {
+-  FlSocketAccessible* self = FL_SOCKET_ACCESSIBLE(object);
+-
+-  ATK_OBJECT_CLASS(fl_socket_accessible_parent_class)->initialize(object, data);
+-
+-  self->accessible_socket = atk_socket_new();
+-}
+-
+-static void fl_socket_accessible_class_init(FlSocketAccessibleClass* klass) {
+-  GObjectClass* object_class = G_OBJECT_CLASS(klass);
+-  object_class->dispose = fl_socket_accessible_dispose;
+-
+-  AtkObjectClass* atk_class = ATK_OBJECT_CLASS(klass);
+-  atk_class->initialize = fl_socket_accessible_initialize;
+-  atk_class->get_n_children = fl_socket_accessible_get_n_children;
+-  atk_class->ref_child = fl_socket_accessible_ref_child;
+-}
+-
+-static void fl_socket_accessible_init(FlSocketAccessible* self) {}
+-
+-void fl_socket_accessible_embed(FlSocketAccessible* self, gchar* id) {
+-  atk_socket_embed(ATK_SOCKET(self->accessible_socket), id);
+-}
+diff --git a/engine/src/flutter/shell/platform/linux/fl_socket_accessible.h b/engine/src/flutter/shell/platform/linux/fl_socket_accessible.h
+deleted file mode 100644
+--- a/engine/src/flutter/shell/platform/linux/fl_socket_accessible.h
++++ /dev/null
+@@ -1,22 +0,0 @@
+-// Copyright 2013 The Flutter Authors. All rights reserved.
+-// Use of this source code is governed by a BSD-style license that can be
+-// found in the LICENSE file.
+-
+-#ifndef FLUTTER_SHELL_PLATFORM_LINUX_FL_SOCKET_ACCESSIBLE_H_
+-#define FLUTTER_SHELL_PLATFORM_LINUX_FL_SOCKET_ACCESSIBLE_H_
+-
+-#include <gtk/gtk-a11y.h>
+-
+-G_BEGIN_DECLS
+-
+-G_DECLARE_FINAL_TYPE(FlSocketAccessible,
+-                     fl_socket_accessible,
+-                     FL,
+-                     SOCKET_ACCESSIBLE,
+-                     GtkContainerAccessible);
+-
+-void fl_socket_accessible_embed(FlSocketAccessible* self, gchar* id);
+-
+-G_END_DECLS
+-
+-#endif  // FLUTTER_SHELL_PLATFORM_LINUX_FL_SOCKET_ACCESSIBLE_H_
+diff --git a/engine/src/flutter/shell/platform/linux/fl_view.cc b/engine/src/flutter/shell/platform/linux/fl_view.cc
+--- a/engine/src/flutter/shell/platform/linux/fl_view.cc
++++ b/engine/src/flutter/shell/platform/linux/fl_view.cc
+@@ -18,7 +18,6 @@
+ #include "flutter/shell/platform/linux/fl_plugin_registrar_private.h"
+ #include "flutter/shell/platform/linux/fl_pointer_manager.h"
+ #include "flutter/shell/platform/linux/fl_scrolling_manager.h"
+-#include "flutter/shell/platform/linux/fl_socket_accessible.h"
+ #include "flutter/shell/platform/linux/fl_touch_manager.h"
+ #include "flutter/shell/platform/linux/fl_view_accessible.h"
+ #include "flutter/shell/platform/linux/fl_view_private.h"
+@@ -60,7 +59,7 @@
+   // Manages touch events.
+   FlTouchManager* touch_manager;
+
+-  // Accessible tree from Flutter, exposed as an AtkPlug.
++  // This widget's GTK-owned accessible semantics tree.
+   FlViewAccessible* view_accessible;
+
+   // TRUE if the view size should be controlled by Flutter.
+@@ -247,6 +246,7 @@
+ // which usually indicates the user has requested a hot restart (Shift-R in the
+ // Flutter CLI.)
+ static void on_pre_engine_restart_cb(FlView* self) {
++  fl_view_accessible_reset(self->view_accessible);
+   init_scrolling(self);
+   init_touch(self);
+ }
+@@ -510,6 +510,9 @@
+
+   g_clear_object(&self->zoom_gesture);
+   g_clear_object(&self->rotate_gesture);
++  if (self->view_accessible != nullptr) {
++    fl_view_accessible_retire(self->view_accessible);
++  }
+   if (self->engine != nullptr) {
+     // If this view holds the text input focus, clear the handler's widget
+     // pointer so it does not dangle once this view is finalized.
+@@ -622,15 +625,17 @@
+                    NULL, NULL, NULL, G_TYPE_NONE, 0);
+
+   gtk_widget_class_set_accessible_type(GTK_WIDGET_CLASS(klass),
+-                                       fl_socket_accessible_get_type());
++                                       fl_view_accessible_get_type());
+ }
+
+ // Engine related construction.
+ static void setup_engine(FlView* self) {
+-  self->view_accessible = fl_view_accessible_new(self->engine, self->view_id);
+-  fl_socket_accessible_embed(
+-      FL_SOCKET_ACCESSIBLE(gtk_widget_get_accessible(GTK_WIDGET(self))),
+-      atk_plug_get_id(ATK_PLUG(self->view_accessible)));
++  self->view_accessible = FL_VIEW_ACCESSIBLE(
++      g_object_ref(gtk_widget_get_accessible(GTK_WIDGET(self))));
++  if (!fl_view_accessible_bind_engine(
++          self->view_accessible, self->engine, self->view_id)) {
++    g_warning("Failed to bind the view accessibility owner");
++  }
+
+   self->pointer_manager = fl_pointer_manager_new(self->view_id, self->engine);
+
 diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc
 --- a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc
 +++ b/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc
-@@ -23,11 +23,16 @@
+@@ -2,12 +2,6 @@
+ // Use of this source code is governed by a BSD-style license that can be
+ // found in the LICENSE file.
+
+-// Workaround missing C code compatibility in ATK header.
+-// Fixed in https://gitlab.gnome.org/GNOME/at-spi2-core/-/merge_requests/219
+-extern "C" {
+-#include <atk/atk.h>
+-}
+-
+ #include "flutter/shell/platform/linux/fl_accessible_node.h"
+ #include "flutter/shell/platform/linux/fl_accessible_text_field.h"
+ #include "flutter/shell/platform/linux/fl_view_accessible.h"
+@@ -17,21 +11,33 @@
+ static constexpr int32_t kRootSemanticsNodeId = 0;
+
+ struct _FlViewAccessible {
+-  AtkPlug parent_instance;
++  GtkContainerAccessible parent_instance;
+
+   GWeakRef engine;
 
    FlutterViewId view_id;
 
@@ -1784,12 +2432,24 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
    // Flag to track when root node is created.
    gboolean root_node_created;
 +
++  gboolean bound;
 +  gboolean retired;
 +  gboolean resetting;
  };
 
- G_DEFINE_TYPE(FlViewAccessible, fl_view_accessible, ATK_TYPE_PLUG)
-@@ -42,19 +47,22 @@
+-G_DEFINE_TYPE(FlViewAccessible, fl_view_accessible, ATK_TYPE_PLUG)
++static void fl_view_accessible_component_interface_init(AtkComponentIface* iface);
++static AtkComponentIface* parent_component_iface;
+
++G_DEFINE_TYPE_WITH_CODE(
++    FlViewAccessible, fl_view_accessible, GTK_TYPE_CONTAINER_ACCESSIBLE,
++    G_IMPLEMENT_INTERFACE(ATK_TYPE_COMPONENT,
++                          fl_view_accessible_component_interface_init))
++
+ // Enum copied from ATK 2.50, as the version we are building against doesn't
+ // have this.
+ typedef enum {
+@@ -42,19 +48,22 @@
 
  static FlAccessibleNode* create_node(FlViewAccessible* self,
                                       FlutterSemanticsNode2* semantics) {
@@ -1816,7 +2476,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
    return FL_ACCESSIBLE_NODE(
        g_hash_table_lookup(self->semantics_nodes_by_id, GINT_TO_POINTER(id)));
  }
-@@ -69,6 +77,10 @@
+@@ -69,6 +78,10 @@
    }
 
    node = create_node(self, semantics);
@@ -1827,7 +2487,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
    if (semantics->id == kRootSemanticsNodeId) {
      fl_accessible_node_set_parent(node, ATK_OBJECT(self), 0);
    }
-@@ -78,11 +90,11 @@
+@@ -78,11 +91,11 @@
 
    // Update when root node is created.
    if (!self->root_node_created && semantics->id == kRootSemanticsNodeId) {
@@ -1841,11 +2501,12 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
  }
 
  // Implements AtkObject::get_n_children
-@@ -117,20 +129,30 @@
+@@ -117,62 +130,289 @@
  // Implements AtkObject::ref_state_set
  static AtkStateSet* fl_view_accessible_ref_state_set(AtkObject* accessible) {
    FlViewAccessible* self = FL_VIEW_ACCESSIBLE(accessible);
-+  if (self->retired) {
++  if (self->retired ||
++      gtk_accessible_get_widget(GTK_ACCESSIBLE(self)) == nullptr) {
 +    AtkStateSet* state = atk_state_set_new();
 +    atk_state_set_add_state(state, ATK_STATE_DEFUNCT);
 +    return state;
@@ -1861,21 +2522,158 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 +  fl_view_accessible_retire(self);
    g_clear_pointer(&self->semantics_nodes_by_id, g_hash_table_unref);
 
--  g_weak_ref_clear(&self->engine);
--
-   G_OBJECT_CLASS(fl_view_accessible_parent_class)->dispose(object);
- }
-
++  G_OBJECT_CLASS(fl_view_accessible_parent_class)->dispose(object);
++}
++
 +static void fl_view_accessible_finalize(GObject* object) {
 +  FlViewAccessible* self = FL_VIEW_ACCESSIBLE(object);
-+  g_weak_ref_clear(&self->engine);
+   g_weak_ref_clear(&self->engine);
 +  G_OBJECT_CLASS(fl_view_accessible_parent_class)->finalize(object);
++}
+
+-  G_OBJECT_CLASS(fl_view_accessible_parent_class)->dispose(object);
++static void fl_view_accessible_widget_unset(GtkAccessible* accessible) {
++  // GTK calls this before clearing its widget pointer and emitting DEFUNCT.
++  fl_view_accessible_retire(FL_VIEW_ACCESSIBLE(accessible));
++  GTK_ACCESSIBLE_CLASS(fl_view_accessible_parent_class)->widget_unset(accessible);
+ }
+
++// Only Flutter semantics are children; renderer/event-box widgets are internal.
++static gint ignore_widget_child(GtkContainer*, GtkWidget*, gpointer) {
++  return 0;
++}
++
++static void fl_view_accessible_get_extents(AtkComponent* component,
++                                          gint* x, gint* y,
++                                          gint* width, gint* height,
++                                          AtkCoordType coord_type) {
++  if (x != nullptr) *x = -1;
++  if (y != nullptr) *y = -1;
++  if (width != nullptr) *width = -1;
++  if (height != nullptr) *height = -1;
++  FlViewAccessible* self = FL_VIEW_ACCESSIBLE(component);
++  FlSemanticsViewGeometry geometry;
++  if (self->generation == nullptr ||
++      !fl_semantics_generation_get_view_geometry(
++          self->generation, coord_type, &geometry)) {
++    return;
++  }
++  if (x != nullptr) *x = geometry.x;
++  if (y != nullptr) *y = geometry.y;
++  if (width != nullptr) *width = geometry.width;
++  if (height != nullptr) *height = geometry.height;
++}
++
++static gboolean fl_view_accessible_contains(AtkComponent* component,
++                                            gint x, gint y,
++                                            AtkCoordType coord_type) {
++  gint left, top, width, height;
++  fl_view_accessible_get_extents(component, &left, &top, &width, &height, coord_type);
++  return width > 0 && height > 0 &&
++         static_cast<gint64>(x) >= left && static_cast<gint64>(y) >= top &&
++         static_cast<gint64>(x) < static_cast<gint64>(left) + width &&
++         static_cast<gint64>(y) < static_cast<gint64>(top) + height;
++}
++
++static void fl_view_accessible_get_position(AtkComponent* component,
++                                            gint* x, gint* y,
++                                            AtkCoordType coord_type) {
++  fl_view_accessible_get_extents(component, x, y, nullptr, nullptr, coord_type);
++}
++
++static void fl_view_accessible_get_size(AtkComponent* component,
++                                        gint* width, gint* height) {
++  fl_view_accessible_get_extents(
++      component, nullptr, nullptr, width, height, ATK_XY_WINDOW);
++}
++
++static AtkObject* fl_view_accessible_ref_accessible_at_point(
++    AtkComponent* component, gint x, gint y, AtkCoordType coord_type) {
++  if (!fl_view_accessible_contains(component, x, y, coord_type)) {
++    return nullptr;
++  }
++  if (coord_type == ATK_XY_PARENT) {
++    gint left, top;
++    fl_view_accessible_get_position(component, &left, &top, coord_type);
++    gint64 local_x = static_cast<gint64>(x) - left;
++    gint64 local_y = static_cast<gint64>(y) - top;
++    if (local_x < G_MININT || local_x > G_MAXINT ||
++        local_y < G_MININT || local_y > G_MAXINT) {
++      return nullptr;
++    }
++    x = static_cast<gint>(local_x);
++    y = static_cast<gint>(local_y);
++  }
++  g_autoptr(AtkObject) child =
++      fl_view_accessible_ref_child(ATK_OBJECT(component), 0);
++  if (child != nullptr && atk_component_contains(ATK_COMPONENT(child), x, y, coord_type)) {
++    return ATK_OBJECT(g_object_ref(child));
++  }
++  return nullptr;
++}
++
++// GTK component mutations keep GTK's native behavior, but cannot use a retired
++// or unmapped semantics owner. Retain its widget across synchronous GTK callbacks.
++static GtkWidget* ref_component_widget(AtkComponent* component) {
++  FlViewAccessible* self = FL_VIEW_ACCESSIBLE(component);
++  FlSemanticsViewGeometry geometry;
++  if (self->generation == nullptr ||
++      !fl_semantics_generation_get_view_geometry(
++          self->generation, ATK_XY_WINDOW, &geometry)) {
++    return nullptr;
++  }
++  GtkWidget* widget = gtk_accessible_get_widget(GTK_ACCESSIBLE(self));
++  return widget != nullptr ? GTK_WIDGET(g_object_ref(widget)) : nullptr;
++}
++
++static gboolean fl_view_accessible_grab_focus(AtkComponent* component) {
++  g_autoptr(GtkWidget) widget = ref_component_widget(component);
++  return widget != nullptr && parent_component_iface->grab_focus != nullptr &&
++         parent_component_iface->grab_focus(component);
++}
++
++static gboolean fl_view_accessible_set_extents(
++    AtkComponent* component, gint x, gint y, gint width, gint height,
++    AtkCoordType coord_type) {
++  g_autoptr(GtkWidget) widget = ref_component_widget(component);
++  return widget != nullptr && parent_component_iface->set_extents != nullptr &&
++         parent_component_iface->set_extents(component, x, y, width, height, coord_type);
++}
++
++static gboolean fl_view_accessible_set_position(
++    AtkComponent* component, gint x, gint y, AtkCoordType coord_type) {
++  g_autoptr(GtkWidget) widget = ref_component_widget(component);
++  return widget != nullptr && parent_component_iface->set_position != nullptr &&
++         parent_component_iface->set_position(component, x, y, coord_type);
++}
++
++static gboolean fl_view_accessible_set_size(
++    AtkComponent* component, gint width, gint height) {
++  g_autoptr(GtkWidget) widget = ref_component_widget(component);
++  return widget != nullptr && parent_component_iface->set_size != nullptr &&
++         parent_component_iface->set_size(component, width, height);
++}
++
++static void fl_view_accessible_component_interface_init(AtkComponentIface* iface) {
++  parent_component_iface = static_cast<AtkComponentIface*>(g_type_interface_peek_parent(iface));
++  iface->grab_focus = fl_view_accessible_grab_focus;
++  iface->set_extents = fl_view_accessible_set_extents;
++  iface->set_position = fl_view_accessible_set_position;
++  iface->set_size = fl_view_accessible_set_size;
++  iface->get_extents = fl_view_accessible_get_extents;
++  iface->get_position = fl_view_accessible_get_position;
++  iface->get_size = fl_view_accessible_get_size;
++  iface->contains = fl_view_accessible_contains;
++  iface->ref_accessible_at_point = fl_view_accessible_ref_accessible_at_point;
 +}
 +
  static void fl_view_accessible_class_init(FlViewAccessibleClass* klass) {
++  GTK_ACCESSIBLE_CLASS(klass)->widget_unset = fl_view_accessible_widget_unset;
++  GTK_CONTAINER_ACCESSIBLE_CLASS(klass)->add_gtk = ignore_widget_child;
++  GTK_CONTAINER_ACCESSIBLE_CLASS(klass)->remove_gtk = ignore_widget_child;
    ATK_OBJECT_CLASS(klass)->get_n_children = fl_view_accessible_get_n_children;
    ATK_OBJECT_CLASS(klass)->ref_child = fl_view_accessible_ref_child;
-@@ -138,35 +160,108 @@
+   ATK_OBJECT_CLASS(klass)->get_role = fl_view_accessible_get_role;
    ATK_OBJECT_CLASS(klass)->ref_state_set = fl_view_accessible_ref_state_set;
 
    G_OBJECT_CLASS(klass)->dispose = fl_view_accessible_dispose;
@@ -1888,17 +2686,28 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
        g_direct_hash, g_direct_equal, nullptr, g_object_unref);
  }
 
- FlViewAccessible* fl_view_accessible_new(FlEngine* engine,
-                                          FlutterViewId view_id) {
-+  g_return_val_if_fail(FL_IS_ENGINE(engine), nullptr);
-+  g_return_val_if_fail(view_id >= 0, nullptr);
-   FlViewAccessible* self =
-       FL_VIEW_ACCESSIBLE(g_object_new(fl_view_accessible_get_type(), nullptr));
+-FlViewAccessible* fl_view_accessible_new(FlEngine* engine,
+-                                         FlutterViewId view_id) {
+-  FlViewAccessible* self =
+-      FL_VIEW_ACCESSIBLE(g_object_new(fl_view_accessible_get_type(), nullptr));
 -  g_weak_ref_init(&self->engine, engine);
++gboolean fl_view_accessible_bind_engine(FlViewAccessible* self,
++                                        FlEngine* engine,
++                                        FlutterViewId view_id) {
++  g_return_val_if_fail(FL_IS_VIEW_ACCESSIBLE(self), FALSE);
++  g_return_val_if_fail(FL_IS_ENGINE(engine), FALSE);
++  g_return_val_if_fail(view_id >= 0, FALSE);
++  if (self->retired || self->bound ||
++      gtk_accessible_get_widget(GTK_ACCESSIBLE(self)) == nullptr) {
++    return FALSE;
++  }
++  self->bound = TRUE;
 +  g_weak_ref_set(&self->engine, engine);
    self->view_id = view_id;
-+  self->generation = fl_semantics_generation_new(engine, view_id);
-   return self;
+-  return self;
++  self->generation =
++      fl_semantics_generation_new(GTK_ACCESSIBLE(self), engine, view_id);
++  return self->generation != nullptr;
  }
 
 +void fl_view_accessible_reset(FlViewAccessible* self) {
@@ -1932,7 +2741,8 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 +  if (!self->retired) {
 +    g_autoptr(FlEngine) engine = FL_ENGINE(g_weak_ref_get(&self->engine));
 +    if (engine != nullptr) {
-+      self->generation = fl_semantics_generation_new(engine, self->view_id);
++      self->generation = fl_semantics_generation_new(
++          GTK_ACCESSIBLE(self), engine, self->view_id);
 +    }
 +    self->semantics_nodes_by_id = g_hash_table_new_full(
 +        g_direct_hash, g_direct_equal, nullptr, g_object_unref);
@@ -1959,7 +2769,8 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
      const FlutterSemanticsUpdate2* update) {
    g_return_if_fail(FL_IS_VIEW_ACCESSIBLE(self));
 
-+  if (self->retired || self->resetting) {
++  if (self->retired || self->resetting || self->generation == nullptr ||
++      !fl_semantics_generation_is_active(self->generation)) {
 +    return;
 +  }
 +  g_autoptr(FlViewAccessible) owner = FL_VIEW_ACCESSIBLE(g_object_ref(self));
@@ -1986,8 +2797,15 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 +    }
      fl_accessible_node_set_actions(atk_node, node->actions);
      fl_accessible_node_set_name(atk_node, node->label);
-     fl_accessible_node_set_extents(
-@@ -180,13 +275,21 @@
+-    fl_accessible_node_set_extents(
+-        atk_node, node->rect.left + node->transform.transX,
+-        node->rect.top + node->transform.transY,
+-        node->rect.right - node->rect.left, node->rect.bottom - node->rect.top);
++    fl_accessible_node_set_geometry(atk_node, &node->rect, &node->transform);
+     fl_accessible_node_set_value(atk_node, node->value);
+     fl_accessible_node_set_text_selection(atk_node, node->text_selection_base,
+                                           node->text_selection_extent);
+@@ -180,13 +420,21 @@
 
      FlValue* children = fl_value_new_int32_list(
          node->children_in_traversal_order, node->child_count);
@@ -2011,7 +2829,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
 
          FlAccessibleNode* parent = FL_ACCESSIBLE_NODE(key);
 
-@@ -208,7 +311,7 @@
+@@ -208,13 +456,17 @@
 
          return TRUE;
        },
@@ -2020,12 +2838,67 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.cc b/eng
  }
 
  void fl_view_accessible_send_announcement(FlViewAccessible* self,
+                                           const char* message,
+                                           gboolean assertive) {
+   g_return_if_fail(FL_IS_VIEW_ACCESSIBLE(self));
++  if (self->generation == nullptr ||
++      !fl_semantics_generation_is_active(self->generation)) {
++    return;
++  }
+   if (atk_get_major_version() == 2 && atk_get_minor_version() >= 50) {
+     g_signal_emit_by_name(
+         self, "notification", message,
 diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.h b/engine/src/flutter/shell/platform/linux/fl_view_accessible.h
 --- a/engine/src/flutter/shell/platform/linux/fl_view_accessible.h
 +++ b/engine/src/flutter/shell/platform/linux/fl_view_accessible.h
-@@ -48,6 +48,12 @@
- FlViewAccessible* fl_view_accessible_new(FlEngine* engine,
-                                          FlutterViewId view_id);
+@@ -9,24 +9,18 @@
+ #error "Only <flutter_linux/flutter_linux.h> can be included directly."
+ #endif
+
+-#include <atk/atk.h>
++#include <gtk/gtk-a11y.h>
+
+ #include "flutter/shell/platform/embedder/embedder.h"
+ #include "flutter/shell/platform/linux/public/flutter_linux/fl_engine.h"
+
+ G_BEGIN_DECLS
+
+-// ATK g_autoptr macros weren't added until 2.37. Add them manually.
+-// https://gitlab.gnome.org/GNOME/atk/-/issues/10
+-#if !ATK_CHECK_VERSION(2, 37, 0)
+-G_DEFINE_AUTOPTR_CLEANUP_FUNC(AtkPlug, g_object_unref)
+-#endif
+-
+ G_DECLARE_FINAL_TYPE(FlViewAccessible,
+                      fl_view_accessible,
+                      FL,
+                      VIEW_ACCESSIBLE,
+-                     AtkPlug)
++                     GtkContainerAccessible)
+
+ /**
+  * FlViewAccessible:
+@@ -35,19 +29,18 @@
+  * #FlView.
+  */
+
+-/**
+- * fl_view_accessible_new:
+- * @engine: the #FlEngine.
+- * @view_id: the Flutter view id.
+- *
+- * Creates a new accessibility object that exposes Flutter accessibility
+- * information to ATK.
+- *
+- * Returns: a new #FlViewAccessible.
+- */
+-FlViewAccessible* fl_view_accessible_new(FlEngine* engine,
+-                                         FlutterViewId view_id);
++// Bind the GTK-created accessible once the exact view's engine/ID exist.
++// Binding a retired, already-bound or ownerless accessible is refused.
++gboolean fl_view_accessible_bind_engine(FlViewAccessible* accessible,
++                                        FlEngine* engine,
++                                        FlutterViewId view_id);
 
 +// Drops the previous semantics generation without reviving retained nodes.
 +void fl_view_accessible_reset(FlViewAccessible* accessible);
@@ -2036,21 +2909,34 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible.h b/engi
  /**
   * fl_view_accessible_handle_update_semantics:
   * @accessible: an #FlViewAccessible.
-diff --git a/engine/src/flutter/shell/platform/linux/fl_view.cc b/engine/src/flutter/shell/platform/linux/fl_view.cc
---- a/engine/src/flutter/shell/platform/linux/fl_view.cc
-+++ b/engine/src/flutter/shell/platform/linux/fl_view.cc
-@@ -249,4 +249,5 @@
- static void on_pre_engine_restart_cb(FlView* self) {
-+  fl_view_accessible_reset(self->view_accessible);
-   init_scrolling(self);
-   init_touch(self);
+diff --git a/engine/src/flutter/shell/platform/linux/fl_view_accessible_test.cc b/engine/src/flutter/shell/platform/linux/fl_view_accessible_test.cc
+--- a/engine/src/flutter/shell/platform/linux/fl_view_accessible_test.cc
++++ b/engine/src/flutter/shell/platform/linux/fl_view_accessible_test.cc
+@@ -8,12 +8,15 @@
+
+ #include "flutter/shell/platform/linux/fl_view_accessible.h"
+ #include "flutter/shell/platform/linux/public/flutter_linux/fl_engine.h"
++#include "flutter/shell/platform/linux/public/flutter_linux/fl_view.h"
+ #include "flutter/shell/platform/linux/testing/mock_signal_handler.h"
+
+ class FlViewAccessibleTest : public flutter::testing::LinuxTest {};
+
+ TEST_F(FlViewAccessibleTest, BuildTree) {
+-  g_autoptr(FlViewAccessible) accessible = fl_view_accessible_new(engine, 456);
++  g_autoptr(FlView) view = FL_VIEW(g_object_ref_sink(fl_view_new(project)));
++  g_autoptr(FlViewAccessible) accessible = FL_VIEW_ACCESSIBLE(
++      g_object_ref(gtk_widget_get_accessible(GTK_WIDGET(view))));
+
+   int32_t children[] = {111, 222};
+   FlutterSemanticsFlags flags = {};
+@@ -51,7 +54,9 @@
  }
-@@ -511,5 +512,8 @@
-   g_clear_object(&self->zoom_gesture);
-   g_clear_object(&self->rotate_gesture);
-+  if (self->view_accessible != nullptr) {
-+    fl_view_accessible_retire(self->view_accessible);
-+  }
-   if (self->engine != nullptr) {
-     // If this view holds the text input focus, clear the handler's widget
-     // pointer so it does not dangle once this view is finalized.
+
+ TEST_F(FlViewAccessibleTest, AddRemoveChildren) {
+-  g_autoptr(FlViewAccessible) accessible = fl_view_accessible_new(engine, 456);
++  g_autoptr(FlView) view = FL_VIEW(g_object_ref_sink(fl_view_new(project)));
++  g_autoptr(FlViewAccessible) accessible = FL_VIEW_ACCESSIBLE(
++      g_object_ref(gtk_widget_get_accessible(GTK_WIDGET(view))));
+
+   FlutterSemanticsFlags flags = {};
+   FlutterSemanticsNode2 root_node = {

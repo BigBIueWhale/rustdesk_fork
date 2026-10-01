@@ -9,6 +9,9 @@
 #include "flutter/shell/platform/linux/public/flutter_linux/fl_value.h"
 
 #include <cstdio>
+#include <cmath>
+#include <cstdlib>
+#include <limits>
 #include <gtk/gtk-a11y.h>
 
 struct _FlEngine {
@@ -38,6 +41,48 @@ static void fl_engine_init(FlEngine* self) {
 }
 
 #if !defined(LEGACY_BASELINE)
+struct TestSemanticsView { GtkBox parent_instance; };
+struct TestSemanticsViewClass { GtkBoxClass parent_class; };
+G_DEFINE_TYPE(TestSemanticsView, test_semantics_view, GTK_TYPE_BOX)
+
+static void test_semantics_view_class_init(TestSemanticsViewClass* klass) {
+  gtk_widget_class_set_accessible_type(GTK_WIDGET_CLASS(klass),
+                                       fl_view_accessible_get_type());
+}
+
+static void test_semantics_view_init(TestSemanticsView* self) {
+  // Match early GTK accessibility access before FlView's engine fields exist.
+  gtk_widget_get_accessible(GTK_WIDGET(self));
+  gtk_widget_set_can_focus(GTK_WIDGET(self), TRUE);
+  gtk_container_add(GTK_CONTAINER(self), gtk_event_box_new());
+}
+
+static GtkWidget* new_generation_widget() {
+  return GTK_WIDGET(g_object_ref_sink(gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)));
+}
+
+static GtkWidget* new_bound_view(FlEngine* engine) {
+  GtkWidget* widget = GTK_WIDGET(g_object_ref_sink(
+      g_object_new(test_semantics_view_get_type(), nullptr)));
+  FlViewAccessible* accessible = FL_VIEW_ACCESSIBLE(gtk_widget_get_accessible(widget));
+  g_assert_cmpint(atk_object_get_n_accessible_children(ATK_OBJECT(accessible)), ==, 0);
+  gint x = 99, y = 98, width = 97, height = 96;
+  atk_component_get_extents(ATK_COMPONENT(accessible), &x, &y, &width, &height, ATK_XY_WINDOW);
+  g_assert_cmpint(x, ==, -1);
+  g_assert_cmpint(y, ==, -1);
+  g_assert_cmpint(width, ==, -1);
+  g_assert_cmpint(height, ==, -1);
+  g_assert_true(fl_view_accessible_bind_engine(accessible, engine, 7));
+  g_assert_false(fl_view_accessible_bind_engine(accessible, engine, 7));
+  return widget;
+}
+
+static FlutterTransformation identity_transform() {
+  FlutterTransformation transform = {};
+  transform.scaleX = transform.scaleY = transform.pers2 = 1;
+  return transform;
+}
+
 static void test_gtk_widget_lifetime() {
   g_assert_true(gtk_init_check(nullptr, nullptr));
   GtkWidget* window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -72,6 +117,7 @@ static void update_tree(FlViewAccessible* accessible, const char* label,
   root.label = label;
   root.value = "";
   root.flags2 = &flags;
+  root.transform = identity_transform();
   root.child_count = siblings ? 2 : 1;
   root.children_in_traversal_order = children;
   FlutterSemanticsNode2 child = {};
@@ -79,6 +125,7 @@ static void update_tree(FlViewAccessible* accessible, const char* label,
   child.label = "child";
   child.value = "";
   child.flags2 = &flags;
+  child.transform = identity_transform();
   child.actions = kFlutterSemanticsActionTap;
   FlutterSemanticsNode2 sibling = child;
   sibling.id = 11;
@@ -137,7 +184,9 @@ static void probe_tree_revocation(AtkObject*, const gchar*, gboolean state,
 
 static void test_tree_revocation(FlEngine* engine) {
   for (guint operation = 0; operation < 5; operation++) {
-    g_autoptr(FlViewAccessible) accessible = fl_view_accessible_new(engine, 7);
+    g_autoptr(GtkWidget) widget = new_bound_view(engine);
+    g_autoptr(FlViewAccessible) accessible = FL_VIEW_ACCESSIBLE(
+        g_object_ref(gtk_widget_get_accessible(widget)));
     update_tree(accessible, "whole tree", TRUE);
     g_autoptr(AtkObject) root = atk_object_ref_accessible_child(ATK_OBJECT(accessible), 0);
     g_assert_nonnull(root);
@@ -180,7 +229,9 @@ static void test_tree_revocation(FlEngine* engine) {
 
 static void test_root(FlEngine* engine) {
   const guint dispatches = engine->dispatches;
-  g_autoptr(FlViewAccessible) accessible = fl_view_accessible_new(engine, 7);
+  g_autoptr(GtkWidget) widget = new_bound_view(engine);
+  g_autoptr(FlViewAccessible) accessible = FL_VIEW_ACCESSIBLE(
+      g_object_ref(gtk_widget_get_accessible(widget)));
   update_tree(accessible, "original root");
   g_autoptr(AtkObject) old_root = atk_object_ref_accessible_child(ATK_OBJECT(accessible), 0);
   g_assert_nonnull(old_root);
@@ -226,6 +277,10 @@ static void test_root(FlEngine* engine) {
   g_assert_nonnull(state);
   g_assert_true(atk_state_set_contains_state(state, ATK_STATE_DEFUNCT));
   g_assert_cmpuint(engine->dispatches, ==, dispatches + 2);
+  g_assert_false(atk_component_grab_focus(ATK_COMPONENT(accessible)));
+  g_assert_false(atk_component_set_position(ATK_COMPONENT(accessible), 1, 2, ATK_XY_SCREEN));
+  g_assert_false(atk_component_set_size(ATK_COMPONENT(accessible), 3, 4));
+  g_assert_false(atk_component_set_extents(ATK_COMPONENT(accessible), 1, 2, 3, 4, ATK_XY_SCREEN));
   std::puts("ENGINE_ACCESSIBLE_ROOT_RETIREMENT=pass unit=real-root boundary=recording-engine reset=true replacement=true reentrant=true disposed=true");
   std::fflush(stdout);
 }
@@ -291,8 +346,10 @@ static void test_generation(FlEngine* engine) {
   g_assert_false(fl_accessible_node_perform_action(ownerless, kFlutterSemanticsActionTap, nullptr));
   g_assert_null(g_object_class_find_property(G_OBJECT_GET_CLASS(ownerless), "engine"));
   g_assert_null(g_object_class_find_property(G_OBJECT_GET_CLASS(ownerless), "view-id"));
-  for (guint operation = 0; operation < 3; operation++) {
-    g_autoptr(FlSemanticsGeneration) generation = fl_semantics_generation_new(engine, 7);
+  for (guint operation = 0; operation < 5; operation++) {
+    g_autoptr(GtkWidget) widget = new_generation_widget();
+    g_autoptr(FlSemanticsGeneration) generation = fl_semantics_generation_new(
+        GTK_ACCESSIBLE(gtk_widget_get_accessible(widget)), engine, 7);
     g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 9);
     g_autoptr(FlAccessibleNode) text = fl_accessible_text_field_new(generation, 10);
     fl_accessible_node_set_actions(node, kFlutterSemanticsActionTap);
@@ -306,9 +363,13 @@ static void test_generation(FlEngine* engine) {
       fl_semantics_generation_retire(generation);
     } else if (operation == 1) {
       g_clear_object(&generation);
+    } else if (operation == 2) {
+      g_object_run_dispose(G_OBJECT(generation));
+      g_object_run_dispose(G_OBJECT(generation));
+    } else if (operation == 3) {
+      gtk_widget_destroy(widget);
     } else {
-      g_object_run_dispose(G_OBJECT(generation));
-      g_object_run_dispose(G_OBJECT(generation));
+      g_clear_object(&widget);
     }
     g_assert_false(fl_accessible_node_is_live(node));
     g_assert_false(atk_action_do_action(ATK_ACTION(node), 0));
@@ -324,20 +385,114 @@ static void test_generation(FlEngine* engine) {
   std::fflush(stdout);
 }
 
+struct GeometryTree {
+  FlutterSemanticsFlags flags = {};
+  int32_t root_children[1] = {9};
+  int32_t parent_children[1] = {11};
+  FlutterSemanticsNode2 root = {}, parent = {}, child = {};
+
+  explicit GeometryTree(gint scale) {
+    root.id = 0;
+    parent.id = 9;
+    child.id = 11;
+    root.label = parent.label = child.label = "";
+    root.value = parent.value = child.value = "";
+    root.flags2 = parent.flags2 = child.flags2 = &flags;
+    root.rect = {0, 0, 120, 90};
+    parent.rect = {0, 0, 100, 80};
+    child.rect = {0, 0, 20, 10};
+    root.transform = parent.transform = child.transform = identity_transform();
+    // RenderView contributes logical-to-physical scale to the root semantics.
+    root.transform.scaleX = root.transform.scaleY = scale;
+    parent.transform.transX = 40;
+    parent.transform.transY = 50;
+    child.transform.transX = 5;
+    child.transform.transY = 7;
+    parent.actions = child.actions = kFlutterSemanticsActionTap;
+    root.child_count = parent.child_count = 1;
+    root.children_in_traversal_order = root_children;
+    parent.children_in_traversal_order = parent_children;
+  }
+
+  void publish(FlViewAccessible* accessible) {
+    FlutterSemanticsNode2* nodes[] = {&root, &parent, &child};
+    FlutterSemanticsUpdate2 update = {};
+    update.node_count = 3;
+    update.nodes = nodes;
+    fl_view_accessible_handle_update_semantics(accessible, &update);
+  }
+};
+
+static void assert_extents(AtkObject* object, AtkCoordType coordinates,
+                           gint x, gint y, gint width, gint height) {
+  gint bounds[4] = {99, 98, 97, 96}, position[2] = {99, 98}, size[2] = {99, 98};
+  atk_component_get_extents(ATK_COMPONENT(object), &bounds[0], &bounds[1],
+                            &bounds[2], &bounds[3], coordinates);
+  atk_component_get_position(ATK_COMPONENT(object), &position[0], &position[1], coordinates);
+  atk_component_get_size(ATK_COMPONENT(object), &size[0], &size[1]);
+  const gint expected[4] = {x, y, width, height};
+  for (guint i = 0; i < 4; i++) g_assert_cmpint(bounds[i], ==, expected[i]);
+  g_assert_cmpint(position[0], ==, x);
+  g_assert_cmpint(position[1], ==, y);
+  g_assert_cmpint(size[0], ==, width);
+  g_assert_cmpint(size[1], ==, height);
+  g_assert_cmpint(atk_component_contains(ATK_COMPONENT(object), x, y, coordinates),
+                  ==, width > 0 && height > 0);
+  g_assert_false(atk_component_contains(ATK_COMPONENT(object), x + width, y, coordinates));
+  g_assert_false(atk_component_contains(ATK_COMPONENT(object), x, y + height, coordinates));
+}
+
+static void assert_geometry_unavailable(AtkObject* object) {
+  const AtkCoordType coordinates[] = {ATK_XY_PARENT, ATK_XY_WINDOW, ATK_XY_SCREEN};
+  for (const auto coord : coordinates) {
+    assert_extents(object, coord, -1, -1, -1, -1);
+    g_autoptr(AtkObject) hit = atk_component_ref_accessible_at_point(
+        ATK_COMPONENT(object), 1, 2, coord);
+    g_assert_null(hit);
+    atk_component_get_extents(ATK_COMPONENT(object), nullptr, nullptr, nullptr, nullptr, coord);
+  }
+}
+
+static void assert_hit(AtkObject* parent, AtkObject* child,
+                       AtkCoordType coordinates, gint x, gint y) {
+  g_autoptr(AtkObject) hit = atk_component_ref_accessible_at_point(
+      ATK_COMPONENT(parent), x, y, coordinates);
+  g_assert_true(hit == child);
+}
+
 static void test_node_geometry(FlEngine* engine) {
-  g_autoptr(FlSemanticsGeneration) generation = fl_semantics_generation_new(engine, 7);
-  g_autoptr(FlAccessibleNode) parent = fl_accessible_node_new(generation, 9);
-  g_autoptr(FlAccessibleNode) child = fl_accessible_node_new(generation, 11);
-  fl_accessible_node_set_extents(parent, 40, 50, 100, 80);
-  fl_accessible_node_set_extents(child, 5, 7, 20, 10);
-  fl_accessible_node_set_parent(child, ATK_OBJECT(parent), 0);
-  g_autoptr(GPtrArray) children = g_ptr_array_new_with_free_func(g_object_unref);
-  g_ptr_array_add(children, g_object_ref(child));
-  fl_accessible_node_set_children(parent, children);
+  g_autoptr(GtkWidget) window = GTK_WIDGET(g_object_ref_sink(gtk_window_new(GTK_WINDOW_TOPLEVEL)));
+  GtkWidget* fixed = gtk_fixed_new();
+  gtk_container_add(GTK_CONTAINER(window), fixed);
+  g_autoptr(GtkWidget) widget = new_bound_view(engine);
+  gtk_widget_set_size_request(widget, 120, 90);
+  gtk_fixed_put(GTK_FIXED(fixed), widget, 30, 40);
+  gtk_window_set_default_size(GTK_WINDOW(window), 200, 180);
+  gtk_window_move(GTK_WINDOW(window), 100, 120);
+  gtk_widget_show_all(window);
+  gdk_display_sync(gtk_widget_get_display(window));
+  g_assert_true(gtk_widget_get_mapped(widget));
+  g_assert_true(gtk_widget_get_realized(widget));
+  const gint scale = gtk_widget_get_scale_factor(widget);
+  g_assert_nonnull(g_getenv("GDK_SCALE"));
+  g_assert_cmpint(scale, ==, std::atoi(g_getenv("GDK_SCALE")));
+  g_assert_true(scale == 1 || scale == 2);
+  gint screen_x = 0, screen_y = 0;
+  gdk_window_get_origin(gtk_widget_get_window(window), &screen_x, &screen_y);
+  g_autoptr(FlViewAccessible) accessible = FL_VIEW_ACCESSIBLE(
+      g_object_ref(gtk_widget_get_accessible(widget)));
+  GeometryTree tree(scale);
+  tree.publish(accessible);
+  g_autoptr(AtkObject) semantics = atk_object_ref_accessible_child(ATK_OBJECT(accessible), 0);
+  g_autoptr(AtkObject) parent_object = atk_object_ref_accessible_child(semantics, 0);
+  g_autoptr(AtkObject) child_object = atk_object_ref_accessible_child(parent_object, 0);
+  g_assert_nonnull(child_object);
+  FlAccessibleNode* parent = FL_ACCESSIBLE_NODE(parent_object);
+  FlAccessibleNode* child = FL_ACCESSIBLE_NODE(child_object);
   g_assert_true(atk_object_get_parent(ATK_OBJECT(child)) == ATK_OBJECT(parent));
 
-  // The public setter defines offsets relative to the immediate parent. These
-  // are real node queries, not a claim about GtkWidget/root screen geometry.
+  // Preserve the exact original parent-relative and retired-ancestor assertions,
+  // now with a real GTK owner and production semantics update/ancestry.
   gint relative[] = {99, 98, 97, 96};
   atk_component_get_extents(ATK_COMPONENT(child), &relative[0], &relative[1],
                             &relative[2], &relative[3], ATK_XY_PARENT);
@@ -345,12 +500,11 @@ static void test_node_geometry(FlEngine* engine) {
   atk_component_get_position(ATK_COMPONENT(child), &position[0], &position[1], ATK_XY_PARENT);
   const gboolean contains = atk_component_contains(ATK_COMPONENT(child), 6, 8, ATK_XY_PARENT);
 
-  // Keep both objects and the generation alive while only the ancestor retires.
+  // Keep both objects and the GTK-owned generation alive while only the ancestor retires.
   // Its unavailable geometry must not become a usable child rectangle.
   fl_accessible_node_retire(parent);
   g_assert_false(fl_accessible_node_is_live(parent));
   g_assert_true(fl_accessible_node_is_live(child));
-  g_assert_true(fl_semantics_generation_is_active(generation));
   gint screen[] = {99, 98, 97, 96}, window[] = {99, 98, 97, 96};
   atk_component_get_extents(ATK_COMPONENT(child), &screen[0], &screen[1],
                             &screen[2], &screen[3], ATK_XY_SCREEN);
@@ -381,6 +535,162 @@ static void test_node_geometry(FlEngine* engine) {
   g_assert_false(retired_contains);
   std::puts("ENGINE_ACCESSIBLE_NODE_GEOMETRY=pass unit=real-node parent_relative=true retired_ancestor=unavailable position_size=consistent contains=closed");
   std::fflush(stdout);
+
+  fl_view_accessible_reset(accessible);
+  tree.publish(accessible);
+  g_clear_object(&semantics);
+  g_clear_object(&parent_object);
+  g_clear_object(&child_object);
+  semantics = atk_object_ref_accessible_child(ATK_OBJECT(accessible), 0);
+  parent_object = atk_object_ref_accessible_child(semantics, 0);
+  child_object = atk_object_ref_accessible_child(parent_object, 0);
+  parent = FL_ACCESSIBLE_NODE(parent_object);
+  child = FL_ACCESSIBLE_NODE(child_object);
+  assert_extents(ATK_OBJECT(accessible), ATK_XY_PARENT, 30, 40, 120, 90);
+  assert_extents(ATK_OBJECT(accessible), ATK_XY_WINDOW, 30, 40, 120, 90);
+  assert_extents(ATK_OBJECT(accessible), ATK_XY_SCREEN, screen_x + 30, screen_y + 40, 120, 90);
+  g_assert_true(atk_component_grab_focus(ATK_COMPONENT(accessible)));
+  g_assert_true(gtk_widget_is_focus(widget));
+  // A semantics view is not a toplevel; ATK cannot move/resize its GTK container.
+  g_assert_false(atk_component_set_position(ATK_COMPONENT(accessible), 1, 2, ATK_XY_SCREEN));
+  g_assert_false(atk_component_set_size(ATK_COMPONENT(accessible), 3, 4));
+  g_assert_false(atk_component_set_extents(ATK_COMPONENT(accessible), 1, 2, 3, 4, ATK_XY_SCREEN));
+  assert_extents(child_object, ATK_XY_PARENT, 5, 7, 20, 10);
+  assert_extents(child_object, ATK_XY_WINDOW, 75, 97, 20, 10);
+  assert_extents(child_object, ATK_XY_SCREEN, screen_x + 75, screen_y + 97, 20, 10);
+  assert_hit(parent_object, child_object, ATK_XY_PARENT, 46, 58);
+  assert_hit(parent_object, child_object, ATK_XY_WINDOW, 76, 98);
+  assert_hit(parent_object, child_object, ATK_XY_SCREEN, screen_x + 76, screen_y + 98);
+  assert_hit(ATK_OBJECT(accessible), semantics, ATK_XY_PARENT, 76, 98);
+  assert_hit(semantics, parent_object, ATK_XY_PARENT, 46, 58);
+
+  const FlutterRect original_rect = tree.child.rect;
+  const FlutterTransformation original_child = tree.child.transform;
+  const FlutterTransformation original_parent = tree.parent.transform;
+  tree.child.rect = {0.2, 0.3, 10.4, 6.8};
+  tree.child.transform.transX = 5.25;
+  tree.child.transform.transY = 7.5;
+  tree.publish(accessible);
+  assert_extents(child_object, ATK_XY_PARENT, 5, 7, 11, 8);
+  tree.child.rect = original_rect;
+  tree.child.transform = original_child;
+  tree.child.transform.skewX = 0.5;
+  tree.child.transform.skewY = 0.25;
+  tree.publish(accessible);
+  assert_extents(child_object, ATK_XY_PARENT, 5, 7, 25, 15);
+  tree.child.transform = original_child;
+  tree.child.transform.scaleX = tree.child.transform.scaleY = 0;
+  tree.child.transform.skewX = -1;
+  tree.child.transform.skewY = 1;
+  tree.child.transform.transX = 15;
+  tree.publish(accessible);
+  assert_extents(child_object, ATK_XY_PARENT, 5, 7, 10, 20);
+  tree.child.transform = original_child;
+  tree.child.transform.scaleX = -1;
+  tree.child.transform.transX = 25;
+  tree.publish(accessible);
+  assert_extents(child_object, ATK_XY_PARENT, 5, 7, 20, 10);
+
+  // An ancestor rotation and inverse child rotation cancel before the AABB.
+  // Adding already-rounded parent boxes cannot produce these coordinates.
+  tree.parent.transform.scaleX = tree.parent.transform.scaleY = 0;
+  tree.parent.transform.skewX = -1;
+  tree.parent.transform.skewY = 1;
+  tree.child.transform = original_child;
+  tree.child.transform.scaleX = tree.child.transform.scaleY = 0;
+  tree.child.transform.skewX = 1;
+  tree.child.transform.skewY = -1;
+  tree.publish(accessible);
+  assert_extents(parent_object, ATK_XY_WINDOW, -10, 90, 80, 100);
+  assert_extents(child_object, ATK_XY_PARENT, 73, 5, 20, 10);
+  assert_extents(child_object, ATK_XY_WINDOW, 63, 95, 20, 10);
+  tree.parent.transform = original_parent;
+  tree.child.transform = identity_transform();
+  tree.child.transform.pers0 = 0.01;
+  tree.publish(accessible);
+  assert_extents(child_object, ATK_XY_PARENT, 0, 0, 17, 10);
+
+  for (guint invalid = 0; invalid < 9; invalid++) {
+    tree.child.rect = original_rect;
+    tree.child.transform = original_child;
+    tree.parent.transform = original_parent;
+    switch (invalid) {
+      case 0: tree.child.rect.left = std::numeric_limits<double>::quiet_NaN(); break;
+      case 1: tree.child.transform.transX = std::numeric_limits<double>::infinity(); break;
+      case 2: tree.child.rect.right = -1; break;
+      case 3: tree.child.transform = {}; break;
+      case 4:
+        tree.child.transform.pers0 = 0.1;
+        tree.child.transform.pers2 = -1;
+        break;
+      case 5: tree.child.rect = {-1e20, 0, 1e20, 10}; break;
+      case 6: tree.child.transform.transX = G_MAXINT; break;
+      case 7:
+        tree.child.rect = {-G_MAXINT, 0, G_MAXINT, 10};
+        break;
+      case 8:
+        tree.parent.transform.scaleX = 1e200;
+        tree.child.transform.scaleX = 1e200;
+        break;
+    }
+    tree.publish(accessible);
+    assert_geometry_unavailable(child_object);
+  }
+  tree.child.rect = original_rect;
+  tree.child.transform = original_child;
+  tree.parent.transform = original_parent;
+  tree.publish(accessible);
+  fl_accessible_node_set_parent(child, nullptr, 0);
+  assert_geometry_unavailable(child_object);
+  tree.publish(accessible);
+  g_autoptr(GPtrArray) empty = g_ptr_array_new();
+  fl_accessible_node_set_children(parent, empty);
+  assert_geometry_unavailable(child_object);
+  tree.publish(accessible);
+  g_autoptr(GtkWidget) foreign_widget = new_generation_widget();
+  g_autoptr(FlSemanticsGeneration) foreign_generation = fl_semantics_generation_new(
+      GTK_ACCESSIBLE(gtk_widget_get_accessible(foreign_widget)), engine, 7);
+  g_autoptr(FlAccessibleNode) foreign_parent = fl_accessible_node_new(foreign_generation, 9);
+  g_autoptr(GPtrArray) foreign_children = g_ptr_array_new();
+  g_ptr_array_add(foreign_children, child);
+  fl_accessible_node_set_children(foreign_parent, foreign_children);
+  fl_accessible_node_set_parent(child, ATK_OBJECT(foreign_parent), 0);
+  assert_geometry_unavailable(child_object);
+  tree.publish(accessible);
+  g_autoptr(GPtrArray) cycle_children = g_ptr_array_new();
+  g_ptr_array_add(cycle_children, parent);
+  fl_accessible_node_set_children(child, cycle_children);
+  fl_accessible_node_set_parent(parent, child_object, 0);
+  assert_geometry_unavailable(child_object);
+  fl_accessible_node_set_children(child, empty);
+  tree.publish(accessible);
+  gtk_widget_hide(widget);
+  g_assert_false(atk_component_grab_focus(ATK_COMPONENT(accessible)));
+  assert_geometry_unavailable(ATK_OBJECT(accessible));
+  assert_geometry_unavailable(child_object);
+  gtk_widget_show_all(widget);
+  assert_extents(child_object, ATK_XY_PARENT, 5, 7, 20, 10);
+
+  g_assert_true(atk_action_do_action(ATK_ACTION(parent), 0));
+  g_assert_true(atk_action_do_action(ATK_ACTION(child), 0));
+  TreeRevocation context = {engine, parent, child, 0, accessible, 5};
+  g_signal_connect(parent, "state-change::defunct", G_CALLBACK(probe_tree_revocation), &context);
+  g_signal_connect(child, "state-change::defunct", G_CALLBACK(probe_tree_revocation), &context);
+  const guint dispatches = engine->dispatches;
+  gtk_widget_destroy(window);
+  g_assert_cmpuint(context.notifications, ==, 2);
+  g_assert_cmpuint(engine->dispatches, ==, dispatches);
+  g_assert_null(gtk_accessible_get_widget(GTK_ACCESSIBLE(accessible)));
+  g_assert_false(atk_component_grab_focus(ATK_COMPONENT(accessible)));
+  assert_geometry_unavailable(ATK_OBJECT(accessible));
+  assert_geometry_unavailable(child_object);
+  g_assert_false(fl_view_accessible_bind_engine(accessible, engine, 7));
+  tree.publish(accessible);
+  g_assert_cmpint(atk_object_get_n_accessible_children(ATK_OBJECT(accessible)), ==, 0);
+  g_signal_handlers_disconnect_by_data(parent, &context);
+  g_signal_handlers_disconnect_by_data(child, &context);
+  std::puts("ENGINE_ACCESSIBLE_WIDGET_GEOMETRY=pass owner=gtk-bound early_binding=closed transforms=full parent_hit_test=consistent invalid=closed hidden=unavailable teardown=revoked");
+  std::fflush(stdout);
 }
 
 static void retire_text(AtkObject* object, TextRetirement* context) {
@@ -393,7 +703,9 @@ static void retire_text(AtkObject* object, TextRetirement* context) {
 }
 
 static void test_text_field(FlEngine* engine) {
-  g_autoptr(FlSemanticsGeneration) generation = fl_semantics_generation_new(engine, 7);
+  g_autoptr(GtkWidget) widget = new_generation_widget();
+  g_autoptr(FlSemanticsGeneration) generation = fl_semantics_generation_new(
+      GTK_ACCESSIBLE(gtk_widget_get_accessible(widget)), engine, 7);
   // Live edits must still send the actual standard-codec payloads in order.
   g_autoptr(FlAccessibleNode) live = fl_accessible_text_field_new(generation, 10);
   fl_accessible_node_set_value(live, "original");
@@ -584,13 +896,21 @@ int main() {
 #if defined(LEGACY_BASELINE)
   g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(engine, 7, 9);
 #else
-  g_autoptr(FlSemanticsGeneration) generation = fl_semantics_generation_new(engine, 7);
+  g_autoptr(GtkWidget) widget = new_generation_widget();
+  g_autoptr(FlSemanticsGeneration) generation = fl_semantics_generation_new(
+      GTK_ACCESSIBLE(gtk_widget_get_accessible(widget)), engine, 7);
   g_autoptr(FlAccessibleNode) node = fl_accessible_node_new(generation, 9);
 #endif
   g_autoptr(AtkObject) parent = ATK_OBJECT(g_object_new(ATK_TYPE_OBJECT, nullptr));
   fl_accessible_node_set_parent(node, parent, 0);
   fl_accessible_node_set_actions(node, kFlutterSemanticsActionTap);
+#if defined(LEGACY_BASELINE)
   fl_accessible_node_set_extents(node, 1, 2, 3, 4);
+#else
+  FlutterRect rect = {1, 2, 4, 6};
+  FlutterTransformation transform = identity_transform();
+  fl_accessible_node_set_geometry(node, &rect, &transform);
+#endif
   g_assert_true(atk_action_do_action(ATK_ACTION(node), 0));
   g_assert_cmpuint(engine->dispatches, ==, 1);
   g_clear_object(&parent);

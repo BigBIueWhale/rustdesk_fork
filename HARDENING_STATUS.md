@@ -1694,9 +1694,22 @@ framework commit, and captures that graph plus pinned depot-tools/CIPD publisher
 bounded, owner-only, no-clobber discovery record. It executes no fetched code and promotes no
 build input. The container is numeric-nonroot, read-only-root/capability-free, with only SDK/helper
 read mounts and its exact output directory writable; the existing outbound-only VM/entry/image
-provenance authority is reused. This operation is not yet runtime-validated. Full recursive source,
-immutable CIPD instances, Linux hooks/sysroot/Pub closure, offline GN/engine build and the source
-correction/complete uninstrumented app consumer remain OPEN.
+provenance authority is reused. Exact pushed `099453175b8dda05de87dfd725a55665a3b27be5`
+passed the actual acquisition/guest/outer transaction in 60 harness seconds (67,270 host BOOTTIME ms).
+Its 44,655-byte discovery record has SHA-256
+`585d6bed39bac2dcc99dc0d072ae53cb7fca29724777de75cddcbeb5383689b9`; all four captured
+metadata bodies independently rehashed. A second actual invocation refused before VM allocation
+without changing that record. Host listener-drift bytes were zero, input/source revalidation and
+joined cleanup passed, and no run or disk remains. Full raw serial is
+`evidence/engine-bootstrap-09945317.serial.log` (67,042 bytes, SHA-256
+`0c5186985f79a59da6eec3d75fb96606c1ad70f56c9faab58c79e166d176ecc1`), matching the independently
+published VM receipt. The auxiliary retention wrapper returned 125 on its stale single-link
+expectation after successful scratch unlink; this is not a green wrapper claim or a reason to replay
+the already-green acquisition. Initial `52b63934` refused a miscopied 65-character CIPD digest
+before publication; the literal and upfront constant-shape validation are corrected, with failure
+evidence retained and stopped scratch reconciled. Full recursive source, immutable CIPD instances,
+Linux hooks/sysroot/Pub closure, offline GN/engine build and the source correction/complete
+uninstrumented app consumer remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

@@ -2158,91 +2158,68 @@ additions/drift empty; exact stopped `run.rhRo6QXFpb` (`66306:105159802`) was re
 under the run-root lock, reclaiming 12,995,813,376 allocated bytes. Zero run/overlay remains.
 The fixture's GTK owner is renamed `toplevel`; assertions and production bytes are unchanged.
 
-Next link the reviewed source-bound engine and execute actual FlView/AT-SPI/app lifetime and
-geometry, including Wayland and edge cases, then complete the uninstrumented consumer.
-The explicit `--linux-flutter-engine-build` integration profile now follows the unchanged
-focused preparation/native unit stage with the original release GN/Ninja GTK library,
-matching `gen_snapshot` and public-header targets. Its separate two-hour build deadline,
-four jobs, 12-GiB container/16-GiB VM and 32-GiB disposable disk do not expand the ordinary
-five-minute preparation profile. Progress is bounded and emitted during the owned command;
-all inputs remain pin-bound/read-only and both VM/container networking remain absent.
-One inert archive records exact fork commit/tree, original framework/content/Git/sysroot
-closure, patch/helper/GN identities and every output digest. The existing descriptor-owned
-no-clobber publisher is extended with this fixed artifact contract; publication follows
-joined VM/exporter and input/listener/source revalidation. A retained artifact or pending
-entry refuses another producer under the existing run-admission lock, before allocation.
-Existing filesystem/CLI publication cases now also exercise the engine contract. Exact
-`0d25f0f1` passed the complete 25-second native capsule/admission transaction, including
-retained directory/file/dangling-symlink engine outputs and the existing 16-caller guard.
-The first engine transaction passed preparation, both GTK scales and the four-contract
-publisher self-test, then refused the integration driver's assumed copy stamp: the original
-GN graph has header outputs rather than that Ninja target. No full compile/link occurred.
-Outer/capture were 1/0 in 103,160 host BOOTTIME ms; complete raw serial is retained at
-`evidence/engine-link-0d25f0f1.serial.log` (SHA256
-`e2bdff1ea753c1fbc92b3e965e07f2d7afa4e4b5ad33826e6d22aa7b200e481c`).
-Exact stopped scratch was reconciled with identical listener snapshots and absent owned
-processes/image handles/mounts/sockets, reclaiming 12,987,510,784 bytes. No run/overlay remains.
-The driver now queries and validates all 26 original GN header outputs against the declared
-public-header list before forming the exact Ninja targets; no guessed alias or fallback.
-The second exact `8b84b4a0` transaction again passed preparation/native/publication cases,
-then refused the copy target's human-readable description, which includes both the output
-pattern and resolved file list. No full compilation occurred. Outer/capture were 1/0 in
-103,390 ms; full 90,190-byte serial is `evidence/engine-link-8b84b4a0.serial.log`, SHA256
-`bb633381caa8e5d8cc80a189cf4821fa17b9a676548b348345e44b735905f8bb`.
-GN's primary desc-builder/command sources establish that copy-output distinction. The
-driver now reads its structured JSON, independently checks the single target and exact
-template, and validates all 26 resolved outputs; no filename or cardinality criterion is
-relaxed. Exact stopped scratch was identity-bound reconciled after evidence/absence proof.
-Exact `62dd0ce3` accepted the structured original GN description and attempted all 4,436
-full-build steps, then failed the final GTK shared-library LTO link: the patch had removed
-the original ATK C-linkage include block, while the pinned sysroot's version declarations
-still require it. The linker reported undefined C++ `atk_get_major_version()` and
-`atk_get_minor_version()` against the library's C exports. No artifact was published.
-Outer/capture were 1/0 in 721,390 host BOOTTIME ms; complete 218,664-byte serial is
-`evidence/engine-link-62dd0ce3.serial.log`, SHA256
-`9816b1f220e4f5b6013dd167528b7b7d889edea5170935f136596a8faaeb22f9`.
-Complete listener/exporter and owner-absence evidence is sealed; identical listener snapshots
-and absent owners/image handles/mounts/sockets preceded locked exact scratch reconciliation,
-reclaiming 13,415,931,904 allocated bytes. The patch now preserves that original block;
-the focused real-root fixture calls live and retired announcements, requiring one real
-live signal and no post-retirement signal so this path cannot disappear from its link.
-No link flags, dependencies, library versions, assertion or resource bounds are relaxed.
-Exact `27f2a4f7` passed the corrected native announcement/lifetime/geometry cases at both GTK scales,
-all four upstream object compiles, and the complete original 4,436-step engine build and subsequent
-no-work dry plan. Artifact collection then refused `flutter_linux/fl_application.h`; the overall
-transaction failed, and no artifact was published. The original GN copy rule uses a hardlink, whereas
-the collector required every output to be single-link. Full 128,189-byte raw serial is
-`evidence/engine-link-27f2a4f7.serial.log`, SHA256
-`c22d43df2c2b88822d5d40a7a05f306759dc917a30886ec0567c845e3f37a4b7`;
-outer/capture were 1/0 in 724,040 host BOOTTIME ms. Complete listener/exporter and scoped
-absence records are sealed; identical listener snapshots and absent owned processes, image
-handles, mounts and sockets preceded locked identity-bound reconciliation of the sole stopped
-run, reclaiming 13,469,368,320 allocated bytes. No failed VM disk remains.
-The collector now admits a header only as an exact two-link alias of its declared source
-header, retaining both descriptors and checking complete metadata through sealing. Compiled
-ELFs remain single-link; the final archive still contains only canonical regular file bytes,
-not links. Its header inventory must equal all 26 declared names. Exact `7eb3fb4a` passed the
-eight real-filesystem opener cases, all native GTK cases and the full engine link, then collection
-failed on a stale local `fd` reference introduced during extraction of that opener. No artifact was
-published. Full 129,563-byte raw serial is `evidence/engine-link-7eb3fb4a.serial.log`, SHA256
-`5de49460f4f6a331b0c1652836c4eb735670f927eedcf2b8bc9ca86beda85b01`; outer/capture were 1/0
-in 720,840 ms. Complete evidence and unchanged listeners preceded exact stopped-run reconciliation,
-reclaiming 13,470,359,552 allocated bytes. No run/overlay remains. Collection now uses its retained
-stream descriptor; the complete production collector/sealer is also executed by the mandatory
-fast fixture, including actual regular-member archive bytes, per-file/manifest hashes, canonical
-metadata and no-clobber refusal. Tar finalization precedes flush/fsync. The ten filesystem/sealing
-cases precede preparation; synthetic ELF-header fixtures prove this boundary, not executable
-artifacts. Corrected native collection/publication and shared integration are PENDING.
-Full consumer results remain PENDING. Linking alone cannot
-prove real FlView restart, AT-SPI geometry, app presentation, shipped SDK integration,
-Wayland behavior, reproducibility equality or Android/Windows causation; these remain OPEN.
-Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept
-invalid extents. The successful resize case did not establish an image-ready build reset. Observe an actual
-production image-ready rebuild trigger before
-changing desktop dialog ownership and complete the required consumer lifecycles. The older
-named Linux peer passes remain limited to their exact source/scenarios. Original Android/Windows
-causation, sustained resources, current installed-service/LPE, native platform, reproducibility,
-release and documentation obligations remain OPEN.
+**Source-bound core engine — FULL BUILD/INERT PUBLICATION PASS; SDK/APP INTEGRATION OPEN.**
+Exact pushed `e5e5736aaa45c093e1885519c76bdd71d6ada9ae`, tree
+`81bbd3f89c9d2e7032c58ba60ab3a0e02dcfe37b`, passed the complete
+`--linux-flutter-engine-build` transaction in 726,870 host BOOTTIME ms (outer/capture 0/0).
+The unchanged preparation, ten extraction cases, all named real GTK/node/root/generation/
+text/geometry/announcement assertions at scales 1 and 2, eight patched production objects,
+four upstream test-object compiles, and four-contract real-filesystem publisher self-test
+passed before the original 4,436-step release GN/Ninja build. The matching GTK shared library
+and `gen_snapshot` linked, all 26 declared public headers were produced, and a subsequent
+dry plan required no work.
+The original ATK C-linkage include block is preserved, with live and retired announcement
+dispatch covered by the actual native fixture. Upstream test suites and actual FlView execution
+did not run.
+
+The collector admits each generated header only as the exact two-link inode of its declared
+private source header, retaining and rechecking both descriptors. Compiled ELFs remain
+single-link. The complete production collector/sealer runs in the mandatory fast ten-case
+fixture before expensive preparation; it tests real archive bytes, per-file/manifest hashes,
+canonical regular members, alias/mutation refusal and no-clobber preservation. Synthetic
+ELF-header fixtures prove that sealing boundary, not compiled product execution. Tar close
+precedes flush/fsync; no original input is relabelled, unlinked or substituted.
+
+After guest/VM/exporter joining and input/source/listener revalidation, the fixed no-clobber
+publisher committed one inert 24,207,360-byte archive under
+`.harness-state/flutter-linux-engine-artifacts/e5e5736aaa45c093e1885519c76bdd71d6ada9ae/linux-x86_64-engine/`.
+Archive SHA256 is `7d25e3b8df299289a028a232b844366da90e7d90bde8a75a84b31dfaaf479dbb`;
+manifest SHA256 is `9ffed84371780efb59c814614e82b7d141be1fca9d9f3ccb1099f72cbdff0345`.
+Independent inert GNU-tar inspection confirmed the exact 29 ordinary mode-0400, UID/GID-0,
+epoch-zero members, original GN's 26-header inventory, context against committed pins/source,
+and all 28 file sizes/digests with archive metadata unchanged. The GN-argument digest is
+producer-recorded; original argument bytes were not separately retained for independent replay.
+The actual duplicate producer refused status 1 before run allocation and preserved complete
+artifact metadata/bytes. No cached output is executable on the host.
+
+Full 129,526-byte raw serial is `evidence/engine-link-e5e5736a.serial.log`, SHA256
+`3ff753ad0918ef6a4e3fa6fa0c4a712d2c4465bfc0dc847f91d6007af6ff680c`.
+Complete-FD capture, outer, duplicate and independent-inspection records share that prefix.
+Exact-source shared authority integration also passed in 82,290 ms (outer/capture 0/0),
+including retained-artifact/run refusal, 16 callers/one winner and the existing guest-only
+authority/runtime checks. Its full 81,563-byte serial is `evidence/engine-shared-e5e5736a.serial.log`,
+SHA256 `a9617d348f89bb07d7be56360d52a291f8a71a58e08b9c369d0bae22821900a8`.
+Both strict aggregate host audits reported no harness-added listener or pre-existing-process
+drift; all owned work joined and both exact scratch roots self-retired. Detailed host snapshots
+retired with scratch; retained outer acceptance is not an independently retained snapshot.
+Earlier GN-target, ATK-linkage and collector failures remain in bounded
+`evidence/engine-link-{0d25f0f1,8b84b4a0,62dd0ce3,27f2a4f7,7eb3fb4a}.*`,
+Git history and the external audit; their inactive VM disks were explicitly reconciled.
+
+**Next: close the matching local-engine tool/SDK contract, then execute actual FlView/AT-SPI/app
+lifetime and geometry.** This archive is only the core engine, not a complete Flutter app toolkit.
+Original GN must additionally supply the generated `flutter_patched_sdk`, `sky_engine`, ICU
+and used host tools. Flutter bootstrap/Pub use `bin/cache/dart-sdk`, and Pub locates `sky_engine`
+under `bin/cache/pkg`; local-engine flags do not automatically bind those roles to the generated
+outputs. Preserve exact original Dart/frontend provenance and reuse this source-bound core,
+rather than rebuilding an unchanged engine or mixing stock caches, old AOT code or fabricated stamps.
+Actual FlView restart/disposal, removed-subtree/type-change authority, Unicode/nested edits,
+AT-SPI self-wait/geometry, Wayland, shipped SDK integration and the full uninstrumented consumer
+remain OPEN. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept
+invalid extents. Observe an actual production image-ready rebuild trigger before changing desktop
+dialog ownership; resizing alone is not that proof. Original Android/Windows causation, sustained
+resources, current installed-service/LPE, native platforms, cold equality, independent reproduction,
+external review, release and documentation obligations remain OPEN.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was

@@ -1912,6 +1912,15 @@ Its 74,999-byte full serial is `evidence/engine-prepare-434022aa.serial.log` (SH
 `ca0b3d915d3aa6b9afe7816317a445836193ec1684b678c690d21b88b9532ff4`),
 outer/capture 1/0 in 84,190 ms. Inputs stayed read-only, listeners unchanged, and exact
 joined scratch retired. No hook result is claimed.
+At `871c5669`, all 286,969 entries, 8,600,939,366 regular bytes and 4,222 links
+materialized. Original root HEAD/tree/timestamps and SDK selection checks passed, then
+`diff-files` refused the freshly populated index's unmatched stat cache. Original index
+restoration now includes `update-index --refresh` before the unchanged tree-ID and diff
+checks; it does not stage changed content or ignore missing files. Full 74,965-byte
+serial is `evidence/engine-prepare-871c5669.serial.log` (SHA256
+`19bf1089c15a252f7f6f19bceb24af855111871a38d720bd86d0f78bc9510305`),
+outer/capture 1/0 in 84,090 ms, unchanged listeners and exact joined scratch retirement.
+Original hooks and complete preparation remain OPEN.
 
 Next correct local geometry in the reviewed, source-bound Flutter dependency, cover every required
 component geometry operation and lifetime/coordinate case, then execute the complete uninstrumented

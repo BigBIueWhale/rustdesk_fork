@@ -338,6 +338,7 @@ def prepare():
                     == (metadata["sdk_engine_version"] + "\n").encode(),
                     "original shipped SDK selection differs")
         command(git + ["read-tree", "HEAD"], cwd, env, deadline)
+        command(git + ["update-index", "--refresh", "--"], cwd, env, deadline)
         require(command(git + ["write-tree"], cwd, env, deadline).decode().strip() == entry["tree"],
                 "original tracked index differs")
         command(git + ["diff-files", "--quiet", "--"], cwd, env, deadline)

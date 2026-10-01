@@ -1548,7 +1548,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
  }
 
  // Implements AtkEditableText::set_text_contents.
-@@ -515,11 +569,21 @@
+@@ -515,11 +569,30 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
 
@@ -1557,25 +1557,34 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
 -
 -  perform_set_text_action(self, gtk_entry_buffer_get_text(self->buffer));
 -  perform_set_selection_action(self, *position, *position);
-+  if (!has_live_buffer(self)) {
++  if (!has_live_buffer(self) || string == nullptr || position == nullptr ||
++      length < -1 || *position < 0 ||
++      static_cast<guint>(*position) > gtk_entry_buffer_get_length(self->buffer) ||
++      !g_utf8_validate(string, length, nullptr)) {
 +    return;
 +  }
++  const glong n_chars = g_utf8_strlen(string, length);
++  if (n_chars == 0 || n_chars > G_MAXINT - *position) {
++    return;
++  }
++  const gint start_position = *position;
 +  g_autoptr(FlAccessibleTextField) owner =
 +      FL_ACCESSIBLE_TEXT_FIELD(g_object_ref(self));
 +  g_autoptr(GtkEntryBuffer) buffer = GTK_ENTRY_BUFFER(g_object_ref(self->buffer));
-+  const gint next_position = *position +
-+      gtk_entry_buffer_insert_text(buffer, *position, string, length);
-+  if (self->buffer != buffer ||
++  const guint inserted = gtk_entry_buffer_insert_text(
++      buffer, start_position, string, static_cast<gint>(n_chars));
++  if (inserted == 0 || self->buffer != buffer ||
 +      !perform_set_text_action(self, gtk_entry_buffer_get_text(buffer))) {
 +    return;
 +  }
++  const gint next_position = start_position + static_cast<gint>(inserted);
 +  if (perform_set_selection_action(self, next_position, next_position)) {
 +    *position = next_position;
 +  }
  }
 
  // Implements AtkEditableText::delete_text.
-@@ -529,9 +593,17 @@
+@@ -529,9 +602,17 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
 
@@ -1596,7 +1605,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
    perform_set_selection_action(self, start_pos, start_pos);
  }
 
-@@ -542,7 +614,11 @@
+@@ -542,7 +623,11 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
 
@@ -1609,7 +1618,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
 
    fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(editable_text),
                                      kFlutterSemanticsActionCopy, nullptr);
-@@ -555,7 +631,11 @@
+@@ -555,7 +640,11 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
 
@@ -1622,7 +1631,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
 
    fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(editable_text),
                                      kFlutterSemanticsActionCut, nullptr);
-@@ -567,7 +647,11 @@
+@@ -567,7 +656,11 @@
    g_return_if_fail(FL_IS_ACCESSIBLE_TEXT_FIELD(editable_text));
    FlAccessibleTextField* self = FL_ACCESSIBLE_TEXT_FIELD(editable_text);
 
@@ -1635,7 +1644,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
 
    fl_accessible_node_perform_action(FL_ACCESSIBLE_NODE(editable_text),
                                      kFlutterSemanticsActionPaste, nullptr);
-@@ -575,7 +659,7 @@
+@@ -575,7 +668,7 @@
 
  static void fl_accessible_text_field_class_init(
      FlAccessibleTextFieldClass* klass) {
@@ -1644,7 +1653,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
    FL_ACCESSIBLE_NODE_CLASS(klass)->set_value =
        fl_accessible_text_field_set_value;
    FL_ACCESSIBLE_NODE_CLASS(klass)->set_text_selection =
-@@ -623,6 +707,11 @@
+@@ -623,6 +716,11 @@
        self->buffer, "inserted-text",
        G_CALLBACK(+[](FlAccessibleTextField* self, guint position, gchar* chars,
                       guint n_chars) {
@@ -1656,7 +1665,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
          g_signal_emit_by_name(self, "text-insert", position, n_chars, chars,
                                nullptr);
        }),
-@@ -631,6 +720,11 @@
+@@ -631,6 +729,11 @@
    g_signal_connect_object(self->buffer, "deleted-text",
                            G_CALLBACK(+[](FlAccessibleTextField* self,
                                           guint position, guint n_chars) {
@@ -1668,7 +1677,7 @@ diff --git a/engine/src/flutter/shell/platform/linux/fl_accessible_text_field.cc
                              g_autofree gchar* chars = atk_text_get_text(
                                  ATK_TEXT(self), position, position + n_chars);
                              g_signal_emit_by_name(self, "text-remove", position,
-@@ -639,10 +733,15 @@
+@@ -639,10 +742,15 @@
                            self, G_CONNECT_SWAPPED);
  }
 

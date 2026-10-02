@@ -2275,9 +2275,9 @@ archive identities and exact comparison command are retained in the external aud
 supports retaining the authenticated shipped bootstrap/Pub Dart SDK unchanged, not generated
 platform/sky/ICU/host-tool closure. No duplicate SDK or fabricated cache stamp is needed.
 The retained `e5e5736a` core predates both insertion and UTF-16 selection corrections above;
-it remains an immutable named baseline, not current-provider evidence. The next toolkit producer must build
-the matching corrected core and required original-GN tool/SDK outputs together after explicitly
-reconciling the old artifact state, without overwriting or relabelling it. Do not repeat a full
+it remains an immutable named baseline, not current-provider evidence. The matching toolkit below builds
+the corrected core and required original-GN tool/SDK outputs together after explicitly
+archiving the old artifact state, without overwriting or relabelling it. Do not repeat a full
 core build for a focused native-unit check or mix stock engine caches and old AOT code.
 The producer now queries original GN descriptions for release platform kernels, ICU,
 `sky_engine`, font/constant/shader tools and the frontend snapshot before selecting the complete
@@ -2308,49 +2308,46 @@ discovers native-asset package metadata from `Directory.current`,
 not the explicit compilation package-config argument. Its original GN action runs outside the
 Dart workspace. The integration preparation now executes that exact bootstrap target before
 production-object tests and the expensive engine link, retaining bounded workspace-metadata
-diagnostics. This early preflight and a source-correct working-directory remedy are not yet
-natively verified as a successful build. Exact `9c1a1b86`, tree
-`ab5ad8f481f2e925c13fce6b9d7121cd4205646f`, reproduced the failure in 132,980 host BOOTTIME ms
-(outer/capture 1/0), with a one-action plan and no production-object or full-link work. Both
-engine and Dart workspace configurations/graphs were present; the ancestor framework had neither.
-Complete 82,470-byte serial is `evidence/engine-bootstrap-preflight-9c1a1b86.serial.log`, SHA256
-`efee3a9c826146abb0b688afc4efca0d2f87f9cfa8901ae73e47d64b5e339fbe`. Actual host snapshots
-were identical with empty additions/drift; joined, identity-bound retirement reclaimed
-12,980,985,856 allocated bytes and left no run/overlay. This disproves the missing-graph hypothesis.
+diagnostics. Exact `9c1a1b86` reproduced that failure with both engine and Dart workspace
+configurations/graphs present, disproving the missing-graph hypothesis. Its full serial and
+exact stopped-run retirement are retained in `evidence/engine-bootstrap-preflight-9c1a1b86.*`
+and the external audit; no failed VM disk is retained.
 The producer now applies a helper-bound, three-file source correction to the original GN/Python
 AOT action: its working directory is the owning Dart workspace, while compiler input/output,
 package-config and depfile paths are rebased for that directory. The selected SDK, AOT flags,
 source inputs and output roles remain unchanged; the manifest binds the correction digest.
-Successful native execution of this corrected recipe and full-toolkit publication remain OPEN.
-Exact `c5d562c4`, tree `f19e4a27f3b67fc40e359f354aae884913edab3b`, applied the three-file
-patch and generated the original GN recipe, but its one-action bootstrap preflight failed:
-`Unable to write snapshot file` / `AOT compilation failed` (outer/capture 1/0,
-108,750 host BOOTTIME ms). No Pub/socket diagnostic appeared in this attempt; that is not
-successful compilation or complete causal closure. The 81,509-byte full serial is retained at
-`evidence/engine-bootstrap-workspace-c5d562c4.serial.log`, SHA256
-`1e095e7732dbbb84a343ea09f8ab425f042d6a9bdc54d0a1954e56f961a4e4ef`.
-Actual host snapshots were identical, with empty additions/drift. After stopped-owner,
-socket, mount and disk-handle checks, exact locked retirement of the failed run reclaimed
-12,981,837,824 allocated bytes. No full toolkit or artifact was published.
-The selected CLI creates system temporary storage for kernel/snapshot staging; its
-snapshot writer reports this error after a failed write. The unchanged container `/tmp`
-is a 16-MiB housekeeping tmpfs. Compiler scratch now belongs to a fresh UID/GID-1000,
-mode-0700 directory in the existing disposable `/work` build volume, with unchanged
-512-MiB per-file, VM-disk, memory and deadline bounds. The preflight requires its identity
-and emptiness after compilation. Exact `18feaa87`, tree
-`00ca0045a98f2bf7a8e2a62f582815d1e92ef9c8`, compiled the original bootstrap action in
-13.36 guest seconds, cleaned that exact temporary directory and produced an 18,314,664-byte
-x86_64 ELF (SHA256 `f18a8bf0c40806c1eb7b3a949a71e6fb9f9c4c0f63a05e49886bed80c1a6eef4`).
-The complete transaction nevertheless failed its mandatory second dry plan: Ninja expected
-`bootstrap_compile_platform.exe`, but the emitted depfile named
-`../../../out/host_release/bootstrap_compile_platform.exe`. Full 81,800-byte serial is
-`evidence/engine-compiler-scratch-18feaa87.serial.log`, SHA256
-`a2cc1814f55104ada786b1208f06f23950a9e32bbcedeebeef363260f6231d4c` (outer/capture 1/0,
-108,980 host BOOTTIME ms). Actual snapshots were identical/additions and drift empty;
-joined exact stopped-run retirement reclaimed 13,003,337,728 allocated bytes. The unchanged
-compiler now receives its supported extra-kernel `--depfile-target` option naming the
-original Ninja-relative output, independently of its workspace-relative output path.
-Dependency tracking is retained; native current-plan/full toolkit execution remains OPEN.
+The selected CLI stages kernel/snapshot data in system temporary storage. Compiler scratch
+now belongs to a fresh UID/GID-1000 mode-0700 directory in the existing disposable `/work`
+build volume; the 16-MiB housekeeping `/tmp`, per-file/disk/memory/deadline bounds are unchanged.
+The preflight requires exact scratch identity and emptiness after the real compilation.
+The compiler receives its supported extra-kernel `--depfile-target` naming the original
+Ninja-relative output, separately from its workspace-relative output path. Dependency tracking
+and mandatory second dry-plan freshness remain. Earlier snapshot-write and depfile-target
+failures, full raw serials, actual host snapshots and exact stopped-run retirement records
+remain in `evidence/engine-bootstrap-workspace-c5d562c4.*`,
+`evidence/engine-compiler-scratch-18feaa87.*` and the external audit, not as retained VM disks.
+
+**Matching toolkit — FULL PRODUCER PASS; SDK/VIEW/APP CONSUMER OPEN.** Exact pushed
+`15cf93dd3c2f51fefb2b1337c04d92d397b6c900`, tree `808cc448159d97a85713a7165eece62be854e9f1`,
+passed the complete integration in 769,270 host BOOTTIME ms (outer/capture 0/0).
+Original bootstrap compilation and its second dry plan, every existing real GTK/Unicode/
+lifetime assertion at scales 1 and 2, eight patched production objects, four upstream
+test-object compiles, and the original 4,793-action toolkit build plus final no-work plan passed.
+The sole inert 89,077,760-byte archive holds 325 files: matching corrected core, 26 public
+headers, platform dills, ICU, generated sky_engine, font/constant/shader tools and frontend AOT.
+It is retained under `.harness-state/flutter-linux-engine-artifacts/15cf93dd3c2f51fefb2b1337c04d92d397b6c900/linux-x86_64-engine/`;
+archive SHA256 is `8505f215ede32dd547074d3667f899c10f50bc9603dcfa888835edc272d16e40`,
+manifest SHA256 `16cbd9dd1f0c10503536b0261eadbb36a2b621e140996da01fd9a93e9a1231e1`.
+Independent inert inspection matched the complete 326-member canonical regular inventory,
+archive/manifest hashes, source/helper context and the embedded original GN-argument digest.
+Complete 134,198-byte raw serial is `evidence/engine-bootstrap-depfile-15cf93dd.serial.log`,
+SHA256 `1af47cd5ff92bc8dfbbaf1fd510f59cea20fb4f46a9825536da81c4a6e33d0d4`;
+outer and whole-FD capture receipts are sealed 0400. Inputs remained unchanged, the aggregate
+host audit reported no added listener or process drift, all owners joined and exact scratch
+self-retired. Detailed host snapshots retired with scratch, not independently retained proof.
+Upstream suites, actual FlView/AT-SPI and app execution did not run. Next implement and execute
+the matching SDK/consumer role projection without stock-cache fallback; the manifest correctly
+records bootstrap SDK projection and app execution as unexecuted.
 No empty package graph, SDK substitution, network allowance or version-check bypass is used.
 The shipped bootstrap SDK is not duplicated; its consumer projection remains explicitly unexecuted.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
@@ -2485,11 +2482,12 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   passed in 71 seconds with no added host listener or process drift and joined, residue-free cleanup;
   a concurrent outer invocation also refused without creating another root. User-authorized removal of
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
-  diagnostics are retained. Latest successful joined cleanup is recorded in the UTF-16 selection
+  diagnostics are retained. Latest successful joined cleanup is recorded in the matching-toolkit
   disposition above; earlier failed runs were explicitly reconciled after evidence retention.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 629,493,760 allocated bytes (0.586 GiB) after the latest
-  stopped-run reconciliation recorded above. The successful
+  small evidence records occupy 629,637,120 allocated bytes (0.586 GiB) after the latest
+  successful toolkit run self-retired. Its separate intentional toolkit capsule occupies
+  89,096,192 allocated bytes (0.083 GiB), not a retained VM disk. The successful
   `9f3f0df2` direct-GTK provider run joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks

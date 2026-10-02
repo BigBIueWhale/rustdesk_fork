@@ -2413,8 +2413,14 @@ retained output descriptors as inherited descriptors. The small fixture did not 
 The SDK public entry now keeps the original 64-inherited-descriptor limit while the private
 recheck uses the materializer's already reserved bounded budget; it does not relax the limit.
 A nine-group toolkit suite adds a 289-sky-file real-filesystem A/B case for old reentry refusal,
-corrected projection and descriptor finality. **That correction and the full app consumer
-remain unverified at this checkpoint.** Failure raw serial
+corrected projection and descriptor finality. Exact pushed `577e5ccde71b948cbde78112758564543e55db04`,
+tree `d6e1bf4545ae73b8465d5470ae6fe3f58e3670ac`, passed all 23 app, six SDK and nine
+toolkit groups in the 78-second zero-NIC transaction, with joined self-retirement and
+zero host listener addition/pre-existing-process drift. The real 289-sky-file case
+observed old reentry refusal and corrected projection with descriptor finality while
+keeping the 64-entry limit. Raw serial `evidence/engine-owned-fds-577e5ccd.serial.log`
+has SHA256 `16eb2cb41f32f75cdf9a39fcd97cd8bbf18fa5fdd07f2d2017adf75b3c5f50dd`.
+**The full app consumer remains unverified.** Failure raw serial
 `evidence/app-local-engine-6eb68870-build.serial.log` has SHA256
 `8ad9da820db783955f997d6b877b2be7fb4a667c98631c4cf86cc07408d9d9d1`.
 No app compiled; no fixture or partial projection establishes RustDesk pixels or engine behavior.

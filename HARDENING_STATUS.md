@@ -35,7 +35,7 @@ not a claim that every target OS has executed them.
 | Retained evidence | What it establishes—and does not establish |
 | --- | --- |
 | Portable Linux server transaction (`250e775b9a88a62a980937e1f278ad053f2d9d58`) | Real nonroot parked/listening, CPace, Remote/FileTransfer admission, capacity/refusal, and joined-shutdown behavior in confinement. It is not an installed root service or current release artifact. |
-| Named Linux full-peer lifecycles (`86728112ab3d4c7a2ed09ed2aa02609e3e0ef94d`) | One exact Flutter 3.47.5 bundle including the corrected shared overlay passed six uninstrumented lifecycles in a complete 1,574-second zero-NIC transaction. Real password prompts, visible X11 pixels, eighteen 2/6/12-second focus-loss cycles on unchanged connections, eighteen server-generation reconnects, sampled resources, and joined viewer/server teardown passed. The shared full-counter publication-history oracle replaces the earlier repeating palette/first-sighting ages; measured accepted pixel age was at most 466 ms. Complete raw serial and outer receipt are retained below. This is a named Linux 640x480/4-Hz scenario, not Android/Windows causation, sustained soak, cross-version, installed-service, cold-equality, or release-artifact closure. |
+| Named Linux full-peer lifecycles (app `a3755044`; harness `7f6649f0`) | The exact retained Flutter 3.47.5 bundle, independently selected patched engine and shared overlay passed six uninstrumented viewer lifecycles in a 458-second zero-NIC replay without rebuilding the app. Real password prompts, visible publication-bound X11 pixels, eighteen 2/6/12-second focus-loss cycles on unchanged connections, eighteen server-generation reconnects, eighteen native resizes of the same accessible dialog, sampled resource bounds and joined teardown passed. Maximum measured pixel age was 444 ms; focus recovery at most 8 ms and first fresh reconnect pixels at most 367 ms. Complete raw serial and outer receipt are retained below. This named Linux 640x480/4-Hz scenario does not establish Android/Windows causation, the full FlView restart/dispose/subtree/Wayland matrix, sustained soak, cross-version, installed-service, cold-equality or release-artifact closure. |
 | Exact-current Linux filesystem regressions (`76cc2fefc6470aeaeb76b50d34b4dc377b39ba49`) | A zero-NIC VM and networkless guest-only container executed all 57 `hbb_common::fs` tests on pinned Rust 1.75, including retained-directory, symlink-parent, path-swap, bounded-depth, create, remove, and rename authority cases. This is Linux library behavior, not Windows junction/handle, installed peer, end-to-end transfer, or release-artifact evidence. |
 | Exact clean Flutter model transaction (`ca5690869c4c665c2d5a17a8e6baeeb664afbb78`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 18 focused suites and 138 tests in 278 seconds on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. In addition to presentation-generation and completion-order coverage, the executed tests prove one isolate-wide three-conversion authority across distinct queue/session replacement, latest-only pending data, FIFO live waiters, exact cancelled-waiter removal, and visible bounded-waiter exhaustion. No host listener was added and cleanup joined. This is exact Dart/model and generated-bridge evidence, not target-native behavior by itself. |
 | Exact Android owner states (`a2cbbbd27228aa053994a2f65ee075baf7e88f68`) | A zero-NIC VM and networkless guest-only container compiled seven exact production Kotlin state classes with pinned Kotlin 2.0.21 and passed 15 scenarios with 293 assertions over closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation. This is pure owner-state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, JNI, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
@@ -1708,9 +1708,8 @@ published VM receipt. The auxiliary retention wrapper returned 125 on its stale 
 expectation after successful scratch unlink; this is not a green wrapper claim or a reason to replay
 the already-green acquisition. Initial `52b63934` refused a miscopied 65-character CIPD digest
 before publication; the literal and upfront constant-shape validation are corrected, with failure
-evidence retained and stopped scratch reconciled. Full recursive source, immutable CIPD instances,
-Linux hooks/sysroot/Pub closure, offline GN/engine build and the source correction/complete
-uninstrumented app consumer remain OPEN.
+evidence retained and stopped scratch reconciled. This is bootstrap discovery only; complete
+toolkit and named app-consumer dispositions are below.
 
 The closed `--maintenance-stage-flutter-linux-engine-bootstrap` request now stages
 depot-tools from the exact DEPS-selected Git commit/tree and the publisher-SHA256 CIPD
@@ -1810,13 +1809,12 @@ the completed candidate unchanged. Earlier failed partials were identity-bound r
 evidence retention, not reused; their bounded records remain in the audit/evidence, not this ledger.
 The sole completed candidate occupies 8,038,645,760 allocated bytes (~7.49 GiB).
 
-**Complete engine build closure remains OPEN.** Acquisition ran no hooks and its manifest says
+Acquisition ran no hooks and its manifest says
 `complete_engine_closure=false`. Source review of the acquired root confirms three SHA256-bound
 sysroot downloads and offline package/version/Pub hooks. `tools/gn::setup_git_versions` also
 requires original engine/Skia/Dart Git identities and the root content-aware hash; plain source
-archives do not provide those Git objects. Close that exact metadata/input contract without fake
-repositories, ambient Git lookup, or disabled version checks, then materialize and build offline.
-Production geometry correction and the complete uninstrumented consumer remain OPEN.
+archives do not provide those Git objects. The completed metadata/input contract, offline toolkit
+build and named geometry/consumer evidence are recorded below.
 
 The closed `--maintenance-stage-flutter-linux-engine-git-metadata` operation separately
 packages the three original graph-selected Flutter/Dart/Skia commits. It authenticates the
@@ -1853,13 +1851,11 @@ allocation; candidate identity/manifest stayed unchanged. Its auxiliary checker 
 on an incorrect expected diagnostic; reinspection of saved output and state passed, without
 repeating the producer. No run/overlay remains; the completed inert candidate occupies
 154,370,048 allocated bytes (~0.144 GiB). This closes the original version-metadata prerequisite,
-not complete build closure. Source materialization must establish original tracked indexes
-before hooks that query `git ls-files`. Pinned engine and Dart workspace specifications use
-path overrides for DEPS-managed packages; test their actual offline resolves before assuming
-another hosted Pub acquisition is needed. Offline GN/engine build, production
-geometry correction and complete uninstrumented consumer remain OPEN.
+not complete build closure. Original tracked indexes are required by hooks that query
+`git ls-files`; pinned engine and Dart workspace specifications use path overrides for
+DEPS-managed packages. Their actual offline materialization/build evidence is below.
 
-**Source-selected sysroots — ACQUISITION PASS; OFFLINE BUILD CLOSURE OPEN.**
+**Source-selected sysroots — acquisition evidence.**
 The closed `--maintenance-stage-flutter-linux-engine-sysroots` operation authenticates
 the independent graph manifest and its original root-source archive, reads only the
 original `sysroots.json` as data, and checks all three selected x64/arm64/riscv64 hooks
@@ -1884,8 +1880,7 @@ Inputs/listeners were unchanged, external listener-drift bytes zero, all owned p
 and successful scratch self-retired. An actual duplicate producer refused status 1 before
 allocation and preserved the candidate. No run/overlay remains; this sole inert candidate
 occupies 60,178,432 allocated bytes (~0.056 GiB). This closes acquisition only.
-The offline materialization/hook result is recorded below; the engine build, production
-geometry correction and complete uninstrumented consumer remain OPEN.
+Offline materialization, hooks, toolkit build and the named app consumer are recorded below.
 
 **Offline materialization and original hooks — NATIVE PASS.** Exact pushed
 `0213a9017eeb6a1a4879ac52682c41060e972c32`, tree `12482c38746dc6b3bd046ac934496272dfb4a850`,
@@ -2263,8 +2258,8 @@ Earlier GN-target, ATK-linkage and collector failures remain in bounded
 `evidence/engine-link-{0d25f0f1,8b84b4a0,62dd0ce3,27f2a4f7,7eb3fb4a}.*`,
 Git history and the external audit; their inactive VM disks were explicitly reconciled.
 
-**Next: close the matching local-engine tool/SDK contract, then execute actual FlView/AT-SPI/app
-lifetime and geometry.** This archive is only the core engine, not a complete Flutter app toolkit.
+**Matching local-engine tool/SDK contract.** That earlier archive is only the core engine,
+not a complete Flutter app toolkit.
 Original GN must additionally supply the generated `flutter_patched_sdk`, `sky_engine`, ICU
 and used host tools. Flutter bootstrap/Pub use `bin/cache/dart-sdk`, and Pub locates `sky_engine`
 under `bin/cache/pkg`; local-engine flags do not automatically bind those roles to the generated
@@ -2349,11 +2344,11 @@ SHA256 `1af47cd5ff92bc8dfbbaf1fd510f59cea20fb4f46a9825536da81c4a6e33d0d4`;
 outer and whole-FD capture receipts are sealed 0400. Inputs remained unchanged, the aggregate
 host audit reported no added listener or process drift, all owners joined and exact scratch
 self-retired. Detailed host snapshots retired with scratch, not independently retained proof.
-Upstream suites, actual FlView/AT-SPI and app execution did not run. Next implement and execute
-the matching SDK/consumer role projection without stock-cache fallback; the manifest correctly
-records bootstrap SDK projection and app execution as unexecuted.
+Upstream suites, actual FlView/AT-SPI and app execution did not run in that collector transaction.
+Its manifest correctly records bootstrap SDK projection and app execution as unexecuted;
+the subsequent complete projection and named app-consumer results are below.
 No empty package graph, SDK substitution, network allowance or version-check bypass is used.
-The shipped bootstrap SDK is not duplicated; its consumer projection remains explicitly unexecuted.
+The shipped bootstrap SDK is not duplicated.
 Pinned-source consumer review confirms that local-engine frontend lookup uses the selected Dart
 SDK's snapshot and host sky_engine lookup still uses the bootstrap cache. Independent inert
 archive reads matched that 17,153,376-byte frontend and all 289 generated sky_engine files
@@ -2470,8 +2465,8 @@ Full 136,208-byte `evidence/shader-toolkit-build-63493887.serial.log` has SHA256
 `e0c175c175586f3c789462886234105b137aec93880bf97f55a0cdb4c149cea3`.
 Inputs were unchanged, the audit recorded no harness-added listener and one pre-existing-process
 drift (not zero), all owned work joined and the scratch self-retired. Detailed host snapshots
-retired with scratch; the outer retains aggregate audit acceptance. **FlView/AT-SPI execution
-and the complete uninstrumented app consumer remain OPEN.** No shaders
+retired with scratch; the outer retains aggregate audit acceptance. **The full FlView
+restart/dispose/subtree/Wayland and sustained consumer matrix remains OPEN.** No shaders
 are skipped and no stock-cache fallback is introduced.
 The actual app producer at pushed `a375504416e96b209f507436d8cf65f6f3047c7e`, tree
 `0b9c796eeacd45ba52ef2f316d4ed181aab32c07`, passed in 912 harness seconds with outer/capture 0/0.
@@ -2487,7 +2482,21 @@ Inputs remained unchanged; no harness listener was added and one pre-existing-pr
 was recorded. All owned work joined and scratch self-retired; detailed host snapshots retired
 with scratch. This closes that named producer's build-input defect, not pixels, FlView lifetime,
 AT-SPI self-wait/geometry, installed/LPE, Android/Windows causation, soak or release evidence.
-Next replay this exact inert capsule through the unchanged full six-lifecycle peer consumer.
+That exact capsule subsequently passed the unchanged full six-lifecycle peer/GTK consumer at
+harness `7f6649f0829ac880f39f34510a189e4febd73185`, tree `8d677f5dc6478948fac0295fc9e585bcde300f50`.
+Outer/capture were 0/0 in 458 seconds; no app rebuild or viewer instrumentation. All eighteen
+focus cycles, eighteen reconnects and eighteen native same-accessible dialog resizes passed,
+including actual AT-SPI geometry and explicit dialog retirement. Resource bounds and every
+viewer/server join were mandatory. Maximum pixel age was 444 ms, focus recovery 8 ms and
+first fresh reconnect pixels 367 ms. Full 511,118-byte raw serial
+`evidence/shader-app-local-engine-a3755044-replay-7f6649f0.serial.log` has SHA256
+`1a4fd8eed2827f158e3a89c9251c7793fef63f1ce6492936110a8b980c19c9c3`.
+All retained app/input bytes remained unchanged; no harness listener addition or pre-existing
+process drift, joined VM/container/exporter/capture cleanup and automatic scratch retirement.
+Detailed host snapshots retired with scratch; the outer retains aggregate audit acceptance.
+This is the named app's actual Linux peer/GTK behavior, not a strict stock/patched app A/B,
+the full FlView lifetime/Wayland matrix, Android/Windows causation, sustained/native installed
+service/LPE, release-artifact, cold-equality or independently administered reproduction proof.
 Full 365,180-byte failure raw serial is
 `evidence/app-local-engine-32bff424-build.serial.log`, SHA256
 `4f80aa87e8ce895ba0abcca23700e9f492553887f242094dba2ac805be688c29`.

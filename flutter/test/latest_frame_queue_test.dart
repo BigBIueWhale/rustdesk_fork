@@ -378,6 +378,101 @@ void main() {
     expect(pool.waitingDrains, 0);
   });
 
+  test('pool-waiting displays remain inside the queue-wide key bound', () async {
+    final pool =
+        LatestFrameDrainPool(maxConcurrentDrains: 1, maxWaitingDrains: 4);
+    final releaseBlocker = Completer<void>();
+    final blocker =
+        LatestFrameQueue<String, int, String>('blocker', drainPool: pool);
+    final blocked =
+        blocker.submit('blocker', 0, 'blocked', (_) => releaseBlocker.future);
+    final queue = LatestFrameQueue<String, int, String>('viewer',
+        maxKeys: 1, drainPool: pool);
+    final errors = <Object>[];
+    final invoked = <String>[];
+    Future<void> present(String frame) async {
+      invoked.add(frame);
+    }
+
+    final first = queue.submit('viewer', 0, 'waiting', present);
+
+    try {
+      expect(pool.activeDrains, 1);
+      expect(pool.waitingDrains, 1);
+      final admitted = queue.submitObserved('viewer', 1, 'overflow', present,
+          onError: (error, stackTrace) => errors.add(error));
+      expect(admitted, isFalse);
+      expect(errors, [isA<StateError>()]);
+      expect(await first, LatestFrameDisposition.retired);
+      expect(invoked, isEmpty);
+      expect(pool.waitingDrains, 0);
+      expect(pool.activeDrains, 1);
+    } finally {
+      queue.retire('viewer');
+      releaseBlocker.complete();
+      expect(await blocked, LatestFrameDisposition.presented);
+      await Future<void>.delayed(Duration.zero);
+      expect(pool.activeDrains, 0);
+      expect(pool.waitingDrains, 0);
+    }
+  });
+
+  for (final recover in [false, true]) {
+    final lifetime = recover ? 'detached' : 'running';
+    test('$lifetime and waiting displays share one distinct-key budget',
+        () async {
+      final pool =
+          LatestFrameDrainPool(maxConcurrentDrains: 2, maxWaitingDrains: 4);
+      final releaseBlocker = Completer<void>();
+      final releaseRunning = Completer<void>();
+      final blocker =
+          LatestFrameQueue<String, int, String>('blocker', drainPool: pool);
+      final blocked =
+          blocker.submit('blocker', 0, 'blocked', (_) => releaseBlocker.future);
+      final queue = LatestFrameQueue<String, int, String>('viewer',
+          maxKeys: 2, drainPool: pool);
+      final running =
+          queue.submit('viewer', 0, 'running', (_) => releaseRunning.future);
+      final errors = <Object>[];
+      final invoked = <String>[];
+      Future<void> present(String frame) async {
+        invoked.add(frame);
+      }
+
+      try {
+        expect(pool.activeDrains, 2);
+        if (recover) {
+          expect(queue.suspend('viewer'), isTrue);
+          expect(await running, LatestFrameDisposition.retired);
+          expect(queue.recover('viewer'), isTrue);
+        }
+        // A successor for the same key must not consume another key slot.
+        final sameKey = queue.submit('viewer', 0, 'same-key', present);
+        final otherKey = queue.submit('viewer', 1, 'other-key', present);
+        expect(pool.waitingDrains, recover ? 2 : 1);
+        final admitted = queue.submitObserved('viewer', 2, 'overflow', present,
+            onError: (error, stackTrace) => errors.add(error));
+        expect(admitted, isFalse);
+        expect(errors, [isA<StateError>()]);
+        expect(await running, LatestFrameDisposition.retired);
+        expect(await sameKey, LatestFrameDisposition.retired);
+        expect(await otherKey, LatestFrameDisposition.retired);
+        expect(invoked, isEmpty);
+        expect(pool.waitingDrains, 0);
+        // Retirement revokes publication, not uncancellable engine ownership.
+        expect(pool.activeDrains, 2);
+      } finally {
+        queue.retire('viewer');
+        releaseRunning.complete();
+        releaseBlocker.complete();
+        expect(await blocked, LatestFrameDisposition.presented);
+        await Future<void>.delayed(Duration.zero);
+        expect(pool.activeDrains, 0);
+        expect(pool.waitingDrains, 0);
+      }
+    });
+  }
+
   test('parallel failure retires its peer and retained successor', () async {
     final failedEntered = Completer<void>();
     final peerEntered = Completer<void>();

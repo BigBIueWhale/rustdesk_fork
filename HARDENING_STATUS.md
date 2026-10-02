@@ -2357,9 +2357,17 @@ archive reads matched that 17,153,376-byte frontend and all 289 generated sky_en
 `linux-flutter-artifact.py::verify_engine_sdk_roles` now supplies a VM-gated, read-only exact
 manifest/context/content/inventory proof for those reusable SDK roles, including retained
 directory/file identities, mount closure, link/ACL refusal and Pub's higher-priority
-`packages/sky_engine` shadow refusal. Six real-filesystem regression
-groups are added to the focused capsule entry; native execution is pending. This is a consumer
-prerequisite, not actual toolkit projection, Flutter invocation, FlView or app evidence.
+`packages/sky_engine` shadow refusal. Exact pushed `8b66e69fe7cc4912939a59ca7e09ce6c99b84b43`,
+tree `b1bba2be6372e80ec09605875c70d3ac64e57552`, passed all six real-filesystem regression
+groups (15.120 seconds) plus the existing 20 capsule cases and one-run admission tests in the
+43,930-ms zero-NIC VM transaction. The SDK groups use a manifest/filesystem fixture, not the
+actual Flutter SDK; the archive byte comparison above is separate inert evidence. Complete
+73,074-byte raw serial is `evidence/engine-sdk-shadow-8b66e69f.serial.log`, SHA256
+`ee0bc5fc36dd08c14769b00f0fa67cb61d3b1619f7010ef63786c3dc1ff92a38`; outer and complete-FD
+capture receipts are retained. Inputs were unchanged, aggregate listener addition/process drift
+zero, all owners joined and scratch self-retired. Detailed host snapshots retired with scratch.
+This is a consumer prerequisite, not actual toolkit projection, Flutter invocation, FlView or
+app evidence. The app builder still lacks the local-engine/materializer and capsule-role wiring.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
 AT-SPI self-wait/geometry, Wayland, shipped SDK integration and the full uninstrumented consumer
 remain OPEN. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept
@@ -2495,8 +2503,8 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   diagnostics are retained. Latest successful joined cleanup is recorded in the matching-toolkit
   disposition above; earlier failed runs were explicitly reconciled after evidence retention.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 629,637,120 allocated bytes (0.586 GiB) after the latest
-  successful toolkit run self-retired. Its separate intentional toolkit capsule occupies
+  small evidence records occupy 629,800,960 allocated bytes (0.587 GiB) after the focused
+  SDK-role runs self-retired. The separate intentional toolkit capsule occupies
   89,096,192 allocated bytes (0.083 GiB), not a retained VM disk. The successful
   `9f3f0df2` direct-GTK provider run joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count

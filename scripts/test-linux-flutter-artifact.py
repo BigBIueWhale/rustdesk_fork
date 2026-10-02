@@ -460,7 +460,7 @@ class EngineMaterializationTests(unittest.TestCase):
         self.capsule = directory(self.case / "engine-capsule")
         self.execution = directory(self.case / "engine-execution")
         self.payloads = {key: ELF if key in app.ENGINE_ELFS else b"toolkit fixture\n"
-                         for key in app.ENGINE_ELFS | app.ENGINE_HEADERS | app.ENGINE_DATA}
+                         for key in app.ENGINE_ELFS | app.ENGINE_HEADERS | app.ENGINE_DATA | app.ENGINE_SHADERS}
         self.payloads.update({relative.replace("bin/cache/pkg/sky_engine/", "gen/dart-pkg/sky_engine/")
             .replace("bin/cache/dart-sdk/bin/snapshots/", "gen/"): data
             for relative, data in self.values.items()})
@@ -582,11 +582,16 @@ class EngineMaterializationTests(unittest.TestCase):
         self.reseal(suffix=b"unrecorded trailing data")
         self.reject(self.materialize)
 
-    def test_engine_missing_tools_refuse_even_with_stock_cache(self):
+    def test_engine_missing_tools_or_shaders_refuse_even_with_stock_cache(self):
         stock = self.sdk / "bin/cache/artifacts/engine/linux-x64"
         stock.mkdir(parents=True, mode=0o700)
-        for name in app.ENGINE_ELFS:
-            write(stock / name, ELF)
+        shader_roles = frozenset(("shader_lib/flutter/runtime_effect.glsl",
+                                  "shader_lib/impeller/types.glsl"))
+        self.assertTrue(shader_roles.issubset(app.ENGINE_SHADERS))
+        for name in sorted(app.ENGINE_ELFS | shader_roles):
+            path = stock / name
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            write(path, ELF if name in app.ENGINE_ELFS else b"stock shader include\n")
             data = self.payloads.pop(name)
             self.reseal()
             self.reject(self.materialize)

@@ -2434,10 +2434,15 @@ but the toolkit collector/projection omitted that directory. Both framework shad
 The independently authenticated original GN source declares one Flutter and fifteen Impeller
 shader includes in two copy targets beneath `//flutter/impeller/compiler/shader_lib`.
 The `impellerc` executable depends on that group, but collecting its executable alone did not
-collect these required consumer outputs. Next bind those exact GN outputs/source aliases in
-the toolkit producer and materializer, require missing-role refusal before allocation, and
-execute the actual shader compiler before another full app build. Do not skip shaders or
-introduce a stock-cache search fallback. Full 365,180-byte raw serial is
+collect these required consumer outputs. The producer now selects both exact original-GN copy
+inventories and binds all sixteen source aliases; the materializer requires those roles before
+allocation. Existing filesystem regressions cover complete byte projection and representative
+missing Flutter/Impeller roles even with stock copies present. The producer requires an actual
+compiler A/B for both failing framework shaders before sealing: empty includes must refuse,
+complete original includes must produce runtime/SPIR-V outputs, and inputs must remain unchanged.
+**This correction is source implemented; its native tests and new complete toolkit/app consumer
+are not yet verified.** No shaders are skipped and no stock-cache fallback is introduced.
+Full 365,180-byte failure raw serial is
 `evidence/app-local-engine-32bff424-build.serial.log`, SHA256
 `4f80aa87e8ce895ba0abcca23700e9f492553887f242094dba2ac805be688c29`.
 Outer exit was 1 and bounded capture completed. Owned QEMU/capture/exporters joined; the

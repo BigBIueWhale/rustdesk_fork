@@ -81,6 +81,11 @@ ENGINE_DATA = frozenset((
     "icudtl.dat", "gen/const_finder.dart.snapshot", "gen/frontend_server_aot.dart.snapshot",
     "flutter_patched_sdk/platform_strong.dill", "flutter_patched_sdk/vm_outline_strong.dill",
 ))
+ENGINE_SHADERS = frozenset(("shader_lib/flutter/runtime_effect.glsl", *(
+    "shader_lib/impeller/" + name + ".glsl" for name in (
+        "blending", "branching", "color", "conical_gradient_uniform_fill", "constants",
+        "dithering", "external_texture_oes", "gaussian", "gradient", "math", "path",
+        "texture", "tile_mode", "transform", "types"))))
 
 
 def fail(message):
@@ -580,7 +585,7 @@ def materialize_engine(path, root_identity, parent_path, parent_identity,
             raw = manifest_stream.read(1024 * 1024 + 1)
         manifest = engine_manifest(raw, manifest_digest, context)
         records = manifest["files"]
-        required = ENGINE_ELFS | ENGINE_HEADERS | ENGINE_DATA
+        required = ENGINE_ELFS | ENGINE_HEADERS | ENGINE_DATA | ENGINE_SHADERS
         if not required.issubset(records) or set(members) != set(records) | {ENGINE_MANIFEST}:
             fail("engine complete toolkit inventory differs")
         for relative, record in records.items():

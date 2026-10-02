@@ -25,6 +25,11 @@ TOOLKIT_ENTRY_LIMIT = 4096
 TOOLKIT_MANIFEST_LIMIT = 1024 * 1024
 TOOLKIT_ELFS = {"libflutter_linux_gtk.so", "gen_snapshot", "font-subset",
                 "impellerc", "libtessellator.so"}
+TOOLKIT_SHADERS = {"shader_lib/flutter/runtime_effect.glsl", *(
+    "shader_lib/impeller/" + name + ".glsl" for name in (
+        "blending", "branching", "color", "conical_gradient_uniform_fill", "constants",
+        "dithering", "external_texture_oes", "gaussian", "gradient", "math", "path",
+        "texture", "tile_mode", "transform", "types"))}
 TOTAL_LIMIT = 12 * 1024 ** 3
 ENTRY_LIMIT = 524288
 FIELDS = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
@@ -306,7 +311,9 @@ def authenticated(path, size, digest):
         raise
 
 
-def command(arguments, cwd, env, deadline, *, integration=False):
+def command(arguments, cwd, env, deadline, *, integration=False, expected_status=0):
+    require(type(expected_status) is int and expected_status in (0, 1),
+            "engine command expected status differs")
     require(time.monotonic() < deadline, "engine preparation deadline expired")
     child = subprocess.Popen(arguments, cwd=cwd, env=env, close_fds=True,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -335,7 +342,7 @@ def command(arguments, cwd, env, deadline, *, integration=False):
                       + " output_bytes=" + str(len(output)) + " tail="
                       + json.dumps(output[-512:].decode(errors="replace")), flush=True)
         status = child.wait(timeout=max(0.001, deadline - time.monotonic()))
-        require(status == 0, "engine command failed: " + repr(arguments) + "\n"
+        require(status == expected_status, "engine command failed: " + repr(arguments) + "\n"
                 + output[-65536:].decode(errors="replace"))
         return bytes(output)
     finally:
@@ -859,6 +866,10 @@ def describe_engine_toolkit(engine, env, deadline):
             "gen/frontend_server_aot.dart.snapshot",),
         "//flutter/impeller/compiler:impellerc": ("impellerc",),
         "//flutter/impeller/tessellator:tessellator_shared": ("libtessellator.so",),
+        "//flutter/impeller/compiler/shader_lib/flutter:flutter": (
+            "shader_lib/flutter/runtime_effect.glsl",),
+        "//flutter/impeller/compiler/shader_lib/impeller:impeller": tuple(sorted(
+            name for name in TOOLKIT_SHADERS if name.startswith("shader_lib/impeller/"))),
     }
     copies = {}
     targets = []
@@ -872,6 +883,10 @@ def describe_engine_toolkit(engine, env, deadline):
         outputs = record.get("outputs", [])
         require(all("//out/host_release/" + name in outputs for name in wanted),
                 "GN toolkit outputs differ: " + label + " " + repr(outputs))
+        if "/shader_lib/" in label:
+            require(record.get("type") == "copy"
+                    and set(outputs) == {"//out/host_release/" + name for name in wanted},
+                    "GN shader include copy inventory differs: " + label)
         descriptors.update(data)
         targets.extend(wanted)
     sky = json.loads(command(gn + ["//flutter/sky/packages/sky_engine:*", "--format=json",
@@ -929,7 +944,7 @@ def engine_file(path):
 @contextmanager
 def engine_output(output, copies, name):
     header = re.fullmatch(r"flutter_linux/[a-z0-9_]+\.h", name) is not None
-    require(header or name in TOOLKIT_ELFS or name in (
+    require(header or name in TOOLKIT_ELFS or name in TOOLKIT_SHADERS or name in (
                 "icudtl.dat", "gen/const_finder.dart.snapshot",
                 "gen/frontend_server_aot.dart.snapshot",
                 "flutter_patched_sdk/platform_strong.dill",
@@ -1058,6 +1073,9 @@ def build_engine(engine, framework, env, pin, patch_bytes, context, toolkit):
     copies = {**toolkit["copies"],
               **{"flutter_linux/" + name: Path(engine) / "flutter/shell/platform/linux/public/flutter_linux" / name
                  for name in declared}}
+    require(TOOLKIT_SHADERS.issubset(names) and TOOLKIT_SHADERS.issubset(copies),
+            "engine shader include roles or source aliases are missing")
+    verify_shader_consumer(output, copies, framework, env, deadline)
     sky_root = output / "gen/dart-pkg/sky_engine"
     require(sky_root.is_dir() and not sky_root.is_symlink(), "generated sky_engine package is absent")
     for parent, directories, files in os.walk(sky_root, followlinks=False):
@@ -1117,6 +1135,72 @@ def build_engine(engine, framework, env, pin, patch_bytes, context, toolkit):
           + " manifest_sha256=" + hashlib.sha256(manifest_bytes).hexdigest()
           + " bytes=" + str(archive.stat().st_size) + " files=" + str(len(names))
           + " app_execution=unexecuted", flush=True)
+
+
+def verify_shader_consumer(output, copies, framework, env, deadline):
+    """Exercise the real compiler with missing and complete original-GN includes."""
+    deadline = min(deadline, time.monotonic() + 30)
+    with ExitStack() as resources:
+        compiler, compiler_info = resources.enter_context(engine_output(output, copies, "impellerc"))
+        compiler_digest = hashlib.file_digest(compiler, "sha256").hexdigest()
+        includes = {}
+        for name in sorted(TOOLKIT_SHADERS):
+            source, before = resources.enter_context(engine_output(output, copies, name))
+            includes[name] = (source, before, hashlib.file_digest(source, "sha256").hexdigest())
+        with tempfile.TemporaryDirectory(prefix="shader-consumer-", dir="/work") as scratch:
+            scratch = Path(scratch)
+            empty = scratch / "empty-includes"
+            empty.mkdir(mode=0o700)
+            for ordinal, relative in enumerate(("material/shaders/ink_sparkle.frag",
+                                                "widgets/shaders/stretch_effect.frag"), 1):
+                shader = Path(framework) / "packages/flutter/lib/src" / relative
+                source = resources.enter_context(engine_file(shader))
+                before = os.fstat(source.fileno())
+                require(stat.S_ISREG(before.st_mode) and before.st_uid == before.st_gid == 1000
+                        and before.st_nlink == 1 and 0 < before.st_size <= FILE_LIMIT,
+                        "framework shader authority differs")
+                source_digest = hashlib.file_digest(source, "sha256").hexdigest()
+                base = [str(output / "impellerc"), "--runtime-stage-gles", "--runtime-stage-gles3",
+                        "--runtime-stage-vulkan", "--iplr", "--input=" + str(shader),
+                        "--input-type=frag", "--include=" + str(shader.parent)]
+                missing = scratch / (str(ordinal) + ".missing")
+                complete = scratch / (str(ordinal) + ".complete")
+                negative = command(base + ["--include=" + str(empty), "--sl=" + str(missing),
+                    "--spirv=" + str(missing) + ".spirv"], framework, env, deadline, expected_status=1)
+                require(b"Included file not found. for header name: flutter/runtime_effect.glsl" in negative
+                        and not missing.exists() and not Path(str(missing) + ".spirv").exists(),
+                        "missing shader include did not produce the exact compiler refusal")
+                command(base + ["--include=" + str(output / "shader_lib"), "--sl=" + str(complete),
+                    "--spirv=" + str(complete) + ".spirv"], framework, env, deadline)
+                records = {}
+                for suffix in ("", ".spirv"):
+                    generated = resources.enter_context(engine_file(Path(str(complete) + suffix)))
+                    info = os.fstat(generated.fileno())
+                    require(stat.S_ISREG(info.st_mode) and info.st_uid == info.st_gid == 1000
+                            and info.st_nlink == 1 and 0 < info.st_size <= FILE_LIMIT,
+                            "compiled shader output authority differs")
+                    records[suffix or "runtime"] = {"bytes": info.st_size,
+                        "sha256": hashlib.file_digest(generated, "sha256").hexdigest()}
+                    require(unchanged(info, os.fstat(generated.fileno())), "compiled shader output changed")
+                source.seek(0)
+                require(unchanged(before, os.fstat(source.fileno()))
+                        and hashlib.file_digest(source, "sha256").hexdigest() == source_digest,
+                        "framework shader changed during the compiler comparison")
+                print("ENGINE_SHADER_COMPILER_NATIVE_AB=pass shader=" + relative
+                      + " source_sha256=" + source_digest + " compiler_sha256=" + compiler_digest
+                      + " old=missing-include-refused new=compiled outputs="
+                      + json.dumps(records, sort_keys=True, separators=(",", ":")), flush=True)
+        compiler.seek(0)
+        require(unchanged(compiler_info, os.fstat(compiler.fileno()))
+                and hashlib.file_digest(compiler, "sha256").hexdigest() == compiler_digest,
+                "shader compiler changed during its comparison")
+        for source, before, digest in includes.values():
+            source.seek(0)
+            require(unchanged(before, os.fstat(source.fileno()))
+                    and hashlib.file_digest(source, "sha256").hexdigest() == digest,
+                    "shader include changed during its comparison")
+    print("ENGINE_SHADER_CONSUMER=pass shaders=2 includes=16 old=missing-refused new=compiled "
+          "tool=original inputs=unchanged cleanup=joined", flush=True)
 
 
 def engine_output_self_test():
@@ -1236,11 +1320,24 @@ def engine_output_self_test():
         names += ["gen/dart-pkg/sky_engine/lib/ui/ui.dart", "icudtl.dat",
                   "flutter_patched_sdk/platform_strong.dill",
                   "flutter_patched_sdk/vm_outline_strong.dill"]
+        for shader in sorted(TOOLKIT_SHADERS):
+            original, generated = public / shader, output / shader
+            original.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            generated.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            original.write_bytes(("source-selected shader include " + shader + "\n").encode())
+            os.link(original, generated)
+            copies[shader] = original
+            names.append(shader)
+            read(shader)
         archive = root / "toolkit.tar"
         digest, manifest_bytes = seal_engine_outputs(output, copies, names, {"files": {}}, archive)
         with tarfile.open(archive, "r") as tar:
             require([member.name for member in tar] == names + ["engine-manifest.json"],
                     "toolkit namespaces lost files while sealing")
+            for shader in TOOLKIT_SHADERS:
+                with tar.extractfile(shader) as data:
+                    require(data.read() == copies[shader].read_bytes(),
+                            "shader source alias bytes were lost while sealing")
         refused(lambda: seal_engine_outputs(output, copies, names + [names[-1]], {}, root / "duplicate.tar"))
         require(not (root / "duplicate.tar").exists(), "duplicate output created an archive")
     print("ENGINE_ARTIFACT_INPUT_TEST=pass cases=10 headers=source-bound "

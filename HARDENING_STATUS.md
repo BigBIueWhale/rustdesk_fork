@@ -2390,6 +2390,19 @@ Detailed host snapshots retired with scratch, not independently retained proof. 
 retained toolkit/SDK projection, explicit local-engine app invocation, read-only execution
 mounts and capsule-role provenance remain OPEN.
 The app builder still lacks that materializer/local-engine and capsule-role wiring.
+Read-only artifact comparison at clean `3d548adb` confirms that the retained `eeaaa0ec`
+app is a stock-engine baseline, not a consumer of the corrected toolkit. Its actual
+`bundle/lib/libflutter_linux_gtk.so` has SHA256
+`d57449a5c2ee39e77b9e3488f0703b165c67e0b3c554089f388db96484ae62f1`, exactly equal
+to `flutter/bin/cache/artifacts/engine/linux-x64-release/libflutter_linux_gtk.so` read
+from the authenticated 3.47.5 SDK archive. The toolkit's actual core instead has SHA256
+`d7a2bb5ac4d0c2177846be830bc64b4c1bedf5b05d19e04d8309fc991c846c6f`.
+The baseline app manifest remains `83cd4134b3103ec2122cbbc33724168695dc47b9c38fc3caf9e169cbeae1ab30`;
+its schema-1 context has no engine producer/archive/manifest/patch authority. Its recipe
+matches the current stage script byte-for-byte. Preserve this capsule for comparison;
+do not count another replay as patched-engine evidence. The new producer must bind the
+engine separately from app source and prove the selected core in its actual output bundle.
+This comparison executed no app, compiler, VM or test and supplies no presentation verdict.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
 AT-SPI self-wait/geometry, Wayland, shipped SDK integration and the full uninstrumented consumer
 remain OPEN. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

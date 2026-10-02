@@ -1347,8 +1347,33 @@ whole-cycle stale-pixel refusal and image/source finality passed. Full 68,652-by
 `evidence/entropy-native-9ec5df8a.serial.log` has SHA256
 `ba4dbbef705f309df41fb5e38b437327516e186e7e25cee5fad82d8e7c4b03ae`.
 Inputs/listeners remained unchanged, zero pre-existing-process drift, all owners joined and
-scratch self-retired. Retained-APK texture execution and broader warm/native presentation
-remain OPEN; no production lifetime/resource/freshness constraint is relaxed.
+scratch self-retired. Exact harness `77fff642`, tree
+`e1c774e4e73c8fc7493b2a7b49a740cf5a4d8cc7`, then passed the complete retained
+`035c9a20` diagnostic-APK / `03ce7fc6` production-peer texture replay in 888 seconds
+without rebuilding either product artifact. The source published 5,844 identities at a mean
+39,637-us interval (~25.2 publications/s), maximum 62,058 us; delivered FPS and encoded
+bitrate were not measured. Actual pixels recovered initially in 1,150 ms, after the three
+2/6/12-second background cycles within 1,160 ms, and after all six task/session replacements
+within 1,350 ms. Twenty distinct identities were observed; content/capture age maxima were
+1,144/210 ms. The same process, foreground service and MediaProjection survived replacement.
+Seven first-publication samples had at most two active/peak conversions and zero waiters;
+whole-stream occupancy and stalled callbacks remain unobserved. Sampled RSS/thread growth
+was at most 1,596 KiB/two, final RSS below baseline; handles remain unobserved. No framework
+ANR occurred. Inputs/listeners were unchanged, pre-existing-process drift zero, all owners
+joined and the sole run self-retired. Full 102,979-byte raw serial is sealed as
+`evidence/entropy-android-035c9a20-77fff642.serial.log`, SHA256
+`9b6a7ae1c10e5e4f69e4fccd6ff763f7738b4c9c996541d7e713b6831f203854`;
+complete outer acceptance is retained separately. This named pass does not explain the
+intermittent Android/Windows reports or validate later `utils/image.dart` finality changes
+absent from the retained APK. Sustained warm/soak, physical devices, current-release and
+broader native presentation remain OPEN; no lifetime/resource/freshness limit is relaxed.
+
+**Resource-accounting follow-up — OPEN:** `LatestFrameQueue._admit` counts active keys
+against `maxKeys`, while pool-waiting lanes reside only in `_lanes`. Pending-only and mixed
+running/pending occupancy need an exact Dart behavioral A/B before any correction; current
+tests cover running and detached keys. The separate 64-waiter cap remains, so this is not
+unbounded-work or proven LPE/Android-hang causation. Keep one distinct-key budget across
+running, detached and waiting owners without releasing uncancellable conversion permits.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local
 `XGetImage` wording check are deleted. Pixel identity and age require the shared C implementation's
 native execution, not replacement source-string assertions. The guard's other VM/input/renderer
@@ -2849,7 +2874,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
-| Android and iOS | **Android intermittent presentation remains OPEN.** Named APK `ca569086` has a recorded 8,000-ms relaunch pixel-oracle failure and, at harness `bccc02c5`, a complete corrected-observer six-replacement pass of those exact bytes. Diagnostic APK `035c9a20` has three complete 640x480/4-Hz corrected-observer schedules and one complete 1920x1080/~25.9-Hz source schedule at `51e06274`. The later observer row-order defect is corrected, but neither artifact reproduced the original hang in this comparison. One higher-pixel-load pass and short replacement schedules do not prove high-entropy video, sustained warm-lifetime behavior, current-release correctness or causation. Vary justified workload/lifetime conditions, observe actual backlog and preserve a failure before changing ownership; repeated identical baseline passes are not closure. Establish exact-current repeated replacement/reconnect behavior, controlled capture/input callbacks, network transitions, stale-generation refusal, sustained CPU/memory/thread/handle/queue and latency bounds, physical devices, stable-signed artifacts, cold equality, independent reproduction, and external review. iOS still has no current package/device result. |
+| Android and iOS | **Android intermittent presentation remains OPEN.** Named APK `ca569086` has a recorded 8,000-ms relaunch failure and a complete corrected-observer same-byte pass at `bccc02c5`. Diagnostic APK `035c9a20` has three complete 640x480/4-Hz schedules, the Full-HD flat workload at `51e06274`, and a complete Full-HD changing-texture replay at `77fff642`, with original freshness/recovery/resource limits unchanged. Neither comparative artifact reproduced the original hang, and these short schedules do not prove sustained warm lifetime, measured encoded throughput, current-release correctness or Android/Windows causation. Vary justified workload/lifetime conditions and preserve actual backlog before changing ownership; repeated identical passes are not closure. Establish exact-current repeated replacement/reconnect, controlled capture/input callbacks, network transitions, stale-generation refusal, sustained CPU/memory/thread/handle/queue and latency bounds, physical devices, stable signing, cold equality, independent reproduction and external review. iOS still has no current package/device result. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg now has pin-bound recoverable devcheck and Apple verifier images. For each image, two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. Exact commit `f85e18e4` passed the complete current Apple three-target source-conformance/cross-compile workload in the no-NIC verifier VM after the focused Flutter gate first required the same shared display-verifier self-test. Current product/native workloads and fresh independently administered rebuilds remain required; neither verifier-image provenance nor Apple source/cross-compile success supplies native Apple behavior. |
 | Build/test execution authority (R-S11dh) | **STOP-SHIP: focused no-NIC authority smokes and substantial product/build evidence exist, but current release workloads remain incomplete.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; R-S11cj separately confines acquisition to an ordinary-user VM with outbound-only guest/container networking, no host forwarding, and joined finality. Product source `ca569086` passed the fresh model and Android APK build/install/render transactions; exact pushed harness `89a85f4b` passed the retained-APK production-peer lifecycle/presentation transaction. Current exact source `f85e18e4` passed the focused verifier-plus-138-test gate and three-target Apple source-conformance/cross-compile gate while preserving the strict host-listener audit and joined cleanup. Stable Android signing, physical devices, sustained resource/performance soak, native Apple work, Debian/Windows product workloads, cold release artifacts, complete prepared inputs, independently administered reproduction, and external review remain open. Source checks, cross-compiles, builder fingerprints, and historical lifecycle evidence are not release or native evidence. |

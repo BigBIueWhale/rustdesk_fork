@@ -2406,8 +2406,18 @@ Raw serial `evidence/app-local-engine-6ddb6da3.serial.log` has SHA256
 `1a44916ced74ae65f164d1c2f689901e62211de32e767e5fddb366de46c4825d`;
 the bounded serial and outer log are retained 0400. Input/listener revalidation and joined
 scratch retirement passed with zero harness listener addition or pre-existing-process drift.
-**Actual retained-engine app integration remains unexecuted:** these filesystem/system-ELF
-fixtures do not establish real SDK/toolkit consumption, RustDesk pixels or engine behavior.
+The actual `6eb68870` integration authenticated the retained engine/SDK, checked the full
+input closures, and extracted the SDK once in its joined preparation container, but refused
+before app compilation: the final nested SDK proof misclassified the materializer's own
+retained output descriptors as inherited descriptors. The small fixture did not expose this.
+The SDK public entry now keeps the original 64-inherited-descriptor limit while the private
+recheck uses the materializer's already reserved bounded budget; it does not relax the limit.
+A nine-group toolkit suite adds a 289-sky-file real-filesystem A/B case for old reentry refusal,
+corrected projection and descriptor finality. **That correction and the full app consumer
+remain unverified at this checkpoint.** Failure raw serial
+`evidence/app-local-engine-6eb68870-build.serial.log` has SHA256
+`8ad9da820db783955f997d6b877b2be7fb4a667c98631c4cf86cc07408d9d9d1`.
+No app compiled; no fixture or partial projection establishes RustDesk pixels or engine behavior.
 Read-only artifact comparison at clean `3d548adb` confirms that the retained `eeaaa0ec`
 app is a stock-engine baseline, not a consumer of the corrected toolkit. Its actual
 `bundle/lib/libflutter_linux_gtk.so` has SHA256

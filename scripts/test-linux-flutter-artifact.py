@@ -624,7 +624,7 @@ class EngineMaterializationTests(unittest.TestCase):
         self.assertEqual([path.name for path in self.execution.iterdir()], [app.ENGINE_MATERIALIZED])
 
     def test_engine_dart_identity_replacement_during_projection_refuses(self):
-        original = app.verify_engine_sdk_roles
+        original = app._verify_engine_sdk_roles
         calls = 0
         def replace(*arguments):
             nonlocal calls
@@ -635,14 +635,53 @@ class EngineMaterializationTests(unittest.TestCase):
                 (dart / "bin/snapshots").mkdir(parents=True, mode=0o700)
                 write(dart / "bin/snapshots/frontend_server_aot.dart.snapshot", ELF)
             return original(*arguments)
-        app.verify_engine_sdk_roles = replace
+        app._verify_engine_sdk_roles = replace
         try:
             self.reject(self.materialize, empty=False)
         finally:
-            app.verify_engine_sdk_roles = original
+            app._verify_engine_sdk_roles = original
         self.assertEqual(calls, 2)
         self.assertTrue((self.execution / app.ENGINE_MATERIALIZED).is_dir())
         self.reject(self.materialize, empty=False)
+
+    def test_complete_toolkit_owned_descriptors_are_not_inherited_authority(self):
+        prefix = "bin/cache/pkg/sky_engine/"
+        sky_files = sum(relative.startswith(prefix) for relative in self.values)
+        for index in range(sky_files, 289):
+            relative = prefix + f"lib/descriptor_case_{index}.dart"
+            data = f"// owned SDK role {index}\n".encode()
+            write(self.sdk / relative, data)
+            self.values[relative] = data
+            self.payloads[relative.replace(prefix, "gen/dart-pkg/sky_engine/")] = data
+        self.reseal()
+        original = app._verify_engine_sdk_roles
+        inherited = set(os.listdir("/proc/self/fd"))
+        calls = []
+        def old_reentry(*arguments):
+            calls.append(len(os.listdir("/proc/self/fd")))
+            app.require_descriptor_capacity()
+            return original(*arguments)
+        old_parent = directory(self.case / "old-reentry-execution")
+        app._verify_engine_sdk_roles = old_reentry
+        try:
+            with self.assertRaisesRegex(app.publication.PublicationError,
+                                        "inherited descriptor inventory exceeds its reserve"):
+                self.materialize(parent_path=str(old_parent), parent_identity=identity(old_parent))
+        finally:
+            app._verify_engine_sdk_roles = original
+        self.assertEqual(len(calls), 2)
+        self.assertLessEqual(calls[0], 64)
+        self.assertGreater(calls[1], 64)
+        self.assertEqual(set(os.listdir("/proc/self/fd")), inherited)
+        source = self.materialize()
+        host = source / "out/host_release"
+        self.assertEqual(len(list((host / "gen/dart-pkg/sky_engine").rglob("*.dart"))),
+                         sum(relative.startswith(prefix) and relative.endswith(".dart") for relative in self.values))
+        self.assertEqual({relative: (host / relative).read_bytes() for relative in self.payloads}, self.payloads)
+        self.assertEqual(os.readlink(host / "dart-sdk"), str(self.sdk / "bin/cache/dart-sdk"))
+        self.assertEqual(set(os.listdir("/proc/self/fd")), inherited)
+        print(f"FLUTTER_ENGINE_OWNED_FD_NATIVE_AB=pass sky_files=289 old=refused new=pass "
+              f"entry_fds={calls[0]} owned_fds={calls[1]} entry_limit=64 cleanup=joined", file=sys.stderr)
 
 
 def main():
@@ -656,7 +695,7 @@ def main():
         successful = successful and sdk_result.wasSuccessful() and sdk_result.testsRun == 6 and not sdk_result.skipped
         engine_result = unittest.TextTestRunner(verbosity=2).run(
             unittest.defaultTestLoader.loadTestsFromTestCase(EngineMaterializationTests))
-        successful = successful and engine_result.wasSuccessful() and engine_result.testsRun == 8 and not engine_result.skipped
+        successful = successful and engine_result.wasSuccessful() and engine_result.testsRun == 9 and not engine_result.skipped
     finally:
         subprocess.run([
             "/usr/bin/python3", "-I", "-S", str(SCRIPT_DIR / "verify-private-tree-closure.py"),
@@ -666,7 +705,7 @@ def main():
         raise SystemExit(1)
     print("FLUTTER_ENGINE_SDK_ROLES=pass cases=6 fixture=manifest-and-filesystem "
           "sky=exact frontend=exact mutation=refused links=refused writes=none cleanup=joined", file=sys.stderr)
-    print("FLUTTER_ENGINE_MATERIALIZATION=pass cases=8 fixture=system-elf-and-toolkit "
+    print("FLUTTER_ENGINE_MATERIALIZATION=pass cases=9 fixture=system-elf-and-toolkit "
           "inventory=closed sdk=reused mutation=refused fallback=refused cleanup=joined", file=sys.stderr)
     print("LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=23 publication=noclobber admission=exact execution=guest-only cleanup=joined")
 

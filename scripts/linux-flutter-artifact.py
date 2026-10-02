@@ -390,6 +390,11 @@ def verify_engine_sdk_roles(path, expected_identity, raw_manifest, digest, conte
     subprocess.run(["/bin/bash", str(Path(__file__).with_name("verify-vm-entry-preflight.sh"))],
                    check=True, stdout=subprocess.DEVNULL)
     require_descriptor_capacity()
+    return _verify_engine_sdk_roles(path, expected_identity, raw_manifest, digest, context)
+
+
+def _verify_engine_sdk_roles(path, expected_identity, raw_manifest, digest, context):
+    """Recheck SDK roles within the materializer's already reserved descriptor budget."""
     manifest = engine_manifest(raw_manifest, digest, context)
     prefix = "gen/dart-pkg/sky_engine/"
     sky = {key[len(prefix):]: record for key, record in manifest["files"].items()
@@ -613,7 +618,7 @@ def materialize_engine(path, root_identity, parent_path, parent_identity,
 
         for relative in records:
             read_member(relative)
-        verify_engine_sdk_roles(sdk_path, sdk_identity, raw, manifest_digest, context)
+        _verify_engine_sdk_roles(sdk_path, sdk_identity, raw, manifest_digest, context)
         dart_path = os.path.join(sdk_path, "bin/cache/dart-sdk")
         dart_before = os.lstat(dart_path)
         dart = os.open(dart_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
@@ -691,7 +696,7 @@ def materialize_engine(path, root_identity, parent_path, parent_identity,
             if consume(descriptor, info, relative in ENGINE_ELFS) != record:
                 fail("engine projection file bytes differ")
             execution_edges.append((directories[prefix], basename, descriptor, info))
-        verify_engine_sdk_roles(sdk_path, sdk_identity, raw, manifest_digest, context)
+        _verify_engine_sdk_roles(sdk_path, sdk_identity, raw, manifest_digest, context)
         if (publication.stable_file(dart_before) != publication.stable_file(os.fstat(dart))
                 or publication.stable_file(dart_before) != publication.stable_file(os.lstat(dart_path))
                 or mount_id(dart) != dart_mount

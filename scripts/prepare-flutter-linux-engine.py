@@ -36,6 +36,95 @@ HOOKS = [
       for arch in ("x64", "arm64", "riscv64")],
     ["python3", "engine/src/flutter/tools/pub_get_offline.py"],
 ]
+# The DEPS-selected bootstrap CLI discovers package metadata from its working
+# directory independently of --packages. Keep that SDK and its original AOT
+# recipe, but execute the action in the workspace that owns those packages.
+BOOTSTRAP_WORKSPACE_PATCH = b'''diff --git a/build/dart/dart_action.gni b/build/dart/dart_action.gni
+--- a/build/dart/dart_action.gni
++++ b/build/dart/dart_action.gni
+@@ -151,6 +151,13 @@ template("_prebuilt_tool_action") {
+     }
+
+     args = []
+
++    if (defined(invoker.working_directory)) {
++      args += [
++        "--working-directory",
++        rebase_path(invoker.working_directory, root_build_dir),
++      ]
++    }
++
+     if (_is_dart && use_rbe && host_os == rbe_os && host_cpu == rbe_cpu) {
+       args += [
+diff --git a/build/gn_run_binary.py b/build/gn_run_binary.py
+--- a/build/gn_run_binary.py
++++ b/build/gn_run_binary.py
+@@ -5,7 +5,7 @@
+ """Helper script for GN to run an arbitrary binary. See compiled_action.gni.
+
+ Run with:
+-  python3 gn_run_binary.py <binary_name> [args ...]
++  python3 gn_run_binary.py [--working-directory <dir>] <binary_name> [args ...]
+
+ Swallows output on success.
+ """
+@@ -18,6 +18,7 @@ import subprocess
+ # Run a command, swallowing the output unless there is an error.
+-def run_command(command):
++def run_command(command, working_directory=None):
+     try:
+-        subprocess.check_output(command, stderr=subprocess.STDOUT)
++        subprocess.check_output(
++            command, cwd=working_directory, stderr=subprocess.STDOUT)
+         return 0
+     except subprocess.CalledProcessError as e:
+@@ -35,6 +36,11 @@ def _decode(bytes):
+ def main(argv):
++    working_directory = None
++    if len(argv) > 3 and argv[1] == '--working-directory':
++        working_directory = os.path.abspath(argv[2])
++        argv = argv[:1] + argv[3:]
++
+     # Unless the path is absolute, this script is designed to run binaries
+     # produced by the current build, which is the current working directory when
+     # this script is run.
+     path = os.path.abspath(argv[1])
+
+@@ -46,7 +52,7 @@ def main(argv):
+     args = [path] + argv[2:]
+
+-    result = run_command(args)
++    result = run_command(args, working_directory)
+     if result != 0:
+         print(result)
+         return 1
+     return 0
+diff --git a/utils/BUILD.gn b/utils/BUILD.gn
+--- a/utils/BUILD.gn
++++ b/utils/BUILD.gn
+@@ -55,16 +55,17 @@ template("aot_compile_using_prebuilt_sdk") {
+     depfile = invoker.output + ".d"
+
++    working_directory = _dart_root
+     args = [
+       "compile",
+       "exe",
+       "--output",
+-      rebase_path(invoker.output, root_build_dir),
++      rebase_path(invoker.output, working_directory),
+       "--packages",
+-      rebase_path(invoker.package_config, root_build_dir),
++      rebase_path(invoker.package_config, working_directory),
+       "--depfile",
+-      rebase_path(depfile, root_build_dir),
+-      rebase_path(invoker.entry_point, root_build_dir),
++      rebase_path(depfile, working_directory),
++      rebase_path(invoker.entry_point, working_directory),
+     ]
+   }
+ }
+
+'''
 
 
 def require(condition, message):
@@ -462,6 +551,22 @@ def prepare(build_context=None):
             require(root.is_relative_to(framework) and (root / "pubspec.yaml").is_file(),
                     "generated package root is not a materialized DEPS package")
     engine = framework + "/engine/src"
+    if build_context is not None:
+        dart = Path(engine) / "flutter/third_party/dart"
+        patch = Path("/work/bootstrap-workspace.patch")
+        with patch.open("xb") as destination:
+            destination.write(BOOTSTRAP_WORKSPACE_PATCH)
+        git = ["/usr/bin/git", "--no-replace-objects", "-c", "core.hooksPath=/dev/null"]
+        paths = ["build/dart/dart_action.gni", "build/gn_run_binary.py", "utils/BUILD.gn"]
+        command(git + ["diff-files", "--quiet", "--", *paths], dart, env, deadline)
+        command(git + ["apply", "--check", "--whitespace=error-all", str(patch)], dart, env, deadline)
+        command(git + ["apply", "--whitespace=error-all", str(patch)], dart, env, deadline)
+        require(sorted(command(git + ["diff", "--name-only", "--", *paths], dart, env, deadline)
+                       .decode().splitlines()) == sorted(paths), "bootstrap patch source scope differs")
+        command(git + ["diff", "--check", "--", *paths], dart, env, deadline)
+        print("ENGINE_BOOTSTRAP_WORKSPACE_PATCH=applied files=3 sha256="
+              + hashlib.sha256(BOOTSTRAP_WORKSPACE_PATCH).hexdigest()
+              + " sdk=unchanged packages=original", flush=True)
     print("ENGINE_PREPARE_GN_START runtime=release generator=original", flush=True)
     # Keep upstream's argument/version selection. GN's supported interpreter option
     # selects this pinned image's Python, never depot-tools' downloading wrapper.
@@ -956,6 +1061,7 @@ def build_engine(engine, framework, env, pin, patch_bytes, context, toolkit):
         "builder_config": pin("DEV_CHECK_IMAGE_CONFIG_ID"),
         "helper_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "patch_sha256": hashlib.sha256(patch_bytes).hexdigest(),
+        "bootstrap_workspace_patch_sha256": hashlib.sha256(BOOTSTRAP_WORKSPACE_PATCH).hexdigest(),
         "gn_args_sha256": hashlib.sha256((output / "args.gn").read_bytes()).hexdigest(),
         "gn_args": (output / "args.gn").read_text(),
         "toolkit_graph_sha256": toolkit["graph_sha256"],

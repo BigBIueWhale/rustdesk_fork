@@ -2309,8 +2309,20 @@ not the explicit compilation package-config argument. Its original GN action run
 Dart workspace. The integration preparation now executes that exact bootstrap target before
 production-object tests and the expensive engine link, retaining bounded workspace-metadata
 diagnostics. This early preflight and a source-correct working-directory remedy are not yet
-natively verified; no empty package graph, SDK substitution, network allowance or original
-version-check bypass is an acceptable correction.
+natively verified as a successful build. Exact `9c1a1b86`, tree
+`ab5ad8f481f2e925c13fce6b9d7121cd4205646f`, reproduced the failure in 132,980 host BOOTTIME ms
+(outer/capture 1/0), with a one-action plan and no production-object or full-link work. Both
+engine and Dart workspace configurations/graphs were present; the ancestor framework had neither.
+Complete 82,470-byte serial is `evidence/engine-bootstrap-preflight-9c1a1b86.serial.log`, SHA256
+`efee3a9c826146abb0b688afc4efca0d2f87f9cfa8901ae73e47d64b5e339fbe`. Actual host snapshots
+were identical with empty additions/drift; joined, identity-bound retirement reclaimed
+12,980,985,856 allocated bytes and left no run/overlay. This disproves the missing-graph hypothesis.
+The producer now applies a helper-bound, three-file source correction to the original GN/Python
+AOT action: its working directory is the owning Dart workspace, while compiler input/output,
+package-config and depfile paths are rebased for that directory. The selected SDK, AOT flags,
+source inputs and output roles remain unchanged; the manifest binds the correction digest.
+Successful native execution of this corrected recipe and full-toolkit publication remain OPEN.
+No empty package graph, SDK substitution, network allowance or version-check bypass is used.
 The shipped bootstrap SDK is not duplicated; its consumer projection remains explicitly unexecuted.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
 AT-SPI self-wait/geometry, Wayland, shipped SDK integration and the full uninstrumented consumer

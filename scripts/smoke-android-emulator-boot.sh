@@ -311,6 +311,7 @@ PEER_INITIAL_RECOVERY_MS=0
 PEER_BACKGROUND_RECOVERY_MS=0
 PEER_BACKGROUND_CYCLES=0
 PEER_TASK_RECOVERY_MAX_MS=0
+PEER_WARM_RECOVERY_MAX_MS=0
 PEER_LAST_CONNECTION_WAIT_MS=0
 PEER_CORRECT_CREDENTIAL_CONNECTION_MS=0
 PEER_CACHED_CONNECTION_MAX_MS=0
@@ -352,6 +353,7 @@ readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
 # reported roughly ten-second focus-loss delay window.
 readonly -a PEER_BACKGROUND_SECONDS=(2 6 12)
 readonly PEER_TASK_REPLACEMENT_CYCLES=6
+readonly PEER_WARM_RECONNECT_CYCLES=6
 readonly LIFECYCLE_TASK_REMOVAL_CYCLES=2
 # Sample the warmed release process before replacement, then every replacement.
 # Android denies non-root cross-UID descriptor enumeration for this non-debuggable
@@ -770,7 +772,7 @@ android_dart_presentation_stages() {
         "$ADB" -s "$SERIAL" logcat -d -v brief 2>/dev/null \
         | tr -d '\r' \
         | grep -Eo \
-            'RUSTDESK_PRESENTATION_STAGE stage=dart-image-notified session=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} display=[0-9]+ publication=[1-9][0-9]* wall_ms=[1-9][0-9]* event_queue_us=[0-9]+ take_us=[0-9]+ checkpoint_us=[0-9]+ decode_commit_us=[0-9]+ ui_finalize_us=[0-9]+ total_us=[0-9]+ image_conversions_active=[0-9]+ image_conversions_waiting=[0-9]+ image_conversions_peak=[0-9]+' \
+            'RUSTDESK_PRESENTATION_STAGE stage=dart-image-notified session=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} display=[0-9]+ publication=[1-9][0-9]* wall_ms=[1-9][0-9]* event_queue_us=[0-9]+ take_us=[0-9]+ checkpoint_us=[0-9]+ decode_commit_us=[0-9]+ ui_finalize_us=[0-9]+ total_us=[0-9]+ image_conversions_active=[0-9]+ image_conversions_waiting=[0-9]+ image_conversions_peak=[0-9]+ client_owner=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
         || true
 }
 
@@ -874,12 +876,16 @@ emit_peer_presentation_stage_receipts() {
     local take_us checkpoint_us decode_commit_us ui_finalize_us total_us
     local image_conversions_active image_conversions_waiting
     local image_conversions_peak
+    local client_owner first_client_owner= previous_peak=0 owners=
     local calculated_total connections= sessions=
     local previous_server_generation=0 previous_native_generation=0
     local index
     local -a phases=(initial)
     local -a server_stages native_stages dart_stages
 
+    for index in $(seq 1 "$PEER_WARM_RECONNECT_CYCLES"); do
+        phases+=("warm-reconnect-$index")
+    done
     for index in $(seq 1 "$PEER_TASK_REPLACEMENT_CYCLES"); do
         phases+=("task-relaunch-$index")
     done
@@ -920,7 +926,7 @@ emit_peer_presentation_stage_receipts() {
         receive_to_admit_us=${BASH_REMATCH[5]}
         admit_to_dequeue_us=${BASH_REMATCH[6]}
         decode_us=${BASH_REMATCH[7]}
-        [[ "$dart_line" =~ ^RUSTDESK_PRESENTATION_STAGE\ stage=dart-image-notified\ session=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\ display=([0-9]+)\ publication=([1-9][0-9]*)\ wall_ms=([1-9][0-9]*)\ event_queue_us=([0-9]+)\ take_us=([0-9]+)\ checkpoint_us=([0-9]+)\ decode_commit_us=([0-9]+)\ ui_finalize_us=([0-9]+)\ total_us=([0-9]+)\ image_conversions_active=([0-9]+)\ image_conversions_waiting=([0-9]+)\ image_conversions_peak=([0-9]+)$ ]] \
+        [[ "$dart_line" =~ ^RUSTDESK_PRESENTATION_STAGE\ stage=dart-image-notified\ session=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\ display=([0-9]+)\ publication=([1-9][0-9]*)\ wall_ms=([1-9][0-9]*)\ event_queue_us=([0-9]+)\ take_us=([0-9]+)\ checkpoint_us=([0-9]+)\ decode_commit_us=([0-9]+)\ ui_finalize_us=([0-9]+)\ total_us=([0-9]+)\ image_conversions_active=([0-9]+)\ image_conversions_waiting=([0-9]+)\ image_conversions_peak=([0-9]+)\ client_owner=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$ ]] \
             || return 1
         dart_session=${BASH_REMATCH[1]}
         dart_display=${BASH_REMATCH[2]}
@@ -935,6 +941,21 @@ emit_peer_presentation_stage_receipts() {
         image_conversions_active=${BASH_REMATCH[11]}
         image_conversions_waiting=${BASH_REMATCH[12]}
         image_conversions_peak=${BASH_REMATCH[13]}
+        client_owner=${BASH_REMATCH[14]}
+        if [ "$index" -eq 0 ]; then
+            first_client_owner=$client_owner
+            owners=$client_owner
+        elif [ "$index" -le "$PEER_WARM_RECONNECT_CYCLES" ]; then
+            [ "$client_owner" = "$first_client_owner" ] \
+                && [ "$image_conversions_peak" -ge "$previous_peak" ] \
+                || return 1
+        else
+            case " $owners " in
+                *" $client_owner "*) return 1 ;;
+            esac
+            owners="$owners $client_owner"
+        fi
+        previous_peak=$image_conversions_peak
         calculated_total=$((event_queue_us + take_us + checkpoint_us \
             + decode_commit_us + ui_finalize_us))
         [ "$server_display" -eq "$native_display" ] \
@@ -959,7 +980,7 @@ emit_peer_presentation_stage_receipts() {
         sessions="${sessions:+$sessions }$dart_session"
         previous_server_generation=$server_generation
         previous_native_generation=$native_generation
-        printf 'ANDROID_PEER_PRESENTATION_STAGE=pass phase=%s ordinal=%s server_connection=%s display=%s server_wire_generation=%s viewer_wire_generation=%s server_wall_ms=%s server_queue_us=%s viewer_mailbox_generation=%s viewer_wall_ms=%s receive_to_admit_us=%s admit_to_dequeue_us=%s decode_us=%s dart_session=%s publication=%s dart_wall_ms=%s event_queue_us=%s take_us=%s checkpoint_us=%s decode_commit_us=%s ui_finalize_us=%s dart_total_us=%s image_conversions_active=%s image_conversions_waiting=%s image_conversions_peak=%s\n' \
+        printf 'ANDROID_PEER_PRESENTATION_STAGE=pass phase=%s ordinal=%s server_connection=%s display=%s server_wire_generation=%s viewer_wire_generation=%s server_wall_ms=%s server_queue_us=%s viewer_mailbox_generation=%s viewer_wall_ms=%s receive_to_admit_us=%s admit_to_dequeue_us=%s decode_us=%s dart_session=%s publication=%s dart_wall_ms=%s event_queue_us=%s take_us=%s checkpoint_us=%s decode_commit_us=%s ui_finalize_us=%s dart_total_us=%s image_conversions_active=%s image_conversions_waiting=%s image_conversions_peak=%s client_owner=%s\n' \
             "$phase" "$((index + 1))" "$server_connection" \
             "$server_display" "$server_generation" "$native_generation" \
             "$server_wall_ms" \
@@ -969,14 +990,14 @@ emit_peer_presentation_stage_receipts() {
             "$event_queue_us" "$take_us" "$checkpoint_us" \
             "$decode_commit_us" "$ui_finalize_us" "$total_us" \
             "$image_conversions_active" "$image_conversions_waiting" \
-            "$image_conversions_peak"
+            "$image_conversions_peak" "$client_owner"
     done
 }
 
 record_peer_process_resources() {
     local phase=$1 ordinal=$2 status= rss_line= threads_line=
     local rss_kib= threads= rss_growth_kib= thread_growth=
-    [[ "$phase" =~ ^(baseline|task-relaunch-[1-9][0-9]*)$ ]] \
+    [[ "$phase" =~ ^(baseline|warm-reconnect-[1-9][0-9]*|task-relaunch-[1-9][0-9]*)$ ]] \
         && [[ "$ordinal" =~ ^[0-9]+$ ]] \
         && [[ "$APP_PID" =~ ^[1-9][0-9]*$ ]] \
         || fail 'the Android peer resource-sample identity is malformed'
@@ -1038,7 +1059,7 @@ record_peer_process_resources() {
 emit_peer_resource_evidence_receipt() {
     local rss_growth_max_kib thread_growth_max
     [ "$PEER_RESOURCE_SAMPLE_COUNT" -eq \
-      "$((PEER_TASK_REPLACEMENT_CYCLES + 1))" ] \
+      "$((PEER_WARM_RECONNECT_CYCLES + PEER_TASK_REPLACEMENT_CYCLES + 1))" ] \
         || fail 'the Android peer resource-sample count differs'
     rss_growth_max_kib=$((PEER_RESOURCE_MAX_RSS_KIB \
         - PEER_RESOURCE_BASELINE_RSS_KIB))
@@ -1048,7 +1069,8 @@ emit_peer_resource_evidence_receipt() {
         && [ "$thread_growth_max" -le "$PEER_RESOURCE_THREAD_GROWTH_LIMIT" ] \
         || fail 'the Android peer aggregate resource bounds differ'
     printf 'ANDROID_PEER_RESOURCE_BOUND=partial samples=%s replacement_samples=%s rss_baseline_kib=%s rss_max_kib=%s rss_final_kib=%s rss_growth_max_kib=%s rss_growth_limit_kib=%s threads_baseline=%s threads_max=%s threads_final=%s thread_growth_max=%s thread_growth_limit=%s handles=unobserved handle_bound=open handle_reason=release-apk-nonroot-procfs-denied observer_survival=process-service-peer\n' \
-        "$PEER_RESOURCE_SAMPLE_COUNT" "$PEER_TASK_REPLACEMENT_CYCLES" \
+        "$PEER_RESOURCE_SAMPLE_COUNT" \
+        "$((PEER_WARM_RECONNECT_CYCLES + PEER_TASK_REPLACEMENT_CYCLES))" \
         "$PEER_RESOURCE_BASELINE_RSS_KIB" "$PEER_RESOURCE_MAX_RSS_KIB" \
         "$PEER_RESOURCE_FINAL_RSS_KIB" "$rss_growth_max_kib" \
         "$PEER_RESOURCE_RSS_GROWTH_LIMIT_KIB" \
@@ -3483,6 +3505,49 @@ open_peer_connection() {
     wait_peer_server_connections 1 exact
 }
 
+exercise_peer_warm_reconnect() {
+    local cycle=$1 phase= task_before= lifecycle_log=
+    [[ "$cycle" =~ ^[1-9][0-9]*$ ]] \
+        && [ "$cycle" -le "$PEER_WARM_RECONNECT_CYCLES" ] \
+        || fail 'the Android warm-reconnect phase identity is malformed'
+    phase="warm-reconnect-$cycle"
+    task_before="$(current_app_task_id)" \
+        || fail "$phase cannot bind the current Activity task"
+    wait_peer_server_connections 1 exact \
+        || fail "$phase has no exact peer to close"
+    timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null \
+        || fail "$phase cannot request connection close through the UI"
+    wait_ui_center text 'Are you sure to close the connection?' >/dev/null \
+        || fail "$phase did not show the exact close confirmation"
+    tap_ui text 'OK' || fail "$phase cannot confirm connection close"
+    wait_peer_server_connections 0 exact \
+        || fail "$phase retained the closed peer"
+    wait_ui_center address-field >/dev/null \
+        || fail "$phase did not return to the Connection page"
+    [ "$(current_app_task_id)" = "$task_before" ] \
+        && [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$APP_PID" ] \
+        && assert_main_service \
+        || fail "$phase replaced the task, process or MainService"
+    open_peer_connection "$phase" 0 \
+        || {
+            capture_android_connection_diagnostic active || true
+            reprint_android_connection_diagnostic || true
+            fail "$phase did not establish fresh changing pixels"
+        }
+    [ "$(current_app_task_id)" = "$task_before" ] \
+        || fail "$phase changed the Activity task during reconnect"
+    lifecycle_log="$(adb_shell_value logcat -d -v brief)"
+    assert_main_service_log_cardinality "$lifecycle_log" "$phase" 1 0 \
+        || fail "$phase replaced the controlled service generation"
+    ! grep -Eq 'mMainActivity.*: onDestroy|FATAL EXCEPTION|Failed to resume Android client session ownership|MainService destruction retained incomplete generation authority' \
+        <<<"$lifecycle_log" \
+        || fail "$phase destroyed the Activity or logged an ownership failure"
+    [ "$PEER_LAST_RECOVERY_MS" -le "$PEER_WARM_RECOVERY_MAX_MS" ] \
+        || PEER_WARM_RECOVERY_MAX_MS=$PEER_LAST_RECOVERY_MS
+    record_peer_process_resources "$phase" "$cycle"
+}
+
 exercise_peer_background_resume() {
     local pid_before=$1 cycle=$2 background_seconds=$3 phase=
     [[ "$cycle" =~ ^[1-9][0-9]*$ ]] \
@@ -3914,6 +3979,9 @@ PY
                     "$APP_PID" "$background_cycle" "$background_seconds"
             done
             record_peer_process_resources baseline 0
+            for warm_cycle in $(seq 1 "$PEER_WARM_RECONNECT_CYCLES"); do
+                exercise_peer_warm_reconnect "$warm_cycle"
+            done
         fi
 
         stage_recents_gesture_driver \
@@ -3968,7 +4036,8 @@ PY
                 [ "$PEER_LAST_RECOVERY_MS" -le "$PEER_TASK_RECOVERY_MAX_MS" ] \
                     || PEER_TASK_RECOVERY_MAX_MS=$PEER_LAST_RECOVERY_MS
                 record_peer_process_resources \
-                    "task-relaunch-$lifecycle_cycle" "$lifecycle_cycle"
+                    "task-relaunch-$lifecycle_cycle" \
+                    "$((PEER_WARM_RECONNECT_CYCLES + lifecycle_cycle))"
             fi
         done
         if [ "$WORKLOAD" = app-peer-lifecycle ]; then
@@ -4209,9 +4278,10 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
                 || fail 'the Android presentation-stage receipt is not ready'
             [ "$PEER_REVERSE_READY" -eq 0 ] \
                 || fail 'the Android peer reverse mapping remained live at receipt time'
-            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=%s old_sessions=closed replacements=%s initial_credential=missing-credential initial_credential_prompt_observer=%s initial_credential_prompt_ms=%s initial_credential_prompt_limit_ms=%s initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=%s credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_cycles=%s background_seconds=2,6,12 background_recovery_max_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s resource_samples=%s resource_bound=partial-rss-threads handle_bound=open force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
+            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=%s old_sessions=closed replacements=%s warm_reconnects=%s warm_owner=preserved warm_recovery_max_ms=%s initial_credential=missing-credential initial_credential_prompt_observer=%s initial_credential_prompt_ms=%s initial_credential_prompt_limit_ms=%s initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=%s credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_cycles=%s background_seconds=2,6,12 background_recovery_max_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s resource_samples=%s resource_bound=partial-rss-threads handle_bound=open force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
                 "$PEER_TASK_REPLACEMENT_CYCLES" \
                 "$PEER_TASK_REPLACEMENT_CYCLES" \
+                "$PEER_WARM_RECONNECT_CYCLES" "$PEER_WARM_RECOVERY_MAX_MS" \
                 "$PEER_INITIAL_CREDENTIAL_SEMANTIC_MODE" \
                 "$PEER_INITIAL_CREDENTIAL_PROMPT_MS" \
                 "$PEER_CREDENTIAL_PROMPT_LIMIT_MS" \

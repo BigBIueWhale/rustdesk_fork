@@ -1399,6 +1399,17 @@ acceptance retained separately. This is actual execution of the shared Dart clas
 screen presentation or an Android/Windows causal reproduction. It applies where that shared
 queue is used, not to the distinct default Windows texture path. Sustained warm-isolate/device,
 current native presentation, performance, LPE and release obligations remain OPEN.
+**Warm-isolate replay — IMPLEMENTED, NATIVE EXECUTION PENDING:** the first successful
+software-image stage now records its captured client-owner UUID. The Android production-peer
+schedule adds six ordinary UI close/reconnect cycles before task destruction; all must preserve
+that UUID, the Activity task, process and foreground MainService, with a nondecreasing shared-pool
+peak. Later task replacements must have distinct owner UUIDs. Thirteen exact stage/resource
+samples replace the earlier seven; pixel freshness, recovery, conversion and RSS/thread limits
+remain unchanged. The focused log-lifetime test executes the actual stage emitter against one
+valid thirteen-stage schedule and eight invalid owner/counter/session/phase/inventory schedules.
+This is an observer and workload extension, not a demonstrated fix or native pass. A fresh
+diagnostic APK is required; the retained `035c9a20` APK lacks this owner observation. Physical
+devices, sustained warm/network/handle evidence and the original Android/Windows causes stay OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local
 `XGetImage` wording check are deleted. Pixel identity and age require the shared C implementation's
 native execution, not replacement source-string assertions. The guard's other VM/input/renderer

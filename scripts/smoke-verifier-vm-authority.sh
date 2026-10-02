@@ -3598,12 +3598,14 @@ elif [ "$MODE" = android-execution-probe ]; then
 elif [ "$MODE" = android-runtime-log-tests ]; then
     runtime_log_unit_receipt='ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof diagnostics=filtered cardinality=1 children=joined'
     runtime_log_native_receipt='ANDROID_RUNTIME_DOCKER_LOG=pass cases=3 before_eof=observed normal=joined failure=live-log-bound producer=term-stopped cancel=143 pipeline=joined workspace=removed image=caller-owned'
-    runtime_log_vm_receipt="ANDROID_RUNTIME_LOG_TESTS_VM=pass cases=3 uid=4000 gid=4000 root=refused foreign=refused test_sha256=$(/usr/bin/sha256sum "$SCRIPT_DIR/test-android-runtime-progress.py" | /usr/bin/awk '{ print $1 }') wrapper_sha256=$(/usr/bin/sha256sum "$SCRIPT_DIR/android-emulator-runtime-check.sh" | /usr/bin/awk '{ print $1 }') image=retired docker=retired network=none cleanup=joined"
+    runtime_log_stage_receipt='ANDROID_PEER_WARM_STAGE_TEST=pass cases=9 warm_owner=preserved warm_peak=monotone task_owner=fresh missing=refused cardinality=13'
+    runtime_log_vm_receipt="ANDROID_RUNTIME_LOG_TESTS_VM=pass cases=3 stage_cases=9 uid=4000 gid=4000 root=refused foreign=refused test_sha256=$(/usr/bin/sha256sum "$SCRIPT_DIR/test-android-runtime-progress.py" | /usr/bin/awk '{ print $1 }') wrapper_sha256=$(/usr/bin/sha256sum "$SCRIPT_DIR/android-emulator-runtime-check.sh" | /usr/bin/awk '{ print $1 }') stage_sha256=$(/usr/bin/sha256sum "$ANDROID_EMULATOR_BOOT_SOURCE" | /usr/bin/awk '{ print $1 }') image=retired docker=retired network=none cleanup=joined"
     require_exact_fixed_receipt "$runtime_log_unit_receipt" 'runtime-log pipe/signal result'
     require_exact_fixed_receipt "$runtime_log_native_receipt" 'native Docker log-lifetime result'
+    require_exact_fixed_receipt "$runtime_log_stage_receipt" 'warm/task presentation-stage result'
     require_exact_fixed_receipt "$runtime_log_vm_receipt" 'runtime-log source/finality result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'runtime-log cloud-init completion'
-    printf '%s\n' "$runtime_log_unit_receipt" "$runtime_log_native_receipt" "$runtime_log_vm_receipt"
+    printf '%s\n' "$runtime_log_unit_receipt" "$runtime_log_native_receipt" "$runtime_log_stage_receipt" "$runtime_log_vm_receipt"
 elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     engine_prepare_receipt='FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 indexes=original pub=path-only network=none engine_build=unexecuted'
     engine_prepare_vm_receipt="FLUTTER_ENGINE_PREPARE_VM=pass commit=$FOCUSED_TEST_COMMIT tree=$FOCUSED_TEST_TREE helper_sha256=$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" | /usr/bin/awk '{print $1}') runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined"
@@ -4186,14 +4188,16 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android initial credential prompt receipt is absent or duplicated'; }
     mapfile -t android_presentation_stage_receipts < <(
         /usr/bin/grep -Eo \
-            'ANDROID_PEER_PRESENTATION_STAGE=pass phase=(initial|task-relaunch-[1-6]) ordinal=[1-7] server_connection=[1-9][0-9]* display=[0-9]+ server_wire_generation=[1-9][0-9]* viewer_wire_generation=[1-9][0-9]* server_wall_ms=[1-9][0-9]* server_queue_us=[0-9]+ viewer_mailbox_generation=[1-9][0-9]* viewer_wall_ms=[1-9][0-9]* receive_to_admit_us=[0-9]+ admit_to_dequeue_us=[0-9]+ decode_us=[0-9]+ dart_session=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} publication=[1-9][0-9]* dart_wall_ms=[1-9][0-9]* event_queue_us=[0-9]+ take_us=[0-9]+ checkpoint_us=[0-9]+ decode_commit_us=[0-9]+ ui_finalize_us=[0-9]+ dart_total_us=[0-9]+ image_conversions_active=[1-3] image_conversions_waiting=([0-9]|[1-5][0-9]|6[0-4]) image_conversions_peak=[1-3]' \
+            'ANDROID_PEER_PRESENTATION_STAGE=pass phase=(initial|warm-reconnect-[1-6]|task-relaunch-[1-6]) ordinal=([1-9]|1[0-3]) server_connection=[1-9][0-9]* display=[0-9]+ server_wire_generation=[1-9][0-9]* viewer_wire_generation=[1-9][0-9]* server_wall_ms=[1-9][0-9]* server_queue_us=[0-9]+ viewer_mailbox_generation=[1-9][0-9]* viewer_wall_ms=[1-9][0-9]* receive_to_admit_us=[0-9]+ admit_to_dequeue_us=[0-9]+ decode_us=[0-9]+ dart_session=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} publication=[1-9][0-9]* dart_wall_ms=[1-9][0-9]* event_queue_us=[0-9]+ take_us=[0-9]+ checkpoint_us=[0-9]+ decode_commit_us=[0-9]+ ui_finalize_us=[0-9]+ dart_total_us=[0-9]+ image_conversions_active=[1-3] image_conversions_waiting=([0-9]|[1-5][0-9]|6[0-4]) image_conversions_peak=[1-3] client_owner=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
             "$SERIAL_LOG" || true
     )
-    [ "${#android_presentation_stage_receipts[@]}" -eq 7 ] \
+    [ "${#android_presentation_stage_receipts[@]}" -eq 13 ] \
         || { /usr/bin/tail -n 320 "$SERIAL_LOG" >&2; fail 'Android presentation-stage receipt cardinality differs'; }
-    for android_phase_ordinal in 'initial 1' 'task-relaunch-1 2' \
-        'task-relaunch-2 3' 'task-relaunch-3 4' 'task-relaunch-4 5' \
-        'task-relaunch-5 6' 'task-relaunch-6 7'; do
+    for android_phase_ordinal in 'initial 1' 'warm-reconnect-1 2' 'warm-reconnect-2 3' \
+        'warm-reconnect-3 4' 'warm-reconnect-4 5' 'warm-reconnect-5 6' \
+        'warm-reconnect-6 7' 'task-relaunch-1 8' 'task-relaunch-2 9' \
+        'task-relaunch-3 10' 'task-relaunch-4 11' 'task-relaunch-5 12' \
+        'task-relaunch-6 13'; do
         read -r android_phase android_ordinal <<<"$android_phase_ordinal"
         [ "$(printf '%s\n' "${android_presentation_stage_receipts[@]}" \
             | /usr/bin/grep -Ec "^ANDROID_PEER_PRESENTATION_STAGE=pass phase=$android_phase ordinal=$android_ordinal ")" -eq 1 ] \
@@ -4202,14 +4206,16 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     printf '%s\n' "${android_presentation_stage_receipts[@]}"
     mapfile -t android_resource_samples < <(
         /usr/bin/grep -Eo \
-            'ANDROID_PEER_RESOURCE_SAMPLE=pass phase=(baseline|task-relaunch-[1-6]) ordinal=[0-6] rss_kib=[1-9][0-9]* threads=[1-9][0-9]* rss_growth_kib=[0-9]+ thread_growth=[0-9]+ handles=unobserved handle_reason=release-apk-nonroot-procfs-denied observer_survival=process-service-peer' \
+            'ANDROID_PEER_RESOURCE_SAMPLE=pass phase=(baseline|warm-reconnect-[1-6]|task-relaunch-[1-6]) ordinal=([0-9]|1[0-2]) rss_kib=[1-9][0-9]* threads=[1-9][0-9]* rss_growth_kib=[0-9]+ thread_growth=[0-9]+ handles=unobserved handle_reason=release-apk-nonroot-procfs-denied observer_survival=process-service-peer' \
             "$SERIAL_LOG" || true
     )
-    [ "${#android_resource_samples[@]}" -eq 7 ] \
+    [ "${#android_resource_samples[@]}" -eq 13 ] \
         || { /usr/bin/tail -n 320 "$SERIAL_LOG" >&2; fail 'Android resource-sample receipt cardinality differs'; }
-    for android_phase_ordinal in 'baseline 0' 'task-relaunch-1 1' \
-        'task-relaunch-2 2' 'task-relaunch-3 3' 'task-relaunch-4 4' \
-        'task-relaunch-5 5' 'task-relaunch-6 6'; do
+    for android_phase_ordinal in 'baseline 0' 'warm-reconnect-1 1' 'warm-reconnect-2 2' \
+        'warm-reconnect-3 3' 'warm-reconnect-4 4' 'warm-reconnect-5 5' \
+        'warm-reconnect-6 6' 'task-relaunch-1 7' 'task-relaunch-2 8' \
+        'task-relaunch-3 9' 'task-relaunch-4 10' 'task-relaunch-5 11' \
+        'task-relaunch-6 12'; do
         read -r android_phase android_ordinal <<<"$android_phase_ordinal"
         [ "$(printf '%s\n' "${android_resource_samples[@]}" \
             | /usr/bin/grep -Ec "^ANDROID_PEER_RESOURCE_SAMPLE=pass phase=$android_phase ordinal=$android_ordinal ")" -eq 1 ] \
@@ -4218,7 +4224,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     printf '%s\n' "${android_resource_samples[@]}"
     mapfile -t android_resource_bound_receipts < <(
         /usr/bin/grep -Eo \
-            'ANDROID_PEER_RESOURCE_BOUND=partial samples=7 replacement_samples=6 rss_baseline_kib=[1-9][0-9]* rss_max_kib=[1-9][0-9]* rss_final_kib=[1-9][0-9]* rss_growth_max_kib=[0-9]+ rss_growth_limit_kib=131072 threads_baseline=[1-9][0-9]* threads_max=[1-9][0-9]* threads_final=[1-9][0-9]* thread_growth_max=[0-9]+ thread_growth_limit=8 handles=unobserved handle_bound=open handle_reason=release-apk-nonroot-procfs-denied observer_survival=process-service-peer' \
+            'ANDROID_PEER_RESOURCE_BOUND=partial samples=13 replacement_samples=12 rss_baseline_kib=[1-9][0-9]* rss_max_kib=[1-9][0-9]* rss_final_kib=[1-9][0-9]* rss_growth_max_kib=[0-9]+ rss_growth_limit_kib=131072 threads_baseline=[1-9][0-9]* threads_max=[1-9][0-9]* threads_final=[1-9][0-9]* thread_growth_max=[0-9]+ thread_growth_limit=8 handles=unobserved handle_bound=open handle_reason=release-apk-nonroot-procfs-denied observer_survival=process-service-peer' \
             "$SERIAL_LOG" || true
     )
     [ "${#android_resource_bound_receipts[@]}" -eq 1 ] \
@@ -4226,7 +4232,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     printf '%s\n' "${android_resource_bound_receipts[@]}"
     mapfile -t android_peer_lifecycle_receipts < <(
         /usr/bin/grep -Eo \
-            "ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127\\.0\\.0\\.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=6 old_sessions=closed replacements=6 initial_credential=missing-credential initial_credential_prompt_observer=(exact|android-accessibility-prefix-240) initial_credential_prompt_ms=[0-9]+ initial_credential_prompt_limit_ms=240000 initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=(exact|android-accessibility-prefix-240) credential_prompt_ms=[0-9]+ credential_prompt_limit_ms=240000 auto_retry_observation_ms=140000 correct_credential_connection_ms=[0-9]+ credential_connection_limit_ms=240000 cached_connection_max_ms=[0-9]+ cached_connection_limit_ms=30000 initial_recovery_ms=[0-9]+ background_cycles=3 background_seconds=2,6,12 background_recovery_max_ms=[0-9]+ task_recovery_max_ms=[0-9]+ recovery_limit_ms=8000 freshness_max_ms=[0-9]+ freshness_limit_ms=2000 capture_max_ms=[0-9]+ capture_limit_ms=500 distinct_frames=(1[2-9]|[2-9][0-9]|[1-9][0-9]{2,}) resource_samples=7 resource_bound=partial-rss-threads handle_bound=open force_stop=baseline apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none server_listener=127\\.0\\.0\\.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined" \
+            "ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127\\.0\\.0\\.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=6 old_sessions=closed replacements=6 warm_reconnects=6 warm_owner=preserved warm_recovery_max_ms=[0-9]+ initial_credential=missing-credential initial_credential_prompt_observer=(exact|android-accessibility-prefix-240) initial_credential_prompt_ms=[0-9]+ initial_credential_prompt_limit_ms=240000 initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=(exact|android-accessibility-prefix-240) credential_prompt_ms=[0-9]+ credential_prompt_limit_ms=240000 auto_retry_observation_ms=140000 correct_credential_connection_ms=[0-9]+ credential_connection_limit_ms=240000 cached_connection_max_ms=[0-9]+ cached_connection_limit_ms=30000 initial_recovery_ms=[0-9]+ background_cycles=3 background_seconds=2,6,12 background_recovery_max_ms=[0-9]+ task_recovery_max_ms=[0-9]+ recovery_limit_ms=8000 freshness_max_ms=[0-9]+ freshness_limit_ms=2000 capture_max_ms=[0-9]+ capture_limit_ms=500 distinct_frames=(1[2-9]|[2-9][0-9]|[1-9][0-9]{2,}) resource_samples=13 resource_bound=partial-rss-threads handle_bound=open force_stop=baseline apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none server_listener=127\\.0\\.0\\.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined" \
             "$SERIAL_LOG" || true
     )
     [ "${#android_peer_lifecycle_receipts[@]}" -eq 1 ] \

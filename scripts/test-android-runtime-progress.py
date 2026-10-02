@@ -5,6 +5,7 @@ import ctypes
 import os
 from pathlib import Path
 import select
+import shlex
 import signal
 import subprocess
 import sys
@@ -38,6 +39,83 @@ for name in ("capture_runtime_log", "stream_runtime_log", "join_runtime_log", "s
 if offsets != sorted(offsets):
     raise RuntimeError("runtime log owner boundaries differ")
 runtime_functions = wrapper[offsets[0]:offsets[-1]]
+boot = (scripts / "smoke-android-emulator-boot.sh").read_text()
+stage_marker = "emit_peer_presentation_stage_receipts() {\n"
+if boot.count(stage_marker) != 1:
+    raise RuntimeError("presentation stage receipt owner is absent or duplicated")
+stage_function = (stage_marker + boot.split(stage_marker, 1)[1]
+                  .split("\n}\n", 1)[0] + "\n}\n")
+
+
+def stage_uuid(value):
+    return f"{value:08x}-0000-4000-8000-000000000000"
+
+
+# Execute the actual receipt emitter: a warm replay must not pass after an
+# isolate replacement or a reset pool counter, even if every frame stage exists.
+phases = (["initial"] + [f"warm-reconnect-{i}" for i in range(1, 7)]
+          + [f"task-relaunch-{i}" for i in range(1, 7)])
+server_stages = [
+    "RUSTDESK_PRESENTATION_STAGE stage=server-independent-enqueued "
+    f"connection={i + 1} display=0 wire_generation={i + 1} wall_ms=1 queue_us=0"
+    for i in range(13)
+]
+native_stages = [
+    "RUSTDESK_PRESENTATION_STAGE stage=viewer-independent-decoded "
+    f"display=0 wire_generation={i + 1} mailbox_generation=1 wall_ms=1 "
+    "receive_to_admit_us=0 admit_to_dequeue_us=0 decode_us=0"
+    for i in range(13)
+]
+dart_stages = [
+    "RUSTDESK_PRESENTATION_STAGE stage=dart-image-notified "
+    f"session={stage_uuid(100 + i)} display=0 publication=1 wall_ms=1 "
+    "event_queue_us=1 take_us=1 checkpoint_us=1 decode_commit_us=1 ui_finalize_us=1 total_us=5 "
+    "image_conversions_active=1 image_conversions_waiting=0 "
+    f"image_conversions_peak={2 if i <= 6 else 1} client_owner={stage_uuid(1 if i <= 6 else i)}"
+    for i in range(13)
+]
+for case in ("valid", "warm-owner", "warm-peak", "task-initial-owner", "task-repeat-owner",
+             "missing-owner", "repeat-session", "wrong-phase", "missing-stage"):
+    case_dart = dart_stages.copy()
+    case_phases = phases.copy()
+    if case == "warm-owner":
+        case_dart[3] = case_dart[3].replace("client_owner=" + stage_uuid(1),
+                                          "client_owner=" + stage_uuid(50))
+    elif case == "warm-peak":
+        case_dart[4] = case_dart[4].replace("image_conversions_peak=2", "image_conversions_peak=1")
+    elif case in ("task-initial-owner", "task-repeat-owner"):
+        case_dart[8] = case_dart[8].replace("client_owner=" + stage_uuid(8),
+                                          "client_owner=" + stage_uuid(1 if case == "task-initial-owner" else 7))
+    elif case == "missing-owner":
+        case_dart[0] = case_dart[0].split(" client_owner=", 1)[0]
+    elif case == "repeat-session":
+        case_dart[5] = case_dart[5].replace("session=" + stage_uuid(105),
+                                          "session=" + stage_uuid(100))
+    elif case == "wrong-phase":
+        case_phases[2] = "task-relaunch-2"
+    elif case == "missing-stage":
+        case_dart.pop()
+    arrays = "".join(name + "=(" + " ".join(shlex.quote(value) for value in values) + ")\n"
+                     for name, values in (("PEER_PRESENTATION_PHASES", case_phases),
+                                          ("PEER_SERVER_PRESENTATION_STAGES", server_stages),
+                                          ("PEER_NATIVE_PRESENTATION_STAGES", native_stages),
+                                          ("PEER_DART_PRESENTATION_STAGES", case_dart)))
+    completed = subprocess.run(
+        ["/bin/bash", "--noprofile", "--norc", "-euo", "pipefail", "-c",
+         "PEER_WARM_RECONNECT_CYCLES=6\nPEER_TASK_REPLACEMENT_CYCLES=6\n" + arrays
+         + stage_function + "emit_peer_presentation_stage_receipts"],
+        capture_output=True, timeout=3)
+    if completed.stderr or completed.returncode != (0 if case == "valid" else 1):
+        raise RuntimeError(f"actual presentation-stage emitter result differs for {case}")
+    if case == "valid":
+        lines = completed.stdout.decode().splitlines()
+        if len(lines) != 13 or any(
+                not line.startswith(f"ANDROID_PEER_PRESENTATION_STAGE=pass phase={phase} ordinal={i + 1} ")
+                or not line.endswith(" client_owner=" + stage_uuid(1 if i <= 6 else i))
+                for i, (phase, line) in enumerate(zip(phases, lines))):
+            raise RuntimeError("warm/task stage cardinality or owner binding differs")
+print("ANDROID_PEER_WARM_STAGE_TEST=pass cases=9 warm_owner=preserved warm_peak=monotone "
+      "task_owner=fresh missing=refused cardinality=13", file=sys.stderr)
 probe = b"ignored diagnostic\nANDROID_PEER_ARTIFACT_ADMITTED=pass test=pipe\n"
 expected = b"ANDROID_RUNTIME_PROGRESS event=peer-admitted build=absent\n"
 

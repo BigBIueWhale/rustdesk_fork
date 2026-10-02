@@ -4690,7 +4690,7 @@ class FFI {
         final decodeCommitUs = imageCommitCompleteUs - checkpointCompleteUs;
         final uiFinalizeUs = uiFinalizeCompleteUs - imageCommitCompleteUs;
         debugPrint(
-            'RUSTDESK_PRESENTATION_STAGE stage=dart-image-notified session=$activeSessionId display=${frame.display} publication=${frame.publication} wall_ms=${DateTime.now().millisecondsSinceEpoch} event_queue_us=$handlerEntryUs take_us=$takeUs checkpoint_us=$checkpointUs decode_commit_us=$decodeCommitUs ui_finalize_us=$uiFinalizeUs total_us=$uiFinalizeCompleteUs image_conversions_active=${_softwareRgbaDrainPool.activeDrains} image_conversions_waiting=${_softwareRgbaDrainPool.waitingDrains} image_conversions_peak=${_softwareRgbaDrainPool.peakActiveDrains}');
+            'RUSTDESK_PRESENTATION_STAGE stage=dart-image-notified session=$activeSessionId display=${frame.display} publication=${frame.publication} wall_ms=${DateTime.now().millisecondsSinceEpoch} event_queue_us=$handlerEntryUs take_us=$takeUs checkpoint_us=$checkpointUs decode_commit_us=$decodeCommitUs ui_finalize_us=$uiFinalizeUs total_us=$uiFinalizeCompleteUs image_conversions_active=${_softwareRgbaDrainPool.activeDrains} image_conversions_waiting=${_softwareRgbaDrainPool.waitingDrains} image_conversions_peak=${_softwareRgbaDrainPool.peakActiveDrains} client_owner=${streamOwner.clientOwnerId}');
       }
     }
   }

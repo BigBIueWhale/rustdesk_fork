@@ -671,13 +671,16 @@ run_android_runtime_log_tests() {
     local work work_id
     local test=$VERIFY_REPO/scripts/test-android-runtime-progress.py
     local wrapper=$VERIFY_REPO/scripts/android-emulator-runtime-check.sh
-    local test_sha wrapper_sha image principal refusal status
+    local stage=$VERIFY_REPO/scripts/smoke-android-emulator-boot.sh
+    local test_sha wrapper_sha stage_sha image principal refusal status
     local output=$ROOT/android-runtime-log-tests.out
     local unit_receipt='ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof diagnostics=filtered cardinality=1 children=joined'
     local native_receipt='ANDROID_RUNTIME_DOCKER_LOG=pass cases=3 before_eof=observed normal=joined failure=live-log-bound producer=term-stopped cancel=143 pipeline=joined workspace=removed image=caller-owned'
+    local stage_receipt='ANDROID_PEER_WARM_STAGE_TEST=pass cases=9 warm_owner=preserved warm_peak=monotone task_owner=fresh missing=refused cardinality=13'
 
     test_sha="$(sha256sum "$test" | awk '{ print $1 }')"
     wrapper_sha="$(sha256sum "$wrapper" | awk '{ print $1 }')"
+    stage_sha="$(sha256sum "$stage" | awk '{ print $1 }')"
     prepare_authority_probe_image
     image="$(<"$ROOT/image-id")"
     setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -723,9 +726,12 @@ run_android_runtime_log_tests() {
         && [ "$(grep -Fc 'ANDROID_RUNTIME_PROGRESS_TEST=' "$output")" -eq 1 ] \
         && grep -Fxq "$native_receipt" "$output" \
         && [ "$(grep -Fc 'ANDROID_RUNTIME_DOCKER_LOG=' "$output")" -eq 1 ] \
+        && grep -Fxq "$stage_receipt" "$output" \
+        && [ "$(grep -Fc 'ANDROID_PEER_WARM_STAGE_TEST=' "$output")" -eq 1 ] \
         || fail 'runtime-log test results are absent, malformed or duplicated'
     [ "$(sha256sum "$test" | awk '{ print $1 }')" = "$test_sha" ] \
         && [ "$(sha256sum "$wrapper" | awk '{ print $1 }')" = "$wrapper_sha" ] \
+        && [ "$(sha256sum "$stage" | awk '{ print $1 }')" = "$stage_sha" ] \
         || fail 'runtime-log test or production wrapper source changed'
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         || fail 'runtime-log tests left a container'
@@ -740,9 +746,9 @@ run_android_runtime_log_tests() {
     [ ! -e "$work" ] && [ ! -L "$work" ] \
         || fail 'runtime-log scratch remains after retirement'
     stop_docker_authority
-    printf '%s\n' "$unit_receipt" "$native_receipt"
-    printf 'ANDROID_RUNTIME_LOG_TESTS_VM=pass cases=3 uid=4000 gid=4000 root=refused foreign=refused test_sha256=%s wrapper_sha256=%s image=retired docker=retired network=none cleanup=joined\n' \
-        "$test_sha" "$wrapper_sha"
+    printf '%s\n' "$unit_receipt" "$native_receipt" "$stage_receipt"
+    printf 'ANDROID_RUNTIME_LOG_TESTS_VM=pass cases=3 stage_cases=9 uid=4000 gid=4000 root=refused foreign=refused test_sha256=%s wrapper_sha256=%s stage_sha256=%s image=retired docker=retired network=none cleanup=joined\n' \
+        "$test_sha" "$wrapper_sha" "$stage_sha"
 }
 
 run_android_frame_tests() {
@@ -4242,41 +4248,45 @@ run_android_emulator_runtime() {
     [ "$(grep -c '^ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT=' "$output")" -eq 1 ] \
         || fail 'Android initial credential prompt receipt is malformed or duplicated'
     mapfile -t presentation_stage_receipts < <(grep -E \
-        '^ANDROID_PEER_PRESENTATION_STAGE=pass phase=(initial|task-relaunch-[1-6]) ordinal=[1-7] server_connection=[1-9][0-9]* display=[0-9]+ server_wire_generation=[1-9][0-9]* viewer_wire_generation=[1-9][0-9]* server_wall_ms=[1-9][0-9]* server_queue_us=[0-9]+ viewer_mailbox_generation=[1-9][0-9]* viewer_wall_ms=[1-9][0-9]* receive_to_admit_us=[0-9]+ admit_to_dequeue_us=[0-9]+ decode_us=[0-9]+ dart_session=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} publication=[1-9][0-9]* dart_wall_ms=[1-9][0-9]* event_queue_us=[0-9]+ take_us=[0-9]+ checkpoint_us=[0-9]+ decode_commit_us=[0-9]+ ui_finalize_us=[0-9]+ dart_total_us=[0-9]+ image_conversions_active=[1-3] image_conversions_waiting=([0-9]|[1-5][0-9]|6[0-4]) image_conversions_peak=[1-3]$' \
+        '^ANDROID_PEER_PRESENTATION_STAGE=pass phase=(initial|warm-reconnect-[1-6]|task-relaunch-[1-6]) ordinal=([1-9]|1[0-3]) server_connection=[1-9][0-9]* display=[0-9]+ server_wire_generation=[1-9][0-9]* viewer_wire_generation=[1-9][0-9]* server_wall_ms=[1-9][0-9]* server_queue_us=[0-9]+ viewer_mailbox_generation=[1-9][0-9]* viewer_wall_ms=[1-9][0-9]* receive_to_admit_us=[0-9]+ admit_to_dequeue_us=[0-9]+ decode_us=[0-9]+ dart_session=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} publication=[1-9][0-9]* dart_wall_ms=[1-9][0-9]* event_queue_us=[0-9]+ take_us=[0-9]+ checkpoint_us=[0-9]+ decode_commit_us=[0-9]+ ui_finalize_us=[0-9]+ dart_total_us=[0-9]+ image_conversions_active=[1-3] image_conversions_waiting=([0-9]|[1-5][0-9]|6[0-4]) image_conversions_peak=[1-3] client_owner=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' \
         "$output" || true)
-    [ "${#presentation_stage_receipts[@]}" -eq 7 ] \
-        && [ "$(grep -c '^ANDROID_PEER_PRESENTATION_STAGE=' "$output")" -eq 7 ] \
+    [ "${#presentation_stage_receipts[@]}" -eq 13 ] \
+        && [ "$(grep -c '^ANDROID_PEER_PRESENTATION_STAGE=' "$output")" -eq 13 ] \
         || { tail -n 320 "$output" >&2; fail 'Android presentation-stage receipts are absent, malformed, or duplicated'; }
-    for phase_ordinal in 'initial 1' 'task-relaunch-1 2' 'task-relaunch-2 3' \
-        'task-relaunch-3 4' 'task-relaunch-4 5' 'task-relaunch-5 6' \
-        'task-relaunch-6 7'; do
+    for phase_ordinal in 'initial 1' 'warm-reconnect-1 2' 'warm-reconnect-2 3' \
+        'warm-reconnect-3 4' 'warm-reconnect-4 5' 'warm-reconnect-5 6' \
+        'warm-reconnect-6 7' 'task-relaunch-1 8' 'task-relaunch-2 9' \
+        'task-relaunch-3 10' 'task-relaunch-4 11' 'task-relaunch-5 12' \
+        'task-relaunch-6 13'; do
         read -r phase ordinal <<<"$phase_ordinal"
         [ "$(printf '%s\n' "${presentation_stage_receipts[@]}" \
             | grep -Ec "^ANDROID_PEER_PRESENTATION_STAGE=pass phase=$phase ordinal=$ordinal ")" -eq 1 ] \
             || fail "Android presentation-stage binding differs for $phase"
     done
     mapfile -t resource_samples < <(grep -E \
-        '^ANDROID_PEER_RESOURCE_SAMPLE=pass phase=(baseline|task-relaunch-[1-6]) ordinal=[0-6] rss_kib=[1-9][0-9]* threads=[1-9][0-9]* rss_growth_kib=[0-9]+ thread_growth=[0-9]+ handles=unobserved handle_reason=release-apk-nonroot-procfs-denied observer_survival=process-service-peer$' \
+        '^ANDROID_PEER_RESOURCE_SAMPLE=pass phase=(baseline|warm-reconnect-[1-6]|task-relaunch-[1-6]) ordinal=([0-9]|1[0-2]) rss_kib=[1-9][0-9]* threads=[1-9][0-9]* rss_growth_kib=[0-9]+ thread_growth=[0-9]+ handles=unobserved handle_reason=release-apk-nonroot-procfs-denied observer_survival=process-service-peer$' \
         "$output" || true)
-    [ "${#resource_samples[@]}" -eq 7 ] \
-        && [ "$(grep -c '^ANDROID_PEER_RESOURCE_SAMPLE=' "$output")" -eq 7 ] \
+    [ "${#resource_samples[@]}" -eq 13 ] \
+        && [ "$(grep -c '^ANDROID_PEER_RESOURCE_SAMPLE=' "$output")" -eq 13 ] \
         || { tail -n 320 "$output" >&2; fail 'Android peer resource samples are absent, malformed, or duplicated'; }
-    for phase_ordinal in 'baseline 0' 'task-relaunch-1 1' 'task-relaunch-2 2' \
-        'task-relaunch-3 3' 'task-relaunch-4 4' 'task-relaunch-5 5' \
-        'task-relaunch-6 6'; do
+    for phase_ordinal in 'baseline 0' 'warm-reconnect-1 1' 'warm-reconnect-2 2' \
+        'warm-reconnect-3 3' 'warm-reconnect-4 4' 'warm-reconnect-5 5' \
+        'warm-reconnect-6 6' 'task-relaunch-1 7' 'task-relaunch-2 8' \
+        'task-relaunch-3 9' 'task-relaunch-4 10' 'task-relaunch-5 11' \
+        'task-relaunch-6 12'; do
         read -r phase ordinal <<<"$phase_ordinal"
         [ "$(printf '%s\n' "${resource_samples[@]}" \
             | grep -Ec "^ANDROID_PEER_RESOURCE_SAMPLE=pass phase=$phase ordinal=$ordinal ")" -eq 1 ] \
             || fail "Android peer resource-sample binding differs for $phase"
     done
     resource_bound_receipt="$(grep -E \
-        '^ANDROID_PEER_RESOURCE_BOUND=partial samples=7 replacement_samples=6 rss_baseline_kib=[1-9][0-9]* rss_max_kib=[1-9][0-9]* rss_final_kib=[1-9][0-9]* rss_growth_max_kib=[0-9]+ rss_growth_limit_kib=131072 threads_baseline=[1-9][0-9]* threads_max=[1-9][0-9]* threads_final=[1-9][0-9]* thread_growth_max=[0-9]+ thread_growth_limit=8 handles=unobserved handle_bound=open handle_reason=release-apk-nonroot-procfs-denied observer_survival=process-service-peer$' \
+        '^ANDROID_PEER_RESOURCE_BOUND=partial samples=13 replacement_samples=12 rss_baseline_kib=[1-9][0-9]* rss_max_kib=[1-9][0-9]* rss_final_kib=[1-9][0-9]* rss_growth_max_kib=[0-9]+ rss_growth_limit_kib=131072 threads_baseline=[1-9][0-9]* threads_max=[1-9][0-9]* threads_final=[1-9][0-9]* thread_growth_max=[0-9]+ thread_growth_limit=8 handles=unobserved handle_bound=open handle_reason=release-apk-nonroot-procfs-denied observer_survival=process-service-peer$' \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android peer aggregate resource bound is absent'; }
     [ "$(grep -c '^ANDROID_PEER_RESOURCE_BOUND=' "$output")" -eq 1 ] \
         || fail 'Android peer aggregate resource bound is duplicated'
     peer_receipt="$(grep -E \
-        "^ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127\\.0\\.0\\.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=6 old_sessions=closed replacements=6 initial_credential=missing-credential initial_credential_prompt_observer=(exact|android-accessibility-prefix-240) initial_credential_prompt_ms=[0-9]+ initial_credential_prompt_limit_ms=240000 initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=(exact|android-accessibility-prefix-240) credential_prompt_ms=[0-9]+ credential_prompt_limit_ms=240000 auto_retry_observation_ms=140000 correct_credential_connection_ms=[0-9]+ credential_connection_limit_ms=240000 cached_connection_max_ms=[0-9]+ cached_connection_limit_ms=30000 initial_recovery_ms=[0-9]+ background_cycles=3 background_seconds=2,6,12 background_recovery_max_ms=[0-9]+ task_recovery_max_ms=[0-9]+ recovery_limit_ms=8000 freshness_max_ms=[0-9]+ freshness_limit_ms=2000 capture_max_ms=[0-9]+ capture_limit_ms=500 distinct_frames=(1[2-9]|[2-9][0-9]|[1-9][0-9]{2,}) resource_samples=7 resource_bound=partial-rss-threads handle_bound=open force_stop=baseline apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none server_listener=127\\.0\\.0\\.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined$" \
+        "^ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127\\.0\\.0\\.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=6 old_sessions=closed replacements=6 warm_reconnects=6 warm_owner=preserved warm_recovery_max_ms=[0-9]+ initial_credential=missing-credential initial_credential_prompt_observer=(exact|android-accessibility-prefix-240) initial_credential_prompt_ms=[0-9]+ initial_credential_prompt_limit_ms=240000 initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=(exact|android-accessibility-prefix-240) credential_prompt_ms=[0-9]+ credential_prompt_limit_ms=240000 auto_retry_observation_ms=140000 correct_credential_connection_ms=[0-9]+ credential_connection_limit_ms=240000 cached_connection_max_ms=[0-9]+ cached_connection_limit_ms=30000 initial_recovery_ms=[0-9]+ background_cycles=3 background_seconds=2,6,12 background_recovery_max_ms=[0-9]+ task_recovery_max_ms=[0-9]+ recovery_limit_ms=8000 freshness_max_ms=[0-9]+ freshness_limit_ms=2000 capture_max_ms=[0-9]+ capture_limit_ms=500 distinct_frames=(1[2-9]|[2-9][0-9]|[1-9][0-9]{2,}) resource_samples=13 resource_bound=partial-rss-threads handle_bound=open force_stop=baseline apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none server_listener=127\\.0\\.0\\.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined$" \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android real-peer lifecycle receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_PEER_LIFECYCLE=' "$output")" -eq 1 ] \

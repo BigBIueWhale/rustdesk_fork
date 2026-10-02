@@ -254,6 +254,21 @@ def main():
         require(initial is not None, "fresh native source pixels were not decoded")
         identity = initial["state"]
         print(f"ANDROID_FRAME_NATIVE_PROGRESS stage=initial identity={identity}", flush=True)
+
+        def texture_samples(pixels):
+            # Actual source pixels below the counter/palette witnesses, not generated test data.
+            return tuple(
+                pixels[((199 - (66 + y)) * 120 + x) * 3:
+                       ((199 - (66 + y)) * 120 + x) * 3 + 3]
+                for y in range(50, 68) for x in range(120)
+            )
+
+        old_texture = texture_samples(old_pixels)
+        unique_colors = len(set(old_texture))
+        print(f"ANDROID_FRAME_NATIVE_TEXTURE stage=initial samples={len(old_texture)} "
+              f"distinct_colors={unique_colors}", flush=True)
+        require(unique_colors >= 2048,
+                "full-HD source did not publish spatially rich texture")
         subprocess.run([str(oracle_binaries[0]), str(source_directory)],
                        env=environment, check=True, timeout=30)
         reported = 0
@@ -274,6 +289,14 @@ def main():
         fresh = decoder.classify(fresh_record, history)
         require(fresh is not None and 256 <= fresh["state"] - identity <= 264,
                 "fresh native full identity was not observed after a whole cycle")
+        fresh_texture = texture_samples(fresh_record["pixels"])
+        changed_pixels = sum(old != new for old, new in zip(old_texture, fresh_texture))
+        require(len(set(fresh_texture)) >= 2048 and changed_pixels * 100 >= len(old_texture) * 95,
+                "full-HD texture was static or lost spatial variation")
+        print("ANDROID_FRAME_NATIVE_TEXTURE=pass "
+              f"samples={len(fresh_texture)} distinct_colors={len(set(fresh_texture))} "
+              f"changed_pixels={changed_pixels} source=x11 markers=decoded age=unchanged",
+              flush=True)
         cli_frame = Path("/tmp/frame-record")
         # The CLI reads the identical real pixel record and exact live publication file.
         epoch_us = time.time_ns() // 1000

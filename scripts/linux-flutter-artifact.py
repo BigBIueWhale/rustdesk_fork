@@ -400,6 +400,13 @@ def verify_engine_sdk_roles(path, expected_identity, raw_manifest, digest, conte
             edges.append((parent, name, descriptor, info))
             return descriptor, info
 
+        # Pub searches packages/<name> before bin/cache/pkg/<name>, even with
+        # explicit local-engine flags. A second sky_engine package would shadow
+        # the authenticated cache role rather than reuse it.
+        directories["packages"] = acquire(root, "packages", True)[0]
+        if "sky_engine" in names(directories["packages"]):
+            fail("engine SDK sky_engine has a higher-priority shadow package")
+
         for relative in sorted(selected):
             components = relative.split("/")
             parent = root

@@ -2356,7 +2356,8 @@ archive reads matched that 17,153,376-byte frontend and all 289 generated sky_en
 (7,648,729 bytes) to the retained SDK, with no missing, extra or differing regular-file record.
 `linux-flutter-artifact.py::verify_engine_sdk_roles` now supplies a VM-gated, read-only exact
 manifest/context/content/inventory proof for those reusable SDK roles, including retained
-directory/file identities, mount closure and link/ACL refusal. Six real-filesystem regression
+directory/file identities, mount closure, link/ACL refusal and Pub's higher-priority
+`packages/sky_engine` shadow refusal. Six real-filesystem regression
 groups are added to the focused capsule entry; native execution is pending. This is a consumer
 prerequisite, not actual toolkit projection, Flutter invocation, FlView or app evidence.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,

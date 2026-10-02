@@ -281,6 +281,7 @@ class EngineSdkRoleTests(unittest.TestCase):
     def setUp(self):
         self.case = directory(WORKSPACE / self.id().rsplit(".", 1)[-1])
         self.sdk = directory(self.case / "sdk")
+        directory(self.sdk / "packages")
         self.context = {"source_commit": "1" * 40, "source_tree": "2" * 40,
                         "framework_revision": "3" * 40, "patch_sha256": "4" * 64,
                         "bootstrap_sdk_archive_sha256": "5" * 64}
@@ -351,6 +352,10 @@ class EngineSdkRoleTests(unittest.TestCase):
             write(path, data)
 
     def test_sdk_role_extra_file_or_empty_subtree_refuses(self):
+        shadow = directory(self.sdk / "packages/sky_engine")
+        with self.assertRaisesRegex(app.publication.PublicationError, "higher-priority shadow"):
+            self.verify()
+        shadow.rmdir()
         parent = self.sdk / "bin/cache/pkg/sky_engine"
         write(parent / "unrecorded", b"extra")
         self.reject(self.verify)

@@ -1063,16 +1063,13 @@ def validate(sources: Dict[str, str]) -> None:
         frame_admit,
         (
             "final activeDrains = _activeDrains[key] ?? 0;",
-            "if (activeDrains == 0 && _activeDrains.length >= maxKeys)",
-            "_retireAll();",
-            "return _LatestFrameAdmission.exhausted;",
             "if (activeDrains >= maxConcurrentDrainsPerKey)",
             "_retireAll();",
             "return _LatestFrameAdmission.exhausted;",
             "lane = _LatestFrameLane<Frame>();",
             "_lanes[key] = lane;",
         ),
-        "terminal current-plus-detached display bound",
+        "terminal current-plus-detached per-key drain bound",
     )
     require_order(
         frame_admit,
@@ -1964,7 +1961,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("session_queue_dart", "_completedGeneration = entry.generation;", "_completedGeneration = _acceptedGeneration;", "exact completed topology generation"),
     ("session_queue_dart", "entry.completeError(error, stackTrace);\n          _retireCurrentAndPending();", "entry.completeError(error, stackTrace);", "session topology task-failure retirement"),
     ("frame_queue_dart", "if (_retired || _suspended || expectedOwner != owner)", "if (_retired || _suspended)", "exact-owner web-frame admission"),
-    ("frame_queue_dart", "if (activeDrains == 0 && _activeDrains.length >= maxKeys) {\n        _retireAll();", "if (activeDrains == 0 && _activeDrains.length >= maxKeys) {", "terminal web-frame display bound"),
     ("frame_queue_dart", "final Map<Key, _LatestFrameLane<Frame>> _lanes = {};", "final List<_LatestFrameLane<Frame>> _lanes = [];", "per-display bounded web-frame lanes"),
     ("frame_queue_dart", "lane.pending?.complete(LatestFrameDisposition.superseded);", "lane.pending?.complete(LatestFrameDisposition.presented);", "superseded web-frame disposition"),
     ("frame_queue_dart", "lane.pending = entry;", "lane.running = entry;", "one-latest-pending web-frame bound"),

@@ -99,7 +99,8 @@ class LatestFrameDrainPool {
 /// slots so a newer frame can overtake one slow, uncancellable engine future;
 /// other callers retain the default single running slot. Recovery may leave
 /// uncancellable predecessor drains, but their completions are powerless and
-/// the per-key and queue-wide limits still bound them. Different displays own
+/// the per-key and queue-wide limits still bound them. The key budget includes
+/// current lanes and detached drains together. Different displays own
 /// independent latest-wins lanes; an optional shared pool bounds engine work
 /// across queue and session replacement.
 class LatestFrameQueue<Owner, Key, Frame> {
@@ -183,9 +184,15 @@ class LatestFrameQueue<Owner, Key, Frame> {
     var lane = _lanes[key];
     if (lane == null) {
       final activeDrains = _activeDrains[key] ?? 0;
-      if (activeDrains == 0 && _activeDrains.length >= maxKeys) {
-        _retireAll();
-        return _LatestFrameAdmission.exhausted;
+      if (activeDrains == 0) {
+        var retainedKeys = _activeDrains.length;
+        for (final retainedKey in _lanes.keys) {
+          if (!_activeDrains.containsKey(retainedKey)) retainedKeys += 1;
+        }
+        if (retainedKeys >= maxKeys) {
+          _retireAll();
+          return _LatestFrameAdmission.exhausted;
+        }
       }
       // A recovered generation must not wait forever behind a full set of
       // detached engine futures. Refuse visibly before retaining its frame.

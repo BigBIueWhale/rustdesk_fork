@@ -12,7 +12,7 @@ fail() {
 [ "$(id -g)" -ne 0 ] || fail 'refuses a root primary group'
 [ -z "${LD_PRELOAD:-}" ] || fail 'refuses an ambient preload'
 [ "$#" -eq 1 ] \
-  || fail 'expected one stage: input-check, atspi-check, pub-cache, pub-cache-check, build-drivers, build-app, server, or viewer'
+  || fail 'expected one stage: input-check, atspi-check, pub-cache, pub-cache-check, build-drivers, prepare-sdk, build-app, server, or viewer'
 
 verify_regular() {
   [ -f "$1" ] && [ ! -L "$1" ] || fail "missing regular input: $1"
@@ -514,6 +514,25 @@ PY
     printf 'LINUX_FLUTTER_DRIVERS_COMPILED=pass files=3 builds=2 equality=bytes app=unbuilt\n'
     ;;
 
+  prepare-sdk)
+    [[ "${RUSTDESK_FLUTTER_SHA256:-}" =~ ^[0-9a-f]{64}$ ]] \
+      && [[ "${RUSTDESK_FLUTTER_SIZE:-}" =~ ^[1-9][0-9]*$ ]] \
+      || fail 'SDK preparation requires independent archive authority'
+    verify_archive /flutter-sdk.tar.xz "$RUSTDESK_FLUTTER_SIZE" "$RUSTDESK_FLUTTER_SHA256" Flutter
+    [ -d /build-work ] && [ ! -L /build-work ] \
+      && [ "$(stat -c '%u:%g:%a' /build-work)" = "$(id -u):$(id -g):700" ] \
+      && [ "$(find /build-work -mindepth 1 -maxdepth 1 -printf '%f\n')" = pub-cache ] \
+      || fail 'SDK preparation work authority differs'
+    mkdir -m 0700 /build-work/toolchain
+    printf 'FLUTTER_PEER_BUILD_PHASE=sdk-preparation-start archive_sha256=%s network=none\n' "$RUSTDESK_FLUTTER_SHA256"
+    /usr/bin/timeout --signal=TERM --kill-after=10s 180s \
+      tar -C /build-work/toolchain -xf /flutter-sdk.tar.xz
+    [ "$(find /build-work/toolchain -mindepth 1 -maxdepth 1 -printf '%f\n')" = flutter ] \
+      && [ -d /build-work/toolchain/flutter ] && [ ! -L /build-work/toolchain/flutter ] \
+      || fail 'SDK archive projection root differs'
+    printf 'FLUTTER_PEER_BUILD_PHASE=sdk-preparation-complete archive_sha256=%s sdk_copies=1\n' "$RUSTDESK_FLUTTER_SHA256"
+    ;;
+
   build-app)
     [[ "${SOURCE_DATE_EPOCH:-}" =~ ^(0|[1-9][0-9]{0,18})$ ]] \
       || fail 'app producer requires an explicit canonical build epoch'
@@ -524,7 +543,9 @@ PY
       RUSTDESK_LLVM_VERSION RUSTDESK_LLVM_SHA256 RUSTDESK_LLVM_SIZE \
       RUSTDESK_FRB_SHA256 RUSTDESK_FRB_SIZE \
       RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256 RUSTDESK_FLUTTER_TOOLS_MODE \
-      RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 RUSTDESK_PROJECT_LOCK_MODE; do
+      RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 RUSTDESK_PROJECT_LOCK_MODE \
+      RUSTDESK_ENGINE_DART_LINK RUSTDESK_ENGINE_CORE_BYTES RUSTDESK_ENGINE_CORE_SHA256 \
+      RUSTDESK_ENGINE_ICU_BYTES RUSTDESK_ENGINE_ICU_SHA256; do
       [ -n "${!variable:-}" ] || fail "missing build identity: $variable"
     done
     [ "$RUSTDESK_FLUTTER_TOOLS_MODE" = offline-resolved ] \
@@ -561,8 +582,31 @@ PY
     [ -d /build-work ] && [ ! -L /build-work ] \
       && [ "$(stat -c '%u:%g:%a' /build-work)" = "$(id -u):$(id -g):700" ] \
       || fail 'build work is not a private current-user directory'
-    [ "$(find /build-work -mindepth 1 -maxdepth 1 -printf '%f\n')" = pub-cache ] \
+    [ "$(find /build-work -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)" = $'pub-cache\ntoolchain' ] \
       || fail 'build work initial inventory differs'
+    [ -d /build-work/toolchain ] && [ ! -L /build-work/toolchain ] \
+      && [ "$(stat -c '%u:%g:%a' /build-work/toolchain)" = "$(id -u):$(id -g):700" ] \
+      && [ "$(find /build-work/toolchain -mindepth 1 -maxdepth 1 -printf '%f\n')" = flutter ] \
+      || fail 'prepared SDK toolchain inventory differs'
+    readonly LOCAL_ENGINE_OUTPUT=/local-engine/src/out/host_release
+    readonly LOCAL_ENGINE_ARGS=(--local-engine-src-path /local-engine/src \
+      --local-engine host_release --local-engine-host host_release)
+    [ -L "$LOCAL_ENGINE_OUTPUT/dart-sdk" ] \
+      && [ "$(readlink -- "$LOCAL_ENGINE_OUTPUT/dart-sdk")" = "$RUSTDESK_ENGINE_DART_LINK" ] \
+      && [ "$(stat -Lc '%d:%i' -- "$LOCAL_ENGINE_OUTPUT/dart-sdk")" = \
+           "$(stat -c '%d:%i' -- /build-work/toolchain/flutter/bin/cache/dart-sdk)" ] \
+      || fail 'local engine does not reuse the admitted SDK Dart root'
+    for mountpoint in /local-engine/src "$RUSTDESK_ENGINE_DART_LINK" \
+      /build-work/toolchain/flutter/bin/cache/dart-sdk /build-work/toolchain/flutter/bin/cache/pkg/sky_engine; do
+      awk -v target="$mountpoint" '
+        $5 == target { count++; n=split($6, options, ","); for (i=1; i<=n; i++) if (options[i] == "ro") readonly++ }
+        END { exit !(count == 1 && readonly == 1) }
+      ' /proc/self/mountinfo || fail "selected engine/SDK role is not one read-only mount: $mountpoint"
+    done
+    verify_archive "$LOCAL_ENGINE_OUTPUT/libflutter_linux_gtk.so" \
+      "$RUSTDESK_ENGINE_CORE_BYTES" "$RUSTDESK_ENGINE_CORE_SHA256" 'selected engine core'
+    verify_archive "$LOCAL_ENGINE_OUTPUT/icudtl.dat" \
+      "$RUSTDESK_ENGINE_ICU_BYTES" "$RUSTDESK_ENGINE_ICU_SHA256" 'selected engine ICU'
     [ -d /build-work/pub-cache ] && [ ! -L /build-work/pub-cache ] \
       && [ "$(stat -c '%u:%g:%a' /build-work/pub-cache)" = \
         "$(id -u):$(id -g):700" ] \
@@ -580,11 +624,10 @@ PY
     readonly FRB_CODEGEN=$TOOLCHAIN/flutter_rust_bridge_codegen
     readonly HOME=/build-work/home
     readonly CARGO_HOME=/build-work/cargo-home
-    mkdir -m 0700 "$TOOLCHAIN" "$BUILD_SOURCE" "$HOME" "$CARGO_HOME"
+    mkdir -m 0700 "$BUILD_SOURCE" "$HOME" "$CARGO_HOME"
     cp -a /source/. "$BUILD_SOURCE/"
     chmod -R u+rwX "$BUILD_SOURCE"
     tar -C "$TOOLCHAIN" -xf "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz"
-    tar -C "$TOOLCHAIN" -xf "$RUSTDESK_FLUTTER_ARCHIVE"
     tar -C "$TOOLCHAIN" -xf "/online/llvm-${RUSTDESK_LLVM_VERSION}.tar.xz"
     [ "$(stat -c %s /online/frb-tool/bin/flutter_rust_bridge_codegen)" = \
       "$RUSTDESK_FRB_SIZE" ] \
@@ -763,6 +806,7 @@ PY
       printf 'FLUTTER_PEER_BUILD_PHASE=plugin-injection-start network=none timeout_seconds=300\n'
       /usr/bin/timeout --signal=TERM --kill-after=10s 300s \
         "$REAL_FLUTTER" --suppress-analytics --no-version-check \
+          "${LOCAL_ENGINE_ARGS[@]}" \
           pub get --offline --enforce-lockfile >/dev/null
       printf 'FLUTTER_PEER_BUILD_PHASE=plugin-injection-complete network=none\n'
     )
@@ -867,6 +911,7 @@ PY
           "$RUSTDESK_FLUTTER_VERSION"
         /usr/bin/timeout --signal=TERM --kill-after=30s 1200s \
           "$REAL_FLUTTER" --suppress-analytics --no-version-check --verbose \
+          "${LOCAL_ENGINE_ARGS[@]}" \
           build linux --release --no-pub
         printf 'FLUTTER_PEER_BUILD_PHASE=flutter-build-complete version=%s\n' \
           "$RUSTDESK_FLUTTER_VERSION"
@@ -874,6 +919,12 @@ PY
     }
     cd "$BUILD_ENTRY_DIRECTORY"
     readonly BUNDLE=$BUILD_SOURCE/flutter/build/linux/x64/release/bundle
+    verify_archive "$BUNDLE/lib/libflutter_linux_gtk.so" \
+      "$RUSTDESK_ENGINE_CORE_BYTES" "$RUSTDESK_ENGINE_CORE_SHA256" 'bundled engine core'
+    verify_archive "$BUNDLE/data/icudtl.dat" \
+      "$RUSTDESK_ENGINE_ICU_BYTES" "$RUSTDESK_ENGINE_ICU_SHA256" 'bundled engine ICU'
+    printf 'FLUTTER_APP_LOCAL_ENGINE=pass target=host_release host=host_release sdk_dart=reused execution_mounts=readonly core_sha256=%s icu_sha256=%s output=exact\n' \
+      "$RUSTDESK_ENGINE_CORE_SHA256" "$RUSTDESK_ENGINE_ICU_SHA256"
     [ -x "$BUNDLE/rustdesk" ] || fail 'exact RustDesk Flutter runner is missing'
     verify_regular "$BUNDLE/lib/librustdesk.so"
     verify_regular "$BUNDLE/lib/libtexture_rgba_renderer_plugin.so"
@@ -1214,6 +1265,6 @@ PY
     ;;
 
   *)
-    fail 'expected input-check, atspi-check, pub-cache, pub-cache-check, build-drivers, build-app, server, or viewer stage'
+    fail 'expected input-check, atspi-check, pub-cache, pub-cache-check, build-drivers, prepare-sdk, build-app, server, or viewer stage'
     ;;
 esac

@@ -24,6 +24,9 @@ FLUTTER_APP_BUILD_ONLY=0
 FLUTTER_APP_REPLAY=0
 FLUTTER_APP_COMMIT=
 FLUTTER_APP_EXPECTED_MANIFEST_SHA256=
+FLUTTER_APP_ENGINE_COMMIT=
+FLUTTER_APP_ENGINE_ARCHIVE_SHA256=
+FLUTTER_APP_ENGINE_MANIFEST_SHA256=
 ANDROID_RUNTIME_ARTIFACT_COMMIT=
 ANDROID_RUNTIME_APK_SHA256=
 ANDROID_RUNTIME_SCENARIO=
@@ -167,7 +170,7 @@ case "$#:${1:-}" in
             || { echo 'focused Rust-audit input/run overrides are forbidden' >&2; exit 2; }
         MODE=rust-audit
         ;;
-    5:--linux-flutter-app-replay)
+    11:--linux-flutter-app-replay)
         [ "$2" = --app-commit ] && [ "$4" = --app-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
             || { echo 'Linux Flutter replay requires an exact app commit and manifest digest' >&2; exit 2; }
@@ -178,13 +181,23 @@ case "$#:${1:-}" in
         FLUTTER_APP_REPLAY=1
         FLUTTER_APP_COMMIT=$3
         FLUTTER_APP_EXPECTED_MANIFEST_SHA256=$5
+        [ "$6" = --engine-commit ] && [ "$8" = --engine-archive-sha256 ] \
+            && [ "${10}" = --engine-manifest-sha256 ] || exit 2
+        FLUTTER_APP_ENGINE_COMMIT=$7
+        FLUTTER_APP_ENGINE_ARCHIVE_SHA256=$9
+        FLUTTER_APP_ENGINE_MANIFEST_SHA256=${11}
         ;;
-    1:--linux-flutter-app-build)
+    7:--linux-flutter-app-build)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Linux Flutter app-build input/run overrides are forbidden' >&2; exit 2; }
         MODE=flutter-peer-presentation
         FLUTTER_PEER_CANDIDATE=1
         FLUTTER_APP_BUILD_ONLY=1
+        [ "$2" = --engine-commit ] && [ "$4" = --engine-archive-sha256 ] \
+            && [ "$6" = --engine-manifest-sha256 ] || exit 2
+        FLUTTER_APP_ENGINE_COMMIT=$3
+        FLUTTER_APP_ENGINE_ARCHIVE_SHA256=$5
+        FLUTTER_APP_ENGINE_MANIFEST_SHA256=$7
         ;;
     9:--debian-systemd-lifecycle)
         [ "$2" = --release-deb ] && [ "$4" = --sha256 ] \
@@ -202,8 +215,8 @@ case "$#:${1:-}" in
     *)
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app producer: %s --linux-flutter-app-build\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
@@ -212,6 +225,13 @@ case "$#:${1:-}" in
         ;;
 esac
 readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_EXPECTED_MANIFEST_SHA256
+readonly FLUTTER_APP_ENGINE_COMMIT FLUTTER_APP_ENGINE_ARCHIVE_SHA256 FLUTTER_APP_ENGINE_MANIFEST_SHA256
+if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
+    [[ "$FLUTTER_APP_ENGINE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        && [[ "$FLUTTER_APP_ENGINE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        && [[ "$FLUTTER_APP_ENGINE_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || { echo 'Linux Flutter app requires independent engine identities' >&2; exit 2; }
+fi
 readonly MODE LIFECYCLE_ARTIFACT LIFECYCLE_ARTIFACT_SHA256 LIFECYCLE_COMMIT \
     DEV_CHECK_ARCHIVE FLUTTER_PEER_CANDIDATE FLUTTER_APP_BUILD_ONLY ANDROID_RUNTIME_ARTIFACT_COMMIT \
     ANDROID_RUNTIME_APK_SHA256 ANDROID_RUNTIME_SCENARIO \
@@ -512,6 +532,11 @@ FLUTTER_APP_INPUT_ROOT=
 FLUTTER_APP_INPUT_ID=
 FLUTTER_APP_INPUT_INVENTORY=
 FLUTTER_APP_TREE=
+FLUTTER_APP_ENGINE_ROOT=
+FLUTTER_APP_ENGINE_ID=
+FLUTTER_APP_ENGINE_FD=
+FLUTTER_APP_ENGINE_INVENTORY=
+FLUTTER_APP_ENGINE_CONTEXT=
 ANDROID_ARTIFACT_PENDING=
 ANDROID_ARTIFACT_SHA256=
 ANDROID_ARTIFACT_INPUT_ROOT=
@@ -1151,6 +1176,26 @@ android_peer_runtime_inventory() {
         -printf '%f:%y\n' | LC_ALL=C /usr/bin/sort
 }
 
+linux_flutter_engine_inventory() {
+    local path
+    [ -d "$FLUTTER_APP_ENGINE_ROOT" ] && [ ! -L "$FLUTTER_APP_ENGINE_ROOT" ] \
+        && [ "$(/usr/bin/readlink -f -- "$FLUTTER_APP_ENGINE_ROOT")" = "$FLUTTER_APP_ENGINE_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$FLUTTER_APP_ENGINE_ROOT")" = "$FLUTTER_APP_ENGINE_ID:$HOST_UID:$HOST_GID:700" ] \
+        && [ "$(/usr/bin/find "$FLUTTER_APP_ENGINE_ROOT" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = \
+             $'flutter-linux-engine.tar\nflutter-linux-engine.tar.sha256' ] || return 1
+    /usr/bin/stat -c '%d:%i:%u:%g:%a:%y:%z' -- "$FLUTTER_APP_ENGINE_ROOT"
+    for path in "$FLUTTER_APP_ENGINE_ROOT/flutter-linux-engine.tar" "$FLUTTER_APP_ENGINE_ROOT/flutter-linux-engine.tar.sha256"; do
+        [ -f "$path" ] && [ ! -L "$path" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$path")" = "$HOST_UID:$HOST_GID:400:1" ] \
+            && [ "$(/usr/bin/stat -c '%s' -- "$path")" -le 536870912 ] || return 1
+        if [ "${path##*/}" = flutter-linux-engine.tar.sha256 ]; then
+            [ "$(/usr/bin/stat -c '%s' -- "$path")" -le 256 ] || return 1
+        fi
+        /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$path" || return 1
+        /usr/bin/sha256sum -- "$path" || return 1
+    done
+}
+
 linux_flutter_app_inventory() {
     local path kind count=0 files=0 directories=0 bytes=0 size
     [ "$(/usr/bin/find "$FLUTTER_APP_INPUT_PARENT" -mindepth 1 -maxdepth 1 -printf '%f\n')" = linux-x86_64-flutter-app ] \
@@ -1406,6 +1451,10 @@ cleanup() {
         exec {FLUTTER_APP_INPUT_FD}<&- || cleanup_failed=1
         FLUTTER_APP_INPUT_FD=
     fi
+    if [ -n "$FLUTTER_APP_ENGINE_FD" ]; then
+        exec {FLUTTER_APP_ENGINE_FD}<&- || cleanup_failed=1
+        FLUTTER_APP_ENGINE_FD=
+    fi
     if [ -n "$ARTIFACT_OUTPUT_FD" ]; then
         exec {ARTIFACT_OUTPUT_FD}<&- || cleanup_failed=1
         ARTIFACT_OUTPUT_FD=
@@ -1470,7 +1519,7 @@ for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/cmp /usr/bin/comm /usr/bin/env 
     /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 /usr/bin/readlink /usr/bin/rm \
     /usr/bin/seq /usr/bin/sha256sum /usr/bin/sha512sum /usr/bin/sleep /usr/bin/sort \
     /usr/bin/ss /usr/bin/stat /usr/bin/tail /usr/bin/timeout /usr/bin/uname /usr/bin/wc \
-    /usr/bin/xorriso; do
+    /usr/bin/xorriso /usr/bin/jq /usr/bin/tar /usr/bin/head; do
     resolved="$(/usr/bin/readlink -f -- "$tool" 2>/dev/null)" \
         || fail "cannot resolve fixed host orchestration tool: $tool"
     [ -f "$resolved" ] && [ ! -L "$resolved" ] && [ -x "$resolved" ] \
@@ -2297,6 +2346,50 @@ if [ "$MODE" = flutter-peer-presentation ]; then
 fi
 
 if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
+    [ "$(git_closed -C "$REPO_ROOT" rev-parse --verify "${FLUTTER_APP_ENGINE_COMMIT}^{commit}")" = "$FLUTTER_APP_ENGINE_COMMIT" ] \
+        && git_closed -C "$REPO_ROOT" merge-base --is-ancestor "$FLUTTER_APP_ENGINE_COMMIT" refs/remotes/origin/master \
+        || fail 'Linux Flutter engine producer is absent from pushed master history'
+    engine_tree="$(git_closed -C "$REPO_ROOT" rev-parse "${FLUTTER_APP_ENGINE_COMMIT}^{tree}")"
+    engine_patch="$(git_closed -C "$REPO_ROOT" cat-file blob "$FLUTTER_APP_ENGINE_COMMIT:res/flutter/linux-accessibility-retirement.patch" | /usr/bin/sha256sum | /usr/bin/awk '{print $1}')"
+    FLUTTER_APP_ENGINE_ROOT="$FLUTTER_ENGINE_STATE_ROOT/$FLUTTER_APP_ENGINE_COMMIT/linux-x86_64-engine"
+    for engine_parent in "$FLUTTER_ENGINE_STATE_ROOT" "$FLUTTER_ENGINE_STATE_ROOT/$FLUTTER_APP_ENGINE_COMMIT"; do
+        [ -d "$engine_parent" ] && [ ! -L "$engine_parent" ] \
+            && [ "$(/usr/bin/readlink -f -- "$engine_parent")" = "$engine_parent" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$engine_parent")" = "$HOST_UID:$HOST_GID:700" ] \
+            || fail 'Linux Flutter engine parent authority differs'
+    done
+    FLUTTER_APP_ENGINE_ID="$(/usr/bin/stat -c '%d:%i' -- "$FLUTTER_APP_ENGINE_ROOT")"
+    exec {FLUTTER_APP_ENGINE_FD}<"$FLUTTER_APP_ENGINE_ROOT" || fail 'cannot retain selected engine capsule'
+    [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$FLUTTER_APP_ENGINE_FD")" = "$FLUTTER_APP_ENGINE_ID" ] \
+        || fail 'selected engine descriptor identity differs'
+    FLUTTER_APP_ENGINE_INVENTORY="$(linux_flutter_engine_inventory)" || fail 'selected engine inventory differs'
+    verify_sha256 "$FLUTTER_APP_ENGINE_ROOT/flutter-linux-engine.tar" "$FLUTTER_APP_ENGINE_ARCHIVE_SHA256"
+    [ "$(<"$FLUTTER_APP_ENGINE_ROOT/flutter-linux-engine.tar.sha256")" = "$FLUTTER_APP_ENGINE_ARCHIVE_SHA256  flutter-linux-engine.tar" ] \
+        || fail 'selected engine checksum differs'
+    /usr/bin/tar -xOf "$FLUTTER_APP_ENGINE_ROOT/flutter-linux-engine.tar" engine-manifest.json \
+        | /usr/bin/head -c 1048577 > "$RUN/app-engine-manifest.json" \
+        || fail 'cannot read the bounded selected engine manifest'
+    [ "$(/usr/bin/stat -c '%s' -- "$RUN/app-engine-manifest.json")" -le 1048576 ] \
+        || fail 'selected engine manifest exceeds its bound'
+    verify_sha256 "$RUN/app-engine-manifest.json" "$FLUTTER_APP_ENGINE_MANIFEST_SHA256"
+    FLUTTER_APP_ENGINE_CONTEXT="$(/usr/bin/jq -ceS \
+        --arg commit "$FLUTTER_APP_ENGINE_COMMIT" --arg tree "$engine_tree" \
+        --arg framework "$FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION" --arg patch "$engine_patch" \
+        --arg sdk "$SHA256_FLUTTER_PRESENTATION_CANDIDATE" \
+        --arg archive "$FLUTTER_APP_ENGINE_ARCHIVE_SHA256" --arg manifest "$FLUTTER_APP_ENGINE_MANIFEST_SHA256" '
+        def role: type == "object" and keys == ["bytes", "sha256"]
+            and (.bytes | type == "number" and . == floor and . > 0 and . <= 536870912)
+            and (.sha256 | type == "string" and test("^[0-9a-f]{64}$"));
+        select(.format == "rustdesk-flutter-linux-engine-artifact-v2" and .profile == "linux-x64-release-toolkit"
+            and .source_commit == $commit and .source_tree == $tree and .framework_revision == $framework
+            and .patch_sha256 == $patch and .bootstrap_sdk_archive_sha256 == $sdk
+            and (.files["libflutter_linux_gtk.so"] | role) and (.files["icudtl.dat"] | role)) |
+        {source_commit:$commit, source_tree:$tree, framework_revision:$framework, patch_sha256:$patch,
+         archive_sha256:$archive, manifest_sha256:$manifest,
+         core:.files["libflutter_linux_gtk.so"], icu:.files["icudtl.dat"]}' "$RUN/app-engine-manifest.json")" \
+        || fail 'selected engine manifest does not match independent source, patch, SDK and artifact authority'
+    [ "$(linux_flutter_engine_inventory)" = "$FLUTTER_APP_ENGINE_INVENTORY" ] \
+        || fail 'selected engine changed during context admission'
     app_context_commit=$FLUTTER_PEER_SOURCE_COMMIT
     app_context_tree=$FLUTTER_PEER_SOURCE_TREE
     if [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
@@ -2326,9 +2419,9 @@ if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
             || fail 'Linux app manifest differs from the independent requested digest'
     fi
     FLUTTER_APP_RECIPE_SHA256="$(git_closed -C "$REPO_ROOT" cat-file blob "$app_context_commit:scripts/smoke-flutter-peer-presentation-stage.sh" | /usr/bin/sha256sum | /usr/bin/awk '{print $1}')"
-    FLUTTER_APP_BUILD_CONTEXT="$(printf '{"source_commit":"%s","source_tree":"%s","builder_config":"%s","build_recipe_sha256":"%s","rust_toolchain":"%s.0-x86_64-unknown-linux-gnu","flutter_version":"%s","source_date_epoch":"%s","inputs":{"rust_archive":"%s","flutter_archive":"%s","flutter_tools_lock":"%s","flutter_project_lock":"%s","llvm_archive":"%s","frb_codegen":"%s","vendor_closure":"%s","vendor_config":"%s","vcpkg_closure":"%s","pub_cache_closure":"%s"}}' \
+    FLUTTER_APP_BUILD_CONTEXT="$(printf '{"source_commit":"%s","source_tree":"%s","builder_config":"%s","build_recipe_sha256":"%s","rust_toolchain":"%s.0-x86_64-unknown-linux-gnu","flutter_version":"%s","source_date_epoch":"%s","engine":%s,"inputs":{"rust_archive":"%s","flutter_archive":"%s","flutter_tools_lock":"%s","flutter_project_lock":"%s","llvm_archive":"%s","frb_codegen":"%s","vendor_closure":"%s","vendor_config":"%s","vcpkg_closure":"%s","pub_cache_closure":"%s"}}' \
         "$app_context_commit" "$app_context_tree" "$DEB_BUILDER_CONFIG_ID" \
-        "$FLUTTER_APP_RECIPE_SHA256" "$RUST_VERSION" "$FLUTTER_PEER_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH_PIN" \
+        "$FLUTTER_APP_RECIPE_SHA256" "$RUST_VERSION" "$FLUTTER_PEER_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH_PIN" "$FLUTTER_APP_ENGINE_CONTEXT" \
         "$SHA256_RUST_1_75" "$FLUTTER_PEER_FLUTTER_SHA256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_TOOLS_LOCK" \
         "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" "$SHA256_LLVM_15_0_6" "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
         "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_CARGO_VENDOR_CONFIG" \
@@ -3116,9 +3209,9 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     fi
 elif [ "$MODE" = flutter-peer-presentation ]; then
     if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
-        guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT'"
+        guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
     else
-        guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT'"
+        guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
     fi
 elif [ "$MODE" = dart-audit ]; then
     guest_invocation+=" --dart-audit /mnt/rustdesk-verifier-inputs/source.tar $DART_SOURCE_COMMIT $DART_SOURCE_TREE $DART_SOURCE_ARCHIVE_SHA256 /mnt/rustdesk-verifier-inputs/dart-audit.docker.tar.gz"
@@ -3223,6 +3316,12 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
     )
     if [ "$MODE" = flutter-peer-presentation ] \
        && [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+        start_virtiofsd sealed-input "$FLUTTER_APP_ENGINE_ROOT" "$FLUTTER_APP_ENGINE_ID" \
+            "$RUN/app-engine.sock" "$RUN/app-engine-virtiofsd.log"
+        focused_qemu_args+=(
+            -chardev "socket,id=app-engine-input,path=$RUN/app-engine.sock"
+            -device 'vhost-user-fs-pci,chardev=app-engine-input,tag=rustdesk-linux-flutter-engine-input,queue-size=1024'
+        )
         start_virtiofsd sealed-input "$FLUTTER_PEER_CANDIDATE_ROOT" \
             "$(/usr/bin/stat -c '%d:%i' -- "$FLUTTER_PEER_CANDIDATE_ROOT")" \
             "$FLUTTER_CANDIDATE_VIRTIOFS_SOCKET" "$FLUTTER_CANDIDATE_VIRTIOFSD_LOG"
@@ -3534,11 +3633,11 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
     fi
     printf '%s\n' "$engine_prepare_receipt" "$engine_prepare_vm_receipt"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
-    linux_flutter_test_receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=20 publication=noclobber admission=exact execution=guest-only cleanup=joined'
+    linux_flutter_test_receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=23 publication=noclobber admission=exact execution=guest-only cleanup=joined'
     require_exact_fixed_receipt \
         'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 app_capsule=refused cleanup=joined' \
         'Linux app build/run admission result'
-    linux_flutter_vm_receipt="LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=20 uid=4000 gid=4000 root=refused foreign=refused materializer=refused-before-files test_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_TEST" | /usr/bin/awk '{ print $1 }') helper_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" | /usr/bin/awk '{ print $1 }') source=readonly docker=retired network=none cleanup=joined"
+    linux_flutter_vm_receipt="LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=23 uid=4000 gid=4000 root=refused foreign=refused materializer=refused-before-files test_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_TEST" | /usr/bin/awk '{ print $1 }') helper_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" | /usr/bin/awk '{ print $1 }') source=readonly docker=retired network=none cleanup=joined"
     require_exact_fixed_receipt "$linux_flutter_test_receipt" 'native Linux app-capsule result'
     require_exact_fixed_receipt "$linux_flutter_vm_receipt" 'Linux app-capsule source/finality result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux app-capsule cloud-init completion'
@@ -4385,6 +4484,9 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
             && [ "$(linux_flutter_app_inventory)" = "$FLUTTER_APP_INPUT_INVENTORY" ] \
             || fail 'Linux Flutter app capsule changed during replay'
     fi
+    [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$FLUTTER_APP_ENGINE_FD")" = "$FLUTTER_APP_ENGINE_ID" ] \
+        && [ "$(linux_flutter_engine_inventory)" = "$FLUTTER_APP_ENGINE_INVENTORY" ] \
+        || fail 'selected Linux Flutter engine capsule changed during the workload'
 elif [ "$MODE" = dart-audit ]; then
     focused_inputs_after="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS"

@@ -65,15 +65,16 @@ APP_COMMIT=
 APP_TREE=
 APP_RECIPE_SHA256=
 APP_MANIFEST_SHA256=
+APP_ENGINE_CONTEXT=
 case "$#:${1:-}" in
   1:--self-test-vm-authority)
     PEER_VM_AUTHORITY_SELF_TEST=1
     ;;
-  18:--source-archive)
+  20:--source-archive)
     [ "$3" = --commit ] && [ "$5" = --tree ] && [ "$7" = --archive-sha256 ] \
       && [ "$9" = --replay-app ] && [ "${11}" = --app-commit ] \
       && [ "${13}" = --app-tree ] && [ "${15}" = --app-recipe-sha256 ] \
-      && [ "${17}" = --app-manifest-sha256 ] \
+      && [ "${17}" = --app-manifest-sha256 ] && [ "${19}" = --engine-context ] \
       || die 'app replay source/archive authority argument order differs'
     SUPPLIED_SOURCE_ARCHIVE=$2
     SUPPLIED_SOURCE_COMMIT=$4
@@ -85,14 +86,16 @@ case "$#:${1:-}" in
     APP_TREE=${14}
     APP_RECIPE_SHA256=${16}
     APP_MANIFEST_SHA256=${18}
+    APP_ENGINE_CONTEXT=${20}
     [[ "$APP_COMMIT" =~ ^[0-9a-f]{40}$ ]] && [[ "$APP_TREE" =~ ^[0-9a-f]{40}$ ]] \
       && [[ "$APP_RECIPE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
       && [[ "$APP_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
       || die 'app replay identity is malformed'
     ;;
-  12:--source-archive)
+  14:--source-archive)
     [ "$3" = --commit ] && [ "$5" = --tree ] && [ "$7" = --archive-sha256 ] \
       && [ "$9" = --flutter-presentation-candidate ] && [ "${11}" = --build-app ] \
+      && [ "${13}" = --engine-context ] \
       || die 'app producer source/archive authority argument order differs'
     SUPPLIED_SOURCE_ARCHIVE=$2
     SUPPLIED_SOURCE_COMMIT=$4
@@ -102,13 +105,14 @@ case "$#:${1:-}" in
     SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE=${10}
     BUILD_APP_ONLY=1
     APP_BUILD_CONTEXT=${12}
+    APP_ENGINE_CONTEXT=${14}
     ;;
   *) die 'accepts only --self-test-vm-authority or the exact source/archive authority' ;;
 esac
 readonly SUPPLIED_SOURCE_ARCHIVE SUPPLIED_SOURCE_COMMIT \
   SUPPLIED_SOURCE_TREE SUPPLIED_SOURCE_ARCHIVE_SHA256 \
   FLUTTER_PRESENTATION_CANDIDATE SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE \
-  BUILD_APP_ONLY APP_BUILD_CONTEXT APP_MANIFEST_SHA256
+  BUILD_APP_ONLY APP_BUILD_CONTEXT APP_MANIFEST_SHA256 APP_ENGINE_CONTEXT
 if [ "$PEER_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
   authority_version="$(peer_vm_docker version \
     --format '{{.Client.Version}}|{{.Server.Version}}')" \
@@ -397,15 +401,37 @@ if [ "$BUILD_APP_ONLY" -eq 1 ]; then
   APP_TREE=$SOURCE_TREE
   APP_RECIPE_SHA256="$(sha256sum "$SOURCE_SNAPSHOT/scripts/smoke-flutter-peer-presentation-stage.sh" | awk '{print $1}')"
 fi
-  expected_context="$(printf '{"source_commit":"%s","source_tree":"%s","builder_config":"%s","build_recipe_sha256":"%s","rust_toolchain":"%s.0-x86_64-unknown-linux-gnu","flutter_version":"%s","source_date_epoch":"%s","inputs":{"rust_archive":"%s","flutter_archive":"%s","flutter_tools_lock":"%s","flutter_project_lock":"%s","llvm_archive":"%s","frb_codegen":"%s","vendor_closure":"%s","vendor_config":"%s","vcpkg_closure":"%s","pub_cache_closure":"%s"}}' \
+  expected_context="$(printf '{"source_commit":"%s","source_tree":"%s","builder_config":"%s","build_recipe_sha256":"%s","rust_toolchain":"%s.0-x86_64-unknown-linux-gnu","flutter_version":"%s","source_date_epoch":"%s","engine":%s,"inputs":{"rust_archive":"%s","flutter_archive":"%s","flutter_tools_lock":"%s","flutter_project_lock":"%s","llvm_archive":"%s","frb_codegen":"%s","vendor_closure":"%s","vendor_config":"%s","vcpkg_closure":"%s","pub_cache_closure":"%s"}}' \
     "$APP_COMMIT" "$APP_TREE" "$DEB_BUILDER_CONFIG_ID" "$APP_RECIPE_SHA256" \
-    "$RUST_VERSION" "$BUILD_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH_PIN" \
+    "$RUST_VERSION" "$BUILD_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH_PIN" "$APP_ENGINE_CONTEXT" \
     "$SHA256_RUST_1_75" "$BUILD_FLUTTER_SHA256" "$BUILD_FLUTTER_TOOLS_LOCK_SHA256" \
     "$BUILD_PROJECT_LOCK_SHA256" "$SHA256_LLVM_15_0_6" "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
     "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_CARGO_VENDOR_CONFIG" \
     "$SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1" "$EVIDENCE_PUB_CACHE_SHA256")"
   [ "$APP_BUILD_CONTEXT" = "$expected_context" ] \
     || die 'independent app build context differs from the actual source and selected inputs'
+ENGINE_BINDING="$(/usr/bin/python3 -I -S - "$SOURCE_SNAPSHOT/scripts/linux-flutter-artifact.py" \
+  "$expected_context" "$FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION" <<'PY'
+import importlib.util
+import json
+import sys
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("app_artifact", sys.argv[1])
+if spec is None or spec.loader is None:
+    raise RuntimeError("cannot load app artifact authority")
+app = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(app)
+context = json.loads(sys.argv[2], object_pairs_hook=app.no_duplicates)
+app.validate_context(context)
+engine = context["engine"]
+if engine["framework_revision"] != sys.argv[3]:
+    raise RuntimeError("app engine framework differs from the selected SDK")
+print(engine["core"]["bytes"], engine["core"]["sha256"], engine["icu"]["bytes"], engine["icu"]["sha256"])
+PY
+)" || die 'independent app engine authority is malformed'
+read -r ENGINE_CORE_BYTES ENGINE_CORE_SHA256 ENGINE_ICU_BYTES ENGINE_ICU_SHA256 extra <<<"$ENGINE_BINDING"
+[ -z "$extra" ] || die 'app engine role receipt differs'
+readonly ENGINE_CORE_BYTES ENGINE_CORE_SHA256 ENGINE_ICU_BYTES ENGINE_ICU_SHA256
 if [ "$BUILD_APP_ONLY" -eq 1 ]; then
   BUILD_STAGE=build-app
   BUILD_EPOCH_ARGS=(--env "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH_PIN")
@@ -759,6 +785,60 @@ run_owned_container "$WORKSPACE/pub-cache.cid" \
 [ "$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")" = "$EVIDENCE_PUB_CACHE_ID" ] \
   || die 'canonical evidence Pub-cache identity changed while verified'
 
+echo '== prepare the authenticated SDK once, then join its preparation container =='
+run_owned_container "$WORKSPACE/sdk-prepare.cid" \
+  --pull=never --network=none --read-only --user "$HOST_UID:$HOST_GID" \
+  --cap-drop=ALL --security-opt=no-new-privileges \
+  --pids-limit=64 --memory=2g --memory-swap=2g --cpus=2 \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=64m \
+  --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$BUILD_FLUTTER_ARCHIVE,target=/flutter-sdk.tar.xz,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$BUILD_WORK,target=/build-work,bind-recursive=disabled" \
+  --env "RUSTDESK_FLUTTER_SHA256=$BUILD_FLUTTER_SHA256" \
+  --env "RUSTDESK_FLUTTER_SIZE=$BUILD_FLUTTER_SIZE" \
+  "$DEB_BUILDER_CONFIG_ID" \
+  bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh prepare-sdk
+readonly ENGINE_CAPSULE=/mnt/rustdesk-linux-flutter-engine-input
+readonly ENGINE_WORK=$WORKSPACE/engine-work
+readonly SDK_ROOT=$BUILD_WORK/toolchain/flutter
+mkdir -m 0700 "$ENGINE_WORK"
+readonly SDK_ROOT_ID="$(stat -c '%d:%i' -- "$SDK_ROOT")"
+TOOLKIT_CONTEXT="$(/usr/bin/python3 -I -S - "$APP_ENGINE_CONTEXT" "$BUILD_FLUTTER_SHA256" <<'PY'
+import json
+import sys
+engine = json.loads(sys.argv[1])
+context = {key: engine[key] for key in ("source_commit", "source_tree", "framework_revision", "patch_sha256")}
+context["bootstrap_sdk_archive_sha256"] = sys.argv[2]
+print(json.dumps(context, sort_keys=True, separators=(",", ":")))
+PY
+)" || die 'selected toolkit context construction failed'
+ENGINE_DIGESTS="$(/usr/bin/python3 -I -S - "$APP_ENGINE_CONTEXT" <<'PY'
+import json
+import sys
+engine = json.loads(sys.argv[1])
+print(engine["archive_sha256"], engine["manifest_sha256"])
+PY
+)" || die 'selected engine digest extraction failed'
+read -r ENGINE_ARCHIVE_SHA256 ENGINE_MANIFEST_SHA256 extra <<<"$ENGINE_DIGESTS"
+[ -z "$extra" ] || die 'selected engine digest receipt differs'
+ENGINE_SOURCE="$(/usr/bin/python3 -I -S "$SOURCE_SNAPSHOT/scripts/linux-flutter-artifact.py" materialize-engine \
+  --root "$ENGINE_CAPSULE" --root-identity "$(stat -c '%d:%i' -- "$ENGINE_CAPSULE")" \
+  --parent "$ENGINE_WORK" --parent-identity "$(stat -c '%d:%i' -- "$ENGINE_WORK")" \
+  --sdk "$SDK_ROOT" --sdk-identity "$SDK_ROOT_ID" --context "$TOOLKIT_CONTEXT" \
+  --archive-sha256 "$ENGINE_ARCHIVE_SHA256" --manifest-sha256 "$ENGINE_MANIFEST_SHA256")" \
+  || die 'selected engine toolkit materialization failed'
+[ "$ENGINE_SOURCE" = "$ENGINE_WORK/materialized-flutter-engine/src" ] \
+  || die 'selected engine projection destination differs'
+readonly SDK_DART="$SDK_ROOT/bin/cache/dart-sdk"
+readonly SDK_SKY="$SDK_ROOT/bin/cache/pkg/sky_engine"
+[ "$(readlink -- "$ENGINE_SOURCE/out/host_release/dart-sdk")" = "$SDK_DART" ] \
+  || die 'selected local engine Dart link differs'
+(cd "$ENGINE_SOURCE" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) \
+  > "$WORKSPACE/engine-execution.sha256"
+chmod 0400 "$WORKSPACE/engine-execution.sha256"
+tar -xOf "$ENGINE_CAPSULE/flutter-linux-engine.tar" engine-manifest.json > "$WORKSPACE/engine-manifest.json"
+chmod 0400 "$WORKSPACE/engine-manifest.json"
+
 echo '== build one exact full RustDesk Linux Flutter bundle without packaging =='
 run_owned_container "$WORKSPACE/build.cid" \
   --pull=never --network=none --read-only \
@@ -778,6 +858,10 @@ run_owned_container "$WORKSPACE/build.cid" \
   --mount "type=bind,source=$ONLINE_DIR/vcpkg/installed/x64-linux,target=/online/vcpkg/installed/x64-linux,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$EVIDENCE_ONLINE,target=/evidence-online,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$BUILD_WORK,target=/build-work,bind-recursive=disabled" \
+  --mount "type=bind,source=$ENGINE_SOURCE,target=/local-engine/src,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$SDK_DART,target=$SDK_DART,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$SDK_DART,target=/build-work/toolchain/flutter/bin/cache/dart-sdk,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$SDK_SKY,target=/build-work/toolchain/flutter/bin/cache/pkg/sky_engine,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$EVIDENCE_PUB_CACHE/hosted,target=/build-work/pub-cache/hosted,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$EVIDENCE_PUB_CACHE/hosted-hashes,target=/build-work/pub-cache/hosted-hashes,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$EVIDENCE_PUB_CACHE/git,target=/build-work/pub-cache/git,readonly,bind-recursive=disabled" \
@@ -803,9 +887,35 @@ run_owned_container "$WORKSPACE/build.cid" \
   --env "RUSTDESK_EVIDENCE_PUB_CACHE_SHA256=$EVIDENCE_PUB_CACHE_SHA256" \
   --env "RUSTDESK_PROJECT_LOCK_MODE=$BUILD_PROJECT_LOCK_MODE" \
   --env "RUSTDESK_PROJECT_LOCK_SHA256=$BUILD_PROJECT_LOCK_SHA256" \
+  --env "RUSTDESK_ENGINE_DART_LINK=$SDK_DART" \
+  --env "RUSTDESK_ENGINE_CORE_BYTES=$ENGINE_CORE_BYTES" \
+  --env "RUSTDESK_ENGINE_CORE_SHA256=$ENGINE_CORE_SHA256" \
+  --env "RUSTDESK_ENGINE_ICU_BYTES=$ENGINE_ICU_BYTES" \
+  --env "RUSTDESK_ENGINE_ICU_SHA256=$ENGINE_ICU_SHA256" \
   "${BUILD_EPOCH_ARGS[@]}" \
   "$DEB_BUILDER_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh "$BUILD_STAGE"
+
+echo '== after the build joins, re-prove selected SDK roles and engine execution bytes =='
+[ "$(readlink -- "$ENGINE_SOURCE/out/host_release/dart-sdk")" = "$SDK_DART" ] \
+  || die 'local engine Dart link changed during compilation'
+(cd "$ENGINE_SOURCE" && sha256sum --check --strict "$WORKSPACE/engine-execution.sha256" >/dev/null)
+/usr/bin/python3 -I -S - "$SOURCE_SNAPSHOT/scripts/linux-flutter-artifact.py" \
+  "$SDK_ROOT" "$SDK_ROOT_ID" "$WORKSPACE/engine-manifest.json" \
+  "$ENGINE_MANIFEST_SHA256" "$TOOLKIT_CONTEXT" <<'PY'
+import importlib.util
+import json
+import pathlib
+import sys
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("app_artifact", sys.argv[1])
+if spec is None or spec.loader is None:
+    raise RuntimeError("cannot load SDK role authority")
+app = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(app)
+app.verify_engine_sdk_roles(sys.argv[2], app.publication.parse_identity(sys.argv[3], "SDK"),
+    pathlib.Path(sys.argv[4]).read_bytes(), sys.argv[5], json.loads(sys.argv[6], object_pairs_hook=app.no_duplicates))
+PY
 
 echo '== reverify the canonical selected Pub cache after the offline build =='
 run_owned_container "$WORKSPACE/pub-cache-post.cid" \

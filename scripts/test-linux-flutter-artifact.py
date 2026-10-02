@@ -35,6 +35,13 @@ CONTEXT = {
     "source_date_epoch": "1700000000", "inputs": {key: "5" * 64 for key in app.INPUTS},
 }
 ELF = Path("/usr/bin/true").read_bytes()
+CONTEXT["engine"] = {
+    "source_commit": "6" * 40, "source_tree": "7" * 40,
+    "framework_revision": "8" * 40, "patch_sha256": "9" * 64,
+    "archive_sha256": "a" * 64, "manifest_sha256": "b" * 64,
+    "core": {"bytes": len(ELF), "sha256": hashlib.sha256(ELF).hexdigest()},
+    "icu": {"bytes": len(b"asset bytes"), "sha256": hashlib.sha256(b"asset bytes").hexdigest()},
+}
 WORKSPACE = Path(tempfile.mkdtemp(prefix="linux-flutter-artifact-test."))
 WORKSPACE.chmod(0o700)
 WORKSPACE_ID = app.publication.identity(WORKSPACE.stat())
@@ -134,6 +141,8 @@ class LinuxFlutterArtifactTests(unittest.TestCase):
             context = copy.deepcopy(CONTEXT)
             if key == "inputs":
                 context[key]["flutter_archive"] = "a" * 64
+            elif key == "engine":
+                context[key]["archive_sha256"] = "c" * 64
             elif key == "source_date_epoch":
                 context[key] = "unset"
             elif key == "flutter_version":
@@ -154,6 +163,53 @@ class LinuxFlutterArtifactTests(unittest.TestCase):
         for context in (dict(CONTEXT, unknown="x"), dict(CONTEXT, inputs={}),
                         dict(CONTEXT, source_commit="HEAD"), dict(CONTEXT, rust_toolchain="stable")):
             self.rejected(lambda: app.validate_context(context))
+        for key in app.APP_ENGINE_FIELDS:
+            context = copy.deepcopy(CONTEXT)
+            del context["engine"][key]
+            self.rejected(lambda: app.validate_context(context))
+        for role in app.APP_ENGINE_ROLES:
+            for value in (True, 0, app.MAX_FILE_BYTES + 1):
+                context = copy.deepcopy(CONTEXT)
+                context["engine"][role]["bytes"] = value
+                self.rejected(lambda: app.validate_context(context))
+
+    def test_stock_engine_refuses_before_publication(self):
+        for role in app.APP_ENGINE_ROLES:
+            context = copy.deepcopy(CONTEXT)
+            context["engine"][role]["sha256"] = "f" * 64
+            self.rejected(lambda: app.prepare(str(self.source), identity(self.source),
+                str(self.parent), identity(self.parent), context))
+            self.assertEqual(list(self.parent.iterdir()), [])
+
+    def test_self_consistent_capsule_cannot_choose_its_engine(self):
+        root, digest = self.published()
+        for role, relative in app.APP_ENGINE_ROLES.items():
+            original = (root / relative).read_bytes()
+            replacement = original + b"self-consistent but not the selected engine"
+            path = root / relative
+            path.chmod(0o600)
+            path.write_bytes(replacement)
+            path.chmod(0o400)
+            def substitute(value):
+                value["files"][relative] = {
+                    "bytes": len(replacement), "sha256": hashlib.sha256(replacement).hexdigest(),
+                }
+                return json.dumps(value).encode()
+            digest = self.change_manifest(root, substitute)
+            self.rejected(lambda: self.materialize(root, digest))
+            self.assertEqual(list(self.execution.iterdir()), [])
+            path.chmod(0o600)
+            path.write_bytes(original)
+            path.chmod(0o400)
+            digest = self.change_manifest(root, lambda value: json.dumps({
+                **value, "files": {**value["files"], relative: CONTEXT["engine"][role]},
+            }).encode())
+
+    def test_schema_one_has_no_patched_engine_authority(self):
+        root, _ = self.published()
+        digest = self.change_manifest(root, lambda value: json.dumps({**value, "schema": 1}).encode())
+        self.rejected(lambda: self.materialize(root, digest))
+        self.assertEqual(list(self.execution.iterdir()), [])
 
     def test_changed_asset_bytes(self):
         root, digest = self.published()
@@ -215,7 +271,7 @@ class LinuxFlutterArtifactTests(unittest.TestCase):
 
     def test_duplicate_manifest_key(self):
         root, _ = self.published()
-        digest = self.change_manifest(root, lambda value: b'{"schema":1,' + json.dumps(value).encode()[1:])
+        digest = self.change_manifest(root, lambda value: b'{"schema":2,' + json.dumps(value).encode()[1:])
         self.rejected(lambda: self.admit(root, digest))
 
     def test_boolean_manifest_size(self):
@@ -594,7 +650,7 @@ def main():
     try:
         result = unittest.TextTestRunner(verbosity=2).run(
             unittest.defaultTestLoader.loadTestsFromTestCase(LinuxFlutterArtifactTests))
-        successful = result.wasSuccessful() and result.testsRun == 20 and not result.skipped
+        successful = result.wasSuccessful() and result.testsRun == 23 and not result.skipped
         sdk_result = unittest.TextTestRunner(verbosity=2).run(
             unittest.defaultTestLoader.loadTestsFromTestCase(EngineSdkRoleTests))
         successful = successful and sdk_result.wasSuccessful() and sdk_result.testsRun == 6 and not sdk_result.skipped
@@ -612,7 +668,7 @@ def main():
           "sky=exact frontend=exact mutation=refused links=refused writes=none cleanup=joined", file=sys.stderr)
     print("FLUTTER_ENGINE_MATERIALIZATION=pass cases=8 fixture=system-elf-and-toolkit "
           "inventory=closed sdk=reused mutation=refused fallback=refused cleanup=joined", file=sys.stderr)
-    print("LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=20 publication=noclobber admission=exact execution=guest-only cleanup=joined")
+    print("LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=23 publication=noclobber admission=exact execution=guest-only cleanup=joined")
 
 
 if __name__ == "__main__":

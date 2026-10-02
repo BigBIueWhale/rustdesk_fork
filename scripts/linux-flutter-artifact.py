@@ -46,8 +46,15 @@ INPUTS = frozenset((
 ))
 CONTEXT_FIELDS = frozenset((
     "source_commit", "source_tree", "builder_config", "build_recipe_sha256",
-    "rust_toolchain", "flutter_version", "source_date_epoch", "inputs",
+    "rust_toolchain", "flutter_version", "source_date_epoch", "inputs", "engine",
 ))
+APP_ENGINE_FIELDS = frozenset((
+    "source_commit", "source_tree", "framework_revision", "patch_sha256",
+    "archive_sha256", "manifest_sha256", "core", "icu",
+))
+APP_ENGINE_ROLES = {
+    "core": "bundle/lib/libflutter_linux_gtk.so", "icu": "bundle/data/icudtl.dat",
+}
 REQUIRED_FILES = frozenset((
     "smoke-readiness", "bundle/rustdesk", "bundle/lib/librustdesk.so",
     "bundle/lib/libflutter_linux_gtk.so", "bundle/lib/libapp.so",
@@ -99,6 +106,26 @@ def validate_context(context):
     for value in inputs.values():
         if type(value) is not str or publication.SHA256_RE.fullmatch(value) is None:
             fail("Linux app build input digest is malformed")
+    engine = context["engine"]
+    if type(engine) is not dict or set(engine) != APP_ENGINE_FIELDS:
+        fail("Linux app engine authority fields differ")
+    for key in APP_ENGINE_FIELDS.difference(APP_ENGINE_ROLES):
+        width = 40 if key in ("source_commit", "source_tree", "framework_revision") else 64
+        if type(engine[key]) is not str or re.fullmatch(r"[0-9a-f]{" + str(width) + r"}", engine[key]) is None:
+            fail("Linux app engine authority is malformed: " + key)
+    for role in APP_ENGINE_ROLES:
+        record = engine[role]
+        if (type(record) is not dict or set(record) != {"bytes", "sha256"}
+                or type(record["bytes"]) is not int or not 0 < record["bytes"] <= MAX_FILE_BYTES
+                or type(record["sha256"]) is not str
+                or publication.SHA256_RE.fullmatch(record["sha256"]) is None):
+            fail("Linux app engine role is malformed: " + role)
+
+
+def verify_bundle_engine(records, context):
+    for role, relative in APP_ENGINE_ROLES.items():
+        if records.get(relative) != context["engine"][role]:
+            fail("Linux app bundle does not contain the independently selected engine role: " + role)
 
 
 def require_descriptor_capacity():
@@ -712,7 +739,7 @@ def admit(root, context, digest, stack):
     manifest = json.loads(raw, object_pairs_hook=no_duplicates)
     if (
         type(manifest) is not dict or set(manifest) != {"schema", "context", "directories", "files"}
-        or type(manifest["schema"]) is not int or manifest["schema"] != 1
+        or type(manifest["schema"]) is not int or manifest["schema"] != 2
         or manifest["context"] != context or type(manifest["files"]) is not dict
         or set(manifest["files"]) != set(tree.files)
         or type(manifest["directories"]) is not list
@@ -730,6 +757,7 @@ def admit(root, context, digest, stack):
         if consume(descriptor, info, is_executable) != record:
             fail("Linux app file digest differs")
         os.lseek(descriptor, 0, os.SEEK_SET)
+    verify_bundle_engine(manifest["files"], context)
     tree.reprove()
     return tree, manifest
 
@@ -749,6 +777,13 @@ def prepare(source_path, source_identity, parent_path, parent_identity, context)
     with ExitStack() as stack:
         source = open_root(source_path, source_identity, 0o500, stack)
         tree = Tree(source, stack, capsule=False)
+        selected = {}
+        for relative in APP_ENGINE_ROLES.values():
+            descriptor, info, is_executable = tree.files[relative]
+            selected[relative] = consume(descriptor, info, is_executable)
+            os.lseek(descriptor, 0, os.SEEK_SET)
+        verify_bundle_engine(selected, context)
+        tree.reprove()
         parent = open_root(parent_path, parent_identity, 0o700, stack)
         lock_empty_parent(parent)
         pending = ".linux-flutter-pending-" + os.urandom(32).hex()
@@ -757,7 +792,7 @@ def prepare(source_path, source_identity, parent_path, parent_identity, context)
         expected = publication.identity(os.stat(pending, dir_fd=parent, follow_symlinks=False))
         output = open_root(path, expected, 0o700, stack)
         records = copy_tree(tree, output, stack, inert=True)
-        raw = json.dumps({"schema": 1, "context": context,
+        raw = json.dumps({"schema": 2, "context": context,
                          "directories": sorted(relative for relative in tree.directories if relative),
                          "files": records},
                          sort_keys=True, separators=(",", ":")).encode("ascii") + b"\n"

@@ -10,6 +10,7 @@ FLUTTER_APP_COMMIT=
 FLUTTER_APP_TREE=
 FLUTTER_APP_RECIPE_SHA256=
 FLUTTER_APP_MANIFEST_SHA256=
+FLUTTER_APP_ENGINE_CONTEXT=
 case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
@@ -71,7 +72,7 @@ case "$#:${8:-}" in
     12:--apple-conform)
         MODE=apple-conform
         ;;
-    17:--linux-flutter-app-replay)
+    18:--linux-flutter-app-replay)
         MODE=flutter-peer-presentation
         FLUTTER_PEER_CANDIDATE=1
         FLUTTER_APP_REPLAY=1
@@ -80,16 +81,18 @@ case "$#:${8:-}" in
         FLUTTER_APP_RECIPE_SHA256=${15}
         FLUTTER_APP_MANIFEST_SHA256=${16}
         FLUTTER_APP_BUILD_CONTEXT=${17}
+        FLUTTER_APP_ENGINE_CONTEXT=${18}
         [[ "$FLUTTER_APP_COMMIT" =~ ^[0-9a-f]{40}$ ]] && [[ "$FLUTTER_APP_TREE" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$FLUTTER_APP_RECIPE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
             && [[ "$FLUTTER_APP_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
             && [ -n "$FLUTTER_APP_BUILD_CONTEXT" ] && [ "${#FLUTTER_APP_BUILD_CONTEXT}" -le 4096 ] || exit 2
         ;;
-    13:--linux-flutter-app-build)
+    14:--linux-flutter-app-build)
         MODE=flutter-peer-presentation
         FLUTTER_PEER_CANDIDATE=1
         FLUTTER_APP_BUILD_ONLY=1
         FLUTTER_APP_BUILD_CONTEXT=${13}
+        FLUTTER_APP_ENGINE_CONTEXT=${14}
         [ -n "$FLUTTER_APP_BUILD_CONTEXT" ] && [ "${#FLUTTER_APP_BUILD_CONTEXT}" -le 4096 ] || exit 2
         ;;
     12:--debian-systemd-lifecycle)
@@ -116,6 +119,10 @@ readonly EXPECTED_SHA256=$5
 readonly EXPECTED_KERNEL_RELEASE=$6
 readonly EXPECTED_ROOT_UUID=$7
 readonly MODE FLUTTER_PEER_CANDIDATE FLUTTER_APP_BUILD_ONLY FLUTTER_APP_BUILD_CONTEXT
+readonly FLUTTER_APP_ENGINE_CONTEXT
+if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
+    [ -n "$FLUTTER_APP_ENGINE_CONTEXT" ] && [ "${#FLUTTER_APP_ENGINE_CONTEXT}" -le 2048 ] || exit 2
+fi
 readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_TREE \
     FLUTTER_APP_RECIPE_SHA256 FLUTTER_APP_MANIFEST_SHA256
 readonly RUST_TEST_SOURCE_ARCHIVE=${9:-}
@@ -552,7 +559,7 @@ run_linux_flutter_artifact_tests() {
     local test=$VERIFY_REPO/scripts/test-linux-flutter-artifact.py
     local helper=$VERIFY_REPO/scripts/linux-flutter-artifact.py
     local output=$ROOT/linux-flutter-artifact-tests.out
-    local receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=20 publication=noclobber admission=exact execution=guest-only cleanup=joined'
+    local receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=23 publication=noclobber admission=exact execution=guest-only cleanup=joined'
     local -a sources=("$test" "$helper" "$ENTRY_PREFLIGHT"
         "$VERIFY_REPO/scripts/publish-artifact-result.py"
         "$VERIFY_REPO/scripts/verify-private-tree-closure.py"
@@ -590,6 +597,11 @@ print(json.dumps({
     "builder_config": "sha256:" + "0" * 64, "build_recipe_sha256": "0" * 64,
     "rust_toolchain": "1.75.0-x86_64-unknown-linux-gnu", "flutter_version": "3.47.5",
     "source_date_epoch": "unset", "inputs": {role: "0" * 64 for role in roles},
+    "engine": {
+        "source_commit": "0" * 40, "source_tree": "0" * 40, "framework_revision": "0" * 40,
+        "patch_sha256": "0" * 64, "archive_sha256": "0" * 64, "manifest_sha256": "0" * 64,
+        "core": {"bytes": 1, "sha256": "0" * 64}, "icu": {"bytes": 1, "sha256": "0" * 64},
+    },
 }))
 PY
     )" || fail 'Linux app-capsule refusal context could not be constructed'
@@ -651,7 +663,7 @@ PY
         || fail 'Linux app-capsule scratch remains after retirement'
     stop_docker_authority
     cat "$output"
-    printf 'LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=20 uid=4000 gid=4000 root=refused foreign=refused materializer=refused-before-files test_sha256=%s helper_sha256=%s source=readonly docker=retired network=none cleanup=joined\n' \
+    printf 'LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=23 uid=4000 gid=4000 root=refused foreign=refused materializer=refused-before-files test_sha256=%s helper_sha256=%s source=readonly docker=retired network=none cleanup=joined\n' \
         "$test_sha" "$helper_sha"
 }
 
@@ -4835,6 +4847,7 @@ run_flutter_peer_presentation() {
     local failure_root=/mnt/rustdesk-flutter-peer-failure
     local app_output=/mnt/rustdesk-linux-flutter-app-output
     local app_input=/mnt/rustdesk-linux-flutter-app-input
+    local engine_input=/mnt/rustdesk-linux-flutter-engine-input
     local inputs=$sealed_root
     local source_root=$ROOT/flutter-peer-source
     local peer_script=$source_root/scripts/smoke-flutter-peer-presentation.sh
@@ -4871,6 +4884,16 @@ run_flutter_peer_presentation() {
     [ "$(stat -c '%u:%g:%a' -- "$sealed_root")" = 1000:1000:700 ] \
         || fail 'sealed Flutter-peer authority root metadata differs'
     if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+        mkdir "$engine_input"
+        mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-linux-flutter-engine-input "$engine_input" \
+            || fail 'cannot mount the selected inert Flutter engine capsule'
+        ENGINE_INPUT_MOUNTS+=("$engine_input")
+        mount_options="$(findmnt -n -o OPTIONS --target "$engine_input")"
+        for option in ro nodev nosuid noexec; do
+            case ",$mount_options," in *,$option,*) ;; *) fail "Flutter engine input lacks $option" ;; esac
+        done
+        [ "$(stat -c '%u:%g:%a' -- "$engine_input")" = 1000:1000:700 ] \
+            || fail 'selected Flutter engine capsule owner/mode differs'
         mkdir "$app_output"
         mount -t virtiofs -o rw,nodev,nosuid,noexec rustdesk-linux-flutter-app-output "$app_output" \
             || fail 'cannot mount the inert Linux Flutter app output authority'
@@ -5096,6 +5119,7 @@ run_flutter_peer_presentation() {
             --app-recipe-sha256 "$FLUTTER_APP_RECIPE_SHA256" \
             --app-manifest-sha256 "$FLUTTER_APP_MANIFEST_SHA256")
     fi
+    peer_args+=(--engine-context "$FLUTTER_APP_ENGINE_CONTEXT")
     set +e
     setpriv --reuid=1000 --regid=1000 --clear-groups \
         env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
@@ -5169,6 +5193,8 @@ run_flutter_peer_presentation() {
         FLUTTER_PEER_CANDIDATE_MOUNTED=0
     fi
     if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
+        umount "$engine_input" || fail 'cannot retire the selected inert engine mount'
+        ENGINE_INPUT_MOUNTS=()
         umount "$app_output" || fail 'cannot retire the inert Linux Flutter app output mount'
         FLUTTER_APP_OUTPUT_MOUNTED=0
     else

@@ -1528,7 +1528,8 @@ listener audit passed with zero addition/drift; a joined read-only observer saw 
 That does not explain the earlier refusals. All owners joined and scratch self-retired. No producer
 is running; no listener criterion, external process or host service was changed for acceptance.
 
-The sole consumer is `--linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256`.
+The consumer requires `--linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256`
+plus `--engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256`.
 It independently derives the app tree/recipe from that pushed commit, keeping current harness
 identity distinct. The retained capsule is exported read-only, Landlocked and guest-mounted noexec.
 Replay loads no app-builder image and performs no Rust/Flutter app build. Three current native
@@ -2389,7 +2390,18 @@ and pre-existing-process drift were zero, all owned processes joined and scratch
 Detailed host snapshots retired with scratch, not independently retained proof. The real
 retained toolkit/SDK projection, explicit local-engine app invocation, read-only execution
 mounts and capsule-role provenance remain OPEN.
-The app builder still lacks that materializer/local-engine and capsule-role wiring.
+The app producer/replay now require independent engine commit/archive/manifest authority.
+The outer entry derives the engine tree and patch from pushed Git history and binds the
+authenticated manifest's core/ICU records separately from app source. The guest exports the
+inert toolkit read-only; one joined preparation container extracts the SDK, the existing
+materializer admits the actual toolkit/SDK, and compilation mounts the engine and selected
+Dart/sky roles read-only with explicit target/host local-engine flags. The finished bundle
+must contain the selected core/ICU bytes. Schema-2 publication and replay enforce those
+records; schema-1 artifacts cannot count as patched-engine consumers. Three new filesystem
+groups cover mismatched roles before allocation, self-consistent substituted payloads and
+schema-1 refusal. **Native verification of this wiring is not yet executed.** The upcoming
+focused artifact transaction and actual app integration are separate evidence obligations;
+fixtures alone cannot close the real consumer or presentation work.
 Read-only artifact comparison at clean `3d548adb` confirms that the retained `eeaaa0ec`
 app is a stock-engine baseline, not a consumer of the corrected toolkit. Its actual
 `bundle/lib/libflutter_linux_gtk.so` has SHA256

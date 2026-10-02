@@ -378,7 +378,8 @@ void main() {
     expect(pool.waitingDrains, 0);
   });
 
-  test('pool-waiting displays remain inside the queue-wide key bound', () async {
+  test('pool-waiting displays remain inside the queue-wide key bound',
+      () async {
     final pool =
         LatestFrameDrainPool(maxConcurrentDrains: 1, maxWaitingDrains: 4);
     final releaseBlocker = Completer<void>();

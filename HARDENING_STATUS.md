@@ -2699,9 +2699,14 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
   diagnostics are retained. Latest successful joined cleanup is recorded in the matching-toolkit
   disposition above; earlier failed runs were explicitly reconciled after evidence retention.
-  There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 630,616,064 allocated bytes (0.587 GiB) after the stopped
-  `32bff424` failed app-build root was explicitly reconciled with bounded evidence retained.
+  The 2026-10-02 storage recheck found zero `run.*` entries and zero `overlay.qcow2` files after
+  exact retirement of the stopped `3f4fc47c` failed focused-Dart run, reclaiming another
+  12,276,133,888 allocated bytes (11.43 GiB). Its outer owner was absent, no QEMU/virtiofsd
+  owner or mount remained, and the disk/input files had no open users. Complete raw serial,
+  outer log and bounded diagnostics were retained before descriptor-relative removal under
+  the admission lock. Reusable verifier inputs and small evidence records now occupy
+  632,836,096 allocated bytes (0.589 GiB); this storage retirement does not turn the failed
+  Dart transaction into a pass or close the pending display-key accounting investigation.
   The separate intentional toolkit capsule occupies
   89,096,192 allocated bytes (0.083 GiB), not a retained VM disk. The successful
   `9f3f0df2` direct-GTK provider run joined and automatically removed its exact scratch root. The actual outer

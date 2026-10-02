@@ -4793,7 +4793,7 @@ run_flutter_model_tests() {
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
     [ "$container_status" -eq 0 ] \
-        || { tail -n 240 "$output" >&2; fail "focused Flutter model tests exited with status $container_status"; }
+        || { tail -c 6291456 "$output" >&2; fail "focused Flutter model tests exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
         || fail 'focused Flutter-test output exceeds its bound'
     tools_freshness_line="$(grep -Fx \

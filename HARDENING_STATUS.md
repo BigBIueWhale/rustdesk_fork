@@ -2399,9 +2399,15 @@ Dart/sky roles read-only with explicit target/host local-engine flags. The finis
 must contain the selected core/ICU bytes. Schema-2 publication and replay enforce those
 records; schema-1 artifacts cannot count as patched-engine consumers. Three new filesystem
 groups cover mismatched roles before allocation, self-consistent substituted payloads and
-schema-1 refusal. **Native verification of this wiring is not yet executed.** The upcoming
-focused artifact transaction and actual app integration are separate evidence obligations;
-fixtures alone cannot close the real consumer or presentation work.
+schema-1 refusal. Exact pushed `6ddb6da37d00b79af26b9c9290d9fc0030817812`, tree
+`3f2bb821b678053bac1852cf8618c70b4b492995`, passed all 23 app, six SDK and eight
+toolkit groups in the focused zero-NIC VM transaction (70 seconds, outer exit 0).
+Raw serial `evidence/app-local-engine-6ddb6da3.serial.log` has SHA256
+`1a44916ced74ae65f164d1c2f689901e62211de32e767e5fddb366de46c4825d`;
+the bounded serial and outer log are retained 0400. Input/listener revalidation and joined
+scratch retirement passed with zero harness listener addition or pre-existing-process drift.
+**Actual retained-engine app integration remains unexecuted:** these filesystem/system-ELF
+fixtures do not establish real SDK/toolkit consumption, RustDesk pixels or engine behavior.
 Read-only artifact comparison at clean `3d548adb` confirms that the retained `eeaaa0ec`
 app is a stock-engine baseline, not a consumer of the corrected toolkit. Its actual
 `bundle/lib/libflutter_linux_gtk.so` has SHA256

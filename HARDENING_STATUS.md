@@ -2440,8 +2440,20 @@ allocation. Existing filesystem regressions cover complete byte projection and r
 missing Flutter/Impeller roles even with stock copies present. The producer requires an actual
 compiler A/B for both failing framework shaders before sealing: empty includes must refuse,
 complete original includes must produce runtime/SPIR-V outputs, and inputs must remain unchanged.
-**This correction is source implemented; its native tests and new complete toolkit/app consumer
-are not yet verified.** No shaders are skipped and no stock-cache fallback is introduced.
+Exact pushed `6f0f082e` emitted the focused capsule pass in 74 seconds and self-retired; all
+23 app, six SDK-role and nine toolkit groups were mandatory. The outer receipt is retained as
+`evidence/shader-toolkit-artifact-6f0f082e.outer.log`; the additional raw-retention wrapper failed
+on an invalid dd flag after retirement, so no full serial or green capture-wrapper is claimed.
+Its host audit reported no harness addition and one pre-existing-process drift. The distinct
+engine-preparation transaction passed with outer/capture 0/0 in 101 seconds: original GN
+inventories, collector filesystem cases, existing GTK assertions at scales 1/2 and upstream
+test-object compiles passed, with unchanged inputs/listeners, zero drift and joined self-retirement.
+Full 89,971-byte `evidence/shader-toolkit-prepare-6f0f082e.serial.log` has SHA256
+`3304bc21de0360c3f5f77c7c2f2abfbbdd3a8739f8453c3fd50290d89efd00e4`.
+The full-build shader comparison now requires Flutter's complete initial Linux target set,
+including SkSL, rather than its later retry's subset. **Actual shader compilation, a newly
+published complete toolkit and the full app consumer remain unverified.** No shaders are
+skipped and no stock-cache fallback is introduced.
 Full 365,180-byte failure raw serial is
 `evidence/app-local-engine-32bff424-build.serial.log`, SHA256
 `4f80aa87e8ce895ba0abcca23700e9f492553887f242094dba2ac805be688c29`.

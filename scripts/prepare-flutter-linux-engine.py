@@ -1160,7 +1160,7 @@ def verify_shader_consumer(output, copies, framework, env, deadline):
                         and before.st_nlink == 1 and 0 < before.st_size <= FILE_LIMIT,
                         "framework shader authority differs")
                 source_digest = hashlib.file_digest(source, "sha256").hexdigest()
-                base = [str(output / "impellerc"), "--runtime-stage-gles", "--runtime-stage-gles3",
+                base = [str(output / "impellerc"), "--sksl", "--runtime-stage-gles", "--runtime-stage-gles3",
                         "--runtime-stage-vulkan", "--iplr", "--input=" + str(shader),
                         "--input-type=frag", "--include=" + str(shader.parent)]
                 missing = scratch / (str(ordinal) + ".missing")

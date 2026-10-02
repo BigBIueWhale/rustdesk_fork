@@ -2322,6 +2322,16 @@ AOT action: its working directory is the owning Dart workspace, while compiler i
 package-config and depfile paths are rebased for that directory. The selected SDK, AOT flags,
 source inputs and output roles remain unchanged; the manifest binds the correction digest.
 Successful native execution of this corrected recipe and full-toolkit publication remain OPEN.
+Exact `c5d562c4`, tree `f19e4a27f3b67fc40e359f354aae884913edab3b`, applied the three-file
+patch and generated the original GN recipe, but its one-action bootstrap preflight failed:
+`Unable to write snapshot file` / `AOT compilation failed` (outer/capture 1/0,
+108,750 host BOOTTIME ms). No Pub/socket diagnostic appeared in this attempt; that is not
+successful compilation or complete causal closure. The 81,509-byte full serial is retained at
+`evidence/engine-bootstrap-workspace-c5d562c4.serial.log`, SHA256
+`1e095e7732dbbb84a343ea09f8ab425f042d6a9bdc54d0a1954e56f961a4e4ef`.
+Actual host snapshots were identical, with empty additions/drift. After stopped-owner,
+socket, mount and disk-handle checks, exact locked retirement of the failed run reclaimed
+12,981,837,824 allocated bytes. No full toolkit or artifact was published.
 No empty package graph, SDK substitution, network allowance or version-check bypass is used.
 The shipped bootstrap SDK is not duplicated; its consumer projection remains explicitly unexecuted.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
@@ -2459,7 +2469,8 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   diagnostics are retained. Latest successful joined cleanup is recorded in the UTF-16 selection
   disposition above; earlier failed runs were explicitly reconciled after evidence retention.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 628,609,024 allocated bytes (0.585 GiB). The successful
+  small evidence records occupy 629,329,920 allocated bytes (0.586 GiB) after the latest
+  stopped-run reconciliation recorded above. The successful
   `9f3f0df2` direct-GTK provider run joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks

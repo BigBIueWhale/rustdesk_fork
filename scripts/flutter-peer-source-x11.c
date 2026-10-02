@@ -6,6 +6,7 @@
  * The colored halves retain the desktop palette probe. Four ordered Manchester bands encode
  * the complete non-wrapping uint32 frame identity for the mobile observer. Each publication is
  * bound to its monotonic start time; nominal frame pacing is not a freshness measurement.
+ * Full-HD adds deterministic changing texture below the counter and palette witnesses.
  */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -136,6 +137,29 @@ static int root_pixel_matches(Display *display, Window root, int x, int y,
     return actual == expected;
 }
 
+static void draw_texture(Display *display, Pixmap buffer, GC graphics,
+                         XImage *image, uint32_t frame, unsigned int top,
+                         const unsigned long colors[3][256]) {
+    unsigned int x, y;
+    for (y = 0U; y < (unsigned int)image->height; ++y) {
+        for (x = 0U; x < (unsigned int)image->width; ++x) {
+            uint32_t value = frame * UINT32_C(0x9e3779b9) +
+                             y * (unsigned int)image->width + x;
+            /* Bijective uint32 mixing binds the texture to spatial/frame identity. */
+            value ^= value >> 16U;
+            value *= UINT32_C(0x7feb352d);
+            value ^= value >> 15U;
+            value *= UINT32_C(0x846ca68b);
+            value ^= value >> 16U;
+            XPutPixel(image, (int)x, (int)y,
+                      colors[0][(value >> 16U) & 255U] |
+                      colors[1][(value >> 8U) & 255U] | colors[2][value & 255U]);
+        }
+    }
+    XPutImage(display, buffer, graphics, image, 0, 0, 0, (int)top,
+              (unsigned int)image->width, (unsigned int)image->height);
+}
+
 int main(int argc, char **argv) {
     Display *display = NULL;
     struct sigaction action = {0};
@@ -147,12 +171,15 @@ int main(int argc, char **argv) {
     Window window;
     Pixmap back_buffer;
     GC graphics;
+    XImage *texture = NULL;
+    unsigned long texture_colors[3][256];
     uint32_t frame = 0U;
     int exit_status = 0;
     unsigned int source_width = SOURCE_WIDTH;
     unsigned int source_height = SOURCE_HEIGHT;
     unsigned int frame_interval_ms = FRAME_INTERVAL_MS;
     unsigned int code_height;
+    unsigned int texture_top;
     const char *trace_value = getenv("RUSTDESK_PRESENTATION_TRACE");
     int trace_enabled = trace_value != NULL && strcmp(trace_value, "1") == 0;
 
@@ -166,6 +193,7 @@ int main(int argc, char **argv) {
     }
     /* Preserve band visibility after the remote screen is fitted into a thumbnail. */
     code_height = source_height * 2U / 5U;
+    texture_top = source_height * 3U / 5U;
 
     action.sa_handler = request_stop;
     sigemptyset(&action.sa_mask);
@@ -230,6 +258,30 @@ int main(int argc, char **argv) {
         return 1;
     }
     XMapRaised(display, window);
+    if (argc == 2) {
+        unsigned int component;
+        texture = XCreateImage(display, visual, (unsigned int)DefaultDepth(display, screen),
+                                ZPixmap, 0, NULL, source_width,
+                                source_height - texture_top, 32, 0);
+        if (texture != NULL && texture->bytes_per_line > 0 && texture->height > 0 &&
+            (size_t)texture->bytes_per_line <= (8U * 1024U * 1024U) / (size_t)texture->height) {
+            texture->data = calloc((size_t)texture->height, (size_t)texture->bytes_per_line);
+        }
+        if (texture == NULL || texture->data == NULL) {
+            fputs("FLUTTER_PEER_SOURCE_FAIL texture allocation\n", stderr);
+            if (texture != NULL) XDestroyImage(texture);
+            XFreePixmap(display, back_buffer);
+            XFreeGC(display, graphics);
+            XDestroyWindow(display, window);
+            XCloseDisplay(display);
+            return 1;
+        }
+        for (component = 0U; component < 256U; ++component) {
+            texture_colors[0][component] = component_pixel((uint8_t)component, texture->red_mask);
+            texture_colors[1][component] = component_pixel((uint8_t)component, texture->green_mask);
+            texture_colors[2][component] = component_pixel((uint8_t)component, texture->blue_mask);
+        }
+    }
     XSync(display, False);
     printf("FLUTTER_PEER_SOURCE_READY display=%s dimensions=%ux%u interval_ms=%u "
            "identity=counter32 rows=4 bars=24 wrap=refused\n",
@@ -248,6 +300,10 @@ int main(int argc, char **argv) {
         XSetForeground(display, graphics, rgb_pixel(visual, palette[high]));
         XFillRectangle(display, back_buffer, graphics, source_width / 2U, 0,
                        source_width / 2U, source_height);
+        if (texture != NULL) {
+            draw_texture(display, back_buffer, graphics, texture, frame, texture_top,
+                         texture_colors);
+        }
         for (row = 0U; row < STATE_CODE_ROWS; ++row) {
             for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
                 unsigned int start = (bar * source_width) / STATE_CODE_BARS;
@@ -300,6 +356,7 @@ int main(int argc, char **argv) {
         ++frame;
         if (sleep_millis(frame_interval_ms) != 0) {
             fputs("FLUTTER_PEER_SOURCE_FAIL frame pacing\n", stderr);
+            if (texture != NULL) XDestroyImage(texture);
             XFreePixmap(display, back_buffer);
             XFreeGC(display, graphics);
             XDestroyWindow(display, window);
@@ -311,6 +368,7 @@ int main(int argc, char **argv) {
     if (exit_status == 0) {
         printf("FLUTTER_PEER_SOURCE_COMPLETE frames=%u\n", frame);
     }
+    if (texture != NULL) XDestroyImage(texture);
     XFreePixmap(display, back_buffer);
     XFreeGC(display, graphics);
     XDestroyWindow(display, window);

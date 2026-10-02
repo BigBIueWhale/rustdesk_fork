@@ -1300,7 +1300,7 @@ these schedules do not establish representative high-load or sustained warm-life
 Next vary justified workload/lifetime conditions and locate actual backlog before changing ownership;
 do not repeat this unchanged baseline as causal proof. The earlier failure, conversion-pool hypothesis,
 and Windows relationship remain unresolved. No capacity, deadline, freshness or service behavior changed.
-The Android peer workload now uses a fixed 1920x1080 source with a nominal 33-ms pause and scaled
+The Android peer workload uses a fixed 1920x1080 source with a nominal 33-ms pause and scaled
 counter bands. The shared desktop fixture keeps its 640x480 default; mismatched screens/arguments
 refuse. Source startup moves to immediately before the legitimate viewer submission, preserving the
 2-MiB publication-log bound without spending it during emulator boot or rejected-credential waits.
@@ -1330,6 +1330,17 @@ outer terminal acceptance is `evidence/android-hd-peer-51e06274.outer.receipt`. 
 neither high-entropy video, sustained warm lifetime, physical devices, current-release behavior nor
 shared Windows causation. Next vary a justified lifetime/load condition and preserve actual backlog;
 do not infer a product fix or weaken ownership, capacities, freshness or deadlines from green schedules.
+The Full-HD source now adds a deterministic frame-bound texture to its bottom forty percent,
+leaving all counter bands and palette witnesses untouched; the 640x480 default is unchanged.
+One reusable XImage buffer is bounded to 8 MiB and destroyed on every owned exit path.
+The real X11 regression requires spatial variation and greater-than-95-percent temporal change
+across a whole counter cycle, alongside unchanged geometry/identity/age/cadence checks.
+Exact `15b573e3` ran that new assertion against the old fixture: only two distinct colors in
+2,160 captured pixels, an actual native failure. Full 69,398-byte negative raw serial is
+`evidence/entropy-flat-15b573e3.serial.log`, SHA256
+`d894228adaf0c14331933eccce275bdd02fbc01056d662b74898caf19dad3541`.
+The failure is fixture coverage, not Android causation. Corrected native and retained-APK
+texture execution remain OPEN; no production lifetime/resource/freshness constraint is relaxed.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local
 `XGetImage` wording check are deleted. Pixel identity and age require the shared C implementation's
 native execution, not replacement source-string assertions. The guard's other VM/input/renderer

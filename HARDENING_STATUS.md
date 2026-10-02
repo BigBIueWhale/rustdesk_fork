@@ -2470,9 +2470,24 @@ Full 136,208-byte `evidence/shader-toolkit-build-63493887.serial.log` has SHA256
 `e0c175c175586f3c789462886234105b137aec93880bf97f55a0cdb4c149cea3`.
 Inputs were unchanged, the audit recorded no harness-added listener and one pre-existing-process
 drift (not zero), all owned work joined and the scratch self-retired. Detailed host snapshots
-retired with scratch; the outer retains aggregate audit acceptance. **Actual SDK/app compilation,
-FlView/AT-SPI execution and the complete uninstrumented app consumer remain OPEN.** No shaders
+retired with scratch; the outer retains aggregate audit acceptance. **FlView/AT-SPI execution
+and the complete uninstrumented app consumer remain OPEN.** No shaders
 are skipped and no stock-cache fallback is introduced.
+The actual app producer at pushed `a375504416e96b209f507436d8cf65f6f3047c7e`, tree
+`0b9c796eeacd45ba52ef2f316d4ed181aab32c07`, passed in 912 harness seconds with outer/capture 0/0.
+Actual SDK/toolkit projection, explicit local-engine Pub/plugin preparation, fresh bridges,
+Rust release, frontend/AOT, both framework shaders and complete bundle publication passed.
+The schema-2 capsule contains 74 payload files (69,144,134 bytes) and sixteen directories;
+manifest SHA256 is `8f267fe2f5a3d695896a54db307547e0b715a422bd38bb2aae49c30d3722acb9`.
+Independent inert inspection matched the entire context to pushed source/pins and every payload
+size/digest; the core and ICU equal the independently selected `63493887` toolkit, not stock SDK
+copies. Full 303,969-byte raw serial `evidence/shader-app-local-engine-a3755044-build.serial.log`
+has SHA256 `d8e5e59fe8305781a143ba0167d62de0bec113f5a8fcb93b34be37b60a4f4b06`.
+Inputs remained unchanged; no harness listener was added and one pre-existing-process drift
+was recorded. All owned work joined and scratch self-retired; detailed host snapshots retired
+with scratch. This closes that named producer's build-input defect, not pixels, FlView lifetime,
+AT-SPI self-wait/geometry, installed/LPE, Android/Windows causation, soak or release evidence.
+Next replay this exact inert capsule through the unchanged full six-lifecycle peer consumer.
 Full 365,180-byte failure raw serial is
 `evidence/app-local-engine-32bff424-build.serial.log`, SHA256
 `4f80aa87e8ce895ba0abcca23700e9f492553887f242094dba2ac805be688c29`.
@@ -2482,7 +2497,7 @@ Complete bounded capture/listener/exporter records are retained 0400. After owne
 mount and image-use absence checks, locked identity-bound retirement removed only
 `run.XJ5U5iOB4k` (`66306:106335248`) and reclaimed 18,228,764,672 allocated bytes.
 This is an actual toolkit-closure failure, not presentation, installed-service, LPE or
-Android/Windows causation evidence. No VM is live and no app capsule was published.
+Android/Windows causation evidence. That failed producer published no app capsule.
 Read-only artifact comparison at clean `3d548adb` confirms that the retained `eeaaa0ec`
 app is a stock-engine baseline, not a consumer of the corrected toolkit. Its actual
 `bundle/lib/libflutter_linux_gtk.so` has SHA256

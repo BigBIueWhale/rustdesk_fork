@@ -4768,6 +4768,9 @@ run_flutter_model_tests() {
                     flutter test --no-pub --reporter json --concurrency=4 \
                         --timeout=30s \
                         "${tests[@]}" >/work/test.json 2>/work/test.err; then
+                    tail -c 8388608 /work/test.json \
+                        | grep -E '"type"[[:space:]]*:[[:space:]]*"error"' \
+                        | tail -n 24 | tail -c 98304 >&2 || true
                     tail -n 240 /work/test.json /work/test.err >&2
                     exit 1
                 fi

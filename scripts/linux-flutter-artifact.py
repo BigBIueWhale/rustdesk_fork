@@ -307,6 +307,141 @@ def no_duplicates(pairs):
     return result
 
 
+def verify_engine_sdk_roles(path, expected_identity, raw_manifest, digest, context):
+    """Bind bootstrap/Pub's SDK roles to an independently authenticated toolkit.
+
+    The caller admits the complete SDK archive separately. This read-only check
+    covers the cache sky_engine package and frontend snapshot which local-engine
+    flags do not redirect to the GN output. It neither projects an engine nor
+    authorizes executing any other SDK file.
+    """
+    subprocess.run(["/bin/bash", str(Path(__file__).with_name("verify-vm-entry-preflight.sh"))],
+                   check=True, stdout=subprocess.DEVNULL)
+    require_descriptor_capacity()
+    fields = {"source_commit", "source_tree", "framework_revision", "patch_sha256",
+              "bootstrap_sdk_archive_sha256"}
+    if type(context) is not dict or set(context) != fields:
+        fail("engine SDK context fields differ")
+    for key, value in context.items():
+        width = 40 if key in ("source_commit", "source_tree", "framework_revision") else 64
+        if type(value) is not str or re.fullmatch(r"[0-9a-f]{" + str(width) + r"}", value) is None:
+            fail("engine SDK context is malformed")
+    if (type(raw_manifest) is not bytes or not 0 < len(raw_manifest) <= 1024 * 1024
+            or type(digest) is not str or publication.SHA256_RE.fullmatch(digest) is None
+            or hashlib.sha256(raw_manifest).hexdigest() != digest):
+        fail("engine SDK manifest digest or bound differs")
+    manifest = json.loads(raw_manifest, object_pairs_hook=no_duplicates)
+    if (type(manifest) is not dict
+            or manifest.get("format") != "rustdesk-flutter-linux-engine-artifact-v2"
+            or manifest.get("profile") != "linux-x64-release-toolkit"
+            or any(manifest.get(key) != value for key, value in context.items())
+            or type(manifest.get("files")) is not dict
+            or not 1 <= len(manifest["files"]) <= 4096):
+        fail("engine SDK manifest context differs")
+    prefix = "gen/dart-pkg/sky_engine/"
+    sky = {key[len(prefix):]: record for key, record in manifest["files"].items()
+           if key.startswith(prefix)}
+    frontend = "gen/frontend_server_aot.dart.snapshot"
+    if (not {"pubspec.yaml", "lib/_embedder.yaml", "lib/ui/ui.dart"}.issubset(sky)
+            or frontend not in manifest["files"] or not 1 <= len(sky) < MAX_FILES):
+        fail("engine SDK required role inventory differs")
+    selected = {"bin/cache/pkg/sky_engine/" + key: record for key, record in sky.items()}
+    selected["bin/cache/dart-sdk/bin/snapshots/frontend_server_aot.dart.snapshot"] = manifest["files"][frontend]
+    for relative, record in selected.items():
+        components = relative.split("/")
+        if (len(components) > MAX_DEPTH or len(relative.encode()) > MAX_PATH_BYTES
+                or any(value in ("", ".", "..") or any(ord(c) < 32 or ord(c) == 127 for c in value)
+                       for value in components)
+                or type(record) is not dict or set(record) != {"bytes", "sha256"}
+                or type(record["bytes"]) is not int or not 0 <= record["bytes"] <= MAX_FILE_BYTES
+                or type(record["sha256"]) is not str or publication.SHA256_RE.fullmatch(record["sha256"]) is None):
+            fail("engine SDK role record differs")
+    if sum(record["bytes"] for record in selected.values()) > MAX_TOTAL_BYTES:
+        fail("engine SDK role bytes exceed their bound")
+    if (os.getuid() == 0 or os.getgid() == 0 or not os.path.isabs(path)
+            or path == "/" or os.path.realpath(path) != path):
+        fail("engine SDK root authority differs")
+    with ExitStack() as stack:
+        before = os.lstat(path)
+        root = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        stack.callback(os.close, root)
+        opened = os.fstat(root)
+        mount = mount_id(root)
+        if publication.stable_file(before) != publication.stable_file(opened) \
+                or publication.identity(opened) != expected_identity:
+            fail("engine SDK root identity differs")
+        directories = {"": root}
+        inventories = {}
+        edges = []
+
+        def prove(info, descriptor, directory):
+            mode = stat.S_IMODE(info.st_mode)
+            required_mode = 0o500 if directory else 0o400
+            if ((info.st_uid, info.st_gid) != (os.getuid(), os.getgid())
+                    or info.st_dev != opened.st_dev or mount_id(descriptor) != mount
+                    or mode & 0o7022 or mode & required_mode != required_mode
+                    or (not directory and info.st_nlink != 1)):
+                fail("engine SDK entry authority differs")
+            publication.reject_access_acl(descriptor, "engine SDK entry", include_default=directory)
+
+        prove(opened, root, True)
+
+        def acquire(parent, name, directory):
+            before = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            if not (stat.S_ISDIR(before.st_mode) if directory else stat.S_ISREG(before.st_mode)):
+                fail("engine SDK role is a link or special object")
+            flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
+            descriptor = os.open(name, flags | (os.O_DIRECTORY if directory else 0), dir_fd=parent)
+            stack.callback(os.close, descriptor)
+            info = os.fstat(descriptor)
+            if publication.stable_file(before) != publication.stable_file(info):
+                fail("engine SDK entry changed during acquisition")
+            prove(info, descriptor, directory)
+            edges.append((parent, name, descriptor, info))
+            return descriptor, info
+
+        for relative in sorted(selected):
+            components = relative.split("/")
+            parent = root
+            for index, name in enumerate(components[:-1], 1):
+                key = "/".join(components[:index])
+                if key not in directories:
+                    if len(directories) >= MAX_DIRECTORIES:
+                        fail("engine SDK directory bound exceeded")
+                    directories[key] = acquire(parent, name, True)[0]
+                parent = directories[key]
+            descriptor, info = acquire(parent, components[-1], False)
+            if info.st_size != selected[relative]["bytes"] \
+                    or consume(descriptor, info, False) != selected[relative]:
+                fail("engine SDK role bytes differ: " + relative)
+
+        # Include empty directories in the closed sky_engine inventory: neither
+        # an extra file nor an unobserved subtree may hide behind a cache match.
+        sky_root = "bin/cache/pkg/sky_engine"
+        for key, descriptor in directories.items():
+            inventory = names(descriptor)
+            inventories[descriptor] = (os.fstat(descriptor), inventory)
+            if key == sky_root or key.startswith(sky_root + "/"):
+                expected = {relative[len(key) + 1:].split("/", 1)[0]
+                            for relative in selected if relative.startswith(key + "/")}
+                if set(inventory) != expected:
+                    fail("engine SDK sky_engine inventory differs")
+        for parent, name, descriptor, info in edges:
+            if (publication.stable_file(info) != publication.stable_file(os.fstat(descriptor))
+                    or publication.stable_file(info) != publication.stable_file(
+                        os.stat(name, dir_fd=parent, follow_symlinks=False))
+                    or mount_id(descriptor) != mount):
+                fail("engine SDK entry changed during proof")
+        for descriptor, (info, inventory) in inventories.items():
+            if publication.stable_file(info) != publication.stable_file(os.fstat(descriptor)) \
+                    or names(descriptor) != inventory:
+                fail("engine SDK directory changed during proof")
+        if (os.path.realpath(path) != path
+                or publication.stable_file(os.lstat(path)) != publication.stable_file(opened)):
+            fail("engine SDK root edge changed during proof")
+    return len(sky)
+
+
 def admit(root, context, digest, stack):
     validate_context(context)
     if type(digest) is not str or publication.SHA256_RE.fullmatch(digest) is None:

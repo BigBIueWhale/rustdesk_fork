@@ -2350,6 +2350,15 @@ the matching SDK/consumer role projection without stock-cache fallback; the mani
 records bootstrap SDK projection and app execution as unexecuted.
 No empty package graph, SDK substitution, network allowance or version-check bypass is used.
 The shipped bootstrap SDK is not duplicated; its consumer projection remains explicitly unexecuted.
+Pinned-source consumer review confirms that local-engine frontend lookup uses the selected Dart
+SDK's snapshot and host sky_engine lookup still uses the bootstrap cache. Independent inert
+archive reads matched that 17,153,376-byte frontend and all 289 generated sky_engine files
+(7,648,729 bytes) to the retained SDK, with no missing, extra or differing regular-file record.
+`linux-flutter-artifact.py::verify_engine_sdk_roles` now supplies a VM-gated, read-only exact
+manifest/context/content/inventory proof for those reusable SDK roles, including retained
+directory/file identities, mount closure and link/ACL refusal. Six real-filesystem regression
+groups are added to the focused capsule entry; native execution is pending. This is a consumer
+prerequisite, not actual toolkit projection, Flutter invocation, FlView or app evidence.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
 AT-SPI self-wait/geometry, Wayland, shipped SDK integration and the full uninstrumented consumer
 remain OPEN. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

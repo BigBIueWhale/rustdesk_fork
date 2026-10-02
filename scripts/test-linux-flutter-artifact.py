@@ -277,12 +277,129 @@ class LinuxFlutterArtifactTests(unittest.TestCase):
         self.assertEqual((target / "bundle/rustdesk").read_bytes(), ELF)
 
 
+class EngineSdkRoleTests(unittest.TestCase):
+    def setUp(self):
+        self.case = directory(WORKSPACE / self.id().rsplit(".", 1)[-1])
+        self.sdk = directory(self.case / "sdk")
+        self.context = {"source_commit": "1" * 40, "source_tree": "2" * 40,
+                        "framework_revision": "3" * 40, "patch_sha256": "4" * 64,
+                        "bootstrap_sdk_archive_sha256": "5" * 64}
+        self.values = {
+            "bin/cache/pkg/sky_engine/pubspec.yaml": b"name: sky_engine\n",
+            "bin/cache/pkg/sky_engine/lib/_embedder.yaml": b"embedded_libs:\n",
+            "bin/cache/pkg/sky_engine/lib/ui/ui.dart": b"library dart.ui;\n",
+            "bin/cache/pkg/sky_engine/README.md": b"package fixture\n",
+            "bin/cache/dart-sdk/bin/snapshots/frontend_server_aot.dart.snapshot": ELF,
+        }
+        files = {}
+        for relative, data in self.values.items():
+            path = self.sdk / relative
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            write(path, data)
+            key = relative.replace("bin/cache/pkg/sky_engine/", "gen/dart-pkg/sky_engine/") \
+                          .replace("bin/cache/dart-sdk/bin/snapshots/", "gen/")
+            files[key] = {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+        self.manifest = dict(self.context, format="rustdesk-flutter-linux-engine-artifact-v2",
+                             profile="linux-x64-release-toolkit", files=files)
+        self.raw = json.dumps(self.manifest, sort_keys=True).encode()
+        self.digest = hashlib.sha256(self.raw).hexdigest()
+
+    def verify(self, raw=None, digest=None, context=None):
+        return app.verify_engine_sdk_roles(str(self.sdk), identity(self.sdk),
+            self.raw if raw is None else raw, self.digest if digest is None else digest,
+            self.context if context is None else context)
+
+    def reject(self, operation):
+        with self.assertRaises((app.publication.PublicationError, OSError, ValueError)):
+            operation()
+
+    def test_sdk_role_match_is_read_only(self):
+        def snapshot():
+            return {str(path.relative_to(self.sdk)): (app.publication.stable_file(path.lstat()),
+                    path.read_bytes() if path.is_file() else None)
+                    for path in [self.sdk, *self.sdk.rglob("*")]}
+        before = snapshot()
+        self.assertEqual(self.verify(), 4)
+        self.assertEqual(snapshot(), before)
+
+    def test_sdk_role_manifest_and_source_authority(self):
+        self.reject(lambda: self.verify(digest="0" * 64))
+        self.reject(lambda: self.verify(raw=b"{"))
+        for key in self.context:
+            context = dict(self.context)
+            context[key] = "a" * len(context[key])
+            self.reject(lambda: self.verify(context=context))
+        for change in (lambda value: value.update(profile="core-only"),
+                       lambda value: value["files"].pop("gen/dart-pkg/sky_engine/lib/ui/ui.dart"),
+                       lambda value: value["files"].update({"gen/dart-pkg/sky_engine/../escape":
+                           {"bytes": 0, "sha256": "0" * 64}}),
+                       lambda value: value["files"]["gen/frontend_server_aot.dart.snapshot"].update(bytes=True)):
+            manifest = copy.deepcopy(self.manifest)
+            change(manifest)
+            raw = json.dumps(manifest).encode()
+            self.reject(lambda: self.verify(raw=raw, digest=hashlib.sha256(raw).hexdigest()))
+
+    def test_sdk_role_content_and_missing_file_refuse(self):
+        for relative, data in self.values.items():
+            path = self.sdk / relative
+            path.chmod(0o600)
+            path.write_bytes(b"x" * len(data))
+            path.chmod(0o400)
+            self.reject(self.verify)
+            path.unlink()
+            self.reject(self.verify)
+            write(path, data)
+
+    def test_sdk_role_extra_file_or_empty_subtree_refuses(self):
+        parent = self.sdk / "bin/cache/pkg/sky_engine"
+        write(parent / "unrecorded", b"extra")
+        self.reject(self.verify)
+        (parent / "unrecorded").unlink()
+        directory(parent / "unrecorded")
+        self.reject(self.verify)
+
+    def test_sdk_role_links_and_special_objects_refuse(self):
+        path = self.sdk / "bin/cache/pkg/sky_engine/lib/ui/ui.dart"
+        data = path.read_bytes()
+        path.unlink()
+        path.symlink_to(self.sdk / "bin/cache/pkg/sky_engine/README.md")
+        self.reject(self.verify)
+        path.unlink()
+        os.mkfifo(path, 0o600)
+        self.reject(self.verify)
+        path.unlink()
+        write(path, data)
+        os.link(path, self.case / "external")
+        self.reject(self.verify)
+
+    def test_sdk_role_identity_modes_and_acl_refuse(self):
+        expected = identity(self.sdk)
+        self.reject(lambda: app.verify_engine_sdk_roles(str(self.sdk),
+            (expected[0], expected[1] + 1), self.raw, self.digest, self.context))
+        self.sdk.chmod(0o702)
+        self.reject(self.verify)
+        self.sdk.chmod(0o700)
+        path = self.sdk / "bin/cache/pkg/sky_engine/pubspec.yaml"
+        path.chmod(0o646)
+        self.reject(self.verify)
+        path.chmod(0o400)
+        entries = ((1, 4, 0xffffffff), (2, 0, 4001), (4, 0, 0xffffffff),
+                   (16, 0, 0xffffffff), (32, 0, 0xffffffff))
+        os.setxattr(path, "system.posix_acl_access", struct.pack("<I", 2) + b"".join(
+            struct.pack("<HHI", *entry) for entry in entries))
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o400)
+        self.reject(self.verify)
+
+
 def main():
     successful = False
     try:
         result = unittest.TextTestRunner(verbosity=2).run(
             unittest.defaultTestLoader.loadTestsFromTestCase(LinuxFlutterArtifactTests))
         successful = result.wasSuccessful() and result.testsRun == 20 and not result.skipped
+        sdk_result = unittest.TextTestRunner(verbosity=2).run(
+            unittest.defaultTestLoader.loadTestsFromTestCase(EngineSdkRoleTests))
+        successful = successful and sdk_result.wasSuccessful() and sdk_result.testsRun == 6 and not sdk_result.skipped
     finally:
         subprocess.run([
             "/usr/bin/python3", "-I", "-S", str(SCRIPT_DIR / "verify-private-tree-closure.py"),
@@ -290,6 +407,8 @@ def main():
         ], check=True)
     if not successful:
         raise SystemExit(1)
+    print("FLUTTER_ENGINE_SDK_ROLES=pass cases=6 fixture=manifest-and-filesystem "
+          "sky=exact frontend=exact mutation=refused links=refused writes=none cleanup=joined", file=sys.stderr)
     print("LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=20 publication=noclobber admission=exact execution=guest-only cleanup=joined")
 
 

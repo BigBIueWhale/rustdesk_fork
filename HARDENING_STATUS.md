@@ -1333,14 +1333,22 @@ do not infer a product fix or weaken ownership, capacities, freshness or deadlin
 The Full-HD source now adds a deterministic frame-bound texture to its bottom forty percent,
 leaving all counter bands and palette witnesses untouched; the 640x480 default is unchanged.
 One reusable XImage buffer is bounded to 8 MiB and destroyed on every owned exit path.
-The real X11 regression requires spatial variation and greater-than-95-percent temporal change
+The real X11 regression requires spatial variation and at-least-95-percent temporal change
 across a whole counter cycle, alongside unchanged geometry/identity/age/cadence checks.
 Exact `15b573e3` ran that new assertion against the old fixture: only two distinct colors in
 2,160 captured pixels, an actual native failure. Full 69,398-byte negative raw serial is
 `evidence/entropy-flat-15b573e3.serial.log`, SHA256
 `d894228adaf0c14331933eccce275bdd02fbc01056d662b74898caf19dad3541`.
-The failure is fixture coverage, not Android causation. Corrected native and retained-APK
-texture execution remain OPEN; no production lifetime/resource/freshness constraint is relaxed.
+The failure is fixture coverage, not Android causation. Exact corrected `9ec5df8a`, tree
+`aad29849097e8a8165243ebb3e581034bad5da5d`, passed the complete focused native transaction
+in 58 seconds (outer/capture 0/0). Both captured sets had 2,160 distinct colors and all 2,160
+sampled pixels changed. Measured mean publication interval was 40,218 us; unchanged geometry,
+whole-cycle stale-pixel refusal and image/source finality passed. Full 68,652-byte raw serial
+`evidence/entropy-native-9ec5df8a.serial.log` has SHA256
+`ba4dbbef705f309df41fb5e38b437327516e186e7e25cee5fad82d8e7c4b03ae`.
+Inputs/listeners remained unchanged, zero pre-existing-process drift, all owners joined and
+scratch self-retired. Retained-APK texture execution and broader warm/native presentation
+remain OPEN; no production lifetime/resource/freshness constraint is relaxed.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local
 `XGetImage` wording check are deleted. Pixel identity and age require the shared C implementation's
 native execution, not replacement source-string assertions. The guard's other VM/input/renderer

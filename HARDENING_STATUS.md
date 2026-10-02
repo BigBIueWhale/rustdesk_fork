@@ -2158,7 +2158,7 @@ additions/drift empty; exact stopped `run.rhRo6QXFpb` (`66306:105159802`) was re
 under the run-root lock, reclaiming 12,995,813,376 allocated bytes. Zero run/overlay remains.
 The fixture's GTK owner is renamed `toplevel`; assertions and production bytes are unchanged.
 
-**ATK byte-bounded insertion — NATIVE A/B PASS; SELECTION/APP INTEGRATION OPEN.**
+**ATK byte-bounded insertion — NATIVE A/B PASS; NESTED EDITS/APP INTEGRATION OPEN.**
 The text provider passed ATK's byte length directly to GTK's character-count input.
 Tests-only source `334f2a8233962900ba4d03d0783ef59f55463b2d` reproduced an actual
 two-byte-prefix insertion of `aéTb` instead of `aéb`. The native assertion failed;
@@ -2181,7 +2181,35 @@ and `evidence/engine-utf8-fix-73b590c8.serial.log` (91,147 bytes, SHA256
 `eba08eb7178b6a0480ce22e33d69496b7c4cfbad166423c25cc62b04601f2c6e`). The positive
 zero-NIC/network-none transaction had unchanged inputs, no added host listener or
 process drift, joined owners and automatic scratch retirement. UTF-16 Flutter selection
-mapping, nested live edits, app integration, LPE and Android/Windows causation remain OPEN.
+mapping is addressed by the next unit result; nested live edits, app integration, LPE and
+Android/Windows causation remain OPEN.
+
+**Flutter UTF-16/ATK selection mapping — NATIVE A/B PASS; ENGINE/APP INTEGRATION OPEN.**
+Tests-only `ff0ae46d` reproduced an actual selection of `🙂b` rather than `🙂` from
+Flutter range `(1,3)` in `a🙂b`: the provider treated UTF-16 indices as ATK character
+offsets. Its native assertion failed; the outer also refused an unattributed new loopback
+listener, so the negative is not a complete host-isolation pass. The production patch
+keeps canonical ATK code-point offsets and converts exactly at incoming semantics and
+outgoing action boundaries. Unrepresentable or invalid incoming pairs become unavailable;
+invalid outgoing ranges dispatch nothing. UTF-8 validation, checked arithmetic and
+existing exact resource/generation ownership remain, without clamping or another mode.
+Exact corrected source `af4f4c2872066307b875054a8b0424f6c5d08b5a`, tree
+`11c9cadc59064a34efab5fa27be9ae7b481f2272`, passed the complete focused prepare
+transaction in 114,280 host BOOTTIME ms (outer/capture 0/0). The same 1,425,896-byte
+native ELF, SHA256 `1741456b29a5d3ac554c17ab5b8af34ba571d1632c53387c5815e36c7e02bb35`,
+passed both GTK scales, including incoming/reversed/combining/ZWJ/flag selections,
+caret and range round trips, copy/cut/paste, invalid and surrogate-interior refusal,
+Unicode insert/delete payloads and all prior lifetime/geometry assertions. Strict patch
+application, eight production objects and four upstream test-object compiles passed;
+the upstream suites, running engine and actual FlView/app did not execute.
+Complete negative/positive raw serials are `evidence/engine-utf16-old-ff0ae46d.serial.log`
+(84,894 bytes, SHA256 `5585d2eea6eae6d67115357e0d2b10eb89a748b06718945360865e0251507e93`)
+and `evidence/engine-utf16-clean-af4f4c28.serial.log` (90,918 bytes, SHA256
+`c9effd174af76986e48e50f14c38ccc9c12d611f1066548cbb8769fd021bc463`). Matching
+outer/capture records are retained. Positive inputs were unchanged, host-listener addition
+and process drift were zero, every owner joined and scratch self-retired. This is real
+ATK/GTK behavior at one recording-engine boundary, not nested-edit coherence, actual
+FlView/AT-SPI, SDK/app integration, LPE or Android/Windows causation, which remain OPEN.
 
 **Source-bound core engine — FULL BUILD/INERT PUBLICATION PASS; SDK/APP INTEGRATION OPEN.**
 Exact pushed `e5e5736aaa45c093e1885519c76bdd71d6ada9ae`, tree
@@ -2243,12 +2271,12 @@ manifest SHA256 is `2392ae9f43abccf94978452b16fcc427053b958eb06774055d075f56676a
 archive identities and exact comparison command are retained in the external audit. This
 supports retaining the authenticated shipped bootstrap/Pub Dart SDK unchanged, not generated
 platform/sky/ICU/host-tool closure. No duplicate SDK or fabricated cache stamp is needed.
-The retained `e5e5736a` core predates the insertion correction above; it remains an immutable
-named baseline, not current-provider evidence. The next coherent toolkit producer must build
+The retained `e5e5736a` core predates both insertion and UTF-16 selection corrections above;
+it remains an immutable named baseline, not current-provider evidence. The next toolkit producer must build
 the matching corrected core and required original-GN tool/SDK outputs together after explicitly
 reconciling the old artifact state, without overwriting or relabelling it. Do not repeat a full
 core build for a focused native-unit check or mix stock engine caches and old AOT code.
-Actual FlView restart/disposal, removed-subtree/type-change authority, Unicode/nested edits,
+Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
 AT-SPI self-wait/geometry, Wayland, shipped SDK integration and the full uninstrumented consumer
 remain OPEN. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept
 invalid extents. Observe an actual production image-ready rebuild trigger before changing desktop
@@ -2380,11 +2408,10 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   passed in 71 seconds with no added host listener or process drift and joined, residue-free cleanup;
   a concurrent outer invocation also refused without creating another root. User-authorized removal of
   the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
-  diagnostics are retained. Latest successful joined cleanup is recorded in the byte-bounded insertion
-  disposition above; earlier failed runs were explicitly reconciled, most recently
-  `run.AxLKPdkduE` (identity `66306:105159951`), reclaiming 13,003,747,328 allocated bytes.
+  diagnostics are retained. Latest successful joined cleanup is recorded in the UTF-16 selection
+  disposition above; earlier failed runs were explicitly reconciled after evidence retention.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 628,031,488 allocated bytes (0.585 GiB). The successful
+  small evidence records occupy 628,609,024 allocated bytes (0.585 GiB). The successful
   `9f3f0df2` direct-GTK provider run joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count
   unchanged. The failure-retention message now explicitly warns that this retained directory blocks

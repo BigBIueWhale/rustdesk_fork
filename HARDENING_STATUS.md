@@ -2336,9 +2336,12 @@ lifetime assertion at scales 1 and 2, eight patched production objects, four ups
 test-object compiles, and the original 4,793-action toolkit build plus final no-work plan passed.
 The sole inert 89,077,760-byte archive holds 325 files: matching corrected core, 26 public
 headers, platform dills, ICU, generated sky_engine, font/constant/shader tools and frontend AOT.
-It is retained under `.harness-state/flutter-linux-engine-artifacts/15cf93dd3c2f51fefb2b1337c04d92d397b6c900/linux-x86_64-engine/`;
+It is preserved under `.harness-state/flutter-linux-engine-artifact-archive/15cf93dd3c2f51fefb2b1337c04d92d397b6c900/linux-x86_64-engine/`;
 archive SHA256 is `8505f215ede32dd547074d3667f899c10f50bc9603dcfa888835edc272d16e40`,
 manifest SHA256 `16cbd9dd1f0c10503536b0261eadbb36a2b621e140996da01fd9a93e9a1231e1`.
+After the shader-closure preparation passed, a locked no-clobber rename preserved both file
+identities, metadata and hashes there; the primary producer namespace is empty. No bytes were
+copied, modified, deleted or relabelled as a complete shader toolkit.
 Independent inert inspection matched the complete 326-member canonical regular inventory,
 archive/manifest hashes, source/helper context and the embedded original GN-argument digest.
 Complete 134,198-byte raw serial is `evidence/engine-bootstrap-depfile-15cf93dd.serial.log`,

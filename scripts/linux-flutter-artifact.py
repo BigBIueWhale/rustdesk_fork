@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seal and admit a source-bound Linux Flutter app, independently of test drivers."""
+"""Admit a source-bound Linux Flutter app and project its matching engine toolkit."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ import resource
 import stat
 import subprocess
 import sys
+import tarfile
 from contextlib import ExitStack
 
 sys.dont_write_bytecode = True
@@ -53,6 +54,26 @@ REQUIRED_FILES = frozenset((
     "bundle/lib/libtexture_rgba_renderer_plugin.so", "bundle/data/icudtl.dat",
 ))
 DESCRIPTOR_LIMIT = 4 * (MAX_FILES + MAX_DIRECTORIES) + 128
+ENGINE_ARCHIVE = "flutter-linux-engine.tar"
+ENGINE_MANIFEST = "engine-manifest.json"
+ENGINE_MATERIALIZED = "materialized-flutter-engine"
+ENGINE_OUTPUT = "src/out/host_release"
+ENGINE_ELFS = frozenset((
+    "libflutter_linux_gtk.so", "gen_snapshot", "font-subset", "impellerc", "libtessellator.so",
+))
+ENGINE_HEADERS = frozenset("flutter_linux/" + name + ".h" for name in (
+    "fl_application", "fl_basic_message_channel", "fl_binary_codec", "fl_binary_messenger",
+    "fl_dart_project", "fl_engine", "fl_event_channel", "fl_json_message_codec",
+    "fl_json_method_codec", "fl_message_codec", "fl_method_call", "fl_method_channel",
+    "fl_method_codec", "fl_method_response", "fl_pixel_buffer_texture", "fl_plugin_registrar",
+    "fl_plugin_registry", "fl_standard_message_codec", "fl_standard_method_codec",
+    "fl_string_codec", "fl_texture", "fl_texture_gl", "fl_texture_registrar", "fl_value",
+    "fl_view", "flutter_linux",
+))
+ENGINE_DATA = frozenset((
+    "icudtl.dat", "gen/const_finder.dart.snapshot", "gen/frontend_server_aot.dart.snapshot",
+    "flutter_patched_sdk/platform_strong.dill", "flutter_patched_sdk/vm_outline_strong.dill",
+))
 
 
 def fail(message):
@@ -307,17 +328,7 @@ def no_duplicates(pairs):
     return result
 
 
-def verify_engine_sdk_roles(path, expected_identity, raw_manifest, digest, context):
-    """Bind bootstrap/Pub's SDK roles to an independently authenticated toolkit.
-
-    The caller admits the complete SDK archive separately. This read-only check
-    covers the cache sky_engine package and frontend snapshot which local-engine
-    flags do not redirect to the GN output. It neither projects an engine nor
-    authorizes executing any other SDK file.
-    """
-    subprocess.run(["/bin/bash", str(Path(__file__).with_name("verify-vm-entry-preflight.sh"))],
-                   check=True, stdout=subprocess.DEVNULL)
-    require_descriptor_capacity()
+def engine_manifest(raw_manifest, digest, context):
     fields = {"source_commit", "source_tree", "framework_revision", "patch_sha256",
               "bootstrap_sdk_archive_sha256"}
     if type(context) is not dict or set(context) != fields:
@@ -338,6 +349,21 @@ def verify_engine_sdk_roles(path, expected_identity, raw_manifest, digest, conte
             or type(manifest.get("files")) is not dict
             or not 1 <= len(manifest["files"]) <= 4096):
         fail("engine SDK manifest context differs")
+    return manifest
+
+
+def verify_engine_sdk_roles(path, expected_identity, raw_manifest, digest, context):
+    """Bind bootstrap/Pub's SDK roles to an independently authenticated toolkit.
+
+    The caller admits the complete SDK archive separately. This read-only check
+    covers the cache sky_engine package and frontend snapshot which local-engine
+    flags do not redirect to the GN output. It neither projects an engine nor
+    authorizes executing any other SDK file.
+    """
+    subprocess.run(["/bin/bash", str(Path(__file__).with_name("verify-vm-entry-preflight.sh"))],
+                   check=True, stdout=subprocess.DEVNULL)
+    require_descriptor_capacity()
+    manifest = engine_manifest(raw_manifest, digest, context)
     prefix = "gen/dart-pkg/sky_engine/"
     sky = {key[len(prefix):]: record for key, record in manifest["files"].items()
            if key.startswith(prefix)}
@@ -447,6 +473,232 @@ def verify_engine_sdk_roles(path, expected_identity, raw_manifest, digest, conte
                 or publication.stable_file(os.lstat(path)) != publication.stable_file(opened)):
             fail("engine SDK root edge changed during proof")
     return len(sky)
+
+
+def materialize_engine(path, root_identity, parent_path, parent_identity,
+                       sdk_path, sdk_identity, context, archive_digest, manifest_digest):
+    """Project a complete toolkit; never copy or replace the separately admitted SDK.
+
+    The caller authenticates the complete SDK archive and keeps both inputs and
+    execution workspace quiescent. The sole intentional directory link names that
+    exact SDK's Dart root. It is not archive-supplied or an artifact-search fallback.
+    """
+    subprocess.run(["/bin/bash", str(Path(__file__).with_name("verify-vm-entry-preflight.sh"))],
+                   check=True, stdout=subprocess.DEVNULL)
+    require_descriptor_capacity()
+    if type(archive_digest) is not str or publication.SHA256_RE.fullmatch(archive_digest) is None:
+        fail("engine archive digest is malformed")
+    for source in (path, sdk_path):
+        if os.path.commonpath((source, parent_path)) in (source, parent_path):
+            fail("engine input and execution roots overlap")
+    with ExitStack() as stack:
+        root = open_root(path, root_identity, 0o700, stack)
+        root_info = os.fstat(root)
+        root_mount = mount_id(root)
+        inventory = (ENGINE_ARCHIVE, ENGINE_ARCHIVE + ".sha256")
+        if names(root) != inventory:
+            fail("engine capsule inventory differs")
+        archive, archive_info = publication.open_result_file(
+            root, ENGINE_ARCHIVE, maximum=MAX_FILE_BYTES, label="engine archive")
+        stack.callback(os.close, archive)
+        checksum, checksum_info = publication.open_result_file(
+            root, ENGINE_ARCHIVE + ".sha256", maximum=256, label="engine checksum")
+        stack.callback(os.close, checksum)
+        for descriptor, info in ((archive, archive_info), (checksum, checksum_info)):
+            if info.st_dev != root_info.st_dev or mount_id(descriptor) != root_mount:
+                fail("engine capsule crosses a mount")
+        expected_checksum = (archive_digest + "  " + ENGINE_ARCHIVE + "\n").encode("ascii")
+        if checksum_info.st_size != len(expected_checksum) or os.read(checksum, 257) != expected_checksum:
+            fail("engine independently supplied checksum differs")
+        if consume(archive, archive_info, False)["sha256"] != archive_digest:
+            fail("engine archive digest differs")
+        os.lseek(archive, 0, os.SEEK_SET)
+        stream = stack.enter_context(os.fdopen(os.dup(archive), "rb"))
+        tar = stack.enter_context(tarfile.open(fileobj=stream, mode="r:"))
+        members = {}
+        offset = 0
+        total = 0
+        for member in tar:
+            components = member.name.split("/")
+            if (len(members) >= MAX_FILES + 1 or member.name in members
+                    or len(components) > MAX_DEPTH - 3 or len(member.name.encode()) > MAX_PATH_BYTES
+                    or any(value in ("", ".", "..") or any(ord(c) < 32 or ord(c) == 127 for c in value)
+                           for value in components)
+                    or member.type != tarfile.REGTYPE or member.mode != 0o400
+                    or member.uid != 0 or member.gid != 0 or member.mtime != 0
+                    or member.uname or member.gname or member.linkname or member.pax_headers
+                    or member.offset != offset or member.offset_data != offset + 512
+                    or not 0 < member.size <= (1024 * 1024 if member.name == ENGINE_MANIFEST else MAX_FILE_BYTES)):
+                fail("engine archive member contract differs")
+            total += member.size
+            if total > MAX_FILE_BYTES - 1024 * 1024:
+                fail("engine toolkit byte bound exceeded")
+            offset = member.offset_data + ((member.size + 511) // 512) * 512
+            stream.seek(member.offset_data + member.size)
+            if any(stream.read(offset - member.offset_data - member.size)):
+                fail("engine archive member padding differs")
+            members[member.name] = member
+        expected_size = ((offset + 1024 + tarfile.RECORDSIZE - 1) // tarfile.RECORDSIZE) * tarfile.RECORDSIZE
+        stream.seek(offset)
+        if archive_info.st_size != expected_size or any(stream.read(expected_size - offset)):
+            fail("engine archive final padding differs")
+        if ENGINE_MANIFEST not in members:
+            fail("engine toolkit manifest is missing")
+        with tar.extractfile(members[ENGINE_MANIFEST]) as manifest_stream:
+            raw = manifest_stream.read(1024 * 1024 + 1)
+        manifest = engine_manifest(raw, manifest_digest, context)
+        records = manifest["files"]
+        required = ENGINE_ELFS | ENGINE_HEADERS | ENGINE_DATA
+        if not required.issubset(records) or set(members) != set(records) | {ENGINE_MANIFEST}:
+            fail("engine complete toolkit inventory differs")
+        for relative, record in records.items():
+            if (relative not in required and not relative.startswith("gen/dart-pkg/sky_engine/")):
+                fail("engine toolkit contains an unsupported output role")
+            if (type(record) is not dict or set(record) != {"bytes", "sha256"}
+                    or type(record["bytes"]) is not int or record["bytes"] != members[relative].size
+                    or type(record["sha256"]) is not str
+                    or publication.SHA256_RE.fullmatch(record["sha256"]) is None):
+                fail("engine toolkit file record differs")
+
+        def read_member(relative, output=None):
+            digest = hashlib.sha256()
+            prefix = bytearray()
+            with tar.extractfile(members[relative]) as source:
+                remaining = members[relative].size
+                while remaining:
+                    chunk = source.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        fail("engine archive file ended early")
+                    if len(prefix) < 64:
+                        prefix.extend(chunk[:64 - len(prefix)])
+                    digest.update(chunk)
+                    if output is not None:
+                        publication.write_all(output, chunk, "engine toolkit file")
+                    remaining -= len(chunk)
+                if source.read(1):
+                    fail("engine archive file exceeds its record")
+            if digest.hexdigest() != records[relative]["sha256"]:
+                fail("engine toolkit file digest differs")
+            if relative in ENGINE_ELFS and (len(prefix) < 64 or prefix[:6] != b"\x7fELF\x02\x01"
+                    or int.from_bytes(prefix[16:18], "little") not in (2, 3)
+                    or int.from_bytes(prefix[18:20], "little") != 62):
+                fail("engine toolkit executable is not an x86_64 ELF")
+
+        for relative in records:
+            read_member(relative)
+        verify_engine_sdk_roles(sdk_path, sdk_identity, raw, manifest_digest, context)
+        dart_path = os.path.join(sdk_path, "bin/cache/dart-sdk")
+        dart_before = os.lstat(dart_path)
+        dart = os.open(dart_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        stack.callback(os.close, dart)
+        dart_mount = mount_id(dart)
+        if (publication.stable_file(dart_before) != publication.stable_file(os.fstat(dart))
+                or os.path.realpath(dart_path) != dart_path
+                or (dart_before.st_uid, dart_before.st_gid) != (os.getuid(), os.getgid())
+                or stat.S_IMODE(dart_before.st_mode) & 0o7022
+                or stat.S_IMODE(dart_before.st_mode) & 0o500 != 0o500):
+            fail("engine Dart SDK changed during acquisition")
+        publication.reject_access_acl(dart, "engine Dart SDK", include_default=True)
+        paths = {ENGINE_OUTPUT + "/" + relative for relative in records}
+        directory_paths = {"/".join(relative.split("/")[:index])
+                           for relative in paths for index in range(1, len(relative.split("/")))}
+        if len(directory_paths) >= MAX_DIRECTORIES:
+            fail("engine projection directory bound exceeded")
+        parent = open_root(parent_path, parent_identity, 0o700, stack)
+        lock_empty_parent(parent)
+        os.mkdir(ENGINE_MATERIALIZED, 0o700, dir_fd=parent)
+        target_path = os.path.join(parent_path, ENGINE_MATERIALIZED)
+        target_identity = publication.identity(os.stat(ENGINE_MATERIALIZED, dir_fd=parent, follow_symlinks=False))
+        target = open_root(target_path, target_identity, 0o700, stack)
+        target_mount = mount_id(target)
+        directories = {"": target}
+        for relative in sorted(directory_paths, key=lambda value: (value.count("/"), value)):
+            prefix, _, basename = relative.rpartition("/")
+            os.mkdir(basename, 0o700, dir_fd=directories[prefix])
+            descriptor = os.open(basename, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                 dir_fd=directories[prefix])
+            stack.callback(os.close, descriptor)
+            directories[relative] = descriptor
+        for relative, record in records.items():
+            prefix, _, basename = (ENGINE_OUTPUT + "/" + relative).rpartition("/")
+            output = publication.create_output_file(directories[prefix], basename)
+            try:
+                read_member(relative, output)
+                seal_file(output, record["bytes"], 0o500 if relative in ENGINE_ELFS else 0o400)
+            finally:
+                os.close(output)
+        host = directories[ENGINE_OUTPUT]
+        os.symlink(dart_path, "dart-sdk", dir_fd=host)
+        alias_info = os.stat("dart-sdk", dir_fd=host, follow_symlinks=False)
+        if (not stat.S_ISLNK(alias_info.st_mode)
+                or (alias_info.st_uid, alias_info.st_gid, alias_info.st_nlink) != (os.getuid(), os.getgid(), 1)):
+            fail("engine Dart SDK alias authority differs")
+        paths.add(ENGINE_OUTPUT + "/dart-sdk")
+        inventories = {}
+        for relative in sorted(directories, key=lambda value: value.count("/"), reverse=True):
+            descriptor = directories[relative]
+            os.fchmod(descriptor, 0o500)
+            os.fsync(descriptor)
+            info = os.fstat(descriptor)
+            expected = {value[len(relative) + bool(relative):].split("/", 1)[0]
+                        for value in paths if not relative or value.startswith(relative + "/")}
+            if ((info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) != (os.getuid(), os.getgid(), 0o500)
+                    or info.st_dev != os.fstat(target).st_dev or mount_id(descriptor) != target_mount
+                    or set(names(descriptor)) != expected):
+                fail("engine projection directory authority differs")
+            publication.reject_access_acl(descriptor, "engine projection", include_default=True)
+            inventories[relative] = (info, expected)
+        execution_edges = []
+        for relative, record in records.items():
+            prefix, _, basename = (ENGINE_OUTPUT + "/" + relative).rpartition("/")
+            descriptor = os.open(basename, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                                 dir_fd=directories[prefix])
+            stack.callback(os.close, descriptor)
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode) or info.st_dev != os.fstat(target).st_dev
+                    or mount_id(descriptor) != target_mount
+                    or (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode), info.st_nlink, info.st_size)
+                    != (os.getuid(), os.getgid(), 0o500 if relative in ENGINE_ELFS else 0o400, 1, record["bytes"])):
+                fail("engine projection file authority differs")
+            publication.reject_access_acl(descriptor, "engine projection file", include_default=False)
+            if consume(descriptor, info, relative in ENGINE_ELFS) != record:
+                fail("engine projection file bytes differ")
+            execution_edges.append((directories[prefix], basename, descriptor, info))
+        verify_engine_sdk_roles(sdk_path, sdk_identity, raw, manifest_digest, context)
+        if (publication.stable_file(dart_before) != publication.stable_file(os.fstat(dart))
+                or publication.stable_file(dart_before) != publication.stable_file(os.lstat(dart_path))
+                or mount_id(dart) != dart_mount
+                or publication.stable_file(alias_info) != publication.stable_file(
+                    os.stat("dart-sdk", dir_fd=host, follow_symlinks=False))
+                or os.readlink("dart-sdk", dir_fd=host) != dart_path):
+            fail("engine Dart SDK binding changed")
+        for relative, (info, expected) in inventories.items():
+            descriptor = directories[relative]
+            prefix, _, basename = relative.rpartition("/")
+            if (publication.stable_file(info) != publication.stable_file(os.fstat(descriptor))
+                    or mount_id(descriptor) != target_mount or set(names(descriptor)) != expected
+                    or (relative and publication.stable_file(info) != publication.stable_file(
+                        os.stat(basename, dir_fd=directories[prefix], follow_symlinks=False)))):
+                fail("engine projection directory changed")
+        for directory, basename, descriptor, info in execution_edges:
+            if (publication.stable_file(info) != publication.stable_file(os.fstat(descriptor))
+                    or publication.stable_file(info) != publication.stable_file(
+                        os.stat(basename, dir_fd=directory, follow_symlinks=False))
+                    or mount_id(descriptor) != target_mount):
+                fail("engine projection file changed")
+        for name, descriptor, info in ((ENGINE_ARCHIVE, archive, archive_info),
+                                      (ENGINE_ARCHIVE + ".sha256", checksum, checksum_info)):
+            if (publication.stable_file(info) != publication.stable_file(os.fstat(descriptor))
+                    or publication.stable_file(info) != publication.stable_file(
+                        os.stat(name, dir_fd=root, follow_symlinks=False))):
+                fail("engine capsule changed during projection")
+        if names(root) != inventory or publication.stable_file(root_info) != publication.stable_file(os.fstat(root)):
+            fail("engine capsule directory changed")
+        open_root(path, root_identity, 0o700, stack)
+        open_root(parent_path, parent_identity, 0o700, stack)
+        open_root(target_path, target_identity, 0o500, stack)
+        os.fsync(parent)
+        return os.path.join(target_path, "src")
 
 
 def admit(root, context, digest, stack):
@@ -595,7 +847,7 @@ def materialize(path, root_identity, parent_path, parent_identity, context, dige
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("prepare", "commit", "materialize"))
+    parser.add_argument("action", choices=("prepare", "commit", "materialize", "materialize-engine"))
     parser.add_argument("--context", required=True)
     parser.add_argument("--root")
     parser.add_argument("--root-identity")
@@ -604,12 +856,28 @@ def main():
     parser.add_argument("--pending")
     parser.add_argument("--pending-identity")
     parser.add_argument("--manifest-sha256")
+    parser.add_argument("--sdk")
+    parser.add_argument("--sdk-identity")
+    parser.add_argument("--archive-sha256")
     arguments = parser.parse_args()
     if len(arguments.context.encode("utf-8")) > 4096:
         fail("Linux app context exceeds its bound")
     context = json.loads(arguments.context, object_pairs_hook=no_duplicates)
-    validate_context(context)
     parent = publication.parse_identity(arguments.parent_identity, "Linux app parent")
+    if arguments.action == "materialize-engine":
+        if arguments.pending is not None or arguments.pending_identity is not None:
+            fail("engine materialize accepts no pending authority")
+        if any(value is None for value in (arguments.root, arguments.root_identity,
+                arguments.sdk, arguments.sdk_identity, arguments.archive_sha256, arguments.manifest_sha256)):
+            fail("engine materialize requires capsule, SDK and digest authority")
+        print(materialize_engine(arguments.root,
+            publication.parse_identity(arguments.root_identity, "engine capsule"), arguments.parent, parent,
+            arguments.sdk, publication.parse_identity(arguments.sdk_identity, "engine SDK"), context,
+            arguments.archive_sha256, arguments.manifest_sha256))
+        return
+    if any(value is not None for value in (arguments.sdk, arguments.sdk_identity, arguments.archive_sha256)):
+        fail("Linux app action accepts no engine SDK authority")
+    validate_context(context)
     if arguments.action == "prepare":
         if arguments.pending is not None or arguments.pending_identity is not None or arguments.manifest_sha256 is not None:
             fail("Linux app prepare accepts no pending or manifest authority")
@@ -640,6 +908,7 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (publication.PublicationError, OSError, ValueError, RecursionError, subprocess.CalledProcessError) as error:
+    except (publication.PublicationError, OSError, ValueError, RecursionError,
+            tarfile.TarError, subprocess.CalledProcessError) as error:
         print(f"Linux Flutter artifact: {error}", file=sys.stderr)
         raise SystemExit(1)

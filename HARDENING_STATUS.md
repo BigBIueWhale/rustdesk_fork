@@ -2367,7 +2367,19 @@ actual Flutter SDK; the archive byte comparison above is separate inert evidence
 capture receipts are retained. Inputs were unchanged, aggregate listener addition/process drift
 zero, all owners joined and scratch self-retired. Detailed host snapshots retired with scratch.
 This is a consumer prerequisite, not actual toolkit projection, Flutter invocation, FlView or
-app evidence. The app builder still lacks the local-engine/materializer and capsule-role wiring.
+app evidence. `linux-flutter-artifact.py::materialize_engine` now implements the fixed
+`src/out/host_release` projection behind the same VM-entry authority. Independently supplied
+archive/manifest digests and source/tree/framework/patch/SDK context bind the complete toolkit;
+canonical bounded regular members, all 26 headers, kernels, ICU and five matching ELF tools
+are required before output allocation. The sole deliberate `dart-sdk` link binds the existing
+separately admitted SDK, whose sky/frontend roles and retained Dart-directory identity are
+re-proved; no SDK bytes or retained archive are overwritten. Execution copies are descriptor-
+bound, inventory-closed and owner-only; retained output or a held parent lock refuses another
+projection. Eight additional real-filesystem/CLI/ELF fixture groups cover these boundaries,
+including missing tools with stock copies present and late Dart-directory replacement.
+Their native execution is PENDING. The real retained toolkit/SDK projection, explicit local-
+engine app invocation, read-only execution mounts and capsule-role provenance remain OPEN.
+The app builder still lacks that materializer/local-engine and capsule-role wiring.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
 AT-SPI self-wait/geometry, Wayland, shipped SDK integration and the full uninstrumented consumer
 remain OPEN. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

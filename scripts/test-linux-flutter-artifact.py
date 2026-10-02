@@ -5,6 +5,7 @@ import copy
 import fcntl
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ import stat
 import struct
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from contextlib import ExitStack
@@ -396,6 +398,197 @@ class EngineSdkRoleTests(unittest.TestCase):
         self.reject(self.verify)
 
 
+class EngineMaterializationTests(unittest.TestCase):
+    def setUp(self):
+        EngineSdkRoleTests.setUp(self)
+        self.capsule = directory(self.case / "engine-capsule")
+        self.execution = directory(self.case / "engine-execution")
+        self.payloads = {key: ELF if key in app.ENGINE_ELFS else b"toolkit fixture\n"
+                         for key in app.ENGINE_ELFS | app.ENGINE_HEADERS | app.ENGINE_DATA}
+        self.payloads.update({relative.replace("bin/cache/pkg/sky_engine/", "gen/dart-pkg/sky_engine/")
+            .replace("bin/cache/dart-sdk/bin/snapshots/", "gen/"): data
+            for relative, data in self.values.items()})
+        self.reseal()
+
+    def reseal(self, change=None, extra=None, suffix=b""):
+        self.manifest["files"] = {key: {"bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+                                  for key, data in self.payloads.items()}
+        self.raw = json.dumps(self.manifest, sort_keys=True).encode()
+        self.digest = hashlib.sha256(self.raw).hexdigest()
+        data = io.BytesIO()
+        with tarfile.open(fileobj=data, mode="w") as archive:
+            for name, payload in [*sorted(self.payloads.items()), (app.ENGINE_MANIFEST, self.raw)]:
+                member = tarfile.TarInfo(name)
+                member.size, member.mode = len(payload), 0o400
+                if change is not None:
+                    change(member)
+                archive.addfile(member, io.BytesIO(payload))
+            if extra is not None:
+                member = tarfile.TarInfo(extra)
+                member.size, member.mode = 1, 0o400
+                archive.addfile(member, io.BytesIO(b"x"))
+        raw = data.getvalue() + suffix
+        self.archive_digest = hashlib.sha256(raw).hexdigest()
+        for name, payload in ((app.ENGINE_ARCHIVE, raw),
+                (app.ENGINE_ARCHIVE + ".sha256", (self.archive_digest + "  " + app.ENGINE_ARCHIVE + "\n").encode())):
+            path = self.capsule / name
+            if path.exists():
+                path.unlink()
+            write(path, payload)
+
+    def materialize(self, **changes):
+        arguments = dict(path=str(self.capsule), root_identity=identity(self.capsule),
+            parent_path=str(self.execution), parent_identity=identity(self.execution),
+            sdk_path=str(self.sdk), sdk_identity=identity(self.sdk), context=self.context,
+            archive_digest=self.archive_digest, manifest_digest=self.digest)
+        arguments.update(changes)
+        return Path(app.materialize_engine(**arguments))
+
+    def reject(self, operation, *, empty=True):
+        with self.assertRaises((app.publication.PublicationError, OSError, ValueError, tarfile.TarError)):
+            operation()
+        if empty:
+            self.assertEqual(list(self.execution.iterdir()), [])
+
+    def test_engine_cli_complete_projection_reuses_unchanged_sdk(self):
+        def snapshot(root):
+            return {str(path.relative_to(root)): (app.publication.stable_file(path.lstat()),
+                    path.read_bytes() if path.is_file() else None) for path in [root, *root.rglob("*")]}
+        before = snapshot(self.capsule), snapshot(self.sdk)
+        result = subprocess.run([
+            "/usr/bin/python3", "-I", "-S", str(SCRIPT_DIR / "linux-flutter-artifact.py"),
+            "materialize-engine", "--context", json.dumps(self.context),
+            "--root", str(self.capsule), "--root-identity", ":".join(map(str, identity(self.capsule))),
+            "--parent", str(self.execution), "--parent-identity", ":".join(map(str, identity(self.execution))),
+            "--sdk", str(self.sdk), "--sdk-identity", ":".join(map(str, identity(self.sdk))),
+            "--archive-sha256", self.archive_digest, "--manifest-sha256", self.digest,
+        ], check=True, timeout=15, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        source = Path(result.stdout.strip())
+        self.assertEqual(source, self.execution / app.ENGINE_MATERIALIZED / "src")
+        host = source / "out/host_release"
+        for relative, data in self.payloads.items():
+            path = host / relative
+            self.assertEqual(path.read_bytes(), data)
+            self.assertEqual((stat.S_IMODE(path.stat().st_mode), path.stat().st_nlink),
+                             (0o500 if relative in app.ENGINE_ELFS else 0o400, 1))
+            if relative in app.ENGINE_ELFS:
+                subprocess.run([str(path)], check=True, timeout=5, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        alias = host / "dart-sdk"
+        self.assertTrue(alias.is_symlink())
+        self.assertEqual(os.readlink(alias), str(self.sdk / "bin/cache/dart-sdk"))
+        self.assertEqual(identity(alias.resolve()), identity(self.sdk / "bin/cache/dart-sdk"))
+        self.assertEqual((snapshot(self.capsule), snapshot(self.sdk)), before)
+        self.assertEqual({str(path.relative_to(host)) for path in host.rglob("*") if not path.is_dir()},
+                         set(self.payloads))
+        self.assertFalse((host / app.ENGINE_MANIFEST).exists())
+        self.assertFalse((host / "flutter_patched_sdk_product").exists())
+
+    def test_engine_external_digest_context_and_identity_refuse(self):
+        for changes in (dict(archive_digest="0" * 64), dict(manifest_digest="0" * 64),
+                dict(context=dict(self.context, patch_sha256="0" * 64)),
+                dict(root_identity=(1, 1)), dict(sdk_identity=(1, 1)),
+                dict(parent_identity=(1, 1))):
+            self.reject(lambda: self.materialize(**changes))
+
+    def test_engine_capsule_links_special_objects_and_modes_refuse(self):
+        path = self.capsule / app.ENGINE_ARCHIVE
+        data = path.read_bytes()
+        path.unlink()
+        path.symlink_to(self.sdk / "bin/cache/dart-sdk/bin/snapshots/frontend_server_aot.dart.snapshot")
+        self.reject(self.materialize)
+        path.unlink()
+        os.mkfifo(path, 0o400)
+        self.reject(self.materialize)
+        path.unlink()
+        write(path, data)
+        outside = self.case / "external-engine"
+        os.link(path, outside)
+        self.reject(self.materialize)
+        outside.unlink()
+        path.chmod(0o500)
+        self.reject(self.materialize)
+        path.chmod(0o400)
+        self.capsule.chmod(0o755)
+        self.reject(self.materialize)
+
+    def test_engine_archive_contract_and_trailing_data_refuse(self):
+        for change in (lambda member: setattr(member, "mode", 0o500),
+                       lambda member: setattr(member, "uid", 1000),
+                       lambda member: setattr(member, "mtime", 1),
+                       lambda member: setattr(member, "name", "../escape"),
+                       lambda member: setattr(member, "type", tarfile.SYMTYPE)):
+            self.reseal(change=change)
+            self.reject(self.materialize)
+        for extra in ("gen_snapshot", "unrecorded"):
+            self.reseal(extra=extra)
+            self.reject(self.materialize)
+        self.reseal(suffix=b"unrecorded trailing data")
+        self.reject(self.materialize)
+
+    def test_engine_missing_tools_refuse_even_with_stock_cache(self):
+        stock = self.sdk / "bin/cache/artifacts/engine/linux-x64"
+        stock.mkdir(parents=True, mode=0o700)
+        for name in app.ENGINE_ELFS:
+            write(stock / name, ELF)
+            data = self.payloads.pop(name)
+            self.reseal()
+            self.reject(self.materialize)
+            self.payloads[name] = data
+        self.payloads["unrecorded"] = b"extra role"
+        self.reseal()
+        self.reject(self.materialize)
+
+    def test_engine_sdk_drift_shadow_and_non_elf_refuse(self):
+        path = self.sdk / "bin/cache/pkg/sky_engine/pubspec.yaml"
+        original = path.read_bytes()
+        path.unlink()
+        write(path, b"name: different\n")
+        self.reject(self.materialize)
+        path.unlink()
+        write(path, original)
+        shadow = directory(self.sdk / "packages/sky_engine")
+        self.reject(self.materialize)
+        shadow.rmdir()
+        self.payloads["gen_snapshot"] = b"not an ELF"
+        self.reseal()
+        self.reject(self.materialize)
+
+    def test_engine_second_projection_and_locked_parent_preserve_state(self):
+        descriptor = os.open(self.execution, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.reject(self.materialize)
+        finally:
+            os.close(descriptor)
+        source = self.materialize()
+        original = identity(source), (source / "out/host_release/gen_snapshot").read_bytes()
+        self.reject(self.materialize, empty=False)
+        self.assertEqual((identity(source), (source / "out/host_release/gen_snapshot").read_bytes()), original)
+        self.assertEqual([path.name for path in self.execution.iterdir()], [app.ENGINE_MATERIALIZED])
+
+    def test_engine_dart_identity_replacement_during_projection_refuses(self):
+        original = app.verify_engine_sdk_roles
+        calls = 0
+        def replace(*arguments):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                dart = self.sdk / "bin/cache/dart-sdk"
+                dart.rename(self.case / "retained-dart")
+                (dart / "bin/snapshots").mkdir(parents=True, mode=0o700)
+                write(dart / "bin/snapshots/frontend_server_aot.dart.snapshot", ELF)
+            return original(*arguments)
+        app.verify_engine_sdk_roles = replace
+        try:
+            self.reject(self.materialize, empty=False)
+        finally:
+            app.verify_engine_sdk_roles = original
+        self.assertEqual(calls, 2)
+        self.assertTrue((self.execution / app.ENGINE_MATERIALIZED).is_dir())
+        self.reject(self.materialize, empty=False)
+
+
 def main():
     successful = False
     try:
@@ -405,6 +598,9 @@ def main():
         sdk_result = unittest.TextTestRunner(verbosity=2).run(
             unittest.defaultTestLoader.loadTestsFromTestCase(EngineSdkRoleTests))
         successful = successful and sdk_result.wasSuccessful() and sdk_result.testsRun == 6 and not sdk_result.skipped
+        engine_result = unittest.TextTestRunner(verbosity=2).run(
+            unittest.defaultTestLoader.loadTestsFromTestCase(EngineMaterializationTests))
+        successful = successful and engine_result.wasSuccessful() and engine_result.testsRun == 8 and not engine_result.skipped
     finally:
         subprocess.run([
             "/usr/bin/python3", "-I", "-S", str(SCRIPT_DIR / "verify-private-tree-closure.py"),
@@ -414,6 +610,8 @@ def main():
         raise SystemExit(1)
     print("FLUTTER_ENGINE_SDK_ROLES=pass cases=6 fixture=manifest-and-filesystem "
           "sky=exact frontend=exact mutation=refused links=refused writes=none cleanup=joined", file=sys.stderr)
+    print("FLUTTER_ENGINE_MATERIALIZATION=pass cases=8 fixture=system-elf-and-toolkit "
+          "inventory=closed sdk=reused mutation=refused fallback=refused cleanup=joined", file=sys.stderr)
     print("LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=20 publication=noclobber admission=exact execution=guest-only cleanup=joined")
 
 

@@ -2377,8 +2377,18 @@ re-proved; no SDK bytes or retained archive are overwritten. Execution copies ar
 bound, inventory-closed and owner-only; retained output or a held parent lock refuses another
 projection. Eight additional real-filesystem/CLI/ELF fixture groups cover these boundaries,
 including missing tools with stock copies present and late Dart-directory replacement.
-Their native execution is PENDING. The real retained toolkit/SDK projection, explicit local-
-engine app invocation, read-only execution mounts and capsule-role provenance remain OPEN.
+Exact pushed `c0ced01e41fe6db0072b5a6c1f0fa6f08886201b`, tree
+`ed46dce84fdbc21d5b9f027f6c0cadb734b1dcb6`, passed all eight groups in 23.325 seconds,
+plus the existing 20 app and six SDK groups, in the complete 65,270-ms zero-NIC transaction
+(outer/capture 0/0). Tests executed at guest UID/GID 4000 with system-ELF/minimal-toolkit
+fixtures, not the retained engine archive or actual SDK. Complete 76,618-byte raw serial is
+`evidence/engine-toolkit-projection-c0ced01e.serial.log`, SHA256
+`6db009ab50c2071212f3a7c1aa36b3f1501309866a88a051e1825a92585b6d20`; outer and whole-FD
+capture records are sealed 0400. Inputs were unchanged, aggregate host listener additions
+and pre-existing-process drift were zero, all owned processes joined and scratch self-retired.
+Detailed host snapshots retired with scratch, not independently retained proof. The real
+retained toolkit/SDK projection, explicit local-engine app invocation, read-only execution
+mounts and capsule-role provenance remain OPEN.
 The app builder still lacks that materializer/local-engine and capsule-role wiring.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
 AT-SPI self-wait/geometry, Wayland, shipped SDK integration and the full uninstrumented consumer
@@ -2515,8 +2525,8 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   diagnostics are retained. Latest successful joined cleanup is recorded in the matching-toolkit
   disposition above; earlier failed runs were explicitly reconciled after evidence retention.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 629,800,960 allocated bytes (0.587 GiB) after the focused
-  SDK-role runs self-retired. The separate intentional toolkit capsule occupies
+  small evidence records occupy 629,886,976 allocated bytes (0.587 GiB) after the focused
+  toolkit-materializer run self-retired. The separate intentional toolkit capsule occupies
   89,096,192 allocated bytes (0.083 GiB), not a retained VM disk. The successful
   `9f3f0df2` direct-GTK provider run joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count

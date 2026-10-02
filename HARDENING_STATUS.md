@@ -2453,10 +2453,26 @@ inventories, collector filesystem cases, existing GTK assertions at scales 1/2 a
 test-object compiles passed, with unchanged inputs/listeners, zero drift and joined self-retirement.
 Full 89,971-byte `evidence/shader-toolkit-prepare-6f0f082e.serial.log` has SHA256
 `3304bc21de0360c3f5f77c7c2f2abfbbdd3a8739f8453c3fd50290d89efd00e4`.
-The full-build shader comparison now requires Flutter's complete initial Linux target set,
-including SkSL, rather than its later retry's subset. **Actual shader compilation, a newly
-published complete toolkit and the full app consumer remain unverified.** No shaders are
-skipped and no stock-cache fallback is introduced.
+The full-build shader comparison requires Flutter's complete initial Linux target set,
+including SkSL, rather than its later retry's subset. Exact pushed
+`63493887d7bf51c9ea7be8b03e7a4641dd40208f`, tree `7ddb33950edabcd6bb7f051e1f57aa9ebce4f691`,
+passed the complete 765-second integration with outer/capture 0/0. The original 4,793-action
+build and final no-work plan passed. Both real framework shaders refused with empty includes
+and produced positive runtime/SPIR-V outputs with all four original targets and complete
+includes; compiler/source/include bytes stayed unchanged and every command joined.
+The sole inert 89,128,960-byte archive has 341 payload files including all sixteen shader
+includes, archive SHA256 `e054196739ae571afafe532268dfffef958c1c69b708a25e09352770744a82d0`,
+manifest SHA256 `b78c72f5533657e6bce49ac89d289172aafcc925098651dc00e35537c0d30695`.
+It is under `.harness-state/flutter-linux-engine-artifacts/63493887d7bf51c9ea7be8b03e7a4641dd40208f/linux-x86_64-engine/`.
+Independent inert inspection proved all 342 canonical regular members, complete context and
+every payload digest; every include matched the independently authenticated original GN source.
+Full 136,208-byte `evidence/shader-toolkit-build-63493887.serial.log` has SHA256
+`e0c175c175586f3c789462886234105b137aec93880bf97f55a0cdb4c149cea3`.
+Inputs were unchanged, the audit recorded no harness-added listener and one pre-existing-process
+drift (not zero), all owned work joined and the scratch self-retired. Detailed host snapshots
+retired with scratch; the outer retains aggregate audit acceptance. **Actual SDK/app compilation,
+FlView/AT-SPI execution and the complete uninstrumented app consumer remain OPEN.** No shaders
+are skipped and no stock-cache fallback is introduced.
 Full 365,180-byte failure raw serial is
 `evidence/app-local-engine-32bff424-build.serial.log`, SHA256
 `4f80aa87e8ce895ba0abcca23700e9f492553887f242094dba2ac805be688c29`.

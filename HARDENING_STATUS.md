@@ -1368,12 +1368,37 @@ intermittent Android/Windows reports or validate later `utils/image.dart` finali
 absent from the retained APK. Sustained warm/soak, physical devices, current-release and
 broader native presentation remain OPEN; no lifetime/resource/freshness limit is relaxed.
 
-**Resource-accounting follow-up — OPEN:** `LatestFrameQueue._admit` counts active keys
-against `maxKeys`, while pool-waiting lanes reside only in `_lanes`. Pending-only and mixed
-running/pending occupancy need an exact Dart behavioral A/B before any correction; current
-tests cover running and detached keys. The separate 64-waiter cap remains, so this is not
-unbounded-work or proven LPE/Android-hang causation. Keep one distinct-key budget across
-running, detached and waiting owners without releasing uncancellable conversion permits.
+**Distinct display-key accounting — CORRECTED; FOCUSED DART A/B PASS:** a new inactive key
+now consumes the union of current lane keys and active/detached drain keys, counting overlap
+once. Previously only active keys consumed `maxKeys`, so lanes waiting for the shared pool
+could bypass the queue's key limit. Existing-lane admission remains unchanged; the scan occurs
+only when admitting a new inactive key, with no extra persistent counter or set allocation.
+Same-key successors and recovery reuse their key slot. Exhaustion retires publication and
+waiting lanes without releasing a permit still owned by uncancellable work. Per-key, pool,
+latest-only, FIFO and exact-owner limits are unchanged. Software waiting entries retain
+publication metadata, not another RGBA allocation; the independent 64-waiter cap already
+bounded work, so this is not an unbounded-pixel-backlog, proven LPE or original-hang finding.
+
+Exact before source `3c92e2e2e2176f83233cf68b1afdb20f891c32f3` ran all 18 suites/141
+visible tests: 138 passed and exactly three failed by accepting an excess key—waiting-only,
+running-plus-waiting and detached-plus-waiting. None skipped or remained unfinished. Exact
+corrected source `e1015ed3e68fd618f59538428449c69f84b0e152`, tree
+`c188444ca053eb070c10d843f036569e399e9e23`, passed the unchanged 141-test workload,
+pinned formatting, fresh production bridge generation and supplementary display-finality gate
+through `scripts/smoke-verifier-vm-authority.sh --flutter-model-tests` in 296 seconds. The
+obsolete source-string key formula and its mutation case are deleted, not rewritten to stand
+in for actual behavior. The guest failure wrapper now preserves byte-bounded assertion
+context rather than discarding early errors behind a 240-line tail. Zero-NIC VM/guest-only
+nonroot containers, read-only inputs, no host-listener addition or pre-existing-process drift,
+joined cleanup and exact failed-run retirement were independently checked; no run/overlay
+remains. Complete sealed raw serials are `evidence/queue-keys-before-3c92e2e2.serial.log`
+(164,961 bytes, SHA-256 `c5b2cb835b4d1636b0e148ae1d990ef696c34ac5052c3e7f039921c34496f83d`)
+and `evidence/queue-keys-after-e1015ed3.serial.log` (67,964 bytes, SHA-256
+`baa0e784c4d0461cb58a2a94110ad184be7e55ebf1a8d76218a292111da44519`), with outer
+acceptance retained separately. This is actual execution of the shared Dart class, not native
+screen presentation or an Android/Windows causal reproduction. It applies where that shared
+queue is used, not to the distinct default Windows texture path. Sustained warm-isolate/device,
+current native presentation, performance, LPE and release obligations remain OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local
 `XGetImage` wording check are deleted. Pixel identity and age require the shared C implementation's
 native execution, not replacement source-string assertions. The guard's other VM/input/renderer
@@ -2704,9 +2729,10 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   12,276,133,888 allocated bytes (11.43 GiB). Its outer owner was absent, no QEMU/virtiofsd
   owner or mount remained, and the disk/input files had no open users. Complete raw serial,
   outer log and bounded diagnostics were retained before descriptor-relative removal under
-  the admission lock. Reusable verifier inputs and small evidence records now occupy
-  632,836,096 allocated bytes (0.589 GiB); this storage retirement does not turn the failed
-  Dart transaction into a pass or close the pending display-key accounting investigation.
+  the admission lock. After the subsequent display-key A/B and joined cleanup, reusable
+  verifier inputs and small evidence records occupy 633,171,968 allocated bytes (0.590 GiB).
+  Storage retirement itself does not turn a failed Dart transaction into a pass or supply
+  product evidence; the actual queue A/B result is recorded separately above.
   The separate intentional toolkit capsule occupies
   89,096,192 allocated bytes (0.083 GiB), not a retained VM disk. The successful
   `9f3f0df2` direct-GTK provider run joined and automatically removed its exact scratch root. The actual outer
@@ -2882,7 +2908,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 | Android and iOS | **Android intermittent presentation remains OPEN.** Named APK `ca569086` has a recorded 8,000-ms relaunch failure and a complete corrected-observer same-byte pass at `bccc02c5`. Diagnostic APK `035c9a20` has three complete 640x480/4-Hz schedules, the Full-HD flat workload at `51e06274`, and a complete Full-HD changing-texture replay at `77fff642`, with original freshness/recovery/resource limits unchanged. Neither comparative artifact reproduced the original hang, and these short schedules do not prove sustained warm lifetime, measured encoded throughput, current-release correctness or Android/Windows causation. Vary justified workload/lifetime conditions and preserve actual backlog before changing ownership; repeated identical passes are not closure. Establish exact-current repeated replacement/reconnect, controlled capture/input callbacks, network transitions, stale-generation refusal, sustained CPU/memory/thread/handle/queue and latency bounds, physical devices, stable signing, cold equality, independent reproduction and external review. iOS still has no current package/device result. |
 | Artifacts and reproducibility | Run the clean committed cold R-B2/R-B10 Debian/Android/Windows transaction from authenticated pinned inputs; require A==B and exact manifest binding. Reproduce independently and obtain external review. No named historical build closes this current-release obligation. |
 | Full verification infrastructure | R-S11bg now has pin-bound recoverable devcheck and Apple verifier images. For each image, two no-cache builds in one acquisition VM produced the same runnable manifest/config, and a separate fresh acquisition VM verified, promoted, loaded, and ran the final archive. Exact commit `f85e18e4` passed the complete current Apple three-target source-conformance/cross-compile workload in the no-NIC verifier VM after the focused Flutter gate first required the same shared display-verifier self-test. Current product/native workloads and fresh independently administered rebuilds remain required; neither verifier-image provenance nor Apple source/cross-compile success supplies native Apple behavior. |
-| Build/test execution authority (R-S11dh) | **STOP-SHIP: focused no-NIC authority smokes and substantial product/build evidence exist, but current release workloads remain incomplete.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; R-S11cj separately confines acquisition to an ordinary-user VM with outbound-only guest/container networking, no host forwarding, and joined finality. Product source `ca569086` passed the fresh model and Android APK build/install/render transactions; exact pushed harness `89a85f4b` passed the retained-APK production-peer lifecycle/presentation transaction. Current exact source `f85e18e4` passed the focused verifier-plus-138-test gate and three-target Apple source-conformance/cross-compile gate while preserving the strict host-listener audit and joined cleanup. Stable Android signing, physical devices, sustained resource/performance soak, native Apple work, Debian/Windows product workloads, cold release artifacts, complete prepared inputs, independently administered reproduction, and external review remain open. Source checks, cross-compiles, builder fingerprints, and historical lifecycle evidence are not release or native evidence. |
+| Build/test execution authority (R-S11dh) | **STOP-SHIP: focused no-NIC authority smokes and substantial product/build evidence exist, but current release workloads remain incomplete.** R-S11dh admits only authenticated ordinary-user QEMU/direct-boot/guest-Docker authority and has no host-Docker fallback; R-S11cj separately confines acquisition to an ordinary-user VM with outbound-only guest/container networking, no host forwarding, and joined finality. Product source `ca569086` passed the fresh model and Android APK build/install/render transactions; exact pushed harness `89a85f4b` passed the retained-APK production-peer lifecycle/presentation transaction. Latest focused source `e1015ed3` passed the verifier-plus-141-test gate in 296 seconds; named source `f85e18e4` passed the earlier focused gate and three-target Apple source-conformance/cross-compile gate. Each preserved the strict host-listener audit and joined cleanup; the older Apple result is not execution of later source. Stable Android signing, physical devices, sustained resource/performance soak, native Apple work, Debian/Windows product workloads, cold release artifacts, complete prepared inputs, independently administered reproduction, and external review remain open. Source checks, cross-compiles, builder fingerprints, and historical lifecycle evidence are not release or native evidence. |
 | Product-level behavior | **OPEN / RELEASE-BLOCKING:** a passing Android schedule is contradicted by a later same-APK display-only relaunch failure; neither earlier timing/resource receipts nor source/model bounds close the intermittent defect. The separate Linux palette/first-sighting oracle is replaced by full-counter publication-bound age. Exact `481e11ca` passed shared C native geometry/age cases; exact `bc2d94f9` passed six real-peer lifecycles under that observer, with complete raw serial retained. Earlier palette ages still cannot establish freshness, and this short 640x480/4-Hz Linux schedule is not Android/Windows causation or sustained behavior. Preserve complete sampled event/mailbox/conversion/model/widget diagnostics, reuse a source-bound production-peer artifact without rebuilding each replay, and observe actual pixels across repeated replacement/background cycles. Full capture-to-compositor/actual-present monotonic instrumentation, sustained freshness/performance/resource soak, network transitions, broad reconnect finality, cross-version interoperability, physical Android, current Windows focus/minimize, and Apple behavior remain required. Correctness applies to the whole connection flow, not only the reported complaints; no compile, model, source-string, frame-receipt, or protocol-only result substitutes for these native obligations. |
 
 **R-S11ap–R-S11as/R-S11e-56–59 desktop lifecycle ownership — SOURCE IMPLEMENTED; CURRENT INSTALLED

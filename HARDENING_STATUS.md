@@ -2423,7 +2423,30 @@ has SHA256 `16eb2cb41f32f75cdf9a39fcd97cd8bbf18fa5fdd07f2d2017adf75b3c5f50dd`.
 **The full app consumer remains unverified.** Failure raw serial
 `evidence/app-local-engine-6eb68870-build.serial.log` has SHA256
 `8ad9da820db783955f997d6b877b2be7fb4a667c98631c4cf86cc07408d9d9d1`.
-No app compiled; no fixture or partial projection establishes RustDesk pixels or engine behavior.
+That failed run did not reach app compilation; no fixture or partial projection establishes
+RustDesk pixels or engine behavior.
+The subsequent exact `32bff424d16b0aa0f40cc3dfe44fd91c35ab1e2e` integration passed real
+retained-toolkit/SDK materialization, explicit-local-engine Pub/plugin preparation, Rust release
+compilation and the selected local frontend/gen_snapshot kernel/AOT generation. It then failed
+real asset compilation: `impellerc` was invoked with `--include=/local-engine/src/out/host_release/shader_lib`,
+but the toolkit collector/projection omitted that directory. Both framework shaders refused
+`flutter/runtime_effect.glsl`; no complete app bundle was published or replayed.
+The independently authenticated original GN source declares one Flutter and fifteen Impeller
+shader includes in two copy targets beneath `//flutter/impeller/compiler/shader_lib`.
+The `impellerc` executable depends on that group, but collecting its executable alone did not
+collect these required consumer outputs. Next bind those exact GN outputs/source aliases in
+the toolkit producer and materializer, require missing-role refusal before allocation, and
+execute the actual shader compiler before another full app build. Do not skip shaders or
+introduce a stock-cache search fallback. Full 365,180-byte raw serial is
+`evidence/app-local-engine-32bff424-build.serial.log`, SHA256
+`4f80aa87e8ce895ba0abcca23700e9f492553887f242094dba2ac805be688c29`.
+Outer exit was 1 and bounded capture completed. Owned QEMU/capture/exporters joined; the
+outer accepted one pre-existing external-process listener-change record, not zero drift.
+Complete bounded capture/listener/exporter records are retained 0400. After owner, socket,
+mount and image-use absence checks, locked identity-bound retirement removed only
+`run.XJ5U5iOB4k` (`66306:106335248`) and reclaimed 18,228,764,672 allocated bytes.
+This is an actual toolkit-closure failure, not presentation, installed-service, LPE or
+Android/Windows causation evidence. No VM is live and no app capsule was published.
 Read-only artifact comparison at clean `3d548adb` confirms that the retained `eeaaa0ec`
 app is a stock-engine baseline, not a consumer of the corrected toolkit. Its actual
 `bundle/lib/libflutter_linux_gtk.so` has SHA256
@@ -2433,7 +2456,8 @@ from the authenticated 3.47.5 SDK archive. The toolkit's actual core instead has
 `d7a2bb5ac4d0c2177846be830bc64b4c1bedf5b05d19e04d8309fc991c846c6f`.
 The baseline app manifest remains `83cd4134b3103ec2122cbbc33724168695dc47b9c38fc3caf9e169cbeae1ab30`;
 its schema-1 context has no engine producer/archive/manifest/patch authority. Its recipe
-matches the current stage script byte-for-byte. Preserve this capsule for comparison;
+matched the stage script at that `3d548adb` comparison, not the later local-engine recipe.
+Preserve this capsule for comparison;
 do not count another replay as patched-engine evidence. The new producer must bind the
 engine separately from app source and prove the selected core in its actual output bundle.
 This comparison executed no app, compiler, VM or test and supplies no presentation verdict.
@@ -2572,8 +2596,9 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   diagnostics are retained. Latest successful joined cleanup is recorded in the matching-toolkit
   disposition above; earlier failed runs were explicitly reconciled after evidence retention.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 629,886,976 allocated bytes (0.587 GiB) after the focused
-  toolkit-materializer run self-retired. The separate intentional toolkit capsule occupies
+  small evidence records occupy 630,616,064 allocated bytes (0.587 GiB) after the stopped
+  `32bff424` failed app-build root was explicitly reconciled with bounded evidence retained.
+  The separate intentional toolkit capsule occupies
   89,096,192 allocated bytes (0.083 GiB), not a retained VM disk. The successful
   `9f3f0df2` direct-GTK provider run joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count

@@ -2276,6 +2276,13 @@ it remains an immutable named baseline, not current-provider evidence. The next 
 the matching corrected core and required original-GN tool/SDK outputs together after explicitly
 reconciling the old artifact state, without overwriting or relabelling it. Do not repeat a full
 core build for a focused native-unit check or mix stock engine caches and old AOT code.
+The producer candidate now queries original GN descriptions for release platform kernels, ICU,
+`sky_engine`, font/constant/shader tools and the frontend snapshot before selecting the complete
+Linux toolkit build. Sealing preserves their separate paths, source-binds declared copy aliases,
+refuses directory links and duplicate inventory, and records original GN arguments plus selected
+SDK input identities. The mandatory focused profile includes real filesystem cases and the GN
+role inventory; candidate native execution and full-toolkit publication are not yet established.
+The shipped bootstrap SDK is not duplicated; its consumer projection remains explicitly unexecuted.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
 AT-SPI self-wait/geometry, Wayland, shipped SDK integration and the full uninstrumented consumer
 remain OPEN. Do not ship a preload, pump callbacks, increase timeouts, guess coordinates or accept

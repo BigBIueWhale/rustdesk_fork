@@ -3510,6 +3510,8 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
     engine_prepare_vm_receipt="FLUTTER_ENGINE_PREPARE_VM=pass commit=$FOCUSED_TEST_COMMIT tree=$FOCUSED_TEST_TREE helper_sha256=$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" | /usr/bin/awk '{print $1}') runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined"
     require_exact_fixed_receipt 'ENGINE_PREPARE_PRINCIPALS=pass root=refused foreign=refused work=absent' 'engine preparation principal refusals'
     require_exact_fixed_receipt 'ENGINE_PREPARE_EXTRACTION_TEST=pass cases=10 links=preserved unsafe=refused cleanup=joined' 'native engine extraction cases'
+    require_exact_fixed_receipt 'ENGINE_TOOLKIT_INPUT_TEST=pass namespaces=preserved copied_icu=source-bound directory_links=refused traversal=refused duplicates=refused cleanup=joined' 'engine toolkit filesystem cases'
+    require_exact_fixed_receipt 'ENGINE_TOOLKIT_GRAPH=pass roles=platform,icu,sky,fonts,shaders,frontend generator=original build=unexecuted' 'original GN toolkit graph'
     require_exact_fixed_receipt 'ENGINE_GTK_WIDGET_LIFETIME=pass backend=x11 mapped=true retained_accessible=unbound destroyed=true' 'real GTK widget lifetime'
     require_exact_fixed_receipt 'ENGINE_ACCESSIBLE_GTK_SCALE=pass scale=1 artifact=same scenarios=complete' 'native GTK geometry at scale 1'
     require_exact_fixed_receipt 'ENGINE_ACCESSIBLE_GTK_SCALE=pass scale=2 artifact=same scenarios=complete' 'native GTK geometry at scale 2'
@@ -3521,7 +3523,7 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
     if [ "$MODE" = linux-flutter-engine-build ]; then
         require_exact_fixed_receipt 'ENGINE_ARTIFACT_PUBLICATION_TEST=pass contracts=4 filesystem=real cleanup=joined' 'engine publication filesystem cases'
         mapfile -t engine_artifacts < <(/usr/bin/grep -Eo \
-            "FLUTTER_ENGINE_ARTIFACT_PREPARED=pass commit=$FOCUSED_TEST_COMMIT tree=$FOCUSED_TEST_TREE pending=[.]flutter-engine-output-pending-[0-9a-f]{64} sha256=[0-9a-f]{64} manifest_sha256=[0-9a-f]{64} bytes=[1-9][0-9]* files=28 app_execution=unexecuted" "$SERIAL_LOG" || true)
+            "FLUTTER_ENGINE_ARTIFACT_PREPARED=pass commit=$FOCUSED_TEST_COMMIT tree=$FOCUSED_TEST_TREE pending=[.]flutter-engine-output-pending-[0-9a-f]{64} sha256=[0-9a-f]{64} manifest_sha256=[0-9a-f]{64} bytes=[1-9][0-9]* files=[1-9][0-9]{0,3} app_execution=unexecuted" "$SERIAL_LOG" || true)
         [ "${#engine_artifacts[@]}" -eq 1 ] || fail 'engine artifact receipt is absent or duplicated'
         require_exact_fixed_receipt "${engine_artifacts[0]}" 'engine artifact build source/digest'
         [[ "${engine_artifacts[0]}" =~ pending=([^[:space:]]+)[[:space:]]sha256=([0-9a-f]{64}) ]] \

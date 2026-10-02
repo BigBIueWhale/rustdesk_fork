@@ -21,6 +21,10 @@ from urllib.parse import unquote, urlsplit
 
 
 FILE_LIMIT = 512 * 1024 * 1024
+TOOLKIT_ENTRY_LIMIT = 4096
+TOOLKIT_MANIFEST_LIMIT = 1024 * 1024
+TOOLKIT_ELFS = {"libflutter_linux_gtk.so", "gen_snapshot", "font-subset",
+                "impellerc", "libtessellator.so"}
 TOTAL_LIMIT = 12 * 1024 ** 3
 ENTRY_LIMIT = 524288
 FIELDS = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
@@ -647,47 +651,143 @@ raise SystemExit(subprocess.call([
           "view_teardown=unexecuted engine_restart=unexecuted app_replay=unexecuted", flush=True)
     print("FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 "
           "indexes=original pub=path-only network=none engine_build=unexecuted", flush=True)
+    toolkit = describe_engine_toolkit(engine, env, deadline)
+    sdk_inputs = [entry for entry in graph["cipd"]
+                  if entry["destination"] == "engine/src/flutter/prebuilts/linux-x64/dart-sdk"]
+    require(len(sdk_inputs) == 1, "selected Linux Dart SDK input differs")
+    toolkit["dart_sdk_input"] = {key: sdk_inputs[0][key] for key in
+                                ("destination", "file", "bytes", "sha256", "instance_id")}
     if build_context is not None:
-        build_engine(engine, framework, env, pin, patch_bytes, build_context)
+        build_engine(engine, framework, env, pin, patch_bytes, build_context, toolkit)
+
+
+def describe_engine_toolkit(engine, env, deadline):
+    """Use original GN outputs/copy sources, never a stock engine-cache inventory."""
+    gn = ["flutter/third_party/gn/gn", "desc", "out/host_release"]
+    roles = {
+        "//flutter/lib/snapshot:strong_platform": (
+            "flutter_patched_sdk/platform_strong.dill",
+            "flutter_patched_sdk/vm_outline_strong.dill"),
+        "//flutter/third_party/icu:copy_icudata": ("icudtl.dat",),
+        "//flutter/tools/font_subset:_font-subset": ("font-subset",),
+        "//flutter/tools/const_finder:const_finder": ("gen/const_finder.dart.snapshot",),
+        "//flutter/flutter_frontend_server:frontend_server": (
+            "gen/frontend_server_aot.dart.snapshot",),
+        "//flutter/impeller/compiler:impellerc": ("impellerc",),
+        "//flutter/impeller/tessellator:tessellator_shared": ("libtessellator.so",),
+    }
+    copies = {}
+    targets = []
+    descriptors = {}
+    for label, wanted in roles.items():
+        data = json.loads(command(gn + [label, "--format=json",
+                                      "--script-executable=/usr/bin/python3"],
+                                  engine, env, deadline))
+        require(type(data) is dict and set(data) == {label}, "GN toolkit target differs: " + label)
+        record = data[label]
+        outputs = record.get("outputs", [])
+        require(all("//out/host_release/" + name in outputs for name in wanted),
+                "GN toolkit outputs differ: " + label + " " + repr(outputs))
+        descriptors.update(data)
+        targets.extend(wanted)
+    sky = json.loads(command(gn + ["//flutter/sky/packages/sky_engine:*", "--format=json",
+                                  "--script-executable=/usr/bin/python3"],
+                              engine, env, deadline))
+    require(type(sky) is dict and "//flutter/sky/packages/sky_engine:sky_engine" in sky,
+            "GN sky_engine package target is absent")
+    package = sky["//flutter/sky/packages/sky_engine:sky_engine"]
+    require(package.get("type") == "action"
+            and package.get("outputs") == ["//out/host_release/gen/dart-pkg/sky_engine.stamp"],
+            "GN sky_engine package recipe differs")
+    descriptors.update(sky)
+    for label, record in descriptors.items():
+        if record.get("type") != "copy":
+            continue
+        sources, outputs = record.get("sources", []), record.get("outputs", [])
+        require(sources and len(sources) == len(outputs), "GN copy inventory differs: " + label)
+        for source, output in zip(sources, outputs):
+            require(source.startswith("//") and output.startswith("//out/host_release/"),
+                    "GN copy path differs")
+            name = output.removeprefix("//out/host_release/")
+            require(parts(name) and parts(source[2:]) and Path(name).name == Path(source).name
+                    and name not in copies, "GN copy pairing differs: " + name)
+            copies[name] = Path(engine) / source[2:]
+    targets.append("gen/dart-pkg/sky_engine.stamp")
+    print("ENGINE_TOOLKIT_GRAPH=pass roles=platform,icu,sky,fonts,shaders,frontend "
+          "generator=original build=unexecuted", flush=True)
+    return {"targets": targets, "copies": copies,
+            "graph_sha256": hashlib.sha256(json.dumps(descriptors, sort_keys=True).encode()).hexdigest()}
 
 
 @contextmanager
-def engine_output(output, public, name):
+def engine_file(path):
+    """Acquire an output or its GN source alias without traversing directory links."""
+    require(path.is_absolute(), "engine artifact path is not absolute")
+    components = parts(path.as_posix()[1:])
+    parent = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        for component in components[:-1]:
+            child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                            | os.O_CLOEXEC, dir_fd=parent)
+            os.close(parent)
+            parent = child
+            info = os.fstat(parent)
+            require(info.st_uid in (0, 1000) and not info.st_mode & 0o022,
+                    "engine artifact directory authority differs")
+        fd = os.open(components[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                     dir_fd=parent)
+    finally:
+        os.close(parent)
+    with os.fdopen(fd, "rb") as source:
+        yield source
+
+
+@contextmanager
+def engine_output(output, copies, name):
     header = re.fullmatch(r"flutter_linux/[a-z0-9_]+\.h", name) is not None
-    require(header or name in ("libflutter_linux_gtk.so", "gen_snapshot"),
+    require(header or name in TOOLKIT_ELFS or name in (
+                "icudtl.dat", "gen/const_finder.dart.snapshot",
+                "gen/frontend_server_aot.dart.snapshot",
+                "flutter_patched_sdk/platform_strong.dill",
+                "flutter_patched_sdk/vm_outline_strong.dill")
+            or (name.startswith("gen/dart-pkg/sky_engine/") and parts(name)),
             "engine output role differs")
     with ExitStack() as resources:
-        fd = os.open(output / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
-        source = resources.enter_context(os.fdopen(fd, "rb"))
+        source = resources.enter_context(engine_file(output / name))
+        fd = source.fileno()
         before = os.fstat(fd)
         require(stat.S_ISREG(before.st_mode) and before.st_uid == before.st_gid == 1000
-                and before.st_nlink == (2 if header else 1)
+                and before.st_nlink == (2 if name in copies else 1)
                 and 0 < before.st_size <= FILE_LIMIT, "engine artifact authority differs: " + name)
-        if header:
+        if name in copies:
             # The original GN copy rule hardlinks within this private build tree.
             # Its one source alias is allowed only after proving the exact inode.
-            original_fd = os.open(public / name,
-                                  os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
-            original = resources.enter_context(os.fdopen(original_fd, "rb"))
+            original = resources.enter_context(engine_file(copies[name]))
+            original_fd = original.fileno()
             require(unchanged(before, os.fstat(original_fd)),
-                    "engine header source identity differs: " + name)
+                    "engine copied source identity differs: " + name)
         yield source, before
         require(unchanged(before, os.fstat(fd)), "engine output changed: " + name)
-        if header:
+        if name in copies:
             require(unchanged(before, os.fstat(original.fileno())),
-                    "engine header source changed: " + name)
+                    "engine copied source changed: " + name)
 
 
-def seal_engine_outputs(output, public, names, manifest, archive):
+def seal_engine_outputs(output, copies, names, manifest, archive):
+    require(0 < len(names) <= TOOLKIT_ENTRY_LIMIT and len(set(names)) == len(names),
+            "engine output inventory exceeds bound or repeats a path")
+    require(len(names) + sum(name in copies for name in names) + 128
+            <= resource.getrlimit(resource.RLIMIT_NOFILE)[0],
+            "engine output descriptor budget exhausted")
     with ExitStack() as resources:
         opened = {}
         total = 0
         for name in names:
             source, before = resources.enter_context(engine_output(
-                output, public, name))
+                output, copies, name))
             total += before.st_size
             require(total <= FILE_LIMIT - 1048576, "engine artifact byte budget exhausted")
-            if name in names[:2]:
+            if name in TOOLKIT_ELFS:
                 prefix = source.read(64)
                 require(len(prefix) == 64 and prefix[:6] == b"\x7fELF\x02\x01"
                         and int.from_bytes(prefix[18:20], "little") == 62,
@@ -699,7 +799,7 @@ def seal_engine_outputs(output, public, names, manifest, archive):
             source.seek(0)
             opened[name] = (source, before)
         manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2) + "\n").encode()
-        require(len(manifest_bytes) <= 65536, "engine artifact manifest exceeds bound")
+        require(len(manifest_bytes) <= TOOLKIT_MANIFEST_LIMIT, "engine artifact manifest exceeds bound")
         fd = os.open(archive, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o400)
         with os.fdopen(fd, "wb") as destination:
             with tarfile.open(fileobj=destination, mode="w") as tar:
@@ -720,7 +820,7 @@ def seal_engine_outputs(output, public, names, manifest, archive):
     return digest, manifest_bytes
 
 
-def build_engine(engine, framework, env, pin, patch_bytes, context):
+def build_engine(engine, framework, env, pin, patch_bytes, context, toolkit):
     """Explicit integration build; no workload or deadline expansion in prepare()."""
     deadline = time.monotonic() + 7200
     publisher = "/authority/publish.py"
@@ -750,12 +850,12 @@ def build_engine(engine, framework, env, pin, patch_bytes, context):
             and sorted(line.strip() for line in header_outputs)
                 == sorted("//out/host_release/flutter_linux/" + name for name in declared),
             "original GN public header outputs differ: " + repr(header_record))
-    targets = ["libflutter_linux_gtk.so", "gen_snapshot",
+    targets = ["libflutter_linux_gtk.so", "gen_snapshot", *toolkit["targets"],
                *["flutter_linux/" + name for name in sorted(declared)]]
     plan = command([ninja, "-C", str(output), "-n", *targets], engine, env, deadline,
                    integration=True)
     require(plan and len(plan.splitlines()) <= 32768, "engine link plan is empty or exceeds bound")
-    print("ENGINE_BUILD_START targets=gtk,gen_snapshot,headers jobs=4 plan_lines="
+    print("ENGINE_BUILD_START targets=linux-release-toolkit jobs=4 plan_lines="
           + str(len(plan.splitlines())) + " plan_sha256=" + hashlib.sha256(plan).hexdigest(), flush=True)
     result = command([ninja, "-C", str(output), "-j4", *targets], engine, env, deadline,
                      integration=True)
@@ -764,14 +864,33 @@ def build_engine(engine, framework, env, pin, patch_bytes, context):
     # A second dry run must prove all selected original recipes are current.
     require(command([ninja, "-C", str(output), "-n", *targets], engine, env, deadline)
             .splitlines()[-1:] == [b"ninja: no work to do."], "engine targets are not current")
-    names = ["libflutter_linux_gtk.so", "gen_snapshot"]
+    names = ["libflutter_linux_gtk.so", "gen_snapshot",
+             *[name for name in toolkit["targets"] if not name.endswith(".stamp")]]
     header_paths = sorted((output / "flutter_linux").glob("*.h"))
     require([path.name for path in header_paths] == sorted(declared)
             and all(path.is_file() and not path.is_symlink() for path in header_paths),
             "engine public header inventory differs")
     names.extend("flutter_linux/" + path.name for path in header_paths)
+    copies = {**toolkit["copies"],
+              **{"flutter_linux/" + name: Path(engine) / "flutter/shell/platform/linux/public/flutter_linux" / name
+                 for name in declared}}
+    sky_root = output / "gen/dart-pkg/sky_engine"
+    require(sky_root.is_dir() and not sky_root.is_symlink(), "generated sky_engine package is absent")
+    for parent, directories, files in os.walk(sky_root, followlinks=False):
+        directories.sort()
+        require(not any((Path(parent) / name).is_symlink() for name in directories),
+                "generated sky_engine directory is a link")
+        for name in sorted(files):
+            path = (Path(parent) / name).relative_to(output).as_posix()
+            require(parts(path), "generated sky_engine path differs")
+            names.append(path)
+            require(len(names) <= TOOLKIT_ENTRY_LIMIT, "generated toolkit inventory exceeds bound")
+    require(all("gen/dart-pkg/sky_engine/" + name in names for name in
+                ("pubspec.yaml", "lib/_embedder.yaml", "lib/ui/ui.dart")),
+            "generated sky_engine required files are absent")
     manifest = {
-        "format": "rustdesk-flutter-linux-engine-artifact-v1",
+        "format": "rustdesk-flutter-linux-engine-artifact-v2",
+        "profile": "linux-x64-release-toolkit",
         "source_commit": context[0], "source_tree": context[1],
         "framework_revision": pin("FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION"),
         "original_source_content_hash": pin("FLUTTER_ENGINE_SOURCE_CONTENT_HASH"),
@@ -782,11 +901,16 @@ def build_engine(engine, framework, env, pin, patch_bytes, context):
         "helper_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "patch_sha256": hashlib.sha256(patch_bytes).hexdigest(),
         "gn_args_sha256": hashlib.sha256((output / "args.gn").read_bytes()).hexdigest(),
+        "gn_args": (output / "args.gn").read_text(),
+        "toolkit_graph_sha256": toolkit["graph_sha256"],
+        "bootstrap_sdk_archive_sha256": pin("SHA256_FLUTTER_PRESENTATION_CANDIDATE"),
+        "dart_sdk_input": toolkit["dart_sdk_input"],
+        "bootstrap_sdk_projection": "unexecuted",
         "targets": targets, "files": {}, "app_execution": "unexecuted",
     }
     archive = Path("/work/flutter-linux-engine.tar")
     digest, manifest_bytes = seal_engine_outputs(
-        output, Path(engine) / "flutter/shell/platform/linux/public", names, manifest, archive)
+        output, copies, names, manifest, archive)
     # Publication is inert data into the exact private output, never host code.
     output_root = "/output"
     before = os.lstat(output_root)
@@ -825,11 +949,12 @@ def engine_output_self_test():
             (parent / "flutter_linux").mkdir(parents=True, mode=0o700)
         name = "flutter_linux/fl_application.h"
         original, generated = public / name, output / name
+        copies = {name: original}
         original.write_bytes(b"source-selected header\n")
         os.link(original, generated)
 
         def read(name=name):
-            with engine_output(output, public, name) as (source, before):
+            with engine_output(output, copies, name) as (source, before):
                 require(source.read() and before.st_size > 0, "engine output data was lost")
 
         read()
@@ -857,7 +982,7 @@ def engine_output_self_test():
         os.link(original, generated)
 
         def mutate():
-            with engine_output(output, public, name):
+            with engine_output(output, copies, name):
                 original.write_bytes(b"changed through the source alias\n")
         refused(mutate)
 
@@ -882,7 +1007,7 @@ def engine_output_self_test():
         names = [library.name, binary.name, name]
         manifest = {"files": {}}
         archive = root / "engine.tar"
-        digest, manifest_bytes = seal_engine_outputs(output, public, names, manifest, archive)
+        digest, manifest_bytes = seal_engine_outputs(output, copies, names, manifest, archive)
         require(archive.stat().st_nlink == 1 and stat.S_IMODE(archive.stat().st_mode) == 0o400
                 and hashlib.sha256(archive.read_bytes()).hexdigest() == digest,
                 "engine archive authority or digest differs")
@@ -903,12 +1028,41 @@ def engine_output_self_test():
                             and manifest["files"][member.name] == {
                                 "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()},
                             "engine archived output data differs")
-        refused(lambda: seal_engine_outputs(output, public, names, manifest, archive))
+        refused(lambda: seal_engine_outputs(output, copies, names, manifest, archive))
         require(hashlib.sha256(archive.read_bytes()).hexdigest() == digest,
                 "engine archive collision changed retained data")
+        sky = output / "gen/dart-pkg/sky_engine"
+        (sky / "lib/ui").mkdir(parents=True, mode=0o700)
+        (sky / "lib/ui/ui.dart").write_bytes(b"generated Dart UI fixture\n")
+        refused(lambda: read("gen/dart-pkg/sky_engine/../../outside"))
+        linked = output / "gen/dart-pkg/linked"
+        linked.symlink_to(sky, target_is_directory=True)
+        def read_linked_directory():
+            with engine_file(linked / "lib/ui/ui.dart") as source:
+                source.read()
+        refused(read_linked_directory)
+        (output / "flutter_patched_sdk").mkdir(mode=0o700)
+        for filename in ("platform_strong.dill", "vm_outline_strong.dill"):
+            (output / "flutter_patched_sdk" / filename).write_bytes(b"platform fixture")
+        icu = public / "icudtl.dat"
+        icu.write_bytes(b"source-selected ICU fixture")
+        os.link(icu, output / "icudtl.dat")
+        copies["icudtl.dat"] = icu
+        names += ["gen/dart-pkg/sky_engine/lib/ui/ui.dart", "icudtl.dat",
+                  "flutter_patched_sdk/platform_strong.dill",
+                  "flutter_patched_sdk/vm_outline_strong.dill"]
+        archive = root / "toolkit.tar"
+        digest, manifest_bytes = seal_engine_outputs(output, copies, names, {"files": {}}, archive)
+        with tarfile.open(archive, "r") as tar:
+            require([member.name for member in tar] == names + ["engine-manifest.json"],
+                    "toolkit namespaces lost files while sealing")
+        refused(lambda: seal_engine_outputs(output, copies, names + [names[-1]], {}, root / "duplicate.tar"))
+        require(not (root / "duplicate.tar").exists(), "duplicate output created an archive")
     print("ENGINE_ARTIFACT_INPUT_TEST=pass cases=10 headers=source-bound "
           "compiled=single-link mutation=refused archive=regular noclobber=refused cleanup=joined",
           flush=True)
+    print("ENGINE_TOOLKIT_INPUT_TEST=pass namespaces=preserved copied_icu=source-bound "
+          "directory_links=refused traversal=refused duplicates=refused cleanup=joined", flush=True)
 
 
 def self_test():

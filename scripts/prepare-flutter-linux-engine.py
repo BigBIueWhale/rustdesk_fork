@@ -102,13 +102,15 @@ diff --git a/build/gn_run_binary.py b/build/gn_run_binary.py
 diff --git a/utils/BUILD.gn b/utils/BUILD.gn
 --- a/utils/BUILD.gn
 +++ b/utils/BUILD.gn
-@@ -55,16 +55,17 @@ template("aot_compile_using_prebuilt_sdk") {
+@@ -55,16 +55,19 @@ template("aot_compile_using_prebuilt_sdk") {
      depfile = invoker.output + ".d"
 
 +    working_directory = _dart_root
      args = [
        "compile",
        "exe",
++      "--extra-gen-kernel-options=--depfile-target=" +
++          rebase_path(invoker.output, root_build_dir),
        "--output",
 -      rebase_path(invoker.output, root_build_dir),
 +      rebase_path(invoker.output, working_directory),

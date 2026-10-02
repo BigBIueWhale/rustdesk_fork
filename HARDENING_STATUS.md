@@ -2337,8 +2337,20 @@ snapshot writer reports this error after a failed write. The unchanged container
 is a 16-MiB housekeeping tmpfs. Compiler scratch now belongs to a fresh UID/GID-1000,
 mode-0700 directory in the existing disposable `/work` build volume, with unchanged
 512-MiB per-file, VM-disk, memory and deadline bounds. The preflight requires its identity
-and emptiness after compilation. Native execution is pending; neither scratch exhaustion
-causation, a successful compiler action nor full toolkit publication is yet proved.
+and emptiness after compilation. Exact `18feaa87`, tree
+`00ca0045a98f2bf7a8e2a62f582815d1e92ef9c8`, compiled the original bootstrap action in
+13.36 guest seconds, cleaned that exact temporary directory and produced an 18,314,664-byte
+x86_64 ELF (SHA256 `f18a8bf0c40806c1eb7b3a949a71e6fb9f9c4c0f63a05e49886bed80c1a6eef4`).
+The complete transaction nevertheless failed its mandatory second dry plan: Ninja expected
+`bootstrap_compile_platform.exe`, but the emitted depfile named
+`../../../out/host_release/bootstrap_compile_platform.exe`. Full 81,800-byte serial is
+`evidence/engine-compiler-scratch-18feaa87.serial.log`, SHA256
+`a2cc1814f55104ada786b1208f06f23950a9e32bbcedeebeef363260f6231d4c` (outer/capture 1/0,
+108,980 host BOOTTIME ms). Actual snapshots were identical/additions and drift empty;
+joined exact stopped-run retirement reclaimed 13,003,337,728 allocated bytes. The unchanged
+compiler now receives its supported extra-kernel `--depfile-target` option naming the
+original Ninja-relative output, independently of its workspace-relative output path.
+Dependency tracking is retained; native current-plan/full toolkit execution remains OPEN.
 No empty package graph, SDK substitution, network allowance or version-check bypass is used.
 The shipped bootstrap SDK is not duplicated; its consumer projection remains explicitly unexecuted.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
@@ -2476,7 +2488,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   diagnostics are retained. Latest successful joined cleanup is recorded in the UTF-16 selection
   disposition above; earlier failed runs were explicitly reconciled after evidence retention.
   There are zero `run.*` entries and zero `overlay.qcow2` files; the reusable verifier inputs and
-  small evidence records occupy 629,329,920 allocated bytes (0.586 GiB) after the latest
+  small evidence records occupy 629,493,760 allocated bytes (0.586 GiB) after the latest
   stopped-run reconciliation recorded above. The successful
   `9f3f0df2` direct-GTK provider run joined and automatically removed its exact scratch root. The actual outer
   duplicate invocation returned status 1 before allocation and left the sole run identity/count

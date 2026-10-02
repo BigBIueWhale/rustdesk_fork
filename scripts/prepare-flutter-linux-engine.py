@@ -619,6 +619,11 @@ raise SystemExit(subprocess.call([
     print("ENGINE_PREPARE_GN=pass runtime=release targets=flutter_linux_gtk,flutter_linux_unittests "
           "generator=original engine_build=unexecuted", flush=True)
     if build_context is not None:
+        # Dart compile exe stages both kernel and AOT data in systemTemp. That
+        # compiler data belongs to the existing disposable build workspace, not
+        # the container's small, non-executable housekeeping /tmp mount.
+        env["TMPDIR"] = "/work/compiler-tmp"
+        os.mkdir(env["TMPDIR"], 0o700)
         compile_engine_bootstrap(engine, framework, env, deadline)
     objects = ["obj/flutter/shell/platform/linux/flutter_linux_sources." + unit + ".o"
                for unit in ("fl_view", "fl_view_accessible", "fl_accessible_node",
@@ -804,7 +809,19 @@ def compile_engine_bootstrap(engine, framework, env, deadline):
     require(0 < len(plan.splitlines()) <= 128, "bootstrap preflight plan is empty or exceeds bound")
     print("ENGINE_BOOTSTRAP_START target=" + target + " generator=original jobs=2 plan_lines="
           + str(len(plan.splitlines())) + " plan_sha256=" + hashlib.sha256(plan).hexdigest(), flush=True)
+    scratch = os.stat(env["TMPDIR"], follow_symlinks=False)
+    require(stat.S_ISDIR(scratch.st_mode) and scratch.st_uid == scratch.st_gid == 1000
+            and stat.S_IMODE(scratch.st_mode) == 0o700 and not os.listdir(env["TMPDIR"]),
+            "bootstrap compiler scratch authority differs")
+    housekeeping = os.statvfs("/tmp")
+    print("ENGINE_COMPILER_SCRATCH=owned parent=/work mode=0700 file_limit_bytes="
+          + str(FILE_LIMIT) + " housekeeping_tmp_bytes="
+          + str(housekeeping.f_frsize * housekeeping.f_blocks), flush=True)
     command([ninja, "-C", str(output), "-j2", target], engine, env, deadline)
+    after = os.stat(env["TMPDIR"], follow_symlinks=False)
+    require(all(getattr(scratch, field) == getattr(after, field)
+                for field in ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid"))
+            and not os.listdir(env["TMPDIR"]), "bootstrap compiler retained or replaced scratch")
     with engine_file(output / target) as source:
         before = os.fstat(source.fileno())
         require(stat.S_ISREG(before.st_mode) and before.st_uid == before.st_gid == 1000
@@ -816,8 +833,12 @@ def compile_engine_bootstrap(engine, framework, env, deadline):
         source.seek(0)
         digest = hashlib.file_digest(source, "sha256").hexdigest()
         require(unchanged(before, os.fstat(source.fileno())), "bootstrap executable changed")
-    require(command([ninja, "-C", str(output), "-n", target], engine, env, deadline)
-            .splitlines()[-1:] == [b"ninja: no work to do."], "bootstrap target is not current")
+    print("ENGINE_BOOTSTRAP_ARTIFACT target=" + target + " bytes=" + str(before.st_size)
+          + " sha256=" + digest + " current_plan=unverified", flush=True)
+    current = command([ninja, "-C", str(output), "-n", "-d", "explain", target],
+                      engine, env, deadline)
+    require(current.splitlines()[-1:] == [b"ninja: no work to do."],
+            "bootstrap target is not current:\n" + current.decode(errors="replace"))
     print("ENGINE_BOOTSTRAP_COMPILE=pass target=" + target + " bytes=" + str(before.st_size)
           + " sha256=" + digest + " generator=original network=none", flush=True)
 

@@ -2332,6 +2332,13 @@ successful compilation or complete causal closure. The 81,509-byte full serial i
 Actual host snapshots were identical, with empty additions/drift. After stopped-owner,
 socket, mount and disk-handle checks, exact locked retirement of the failed run reclaimed
 12,981,837,824 allocated bytes. No full toolkit or artifact was published.
+The selected CLI creates system temporary storage for kernel/snapshot staging; its
+snapshot writer reports this error after a failed write. The unchanged container `/tmp`
+is a 16-MiB housekeeping tmpfs. Compiler scratch now belongs to a fresh UID/GID-1000,
+mode-0700 directory in the existing disposable `/work` build volume, with unchanged
+512-MiB per-file, VM-disk, memory and deadline bounds. The preflight requires its identity
+and emptiness after compilation. Native execution is pending; neither scratch exhaustion
+causation, a successful compiler action nor full toolkit publication is yet proved.
 No empty package graph, SDK substitution, network allowance or version-check bypass is used.
 The shipped bootstrap SDK is not duplicated; its consumer projection remains explicitly unexecuted.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,

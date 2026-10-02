@@ -2236,6 +2236,9 @@ precedes flush/fsync; no original input is relabelled, unlinked or substituted.
 After guest/VM/exporter joining and input/source/listener revalidation, the fixed no-clobber
 publisher committed one inert 24,207,360-byte archive under
 `.harness-state/flutter-linux-engine-artifacts/e5e5736aaa45c093e1885519c76bdd71d6ada9ae/linux-x86_64-engine/`.
+That exact core baseline is now preserved under the corresponding commit in
+`.harness-state/flutter-linux-engine-artifact-archive/`. A locked no-clobber directory rename
+preserved both file identities, metadata and hashes; no bytes were copied, replaced or deleted.
 Archive SHA256 is `7d25e3b8df299289a028a232b844366da90e7d90bde8a75a84b31dfaaf479dbb`;
 manifest SHA256 is `9ffed84371780efb59c814614e82b7d141be1fca9d9f3ccb1099f72cbdff0345`.
 Independent inert GNU-tar inspection confirmed the exact 29 ordinary mode-0400, UID/GID-0,
@@ -2276,12 +2279,21 @@ it remains an immutable named baseline, not current-provider evidence. The next 
 the matching corrected core and required original-GN tool/SDK outputs together after explicitly
 reconciling the old artifact state, without overwriting or relabelling it. Do not repeat a full
 core build for a focused native-unit check or mix stock engine caches and old AOT code.
-The producer candidate now queries original GN descriptions for release platform kernels, ICU,
+The producer now queries original GN descriptions for release platform kernels, ICU,
 `sky_engine`, font/constant/shader tools and the frontend snapshot before selecting the complete
 Linux toolkit build. Sealing preserves their separate paths, source-binds declared copy aliases,
 refuses directory links and duplicate inventory, and records original GN arguments plus selected
 SDK input identities. The mandatory focused profile includes real filesystem cases and the GN
-role inventory; candidate native execution and full-toolkit publication are not yet established.
+role inventory. Exact pushed `932a639dbc21807f4b202cd26fdc5a47b132b111`, tree
+`19161195d2424cebfe7cc1653b96e80c02a5d2d1`, passed that complete focused transaction in
+111,320 host BOOTTIME ms (outer/capture 0/0). The original GN role/copy inventory, new real
+filesystem cases, unchanged GTK/Unicode/lifetime assertions at both scales, eight production
+objects and four upstream test-object compiles passed. Full 91,751-byte serial is
+`evidence/engine-toolkit-prepare-932a639d.serial.log`, SHA256
+`ea0de3a4480c76e716c0c9ce55f8318fa186f22727e5a529b07b2eb6e2c39ec9`; outer/capture records
+are retained. Inputs were unchanged, listener addition/process drift zero, owners joined and
+scratch self-retired. This proves the recipe/filesystem boundary, not full-toolkit publication
+or actual engine/view/app execution. The separate dependency integration build remains next.
 The shipped bootstrap SDK is not duplicated; its consumer projection remains explicitly unexecuted.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
 AT-SPI self-wait/geometry, Wayland, shipped SDK integration and the full uninstrumented consumer

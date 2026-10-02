@@ -2293,7 +2293,24 @@ objects and four upstream test-object compiles passed. Full 91,751-byte serial i
 `ea0de3a4480c76e716c0c9ce55f8318fa186f22727e5a529b07b2eb6e2c39ec9`; outer/capture records
 are retained. Inputs were unchanged, listener addition/process drift zero, owners joined and
 scratch self-retired. This proves the recipe/filesystem boundary, not full-toolkit publication
-or actual engine/view/app execution. The separate dependency integration build remains next.
+or actual engine/view/app execution. The separate integration at exact pushed `41efad56`, tree
+`75dcbb7b9f31ea9b37f2081642927beae9e12c11`, failed after 367,110 host BOOTTIME ms
+(outer/capture 1/0). The original bootstrap compiler action stopped at step 2,912/4,794:
+the selected Dart 3.13.0-103.1.beta CLI attempted implicit Pub resolution for `ffigen` and
+the networkless topology refused it. No complete toolkit or artifact was published.
+Complete 196,846-byte raw serial is `evidence/engine-toolkit-build-41efad56.serial.log`,
+SHA256 `16db89c2969021e7673da337afded1503e56cafcb6e5d0f65404c409675a4f1f`.
+Actual listener/exporter/capture and stopped-owner records are retained separately; all three
+host listener inventories were byte-identical, additions/drift empty, and owned processes joined.
+Exact locked stopped-run retirement reclaimed 13,232,631,808 allocated bytes; no run/overlay remains.
+The [selected bootstrap CLI](https://raw.githubusercontent.com/dart-lang/sdk/9576691c37d84d3b66a9722e4fadacc764f04b21/pkg/dartdev/lib/src/commands/compile.dart)
+discovers native-asset package metadata from `Directory.current`,
+not the explicit compilation package-config argument. Its original GN action runs outside the
+Dart workspace. The integration preparation now executes that exact bootstrap target before
+production-object tests and the expensive engine link, retaining bounded workspace-metadata
+diagnostics. This early preflight and a source-correct working-directory remedy are not yet
+natively verified; no empty package graph, SDK substitution, network allowance or original
+version-check bypass is an acceptable correction.
 The shipped bootstrap SDK is not duplicated; its consumer projection remains explicitly unexecuted.
 Actual FlView restart/disposal, removed-subtree/type-change authority, nested live edits,
 AT-SPI self-wait/geometry, Wayland, shipped SDK integration and the full uninstrumented consumer

@@ -513,6 +513,8 @@ raise SystemExit(subprocess.call([
                 "original GN target output differs: " + target + " " + repr(result[:4096]))
     print("ENGINE_PREPARE_GN=pass runtime=release targets=flutter_linux_gtk,flutter_linux_unittests "
           "generator=original engine_build=unexecuted", flush=True)
+    if build_context is not None:
+        compile_engine_bootstrap(engine, framework, env, deadline)
     objects = ["obj/flutter/shell/platform/linux/flutter_linux_sources." + unit + ".o"
                for unit in ("fl_view", "fl_view_accessible", "fl_accessible_node",
                             "fl_accessible_text_field", "fl_value", "fl_message_codec",
@@ -659,6 +661,60 @@ raise SystemExit(subprocess.call([
                                 ("destination", "file", "bytes", "sha256", "instance_id")}
     if build_context is not None:
         build_engine(engine, framework, env, pin, patch_bytes, build_context, toolkit)
+
+
+def compile_engine_bootstrap(engine, framework, env, deadline):
+    """Exercise the original bootstrap action before the expensive engine link."""
+    output = Path(engine) / "out/host_release"
+    for scope, project in (("framework", Path(framework)),
+                           ("engine", Path(engine) / "flutter"),
+                           ("dart", Path(engine) / "flutter/third_party/dart")):
+        for name in ("package_config.json", "package_graph.json"):
+            try:
+                with engine_file(project / ".dart_tool" / name) as source:
+                    before = os.fstat(source.fileno())
+                    require(stat.S_ISREG(before.st_mode) and before.st_uid == before.st_gid == 1000
+                            and before.st_nlink == 1 and 0 < before.st_size <= 1048576,
+                            "bootstrap package metadata authority differs")
+                    data = source.read(1048577)
+                    require(len(data) == before.st_size and unchanged(before, os.fstat(source.fileno())),
+                            "bootstrap package metadata changed")
+                    require(type(json.loads(data)) is dict, "bootstrap package metadata is not an object")
+            except FileNotFoundError:
+                print(f"ENGINE_BOOTSTRAP_METADATA scope={scope} file={name} present=false", flush=True)
+            else:
+                print(f"ENGINE_BOOTSTRAP_METADATA scope={scope} file={name} present=true "
+                      f"bytes={len(data)} sha256={hashlib.sha256(data).hexdigest()}", flush=True)
+    target = "bootstrap_compile_platform.exe"
+    label = "//flutter/third_party/dart/utils:" + target
+    description = json.loads(command([
+        "flutter/third_party/gn/gn", "desc", "out/host_release", label, "outputs",
+        "--format=json", "--script-executable=/usr/bin/python3",
+    ], engine, env, deadline))
+    require(type(description) is dict and set(description) == {label}
+            and description[label].get("outputs") == ["//out/host_release/" + target],
+            "original bootstrap output differs")
+    ninja = framework + "/third_party/ninja/ninja"
+    plan = command([ninja, "-C", str(output), "-n", target], engine, env, deadline)
+    require(0 < len(plan.splitlines()) <= 128, "bootstrap preflight plan is empty or exceeds bound")
+    print("ENGINE_BOOTSTRAP_START target=" + target + " generator=original jobs=2 plan_lines="
+          + str(len(plan.splitlines())) + " plan_sha256=" + hashlib.sha256(plan).hexdigest(), flush=True)
+    command([ninja, "-C", str(output), "-j2", target], engine, env, deadline)
+    with engine_file(output / target) as source:
+        before = os.fstat(source.fileno())
+        require(stat.S_ISREG(before.st_mode) and before.st_uid == before.st_gid == 1000
+                and before.st_nlink == 1 and 64 <= before.st_size <= FILE_LIMIT,
+                "bootstrap executable authority differs")
+        prefix = source.read(64)
+        require(prefix[:6] == b"\x7fELF\x02\x01" and int.from_bytes(prefix[18:20], "little") == 62,
+                "bootstrap output is not an x86_64 ELF")
+        source.seek(0)
+        digest = hashlib.file_digest(source, "sha256").hexdigest()
+        require(unchanged(before, os.fstat(source.fileno())), "bootstrap executable changed")
+    require(command([ninja, "-C", str(output), "-n", target], engine, env, deadline)
+            .splitlines()[-1:] == [b"ninja: no work to do."], "bootstrap target is not current")
+    print("ENGINE_BOOTSTRAP_COMPILE=pass target=" + target + " bytes=" + str(before.st_size)
+          + " sha256=" + digest + " generator=original network=none", flush=True)
 
 
 def describe_engine_toolkit(engine, env, deadline):

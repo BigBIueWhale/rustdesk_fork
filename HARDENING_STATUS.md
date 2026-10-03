@@ -2785,8 +2785,14 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   outer log and bounded diagnostics were retained before descriptor-relative removal under
   the admission lock. After the subsequent display-key A/B and joined cleanup, reusable
   verifier inputs and small evidence records occupy 633,171,968 allocated bytes (0.590 GiB).
-  Storage retirement itself does not turn a failed Dart transaction into a pass or supply
-  product evidence; the actual queue A/B result is recorded separately above.
+  The 2026-10-04 recheck likewise found zero top-level `run.*` entries and zero
+  `overlay.qcow2` files after retirement of stopped Android run `run.F8DyufrnjH`,
+  reclaiming 5,133,639,680 allocated bytes (4.78 GiB). Exact owner, mount and file-user
+  absence were checked; raw serial and twelve bounded diagnostics were retained before
+  descriptor-relative removal under the admission lock. Its before/during/after listener
+  inventories matched. Reusable verifier inputs and retained evidence now occupy
+  634,589,184 allocated bytes (0.591 GiB). Storage retirement does not turn either
+  failed product transaction into a pass or supply missing native evidence.
   The separate intentional toolkit capsule occupies
   89,096,192 allocated bytes (0.083 GiB), not a retained VM disk. The successful
   `9f3f0df2` direct-GTK provider run joined and automatically removed its exact scratch root. The actual outer

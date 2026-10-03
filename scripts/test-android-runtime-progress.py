@@ -2,6 +2,7 @@
 """Observe sparse progress before producer EOF, using the real guest filter."""
 
 import ctypes
+import hashlib
 import os
 from pathlib import Path
 import select
@@ -156,6 +157,13 @@ if wrapper.count(export_marker) != 1:
     raise RuntimeError("runtime failure-log publisher is absent or duplicated")
 export_function = (export_marker + wrapper.split(export_marker, 1)[1]
                    .split("\n}\n", 1)[0] + "\n}\n")
+
+
+def failure_log_receipt(payload):
+    return (f"ANDROID_RUNTIME_FAILURE_LOG=retained bytes={len(payload)} "
+            f"sha256={hashlib.sha256(payload).hexdigest()} verdict_input=false\n").encode()
+
+
 for case in ("valid", "limit", "oversized", "symlink", "hardlink", "mode", "occupied"):
     with tempfile.TemporaryDirectory(prefix="android-failure-log.") as root:
         root = Path(root)
@@ -185,7 +193,7 @@ for case in ("valid", "limit", "oversized", "symlink", "hardlink", "mode", "occu
             retained = output / "android-runtime-failure.log"
             if (completed.returncode or completed.stderr or retained.read_bytes() != payload
                     or retained.stat().st_mode & 0o777 != 0o400 or retained.stat().st_nlink != 1
-                    or not completed.stdout.startswith(b"ANDROID_RUNTIME_FAILURE_LOG=retained ")):
+                    or completed.stdout != failure_log_receipt(payload)):
                 raise RuntimeError(f"actual failure-log publisher result differs for {case}")
         elif (completed.returncode == 0 or completed.stdout or len(completed.stderr) > 4096
               or (case == "occupied" and (output / "android-runtime-failure.log").read_bytes()
@@ -376,6 +384,8 @@ exit "$status"
             workspace = root / ("acquisition-" + cancel)
             workspace.mkdir(mode=0o700)
             identity = workspace.stat()
+            retained_root = root / ("acquisition-" + cancel + "-evidence")
+            retained_root.mkdir(mode=0o700)
             control_read, control_write = os.pipe()
             ready_read, ready_write = os.pipe()
             drain_read, drain_write = os.pipe()
@@ -391,6 +401,7 @@ CONTROL=$4
 READY=$5
 CANCEL=$6
 DRAIN=$7
+RUNTIME_FAILURE_ROOT=$8
 RUNTIME_LOG=$WORKSPACE/runtime.log
 RUNTIME_LOG_READER=
 VERIFY_CONTAINER=
@@ -416,7 +427,7 @@ start_runtime_log
 exit 93
 ''', "runtime-acquisition", str(workspace),
                      f"{identity.st_dev}:{identity.st_ino}", str(scripts),
-                     str(control_read), str(ready_write), cancel, str(drain_write)],
+                     str(control_read), str(ready_write), cancel, str(drain_write), str(retained_root)],
                     pass_fds=(control_read, ready_write, drain_write),
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 os.close(control_read)
@@ -444,7 +455,10 @@ exit 93
                 output, errors = process.communicate(timeout=3)
                 if process.returncode != status or errors or workspace.exists():
                     raise RuntimeError("acquisition cancellation did not join and preserve its status")
-                if output != b"ANDROID_RUNTIME_STAGE stage=peer-infrastructure result=ready server=fixture\n":
+                expected_log = b"ANDROID_PEER_INFRASTRUCTURE=ready server=fixture\n"
+                if (output != b"ANDROID_RUNTIME_STAGE stage=peer-infrastructure result=ready server=fixture\n"
+                        + failure_log_receipt(expected_log)
+                        or (retained_root / "android-runtime-failure.log").read_bytes() != expected_log):
                     raise RuntimeError("acquisition reader was not joined byte-completely")
                 if os.read(drain_read, 64) != b"drained\n" or os.read(drain_read, 1):
                     raise RuntimeError("acquisition drain did not complete exactly once after child EOF")
@@ -512,6 +526,8 @@ while :; do IFS= read -r ignored || :; done
             workspace = root / ("docker-" + case)
             workspace.mkdir(mode=0o700)
             identity = workspace.stat()
+            retained_root = root / ("docker-" + case + "-evidence")
+            retained_root.mkdir(mode=0o700)
             ready_read, ready_write = os.pipe()
             process = None
             passed = False
@@ -526,6 +542,7 @@ PROBE_PROGRAM=$4
 SCRIPT_DIR=$5
 READY=$7
 CASE=$8
+RUNTIME_FAILURE_ROOT=$9
 RUNTIME_LOG=$WORKSPACE/runtime.log
 RUNTIME_LOG_READER=
 VERIFY_CONTAINER=
@@ -563,7 +580,7 @@ if [ "$CASE" = overflow ]; then [ "$status" -eq 1 ]; else [ "$status" -eq 0 ]; f
 [ "$(stat -c %s "$RUNTIME_LOG")" -le 1048576 ]
 ''', "runtime-docker-stream", str(scripts), str(workspace),
                      f"{identity.st_dev}:{identity.st_ino}", native_image, probe_program,
-                     str(scripts), "x" * 1024, str(ready_write), case],
+                     str(scripts), "x" * 1024, str(ready_write), case, str(retained_root)],
                     pass_fds=(ready_write,), stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 os.close(ready_write)
@@ -589,10 +606,17 @@ if [ "$CASE" = overflow ]; then [ "$status" -eq 1 ]; else [ "$status" -eq 0 ]; f
                 else:
                     output, errors = process.communicate(input=(case + "\n").encode(), timeout=15)
                 expected_status = 143 if case == "cancel" else 0
-                if (process.returncode != expected_status or output or workspace.exists()
+                expected_log = b"ANDROID_PEER_INFRASTRUCTURE=ready server=fixture\n"
+                expected_output = failure_log_receipt(expected_log) if case == "cancel" else b""
+                if (process.returncode != expected_status or output != expected_output or workspace.exists()
                         or os.read(ready_read, 64) != f"final:0:{expected_status}::\n".encode()
                         or os.read(ready_read, 1)):
                     raise RuntimeError(f"real Docker {case} did not join with exact finality")
+                if case == "cancel":
+                    if (retained_root / "android-runtime-failure.log").read_bytes() != expected_log:
+                        raise RuntimeError("real Docker cancellation failure log was not retained exactly")
+                elif list(retained_root.iterdir()):
+                    raise RuntimeError("successful test transaction exported a failure log")
                 if case == "overflow":
                     if (len(errors) > 4096
                             or b"RuntimeError: Android app runtime output exceeds its bound" not in errors):

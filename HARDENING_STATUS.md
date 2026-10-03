@@ -1457,8 +1457,11 @@ authority. Publication refuses root, symlinks, foreign/mismatched metadata, exte
 oversized input and an occupied destination; its sole owner-only file is capped at 1 MiB and
 acknowledged only after exact readback and file/directory fsync. The focused log profile now exercises
 seven real filesystem publisher cases and a real guest-to-host output-mount fixture whose exact
-bytes must survive VM shutdown. These new checks and the actual Android failure integration are
-not yet executed; diagnostic retention does not change app behavior or count as a product pass.
+bytes must survive VM shutdown. First focused `2b83537e` executed and passed all seven publisher
+cases, then failed because the cancellation fixtures supplied no destination for the now-real
+cleanup publication. Those fixtures now provide owned outputs and require exact retained bytes
+and digest receipts alongside the unchanged signal/join checks. The output-mount fixture and actual
+Android integration remain unexecuted; retention does not change app behavior or count as a pass.
 The older `035c9a20` APK cannot supply the owner observation. Physical devices, sustained
 warm/network/handle evidence and the original Android/Windows causes stay OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local

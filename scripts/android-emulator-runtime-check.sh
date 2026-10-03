@@ -53,6 +53,7 @@ load_pins
 cd "$REPO_ROOT"
 
 readonly VM_ROOT=/run/rustdesk-verifier-vm
+readonly RUNTIME_FAILURE_ROOT=/mnt/rustdesk-android-runtime-failure
 readonly DOCKER_SOCKET=$VM_ROOT/docker.sock
 readonly DOCKER_CONFIG_ROOT=$VM_ROOT/docker-config
 readonly DOCKER_CLIENT=/usr/bin/docker
@@ -408,7 +409,7 @@ cleanup() {
     done
     join_runtime_log || cleanup_status=1
     if [ "$status" -ne 0 ] && [ -n "${RUNTIME_LOG:-}" ] && [ -e "$RUNTIME_LOG" ]; then
-        preserve_runtime_failure_log "$RUNTIME_LOG" /mnt/rustdesk-android-runtime-failure \
+        preserve_runtime_failure_log "$RUNTIME_LOG" "$RUNTIME_FAILURE_ROOT" \
             || { printf 'Android runtime failure-log retention failed\n' >&2; cleanup_status=1; }
     fi
     if [ -n "$WORKSPACE" ]; then

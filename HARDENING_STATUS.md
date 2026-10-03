@@ -1434,8 +1434,16 @@ retained separately. An empty app hierarchy previously could satisfy the negativ
 absence check. That check now requires observed enabled app controls before claiming finality.
 Close failures share the existing bounded screen/stage/connection diagnostic with freshness
 failures and also retain window-focus/error records. Diagnostic screenshots never determine
-acceptance. This harness-only correction is parse-checked; native execution remains pending,
-with the same APK and peer to be reused. No retry, service restart or product fix is introduced.
+acceptance. Exact `186ad687` passed five actual XML-observer fixture cases, nine stage-emitter
+schedules and the real guest Docker log-lifetime checks in a 73-second zero-NIC transaction,
+with strict unchanged host inventories and joined cleanup. Complete source-bound outer acceptance
+is `evidence/ui-finality-186ad687.outer.log`; a subsequent capture-command error lost its raw
+serial. The repeated guest workload passed and its full raw is retained at
+`evidence/ui-finality-186ad687-retained.serial.log`, but its outer correctly rejected an
+unattributable new host UDP socket, so that repeat is not an accepted overall transaction.
+The unrelated socket was untouched; exact stopped scratch was reconciled after absence proof.
+These are observer fixture tests, not Android framework/app evidence. Native execution remains
+pending, with the same APK and peer to be reused. No retry, service restart or product fix is introduced.
 The older `035c9a20` APK cannot supply the owner observation. Physical devices, sustained
 warm/network/handle evidence and the original Android/Windows causes stay OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local

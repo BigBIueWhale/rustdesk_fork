@@ -2255,6 +2255,23 @@ PY
 assert_peer_presentation_ui_finality() {
     local phase=$1 token count
     capture_unobscured_ui_hierarchy complete || return 1
+    if ! python3 -I -S - "$UI_XML" "$APP_PACKAGE" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+path, package = sys.argv[1:]
+visible_controls = (
+    node.get("package") == package
+    and node.get("enabled") == "true"
+    and node.get("class") in ("android.widget.Button", "android.widget.EditText")
+    for node in ET.parse(path).getroot().iter("node")
+)
+raise SystemExit(0 if any(visible_controls) else 1)
+PY
+    then
+        printf 'ANDROID_PEER_PRESENTATION_UI=unavailable phase=%s reason=app-controls-unobserved\n' "$phase"
+        return 1
+    fi
     for token in \
         'Connecting...' \
         'Password required' \
@@ -2759,6 +2776,45 @@ wait_frame_observer_ready() {
         && [ "$(stat -c '%s' -- "$FRAME_OBSERVER_FRAME")" -le 262144 ]
 }
 
+print_peer_ui_failure_diagnostic() {
+    local phase=$1 diagnostic_png= framebuffer_size=
+    [[ "$phase" =~ ^[a-z][a-z0-9-]{0,79}$ ]] || return 1
+    capture_ui_hierarchy complete && print_initial_ui_semantics
+    printf 'ANDROID_PEER_WINDOW_DIAGNOSTIC_BEGIN phase=%s\n' "$phase"
+    timeout --signal=TERM --kill-after=2s 20s \
+        "$ADB" -s "$SERIAL" shell dumpsys window windows 2>/dev/null \
+        | tr -d '\r' \
+        | grep -E 'mCurrentFocus=|mFocusedApp=|mInputMethodTarget=|mImeInputTarget=|mImeLayeringTarget=' \
+        | tail -n 16 | tail -c 16384 || true
+    timeout --signal=TERM --kill-after=2s 20s \
+        "$ADB" -s "$SERIAL" logcat -d -v brief 2>/dev/null \
+        | tr -d '\r' \
+        | grep -Ei 'flutter.*(unhandled|exception|error|overlay|dialog)|FATAL EXCEPTION' \
+        | tail -n 32 | tail -c 16384 || true
+    printf 'ANDROID_PEER_WINDOW_DIAGNOSTIC_END phase=%s\n' "$phase"
+    capture_android_connection_diagnostic active || true
+    reprint_android_connection_diagnostic || true
+    print_peer_presentation_stage_diagnostic "$phase" || true
+    diagnostic_png="$WORK_ROOT/peer-$phase-diagnostic.png"
+    if timeout --signal=TERM --kill-after=2s 20s \
+        "$ADB" -s "$SERIAL" exec-out screencap -p >"$diagnostic_png"; then
+        framebuffer_size="$(stat -c '%s' -- "$diagnostic_png")"
+        if [ "$framebuffer_size" -le 262144 ]; then
+            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_BEGIN phase=%s bytes=%s verdict_input=false\n' \
+                "$phase" "$framebuffer_size"
+            base64 -w 76 -- "$diagnostic_png"
+            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_END phase=%s\n' "$phase"
+        else
+            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_OMITTED phase=%s bytes=%s limit=262144 verdict_input=false\n' \
+                "$phase" "$framebuffer_size"
+        fi
+    else
+        printf 'ANDROID_PEER_FRAMEBUFFER_PNG_OMITTED phase=%s reason=capture-failed verdict_input=false\n' \
+            "$phase"
+    fi
+    rm -f -- "$diagnostic_png"
+}
+
 PEER_LAST_RECOVERY_MS=0
 capture_peer_freshness() {
     local phase=$1 attempt=0 started_ms now_ms source_state decoded
@@ -2766,7 +2822,7 @@ capture_peer_freshness() {
     local state age score matched layout format_name orientation width height
     local sequence timestamp_us last_sequence= observer_failure= source_seen=0
     local baseline_pending=1
-    local max_age=0 last_source_state= diagnostic_png= framebuffer_size=
+    local max_age=0 last_source_state=
     local -A seen=()
 
     wait_frame_observer_ready \
@@ -2926,28 +2982,7 @@ capture_peer_freshness() {
         decode_peer_framebuffer \
             "$FRAME_OBSERVER_FRAME" diagnose || true
     fi
-    capture_ui_hierarchy complete && print_initial_ui_semantics
-    capture_android_connection_diagnostic active || true
-    reprint_android_connection_diagnostic || true
-    print_peer_presentation_stage_diagnostic "$phase" || true
-    diagnostic_png="$WORK_ROOT/peer-$phase-diagnostic.png"
-    if timeout --signal=TERM --kill-after=2s 20s \
-        "$ADB" -s "$SERIAL" exec-out screencap -p >"$diagnostic_png"; then
-        framebuffer_size="$(stat -c '%s' -- "$diagnostic_png")"
-        if [ "$framebuffer_size" -le 262144 ]; then
-            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_BEGIN phase=%s bytes=%s verdict_input=false\n' \
-                "$phase" "$framebuffer_size"
-            base64 -w 76 -- "$diagnostic_png"
-            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_END phase=%s\n' "$phase"
-        else
-            printf 'ANDROID_PEER_FRAMEBUFFER_PNG_OMITTED phase=%s bytes=%s limit=262144 verdict_input=false\n' \
-                "$phase" "$framebuffer_size"
-        fi
-    else
-        printf 'ANDROID_PEER_FRAMEBUFFER_PNG_OMITTED phase=%s reason=capture-failed verdict_input=false\n' \
-            "$phase"
-    fi
-    rm -f -- "$diagnostic_png"
+    print_peer_ui_failure_diagnostic "$phase" || true
     [ -z "$observer_failure" ] || fail "$observer_failure"
     fail "Android peer display did not become fresh and changing for $phase"
 }
@@ -3520,7 +3555,7 @@ exercise_peer_warm_reconnect() {
         || fail "$phase cannot request connection close through the UI"
     wait_ui_center text 'Are you sure you want to close the connection?' >/dev/null \
         || {
-            capture_ui_hierarchy complete && print_initial_ui_semantics
+            print_peer_ui_failure_diagnostic "$phase" || true
             fail "$phase did not show the exact close confirmation"
         }
     tap_ui text 'OK' || fail "$phase cannot confirm connection close"

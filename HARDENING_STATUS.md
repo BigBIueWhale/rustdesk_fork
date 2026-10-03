@@ -1399,7 +1399,7 @@ acceptance retained separately. This is actual execution of the shared Dart clas
 screen presentation or an Android/Windows causal reproduction. It applies where that shared
 queue is used, not to the distinct default Windows texture path. Sustained warm-isolate/device,
 current native presentation, performance, LPE and release obligations remain OPEN.
-**Warm-isolate replay — IMPLEMENTED, NATIVE WARM RESULT PENDING:** the first successful
+**Warm-isolate replay — IMPLEMENTED, COMPLETE NATIVE RESULT OPEN:** the first successful
 software-image stage now records its captured client-owner UUID. The Android production-peer
 schedule adds six ordinary UI close/reconnect cycles before task destruction; all must preserve
 that UUID, the Activity task, process and foreground MainService, with a nondecreasing shared-pool
@@ -1420,6 +1420,22 @@ bounded UI semantics if absent. Complete raw evidence is retained at `evidence/w
 reconciled after owner/mount/file-user absence proof. Its sole new host socket belonged to the
 same pre-existing Firefox process generation, not the harness; that unrelated process was untouched.
 This is an observer/workload extension, not a demonstrated product fix or complete native replay.
+The corrected-caption `de3fc282` replay is terminal failure: initial and all three background
+pixel phases passed, and the first ordinary close/reconnect recovered changing pixels in
+1,140 ms (maximum sampled age 401 ms), preserving the checked task/process/service. The second
+BACK did not expose the close confirmation; its complete UI dump contained only the Android
+content root. This does not distinguish an app/dialog/input failure from unavailable Flutter
+accessibility. Owner/pool receipts were deferred until the complete schedule, so no retained
+same-isolate verdict is claimed. Raw serial `evidence/warm-peer-e0917343-de3fc282.serial.log`
+is 185,016 bytes, SHA-256 `3e0a869a86d46aa44851f8cd6d8f43059e226fafc53cd9da3f740e2c5e5e4df8`.
+No new host listener or pre-existing-process drift appeared; after owner/mount/file-user absence
+proof, exact failed scratch was retired (5,206,331,392 allocated bytes), with bounded diagnostics
+retained separately. An empty app hierarchy previously could satisfy the negative-only dialog
+absence check. That check now requires observed enabled app controls before claiming finality.
+Close failures share the existing bounded screen/stage/connection diagnostic with freshness
+failures and also retain window-focus/error records. Diagnostic screenshots never determine
+acceptance. This harness-only correction is parse-checked; native execution remains pending,
+with the same APK and peer to be reused. No retry, service restart or product fix is introduced.
 The older `035c9a20` APK cannot supply the owner observation. Physical devices, sustained
 warm/network/handle evidence and the original Android/Windows causes stay OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local

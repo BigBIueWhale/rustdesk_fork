@@ -116,6 +116,41 @@ for case in ("valid", "warm-owner", "warm-peak", "task-initial-owner", "task-rep
             raise RuntimeError("warm/task stage cardinality or owner binding differs")
 print("ANDROID_PEER_WARM_STAGE_TEST=pass cases=9 warm_owner=preserved warm_peak=monotone "
       "task_owner=fresh missing=refused cardinality=13", file=sys.stderr)
+ui_functions = ""
+for name in ("ui_semantic_token_count", "assert_peer_presentation_ui_finality"):
+    marker = name + "() {\n"
+    if boot.count(marker) != 1:
+        raise RuntimeError("presentation UI observer is absent or duplicated")
+    ui_functions += marker + boot.split(marker, 1)[1].split("\n}\n", 1)[0] + "\n}\n"
+with tempfile.TemporaryDirectory(prefix="android-ui-finality.") as root:
+    xml = Path(root) / "window.xml"
+    for case, package, enabled, controls, text in (
+        ("valid", "com.carriez.flutter_hbb", "true", True, ""),
+        ("empty", "com.carriez.flutter_hbb", "true", False, ""),
+        ("foreign", "other.package", "true", True, ""),
+        ("disabled", "com.carriez.flutter_hbb", "false", True, ""),
+        ("connecting", "com.carriez.flutter_hbb", "true", True, "Connecting..."),
+    ):
+        child = (f'<node package="{package}" enabled="{enabled}" '
+                 f'class="android.widget.Button" text="{text}"/>' if controls else "")
+        xml.write_text('<hierarchy><node resource-id="android:id/content" '
+                       'class="android.widget.FrameLayout">' + child + '</node></hierarchy>')
+        completed = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-euo", "pipefail", "-c",
+             'capture_unobscured_ui_hierarchy() { return 0; }\n'
+             'UI_XML=$1\nAPP_PACKAGE=com.carriez.flutter_hbb\n'
+             + ui_functions + 'assert_peer_presentation_ui_finality fixture',
+             "ui-finality", str(xml)], capture_output=True, timeout=3)
+        expected = (b"ANDROID_PEER_PRESENTATION_UI=pass phase=fixture connecting=retired "
+                    b"credential=retired waiting=retired\n" if case == "valid" else
+                    b"ANDROID_PEER_PRESENTATION_UI=fail phase=fixture token=Connecting... count=1\n"
+                    if case == "connecting" else
+                    b"ANDROID_PEER_PRESENTATION_UI=unavailable phase=fixture reason=app-controls-unobserved\n")
+        if (completed.returncode != (0 if case == "valid" else 1)
+                or completed.stderr or completed.stdout != expected):
+            raise RuntimeError(f"actual presentation UI observer result differs for {case}")
+print("ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused "
+      "disabled=refused residual=refused observed=required", file=sys.stderr)
 probe = b"ignored diagnostic\nANDROID_PEER_ARTIFACT_ADMITTED=pass test=pipe\n"
 expected = b"ANDROID_RUNTIME_PROGRESS event=peer-admitted build=absent\n"
 

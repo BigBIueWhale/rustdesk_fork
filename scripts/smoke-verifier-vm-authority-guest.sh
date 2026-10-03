@@ -677,6 +677,7 @@ run_android_runtime_log_tests() {
     local unit_receipt='ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof diagnostics=filtered cardinality=1 children=joined'
     local native_receipt='ANDROID_RUNTIME_DOCKER_LOG=pass cases=3 before_eof=observed normal=joined failure=live-log-bound producer=term-stopped cancel=143 pipeline=joined workspace=removed image=caller-owned'
     local stage_receipt='ANDROID_PEER_WARM_STAGE_TEST=pass cases=9 warm_owner=preserved warm_peak=monotone task_owner=fresh missing=refused cardinality=13'
+    local ui_receipt='ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused disabled=refused residual=refused observed=required'
 
     test_sha="$(sha256sum "$test" | awk '{ print $1 }')"
     wrapper_sha="$(sha256sum "$wrapper" | awk '{ print $1 }')"
@@ -728,6 +729,8 @@ run_android_runtime_log_tests() {
         && [ "$(grep -Fc 'ANDROID_RUNTIME_DOCKER_LOG=' "$output")" -eq 1 ] \
         && grep -Fxq "$stage_receipt" "$output" \
         && [ "$(grep -Fc 'ANDROID_PEER_WARM_STAGE_TEST=' "$output")" -eq 1 ] \
+        && grep -Fxq "$ui_receipt" "$output" \
+        && [ "$(grep -Fc 'ANDROID_PEER_UI_FINALITY_TEST=' "$output")" -eq 1 ] \
         || fail 'runtime-log test results are absent, malformed or duplicated'
     [ "$(sha256sum "$test" | awk '{ print $1 }')" = "$test_sha" ] \
         && [ "$(sha256sum "$wrapper" | awk '{ print $1 }')" = "$wrapper_sha" ] \
@@ -746,7 +749,7 @@ run_android_runtime_log_tests() {
     [ ! -e "$work" ] && [ ! -L "$work" ] \
         || fail 'runtime-log scratch remains after retirement'
     stop_docker_authority
-    printf '%s\n' "$unit_receipt" "$native_receipt" "$stage_receipt"
+    printf '%s\n' "$unit_receipt" "$native_receipt" "$stage_receipt" "$ui_receipt"
     printf 'ANDROID_RUNTIME_LOG_TESTS_VM=pass cases=3 stage_cases=9 uid=4000 gid=4000 root=refused foreign=refused test_sha256=%s wrapper_sha256=%s stage_sha256=%s image=retired docker=retired network=none cleanup=joined\n' \
         "$test_sha" "$wrapper_sha" "$stage_sha"
 }

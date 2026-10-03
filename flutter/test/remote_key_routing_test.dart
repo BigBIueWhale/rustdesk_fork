@@ -26,6 +26,7 @@ Future<bool> sendAndroidBack(WidgetTester tester,
     type: down ? ui.KeyEventType.down : ui.KeyEventType.up,
     physical: LogicalKeyboardKey.androidPlane | (scanCode == 0 ? 4 : scanCode),
     logical: LogicalKeyboardKey.goBack.keyId,
+    character: null,
     timeStamp: Duration.zero,
     synthesized: false,
   ));

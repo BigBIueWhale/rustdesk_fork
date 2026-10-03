@@ -1483,9 +1483,17 @@ The focused remote-key boundary now leaves only Android's scan-code-zero `KEYCOD
 (`goBack`, Android-plane physical ID 4) unhandled before any remote input call. Flutter's pinned
 embedding may therefore redispatch both edges to the ordinary Activity Back path. Physical
 browser-Back keys and non-Android forwarding retain their existing behavior; no service restart,
-gesture/action fallback or test retry is introduced. Eight actual-routing/framework-focus tests
-are added to the focused Flutter profile. Candidate test/native APK execution is still OPEN;
-this source correction is not a native pass, a complete warm verdict or Android/Windows causation.
+gesture/action fallback or test retry is introduced. Exact `f931980d`, tree
+`b28cc3745a98c93710a73b14b18f3771121a421d`, passed all nineteen suites/149 tests, including the
+eight actual-routing/framework-focus regressions, in the 290-second zero-NIC VM transaction.
+Pinned formatting, fresh bridge generation, the focused display-finality gate, exact test inventory,
+completion/no-skip JSON validation and joined cleanup passed. The complete 66,917-byte raw serial
+is sealed at `evidence/android-back-f931980d.serial.log`, SHA-256
+`5b62fc2da9184373d5436ff3bf7e1a6164d0887d7679ebc6d3b9438ac46eefe0`.
+No host listener addition or preexisting-process drift occurred, and the successful run self-retired.
+This is real Dart routing and framework-focus execution, not Android Activity/navigation or native
+pixel evidence. A fresh source-bound APK and unchanged warm-reconnect replay are still required;
+complete warm/resource/device evidence and the original Android/Windows causes remain OPEN.
 The older `035c9a20` APK cannot supply the owner observation. Physical devices, sustained
 warm/network/handle evidence and the original Android/Windows causes stay OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local

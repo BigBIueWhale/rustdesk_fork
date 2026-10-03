@@ -1442,8 +1442,15 @@ serial. The repeated guest workload passed and its full raw is retained at
 `evidence/ui-finality-186ad687-retained.serial.log`, but its outer correctly rejected an
 unattributable new host UDP socket, so that repeat is not an accepted overall transaction.
 The unrelated socket was untouched; exact stopped scratch was reconciled after absence proof.
-These are observer fixture tests, not Android framework/app evidence. Native execution remains
-pending, with the same APK and peer to be reused. No retry, service restart or product fix is introduced.
+These are observer fixture tests, not Android framework/app evidence. Same-byte native replay
+under `f4bdbf8f` subsequently passed initial/background pixels and the first warm reconnect with
+observed app controls (1,440 ms; maximum age 746 ms), then failed the second close on the same
+root-only hierarchy. Raw `evidence/warm-peer-e0917343-f4bdbf8f.serial.log` is sealed, 492,699
+bytes, SHA-256 `f75c5fb96da62fab6a47224dc838fba747d74661836a9c2fff8568a7ea73eb05`.
+The emitted diagnostic PNG is not recoverable at its declared length from the shutdown-interleaved
+console; it is not valid visual evidence. The wrapper also omits window records and drops stage
+context behind its progress tail. Reliable bounded failure-artifact finality is required before
+another causal claim. No retry, service restart, product fix or complete warm verdict is introduced.
 The older `035c9a20` APK cannot supply the owner observation. Physical devices, sustained
 warm/network/handle evidence and the original Android/Windows causes stay OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local

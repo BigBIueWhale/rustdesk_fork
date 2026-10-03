@@ -7,6 +7,7 @@ import 'package:flutter/gestures.dart';
 
 import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/common.dart';
+import 'package:flutter_hbb/common/remote_key_routing.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/input_model.dart';
@@ -45,8 +46,11 @@ class RawKeyFocusScope extends StatelessWidget {
                 : null,
             onKeyEvent: useRawKeyEvents
                 ? null
-                : (FocusNode node, KeyEvent event) =>
-                    inputModel.handleKeyEvent(event),
+                : (FocusNode node, KeyEvent event) => routeRemoteKeyEvent(
+                      event,
+                      isAndroid: isAndroid,
+                      forward: inputModel.handleKeyEvent,
+                    ),
             child: child));
   }
 }

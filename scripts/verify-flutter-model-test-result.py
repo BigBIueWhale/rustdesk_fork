@@ -22,13 +22,14 @@ EXPECTED_SUITES = {
     "permanent_password_dialog_lifecycle_test.dart",
     "presentation_recovery_test.dart",
     "reconnect_schedule_authority_test.dart",
+    "remote_key_routing_test.dart",
     "rgba_publication_order_test.dart",
     "server_status_refresh_loop_test.dart",
     "session_event_queue_test.dart",
     "session_stream_finality_test.dart",
     "start_ellipsis_text_test.dart",
 }
-EXPECTED_TESTS = 141
+EXPECTED_TESTS = 149
 MAXIMUM_BYTES = 8 * 1024 * 1024
 MAXIMUM_EVENTS = 16_384
 MAXIMUM_LINE_BYTES = 1024 * 1024

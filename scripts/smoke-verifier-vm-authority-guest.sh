@@ -4750,6 +4750,7 @@ run_flutter_model_tests() {
                     lib/models/latest_frame_queue.dart \
                     lib/models/rgba_publication_order.dart \
                     lib/common/widgets/overlay.dart \
+                    lib/common/remote_key_routing.dart \
                     lib/common/widgets/permanent_password_dialog.dart \
                     lib/common/widgets/custom_password.dart \
                     lib/models/reconnect_schedule_authority.dart \
@@ -4758,6 +4759,7 @@ run_flutter_model_tests() {
                     test/latest_frame_queue_test.dart \
                     test/blockable_overlay_test.dart \
                     test/android_permission_request_coordinator_test.dart \
+                    test/remote_key_routing_test.dart \
                     test/permanent_password_dialog_lifecycle_test.dart \
                     test/reconnect_schedule_authority_test.dart \
                     test/rgba_publication_order_test.dart; do
@@ -4827,8 +4829,9 @@ run_flutter_model_tests() {
                     test/start_ellipsis_text_test.dart
                     test/permanent_password_dialog_lifecycle_test.dart
                     test/android_permission_request_coordinator_test.dart
+                    test/remote_key_routing_test.dart
                 )
-                [ "${#tests[@]}" -eq 18 ]
+                [ "${#tests[@]}" -eq 19 ]
                 for test_path in "${tests[@]}"; do
                     [ -f "$test_path" ] && [ ! -L "$test_path" ]
                 done
@@ -4876,7 +4879,7 @@ run_flutter_model_tests() {
         || { tail -n 240 "$output" >&2; fail 'focused display-selection verifier receipt is absent'; }
     [ "$(grep -Ec '^display selection finality verifier self-test passed \([1-9][0-9]* mutations\)$' "$output")" -eq 1 ] \
         || fail 'focused display-selection verifier receipt is duplicated'
-    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=18 tests=141' "$output")" \
+    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=19 tests=149' "$output")" \
         || { tail -n 240 "$output" >&2; fail 'focused Flutter-test success summary is absent'; }
     [ "$(grep -Fc 'FLUTTER_MODEL_TEST_JSON=' "$output")" -eq 1 ] \
         || fail 'focused Flutter-test result summary is duplicated'
@@ -4902,7 +4905,7 @@ run_flutter_model_tests() {
     printf '%s\n' "$tools_freshness_line"
     printf '%s\n' "$display_selection_line"
     printf '%s\n' "$result_line"
-    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=18 tests=141 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
+    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=19 tests=149 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
         "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
         "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
         "$SHA256_CARGO_VENDOR_CLOSURE_V1" \

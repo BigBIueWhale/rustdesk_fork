@@ -1468,8 +1468,24 @@ owner-only single-link metadata and byte equality after VM shutdown. Raw serial 
 `evidence/failure-log-047cf5bf.serial.log`, 66,172 bytes, SHA-256
 `1e0c02fb15ad298eff86708cc792d708b725a25fea0f13c19d8ec48bd4d49567`.
 Host listeners and pre-existing process generations were unchanged; all owners joined and scratch
-self-retired. Actual Android failure integration remains unexecuted; this is output/finality evidence,
-not a product fix, a complete warm replay or proof of the original Android/Windows cause.
+self-retired. Actual same-APK replay under `24783f3b` then failed at the second warm close after
+passing initial/background pixels and the first warm reconnect (1,920 ms; maximum age 1,195 ms).
+The complete 352,306-byte failure log survived shutdown with exact digest/fsync acknowledgement
+and is sealed at `evidence/warm-peer-e0917343-24783f3b.failure.log`, SHA-256
+`3809826fb93373f5872196505b7b774a60f4e5b01fd84752a6c1cb58b148a214`. Its diagnostic PNG
+decodes at exactly 152,620 bytes with valid CRCs for every chunk. Visual inspection shows the
+remote desktop and toolbar, not a close dialog; the UI observer again sees only the content root.
+This proves actual failure-artifact finality and narrows this failure to close/navigation; it does
+not prove the original Force-Stop hang. The stopped exact root was retired after owner, mount and
+file-user absence checks under the admission lock, retaining complete raw/outer logs and thirteen
+bounded isolation diagnostics; 5,354,446,848 allocated bytes were reclaimed.
+The focused remote-key boundary now leaves only Android's scan-code-zero `KEYCODE_BACK`
+(`goBack`, Android-plane physical ID 4) unhandled before any remote input call. Flutter's pinned
+embedding may therefore redispatch both edges to the ordinary Activity Back path. Physical
+browser-Back keys and non-Android forwarding retain their existing behavior; no service restart,
+gesture/action fallback or test retry is introduced. Eight actual-routing/framework-focus tests
+are added to the focused Flutter profile. Candidate test/native APK execution is still OPEN;
+this source correction is not a native pass, a complete warm verdict or Android/Windows causation.
 The older `035c9a20` APK cannot supply the owner observation. Physical devices, sustained
 warm/network/handle evidence and the original Android/Windows causes stay OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local

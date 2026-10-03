@@ -211,6 +211,77 @@ start_runtime_log() {
     [ "$cancel_status" -eq 0 ] || exit "$cancel_status"
 }
 
+preserve_runtime_failure_log() {
+    /usr/bin/python3 -B -I -S - "$1" "$2" <<'PY'
+import contextlib
+import hashlib
+import os
+import stat
+import sys
+
+limit = 1048576
+owner = (os.getuid(), os.getgid())
+if 0 in owner or owner != (os.geteuid(), os.getegid()):
+    raise RuntimeError("failure-log export requires an ordinary principal")
+source_path, root_path = sys.argv[1:]
+for path in (source_path, root_path):
+    if not os.path.isabs(path) or os.path.realpath(path) != path:
+        raise RuntimeError("failure-log path is not absolute and canonical")
+
+def fingerprint(metadata):
+    return (metadata.st_dev, metadata.st_ino, metadata.st_uid, metadata.st_gid,
+            metadata.st_mode, metadata.st_nlink, metadata.st_size,
+            metadata.st_mtime_ns, metadata.st_ctime_ns)
+
+with contextlib.ExitStack() as lifetime:
+    root = os.open(root_path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    lifetime.callback(os.close, root)
+    root_metadata = os.fstat(root)
+    if ((root_metadata.st_uid, root_metadata.st_gid) != owner
+            or stat.S_IMODE(root_metadata.st_mode) != 0o700):
+        raise RuntimeError("failure-log output is not one fresh private directory")
+    with os.scandir(root) as entries:
+        if next(entries, None) is not None:
+            raise RuntimeError("failure-log output is already occupied")
+    source_fd = os.open(source_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    source = lifetime.enter_context(os.fdopen(source_fd, "rb"))
+    before = os.fstat(source.fileno())
+    if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+            or (before.st_uid, before.st_gid) != owner
+            or stat.S_IMODE(before.st_mode) != 0o600 or not 0 < before.st_size <= limit):
+        raise RuntimeError("failure-log source authority or byte bound differs")
+    content = source.read(limit + 1)
+    if (len(content) != before.st_size
+            or fingerprint(os.fstat(source.fileno())) != fingerprint(before)
+            or fingerprint(os.stat(source_path, follow_symlinks=False)) != fingerprint(before)):
+        raise RuntimeError("failure-log source changed while reading")
+    name = "android-runtime-failure.log"
+    output_fd = os.open(name, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                        0o400, dir_fd=root)
+    output = lifetime.enter_context(os.fdopen(output_fd, "w+b"))
+    if output.write(content) != len(content):
+        raise RuntimeError("failure-log write is incomplete")
+    output.flush()
+    os.fsync(output.fileno())
+    output.seek(0)
+    if output.read(limit + 1) != content:
+        raise RuntimeError("failure-log readback differs")
+    after = os.fstat(output.fileno())
+    if (not stat.S_ISREG(after.st_mode) or after.st_nlink != 1
+            or (after.st_uid, after.st_gid) != owner
+            or stat.S_IMODE(after.st_mode) != 0o400 or after.st_size != len(content)
+            or fingerprint(os.stat(name, dir_fd=root, follow_symlinks=False)) != fingerprint(after)):
+        raise RuntimeError("failure-log output authority differs")
+    edge = os.stat(root_path, follow_symlinks=False)
+    if ((edge.st_dev, edge.st_ino, edge.st_uid, edge.st_gid, stat.S_IMODE(edge.st_mode))
+            != (root_metadata.st_dev, root_metadata.st_ino, *owner, 0o700)):
+        raise RuntimeError("failure-log output directory changed")
+    os.fsync(root)
+    digest = hashlib.sha256(content).hexdigest()
+print(f"ANDROID_RUNTIME_FAILURE_LOG=retained bytes={len(content)} sha256={digest} verdict_input=false")
+PY
+}
+
 runtime_monotonic_millis() {
     local uptime ignored whole fraction
     read -r uptime ignored < /proc/uptime || return 1
@@ -336,6 +407,10 @@ cleanup() {
         vm_docker rm -f "$container" >/dev/null 2>&1 || cleanup_status=1
     done
     join_runtime_log || cleanup_status=1
+    if [ "$status" -ne 0 ] && [ -n "${RUNTIME_LOG:-}" ] && [ -e "$RUNTIME_LOG" ]; then
+        preserve_runtime_failure_log "$RUNTIME_LOG" /mnt/rustdesk-android-runtime-failure \
+            || { printf 'Android runtime failure-log retention failed\n' >&2; cleanup_status=1; }
+    fi
     if [ -n "$WORKSPACE" ]; then
         if [ -z "$WORKSPACE_ID" ] || [ ! -d "$WORKSPACE" ] || [ -L "$WORKSPACE" ] \
            || [ "$(stat -c '%d:%i' -- "$WORKSPACE" 2>/dev/null)" != "$WORKSPACE_ID" ]; then

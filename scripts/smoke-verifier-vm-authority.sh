@@ -2681,6 +2681,9 @@ readonly FLUTTER_CANDIDATE_VIRTIOFSD_LOG=$RUN/virtiofsd-flutter-candidate.log
 readonly FLUTTER_FAILURE_ROOT=$RUN/flutter-peer-failure
 readonly FLUTTER_FAILURE_VIRTIOFS_SOCKET=$RUN/vfs-flutter-failure.sock
 readonly FLUTTER_FAILURE_VIRTIOFSD_LOG=$RUN/virtiofsd-flutter-failure.log
+readonly ANDROID_FAILURE_ROOT=$RUN/android-runtime-failure
+readonly ANDROID_FAILURE_VIRTIOFS_SOCKET=$RUN/vfs-android-failure.sock
+readonly ANDROID_FAILURE_VIRTIOFSD_LOG=$RUN/virtiofsd-android-failure.log
 readonly ARTIFACT_VIRTIOFS_SOCKET=$RUN/vfs-artifact.sock
 readonly ARTIFACT_VIRTIOFSD_LOG=$RUN/virtiofsd-artifact.log
 readonly ARTIFACT_INPUT_VIRTIOFS_SOCKET=$RUN/vfs-artifact-input.sock
@@ -2692,6 +2695,13 @@ if [ "$MODE" = flutter-peer-presentation ] && [ "$FLUTTER_APP_BUILD_ONLY" -eq 0 
       "$HOST_UID:$HOST_GID:700" ] \
         && [ -z "$(/usr/bin/find "$FLUTTER_FAILURE_ROOT" -mindepth 1 -print -quit)" ] \
         || fail 'Flutter peer failure-output authority metadata differs'
+fi
+
+if [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-runtime-log-tests ]; then
+    /usr/bin/install -d -m 0700 -- "$ANDROID_FAILURE_ROOT"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ANDROID_FAILURE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
+        && [ -z "$(/usr/bin/find "$ANDROID_FAILURE_ROOT" -mindepth 1 -print -quit)" ] \
+        || fail 'Android runtime failure-output authority differs'
 fi
 
 if [ "$MODE" = android-emulator-app ] || [ "$MODE" = android-peer-build ] \
@@ -2821,7 +2831,25 @@ capture_listener_details >"$LISTENERS_BEFORE_DETAIL"
 [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OVERLAY")" = "$HOST_UID:$HOST_GID:600:1" ] \
     || fail 'pass-private overlay metadata differs'
 
-if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
+if [ "$MODE" = android-runtime-log-tests ]; then
+    [ -f "$VIRTIOFSD_PACKAGE" ] && [ ! -L "$VIRTIOFSD_PACKAGE" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$VIRTIOFSD_PACKAGE")" = \
+             "$HOST_UID:$HOST_GID:400:1:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE" ] \
+        || fail 'runtime-log output exporter package authority differs'
+    verify_sha256 "$VIRTIOFSD_PACKAGE" "$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"
+    verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
+    runtime_failure_package_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$VIRTIOFSD_PACKAGE"):$(/usr/bin/sha256sum "$VIRTIOFSD_PACKAGE")"
+    /usr/bin/install -d -m 0700 -- "$RUN/virtiofsd-package"
+    /usr/bin/dpkg-deb --extract "$VIRTIOFSD_PACKAGE" "$RUN/virtiofsd-package" \
+        || fail 'cannot extract the authenticated runtime-log output exporter'
+    VIRTIOFSD_BINARY="$RUN/virtiofsd-package/usr/libexec/virtiofsd"
+    [ -f "$VIRTIOFSD_BINARY" ] && [ ! -L "$VIRTIOFSD_BINARY" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%h:%s' -- "$VIRTIOFSD_BINARY")" = \
+             "$HOST_UID:$HOST_GID:1:$SIZE_VERIFIER_VM_VIRTIOFSD_BINARY" ] \
+        || fail 'runtime-log output exporter binary authority differs'
+    /usr/bin/chmod 0500 "$VIRTIOFSD_BINARY"
+    verify_sha256 "$VIRTIOFSD_BINARY" "$SHA256_VERIFIER_VM_VIRTIOFSD_BINARY"
+elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     /usr/bin/install -d -m 0700 -- "$RUN/virtiofsd-package"
     /usr/bin/dpkg-deb --extract "$VIRTIOFSD_PACKAGE" "$RUN/virtiofsd-package" \
         || fail 'cannot extract the authenticated engine-input exporter privately'
@@ -3386,6 +3414,23 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
             || { /usr/bin/cat "$LISTENERS_DURING_DETAIL" >&2; fail 'sealed-input virtiofsd created or coincided with an unattributable host INET listener'; }
     fi
 fi
+if [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-runtime-log-tests ]; then
+    start_virtiofsd bounded-result "$ANDROID_FAILURE_ROOT" \
+        "$(/usr/bin/stat -c '%d:%i' -- "$ANDROID_FAILURE_ROOT")" \
+        "$ANDROID_FAILURE_VIRTIOFS_SOCKET" "$ANDROID_FAILURE_VIRTIOFSD_LOG"
+    focused_qemu_args+=(
+        -chardev "socket,id=android-failure-output,path=$ANDROID_FAILURE_VIRTIOFS_SOCKET"
+        -device 'vhost-user-fs-pci,chardev=android-failure-output,tag=rustdesk-android-runtime-failure,queue-size=1024'
+    )
+    memory_args=(-m "$VM_MEMORY" -object "memory-backend-memfd,id=mem,size=${VM_MEMORY}M,share=on" -numa node,memdev=mem)
+    capture_listeners >"$LISTENERS_DURING"
+    /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_DURING" >"$NEW_DURING"
+    if [ -s "$NEW_DURING" ]; then
+        capture_listener_details >"$LISTENERS_DURING_DETAIL"
+        admit_preexisting_external_listener_drift "$NEW_DURING" "$LISTENERS_DURING_DETAIL" android-failure-exporter \
+            || fail 'Android failure exporter coincided with an unattributable host INET listener'
+    fi
+fi
 vm_started_seconds=$SECONDS
 /usr/bin/timeout --signal=TERM --kill-after=10s "${VM_TIMEOUT_SECONDS}s" \
     /usr/bin/qemu-system-x86_64 \
@@ -3600,14 +3645,31 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     runtime_log_native_receipt='ANDROID_RUNTIME_DOCKER_LOG=pass cases=3 before_eof=observed normal=joined failure=live-log-bound producer=term-stopped cancel=143 pipeline=joined workspace=removed image=caller-owned'
     runtime_log_stage_receipt='ANDROID_PEER_WARM_STAGE_TEST=pass cases=9 warm_owner=preserved warm_peak=monotone task_owner=fresh missing=refused cardinality=13'
     runtime_log_ui_receipt='ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused disabled=refused residual=refused observed=required'
+    runtime_failure_test_receipt='ANDROID_RUNTIME_FAILURE_LOG_TEST=pass cases=7 bytes=1048576 equality=exact oversized=refused symlink=refused hardlink=refused mode=refused occupied=preserved'
+    runtime_failure_fixture=$'ANDROID_PEER_WINDOW_DIAGNOSTIC_BEGIN phase=fixture\nfocus=fixture\nANDROID_PEER_WINDOW_DIAGNOSTIC_END phase=fixture\n'
+    runtime_failure_bytes=$(printf '%s' "$runtime_failure_fixture" | /usr/bin/wc -c)
+    runtime_failure_sha=$(printf '%s' "$runtime_failure_fixture" | /usr/bin/sha256sum | /usr/bin/cut -d ' ' -f 1)
+    runtime_failure_receipt="ANDROID_RUNTIME_FAILURE_EXPORT_VM=pass bytes=$runtime_failure_bytes sha256=$runtime_failure_sha fsync=acknowledged mount=retired uid=1000 gid=1000"
     runtime_log_vm_receipt="ANDROID_RUNTIME_LOG_TESTS_VM=pass cases=3 stage_cases=9 uid=4000 gid=4000 root=refused foreign=refused test_sha256=$(/usr/bin/sha256sum "$SCRIPT_DIR/test-android-runtime-progress.py" | /usr/bin/awk '{ print $1 }') wrapper_sha256=$(/usr/bin/sha256sum "$SCRIPT_DIR/android-emulator-runtime-check.sh" | /usr/bin/awk '{ print $1 }') stage_sha256=$(/usr/bin/sha256sum "$ANDROID_EMULATOR_BOOT_SOURCE" | /usr/bin/awk '{ print $1 }') image=retired docker=retired network=none cleanup=joined"
     require_exact_fixed_receipt "$runtime_log_unit_receipt" 'runtime-log pipe/signal result'
     require_exact_fixed_receipt "$runtime_log_native_receipt" 'native Docker log-lifetime result'
     require_exact_fixed_receipt "$runtime_log_stage_receipt" 'warm/task presentation-stage result'
     require_exact_fixed_receipt "$runtime_log_ui_receipt" 'observable app UI finality result'
+    require_exact_fixed_receipt "$runtime_failure_test_receipt" 'bounded failure-log publisher result'
+    require_exact_fixed_receipt "$runtime_failure_receipt" 'native acknowledged failure-log export result'
+    [ "$(/usr/bin/find "$ANDROID_FAILURE_ROOT" -mindepth 1 -maxdepth 1 -printf '%f\n')" = android-runtime-failure.log ] \
+        && [ -f "$ANDROID_FAILURE_ROOT/android-runtime-failure.log" ] \
+        && [ ! -L "$ANDROID_FAILURE_ROOT/android-runtime-failure.log" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' "$ANDROID_FAILURE_ROOT/android-runtime-failure.log")" = \
+             "$HOST_UID:$HOST_GID:400:1:$runtime_failure_bytes" ] \
+        || fail 'retained native failure-log fixture authority differs'
+    /usr/bin/cmp "$ANDROID_FAILURE_ROOT/android-runtime-failure.log" <(printf '%s' "$runtime_failure_fixture") \
+        || fail 'native failure-log bytes changed across VM shutdown'
+    [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$VIRTIOFSD_PACKAGE"):$(/usr/bin/sha256sum "$VIRTIOFSD_PACKAGE")" = \
+      "$runtime_failure_package_before" ] || fail 'runtime-log output exporter package changed'
     require_exact_fixed_receipt "$runtime_log_vm_receipt" 'runtime-log source/finality result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'runtime-log cloud-init completion'
-    printf '%s\n' "$runtime_log_unit_receipt" "$runtime_log_native_receipt" "$runtime_log_stage_receipt" "$runtime_log_ui_receipt" "$runtime_log_vm_receipt"
+    printf '%s\n' "$runtime_log_unit_receipt" "$runtime_log_native_receipt" "$runtime_log_stage_receipt" "$runtime_log_ui_receipt" "$runtime_failure_test_receipt" "$runtime_failure_receipt" "$runtime_log_vm_receipt"
 elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     engine_prepare_receipt='FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 indexes=original pub=path-only network=none engine_build=unexecuted'
     engine_prepare_vm_receipt="FLUTTER_ENGINE_PREPARE_VM=pass commit=$FOCUSED_TEST_COMMIT tree=$FOCUSED_TEST_TREE helper_sha256=$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" | /usr/bin/awk '{print $1}') runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined"

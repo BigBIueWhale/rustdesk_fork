@@ -1451,6 +1451,14 @@ The emitted diagnostic PNG is not recoverable at its declared length from the sh
 console; it is not valid visual evidence. The wrapper also omits window records and drops stage
 context behind its progress tail. Reliable bounded failure-artifact finality is required before
 another causal claim. No retry, service restart, product fix or complete warm verdict is introduced.
+The runtime wrapper now preserves its complete joined failure log, rather than only console-selected
+lines, through one fresh private output directory served by the existing nonroot Landlocked virtiofs
+authority. Publication refuses root, symlinks, foreign/mismatched metadata, external hardlinks,
+oversized input and an occupied destination; its sole owner-only file is capped at 1 MiB and
+acknowledged only after exact readback and file/directory fsync. The focused log profile now exercises
+seven real filesystem publisher cases and a real guest-to-host output-mount fixture whose exact
+bytes must survive VM shutdown. These new checks and the actual Android failure integration are
+not yet executed; diagnostic retention does not change app behavior or count as a product pass.
 The older `035c9a20` APK cannot supply the owner observation. Physical devices, sustained
 warm/network/handle evidence and the original Android/Windows causes stay OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local

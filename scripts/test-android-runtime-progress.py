@@ -151,6 +151,49 @@ with tempfile.TemporaryDirectory(prefix="android-ui-finality.") as root:
             raise RuntimeError(f"actual presentation UI observer result differs for {case}")
 print("ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused "
       "disabled=refused residual=refused observed=required", file=sys.stderr)
+export_marker = "preserve_runtime_failure_log() {\n"
+if wrapper.count(export_marker) != 1:
+    raise RuntimeError("runtime failure-log publisher is absent or duplicated")
+export_function = (export_marker + wrapper.split(export_marker, 1)[1]
+                   .split("\n}\n", 1)[0] + "\n}\n")
+for case in ("valid", "limit", "oversized", "symlink", "hardlink", "mode", "occupied"):
+    with tempfile.TemporaryDirectory(prefix="android-failure-log.") as root:
+        root = Path(root)
+        output = root / "output"
+        output.mkdir(mode=0o700)
+        source_log = root / "runtime.log"
+        payload = bytes(range(256)) * (4096 if case == "limit" else 1024)
+        if case == "oversized":
+            payload = b"x" * 1048577
+        source_log.write_bytes(payload)
+        source_log.chmod(0o600)
+        if case == "symlink":
+            link = root / "link"
+            link.symlink_to(source_log)
+            source_log = link
+        elif case == "hardlink":
+            os.link(source_log, root / "alias")
+        elif case == "mode":
+            source_log.chmod(0o644)
+        elif case == "occupied":
+            (output / "android-runtime-failure.log").write_bytes(b"existing evidence")
+        completed = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-euo", "pipefail", "-c",
+             export_function + 'preserve_runtime_failure_log "$1" "$2"',
+             "failure-log", str(source_log), str(output)], capture_output=True, timeout=3)
+        if case in ("valid", "limit"):
+            retained = output / "android-runtime-failure.log"
+            if (completed.returncode or completed.stderr or retained.read_bytes() != payload
+                    or retained.stat().st_mode & 0o777 != 0o400 or retained.stat().st_nlink != 1
+                    or not completed.stdout.startswith(b"ANDROID_RUNTIME_FAILURE_LOG=retained ")):
+                raise RuntimeError(f"actual failure-log publisher result differs for {case}")
+        elif (completed.returncode == 0 or completed.stdout or len(completed.stderr) > 4096
+              or (case == "occupied" and (output / "android-runtime-failure.log").read_bytes()
+                  != b"existing evidence")
+              or (case != "occupied" and list(output.iterdir()))):
+            raise RuntimeError(f"failure-log publisher did not refuse {case} without mutation")
+print("ANDROID_RUNTIME_FAILURE_LOG_TEST=pass cases=7 bytes=1048576 equality=exact "
+      "oversized=refused symlink=refused hardlink=refused mode=refused occupied=preserved", file=sys.stderr)
 probe = b"ignored diagnostic\nANDROID_PEER_ARTIFACT_ADMITTED=pass test=pipe\n"
 expected = b"ANDROID_RUNTIME_PROGRESS event=peer-admitted build=absent\n"
 

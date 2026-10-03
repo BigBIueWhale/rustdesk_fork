@@ -231,6 +231,7 @@ ANDROID_EMULATOR_RUNTIME_ONLINE_MOUNTED=0
 ANDROID_ARTIFACT_OUTPUT_MOUNTED=0
 ANDROID_ARTIFACT_INPUT_MOUNTED=0
 ANDROID_PEER_ARTIFACT_INPUT_MOUNTED=0
+ANDROID_RUNTIME_FAILURE_MOUNTED=0
 FLUTTER_PEER_SOURCE_MOUNTED=0
 FLUTTER_PEER_ONLINE_MOUNTED=0
 FLUTTER_PEER_CANDIDATE_MOUNTED=0
@@ -667,6 +668,21 @@ PY
         "$test_sha" "$helper_sha"
 }
 
+mount_android_runtime_failure_output() {
+    local root=/mnt/rustdesk-android-runtime-failure options
+    mkdir "$root" || fail 'cannot create the Android failure-output mountpoint'
+    mount -t virtiofs -o rw,nodev,nosuid,noexec rustdesk-android-runtime-failure "$root" \
+        || fail 'cannot mount the Android failure-output authority'
+    ANDROID_RUNTIME_FAILURE_MOUNTED=1
+    options="$(findmnt -n -o OPTIONS --target "$root")" || fail 'Android failure-output mount is absent'
+    for option in rw nodev nosuid noexec; do
+        case ",$options," in *,$option,*) ;; *) fail "Android failure-output mount lacks $option" ;; esac
+    done
+    [ "$(stat -c '%u:%g:%a' "$root")" = 1000:1000:700 ] \
+        && [ -z "$(find "$root" -mindepth 1 -print -quit)" ] \
+        || fail 'Android failure-output root is not a fresh private authority'
+}
+
 run_android_runtime_log_tests() {
     local work work_id
     local test=$VERIFY_REPO/scripts/test-android-runtime-progress.py
@@ -678,6 +694,8 @@ run_android_runtime_log_tests() {
     local native_receipt='ANDROID_RUNTIME_DOCKER_LOG=pass cases=3 before_eof=observed normal=joined failure=live-log-bound producer=term-stopped cancel=143 pipeline=joined workspace=removed image=caller-owned'
     local stage_receipt='ANDROID_PEER_WARM_STAGE_TEST=pass cases=9 warm_owner=preserved warm_peak=monotone task_owner=fresh missing=refused cardinality=13'
     local ui_receipt='ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused disabled=refused residual=refused observed=required'
+    local failure_test_receipt='ANDROID_RUNTIME_FAILURE_LOG_TEST=pass cases=7 bytes=1048576 equality=exact oversized=refused symlink=refused hardlink=refused mode=refused occupied=preserved'
+    local export_work export_work_id export_receipt export_bytes export_sha
 
     test_sha="$(sha256sum "$test" | awk '{ print $1 }')"
     wrapper_sha="$(sha256sum "$wrapper" | awk '{ print $1 }')"
@@ -731,6 +749,8 @@ run_android_runtime_log_tests() {
         && [ "$(grep -Fc 'ANDROID_PEER_WARM_STAGE_TEST=' "$output")" -eq 1 ] \
         && grep -Fxq "$ui_receipt" "$output" \
         && [ "$(grep -Fc 'ANDROID_PEER_UI_FINALITY_TEST=' "$output")" -eq 1 ] \
+        && grep -Fxq "$failure_test_receipt" "$output" \
+        && [ "$(grep -Fc 'ANDROID_RUNTIME_FAILURE_LOG_TEST=' "$output")" -eq 1 ] \
         || fail 'runtime-log test results are absent, malformed or duplicated'
     [ "$(sha256sum "$test" | awk '{ print $1 }')" = "$test_sha" ] \
         && [ "$(sha256sum "$wrapper" | awk '{ print $1 }')" = "$wrapper_sha" ] \
@@ -748,8 +768,40 @@ run_android_runtime_log_tests() {
         || fail 'runtime-log test scratch could not be retired'
     [ ! -e "$work" ] && [ ! -L "$work" ] \
         || fail 'runtime-log scratch remains after retirement'
+    mount_android_runtime_failure_output
+    export_work="$(mktemp -d /tmp/android-failure-export.XXXXXXXXXX)" \
+        || fail 'cannot create the failure-export fixture'
+    export_work_id="$(stat -c '%d:%i' "$export_work")"
+    awk '
+        /^preserve_runtime_failure_log\(\) \{$/ { found++; copy = 1 }
+        copy { print; if ($0 == "}") copy = 0 }
+        END { if (found != 1 || copy) exit 1 }
+    ' "$wrapper" >"$export_work/publish.sh" || fail 'cannot extract the actual failure-log publisher'
+    printf '%s\n' 'preserve_runtime_failure_log "$1" "$2"' >>"$export_work/publish.sh"
+    printf 'ANDROID_PEER_WINDOW_DIAGNOSTIC_BEGIN phase=fixture\nfocus=fixture\nANDROID_PEER_WINDOW_DIAGNOSTIC_END phase=fixture\n' >"$export_work/runtime.log"
+    chown -R 1000:1000 "$export_work"
+    chmod 400 "$export_work/publish.sh"
+    chmod 600 "$export_work/runtime.log"
+    export_bytes="$(stat -c '%s' "$export_work/runtime.log")"
+    export_sha="$(sha256sum "$export_work/runtime.log" | awk '{ print $1 }')"
+    export_receipt="$(setpriv --reuid=1000 --regid=1000 --clear-groups \
+        env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+        /bin/bash --noprofile --norc -euo pipefail "$export_work/publish.sh" \
+        "$export_work/runtime.log" /mnt/rustdesk-android-runtime-failure)" \
+        || fail 'actual failure-log publisher did not acknowledge the native output mount'
+    [ "$export_receipt" = "ANDROID_RUNTIME_FAILURE_LOG=retained bytes=$export_bytes sha256=$export_sha verdict_input=false" ] \
+        || fail 'failure-log publisher acknowledgement differs'
+    cmp "$export_work/runtime.log" /mnt/rustdesk-android-runtime-failure/android-runtime-failure.log \
+        || fail 'native failure-export fixture bytes differ'
+    umount /mnt/rustdesk-android-runtime-failure || fail 'cannot retire the failure-output fixture mount'
+    ANDROID_RUNTIME_FAILURE_MOUNTED=0
+    setpriv --reuid=1000 --regid=1000 --clear-groups \
+        python3 -B -I -S "$VERIFY_REPO/scripts/verify-private-tree-closure.py" \
+        --remove-private-root "$export_work" --expected-identity "$export_work_id" \
+        || fail 'cannot retire the failure-export fixture scratch'
     stop_docker_authority
-    printf '%s\n' "$unit_receipt" "$native_receipt" "$stage_receipt" "$ui_receipt"
+    printf '%s\n' "$unit_receipt" "$native_receipt" "$stage_receipt" "$ui_receipt" "$failure_test_receipt"
+    printf 'ANDROID_RUNTIME_FAILURE_EXPORT_VM=pass bytes=%s sha256=%s fsync=acknowledged mount=retired uid=1000 gid=1000\n' "$export_bytes" "$export_sha"
     printf 'ANDROID_RUNTIME_LOG_TESTS_VM=pass cases=3 stage_cases=9 uid=4000 gid=4000 root=refused foreign=refused test_sha256=%s wrapper_sha256=%s stage_sha256=%s image=retired docker=retired network=none cleanup=joined\n' \
         "$test_sha" "$wrapper_sha" "$stage_sha"
 }
@@ -3964,6 +4016,7 @@ run_android_emulator_runtime() {
     [ "$runtime_load" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
         || fail "Android runtime image receipt differs for runtime replay: $runtime_load"
 
+    mount_android_runtime_failure_output
     set +e
     setpriv --reuid=1000 --regid=1000 --clear-groups \
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
@@ -4382,6 +4435,8 @@ run_android_emulator_runtime() {
     umount "$artifact_input" \
         || fail 'cannot retire the commit-bound Android runtime artifact mount'
     ANDROID_ARTIFACT_INPUT_MOUNTED=0
+    umount /mnt/rustdesk-android-runtime-failure || fail 'cannot retire the Android failure-output mount'
+    ANDROID_RUNTIME_FAILURE_MOUNTED=0
     if [ "$ANDROID_PEER_ARTIFACT_INPUT_MOUNTED" -eq 1 ]; then
         umount "$peer_mount" || fail 'cannot retire the Android peer capsule mount'
         ANDROID_PEER_ARTIFACT_INPUT_MOUNTED=0
@@ -5310,6 +5365,10 @@ cleanup() {
     if [ "$ANDROID_PEER_ARTIFACT_INPUT_MOUNTED" -eq 1 ]; then
         umount /mnt/rustdesk-android-peer-artifact-input 2>/dev/null || status=1
         ANDROID_PEER_ARTIFACT_INPUT_MOUNTED=0
+    fi
+    if [ "$ANDROID_RUNTIME_FAILURE_MOUNTED" -eq 1 ]; then
+        umount /mnt/rustdesk-android-runtime-failure 2>/dev/null || status=1
+        ANDROID_RUNTIME_FAILURE_MOUNTED=0
     fi
     if [ "$SEALED_INPUTS_MOUNTED" -eq 1 ]; then
         umount /mnt/rustdesk-sealed-inputs 2>/dev/null || status=1

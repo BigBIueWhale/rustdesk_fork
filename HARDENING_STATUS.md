@@ -1460,8 +1460,16 @@ seven real filesystem publisher cases and a real guest-to-host output-mount fixt
 bytes must survive VM shutdown. First focused `2b83537e` executed and passed all seven publisher
 cases, then failed because the cancellation fixtures supplied no destination for the now-real
 cleanup publication. Those fixtures now provide owned outputs and require exact retained bytes
-and digest receipts alongside the unchanged signal/join checks. The output-mount fixture and actual
-Android integration remain unexecuted; retention does not change app behavior or count as a pass.
+and digest receipts alongside the unchanged signal/join checks. Exact `047cf5bf` passed the complete
+focused transaction in 37 seconds: all seven publisher cases, actual cancellation cleanup, nine
+stage-emitter schedules, five UI-observer cases and three real guest Docker log cases. The real
+virtiofs output fixture acknowledged file/directory fsync; the outer verified its exact 114 bytes,
+owner-only single-link metadata and byte equality after VM shutdown. Raw serial is sealed at
+`evidence/failure-log-047cf5bf.serial.log`, 66,172 bytes, SHA-256
+`1e0c02fb15ad298eff86708cc792d708b725a25fea0f13c19d8ec48bd4d49567`.
+Host listeners and pre-existing process generations were unchanged; all owners joined and scratch
+self-retired. Actual Android failure integration remains unexecuted; this is output/finality evidence,
+not a product fix, a complete warm replay or proof of the original Android/Windows cause.
 The older `035c9a20` APK cannot supply the owner observation. Physical devices, sustained
 warm/network/handle evidence and the original Android/Windows causes stay OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local

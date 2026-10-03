@@ -1399,7 +1399,7 @@ acceptance retained separately. This is actual execution of the shared Dart clas
 screen presentation or an Android/Windows causal reproduction. It applies where that shared
 queue is used, not to the distinct default Windows texture path. Sustained warm-isolate/device,
 current native presentation, performance, LPE and release obligations remain OPEN.
-**Warm-isolate replay — IMPLEMENTED, NATIVE EXECUTION PENDING:** the first successful
+**Warm-isolate replay — IMPLEMENTED, NATIVE WARM RESULT PENDING:** the first successful
 software-image stage now records its captured client-owner UUID. The Android production-peer
 schedule adds six ordinary UI close/reconnect cycles before task destruction; all must preserve
 that UUID, the Activity task, process and foreground MainService, with a nondecreasing shared-pool
@@ -1407,9 +1407,21 @@ peak. Later task replacements must have distinct owner UUIDs. Thirteen exact sta
 samples replace the earlier seven; pixel freshness, recovery, conversion and RSS/thread limits
 remain unchanged. The focused log-lifetime test executes the actual stage emitter against one
 valid thirteen-stage schedule and eight invalid owner/counter/session/phase/inventory schedules.
-This is an observer and workload extension, not a demonstrated fix or native pass. A fresh
-diagnostic APK is required; the retained `035c9a20` APK lacks this owner observation. Physical
-devices, sustained warm/network/handle evidence and the original Android/Windows causes stay OPEN.
+Exact `e0917343` passed the actual emitter's nine schedules and real container log/cancel
+cases in the 37-second zero-NIC focused transaction. Its fresh diagnostic x86_64 APK,
+SHA-256 `80f361faa9083c43033dcdbca1cb730116ba3a750b163b668cd045f7ca63b633`, passed
+build/inspection/install/launch/render and inert publication in 1,156 seconds, with unchanged
+inputs, no added host listeners or process drift, joined owners and automatic scratch retirement.
+The same-byte production-peer replay passed initial and 2/6/12-second background pixels, then
+stopped before the first warm close: the harness searched for a translation key instead of its
+English display value. The selector now requires the exact rendered English caption and preserves
+bounded UI semantics if absent. Complete raw evidence is retained at `evidence/warm-stage-e0917343`,
+`evidence/warm-apk-e0917343` and `evidence/warm-peer-e0917343`; the stopped failed scratch was
+reconciled after owner/mount/file-user absence proof. Its sole new host socket belonged to the
+same pre-existing Firefox process generation, not the harness; that unrelated process was untouched.
+This is an observer/workload extension, not a demonstrated product fix or complete native replay.
+The older `035c9a20` APK cannot supply the owner observation. Physical devices, sustained
+warm/network/handle evidence and the original Android/Windows causes stay OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local
 `XGetImage` wording check are deleted. Pixel identity and age require the shared C implementation's
 native execution, not replacement source-string assertions. The guard's other VM/input/renderer

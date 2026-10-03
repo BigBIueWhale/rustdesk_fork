@@ -3518,8 +3518,11 @@ exercise_peer_warm_reconnect() {
     timeout --signal=TERM --kill-after=2s 10s \
         "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_BACK >/dev/null \
         || fail "$phase cannot request connection close through the UI"
-    wait_ui_center text 'Are you sure to close the connection?' >/dev/null \
-        || fail "$phase did not show the exact close confirmation"
+    wait_ui_center text 'Are you sure you want to close the connection?' >/dev/null \
+        || {
+            capture_ui_hierarchy complete && print_initial_ui_semantics
+            fail "$phase did not show the exact close confirmation"
+        }
     tap_ui text 'OK' || fail "$phase cannot confirm connection close"
     wait_peer_server_connections 0 exact \
         || fail "$phase retained the closed peer"

@@ -8,7 +8,8 @@ import 'package:flutter_hbb/common/remote_key_routing.dart';
 
 const androidBack = PhysicalKeyboardKey(LogicalKeyboardKey.androidPlane | 4);
 
-List<KeyEvent> keyEdges(PhysicalKeyboardKey physical, LogicalKeyboardKey logical) {
+List<KeyEvent> keyEdges(
+    PhysicalKeyboardKey physical, LogicalKeyboardKey logical) {
   return [
     KeyDownEvent(
         physicalKey: physical, logicalKey: logical, timeStamp: Duration.zero),

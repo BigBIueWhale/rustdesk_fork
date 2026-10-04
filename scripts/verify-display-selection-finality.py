@@ -1636,17 +1636,22 @@ def validate(sources: Dict[str, str]) -> None:
     )
     startup_dart = extract_between(
         sources["model_dart"],
-        "if (!displays.contains(display)",
-        "stream, streamBinding, activeSessionId, id, tabWindowId, display);",
+        "if ((display != kAllDisplayValue && !displays.contains(display))",
+        "moveFromSessionId, moveFromClientOwnerId);",
         "existing-window Dart startup",
     )
     require_order(
         startup_dart,
         (
-            "!displays.contains(display)",
+            "display != kAllDisplayValue && !displays.contains(display)",
+            "displays.isEmpty",
             "candidate < -0x80000000 || candidate > 0x7fffffff",
             "final requestedDisplays = Int32List.fromList(displays);",
-            "final addRes = bind.sessionAddExistedSync(",
+            "final addRes = isMove",
+            "bind.sessionAddExistedForMoveSync(",
+            "sourceSessionId: moveFromSessionId!",
+            "sourceClientOwnerId: moveFromClientOwnerId!",
+            "bind.sessionAddExistedSync(",
             "displays: requestedDisplays",
             "if (addRes != '')",
             "return activeSessionId;",
@@ -2023,6 +2028,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("model_dart", "final updateJson = json.decode(updateData) as Map<String, dynamic>;", "final updateJson = <String, dynamic>{};", "fallible platform-additions decode"),
     ("model_dart", "await handleFollowCurrentDisplay(evt, sessionId, peerId);", "handleFollowCurrentDisplay(evt, sessionId, peerId);", "awaited follow-display selection"),
     ("model_dart", "      stream = bind.sessionStart(\n          sessionId: activeSessionId", "      stream = bind.sessionStartWithDisplays(\n          sessionId: activeSessionId", "single startup admission"),
+    ("model_dart", "bind.sessionAddExistedForMoveSync(", "bind.sessionAddExistedSync(", "exact-source desktop transfer admission"),
+    ("model_dart", "display != kAllDisplayValue && !displays.contains(display)", "!displays.contains(display)", "all-display startup selection"),
     ("web_dart", "Future<void> sessionSwitchDisplay(\n      {required UuidValue sessionId,\n      required UuidValue clientOwnerId,", "Future<void> sessionSwitchDisplay(\n      {required UuidValue sessionId,\n      required bool isDesktop,", "web owner capability"),
     ("web_dart", "Future<bool?> sessionGetRemember", "Stream<EventToUI> sessionStartWithDisplays() => Stream.empty();\n\n  Future<bool?> sessionGetRemember", "web retired startup surface"),
     ("server", "== 1", ">= 1", "exact controlled capture operation"),

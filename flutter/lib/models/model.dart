@@ -5216,7 +5216,8 @@ class FFI {
             'Unreachable, failed to add existed session to $id, the displays is null while display is $display');
         return activeSessionId;
       }
-      if (!displays.contains(display) ||
+      if ((display != kAllDisplayValue && !displays.contains(display)) ||
+          displays.isEmpty ||
           displays.any((candidate) =>
               candidate < -0x80000000 || candidate > 0x7fffffff)) {
         debugPrint(
@@ -5232,8 +5233,8 @@ class FFI {
               peerId: id,
               sessionId: activeSessionId,
               clientOwnerId: clientOwnerId,
-              sourceSessionId: moveFromSessionId,
-              sourceClientOwnerId: moveFromClientOwnerId,
+              sourceSessionId: moveFromSessionId!,
+              sourceClientOwnerId: moveFromClientOwnerId!,
               displays: requestedDisplays,
               isViewCamera: isViewCamera)
           : bind.sessionAddExistedSync(

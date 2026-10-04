@@ -544,7 +544,7 @@ model and production-peer schedules do not cover this surface. Source trace is i
 `flutter/lib/utils/multi_window_manager.dart`, `desktop/pages/remote_tab_page.dart`,
 `desktop/pages/desktop_home_page.dart`, `models/model.dart` and `src/flutter.rs`.
 
-**X11 monitor reply ownership — SOURCE CORRECTION; NATIVE ACCEPTANCE PENDING.**
+**X11 monitor reply ownership — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
 `libs/scrap/src/x11/iter.rs` previously returned a monitor cursor after freeing
 its backing RandR reply. Each screen now owns that reply until exhaustion or
 drop; queries are checked, reply/error allocations are retired exactly, and a
@@ -555,7 +555,17 @@ modules and both public callers against the pinned Rust/XCB image and real
 two-screen Xvfb. Its historical-source comparison observes free-before-use and
 null-reply misuse without allowing an uncontrolled dangling read; corrected
 cases cover repeated enumeration, early drop and real BadWindow rejection.
-Execution is not yet accepted. This is component evidence, not full-product
+Exact source `c9b54e686ed0eaf0bf4332e0b4608aea85bd5e1f`, tree
+`a8de929fc37c30a494b032e0229299d4fc150f4f`, passed the complete isolated
+transaction in 43 seconds. The historical iterator exited 42 on invalid
+release/use ordering and 43 on null-reply misuse; corrected cases passed with
+exact reply/error retirement and explicit first/second-root error propagation.
+The host listener audit found no additions or pre-existing process drift;
+input rechecks and joined cleanup passed and the scratch root self-retired.
+Raw serial is `evidence/x11-display-c9b54e68.serial.log` (68,434 bytes, SHA-256
+`20894826ae6331d426c6f42c95532940011490c0e4e48f213e7af53a5cd477dc`).
+The initial `a9f0fc1c` fixture startup failure is retained, not counted as a pass.
+This is instrumented component evidence, not full-product
 capture, installed-service proof, allocator-exploit proof, the original
 Android/Windows cause, or LPE closure. Atom-name error cleanup and the inherited
 geometry/pixel-format fallback remain separate uncorrected source risks.

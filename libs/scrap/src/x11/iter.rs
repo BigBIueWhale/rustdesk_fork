@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 use std::io;
+use std::mem::size_of;
 use std::ptr;
 use std::ptr::NonNull;
 use std::rc::Rc;
@@ -18,9 +19,78 @@ pub struct DisplayIter {
 }
 
 struct ScreenMonitors {
-    _reply: XcbReply<xcb_randr_get_monitors_reply_t>,
-    cursor: xcb_randr_monitor_info_iterator_t,
+    reply: XcbReply<xcb_randr_get_monitors_reply_t>,
+    next_offset: usize,
+    remaining: usize,
     root: xcb_window_t,
+}
+
+impl ScreenMonitors {
+    fn new(reply: XcbReply<xcb_randr_get_monitors_reply_t>, root: xcb_window_t) -> io::Result<Self> {
+        let header = unsafe { reply.0.as_ref() };
+        let payload_len = usize::try_from(header.length)
+            .ok()
+            .and_then(|length| length.checked_mul(4))
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid RandR reply length"))?;
+        let monitor_count = usize::try_from(header.n_monitors)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid RandR monitor count"))?;
+        let output_count = usize::try_from(header.n_outputs)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid RandR output count"))?;
+        let expected = monitor_count
+            .checked_mul(size_of::<xcb_randr_monitor_info_t>())
+            .and_then(|bytes| {
+                output_count
+                    .checked_mul(size_of::<u32>())
+                    .and_then(|outputs| bytes.checked_add(outputs))
+            })
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "RandR counts overflow"))?;
+        if expected != payload_len {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "RandR counts differ from reply length"));
+        }
+
+        let payload = unsafe { reply.0.as_ptr().add(1).cast::<u8>() };
+        let mut offset = 0usize;
+        let mut outputs_seen = 0usize;
+        for _ in 0..monitor_count {
+            let header_end = offset
+                .checked_add(size_of::<xcb_randr_monitor_info_t>())
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "RandR monitor offset overflow"))?;
+            if header_end > payload_len {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "RandR monitor exceeds reply"));
+            }
+            let monitor = unsafe { ptr::read_unaligned(payload.add(offset).cast::<xcb_randr_monitor_info_t>()) };
+            let output_len = usize::from(monitor.n_output) * size_of::<u32>();
+            offset = header_end
+                .checked_add(output_len)
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "RandR output offset overflow"))?;
+            if offset > payload_len {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "RandR outputs exceed reply"));
+            }
+            outputs_seen = outputs_seen
+                .checked_add(usize::from(monitor.n_output))
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "RandR output count overflow"))?;
+        }
+        if offset != payload_len || outputs_seen != output_count {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "RandR monitor layout differs from reply"));
+        }
+
+        Ok(Self { reply, next_offset: 0, remaining: monitor_count, root })
+    }
+
+    fn next_monitor(&mut self) -> Option<xcb_randr_monitor_info_t> {
+        if self.remaining == 0 {
+            return None;
+        }
+        // The complete immutable reply layout was checked before this cursor was created.
+        let payload = unsafe { self.reply.0.as_ptr().add(1).cast::<u8>() };
+        let monitor = unsafe {
+            ptr::read_unaligned(payload.add(self.next_offset).cast::<xcb_randr_monitor_info_t>())
+        };
+        self.next_offset += size_of::<xcb_randr_monitor_info_t>()
+            + usize::from(monitor.n_output) * size_of::<u32>();
+        self.remaining -= 1;
+        Some(monitor)
+    }
 }
 
 struct XcbReply<T>(NonNull<T>);
@@ -79,13 +149,9 @@ impl DisplayIter {
             let mut error = ptr::null_mut();
             let response = xcb_randr_get_monitors_reply(server.raw(), cookie, &mut error);
             let reply = checked_reply(response, error, "RandR GetMonitors")?;
-            let cursor = xcb_randr_get_monitors_monitors_iterator(reply.0.as_ptr());
+            let monitors = ScreenMonitors::new(reply, root)?;
             xcb_screen_next(outer);
-            Ok(Some(ScreenMonitors {
-                _reply: reply,
-                cursor,
-                root,
-            }))
+            Ok(Some(monitors))
         }
     }
 }
@@ -99,11 +165,9 @@ impl Iterator for DisplayIter {
         }
         loop {
             if let Some(ref mut screen) = self.inner {
-                let inner = &mut screen.cursor;
                 // If there is something in the current screen, return that.
-                if inner.rem != 0 {
+                if let Some(data) = screen.next_monitor() {
                     unsafe {
-                        let data = &*inner.data;
                         let name = match get_atom_name(self.server.raw(), data.name) {
                             Ok(name) => name,
                             Err(error) => {
@@ -127,8 +191,6 @@ impl Iterator for DisplayIter {
                             name,
                             pixfmt,
                         );
-
-                        xcb_randr_monitor_info_next(inner);
                         return Some(Ok(display));
                     }
                 }
@@ -158,10 +220,20 @@ fn get_atom_name(conn: *mut xcb_connection_t, atom: xcb_atom_t) -> io::Result<St
         let mut error = ptr::null_mut();
         let response = xcb_get_atom_name_reply(conn, xcb_get_atom_name(conn, atom), &mut error);
         let reply = checked_reply(response.cast_mut(), error, "GetAtomName")?;
-        let length = usize::try_from(xcb_get_atom_name_name_length(reply.0.as_ptr())).map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "X atom name has a negative length")
-        })?;
-        let bytes = std::slice::from_raw_parts(xcb_get_atom_name_name(reply.0.as_ptr()), length);
+        let header = reply.0.as_ref();
+        let payload_len = usize::try_from(header.length)
+            .ok()
+            .and_then(|length| length.checked_mul(4))
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid X atom reply length"))?;
+        let name_len = usize::from(header.name_len);
+        let padded_name_len = name_len
+            .checked_add(3)
+            .map(|length| length & !3)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "X atom name length overflow"))?;
+        if payload_len != padded_name_len {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "X atom name length differs from reply"));
+        }
+        let bytes = std::slice::from_raw_parts(reply.0.as_ptr().add(1).cast::<u8>(), name_len);
         Ok(String::from_utf8_lossy(bytes).into_owned())
     }
 }

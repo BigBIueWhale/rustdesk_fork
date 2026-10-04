@@ -68,12 +68,6 @@ extern "C" {
         e: *mut *mut xcb_generic_error_t,
     ) -> *mut xcb_randr_get_monitors_reply_t;
 
-    pub fn xcb_randr_get_monitors_monitors_iterator(
-        r: *const xcb_randr_get_monitors_reply_t,
-    ) -> xcb_randr_monitor_info_iterator_t;
-
-    pub fn xcb_randr_monitor_info_next(i: *mut xcb_randr_monitor_info_iterator_t);
-
     pub fn xcb_get_atom_name(
         c: *mut xcb_connection_t,
         atom: xcb_atom_t,
@@ -84,10 +78,6 @@ extern "C" {
         cookie: xcb_get_atom_name_cookie_t,
         e: *mut *mut xcb_generic_error_t,
     ) -> *const xcb_get_atom_name_reply_t;
-
-    pub fn xcb_get_atom_name_name(reply: *const xcb_get_atom_name_request_t) -> *const u8;
-
-    pub fn xcb_get_atom_name_name_length(reply: *const xcb_get_atom_name_reply_t) -> i32;
 
     pub fn xcb_shm_query_version(c: *mut xcb_connection_t) -> xcb_shm_query_version_cookie_t;
 
@@ -121,9 +111,23 @@ pub type xcb_timestamp_t = u32;
 pub type xcb_colormap_t = u32;
 pub type xcb_shm_seg_t = u32;
 pub type xcb_drawable_t = u32;
-pub type xcb_get_atom_name_cookie_t = u32;
-pub type xcb_get_atom_name_reply_t = u32;
-pub type xcb_get_atom_name_request_t = xcb_get_atom_name_reply_t;
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct xcb_get_atom_name_cookie_t {
+    pub sequence: u32,
+}
+
+#[repr(C)]
+pub struct xcb_get_atom_name_reply_t {
+    pub response_type: u8,
+    pub pad0: u8,
+    pub sequence: u16,
+    pub length: u32,
+    pub name_len: u16,
+    pub pad1: [u8; 22],
+}
+
+const _: [(); 32] = [(); std::mem::size_of::<xcb_get_atom_name_reply_t>()];
 
 #[repr(C)]
 pub struct xcb_setup_t {
@@ -177,13 +181,6 @@ pub struct xcb_screen_t {
 }
 
 #[repr(C)]
-pub struct xcb_randr_monitor_info_iterator_t {
-    pub data: *mut xcb_randr_monitor_info_t,
-    pub rem: i32,
-    pub index: i32,
-}
-
-#[repr(C)]
 pub struct xcb_randr_monitor_info_t {
     pub name: xcb_atom_t,
     pub primary: u8,
@@ -196,6 +193,8 @@ pub struct xcb_randr_monitor_info_t {
     pub width_mm: u32,
     pub height_mm: u32,
 }
+
+const _: [(); 24] = [(); std::mem::size_of::<xcb_randr_monitor_info_t>()];
 
 #[repr(C)]
 #[derive(Clone, Copy)]

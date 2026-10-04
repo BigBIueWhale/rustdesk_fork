@@ -572,12 +572,16 @@ fallback remains an uncorrected source risk: correct selection must derive
 byte order, pixmap bits-per-pixel, root visual masks and padded row stride,
 not infer layout from depth alone or replace failure with BGRA.
 Reply-payload bounds also remain OPEN: atom-name and variable monitor/output
-lengths must be validated against the owned reply's byte extent before unsafe
-slice/cursor access. Ownership alone does not establish those bounds.
+lengths require validation against the owned reply's byte extent before unsafe
+slice/cursor access. A source candidate now checks the complete RandR aggregate
+and nested spans before reading an owned reply by offset, and checks exact
+padded atom-name length before constructing its slice. Native acceptance is
+pending; ownership alone never established those bounds.
 The focused native fixture now exercises seven received-header injections,
 controlled old-code refusal before unsafe access, and actual server-created
-multiple/outputless monitors. Product correction and native acceptance remain
-pending; the injection is not a hostile-server or LPE
+multiple/outputless monitors. Its seven controlled before-cases fail on the
+previous unchecked access; after-cases and the positive server-created monitor
+are not yet accepted. The injection is not a hostile-server or LPE
 reproduction.
 
 **X11 atom-query finality — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**

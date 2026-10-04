@@ -136,6 +136,7 @@ struct State {
     malformed_atom: u8,
     malformed_monitors: u8,
     malformed_query: usize,
+    diagnose_monitors: bool,
     bad_atom_reply: usize,
     bad_monitor_reply: usize,
 }
@@ -325,6 +326,12 @@ unsafe extern "C" fn __wrap_xcb_randr_get_monitors_reply(c: *mut xcb_connection_
     let reply = real_reply(c, cookie, error);
     STATE.with(|state| {
         let mut state = state.borrow_mut();
+        if state.diagnose_monitors {
+            eprintln!("X11_BOUNDS_VALID_DIAG query={} reply={} server_error={} connection_error={}",
+                      state.queries, !reply.is_null(),
+                      if error.is_null() || (*error).is_null() { 0 } else { (**error).error_code },
+                      xcb_connection_has_error(c));
+        }
         if !reply.is_null() {
             state.allocations.push(Allocation { pointer: reply.cast(),
                 bytes: 32 + (*reply).length as usize * 4, monitor: true, retired: false });
@@ -398,6 +405,7 @@ fn finish_case(reject: usize) {
         state.malformed_atom = 0;
         state.malformed_monitors = 0;
         state.malformed_query = 0;
+        state.diagnose_monitors = false;
         state.bad_atom_reply = 0;
         state.bad_monitor_reply = 0;
     });
@@ -417,7 +425,14 @@ fn configure_bounds(atom: u8, monitor: u8, query: usize) {
 fn checked_fixture_request(c: *mut xcb_connection_t, cookie: xcb_void_cookie_t) -> io::Result<()> {
     unsafe {
         let error = xcb_request_check(c, cookie);
-        if error.is_null() { return Ok(()); }
+        if error.is_null() {
+            return if xcb_connection_has_error(c) == 0 {
+                Ok(())
+            } else {
+                Err(io::Error::new(io::ErrorKind::ConnectionAborted,
+                                   "X connection failed during checked fixture request"))
+            };
+        }
         let code = (*error).error_code;
         libc::system_free(error.cast());
         Err(io::Error::new(io::ErrorKind::Other, format!("fixture request server error {code}")))
@@ -463,6 +478,7 @@ fn main() -> io::Result<()> {
             finish_case(0);
             println!("X11_BOUNDS_CASE=pass scenario={scenario} repeats=32 replies=exact enumeration=fused public_callers=explicit");
         } else if scenario == "bounds-valid" {
+            STATE.with(|state| state.borrow_mut().diagnose_monitors = true);
             let root = unsafe { (*xcb_setup_roots_iterator(server.setup()).data).root };
             let atom = intern_atom(server.raw(), b"bounds-native")?;
             let mut info = xcb_randr_monitor_info_t {

@@ -803,7 +803,7 @@ run_android_runtime_log_tests() {
         --remove-private-root "$export_work" --expected-identity "$export_work_id" \
         || fail 'cannot retire the failure-export fixture scratch'
     stop_docker_authority
-    printf '%s\n' "$unit_receipt" "$native_receipt" "$stage_receipt" "$ui_receipt" "$failure_test_receipt"
+    printf '%s\n' "$unit_receipt" "$native_receipt" "$stage_receipt" "$ui_receipt" "$failure_test_receipt" "$serial_receipt"
     printf 'ANDROID_RUNTIME_FAILURE_EXPORT_VM=pass bytes=%s sha256=%s fsync=acknowledged mount=retired uid=1000 gid=1000\n' "$export_bytes" "$export_sha"
     printf 'ANDROID_RUNTIME_LOG_TESTS_VM=pass cases=3 stage_cases=9 uid=4000 gid=4000 root=refused foreign=refused test_sha256=%s wrapper_sha256=%s stage_sha256=%s image=retired docker=retired network=none cleanup=joined\n' \
         "$test_sha" "$wrapper_sha" "$stage_sha"

@@ -177,6 +177,7 @@ extern "C" {
                              error: *mut *mut xcb_generic_error_t) -> *mut InternAtomReply;
     fn xcb_randr_set_monitor_checked(c: *mut xcb_connection_t, root: u32,
                                     info: *mut xcb_randr_monitor_info_t) -> xcb_void_cookie_t;
+    fn xcb_randr_monitor_info_sizeof(info: *const libc::c_void) -> i32;
     fn xcb_randr_delete_monitor_checked(c: *mut xcb_connection_t, root: u32,
                                        name: u32) -> xcb_void_cookie_t;
     #[link_name = "__real_xcb_get_atom_name_name"]
@@ -479,14 +480,19 @@ fn main() -> io::Result<()> {
             finish_case(0);
             println!("X11_BOUNDS_CASE=pass scenario={scenario} repeats=32 replies=exact enumeration=fused public_callers=explicit");
         } else if scenario == "bounds-valid" {
-            STATE.with(|state| state.borrow_mut().diagnose_monitors = true);
             let root = unsafe { (*xcb_setup_roots_iterator(server.setup()).data).root };
             let atom = intern_atom(server.raw(), b"bounds-native")?;
             let mut info = xcb_randr_monitor_info_t {
                 name: atom, primary: 0, automatic: 0, n_output: 0,
                 x: 0, y: 0, width: 320, height: 480, width_mm: 100, height_mm: 100,
             };
-            checked_fixture_request(server.raw(), unsafe { xcb_randr_set_monitor_checked(server.raw(), root, &mut info) })?;
+            let encoded_size = unsafe { xcb_randr_monitor_info_sizeof((&info as *const xcb_randr_monitor_info_t).cast()) };
+            let request = unsafe { xcb_randr_set_monitor_checked(server.raw(), root, &mut info) };
+            eprintln!("X11_BOUNDS_VALID_REQUEST monitor_size={} cookie={} connection_error={} max_request_words={}",
+                      encoded_size, request.sequence, unsafe { xcb_connection_has_error(server.raw()) },
+                      unsafe { (*server.setup()).maximum_request_length });
+            checked_fixture_request(server.raw(), request)?;
+            STATE.with(|state| state.borrow_mut().diagnose_monitors = true);
             let displays = x11::Server::displays(Rc::clone(&server)).collect::<io::Result<Vec<_>>>();
             // Retire the actual server-side fixture even if enumeration returned an error.
             checked_fixture_request(server.raw(), unsafe { xcb_randr_delete_monitor_checked(server.raw(), root, atom) })?;

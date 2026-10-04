@@ -578,11 +578,11 @@ and nested spans before reading an owned reply by offset, and checks exact
 padded atom-name length before constructing its slice. Native acceptance is
 pending; ownership alone never established those bounds.
 The focused native fixture now exercises seven received-header injections,
-controlled old-code refusal before unsafe access, and actual server-created
-multiple/outputless monitors. Its seven controlled before-cases fail on the
+controlled old-code refusal before unsafe access, and an attempted real-server
+multiple/outputless monitor case. Its seven controlled before-cases fail on the
 previous unchecked access; all seven source-candidate after-cases passed 32
 repetitions and both public callers, but the full transaction is not accepted:
-the positive server-created monitor case loses its XCB connection during the
+the positive monitor case loses its XCB connection during the
 fixture's checked SetMonitor request, before product enumeration. The injection
 is not a hostile-server or LPE
 reproduction.

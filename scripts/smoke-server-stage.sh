@@ -668,7 +668,7 @@ EOS
       tail -n 120 /tmp/cm-file-server.log >&2
       exit "$probe_status"
     fi
-    grep -Fq '[FT-DIR-RESPONSE path="" entries=' <<<"$probe_output"
+    [ "$(grep -Fc '[FT-DIR-RESPONSE path=' <<<"$probe_output")" -eq 1 ]
     grep -Fxq 'probe_client: PASS' <<<"$probe_output"
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/cm-file-server.log
     wait "$SRV"

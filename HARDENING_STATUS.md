@@ -3243,8 +3243,10 @@ This is one headless Linux receive-write terminal/commit, multi-file, and abort 
 not wrong-OS-principal, installed-service, full file-transfer, Android, or cross-platform evidence.
 
 **Abrupt CM receive-owner loss (current source, Linux VM):** pushed `81a03231` (tree
-`e0c3434c`) makes the shared desktop/Android CM job wrapper retire its active receive claim
-on drop, including task cancellation or peer/IPC closure without `Done`, error, or cancel.
+`e0c3434c`) makes the shared desktop/Android CM job wrapper retire a receive claim already
+attached to that job on drop, including task cancellation or peer/IPC closure without
+`Done`, error, or cancel. Cancellation while a blocking worker still owned its result
+required the separate correction below.
 The no-NIC VM built that exact source and ran a keyed FileTransfer peer against the
 production Linux server in guest-only nonroot Docker. The peer sent a partial block, then
 used a same-CM-stream directory reply to observe `orphaned.txt.download`, `.digest`, and
@@ -3274,9 +3276,29 @@ was identity-checked and removed after its processes and mounts had exited; its 
 remains archived. This establishes one sequential headless Linux reconnect, not a racy
 handoff, stale-generation attack, Android/Windows/macOS lifecycle, or installed artifact.
 
+**Abandoned blocking receive result (current source, Linux VM):** pushed `f37a14f9`
+(tree `86811208`) gives each `ReceiveWriteClaim` fallback retirement on drop until
+successful finish or explicit cleanup disarms it. `start_new` and `resume` return
+the stream before the claim so a discarded blocking result closes the stream first;
+the intended Windows close-before-unlink ordering is not yet natively tested. This
+closes the gap where the CM job vanished before `spawn_blocking` delivered its newly
+opened claim or a failed finalization result. The focused zero-NIC VM ran 59 real
+filesystem/Tokio tests and four config tests in 164 seconds, including both
+abandoned-result cases; raw serial
+`hbb-common-fs-run.MUuihtRjsJ.serial.log` is 68,503 bytes, SHA-256
+`b42eb0ac606269bbbcc0d781aee5b3ae8bf6a016499f0d1da4d1d95bad343159`.
+The same candidate passed the keyed real-peer Linux CM replay in 263 seconds; raw serial
+`cm-file-replay-run.hTayQunpmg.serial.log` is 314,779 bytes, SHA-256
+`600b281832ca8ed3957d57e1358689216c3ad1b91c0ac915baedbb7b2380e49c`.
+Both outer runs reported no harness-added host listener or pre-existing-process drift,
+joined cleanup, and no retained run overlay. The new cancellation cases execute the
+real filesystem and Tokio handoff on Linux, not a native Windows open/unlink, installed
+service, Android process-lifecycle, or release-artifact transaction. Existing fixed
+sidecar collision and cleanup-failure behavior remain open.
+
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | Exact-current Rust 1.75 Linux regressions execute all 57 `hbb_common::fs` tests, including retained-authority create/rename/file/directory mutations and Unix symlink/path-swap/depth-bound cases. Earlier current-source regressions execute receive commit, incomplete/stale terminal refusal, peer-error cleanup, resume refusal, job identity, duplicate confirmation, malformed compression, and overflow boundaries through the shared job and CM dispatcher. The real-peer replays above establish keyed pre-login no-create and post-login CM directory/create, an active partial-write terminal refusal with cleanup, exact-byte single- and two-file committed uploads, partial peer-error and cancel paths, one abrupt owner-loss cleanup after staging was observed, and one sequential new-owner write to that same path after cleanup. Windows junction/exact-handle regressions remain unexecuted. Still exercise full download/read, digest/confirmation, bounded saturation, terminal-first disconnect, fixed-sidecar collision, racy/stale-generation reconnect, and cleanup-failure behavior; repeat the relevant multi-block/multi-file, abort, abrupt-loss, denial, and finality scenarios on installed desktop targets and Android. The existing installed Windows result predates this strengthening. |
+| CM/file finality (R-S11c-4c/4d) | Exact-current Rust 1.75 Linux regressions execute all 59 `hbb_common::fs` tests, including retained-authority create/rename/file/directory mutations, Unix symlink/path-swap/depth-bound cases, and abandoned blocking-result retirement. Earlier current-source regressions execute receive commit, incomplete/stale terminal refusal, peer-error cleanup, resume refusal, job identity, duplicate confirmation, malformed compression, and overflow boundaries through the shared job and CM dispatcher. The real-peer replays above establish keyed pre-login no-create and post-login CM directory/create, an active partial-write terminal refusal with cleanup, exact-byte single- and two-file committed uploads, partial peer-error and cancel paths, one abrupt owner-loss cleanup after staging was observed, and one sequential new-owner write to that same path after cleanup. Windows junction/exact-handle regressions remain unexecuted. Still exercise full download/read, digest/confirmation, bounded saturation, terminal-first disconnect, fixed-sidecar collision, racy/stale-generation reconnect, and cleanup-failure behavior; repeat the relevant multi-block/multi-file, abort, abrupt-loss, denial, and finality scenarios on installed desktop targets and Android. The existing installed Windows result predates this strengthening. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

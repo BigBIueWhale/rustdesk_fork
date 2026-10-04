@@ -530,19 +530,22 @@ presentation, resume/re-notification, exact peer receipts, shared capture pacing
 evidenced recovery. Their source/model gates do not replace the native matrix below; R-S11fk and R-S11fl remain
 explicitly PARTIAL / RELEASE-BLOCKING.
 
-**Desktop tab-to-window ownership — SOURCE FINDING; CORRECTION/NATIVE EVIDENCE OPEN.**
-The ordinary move-tab action passes the active connection UUID and old window ID but no
-display inventory or old client-owner identity. The replacement `RemotePage` constructs a
-fresh desktop FFI owner. `FFI.start` skips new-peer admission and, with no display argument,
-also skips existing-peer admission before `sessionStart`; Rust correctly rejects the mismatched
-owner. Cached-state retrieval and old-tab cleanup require a new-stream event, so they cannot
-establish the missing prior transfer. This is a separate outgoing desktop flow defect, not the
-Android Force-Stop or Windows focus-delay cause and not an established LPE. Preserve exact-owner
-refusal; design and test explicit old/new-owner transfer, engine-backed resource retirement,
-stale-action rejection and failure finality in isolated real multi-window execution. Current
-model and production-peer schedules do not cover this surface. Source trace is in
-`flutter/lib/utils/multi_window_manager.dart`, `desktop/pages/remote_tab_page.dart`,
-`desktop/pages/desktop_home_page.dart`, `models/model.dart` and `src/flutter.rs`.
+**Desktop tab-to-window ownership — SOURCE ADMISSION CORRECTED; NATIVE MULTI-WINDOW OPEN.**
+RemoteDesktop and ViewCamera move requests now carry the source window, exact source session/client-owner
+pair, and nonempty selected display set. The destination creates fresh identities; guarded native admission
+requires the exact live source stream and display owner, rejects stale or identical owners, and creates a
+separate handler without borrowing the source renderer, stream, or texture pointer. The destination waits
+for a video publication before requesting cached state and closing the source's exact handler. Both desktop
+page types now propagate mandatory texture-retirement and native-close failures; the tab controller keeps
+the exact tab when its retirement fails. The Linux-target zero-NIC Rust VM passed 48 named tests at
+`6565f3f5`, including wrong/stale/same-owner refusal and old-owner close preserving the new peer; the
+focused Flutter VM passed 19 suites/150 tests with fresh bridge generation at `90a74782`, including failed
+tab-retirement retention. Both had no host listener addition or pre-existing process drift and joined
+cleanup. These are source/model and Flutter test evidence, not execution of real multi-window transfer,
+native registrar failure, decoded/presented pixels, or latency. Concurrent move admission and source loss
+during handoff still need target-native failure-finality tests; Linux, Windows, and macOS presentation and
+engine teardown remain OPEN. This is not an established cause of the reported Android or Windows delays
+or a demonstrated local privilege escalation.
 
 **X11 monitor reply ownership — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
 `libs/scrap/src/x11/iter.rs` previously returned a monitor cursor after freeing
@@ -920,7 +923,7 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   take, exact-session separation, stream replacement, Dart supersession, and retirement are covered at those
   model/state-machine layers. Actual Android/iOS/desktop renderer presentation, lifecycle, latency, sustained
   resource behavior, current artifacts, and release evidence remain open.
-- **R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration** — Source closed.
+- **R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration** — Source owner/slot model corrected; native transfer evidence open.
   Native texture pointer creation, publication, replacement, view transfer, and retirement are tied to the exact
   asynchronous UI owner. Failed Rust-pointer unpublication retains native storage; failed native release remains
   one visible terminal predecessor and cannot admit a replacement. Linux now also retains its exact retired
@@ -929,7 +932,9 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   outer plugin teardown—releases it; continued refusal retains the storage until process teardown. The production-
   translation-unit regression covers refusal, terminal no-retry, retained storage, successful close, and teardown
   finality, but current execution is not claimed while the fixed rootless Docker socket is absent. Callback cleanup
-  cannot use or retire a replacement owner.
+  cannot use or retire a replacement owner. RemoteDesktop and ViewCamera outer-page teardown now propagates
+  mandatory texture and exact native-session close failures to tab removal, which retains a failed tab. The
+  focused Flutter test exercises tab-controller failure retention, not a native registrar failure.
 - **R-S11ey/R-S11e-186 software-RGBA-only desktop presentation** — Source/build topology closed. The unsupported
   GPU/VRAM texture plugin and its registration/packaging path are absent; supported desktop presentation uses the
   repository-owned software-RGBA plugin. Native renderer and packaged-plugin execution remain open.

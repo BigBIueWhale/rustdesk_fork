@@ -628,6 +628,49 @@ EOS
     $READY --terminate-server "$SRV" "$SRV_START" /tmp/srv.log
     wait "$SRV"
     ;;
+  cm-file-replay)
+    export HOME=/tmp/rd-cm-file-replay
+    mkdir -m 0700 "$HOME"
+    cleanup_cm_file_replay() {
+      local status=$?
+      trap - EXIT HUP INT TERM
+      if [ -n "$SRV" ] && [ -n "$SRV_START" ] \
+          && "$READY" --is-running "$SRV" "$SRV_START" 2>/dev/null; then
+        "$READY" --stop "$SRV" "$SRV_START" || status=1
+        wait "$SRV" 2>/dev/null || true
+      fi
+      exit "$status"
+    }
+    trap cleanup_cm_file_replay EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    /smoke-target/debug/examples/seed_password 'Str0ng-Test-Pw-123' >/dev/null 2>&1 \
+      || { echo SEED_FAIL >&2; exit 1; }
+    start_server /smoke-target/debug/rustdesk /tmp/cm-file-server.log
+    "$READY" --wait-server "$SRV" "$SRV_START" /tmp/cm-file-server.log \
+      /smoke-target/debug/examples/smoke_readiness "$(id -u)"
+    if probe_output=$(timeout --signal=TERM --kill-after=5s 50s \
+        /smoke-target/debug/examples/probe_client \
+        '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfiletransfer 2>&1); then
+      probe_status=0
+    else
+      probe_status=$?
+    fi
+    printf '%s\n' "$probe_output"
+    if [ "$probe_status" -ne 0 ]; then
+      tail -n 120 /tmp/cm-file-server.log >&2
+      exit "$probe_status"
+    fi
+    grep -Fq '[FT-DIR-RESPONSE path="" entries=' <<<"$probe_output"
+    grep -Fxq 'probe_client: PASS' <<<"$probe_output"
+    "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/cm-file-server.log
+    wait "$SRV"
+    SRV=
+    SRV_START=
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir network=container-loopback cleanup=server-joined\n'
+    trap - EXIT HUP INT TERM
+    ;;
   inject)
     export HOME=/tmp/rd7
     mkdir -p "$HOME"

@@ -5491,6 +5491,7 @@ mod tests {
             (".digest", &b"older-resume-digest"[..]),
         ] {
             let tmp = TestTempDir::new("rustdesk_receive_sidecar_collision");
+            std::fs::create_dir_all(&tmp.path).expect("create receive directory");
             let sidecar = tmp.join(&format!("incoming.bin{suffix}"));
             std::fs::write(&sidecar, original).expect("stage an older receive artifact");
             let mut job = new_write_job(94, tmp.path.clone(), "incoming.bin")

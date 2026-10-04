@@ -1401,7 +1401,10 @@ fn main() {
                                             peer.username,
                                             peer.platform
                                         ));
-                                        if !sent_readdir && mode != "cmfileauthority" {
+                                        if !sent_readdir
+                                            && mode != "cmfileauthority"
+                                            && mode != "ftreadfailure"
+                                        {
                                             let mut fa = FileAction::new();
                                             fa.set_read_dir(ReadDir {
                                                 path: "".to_string(),

@@ -2014,6 +2014,7 @@ run_focused_rust_tests() {
             fs::tests::rename_admitted_entry_stays_with_its_retained_parent_after_path_swap
             fs::tests::abandoned_blocking_receive_result_retires_its_exact_sidecars
             fs::tests::abandoned_blocking_finalize_error_retires_only_its_claim
+            fs::tests::new_receive_refuses_existing_sidecars_without_changing_their_bytes
         )
     elif [ "$MODE" = cpace-recovery-tests ]; then
         container_name=rustdesk-cpace-recovery-tests
@@ -3130,7 +3131,7 @@ LAYOUT
     set -e
     [ "$status" -eq 0 ] && [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
         || { tail -n 160 "$output" >&2; fail "CM file replay failed: $status"; }
-    [ "$(grep -Fxc 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes network=container-loopback cleanup=server-joined' "$output")" -eq 1 ] \
+    [ "$(grep -Fxc 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved network=container-loopback cleanup=server-joined' "$output")" -eq 1 ] \
         || fail 'CM file replay product receipt is absent or duplicated'
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'CM file replay container did not exit cleanly'

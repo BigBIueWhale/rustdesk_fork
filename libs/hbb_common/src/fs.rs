@@ -1583,7 +1583,7 @@ mod nt_nofollow {
         FileDispositionInformationEx, FileRenameInformation, NtCreateFile, NtQueryDirectoryFile,
         NtQueryInformationFile, NtSetInformationFile, FILE_ATTRIBUTE_TAG_INFORMATION,
         FILE_DIRECTORY_FILE, FILE_DIRECTORY_INFORMATION, FILE_DISPOSITION_INFORMATION,
-        FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_FOR_BACKUP_INTENT, FILE_OPEN_IF,
+        FILE_CREATE, FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_FOR_BACKUP_INTENT, FILE_OPEN_IF,
         FILE_OPEN_REPARSE_POINT, FILE_RENAME_INFORMATION, FILE_SYNCHRONOUS_IO_NONALERT,
         IO_STATUS_BLOCK,
     };
@@ -1603,6 +1603,7 @@ mod nt_nofollow {
     // STATUS codes mapped to io::ErrorKind::NotFound so a missing artifact is a no-op (ENOENT twin).
     const STATUS_NO_SUCH_FILE: NTSTATUS = 0xC000_000Fu32 as NTSTATUS;
     const STATUS_OBJECT_NAME_NOT_FOUND: NTSTATUS = 0xC000_0034u32 as NTSTATUS;
+    const STATUS_OBJECT_NAME_COLLISION: NTSTATUS = 0xC000_0035u32 as NTSTATUS;
     const STATUS_OBJECT_PATH_NOT_FOUND: NTSTATUS = 0xC000_003Au32 as NTSTATUS;
     const STATUS_NO_MORE_FILES: NTSTATUS = 0x8000_0006u32 as NTSTATUS;
     const DIRECTORY_QUERY_BUFFER_BYTES: usize = 64 * 1024;
@@ -1632,6 +1633,8 @@ mod nt_nofollow {
             || status == STATUS_OBJECT_PATH_NOT_FOUND
         {
             io::Error::from(io::ErrorKind::NotFound)
+        } else if status == STATUS_OBJECT_NAME_COLLISION {
+            io::Error::from(io::ErrorKind::AlreadyExists)
         } else {
             io::Error::new(
                 io::ErrorKind::Other,
@@ -2265,11 +2268,11 @@ mod nt_nofollow {
     // ---- crate-facing entry points (called by the `#[cfg(windows)]` branches of the receive path) ----
 
     /// R-S8/R-A5: open a receive-WRITE target reparse-safely (parent walk + no-follow child open).
-    /// Uses FILE_OPEN_IF (never OVERWRITE_IF), so a reparse-point final component is rejected before
-    /// the caller validates ownership/link authority and explicitly truncates the admitted handle.
+    /// New generations use FILE_CREATE so an existing sidecar cannot be claimed or truncated;
+    /// leases may use FILE_OPEN_IF, and resume uses FILE_OPEN. All reject reparse-point leaves.
     pub(super) fn open_recv_write(
         path: &Path,
-        create_file: bool,
+        creation: super::ReceiveFileCreation,
         create_parent: bool,
         readable: bool,
     ) -> io::Result<std::fs::File> {
@@ -2284,7 +2287,11 @@ mod nt_nofollow {
                 parent.as_raw_handle() as HANDLE,
                 &name,
                 access,
-                if create_file { FILE_OPEN_IF } else { FILE_OPEN },
+                match creation {
+                    super::ReceiveFileCreation::Existing => FILE_OPEN,
+                    super::ReceiveFileCreation::OpenOrCreate => FILE_OPEN_IF,
+                    super::ReceiveFileCreation::CreateNew => FILE_CREATE,
+                },
                 FILE_NON_DIRECTORY_FILE,
                 ReparseRequirement::Absent,
             )?
@@ -2425,16 +2432,24 @@ mod nt_nofollow {
 /// R-S8 / R-A5: open a file-transfer RECEIVE-write target with NO-FOLLOW semantics across the
 /// whole parent path, not just the final component. When parent creation is authorized, the Unix
 /// path creates/opens every parent directory via `mkdirat`/`openat(O_DIRECTORY|O_NOFOLLOW)`; resume
-/// and confirmation use the same walk without creation. The target opens with `openat(O_NOFOLLOW)`,
-/// rejecting symlinks, FIFOs, devices, and other non-regular targets. Windows performs the identical
-/// create-or-open walk with `NtCreateFile` + `OBJECT_ATTRIBUTES.RootDirectory` (see the
+/// and confirmation use the same walk without creation. New sidecars use exclusive creation, so an
+/// existing receive generation cannot be silently reused or truncated. The target opens no-follow,
+/// rejecting symlinks, FIFOs, devices, and other non-regular targets. Windows performs the same
+/// parent-relative walk with `NtCreateFile` + `OBJECT_ATTRIBUTES.RootDirectory` (see the
 /// `nt_nofollow` module above), rejecting NTFS junctions and symlinks on every component. Both close
 /// the intermediate-directory race documented in HARDENING_STATUS: a local user cannot swap a
 /// parent directory for a reparse point between validation and the peer's write.
+#[derive(Clone, Copy)]
+enum ReceiveFileCreation {
+    Existing,
+    OpenOrCreate,
+    CreateNew,
+}
+
 fn open_recv_file_no_follow_std(
     path: &Path,
     truncate: bool,
-    create_file: bool,
+    creation: ReceiveFileCreation,
     create_parent: bool,
     readable: bool,
 ) -> std::io::Result<std::fs::File> {
@@ -2456,28 +2471,47 @@ fn open_recv_file_no_follow_std(
                 | crate::libc::O_NOFOLLOW
                 | crate::libc::O_NONBLOCK
                 | crate::libc::O_NOCTTY;
-            if create_file {
+            if !matches!(creation, ReceiveFileCreation::Existing) {
                 flags |= crate::libc::O_CREAT;
+            }
+            if matches!(creation, ReceiveFileCreation::CreateNew) {
+                flags |= crate::libc::O_EXCL;
             }
             open_regular_child_no_follow(parent.as_raw_fd(), &name, flags, 0o600)
         }
 
         #[cfg(windows)]
         {
-            nt_nofollow::open_recv_write(path, create_file, create_parent, readable)
+            nt_nofollow::open_recv_write(path, creation, create_parent, readable)
         }
 
         #[cfg(all(not(unix), not(windows)))]
         {
             let mut opts = std::fs::OpenOptions::new();
-            opts.write(true)
-                .read(readable)
-                .create(create_file)
-                .truncate(false);
+            opts.write(true).read(readable).truncate(false);
+            match creation {
+                ReceiveFileCreation::Existing => {}
+                ReceiveFileCreation::OpenOrCreate => {
+                    opts.create(true);
+                }
+                ReceiveFileCreation::CreateNew => {
+                    opts.create_new(true);
+                }
+            }
             opts.open(path)
         }
     }?;
-    validate_recv_file_authority(&file)?;
+    if let Err(error) = validate_recv_file_authority(&file) {
+        if matches!(creation, ReceiveFileCreation::CreateNew) {
+            if let Err(cleanup_error) = remove_open_recv_file_no_follow(path, &file) {
+                return Err(std::io::Error::new(
+                    error.kind(),
+                    format!("{error}; newly created receive artifact cleanup failed: {cleanup_error}"),
+                ));
+            }
+        }
+        return Err(error);
+    }
     if truncate {
         file.set_len(0)?;
     }
@@ -2519,7 +2553,13 @@ fn validate_recv_file_authority(file: &std::fs::File) -> std::io::Result<()> {
 
 #[cfg(test)]
 fn open_recv_write_no_follow_std(path: &Path, truncate: bool) -> std::io::Result<std::fs::File> {
-    open_recv_file_no_follow_std(path, truncate, true, true, false)
+    open_recv_file_no_follow_std(
+        path,
+        truncate,
+        ReceiveFileCreation::OpenOrCreate,
+        true,
+        false,
+    )
 }
 
 #[cfg(unix)]
@@ -2899,7 +2939,13 @@ struct ReceivePathLease {
 impl ReceivePathLease {
     fn acquire(final_path: &Path, create_parent: bool) -> std::io::Result<Self> {
         let path = recv_sidecar_path(final_path, ".download.lock");
-        let file = open_recv_file_no_follow_std(&path, false, true, create_parent, false)?;
+        let file = open_recv_file_no_follow_std(
+            &path,
+            false,
+            ReceiveFileCreation::OpenOrCreate,
+            create_parent,
+            false,
+        )?;
         acquire_receive_path_lock(&file)?;
         #[cfg(any(unix, windows))]
         ensure_recv_path_matches_open_file(&path, &file)?;
@@ -2946,7 +2992,13 @@ impl ReceiveWriteClaim {
         let download_path = recv_sidecar_path(&final_path, ".download");
         let digest_path = recv_sidecar_path(&final_path, ".digest");
         let download_file =
-            match open_recv_file_no_follow_std(&download_path, true, true, false, false) {
+            match open_recv_file_no_follow_std(
+                &download_path,
+                false,
+                ReceiveFileCreation::CreateNew,
+                false,
+                false,
+            ) {
                 Ok(file) => file,
                 Err(err) => {
                     if let Err(cleanup_err) = lease.retire() {
@@ -2958,7 +3010,13 @@ impl ReceiveWriteClaim {
                 }
             };
         let mut digest_file =
-            match open_recv_file_no_follow_std(&digest_path, true, true, false, true) {
+            match open_recv_file_no_follow_std(
+                &digest_path,
+                false,
+                ReceiveFileCreation::CreateNew,
+                false,
+                true,
+            ) {
                 Ok(file) => file,
                 Err(err) => {
                     let cleanup_result = remove_receive_artifacts_and_sync_parent(
@@ -3034,7 +3092,13 @@ impl ReceiveWriteClaim {
             let download_path = recv_sidecar_path(&final_path, ".download");
             let digest_path = recv_sidecar_path(&final_path, ".digest");
             let mut digest_file =
-                open_recv_file_no_follow_std(&digest_path, false, false, false, true)?;
+                open_recv_file_no_follow_std(
+                    &digest_path,
+                    false,
+                    ReceiveFileCreation::Existing,
+                    false,
+                    true,
+                )?;
             let mut content = String::new();
             (&mut digest_file).take(4097).read_to_string(&mut content)?;
             if content.len() > 4096 {
@@ -3045,7 +3109,13 @@ impl ReceiveWriteClaim {
                 bail!("resume digest does not match the active transfer");
             }
             let download_file =
-                open_recv_file_no_follow_std(&download_path, false, false, false, false)?;
+                open_recv_file_no_follow_std(
+                    &download_path,
+                    false,
+                    ReceiveFileCreation::Existing,
+                    false,
+                    false,
+                )?;
             let mut stream_file = download_file.try_clone()?;
             let available = stream_file.metadata()?.len();
             if offset > available {
@@ -4658,8 +4728,8 @@ mod tests {
         );
     }
 
-    // R-S8: the no-follow open MUST still allow a legitimate (fresh or existing-regular) target, so
-    // the hardening never breaks a real transfer (only a symlink final component is refused).
+    // R-S8: the low-level no-follow open still supports a legitimate regular target. Product
+    // receive admission separately requires exclusive creation for a new sidecar generation.
     #[test]
     fn recv_write_no_follow_allows_regular_target() {
         let tmp = TestTempDir::new("rustdesk_nofollow_ok");
@@ -4673,7 +4743,7 @@ mod tests {
             "no-follow open must allow a fresh regular target"
         );
         assert!(target.exists());
-        // an existing regular target re-opens (truncate) — a re-download is not blocked
+        // the create-or-open primitive can re-open a regular target; a new receive does not use it
         assert!(
             open_recv_write_no_follow_std(Path::new(target_s), true).is_ok(),
             "no-follow open must allow an existing regular target"
@@ -4720,10 +4790,22 @@ mod tests {
         std::fs::write(&digest_path, b"{}").expect("write digest");
         std::os::unix::fs::symlink(&secret, &final_path).expect("create symlink final");
         let download_file =
-            open_recv_file_no_follow_std(&download_path, false, false, false, false)
-                .expect("open exact download");
-        let digest_file = open_recv_file_no_follow_std(&digest_path, false, false, false, false)
-            .expect("open exact digest");
+            open_recv_file_no_follow_std(
+                &download_path,
+                false,
+                ReceiveFileCreation::Existing,
+                false,
+                false,
+            )
+            .expect("open exact download");
+        let digest_file = open_recv_file_no_follow_std(
+            &digest_path,
+            false,
+            ReceiveFileCreation::Existing,
+            false,
+            false,
+        )
+        .expect("open exact digest");
 
         let mut published = false;
         finish_recv_write_no_follow(&final_path, &download_file, &digest_file, 1, &mut published)
@@ -4755,10 +4837,22 @@ mod tests {
         std::fs::write(&download_path, b"durable-payload").expect("write download");
         std::fs::write(&digest_path, b"{}").expect("write digest");
         let download_file =
-            open_recv_file_no_follow_std(&download_path, false, false, false, false)
-                .expect("open exact download");
-        let digest_file = open_recv_file_no_follow_std(&digest_path, false, false, false, false)
-            .expect("open exact digest");
+            open_recv_file_no_follow_std(
+                &download_path,
+                false,
+                ReceiveFileCreation::Existing,
+                false,
+                false,
+            )
+            .expect("open exact download");
+        let digest_file = open_recv_file_no_follow_std(
+            &digest_path,
+            false,
+            ReceiveFileCreation::Existing,
+            false,
+            false,
+        )
+        .expect("open exact digest");
 
         let mut published = false;
         let result = finish_recv_write_no_follow(
@@ -5097,10 +5191,22 @@ mod tests {
         std::fs::write(&download_path, b"payload").expect("write download");
         std::fs::write(&digest_path, b"{}").expect("write digest");
         let download_file =
-            open_recv_file_no_follow_std(&download_path, false, false, false, false)
-                .expect("open exact download");
-        let digest_file = open_recv_file_no_follow_std(&digest_path, false, false, false, false)
-            .expect("open exact digest");
+            open_recv_file_no_follow_std(
+                &download_path,
+                false,
+                ReceiveFileCreation::Existing,
+                false,
+                false,
+            )
+            .expect("open exact download");
+        let digest_file = open_recv_file_no_follow_std(
+            &digest_path,
+            false,
+            ReceiveFileCreation::Existing,
+            false,
+            false,
+        )
+        .expect("open exact digest");
 
         let mut published = false;
         finish_recv_write_no_follow(
@@ -5138,10 +5244,22 @@ mod tests {
         std::fs::write(&download_path, b"payload").expect("write download");
         std::fs::write(&digest_path, b"{}").expect("write digest");
         let download_file =
-            open_recv_file_no_follow_std(&download_path, false, false, false, false)
-                .expect("open exact download");
-        let digest_file = open_recv_file_no_follow_std(&digest_path, false, false, false, false)
-            .expect("open exact digest");
+            open_recv_file_no_follow_std(
+                &download_path,
+                false,
+                ReceiveFileCreation::Existing,
+                false,
+                false,
+            )
+            .expect("open exact download");
+        let digest_file = open_recv_file_no_follow_std(
+            &digest_path,
+            false,
+            ReceiveFileCreation::Existing,
+            false,
+            false,
+        )
+        .expect("open exact digest");
 
         let link = downloads.join("link");
         assert!(
@@ -5367,6 +5485,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn new_receive_refuses_existing_sidecars_without_changing_their_bytes() {
+        for (suffix, original) in [
+            (".download", &b"older-partial-payload"[..]),
+            (".digest", &b"older-resume-digest"[..]),
+        ] {
+            let tmp = TestTempDir::new("rustdesk_receive_sidecar_collision");
+            let sidecar = tmp.join(&format!("incoming.bin{suffix}"));
+            std::fs::write(&sidecar, original).expect("stage an older receive artifact");
+            let mut job = new_write_job(94, tmp.path.clone(), "incoming.bin")
+                .expect("create new receive job");
+
+            job.write(FileTransferBlock {
+                id: 94,
+                file_num: 0,
+                data: b"new-payload".to_vec().into(),
+                ..Default::default()
+            })
+            .await
+            .expect_err("a new receive must not adopt an existing sidecar");
+
+            assert_eq!(
+                std::fs::read(&sidecar).expect("read older artifact"),
+                original,
+                "the refused receive must preserve the older artifact"
+            );
+            assert!(!tmp.join("incoming.bin").exists());
+            assert!(!tmp.join("incoming.bin.download.lock").exists());
+            let other_suffix = if suffix == ".download" {
+                ".digest"
+            } else {
+                ".download"
+            };
+            assert!(!tmp.join(&format!("incoming.bin{other_suffix}")).exists());
+        }
+    }
+
+    #[tokio::test]
     async fn receive_destination_lease_is_cross_process_and_crash_resumable() {
         const TEST_NAME: &str =
             "fs::tests::receive_destination_lease_is_cross_process_and_crash_resumable";
@@ -5550,7 +5705,7 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn receive_sidecar_hard_links_are_refused_before_truncation() {
+    async fn receive_sidecar_hard_links_are_refused_without_mutation() {
         async fn exercise(sidecar_suffix: &str, job_id: i32) {
             let tmp = TestTempDir::new(&format!("rustdesk_receive_hardlink_{job_id}"));
             std::fs::create_dir_all(&tmp.path).expect("create receive directory");
@@ -5562,7 +5717,7 @@ mod tests {
 
             let mut job = new_write_job(job_id, tmp.path.clone(), "incoming.bin")
                 .expect("create receive-write job");
-            let error = job
+            job
                 .write(FileTransferBlock {
                     id: job_id,
                     file_num: 0,
@@ -5571,15 +5726,10 @@ mod tests {
                 })
                 .await
                 .expect_err("a hard-linked receive sidecar must not be admitted");
-            assert!(
-                error.to_string().contains("exactly one filesystem link"),
-                "unexpected hard-link rejection: {}",
-                error
-            );
             assert_eq!(
                 std::fs::read(&secret).expect("read protected hard-link target"),
                 secret_contents,
-                "authority validation must precede every sidecar truncation"
+                "a refused receive must not alter a hard-linked target"
             );
             assert!(!tmp.join("incoming.bin").exists());
             assert!(!tmp.join("incoming.bin.download.lock").exists());

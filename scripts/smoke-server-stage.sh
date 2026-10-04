@@ -748,11 +748,47 @@ EOS
       [ ! -e "$HOME/allowed-after-login/orphaned.txt$suffix" ] \
         && [ ! -L "$HOME/allowed-after-login/orphaned.txt$suffix" ]
     done
+    printf '%s' 'older-download-generation-0123456789' \
+      >"$HOME/allowed-after-login/collision-download.txt.download"
+    printf '%s' 'older-digest-generation-abcdefghij' \
+      >"$HOME/allowed-after-login/collision-digest.txt.digest"
+    chmod 0600 "$HOME/allowed-after-login/collision-download.txt.download" \
+      "$HOME/allowed-after-login/collision-digest.txt.digest"
+    if collision_output=$(timeout --signal=TERM --kill-after=5s 20s \
+        /smoke-target/debug/examples/probe_client \
+        '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfilecollision 2>&1); then
+      collision_status=0
+    else
+      collision_status=$?
+    fi
+    printf '%s\n' "$collision_output"
+    if [ "$collision_status" -ne 0 ]; then
+      tail -n 120 /tmp/cm-file-server.log >&2
+      exit "$collision_status"
+    fi
+    [ "$(grep -Fc '[FT-COLLISION-REFUSED id=17009 sidecar=download]' <<<"$collision_output")" -eq 1 ]
+    [ "$(grep -Fc '[FT-COLLISION-REFUSED id=17010 sidecar=digest]' <<<"$collision_output")" -eq 1 ]
+    grep -Fxq 'probe_client: PASS' <<<"$collision_output"
+    "$READY" --is-running "$SRV" "$SRV_START"
+    cmp -s -- "$HOME/allowed-after-login/collision-download.txt.download" \
+      <(printf '%s' 'older-download-generation-0123456789')
+    cmp -s -- "$HOME/allowed-after-login/collision-digest.txt.digest" \
+      <(printf '%s' 'older-digest-generation-abcdefghij')
+    for name in collision-download.txt collision-digest.txt; do
+      [ ! -e "$HOME/allowed-after-login/$name" ] \
+        && [ ! -L "$HOME/allowed-after-login/$name" ]
+      [ ! -e "$HOME/allowed-after-login/$name.download.lock" ] \
+        && [ ! -L "$HOME/allowed-after-login/$name.download.lock" ]
+    done
+    [ ! -e "$HOME/allowed-after-login/collision-download.txt.digest" ] \
+      && [ ! -L "$HOME/allowed-after-login/collision-download.txt.digest" ]
+    [ ! -e "$HOME/allowed-after-login/collision-digest.txt.download" ] \
+      && [ ! -L "$HOME/allowed-after-login/collision-digest.txt.download" ]
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/cm-file-server.log
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

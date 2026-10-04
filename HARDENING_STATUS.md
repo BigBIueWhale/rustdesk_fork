@@ -622,6 +622,36 @@ This is component capture/stride evidence, not hostile-server setup parsing,
 full-product presentation, installed-service behavior, the reported
 Android/Windows latency cause, or local-privilege-escalation closure.
 
+**X11 setup-record bounds — SOURCE CORRECTED; NATIVE COMPONENT ACCEPTED.**
+The former `xcb_setup_roots_iterator` and nested format/depth/visual cursors
+trusted server-supplied counts without checking each record against the setup
+reply's total length. `libs/scrap/src/x11/iter.rs` now reads the eight-byte
+prefix first, bounds the success header, vendor padding, formats, screens,
+depths, visuals, and final layout against that one length, and owns the
+validated root/format records before issuing RandR requests. The obsolete
+unchecked cursor FFI is absent from production. The inspected upstream libxcb
+[setup reader](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/master/src/xcb_conn.c)
+allocates `8 + 4 * length` bytes before exposing the setup; its
+[blocking reader](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/master/src/xcb_in.c)
+returns the requested length only after a complete read. Exact source
+`7dea168655fe9641113e93cd74ca6940a4987809`, tree
+`6f4a6d5f50bffdfaa31b5cc89962bd6e3bbff2ca`, passed the 41-second
+zero-NIC focused transaction. A real two-screen Xvfb/XCB connection with
+post-read injected setup faults rejected seven header/nested-count/trailing
+shapes sixteen times each before any monitor query; the former generated
+root cursor still admitted the shortened-length case while the corrected
+iterator rejected it. Both real 24-bit and odd-width 16-bit MIT-SHM capture
+cases continued to produce red pixels and the correct stride. The harness
+requires the exact new native receipt. Host listener inventories were
+unchanged, process drift was zero, all owners joined, and scratch self-retired.
+Raw serial is `evidence/x11-setup-7dea1686.serial.log` (75,479 bytes,
+SHA-256 `652423d1834471ba16f6510d23204b401b690eb200a5baaa750a5af6f260660a`);
+outer log SHA-256 is
+`b7a6263d3abee555776131e78bf21d2a5727ceaf9b11a600ee387ccc7a7c895e`.
+This is XCB-returned component parsing evidence, not a malicious server's
+raw-wire test, full-product presentation, installed-service behavior,
+Android/Windows causation, or local-privilege-escalation closure.
+
 **X11 atom-query finality — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
 The production helper returned an empty name when GetAtomName failed and leaked
 the error allocation. Exact `a4d5dee1` reproduced a real server BadAtom becoming

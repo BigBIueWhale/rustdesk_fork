@@ -13055,6 +13055,18 @@ back or reported unperformed; exact session closure is the only sound outcome af
 There is no log-only success, retry, alternate route, inferred completion, service transition, or
 persistent-service kill.
 
+The desktop CM receive half now engages the 256-KiB raw-block frame cap and a shared five-second
+header-to-payload deadline before reading an authorized `WriteBlock`; success restores the aggregate
+CM frame cap, while transport failure or timeout retires the exact task and registry owner. The two
+framed-stream regressions for an exact-limit block, an oversized block, and a withheld block are
+wired into the isolated focused Rust lane but have **not executed**. Exact pushed source `06f5f092`
+failed that lane before these tests because `libs/scrap/src/common/camera.rs` still calls the
+Linux `PixelBuffer::new` constructor with its former signature; serial SHA-256
+`eb392e036b7117402cef840a8762040c8ab25e35f4fa56db79316d005c28c808` is retained in
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.QT85ZGvMUo.serial.log`.
+The failed VM run root was retired after its process exited. This is source correction with a
+compile blocker, not native or even focused Rust acceptance.
+
 The executable Tokio regressions
 `r_s11is_cm_file_response_refusal_is_returned_to_the_command_owner` and
 `r_s11is_read_job_commits_only_after_initial_response_admission` remain, with direct shared command

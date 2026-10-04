@@ -3350,6 +3350,38 @@ the connection and server stayed live. Raw serial
 the outer listener/process audit and joined cleanup passed with no run overlay.
 This is Linux direct-send error finality, not a full download or native Windows read result.
 
+Exact-length receive closure (2026-10-05): product `625564c3` now retains each
+listed file size through the CM `NewWrite` IPC, rejects an inconsistent aggregate,
+bounds each decoded receive block and resumed offset to the listed file, and
+requires both the logical byte count and staged inode length to equal that size
+before publication. The viewer also rejects a digest whose size differs from its
+listing before destination inspection. The pre-existing correct-index `Done`
+check alone had allowed a short file to be published; an oversized block could
+also be written. Focused fixture corrections `a060b08f` and `e05a2e91` followed
+two failed test-only VM runs (retained raw serials
+`hbb-common-fs-run.bu8rMRwT3y.serial.log` and
+`hbb-common-fs-run.JUovwlEcaY.serial.log`; their idle overlays were
+identity-bound retired). At `e05a2e91`, the no-NIC filesystem VM passed four
+config and 64 filesystem tests in 164 seconds (raw serial
+`hbb-common-fs-run.8dsa1iW9yk.serial.log`, 69,391 bytes, SHA-256
+`112e57c3b1e02839b491bcb93b3d7e7eee4607f4a5e39a4c070582488860ba9b`).
+The same source passed the keyed real-peer CM replay in 266 seconds: normal
+receive still committed exact bytes, while a short payload followed by the
+correct `Done(1)` returned a size error and left no final file or owned sidecars.
+Raw serial `cm-file-replay-run.YRuNlH5dxR.serial.log` is 316,285 bytes,
+SHA-256 `d6f7b3386760f4ffc1b0d34ba9bac77dfdbad37ac182c99dfdd1558a52496d12`.
+Both outer listener/process audits found no host addition or drift, with joined
+guest-only Docker/QEMU cleanup and zero retained run overlays. The expanded
+Linux Rust-app guest test transaction at `4aedee4e` passed 55 focused tests,
+including CM aggregate-size and viewer cleanup/digest cases, but its outer
+wrapper rejected the receipt because it still expected 48 tests. The raw serial
+`android-rust-lifecycle-tests-run.aSRpqaFkEe.serial.log` (69,121 bytes, SHA-256
+`542f680bb9bd9fb6c148e4e04505f4af49cadc514ab60b7ee0c1046c5ca634d9`)
+is retained, its failed-run overlay was identity-bound retired, and `23f890c7`
+corrects the outer expected count; a full outer rerun of that correction is not
+claimed. This does not yet exercise an actual viewer writing a download or
+native Windows/Android/installed artifacts.
+
 Pushed test candidate `dfeb3dba` (tree `8c3d576d`) then replayed a readable source on
 the **same keyed Linux FileTransfer connection after that terminal error**. The real
 server listed one 150,001-byte file, sent its file-0 digest, accepted an explicit
@@ -3366,7 +3398,7 @@ read, installed desktop, Android, or a final artifact.
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | Current Linux evidence: 61 Rust filesystem tests and keyed real-peer CM upload, cancel, owner-loss/reconnect, collision, and cleanup-failure replays; direct-send unreadable-source error is terminal, followed on the same connection by a confirmed, exact-byte two-block direct read and one `Done`. The exact receipts and limits are above. Still OPEN: real viewer download/write-to-disk and its digest/confirmation behavior, saturation, terminal-first disconnect, concurrent/stale-generation reconnect, broader cleanup faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and release-artifact evidence. The installed Windows result predates these corrections. |
+| CM/file finality (R-S11c-4c/4d) | Current Linux evidence: 64 Rust filesystem tests plus four config tests, a 55-test Rust-app guest pass (outer receipt count corrected later), and keyed real-peer CM upload, short-write refusal, cancel, owner-loss/reconnect, collision, and cleanup-failure replays; direct-send unreadable-source error is terminal, followed on the same connection by a confirmed, exact-byte two-block direct read and one `Done`. The exact receipts and limits are above. Still OPEN: real viewer download/write-to-disk and its digest/confirmation behavior, saturation, terminal-first disconnect, concurrent/stale-generation reconnect, broader cleanup faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and release-artifact evidence. The installed Windows result predates these corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

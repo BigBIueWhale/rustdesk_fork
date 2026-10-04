@@ -180,7 +180,7 @@ async fn probe_cm_receive_write(stream: &mut FramedStream, report: &mut String) 
         block.set_block(FileTransferBlock {
             id,
             file_num: 0,
-            data: payload.to_vec(),
+            data: payload.to_vec().into(),
             ..Default::default()
         });
         let mut message = Message::new();

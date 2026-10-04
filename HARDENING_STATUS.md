@@ -1685,6 +1685,25 @@ weaker independently inspectable trace than `9bfcf667`. The short same-connectio
 is neither a sustained resource soak nor a reproduction or correction of the earlier
 display-only failure. Release-APK handles, physical devices, network transitions,
 Windows focus behavior, original causation and release evidence remain OPEN.
+Pushed harness `d14baead` reran that same retained test-only APK and production peer
+without rebuilding either artifact, replacing only the third 12-second background
+interval with 120 seconds. The still-keyed peer, one foreground MainService and app
+process survived; after Activity resume, the independent full-counter framebuffer
+oracle observed two changing frames in 530 ms with a maximum sampled age of
+1,036 ms. The remaining six warm reconnects, six task relaunches and Force Stop
+baseline passed. Across all phases the maxima were 570 ms for background recovery,
+1,240 ms for task recovery, 1,269 ms for sampled pixel age and 219 ms for observer
+capture. Thirteen resource samples bounded RSS growth to 13,256 KiB and thread
+growth to five; release-APK handle counts remain unavailable to the nonroot observer.
+The 1,248-second no-NIC outer transaction reported no added host listener or
+preexisting-process drift and joined cleanup. Its run root/VM disk self-retired;
+complete owner-private raw serial
+`.harness-state/verifier-vm/android-emulator-runtime-run.XobKPUqsvc.serial.log`
+is 122,145 bytes, SHA-256
+`c00f02a5b5e840827958266e2317b6a0edbb132cdebb357ffb8c41dc9fd3ddf5`.
+This is one longer background interval on an older test-only APK, not a sustained
+soak, a reproduction or correction of the intermittent failure, current-release
+behavior, physical-device evidence, or Android/Windows causation. Those remain OPEN.
 The older `035c9a20` APK cannot supply the owner observation. Physical devices, sustained
 warm/network/handle evidence and the original Android/Windows causes stay OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local

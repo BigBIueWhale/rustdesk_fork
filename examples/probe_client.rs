@@ -24,7 +24,8 @@
 //!   - `cmfiletransfer` : strict installed-service CM lifecycle probe — the same exchange, but PASS
 //!                additionally requires an actual directory `FileResponse` from the CM bridge.
 //!   - `cmfileauthority` : VM-only CM authority probe — pre-login create must not mutate the
-//!                fixture; post-login directory read/create and receive-write finality run through CM.
+//!                fixture; post-login directory read/create, receive-write finality, and a
+//!                two-file/four-block receive job run through CM.
 //!
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
@@ -41,9 +42,12 @@ const CM_PRELOGIN_CREATE_ID: i32 = 17001;
 const CM_POSTLOGIN_CREATE_ID: i32 = 17002;
 const CM_PREMATURE_WRITE_ID: i32 = 17003;
 const CM_COMMITTED_WRITE_ID: i32 = 17004;
+const CM_MULTI_FILE_WRITE_ID: i32 = 17005;
 const CM_PRELOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/blocked-before-login";
 const CM_POSTLOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/allowed-after-login";
 const CM_WRITE_PAYLOAD: &[u8] = b"cm-file-write-finality-v1-0123456789";
+const CM_MULTI_FIRST: &[u8] = b"first-file-two-blocks-0123456789";
+const CM_MULTI_SECOND: &[u8] = b"second-file-two-blocks-abcdefghij";
 
 struct ProbePassword(Vec<u8>);
 
@@ -256,7 +260,103 @@ async fn probe_cm_receive_write(stream: &mut FramedStream, report: &mut String) 
             return false;
         }
     }
-    true
+    let mut action = FileAction::new();
+    action.set_receive(FileTransferReceiveRequest {
+        id: CM_MULTI_FILE_WRITE_ID,
+        path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
+        files: [
+            ("first.txt", CM_MULTI_FIRST),
+            ("second.txt", CM_MULTI_SECOND),
+        ]
+        .iter()
+        .map(|&(name, payload)| FileEntry {
+            entry_type: FileType::File.into(),
+            name: name.to_owned(),
+            size: payload.len() as u64,
+            ..Default::default()
+        })
+        .collect(),
+        file_num: 0,
+        total_size: (CM_MULTI_FIRST.len() + CM_MULTI_SECOND.len()) as u64,
+        ..Default::default()
+    });
+    let mut request = Message::new();
+    request.set_file_action(action);
+    if let Err(error) = send_probe_message(stream, request).await {
+        report.push_str(&format!("[FT-MULTI-REQUEST-ERROR {error}] "));
+        return false;
+    }
+    for (file_num, chunk) in [
+        (0, &CM_MULTI_FIRST[..11]),
+        (0, &CM_MULTI_FIRST[11..]),
+        (1, &CM_MULTI_SECOND[..13]),
+        (1, &CM_MULTI_SECOND[13..]),
+    ] {
+        let mut response = FileResponse::new();
+        response.set_block(FileTransferBlock {
+            id: CM_MULTI_FILE_WRITE_ID,
+            file_num,
+            data: chunk.to_vec().into(),
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_file_response(response);
+        if let Err(error) = send_probe_message(stream, message).await {
+            report.push_str(&format!("[FT-MULTI-BLOCK-ERROR {error}] "));
+            return false;
+        }
+    }
+    let mut response = FileResponse::new();
+    response.set_done(FileTransferDone {
+        id: CM_MULTI_FILE_WRITE_ID,
+        file_num: 2,
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_response(response);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-MULTI-DONE-SEND-ERROR {error}] "));
+        return false;
+    }
+    for _ in 0..8 {
+        let Some(Ok(bytes)) = stream.next_timeout(4000).await else {
+            report.push_str("[FT-MULTI-NO-RESPONSE] ");
+            return false;
+        };
+        let response = match Message::parse_from_bytes(&bytes) {
+            Ok(response) => response,
+            Err(error) => {
+                report.push_str(&format!("[FT-MULTI-PARSE-ERROR {error}] "));
+                return false;
+            }
+        };
+        match response.union {
+            Some(message::Union::FileResponse(response)) => match response.union {
+                Some(file_response::Union::Done(done)) if done.id == CM_MULTI_FILE_WRITE_ID => {
+                    if done.file_num == 2 {
+                        report.push_str("[FT-MULTI-WRITE-COMMITTED id=17005 files=2 blocks=4] ");
+                        return true;
+                    }
+                    report.push_str(&format!("[FT-MULTI-UNEXPECTED-DONE {done:?}] "));
+                    return false;
+                }
+                Some(file_response::Union::Error(error)) if error.id == CM_MULTI_FILE_WRITE_ID => {
+                    report.push_str(&format!("[FT-MULTI-ERROR {error:?}] "));
+                    return false;
+                }
+                _ => {}
+            },
+            Some(message::Union::LoginResponse(response))
+                if matches!(response.union, Some(login_response::Union::Error(_))) =>
+            {
+                report.push_str("[FT-MULTI-LOGIN-ERROR] ");
+                return false;
+            }
+            _ => {}
+        }
+    }
+    report.push_str("[FT-MULTI-MATCHING-RESPONSE-MISSING] ");
+    false
 }
 
 fn main() {

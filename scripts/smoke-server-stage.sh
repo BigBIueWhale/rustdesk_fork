@@ -674,6 +674,7 @@ EOS
     [ "$(grep -Fc '[FT-CREATE-DONE id=17002]' <<<"$probe_output")" -eq 1 ]
     [ "$(grep -Fc '[FT-PREMATURE-WRITE-REFUSED id=17003]' <<<"$probe_output")" -eq 1 ]
     [ "$(grep -Fc '[FT-WRITE-COMMITTED id=17004]' <<<"$probe_output")" -eq 1 ]
+    [ "$(grep -Fc '[FT-MULTI-WRITE-COMMITTED id=17005 files=2 blocks=4]' <<<"$probe_output")" -eq 1 ]
     grep -Fxq 'probe_client: PASS' <<<"$probe_output"
     "$READY" --is-running "$SRV" "$SRV_START"
     [ ! -e "$HOME/blocked-before-login" ] && [ ! -L "$HOME/blocked-before-login" ]
@@ -686,17 +687,30 @@ EOS
         && [ ! -L "$HOME/allowed-after-login/premature.txt$suffix" ]
       [ ! -e "$HOME/allowed-after-login/payload.txt$suffix" ] \
         && [ ! -L "$HOME/allowed-after-login/payload.txt$suffix" ]
+      for name in first.txt second.txt; do
+        [ ! -e "$HOME/allowed-after-login/$name$suffix" ] \
+          && [ ! -L "$HOME/allowed-after-login/$name$suffix" ]
+      done
     done
     [ -f "$HOME/allowed-after-login/payload.txt" ] \
       && [ ! -L "$HOME/allowed-after-login/payload.txt" ] \
       && [ "$(stat -c '%u:%g:%a' -- "$HOME/allowed-after-login/payload.txt")" = "$(id -u):$(id -g):600" ] \
       && cmp -s -- "$HOME/allowed-after-login/payload.txt" \
         <(printf '%s' 'cm-file-write-finality-v1-0123456789')
+    for pair in 'first.txt:first-file-two-blocks-0123456789' \
+                'second.txt:second-file-two-blocks-abcdefghij'; do
+      name=${pair%%:*}
+      payload=${pair#*:}
+      [ -f "$HOME/allowed-after-login/$name" ] \
+        && [ ! -L "$HOME/allowed-after-login/$name" ] \
+        && [ "$(stat -c '%u:%g:%a' -- "$HOME/allowed-after-login/$name")" = "$(id -u):$(id -g):600" ] \
+        && cmp -s -- "$HOME/allowed-after-login/$name" <(printf '%s' "$payload")
+    done
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/cm-file-server.log
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

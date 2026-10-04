@@ -2076,6 +2076,10 @@ run_focused_rust_tests() {
             client::tests::r_p14c_viewer_credential_prompt_requires_typed_credential_failure
             client::tests::r_p14_viewer_credential_is_fully_prepared_before_socket_keying
             direct_service::direct_connection_task_tests::parent_cancellation_converges_every_owned_child_before_listener_completion
+            ui_cm_interface::tests::r_s11is_cm_file_raw_ceiling_rejects_oversize_after_accepting_exact_limit
+            ui_cm_interface::tests::r_s11is_cm_file_raw_timeout_retires_authenticated_runner
+            ui_cm_interface::tests::r_s11is_cm_file_response_refusal_is_returned_to_the_command_owner
+            ui_cm_interface::tests::r_s11is_read_job_commits_only_after_initial_response_admission
             privacy_mode::tests::r_s11iu_privacy_resource_owner_distinguishes_same_id_token_replacement
             privacy_mode::tests::r_s11iu_privacy_activation_commits_only_after_prepare
             privacy_mode::tests::r_s11iu_privacy_activation_deadline_cancels_and_drains_before_return
@@ -2372,7 +2376,7 @@ run_focused_rust_tests() {
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             direct_service::direct_connection_task_tests:: --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config \
-                            ui_cm_interface::tests::r_s11is_cm_file_raw_ \
+                            ui_cm_interface::tests::r_s11is_ \
                             --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config,flutter \
                             r_s11iu_ --color never -- --test-threads=1
@@ -2426,7 +2430,7 @@ run_focused_rust_tests() {
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
     else
-        [ "${#result_lines[@]}" -eq 8 ] \
+        [ "${#result_lines[@]}" -eq 9 ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
     fi
     [ "$(grep -Ec '^test result: ' "$output")" -eq "${#result_lines[@]}" ] \
@@ -2477,9 +2481,9 @@ run_focused_rust_tests() {
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
             "$DEB_BUILDER_CONFIG_ID"
     else
-        [ "$tests_passed" -eq 41 ] \
+        [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-and-software-rgba-mailbox rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_PUB_CACHE_CLOSURE_V1" \

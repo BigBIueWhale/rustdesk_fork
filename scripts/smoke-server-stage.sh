@@ -631,11 +631,17 @@ EOS
   cm-file-replay)
     export HOME=/tmp/rd-cm-file-replay
     mkdir -m 0700 "$HOME"
+    TAMPER_PID=
     [ ! -e "$HOME/blocked-before-login" ] && [ ! -L "$HOME/blocked-before-login" ] \
       && [ ! -e "$HOME/allowed-after-login" ] && [ ! -L "$HOME/allowed-after-login" ]
     cleanup_cm_file_replay() {
       local status=$?
       trap - EXIT HUP INT TERM
+      if [ -n "$TAMPER_PID" ]; then
+        kill -TERM "$TAMPER_PID" 2>/dev/null || true
+        wait "$TAMPER_PID" 2>/dev/null || true
+        TAMPER_PID=
+      fi
       if [ -n "$SRV" ] && [ -n "$SRV_START" ] \
           && "$READY" --is-running "$SRV" "$SRV_START" 2>/dev/null; then
         "$READY" --stop "$SRV" "$SRV_START" || status=1
@@ -784,11 +790,60 @@ EOS
       && [ ! -L "$HOME/allowed-after-login/collision-download.txt.digest" ]
     [ ! -e "$HOME/allowed-after-login/collision-digest.txt.download" ] \
       && [ ! -L "$HOME/allowed-after-login/collision-digest.txt.download" ]
+    [ ! -e "$HOME/cleanup-failure.staged" ] && [ ! -L "$HOME/cleanup-failure.staged" ] \
+      && [ ! -e "$HOME/cleanup-failure.tampered" ] && [ ! -L "$HOME/cleanup-failure.tampered" ]
+    tamper_cm_receive_staging() {
+      local attempt base="$HOME/allowed-after-login/cleanup-failure.txt"
+      for ((attempt=0; attempt<400; ++attempt)); do
+        [ -f "$HOME/cleanup-failure.staged" ] && break
+        sleep 0.05
+      done
+      [ -f "$HOME/cleanup-failure.staged" ]
+      [ -f "$base.download" ] && [ ! -L "$base.download" ] \
+        && cmp -s -- "$base.download" <(printf '%s' 'partial-before-cleanup-failure')
+      [ -f "$base.digest" ] && [ ! -L "$base.digest" ]
+      [ -f "$base.download.lock" ] && [ ! -L "$base.download.lock" ]
+      [ ! -e "$base" ] && [ ! -L "$base" ] \
+        && [ ! -e "$base.displaced-download" ] && [ ! -L "$base.displaced-download" ]
+      mv -- "$base.download" "$base.displaced-download"
+      printf '%s' 'replacement-generation-must-survive' >"$base.download"
+      chmod 0600 "$base.download"
+      printf '%s' 'tampered' >"$HOME/cleanup-failure.tampered"
+    }
+    tamper_cm_receive_staging &
+    TAMPER_PID=$!
+    if cleanup_output=$(timeout --signal=TERM --kill-after=5s 30s \
+        /smoke-target/debug/examples/probe_client \
+        '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfilecleanupfailure 2>&1); then
+      cleanup_status=0
+    else
+      cleanup_status=$?
+    fi
+    printf '%s\n' "$cleanup_output"
+    wait "$TAMPER_PID"
+    TAMPER_PID=
+    if [ "$cleanup_status" -ne 0 ]; then
+      tail -n 120 /tmp/cm-file-server.log >&2
+      exit "$cleanup_status"
+    fi
+    [ "$(grep -Fc '[FT-DIR-RESPONSE path=' <<<"$cleanup_output")" -eq 1 ]
+    [ "$(grep -Fc '[FT-CLEANUP-FAILURE-REPORTED id=17011]' <<<"$cleanup_output")" -eq 1 ]
+    grep -Fxq 'probe_client: PASS' <<<"$cleanup_output"
+    "$READY" --is-running "$SRV" "$SRV_START"
+    base="$HOME/allowed-after-login/cleanup-failure.txt"
+    [ ! -e "$base" ] && [ ! -L "$base" ]
+    [ -f "$base.download" ] && [ ! -L "$base.download" ] \
+      && [ "$(stat -c '%u:%g:%a' -- "$base.download")" = "$(id -u):$(id -g):600" ] \
+      && cmp -s -- "$base.download" <(printf '%s' 'replacement-generation-must-survive')
+    [ -f "$base.displaced-download" ] && [ ! -L "$base.displaced-download" ] \
+      && cmp -s -- "$base.displaced-download" <(printf '%s' 'partial-before-cleanup-failure')
+    [ ! -e "$base.digest" ] && [ ! -L "$base.digest" ]
+    [ -f "$base.download.lock" ] && [ ! -L "$base.download.lock" ]
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/cm-file-server.log
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

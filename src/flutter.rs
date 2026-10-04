@@ -4555,7 +4555,7 @@ mod mobile_session_lifecycle_tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn r_s11iw_desktop_tab_move_requires_live_source_and_preserves_peer_on_old_close() {
+    async fn r_s11ex_desktop_tab_move_requires_live_source_and_preserves_peer_on_old_close() {
         let _guard = TEST_LOCK.lock().unwrap();
         sessions::clear_for_test();
 

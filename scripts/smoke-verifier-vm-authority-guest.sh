@@ -2125,6 +2125,7 @@ run_focused_rust_tests() {
             flutter::mobile_session_lifecycle_tests::r_s11fr_failed_rgba_rearm_retires_the_exact_mailbox
             flutter::mobile_session_lifecycle_tests::r_s11iw_stream_replacement_rotates_rgba_and_rejects_predecessor_take
             flutter::mobile_session_lifecycle_tests::r_s11iw_stream_replacement_refusal_retires_only_its_exact_rgba_session
+            flutter::mobile_session_lifecycle_tests::r_s11ex_desktop_tab_move_requires_live_source_and_preserves_peer_on_old_close
         )
     fi
 
@@ -2402,6 +2403,9 @@ run_focused_rust_tests() {
                         cargo test --offline --locked --lib --features linux-pkg-config,flutter \
                             flutter::mobile_session_lifecycle_tests::r_s11iw_ \
                             --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config,flutter \
+                            flutter::mobile_session_lifecycle_tests::r_s11ex_desktop_tab_move_requires_live_source_and_preserves_peer_on_old_close \
+                            --color never -- --test-threads=1
                         ;;
                     *) exit 93 ;;
                 esac
@@ -2440,7 +2444,7 @@ run_focused_rust_tests() {
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
     else
-        [ "${#result_lines[@]}" -eq 9 ] \
+        [ "${#result_lines[@]}" -eq 10 ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
     fi
     [ "$(grep -Ec '^test result: ' "$output")" -eq "${#result_lines[@]}" ] \

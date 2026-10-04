@@ -426,11 +426,12 @@ fn checked_fixture_request(c: *mut xcb_connection_t, cookie: xcb_void_cookie_t) 
     unsafe {
         let error = xcb_request_check(c, cookie);
         if error.is_null() {
-            return if xcb_connection_has_error(c) == 0 {
+            let connection_error = xcb_connection_has_error(c);
+            return if connection_error == 0 {
                 Ok(())
             } else {
                 Err(io::Error::new(io::ErrorKind::ConnectionAborted,
-                                   "X connection failed during checked fixture request"))
+                                   format!("X connection failed during checked fixture request: {connection_error}")))
             };
         }
         let code = (*error).error_code;

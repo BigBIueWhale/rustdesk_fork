@@ -99,6 +99,7 @@ def main():
             require(child.poll() is None, "Xvfb exited during native cases")
         except BaseException:
             log.flush()
+            print(f"X11_DISPLAY_XVFB_FAILURE_STATUS={child.poll()}", flush=True)
             print("X11_DISPLAY_XVFB_FAILURE_LOG_BEGIN", flush=True)
             print(Path(log.name).read_text()[:16384], flush=True)
             print("X11_DISPLAY_XVFB_FAILURE_LOG_END", flush=True)

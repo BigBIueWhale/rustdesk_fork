@@ -580,8 +580,11 @@ pending; ownership alone never established those bounds.
 The focused native fixture now exercises seven received-header injections,
 controlled old-code refusal before unsafe access, and actual server-created
 multiple/outputless monitors. Its seven controlled before-cases fail on the
-previous unchecked access; after-cases and the positive server-created monitor
-are not yet accepted. The injection is not a hostile-server or LPE
+previous unchecked access; all seven source-candidate after-cases passed 32
+repetitions and both public callers, but the full transaction is not accepted:
+the positive server-created monitor case loses its XCB connection during the
+fixture's checked SetMonitor request, before product enumeration. The injection
+is not a hostile-server or LPE
 reproduction.
 
 **X11 atom-query finality — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**

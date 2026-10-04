@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-9e21c2bc1c9a3d8827926eecc3ab89020f5453ae2d42a807e27df848c7c895a6  requirements.html
+e7ebd8de82dd641de1e95aa7234ae5fc16b9dba8690407bb96bf7b3f3aa25ec3  requirements.html
 ```
 
 ## Current Verdict
@@ -8581,83 +8581,18 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   provenance, kernel extraction, KVM/libguestfs, golden inspection, Windows provisioning/building, cold artifacts,
   native behavior, independent reproduction, and external review remain open. The broader Ralph-loop goal remains
   active.
-- **R-S11dp/R-S11e-134 — generic cleanup has no daemon-global Docker
-  enumeration or prefix-deletion authority — SOURCE IMPLEMENTED AND
-  CONFINED SOURCE/MUTATION VERIFIED 2026-07-26.**
-  Platform: the unprivileged Linux build/maintenance host. Endpoint/action:
-  default `scripts/cleanup.sh::clean_ephemeral` container and image discovery
-  plus force removal. Boundary: a generic reversible VM/host cleanup request ↔
-  every container and image name visible through whichever Docker daemon and
-  client configuration the caller selected.
-
-  Proven old path and history: the default cleanup PATH-selected `docker`,
-  inherited its complete routing/configuration environment, called
-  `docker ps -aq --filter name=${HARNESS_PREFIX}`, suppressed enumeration
-  failure, and passed every whitespace-split result to `docker rm -f`. It then
-  listed every top-level image repository/tag, selected textual prefix matches,
-  and piped those mutable names to `xargs docker rmi -f`. Docker's official
-  container-list documentation states that the `name` filter matches all or
-  part of a name; its image-list documentation states that one image may have
-  multiple repository names/tags. The container and image removal commands are
-  destructive daemon operations. A shared prefix therefore did not prove the
-  creating transaction, exact immutable object, or absence of another owner.
-  `git blame` attributes this branch to the original R-B11 cleanup import
-  `34b4921f`, not the recent fixed local-Docker hardening.
-
-  This was daemon-global availability, mutable-name, daemon/configuration-
-  selection, and destructive-cleanup authority debt. It is not evidence that
-  this cleanup was run against another daemon, that an unrelated container or
-  image was actually removed, Docker escaped, host root was acquired, a
-  listener or port was exposed, host RustDesk/service/configuration/firewall/
-  network state changed, exploitation occurred, or the host was compromised.
-
-  Authority model and source closure: generic cleanup owns only resources whose
-  exact identity was retained by the transaction that created them. It has no
-  such Docker object identity, and a name, label, repository/tag, or prefix is
-  not a substitute. The complete Docker availability check, global container
-  and image enumerations, suppressed-error branches, force removals, word
-  splitting, and `xargs` pipeline are deleted. `scripts/cleanup.sh` contains no
-  Docker token or client/daemon operation. Existing container-producing
-  transactions retain their own exact terminal cleanup; deliberately retained
-  acquisition/certification candidates remain explicit maintenance state
-  rather than implicit default-cleanup targets. The README states that split
-  directly. The separate R-B11/R-B11a direct-QEMU, session-libvirt, overlay,
-  manifest-gated old system-network, and recorded-package reversal surfaces
-  remain independently auditable; this slice does not declare them safe.
-
-  Primary contracts:
-  https://docs.docker.com/reference/cli/docker/container/ls/,
-  https://docs.docker.com/reference/cli/docker/image/ls/,
-  https://docs.docker.com/reference/cli/docker/container/rm/, and
-  https://docs.docker.com/reference/cli/docker/image/rm/.
-  R-S11dp and Appendix C #269 make the deletion normative. The independent
-  workspace validator and its complete deliberate-mutation catalog bind
-  cleanup-source Docker absence, preserved default VM/host-cleanup entry,
-  operator documentation, requirement, Appendix disposition, this row, and
-  the synchronized requirements-hash scope without invoking cleanup or
-  inspecting the live daemon.
-
-  Confined verification on 2026-07-26 used immutable verifier image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as the caller's numeric non-root UID/GID with no network, a read-only root
-  and recursively-disabled read-only repository bind, dropped capabilities,
-  no-new-privileges, finite PID/memory/no-swap/CPU/descriptor/core/file-size
-  limits, a bounded noexec tmpfs, and no Docker socket, device, port, or host
-  namespace mount. Python compilation, Bash syntax, HTML parsing, exact
-  requirements-hash equality, cleanup-source Docker-token absence, and
-  `git diff --check` passed. The independent workspace validator passed
-  normally and rejected all 2,379 deliberate source mutations from mutation
-  one. Adjacent source contracts rejected all 27 release-parent, 44 Debian
-  systemd-lifecycle, and 78 Windows-helper mutations; native-codec-watch passed
-  its normal and negative self-test gates. The validator had no Docker
-  client/socket and invoked no cleanup, daemon inventory/deletion, build,
-  Android/Gradle, KVM, Windows, root fixture, release workload, or host
-  RustDesk/service/firewall/network operation. The outer verifier transaction
-  created and terminally removed only its own exact disposable container.
-
-  Exact cold R-B2/R-B10 artifacts, remaining native/installed/device evidence,
-  fresh independent image reproduction where separately named, and R-V3
-  external review remain open. The broader Ralph-loop goal remains active.
+- **R-S11dp/R-S11e-134 — generic cleanup Docker authority: SOURCE-ONLY CLOSURE.**
+  Default `scripts/cleanup.sh` has no Docker client token or daemon operation and does not
+  infer container/image ownership from a mutable name, tag, label, or prefix. Its no-argument
+  mode only reports that exact creating transactions own ephemeral cleanup; deliberately retained
+  acquisition/certification candidates require explicit owner reconciliation. The Docker branch
+  was deleted in `941f62b5`; R-S11dp and Appendix C #269 retain the binding threat and rule.
+  `scripts/verify-cleanup-authority.py` checks this source absence, and the earlier confined
+  source transaction did not invoke generic cleanup or a live Docker daemon. This is not a
+  native destructive-action test, proof about unrelated host state, or release-artifact evidence.
+  R-S11dq and R-B11/R-B11a govern the separate process/domain/path and explicit manifest-backed
+  cleanup surfaces; cold artifacts, installed/device behavior, independent reproduction, and
+  external review remain open.
 - **R-S11dq/R-S11e-135 — generic cleanup has no PID-file, session-domain-name, or pathname-derived destructive ownership —
   SOURCE IMPLEMENTED AND CONFINED SOURCE/MUTATION VERIFIED 2026-07-26.**
   Platform: the unprivileged Linux build/maintenance host. Endpoint/action:

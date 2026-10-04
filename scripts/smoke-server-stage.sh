@@ -672,16 +672,31 @@ EOS
     fi
     [ "$(grep -Fc '[FT-DIR-RESPONSE path=' <<<"$probe_output")" -eq 1 ]
     [ "$(grep -Fc '[FT-CREATE-DONE id=17002]' <<<"$probe_output")" -eq 1 ]
+    [ "$(grep -Fc '[FT-PREMATURE-WRITE-REFUSED id=17003]' <<<"$probe_output")" -eq 1 ]
+    [ "$(grep -Fc '[FT-WRITE-COMMITTED id=17004]' <<<"$probe_output")" -eq 1 ]
     grep -Fxq 'probe_client: PASS' <<<"$probe_output"
     "$READY" --is-running "$SRV" "$SRV_START"
     [ ! -e "$HOME/blocked-before-login" ] && [ ! -L "$HOME/blocked-before-login" ]
     [ -d "$HOME/allowed-after-login" ] && [ ! -L "$HOME/allowed-after-login" ] \
       && [ "$(stat -c '%u:%g:%a' -- "$HOME/allowed-after-login")" = "$(id -u):$(id -g):700" ]
+    [ ! -e "$HOME/allowed-after-login/premature.txt" ] \
+      && [ ! -L "$HOME/allowed-after-login/premature.txt" ]
+    for suffix in .download .digest .download.lock; do
+      [ ! -e "$HOME/allowed-after-login/premature.txt$suffix" ] \
+        && [ ! -L "$HOME/allowed-after-login/premature.txt$suffix" ]
+      [ ! -e "$HOME/allowed-after-login/payload.txt$suffix" ] \
+        && [ ! -L "$HOME/allowed-after-login/payload.txt$suffix" ]
+    done
+    [ -f "$HOME/allowed-after-login/payload.txt" ] \
+      && [ ! -L "$HOME/allowed-after-login/payload.txt" ] \
+      && [ "$(stat -c '%u:%g:%a' -- "$HOME/allowed-after-login/payload.txt")" = "$(id -u):$(id -g):600" ] \
+      && cmp -s -- "$HOME/allowed-after-login/payload.txt" \
+        <(printf '%s' 'cm-file-write-finality-v1-0123456789')
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/cm-file-server.log
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

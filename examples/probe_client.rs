@@ -24,7 +24,7 @@
 //!   - `cmfiletransfer` : strict installed-service CM lifecycle probe — the same exchange, but PASS
 //!                additionally requires an actual directory `FileResponse` from the CM bridge.
 //!   - `cmfileauthority` : VM-only CM authority probe — pre-login create must not mutate the
-//!                fixture; post-login directory read and create must complete through CM.
+//!                fixture; post-login directory read/create and receive-write finality run through CM.
 //!
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
@@ -39,8 +39,11 @@ use std::io::{BufRead, IsTerminal as _};
 const PROBE_PASSWORD_MAX_BYTES: usize = 4096;
 const CM_PRELOGIN_CREATE_ID: i32 = 17001;
 const CM_POSTLOGIN_CREATE_ID: i32 = 17002;
+const CM_PREMATURE_WRITE_ID: i32 = 17003;
+const CM_COMMITTED_WRITE_ID: i32 = 17004;
 const CM_PRELOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/blocked-before-login";
 const CM_POSTLOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/allowed-after-login";
+const CM_WRITE_PAYLOAD: &[u8] = b"cm-file-write-finality-v1-0123456789";
 
 struct ProbePassword(Vec<u8>);
 
@@ -118,6 +121,142 @@ fn remote_login_admission(response: &login_response::Union) -> Option<&'static s
         }
         _ => None,
     }
+}
+
+async fn send_probe_message(stream: &mut FramedStream, message: Message) -> Result<(), String> {
+    let bytes = message
+        .write_to_bytes()
+        .map_err(|error| format!("serialize: {error}"))?;
+    stream
+        .send_raw(bytes)
+        .await
+        .map_err(|error| format!("send: {error}"))
+}
+
+async fn probe_cm_receive_write(stream: &mut FramedStream, report: &mut String) -> bool {
+    use hbb_common::message_proto::{
+        file_response, FileAction, FileEntry, FileResponse, FileTransferBlock, FileTransferDone,
+        FileTransferReceiveRequest, FileType,
+    };
+
+    for (id, name, payload, terminal_file_num, expect_commit) in [
+        (
+            CM_PREMATURE_WRITE_ID,
+            "premature.txt",
+            &b"partial-before-terminal"[..],
+            0,
+            false,
+        ),
+        (
+            CM_COMMITTED_WRITE_ID,
+            "payload.txt",
+            CM_WRITE_PAYLOAD,
+            1,
+            true,
+        ),
+    ] {
+        let mut action = FileAction::new();
+        action.set_receive(FileTransferReceiveRequest {
+            id,
+            path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
+            files: vec![FileEntry {
+                entry_type: FileType::File.into(),
+                name: name.to_owned(),
+                size: payload.len() as u64,
+                ..Default::default()
+            }],
+            file_num: 0,
+            total_size: payload.len() as u64,
+            ..Default::default()
+        });
+        let mut request = Message::new();
+        request.set_file_action(action);
+        if let Err(error) = send_probe_message(stream, request).await {
+            report.push_str(&format!("[FT-WRITE-REQUEST-ERROR id={id} {error}] "));
+            return false;
+        }
+
+        let mut block = FileResponse::new();
+        block.set_block(FileTransferBlock {
+            id,
+            file_num: 0,
+            data: payload.to_vec(),
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_file_response(block);
+        if let Err(error) = send_probe_message(stream, message).await {
+            report.push_str(&format!("[FT-WRITE-BLOCK-ERROR id={id} {error}] "));
+            return false;
+        }
+
+        let mut done = FileResponse::new();
+        done.set_done(FileTransferDone {
+            id,
+            file_num: terminal_file_num,
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_file_response(done);
+        if let Err(error) = send_probe_message(stream, message).await {
+            report.push_str(&format!("[FT-WRITE-DONE-SEND-ERROR id={id} {error}] "));
+            return false;
+        }
+
+        let mut matched = false;
+        for _ in 0..8 {
+            let Some(Ok(bytes)) = stream.next_timeout(4000).await else {
+                report.push_str(&format!("[FT-WRITE-NO-RESPONSE id={id}] "));
+                return false;
+            };
+            let response = match Message::parse_from_bytes(&bytes) {
+                Ok(response) => response,
+                Err(error) => {
+                    report.push_str(&format!("[FT-WRITE-PARSE-ERROR id={id} {error}] "));
+                    return false;
+                }
+            };
+            match response.union {
+                Some(message::Union::FileResponse(response)) => match response.union {
+                    Some(file_response::Union::Error(error)) if error.id == id => {
+                        if !expect_commit
+                            && error.file_num == 0
+                            && error.error.contains(
+                                "terminal file number 0 does not follow active file 0",
+                            )
+                        {
+                            report.push_str("[FT-PREMATURE-WRITE-REFUSED id=17003] ");
+                            matched = true;
+                        } else {
+                            report.push_str(&format!("[FT-WRITE-UNEXPECTED-ERROR {error:?}] "));
+                        }
+                        break;
+                    }
+                    Some(file_response::Union::Done(done)) if done.id == id => {
+                        if expect_commit && done.file_num == 1 {
+                            report.push_str("[FT-WRITE-COMMITTED id=17004] ");
+                            matched = true;
+                        } else {
+                            report.push_str(&format!("[FT-WRITE-UNEXPECTED-DONE {done:?}] "));
+                        }
+                        break;
+                    }
+                    _ => {}
+                },
+                Some(message::Union::LoginResponse(response))
+                    if matches!(response.union, Some(login_response::Union::Error(_))) =>
+                {
+                    report.push_str("[FT-WRITE-LOGIN-ERROR] ");
+                    return false;
+                }
+                _ => {}
+            }
+        }
+        if !matched {
+            return false;
+        }
+    }
+    true
 }
 
 fn main() {
@@ -466,6 +605,11 @@ fn main() {
                             || !readdir_send_ok
                             || (mode == "cmfiletransfer" && !received_directory)
                             || (mode == "cmfileauthority" && (!received_directory || !created))
+                        {
+                            return (true, pk, false, true);
+                        }
+                        if mode == "cmfileauthority"
+                            && !probe_cm_receive_write(&mut stream, &mut pk).await
                         {
                             return (true, pk, false, true);
                         }

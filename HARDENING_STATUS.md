@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-a8f313287757f22167146041f7b0c884269dcae74a34b2225d7d04108d21b731  requirements.html
+9e21c2bc1c9a3d8827926eecc3ab89020f5453ae2d42a807e27df848c7c895a6  requirements.html
 ```
 
 ## Current Verdict

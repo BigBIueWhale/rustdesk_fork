@@ -5418,7 +5418,7 @@ mod tests {
         job.retire_current_file_state()
             .expect("retire the incomplete exact receive generation");
         for suffix in [".download", ".digest", ".download.lock"] {
-            assert!(!tmp.join(format!("incoming.bin{suffix}")).exists());
+            assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
         }
     }
 
@@ -5446,7 +5446,7 @@ mod tests {
         job.retire_current_file_state()
             .expect("retire the refused exact receive generation");
         for suffix in [".download", ".digest", ".download.lock"] {
-            assert!(!tmp.join(format!("incoming.bin{suffix}")).exists());
+            assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
         }
     }
 
@@ -5483,7 +5483,7 @@ mod tests {
         job.retire_current_file_state()
             .expect("retire the exact changed staging generation");
         for suffix in [".download", ".digest", ".download.lock"] {
-            assert!(!tmp.join(format!("incoming.bin{suffix}")).exists());
+            assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
         }
     }
 

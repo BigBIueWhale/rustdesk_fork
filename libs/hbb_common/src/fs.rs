@@ -2934,11 +2934,12 @@ struct ReceiveWriteClaim {
     download_file: std::fs::File,
     digest_file: std::fs::File,
     published: bool,
+    cleanup_on_drop: bool,
     _lease: ReceivePathLease,
 }
 
 impl ReceiveWriteClaim {
-    fn start_new(final_path: PathBuf, digest: FileDigest) -> ResultType<(Self, std::fs::File)> {
+    fn start_new(final_path: PathBuf, digest: FileDigest) -> ResultType<(std::fs::File, Self)> {
         use std::io::Write;
 
         let mut lease = ReceivePathLease::acquire(&final_path, true)?;
@@ -3006,15 +3007,18 @@ impl ReceiveWriteClaim {
                 return Err(err);
             }
         };
+        // If the awaiting task disappears, Tokio drops this result. Close the stream before
+        // the claim's drop cleanup, which is required to unlink open sidecars on Windows.
         Ok((
+            stream_file,
             Self {
                 final_path,
                 download_file,
                 digest_file,
                 published: false,
+                cleanup_on_drop: true,
                 _lease: lease,
             },
-            stream_file,
         ))
     }
 
@@ -3022,7 +3026,7 @@ impl ReceiveWriteClaim {
         final_path: PathBuf,
         expected_digest: FileDigest,
         offset: u64,
-    ) -> ResultType<(Self, std::fs::File)> {
+    ) -> ResultType<(std::fs::File, Self)> {
         use std::io::{Read, Seek};
 
         let mut lease = ReceivePathLease::acquire(&final_path, false)?;
@@ -3056,14 +3060,15 @@ impl ReceiveWriteClaim {
         })();
         match admitted {
             Ok((download_file, digest_file, stream_file)) => Ok((
+                stream_file,
                 Self {
                     final_path,
                     download_file,
                     digest_file,
                     published: false,
+                    cleanup_on_drop: true,
                     _lease: lease,
                 },
-                stream_file,
             )),
             Err(error) => match lease.retire() {
                 Ok(()) => Err(error),
@@ -3084,11 +3089,19 @@ impl ReceiveWriteClaim {
         );
         if result.is_ok() {
             self._lease.retire()?;
+            self.cleanup_on_drop = false;
         }
         result
     }
 
     fn cleanup(mut self) -> std::io::Result<()> {
+        // The caller reports this attempt's exact result. Drop is only the fallback for a
+        // claim whose owning async task disappeared before it could request cleanup.
+        self.cleanup_on_drop = false;
+        self.retire()
+    }
+
+    fn retire(&mut self) -> std::io::Result<()> {
         if self.published {
             #[cfg(unix)]
             sync_recv_parent_no_follow(&self.final_path)?;
@@ -3108,6 +3121,20 @@ impl ReceiveWriteClaim {
         )?;
         self._lease.retire()?;
         Ok(())
+    }
+}
+
+impl Drop for ReceiveWriteClaim {
+    fn drop(&mut self) {
+        if self.cleanup_on_drop {
+            if let Err(error) = self.retire() {
+                log::error!(
+                    "failed to retire abandoned receive claim {}: {}",
+                    self.final_path.display(),
+                    error
+                );
+            }
+        }
     }
 }
 
@@ -3455,7 +3482,7 @@ impl TransferJob {
                 let entry = &self.files[file_num];
                 let final_path = join_validated_path(base, &entry.name)?;
                 let digest = self.digest;
-                let (claim, stream_file) = tokio::task::spawn_blocking(move || {
+                let (stream_file, claim) = tokio::task::spawn_blocking(move || {
                     ReceiveWriteClaim::start_new(final_path, digest)
                 })
                 .await??;
@@ -3824,7 +3851,7 @@ impl TransferJob {
                         bail!("receive write job already owns a destination claim");
                     }
                     let digest = self.digest;
-                    let (claim, stream_file) = tokio::task::spawn_blocking(move || {
+                    let (stream_file, claim) = tokio::task::spawn_blocking(move || {
                         ReceiveWriteClaim::resume(path, digest, offset)
                     })
                     .await??;
@@ -5220,7 +5247,7 @@ mod tests {
         let tmp = TestTempDir::new("rustdesk_receive_job_sync_failure");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
         let final_path = tmp.join("incoming.bin");
-        let (mut claim, mut stream) =
+        let (mut stream, mut claim) =
             ReceiveWriteClaim::start_new(final_path, FileDigest::default())
                 .expect("admit exact receive claim");
         stream
@@ -5253,6 +5280,90 @@ mod tests {
         assert!(!tmp.join("incoming.bin.download").exists());
         assert!(!tmp.join("incoming.bin.digest").exists());
         assert!(!tmp.join("incoming.bin.download.lock").exists());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn abandoned_blocking_receive_result_retires_its_exact_sidecars() {
+        let tmp = TestTempDir::new("rustdesk_receive_abandoned_open");
+        let final_path = tmp.join("incoming.bin");
+        let (staged_tx, staged_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let worker = tokio::task::spawn_blocking(move || {
+            let opened = ReceiveWriteClaim::start_new(final_path, FileDigest::default())
+                .expect("stage receive claim in blocking worker");
+            staged_tx.send(()).expect("report staged receive claim");
+            release_rx.recv().expect("await abandoned result release");
+            opened
+        });
+        staged_rx.await.expect("blocking worker must stage a claim");
+        assert!(tmp.join("incoming.bin.download").exists());
+        assert!(tmp.join("incoming.bin.digest").exists());
+        assert!(tmp.join("incoming.bin.download.lock").exists());
+
+        // Model cancellation at TransferJob::write's spawn_blocking await: the receiver
+        // disappears while the blocking worker still owns its successful open result.
+        drop(worker);
+        release_tx.send(()).expect("release abandoned blocking worker");
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if [".download", ".digest", ".download.lock"]
+                    .iter()
+                    .all(|suffix| !tmp.join(&format!("incoming.bin{suffix}")).exists())
+                {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("abandoned blocking result must retire its sidecars");
+        assert!(!tmp.join("incoming.bin").exists());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn abandoned_blocking_finalize_error_retires_only_its_claim() {
+        use std::io::Write;
+
+        let tmp = TestTempDir::new("rustdesk_receive_abandoned_finish");
+        let final_path = tmp.join("incoming.bin");
+        let (mut stream, mut claim) =
+            ReceiveWriteClaim::start_new(final_path.clone(), FileDigest::default())
+                .expect("stage receive claim before finalization");
+        stream
+            .write_all(b"partial-before-finalization")
+            .expect("write staged receive bytes");
+        drop(stream);
+        std::fs::create_dir(&final_path).expect("block publication with a directory");
+
+        let (attempted_tx, attempted_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let worker = tokio::task::spawn_blocking(move || {
+            let result = claim.finish(1_600_000_000);
+            assert!(result.is_err(), "publication over a directory must fail");
+            attempted_tx.send(()).expect("report finalization attempt");
+            release_rx.recv().expect("await abandoned result release");
+            (claim, result)
+        });
+        attempted_rx.await.expect("blocking worker must attempt finalization");
+        assert!(tmp.join("incoming.bin.download").exists());
+        assert!(tmp.join("incoming.bin.download.lock").exists());
+
+        drop(worker);
+        release_tx.send(()).expect("release abandoned finalization result");
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if [".download", ".digest", ".download.lock"]
+                    .iter()
+                    .all(|suffix| !tmp.join(&format!("incoming.bin{suffix}")).exists())
+                {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("abandoned finalization result must retire its claim");
+        assert!(final_path.is_dir(), "cleanup must not remove the unrelated destination");
     }
 
     #[tokio::test]

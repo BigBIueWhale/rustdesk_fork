@@ -2012,6 +2012,8 @@ run_focused_rust_tests() {
             fs::tests::rename_file_refuses_a_symlink_parent_without_mutating_its_target
             fs::tests::rename_admitted_entry_refuses_a_replaced_source_name
             fs::tests::rename_admitted_entry_stays_with_its_retained_parent_after_path_swap
+            fs::tests::abandoned_blocking_receive_result_retires_its_exact_sidecars
+            fs::tests::abandoned_blocking_finalize_error_retires_only_its_claim
         )
     elif [ "$MODE" = cpace-recovery-tests ]; then
         container_name=rustdesk-cpace-recovery-tests

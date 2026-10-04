@@ -111,14 +111,10 @@ case "$#:${1:-}" in
             || { echo 'Android peer-build input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-peer-build
         ;;
-    5:--cm-file-replay)
-        [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
-            || { echo 'invalid CM file replay argument order' >&2; exit 2; }
+    1:--cm-file-replay)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'CM file replay input/run overrides are forbidden' >&2; exit 2; }
         MODE=cm-file-replay
-        ANDROID_RUNTIME_PEER_COMMIT=$3
-        ANDROID_RUNTIME_PEER_MANIFEST_SHA256=$5
         ;;
     1:--android-emulator-boot)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -230,7 +226,7 @@ case "$#:${1:-}" in
         printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
         printf 'Focused production X11 enumeration/capture check: %s --x11-display-tests\n' "${0##*/}" >&2
-        printf 'Source-bound CM file replay: %s --cm-file-replay --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
+        printf 'Current-source CM file replay: %s --cm-file-replay\n' "${0##*/}" >&2
         printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario peer-lifecycle --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --linux-flutter-app-build | --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
@@ -480,9 +476,9 @@ elif [ "$MODE" = android-peer-build ]; then
     readonly OVERLAY_SIZE=40G
     readonly VM_MEMORY=16384
 elif [ "$MODE" = cm-file-replay ]; then
-    readonly VM_TIMEOUT_SECONDS=900
-    readonly OVERLAY_SIZE=16G
-    readonly VM_MEMORY=4096
+    readonly VM_TIMEOUT_SECONDS=2400
+    readonly OVERLAY_SIZE=40G
+    readonly VM_MEMORY=16384
 elif [ "$MODE" = android-emulator-boot ]; then
     readonly VM_TIMEOUT_SECONDS=7200
     readonly OVERLAY_SIZE=32G
@@ -2643,8 +2639,7 @@ if [ "$MODE" = android-emulator-runtime ]; then
         || fail 'retained Android runtime artifact root identity differs'
 fi
 
-if { [ "$MODE" = android-emulator-runtime ] && [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; } \
-   || [ "$MODE" = cm-file-replay ]; then
+if [ "$MODE" = android-emulator-runtime ] && [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
     [[ "$ANDROID_RUNTIME_PEER_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         && [[ "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
         || fail 'Android peer artifact identity is malformed'
@@ -3283,7 +3278,7 @@ elif [ "$MODE" = android-owner-tests ]; then
 elif [ "$MODE" = android-peer-build ]; then
     guest_invocation+=" --android-peer-build /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = cm-file-replay ]; then
-    guest_invocation+=" --cm-file-replay /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256 $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256"
+    guest_invocation+=" --cm-file-replay /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-emulator-boot ]; then
     guest_invocation+=" --android-emulator-boot /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-emulator-app ]; then
@@ -3458,13 +3453,6 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
                 -device "vhost-user-fs-pci,chardev=peer-artifact-input,tag=rustdesk-android-peer-artifact-input,queue-size=1024"
             )
         fi
-    elif [ "$MODE" = cm-file-replay ]; then
-        start_virtiofsd sealed-input "$ANDROID_PEER_SHARE_ROOT" "$ANDROID_PEER_SHARE_ID" \
-            "$RUN/vfs-peer-input.sock" "$RUN/virtiofsd-peer-input.log"
-        focused_qemu_args+=(
-            -chardev "socket,id=peer-artifact-input,path=$RUN/vfs-peer-input.sock"
-            -device "vhost-user-fs-pci,chardev=peer-artifact-input,tag=rustdesk-android-peer-artifact-input,queue-size=1024"
-        )
     fi
     memory_args=(
         -m "$VM_MEMORY"
@@ -4139,13 +4127,13 @@ elif [ "$MODE" = android-peer-build ]; then
     printf '%s\n' "${peer_artifact_receipts[0]}"
 elif [ "$MODE" = cm-file-replay ]; then
     require_exact_fixed_receipt \
-        "CM_FILE_PEER_ADMITTED=pass commit=$ANDROID_RUNTIME_PEER_COMMIT tree=$ANDROID_RUNTIME_PEER_TREE manifest_sha256=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 files=7 execution=readonly-guest-copy" \
-        'CM file source-bound peer admission'
+        "CM_FILE_PEER_BUILD=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE builder=$DEV_CHECK_IMAGE_CONFIG_ID files=7 network=none" \
+        'CM file current-source peer build'
     require_exact_fixed_receipt \
         'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir network=container-loopback cleanup=server-joined' \
         'CM file production transaction'
     require_exact_fixed_receipt \
-        "CM_FILE_REPLAY_VM=pass harness_commit=$ANDROID_EMULATOR_SOURCE_COMMIT harness_tree=$ANDROID_EMULATOR_SOURCE_TREE peer_commit=$ANDROID_RUNTIME_PEER_COMMIT peer_tree=$ANDROID_RUNTIME_PEER_TREE manifest_sha256=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 builder=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none artifact=readonly-copy build=absent cleanup=joined" \
+        "CM_FILE_REPLAY_VM=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE builder=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none build=guest-disposable cleanup=joined" \
         'CM file replay guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'CM file replay cloud-init completion marker'
@@ -4637,8 +4625,6 @@ elif [ "$MODE" = android-peer-build ]; then
         || fail 'Android peer source archive changed during execution'
 elif [ "$MODE" = cm-file-replay ]; then
     [ "$(android_peer_input_inventory)" = "$focused_inputs_before" ] \
-        && [ "$(android_peer_runtime_inventory)" = "$ANDROID_PEER_INPUT_INVENTORY" ] \
-        && [ "$(/usr/bin/stat -Lc '%d:%i' -- "/proc/$$/fd/$ANDROID_PEER_INPUT_FD")" = "$ANDROID_PEER_INPUT_ID" ] \
         && [ "$(/usr/bin/sha256sum "$ANDROID_EMULATOR_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = "$ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'CM file replay inputs changed during execution'
 elif [ "$MODE" = android-emulator-runtime ]; then
@@ -4848,10 +4834,9 @@ elif [ "$MODE" = android-peer-build ]; then
         "$ANDROID_ARTIFACT_SHA256" "$ANDROID_EMULATOR_SOURCE_COMMIT" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = cm-file-replay ]; then
-    printf 'CM_FILE_REPLAY_VM_OUTER=pass host_uid=%s harness_commit=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+    printf 'CM_FILE_REPLAY_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only build=guest-disposable cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
-        "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
-        "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$vm_elapsed_seconds"
+        "$vm_elapsed_seconds"
 elif [ "$MODE" = android-emulator-boot ]; then
     printf 'ANDROID_EMULATOR_BOOT_VM_OUTER=pass host_uid=%s commit=%s tree=%s emulator=%s api=%s abi=x86_64 acceleration=kvm-nested gpu=swiftshader runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only product=android-framework-boot-and-framebuffer cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$ANDROID_EMULATOR_SOURCE_COMMIT" \

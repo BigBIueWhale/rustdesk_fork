@@ -55,7 +55,7 @@ case "$#:${8:-}" in
     12:--android-peer-build)
         MODE=android-peer-build
         ;;
-    15:--cm-file-replay)
+    12:--cm-file-replay)
         MODE=cm-file-replay
         ;;
     12:--android-emulator-boot)
@@ -110,7 +110,7 @@ case "$#:${8:-}" in
     *)
         echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 peer-lifecycle PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-flutter-app-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 CONTEXT | --linux-flutter-app-replay SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 APP_COMMIT APP_TREE APP_RECIPE_SHA256 APP_MANIFEST_SHA256 CONTEXT | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         echo 'The seven base arguments also accept --android-execution-probe, --android-runtime-log-tests, or --linux-flutter-artifact-tests.' >&2
-        echo 'Focused CM file replay accepts --cm-file-replay SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256.' >&2
+        echo 'CM file integration replay accepts --cm-file-replay SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         exit 2
         ;;
 esac
@@ -152,9 +152,6 @@ readonly ANDROID_RUNTIME_SCENARIO=${16:-}
 readonly ANDROID_RUNTIME_PEER_COMMIT=${17:-}
 readonly ANDROID_RUNTIME_PEER_TREE=${18:-}
 readonly ANDROID_RUNTIME_PEER_MANIFEST_SHA256=${19:-}
-readonly CM_FILE_PEER_COMMIT=${13:-}
-readonly CM_FILE_PEER_TREE=${14:-}
-readonly CM_FILE_PEER_MANIFEST_SHA256=${15:-}
 readonly APPLE_SOURCE_ARCHIVE=${9:-}
 readonly APPLE_SOURCE_COMMIT=${10:-}
 readonly APPLE_SOURCE_TREE=${11:-}
@@ -2947,15 +2944,15 @@ run_android_owner_tests() {
 
 run_cm_file_replay() {
     local inputs=/mnt/rustdesk-sealed-inputs
-    local peer_mount=/mnt/rustdesk-android-peer-artifact-input
-    local peer_root=$peer_mount/linux-x86_64-peer
     local source_root=$ROOT/cm-file-replay-source
+    local target=$ROOT/cm-file-replay-target
     local work=$ROOT/cm-file-replay-work
     local machine_id=$work/server.machine-id
     local machine_id_value=727573746465736b2d73657276657231
+    local build_output=$ROOT/cm-file-build.out
     local output=$ROOT/cm-file-replay.out
     local image=$inputs/verifier-images/devcheck.docker.tar.gz
-    local source_sha materialized load_output inspect machine_mount status=0
+    local source_sha load_output inspect machine_mount status=0 manifest_sha
     local -a git_builder=(
         setpriv --reuid=1000 --regid=1000 --clear-groups
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
@@ -2965,9 +2962,6 @@ run_cm_file_replay() {
     [[ "$ANDROID_EMULATOR_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         && [[ "$ANDROID_EMULATOR_SOURCE_TREE" =~ ^[0-9a-f]{40}$ ]] \
         && [[ "$ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
-        && [[ "$CM_FILE_PEER_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
-        && [[ "$CM_FILE_PEER_TREE" =~ ^[0-9a-f]{40}$ ]] \
-        && [[ "$CM_FILE_PEER_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
         || fail 'CM file replay identities are malformed'
     [ -f "$ANDROID_EMULATOR_SOURCE_ARCHIVE" ] && [ ! -L "$ANDROID_EMULATOR_SOURCE_ARCHIVE" ] \
         && [ "$(stat -c '%u:%g:%a:%h' -- "$ANDROID_EMULATOR_SOURCE_ARCHIVE")" = 4000:4000:400:1 ] \
@@ -2990,28 +2984,19 @@ run_cm_file_replay() {
         || fail 'CM file replay harness archive tree differs from pushed master'
     rm -rf -- "$source_root/.git"
     [ -f "$source_root/scripts/smoke-server-stage.sh" ] \
-        && [ -f "$source_root/scripts/android-peer-artifact.py" ] \
-        && [ -f "$source_root/scripts/publish-artifact-result.py" ] \
+        && [ -f "$source_root/scripts/smoke-ready.sh" ] \
+        && [ -f "$source_root/scripts/smoke-process-guard.py" ] \
         || fail 'CM file replay harness programs are absent'
 
-    mkdir "$inputs" "$peer_mount"
-    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
+    mkdir "$inputs"
+    mount -t virtiofs -o ro,nodev,nosuid rustdesk-sealed-inputs "$inputs" \
         || fail 'cannot mount sealed CM file replay inputs'
     SEALED_INPUTS_MOUNTED=1
-    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-android-peer-artifact-input "$peer_mount" \
-        || fail 'cannot mount source-bound CM file peer capsule'
-    ANDROID_PEER_ARTIFACT_INPUT_MOUNTED=1
-    for path in "$inputs" "$peer_mount"; do
-        local options
-        options="$(findmnt -n -o OPTIONS --target "$path")"
-        for option in ro nodev nosuid noexec; do
-            case ",$options," in *,$option,*) ;; *) fail "CM file input lacks $option: $path" ;; esac
-        done
+    local options
+    options="$(findmnt -n -o OPTIONS --target "$inputs")"
+    for option in ro nodev nosuid; do
+        case ",$options," in *,$option,*) ;; *) fail "CM file input lacks $option" ;; esac
     done
-    [ "$(stat -c '%u:%g:%a' -- "$peer_mount")" = 1000:1000:700 ] \
-        && [ "$(find "$peer_mount" -mindepth 1 -maxdepth 1 -printf '%f\n')" = linux-x86_64-peer ] \
-        && [ "$(stat -c '%u:%g:%a' -- "$peer_root")" = 1000:1000:500 ] \
-        || fail 'CM file peer capsule mount authority differs'
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$image")" = \
       "1000:1000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
         && [ "$(sha256sum "$image" | awk '{ print $1 }')" = "$SHA256_DEV_CHECK_IMAGE_ARCHIVE" ] \
@@ -3032,30 +3017,78 @@ run_cm_file_replay() {
     [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
         || fail 'CM file replay devcheck load receipt differs'
 
-    install -d -o 1000 -g 1000 -m 0700 "$work"
-    materialized="$(setpriv --reuid=1000 --regid=1000 --clear-groups \
-        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-        python3 -I -S "$source_root/scripts/android-peer-artifact.py" materialize \
-            --root "$peer_root" --root-identity "$(stat -c '%d:%i' -- "$peer_root")" \
-            --parent "$work" --parent-identity "$(stat -c '%d:%i' -- "$work")" \
-            --manifest-sha256 "$CM_FILE_PEER_MANIFEST_SHA256" \
-            --source-commit "$CM_FILE_PEER_COMMIT" --source-tree "$CM_FILE_PEER_TREE" \
-            --builder-config "$DEV_CHECK_IMAGE_CONFIG_ID" \
-            --vendor-closure "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            --vendor-config "$SHA256_CARGO_VENDOR_CONFIG" \
-            --rust-toolchain "${RUST_VERSION}.0-x86_64-unknown-linux-gnu")" \
-        || fail 'CM file peer materialization failed'
-    [ "$materialized" = "$work/materialized-peer" ] \
-        || fail 'CM file peer materialization destination differs'
+    install -d -o 1000 -g 1000 -m 0700 "$work" "$target"
+    printf 'CM_FILE_BUILD_STAGE=begin commit=%s tree=%s builder=%s\n' \
+        "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" "$DEV_CHECK_IMAGE_CONFIG_ID"
+    CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
+        --name rustdesk-cm-file-build --pull=never --network=none --read-only \
+        --user 1000:1000 --pids-limit=1024 --memory=12g --memory-swap=12g --cpus=4 \
+        --ulimit nofile=8192:8192 --ulimit core=0:0 \
+        --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
+        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g \
+        --env HOME=/tmp/android-peer-build --env CARGO_HOME=/tmp/smoke-cargo-home \
+        --env CARGO_TARGET_DIR=/smoke-target --env CARGO_INCREMENTAL=0 \
+        --env CARGO_NET_OFFLINE=true --env CARGO_NET_RETRY=0 \
+        --env "RUSTUP_TOOLCHAIN=${RUST_VERSION}.0-x86_64-unknown-linux-gnu" \
+        --env "SMOKE_EXPECTED_RUSTUP_TOOLCHAIN=${RUST_VERSION}.0-x86_64-unknown-linux-gnu" \
+        --env "SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256=$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+        --env "SMOKE_EXPECTED_VENDOR_CONFIG_SHA256=$SHA256_CARGO_VENDOR_CONFIG" \
+        --mount "type=bind,source=$source_root,target=/work,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$inputs,target=/online,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$target,target=/smoke-target,bind-recursive=disabled" \
+        --workdir /work "$DEV_CHECK_IMAGE_CONFIG_ID" \
+        /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh android-peer-build)"
+    [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'CM file build container identity is malformed'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}' "$CONTAINER_ID")"
+    [ "$inspect" = 'none|true|1000:1000|12884901888|12884901888|4000000000|1024|["ALL"]|["no-new-privileges","apparmor=docker-default"]|{}|[]' ] \
+        || fail 'CM file build container confinement differs'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}' "$CONTAINER_ID")"
+    [ "$inspect" = 'false||private||private' ] \
+        || fail 'CM file build container namespace authority differs'
+    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 \
+        | tee "$build_output" || status=$?
+    [ "$status" -eq 0 ] && [ "$(stat -c '%s' -- "$build_output")" -le 4194304 ] \
+        || { tail -n 160 "$build_output" >&2; fail "CM file build failed: $status"; }
+    [ "$(grep -Fxc 'ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=7 network=none' "$build_output")" -eq 1 ] \
+        || fail 'CM file build product receipt differs'
+    [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+        || fail 'CM file build container did not exit cleanly'
+    "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+    CONTAINER_ID=
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        || fail 'CM file build left a container'
+    [ "$(stat -c '%u:%g:%a:%h' -- "$target/android-peer-manifest.sha256")" = 1000:1000:444:1 ] \
+        || fail 'CM file build manifest metadata differs'
+    local relative mode
+    while read -r relative mode; do
+        [ -f "$target/$relative" ] && [ ! -L "$target/$relative" ] \
+            && [ "$(stat -c '%u:%g:%a:%h' -- "$target/$relative")" = "1000:1000:$mode:1" ] \
+            || fail "CM file build artifact authority differs: $relative"
+    done <<'LAYOUT'
+debug/rustdesk 755
+debug/examples/seed_password 755
+debug/examples/probe_client 755
+debug/examples/smoke_readiness 755
+flutter-peer-source-x11 555
+smoke-bind-loopback.so 555
+smoke-server-launcher 555
+LAYOUT
+    [ "$(wc -l < "$target/android-peer-manifest.sha256")" -eq 7 ] \
+        || fail 'CM file build manifest entry count differs'
+    (cd "$target" && sha256sum --check --status android-peer-manifest.sha256) \
+        || fail 'CM file build artifact digests differ'
+    manifest_sha="$(sha256sum "$target/android-peer-manifest.sha256" | awk '{ print $1 }')"
+    sed 's/^/CM_FILE_BUILD_ARTIFACT /' "$target/android-peer-manifest.sha256"
+    printf 'CM_FILE_PEER_BUILD=pass commit=%s tree=%s builder=%s files=7 network=none\n' \
+        "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" "$DEV_CHECK_IMAGE_CONFIG_ID"
     printf '%s\n' "$machine_id_value" >"$machine_id"
     chown 1000:1000 "$machine_id"
     chmod 0400 "$machine_id"
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$machine_id")" = 1000:1000:400:1:33 ] \
         && [ "$(<"$machine_id")" = "$machine_id_value" ] \
         || fail 'CM file replay private machine identity differs'
-    printf 'CM_FILE_PEER_ADMITTED=pass commit=%s tree=%s manifest_sha256=%s files=7 execution=readonly-guest-copy\n' \
-        "$CM_FILE_PEER_COMMIT" "$CM_FILE_PEER_TREE" "$CM_FILE_PEER_MANIFEST_SHA256"
-
     CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
         --name rustdesk-cm-file-replay --pull=never --network=none --read-only \
         --user 1000:1000 --pids-limit=256 --memory=2g --memory-swap=2g --cpus=2 \
@@ -3063,7 +3096,7 @@ run_cm_file_replay() {
         --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
         --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m \
         --mount "type=bind,source=$source_root,target=/work,readonly,bind-recursive=disabled" \
-        --mount "type=bind,source=$materialized,target=/smoke-target,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$target,target=/smoke-target,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$machine_id,target=/etc/machine-id,readonly,bind-recursive=disabled" \
         --workdir /work "$DEV_CHECK_IMAGE_CONFIG_ID" \
         /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh cm-file-replay)"
@@ -3081,8 +3114,8 @@ run_cm_file_replay() {
         "$CONTAINER_ID" | awk -F '\t' '$3 == "/etc/machine-id" { print }')"
     [ "$machine_mount" = "bind	$machine_id	/etc/machine-id	false" ] \
         || fail 'CM file replay private machine identity mount differs'
-    printf 'CM_FILE_REPLAY_STAGE=begin harness=%s peer=%s\n' \
-        "$ANDROID_EMULATOR_SOURCE_COMMIT" "$CM_FILE_PEER_COMMIT"
+    printf 'CM_FILE_REPLAY_STAGE=begin commit=%s manifest_sha256=%s\n' \
+        "$ANDROID_EMULATOR_SOURCE_COMMIT" "$manifest_sha"
     set +e
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 | tee "$output"
     status=$?
@@ -3098,17 +3131,15 @@ run_cm_file_replay() {
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         || fail 'CM file replay left a container'
     [ "$(sha256sum "$ANDROID_EMULATOR_SOURCE_ARCHIVE" | awk '{ print $1 }')" = "$source_sha" ] \
-        || fail 'CM file replay harness archive changed during execution'
+        && [ "$(sha256sum "$target/android-peer-manifest.sha256" | awk '{ print $1 }')" = "$manifest_sha" ] \
+        && (cd "$target" && sha256sum --check --status android-peer-manifest.sha256) \
+        || fail 'CM file replay source or build changed during execution'
     "$CLIENT" --host "unix://$SOCK" image rm "$DEV_CHECK_IMAGE_CONFIG_ID" >/dev/null
     stop_docker_authority
-    umount "$peer_mount" || fail 'cannot retire CM file peer input mount'
-    ANDROID_PEER_ARTIFACT_INPUT_MOUNTED=0
     umount "$inputs" || fail 'cannot retire CM file sealed input mount'
     SEALED_INPUTS_MOUNTED=0
-    printf 'CM_FILE_REPLAY_VM=pass harness_commit=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s builder=%s uid=1000 gid=1000 vm_network=none container_network=none artifact=readonly-copy build=absent cleanup=joined\n' \
-        "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
-        "$CM_FILE_PEER_COMMIT" "$CM_FILE_PEER_TREE" "$CM_FILE_PEER_MANIFEST_SHA256" \
-        "$DEV_CHECK_IMAGE_CONFIG_ID"
+    printf 'CM_FILE_REPLAY_VM=pass commit=%s tree=%s builder=%s uid=1000 gid=1000 vm_network=none container_network=none build=guest-disposable cleanup=joined\n' \
+        "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" "$DEV_CHECK_IMAGE_CONFIG_ID"
 }
 
 run_android_peer_build() {

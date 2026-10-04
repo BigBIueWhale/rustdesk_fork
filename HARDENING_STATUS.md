@@ -572,15 +572,23 @@ fallback remains an uncorrected source risk: correct selection must derive
 byte order, pixmap bits-per-pixel, root visual masks and padded row stride,
 not infer layout from depth alone or replace failure with BGRA.
 
-**X11 atom-query finality — NATIVE FAILURE REPRODUCED; CORRECTION ACCEPTANCE PENDING.**
+**X11 atom-query finality — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
 The production helper returned an empty name when GetAtomName failed and leaked
 the error allocation. Exact `a4d5dee1` reproduced a real server BadAtom becoming
 a successful Display with one unfreed error. Replies/errors now have one RAII
 owner through name conversion, and atom-query failure immediately retires the
 enclosing monitor reply and terminates enumeration explicitly. The unchanged
-native fixture exercises 32 failures plus both public callers and second-root
-failure. Corrected execution remains pending. This does not establish original
-display-hang causation, installed-service behavior or a privilege escalation.
+native fixture passed 32 real BadAtom failures, immediate reply/error retirement,
+fused enumeration and both public callers including second-root failure. Exact
+`e0166077c7085844d4a3ca00bf4583dc426cf1c8`, tree
+`a9ffd81a152eabcbb9c8954e5d6cddc0b2f197d3`, passed the complete transaction in
+53 seconds; the earlier monitor-lifetime cases also passed. Raw serial is
+`evidence/x11-atom-after-e0166077.serial.log` (68,442 bytes, SHA-256
+`313ae979d213f1efd9eab9c32fda9b849f827fbb73c80859f7d1592d09a22aaa`).
+Inputs and host listeners were unchanged, cleanup joined and scratch self-retired.
+This is component evidence, not full-product capture, original display-hang
+causation, installed-service behavior or a privilege escalation. Atom-name
+conversion branches remain outside this executed scenario.
 
 The Windows first-video path now avoids the decoder worker's former nested Tokio runtime, second OS thread, synchronous
 join, and ignored IPC result. Remote and View Camera connections share a process-wide Tokio `OnceCell` initialization

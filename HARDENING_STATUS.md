@@ -567,8 +567,20 @@ Raw serial is `evidence/x11-display-c9b54e68.serial.log` (68,434 bytes, SHA-256
 The initial `a9f0fc1c` fixture startup failure is retained, not counted as a pass.
 This is instrumented component evidence, not full-product
 capture, installed-service proof, allocator-exploit proof, the original
-Android/Windows cause, or LPE closure. Atom-name error cleanup and the inherited
-geometry/pixel-format fallback remain separate uncorrected source risks.
+Android/Windows cause, or LPE closure. The inherited geometry/pixel-format
+fallback remains an uncorrected source risk: correct selection must derive
+byte order, pixmap bits-per-pixel, root visual masks and padded row stride,
+not infer layout from depth alone or replace failure with BGRA.
+
+**X11 atom-query finality — NATIVE FAILURE REPRODUCED; CORRECTION ACCEPTANCE PENDING.**
+The production helper returned an empty name when GetAtomName failed and leaked
+the error allocation. Exact `a4d5dee1` reproduced a real server BadAtom becoming
+a successful Display with one unfreed error. Replies/errors now have one RAII
+owner through name conversion, and atom-query failure immediately retires the
+enclosing monitor reply and terminates enumeration explicitly. The unchanged
+native fixture exercises 32 failures plus both public callers and second-root
+failure. Corrected execution remains pending. This does not establish original
+display-hang causation, installed-service behavior or a privilege escalation.
 
 The Windows first-video path now avoids the decoder worker's former nested Tokio runtime, second OS thread, synchronous
 join, and ignored IPC result. Remote and View Camera connections share a process-wide Tokio `OnceCell` initialization

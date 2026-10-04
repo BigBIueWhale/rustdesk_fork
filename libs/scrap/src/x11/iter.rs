@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::ffi::CString;
 use std::io;
 use std::ptr;
@@ -18,15 +19,40 @@ pub struct DisplayIter {
 }
 
 struct ScreenMonitors {
-    reply: NonNull<xcb_randr_get_monitors_reply_t>,
+    _reply: XcbReply<xcb_randr_get_monitors_reply_t>,
     cursor: xcb_randr_monitor_info_iterator_t,
     root: xcb_window_t,
 }
 
-impl Drop for ScreenMonitors {
+struct XcbReply<T>(NonNull<T>);
+
+impl<T> Drop for XcbReply<T> {
     fn drop(&mut self) {
-        unsafe { libc::free(self.reply.as_ptr().cast()) };
+        unsafe { libc::free(self.0.as_ptr().cast()) };
     }
+}
+
+unsafe fn checked_reply<T>(
+    response: *mut T,
+    error: *mut xcb_generic_error_t,
+    operation: &str,
+) -> io::Result<XcbReply<T>> {
+    let reply = NonNull::new(response).map(XcbReply);
+    if let Some(error) = NonNull::new(error).map(XcbReply) {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!(
+                "X server rejected {operation} with error {}",
+                (*error.0.as_ptr()).error_code
+            ),
+        ));
+    }
+    reply.ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::ConnectionAborted,
+            format!("X server returned no {operation} reply"),
+        )
+    })
 }
 
 impl DisplayIter {
@@ -53,25 +79,11 @@ impl DisplayIter {
             let cookie = xcb_randr_get_monitors(server.raw(), root, 1);
             let mut error = ptr::null_mut();
             let response = xcb_randr_get_monitors_reply(server.raw(), cookie, &mut error);
-            if !error.is_null() {
-                let code = (*error).error_code;
-                libc::free(error.cast());
-                libc::free(response.cast());
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("X server rejected RandR GetMonitors with error {code}"),
-                ));
-            }
-            let reply = NonNull::new(response).ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::ConnectionAborted,
-                    "X server returned no RandR GetMonitors reply",
-                )
-            })?;
-            let cursor = xcb_randr_get_monitors_monitors_iterator(reply.as_ptr());
+            let reply = checked_reply(response, error, "RandR GetMonitors")?;
+            let cursor = xcb_randr_get_monitors_monitors_iterator(reply.0.as_ptr());
             xcb_screen_next(outer);
             Ok(Some(ScreenMonitors {
-                reply,
+                _reply: reply,
                 cursor,
                 root,
             }))
@@ -93,7 +105,14 @@ impl Iterator for DisplayIter {
                 if inner.rem != 0 {
                     unsafe {
                         let data = &*inner.data;
-                        let name = get_atom_name(self.server.raw(), data.name);
+                        let name = match get_atom_name(self.server.raw(), data.name) {
+                            Ok(name) => name,
+                            Err(error) => {
+                                self.failed = true;
+                                self.inner = None;
+                                return Some(Err(error));
+                            }
+                        };
                         let pixfmt =
                             get_pixfmt(self.server.raw(), screen.root).unwrap_or(Pixfmt::BGRA);
                         let display = Display::new(
@@ -132,26 +151,22 @@ impl Iterator for DisplayIter {
 
 impl std::iter::FusedIterator for DisplayIter {}
 
-fn get_atom_name(conn: *mut xcb_connection_t, atom: xcb_atom_t) -> String {
-    let empty = "".to_owned();
+fn get_atom_name(conn: *mut xcb_connection_t, atom: xcb_atom_t) -> io::Result<String> {
     if atom == 0 {
-        return empty;
+        return Ok(String::new());
     }
     unsafe {
-        let mut e: *mut xcb_generic_error_t = std::ptr::null_mut();
-        let reply = xcb_get_atom_name_reply(conn, xcb_get_atom_name(conn, atom), &mut e as _);
-        if reply == std::ptr::null() {
-            return empty;
-        }
-        let length = xcb_get_atom_name_name_length(reply);
-        let name = xcb_get_atom_name_name(reply);
-        let mut v = vec![0u8; length as _];
-        std::ptr::copy_nonoverlapping(name as _, v.as_mut_ptr(), length as _);
-        libc::free(reply as *mut _);
-        if let Ok(s) = CString::new(v) {
-            return s.to_string_lossy().to_string();
-        }
-        empty
+        let mut error = ptr::null_mut();
+        let response = xcb_get_atom_name_reply(conn, xcb_get_atom_name(conn, atom), &mut error);
+        let reply = checked_reply(response.cast_mut(), error, "GetAtomName")?;
+        let length = usize::try_from(xcb_get_atom_name_name_length(reply.0.as_ptr())).map_err(|_| {
+            io::Error::new(io::ErrorKind::InvalidData, "X atom name has a negative length")
+        })?;
+        let bytes = std::slice::from_raw_parts(xcb_get_atom_name_name(reply.0.as_ptr()), length);
+        let name = CString::new(bytes).map_err(|_| {
+            io::Error::new(io::ErrorKind::InvalidData, "X atom name contains a null byte")
+        })?;
+        Ok(name.to_string_lossy().into_owned())
     }
 }
 

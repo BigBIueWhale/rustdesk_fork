@@ -1,7 +1,5 @@
 use std::ffi::CString;
-use std::io;
 use std::ptr;
-use std::ptr::NonNull;
 use std::rc::Rc;
 
 use crate::Pixfmt;
@@ -10,92 +8,66 @@ use hbb_common::libc;
 use super::ffi::*;
 use super::{Display, Rect, Server};
 
+//TODO: Do I have to free the displays?
+
 pub struct DisplayIter {
     outer: xcb_screen_iterator_t,
-    inner: Option<ScreenMonitors>,
+    inner: Option<(xcb_randr_monitor_info_iterator_t, xcb_window_t)>,
     server: Rc<Server>,
-    failed: bool,
-}
-
-struct ScreenMonitors {
-    reply: NonNull<xcb_randr_get_monitors_reply_t>,
-    cursor: xcb_randr_monitor_info_iterator_t,
-    root: xcb_window_t,
-}
-
-impl Drop for ScreenMonitors {
-    fn drop(&mut self) {
-        unsafe { libc::free(self.reply.as_ptr().cast()) };
-    }
 }
 
 impl DisplayIter {
     pub unsafe fn new(server: Rc<Server>) -> DisplayIter {
+        let mut outer = xcb_setup_roots_iterator(server.setup());
+        let inner = Self::next_screen(&mut outer, &server);
         DisplayIter {
-            outer: xcb_setup_roots_iterator(server.setup()),
-            inner: None,
+            outer,
+            inner,
             server,
-            failed: false,
         }
     }
 
     fn next_screen(
         outer: &mut xcb_screen_iterator_t,
         server: &Server,
-    ) -> io::Result<Option<ScreenMonitors>> {
+    ) -> Option<(xcb_randr_monitor_info_iterator_t, xcb_window_t)> {
         if outer.rem == 0 {
-            return Ok(None);
+            return None;
         }
 
         unsafe {
             let root = (*outer.data).root;
 
-            let cookie = xcb_randr_get_monitors(server.raw(), root, 1);
-            let mut error = ptr::null_mut();
-            let response = xcb_randr_get_monitors_reply(server.raw(), cookie, &mut error);
-            if !error.is_null() {
-                let code = (*error).error_code;
-                libc::free(error.cast());
-                libc::free(response.cast());
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("X server rejected RandR GetMonitors with error {code}"),
-                ));
-            }
-            let reply = NonNull::new(response).ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::ConnectionAborted,
-                    "X server returned no RandR GetMonitors reply",
-                )
-            })?;
-            let cursor = xcb_randr_get_monitors_monitors_iterator(reply.as_ptr());
-            xcb_screen_next(outer);
-            Ok(Some(ScreenMonitors {
-                reply,
-                cursor,
+            let cookie = xcb_randr_get_monitors_unchecked(
+                server.raw(),
                 root,
-            }))
+                1, //TODO: I don't know if this should be true or false.
+            );
+
+            let response = xcb_randr_get_monitors_reply(server.raw(), cookie, ptr::null_mut());
+
+            let inner = xcb_randr_get_monitors_monitors_iterator(response);
+
+            libc::free(response as *mut _);
+            xcb_screen_next(outer);
+
+            Some((inner, root))
         }
     }
 }
 
 impl Iterator for DisplayIter {
-    type Item = io::Result<Display>;
+    type Item = Display;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.failed {
-            return None;
-        }
+    fn next(&mut self) -> Option<Display> {
         loop {
-            if let Some(ref mut screen) = self.inner {
-                let inner = &mut screen.cursor;
+            if let Some((ref mut inner, root)) = self.inner {
                 // If there is something in the current screen, return that.
                 if inner.rem != 0 {
                     unsafe {
                         let data = &*inner.data;
                         let name = get_atom_name(self.server.raw(), data.name);
-                        let pixfmt =
-                            get_pixfmt(self.server.raw(), screen.root).unwrap_or(Pixfmt::BGRA);
+                        let pixfmt = get_pixfmt(self.server.raw(), root).unwrap_or(Pixfmt::BGRA);
                         let display = Display::new(
                             self.server.clone(),
                             data.primary != 0,
@@ -105,32 +77,25 @@ impl Iterator for DisplayIter {
                                 w: data.width,
                                 h: data.height,
                             },
-                            screen.root,
+                            root,
                             name,
                             pixfmt,
                         );
 
                         xcb_randr_monitor_info_next(inner);
-                        return Some(Ok(display));
+                        return Some(display);
                     }
                 }
+            } else {
+                // If there is no current screen, the screen iterator is empty.
+                return None;
             }
 
-            // Retire the current reply before acquiring the next screen's reply.
-            self.inner = None;
-            match Self::next_screen(&mut self.outer, &self.server) {
-                Ok(Some(screen)) => self.inner = Some(screen),
-                Ok(None) => return None,
-                Err(error) => {
-                    self.failed = true;
-                    return Some(Err(error));
-                }
-            }
+            // The current screen was empty, so try the next screen.
+            self.inner = Self::next_screen(&mut self.outer, &self.server);
         }
     }
 }
-
-impl std::iter::FusedIterator for DisplayIter {}
 
 fn get_atom_name(conn: *mut xcb_connection_t, atom: xcb_atom_t) -> String {
     let empty = "".to_owned();

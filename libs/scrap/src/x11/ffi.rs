@@ -56,7 +56,7 @@ extern "C" {
         e: *mut *mut xcb_generic_error_t,
     ) -> *mut xcb_shm_get_image_reply_t;
 
-    pub fn xcb_randr_get_monitors_unchecked(
+    pub fn xcb_randr_get_monitors(
         c: *mut xcb_connection_t,
         window: xcb_window_t,
         get_active: u8,

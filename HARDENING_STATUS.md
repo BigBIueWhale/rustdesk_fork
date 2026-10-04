@@ -544,6 +544,22 @@ model and production-peer schedules do not cover this surface. Source trace is i
 `flutter/lib/utils/multi_window_manager.dart`, `desktop/pages/remote_tab_page.dart`,
 `desktop/pages/desktop_home_page.dart`, `models/model.dart` and `src/flutter.rs`.
 
+**X11 monitor reply ownership — SOURCE CORRECTION; NATIVE ACCEPTANCE PENDING.**
+`libs/scrap/src/x11/iter.rs` previously returned a monitor cursor after freeing
+its backing RandR reply. Each screen now owns that reply until exhaustion or
+drop; queries are checked, reply/error allocations are retired exactly, and a
+query error terminates enumeration explicitly. Both public `Display::all` and
+`Display::primary` propagate the error rather than returning partial success.
+The focused `--x11-display-tests` profile compiles the production enumeration
+modules and both public callers against the pinned Rust/XCB image and real
+two-screen Xvfb. Its historical-source comparison observes free-before-use and
+null-reply misuse without allowing an uncontrolled dangling read; corrected
+cases cover repeated enumeration, early drop and real BadWindow rejection.
+Execution is not yet accepted. This is component evidence, not full-product
+capture, installed-service proof, allocator-exploit proof, the original
+Android/Windows cause, or LPE closure. Atom-name error cleanup and the inherited
+geometry/pixel-format fallback remain separate uncorrected source risks.
+
 The Windows first-video path now avoids the decoder worker's former nested Tokio runtime, second OS thread, synchronous
 join, and ignored IPC result. Remote and View Camera connections share a process-wide Tokio `OnceCell` initialization
 from the existing async connection owner, concurrent with connection establishment, with one outer 50-ms main-IPC

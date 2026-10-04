@@ -24,8 +24,8 @@ case "$#:${8:-}" in
     8:--linux-flutter-artifact-tests)
         MODE=linux-flutter-artifact-tests
         ;;
-    8:--android-frame-tests)
-        MODE=android-frame-tests
+    8:--android-frame-tests|8:--x11-display-tests)
+        MODE=${8#--}
         ;;
     10:--linux-flutter-engine-prepare|10:--linux-flutter-engine-build)
         MODE=${8#--}
@@ -810,6 +810,12 @@ run_android_frame_tests() {
     local inputs=/mnt/rustdesk-verifier-inputs
     local work=$ROOT/android-frame-tests load_output phase profile
     local output=$ROOT/android-frame-tests.out status=0
+    local native_script=test-android-frame-native.py
+    local native_receipt='ANDROID_FRAME_NATIVE=pass source=x11 pixels=actual counter=uint32 age=monotonic whole_cycle=refused network=none uid=4000 cleanup=joined'
+    if [ "$MODE" = x11-display-tests ]; then
+        native_script=test-x11-display-native.py
+        native_receipt='X11_DISPLAY_NATIVE=pass source=production-component xcb=real old=refused screens=2 repeat=32 drop=exact query_error=explicit public_callers=executed allocator_reuse=unclaimed network=none uid=4000 cleanup=joined'
+    fi
     local -a mounts command
     load_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -847,7 +853,7 @@ run_android_frame_tests() {
                 --mount "type=bind,src=$work/xvfb-root/usr/bin/xkbcomp,dst=/usr/bin/xkbcomp,readonly"
                 --tmpfs /build:rw,exec,nosuid,nodev,size=16m,mode=700,uid=4000,gid=4000
             )
-            command=(/usr/bin/python3 -B -I -S /work/scripts/test-android-frame-native.py)
+            command=(/usr/bin/python3 -B -I -S "/work/scripts/$native_script")
         fi
         CONTAINER_ID="$(frame_docker create --name "rustdesk-android-frame-$phase" \
             --pull never --network none --user 4000:4000 --read-only --cap-drop ALL \
@@ -870,14 +876,18 @@ run_android_frame_tests() {
         [ "$(frame_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
             || fail 'Android frame-test container did not finish cleanly'
         if [ "$phase" = native ]; then
-            [ "$(grep -Fxc 'ANDROID_FRAME_NATIVE=pass source=x11 pixels=actual counter=uint32 age=monotonic whole_cycle=refused network=none uid=4000 cleanup=joined' "$output")" -eq 1 ] \
+            [ "$(grep -Fxc "$native_receipt" "$output")" -eq 1 ] \
                 || fail 'Android native frame-test result is absent or duplicated'
         fi
         frame_docker rm "$CONTAINER_ID" >/dev/null || fail 'Android frame-test container retirement failed'
         CONTAINER_ID=
     done
     stop_docker_authority
-    printf 'ANDROID_FRAME_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
+    if [ "$MODE" = x11-display-tests ]; then
+        printf 'X11_DISPLAY_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
+    else
+        printf 'ANDROID_FRAME_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
+    fi
 }
 
 network_inventory() {
@@ -5673,7 +5683,7 @@ if [ "$MODE" = linux-flutter-artifact-tests ]; then
     exit 0
 fi
 
-if [ "$MODE" = android-frame-tests ]; then
+if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     run_android_frame_tests
     exit 0
 fi

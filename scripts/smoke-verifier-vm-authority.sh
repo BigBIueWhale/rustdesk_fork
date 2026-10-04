@@ -100,10 +100,10 @@ case "$#:${1:-}" in
             || { echo 'engine build input/run overrides are forbidden' >&2; exit 2; }
         MODE=linux-flutter-engine-build
         ;;
-    1:--android-frame-tests)
+    1:--android-frame-tests|1:--x11-display-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Android frame-test input/run overrides are forbidden' >&2; exit 2; }
-        MODE=android-frame-tests
+        MODE=${1#--}
         ;;
     1:--android-peer-build)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -220,6 +220,7 @@ case "$#:${1:-}" in
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
+        printf 'Focused production X11 enumeration check: %s --x11-display-tests\n' "${0##*/}" >&2
         printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario peer-lifecycle --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --linux-flutter-app-build | --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
         exit 2
         ;;
@@ -450,7 +451,7 @@ elif [ "$MODE" = android-owner-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
-elif [ "$MODE" = android-frame-tests ]; then
+elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     readonly VM_TIMEOUT_SECONDS=240
     readonly OVERLAY_SIZE=12G
     readonly VM_MEMORY=4096
@@ -1006,6 +1007,13 @@ android_frame_input_inventory() {
         "$SCRIPT_DIR/smoke-xvfb-packages.tsv" "$SCRIPT_DIR/smoke-xvfb-files.tsv"
         "$DEV_CHECK_IMAGE_ARCHIVE"
     )
+    if [ "$MODE" = x11-display-tests ]; then
+        files+=("$SCRIPT_DIR/test-x11-display-native.py" "$SCRIPT_DIR/test-x11-display.rs"
+            "$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
+            "$REPO_ROOT/libs/scrap/src/x11/iter.rs" "$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
+            "$REPO_ROOT/libs/scrap/src/x11/server.rs" "$REPO_ROOT/libs/scrap/src/x11/display.rs"
+            "$REPO_ROOT/libs/scrap/src/common/x11.rs")
+    fi
     while IFS=$'\t' read -r name size digest url extra; do
         [ -n "$name" ] || continue
         [[ "$name" == \#* ]] && continue
@@ -1027,7 +1035,7 @@ android_frame_input_inventory() {
         [ -f "$file" ] && [ ! -L "$file" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%h' -- "$file")" = "$HOST_UID:$HOST_GID:1" ] \
             || fail 'Android frame-test input owner or type differs'
-        if [[ "$file" == "$SCRIPT_DIR/"* ]]; then
+        if [[ "$file" == "$REPO_ROOT/"* ]] && [[ "$file" != "$ONLINE_INPUTS/"* ]]; then
             verify_committed_test_source "$file"
         fi
     done
@@ -1564,7 +1572,7 @@ fi
 frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
-if [ "$MODE" = android-frame-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
@@ -1599,7 +1607,7 @@ if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engin
     engine_prepare_inputs_before="$(engine_prepare_input_inventory)" \
         || fail 'cannot inventory engine preparation inputs'
 fi
-if [ "$MODE" = android-frame-tests ]; then
+if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$DEV_CHECK_IMAGE_ARCHIVE")" = \
       "$HOST_UID:$HOST_GID:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
         || fail 'Android frame-test image archive authority differs'
@@ -2179,7 +2187,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     "$LIB_SOURCE" "$PIN_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
-    if [ "$MODE" = android-frame-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+    if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
        || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
     fi
@@ -3057,7 +3065,7 @@ elif [ "$MODE" = flutter-model-tests ]; then
 elif [ "$MODE" = android-owner-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$ANDROID_OWNER_SOURCE_ARCHIVE")
-elif [ "$MODE" = android-frame-tests ]; then
+elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=(
         "devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
@@ -3073,6 +3081,18 @@ elif [ "$MODE" = android-frame-tests ]; then
         "repo/scripts/smoke-xvfb-packages.tsv=$SCRIPT_DIR/smoke-xvfb-packages.tsv"
         "repo/scripts/smoke-xvfb-files.tsv=$SCRIPT_DIR/smoke-xvfb-files.tsv"
     )
+    if [ "$MODE" = x11-display-tests ]; then
+        lifecycle_payload_grafts+=(
+            "repo/scripts/test-x11-display-native.py=$SCRIPT_DIR/test-x11-display-native.py"
+            "repo/scripts/test-x11-display.rs=$SCRIPT_DIR/test-x11-display.rs"
+            "repo/scripts/fixtures/x11-display-iter-before.rs=$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
+            "repo/libs/scrap/src/x11/iter.rs=$REPO_ROOT/libs/scrap/src/x11/iter.rs"
+            "repo/libs/scrap/src/x11/ffi.rs=$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
+            "repo/libs/scrap/src/x11/server.rs=$REPO_ROOT/libs/scrap/src/x11/server.rs"
+            "repo/libs/scrap/src/x11/display.rs=$REPO_ROOT/libs/scrap/src/x11/display.rs"
+            "repo/libs/scrap/src/common/x11.rs=$REPO_ROOT/libs/scrap/src/common/x11.rs"
+        )
+    fi
 elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
    || [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-peer-build ]; then
     payload_identity=(-uid 4000 -gid 4000)
@@ -3208,8 +3228,8 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     guest_invocation+=' --android-runtime-log-tests'
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     guest_invocation+=' --linux-flutter-artifact-tests'
-elif [ "$MODE" = android-frame-tests ]; then
-    guest_invocation+=' --android-frame-tests'
+elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
+    guest_invocation+=" --$MODE"
 elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = cpace-recovery-tests ]; then
@@ -3708,6 +3728,14 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     require_exact_fixed_receipt "$linux_flutter_vm_receipt" 'Linux app-capsule source/finality result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux app-capsule cloud-init completion'
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
+elif [ "$MODE" = x11-display-tests ]; then
+    require_exact_fixed_receipt \
+        'X11_DISPLAY_NATIVE=pass source=production-component xcb=real old=refused screens=2 repeat=32 drop=exact query_error=explicit public_callers=executed allocator_reuse=unclaimed network=none uid=4000 cleanup=joined' \
+        'production X11 enumeration native A/B'
+    require_exact_fixed_receipt \
+        'X11_DISPLAY_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
+        'X11 enumeration guest finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'X11 enumeration completion'
 elif [ "$MODE" = android-frame-tests ]; then
     mapfile -t frame_source_build < <(/usr/bin/grep -Eo \
         'X11_FRAME_SOURCE_BUILD=pass source_sha256=[0-9a-f]{64} sha256=[0-9a-f]{64} bytes=[1-9][0-9]* copies=2 equality=byte-identical network=none output=private' \
@@ -4607,9 +4635,13 @@ fi
 external_listener_drift_count="$(/usr/bin/wc -l <"$EXTERNAL_LISTENER_DRIFT")"
 /usr/bin/printf 'VERIFIER_VM_HOST_LISTENER_AUDIT=pass complete_snapshots=before,during,after harness_additions=none preexisting_process_drift=%s\n' \
     "$external_listener_drift_count"
-if [ "$MODE" = android-frame-tests ]; then
+if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     [ "$(android_frame_input_inventory)" = "$frame_inputs_before" ] \
         || fail 'Android frame-test inputs changed during execution'
+    [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
+        && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'focused X11 native test source changed during execution'
 fi
 [ "$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" "$LINUX_FLUTTER_ARTIFACT_TEST")" = "$linux_flutter_sources_before" ] \
     || fail 'Linux app-capsule source changed during execution'
@@ -4671,6 +4703,9 @@ elif [ "$MODE" = linux-flutter-engine-prepare ]; then
 elif [ "$MODE" = android-runtime-log-tests ]; then
     printf 'ANDROID_RUNTIME_LOG_TESTS_OUTER=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=guest-only product=unexecuted scope=real-log-lifetime cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$vm_elapsed_seconds"
+elif [ "$MODE" = x11-display-tests ]; then
+    printf 'X11_DISPLAY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-enumeration-component cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-frame-tests ]; then
     printf 'ANDROID_FRAME_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"

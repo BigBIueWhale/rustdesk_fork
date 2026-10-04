@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""Run historical/current production X11 enumeration against real isolated Xvfb."""
+import hashlib
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import time
+
+
+def require(value, message):
+    if not value:
+        raise RuntimeError(message)
+
+
+def main():
+    require(os.getuid() == 4000 and os.getgid() == 4000, "nonroot fixture principal differs")
+    root = Path("/work")
+    baseline = root / "scripts/fixtures/x11-display-iter-before.rs"
+    require(hashlib.sha256(baseline.read_bytes()).hexdigest() ==
+            "43113044a02de9aef03d64998dce13216068408549b61e9bd42dfa28f3ffea83",
+            "historical e8898566 iterator bytes differ")
+    environment = {"PATH": "/usr/local/cargo/bin:/usr/bin:/bin", "LC_ALL": "C",
+                   "HOME": "/tmp", "DISPLAY": ":98", "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
+                   "RUSTUP_HOME": "/usr/local/rustup", "CARGO_HOME": "/usr/local/cargo"}
+    version = subprocess.run(["/usr/local/cargo/bin/rustc", "--version"], env=environment,
+                             check=True, capture_output=True, text=True, timeout=5)
+    require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
+    binaries = {}
+    for variant in ("historical", "corrected"):
+        work = Path("/build") / variant
+        (work / "x11").mkdir(mode=0o700, parents=True)
+        (work / "common").mkdir(mode=0o700)
+        shutil.copyfile(root / "scripts/test-x11-display.rs", work / "test.rs")
+        for name in ("display", "ffi", "iter", "server"):
+            source = baseline if name == "iter" and variant == "historical" else root / f"libs/scrap/src/x11/{name}.rs"
+            shutil.copyfile(source, work / f"x11/{name}.rs")
+        shutil.copyfile(root / "libs/scrap/src/common/x11.rs", work / "common/x11.rs")
+        binary = work / "native"
+        command = ["/usr/local/cargo/bin/rustc", "--edition=2021", "-C", "debuginfo=1",
+                   "-o", str(binary), str(work / "test.rs")]
+        if variant == "corrected":
+            command += ["--cfg", "corrected"]
+        for symbol in ("get_monitors", "get_monitors_unchecked", "get_monitors_reply",
+                       "get_monitors_monitors_iterator", "monitor_info_next"):
+            command += ["-C", f"link-arg=-Wl,--wrap=xcb_randr_{symbol}"]
+        subprocess.run(command, env=environment, check=True, timeout=30)
+        binaries[variant] = binary
+        print(f"X11_DISPLAY_NATIVE_BUILD variant={variant} sha256="
+              f"{hashlib.sha256(binary.read_bytes()).hexdigest()}", flush=True)
+    with open("/tmp/x11-display-xvfb.log", "xb") as log:
+        child = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "640x480x24",
+                                  "-screen", "1", "800x600x24", "-nolisten", "tcp", "-ac", "-noreset"],
+                                 env=environment, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 10
+            while not Path("/tmp/.X11-unix/X98").is_socket():
+                require(child.poll() is None and time.monotonic() < deadline, "Xvfb not ready")
+                time.sleep(0.05)
+            for scenario, status, marker in (
+                    ("enumerate", 42, "monitor-used-after-reply-retirement"),
+                    ("reject", 43, "null-reply-passed-to-iterator")):
+                old = subprocess.run([str(binaries["historical"]), scenario], env=environment,
+                                     capture_output=True, text=True, timeout=10)
+                require(old.returncode == status and f"X11_DISPLAY_OLD_FAILURE={marker}" in old.stderr,
+                        f"historical {scenario} did not fail at its actual ownership defect: {old}")
+                print(old.stderr.strip(), flush=True)
+                subprocess.run([str(binaries["corrected"]), scenario], env=environment,
+                               check=True, timeout=15)
+            require(child.poll() is None, "Xvfb exited during native cases")
+        finally:
+            if child.poll() is None:
+                child.terminate()
+            child.wait(timeout=5)
+        require(child.returncode == 0, "Xvfb retirement failed")
+    for name in ("tcp", "tcp6"):
+        require(not any(row.split()[3] == "0A" for row in Path("/proc/net", name).read_text().splitlines()[1:]),
+                "native test opened a TCP listener")
+    for name in ("udp", "udp6"):
+        require(len(Path("/proc/net", name).read_text().splitlines()) == 1, "native test opened UDP")
+    print("X11_DISPLAY_NATIVE=pass source=production-component xcb=real old=refused "
+          "screens=2 repeat=32 drop=exact query_error=explicit public_callers=executed "
+          "allocator_reuse=unclaimed network=none uid=4000 cleanup=joined", flush=True)
+
+
+if __name__ == "__main__":
+    main()

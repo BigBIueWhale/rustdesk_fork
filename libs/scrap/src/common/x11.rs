@@ -88,9 +88,15 @@ impl Display {
         };
 
         let mut displays = x11::Server::displays(server);
-        let mut best = displays.next();
+        let mut best = displays.next().transpose()?;
         if best.as_ref().map(|x| x.is_default()) == Some(false) {
-            best = displays.find(|x| x.is_default()).or(best);
+            for display in displays {
+                let display = display?;
+                if display.is_default() {
+                    best = Some(display);
+                    break;
+                }
+            }
         }
 
         match best {
@@ -105,7 +111,9 @@ impl Display {
             Err(_) => return Err(io::ErrorKind::ConnectionRefused.into()),
         };
 
-        Ok(x11::Server::displays(server).map(Display).collect())
+        x11::Server::displays(server)
+            .map(|display| display.map(Display))
+            .collect()
     }
 
     pub fn width(&self) -> usize {

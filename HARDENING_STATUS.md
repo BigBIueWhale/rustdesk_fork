@@ -13044,8 +13044,8 @@ independent reproduction, and external review.
 
 ### R-S11is/R-S11e-282 — exact-command CM file-response admission finality
 
-**SOURCE IMPLEMENTED; TWO EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED;
-SOURCE/MUTATION THEATER DELETED; CURRENT INSTALLED DESKTOP/ANDROID FILE EVIDENCE OPEN.**
+**SOURCE IMPLEMENTED; FOUR CM RUST REGRESSIONS EXECUTED IN AN ISOLATED LINUX-TARGET VM;
+SOURCE/MUTATION THEATER DELETED; INSTALLED DESKTOP/ANDROID FILE EVIDENCE OPEN.**
 
 `CmFileResponder::send` returns the exact `CmEgressAdmissionError`; all response-producing helpers
 and exhaustive `handle_fs` propagation make refusal terminal on desktop and Android. A read job is
@@ -13057,21 +13057,18 @@ persistent-service kill.
 
 The desktop CM receive half now engages the 256-KiB raw-block frame cap and a shared five-second
 header-to-payload deadline before reading an authorized `WriteBlock`; success restores the aggregate
-CM frame cap, while transport failure or timeout retires the exact task and registry owner. The two
-framed-stream regressions for an exact-limit block, an oversized block, and a withheld block are
-wired into the isolated focused Rust lane but have **not executed**. Exact pushed source `06f5f092`
-failed that lane before these tests because `libs/scrap/src/common/camera.rs` still calls the
-Linux `PixelBuffer::new` constructor with its former signature; serial SHA-256
-`eb392e036b7117402cef840a8762040c8ab25e35f4fa56db79316d005c28c808` is retained in
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.QT85ZGvMUo.serial.log`.
-The failed VM run root was retired after its process exited. This is source correction with a
-compile blocker, not native or even focused Rust acceptance.
-
-The executable Tokio regressions
-`r_s11is_cm_file_response_refusal_is_returned_to_the_command_owner` and
-`r_s11is_read_job_commits_only_after_initial_response_admission` remain, with direct shared command
-`cargo test --lib --features linux-pkg-config,flutter r_s11is_ --color never`. The deleted source
-verifier never drove the CM stream, filesystem, raw frame, or target process and is not evidence.
+CM frame cap, while transport failure or timeout retires the exact task and registry owner. Exact
+pushed source `70a4acd7` passed the no-NIC VM's nine focused Rust groups: 45 named tests, including
+all four `ui_cm_interface::tests::r_s11is_` cases for exact-limit and oversized raw blocks, a
+withheld block, response-refusal propagation, and read-job admission finality. The Rust 1.75
+Linux-target tests ran in a guest-only networkless nonroot container with read-only source and
+sealed inputs. The outer harness accepted the exact guest receipt, reported no added host listener
+or pre-existing process drift, joined cleanup, and retired the VM overlay. Raw serial
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.YAnJZU1alB.serial.log` is 70,681
+bytes, SHA-256 `3a6a9f0362c7ae60bca160eb5971fcac6eafc6449a03a910876f5895f30e1948`.
+These are in-memory framed-stream and Rust owner tests, not installed OS IPC, desktop/Android
+file transactions, or release-artifact evidence. The deleted source verifier never drove those
+behaviors and is not evidence.
 
 Exact installed desktop and Android transactions remain STOP-SHIP. They must exercise directory and
 recursive listing, create/remove/rename, writes, digest, read blocks, completion, cancellation,

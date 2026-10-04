@@ -571,34 +571,33 @@ Android/Windows cause, or LPE closure. The inherited geometry/pixel-format
 fallback remains an uncorrected source risk: correct selection must derive
 byte order, pixmap bits-per-pixel, root visual masks and padded row stride,
 not infer layout from depth alone or replace failure with BGRA.
+Reply-payload bounds also remain OPEN: atom-name and variable monitor/output
+lengths must be validated against the owned reply's byte extent before unsafe
+slice/cursor access. Ownership alone does not establish those bounds.
 
 **X11 atom-query finality — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
 The production helper returned an empty name when GetAtomName failed and leaked
 the error allocation. Exact `a4d5dee1` reproduced a real server BadAtom becoming
 a successful Display with one unfreed error. Replies/errors now have one RAII
 owner through name conversion, and atom-query failure immediately retires the
-enclosing monitor reply and terminates enumeration explicitly. The unchanged
-native fixture passed 32 real BadAtom failures, immediate reply/error retirement,
-fused enumeration and both public callers including second-root failure. Exact
-`e0166077c7085844d4a3ca00bf4583dc426cf1c8`, tree
-`a9ffd81a152eabcbb9c8954e5d6cddc0b2f197d3`, passed the complete transaction in
-53 seconds; the earlier monitor-lifetime cases also passed. Raw serial is
-`evidence/x11-atom-after-e0166077.serial.log` (68,442 bytes, SHA-256
-`313ae979d213f1efd9eab9c32fda9b849f827fbb73c80859f7d1592d09a22aaa`).
+enclosing monitor reply and terminates enumeration explicitly. The production
+helper copies the explicit-length byte slice directly into its owned Rust name,
+preserving the existing lossy UTF-8 conversion without an intermediate CString.
+The native fixture compiles with scrap's Rust 2018 edition and passes 32 real
+BadAtom failures, immediate reply/error retirement, fused enumeration and both
+public callers including second-root failure. Separate cases cover atom0 without
+a request and actual UTF-8/non-UTF-8 names. This Xvfb server truncates an interned
+embedded-NUL name; it did not deliver a client rejection. A labelled received-byte
+injection into an actual XCB reply failed at `ce734b3f` and now preserves NUL
+across 32 repetitions with exact cleanup.
+Exact `4e859a2618603e720d5220395d9b35ee99c49e7c`, tree
+`9872054c9de60896c465d12dc315e21c80d0b57e`, passed the complete transaction in
+52 seconds, including all earlier monitor-lifetime/error cases. Raw serial is
+`evidence/x11-name-after-4e859a26.serial.log` (67,363 bytes, SHA-256
+`1db6242eded9ca06a39aa3ffc675717f60e1d7dfe7b69f87c53f42f69c030df1`).
 Inputs and host listeners were unchanged, cleanup joined and scratch self-retired.
-This is component evidence, not full-product capture, original display-hang
-causation, installed-service behavior or a privilege escalation. Atom-name
-conversion branches remain outside this executed scenario. A separate native
-scenario now checks atom0 without a request and actual server-interned names
-containing UTF-8 and non-UTF-8 bytes, with exact reply retirement. This Xvfb
-server truncates an interned embedded-NUL name; that observation is not a
-client rejection. A separately labelled case injects NUL into an actual
-length-delimited XCB reply to test client conversion without claiming that
-the server emitted it. Exact `ce734b3f` passed the unmodified server cases,
-then rejected the injected NUL with InvalidData. The production helper now
-copies the declared byte slice directly into its owned Rust name, preserving
-the existing lossy UTF-8 conversion without an intermediate CString. It uses
-scrap's Rust 2018 edition; corrected acceptance remains pending.
+This is instrumented component evidence, not full-product capture, malformed-
+reply bounds, original display-hang causation, installed-service behavior or LPE.
 
 The Windows first-video path now avoids the decoder worker's former nested Tokio runtime, second OS thread, synchronous
 join, and ignored IPC result. Remote and View Camera connections share a process-wide Tokio `OnceCell` initialization

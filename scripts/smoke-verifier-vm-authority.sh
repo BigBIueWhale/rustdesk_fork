@@ -3208,6 +3208,7 @@ fi
     "repo/scripts/android-peer-artifact.py=$ANDROID_PEER_ARTIFACT_SOURCE" \
     "repo/scripts/test-android-peer-artifact.py=$ANDROID_PEER_ARTIFACT_TEST" \
     "repo/scripts/test-android-runtime-progress.py=$ANDROID_RUNTIME_PROGRESS_TEST" \
+    "repo/scripts/bounded-unix-stream-capture.py=$CAPTURE_HELPER" \
     "repo/scripts/linux-flutter-artifact.py=$LINUX_FLUTTER_ARTIFACT_SOURCE" \
     "repo/scripts/test-linux-flutter-artifact.py=$LINUX_FLUTTER_ARTIFACT_TEST" \
     "repo/scripts/smoke-verifier-vm-authority-guest.sh=$GUEST_SCRIPT" \

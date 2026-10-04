@@ -230,7 +230,23 @@ impl TraitCapturer for CameraCapturer {
                         crate::would_block_if_equal(&mut self.last_data, &self.data)?;
                         // FIXME: macos's PixelBuffer cannot be directly created from bytes slice.
                         cfg_if::cfg_if! {
-                            if #[cfg(any(target_os = "linux", target_os = "windows"))] {
+                            if #[cfg(target_os = "linux")] {
+                                let width = decoded.width() as usize;
+                                let height = decoded.height() as usize;
+                                let row_stride = width
+                                    .checked_mul(Pixfmt::RGBA.bytes_per_pixel())
+                                    .ok_or_else(|| io::Error::new(
+                                        io::ErrorKind::InvalidData,
+                                        "camera RGBA row stride overflow",
+                                    ))?;
+                                Ok(Frame::PixelBuffer(PixelBuffer::new(
+                                    &self.data,
+                                    Pixfmt::RGBA,
+                                    width,
+                                    height,
+                                    row_stride,
+                                )?))
+                            } else if #[cfg(target_os = "windows")] {
                                 Ok(Frame::PixelBuffer(PixelBuffer::new(
                                     &self.data,
                                     Pixfmt::RGBA,

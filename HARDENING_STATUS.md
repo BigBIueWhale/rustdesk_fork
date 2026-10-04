@@ -8594,7 +8594,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   cleanup surfaces; cold artifacts, installed/device behavior, independent reproduction, and
   external review remain open.
 - **R-S11dq/R-S11e-135 — generic cleanup process/domain/path ownership: SOURCE
-  IMPLEMENTED; ISOLATED DEFAULT-PATH BEHAVIOR PENDING.**
+  IMPLEMENTED; ISOLATED DEFAULT-PATH BEHAVIOR ACCEPTED.**
   The former no-argument path acted on caller-writable PID files, a shared
   session-libvirt domain-name prefix, and a symlinkable overlay pathname.
   Those values did not prove process generation, domain creator, or file
@@ -8611,9 +8611,15 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   reversal remain separate, and R-S11dr governs golden-domain ownership.
   `scripts/verify-cleanup-authority.py` retains a focused source invariant
   but no longer treats requirement/README/ledger wording or its own in-memory
-  mutations as behavioral proof. An isolated no-NIC VM decoy-state execution
-  is still pending. Native session-libvirt/Windows lifecycle, cold artifacts,
-  independent reproduction, and external review remain open.
+  mutations as behavioral proof. Clean pushed `16e61ad4` passed the 82-second
+  no-NIC VM authority smoke: UID 4000 ran the real no-argument script against
+  a live decoy process, legacy PID/socket files, and a symlink-targeted overlay;
+  all survived. The outer listener audit found no harness addition or process
+  drift, cleanup joined, and no `run.*`/overlay remains. Retained serial SHA-256:
+  `303be206cc7bfa2a83c8808876814032625a9358797a1ce277b32dd68a47a282`.
+  This fixture is not native session-libvirt/Windows lifecycle, a destructive
+  host-cleanup test, cold artifacts, independent reproduction, or external review;
+  those obligations remain open.
 - **R-S11dr/R-S11e-136 — Windows golden exact libvirt-domain lifecycle — SOURCE
   IMPLEMENTED; CURRENT NATIVE SESSION-LIBVIRT/WINDOWS-VM EVIDENCE OPEN.**
   `scripts/provision-windows-vm.sh` validates its fixed name and kernel-random

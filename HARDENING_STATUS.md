@@ -3212,6 +3212,21 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 
 ### Open / STOP-SHIP evidence
 
+**CM/file diagnostic replay (older peer; current-source finality OPEN):** pushed harness
+`0bc679cc` reused the retained source-bound `03ce7fc6` Linux peer (manifest SHA-256
+`edf8e275…de0d`) without rebuilding it. In one 35-second no-NIC VM run, a guest-only,
+networkless, nonroot container executed the real server and strict `cmfiletransfer` probe:
+CPace keying succeeded, post-login `PeerInfo` arrived, and `ReadDir("")` returned a CM
+`FileResponse::Dir` for the fixture home. The fixture UID has no passwd entry, so its
+reported username was `"unknown"`; this is not installed-user identity evidence. Exact
+outside-overlay serial `cm-file-replay-run.LePvzpIsAF.serial.log` is 68,935 bytes,
+SHA-256 `65def75158497bf851c78630b74a1087e4b35b6454ab0bcbbf68229c6f6065f2`.
+The outer listener audit reported no harness-added host listener or pre-existing-process
+drift, joined cleanup, and no remaining `run.*`/overlay. This proves only that the older
+peer's authenticated headless Linux CM directory round-trip worked. Current-source,
+write/digest/cancel/error, saturation, owner-loss/reconnect, installed-target, Android,
+and negative-principal requirements below remain OPEN.
+
 | Platform or boundary | Evidence still required |
 | --- | --- |
 | CM/file finality (R-S11c-4c/4d) | Exact-current Rust 1.75 Linux regressions now execute all 57 `hbb_common::fs` tests, including the retained-authority create/rename/file/directory mutations and Unix symlink/path-swap/depth-bound cases. Earlier current-source regressions also execute receive commit, incomplete/stale terminal refusal, peer-error cleanup, resume refusal, job identity, duplicate confirmation, malformed compression, and overflow boundaries through the shared job and CM dispatcher. Windows junction/exact-handle regressions remain unexecuted. Still exercise complete read/write/digest/cancel/error operations after Login, bounded saturation, terminal-first disconnect, fixed-sidecar collision, abrupt owner loss, and reconnect on installed desktop targets and Android. The existing installed Windows result predates this strengthening. |

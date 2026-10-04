@@ -2947,9 +2947,11 @@ run_cm_file_replay() {
     local peer_root=$peer_mount/linux-x86_64-peer
     local source_root=$ROOT/cm-file-replay-source
     local work=$ROOT/cm-file-replay-work
+    local machine_id=$work/server.machine-id
+    local machine_id_value=727573746465736b2d73657276657231
     local output=$ROOT/cm-file-replay.out
     local image=$inputs/verifier-images/devcheck.docker.tar.gz
-    local source_sha materialized load_output inspect status=0
+    local source_sha materialized load_output inspect machine_mount status=0
     local -a git_builder=(
         setpriv --reuid=1000 --regid=1000 --clear-groups
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
@@ -3041,6 +3043,12 @@ run_cm_file_replay() {
         || fail 'CM file peer materialization failed'
     [ "$materialized" = "$work/materialized-peer" ] \
         || fail 'CM file peer materialization destination differs'
+    printf '%s\n' "$machine_id_value" >"$machine_id"
+    chown 1000:1000 "$machine_id"
+    chmod 0400 "$machine_id"
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$machine_id")" = 1000:1000:400:1:33 ] \
+        && [ "$(<"$machine_id")" = "$machine_id_value" ] \
+        || fail 'CM file replay private machine identity differs'
     printf 'CM_FILE_PEER_ADMITTED=pass commit=%s tree=%s manifest_sha256=%s files=7 execution=readonly-guest-copy\n' \
         "$CM_FILE_PEER_COMMIT" "$CM_FILE_PEER_TREE" "$CM_FILE_PEER_MANIFEST_SHA256"
 
@@ -3052,6 +3060,7 @@ run_cm_file_replay() {
         --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m \
         --mount "type=bind,source=$source_root,target=/work,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$materialized,target=/smoke-target,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$machine_id,target=/etc/machine-id,readonly,bind-recursive=disabled" \
         --workdir /work "$DEV_CHECK_IMAGE_CONFIG_ID" \
         /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh cm-file-replay)"
     [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'CM file replay container identity is malformed'
@@ -3063,6 +3072,11 @@ run_cm_file_replay() {
         '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}' "$CONTAINER_ID")"
     [ "$inspect" = 'false||private||private' ] \
         || fail 'CM file replay container namespace authority differs'
+    machine_mount="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
+        "$CONTAINER_ID" | awk -F '\t' '$3 == "/etc/machine-id" { print }')"
+    [ "$machine_mount" = "bind	$machine_id	/etc/machine-id	false" ] \
+        || fail 'CM file replay private machine identity mount differs'
     printf 'CM_FILE_REPLAY_STAGE=begin harness=%s peer=%s\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$CM_FILE_PEER_COMMIT"
     set +e

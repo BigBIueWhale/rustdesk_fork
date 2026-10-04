@@ -645,8 +645,14 @@ EOS
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    /smoke-target/debug/examples/seed_password 'Str0ng-Test-Pw-123' >/dev/null 2>&1 \
-      || { echo SEED_FAIL >&2; exit 1; }
+    if ! /smoke-target/debug/examples/seed_password 'Str0ng-Test-Pw-123' \
+        >/tmp/cm-file-seed.log 2>&1; then
+      printf 'SEED_FAIL\n' >&2
+      tail -n 40 /tmp/cm-file-seed.log >&2
+      exit 1
+    fi
+    grep -Fxq 'seed_password: set_permanent_password ok=true, prs_empty=false, prs_is_plaintext=false' \
+      /tmp/cm-file-seed.log
     start_server /smoke-target/debug/rustdesk /tmp/cm-file-server.log
     "$READY" --wait-server "$SRV" "$SRV_START" /tmp/cm-file-server.log \
       /smoke-target/debug/examples/smoke_readiness "$(id -u)"

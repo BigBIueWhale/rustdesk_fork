@@ -3730,7 +3730,7 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
-        'X11_ATOM_NAME_NATIVE=pass server=real unnamed=no-query embedded_nul=preserved utf8=preserved non_utf8=lossy iterations=32 replies=exact edition=2018' \
+        'X11_ATOM_NAME_NATIVE=pass server=real unnamed=no-query server_nul=truncated received_nul=injected-preserved utf8=preserved non_utf8=lossy iterations=32 replies=exact edition=2018' \
         'production X11 atom name conversion and reply ownership'
     require_exact_fixed_receipt \
         'X11_ATOM_NATIVE=pass server_error=BadAtom iterations=32 replies=exact errors=exact enumeration=fused public_callers=explicit' \

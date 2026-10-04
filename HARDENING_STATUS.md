@@ -590,10 +590,12 @@ This is component evidence, not full-product capture, original display-hang
 causation, installed-service behavior or a privilege escalation. Atom-name
 conversion branches remain outside this executed scenario. A separate native
 scenario now checks atom0 without a request and actual server-interned names
-containing NUL, UTF-8 and non-UTF-8 bytes, with exact reply retirement. It uses
-scrap's Rust 2018 edition. Its acceptance remains pending: the production
-CString conversion still incorrectly imposes a C-string restriction on the
-length-delimited X11 name.
+containing UTF-8 and non-UTF-8 bytes, with exact reply retirement. This Xvfb
+server truncates an interned embedded-NUL name; that observation is not a
+client rejection. A separately labelled case injects NUL into an actual
+length-delimited XCB reply to test client conversion without claiming that
+the server emitted it. It uses scrap's Rust 2018 edition; acceptance remains
+pending while the production conversion imposes a C-string restriction.
 
 The Windows first-video path now avoids the decoder worker's former nested Tokio runtime, second OS thread, synchronous
 join, and ignored IPC result. Remote and View Camera connections share a process-wide Tokio `OnceCell` initialization

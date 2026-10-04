@@ -110,6 +110,7 @@ struct State {
     reject_query: usize,
     atom_queries: usize,
     reject_atom_query: usize,
+    inject_atom_nul: bool,
 }
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
@@ -210,6 +211,12 @@ unsafe extern "C" fn __wrap_xcb_get_atom_name_reply(c: *mut xcb_connection_t,
         if !reply.is_null() {
             state.allocations.push(Allocation { pointer: reply.cast_mut().cast(),
                 bytes: 0, monitor: false, retired: false });
+            if state.inject_atom_nul {
+                // Xorg truncates interned NUL names. Exercise the protocol-valid byte
+                // separately by modifying one byte of an actual 12-byte XCB reply.
+                assert_eq!(xcb_get_atom_name_name_length(reply), 12);
+                *xcb_get_atom_name_name(reply).cast_mut().add(7) = 0;
+            }
         }
         if !error.is_null() && !(*error).is_null() {
             assert_eq!((**error).error_code, 5, "not an actual server BadAtom response");
@@ -312,6 +319,7 @@ fn finish_case(reject: usize) {
         state.reject_query = reject;
         state.atom_queries = 0;
         state.reject_atom_query = 0;
+        state.inject_atom_nul = false;
     });
 }
 
@@ -334,18 +342,15 @@ fn main() -> io::Result<()> {
                 finish_case(0);
             }
             for (bytes, expected) in [
-                (&b"monitor\0name"[..], "monitor\0name"),
+                (&b"monitor\0name"[..], "monitor"),
                 (&b"monitor-\xc3\xa9"[..], "monitor-é"),
                 (&b"monitor-\xff"[..], "monitor-\u{fffd}"),
             ].iter().copied() {
                 let atom = intern_atom(server.raw(), bytes)?;
                 assert_ne!(atom, 0, "server did not intern the actual byte string");
                 for _ in 0..32 {
-                    let result = x11::query_atom_name(server.raw(), atom);
-                    if result.is_err() {
-                        eprintln!("X11_ATOM_NAME_OLD_FAILURE=rejected-length-delimited-name");
-                    }
-                    assert_eq!(result?, expected, "atom name conversion changed its content");
+                    assert_eq!(x11::query_atom_name(server.raw(), atom)?, expected,
+                               "atom name conversion changed its content");
                     STATE.with(|state| {
                         let state = state.borrow();
                         assert_eq!(state.atom_queries, 1);
@@ -354,7 +359,17 @@ fn main() -> io::Result<()> {
                     finish_case(0);
                 }
             }
-            println!("X11_ATOM_NAME_NATIVE=pass server=real unnamed=no-query embedded_nul=preserved utf8=preserved non_utf8=lossy iterations=32 replies=exact edition=2018");
+            let atom = intern_atom(server.raw(), b"monitor-name")?;
+            for _ in 0..32 {
+                STATE.with(|state| state.borrow_mut().inject_atom_nul = true);
+                let result = x11::query_atom_name(server.raw(), atom);
+                if result.is_err() {
+                    eprintln!("X11_ATOM_NAME_OLD_FAILURE=rejected-injected-length-delimited-name");
+                }
+                assert_eq!(result?, "monitor\0name", "received NUL byte was not preserved");
+                finish_case(0);
+            }
+            println!("X11_ATOM_NAME_NATIVE=pass server=real unnamed=no-query server_nul=truncated received_nul=injected-preserved utf8=preserved non_utf8=lossy iterations=32 replies=exact edition=2018");
         } else if scenario == "atom-reject" {
             for _ in 0..32 {
                 STATE.with(|state| state.borrow_mut().reject_atom_query = 1);

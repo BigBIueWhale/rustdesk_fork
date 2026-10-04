@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use std::io;
 
 use super::ffi::*;
 use super::Server;
@@ -12,6 +13,9 @@ pub struct Display {
     root: xcb_window_t,
     name: String,
     pixfmt: Pixfmt,
+    scanline_pad: u8,
+    depth: u8,
+    visual: xcb_visualid_t,
 }
 
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
@@ -30,6 +34,9 @@ impl Display {
         root: xcb_window_t,
         name: String,
         pixfmt: Pixfmt,
+        scanline_pad: u8,
+        depth: u8,
+        visual: xcb_visualid_t,
     ) -> Display {
         Display {
             server,
@@ -38,6 +45,9 @@ impl Display {
             root,
             name,
             pixfmt,
+            scanline_pad,
+            depth,
+            visual,
         }
     }
 
@@ -66,5 +76,22 @@ impl Display {
 
     pub fn pixfmt(&self) -> Pixfmt {
         self.pixfmt
+    }
+
+    pub fn depth(&self) -> u8 {
+        self.depth
+    }
+    pub fn visual(&self) -> xcb_visualid_t {
+        self.visual
+    }
+    pub fn row_stride(&self) -> io::Result<usize> {
+        if !matches!(self.scanline_pad, 8 | 16 | 32) {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid X scanline padding"));
+        }
+        let pad = usize::from(self.scanline_pad);
+        let row_bits = self.w().checked_mul(self.pixfmt.bpp())
+            .and_then(|bits| bits.checked_add(pad - 1))
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "X capture row size overflow"))?;
+        Ok((row_bits / pad) * (pad / 8))
     }
 }

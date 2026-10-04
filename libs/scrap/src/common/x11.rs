@@ -24,12 +24,14 @@ impl TraitCapturer for Capturer {
         let width = self.width();
         let height = self.height();
         let pixfmt = self.0.display().pixfmt();
+        let stride = self.0.row_stride()?;
         Ok(Frame::PixelBuffer(PixelBuffer::new(
             self.0.frame()?,
             pixfmt,
             width,
             height,
-        )))
+            stride,
+        )?))
     }
 }
 
@@ -42,17 +44,22 @@ pub struct PixelBuffer<'a> {
 }
 
 impl<'a> PixelBuffer<'a> {
-    pub fn new(data: &'a [u8], pixfmt: Pixfmt, width: usize, height: usize) -> Self {
-        let stride0 = data.len() / height;
+    pub fn new(data: &'a [u8], pixfmt: Pixfmt, width: usize, height: usize, stride0: usize) -> io::Result<Self> {
+        let row_bytes = width.checked_mul(pixfmt.bytes_per_pixel());
+        let frame_bytes = stride0.checked_mul(height);
+        if width == 0 || height == 0 || !row_bytes.map(|bytes| stride0 >= bytes).unwrap_or(false)
+            || frame_bytes != Some(data.len()) {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid X capture buffer layout"));
+        }
         let mut stride = Vec::new();
         stride.push(stride0);
-        Self {
+        Ok(Self {
             data,
             pixfmt,
             width,
             height,
             stride,
-        }
+        })
     }
 }
 

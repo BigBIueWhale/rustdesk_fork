@@ -11,7 +11,22 @@ use std::rc::Rc;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pixfmt {
     BGRA,
+    RGBA,
     RGB565LE,
+}
+
+pub fn would_block_if_equal(old: &mut Vec<u8>, data: &[u8]) -> io::Result<()> {
+    if old.as_slice() == data { return Err(io::ErrorKind::WouldBlock.into()); }
+    old.clear();
+    old.extend_from_slice(data);
+    Ok(())
+}
+
+impl Pixfmt {
+    pub fn bpp(&self) -> usize {
+        match self { Self::RGB565LE => 16, Self::BGRA | Self::RGBA => 32 }
+    }
+    pub fn bytes_per_pixel(&self) -> usize { self.bpp() / 8 }
 }
 
 mod x11 {
@@ -26,6 +41,10 @@ mod x11 {
             pub index: i32,
         }
         extern "C" {
+            pub fn xcb_get_geometry_unchecked(c: *mut xcb_connection_t, drawable: xcb_drawable_t)
+                -> xcb_get_geometry_cookie_t;
+            pub fn xcb_get_geometry_reply(c: *mut xcb_connection_t, cookie: xcb_get_geometry_cookie_t,
+                                          e: *mut *mut xcb_generic_error_t) -> *mut xcb_get_geometry_reply_t;
             pub fn xcb_randr_get_monitors_unchecked(
                 c: *mut xcb_connection_t,
                 window: xcb_window_t,
@@ -37,6 +56,15 @@ mod x11 {
             pub fn xcb_randr_monitor_info_next(cursor: *mut xcb_randr_monitor_info_iterator_t);
             pub fn xcb_get_atom_name_name(reply: *const xcb_get_atom_name_reply_t) -> *const u8;
             pub fn xcb_get_atom_name_name_length(reply: *const xcb_get_atom_name_reply_t) -> i32;
+        }
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        pub struct xcb_get_geometry_cookie_t { pub sequence: u32 }
+        #[repr(C)]
+        pub struct xcb_get_geometry_reply_t {
+            pub response_type: u8, pub depth: u8, pub sequence: u16, pub length: u32,
+            pub root: xcb_window_t, pub x: i16, pub y: i16,
+            pub width: u16, pub height: u16, pub border_width: u16, pub pad0: [u8; 2],
         }
     }
     mod display;
@@ -50,13 +78,27 @@ mod x11 {
             -> std::io::Result<String> {
             get_atom_name(c, atom)
         }
+
+        pub fn reject_unsupported_layouts() {
+            assert_eq!(classify_format(0, 24, 24, 0x00ff0000, 0x0000ff00, 0x000000ff), None);
+            assert_eq!(classify_format(0, 16, 16, 0x7c00, 0x03e0, 0x001f), None);
+            assert_eq!(classify_format(1, 24, 32, 0x00ff0000, 0x0000ff00, 0x000000ff), None);
+            assert_eq!(classify_format(0, 24, 32, 0x00ff0000, 0x0000ff00, 0x0000ff00), None);
+            assert_eq!(classify_format(2, 24, 32, 0x00ff0000, 0x0000ff00, 0x000000ff), None);
+        }
     }
     mod server;
     pub use display::*;
     pub use iter::*;
     pub use server::*;
 
+    #[cfg(corrected)]
+    mod capturer;
+    #[cfg(corrected)]
+    pub use capturer::Capturer;
+    #[cfg(not(corrected))]
     pub struct Capturer;
+    #[cfg(not(corrected))]
     impl Capturer {
         pub fn new(_: Display) -> std::io::Result<Self> {
             Err(std::io::ErrorKind::Unsupported.into())
@@ -145,9 +187,18 @@ thread_local! {
 
 pub mod libc {
     pub use std::ffi::c_void;
+    pub type c_int = i32;
+    pub const IPC_PRIVATE: c_int = 0;
+    pub const IPC_CREAT: c_int = 0o1000;
+    pub const IPC_RMID: c_int = 0;
+    pub const SHM_RDONLY: c_int = 0o10000;
     extern "C" {
         #[link_name = "free"]
         pub fn system_free(pointer: *mut c_void);
+        pub fn shmget(key: c_int, size: usize, flags: c_int) -> c_int;
+        pub fn shmat(id: c_int, addr: *const c_void, flags: c_int) -> *mut c_void;
+        pub fn shmdt(addr: *const c_void) -> c_int;
+        pub fn shmctl(id: c_int, cmd: c_int, status: *mut c_void) -> c_int;
     }
     pub unsafe fn free(pointer: *mut c_void) {
         let deferred = super::STATE.with(|state| {
@@ -169,11 +220,20 @@ pub mod libc {
     }
 }
 
+#[macro_export]
+macro_rules! warn { ($($arg:tt)*) => { eprintln!($($arg)*); } }
+pub mod log { pub use crate::warn; }
+
 extern "C" {
     fn xcb_intern_atom(c: *mut xcb_connection_t, only_if_exists: u8,
                        name_len: u16, name: *const u8) -> InternAtomCookie;
     fn xcb_intern_atom_reply(c: *mut xcb_connection_t, cookie: InternAtomCookie,
                              error: *mut *mut xcb_generic_error_t) -> *mut InternAtomReply;
+    fn xcb_create_gc_checked(c: *mut xcb_connection_t, gc: u32, drawable: u32,
+                             value_mask: u32, value_list: *const u32) -> xcb_void_cookie_t;
+    fn xcb_poly_fill_rectangle_checked(c: *mut xcb_connection_t, drawable: u32, gc: u32,
+                                       rectangles_len: u32, rectangles: *const XcbRectangle) -> xcb_void_cookie_t;
+    fn xcb_free_gc_checked(c: *mut xcb_connection_t, gc: u32) -> xcb_void_cookie_t;
     #[link_name = "__real_xcb_get_atom_name_name"]
     fn real_atom_bytes(reply: *const xcb_get_atom_name_reply_t) -> *const u8;
     #[link_name = "__real_xcb_get_geometry_reply"]
@@ -195,6 +255,29 @@ extern "C" {
     fn real_iterator(reply: *const xcb_randr_get_monitors_reply_t) -> xcb_randr_monitor_info_iterator_t;
     #[link_name = "__real_xcb_randr_monitor_info_next"]
     fn real_next(cursor: *mut xcb_randr_monitor_info_iterator_t);
+}
+
+#[repr(C)]
+struct XcbRectangle { x: i16, y: i16, width: u16, height: u16 }
+
+#[cfg(corrected)]
+fn draw_red(server: &x11::Server, root: u32, pixel: u32) -> io::Result<()> {
+    unsafe fn checked(server: *mut xcb_connection_t, cookie: xcb_void_cookie_t) -> io::Result<()> {
+        let error = xcb_request_check(server, cookie);
+        if error.is_null() { return Ok(()); }
+        let code = (*error).error_code;
+        libc::system_free(error.cast());
+        Err(io::Error::new(io::ErrorKind::Other, format!("X11 draw error {code}")))
+    }
+    unsafe {
+        let gc = xcb_generate_id(server.raw());
+        checked(server.raw(), xcb_create_gc_checked(server.raw(), gc, root, 4, &pixel))?;
+        let rectangle = XcbRectangle { x: 0, y: 0, width: 3, height: 1 };
+        let draw = checked(server.raw(), xcb_poly_fill_rectangle_checked(server.raw(), root, gc, 1, &rectangle));
+        let retire = checked(server.raw(), xcb_free_gc_checked(server.raw(), gc));
+        draw?;
+        retire
+    }
 }
 
 #[cfg(corrected)]
@@ -443,7 +526,45 @@ fn main() -> io::Result<()> {
             "bounds-mon-sum" => Some((0, 5)),
             _ => None,
         };
-        if let Some((atom, monitor)) = fault {
+        if scenario == "capture-24" || scenario == "capture-16" {
+            use crate::{TraitPixelBuffer, common::TraitCapturer};
+            x11::reject_unsupported_layouts();
+            let depth = if scenario == "capture-16" { 16 } else { 24 };
+            let display = x11::Server::displays(Rc::clone(&server))
+                .next().expect("first X screen")?;
+            let expected = if depth == 16 { Pixfmt::RGB565LE } else { Pixfmt::BGRA };
+            assert_eq!(display.depth(), depth);
+            assert_eq!(display.pixfmt(), expected);
+            let stride = display.row_stride()?;
+            let width = display.w();
+            let height = display.h();
+            let root = display.root();
+            finish_case(0);
+            draw_red(&server, root, if depth == 16 { 0xf800 } else { 0x00ff0000 })?;
+            let mut capture = x11::Capturer::new(display)?;
+            assert_eq!(capture.row_stride()?, stride);
+            let data = capture.frame()?;
+            assert_eq!(data.len(), stride * height);
+            if depth == 16 {
+                assert_eq!(width, 641);
+                assert_eq!(stride, 1284, "16bpp odd-width row must be padded to 32 bits");
+                assert_eq!(&data[..2], &[0x00, 0xf8], "red pixel bytes differ");
+            } else {
+                assert_eq!(width, 640);
+                assert_eq!(stride, 2560);
+                assert_eq!(&data[..3], &[0x00, 0x00, 0xff], "red pixel bytes differ");
+            }
+            drop(capture);
+            let public = common::Display::primary()?;
+            let mut public_capture = common::Capturer::new(public)?;
+            let frame = public_capture.frame(std::time::Duration::from_millis(100))?;
+            let Frame::PixelBuffer(buffer) = frame;
+            assert_eq!(buffer.pixfmt(), expected);
+            assert_eq!(buffer.stride(), vec![stride]);
+            assert_eq!(buffer.data().len(), stride * height);
+            finish_case(0);
+            println!("X11_LAYOUT_NATIVE=pass depth={depth} width={width} height={height} stride={stride} pixel=red capture=production-shm public=production-buffer");
+        } else if let Some((atom, monitor)) = fault {
             for _ in 0..32 {
                 configure_bounds(atom, monitor, 1);
                 let mut iter = x11::Server::displays(Rc::clone(&server));

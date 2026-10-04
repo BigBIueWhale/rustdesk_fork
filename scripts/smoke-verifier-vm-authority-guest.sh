@@ -878,6 +878,10 @@ run_android_frame_tests() {
         if [ "$phase" = native ]; then
             [ "$(grep -Fxc "$native_receipt" "$output")" -eq 1 ] \
                 || fail 'Android native frame-test result is absent or duplicated'
+            if [ "$MODE" = x11-display-tests ]; then
+                [ "$(grep -Fxc 'X11_LAYOUT_NATIVE=pass xvfb_depths=24,16 stride_16_odd=1284 pixels=actual capture=production-shm public=production-buffer network=none uid=4000 cleanup=joined' "$output")" -eq 1 ] \
+                    || fail 'X11 capture-layout native result is absent or duplicated'
+            fi
         fi
         frame_docker rm "$CONTAINER_ID" >/dev/null || fail 'Android frame-test container retirement failed'
         CONTAINER_ID=

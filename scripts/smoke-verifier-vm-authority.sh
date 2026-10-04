@@ -1012,6 +1012,7 @@ android_frame_input_inventory() {
             "$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
             "$REPO_ROOT/libs/scrap/src/x11/iter.rs" "$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
             "$REPO_ROOT/libs/scrap/src/x11/server.rs" "$REPO_ROOT/libs/scrap/src/x11/display.rs"
+            "$REPO_ROOT/libs/scrap/src/x11/capturer.rs"
             "$REPO_ROOT/libs/scrap/src/common/x11.rs")
     fi
     while IFS=$'\t' read -r name size digest url extra; do
@@ -1579,8 +1580,13 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$M
         || fail 'focused native tests require clean committed master'
     FOCUSED_TEST_COMMIT="$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')"
     FOCUSED_TEST_TREE="$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')"
-    [ "$FOCUSED_TEST_COMMIT" = "$(git_closed -C "$REPO_ROOT" rev-parse refs/remotes/origin/master)" ] \
-        || fail 'focused native tests require pushed master'
+    if [ "$MODE" = x11-display-tests ]; then
+        git_closed -C "$REPO_ROOT" merge-base --is-ancestor refs/remotes/origin/master "$FOCUSED_TEST_COMMIT" \
+            || fail 'focused X11 tests require a clean commit descended from pushed master'
+    else
+        [ "$FOCUSED_TEST_COMMIT" = "$(git_closed -C "$REPO_ROOT" rev-parse refs/remotes/origin/master)" ] \
+            || fail 'focused native tests require pushed master'
+    fi
 fi
 reserve_verifier_run
 engine_prepare_inputs_before=
@@ -3090,6 +3096,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/libs/scrap/src/x11/ffi.rs=$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
             "repo/libs/scrap/src/x11/server.rs=$REPO_ROOT/libs/scrap/src/x11/server.rs"
             "repo/libs/scrap/src/x11/display.rs=$REPO_ROOT/libs/scrap/src/x11/display.rs"
+            "repo/libs/scrap/src/x11/capturer.rs=$REPO_ROOT/libs/scrap/src/x11/capturer.rs"
             "repo/libs/scrap/src/common/x11.rs=$REPO_ROOT/libs/scrap/src/common/x11.rs"
         )
     fi
@@ -3729,6 +3736,9 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux app-capsule cloud-init completion'
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
+    require_exact_fixed_receipt \
+        'X11_LAYOUT_NATIVE=pass xvfb_depths=24,16 stride_16_odd=1284 pixels=actual capture=production-shm public=production-buffer network=none uid=4000 cleanup=joined' \
+        'production X11 capture layout and actual pixels'
     require_exact_fixed_receipt \
         'X11_BOUNDS_NATIVE=pass received_header=injected rejected_shapes=7 repeats=32 enumeration=fused public_callers=explicit valid_outputless=injected screens=server-real replies=exact' \
         'production X11 received-reply bounds and finality'

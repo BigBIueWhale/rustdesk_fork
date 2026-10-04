@@ -23,10 +23,23 @@ struct ScreenMonitors {
     next_offset: usize,
     remaining: usize,
     root: xcb_window_t,
+    format: RootFormat,
+}
+
+#[derive(Clone, Copy)]
+struct RootFormat {
+    pixfmt: Pixfmt,
+    scanline_pad: u8,
+    depth: u8,
+    visual: xcb_visualid_t,
 }
 
 impl ScreenMonitors {
-    fn new(reply: XcbReply<xcb_randr_get_monitors_reply_t>, root: xcb_window_t) -> io::Result<Self> {
+    fn new(
+        reply: XcbReply<xcb_randr_get_monitors_reply_t>,
+        root: xcb_window_t,
+        format: RootFormat,
+    ) -> io::Result<Self> {
         let header = unsafe { reply.0.as_ref() };
         let payload_len = usize::try_from(header.length)
             .ok()
@@ -74,7 +87,7 @@ impl ScreenMonitors {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "RandR monitor layout differs from reply"));
         }
 
-        Ok(Self { reply, next_offset: 0, remaining: monitor_count, root })
+        Ok(Self { reply, next_offset: 0, remaining: monitor_count, root, format })
     }
 
     fn next_monitor(&mut self) -> Option<xcb_randr_monitor_info_t> {
@@ -143,13 +156,17 @@ impl DisplayIter {
         }
 
         unsafe {
+            if outer.data.is_null() {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "X screen is missing"));
+            }
             let root = (*outer.data).root;
+            let format = root_format(server.setup(), outer.data)?;
 
             let cookie = xcb_randr_get_monitors(server.raw(), root, 1);
             let mut error = ptr::null_mut();
             let response = xcb_randr_get_monitors_reply(server.raw(), cookie, &mut error);
             let reply = checked_reply(response, error, "RandR GetMonitors")?;
-            let monitors = ScreenMonitors::new(reply, root)?;
+            let monitors = ScreenMonitors::new(reply, root, format)?;
             xcb_screen_next(outer);
             Ok(Some(monitors))
         }
@@ -176,8 +193,6 @@ impl Iterator for DisplayIter {
                                 return Some(Err(error));
                             }
                         };
-                        let pixfmt =
-                            get_pixfmt(self.server.raw(), screen.root).unwrap_or(Pixfmt::BGRA);
                         let display = Display::new(
                             self.server.clone(),
                             data.primary != 0,
@@ -189,7 +204,10 @@ impl Iterator for DisplayIter {
                             },
                             screen.root,
                             name,
-                            pixfmt,
+                            screen.format.pixfmt,
+                            screen.format.scanline_pad,
+                            screen.format.depth,
+                            screen.format.visual,
                         );
                         return Some(Ok(display));
                     }
@@ -238,19 +256,84 @@ fn get_atom_name(conn: *mut xcb_connection_t, atom: xcb_atom_t) -> io::Result<St
     }
 }
 
-unsafe fn get_pixfmt(conn: *mut xcb_connection_t, root: xcb_window_t) -> Option<Pixfmt> {
-    let geo_cookie = xcb_get_geometry_unchecked(conn, root);
-    let geo = xcb_get_geometry_reply(conn, geo_cookie, ptr::null_mut());
-    if geo.is_null() {
-        return None;
-    }
-    let depth = (*geo).depth;
-    libc::free(geo as _);
-    // now only support little endian
-    // https://github.com/FFmpeg/FFmpeg/blob/a9c05eb657d0d05f3ac79fe9973581a41b265a5e/libavdevice/xcbgrab.c#L519
-    match depth {
-        16 => Some(Pixfmt::RGB565LE),
-        32 => Some(Pixfmt::BGRA),
+fn classify_format(
+    order: u8,
+    depth: u8,
+    bits_per_pixel: u8,
+    red: u32,
+    green: u32,
+    blue: u32,
+) -> Option<Pixfmt> {
+    match (order, depth, bits_per_pixel, red, green, blue) {
+        (XCB_IMAGE_ORDER_LSB_FIRST, 16, 16, 0xf800, 0x07e0, 0x001f) =>
+            Some(Pixfmt::RGB565LE),
+        (XCB_IMAGE_ORDER_LSB_FIRST, 24 | 32, 32, 0x00ff0000, 0x0000ff00, 0x000000ff) =>
+            Some(Pixfmt::BGRA),
+        (XCB_IMAGE_ORDER_LSB_FIRST, 24 | 32, 32, 0x000000ff, 0x0000ff00, 0x00ff0000) =>
+            Some(Pixfmt::RGBA),
+        (XCB_IMAGE_ORDER_MSB_FIRST, 32, 32, 0x0000ff00, 0x00ff0000, 0xff000000) =>
+            Some(Pixfmt::BGRA),
+        (XCB_IMAGE_ORDER_MSB_FIRST, 32, 32, 0xff000000, 0x00ff0000, 0x0000ff00) =>
+            Some(Pixfmt::RGBA),
         _ => None,
     }
+}
+
+unsafe fn root_format(setup: *const xcb_setup_t, screen: *const xcb_screen_t) -> io::Result<RootFormat> {
+    if setup.is_null() || screen.is_null() {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "X setup is missing"));
+    }
+    let screen = &*screen;
+    let mut selected = None;
+    let mut formats = xcb_setup_pixmap_formats_iterator(setup);
+    while formats.rem > 0 {
+        if formats.data.is_null() {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "X pixmap format is missing"));
+        }
+        let format = &*formats.data;
+        if format.depth == screen.root_depth {
+            if selected.replace((format.bits_per_pixel, format.scanline_pad)).is_some() {
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "duplicate X root pixmap format"));
+            }
+        }
+        xcb_format_next(&mut formats);
+    }
+    let (bits_per_pixel, scanline_pad) = selected
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "X root pixmap format is missing"))?;
+    if !matches!(scanline_pad, 8 | 16 | 32) {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid X scanline padding"));
+    }
+
+    let mut visual = None;
+    let mut depths = xcb_screen_allowed_depths_iterator(screen);
+    while depths.rem > 0 {
+        if depths.data.is_null() {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "X depth is missing"));
+        }
+        let depth = &*depths.data;
+        if depth.depth == screen.root_depth {
+            let mut visuals = xcb_depth_visuals_iterator(depth);
+            while visuals.rem > 0 {
+                if visuals.data.is_null() {
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, "X visual is missing"));
+                }
+                let candidate = &*visuals.data;
+                if candidate.visual_id == screen.root_visual {
+                    if visual.replace((candidate.class, candidate.red_mask, candidate.green_mask, candidate.blue_mask)).is_some() {
+                        return Err(io::Error::new(io::ErrorKind::InvalidData, "duplicate X root visual"));
+                    }
+                }
+                xcb_visualtype_next(&mut visuals);
+            }
+        }
+        xcb_depth_next(&mut depths);
+    }
+    let (class, red, green, blue) = visual
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "X root visual is missing"))?;
+    if class != XCB_VISUAL_CLASS_TRUE_COLOR {
+        return Err(io::Error::new(io::ErrorKind::Unsupported, "X root visual is not TrueColor"));
+    }
+    let pixfmt = classify_format((*setup).image_byte_order, screen.root_depth, bits_per_pixel, red, green, blue)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "unsupported X root pixel layout"))?;
+    Ok(RootFormat { pixfmt, scanline_pad, depth: screen.root_depth, visual: screen.root_visual })
 }

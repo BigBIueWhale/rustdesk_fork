@@ -1,6 +1,7 @@
 use super::ffi::*;
 use super::Display;
 use hbb_common::libc;
+use std::convert::TryFrom;
 use std::{io, ptr, slice};
 
 const SHM_OWNER_READ_WRITE: libc::c_int = 0o600;
@@ -100,10 +101,12 @@ fn check_xcb_request(
 }
 
 fn check_get_image_result(
-    reply_size: Option<usize>,
+    reply: Option<(usize, u8, xcb_visualid_t)>,
     protocol_error: Option<(u8, u8, u16, u32)>,
     connection_error: i32,
     expected_size: usize,
+    expected_depth: u8,
+    expected_visual: xcb_visualid_t,
 ) -> io::Result<()> {
     if let Some((error_code, major_code, minor_code, resource_id)) = protocol_error {
         return Err(io::Error::new(
@@ -120,12 +123,18 @@ fn check_get_image_result(
             format!("X connection failed during MIT-SHM GetImage: {connection_error}"),
         ));
     }
-    let reply_size = reply_size.ok_or_else(|| {
+    let (reply_size, reply_depth, reply_visual) = reply.ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::Other,
             "X server returned no MIT-SHM GetImage reply",
         )
     })?;
+    if reply_depth != expected_depth || reply_visual != expected_visual {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "X server MIT-SHM GetImage layout differs from root setup",
+        ));
+    }
     if reply_size != expected_size {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -150,17 +159,19 @@ impl Capturer {
     pub fn new(display: Display) -> io::Result<Capturer> {
         // Calculate dimensions.
 
-        let pixel_width = display.pixfmt().bytes_per_pixel();
         let rect = display.rect();
-        let size = (rect.w as usize)
+        if rect.w == 0 || rect.h == 0 {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "X capture dimensions are empty"));
+        }
+        let size = display.row_stride()?
             .checked_mul(rect.h as usize)
-            .and_then(|pixels| pixels.checked_mul(pixel_width))
             .ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::InvalidData,
                     "X11 capture dimensions overflow",
                 )
             })?;
+        u32::try_from(size).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "X11 capture exceeds MIT-SHM size"))?;
 
         // Create a shared memory segment.
         let mut memory = SharedMemory::create(size)?;
@@ -211,7 +222,7 @@ impl Capturer {
         let rect = self.display.rect();
         let server = self.display.server().raw();
         let mut error = ptr::null_mut();
-        let (reply_size, protocol_error, connection_error) = unsafe {
+        let (reply, protocol_error, connection_error) = unsafe {
             let request = xcb_shm_get_image(
                 server,
                 self.display.root(),
@@ -225,10 +236,10 @@ impl Capturer {
                 0,
             );
             let response = xcb_shm_get_image_reply(server, request, &mut error);
-            let reply_size = if response.is_null() {
+            let reply = if response.is_null() {
                 None
             } else {
-                Some((*response).size as usize)
+                Some(((*response).size as usize, (*response).depth, (*response).visual))
             };
             let protocol_error = if error.is_null() {
                 None
@@ -242,9 +253,14 @@ impl Capturer {
             };
             libc::free(response.cast());
             libc::free(error.cast());
-            (reply_size, protocol_error, xcb_connection_has_error(server))
+            (reply, protocol_error, xcb_connection_has_error(server))
         };
-        check_get_image_result(reply_size, protocol_error, connection_error, self.size)
+        check_get_image_result(reply, protocol_error, connection_error, self.size,
+                               self.display.depth(), self.display.visual())
+    }
+
+    pub fn row_stride(&self) -> io::Result<usize> {
+        self.display.row_stride()
     }
 
     pub fn frame<'b>(&'b mut self) -> std::io::Result<&'b [u8]> {
@@ -323,16 +339,23 @@ mod tests {
 
     #[test]
     fn r_s11fx_get_image_accepts_only_an_exact_reply() {
-        check_get_image_result(Some(4096), None, 0, 4096).expect("accept exact reply size");
+        check_get_image_result(Some((4096, 24, 7)), None, 0, 4096, 24, 7)
+            .expect("accept exact reply layout");
 
-        let error = check_get_image_result(Some(4095), None, 0, 4096)
+        let error = check_get_image_result(Some((4095, 24, 7)), None, 0, 4096, 24, 7)
             .expect_err("reject mismatched reply size");
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        let depth = check_get_image_result(Some((4096, 16, 7)), None, 0, 4096, 24, 7)
+            .expect_err("reject mismatched depth");
+        assert_eq!(depth.kind(), io::ErrorKind::InvalidData);
+        let visual = check_get_image_result(Some((4096, 24, 8)), None, 0, 4096, 24, 7)
+            .expect_err("reject mismatched visual");
+        assert_eq!(visual.kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]
     fn r_s11fx_get_image_rejects_protocol_connection_and_missing_reply() {
-        let protocol = check_get_image_result(Some(4096), Some((8, 130, 4, 17)), 0, 4096)
+        let protocol = check_get_image_result(Some((4096, 24, 7)), Some((8, 130, 4, 17)), 0, 4096, 24, 7)
             .expect_err("reject X protocol error");
         assert_eq!(protocol.kind(), io::ErrorKind::Other);
         assert!(protocol.to_string().contains("error 8"));
@@ -341,11 +364,11 @@ mod tests {
         assert!(protocol.to_string().contains("resource 17"));
 
         let connection =
-            check_get_image_result(None, None, 5, 4096).expect_err("reject X connection error");
+            check_get_image_result(None, None, 5, 4096, 24, 7).expect_err("reject X connection error");
         assert_eq!(connection.kind(), io::ErrorKind::ConnectionAborted);
 
         let missing =
-            check_get_image_result(None, None, 0, 4096).expect_err("reject missing X reply");
+            check_get_image_result(None, None, 0, 4096, 24, 7).expect_err("reject missing X reply");
         assert_eq!(missing.kind(), io::ErrorKind::Other);
     }
 }

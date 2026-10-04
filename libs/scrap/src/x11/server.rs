@@ -70,6 +70,10 @@ impl Server {
                 Err(Error::from(error))
             } else {
                 let setup = xcb_get_setup(raw);
+                if setup.is_null() {
+                    xcb_disconnect(raw);
+                    return Err(Error::ParseError);
+                }
                 Ok(Server {
                     raw,
                     screenp,

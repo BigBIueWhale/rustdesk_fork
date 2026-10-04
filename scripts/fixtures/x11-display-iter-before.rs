@@ -80,6 +80,9 @@ impl Iterator for DisplayIter {
                             root,
                             name,
                             pixfmt,
+                            32,
+                            24,
+                            0,
                         );
 
                         xcb_randr_monitor_info_next(inner);

@@ -16,7 +16,19 @@ extern "C" {
 
     pub fn xcb_setup_roots_iterator(r: *const xcb_setup_t) -> xcb_screen_iterator_t;
 
+    pub fn xcb_setup_pixmap_formats_iterator(r: *const xcb_setup_t) -> xcb_format_iterator_t;
+
+    pub fn xcb_format_next(i: *mut xcb_format_iterator_t);
+
     pub fn xcb_screen_next(i: *mut xcb_screen_iterator_t);
+
+    pub fn xcb_screen_allowed_depths_iterator(r: *const xcb_screen_t) -> xcb_depth_iterator_t;
+
+    pub fn xcb_depth_next(i: *mut xcb_depth_iterator_t);
+
+    pub fn xcb_depth_visuals_iterator(r: *const xcb_depth_t) -> xcb_visualtype_iterator_t;
+
+    pub fn xcb_visualtype_next(i: *mut xcb_visualtype_iterator_t);
 
     pub fn xcb_generate_id(c: *mut xcb_connection_t) -> u32;
 
@@ -87,20 +99,12 @@ extern "C" {
         e: *mut *mut xcb_generic_error_t,
     ) -> *const xcb_shm_query_version_reply_t;
 
-    pub fn xcb_get_geometry_unchecked(
-        c: *mut xcb_connection_t,
-        drawable: xcb_drawable_t,
-    ) -> xcb_get_geometry_cookie_t;
-
-    pub fn xcb_get_geometry_reply(
-        c: *mut xcb_connection_t,
-        cookie: xcb_get_geometry_cookie_t,
-        e: *mut *mut xcb_generic_error_t,
-    ) -> *mut xcb_get_geometry_reply_t;
-
 }
 
 pub const XCB_IMAGE_FORMAT_Z_PIXMAP: u8 = 2;
+pub const XCB_IMAGE_ORDER_LSB_FIRST: u8 = 0;
+pub const XCB_IMAGE_ORDER_MSB_FIRST: u8 = 1;
+pub const XCB_VISUAL_CLASS_TRUE_COLOR: u8 = 4;
 
 pub type xcb_atom_t = u32;
 pub type xcb_connection_t = c_void;
@@ -161,6 +165,55 @@ pub struct xcb_screen_iterator_t {
 }
 
 #[repr(C)]
+pub struct xcb_format_t {
+    pub depth: u8,
+    pub bits_per_pixel: u8,
+    pub scanline_pad: u8,
+    pub pad0: [u8; 5],
+}
+
+#[repr(C)]
+pub struct xcb_format_iterator_t {
+    pub data: *mut xcb_format_t,
+    pub rem: i32,
+    pub index: i32,
+}
+
+#[repr(C)]
+pub struct xcb_visualtype_t {
+    pub visual_id: xcb_visualid_t,
+    pub class: u8,
+    pub bits_per_rgb_value: u8,
+    pub colormap_entries: u16,
+    pub red_mask: u32,
+    pub green_mask: u32,
+    pub blue_mask: u32,
+    pub pad0: [u8; 4],
+}
+
+#[repr(C)]
+pub struct xcb_visualtype_iterator_t {
+    pub data: *mut xcb_visualtype_t,
+    pub rem: i32,
+    pub index: i32,
+}
+
+#[repr(C)]
+pub struct xcb_depth_t {
+    pub depth: u8,
+    pub pad0: u8,
+    pub visuals_len: u16,
+    pub pad1: [u8; 4],
+}
+
+#[repr(C)]
+pub struct xcb_depth_iterator_t {
+    pub data: *mut xcb_depth_t,
+    pub rem: i32,
+    pub index: i32,
+}
+
+#[repr(C)]
 pub struct xcb_screen_t {
     pub root: xcb_window_t,
     pub default_colormap: xcb_colormap_t,
@@ -211,12 +264,6 @@ pub struct xcb_shm_get_image_cookie_t {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct xcb_void_cookie_t {
-    pub sequence: u32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct xcb_get_geometry_cookie_t {
     pub sequence: u32,
 }
 
@@ -272,19 +319,4 @@ pub struct xcb_shm_query_version_reply_t {
     pub gid: u16,
     pub pixmap_format: u8,
     pub pad0: [u8; 15],
-}
-
-#[repr(C)]
-pub struct xcb_get_geometry_reply_t {
-    pub response_type: u8,
-    pub depth: u8,
-    pub sequence: u16,
-    pub length: u32,
-    pub root: xcb_window_t,
-    pub x: i16,
-    pub y: i16,
-    pub width: u16,
-    pub height: u16,
-    pub border_width: u16,
-    pub pad0: [u8; 2],
 }

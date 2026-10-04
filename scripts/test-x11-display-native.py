@@ -18,8 +18,8 @@ def main():
     root = Path("/work")
     baseline = root / "scripts/fixtures/x11-display-iter-before.rs"
     require(hashlib.sha256(baseline.read_bytes()).hexdigest() ==
-            "43113044a02de9aef03d64998dce13216068408549b61e9bd42dfa28f3ffea83",
-            "historical e8898566 iterator bytes differ")
+            "1a38147b260c75c2171e3949f9dbb9341ca9986579b6af1fd84ad7848d34e6af",
+            "historical e8898566 iterator with constructor-only test adaptation differs")
     environment = {"PATH": "/usr/local/cargo/bin:/usr/bin:/bin", "LC_ALL": "C",
                    "HOME": "/tmp", "DISPLAY": ":98", "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
                    "RUSTUP_HOME": "/usr/local/rustup", "CARGO_HOME": "/usr/local/cargo",
@@ -33,7 +33,9 @@ def main():
         (work / "x11").mkdir(mode=0o700, parents=True)
         (work / "common").mkdir(mode=0o700)
         shutil.copyfile(root / "scripts/test-x11-display.rs", work / "test.rs")
-        for name in ("display", "ffi", "iter", "server"):
+        for name in ("display", "ffi", "iter", "server", "capturer"):
+            if name == "capturer" and variant == "historical":
+                continue
             source = baseline if name == "iter" and variant == "historical" else root / f"libs/scrap/src/x11/{name}.rs"
             shutil.copyfile(source, work / f"x11/{name}.rs")
         shutil.copyfile(root / "libs/scrap/src/common/x11.rs", work / "common/x11.rs")
@@ -94,6 +96,8 @@ def main():
             require(failures == 0, f"{failures} unchecked received-header shapes remain")
             subprocess.run([str(binaries["corrected"]), "bounds-valid"], env=environment,
                            check=True, timeout=15)
+            subprocess.run([str(binaries["corrected"]), "capture-24"], env=environment,
+                           check=True, timeout=15)
             print("X11_BOUNDS_NATIVE=pass received_header=injected rejected_shapes=7 repeats=32 "
                   "enumeration=fused public_callers=explicit valid_outputless=injected screens=server-real replies=exact", flush=True)
             require(child.poll() is None, "Xvfb exited during native cases")
@@ -109,6 +113,28 @@ def main():
                 child.terminate()
             child.wait(timeout=5)
         require(child.returncode == 0, "Xvfb retirement failed")
+    with open("/tmp/x11-display-xvfb-16.log", "xb") as log:
+        child = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "641x479x16",
+                                  "-nolisten", "tcp", "-ac", "-noreset"],
+                                 env=environment, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 10
+            while not Path("/tmp/.X11-unix/X98").is_socket():
+                require(child.poll() is None and time.monotonic() < deadline, "16-bit Xvfb not ready")
+                time.sleep(0.05)
+            subprocess.run([str(binaries["corrected"]), "capture-16"], env=environment,
+                           check=True, timeout=15)
+            require(child.poll() is None, "16-bit Xvfb exited during capture")
+        except BaseException:
+            log.flush()
+            print(f"X11_DISPLAY_XVFB16_FAILURE_STATUS={child.poll()}", flush=True)
+            print(Path(log.name).read_text()[:16384], flush=True)
+            raise
+        finally:
+            if child.poll() is None:
+                child.terminate()
+            child.wait(timeout=5)
+        require(child.returncode == 0, "16-bit Xvfb retirement failed")
     for name in ("tcp", "tcp6"):
         require(not any(row.split()[3] == "0A" for row in Path("/proc/net", name).read_text().splitlines()[1:]),
                 "native test opened a TCP listener")
@@ -117,6 +143,8 @@ def main():
     print("X11_DISPLAY_NATIVE=pass source=production-component xcb=real old=refused "
           "screens=2 repeat=32 drop=exact query_error=explicit public_callers=executed "
           "allocator_reuse=unclaimed network=none uid=4000 cleanup=joined", flush=True)
+    print("X11_LAYOUT_NATIVE=pass xvfb_depths=24,16 stride_16_odd=1284 "
+          "pixels=actual capture=production-shm public=production-buffer network=none uid=4000 cleanup=joined", flush=True)
 
 
 if __name__ == "__main__":

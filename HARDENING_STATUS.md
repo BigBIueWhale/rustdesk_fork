@@ -530,6 +530,20 @@ presentation, resume/re-notification, exact peer receipts, shared capture pacing
 evidenced recovery. Their source/model gates do not replace the native matrix below; R-S11fk and R-S11fl remain
 explicitly PARTIAL / RELEASE-BLOCKING.
 
+**Desktop tab-to-window ownership — SOURCE FINDING; CORRECTION/NATIVE EVIDENCE OPEN.**
+The ordinary move-tab action passes the active connection UUID and old window ID but no
+display inventory or old client-owner identity. The replacement `RemotePage` constructs a
+fresh desktop FFI owner. `FFI.start` skips new-peer admission and, with no display argument,
+also skips existing-peer admission before `sessionStart`; Rust correctly rejects the mismatched
+owner. Cached-state retrieval and old-tab cleanup require a new-stream event, so they cannot
+establish the missing prior transfer. This is a separate outgoing desktop flow defect, not the
+Android Force-Stop or Windows focus-delay cause and not an established LPE. Preserve exact-owner
+refusal; design and test explicit old/new-owner transfer, engine-backed resource retirement,
+stale-action rejection and failure finality in isolated real multi-window execution. Current
+model and production-peer schedules do not cover this surface. Source trace is in
+`flutter/lib/utils/multi_window_manager.dart`, `desktop/pages/remote_tab_page.dart`,
+`desktop/pages/desktop_home_page.dart`, `models/model.dart` and `src/flutter.rs`.
+
 The Windows first-video path now avoids the decoder worker's former nested Tokio runtime, second OS thread, synchronous
 join, and ignored IPC result. Remote and View Camera connections share a process-wide Tokio `OnceCell` initialization
 from the existing async connection owner, concurrent with connection establishment, with one outer 50-ms main-IPC
@@ -1492,8 +1506,23 @@ is sealed at `evidence/android-back-f931980d.serial.log`, SHA-256
 `5b62fc2da9184373d5436ff3bf7e1a6164d0887d7679ebc6d3b9438ac46eefe0`.
 No host listener addition or preexisting-process drift occurred, and the successful run self-retired.
 This is real Dart routing and framework-focus execution, not Android Activity/navigation or native
-pixel evidence. A fresh source-bound APK and unchanged warm-reconnect replay are still required;
-complete warm/resource/device evidence and the original Android/Windows causes remain OPEN.
+pixel evidence. Exact source `73d2703cbd701ed21992db6384b161c2e3fcacb3`, tree
+`61f1e257fa1e6384108c2cfafbe46d131fff050e`, subsequently passed the complete APK
+build/inspection/install/launch/render transaction in 1,140 seconds. The published test-only
+47,596,416-byte x86_64 APK has SHA-256
+`6bb0dbb859ed981b563dedddecc94269ca85420ce36921abe5e7fa01238032de`.
+Android 14/API 34 observed MainActivity resumed, a five-second stable process, enforcing
+SELinux and actual 480x800 SwiftShader framebuffer. Sealed 69,716-byte raw serial is
+`evidence/android-back-apk-73d2703c-repeat.serial.log`, SHA-256
+`7547e7e22627c4666701ba324f73a94d6090c7a591cf8931d3a3c7eeaf29a2de`.
+The outer accepted unchanged inputs, no added host listener or preexisting-process drift,
+joined owners and successful scratch self-retirement. An earlier same-source producer's
+guest build/render passed but its outer rejected an unattributable new host listener;
+that failed transaction is not a complete pass and its discarded candidate is not reused.
+This named build does not exercise Back delivery or a peer, establish stable signing or
+cold equality, or close the original hang. Reuse the accepted exact APK and retained
+`03ce7fc6` peer for the unchanged warm-reconnect schedule; complete warm/resource/device
+evidence and the original Android/Windows causes remain OPEN.
 The older `035c9a20` APK cannot supply the owner observation. Physical devices, sustained
 warm/network/handle evidence and the original Android/Windows causes stay OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local

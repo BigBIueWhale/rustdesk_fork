@@ -4,7 +4,9 @@
 
 extern crate self as hbb_common;
 
-use std::{cell::RefCell, io, ptr, rc::Rc};
+use std::{cell::RefCell, io};
+#[cfg(corrected)]
+use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pixfmt {

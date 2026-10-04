@@ -22,7 +22,8 @@ def main():
             "historical e8898566 iterator bytes differ")
     environment = {"PATH": "/usr/local/cargo/bin:/usr/bin:/bin", "LC_ALL": "C",
                    "HOME": "/tmp", "DISPLAY": ":98", "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
-                   "RUSTUP_HOME": "/usr/local/rustup", "CARGO_HOME": "/usr/local/cargo"}
+                   "RUSTUP_HOME": "/usr/local/rustup", "CARGO_HOME": "/usr/local/cargo",
+                   "LD_LIBRARY_PATH": "/xvfb-root/usr/lib/x86_64-linux-gnu"}
     version = subprocess.run(["/usr/local/cargo/bin/rustc", "--version"], env=environment,
                              check=True, capture_output=True, text=True, timeout=5)
     require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
@@ -68,6 +69,12 @@ def main():
                 subprocess.run([str(binaries["corrected"]), scenario], env=environment,
                                check=True, timeout=15)
             require(child.poll() is None, "Xvfb exited during native cases")
+        except BaseException:
+            log.flush()
+            print("X11_DISPLAY_XVFB_FAILURE_LOG_BEGIN", flush=True)
+            print(Path(log.name).read_text()[:16384], flush=True)
+            print("X11_DISPLAY_XVFB_FAILURE_LOG_END", flush=True)
+            raise
         finally:
             if child.poll() is None:
                 child.terminate()

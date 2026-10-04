@@ -19,12 +19,24 @@ mod x11 {
     pub mod production_ffi;
     pub mod ffi {
         pub use super::production_ffi::*;
+        #[repr(C)]
+        pub struct xcb_randr_monitor_info_iterator_t {
+            pub data: *mut xcb_randr_monitor_info_t,
+            pub rem: i32,
+            pub index: i32,
+        }
         extern "C" {
             pub fn xcb_randr_get_monitors_unchecked(
                 c: *mut xcb_connection_t,
                 window: xcb_window_t,
                 active: u8,
             ) -> xcb_randr_get_monitors_cookie_t;
+            pub fn xcb_randr_get_monitors_monitors_iterator(
+                reply: *const xcb_randr_get_monitors_reply_t,
+            ) -> xcb_randr_monitor_info_iterator_t;
+            pub fn xcb_randr_monitor_info_next(cursor: *mut xcb_randr_monitor_info_iterator_t);
+            pub fn xcb_get_atom_name_name(reply: *const xcb_get_atom_name_reply_t) -> *const u8;
+            pub fn xcb_get_atom_name_name_length(reply: *const xcb_get_atom_name_reply_t) -> i32;
         }
     }
     mod display;
@@ -96,6 +108,16 @@ struct InternAtomReply {
     atom: u32,
 }
 
+#[repr(C)]
+struct AtomNameHeader {
+    response_type: u8,
+    pad0: u8,
+    sequence: u16,
+    length: u32,
+    name_len: u16,
+    pad1: [u8; 22],
+}
+
 struct Allocation {
     pointer: *mut libc::c_void,
     bytes: usize,
@@ -111,6 +133,11 @@ struct State {
     atom_queries: usize,
     reject_atom_query: usize,
     inject_atom_nul: bool,
+    malformed_atom: u8,
+    malformed_monitors: u8,
+    malformed_query: usize,
+    bad_atom_reply: usize,
+    bad_monitor_reply: usize,
 }
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
@@ -147,6 +174,12 @@ extern "C" {
                        name_len: u16, name: *const u8) -> InternAtomCookie;
     fn xcb_intern_atom_reply(c: *mut xcb_connection_t, cookie: InternAtomCookie,
                              error: *mut *mut xcb_generic_error_t) -> *mut InternAtomReply;
+    fn xcb_randr_set_monitor_checked(c: *mut xcb_connection_t, root: u32,
+                                    info: *mut xcb_randr_monitor_info_t) -> xcb_void_cookie_t;
+    fn xcb_randr_delete_monitor_checked(c: *mut xcb_connection_t, root: u32,
+                                       name: u32) -> xcb_void_cookie_t;
+    #[link_name = "__real_xcb_get_atom_name_name"]
+    fn real_atom_bytes(reply: *const xcb_get_atom_name_reply_t) -> *const u8;
     #[link_name = "__real_xcb_get_geometry_reply"]
     fn real_geometry_reply(c: *mut xcb_connection_t, cookie: xcb_get_geometry_cookie_t,
                            error: *mut *mut xcb_generic_error_t) -> *mut xcb_get_geometry_reply_t;
@@ -217,6 +250,16 @@ unsafe extern "C" fn __wrap_xcb_get_atom_name_reply(c: *mut xcb_connection_t,
                 assert_eq!(xcb_get_atom_name_name_length(reply), 12);
                 *xcb_get_atom_name_name(reply).cast_mut().add(7) = 0;
             }
+            if state.malformed_atom != 0 && state.atom_queries == state.malformed_query {
+                let header = &mut *reply.cast::<AtomNameHeader>().cast_mut();
+                assert!(header.length > 0 && header.length < 16383);
+                match state.malformed_atom {
+                    1 => header.name_len = (header.length * 4 + 1) as u16,
+                    2 => header.name_len = 0,
+                    _ => unreachable!("unknown atom fault"),
+                }
+                state.bad_atom_reply = reply as usize;
+            }
         }
         if !error.is_null() && !(*error).is_null() {
             assert_eq!((**error).error_code, 5, "not an actual server BadAtom response");
@@ -225,6 +268,17 @@ unsafe extern "C" fn __wrap_xcb_get_atom_name_reply(c: *mut xcb_connection_t,
         }
     });
     reply
+}
+
+#[no_mangle]
+unsafe extern "C" fn __wrap_xcb_get_atom_name_name(reply: *const xcb_get_atom_name_reply_t)
+    -> *const u8 {
+    let bad = STATE.with(|state| state.borrow().bad_atom_reply == reply as usize);
+    if bad {
+        eprintln!("X11_BOUNDS_OLD_FAILURE=unchecked-atom-span");
+        std::process::exit(44);
+    }
+    real_atom_bytes(reply)
 }
 
 #[no_mangle]
@@ -274,6 +328,27 @@ unsafe extern "C" fn __wrap_xcb_randr_get_monitors_reply(c: *mut xcb_connection_
         if !reply.is_null() {
             state.allocations.push(Allocation { pointer: reply.cast(),
                 bytes: 32 + (*reply).length as usize * 4, monitor: true, retired: false });
+            if state.malformed_monitors != 0
+                && (state.malformed_query == 0 || state.queries == state.malformed_query) {
+                assert_eq!((*reply).n_monitors, 1);
+                match state.malformed_monitors {
+                    1 => (*reply).n_monitors = u32::MAX,
+                    2 => (*reply).length = 0,
+                    3 => (*reply).n_outputs += 1,
+                    4 | 5 => {
+                        let info = &mut *reply.add(1).cast::<xcb_randr_monitor_info_t>();
+                        assert!(info.n_output > 0);
+                        info.n_output = if state.malformed_monitors == 4 { u16::MAX } else { 0 };
+                    }
+                    6 => {
+                        (*reply).n_monitors = 0;
+                        (*reply).n_outputs = 0;
+                        (*reply).length = 0;
+                    }
+                    _ => unreachable!("unknown monitor fault"),
+                }
+                if state.malformed_monitors != 6 { state.bad_monitor_reply = reply as usize; }
+            }
         }
         if !error.is_null() && !(*error).is_null() {
             state.allocations.push(Allocation { pointer: (*error).cast(),
@@ -288,6 +363,11 @@ unsafe extern "C" fn __wrap_xcb_randr_get_monitors_monitors_iterator(reply: *con
     if reply.is_null() {
         eprintln!("X11_DISPLAY_OLD_FAILURE=null-reply-passed-to-iterator");
         std::process::exit(43);
+    }
+    let bad = STATE.with(|state| state.borrow().bad_monitor_reply == reply as usize);
+    if bad {
+        eprintln!("X11_BOUNDS_OLD_FAILURE=unchecked-monitor-span");
+        std::process::exit(45);
     }
     real_iterator(reply)
 }
@@ -320,7 +400,33 @@ fn finish_case(reject: usize) {
         state.atom_queries = 0;
         state.reject_atom_query = 0;
         state.inject_atom_nul = false;
+        state.malformed_atom = 0;
+        state.malformed_monitors = 0;
+        state.malformed_query = 0;
+        state.bad_atom_reply = 0;
+        state.bad_monitor_reply = 0;
     });
+}
+
+#[cfg(corrected)]
+fn configure_bounds(atom: u8, monitor: u8, query: usize) {
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        state.malformed_atom = atom;
+        state.malformed_monitors = monitor;
+        state.malformed_query = query;
+    });
+}
+
+#[cfg(corrected)]
+fn checked_fixture_request(c: *mut xcb_connection_t, cookie: xcb_void_cookie_t) -> io::Result<()> {
+    unsafe {
+        let error = xcb_request_check(c, cookie);
+        if error.is_null() { return Ok(()); }
+        let code = (*error).error_code;
+        libc::system_free(error.cast());
+        Err(io::Error::new(io::ErrorKind::Other, format!("fixture request server error {code}")))
+    }
 }
 
 fn main() -> io::Result<()> {
@@ -334,7 +440,54 @@ fn main() -> io::Result<()> {
     }
     #[cfg(corrected)]
     {
-        if scenario == "atom-name" {
+        let fault = match scenario.as_str() {
+            "bounds-atom-length" => Some((1, 0)),
+            "bounds-atom-padding" => Some((2, 0)),
+            "bounds-mon-count" => Some((0, 1)),
+            "bounds-mon-length" => Some((0, 2)),
+            "bounds-mon-total" => Some((0, 3)),
+            "bounds-mon-span" => Some((0, 4)),
+            "bounds-mon-sum" => Some((0, 5)),
+            _ => None,
+        };
+        if let Some((atom, monitor)) = fault {
+            for _ in 0..32 {
+                configure_bounds(atom, monitor, 1);
+                let mut iter = x11::Server::displays(Rc::clone(&server));
+                let error = iter.next().expect("explicit malformed reply result").expect_err("malformed reply accepted");
+                assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+                assert!(iter.next().is_none() && iter.next().is_none());
+                drop(iter);
+                finish_case(0);
+            }
+            configure_bounds(atom, monitor, 2);
+            assert!(common::Display::all().is_err(), "second-root malformed reply became partial success");
+            finish_case(0);
+            configure_bounds(atom, monitor, 1);
+            assert!(common::Display::primary().is_err(), "primary hid malformed reply");
+            finish_case(0);
+            println!("X11_BOUNDS_CASE=pass scenario={scenario} repeats=32 replies=exact enumeration=fused public_callers=explicit");
+        } else if scenario == "bounds-valid" {
+            configure_bounds(0, 6, 0);
+            assert!(x11::Server::displays(Rc::clone(&server)).next().is_none());
+            STATE.with(|state| assert_eq!(state.borrow().queries, 2));
+            finish_case(0);
+            let root = unsafe { (*xcb_setup_roots_iterator(server.setup()).data).root };
+            let atom = intern_atom(server.raw(), b"bounds-native")?;
+            let mut info = xcb_randr_monitor_info_t {
+                name: atom, primary: 0, automatic: 0, n_output: 0,
+                x: 0, y: 0, width: 320, height: 480, width_mm: 100, height_mm: 100,
+            };
+            checked_fixture_request(server.raw(), unsafe { xcb_randr_set_monitor_checked(server.raw(), root, &mut info) })?;
+            let displays = x11::Server::displays(Rc::clone(&server)).collect::<io::Result<Vec<_>>>();
+            // Retire the actual server-side fixture even if enumeration returned an error.
+            checked_fixture_request(server.raw(), unsafe { xcb_randr_delete_monitor_checked(server.raw(), root, atom) })?;
+            let displays = displays?;
+            assert_eq!(displays.len(), 3, "real outputless monitor did not join the default screens");
+            assert!(displays.iter().any(|d| d.name() == "bounds-native" && d.w() == 320 && d.h() == 480));
+            finish_case(0);
+            println!("X11_BOUNDS_VALID=pass empty=injected multiple_monitors=server-real outputless=server-real replies=exact");
+        } else if scenario == "atom-name" {
             for _ in 0..32 {
                 assert_eq!(x11::query_atom_name(server.raw(), 0)?, "");
                 STATE.with(|state| assert_eq!(state.borrow().atom_queries, 0,
@@ -410,7 +563,7 @@ fn main() -> io::Result<()> {
             let display = iter.next().expect("first monitor")?;
             assert_eq!((display.w(), display.h()), (640, 480));
             assert!(!display.name().is_empty());
-            STATE.with(|s| assert_eq!(s.borrow().allocations.iter().filter(|e| e.monitor && !e.retired).count(), 1));
+            STATE.with(|s| assert_eq!(s.borrow().allocations.iter().filter(|e| e.monitor).count(), 1));
             drop(iter);
             finish_case(0);
             // The copied Display and its retained server outlive the monitor reply.

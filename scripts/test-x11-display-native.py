@@ -45,7 +45,7 @@ def main():
         for symbol in ("get_monitors", "get_monitors_unchecked", "get_monitors_reply",
                        "get_monitors_monitors_iterator", "monitor_info_next"):
             command += ["-C", f"link-arg=-Wl,--wrap=xcb_randr_{symbol}"]
-        for symbol in ("xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_geometry_reply"):
+        for symbol in ("xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_atom_name_name", "xcb_get_geometry_reply"):
             command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
         subprocess.run(command, env=environment, check=True, timeout=30)
         binaries[variant] = binary
@@ -74,6 +74,28 @@ def main():
                            check=True, timeout=15)
             subprocess.run([str(binaries["corrected"]), "atom-name"], env=environment,
                            check=True, timeout=15)
+            subprocess.run([str(binaries["corrected"]), "bounds-valid"], env=environment,
+                           check=True, timeout=15)
+            failures = 0
+            for scenario in ("bounds-atom-length", "bounds-atom-padding", "bounds-mon-count",
+                             "bounds-mon-length", "bounds-mon-total", "bounds-mon-span", "bounds-mon-sum"):
+                result = subprocess.run([str(binaries["corrected"]), scenario], env=environment,
+                                        capture_output=True, text=True, timeout=15)
+                require(len(result.stdout) + len(result.stderr) <= 4096, "bounds output exceeded its limit")
+                print(result.stdout.strip(), flush=True)
+                if result.returncode != 0:
+                    status = 44 if scenario.startswith("bounds-atom") else 45
+                    marker = "unchecked-atom-span" if status == 44 else "unchecked-monitor-span"
+                    require(result.returncode == status and result.stderr.strip() == f"X11_BOUNDS_OLD_FAILURE={marker}",
+                            f"unexpected native bounds failure in {scenario}: {result}")
+                    print(f"X11_BOUNDS_BEFORE scenario={scenario} status={status} {result.stderr.strip()}", flush=True)
+                    failures += 1
+                else:
+                    require(f"X11_BOUNDS_CASE=pass scenario={scenario} repeats=32 replies=exact enumeration=fused public_callers=explicit"
+                            in result.stdout.splitlines(), "exact bounds result absent")
+            require(failures == 0, f"{failures} unchecked received-header shapes remain")
+            print("X11_BOUNDS_NATIVE=pass received_header=injected rejected_shapes=7 repeats=32 "
+                  "enumeration=fused public_callers=explicit empty=injected multiple_monitors=server-real replies=exact", flush=True)
             require(child.poll() is None, "Xvfb exited during native cases")
         except BaseException:
             log.flush()

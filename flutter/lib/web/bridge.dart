@@ -173,6 +173,18 @@ class RustdeskImpl {
     return '';
   }
 
+  String sessionAddExistedForMoveSync(
+      {required String peerId,
+      required UuidValue sessionId,
+      required UuidValue clientOwnerId,
+      required UuidValue sourceSessionId,
+      required UuidValue sourceClientOwnerId,
+      required Int32List displays,
+      required bool isViewCamera,
+      dynamic hint}) {
+    return 'Desktop tab transfer is unavailable on web';
+  }
+
   String sessionAddSync(
       {required UuidValue sessionId,
       required UuidValue clientOwnerId,

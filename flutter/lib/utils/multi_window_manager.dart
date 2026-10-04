@@ -66,13 +66,22 @@ class RustDeskMultiWindowManager {
   final List<int> _portForwardWindows = List.empty(growable: true);
   final List<int> _terminalWindows = List.empty(growable: true);
 
-  moveTabToNewWindow(int windowId, String peerId, String sessionId,
+  moveTabToNewWindow(
+      int windowId,
+      String peerId,
+      String sourceSessionId,
+      String sourceClientOwnerId,
+      int display,
+      List<int> displays,
       WindowType windowType) async {
     var params = {
       'type': windowType.index,
       'id': peerId,
       'tab_window_id': windowId,
-      'session_id': sessionId,
+      'move_from_session_id': sourceSessionId,
+      'move_from_client_owner_id': sourceClientOwnerId,
+      'display': display,
+      'displays': displays,
     };
     if (windowType == WindowType.RemoteDesktop) {
       await _newSession(

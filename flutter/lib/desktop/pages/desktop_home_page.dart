@@ -648,22 +648,29 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           dx: call.arguments['dx'],
           dy: call.arguments['dy']);
       } else if (call.method == kWindowEventMoveTabToNewWindow) {
-        final args = call.arguments.split(',');
-        int? windowId;
         try {
-          windowId = int.parse(args[0]);
-        } catch (e) {
-          debugPrint("Failed to parse window id '${call.arguments}': $e");
-        }
-        WindowType? windowType;
-        try {
-          windowType = WindowType.values.byName(args[3]);
-        } catch (e) {
-          debugPrint("Failed to parse window type '${call.arguments}': $e");
-        }
-        if (windowId != null && windowType != null) {
+          final args = jsonDecode(call.arguments);
+          if (args is! Map<String, dynamic> ||
+              args['id'] is! String ||
+              args['source_session_id'] is! String ||
+              args['source_client_owner_id'] is! String ||
+              args['display'] is! int ||
+              args['displays'] is! List ||
+              !(args['displays'] as List).every((entry) => entry is int) ||
+              args['window_type'] is! String) {
+            throw const FormatException('tab transfer arguments are malformed');
+          }
+          final windowType = WindowType.values.byName(args['window_type']);
           await rustDeskWinManager.moveTabToNewWindow(
-              windowId, args[1], args[2], windowType);
+              fromWindowId,
+              args['id'],
+              args['source_session_id'],
+              args['source_client_owner_id'],
+              args['display'],
+              (args['displays'] as List).cast<int>(),
+              windowType);
+        } catch (error) {
+          debugPrint('Refusing malformed tab transfer: ${error.runtimeType}');
         }
       } else if (call.method == kWindowEventOpenMonitorSession) {
         final args = jsonDecode(call.arguments);

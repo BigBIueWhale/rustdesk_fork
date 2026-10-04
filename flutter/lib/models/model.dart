@@ -4909,6 +4909,8 @@ class FFI {
     String peerId,
     int? tabWindowId,
     int? display,
+    SessionID? moveFromSessionId,
+    SessionID? moveFromClientOwnerId,
   ) {
     final streamOwner = streamBinding.owner;
     if (!_isCurrentSessionStream(streamBinding)) {
@@ -4953,7 +4955,12 @@ class FFI {
         // Session is ready to be moved to a new window.
         // Get the cached data and handle the cached data.
         final cachedState = sessionEvents.submit(streamOwner, () async {
-          final args = jsonEncode({'id': peerId, 'close': display == null});
+          final args = jsonEncode({
+            'id': peerId,
+            'close': moveFromSessionId != null || display == null,
+            'source_session_id': moveFromSessionId?.toString(),
+            'source_client_owner_id': moveFromClientOwnerId?.toString(),
+          });
           final cachedData = await DesktopMultiWindow.invokeMethod(
               tabWindowId, kWindowEventGetCachedSessionData, args);
           if (!isCurrentSession(activeSessionId)) return;
@@ -5112,6 +5119,8 @@ class FFI {
     int? tabWindowId,
     int? display,
     List<int>? displays,
+    SessionID? moveFromSessionId,
+    SessionID? moveFromClientOwnerId,
   }) {
     if (isMobile) {
       final previousSessionId = sessionId;
@@ -5151,6 +5160,12 @@ class FFI {
 
     final isNewPeer = tabWindowId == null;
     this.id = id;
+    if ((moveFromSessionId == null) != (moveFromClientOwnerId == null) ||
+        (moveFromSessionId != null && (tabWindowId == null || display == null))) {
+      _reportSessionStreamFailure(
+          activeSessionId, id, 'The connection could not be moved');
+      return activeSessionId;
+    }
     if (isMobile && isNewPeer) {
       _scheduleMobileSessionStart(_MobileSessionStartRequest(
         sessionId: activeSessionId,
@@ -5205,12 +5220,22 @@ class FFI {
         return activeSessionId;
       }
       final requestedDisplays = Int32List.fromList(displays);
-      final addRes = bind.sessionAddExistedSync(
-          id: id,
-          sessionId: activeSessionId,
-          clientOwnerId: clientOwnerId,
-          displays: requestedDisplays,
-          isViewCamera: isViewCamera);
+      final isMove = moveFromSessionId != null && moveFromClientOwnerId != null;
+      final addRes = isMove
+          ? bind.sessionAddExistedForMoveSync(
+              peerId: id,
+              sessionId: activeSessionId,
+              clientOwnerId: clientOwnerId,
+              sourceSessionId: moveFromSessionId,
+              sourceClientOwnerId: moveFromClientOwnerId,
+              displays: requestedDisplays,
+              isViewCamera: isViewCamera)
+          : bind.sessionAddExistedSync(
+              id: id,
+              sessionId: activeSessionId,
+              clientOwnerId: clientOwnerId,
+              displays: requestedDisplays,
+              isViewCamera: isViewCamera);
       if (addRes != '') {
         debugPrint(
             'Unreachable, failed to add existed session to $id, $addRes');
@@ -5260,7 +5285,8 @@ class FFI {
       return activeSessionId;
     }
     _listenToSessionStream(
-        stream, streamBinding, activeSessionId, id, tabWindowId, display);
+        stream, streamBinding, activeSessionId, id, tabWindowId, display,
+        moveFromSessionId, moveFromClientOwnerId);
     return activeSessionId;
   }
 

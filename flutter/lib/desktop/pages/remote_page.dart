@@ -36,6 +36,8 @@ class RemotePage extends StatefulWidget {
     required this.toolbarState,
     this.sessionId,
     this.tabWindowId,
+    this.moveFromSessionId,
+    this.moveFromClientOwnerId,
     this.password,
     this.display,
     this.displays,
@@ -48,6 +50,8 @@ class RemotePage extends StatefulWidget {
   final String id;
   final SessionID? sessionId;
   final int? tabWindowId;
+  final SessionID? moveFromSessionId;
+  final SessionID? moveFromClientOwnerId;
   final int? display;
   final List<int>? displays;
   final String? password;
@@ -147,6 +151,8 @@ class _RemotePageState extends State<RemotePage>
       password: widget.password,
       isSharedPassword: widget.isSharedPassword,
       tabWindowId: widget.tabWindowId,
+      moveFromSessionId: widget.moveFromSessionId,
+      moveFromClientOwnerId: widget.moveFromClientOwnerId,
       display: widget.display,
       displays: widget.displays,
     );

@@ -56,6 +56,8 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
     RemoteCountState.init();
     peerId = params['id'];
     final sessionId = params['session_id'];
+    final moveFromSessionId = params['move_from_session_id'];
+    final moveFromClientOwnerId = params['move_from_client_owner_id'];
     final tabWindowId = params['tab_window_id'];
     final display = params['display'];
     final displays = params['displays'];
@@ -98,6 +100,11 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
           key: ValueKey(peerId),
           id: peerId!,
           sessionId: sessionId == null ? null : SessionID(sessionId),
+          moveFromSessionId:
+              moveFromSessionId == null ? null : SessionID(moveFromSessionId),
+          moveFromClientOwnerId: moveFromClientOwnerId == null
+              ? null
+              : SessionID(moveFromClientOwnerId),
           tabWindowId: tabWindowId,
           display: display,
           displays: displays?.cast<int>(),
@@ -236,6 +243,7 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
         .firstWhere((tab) => tab.key == key)
         .page as ViewCameraPage;
     final ffi = viewCameraPage.ffi;
+    final pi = ffi.ffiModel.pi;
     final sessionId = ffi.sessionId;
     final toolbarState = viewCameraPage.toolbarState;
     menu.addAll([
@@ -260,10 +268,28 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
           style: style,
         ),
         proc: () async {
+          final display = pi.currentDisplay;
+          final displayCount = pi.displays.length;
+          if (displayCount == 0 ||
+              (display != kAllDisplayValue &&
+                  (display < 0 || display >= displayCount))) {
+            debugPrint('Refusing to move a camera tab without a live display');
+            return;
+          }
+          final displays = display == kAllDisplayValue
+              ? List<int>.generate(displayCount, (index) => index)
+              : <int>[display];
           await DesktopMultiWindow.invokeMethod(
               kMainWindowId,
               kWindowEventMoveTabToNewWindow,
-              '${windowId()},$key,$sessionId,ViewCamera');
+              jsonEncode({
+                'id': key,
+                'source_session_id': sessionId.toString(),
+                'source_client_owner_id': ffi.clientOwnerId.toString(),
+                'display': display,
+                'displays': displays,
+                'window_type': 'ViewCamera',
+              }));
           cancelFunc();
         },
         padding: padding,
@@ -371,6 +397,8 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
       final args = jsonDecode(call.arguments);
       final id = args['id'];
       final sessionId = args['session_id'];
+      final moveFromSessionId = args['move_from_session_id'];
+      final moveFromClientOwnerId = args['move_from_client_owner_id'];
       final tabWindowId = args['tab_window_id'];
       final display = args['display'];
       final displays = args['displays'];
@@ -400,6 +428,11 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
           key: ValueKey(id),
           id: id,
           sessionId: sessionId == null ? null : SessionID(sessionId),
+          moveFromSessionId:
+              moveFromSessionId == null ? null : SessionID(moveFromSessionId),
+          moveFromClientOwnerId: moveFromClientOwnerId == null
+              ? null
+              : SessionID(moveFromClientOwnerId),
           tabWindowId: tabWindowId,
           display: display,
           displays: displays?.cast<int>(),
@@ -451,12 +484,20 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
         final viewCameraPage = tabController.state.value.tabs
             .firstWhere((tab) => tab.key == id)
             .page as ViewCameraPage;
+        final sourceSessionId = args['source_session_id'];
+        if (sourceSessionId != null &&
+            (sourceSessionId != viewCameraPage.ffi.sessionId.toString() ||
+                args['source_client_owner_id'] !=
+                    viewCameraPage.ffi.clientOwnerId.toString())) {
+          throw StateError('camera tab transfer source owner changed');
+        }
         returnValue = viewCameraPage.ffi.ffiModel.cachedPeerData.toString();
       } catch (e) {
         debugPrint('Failed to get cached session data: $e');
       }
       if (close && returnValue != null) {
-        await tabController.closeBy(id, closeSession: false);
+        await tabController.closeBy(id,
+            closeSession: args['source_session_id'] != null);
       }
     } else if (call.method == kWindowEventRemoteWindowCoords) {
       final viewCameraPage =

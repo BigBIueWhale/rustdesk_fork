@@ -2670,10 +2670,41 @@ pub fn session_add_existed(
         session_id,
         client_owner_id,
         displays,
+        None,
     );
     #[cfg(target_os = "android")]
     drop(owner_admission);
     result
+}
+
+/// Admit a new desktop UI owner only while the exact source tab is still live.
+/// The peer connection is shared, but the destination never inherits the old
+/// Flutter engine's handler, stream, or native texture pointer.
+pub fn session_add_existed_for_move(
+    peer_id: String,
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    source_session_id: SessionID,
+    source_client_owner_id: SessionID,
+    displays: Vec<i32>,
+    is_view_camera: bool,
+) -> ResultType<()> {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    bail!("Desktop tab transfer is unavailable on mobile");
+
+    let conn_type = if is_view_camera {
+        ConnType::VIEW_CAMERA
+    } else {
+        ConnType::DEFAULT_CONN
+    };
+    sessions::replace_peer_session_display_owner(
+        peer_id,
+        conn_type,
+        session_id,
+        client_owner_id,
+        displays,
+        Some((source_session_id, source_client_owner_id)),
+    )
 }
 
 /// Create a new remote session with the given id.
@@ -3946,6 +3977,7 @@ pub mod sessions {
         session_id: SessionID,
         client_owner_id: SessionID,
         displays: Vec<i32>,
+        source_owner: Option<(SessionID, SessionID)>,
     ) -> ResultType<()> {
         let sessions = SESSIONS.write().unwrap();
         if sessions.values().any(|peer| {
@@ -3963,6 +3995,20 @@ pub mod sessions {
             let mut h =
                 FlutterHandler::session_handler_for_cursor_state(client_owner_id, &current_cursor);
             let mut handlers = s.ui_handler.session_handlers.write().unwrap();
+            if let Some((source_session_id, source_client_owner_id)) = source_owner {
+                if source_session_id == session_id || source_client_owner_id == client_owner_id {
+                    bail!("viewer tab transfer must create a distinct UI owner");
+                }
+                let source = handlers
+                    .get(&source_session_id)
+                    .ok_or_else(|| anyhow!("viewer tab transfer source is no longer active"))?;
+                if source.client_owner_id != Some(source_client_owner_id)
+                    || source.event_stream.is_none()
+                    || source.displays.is_empty()
+                {
+                    bail!("viewer tab transfer source owner is no longer live");
+                }
+            }
             let mut capture_set = remaining_displays(Some(&session_id), &handlers)?;
             capture_set.extend(displays.iter().copied());
             capture_set.sort_unstable();

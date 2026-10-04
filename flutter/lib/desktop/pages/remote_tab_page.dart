@@ -56,6 +56,8 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
     RemoteCountState.init();
     peerId = params['id'];
     final sessionId = params['session_id'];
+    final moveFromSessionId = params['move_from_session_id'];
+    final moveFromClientOwnerId = params['move_from_client_owner_id'];
     final tabWindowId = params['tab_window_id'];
     final display = params['display'];
     final displays = params['displays'];
@@ -98,6 +100,11 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           key: ValueKey(peerId),
           id: peerId!,
           sessionId: sessionId == null ? null : SessionID(sessionId),
+          moveFromSessionId:
+              moveFromSessionId == null ? null : SessionID(moveFromSessionId),
+          moveFromClientOwnerId: moveFromClientOwnerId == null
+              ? null
+              : SessionID(moveFromClientOwnerId),
           tabWindowId: tabWindowId,
           display: display,
           displays: displays?.cast<int>(),
@@ -267,10 +274,28 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           style: style,
         ),
         proc: () async {
+          final display = pi.currentDisplay;
+          final displayCount = pi.displays.length;
+          if (displayCount == 0 ||
+              (display != kAllDisplayValue &&
+                  (display < 0 || display >= displayCount))) {
+            debugPrint('Refusing to move a tab without a live display selection');
+            return;
+          }
+          final displays = display == kAllDisplayValue
+              ? List<int>.generate(displayCount, (index) => index)
+              : <int>[display];
           await DesktopMultiWindow.invokeMethod(
               kMainWindowId,
               kWindowEventMoveTabToNewWindow,
-              '${windowId()},$key,$sessionId,RemoteDesktop');
+              jsonEncode({
+                'id': key,
+                'source_session_id': sessionId.toString(),
+                'source_client_owner_id': ffi.clientOwnerId.toString(),
+                'display': display,
+                'displays': displays,
+                'window_type': 'RemoteDesktop',
+              }));
           cancelFunc();
         },
         padding: padding,
@@ -407,6 +432,8 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
       final args = jsonDecode(call.arguments);
       final id = args['id'];
       final sessionId = args['session_id'];
+      final moveFromSessionId = args['move_from_session_id'];
+      final moveFromClientOwnerId = args['move_from_client_owner_id'];
       final tabWindowId = args['tab_window_id'];
       final display = args['display'];
       final displays = args['displays'];
@@ -436,6 +463,11 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           key: ValueKey(id),
           id: id,
           sessionId: sessionId == null ? null : SessionID(sessionId),
+          moveFromSessionId:
+              moveFromSessionId == null ? null : SessionID(moveFromSessionId),
+          moveFromClientOwnerId: moveFromClientOwnerId == null
+              ? null
+              : SessionID(moveFromClientOwnerId),
           tabWindowId: tabWindowId,
           display: display,
           displays: displays?.cast<int>(),
@@ -485,12 +517,20 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
         final remotePage = tabController.state.value.tabs
             .firstWhere((tab) => tab.key == id)
             .page as RemotePage;
+        final sourceSessionId = args['source_session_id'];
+        if (sourceSessionId != null &&
+            (sourceSessionId != remotePage.ffi.sessionId.toString() ||
+                args['source_client_owner_id'] !=
+                    remotePage.ffi.clientOwnerId.toString())) {
+          throw StateError('tab transfer source owner changed');
+        }
         returnValue = remotePage.ffi.ffiModel.cachedPeerData.toString();
       } catch (e) {
         debugPrint('Failed to get cached session data: $e');
       }
       if (close && returnValue != null) {
-        await tabController.closeBy(id, closeSession: false);
+        await tabController.closeBy(id,
+            closeSession: args['source_session_id'] != null);
       }
     } else if (call.method == kWindowEventRemoteWindowCoords) {
       final remotePage =

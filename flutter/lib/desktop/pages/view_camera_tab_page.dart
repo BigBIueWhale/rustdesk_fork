@@ -392,8 +392,12 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
       RemoteCountState.find().value = tabController.length;
 
   Future<dynamic> _remoteMethodHandler(call, fromWindowId) async {
+    final loggedArguments = call.method == kWindowEventNewViewCamera ||
+            call.method == kWindowEventGetCachedSessionData
+        ? '<redacted tab-transfer authority>'
+        : call.arguments;
     debugPrint(
-        "[View Camera Page] call ${call.method} with args ${call.arguments} from window $fromWindowId");
+        "[View Camera Page] call ${call.method} with args $loggedArguments from window $fromWindowId");
 
     dynamic returnValue;
     // for simplify, just replace connectionId

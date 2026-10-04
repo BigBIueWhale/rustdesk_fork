@@ -611,8 +611,11 @@ class _DesktopHomePageState extends State<DesktopHomePage>
 
     rustDeskWinManager.setMethodHandler((call, fromWindowId) async {
       if (!isChattyMethod(call.method)) {
+        final loggedArguments = call.method == kWindowEventMoveTabToNewWindow
+            ? '<redacted tab-transfer authority>'
+            : call.arguments;
         debugPrint(
-          "[Main] call ${call.method} with args ${call.arguments} from window $fromWindowId");
+          "[Main] call ${call.method} with args $loggedArguments from window $fromWindowId");
       }
       if (call.method == kWindowMainWindowOnTop) {
         windowOnTop(null);

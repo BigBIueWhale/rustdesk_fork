@@ -427,8 +427,12 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
       RemoteCountState.find().value = tabController.length;
 
   Future<dynamic> _remoteMethodHandler(call, fromWindowId) async {
+    final loggedArguments = call.method == kWindowEventNewRemoteDesktop ||
+            call.method == kWindowEventGetCachedSessionData
+        ? '<redacted tab-transfer authority>'
+        : call.arguments;
     debugPrint(
-        "[Remote Page] call ${call.method} with args ${call.arguments} from window $fromWindowId");
+        "[Remote Page] call ${call.method} with args $loggedArguments from window $fromWindowId");
 
     dynamic returnValue;
     // for simplify, just replace connectionId

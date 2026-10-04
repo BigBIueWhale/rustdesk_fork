@@ -8718,183 +8718,33 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   524,544-descriptor bound; the focused Windows and independent workspace
   normal validators also passed. No builder main path, libvirt, VM, native
   Windows artifact, cold R-B2/R-B10 transaction, or host product state ran.
-- **R-S11du/R-S11e-139 — Windows result publication is exact-object and authority-terminal —
-  SOURCE/MUTATION/FILESYSTEM VERIFIED; FRESH NATIVE SINGLE-PASS PUBLICATION GREEN 2026-08-11;
-  EXACT-COMMIT COLD DOUBLE-BUILD EVIDENCE PENDING.**
-  Platform: the unprivileged Linux Windows-build host. Endpoint/action:
-  `scripts/build-windows-vm.sh::publish_result` moving the validated pass-A
-  `.exe`/`.msi`, checksum records, and optional diagnostics from private build
-  state into the caller-selected absent output leaf. Boundary: private
-  run/result identity plus the selected output-parent namespace ↔ the
-  irreversible public multi-artifact result and the terminal build verdict.
+- **R-S11du/R-S11e-139 — Windows result publication: SOURCE IMPLEMENTED;
+  HISTORICAL SINGLE-PASS OBSERVATION ONLY; CURRENT ARTIFACT/COLD EVIDENCE OPEN.**
+  `scripts/build-windows-vm.sh::publish_result` selects only the validated
+  `pass-A/result` inventory after retiring its helper authority. The
+  `scripts/publish-windows-result.py` helper binds the exact private run root
+  and output-parent device/inode, requires one filesystem and no widened ACL,
+  validates bounded single-link source files and checksums, and prepares and
+  synchronizes a private candidate. It parks that exact candidate through a
+  descriptor-relative no-clobber rename under a kernel-random pending name;
+  the builder retires its exact run root before a separate, revalidated
+  same-parent no-clobber final rename. Collision, substitution, unsupported
+  semantics, or uncertainty have no copy/overwrite fallback. R-S11du and
+  Appendix C #274 retain the complete binding contract and failure matrix.
 
-  Proven old path and history: preflight canonicalized the output-parent
-  pathname but retained no object identity or write-authority proof.
-  `publish_result` then created `.windows-publish.XXXXXXXX` directly under
-  that pathname, copied each file through shell paths, checked hashes by
-  pathname, and invoked `mv -T --no-clobber "$staging" "$OUT_DIR"`. `git
-  blame` and `git log -S` trace the block to `57bcb529` (`Harden privileged
-  IPC and release authority`). The GNU Coreutils `mv` specification states
-  that a failed rename caused by different filesystems falls back to
-  copy-then-remove; `--no-clobber` also skips an occupied destination rather
-  than making the rename primitive itself authoritative. The path therefore
-  did not prove one same-filesystem atomic edge change, retained neither
-  parent nor candidate identity, synchronized neither directory namespace,
-  and could publish before `windows_helper_authority_close` decided whether
-  the build still owned unreconciled Docker/configuration state. The builder
-  refuses UID and primary GID zero. This was non-root artifact-publication
-  integrity, pathname-substitution, cross-filesystem atomicity, durability,
-  and transaction-finality debt—not evidence that publication ran, artifacts
-  changed, Docker escaped, root was acquired, a VM/domain/listener/network
-  started, or host RustDesk/service/firewall/network state changed.
-
-  Authority model and source closure: preflight now proves the canonical
-  output parent is owned by the invoking UID/GID, has owner read/write/search,
-  and grants no special, group-write, or world-write authority, then retains
-  its device/inode. The isolated `scripts/publish-windows-result.py` opens
-  that exact identity and R-S11dt's exact mode-0700 run-root identity with
-  `O_DIRECTORY|O_NOFOLLOW`, rejects POSIX access ACLs, and requires one
-  filesystem. It descends only through current-principal mode-0700
-  `pass-A/result` directories from the retained run-root descriptor.
-
-  The admitted source inventory is exactly two nonempty artifacts, their two
-  canonical lowercase SHA-256 records, and at most the bounded build log and
-  progress transcript. Every file must be current-UID/current-GID, mode 0644,
-  single-link, regular, size-bounded, opened no-follow, and stable through
-  read/copy. The helper creates the fixed exclusive candidate inside the
-  authenticated private run root, copies through descriptors into new files,
-  independently hashes artifacts against the records, synchronizes every
-  file, rechecks the closed inventory and content, and synchronizes the
-  candidate directory plus run-root namespace. Pre-publication failure or
-  interruption therefore leaves evidence only inside the exact retained
-  private transaction rather than beside the public output.
-
-  The main path closes the Windows-helper Docker/configuration authority
-  before entering publication. The preparation helper re-proves both path
-  edges, then invokes libc `renameat2(RENAME_NOREPLACE)` descriptor-relative
-  from the retained run root to one kernel-random hidden pending name in the
-  retained output parent. It synchronizes both namespaces, proves the
-  run-root candidate edge absent, proves the pending edge is the exact
-  still-open mode-0700 candidate, revalidates it, and returns only its strict
-  name plus device/inode authority. The pending directory is never populated
-  through the output parent and is not the requested result.
-
-  While the requested output remains absent, the shell parses that exact
-  authority and retires the remaining run-root identity with R-S11dt's
-  descriptor-relative private-tree closer. Cleanup failure therefore
-  preserves a private pending candidate and fails before apparent
-  publication. Only after exact run-state retirement does a separate
-  isolated commit invocation re-open the retained output-parent and pending
-  identities, revalidate their inventory and checksums, re-prove the parent,
-  and use same-parent `renameat2(RENAME_NOREPLACE)` to install the requested
-  final name. It synchronizes that namespace and proves pending-edge absence
-  plus exact final identity/content. Destination presence, pending or parent
-  substitution, `EXDEV`, missing no-replace support, or uncertainty fails
-  without copy, overwrite, deletion, or fallback. No fallible material
-  action remains after final publication. The former pathname-populated
-  output-parent staging, shell copy/hash loop, GNU `mv`, and
-  post-publication offline-media deletion are absent. R-S11du and Appendix C
-  #274 make this exact boundary normative.
-
-  Verification is intentionally confined to source/mutation checks and the
-  new helper's bounded ordinary-filesystem fixture. That fixture proves a
-  successful exact prepare/commit, occupied-destination preservation with
-  the pending candidate retained, output-parent and pending-object
-  substitution refusal, externally hard-linked source refusal, and
-  unexpected-inventory refusal. It uses disposable files only and does not
-  run the Windows builder main path, Docker/helper workloads, `virt-install`,
-  `virsh`, libvirt, KVM, a Windows VM, root fixtures, cleanup against host
-  state, or any host service/network operation.
-
-  Confined verification: the focused Windows harness baseline and complete
-  self-test pass from mutation one, rejecting all 226 deliberate source
-  weakenings and passing five bounded behavioral suites. The separate
-  workspace semantic baseline passes and its complete 2,466-entry in-memory
-  source-mutation catalog passes from mutation one. The shared private-tree
-  closer's complete behavioral self-test passes. Adjacent golden-domain,
-  generic-cleanup, Windows-helper, release-parent, and Debian
-  systemd-lifecycle gates reject 32, 16, 78, 27, and 44 mutations
-  respectively. Bash syntax, in-memory Python AST parsing, the publisher
-  prepare/commit self-test, exact requirements digest, native-codec normal
-  gate, and native-codec negative self-test pass. The exact synchronized
-  requirements SHA-256 is
-  `9bde87af77e4c815c8ba91714f248d64e559a0b1cb661562a690577485ca2637`.
-  The MSI behavioral suite imports only the existing local SHA-256-pinned
-  `olefile` wheel; nothing is installed and network remains disabled.
-
-  The final source audit rejected the first one-phase implementation before
-  commit: the requested result could already exist when a later EXIT-trap
-  run-root cleanup failed and changed the transaction verdict. That finding
-  caused the two-phase pending-object/final-commit correction above and a
-  complete restart of focused and independent mutation verification.
-  Preliminary verifier failures are retained as evidence: source-checksum,
-  final-edge, normative-requirement, and pre-publication-order mutations
-  initially exposed incomplete or stale focused bindings; independent
-  no-clobber and expected-identity mutations were correctly rejected under
-  mismatched expected diagnostic labels; and every applicable complete suite
-  restarted after correction. Container setup also exposed a UID-wide
-  `RLIMIT_NPROC` that was too low, a root-owned private tmpfs, an insufficient
-  descriptor ceiling for exact tree closure, an undersized file-size ceiling,
-  and the verifier image's absent per-user systemd bus. The executable
-  workspace `--self-test` was not misrepresented or granted that host socket;
-  the isolated semantic baseline and complete source catalog were run
-  instead, while the relevant bounded executable gates ran separately. An
-  attempted `py_compile` correctly failed against the read-only repository
-  before being replaced by in-memory AST parsing.
-
-  One process-boundary error is also recorded: a read-only Python occurrence
-  counter was accidentally run on the host once. It read four repository
-  files and performed no write, privilege use, socket access, service action,
-  or network operation, but it violated the container-only execution rule and
-  its result was not used as verification. The count was independently
-  reproduced inside the confined image. Every counted executable gate ran in
-  immutable image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as numeric UID/GID 1000:1000 with no pull or network, read-only root and
-  repository, recursive bind inclusion disabled, all capabilities dropped,
-  no-new-privileges, finite PID/memory/no-swap/CPU/descriptor/core/file-size/
-  tmpfs limits, and no Docker/libvirt/service-manager socket, host namespace,
-  device, port, or host-configuration mount. Each outer Docker call used a
-  fresh mode-0700 private client configuration whose mode-0600 file and
-  directory were exactly removed.
-
-  No Windows builder main path, Docker/helper workload inside the verifier,
-  `virt-install`, `virsh`, libvirt query/control, KVM/VM operation, cold
-  R-B2/R-B10 transaction, root fixture, installed/native/device behavior,
-  independent reproduction, or R-V3 external review is claimed by this
-  source slice. No host RustDesk/service/configuration/firewall/network state
-  was inspected or mutated. Those obligations and the broader Ralph-loop
-  goal remain open.
-
-  Native publication evidence (2026-08-11) includes the failure that made the final run meaningful. The preceding
-  fresh Windows guest had already returned `build-windows.ps1 exit=0`, passed native tests, restored and built WiX,
-  and produced both artifacts, but the publisher refused its result with
-  `source checksum rustdesk-setup.exe.sha256 metadata is invalid`. Read-only inspection proved both freshly emitted
-  checksum records were mode 0600: `extract_and_validate` inherited the harness's private `umask 077`, while the
-  publisher correctly required every source file to be mode 0644. No result was published. The smallest correction
-  explicitly sets only those two new checksum records to 0644 after creation. The focused verifier binds their
-  creation-before-normalization order and rejects a deliberate 0600 regression; its normal path, all 226 mutations,
-  and five bounded behavioral suites pass in a non-root, read-only, network-disabled container. The independent
-  workspace binding also passes.
-
-  A completely fresh run then captured exact tree `58c3125332b13a00950cee990d4f16be5d9d4a24`, reverified private offline
-  closure `eacb4d0fadb044f2f38520ad5263470a89c286bed69927ce2c32babcbc01ab24` before and after the guest,
-  completed the native Windows build, canonical-form validation, helper retirement, publication preparation,
-  exact run-root retirement, and final no-clobber commit. It reported `publish-windows-result: committed` and
-  `Windows artifacts complete`. The destination `/home/user/rustdesk-windows-cm-publish-20260811-result` is mode
-  0700 and contains only the two mode-0644, single-link artifacts, their mode-0644 checksum records, and the two
-  bounded mode-0644 diagnostics. Independent checksum verification passes. `rustdesk-setup.exe` is 18,528,256 bytes
-  at SHA-256 `2d59e6c668c0e6add53c50588544b0823fc33653319888bf63543c24a73d3572`; `rustdesk.msi` is
-  18,308,615 bytes at SHA-256 `6692c36a11489d1ba1c79f87044970b3926a3067b09f9bbdb28226b3b9ec4b39`.
-  The exact private run root is absent after publication.
-
-  The transaction used current-user `qemu:///session`, never root or sudo. Its exact domain had zero network
-  interfaces and only a temporary QEMU listener on `127.0.0.1:5900`; after completion the domain, QEMU process,
-  harness process, and 5900 listener were all absent. No host RustDesk process, service, configuration, firewall,
-  UFW/nftables/iptables, route, or host network setting was inspected or changed. This closes the native
-  single-pass publication boundary only. `DOUBLE_BUILD=0`, a dirty captured worktree rather than a final commit,
-  lack of independent reproduction, lack of installation/runtime service exercise, and lack of cross-target cold
-  R-B2/R-B10 publication keep the release obligation open.
+  The helper's ordinary-filesystem fixture previously exercised successful
+  prepare/commit and selected collision, substitution, hardlink, and inventory
+  refusals. An August 2026 Windows VM run reported a native build and one
+  publication pass, but it captured a dirty source tree with
+  `DOUBLE_BUILD=0`; it was not cold A==B release evidence. The output
+  directory named by that older report is absent in the current filesystem,
+  so its recorded hashes are historical receipts, not presently inspectable
+  artifacts. Later changes to the Windows builder and verifier also make the
+  old run insufficient for exact-current acceptance. Current native builder
+  publication, cleanup/failure races, cold double-build equality, installed
+  runtime, independent reproduction, and external review remain OPEN.
+  Detailed failed attempts and old verifier counts remain in Git history and
+  `/tmp/privilege_securiry_deep_audit.md`, not this live ledger.
 - **R-S11dv/R-S11e-140 — Debian result publication is private-until-verified,
   exact-object, no-clobber, and authority-terminal — SOURCE AND CONFINED
   SOURCE/MUTATION/FILESYSTEM VERIFICATION COMPLETE 2026-07-26; COLD RELEASE,

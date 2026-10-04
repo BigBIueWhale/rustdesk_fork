@@ -74,8 +74,6 @@ def main():
                            check=True, timeout=15)
             subprocess.run([str(binaries["corrected"]), "atom-name"], env=environment,
                            check=True, timeout=15)
-            subprocess.run([str(binaries["corrected"]), "bounds-valid"], env=environment,
-                           check=True, timeout=15)
             failures = 0
             for scenario in ("bounds-atom-length", "bounds-atom-padding", "bounds-mon-count",
                              "bounds-mon-length", "bounds-mon-total", "bounds-mon-span", "bounds-mon-sum"):
@@ -94,6 +92,8 @@ def main():
                     require(f"X11_BOUNDS_CASE=pass scenario={scenario} repeats=32 replies=exact enumeration=fused public_callers=explicit"
                             in result.stdout.splitlines(), "exact bounds result absent")
             require(failures == 0, f"{failures} unchecked received-header shapes remain")
+            subprocess.run([str(binaries["corrected"]), "bounds-valid"], env=environment,
+                           check=True, timeout=15)
             print("X11_BOUNDS_NATIVE=pass received_header=injected rejected_shapes=7 repeats=32 "
                   "enumeration=fused public_callers=explicit multiple_monitors=server-real replies=exact", flush=True)
             require(child.poll() is None, "Xvfb exited during native cases")

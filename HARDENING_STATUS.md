@@ -13395,6 +13395,17 @@ is terminal before filesystem dispatch or any other command effect. Work admitte
 the owner was current may finish; supersession does not invent rollback or report an
 already completed filesystem effect as unperformed.
 
+CM voice-state reception now uses the exact current registry owner and its authenticated
+`CmAuthConnType`: only Remote and ViewCamera may publish incoming, started, or closed state.
+Desktop and Android receivers terminate a non-voice or stale owner's stream; FileTransfer,
+Terminal, and PortForward cannot mutate CM voice state. The two new Tokio regressions drive
+desktop framed IPC and the Android listener, require refusal and exact retirement for all
+three non-voice messages, and preserve all three transitions for Remote and ViewCamera.
+Exact pushed `961c9b78` passed the no-NIC VM's 47 named Linux-target Rust tests, including
+these two, with guest-only networkless containers, no host listener addition, and joined
+cleanup. This is receiver/source behavior, not installed Windows/Android UI or native voice
+device evidence; those lifecycle and release obligations remain OPEN.
+
 Five Rust tests exercise stale-owner reuse, same-source/stale collision refusal,
 disconnected replacement, generation-exhaustion no-commit, and exact-owner file-log publication
 with stale/unknown refusal. Another focused unit regression proves that a privacy resource rejects

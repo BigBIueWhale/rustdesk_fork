@@ -3627,14 +3627,7 @@ impl TransferJob {
                             self.file_confirmed = false;
                             self.file_is_waiting = false;
                         }
-                        // On open error, behave the same as validation failure: advance
-                        // to next file and return the error.
-                        Err(err) => {
-                            self.file_num += 1;
-                            self.file_confirmed = false;
-                            self.file_is_waiting = false;
-                            return Err(err.into());
-                        }
+                        Err(err) => return Err(err.into()),
                     }
                 }
             }
@@ -3742,10 +3735,7 @@ impl TransferJob {
                 .await
             {
                 Err(err) => {
-                    self.file_num += 1;
                     self.data_stream = None;
-                    self.file_confirmed = false;
-                    self.file_is_waiting = false;
                     return Err(err.into());
                 }
                 Ok(n) => {
@@ -4129,14 +4119,18 @@ async fn init_jobs(
     jobs: &mut Vec<TransferJob>,
     stream: &mut crate::Stream,
 ) -> ResultType<Option<crate::tcp::WriterReceipt>> {
-    let Some(job) = jobs.iter_mut().find(|job| !job.is_last_job) else {
+    let Some(index) = jobs.iter().position(|job| !job.is_last_job) else {
         return Ok(None);
     };
+    let job = &mut jobs[index];
     match job.init_data_stream(stream).await {
         Ok(receipt) => Ok(receipt),
         Err(err) => {
+            let id = job.id();
+            let file_num = job.file_num();
+            jobs.remove(index);
             let receipt = stream
-                .send_with_receipt(&new_error(job.id(), err, job.file_num()))
+                .send_with_receipt(&new_error(id, err, file_num))
                 .await?;
             Ok(Some(receipt))
         }
@@ -4162,6 +4156,8 @@ pub async fn handle_read_jobs(
         }
         match job.read().await {
             Err(err) => {
+                finished.push(job.id());
+                job_log = serialize_transfer_job(job, false, false, &err.to_string());
                 receipt = Some(
                     stream
                         .send_with_receipt(&new_error(job.id(), err, job.file_num()))
@@ -6232,6 +6228,32 @@ mod tests {
             std::fs::read(tmp.join("source.bin.download")).expect("read unrelated receive sidecar"),
             b"wrong-sidecar"
         );
+    }
+
+    #[tokio::test]
+    async fn send_open_failure_keeps_the_failed_file_number() {
+        let tmp = TestTempDir::new("rustdesk_send_open_failure");
+        std::fs::create_dir_all(&tmp.path).expect("create send directory");
+        let source = tmp.join("source.txt");
+        std::fs::write(&source, b"listed-before-open").expect("create send source");
+        let mut job = TransferJob::new_read(
+            171,
+            JobType::Generic,
+            String::new(),
+            DataSource::FilePath(source.clone()),
+            0,
+            false,
+            false,
+            false,
+        )
+        .expect("admit send job");
+        assert_eq!(job.files().len(), 1);
+        std::fs::remove_file(source).expect("retire source before open");
+
+        job.init_data_stream_for_cm()
+            .await
+            .expect_err("the missing source must fail to open");
+        assert_eq!(job.file_num(), 0);
     }
 
     #[tokio::test]

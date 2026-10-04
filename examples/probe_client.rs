@@ -33,11 +33,13 @@
 //!                without changing either older generation.
 //!   - `cmfilecleanupfailure` : a live receive whose staging name was replaced must report
 //!                the exact cleanup failure to the peer without deleting the replacement.
+//!   - `ftreadfailure` : an unreadable direct-send source gives one terminal error for the
+//!                failed file, no later Done, and leaves the connection usable.
 //!
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
 //!
-//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfileauthority|cmfilereconnect|cmfilecollision|cmfilecleanupfailure] [local_addr]`  (exit 0 = matched)
+//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfileauthority|cmfilereconnect|cmfilecollision|cmfilecleanupfailure|ftreadfailure] [local_addr]`  (exit 0 = matched)
 use hbb_common::cpace::run_initiator;
 use hbb_common::message_proto::{login_response, message, Message};
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
@@ -56,6 +58,7 @@ const CM_OWNER_LOSS_WRITE_ID: i32 = 17008;
 const CM_DOWNLOAD_COLLISION_ID: i32 = 17009;
 const CM_DIGEST_COLLISION_ID: i32 = 17010;
 const CM_CLEANUP_FAILURE_ID: i32 = 17011;
+const FT_READ_FAILURE_ID: i32 = 17012;
 const CM_PRELOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/blocked-before-login";
 const CM_POSTLOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/allowed-after-login";
 const CM_WRITE_PAYLOAD: &[u8] = b"cm-file-write-finality-v1-0123456789";
@@ -984,6 +987,166 @@ async fn probe_cm_receive_cleanup_failure(stream: &mut FramedStream, report: &mu
     false
 }
 
+async fn probe_direct_read_failure(stream: &mut FramedStream, report: &mut String) -> bool {
+    use hbb_common::message_proto::{file_response, FileAction, FileTransferSendRequest, ReadDir};
+
+    let source = "/tmp/rd-cm-file-replay/allowed-after-login/unreadable-source.txt";
+    let mut action = FileAction::new();
+    action.set_send(FileTransferSendRequest {
+        id: FT_READ_FAILURE_ID,
+        path: source.to_owned(),
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_action(action);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-READ-REQUEST-ERROR {error}] "));
+        return false;
+    }
+
+    let mut listed = false;
+    let mut failed = false;
+    let mut barrier = false;
+    for _ in 0..8 {
+        let Some(Ok(bytes)) = stream.next_timeout(4000).await else {
+            report.push_str("[FT-READ-NO-RESPONSE] ");
+            return false;
+        };
+        let response = match Message::parse_from_bytes(&bytes) {
+            Ok(response) => response,
+            Err(error) => {
+                report.push_str(&format!("[FT-READ-PARSE-ERROR {error}] "));
+                return false;
+            }
+        };
+        match response.union {
+            Some(message::Union::FileResponse(response)) => match response.union {
+                Some(file_response::Union::Dir(dir)) if dir.id == FT_READ_FAILURE_ID => {
+                    if dir.path != source || dir.entries.len() != 1 || listed {
+                        report.push_str("[FT-READ-UNEXPECTED-DIR] ");
+                        return false;
+                    }
+                    listed = true;
+                }
+                Some(file_response::Union::Error(error)) if error.id == FT_READ_FAILURE_ID => {
+                    if !listed || error.file_num != 0 || !error.error.contains("os error 13") {
+                        report.push_str(&format!("[FT-READ-UNEXPECTED-ERROR {error:?}] "));
+                        return false;
+                    }
+                    failed = true;
+                    break;
+                }
+                Some(other) => {
+                    report.push_str(&format!("[FT-READ-UNEXPECTED-RESPONSE {other:?}] "));
+                    return false;
+                }
+                None => {}
+            },
+            Some(message::Union::LoginResponse(response))
+                if matches!(response.union, Some(login_response::Union::Error(_))) =>
+            {
+                report.push_str("[FT-READ-LOGIN-ERROR] ");
+                return false;
+            }
+            _ => {}
+        }
+    }
+    if !failed {
+        report.push_str("[FT-READ-ERROR-MISSING] ");
+        return false;
+    }
+
+    // A later directory reply proves the same keyed connection still processes commands;
+    // any second response for the failed job before or after it violates terminal finality.
+    let mut action = FileAction::new();
+    action.set_read_dir(ReadDir {
+        path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
+        include_hidden: false,
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_action(action);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-READ-BARRIER-SEND-ERROR {error}] "));
+        return false;
+    }
+    for _ in 0..8 {
+        let Some(Ok(bytes)) = stream.next_timeout(4000).await else {
+            report.push_str("[FT-READ-BARRIER-MISSING] ");
+            return false;
+        };
+        let response = match Message::parse_from_bytes(&bytes) {
+            Ok(response) => response,
+            Err(error) => {
+                report.push_str(&format!("[FT-READ-PARSE-ERROR {error}] "));
+                return false;
+            }
+        };
+        if let Some(message::Union::FileResponse(response)) = response.union {
+            match response.union {
+                Some(file_response::Union::Dir(dir))
+                    if dir.path == CM_POSTLOGIN_CREATE_PATH =>
+                {
+                    barrier = true;
+                    break;
+                }
+                Some(file_response::Union::Error(error)) if error.id == FT_READ_FAILURE_ID => {
+                    report.push_str(&format!("[FT-READ-DUPLICATE-ERROR {error:?}] "));
+                    return false;
+                }
+                Some(file_response::Union::Done(done)) if done.id == FT_READ_FAILURE_ID => {
+                    report.push_str(&format!("[FT-READ-AFTER-ERROR-DONE {done:?}] "));
+                    return false;
+                }
+                Some(file_response::Union::Block(block)) if block.id == FT_READ_FAILURE_ID => {
+                    report.push_str("[FT-READ-AFTER-ERROR-BLOCK] ");
+                    return false;
+                }
+                _ => {}
+            }
+        }
+    }
+    if !barrier {
+        report.push_str("[FT-READ-BARRIER-MISSING] ");
+        return false;
+    }
+    if let Some(result) = stream.next_timeout(500).await {
+        let bytes = match result {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                report.push_str(&format!("[FT-READ-AFTER-BARRIER-IO-ERROR {error}] "));
+                return false;
+            }
+        };
+        let response = match Message::parse_from_bytes(&bytes) {
+            Ok(response) => response,
+            Err(error) => {
+                report.push_str(&format!("[FT-READ-LATE-PARSE-ERROR {error}] "));
+                return false;
+            }
+        };
+        if let Some(message::Union::FileResponse(response)) = response.union {
+            match response.union {
+                Some(file_response::Union::Error(error)) if error.id == FT_READ_FAILURE_ID => {
+                    report.push_str("[FT-READ-LATE-ERROR] ");
+                    return false;
+                }
+                Some(file_response::Union::Done(done)) if done.id == FT_READ_FAILURE_ID => {
+                    report.push_str("[FT-READ-LATE-DONE] ");
+                    return false;
+                }
+                Some(file_response::Union::Block(block)) if block.id == FT_READ_FAILURE_ID => {
+                    report.push_str("[FT-READ-LATE-BLOCK] ");
+                    return false;
+                }
+                _ => {}
+            }
+        }
+    }
+    report.push_str("[FT-READ-ERROR-TERMINAL id=17012] ");
+    true
+}
+
 fn main() {
     let mut a: Vec<String> = std::env::args().collect();
     let addr = a
@@ -1008,7 +1171,8 @@ fn main() {
         || mode == "cmfileauthority"
         || mode == "cmfilereconnect"
         || mode == "cmfilecollision"
-        || mode == "cmfilecleanupfailure";
+        || mode == "cmfilecleanupfailure"
+        || mode == "ftreadfailure";
     // Optional local source address (6th arg) — e.g. 127.0.0.2:0 to connect as a DIFFERENT source,
     // for the R-A8.2 owner-safe limiter test (a flood from one source must not block another).
     let local = a
@@ -1158,6 +1322,7 @@ fn main() {
                         || mode == "cmfilereconnect"
                         || mode == "cmfilecollision"
                         || mode == "cmfilecleanupfailure"
+                        || mode == "ftreadfailure"
                     {
                         // R-F1/R-F2 END-TO-END against a headless unix --server. Before the fix this box
                         // (no logind/console session) reported an EMPTY PeerInfo.username and the viewer
@@ -1337,7 +1502,8 @@ fn main() {
                             || ((mode == "cmfiletransfer"
                                 || mode == "cmfilereconnect"
                                 || mode == "cmfilecollision"
-                                || mode == "cmfilecleanupfailure")
+                                || mode == "cmfilecleanupfailure"
+                                || mode == "ftreadfailure")
                                 && !received_directory)
                             || (mode == "cmfileauthority" && (!received_directory || !created))
                         {
@@ -1362,6 +1528,10 @@ fn main() {
                             && !probe_cm_receive_cleanup_failure(&mut stream, &mut pk).await
                         {
                             return (true, pk, false, true);
+                        } else if mode == "ftreadfailure"
+                            && !probe_direct_read_failure(&mut stream, &mut pk).await
+                        {
+                            return (true, pk, false, true);
                         }
                     }
                     // The generic post-key frame dump is for read/login/inject only; a port-forward
@@ -1375,6 +1545,7 @@ fn main() {
                             || mode == "cmfilereconnect"
                             || mode == "cmfilecollision"
                             || mode == "cmfilecleanupfailure"
+                            || mode == "ftreadfailure"
                         {
                             break;
                         }
@@ -1468,7 +1639,8 @@ fn main() {
             && mode != "cmfileauthority"
             && mode != "cmfilereconnect"
             && mode != "cmfilecollision"
-            && mode != "cmfilecleanupfailure")
+            && mode != "cmfilecleanupfailure"
+            && mode != "ftreadfailure")
             || file_transfer_ok)
         && (mode != "login" || remote_login_ok);
     if pass {

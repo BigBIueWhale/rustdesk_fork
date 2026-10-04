@@ -4130,7 +4130,7 @@ elif [ "$MODE" = cm-file-replay ]; then
         "CM_FILE_PEER_BUILD=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE builder=$DEV_CHECK_IMAGE_CONFIG_ID files=7 network=none" \
         'CM file current-source peer build'
     require_exact_fixed_receipt \
-        'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved network=container-loopback cleanup=server-joined' \
+        'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once network=container-loopback cleanup=server-joined' \
         'CM file production transaction'
     require_exact_fixed_receipt \
         "CM_FILE_REPLAY_VM=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE builder=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none build=guest-disposable cleanup=joined" \

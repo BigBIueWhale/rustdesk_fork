@@ -839,11 +839,32 @@ EOS
       && cmp -s -- "$base.displaced-download" <(printf '%s' 'partial-before-cleanup-failure')
     [ ! -e "$base.digest" ] && [ ! -L "$base.digest" ]
     [ -f "$base.download.lock" ] && [ ! -L "$base.download.lock" ]
+    source="$HOME/allowed-after-login/unreadable-source.txt"
+    printf '%s' 'unreadable-source-fixture' >"$source"
+    chmod 000 "$source"
+    [ "$(stat -c '%u:%g:%a' -- "$source")" = "$(id -u):$(id -g):0" ]
+    if read_failure_output=$(timeout --signal=TERM --kill-after=5s 20s \
+        /smoke-target/debug/examples/probe_client \
+        '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok ftreadfailure 2>&1); then
+      read_failure_status=0
+    else
+      read_failure_status=$?
+    fi
+    printf '%s\n' "$read_failure_output"
+    if [ "$read_failure_status" -ne 0 ]; then
+      tail -n 120 /tmp/cm-file-server.log >&2
+      exit "$read_failure_status"
+    fi
+    [ "$(grep -Fc '[FT-READ-ERROR-TERMINAL id=17012]' <<<"$read_failure_output")" -eq 1 ]
+    grep -Fxq 'probe_client: PASS' <<<"$read_failure_output"
+    "$READY" --is-running "$SRV" "$SRV_START"
+    chmod 0600 "$source"
+    cmp -s -- "$source" <(printf '%s' 'unreadable-source-fixture')
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/cm-file-server.log
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

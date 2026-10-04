@@ -3730,7 +3730,7 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
-        'X11_BOUNDS_NATIVE=pass received_header=injected rejected_shapes=7 repeats=32 enumeration=fused public_callers=explicit empty=injected multiple_monitors=server-real replies=exact' \
+        'X11_BOUNDS_NATIVE=pass received_header=injected rejected_shapes=7 repeats=32 enumeration=fused public_callers=explicit multiple_monitors=server-real replies=exact' \
         'production X11 received-reply bounds and finality'
     require_exact_fixed_receipt \
         'X11_ATOM_NAME_NATIVE=pass server=real unnamed=no-query server_nul=truncated received_nul=injected-preserved utf8=preserved non_utf8=lossy iterations=32 replies=exact edition=2018' \

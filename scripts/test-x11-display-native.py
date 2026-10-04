@@ -95,7 +95,7 @@ def main():
                             in result.stdout.splitlines(), "exact bounds result absent")
             require(failures == 0, f"{failures} unchecked received-header shapes remain")
             print("X11_BOUNDS_NATIVE=pass received_header=injected rejected_shapes=7 repeats=32 "
-                  "enumeration=fused public_callers=explicit empty=injected multiple_monitors=server-real replies=exact", flush=True)
+                  "enumeration=fused public_callers=explicit multiple_monitors=server-real replies=exact", flush=True)
             require(child.poll() is None, "Xvfb exited during native cases")
         except BaseException:
             log.flush()

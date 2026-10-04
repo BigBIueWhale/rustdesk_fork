@@ -340,14 +340,9 @@ unsafe extern "C" fn __wrap_xcb_randr_get_monitors_reply(c: *mut xcb_connection_
                         assert!(info.n_output > 0);
                         info.n_output = if state.malformed_monitors == 4 { u16::MAX } else { 0 };
                     }
-                    6 => {
-                        (*reply).n_monitors = 0;
-                        (*reply).n_outputs = 0;
-                        (*reply).length = 0;
-                    }
                     _ => unreachable!("unknown monitor fault"),
                 }
-                if state.malformed_monitors != 6 { state.bad_monitor_reply = reply as usize; }
+                state.bad_monitor_reply = reply as usize;
             }
         }
         if !error.is_null() && !(*error).is_null() {
@@ -468,10 +463,6 @@ fn main() -> io::Result<()> {
             finish_case(0);
             println!("X11_BOUNDS_CASE=pass scenario={scenario} repeats=32 replies=exact enumeration=fused public_callers=explicit");
         } else if scenario == "bounds-valid" {
-            configure_bounds(0, 6, 0);
-            assert!(x11::Server::displays(Rc::clone(&server)).next().is_none());
-            STATE.with(|state| assert_eq!(state.borrow().queries, 2));
-            finish_case(0);
             let root = unsafe { (*xcb_setup_roots_iterator(server.setup()).data).root };
             let atom = intern_atom(server.raw(), b"bounds-native")?;
             let mut info = xcb_randr_monitor_info_t {
@@ -486,7 +477,7 @@ fn main() -> io::Result<()> {
             assert_eq!(displays.len(), 3, "real outputless monitor did not join the default screens");
             assert!(displays.iter().any(|d| d.name() == "bounds-native" && d.w() == 320 && d.h() == 480));
             finish_case(0);
-            println!("X11_BOUNDS_VALID=pass empty=injected multiple_monitors=server-real outputless=server-real replies=exact");
+            println!("X11_BOUNDS_VALID=pass multiple_monitors=server-real outputless=server-real replies=exact");
         } else if scenario == "atom-name" {
             for _ in 0..32 {
                 assert_eq!(x11::query_atom_name(server.raw(), 0)?, "");

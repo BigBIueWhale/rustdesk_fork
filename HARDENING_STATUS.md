@@ -567,10 +567,8 @@ Raw serial is `evidence/x11-display-c9b54e68.serial.log` (68,434 bytes, SHA-256
 The initial `a9f0fc1c` fixture startup failure is retained, not counted as a pass.
 This is instrumented component evidence, not full-product
 capture, installed-service proof, allocator-exploit proof, the original
-Android/Windows cause, or LPE closure. The inherited geometry/pixel-format
-fallback remains an uncorrected source risk: correct selection must derive
-byte order, pixmap bits-per-pixel, root visual masks and padded row stride,
-not infer layout from depth alone or replace failure with BGRA.
+Android/Windows cause, or LPE closure. The subsequent root-layout correction
+is described below.
 
 **X11 reply-payload bounds — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
 The previous GetAtomName accessor and RandR monitor cursor trusted nested
@@ -597,7 +595,32 @@ locally with request-length error 4 before server mutation and is not counted
 as a server-created monitor result. This is instrumented component evidence,
 not a hostile-server wire reproduction, full-product capture, proof of
 installed-service behavior, the original Android/Windows display cause, or
-LPE closure. The geometry/pixel-format fallback above remains OPEN separately.
+LPE closure. Root-layout behavior is assessed separately below.
+
+**X11 root pixel layout and padded capture — SOURCE CORRECTED; NATIVE COMPONENT
+ACCEPTED.** Enumeration no longer guesses BGRA after a geometry query fails.
+For each root it selects the setup pixmap format by depth, the root visual by
+ID, and the image byte order, and accepts only layouts represented exactly by
+the capture converter (TrueColor BGRA/RGBA32 or little-endian RGB565). Missing,
+duplicate, non-TrueColor, unsupported, or invalid setup formats fail explicitly.
+The same scanline padding sets the shared-memory allocation and public pixel
+buffer stride; GetImage must return that exact size, depth, and visual. Empty or
+oversized dimensions fail before allocation. Exact source
+`65919cdc36a9b08160865d5fff6f7b9c6663ac64`, tree
+`ec09be8f6192832ad23ed3899f94e01dbccf9d27`, passed the 44-second zero-NIC
+focused transaction. Real Xvfb 24-bit and 16-bit roots yielded drawn red
+pixels through production MIT-SHM capture and the public pixel buffer; the
+odd-width 641-pixel 16-bit screen required and reported a 1,284-byte padded
+row, whereas width-times-two would have allocated only 1,282. Unsupported
+layout classification is checked separately, not misrepresented as a hostile
+X-server run. Host listener inventories had no additions or process drift,
+guest/VM owners joined, and successful scratch retired. Raw serial is
+`evidence/x11-layout-final-65919cdc.serial.log` (75,520 bytes, SHA-256
+`ca11a40fcf2abe411bcd2ba67296615fb53d549788afd2e474666a0e7575a0e1`);
+outer log SHA-256 is `6b9dac3600e99e8f0fe24cd113d0c229fca3a5b7b038814ec701fb30484cb910`.
+This is component capture/stride evidence, not hostile-server setup parsing,
+full-product presentation, installed-service behavior, the reported
+Android/Windows latency cause, or local-privilege-escalation closure.
 
 **X11 atom-query finality — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
 The production helper returned an empty name when GetAtomName failed and leaked

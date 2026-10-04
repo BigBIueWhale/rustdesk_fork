@@ -1,5 +1,5 @@
-//! Native component fixture: production enumeration and public callers, real XCB.
-//! Capture is not exercised; its unrelated interface is a compile-only stand-in.
+//! Native component fixture: production enumeration, MIT-SHM capture and public callers, real XCB.
+//! The historical iterator has a capture stand-in; the corrected case uses production capture.
 #![allow(dead_code)]
 
 extern crate self as hbb_common;

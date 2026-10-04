@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run historical/current production X11 enumeration against real isolated Xvfb."""
+"""Run production X11 enumeration and capture against real isolated Xvfb."""
 import hashlib
 import os
 from pathlib import Path

@@ -3328,9 +3328,31 @@ digest absent, the lease name retained, and the final path absent. The no-NIC VM
 This establishes one Linux headless cleanup-failure path, not Windows handle semantics
 or a general cleanup-fault matrix.
 
+Direct-send read failure had a separate terminality defect: on source-open/read error,
+`TransferJob` advanced the file number, and the non-Windows producer emitted `Error`
+without retiring the job, allowing a later `Done` although viewers treat `Error` as
+terminal. Product commit `87dc487c` retains the failing file number and retires the
+exact job on either error path; the Windows CM producer already did so. Its no-NIC
+filesystem VM passed four config and 61 filesystem tests in 164 seconds (raw serial
+`hbb-common-fs-run.qgGxFGCmAJ.serial.log`, 67,250 bytes, SHA-256
+`dcd2adf13138d52e9fc5be906f1c5701caff43b461c2a761bc1f3c5f7e829ebf`).
+The first keyed replay failed in the new probe before reaching that outcome because
+it sent a duplicate initial directory request. Its failed serial
+`cm-file-replay-run.6dMTwtqddI.serial.log` (338,456 bytes, SHA-256
+`d146a66f256647b6799c264012047a4d2c8badd335870c029ce3ac38d947a749`)
+was retained; only its idle 8.2-GiB run root was identity-checked and removed.
+Probe-only correction `3fefe68b` passed the same-product-source keyed replay in
+266 seconds: an unreadable file produced one exact-ID/file-0 error, no later block
+or `Done` through a subsequent directory response and bounded quiet check, while
+the connection and server stayed live. Raw serial
+`cm-file-replay-run.hB4tn2ENFS.serial.log` is 318,516 bytes, SHA-256
+`015d00997320fa00e3bd1fcb982d08267c42cf734580b6e36ecc8ae861ccb167`;
+the outer listener/process audit and joined cleanup passed with no run overlay.
+This is Linux direct-send error finality, not a full download or native Windows read result.
+
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | Exact-current Rust 1.75 Linux regressions execute all 60 `hbb_common::fs` tests, including retained-authority create/rename/file/directory mutations, Unix symlink/path-swap/depth-bound cases, abandoned blocking-result retirement, and fixed-sidecar collision refusal. Earlier current-source regressions execute receive commit, incomplete/stale terminal refusal, peer-error cleanup, resume refusal, job identity, duplicate confirmation, malformed compression, and overflow boundaries through the shared job and CM dispatcher. The real-peer replays above establish keyed pre-login no-create and post-login CM directory/create, an active partial-write terminal refusal with cleanup, exact-byte single- and two-file committed uploads, partial peer-error and cancel paths, one abrupt owner-loss cleanup after staging was observed, one sequential new-owner write after cleanup, Linux fixed-sidecar collision refusal with old bytes preserved, and one reported cleanup failure that preserves both the replacement and displaced original. Windows junction/exact-handle regressions remain unexecuted. Still exercise full download/read, digest/confirmation, bounded saturation, terminal-first disconnect, racy/stale-generation reconnect, broader cleanup-fault behavior, and native Windows collision/unlink semantics; repeat the relevant multi-block/multi-file, abort, abrupt-loss, denial, and finality scenarios on installed desktop targets and Android. The existing installed Windows result predates this strengthening. |
+| CM/file finality (R-S11c-4c/4d) | Current Linux evidence: 61 Rust filesystem tests and keyed real-peer CM upload, cancel, owner-loss/reconnect, collision, and cleanup-failure replays; the direct-send unreadable-source error now retires its job once, without a later `Done`. The exact receipts and limits are above. Still OPEN: successful full download/read, digest/confirmation, saturation, terminal-first disconnect, concurrent/stale-generation reconnect, broader cleanup faults, native Windows handle/junction/unlink behavior, installed desktop and Android repeats, and release-artifact evidence. The installed Windows result predates these corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
@@ -12975,8 +12997,9 @@ replacement-generation failure finality. A shared regression also covers publica
 was already unlinked, requiring cleanup to remove the remaining staged file and lease without accepting a renamed or
 linked object. Exact lease-marker removal/durability failure is now part of setup, inspection, commit, and cleanup
 results instead of a successful return followed by destructor logging; rejected resume admission also retires its
-idle marker without removing resumable sidecars. None has compiled or executed in this tree because the fixed
-authorized rootless Docker socket is absent.
+idle marker without removing resumable sidecars. The current no-NIC Linux filesystem
+and keyed-peer VM results above supersede that earlier execution gap; native installed
+and cross-platform evidence remains open.
 
 An exact-production-path `strace` run observed the successful Linux sequence
 `fsync(download) -> unlinkat(digest) -> renameat(download, final) -> fsync(parent)`. Injecting `EIO`

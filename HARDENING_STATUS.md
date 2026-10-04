@@ -3217,22 +3217,26 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 
 ### Open / STOP-SHIP evidence
 
-**CM/file current-source directory replay; broader finality OPEN:** exact pushed source
-`ec6654b8` (tree `3f5071e8`) built the production Linux peer and strict probe inside a
+**CM/file current-source directory and create replay; broader finality OPEN:** exact pushed
+source `fef247fd` (tree `506049d7`) built the production Linux peer and probe inside a
 disposable no-NIC VM, then ran them in a separate networkless nonroot container. CPace
-keying, post-login `PeerInfo`, and a CM `FileResponse::Dir` for `ReadDir("")` passed. The
-fixture username was `"unknown"`, not installed-user identity evidence. The retained raw
-serial `cm-file-replay-run.whdeT6d7dJ.serial.log` is 313,877 bytes, SHA-256
-`2cf564f8cf35d4863e84c27e96c365eeed3ed0dd77abfe5df7bc52dfc24371e4`; it includes
-the seven built-file digests and manifest digest. The outer run passed in 266 seconds with
+keying, post-login `PeerInfo`, the automatic CM `FileResponse::Dir` for `ReadDir("")`, and
+`Done(id=17002)` for a post-login directory create passed. A pre-login create sent after
+keying did not create its target; the post-login target existed with the container user's
+UID/GID and mode 0700 while the server remained alive. The fixture username was
+`"unknown"`, not installed-user identity evidence. The retained raw serial
+`cm-file-replay-run.phBVbaATDC.serial.log` is 314,008 bytes, SHA-256
+`92839aa05664de7ca5fbcd8966a5b224c84aec577a833f35fb7ba5f1ba4d1054`; it includes
+the seven built-file digests and manifest digest. The outer run passed in 263 seconds with
 no harness-added host listener or pre-existing-process drift and joined cleanup; no `run.*`
-or overlay remains. The earlier `03ce7fc6` retained-peer pass is historical. This is one
-current-source authenticated headless Linux directory round-trip, not a write/digest/cancel,
-installed-service, negative-principal, Android, or cross-platform result.
+or overlay remains. The earlier `ec6654b8` directory-only and `03ce7fc6` retained-peer
+passes are historical. This establishes one keyed-pre-login refusal and one authenticated
+headless Linux CM create, not a wrong-OS-principal, installed-service, read/write/digest/cancel,
+Android, or cross-platform result.
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | Exact-current Rust 1.75 Linux regressions execute all 57 `hbb_common::fs` tests, including retained-authority create/rename/file/directory mutations and Unix symlink/path-swap/depth-bound cases. Earlier current-source regressions execute receive commit, incomplete/stale terminal refusal, peer-error cleanup, resume refusal, job identity, duplicate confirmation, malformed compression, and overflow boundaries through the shared job and CM dispatcher. The current-source real-peer `ReadDir("")` round-trip above establishes only post-login directory delivery. Windows junction/exact-handle regressions remain unexecuted. Still exercise complete read/write/digest/cancel/error operations after Login, bounded saturation, terminal-first disconnect, fixed-sidecar collision, abrupt owner loss, and reconnect on installed desktop targets and Android. The existing installed Windows result predates this strengthening. |
+| CM/file finality (R-S11c-4c/4d) | Exact-current Rust 1.75 Linux regressions execute all 57 `hbb_common::fs` tests, including retained-authority create/rename/file/directory mutations and Unix symlink/path-swap/depth-bound cases. Earlier current-source regressions execute receive commit, incomplete/stale terminal refusal, peer-error cleanup, resume refusal, job identity, duplicate confirmation, malformed compression, and overflow boundaries through the shared job and CM dispatcher. The current-source real-peer replay above establishes keyed pre-login no-create and post-login CM directory delivery and create persistence only. Windows junction/exact-handle regressions remain unexecuted. Still exercise complete read/write/digest/cancel/error operations after Login, bounded saturation, terminal-first disconnect, fixed-sidecar collision, abrupt owner loss, and reconnect on installed desktop targets and Android. The existing installed Windows result predates this strengthening. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

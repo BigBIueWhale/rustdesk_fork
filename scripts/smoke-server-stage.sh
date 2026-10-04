@@ -723,11 +723,36 @@ EOS
         && [ "$(stat -c '%u:%g:%a' -- "$HOME/allowed-after-login/$name")" = "$(id -u):$(id -g):600" ] \
         && cmp -s -- "$HOME/allowed-after-login/$name" <(printf '%s' "$payload")
     done
+    if reconnect_output=$(timeout --signal=TERM --kill-after=5s 20s \
+        /smoke-target/debug/examples/probe_client \
+        '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfilereconnect 2>&1); then
+      reconnect_status=0
+    else
+      reconnect_status=$?
+    fi
+    printf '%s\n' "$reconnect_output"
+    if [ "$reconnect_status" -ne 0 ]; then
+      tail -n 120 /tmp/cm-file-server.log >&2
+      exit "$reconnect_status"
+    fi
+    [ "$(grep -Fc '[FT-DIR-RESPONSE path=' <<<"$reconnect_output")" -eq 1 ]
+    [ "$(grep -Fc '[FT-RECONNECT-WRITE-COMMITTED id=17008]' <<<"$reconnect_output")" -eq 1 ]
+    grep -Fxq 'probe_client: PASS' <<<"$reconnect_output"
+    "$READY" --is-running "$SRV" "$SRV_START"
+    [ -f "$HOME/allowed-after-login/orphaned.txt" ] \
+      && [ ! -L "$HOME/allowed-after-login/orphaned.txt" ] \
+      && [ "$(stat -c '%u:%g:%a' -- "$HOME/allowed-after-login/orphaned.txt")" = "$(id -u):$(id -g):600" ] \
+      && cmp -s -- "$HOME/allowed-after-login/orphaned.txt" \
+        <(printf '%s' 'new-owner-after-abrupt-loss-0123456789')
+    for suffix in .download .digest .download.lock; do
+      [ ! -e "$HOME/allowed-after-login/orphaned.txt$suffix" ] \
+        && [ ! -L "$HOME/allowed-after-login/orphaned.txt$suffix" ]
+    done
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/cm-file-server.log
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

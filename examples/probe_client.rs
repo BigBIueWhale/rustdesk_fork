@@ -27,11 +27,13 @@
 //!                fixture; post-login directory read/create, receive-write finality, and a
 //!                two-file/four-block receive job, peer error, cancellation, and abrupt owner loss
 //!                run through CM.
+//!   - `cmfilereconnect` : after that owner's loss, a fresh keyed FileTransfer connection reuses
+//!                its write ID and destination and must commit a new exact payload through CM.
 //!
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
 //!
-//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfileauthority] [local_addr]`  (exit 0 = matched)
+//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfileauthority|cmfilereconnect] [local_addr]`  (exit 0 = matched)
 use hbb_common::cpace::run_initiator;
 use hbb_common::message_proto::{login_response, message, Message};
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
@@ -52,6 +54,7 @@ const CM_POSTLOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/allowed-after-log
 const CM_WRITE_PAYLOAD: &[u8] = b"cm-file-write-finality-v1-0123456789";
 const CM_MULTI_FIRST: &[u8] = b"first-file-two-blocks-0123456789";
 const CM_MULTI_SECOND: &[u8] = b"second-file-two-blocks-abcdefghij";
+const CM_RECONNECT_PAYLOAD: &[u8] = b"new-owner-after-abrupt-loss-0123456789";
 const CM_PEER_ERROR: &str = "peer-aborted-cm-fixture";
 
 struct ProbePassword(Vec<u8>);
@@ -607,6 +610,103 @@ async fn probe_cm_receive_owner_loss(stream: &mut FramedStream, report: &mut Str
     false
 }
 
+async fn probe_cm_receive_reconnect(stream: &mut FramedStream, report: &mut String) -> bool {
+    use hbb_common::message_proto::{
+        file_response, FileAction, FileEntry, FileResponse, FileTransferBlock, FileTransferDone,
+        FileTransferReceiveRequest, FileType,
+    };
+
+    let mut action = FileAction::new();
+    action.set_receive(FileTransferReceiveRequest {
+        id: CM_OWNER_LOSS_WRITE_ID,
+        path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
+        files: vec![FileEntry {
+            entry_type: FileType::File.into(),
+            name: "orphaned.txt".to_owned(),
+            size: CM_RECONNECT_PAYLOAD.len() as u64,
+            ..Default::default()
+        }],
+        file_num: 0,
+        total_size: CM_RECONNECT_PAYLOAD.len() as u64,
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_action(action);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-RECONNECT-REQUEST-ERROR {error}] "));
+        return false;
+    }
+
+    let mut block = FileResponse::new();
+    block.set_block(FileTransferBlock {
+        id: CM_OWNER_LOSS_WRITE_ID,
+        file_num: 0,
+        data: CM_RECONNECT_PAYLOAD.to_vec().into(),
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_response(block);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-RECONNECT-BLOCK-ERROR {error}] "));
+        return false;
+    }
+
+    let mut done = FileResponse::new();
+    done.set_done(FileTransferDone {
+        id: CM_OWNER_LOSS_WRITE_ID,
+        file_num: 1,
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_response(done);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-RECONNECT-DONE-SEND-ERROR {error}] "));
+        return false;
+    }
+
+    for _ in 0..8 {
+        let Some(Ok(bytes)) = stream.next_timeout(4000).await else {
+            report.push_str("[FT-RECONNECT-NO-RESPONSE] ");
+            return false;
+        };
+        let response = match Message::parse_from_bytes(&bytes) {
+            Ok(response) => response,
+            Err(error) => {
+                report.push_str(&format!("[FT-RECONNECT-PARSE-ERROR {error}] "));
+                return false;
+            }
+        };
+        match response.union {
+            Some(message::Union::FileResponse(response)) => match response.union {
+                Some(file_response::Union::Done(done)) if done.id == CM_OWNER_LOSS_WRITE_ID => {
+                    if done.file_num == 1 {
+                        report.push_str("[FT-RECONNECT-WRITE-COMMITTED id=17008] ");
+                        return true;
+                    }
+                    report.push_str(&format!("[FT-RECONNECT-UNEXPECTED-DONE {done:?}] "));
+                    return false;
+                }
+                Some(file_response::Union::Error(error))
+                    if error.id == CM_OWNER_LOSS_WRITE_ID =>
+                {
+                    report.push_str(&format!("[FT-RECONNECT-ERROR {error:?}] "));
+                    return false;
+                }
+                _ => {}
+            },
+            Some(message::Union::LoginResponse(response))
+                if matches!(response.union, Some(login_response::Union::Error(_))) =>
+            {
+                report.push_str("[FT-RECONNECT-LOGIN-ERROR] ");
+                return false;
+            }
+            _ => {}
+        }
+    }
+    report.push_str("[FT-RECONNECT-MATCHING-RESPONSE-MISSING] ");
+    false
+}
+
 fn main() {
     let mut a: Vec<String> = std::env::args().collect();
     let addr = a
@@ -628,7 +728,8 @@ fn main() {
         || mode == "portforward"
         || mode == "filetransfer"
         || mode == "cmfiletransfer"
-        || mode == "cmfileauthority";
+        || mode == "cmfileauthority"
+        || mode == "cmfilereconnect";
     // Optional local source address (6th arg) — e.g. 127.0.0.2:0 to connect as a DIFFERENT source,
     // for the R-A8.2 owner-safe limiter test (a flood from one source must not block another).
     let local = a
@@ -775,6 +876,7 @@ fn main() {
                     if mode == "filetransfer"
                         || mode == "cmfiletransfer"
                         || mode == "cmfileauthority"
+                        || mode == "cmfilereconnect"
                     {
                         // R-F1/R-F2 END-TO-END against a headless unix --server. Before the fix this box
                         // (no logind/console session) reported an EMPTY PeerInfo.username and the viewer
@@ -951,7 +1053,8 @@ fn main() {
                         }
                         if !peer_username_nonempty
                             || !readdir_send_ok
-                            || (mode == "cmfiletransfer" && !received_directory)
+                            || ((mode == "cmfiletransfer" || mode == "cmfilereconnect")
+                                && !received_directory)
                             || (mode == "cmfileauthority" && (!received_directory || !created))
                         {
                             return (true, pk, false, true);
@@ -963,6 +1066,10 @@ fn main() {
                             {
                                 return (true, pk, false, true);
                             }
+                        } else if mode == "cmfilereconnect"
+                            && !probe_cm_receive_reconnect(&mut stream, &mut pk).await
+                        {
+                            return (true, pk, false, true);
                         }
                     }
                     // The generic post-key frame dump is for read/login/inject only; a port-forward
@@ -973,6 +1080,7 @@ fn main() {
                             || mode == "filetransfer"
                             || mode == "cmfiletransfer"
                             || mode == "cmfileauthority"
+                            || mode == "cmfilereconnect"
                         {
                             break;
                         }
@@ -1063,7 +1171,8 @@ fn main() {
     let pass = keying_matches
         && ((mode != "filetransfer"
             && mode != "cmfiletransfer"
-            && mode != "cmfileauthority")
+            && mode != "cmfileauthority"
+            && mode != "cmfilereconnect")
             || file_transfer_ok)
         && (mode != "login" || remote_login_ok);
     if pass {

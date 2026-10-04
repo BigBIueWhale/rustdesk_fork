@@ -2371,6 +2371,9 @@ run_focused_rust_tests() {
                             --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             direct_service::direct_connection_task_tests:: --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config \
+                            ui_cm_interface::tests::r_s11is_cm_file_raw_ \
+                            --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config,flutter \
                             r_s11iu_ --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config,flutter \

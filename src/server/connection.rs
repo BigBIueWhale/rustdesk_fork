@@ -82,7 +82,6 @@ const MAX_PEER_CAPTURE_DISPLAY_ENTRIES: usize = 32;
 const DISPLAY_CONTROL_LOG_INTERVAL: Duration = Duration::from_secs(5);
 const MAX_CM_FILE_ERROR_BYTES: usize = 4096;
 const MAX_PENDING_CM_FILE_REQUESTS: usize = 32;
-const CM_FILE_BLOCK_READ_TIMEOUT_MS: u64 = 5_000;
 const CM_COMMAND_QUEUE_CAPACITY: usize = 2;
 const CM_COMMAND_QUEUE_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const CM_IPC_COMMAND_SEND_TIMEOUT_MS: u64 = 5_000;
@@ -12888,7 +12887,7 @@ async fn start_ipc(
                                 }
                                 stream.set_max_packet_length(ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES);
                                 let raw_data = timeout(
-                                    CM_FILE_BLOCK_READ_TIMEOUT_MS,
+                                    ipc::CM_FILE_BLOCK_READ_TIMEOUT_MS,
                                     stream.next_raw(),
                                 )
                                 .await??;

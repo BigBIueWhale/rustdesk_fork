@@ -1338,13 +1338,27 @@ where
                                         break;
                                     }
                                     let result = if let ipc::FS::WriteBlock { id, file_num, conn_id, data: _, compressed, generation } = fs {
-                                        let bytes = match self.stream.next_raw().await {
-                                            Ok(bytes) => bytes,
-                                            Err(error) => {
+                                        self.stream.set_max_packet_length(
+                                            ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES,
+                                        );
+                                        let bytes = match hbb_common::timeout(
+                                            ipc::CM_FILE_BLOCK_READ_TIMEOUT_MS,
+                                            self.stream.next_raw(),
+                                        )
+                                        .await
+                                        {
+                                            Ok(Ok(bytes)) => bytes,
+                                            Ok(Err(error)) => {
                                                 log::error!("failed to receive CM file block: {error}");
                                                 break;
                                             }
+                                            Err(_) => {
+                                                log::error!("timed out receiving CM file block");
+                                                break;
+                                            }
                                         };
+                                        self.stream
+                                            .set_max_packet_length(ipc::CM_IPC_MAX_FRAME_BYTES);
                                         fs = ipc::FS::WriteBlock{id, file_num, conn_id, data:bytes.into(), compressed, generation};
                                         handle_fs(
                                             fs,
@@ -3198,6 +3212,158 @@ mod tests {
 
     fn cm_test_login(id: i32) -> Data {
         cm_test_login_with_file_authority(id, false)
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    async fn admitted_cm_file_raw_test(
+        id: i32,
+    ) -> (
+        tokio::task::JoinHandle<()>,
+        ipc::ConnectionTmpl<tokio::io::DuplexStream>,
+        CmTaskOwnerTestUi,
+    ) {
+        assert!(CLIENTS.write().unwrap().clients.remove(&id).is_none());
+        let ui = CmTaskOwnerTestUi::default();
+        let (runner_io, peer_io) =
+            tokio::io::duplex(ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES * 2);
+        let mut runner_stream = ipc::ConnectionTmpl::new(runner_io);
+        runner_stream.set_max_packet_length(ipc::CM_IPC_MAX_FRAME_BYTES);
+        let mut peer = ipc::ConnectionTmpl::new(peer_io);
+        peer.set_max_packet_length(ipc::CM_IPC_MAX_FRAME_BYTES);
+        let (tx, rx) = cm_egress_channel();
+        let mut runner = IpcTaskRunner {
+            stream: runner_stream,
+            cm: ConnectionManager::new(ui.clone(), 0),
+            tx,
+            rx,
+            close: true,
+            conn_id: 0,
+            client_owner: None,
+            file_authority: CmFileAuthority::absent(),
+            cm_auth_token: String::new(),
+            #[cfg(target_os = "windows")]
+            file_transfer_enabled: false,
+            #[cfg(target_os = "windows")]
+            file_transfer_enabled_peer: false,
+            read_jobs: Vec::new(),
+        };
+        peer.send(&cm_test_login_with_file_authority(id, true))
+            .await
+            .unwrap();
+        let task = tokio::spawn(async move {
+            runner
+                .run_with_authority_validator(
+                    |_, _, _| async {
+                        Ok(ipc::CmConnectionAuthority {
+                            valid: true,
+                            file: true,
+                            clipboard: true,
+                        })
+                    },
+                    || false,
+                )
+                .await;
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while !ui.added.load(Ordering::Acquire) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("authenticated CM file login must be admitted");
+        (task, peer, ui)
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn cm_file_raw_test_header(id: i32) -> Data {
+        Data::AuthorizedFS {
+            cm_auth_token: "test-token".to_owned(),
+            fs: ipc::FS::WriteBlock {
+                id: 7,
+                file_num: 0,
+                conn_id: id,
+                data: bytes::Bytes::new(),
+                compressed: false,
+                generation: 1,
+            },
+        }
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11is_cm_file_raw_ceiling_rejects_oversize_after_accepting_exact_limit() {
+        let valid_id = 2_000_200_001;
+        let (valid_task, mut valid_peer, valid_ui) = admitted_cm_file_raw_test(valid_id).await;
+        valid_peer
+            .send(&cm_file_raw_test_header(valid_id))
+            .await
+            .unwrap();
+        valid_peer
+            .send_raw(bytes::Bytes::from(vec![0; ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES]))
+            .await
+            .unwrap();
+        let response = tokio::time::timeout(std::time::Duration::from_secs(2), valid_peer.next())
+            .await
+            .expect("exact-limit block must reach the file handler")
+            .expect("exact-limit response must be readable")
+            .expect("exact-limit response must be present");
+        assert!(matches!(
+            response,
+            Data::CmFileResponse(envelope)
+                if matches!(
+                    *envelope.response,
+                    ipc::CmFileResponseKind::WriteFailed {
+                        id: 7,
+                        generation: 1,
+                        file_num: 0,
+                        ..
+                    }
+                )
+        ));
+        assert!(!valid_task.is_finished());
+        valid_peer.send(&Data::Close).await.unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), valid_task)
+            .await
+            .expect("valid CM stream must retire on Close")
+            .expect("valid CM runner must not panic");
+        assert_eq!(lock_cm_egress_test(&valid_ui.removed).len(), 1);
+
+        let oversized_id = 2_000_200_002;
+        let (oversized_task, mut oversized_peer, oversized_ui) =
+            admitted_cm_file_raw_test(oversized_id).await;
+        oversized_peer
+            .send(&cm_file_raw_test_header(oversized_id))
+            .await
+            .unwrap();
+        oversized_peer
+            .send_raw(bytes::Bytes::from(vec![0; ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES + 1]))
+            .await
+            .expect("oversize raw frame must be submitted while the peer is open");
+        tokio::time::timeout(std::time::Duration::from_secs(2), oversized_task)
+            .await
+            .expect("oversize CM file block must retire with peer still open")
+            .expect("oversize CM runner must not panic");
+        assert_eq!(lock_cm_egress_test(&oversized_ui.removed).len(), 1);
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&oversized_id));
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11is_cm_file_raw_timeout_retires_authenticated_runner() {
+        let id = 2_000_200_003;
+        let (task, mut peer, ui) = admitted_cm_file_raw_test(id).await;
+        peer.send(&cm_file_raw_test_header(id)).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!task.is_finished());
+        tokio::time::timeout(
+            std::time::Duration::from_millis(ipc::CM_FILE_BLOCK_READ_TIMEOUT_MS + 1_500),
+            task,
+        )
+        .await
+        .expect("missing CM raw block must retire within the receiver deadline")
+        .expect("missing CM raw block must not panic");
+        assert_eq!(lock_cm_egress_test(&ui.removed).len(), 1);
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
     }
 
     #[cfg(target_os = "windows")]

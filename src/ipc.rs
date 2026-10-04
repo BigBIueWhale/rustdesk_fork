@@ -179,6 +179,7 @@ pub(crate) const WHITEBOARD_IPC_COMMAND_CAPACITY: usize = 64;
 pub(crate) const WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS: usize = 16;
 pub(crate) const CM_IPC_MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;
 pub(crate) const CM_FILE_BLOCK_MAX_FRAME_BYTES: usize = 256 * 1024;
+pub(crate) const CM_FILE_BLOCK_READ_TIMEOUT_MS: u64 = 5_000;
 pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;
 #[cfg(target_os = "linux")]
 pub(crate) const PULSE_AUDIO_IPC_IO_TIMEOUT_MS: u64 = 1_000;

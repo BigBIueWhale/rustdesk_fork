@@ -393,9 +393,8 @@ class _RemotePageState extends State<RemotePage>
     // All engine-backed work must finish while the owning Flutter engine is
     // still alive. State.dispose() is synchronous and cannot provide that
     // boundary, so every tab/window close awaits this method before removal.
-    await _awaitCleanup('texture retirement', textureDisposal);
-    await _awaitCleanup(
-        'session retirement', _ffi.close(closeSession: closeSession));
+    await textureDisposal;
+    await _ffi.close(closeSession: closeSession);
     _ffi.dialogManager.dismissAll();
     if (closeSession) {
       await _awaitCleanup(

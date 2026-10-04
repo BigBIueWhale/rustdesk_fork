@@ -45,6 +45,30 @@ void main() {
     expect(events, ['retiring:peer:false', 'retired:peer', 'removed:peer']);
   });
 
+  testWidgets('failed retirement keeps the exact tab and reports failure',
+      (tester) async {
+    final controller = DesktopTabController(
+      tabType: DesktopTabType.remoteScreen,
+    );
+    final events = <String>[];
+    controller.onRemoved = (_, key) => events.add('removed:$key');
+    controller.onBeforeRemove = (_, __) async {
+      throw StateError('texture retirement failed');
+    };
+    final tab = _tab('peer');
+    _addWithoutSelection(controller, tab);
+
+    await expectLater(controller.closeBy('peer'), throwsStateError);
+    expect(controller.length, 1);
+    expect(identical(controller.state.value.tabs.single, tab), isTrue);
+    expect(events, isEmpty);
+
+    await expectLater(controller.closeAll(), throwsStateError);
+    expect(controller.length, 1);
+    expect(identical(controller.state.value.tabs.single, tab), isTrue);
+    expect(events, isEmpty);
+  });
+
   testWidgets('window close retires every snapshotted tab before clearing',
       (tester) async {
     final controller = DesktopTabController(

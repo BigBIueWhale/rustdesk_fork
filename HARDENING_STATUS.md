@@ -3218,7 +3218,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 ### Open / STOP-SHIP evidence
 
 **CM/file current-source directory, create, and receive-write replay; broader finality OPEN:**
-exact pushed source `ae4f3fd1` (tree `b8df91a6`) built the production Linux peer and probe
+exact pushed source `73393c5c` (tree `d53f592f`) built the production Linux peer and probe
 inside a disposable no-NIC VM, then ran them in a separate networkless nonroot container.
 CPace keying, post-login `PeerInfo`, the automatic CM `FileResponse::Dir` for `ReadDir("")`,
 and `Done(id=17002)` for a post-login directory create passed. A keyed pre-login create did
@@ -3230,18 +3230,21 @@ owned by the container user, with no sidecars. A third job sent two blocks for e
 files, then `Done(id=17005,file_num=2)`. Both final files matched independent literal
 payloads byte-for-byte, were mode 0600 with the container user's UID/GID, and had no
 receive sidecars. The directory had that user's UID/GID and mode 0700 while the server
-remained alive. The fixture username was `"unknown"`, not installed-user identity evidence.
-Retained raw serial `cm-file-replay-run.lFtMPAjG0e.serial.log` is 316,385 bytes, SHA-256
-`f22d0b6384f8979095903be713bb3361d93645ce733038bf60f3e0621f9f463d`; it includes
-the seven built-file digests and manifest digest. The outer run passed in 272 seconds with
+remained alive. Two further jobs wrote partial blocks: the peer-error job returned its
+exact reported error, and the cancel job was followed by a CM directory-response barrier.
+Neither aborted final file nor its receive sidecars existed at the barrier while the server
+was live. The fixture username was `"unknown"`, not installed-user identity evidence.
+Retained raw serial `cm-file-replay-run.G6XteM2yA5.serial.log` is 314,210 bytes, SHA-256
+`e7eb4a5a691911f8a584465031864efd6509bd7fa34114b95d0778c82dcd7482`; it includes
+the seven built-file digests and manifest digest. The outer run passed in 263 seconds with
 no harness-added host listener or pre-existing-process drift and joined cleanup; no `run.*`
-or overlay remains. Earlier `77cd4ddd`, `fef247fd`, and `ec6654b8` replays are historical.
-This is one headless Linux receive-write terminal/commit and multi-file progression check,
+or overlay remains. Earlier `ae4f3fd1` and `77cd4ddd` replays are historical.
+This is one headless Linux receive-write terminal/commit, multi-file, and abort check,
 not wrong-OS-principal, installed-service, full file-transfer, Android, or cross-platform evidence.
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | Exact-current Rust 1.75 Linux regressions execute all 57 `hbb_common::fs` tests, including retained-authority create/rename/file/directory mutations and Unix symlink/path-swap/depth-bound cases. Earlier current-source regressions execute receive commit, incomplete/stale terminal refusal, peer-error cleanup, resume refusal, job identity, duplicate confirmation, malformed compression, and overflow boundaries through the shared job and CM dispatcher. The real-peer replay above establishes keyed pre-login no-create and post-login CM directory/create, one active partial-write terminal refusal with sidecar cleanup, one single-file committed upload, and one two-file/four-block committed upload with exact bytes. Windows junction/exact-handle regressions remain unexecuted. Still exercise full download/read, digest/confirmation, cancel/peer-error paths, bounded saturation, terminal-first disconnect, fixed-sidecar collision, abrupt owner loss, and reconnect; repeat the relevant multi-block/multi-file, denial, and finality scenarios on installed desktop targets and Android. The existing installed Windows result predates this strengthening. |
+| CM/file finality (R-S11c-4c/4d) | Exact-current Rust 1.75 Linux regressions execute all 57 `hbb_common::fs` tests, including retained-authority create/rename/file/directory mutations and Unix symlink/path-swap/depth-bound cases. Earlier current-source regressions execute receive commit, incomplete/stale terminal refusal, peer-error cleanup, resume refusal, job identity, duplicate confirmation, malformed compression, and overflow boundaries through the shared job and CM dispatcher. The real-peer replay above establishes keyed pre-login no-create and post-login CM directory/create, an active partial-write terminal refusal with cleanup, exact-byte single- and two-file committed uploads, and partial peer-error and cancel paths with absent final files and sidecars after the CM barrier. Windows junction/exact-handle regressions remain unexecuted. Still exercise full download/read, digest/confirmation, bounded saturation, terminal-first disconnect, fixed-sidecar collision, abrupt owner loss, and reconnect; repeat the relevant multi-block/multi-file, abort, denial, and finality scenarios on installed desktop targets and Android. The existing installed Windows result predates this strengthening. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

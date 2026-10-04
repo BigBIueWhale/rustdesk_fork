@@ -2667,6 +2667,7 @@ readonly PAYLOAD=$RUN/payload.iso
 readonly SEED=$RUN/seed.iso
 readonly SERIAL_SOCKET=$RUN/serial.sock
 readonly SERIAL_LOG=$RUN/serial.log
+readonly SERIAL_ARCHIVE=$RUN_ROOT/$MODE-${RUN##*/}.serial.log
 readonly CAPTURE_RECEIPT=$RUN/capture.receipt
 readonly QMP_SOCKET=$RUN/qmp.sock
 readonly QEMU_PIDFILE=$RUN/qemu.pid
@@ -3529,6 +3530,7 @@ done
 
 /usr/bin/python3 -I -S "$CAPTURE_HELPER" \
     --socket "$SERIAL_SOCKET" --output "$SERIAL_LOG" --max-bytes "$SERIAL_LIMIT" \
+    --archive-output "$SERIAL_ARCHIVE" \
     >"$CAPTURE_RECEIPT" &
 CAPTURE_PID=$!
 CAPTURE_START="$(process_start_time "$CAPTURE_PID")" \
@@ -3585,8 +3587,23 @@ for index in "${!VIRTIOFSD_PIDS[@]}"; do
 done
 VIRTIOFSD_PIDS=()
 VIRTIOFSD_STARTS=()
-grep -Fxq "bounded-unix-stream-capture: PASS bytes=$(stat -c '%s' "$SERIAL_LOG")" "$CAPTURE_RECEIPT" \
+serial_bytes=$(/usr/bin/stat -c '%s' -- "$SERIAL_LOG") \
+    || fail 'bounded serial size is unavailable'
+[ "$serial_bytes" -gt 0 ] && [ "$serial_bytes" -le "$SERIAL_LIMIT" ] \
+    || fail 'bounded serial size is outside its limit'
+[ -f "$SERIAL_ARCHIVE" ] && [ ! -L "$SERIAL_ARCHIVE" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$SERIAL_ARCHIVE")" = \
+         "$HOST_UID:$HOST_GID:600:1:$serial_bytes" ] \
+    && /usr/bin/cmp -s -- "$SERIAL_LOG" "$SERIAL_ARCHIVE" \
+    || fail 'retained bounded serial archive differs'
+serial_sha=$(/usr/bin/sha256sum -- "$SERIAL_ARCHIVE" | /usr/bin/awk '{ print $1 }') \
+    || fail 'retained bounded serial digest is unavailable'
+/usr/bin/grep -Fxq \
+    "bounded-unix-stream-capture: PASS bytes=$serial_bytes archive_sha256=$serial_sha" \
+    "$CAPTURE_RECEIPT" \
     || fail 'bounded serial-capture receipt differs'
+/usr/bin/printf 'VERIFIER_VM_SERIAL_EVIDENCE=retained path=%s bytes=%s sha256=%s\n' \
+    "$SERIAL_ARCHIVE" "$serial_bytes" "$serial_sha"
 if [ -r "/proc/$VM_PID/stat" ] && [ "$(process_start_time "$VM_PID" 2>/dev/null)" = "$VM_START" ]; then
     fail 'exact QEMU process remains after joined VM completion'
 fi
@@ -3673,6 +3690,7 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     runtime_log_stage_receipt='ANDROID_PEER_WARM_STAGE_TEST=pass cases=9 warm_owner=preserved warm_peak=monotone task_owner=fresh missing=refused cardinality=13'
     runtime_log_ui_receipt='ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused disabled=refused residual=refused observed=required'
     runtime_failure_test_receipt='ANDROID_RUNTIME_FAILURE_LOG_TEST=pass cases=7 bytes=1048576 equality=exact oversized=refused symlink=refused hardlink=refused mode=refused occupied=preserved'
+    runtime_serial_test_receipt='VERIFIER_SERIAL_ARCHIVE_TEST=pass cases=4 exact=retained occupied=preserved symlink=refused overflow=bounded'
     runtime_failure_fixture=$'ANDROID_PEER_WINDOW_DIAGNOSTIC_BEGIN phase=fixture\nfocus=fixture\nANDROID_PEER_WINDOW_DIAGNOSTIC_END phase=fixture\n'
     runtime_failure_bytes=$(printf '%s' "$runtime_failure_fixture" | /usr/bin/wc -c)
     runtime_failure_sha=$(printf '%s' "$runtime_failure_fixture" | /usr/bin/sha256sum | /usr/bin/cut -d ' ' -f 1)
@@ -3683,6 +3701,7 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     require_exact_fixed_receipt "$runtime_log_stage_receipt" 'warm/task presentation-stage result'
     require_exact_fixed_receipt "$runtime_log_ui_receipt" 'observable app UI finality result'
     require_exact_fixed_receipt "$runtime_failure_test_receipt" 'bounded failure-log publisher result'
+    require_exact_fixed_receipt "$runtime_serial_test_receipt" 'bounded serial archive result'
     require_exact_fixed_receipt "$runtime_failure_receipt" 'native acknowledged failure-log export result'
     [ "$(/usr/bin/find "$ANDROID_FAILURE_ROOT" -mindepth 1 -maxdepth 1 -printf '%f\n')" = android-runtime-failure.log ] \
         && [ -f "$ANDROID_FAILURE_ROOT/android-runtime-failure.log" ] \

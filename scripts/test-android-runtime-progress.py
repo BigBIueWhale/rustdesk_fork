@@ -8,6 +8,7 @@ from pathlib import Path
 import select
 import shlex
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,58 @@ sys.dont_write_bytecode = True
 scripts = Path(__file__).resolve().parent
 subprocess.run(["/bin/bash", str(scripts / "verify-vm-entry-preflight.sh")],
                check=True, stdout=subprocess.DEVNULL)
+
+capture_source = scripts / "bounded-unix-stream-capture.py"
+for case in ("valid", "occupied", "symlink", "overflow"):
+    with tempfile.TemporaryDirectory(prefix="verifier-serial-capture.") as root:
+        root = Path(root)
+        run = root / "run.abcdefghij"
+        run.mkdir(mode=0o700)
+        endpoint = run / "serial.sock"
+        output = run / "serial.log"
+        archive = root / "authority-smoke-run.abcdefghij.serial.log"
+        payload = b"exact bounded serial bytes"
+        limit = len(payload) - 1 if case == "overflow" else len(payload)
+        if case == "occupied":
+            archive.write_bytes(b"preexisting")
+        elif case == "symlink":
+            archive.symlink_to(run / "other")
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+            server.bind(str(endpoint))
+            endpoint.chmod(0o600)
+            server.listen(1)
+            command = [sys.executable, "-I", "-S", str(capture_source),
+                       "--socket", str(endpoint), "--output", str(output),
+                       "--max-bytes", str(limit), "--archive-output", str(archive)]
+            if case in ("occupied", "symlink"):
+                completed = subprocess.run(command, capture_output=True, timeout=3)
+                if (completed.returncode == 0 or completed.stdout
+                        or (case == "occupied" and archive.read_bytes() != b"preexisting")
+                        or (case == "symlink" and not archive.is_symlink())):
+                    raise RuntimeError(f"serial archive did not refuse {case}")
+            else:
+                process = subprocess.Popen(command, stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE)
+                server.settimeout(3)
+                with server.accept()[0] as client:
+                    client.sendall(payload)
+                stdout, stderr = process.communicate(timeout=3)
+                expected = (f"bounded-unix-stream-capture: PASS bytes={len(payload)} "
+                            f"archive_sha256={hashlib.sha256(payload).hexdigest()}\n").encode()
+                if case == "valid":
+                    if (process.returncode or stderr or stdout != expected
+                            or output.read_bytes() != payload
+                            or archive.read_bytes() != payload
+                            or archive.stat().st_nlink != 1
+                            or archive.stat().st_mode & 0o777 != 0o600):
+                        raise RuntimeError("bounded serial archive bytes or receipt differ")
+                elif (process.returncode == 0 or stdout
+                      or output.read_bytes() != payload[:limit]
+                      or archive.read_bytes() != payload[:limit]):
+                    raise RuntimeError("oversized serial did not fail closed at the byte limit")
+print("VERIFIER_SERIAL_ARCHIVE_TEST=pass cases=4 exact=retained occupied=preserved "
+      "symlink=refused overflow=bounded", file=sys.stderr)
+
 native_image = None
 if len(sys.argv) != 1:
     if (len(sys.argv) != 3 or sys.argv[1] != "--native-docker"

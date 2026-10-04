@@ -695,6 +695,7 @@ run_android_runtime_log_tests() {
     local stage_receipt='ANDROID_PEER_WARM_STAGE_TEST=pass cases=9 warm_owner=preserved warm_peak=monotone task_owner=fresh missing=refused cardinality=13'
     local ui_receipt='ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused disabled=refused residual=refused observed=required'
     local failure_test_receipt='ANDROID_RUNTIME_FAILURE_LOG_TEST=pass cases=7 bytes=1048576 equality=exact oversized=refused symlink=refused hardlink=refused mode=refused occupied=preserved'
+    local serial_receipt='VERIFIER_SERIAL_ARCHIVE_TEST=pass cases=4 exact=retained occupied=preserved symlink=refused overflow=bounded'
     local export_work export_work_id export_receipt export_bytes export_sha
 
     test_sha="$(sha256sum "$test" | awk '{ print $1 }')"
@@ -751,6 +752,8 @@ run_android_runtime_log_tests() {
         && [ "$(grep -Fc 'ANDROID_PEER_UI_FINALITY_TEST=' "$output")" -eq 1 ] \
         && grep -Fxq "$failure_test_receipt" "$output" \
         && [ "$(grep -Fc 'ANDROID_RUNTIME_FAILURE_LOG_TEST=' "$output")" -eq 1 ] \
+        && grep -Fxq "$serial_receipt" "$output" \
+        && [ "$(grep -Fc 'VERIFIER_SERIAL_ARCHIVE_TEST=' "$output")" -eq 1 ] \
         || fail 'runtime-log test results are absent, malformed or duplicated'
     [ "$(sha256sum "$test" | awk '{ print $1 }')" = "$test_sha" ] \
         && [ "$(sha256sum "$wrapper" | awk '{ print $1 }')" = "$wrapper_sha" ] \
@@ -5478,6 +5481,7 @@ for verify_source in verify.sh verify-release.sh build-release.sh \
     verify-android-emulator-apk.py \
     verify-android-apk-manifest.py publish-artifact-result.py \
     android-peer-artifact.py test-android-peer-artifact.py test-android-runtime-progress.py \
+    bounded-unix-stream-capture.py \
     linux-flutter-artifact.py test-linux-flutter-artifact.py \
     dart-audit.sh dart-audit-result.py \
     verify-dart-verifier-authority.py verify-dart-audit-authority.py \

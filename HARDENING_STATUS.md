@@ -1413,7 +1413,7 @@ acceptance retained separately. This is actual execution of the shared Dart clas
 screen presentation or an Android/Windows causal reproduction. It applies where that shared
 queue is used, not to the distinct default Windows texture path. Sustained warm-isolate/device,
 current native presentation, performance, LPE and release obligations remain OPEN.
-**Warm-isolate replay — IMPLEMENTED, COMPLETE NATIVE RESULT OPEN:** the first successful
+**Warm-isolate replay — NAMED NATIVE PASS; ORIGINAL CAUSE/DEVICE/SOAK OPEN:** the first successful
 software-image stage now records its captured client-owner UUID. The Android production-peer
 schedule adds six ordinary UI close/reconnect cycles before task destruction; all must preserve
 that UUID, the Activity task, process and foreground MainService, with a nondecreasing shared-pool
@@ -1520,9 +1520,26 @@ joined owners and successful scratch self-retirement. An earlier same-source pro
 guest build/render passed but its outer rejected an unattributable new host listener;
 that failed transaction is not a complete pass and its discarded candidate is not reused.
 This named build does not exercise Back delivery or a peer, establish stable signing or
-cold equality, or close the original hang. Reuse the accepted exact APK and retained
-`03ce7fc6` peer for the unchanged warm-reconnect schedule; complete warm/resource/device
-evidence and the original Android/Windows causes remain OPEN.
+cold equality, or close the original hang. Harness `9bfcf667db05b94e0cd39bd8faa689d64a325629`
+then passed the unchanged accepted-APK/retained-`03ce7fc6` peer schedule with complete
+inner/guest/outer acceptance in 1,001 seconds. All six ordinary Back/confirmation closes
+and remembered reconnects passed, preserving one client owner, task, app process and
+foreground MainService. Six task swipes/relaunches acquired distinct successor owners,
+and all thirteen stage/resource records plus sixteen actual-pixel phases were required.
+Maximum warm recovery was 2,100 ms, task recovery 1,970 ms, sampled pixel age 1,168 ms
+and observer capture age 201 ms, within unchanged 8,000/2,000/500-ms limits. RSS growth
+was 2,544 KiB and thread growth one; descriptor/handle counts remain unobserved because
+the nonroot observer cannot read release-APK procfs. The complete 118,770-byte raw serial
+is sealed at `evidence/warm-peer-73d2703c-9bfcf667.serial.log`, SHA-256
+`cd144ff57ffede8be142651cee52adf95eeb061896261c2b2e5e7c2f58d07d50`.
+Inputs and retained artifacts remained unchanged; host listener additions and preexisting-
+process drift were zero, all owners joined and scratch self-retired. Relative to the old
+`e0917343` APK, the only product changes are the Back-routing helper and its call site;
+the older repeated second-close failure now passes without retries, workload changes or
+service destruction. This supplies artifact-specific native evidence for that Android
+navigation correction, not causation of the original display-only Force-Stop hang or
+Windows focus delay. Sustained warm/network/handle/device, native installed/LPE, stable
+signing, cold equality, independent reproduction/review and original causes remain OPEN.
 The older `035c9a20` APK cannot supply the owner observation. Physical devices, sustained
 warm/network/handle evidence and the original Android/Windows causes stay OPEN.
 The supplementary source guard's obsolete eight-bit-wrap ordering block and controller-local

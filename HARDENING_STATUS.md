@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-35cde94b00838ca29feb9512d015a17ea135a479ec0aea7a644f9c094ef31a7a  requirements.html
+8bfa9063d32420aa9afbda75faabda1d4ba37096ff6f467f68f52ab19e29e549  requirements.html
 ```
 
 ## Current Verdict
@@ -79,7 +79,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Current documentation-sensitive item | Current disposition |
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
-| Appendix C #185–206, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; current source and evidence limits remain in the named requirement sections of this ledger. |
+| Appendix C #122, #185–206, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; current source and evidence limits remain in the named requirement sections of this ledger. |
 | Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub and RustSec snapshots have real no-NIC VM verdicts recorded in R-S11df and R-S11dg below; future snapshot refresh, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. Documentation or mutation counts are not scanner evidence. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | Packaging, immutable-cache, extraction, replacement/recovery, and Kotlin strategy contracts remain requirement-owned. Fresh Android builds explicitly select Kotlin 2.0.21 in-process compilation and reject fallback or task-level overrides. Named APK `ca569086`/`7d49e481…8737c` passed build/install/render and one complete peer schedule, but later native presentation failed on that same artifact; the intermittent defect is OPEN. Diagnostic APK `035c9a20` has three complete corrected-observer peer schedules at `ec5544d6`, `f74470dd` and `eb7c8305`; its earlier alias-prone oracle result is not freshness proof. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound. They and the test-signed APKs do not establish complete canonical release inputs, stable signing, cold equality, sustained resource/latency bounds, network/device coverage, independent reproduction, or external review. See the Android runtime disposition below and the release-blocking matrix. |
@@ -3379,7 +3379,7 @@ exists only to make the current source disposition discoverable.
 - R-S11e-14 — Linux root/headless FileTransfer owner authority
 - R-S11e-15 — Linux pkcheck request-time peer identity binding
 - R-S11e-16 — permanent-password provisioning ingress
-- R-S11e-17 — typed connection-manager file response authority
+- R-S11e-17 — typed connection-manager file response authority (R-S11e; Appendix C #122)
 - R-S11e-18 — Windows named-pipe impersonation restoration
 - R-S11e-19 — Windows service-owned child tree supervision
 - R-S11e-20 — Windows Installer sole machine-state authority

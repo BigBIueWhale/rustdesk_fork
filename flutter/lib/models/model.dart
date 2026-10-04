@@ -4951,7 +4951,13 @@ class FFI {
     // Preserved for the rgba data.
     stream.listen((message) {
       if (!_isCurrentSessionStream(streamBinding)) return;
-      if (tabWindowId != null && !isToNewWindowNotified.value) {
+      // A move keeps the old view live until the destination receives a video
+      // publication. An unrelated first event (especially `close`) is not a
+      // handoff signal. Monitor-window attachment keeps its existing behavior.
+      final moveReady = moveFromSessionId == null ||
+          message is EventToUI_Rgba ||
+          message is EventToUI_Texture;
+      if (tabWindowId != null && !isToNewWindowNotified.value && moveReady) {
         // Session is ready to be moved to a new window.
         // Get the cached data and handle the cached data.
         final cachedState = sessionEvents.submit(streamOwner, () async {

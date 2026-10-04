@@ -62,6 +62,13 @@ class RemotePage extends StatefulWidget {
 
   FFI get ffi => (_lastState.value! as _RemotePageState)._ffi;
 
+  bool get canTransfer {
+    final state = _lastState.value;
+    return state is _RemotePageState &&
+        state.mounted &&
+        state._cleanupFuture == null;
+  }
+
   Future<void> prepareForRemoval({bool closeSession = true}) {
     final state = _lastState.value;
     if (state is _RemotePageState) {

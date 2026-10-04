@@ -274,6 +274,10 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           style: style,
         ),
         proc: () async {
+          if (!remotePage.canTransfer) {
+            debugPrint('Refusing to move a tab already retiring');
+            return;
+          }
           final display = pi.currentDisplay;
           final displayCount = pi.displays.length;
           if (displayCount == 0 ||
@@ -517,6 +521,9 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
         final remotePage = tabController.state.value.tabs
             .firstWhere((tab) => tab.key == id)
             .page as RemotePage;
+        if (!remotePage.canTransfer) {
+          throw StateError('tab transfer source is retiring');
+        }
         final sourceSessionId = args['source_session_id'];
         if (sourceSessionId != null &&
             (sourceSessionId != remotePage.ffi.sessionId.toString() ||

@@ -268,6 +268,10 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
           style: style,
         ),
         proc: () async {
+          if (!viewCameraPage.canTransfer) {
+            debugPrint('Refusing to move a camera tab already retiring');
+            return;
+          }
           final display = pi.currentDisplay;
           final displayCount = pi.displays.length;
           if (displayCount == 0 ||
@@ -484,6 +488,9 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
         final viewCameraPage = tabController.state.value.tabs
             .firstWhere((tab) => tab.key == id)
             .page as ViewCameraPage;
+        if (!viewCameraPage.canTransfer) {
+          throw StateError('camera tab transfer source is retiring');
+        }
         final sourceSessionId = args['source_session_id'];
         if (sourceSessionId != null &&
             (sourceSessionId != viewCameraPage.ffi.sessionId.toString() ||

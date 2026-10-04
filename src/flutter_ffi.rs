@@ -173,6 +173,32 @@ pub fn session_add_existed_sync(
     }
 }
 
+pub fn session_add_existed_for_move_sync(
+    peer_id: String,
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    source_session_id: SessionID,
+    source_client_owner_id: SessionID,
+    displays: Vec<i32>,
+    is_view_camera: bool,
+) -> SyncReturn<String> {
+    if cfg!(any(target_os = "android", target_os = "ios")) {
+        return SyncReturn("Desktop tab transfer is unavailable on mobile".to_owned());
+    }
+    match flutter::session_add_existed_for_move(
+        peer_id,
+        session_id,
+        client_owner_id,
+        source_session_id,
+        source_client_owner_id,
+        displays,
+        is_view_camera,
+    ) {
+        Ok(()) => SyncReturn(String::new()),
+        Err(error) => SyncReturn(format!("Failed to move desktop tab: {error}")),
+    }
+}
+
 pub fn session_add_sync(
     session_id: SessionID,
     client_owner_id: SessionID,

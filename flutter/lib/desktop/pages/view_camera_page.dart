@@ -62,6 +62,13 @@ class ViewCameraPage extends StatefulWidget {
 
   FFI get ffi => (_lastState.value! as _ViewCameraPageState)._ffi;
 
+  bool get canTransfer {
+    final state = _lastState.value;
+    return state is _ViewCameraPageState &&
+        state.mounted &&
+        state._cleanupFuture == null;
+  }
+
   Future<void> prepareForRemoval({bool closeSession = true}) {
     final state = _lastState.value;
     if (state is _ViewCameraPageState) {

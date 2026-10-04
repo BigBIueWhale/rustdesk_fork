@@ -4555,6 +4555,70 @@ mod mobile_session_lifecycle_tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn r_s11iw_desktop_tab_move_requires_live_source_and_preserves_peer_on_old_close() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let source_id = SessionID::new_v4();
+        let source_owner = SessionID::new_v4();
+        let destination_id = SessionID::new_v4();
+        let destination_owner = SessionID::new_v4();
+        let session = sessions::insert_test_session_for_owner(
+            source_id,
+            source_owner,
+            "desktop-tab-move-host",
+            ConnType::DEFAULT_CONN,
+        );
+        let mut peer_info = PeerInfo::new();
+        peer_info.version = "1.4.7".to_owned();
+        peer_info.displays = vec![DisplayInfo::new()];
+        *session.ui_handler.peer_info.write().unwrap() = peer_info;
+        session.lc.write().unwrap().version = hbb_common::get_version_number("1.4.7");
+        {
+            let mut handlers = session.session_handlers.write().unwrap();
+            let source = handlers.get_mut(&source_id).unwrap();
+            source.displays = vec![0];
+            source.event_stream = Some(StreamSink::new(
+                flutter_rust_bridge::rust2dart::Rust2Dart::new(1),
+            ));
+        }
+        let (sender, _receiver) = viewer_command_channel();
+        *session.sender.write().unwrap() = Some(sender);
+
+        let move_tab = |old_id, old_owner, new_owner| {
+            session_add_existed_for_move(
+                "desktop-tab-move-host".to_owned(),
+                destination_id,
+                new_owner,
+                old_id,
+                old_owner,
+                vec![0],
+                false,
+            )
+        };
+        assert!(move_tab(source_id, SessionID::new_v4(), destination_owner).is_err());
+        assert!(move_tab(SessionID::new_v4(), source_owner, destination_owner).is_err());
+        assert!(move_tab(source_id, source_owner, source_owner).is_err());
+        assert!(!sessions::session_has_client_owner(&destination_id, &destination_owner));
+
+        move_tab(source_id, source_owner, destination_owner)
+            .expect("exact live source admits a fresh destination owner");
+        assert!(sessions::session_has_client_owner(&source_id, &source_owner));
+        assert!(sessions::session_has_client_owner(&destination_id, &destination_owner));
+        assert!(sessions::remove_session_by_exact_ui_owner(&source_id, &source_owner).is_none());
+        assert!(sessions::contains_peer("desktop-tab-move-host", ConnType::DEFAULT_CONN));
+        assert!(sessions::session_has_client_owner(&destination_id, &destination_owner));
+
+        let retired = sessions::remove_session_by_exact_ui_owner(
+            &destination_id,
+            &destination_owner,
+        )
+        .expect("last exact destination owner retires the peer");
+        retired.close_and_join();
+        sessions::clear_for_test();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn r_s11go_display_selection_is_exact_owned_ordered_and_commit_after_admission() {
         let _guard = TEST_LOCK.lock().unwrap();
         sessions::clear_for_test();

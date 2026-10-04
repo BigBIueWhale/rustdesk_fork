@@ -6138,7 +6138,10 @@ mod tests {
             false,
         )
         .with_files(vec![
-            new_file_entry("zero.bin"),
+            FileEntry {
+                size: 4,
+                ..new_file_entry("zero.bin")
+            },
             new_file_entry("one.bin"),
             new_file_entry("two.bin"),
         ])

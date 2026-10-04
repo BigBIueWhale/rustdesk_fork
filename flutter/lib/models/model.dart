@@ -4547,7 +4547,8 @@ class FFI {
       return;
     }
     _listenToSessionStream(
-        stream, streamBinding, request.sessionId, request.peerId, null, null);
+        stream, streamBinding, request.sessionId, request.peerId, null, null,
+        null, null);
     if (!request.isFileTransfer &&
         !request.isPortForward &&
         !request.isRdp &&

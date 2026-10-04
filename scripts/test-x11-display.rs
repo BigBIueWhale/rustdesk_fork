@@ -28,7 +28,17 @@ mod x11 {
         }
     }
     mod display;
+    #[cfg(not(corrected))]
     mod iter;
+    #[cfg(corrected)]
+    mod iter {
+        include!("x11/iter.rs");
+
+        pub fn query_atom_name(c: *mut super::ffi::xcb_connection_t, atom: u32)
+            -> std::io::Result<String> {
+            get_atom_name(c, atom)
+        }
+    }
     mod server;
     pub use display::*;
     pub use iter::*;
@@ -71,6 +81,20 @@ pub trait TraitPixelBuffer {
 }
 
 use x11::ffi::*;
+
+#[repr(C)]
+struct InternAtomCookie {
+    sequence: u32,
+}
+
+#[repr(C)]
+struct InternAtomReply {
+    response_type: u8,
+    pad0: u8,
+    sequence: u16,
+    length: u32,
+    atom: u32,
+}
 
 struct Allocation {
     pointer: *mut libc::c_void,
@@ -118,6 +142,10 @@ pub mod libc {
 }
 
 extern "C" {
+    fn xcb_intern_atom(c: *mut xcb_connection_t, only_if_exists: u8,
+                       name_len: u16, name: *const u8) -> InternAtomCookie;
+    fn xcb_intern_atom_reply(c: *mut xcb_connection_t, cookie: InternAtomCookie,
+                             error: *mut *mut xcb_generic_error_t) -> *mut InternAtomReply;
     #[link_name = "__real_xcb_get_geometry_reply"]
     fn real_geometry_reply(c: *mut xcb_connection_t, cookie: xcb_get_geometry_cookie_t,
                            error: *mut *mut xcb_generic_error_t) -> *mut xcb_get_geometry_reply_t;
@@ -137,6 +165,28 @@ extern "C" {
     fn real_iterator(reply: *const xcb_randr_get_monitors_reply_t) -> xcb_randr_monitor_info_iterator_t;
     #[link_name = "__real_xcb_randr_monitor_info_next"]
     fn real_next(cursor: *mut xcb_randr_monitor_info_iterator_t);
+}
+
+#[cfg(corrected)]
+fn intern_atom(c: *mut xcb_connection_t, name: &[u8]) -> io::Result<u32> {
+    use std::convert::TryFrom;
+    let length = u16::try_from(name.len()).map_err(|_| io::ErrorKind::InvalidInput)?;
+    unsafe {
+        let mut error = std::ptr::null_mut();
+        let reply = xcb_intern_atom_reply(c, xcb_intern_atom(c, 0, length, name.as_ptr()), &mut error);
+        let result = if !error.is_null() {
+            Err(io::Error::new(io::ErrorKind::Other,
+                              format!("InternAtom server error {}", (*error).error_code)))
+        } else if reply.is_null() {
+            Err(io::ErrorKind::ConnectionAborted.into())
+        } else {
+            Ok((*reply).atom)
+        };
+        // Setup allocations are not product allocations; free them without the observer.
+        if !error.is_null() { libc::system_free(error.cast()); }
+        if !reply.is_null() { libc::system_free(reply.cast()); }
+        result
+    }
 }
 
 #[no_mangle]
@@ -276,7 +326,36 @@ fn main() -> io::Result<()> {
     }
     #[cfg(corrected)]
     {
-        if scenario == "atom-reject" {
+        if scenario == "atom-name" {
+            for _ in 0..32 {
+                assert_eq!(x11::query_atom_name(server.raw(), 0)?, "");
+                STATE.with(|state| assert_eq!(state.borrow().atom_queries, 0,
+                                              "unnamed monitor queried the invalid atom0"));
+                finish_case(0);
+            }
+            for (bytes, expected) in [
+                (&b"monitor\0name"[..], "monitor\0name"),
+                (&b"monitor-\xc3\xa9"[..], "monitor-é"),
+                (&b"monitor-\xff"[..], "monitor-\u{fffd}"),
+            ].iter().copied() {
+                let atom = intern_atom(server.raw(), bytes)?;
+                assert_ne!(atom, 0, "server did not intern the actual byte string");
+                for _ in 0..32 {
+                    let result = x11::query_atom_name(server.raw(), atom);
+                    if result.is_err() {
+                        eprintln!("X11_ATOM_NAME_OLD_FAILURE=rejected-length-delimited-name");
+                    }
+                    assert_eq!(result?, expected, "atom name conversion changed its content");
+                    STATE.with(|state| {
+                        let state = state.borrow();
+                        assert_eq!(state.atom_queries, 1);
+                        assert_eq!(state.allocations.len(), 1);
+                    });
+                    finish_case(0);
+                }
+            }
+            println!("X11_ATOM_NAME_NATIVE=pass server=real unnamed=no-query embedded_nul=preserved utf8=preserved non_utf8=lossy iterations=32 replies=exact edition=2018");
+        } else if scenario == "atom-reject" {
             for _ in 0..32 {
                 STATE.with(|state| state.borrow_mut().reject_atom_query = 1);
                 let mut iter = x11::Server::displays(Rc::clone(&server));

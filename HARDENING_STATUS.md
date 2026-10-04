@@ -588,7 +588,12 @@ fused enumeration and both public callers including second-root failure. Exact
 Inputs and host listeners were unchanged, cleanup joined and scratch self-retired.
 This is component evidence, not full-product capture, original display-hang
 causation, installed-service behavior or a privilege escalation. Atom-name
-conversion branches remain outside this executed scenario.
+conversion branches remain outside this executed scenario. A separate native
+scenario now checks atom0 without a request and actual server-interned names
+containing NUL, UTF-8 and non-UTF-8 bytes, with exact reply retirement. It uses
+scrap's Rust 2018 edition. Its acceptance remains pending: the production
+CString conversion still incorrectly imposes a C-string restriction on the
+length-delimited X11 name.
 
 The Windows first-video path now avoids the decoder worker's former nested Tokio runtime, second OS thread, synchronous
 join, and ignored IPC result. Remote and View Camera connections share a process-wide Tokio `OnceCell` initialization

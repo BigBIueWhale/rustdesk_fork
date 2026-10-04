@@ -38,7 +38,7 @@ def main():
             shutil.copyfile(source, work / f"x11/{name}.rs")
         shutil.copyfile(root / "libs/scrap/src/common/x11.rs", work / "common/x11.rs")
         binary = work / "native"
-        command = ["/usr/local/cargo/bin/rustc", "--edition=2021", "-C", "debuginfo=1",
+        command = ["/usr/local/cargo/bin/rustc", "--edition=2018", "-C", "debuginfo=1",
                    "-o", str(binary), str(work / "test.rs")]
         if variant == "corrected":
             command += ["--cfg", "corrected"]
@@ -71,6 +71,8 @@ def main():
                 subprocess.run([str(binaries["corrected"]), scenario], env=environment,
                                check=True, timeout=15)
             subprocess.run([str(binaries["corrected"]), "atom-reject"], env=environment,
+                           check=True, timeout=15)
+            subprocess.run([str(binaries["corrected"]), "atom-name"], env=environment,
                            check=True, timeout=15)
             require(child.poll() is None, "Xvfb exited during native cases")
         except BaseException:

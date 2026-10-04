@@ -315,6 +315,8 @@ readonly OUTER_SOURCE="${BASH_SOURCE[0]}"
 readonly GUEST_SCRIPT="$SCRIPT_DIR/smoke-verifier-vm-authority-guest.sh"
 readonly ENTRY_PREFLIGHT="$SCRIPT_DIR/verify-vm-entry-preflight.sh"
 readonly VERIFY_SCRIPT="$SCRIPT_DIR/verify.sh"
+readonly CLEANUP_SOURCE="$SCRIPT_DIR/cleanup.sh"
+readonly CLEANUP_CHECKER_SOURCE="$SCRIPT_DIR/verify-cleanup-authority.py"
 readonly VERIFY_RELEASE_SOURCE="$SCRIPT_DIR/verify-release.sh"
 readonly RELEASE_PARENT_SOURCE="$SCRIPT_DIR/build-release.sh"
 readonly RELEASE_PUBLISHER_SOURCE="$SCRIPT_DIR/publish-github-release.sh"
@@ -2213,6 +2215,11 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
         verify_committed_test_source "$source"
     fi
 done
+for source in "$CLEANUP_SOURCE" "$CLEANUP_CHECKER_SOURCE"; do
+    [ -f "$source" ] && [ ! -L "$source" ] \
+        || fail "cleanup-authority source is absent or symlinked: $source"
+done
+cleanup_sources_before="$(/usr/bin/sha256sum "$CLEANUP_SOURCE" "$CLEANUP_CHECKER_SOURCE")"
 ANDROID_EMULATOR_OBSERVER_DEPENDENCIES_SHA256="$(/usr/bin/sha256sum \
     "$ANDROID_EMULATOR_OBSERVER_DEPENDENCIES" | /usr/bin/awk '{ print $1 }')" \
     || fail 'cannot digest the Android frame-observer dependency manifest'
@@ -3143,6 +3150,8 @@ fi
     -joliet -rock "${payload_identity[@]}" -graft-points -output "$PAYLOAD" \
     "guest.sh=$GUEST_SCRIPT" \
     "repo/scripts/verify.sh=$VERIFY_SCRIPT" \
+    "repo/scripts/cleanup.sh=$CLEANUP_SOURCE" \
+    "repo/scripts/verify-cleanup-authority.py=$CLEANUP_CHECKER_SOURCE" \
     "repo/scripts/verify-release.sh=$VERIFY_RELEASE_SOURCE" \
     "repo/scripts/build-release.sh=$RELEASE_PARENT_SOURCE" \
     "repo/scripts/publish-github-release.sh=$RELEASE_PUBLISHER_SOURCE" \
@@ -3864,6 +3873,10 @@ elif [ "$MODE" = android-frame-tests ]; then
     printf 'ANDROID_FRAME_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
 elif [ "$MODE" = authority-smoke ]; then
 require_exact_fixed_receipt \
+    'CLEANUP_DEFAULT_VM=pass uid=4000 process=preserved pidfile=preserved overlay=preserved source=checked cleanup=joined' \
+    'generic cleanup default-path behavior'
+printf 'CLEANUP_DEFAULT_VM=pass uid=4000 process=preserved pidfile=preserved overlay=preserved source=checked cleanup=joined\n'
+require_exact_fixed_receipt \
     'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 app_capsule=refused cleanup=joined' \
     'verifier-VM run admission result'
 printf 'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 app_capsule=refused cleanup=joined\n'
@@ -4521,6 +4534,8 @@ fi
     || fail 'direct-boot initramfs changed during execution'
 [ "$(/usr/bin/sha256sum "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT" "$VERIFY_RELEASE_SOURCE" "$RELEASE_PARENT_SOURCE" "$RELEASE_PUBLISHER_SOURCE" "$RELEASE_FINALIZER_SOURCE" "$RELEASE_WORKSPACE_RUNTIME_TEST" "$RUN_ADMISSION_TEST" "$ANDROID_PEER_ARTIFACT_SOURCE" "$ANDROID_PEER_ARTIFACT_TEST" "$ANDROID_RUNTIME_PROGRESS_TEST" "$FORK_VERSION_SOURCE" "$APPLE_CHECK_SOURCE" "$FLUTTER_PEER_SOURCE" "$FLUTTER_TOOLS_FINALIZER_SOURCE" "$VERIFY_SCAN_SOURCE" "$FRB_CODEGEN_SOURCE" "$DART_VERIFY_SOURCE" "$SMOKE_SERVER_SOURCE" "$RUST_AUDIT_SOURCE" "$RUST_AUDIT_POLICY_SOURCE" "$RUST_AUDIT_CHECKER" "$RUST_AUDIT_DOCKERFILE_SOURCE" "$ANDROID_KEYSTORE_SOURCE" "$ANDROID_KEYSTORE_INNER" "$ANDROID_KEYSTORE_CHECKER" "$ANDROID_BUILDER_SOURCE" "$ANDROID_APK_BUILD_SOURCE" "$ANDROID_BUILDER_CHECKER" "$ANDROID_GRADLE_SOURCE" "$ANDROID_GRADLE_CHECKER" "$ANDROID_BUILDER_IMAGE_CHECKER" "$DEB_BUILDER_IMAGE_CHECKER" "$DEBIAN_BUILDER_SOURCE" "$DEBIAN_BUILDER_AUTHORITY_CHECKER" "$SYSTEMD_RUNTIME_LIBS_SOURCE" "$SYSTEMD_LIFECYCLE_GUEST_SOURCE" "$SYSTEMD_LOGINCTL_SOURCE" "$DEBIAN_PACKAGE_AUTHORITY_SOURCE" "$SYSTEMD_UNIT_SOURCE" "$DEV_CHECK_DOCKERFILE_SOURCE" "$WIN_HELPER_IMAGE_CHECKER" "$WINDOWS_HELPER_AUTHORITY_CHECKER" "$WINDOWS_HELPER_RUNTIME_TEST" "$ANDROID_BUILDER_DOCKERFILE" "$DEB_BUILDER_DOCKERFILE" "$WIN_HELPER_DOCKERFILE" "$BUILDER_BOOTSTRAP_SEAL_DOCKERFILE" "$ANDROID_BUILDER_CERTIFICATION_DOCKERFILE" "$DEB_BUILDER_CERTIFICATION_DOCKERFILE" "$WIN_HELPER_CERTIFICATION_DOCKERFILE" "$WINDOWS_HELPER_RUNTIME_SOURCE" "$WINDOWS_HELPER_EXTRACTOR" "$WINDOWS_GOLDEN_INSPECTOR" "$WINDOWS_BUILD_SOURCE" "$WINDOWS_PROVISION_SOURCE" "$WINDOWS_GOLDEN_SOURCE" "$ANDROID_RUST_SOURCE" "$ANDROID_EMULATOR_BOOT_SOURCE" "$ANDROID_EMULATOR_APP_SOURCE" "$ANDROID_EMULATOR_RUNTIME_SOURCE" "$ANDROID_RECENTS_DRIVER_SOURCE" "$ANDROID_EMULATOR_OBSERVER_DEPENDENCIES" "$ANDROID_EMULATOR_APK_VERIFIER" "$ANDROID_APK_MANIFEST_VERIFIER" "$ARTIFACT_RESULT_PUBLISHER_SOURCE" "$OFFLINE_IMAGE_PROVENANCE_SOURCE" "$ONLINE_FETCH_SOURCE" "$ONLINE_FETCH_VM_SOURCE" "$ONLINE_FETCH_VM_GUEST_SOURCE" "$ONLINE_FETCH_ENTRY_PREFLIGHT" "$ONLINE_FETCH_AUTHORITY_CHECKER" "$ONLINE_FETCH_RENAME_CHECKER" "$ONLINE_PUB_CACHE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_SOURCE" "$ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER" "$ANDROID_GRADLE_CACHE_PROJECTOR" "$ANDROID_GRADLE_WRAPPER_PROPERTIES" "$DART_AUDIT_SOURCE" "$DART_AUDIT_RESULT_SOURCE" "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" "$LIB_SOURCE" "$PIN_SOURCE")" = "$sources_before" ] \
     || fail 'verifier-VM harness source changed during execution'
+[ "$(/usr/bin/sha256sum "$CLEANUP_SOURCE" "$CLEANUP_CHECKER_SOURCE")" = "$cleanup_sources_before" ] \
+    || fail 'cleanup-authority source changed during execution'
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ]; then
     focused_inputs_after="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"

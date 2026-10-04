@@ -307,14 +307,14 @@ fi
 
 echo "== (0f1) generic cleanup has no guessed process/domain/path ownership (R-S11dq/R-S11e-135) =="
 r_s11dq=
-if ! python3 scripts/verify-cleanup-authority.py --repo . --self-test; then
-  r_s11dq="$r_s11dq source-or-mutation-self-test-failed"
+if ! python3 scripts/verify-cleanup-authority.py --repo .; then
+  r_s11dq="$r_s11dq source-invariant-failed"
 fi
 if [ -n "$r_s11dq" ]; then
   echo "  FAIL R-S11dq generic cleanup authority:$r_s11dq"
   rc=1
 else
-  echo "  ok  R-S11dq no-argument cleanup performs no mutation; exact creator transactions own process/domain/path teardown and ambiguous legacy state requires explicit reconciliation"
+  echo "  ok  R-S11dq source invariant: no generic process/domain/path teardown; VM runtime evidence is separate"
 fi
 
 echo "== (0f2) Windows golden exact libvirt-domain ownership (R-S11dr/R-S11e-136) =="

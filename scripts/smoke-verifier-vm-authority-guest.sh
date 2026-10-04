@@ -2088,7 +2088,14 @@ run_focused_rust_tests() {
             ui_cm_interface::tests::r_s11is_cm_file_raw_ceiling_rejects_oversize_after_accepting_exact_limit
             ui_cm_interface::tests::r_s11is_cm_file_raw_timeout_retires_authenticated_runner
             ui_cm_interface::tests::r_s11is_cm_file_response_refusal_is_returned_to_the_command_owner
+            ui_cm_interface::tests::r_s11is_cm_receive_rejects_an_inconsistent_aggregate_size
             ui_cm_interface::tests::r_s11is_read_job_commits_only_after_initial_response_admission
+            client::io_loop::tests::r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts
+            client::io_loop::tests::r_s11fi_receive_cleanup_identity_failure_is_terminal_and_visible
+            client::io_loop::tests::r_s11fi_incoming_nofollow_open_failure_preserves_older_sidecars
+            client::io_loop::tests::r_s11fj_download_digest_metadata_failure_is_explicit
+            client::io_loop::tests::r_s11fj_download_digest_requires_the_exact_active_file
+            client::io_loop::tests::r_s11fj_download_digest_refuses_size_changed_after_listing
             privacy_mode::tests::r_s11iu_privacy_resource_owner_distinguishes_same_id_token_replacement
             privacy_mode::tests::r_s11iu_privacy_activation_commits_only_after_prepare
             privacy_mode::tests::r_s11iu_privacy_activation_deadline_cancels_and_drains_before_return
@@ -2390,6 +2397,12 @@ run_focused_rust_tests() {
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             ui_cm_interface::tests::r_s11is_ \
                             --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config \
+                            client::io_loop::tests::r_s11fi_ \
+                            --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config \
+                            client::io_loop::tests::r_s11fj_ \
+                            --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config,flutter \
                             r_s11iu_ --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config,flutter \
@@ -2445,7 +2458,7 @@ run_focused_rust_tests() {
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
     else
-        [ "${#result_lines[@]}" -eq 10 ] \
+        [ "${#result_lines[@]}" -eq 12 ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
     fi
     [ "$(grep -Ec '^test result: ' "$output")" -eq "${#result_lines[@]}" ] \

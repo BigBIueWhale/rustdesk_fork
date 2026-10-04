@@ -4776,7 +4776,7 @@ mod tests {
 
     #[cfg(not(target_os = "ios"))]
     #[tokio::test(flavor = "current_thread")]
-    async fn cm_receive_rejects_an_inconsistent_aggregate_size() {
+    async fn r_s11is_cm_receive_rejects_an_inconsistent_aggregate_size() {
         let temp = CmFileTestDir::new("size_mismatch");
         let (tx, mut rx) = cm_egress_channel();
         let responder = CmFileResponder {

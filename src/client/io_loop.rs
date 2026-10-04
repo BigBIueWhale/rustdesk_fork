@@ -4714,7 +4714,7 @@ mod tests {
     }
 
     #[test]
-    fn download_digest_refuses_size_changed_after_listing() {
+    fn r_s11fj_download_digest_refuses_size_changed_after_listing() {
         let temp = ViewerFileTestDir::new();
         let mut entry = FileEntry::new();
         entry.name = "incoming.bin".to_owned();

@@ -23,11 +23,13 @@
 //!                refusal) plus any directory `FileResponse`.
 //!   - `cmfiletransfer` : strict installed-service CM lifecycle probe — the same exchange, but PASS
 //!                additionally requires an actual directory `FileResponse` from the CM bridge.
+//!   - `cmfileauthority` : VM-only CM authority probe — pre-login create must not mutate the
+//!                fixture; post-login directory read and create must complete through CM.
 //!
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
 //!
-//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer] [local_addr]`  (exit 0 = matched)
+//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfileauthority] [local_addr]`  (exit 0 = matched)
 use hbb_common::cpace::run_initiator;
 use hbb_common::message_proto::{login_response, message, Message};
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
@@ -35,6 +37,10 @@ use hbb_common::tcp::FramedStream;
 use std::io::{BufRead, IsTerminal as _};
 
 const PROBE_PASSWORD_MAX_BYTES: usize = 4096;
+const CM_PRELOGIN_CREATE_ID: i32 = 17001;
+const CM_POSTLOGIN_CREATE_ID: i32 = 17002;
+const CM_PRELOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/blocked-before-login";
+const CM_POSTLOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/allowed-after-login";
 
 struct ProbePassword(Vec<u8>);
 
@@ -134,7 +140,8 @@ fn main() {
         || mode == "inject"
         || mode == "portforward"
         || mode == "filetransfer"
-        || mode == "cmfiletransfer";
+        || mode == "cmfiletransfer"
+        || mode == "cmfileauthority";
     // Optional local source address (6th arg) — e.g. 127.0.0.2:0 to connect as a DIFFERENT source,
     // for the R-A8.2 owner-safe limiter test (a flood from one source must not block another).
     let local = a
@@ -278,7 +285,10 @@ fn main() {
                             return (true, pk, true, false);
                         }
                     }
-                    if mode == "filetransfer" || mode == "cmfiletransfer" {
+                    if mode == "filetransfer"
+                        || mode == "cmfiletransfer"
+                        || mode == "cmfileauthority"
+                    {
                         // R-F1/R-F2 END-TO-END against a headless unix --server. Before the fix this box
                         // (no logind/console session) reported an EMPTY PeerInfo.username and the viewer
                         // refused file transfer with "No active console user logged on". The server now
@@ -286,7 +296,28 @@ fn main() {
                         // yield a PeerInfo whose username is NON-EMPTY — never that refusal. A ReadDir("")
                         // then drives the file path (served in the CM process at service privilege; its
                         // dir FileResponse is reported if the CM round-trips).
-                        use hbb_common::message_proto::{file_response, FileAction, FileTransfer, LoginRequest, ReadDir};
+                        use hbb_common::message_proto::{file_response, FileAction, FileDirCreate, FileTransfer, LoginRequest, ReadDir};
+                        if mode == "cmfileauthority" {
+                            let mut action = FileAction::new();
+                            action.set_create(FileDirCreate {
+                                id: CM_PRELOGIN_CREATE_ID,
+                                path: CM_PRELOGIN_CREATE_PATH.to_owned(),
+                                ..Default::default()
+                            });
+                            let mut request = Message::new();
+                            request.set_file_action(action);
+                            let bytes = match request.write_to_bytes() {
+                                Ok(bytes) => bytes,
+                                Err(err) => {
+                                    pk.push_str(&format!("[FT-PRELOGIN-SERIALIZE-ERROR {err}] "));
+                                    return (true, pk, false, true);
+                                }
+                            };
+                            if let Err(err) = stream.send_raw(bytes).await {
+                                pk.push_str(&format!("[FT-PRELOGIN-SEND-ERROR {err}] "));
+                                return (true, pk, false, true);
+                            }
+                        }
                         let mut lr = LoginRequest::new();
                         lr.username = addr.clone();
                         lr.my_id = "ft-probe".to_string();
@@ -315,6 +346,8 @@ fn main() {
                         let mut peer_username_nonempty = false;
                         let mut readdir_send_ok = true;
                         let mut received_directory = false;
+                        let mut sent_create = false;
+                        let mut created = false;
                         for _ in 0..10 {
                             let bytes = match stream.next_timeout(4000).await {
                                 Some(Ok(b)) => b,
@@ -333,7 +366,7 @@ fn main() {
                                             peer.username,
                                             peer.platform
                                         ));
-                                        if !sent_readdir {
+                                        if !sent_readdir && mode != "cmfileauthority" {
                                             let mut fa = FileAction::new();
                                             fa.set_read_dir(ReadDir {
                                                 path: "".to_string(),
@@ -372,11 +405,57 @@ fn main() {
                                             d.path,
                                             d.entries.len()
                                         ));
-                                        break;
+                                        if mode == "cmfileauthority" {
+                                            if d.path != "/tmp/rd-cm-file-replay" || sent_create {
+                                                pk.push_str("[FT-UNEXPECTED-DIR] ");
+                                                return (true, pk, false, true);
+                                            }
+                                            let mut action = FileAction::new();
+                                            action.set_create(FileDirCreate {
+                                                id: CM_POSTLOGIN_CREATE_ID,
+                                                path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
+                                                ..Default::default()
+                                            });
+                                            let mut request = Message::new();
+                                            request.set_file_action(action);
+                                            let bytes = match request.write_to_bytes() {
+                                                Ok(bytes) => bytes,
+                                                Err(err) => {
+                                                    pk.push_str(&format!("[FT-CREATE-SERIALIZE-ERROR {err}] "));
+                                                    return (true, pk, false, true);
+                                                }
+                                            };
+                                            if let Err(err) = stream.send_raw(bytes).await {
+                                                pk.push_str(&format!("[FT-CREATE-SEND-ERROR {err}] "));
+                                                return (true, pk, false, true);
+                                            }
+                                            sent_create = true;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    Some(file_response::Union::Done(done)) => {
+                                        if done.id == CM_PRELOGIN_CREATE_ID {
+                                            pk.push_str("[FT-PRELOGIN-CREATE-ACCEPTED] ");
+                                            return (true, pk, false, true);
+                                        }
+                                        if mode == "cmfileauthority"
+                                            && sent_create
+                                            && done.id == CM_POSTLOGIN_CREATE_ID
+                                            && done.file_num == 0
+                                        {
+                                            created = true;
+                                            pk.push_str("[FT-CREATE-DONE id=17002] ");
+                                            break;
+                                        }
                                     }
                                     Some(file_response::Union::Error(e)) => {
                                         pk.push_str(&format!("[FT-FILE-ERROR {e:?}] "));
-                                        break;
+                                        if mode != "cmfileauthority"
+                                            || e.id == CM_POSTLOGIN_CREATE_ID
+                                        {
+                                            break;
+                                        }
                                     }
                                     _ => {}
                                 },
@@ -386,6 +465,7 @@ fn main() {
                         if !peer_username_nonempty
                             || !readdir_send_ok
                             || (mode == "cmfiletransfer" && !received_directory)
+                            || (mode == "cmfileauthority" && (!received_directory || !created))
                         {
                             return (true, pk, false, true);
                         }
@@ -397,6 +477,7 @@ fn main() {
                         if mode == "portforward"
                             || mode == "filetransfer"
                             || mode == "cmfiletransfer"
+                            || mode == "cmfileauthority"
                         {
                             break;
                         }
@@ -485,7 +566,10 @@ fn main() {
         _ => false,
     };
     let pass = keying_matches
-        && ((mode != "filetransfer" && mode != "cmfiletransfer") || file_transfer_ok)
+        && ((mode != "filetransfer"
+            && mode != "cmfiletransfer"
+            && mode != "cmfileauthority")
+            || file_transfer_ok)
         && (mode != "login" || remote_login_ok);
     if pass {
         println!("probe_client: PASS");

@@ -631,6 +631,8 @@ EOS
   cm-file-replay)
     export HOME=/tmp/rd-cm-file-replay
     mkdir -m 0700 "$HOME"
+    [ ! -e "$HOME/blocked-before-login" ] && [ ! -L "$HOME/blocked-before-login" ] \
+      && [ ! -e "$HOME/allowed-after-login" ] && [ ! -L "$HOME/allowed-after-login" ]
     cleanup_cm_file_replay() {
       local status=$?
       trap - EXIT HUP INT TERM
@@ -658,7 +660,7 @@ EOS
       /smoke-target/debug/examples/smoke_readiness "$(id -u)"
     if probe_output=$(timeout --signal=TERM --kill-after=5s 50s \
         /smoke-target/debug/examples/probe_client \
-        '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfiletransfer 2>&1); then
+        '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfileauthority 2>&1); then
       probe_status=0
     else
       probe_status=$?
@@ -669,12 +671,17 @@ EOS
       exit "$probe_status"
     fi
     [ "$(grep -Fc '[FT-DIR-RESPONSE path=' <<<"$probe_output")" -eq 1 ]
+    [ "$(grep -Fc '[FT-CREATE-DONE id=17002]' <<<"$probe_output")" -eq 1 ]
     grep -Fxq 'probe_client: PASS' <<<"$probe_output"
+    "$READY" --is-running "$SRV" "$SRV_START"
+    [ ! -e "$HOME/blocked-before-login" ] && [ ! -L "$HOME/blocked-before-login" ]
+    [ -d "$HOME/allowed-after-login" ] && [ ! -L "$HOME/allowed-after-login" ] \
+      && [ "$(stat -c '%u:%g:%a' -- "$HOME/allowed-after-login")" = "$(id -u):$(id -g):700" ]
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/cm-file-server.log
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

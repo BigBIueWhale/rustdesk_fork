@@ -2412,6 +2412,10 @@ impl CmAuthConnType {
     pub(crate) fn allows_clipboard_authority(self) -> bool {
         matches!(self, Self::Remote)
     }
+
+    pub(crate) fn allows_voice_call(self) -> bool {
+        matches!(self, Self::Remote | Self::ViewCamera)
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

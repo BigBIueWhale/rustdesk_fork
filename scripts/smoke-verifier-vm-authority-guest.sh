@@ -2062,6 +2062,7 @@ run_focused_rust_tests() {
             src/direct_service.rs
             src/flutter.rs
             src/flutter_ffi.rs
+            src/ipc.rs
             src/port_forward.rs
             src/privacy_mode.rs
             src/server/connection.rs
@@ -2100,6 +2101,8 @@ run_focused_rust_tests() {
             ui_cm_interface::tests::r_s11iu_disconnected_owner_can_be_replaced_but_cannot_retire_replacement
             ui_cm_interface::tests::r_s11iu_generation_exhaustion_does_not_commit_a_client
             ui_cm_interface::tests::r_s11iu_file_log_publication_requires_exact_current_owner
+            ui_cm_interface::tests::r_s11iu_cm_voice_state_requires_current_voice_capable_desktop_owner
+            ui_cm_interface::tests::r_s11iu_cm_voice_state_requires_current_voice_capable_android_owner
             ui_session_interface::connection_round_ownership_tests::credential_prompt_revokes_every_generic_reconnect
             ui_session_interface::connection_round_ownership_tests::credential_post_admission_failure_revokes_every_generic_reconnect
             ui_session_interface::connection_round_ownership_tests::credential_stale_round_cannot_rearm_recovery

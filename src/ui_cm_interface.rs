@@ -979,30 +979,38 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         true
     }
 
-    fn update_voice_call(&self, owner: CmClientOwner, incoming: bool, active: bool) {
-        let client = CLIENTS.write().unwrap().current_mut(owner).map(|client| {
-            client.incoming_voice_call = incoming;
-            client.in_voice_call = active;
-            client.clone()
-        });
+    fn update_voice_call(&self, owner: CmClientOwner, incoming: bool, active: bool) -> bool {
+        let client = CLIENTS
+            .write()
+            .unwrap()
+            .current_mut(owner)
+            .filter(|client| client.conn_type.allows_voice_call())
+            .map(|client| {
+                client.incoming_voice_call = incoming;
+                client.in_voice_call = active;
+                client.clone()
+            });
         if let Some(client) = client {
             self.ui_handler.update_voice_call_state(&client);
+            true
+        } else {
+            false
         }
     }
 
     #[cfg(not(target_os = "ios"))]
-    fn voice_call_started(&self, owner: CmClientOwner) {
-        self.update_voice_call(owner, false, true);
+    fn voice_call_started(&self, owner: CmClientOwner) -> bool {
+        self.update_voice_call(owner, false, true)
     }
 
     #[cfg(not(target_os = "ios"))]
-    fn voice_call_incoming(&self, owner: CmClientOwner) {
-        self.update_voice_call(owner, true, false);
+    fn voice_call_incoming(&self, owner: CmClientOwner) -> bool {
+        self.update_voice_call(owner, true, false)
     }
 
     #[cfg(not(target_os = "ios"))]
-    fn voice_call_closed(&self, owner: CmClientOwner, _reason: &str) {
-        self.update_voice_call(owner, false, false);
+    fn voice_call_closed(&self, owner: CmClientOwner, _reason: &str) -> bool {
+        self.update_voice_call(owner, false, false)
     }
 }
 
@@ -1465,21 +1473,30 @@ where
                                         log::warn!("Rejected CM voice-call start before client-registry admission");
                                         break;
                                     };
-                                    self.cm.voice_call_started(owner);
+                                    if !self.cm.voice_call_started(owner) {
+                                        log::warn!("Rejected CM voice-call start without current voice-capable owner");
+                                        break;
+                                    }
                                 }
                                 Data::VoiceCallIncoming => {
                                     let Some(owner) = self.client_owner else {
                                         log::warn!("Rejected CM incoming voice call before client-registry admission");
                                         break;
                                     };
-                                    self.cm.voice_call_incoming(owner);
+                                    if !self.cm.voice_call_incoming(owner) {
+                                        log::warn!("Rejected CM incoming voice call without current voice-capable owner");
+                                        break;
+                                    }
                                 }
                                 Data::CloseVoiceCall(reason) => {
                                     let Some(owner) = self.client_owner else {
                                         log::warn!("Rejected CM voice-call close before client-registry admission");
                                         break;
                                     };
-                                    self.cm.voice_call_closed(owner, reason.as_str());
+                                    if !self.cm.voice_call_closed(owner, reason.as_str()) {
+                                        log::warn!("Rejected CM voice-call close without current voice-capable owner");
+                                        break;
+                                    }
                                 }
                                 #[cfg(target_os = "windows")]
                                 Data::AuthorizedClipboardNonFile { id, conn_type, cm_auth_token } => {
@@ -1985,7 +2002,10 @@ pub async fn start_listen<T: InvokeUiCM>(
                     );
                     break;
                 };
-                cm.voice_call_started(owner);
+                if !cm.voice_call_started(owner) {
+                    log::warn!("Rejected Android CM voice-call start without current voice-capable owner");
+                    break;
+                }
             }
             Some(Data::VoiceCallIncoming) => {
                 let Some(owner) = current_owner.as_ref().map(CmClientTaskOwner::owner) else {
@@ -1994,7 +2014,10 @@ pub async fn start_listen<T: InvokeUiCM>(
                     );
                     break;
                 };
-                cm.voice_call_incoming(owner);
+                if !cm.voice_call_incoming(owner) {
+                    log::warn!("Rejected Android CM incoming voice call without current voice-capable owner");
+                    break;
+                }
             }
             Some(Data::CloseVoiceCall(reason)) => {
                 let Some(owner) = current_owner.as_ref().map(CmClientTaskOwner::owner) else {
@@ -2003,7 +2026,10 @@ pub async fn start_listen<T: InvokeUiCM>(
                     );
                     break;
                 };
-                cm.voice_call_closed(owner, reason.as_str());
+                if !cm.voice_call_closed(owner, reason.as_str()) {
+                    log::warn!("Rejected Android CM voice-call close without current voice-capable owner");
+                    break;
+                }
             }
             None => {
                 break;
@@ -3097,6 +3123,7 @@ mod tests {
         added: Arc<AtomicBool>,
         removed: Arc<StdMutex<Vec<(i32, i64, bool)>>>,
         file_logs: Arc<StdMutex<Vec<(i32, i64, String, String)>>>,
+        voice_states: Arc<StdMutex<Vec<(i32, i64, bool, bool)>>>,
     }
 
     impl InvokeUiCM for CmTaskOwnerTestUi {
@@ -3114,7 +3141,14 @@ mod tests {
 
         fn change_language(&self) {}
 
-        fn update_voice_call_state(&self, _client: &Client) {}
+        fn update_voice_call_state(&self, client: &Client) {
+            lock_cm_egress_test(&self.voice_states).push((
+                client.id,
+                client.registry_generation,
+                client.incoming_voice_call,
+                client.in_voice_call,
+            ));
+        }
 
         fn file_transfer_log(
             &self,
@@ -3184,18 +3218,19 @@ mod tests {
         }
     }
 
-    fn cm_test_login_with_file_authority(id: i32, file: bool) -> Data {
+    fn cm_test_login_with_conn_type(id: i32, conn_type: ipc::CmAuthConnType) -> Data {
+        let file = conn_type == ipc::CmAuthConnType::FileTransfer;
         Data::Login {
             id,
             is_file_transfer: file,
-            is_view_camera: false,
-            is_terminal: false,
-            port_forward: String::new(),
-            conn_type: if file {
-                ipc::CmAuthConnType::FileTransfer
+            is_view_camera: conn_type == ipc::CmAuthConnType::ViewCamera,
+            is_terminal: conn_type == ipc::CmAuthConnType::Terminal,
+            port_forward: if conn_type == ipc::CmAuthConnType::PortForward {
+                "127.0.0.1:1".to_owned()
             } else {
-                ipc::CmAuthConnType::Remote
+                String::new()
             },
+            conn_type,
             peer_id: format!("peer-{id}"),
             name: "name".to_owned(),
             avatar: String::new(),
@@ -3210,13 +3245,25 @@ mod tests {
         }
     }
 
+    fn cm_test_login_with_file_authority(id: i32, file: bool) -> Data {
+        cm_test_login_with_conn_type(
+            id,
+            if file {
+                ipc::CmAuthConnType::FileTransfer
+            } else {
+                ipc::CmAuthConnType::Remote
+            },
+        )
+    }
+
     fn cm_test_login(id: i32) -> Data {
         cm_test_login_with_file_authority(id, false)
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    async fn admitted_cm_file_raw_test(
+    async fn admitted_cm_raw_test(
         id: i32,
+        conn_type: ipc::CmAuthConnType,
     ) -> (
         tokio::task::JoinHandle<()>,
         ipc::ConnectionTmpl<tokio::io::DuplexStream>,
@@ -3247,7 +3294,7 @@ mod tests {
             file_transfer_enabled_peer: false,
             read_jobs: Vec::new(),
         };
-        peer.send(&cm_test_login_with_file_authority(id, true))
+        peer.send(&cm_test_login_with_conn_type(id, conn_type))
             .await
             .unwrap();
         let task = tokio::spawn(async move {
@@ -3272,6 +3319,17 @@ mod tests {
         .await
         .expect("authenticated CM file login must be admitted");
         (task, peer, ui)
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    async fn admitted_cm_file_raw_test(
+        id: i32,
+    ) -> (
+        tokio::task::JoinHandle<()>,
+        ipc::ConnectionTmpl<tokio::io::DuplexStream>,
+        CmTaskOwnerTestUi,
+    ) {
+        admitted_cm_raw_test(id, ipc::CmAuthConnType::FileTransfer).await
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -3364,6 +3422,74 @@ mod tests {
         .expect("missing CM raw block must not panic");
         assert_eq!(lock_cm_egress_test(&ui.removed).len(), 1);
         assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11iu_cm_voice_state_requires_current_voice_capable_desktop_owner() {
+        for (offset, conn_type, message) in [
+            (
+                0,
+                ipc::CmAuthConnType::FileTransfer,
+                Data::VoiceCallIncoming,
+            ),
+            (1, ipc::CmAuthConnType::Terminal, Data::StartVoiceCall),
+            (
+                2,
+                ipc::CmAuthConnType::PortForward,
+                Data::CloseVoiceCall(String::new()),
+            ),
+        ] {
+            let id = 2_000_200_004 + offset;
+            let (task, mut peer, ui) = admitted_cm_raw_test(id, conn_type).await;
+            peer.send(&message).await.unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(2), task)
+                .await
+                .expect("non-voice CM message must retire with peer still open")
+                .expect("non-voice CM runner must not panic");
+            assert!(lock_cm_egress_test(&ui.voice_states).is_empty());
+            assert_eq!(lock_cm_egress_test(&ui.removed).len(), 1);
+            assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        }
+
+        for (offset, conn_type) in [
+            ipc::CmAuthConnType::Remote,
+            ipc::CmAuthConnType::ViewCamera,
+        ]
+        .iter()
+        .copied()
+        .enumerate()
+        {
+            let id = 2_000_200_007 + offset as i32;
+            let (task, mut peer, ui) = admitted_cm_raw_test(id, conn_type).await;
+            peer.send(&Data::VoiceCallIncoming).await.unwrap();
+            peer.send(&Data::StartVoiceCall).await.unwrap();
+            peer.send(&Data::CloseVoiceCall(String::new()))
+                .await
+                .unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                while lock_cm_egress_test(&ui.voice_states).len() != 3 {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("voice-capable CM owner must deliver all three state updates");
+            let states = lock_cm_egress_test(&ui.voice_states);
+            assert_eq!(
+                states
+                    .iter()
+                    .map(|(_, _, incoming, active)| (*incoming, *active))
+                    .collect::<Vec<_>>(),
+                vec![(true, false), (false, true), (false, false)]
+            );
+            drop(states);
+            peer.send(&Data::Close).await.unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(2), task)
+                .await
+                .expect("voice-capable CM stream must retire on Close")
+                .expect("voice-capable CM runner must not panic");
+            assert_eq!(lock_cm_egress_test(&ui.removed).len(), 1);
+        }
     }
 
     #[cfg(target_os = "windows")]
@@ -3798,6 +3924,100 @@ mod tests {
         })
         .await
         .expect("Android CM future must admit its exact registry owner");
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11iu_cm_voice_state_requires_current_voice_capable_android_owner() {
+        for (offset, conn_type, message) in [
+            (
+                0,
+                ipc::CmAuthConnType::FileTransfer,
+                Data::VoiceCallIncoming,
+            ),
+            (1, ipc::CmAuthConnType::Terminal, Data::StartVoiceCall),
+            (
+                2,
+                ipc::CmAuthConnType::PortForward,
+                Data::CloseVoiceCall(String::new()),
+            ),
+        ] {
+            let id = 2_000_000_010 + offset;
+            assert!(CLIENTS.write().unwrap().clients.remove(&id).is_none());
+            let ui = CmTaskOwnerTestUi::default();
+            let manager = ConnectionManager::new(ui.clone(), 60 + offset as u64);
+            let (command_tx, command_rx) = mpsc::channel(2);
+            let (_terminal_tx, terminal_rx) = tokio::sync::oneshot::channel();
+            let (egress_tx, _egress_rx) = cm_egress_channel();
+            command_tx
+                .send(cm_test_login_with_conn_type(id, conn_type))
+                .await
+                .unwrap();
+            let mut future = Box::pin(start_listen(manager, command_rx, terminal_rx, egress_tx));
+            wait_for_cm_test_admission(&mut future, &ui.added).await;
+            command_tx.send(message).await.unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(1), future)
+                .await
+                .expect("non-voice Android CM message must retire with sender still open");
+            assert!(lock_cm_egress_test(&ui.voice_states).is_empty());
+            assert_eq!(lock_cm_egress_test(&ui.removed).len(), 1);
+            assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        }
+
+        for (offset, conn_type) in [
+            ipc::CmAuthConnType::Remote,
+            ipc::CmAuthConnType::ViewCamera,
+        ]
+        .iter()
+        .copied()
+        .enumerate()
+        {
+            let id = 2_000_000_013 + offset as i32;
+            assert!(CLIENTS.write().unwrap().clients.remove(&id).is_none());
+            let ui = CmTaskOwnerTestUi::default();
+            let manager = ConnectionManager::new(ui.clone(), 63 + offset as u64);
+            let (command_tx, command_rx) = mpsc::channel(4);
+            let (_terminal_tx, terminal_rx) = tokio::sync::oneshot::channel();
+            let (egress_tx, _egress_rx) = cm_egress_channel();
+            command_tx
+                .send(cm_test_login_with_conn_type(id, conn_type))
+                .await
+                .unwrap();
+            let mut future = Box::pin(start_listen(manager, command_rx, terminal_rx, egress_tx));
+            wait_for_cm_test_admission(&mut future, &ui.added).await;
+            command_tx.send(Data::VoiceCallIncoming).await.unwrap();
+            command_tx.send(Data::StartVoiceCall).await.unwrap();
+            command_tx
+                .send(Data::CloseVoiceCall(String::new()))
+                .await
+                .unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                tokio::select! {
+                    _ = &mut future => panic!("voice-capable Android CM owner ended early"),
+                    _ = async {
+                        while lock_cm_egress_test(&ui.voice_states).len() != 3 {
+                            tokio::task::yield_now().await;
+                        }
+                    } => {}
+                }
+            })
+            .await
+            .expect("voice-capable Android CM owner must deliver all three state updates");
+            let states = lock_cm_egress_test(&ui.voice_states);
+            assert_eq!(
+                states
+                    .iter()
+                    .map(|(_, _, incoming, active)| (*incoming, *active))
+                    .collect::<Vec<_>>(),
+                vec![(true, false), (false, true), (false, false)]
+            );
+            drop(states);
+            command_tx.send(Data::Close).await.unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(1), future)
+                .await
+                .expect("voice-capable Android CM listener must retire on Close");
+            assert_eq!(lock_cm_egress_test(&ui.removed).len(), 1);
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]

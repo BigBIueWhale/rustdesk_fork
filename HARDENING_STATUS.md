@@ -3350,9 +3350,23 @@ the connection and server stayed live. Raw serial
 the outer listener/process audit and joined cleanup passed with no run overlay.
 This is Linux direct-send error finality, not a full download or native Windows read result.
 
+Pushed test candidate `dfeb3dba` (tree `8c3d576d`) then replayed a readable source on
+the **same keyed Linux FileTransfer connection after that terminal error**. The real
+server listed one 150,001-byte file, sent its file-0 digest, accepted an explicit
+`OffsetBlk(0)` confirmation, sent two nonempty blocks whose every byte matched the
+independent guest fixture, and ended with one `Done(id=17013,file_num=1)`. A subsequent
+directory response on that connection was the post-terminal ordering barrier; the
+guest checked the unchanged source bytes/mode and live server. The no-NIC VM exited 0
+in 275 seconds; raw serial `cm-file-replay-run.oWjdUQ4wUR.serial.log` is 317,351
+bytes, SHA-256 `818ec27194827cc140d5987c43bf4074fcc64d6778adb85a4cc37ad73c69b7c6`.
+The outer listener/process audit passed, all exact owners joined, and no `run.*` or
+overlay remains. This proves one headless Linux direct-send read/digest/confirmation
+and error-to-next-job progression, **not** a viewer writing the download, Windows CM
+read, installed desktop, Android, or a final artifact.
+
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | Current Linux evidence: 61 Rust filesystem tests and keyed real-peer CM upload, cancel, owner-loss/reconnect, collision, and cleanup-failure replays; the direct-send unreadable-source error now retires its job once, without a later `Done`. The exact receipts and limits are above. Still OPEN: successful full download/read, digest/confirmation, saturation, terminal-first disconnect, concurrent/stale-generation reconnect, broader cleanup faults, native Windows handle/junction/unlink behavior, installed desktop and Android repeats, and release-artifact evidence. The installed Windows result predates these corrections. |
+| CM/file finality (R-S11c-4c/4d) | Current Linux evidence: 61 Rust filesystem tests and keyed real-peer CM upload, cancel, owner-loss/reconnect, collision, and cleanup-failure replays; direct-send unreadable-source error is terminal, followed on the same connection by a confirmed, exact-byte two-block direct read and one `Done`. The exact receipts and limits are above. Still OPEN: real viewer download/write-to-disk and its digest/confirmation behavior, saturation, terminal-first disconnect, concurrent/stale-generation reconnect, broader cleanup faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and release-artifact evidence. The installed Windows result predates these corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

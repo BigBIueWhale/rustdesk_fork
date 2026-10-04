@@ -4739,8 +4739,10 @@ mod tests {
             ..Default::default()
         };
 
-        let error = inspect_viewer_download_digest(&mut job, &digest, false)
-            .expect_err("a changed source size must not enter the destination inspection");
+        let error = match inspect_viewer_download_digest(&mut job, &digest, false) {
+            Ok(_) => panic!("a changed source size must not enter the destination inspection"),
+            Err(error) => error,
+        };
         assert!(error.contains("does not match listed file size"));
         assert!(!temp.path.join("incoming.bin.download").exists());
         assert_eq!(job.file_num(), 0);

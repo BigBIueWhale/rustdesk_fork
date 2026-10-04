@@ -61,6 +61,7 @@ const CM_DIGEST_COLLISION_ID: i32 = 17010;
 const CM_CLEANUP_FAILURE_ID: i32 = 17011;
 const FT_READ_FAILURE_ID: i32 = 17012;
 const FT_READ_SUCCESS_ID: i32 = 17013;
+const CM_SHORT_WRITE_ID: i32 = 17014;
 const FT_READ_SUCCESS_LEN: usize = 150_001;
 const CM_PRELOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/blocked-before-login";
 const CM_POSTLOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/allowed-after-login";
@@ -164,11 +165,12 @@ async fn probe_cm_receive_write(stream: &mut FramedStream, report: &mut String) 
         FileTransferReceiveRequest, FileType,
     };
 
-    for (id, name, payload, terminal_file_num, expect_commit) in [
+    for (id, name, payload, terminal_file_num, declared_extra_bytes, expect_commit) in [
         (
             CM_PREMATURE_WRITE_ID,
             "premature.txt",
             &b"partial-before-terminal"[..],
+            0,
             0,
             false,
         ),
@@ -177,9 +179,19 @@ async fn probe_cm_receive_write(stream: &mut FramedStream, report: &mut String) 
             "payload.txt",
             CM_WRITE_PAYLOAD,
             1,
+            0,
             true,
         ),
+        (
+            CM_SHORT_WRITE_ID,
+            "short-terminal.txt",
+            &b"incomplete-receive"[..],
+            1,
+            7,
+            false,
+        ),
     ] {
+        let declared_size = payload.len() as u64 + declared_extra_bytes;
         let mut action = FileAction::new();
         action.set_receive(FileTransferReceiveRequest {
             id,
@@ -187,11 +199,11 @@ async fn probe_cm_receive_write(stream: &mut FramedStream, report: &mut String) 
             files: vec![FileEntry {
                 entry_type: FileType::File.into(),
                 name: name.to_owned(),
-                size: payload.len() as u64,
+                size: declared_size,
                 ..Default::default()
             }],
             file_num: 0,
-            total_size: payload.len() as u64,
+            total_size: declared_size,
             ..Default::default()
         });
         let mut request = Message::new();
@@ -245,12 +257,23 @@ async fn probe_cm_receive_write(stream: &mut FramedStream, report: &mut String) 
                 Some(message::Union::FileResponse(response)) => match response.union {
                     Some(file_response::Union::Error(error)) if error.id == id => {
                         if !expect_commit
+                            && id == CM_PREMATURE_WRITE_ID
                             && error.file_num == 0
                             && error.error.contains(
                                 "terminal file number 0 does not follow active file 0",
                             )
                         {
                             report.push_str("[FT-PREMATURE-WRITE-REFUSED id=17003] ");
+                            matched = true;
+                        } else if id == CM_SHORT_WRITE_ID
+                            && error.file_num == 1
+                            && error.error.contains(&format!(
+                                "has {} bytes, expected {}",
+                                payload.len(),
+                                declared_size
+                            ))
+                        {
+                            report.push_str("[FT-SHORT-WRITE-REFUSED id=17014] ");
                             matched = true;
                         } else {
                             report.push_str(&format!("[FT-WRITE-UNEXPECTED-ERROR {error:?}] "));

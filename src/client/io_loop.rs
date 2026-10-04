@@ -552,6 +552,12 @@ fn inspect_viewer_download_digest(
         .files()
         .get(file_num)
         .ok_or_else(|| format!("digest file number {} is out of range", digest.file_num))?;
+    if digest.file_size != file.size {
+        return Err(format!(
+            "download digest size {} does not match listed file size {}",
+            digest.file_size, file.size
+        ));
+    }
     let fs::DataSource::FilePath(base) = &job.data_source else {
         return Err("download digest has no filesystem destination".to_owned());
     };
@@ -4429,6 +4435,7 @@ mod tests {
         let temp = ViewerFileTestDir::new();
         let mut entry = FileEntry::new();
         entry.name = "incoming.bin".to_owned();
+        entry.size = 2;
         let job = fs::TransferJob::new_write(
             73,
             fs::JobType::Generic,
@@ -4443,8 +4450,6 @@ mod tests {
         .expect("create exact viewer receive job");
         let download = temp.path.join("incoming.bin.download");
         let digest = temp.path.join("incoming.bin.digest");
-        std::fs::write(&download, b"partial").expect("stage partial download");
-        std::fs::write(&digest, b"{}").expect("stage partial digest");
         let mut jobs = vec![job];
 
         let written = write_viewer_file_block(
@@ -4492,6 +4497,7 @@ mod tests {
         let temp = ViewerFileTestDir::new();
         let mut entry = FileEntry::new();
         entry.name = "incoming.bin".to_owned();
+        entry.size = b"owned-payload".len() as u64;
         let job = fs::TransferJob::new_write(
             75,
             fs::JobType::Generic,
@@ -4559,10 +4565,11 @@ mod tests {
 
     #[cfg(unix)]
     #[hbb_common::tokio::test]
-    async fn r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars() {
+    async fn r_s11fi_incoming_nofollow_open_failure_preserves_older_sidecars() {
         let temp = ViewerFileTestDir::new();
         let mut entry = FileEntry::new();
         entry.name = "incoming.bin".to_owned();
+        entry.size = 1;
         let job = fs::TransferJob::new_write(
             74,
             fs::JobType::Generic,
@@ -4599,10 +4606,17 @@ mod tests {
         assert!(!failure.error.is_empty());
         assert!(jobs.is_empty(), "the failed exact receive job must retire");
         assert!(
-            std::fs::symlink_metadata(&download).is_err(),
-            "the rejected receive-target symlink must be removed"
+            std::fs::symlink_metadata(&download)
+                .expect("preserve pre-existing symlink")
+                .file_type()
+                .is_symlink(),
+            "a refused job does not own the pre-existing receive-target symlink"
         );
-        assert!(!digest.exists(), "the partial digest must be removed");
+        assert_eq!(
+            std::fs::read(&digest).expect("preserve pre-existing digest"),
+            b"{}",
+            "a refused job does not own the pre-existing digest"
+        );
         assert!(
             !temp.path.join("forbidden-target").exists(),
             "cleanup must not follow the rejected target"
@@ -4636,6 +4650,7 @@ mod tests {
 
         let mut entry = FileEntry::new();
         entry.name = "existing.bin".to_owned();
+        entry.size = 8;
         let mut job = fs::TransferJob::new_write(
             75,
             fs::JobType::Generic,
@@ -4695,6 +4710,39 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.contains("does not match active file"));
+        assert_eq!(job.file_num(), 0);
+    }
+
+    #[test]
+    fn download_digest_refuses_size_changed_after_listing() {
+        let temp = ViewerFileTestDir::new();
+        let mut entry = FileEntry::new();
+        entry.name = "incoming.bin".to_owned();
+        entry.size = 8;
+        let mut job = fs::TransferJob::new_write(
+            77,
+            fs::JobType::Generic,
+            "remote.bin".to_owned(),
+            fs::DataSource::FilePath(temp.path.clone()),
+            0,
+            false,
+            true,
+            true,
+        )
+        .with_files(vec![entry])
+        .expect("create exact viewer download job");
+        let digest = FileTransferDigest {
+            id: 77,
+            file_num: 0,
+            file_size: 9,
+            last_modified: 1,
+            ..Default::default()
+        };
+
+        let error = inspect_viewer_download_digest(&mut job, &digest, false)
+            .expect_err("a changed source size must not enter the destination inspection");
+        assert!(error.contains("does not match listed file size"));
+        assert!(!temp.path.join("incoming.bin.download").exists());
         assert_eq!(job.file_num(), 0);
     }
 

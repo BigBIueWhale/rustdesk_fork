@@ -8903,7 +8903,11 @@ impl Connection {
                                     file_num: r.file_num,
                                     files: files
                                         .into_iter()
-                                        .map(|f| (f.name, f.modified_time))
+                                        .map(|f| ipc::CmReceiveFile {
+                                            name: f.name,
+                                            size: f.size,
+                                            modified_time: f.modified_time,
+                                        })
                                         .collect(),
                                     overwrite_detection: od,
                                     total_size: r.total_size,

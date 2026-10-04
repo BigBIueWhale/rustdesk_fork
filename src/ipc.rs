@@ -2214,6 +2214,13 @@ pub struct CmFileResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CmReceiveFile {
+    pub name: String,
+    pub size: u64,
+    pub modified_time: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "t", content = "c")]
 pub enum FS {
     ReadEmptyDirs {
@@ -2247,7 +2254,7 @@ pub enum FS {
         path: String,
         id: i32,
         file_num: i32,
-        files: Vec<(String, u64)>,
+        files: Vec<CmReceiveFile>,
         overwrite_detection: bool,
         total_size: u64,
         conn_id: i32,

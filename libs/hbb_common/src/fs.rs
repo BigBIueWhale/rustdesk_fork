@@ -688,6 +688,8 @@ pub struct TransferJob {
     data_stream: Option<DataStream>,
     #[serde(skip_serializing)]
     receive_write_claim: Option<ReceiveWriteClaim>,
+    #[serde(skip_serializing)]
+    receive_file_offset: u64,
     pub total_size: u64,
     finished_size: u64,
     transferred: u64,
@@ -3149,7 +3151,13 @@ impl ReceiveWriteClaim {
         }
     }
 
-    fn finish(&mut self, modified_time: u64) -> std::io::Result<()> {
+    fn finish(&mut self, expected_size: u64, modified_time: u64) -> std::io::Result<()> {
+        let actual_size = self.download_file.metadata()?.len();
+        if actual_size != expected_size {
+            return Err(io_invalid_input(format!(
+                "received file has {actual_size} bytes, expected {expected_size}"
+            )));
+        }
         let result = finish_recv_write_no_follow(
             &self.final_path,
             &self.download_file,
@@ -3399,7 +3407,16 @@ impl TransferJob {
             bail!("invalid active write file number {}", self.file_num);
         }
         let entry = &self.files[self.file_num as usize];
+        if self.receive_file_offset != entry.size {
+            bail!(
+                "received file {} has {} bytes, expected {}",
+                self.file_num,
+                self.receive_file_offset,
+                entry.size
+            );
+        }
         let modified_time = entry.modified_time;
+        let expected_size = entry.size;
         let path = self
             .resolve_entry_path(base, &entry.name)
             .ok_or_else(|| anyhow!("invalid receive-write path for file {}", self.file_num))?;
@@ -3430,7 +3447,7 @@ impl TransferJob {
             .ok_or_else(|| anyhow!("write file {} lost its receive claim", self.file_num))?;
         let (claim, result) = tokio::task::spawn_blocking(move || {
             let mut claim = claim;
-            let result = claim.finish(modified_time);
+            let result = claim.finish(expected_size, modified_time);
             (claim, result)
         })
         .await?;
@@ -3439,6 +3456,7 @@ impl TransferJob {
             return Err(err.into());
         }
         drop(claim);
+        self.receive_file_offset = 0;
         Ok(())
     }
 
@@ -3493,6 +3511,7 @@ impl TransferJob {
         if let Some(claim) = self.receive_write_claim.take() {
             claim.cleanup()?;
         }
+        self.receive_file_offset = 0;
         Ok(())
     }
 
@@ -3568,34 +3587,41 @@ impl TransferJob {
             };
             self.data_stream = Some(DataStream::BufStream(TokioBufStream::new(cursor)));
         }
+        let decoded = if block.compressed {
+            Some(try_decompress(&block.data)?)
+        } else {
+            None
+        };
+        let bytes = decoded.as_deref().unwrap_or(block.data.as_ref());
+        let receive_file_offset = self
+            .receive_file_offset
+            .checked_add(bytes.len() as u64)
+            .ok_or_else(|| anyhow!("received file byte counter overflow"))?;
+        if matches!(&self.data_source, DataSource::FilePath(_)) {
+            let expected_size = self.files[self.file_num as usize].size;
+            if receive_file_offset > expected_size {
+                bail!(
+                    "received file {} exceeds declared size {}",
+                    self.file_num,
+                    expected_size
+                );
+            }
+        }
+        let finished_size = self
+            .finished_size
+            .checked_add(bytes.len() as u64)
+            .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
         let transferred = self
             .transferred
             .checked_add(block.data.len() as u64)
             .ok_or_else(|| anyhow!("transferred byte counter overflow"))?;
-        if block.compressed {
-            let tmp = try_decompress(&block.data)?;
-            let finished_size = self
-                .finished_size
-                .checked_add(tmp.len() as u64)
-                .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
-            self.data_stream
-                .as_mut()
-                .ok_or(anyhow!("data stream is None"))?
-                .write_all(&tmp)
-                .await?;
-            self.finished_size = finished_size;
-        } else {
-            let finished_size = self
-                .finished_size
-                .checked_add(block.data.len() as u64)
-                .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
-            self.data_stream
-                .as_mut()
-                .ok_or(anyhow!("file is None"))?
-                .write_all(&block.data)
-                .await?;
-            self.finished_size = finished_size;
-        }
+        self.data_stream
+            .as_mut()
+            .ok_or(anyhow!("data stream is None"))?
+            .write_all(bytes)
+            .await?;
+        self.receive_file_offset = receive_file_offset;
+        self.finished_size = finished_size;
         self.transferred = transferred;
         Ok(())
     }
@@ -3878,6 +3904,7 @@ impl TransferJob {
         self.set_file_confirmed(false);
         self.set_file_is_waiting(false);
         self.file_num += 1;
+        self.receive_file_offset = 0;
         self.file_skipped = true;
         Ok(true)
     }
@@ -3907,6 +3934,13 @@ impl TransferJob {
                 .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
             match self.role {
                 TransferRole::Receive => {
+                    if offset > entry.size {
+                        bail!(
+                            "confirmed offset {} exceeds declared file size {}",
+                            offset,
+                            entry.size
+                        );
+                    }
                     if self.receive_write_claim.is_some() {
                         bail!("receive write job already owns a destination claim");
                     }
@@ -3934,6 +3968,9 @@ impl TransferJob {
             }
             self.transferred = transferred;
             self.finished_size = finished_size;
+            if self.role == TransferRole::Receive {
+                self.receive_file_offset = offset;
+            }
             return Ok(());
         }
         bail!("cannot seek an in-memory transfer to a confirmed file offset")
@@ -5297,6 +5334,9 @@ mod tests {
     }
 
     fn new_write_job(id: i32, download_dir: PathBuf, name: &str) -> ResultType<TransferJob> {
+        let mut entry = new_file_entry(name);
+        // Most receive fixtures intentionally stop while partial; completion cases set exact size.
+        entry.size = 4096;
         let job = TransferJob::new_write(
             id,
             JobType::Generic,
@@ -5307,7 +5347,7 @@ mod tests {
             true,
             false,
         )
-        .with_files(vec![new_file_entry(name)])?;
+        .with_files(vec![entry])?;
         Ok(job)
     }
 
@@ -5318,6 +5358,7 @@ mod tests {
         let mut job =
             new_write_job(81, tmp.path.clone(), "incoming.bin").expect("create receive-write job");
         let payload = b"checked receive payload";
+        job.files[0].size = payload.len() as u64;
 
         job.write(FileTransferBlock {
             id: 81,
@@ -5352,6 +5393,100 @@ mod tests {
         assert!(!tmp.join("incoming.bin.digest").exists());
     }
 
+    #[tokio::test]
+    async fn receive_write_refuses_a_short_file_with_the_correct_terminal_index() {
+        let tmp = TestTempDir::new("rustdesk_receive_short_terminal");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let mut job =
+            new_write_job(95, tmp.path.clone(), "incoming.bin").expect("create receive job");
+        job.files[0].size = 8;
+        job.write(FileTransferBlock {
+            id: 95,
+            file_num: 0,
+            data: b"short".to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("write incomplete receive data");
+
+        let error = job
+            .finalize_write(1)
+            .await
+            .expect_err("a correct terminal index cannot commit fewer than declared bytes");
+        assert!(error.to_string().contains("has 5 bytes, expected 8"));
+        assert!(!tmp.join("incoming.bin").exists());
+        job.retire_current_file_state()
+            .expect("retire the incomplete exact receive generation");
+        for suffix in [".download", ".digest", ".download.lock"] {
+            assert!(!tmp.join(format!("incoming.bin{suffix}")).exists());
+        }
+    }
+
+    #[tokio::test]
+    async fn receive_write_refuses_data_beyond_the_declared_file_size() {
+        let tmp = TestTempDir::new("rustdesk_receive_excess_block");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let mut job =
+            new_write_job(96, tmp.path.clone(), "incoming.bin").expect("create receive job");
+        job.files[0].size = 4;
+
+        let error = job
+            .write(FileTransferBlock {
+                id: 96,
+                file_num: 0,
+                data: b"extra".to_vec().into(),
+                ..Default::default()
+            })
+            .await
+            .expect_err("a block cannot grow past the announced file size");
+        assert!(error.to_string().contains("exceeds declared size 4"));
+        assert_eq!(job.finished_size(), 0);
+        assert_eq!(job.transferred(), 0);
+        assert!(!tmp.join("incoming.bin").exists());
+        job.retire_current_file_state()
+            .expect("retire the refused exact receive generation");
+        for suffix in [".download", ".digest", ".download.lock"] {
+            assert!(!tmp.join(format!("incoming.bin{suffix}")).exists());
+        }
+    }
+
+    #[tokio::test]
+    async fn receive_write_refuses_a_changed_staging_length_before_publication() {
+        use std::io::Write;
+
+        let tmp = TestTempDir::new("rustdesk_receive_changed_length");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let mut job =
+            new_write_job(97, tmp.path.clone(), "incoming.bin").expect("create receive job");
+        job.files[0].size = 4;
+        job.write(FileTransferBlock {
+            id: 97,
+            file_num: 0,
+            data: b"four".to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("write the declared bytes");
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(tmp.join("incoming.bin.download"))
+            .expect("open staged file through its existing name")
+            .write_all(b"X")
+            .expect("change staged inode length");
+
+        let error = job
+            .finalize_write(1)
+            .await
+            .expect_err("an externally changed staged length cannot be published");
+        assert!(error.to_string().contains("has 5 bytes, expected 4"));
+        assert!(!tmp.join("incoming.bin").exists());
+        job.retire_current_file_state()
+            .expect("retire the exact changed staging generation");
+        for suffix in [".download", ".digest", ".download.lock"] {
+            assert!(!tmp.join(format!("incoming.bin{suffix}")).exists());
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn receive_post_publish_sync_failure_never_deletes_visible_file() {
@@ -5368,7 +5503,7 @@ mod tests {
             .write_all(b"published-payload")
             .expect("write receive payload");
 
-        let result = claim.finish(1_600_000_000);
+        let result = claim.finish(b"published-payload".len() as u64, 1_600_000_000);
         if std::env::var_os(EXPECT_FAULT).is_some() {
             let error = result.expect_err("injected final parent fsync must be reported");
             assert!(
@@ -5452,7 +5587,7 @@ mod tests {
         let (attempted_tx, attempted_rx) = tokio::sync::oneshot::channel();
         let (release_tx, release_rx) = std::sync::mpsc::channel();
         let worker = tokio::task::spawn_blocking(move || {
-            let result = claim.finish(1_600_000_000);
+            let result = claim.finish(b"partial-before-finalization".len() as u64, 1_600_000_000);
             assert!(result.is_err(), "publication over a directory must fail");
             attempted_tx.send(()).expect("report finalization attempt");
             release_rx.recv().expect("await abandoned result release");
@@ -5536,6 +5671,7 @@ mod tests {
             if role == std::ffi::OsStr::new("owner") {
                 let mut job =
                     new_write_job(90, path, "incoming.bin").expect("create owning receive job");
+                job.files[0].size = TOTAL_SIZE;
                 job.set_digest(TOTAL_SIZE, MODIFIED);
                 job.write(FileTransferBlock {
                     id: 90,
@@ -5557,6 +5693,7 @@ mod tests {
             if role == std::ffi::OsStr::new("contender") {
                 let mut job =
                     new_write_job(91, path, "incoming.bin").expect("create competing receive job");
+                job.files[0].size = TOTAL_SIZE;
                 job.set_digest(TOTAL_SIZE, MODIFIED);
                 let error = job
                     .write(FileTransferBlock {
@@ -5579,6 +5716,7 @@ mod tests {
             if role == std::ffi::OsStr::new("resume") {
                 let mut job =
                     new_write_job(92, path, "incoming.bin").expect("create resumed receive job");
+                job.files[0].size = TOTAL_SIZE;
                 job.is_resume = true;
                 job.set_digest(TOTAL_SIZE, MODIFIED);
                 job.confirm(&FileTransferSendConfirmRequest {
@@ -6043,6 +6181,7 @@ mod tests {
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
         let mut job =
             new_write_job(93, tmp.path.clone(), "incoming.bin").expect("create receive-write job");
+        job.files[0].size = b"owned-payload".len() as u64;
         job.write(FileTransferBlock {
             id: 93,
             file_num: 0,
@@ -6092,6 +6231,7 @@ mod tests {
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");
         let mut job = new_write_job(94, tmp.path.clone(), "incoming.bin")
             .expect("create receive-write job");
+        job.files[0].size = b"owned-payload".len() as u64;
         job.write(FileTransferBlock {
             id: 94,
             file_num: 0,

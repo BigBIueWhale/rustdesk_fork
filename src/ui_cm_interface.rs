@@ -2227,8 +2227,9 @@ async fn handle_fs(
             let file_entries: Vec<FileEntry> = files
                 .into_iter()
                 .map(|f| FileEntry {
-                    name: f.0,
-                    modified_time: f.1,
+                    name: f.name,
+                    size: f.size,
+                    modified_time: f.modified_time,
                     ..Default::default()
                 })
                 .collect();
@@ -2250,7 +2251,20 @@ async fn handle_fs(
                 reject_write_job(responder, id, generation, file_num, e.to_string())?;
                 return Ok(None);
             }
-            job.total_size = total_size;
+            if job.total_size() != total_size {
+                reject_write_job(
+                    responder,
+                    id,
+                    generation,
+                    file_num,
+                    format!(
+                        "write job total size {} does not match admitted file sizes {}",
+                        total_size,
+                        job.total_size()
+                    ),
+                )?;
+                return Ok(None);
+            }
             job.conn_id = conn_id;
             write_jobs.push(CmTransferJob { generation, job });
         }
@@ -4406,7 +4420,11 @@ mod tests {
                     .into_owned(),
                 id: 9,
                 file_num: 0,
-                files: vec![("sample.txt".to_owned(), 0)],
+                files: vec![ipc::CmReceiveFile {
+                    name: "sample.txt".to_owned(),
+                    size: 0,
+                    modified_time: 0,
+                }],
                 overwrite_detection: false,
                 total_size: 0,
                 conn_id: 41,
@@ -4478,7 +4496,11 @@ mod tests {
                     .into_owned(),
                 id: 10,
                 file_num: 0,
-                files: vec![("sample.txt".to_owned(), 0)],
+                files: vec![ipc::CmReceiveFile {
+                    name: "sample.txt".to_owned(),
+                    size: 0,
+                    modified_time: 0,
+                }],
                 overwrite_detection: false,
                 total_size: 0,
                 conn_id: 42,
@@ -4529,7 +4551,11 @@ mod tests {
                 path: temp.path.to_string_lossy().into_owned(),
                 id: 77,
                 file_num: 0,
-                files: vec![("orphaned.bin".to_owned(), 0)],
+                files: vec![ipc::CmReceiveFile {
+                    name: "orphaned.bin".to_owned(),
+                    size: 32,
+                    modified_time: 0,
+                }],
                 overwrite_detection: false,
                 total_size: 32,
                 conn_id: 57,
@@ -4592,7 +4618,11 @@ mod tests {
                 path: temp.path.to_string_lossy().into_owned(),
                 id: 71,
                 file_num: 0,
-                files: vec![("payload.bin".to_owned(), 1_600_000_000)],
+                files: vec![ipc::CmReceiveFile {
+                    name: "payload.bin".to_owned(),
+                    size: payload.len() as u64,
+                    modified_time: 1_600_000_000,
+                }],
                 overwrite_detection: false,
                 total_size: payload.len() as u64,
                 conn_id: 51,
@@ -4703,7 +4733,11 @@ mod tests {
                 path: temp.path.to_string_lossy().into_owned(),
                 id: 72,
                 file_num: 0,
-                files: vec![("incomplete.bin".to_owned(), 0)],
+                files: vec![ipc::CmReceiveFile {
+                    name: "incomplete.bin".to_owned(),
+                    size: 1,
+                    modified_time: 0,
+                }],
                 overwrite_detection: false,
                 total_size: 1,
                 conn_id: 52,
@@ -4742,6 +4776,51 @@ mod tests {
 
     #[cfg(not(target_os = "ios"))]
     #[tokio::test(flavor = "current_thread")]
+    async fn cm_receive_rejects_an_inconsistent_aggregate_size() {
+        let temp = CmFileTestDir::new("size_mismatch");
+        let (tx, mut rx) = cm_egress_channel();
+        let responder = CmFileResponder {
+            tx: &tx,
+            conn_id: 58,
+            cm_auth_token: "token-58",
+        };
+        let mut write_jobs = Vec::new();
+        let mut read_jobs = Vec::new();
+
+        handle_fs(
+            ipc::FS::NewWrite {
+                path: temp.path.to_string_lossy().into_owned(),
+                id: 78,
+                file_num: 0,
+                files: vec![ipc::CmReceiveFile {
+                    name: "incoming.bin".to_owned(),
+                    size: 8,
+                    modified_time: 0,
+                }],
+                overwrite_detection: false,
+                total_size: 9,
+                conn_id: 58,
+                generation: 17,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("reject the inconsistent write request with a typed response");
+        match next_cm_file_test_response(&mut rx).await {
+            ipc::CmFileResponseKind::WriteFailed { error, .. } => {
+                assert!(error.contains("does not match admitted file sizes"));
+            }
+            response => panic!("unexpected write rejection response: {response:?}"),
+        }
+        assert!(write_jobs.is_empty());
+        assert!(!temp.join("incoming.bin.download").exists());
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    #[tokio::test(flavor = "current_thread")]
     async fn r_s11c_4d_cm_peer_error_discards_the_exact_partial_write() {
         let temp = CmFileTestDir::new("peer_error");
         let (tx, mut rx) = cm_egress_channel();
@@ -4758,7 +4837,11 @@ mod tests {
                 path: temp.path.to_string_lossy().into_owned(),
                 id: 74,
                 file_num: 0,
-                files: vec![("failed.bin".to_owned(), 0)],
+                files: vec![ipc::CmReceiveFile {
+                    name: "failed.bin".to_owned(),
+                    size: 7,
+                    modified_time: 0,
+                }],
                 overwrite_detection: false,
                 total_size: 7,
                 conn_id: 53,
@@ -4836,7 +4919,11 @@ mod tests {
                 path: temp.path.to_string_lossy().into_owned(),
                 id: 76,
                 file_num: 0,
-                files: vec![("failed.bin".to_owned(), 0)],
+                files: vec![ipc::CmReceiveFile {
+                    name: "failed.bin".to_owned(),
+                    size: 13,
+                    modified_time: 0,
+                }],
                 overwrite_detection: false,
                 total_size: 13,
                 conn_id: 55,
@@ -4930,7 +5017,11 @@ mod tests {
                 path: temp.path.to_string_lossy().into_owned(),
                 id: 75,
                 file_num: 0,
-                files: vec![("resume.bin".to_owned(), 0)],
+                files: vec![ipc::CmReceiveFile {
+                    name: "resume.bin".to_owned(),
+                    size: 7,
+                    modified_time: 0,
+                }],
                 overwrite_detection: true,
                 total_size: 7,
                 conn_id: 54,

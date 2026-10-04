@@ -3730,6 +3730,9 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
+        'X11_ATOM_NATIVE=pass server_error=BadAtom iterations=32 replies=exact errors=exact enumeration=fused public_callers=explicit' \
+        'production X11 atom query ownership/error finality'
+    require_exact_fixed_receipt \
         'X11_DISPLAY_NATIVE=pass source=production-component xcb=real old=refused screens=2 repeat=32 drop=exact query_error=explicit public_callers=executed allocator_reuse=unclaimed network=none uid=4000 cleanup=joined' \
         'production X11 enumeration native A/B'
     require_exact_fixed_receipt \

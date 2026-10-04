@@ -84,6 +84,8 @@ struct State {
     allocations: Vec<Allocation>,
     queries: usize,
     reject_query: usize,
+    atom_queries: usize,
+    reject_atom_query: usize,
 }
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
@@ -98,7 +100,7 @@ pub mod libc {
     pub unsafe fn free(pointer: *mut c_void) {
         let deferred = super::STATE.with(|state| {
             let mut state = state.borrow_mut();
-            if let Some(entry) = state.allocations.iter_mut().find(|e| e.pointer == pointer) {
+            if let Some(entry) = state.allocations.iter_mut().rev().find(|e| e.pointer == pointer) {
                 assert!(!entry.retired, "reply/error freed twice");
                 entry.retired = true;
                 entry.monitor
@@ -115,6 +117,11 @@ pub mod libc {
 }
 
 extern "C" {
+    #[link_name = "__real_xcb_get_atom_name"]
+    fn real_atom_request(c: *mut xcb_connection_t, atom: u32) -> xcb_get_atom_name_cookie_t;
+    #[link_name = "__real_xcb_get_atom_name_reply"]
+    fn real_atom_reply(c: *mut xcb_connection_t, cookie: xcb_get_atom_name_cookie_t,
+                       error: *mut *mut xcb_generic_error_t) -> *const xcb_get_atom_name_reply_t;
     #[link_name = "__real_xcb_randr_get_monitors"]
     fn real_request(c: *mut xcb_connection_t, root: u32, active: u8) -> xcb_randr_get_monitors_cookie_t;
     #[link_name = "__real_xcb_randr_get_monitors_unchecked"]
@@ -126,6 +133,37 @@ extern "C" {
     fn real_iterator(reply: *const xcb_randr_get_monitors_reply_t) -> xcb_randr_monitor_info_iterator_t;
     #[link_name = "__real_xcb_randr_monitor_info_next"]
     fn real_next(cursor: *mut xcb_randr_monitor_info_iterator_t);
+}
+
+#[no_mangle]
+unsafe extern "C" fn __wrap_xcb_get_atom_name(c: *mut xcb_connection_t, atom: u32)
+    -> xcb_get_atom_name_cookie_t {
+    let atom = STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        state.atom_queries += 1;
+        if state.atom_queries == state.reject_atom_query { u32::MAX } else { atom }
+    });
+    real_atom_request(c, atom)
+}
+
+#[no_mangle]
+unsafe extern "C" fn __wrap_xcb_get_atom_name_reply(c: *mut xcb_connection_t,
+    cookie: xcb_get_atom_name_cookie_t, error: *mut *mut xcb_generic_error_t)
+    -> *const xcb_get_atom_name_reply_t {
+    let reply = real_atom_reply(c, cookie, error);
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if !reply.is_null() {
+            state.allocations.push(Allocation { pointer: reply.cast_mut().cast(),
+                bytes: 0, monitor: false, retired: false });
+        }
+        if !error.is_null() && !(*error).is_null() {
+            assert_eq!((**error).error_code, 5, "not an actual server BadAtom response");
+            state.allocations.push(Allocation { pointer: (*error).cast(),
+                bytes: 36, monitor: false, retired: false });
+        }
+    });
+    reply
 }
 
 fn request_root(root: u32) -> u32 {
@@ -199,6 +237,8 @@ fn finish_case(reject: usize) {
         }
         state.queries = 0;
         state.reject_query = reject;
+        state.atom_queries = 0;
+        state.reject_atom_query = 0;
     });
 }
 
@@ -213,7 +253,31 @@ fn main() -> io::Result<()> {
     }
     #[cfg(corrected)]
     {
-        if scenario == "reject" {
+        if scenario == "atom-reject" {
+            for _ in 0..32 {
+                STATE.with(|state| state.borrow_mut().reject_atom_query = 1);
+                let mut iter = x11::Server::displays(Rc::clone(&server));
+                let result = iter.next().expect("explicit atom result");
+                if result.is_ok() {
+                    let leaked = STATE.with(|state| state.borrow().allocations.iter()
+                        .filter(|entry| !entry.monitor && !entry.retired).count());
+                    eprintln!("X11_ATOM_OLD_FAILURE=accepted-query-rejection leaked_errors={leaked}");
+                    return Err(io::Error::new(io::ErrorKind::Other, "BadAtom became a successful Display"));
+                }
+                assert!(iter.next().is_none() && iter.next().is_none());
+                STATE.with(|state| assert!(state.borrow().allocations.iter().all(|e| e.retired),
+                                          "atom failure did not retire every reply/error"));
+                drop(iter);
+                finish_case(0);
+            }
+            STATE.with(|state| state.borrow_mut().reject_atom_query = 2);
+            assert!(common::Display::all().is_err(), "second-root BadAtom became partial success");
+            finish_case(0);
+            STATE.with(|state| state.borrow_mut().reject_atom_query = 1);
+            assert!(common::Display::primary().is_err(), "primary hid BadAtom");
+            finish_case(0);
+            println!("X11_ATOM_NATIVE=pass server_error=BadAtom iterations=32 replies=exact errors=exact enumeration=fused public_callers=explicit");
+        } else if scenario == "reject" {
             let mut iter = x11::Server::displays(server);
             assert!(iter.next().expect("explicit query result").is_err());
             assert!(iter.next().is_none() && iter.next().is_none());

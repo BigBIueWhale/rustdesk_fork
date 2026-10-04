@@ -45,6 +45,8 @@ def main():
         for symbol in ("get_monitors", "get_monitors_unchecked", "get_monitors_reply",
                        "get_monitors_monitors_iterator", "monitor_info_next"):
             command += ["-C", f"link-arg=-Wl,--wrap=xcb_randr_{symbol}"]
+        for symbol in ("xcb_get_atom_name", "xcb_get_atom_name_reply"):
+            command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
         subprocess.run(command, env=environment, check=True, timeout=30)
         binaries[variant] = binary
         print(f"X11_DISPLAY_NATIVE_BUILD variant={variant} sha256="
@@ -68,6 +70,8 @@ def main():
                 print(old.stderr.strip(), flush=True)
                 subprocess.run([str(binaries["corrected"]), scenario], env=environment,
                                check=True, timeout=15)
+            subprocess.run([str(binaries["corrected"]), "atom-reject"], env=environment,
+                           check=True, timeout=15)
             require(child.poll() is None, "Xvfb exited during native cases")
         except BaseException:
             log.flush()

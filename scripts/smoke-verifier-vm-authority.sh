@@ -3737,6 +3737,9 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
+        'X11_SETUP_NATIVE=pass received_header=injected rejected_shapes=7 repeats=16 old_cursor=admitted monitor_queries=0 screens=server-real network=none' \
+        'production X11 setup-record bounds before monitor requests'
+    require_exact_fixed_receipt \
         'X11_LAYOUT_NATIVE=pass xvfb_depths=24,16 stride_16_odd=1284 pixels=actual capture=production-shm public=production-buffer network=none uid=4000 cleanup=joined' \
         'production X11 capture layout and actual pixels'
     require_exact_fixed_receipt \

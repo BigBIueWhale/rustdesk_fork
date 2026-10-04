@@ -47,7 +47,7 @@ def main():
         for symbol in ("get_monitors", "get_monitors_unchecked", "get_monitors_reply",
                        "get_monitors_monitors_iterator", "monitor_info_next"):
             command += ["-C", f"link-arg=-Wl,--wrap=xcb_randr_{symbol}"]
-        for symbol in ("xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_atom_name_name", "xcb_get_geometry_reply"):
+        for symbol in ("xcb_get_setup", "xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_atom_name_name", "xcb_get_geometry_reply"):
             command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
         subprocess.run(command, env=environment, check=True, timeout=30)
         binaries[variant] = binary
@@ -76,6 +76,17 @@ def main():
                            check=True, timeout=15)
             subprocess.run([str(binaries["corrected"]), "atom-name"], env=environment,
                            check=True, timeout=15)
+            for scenario in ("setup-short", "setup-vendor", "setup-formats", "setup-roots",
+                             "setup-depths", "setup-visuals", "setup-trailing"):
+                result = subprocess.run([str(binaries["corrected"]), scenario], env=environment,
+                                        capture_output=True, text=True, timeout=15)
+                old_cursor = " old_cursor=admitted" if scenario == "setup-short" else ""
+                expected = (f"X11_SETUP_NATIVE=pass scenario={scenario} repeats=16 "
+                            f"monitor_queries=0 enumeration=fused{old_cursor}")
+                require(result.returncode == 0 and result.stdout.splitlines() == [expected]
+                        and not result.stderr and len(result.stdout) <= 4096,
+                        f"malformed setup case differs: {scenario}: {result}")
+                print(expected, flush=True)
             failures = 0
             for scenario in ("bounds-atom-length", "bounds-atom-padding", "bounds-mon-count",
                              "bounds-mon-length", "bounds-mon-total", "bounds-mon-span", "bounds-mon-sum"):
@@ -100,6 +111,8 @@ def main():
                            check=True, timeout=15)
             print("X11_BOUNDS_NATIVE=pass received_header=injected rejected_shapes=7 repeats=32 "
                   "enumeration=fused public_callers=explicit valid_outputless=injected screens=server-real replies=exact", flush=True)
+            print("X11_SETUP_NATIVE=pass received_header=injected rejected_shapes=7 repeats=16 "
+                  "old_cursor=admitted monitor_queries=0 screens=server-real network=none", flush=True)
             require(child.poll() is None, "Xvfb exited during native cases")
         except BaseException:
             log.flush()

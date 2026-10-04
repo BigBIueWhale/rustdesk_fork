@@ -35,12 +35,20 @@ mod x11 {
     pub mod ffi {
         pub use super::production_ffi::*;
         #[repr(C)]
+        pub struct xcb_screen_iterator_t {
+            pub data: *mut xcb_screen_t,
+            pub rem: i32,
+            pub index: i32,
+        }
+        #[repr(C)]
         pub struct xcb_randr_monitor_info_iterator_t {
             pub data: *mut xcb_randr_monitor_info_t,
             pub rem: i32,
             pub index: i32,
         }
         extern "C" {
+            pub fn xcb_setup_roots_iterator(r: *const xcb_setup_t) -> xcb_screen_iterator_t;
+            pub fn xcb_screen_next(i: *mut xcb_screen_iterator_t);
             pub fn xcb_get_geometry_unchecked(c: *mut xcb_connection_t, drawable: xcb_drawable_t)
                 -> xcb_get_geometry_cookie_t;
             pub fn xcb_get_geometry_reply(c: *mut xcb_connection_t, cookie: xcb_get_geometry_cookie_t,
@@ -180,6 +188,7 @@ struct State {
     malformed_query: usize,
     bad_atom_reply: usize,
     bad_monitor_reply: usize,
+    malformed_setup: u8,
 }
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
@@ -225,6 +234,8 @@ macro_rules! warn { ($($arg:tt)*) => { eprintln!($($arg)*); } }
 pub mod log { pub use crate::warn; }
 
 extern "C" {
+    #[link_name = "__real_xcb_get_setup"]
+    fn real_setup(c: *mut xcb_connection_t) -> *const xcb_setup_t;
     fn xcb_intern_atom(c: *mut xcb_connection_t, only_if_exists: u8,
                        name_len: u16, name: *const u8) -> InternAtomCookie;
     fn xcb_intern_atom_reply(c: *mut xcb_connection_t, cookie: InternAtomCookie,
@@ -255,6 +266,36 @@ extern "C" {
     fn real_iterator(reply: *const xcb_randr_get_monitors_reply_t) -> xcb_randr_monitor_info_iterator_t;
     #[link_name = "__real_xcb_randr_monitor_info_next"]
     fn real_next(cursor: *mut xcb_randr_monitor_info_iterator_t);
+}
+
+#[no_mangle]
+unsafe extern "C" fn __wrap_xcb_get_setup(c: *mut xcb_connection_t) -> *const xcb_setup_t {
+    let setup = real_setup(c);
+    let fault = STATE.with(|state| state.borrow().malformed_setup);
+    if setup.is_null() || fault == 0 {
+        return setup;
+    }
+    let header = &mut *setup.cast_mut();
+    assert_eq!(header.status, 1);
+    assert_eq!(header.roots_len, 2);
+    let vendor = (usize::from(header.vendor_len) + 3) & !3;
+    let screen = setup.cast::<u8>().add(40 + vendor + usize::from(header.pixmap_formats_len) * 8)
+        .cast::<xcb_screen_t>().cast_mut();
+    match fault {
+        1 => header.length = 7,
+        2 => header.vendor_len = u16::MAX,
+        3 => header.pixmap_formats_len = u8::MAX,
+        4 => header.roots_len = u8::MAX,
+        5 => (*screen).allowed_depths_len = u8::MAX,
+        6 => {
+            assert!((*screen).allowed_depths_len > 0);
+            let depth = screen.cast::<u8>().add(40).cast::<xcb_depth_t>();
+            (*depth).visuals_len = u16::MAX;
+        }
+        7 => header.roots_len = 0,
+        _ => unreachable!("unknown X setup fault"),
+    }
+    setup
 }
 
 #[repr(C)]
@@ -492,6 +533,7 @@ fn finish_case(reject: usize) {
         state.malformed_query = 0;
         state.bad_atom_reply = 0;
         state.bad_monitor_reply = 0;
+        state.malformed_setup = 0;
     });
 }
 
@@ -508,6 +550,40 @@ fn configure_bounds(atom: u8, monitor: u8, query: usize) {
 fn main() -> io::Result<()> {
     let scenario = std::env::args().nth(1).expect("scenario");
     finish_case(if scenario == "reject" { 1 } else { 0 });
+    #[cfg(corrected)]
+    if let Some(fault) = match scenario.as_str() {
+        "setup-short" => Some(1),
+        "setup-vendor" => Some(2),
+        "setup-formats" => Some(3),
+        "setup-roots" => Some(4),
+        "setup-depths" => Some(5),
+        "setup-visuals" => Some(6),
+        "setup-trailing" => Some(7),
+        _ => None,
+    } {
+        for _ in 0..16 {
+            STATE.with(|state| state.borrow_mut().malformed_setup = fault);
+            let server = x11::Server::default().map_err(|_| io::ErrorKind::ConnectionRefused)?;
+            if fault == 1 {
+                // The former generated cursor ignores the setup length. The actual
+                // allocation is still intact, so this comparison does not read past it.
+                let old = unsafe { xcb_setup_roots_iterator(server.setup()) };
+                assert_eq!(old.rem, 2, "old XCB cursor unexpectedly checked setup length");
+                assert!(!old.data.is_null());
+            }
+            let mut displays = x11::Server::displays(server);
+            let error = displays.next().expect("malformed setup result")
+                .expect_err("malformed setup accepted");
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            assert!(displays.next().is_none());
+            STATE.with(|state| assert_eq!(state.borrow().queries, 0,
+                "malformed setup reached a monitor request"));
+            finish_case(0);
+        }
+        let old_cursor = if fault == 1 { " old_cursor=admitted" } else { "" };
+        println!("X11_SETUP_NATIVE=pass scenario={scenario} repeats=16 monitor_queries=0 enumeration=fused{old_cursor}");
+        return Ok(());
+    }
     let server = x11::Server::default().map_err(|_| io::ErrorKind::ConnectionRefused)?;
     #[cfg(not(corrected))]
     {

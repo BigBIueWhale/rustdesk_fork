@@ -12,10 +12,18 @@ use super::ffi::*;
 use super::{Display, Rect, Server};
 
 pub struct DisplayIter {
-    outer: xcb_screen_iterator_t,
+    screens: Vec<RootScreen>,
+    next_screen: usize,
+    setup_error: Option<io::Error>,
     inner: Option<ScreenMonitors>,
     server: Rc<Server>,
     failed: bool,
+}
+
+#[derive(Clone, Copy)]
+struct RootScreen {
+    root: xcb_window_t,
+    format: RootFormat,
 }
 
 struct ScreenMonitors {
@@ -139,35 +147,32 @@ unsafe fn checked_reply<T>(
 
 impl DisplayIter {
     pub unsafe fn new(server: Rc<Server>) -> DisplayIter {
+        let (screens, setup_error) = match parse_setup(server.setup()) {
+            Ok(screens) => (screens, None),
+            Err(error) => (Vec::new(), Some(error)),
+        };
         DisplayIter {
-            outer: xcb_setup_roots_iterator(server.setup()),
+            screens,
+            next_screen: 0,
+            setup_error,
             inner: None,
             server,
             failed: false,
         }
     }
 
-    fn next_screen(
-        outer: &mut xcb_screen_iterator_t,
-        server: &Server,
-    ) -> io::Result<Option<ScreenMonitors>> {
-        if outer.rem == 0 {
-            return Ok(None);
-        }
-
+    fn next_screen(&mut self) -> io::Result<Option<ScreenMonitors>> {
+        let screen = match self.screens.get(self.next_screen) {
+            Some(screen) => *screen,
+            None => return Ok(None),
+        };
         unsafe {
-            if outer.data.is_null() {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "X screen is missing"));
-            }
-            let root = (*outer.data).root;
-            let format = root_format(server.setup(), outer.data)?;
-
-            let cookie = xcb_randr_get_monitors(server.raw(), root, 1);
+            let cookie = xcb_randr_get_monitors(self.server.raw(), screen.root, 1);
             let mut error = ptr::null_mut();
-            let response = xcb_randr_get_monitors_reply(server.raw(), cookie, &mut error);
+            let response = xcb_randr_get_monitors_reply(self.server.raw(), cookie, &mut error);
             let reply = checked_reply(response, error, "RandR GetMonitors")?;
-            let monitors = ScreenMonitors::new(reply, root, format)?;
-            xcb_screen_next(outer);
+            let monitors = ScreenMonitors::new(reply, screen.root, screen.format)?;
+            self.next_screen += 1;
             Ok(Some(monitors))
         }
     }
@@ -179,6 +184,10 @@ impl Iterator for DisplayIter {
     fn next(&mut self) -> Option<Self::Item> {
         if self.failed {
             return None;
+        }
+        if let Some(error) = self.setup_error.take() {
+            self.failed = true;
+            return Some(Err(error));
         }
         loop {
             if let Some(ref mut screen) = self.inner {
@@ -216,7 +225,7 @@ impl Iterator for DisplayIter {
 
             // Retire the current reply before acquiring the next screen's reply.
             self.inner = None;
-            match Self::next_screen(&mut self.outer, &self.server) {
+            match self.next_screen() {
                 Ok(Some(screen)) => self.inner = Some(screen),
                 Ok(None) => return None,
                 Err(error) => {
@@ -279,61 +288,92 @@ fn classify_format(
     }
 }
 
-unsafe fn root_format(setup: *const xcb_setup_t, screen: *const xcb_screen_t) -> io::Result<RootFormat> {
-    if setup.is_null() || screen.is_null() {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "X setup is missing"));
-    }
-    let screen = &*screen;
-    let mut selected = None;
-    let mut formats = xcb_setup_pixmap_formats_iterator(setup);
-    while formats.rem > 0 {
-        if formats.data.is_null() {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "X pixmap format is missing"));
+struct SetupReader<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl SetupReader<'_> {
+    fn skip(&mut self, length: usize) -> io::Result<()> {
+        let end = self.offset.checked_add(length)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "X setup offset overflow"))?;
+        if end > self.bytes.len() {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "X setup record exceeds reply"));
         }
-        let format = &*formats.data;
-        if format.depth == screen.root_depth {
-            if selected.replace((format.bits_per_pixel, format.scanline_pad)).is_some() {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "duplicate X root pixmap format"));
-            }
-        }
-        xcb_format_next(&mut formats);
-    }
-    let (bits_per_pixel, scanline_pad) = selected
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "X root pixmap format is missing"))?;
-    if !matches!(scanline_pad, 8 | 16 | 32) {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid X scanline padding"));
+        self.offset = end;
+        Ok(())
     }
 
-    let mut visual = None;
-    let mut depths = xcb_screen_allowed_depths_iterator(screen);
-    while depths.rem > 0 {
-        if depths.data.is_null() {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "X depth is missing"));
-        }
-        let depth = &*depths.data;
-        if depth.depth == screen.root_depth {
-            let mut visuals = xcb_depth_visuals_iterator(depth);
-            while visuals.rem > 0 {
-                if visuals.data.is_null() {
-                    return Err(io::Error::new(io::ErrorKind::InvalidData, "X visual is missing"));
-                }
-                let candidate = &*visuals.data;
-                if candidate.visual_id == screen.root_visual {
-                    if visual.replace((candidate.class, candidate.red_mask, candidate.green_mask, candidate.blue_mask)).is_some() {
+    // Every caller uses a repr(C) XCB wire structure made only of integer fields.
+    unsafe fn record<T>(&mut self) -> io::Result<T> {
+        let start = self.offset;
+        self.skip(size_of::<T>())?;
+        Ok(ptr::read_unaligned(self.bytes.as_ptr().add(start).cast::<T>()))
+    }
+}
+
+unsafe fn parse_setup(setup: *const xcb_setup_t) -> io::Result<Vec<RootScreen>> {
+    if setup.is_null() {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "X setup is missing"));
+    }
+    // XCB owns an eight-byte response prefix plus exactly length four-byte units.
+    // Check that prefix before reading the forty-byte success header.
+    let prefix = ptr::read_unaligned(setup.cast::<xcb_setup_prefix_t>());
+    let total = 8usize + usize::from(prefix.length) * 4;
+    if prefix.status != 1 || total < size_of::<xcb_setup_t>() {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid X setup header"));
+    }
+    let bytes = std::slice::from_raw_parts(setup.cast::<u8>(), total);
+    let mut reader = SetupReader { bytes, offset: 0 };
+    let header: xcb_setup_t = reader.record()?;
+    reader.skip((usize::from(header.vendor_len) + 3) & !3)?;
+
+    let mut formats = Vec::with_capacity(usize::from(header.pixmap_formats_len));
+    for _ in 0..header.pixmap_formats_len {
+        formats.push(reader.record::<xcb_format_t>()?);
+    }
+    let mut screens = Vec::with_capacity(usize::from(header.roots_len));
+    for _ in 0..header.roots_len {
+        let screen: xcb_screen_t = reader.record()?;
+        let mut visual = None;
+        for _ in 0..screen.allowed_depths_len {
+            let depth: xcb_depth_t = reader.record()?;
+            for _ in 0..depth.visuals_len {
+                let candidate: xcb_visualtype_t = reader.record()?;
+                if depth.depth == screen.root_depth && candidate.visual_id == screen.root_visual {
+                    if visual.replace(candidate).is_some() {
                         return Err(io::Error::new(io::ErrorKind::InvalidData, "duplicate X root visual"));
                     }
                 }
-                xcb_visualtype_next(&mut visuals);
             }
         }
-        xcb_depth_next(&mut depths);
+        let visual = visual.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "X root visual is missing"))?;
+        if visual.class != XCB_VISUAL_CLASS_TRUE_COLOR {
+            return Err(io::Error::new(io::ErrorKind::Unsupported, "X root visual is not TrueColor"));
+        }
+        let mut format = None;
+        for candidate in &formats {
+            if candidate.depth == screen.root_depth {
+                if format.replace((candidate.bits_per_pixel, candidate.scanline_pad)).is_some() {
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, "duplicate X root pixmap format"));
+                }
+            }
+        }
+        let (bits_per_pixel, scanline_pad) = format
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "X root pixmap format is missing"))?;
+        if !matches!(scanline_pad, 8 | 16 | 32) {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid X scanline padding"));
+        }
+        let pixfmt = classify_format(header.image_byte_order, screen.root_depth, bits_per_pixel,
+            visual.red_mask, visual.green_mask, visual.blue_mask)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "unsupported X root pixel layout"))?;
+        screens.push(RootScreen {
+            root: screen.root,
+            format: RootFormat { pixfmt, scanline_pad, depth: screen.root_depth, visual: screen.root_visual },
+        });
     }
-    let (class, red, green, blue) = visual
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "X root visual is missing"))?;
-    if class != XCB_VISUAL_CLASS_TRUE_COLOR {
-        return Err(io::Error::new(io::ErrorKind::Unsupported, "X root visual is not TrueColor"));
+    if reader.offset != bytes.len() {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "X setup layout differs from reply length"));
     }
-    let pixfmt = classify_format((*setup).image_byte_order, screen.root_depth, bits_per_pixel, red, green, blue)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "unsupported X root pixel layout"))?;
-    Ok(RootFormat { pixfmt, scanline_pad, depth: screen.root_depth, visual: screen.root_visual })
+    Ok(screens)
 }

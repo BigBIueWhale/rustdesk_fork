@@ -14,22 +14,6 @@ extern "C" {
 
     pub fn xcb_get_setup(c: *mut xcb_connection_t) -> *const xcb_setup_t;
 
-    pub fn xcb_setup_roots_iterator(r: *const xcb_setup_t) -> xcb_screen_iterator_t;
-
-    pub fn xcb_setup_pixmap_formats_iterator(r: *const xcb_setup_t) -> xcb_format_iterator_t;
-
-    pub fn xcb_format_next(i: *mut xcb_format_iterator_t);
-
-    pub fn xcb_screen_next(i: *mut xcb_screen_iterator_t);
-
-    pub fn xcb_screen_allowed_depths_iterator(r: *const xcb_screen_t) -> xcb_depth_iterator_t;
-
-    pub fn xcb_depth_next(i: *mut xcb_depth_iterator_t);
-
-    pub fn xcb_depth_visuals_iterator(r: *const xcb_depth_t) -> xcb_visualtype_iterator_t;
-
-    pub fn xcb_visualtype_next(i: *mut xcb_visualtype_iterator_t);
-
     pub fn xcb_generate_id(c: *mut xcb_connection_t) -> u32;
 
     pub fn xcb_shm_attach_checked(
@@ -134,6 +118,17 @@ pub struct xcb_get_atom_name_reply_t {
 const _: [(); 32] = [(); std::mem::size_of::<xcb_get_atom_name_reply_t>()];
 
 #[repr(C)]
+pub struct xcb_setup_prefix_t {
+    pub status: u8,
+    pub pad0: u8,
+    pub protocol_major_version: u16,
+    pub protocol_minor_version: u16,
+    pub length: u16,
+}
+
+const _: [(); 8] = [(); std::mem::size_of::<xcb_setup_prefix_t>()];
+
+#[repr(C)]
 pub struct xcb_setup_t {
     pub status: u8,
     pub pad0: u8,
@@ -157,12 +152,7 @@ pub struct xcb_setup_t {
     pub pad1: [u8; 4],
 }
 
-#[repr(C)]
-pub struct xcb_screen_iterator_t {
-    pub data: *mut xcb_screen_t,
-    pub rem: i32,
-    pub index: i32,
-}
+const _: [(); 40] = [(); std::mem::size_of::<xcb_setup_t>()];
 
 #[repr(C)]
 pub struct xcb_format_t {
@@ -172,12 +162,7 @@ pub struct xcb_format_t {
     pub pad0: [u8; 5],
 }
 
-#[repr(C)]
-pub struct xcb_format_iterator_t {
-    pub data: *mut xcb_format_t,
-    pub rem: i32,
-    pub index: i32,
-}
+const _: [(); 8] = [(); std::mem::size_of::<xcb_format_t>()];
 
 #[repr(C)]
 pub struct xcb_visualtype_t {
@@ -191,12 +176,7 @@ pub struct xcb_visualtype_t {
     pub pad0: [u8; 4],
 }
 
-#[repr(C)]
-pub struct xcb_visualtype_iterator_t {
-    pub data: *mut xcb_visualtype_t,
-    pub rem: i32,
-    pub index: i32,
-}
+const _: [(); 24] = [(); std::mem::size_of::<xcb_visualtype_t>()];
 
 #[repr(C)]
 pub struct xcb_depth_t {
@@ -206,12 +186,7 @@ pub struct xcb_depth_t {
     pub pad1: [u8; 4],
 }
 
-#[repr(C)]
-pub struct xcb_depth_iterator_t {
-    pub data: *mut xcb_depth_t,
-    pub rem: i32,
-    pub index: i32,
-}
+const _: [(); 8] = [(); std::mem::size_of::<xcb_depth_t>()];
 
 #[repr(C)]
 pub struct xcb_screen_t {
@@ -232,6 +207,8 @@ pub struct xcb_screen_t {
     pub root_depth: u8,
     pub allowed_depths_len: u8,
 }
+
+const _: [(); 40] = [(); std::mem::size_of::<xcb_screen_t>()];
 
 #[repr(C)]
 pub struct xcb_randr_monitor_info_t {

@@ -2946,6 +2946,7 @@ run_cm_file_replay() {
     local inputs=/mnt/rustdesk-sealed-inputs
     local source_root=$ROOT/cm-file-replay-source
     local target=$ROOT/cm-file-replay-target
+    local flat=$ROOT/cm-file-replay-flat
     local work=$ROOT/cm-file-replay-work
     local machine_id=$work/server.machine-id
     local machine_id_value=727573746465736b2d73657276657231
@@ -3061,11 +3062,16 @@ run_cm_file_replay() {
         || fail 'CM file build left a container'
     [ "$(stat -c '%u:%g:%a:%h' -- "$target/android-peer-manifest.sha256")" = 1000:1000:444:1 ] \
         || fail 'CM file build manifest metadata differs'
+    install -d -o 1000 -g 1000 -m 0700 "$flat" "$flat/debug" "$flat/debug/examples"
     local relative mode
     while read -r relative mode; do
         [ -f "$target/$relative" ] && [ ! -L "$target/$relative" ] \
-            && [ "$(stat -c '%u:%g:%a:%h' -- "$target/$relative")" = "1000:1000:$mode:1" ] \
+            && [ "$(stat -c '%u:%g:%a' -- "$target/$relative")" = "1000:1000:$mode" ] \
             || fail "CM file build artifact authority differs: $relative"
+        install -o 1000 -g 1000 -m 0555 -- "$target/$relative" "$flat/$relative"
+        [ "$(stat -c '%u:%g:%a:%h' -- "$flat/$relative")" = 1000:1000:555:1 ] \
+            && cmp -s -- "$target/$relative" "$flat/$relative" \
+            || fail "CM file replay copy differs: $relative"
     done <<'LAYOUT'
 debug/rustdesk 755
 debug/examples/seed_password 755
@@ -3096,7 +3102,7 @@ LAYOUT
         --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
         --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m \
         --mount "type=bind,source=$source_root,target=/work,readonly,bind-recursive=disabled" \
-        --mount "type=bind,source=$target,target=/smoke-target,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$flat,target=/smoke-target,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$machine_id,target=/etc/machine-id,readonly,bind-recursive=disabled" \
         --workdir /work "$DEV_CHECK_IMAGE_CONFIG_ID" \
         /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh cm-file-replay)"
@@ -3134,6 +3140,19 @@ LAYOUT
         && [ "$(sha256sum "$target/android-peer-manifest.sha256" | awk '{ print $1 }')" = "$manifest_sha" ] \
         && (cd "$target" && sha256sum --check --status android-peer-manifest.sha256) \
         || fail 'CM file replay source or build changed during execution'
+    while read -r relative mode; do
+        [ "$(stat -c '%u:%g:%a:%h' -- "$flat/$relative")" = 1000:1000:555:1 ] \
+            && cmp -s -- "$target/$relative" "$flat/$relative" \
+            || fail "CM file replay copy changed: $relative"
+    done <<'LAYOUT'
+debug/rustdesk 755
+debug/examples/seed_password 755
+debug/examples/probe_client 755
+debug/examples/smoke_readiness 755
+flutter-peer-source-x11 555
+smoke-bind-loopback.so 555
+smoke-server-launcher 555
+LAYOUT
     "$CLIENT" --host "unix://$SOCK" image rm "$DEV_CHECK_IMAGE_CONFIG_ID" >/dev/null
     stop_docker_authority
     umount "$inputs" || fail 'cannot retire CM file sealed input mount'

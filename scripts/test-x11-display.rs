@@ -248,7 +248,7 @@ unsafe extern "C" fn __wrap_xcb_get_atom_name_reply(c: *mut xcb_connection_t,
                 // Xorg truncates interned NUL names. Exercise the protocol-valid byte
                 // separately by modifying one byte of an actual 12-byte XCB reply.
                 assert_eq!(xcb_get_atom_name_name_length(reply), 12);
-                *xcb_get_atom_name_name(reply).cast_mut().add(7) = 0;
+                *real_atom_bytes(reply).cast_mut().add(7) = 0;
             }
             if state.malformed_atom != 0 && state.atom_queries == state.malformed_query {
                 let header = &mut *reply.cast::<AtomNameHeader>().cast_mut();

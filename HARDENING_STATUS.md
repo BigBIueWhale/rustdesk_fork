@@ -571,21 +571,33 @@ Android/Windows cause, or LPE closure. The inherited geometry/pixel-format
 fallback remains an uncorrected source risk: correct selection must derive
 byte order, pixmap bits-per-pixel, root visual masks and padded row stride,
 not infer layout from depth alone or replace failure with BGRA.
-Reply-payload bounds also remain OPEN: atom-name and variable monitor/output
-lengths require validation against the owned reply's byte extent before unsafe
-slice/cursor access. A source candidate now checks the complete RandR aggregate
-and nested spans before reading an owned reply by offset, and checks exact
-padded atom-name length before constructing its slice. Native acceptance is
-pending; ownership alone never established those bounds.
-The focused native fixture now exercises seven received-header injections,
-controlled old-code refusal before unsafe access, and a valid outputless shape
-injected into an actual XCB reply while both Xvfb screens stay real. Its seven
-controlled before-cases fail on the previous unchecked access; all seven
-source-candidate after-cases passed 32 repetitions and both public callers.
-The earlier SetMonitor-based positive
-fixture failed locally with XCB request-length error 4 and was removed; the
-replacement positive case and full transaction are not yet accepted. The
-injection is not a hostile-server or LPE reproduction.
+
+**X11 reply-payload bounds — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
+The previous GetAtomName accessor and RandR monitor cursor trusted nested
+lengths after reply ownership was fixed. Production now checks the exact
+32-byte atom header and padded name payload before making a slice, and checks
+the RandR aggregate length plus every monitor/output span before an owned
+reply's checked offset cursor reads a monitor. Obsolete generated cursor/name
+accessors are absent from production FFI. Exact source
+`5354638ff50c3d6ea1a6563588c15ce8258fed87`, tree
+`5b94fe5802d6f0d54a2b426906dfb923d6c86fbe`, passed the 46-second
+zero-NIC focused transaction. Seven actual-XCB-reply header injections stopped
+the previous code at guarded unchecked access (atom exit 44, monitor exit 45)
+before any uncontrolled out-of-bounds read. Corrected code rejected each
+shape for 32 repetitions with exact reply/error retirement, fused enumeration,
+and both public callers including second-root refusal. An internally coherent
+zero-output shape injected into an actual reply passed alongside both real
+Xvfb screens. Host listener inventories had no additions or pre-existing
+process drift; guest/VM owners joined and the successful scratch root
+self-retired. Raw serial is `evidence/x11-bounds-after-5354638f.serial.log`
+(71,124 bytes, SHA-256
+`08a63758d607d648ee36cb7b720366d77bde44ac402af368b1bc52d59f51dff0`).
+The abandoned SetMonitor-based positive fixture closed its XCB connection
+locally with request-length error 4 before server mutation and is not counted
+as a server-created monitor result. This is instrumented component evidence,
+not a hostile-server wire reproduction, full-product capture, proof of
+installed-service behavior, the original Android/Windows display cause, or
+LPE closure. The geometry/pixel-format fallback above remains OPEN separately.
 
 **X11 atom-query finality — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
 The production helper returned an empty name when GetAtomName failed and leaked

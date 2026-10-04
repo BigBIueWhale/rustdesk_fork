@@ -352,6 +352,10 @@ readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
 # Keep one authenticated session across intervals below, within, and beyond the
 # reported roughly ten-second focus-loss delay window.
 readonly -a PEER_BACKGROUND_SECONDS=(2 6 12)
+# Probe a retained outgoing connection beyond the earlier short lifecycle schedule.
+# Each window still uses the independent source-bound framebuffer freshness oracle.
+readonly PEER_WARM_HOLD_SAMPLES=6
+readonly PEER_WARM_HOLD_INTERVAL_SECONDS=20
 readonly PEER_TASK_REPLACEMENT_CYCLES=6
 readonly PEER_WARM_RECONNECT_CYCLES=6
 readonly LIFECYCLE_TASK_REMOVAL_CYCLES=2
@@ -3540,6 +3544,43 @@ open_peer_connection() {
     wait_peer_server_connections 1 exact
 }
 
+exercise_peer_warm_hold() {
+    local sample phase task_before keyed_before elapsed_ms started_ms
+    task_before="$(current_app_task_id)" \
+        || fail 'the warm hold cannot bind the current Activity task'
+    keyed_before="$(peer_server_keyed_session_count)"
+    [[ "$keyed_before" =~ ^[1-9][0-9]*$ ]] \
+        || fail 'the warm hold cannot bind the current keyed peer count'
+    wait_peer_server_connections 1 exact \
+        || fail 'the warm hold has no exact peer connection'
+    started_ms="$(monotonic_millis)" \
+        || fail 'the warm hold cannot read the monotonic clock'
+    for sample in $(seq 1 "$PEER_WARM_HOLD_SAMPLES"); do
+        sleep "$PEER_WARM_HOLD_INTERVAL_SECONDS"
+        phase="warm-hold-$sample"
+        [ "$(current_app_task_id)" = "$task_before" ] \
+            && [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$APP_PID" ] \
+            && assert_main_service \
+            && [ "$(peer_server_keyed_session_count)" = "$keyed_before" ] \
+            && wait_peer_server_connections 1 exact \
+            || fail "$phase lost its task, process, service, or exact peer connection"
+        capture_peer_freshness "$phase"
+        [ "$PEER_FRESHNESS_MAX_MS" -le "$PEER_FRESHNESS_LIMIT_MS" ] \
+            || fail "$phase exceeded the independent pixel-age limit"
+    done
+    assert_main_service_log_cardinality \
+        "$(adb_shell_value logcat -d -v brief)" warm-hold 1 0 \
+        || fail 'the warm hold replaced the controlled service generation'
+    elapsed_ms="$(monotonic_millis)" \
+        || fail 'the warm hold cannot finish its monotonic measurement'
+    elapsed_ms=$((elapsed_ms - started_ms))
+    [ "$elapsed_ms" -ge "$((PEER_WARM_HOLD_SAMPLES * PEER_WARM_HOLD_INTERVAL_SECONDS * 1000))" ] \
+        && [ "$elapsed_ms" -le 240000 ] \
+        || fail 'the warm hold duration differs from its bounded schedule'
+    printf 'ANDROID_PEER_WARM_HOLD=pass samples=%s interval_seconds=%s elapsed_ms=%s task=stable process=stable service=foreground-preserved keyed_sessions=unchanged peer_connections=1 pixels=fresh-changing\n' \
+        "$PEER_WARM_HOLD_SAMPLES" "$PEER_WARM_HOLD_INTERVAL_SECONDS" "$elapsed_ms"
+}
+
 exercise_peer_warm_reconnect() {
     local cycle=$1 phase= task_before= lifecycle_log=
     [[ "$cycle" =~ ^[1-9][0-9]*$ ]] \
@@ -4017,6 +4058,7 @@ PY
                     "$APP_PID" "$background_cycle" "$background_seconds"
             done
             record_peer_process_resources baseline 0
+            exercise_peer_warm_hold
             for warm_cycle in $(seq 1 "$PEER_WARM_RECONNECT_CYCLES"); do
                 exercise_peer_warm_reconnect "$warm_cycle"
             done

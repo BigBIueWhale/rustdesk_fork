@@ -131,6 +131,7 @@ events = {
     b"ANDROID_PEER_CONNECTION_READY", b"ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT",
     b"ANDROID_PEER_CREDENTIAL_RECOVERY", b"ANDROID_PEER_PRESENTATION_STAGE",
     b"ANDROID_PEER_FRESHNESS", b"ANDROID_PEER_RESOURCE_SAMPLE",
+    b"ANDROID_PEER_WARM_HOLD",
 }
 
 def forward(line):
@@ -1165,12 +1166,12 @@ mapfile -t renderer_receipts < <(grep -E \
 [ "$(grep -c '^ANDROID_EMULATOR_RENDERER=' "$RUNTIME_LOG")" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android renderer receipt is malformed or duplicated'; }
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
-readonly peer_presentation_phase_pattern='(initial|background-resume-1-2s|background-resume-2-6s|background-resume-3-12s|warm-reconnect-[1-6]|task-relaunch-[1-6])'
-readonly peer_presentation_phase_inventory=$'background-resume-1-2s\nbackground-resume-2-6s\nbackground-resume-3-12s\ninitial\ntask-relaunch-1\ntask-relaunch-2\ntask-relaunch-3\ntask-relaunch-4\ntask-relaunch-5\ntask-relaunch-6\nwarm-reconnect-1\nwarm-reconnect-2\nwarm-reconnect-3\nwarm-reconnect-4\nwarm-reconnect-5\nwarm-reconnect-6'
+readonly peer_presentation_phase_pattern='(initial|background-resume-1-2s|background-resume-2-6s|background-resume-3-12s|warm-hold-[1-6]|warm-reconnect-[1-6]|task-relaunch-[1-6])'
+readonly peer_presentation_phase_inventory=$'background-resume-1-2s\nbackground-resume-2-6s\nbackground-resume-3-12s\ninitial\ntask-relaunch-1\ntask-relaunch-2\ntask-relaunch-3\ntask-relaunch-4\ntask-relaunch-5\ntask-relaunch-6\nwarm-hold-1\nwarm-hold-2\nwarm-hold-3\nwarm-hold-4\nwarm-hold-5\nwarm-hold-6\nwarm-reconnect-1\nwarm-reconnect-2\nwarm-reconnect-3\nwarm-reconnect-4\nwarm-reconnect-5\nwarm-reconnect-6'
 mapfile -t peer_frame_baselines < <(grep -E \
     "^ANDROID_PEER_FRAME_BASELINE phase=$peer_presentation_phase_pattern observer_age_ms=[0-9]+ source_state=[0-9]+ display_state=([0-9]+|unavailable) dimensions=(120x200|200x120) seq=[0-9]+ timestamp_us=[1-9][0-9]*$" \
     "$RUNTIME_LOG" || true)
-[ "${#peer_frame_baselines[@]}" -eq 16 ] \
+[ "${#peer_frame_baselines[@]}" -eq 22 ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android peer frame baselines are absent or duplicated'; }
 peer_frame_baseline_phases="$(printf '%s\n' "${peer_frame_baselines[@]}" \
     | sed -nE 's/^ANDROID_PEER_FRAME_BASELINE phase=([^ ]+) .*/\1/p' \
@@ -1180,13 +1181,24 @@ peer_frame_baseline_phases="$(printf '%s\n' "${peer_frame_baselines[@]}" \
 mapfile -t peer_presentation_ui_receipts < <(grep -E \
     "^ANDROID_PEER_PRESENTATION_UI=pass phase=$peer_presentation_phase_pattern connecting=retired credential=retired waiting=retired$" \
     "$RUNTIME_LOG" || true)
-[ "${#peer_presentation_ui_receipts[@]}" -eq 16 ] \
+[ "${#peer_presentation_ui_receipts[@]}" -eq 22 ] \
     || { tail -n 320 "$RUNTIME_LOG" >&2; die 'Android peer presentation UI receipts are absent or duplicated'; }
 peer_presentation_ui_phases="$(printf '%s\n' "${peer_presentation_ui_receipts[@]}" \
     | sed -nE 's/^ANDROID_PEER_PRESENTATION_UI=pass phase=([^ ]+) .*/\1/p' \
     | LC_ALL=C sort)"
 [ "$peer_presentation_ui_phases" = "$peer_presentation_phase_inventory" ] \
     || die "Android peer presentation UI phases differ: $peer_presentation_ui_phases"
+mapfile -t peer_warm_hold_receipts < <(grep -E \
+    '^ANDROID_PEER_WARM_HOLD=pass samples=6 interval_seconds=20 elapsed_ms=[1-9][0-9]* task=stable process=stable service=foreground-preserved keyed_sessions=unchanged peer_connections=1 pixels=fresh-changing$' \
+    "$RUNTIME_LOG" || true)
+[ "${#peer_warm_hold_receipts[@]}" -eq 1 ] \
+    && [ "$(grep -c '^ANDROID_PEER_WARM_HOLD=' "$RUNTIME_LOG")" -eq 1 ] \
+    || die 'Android peer warm-hold receipt is absent, malformed, or duplicated'
+[[ "${peer_warm_hold_receipts[0]}" =~ elapsed_ms=([1-9][0-9]*)\ task=stable ]] \
+    || die 'Android peer warm-hold duration is malformed'
+[ "${BASH_REMATCH[1]}" -ge 120000 ] \
+    && [ "${BASH_REMATCH[1]}" -le 240000 ] \
+    || die 'Android peer warm-hold duration is outside its bounded schedule'
 mapfile -t peer_presentation_stage_receipts < <(grep -E \
     '^ANDROID_PEER_PRESENTATION_STAGE=pass phase=(initial|warm-reconnect-[1-6]|task-relaunch-[1-6]) ordinal=([1-9]|1[0-3]) server_connection=[1-9][0-9]* display=[0-9]+ server_wire_generation=[1-9][0-9]* viewer_wire_generation=[1-9][0-9]* server_wall_ms=[1-9][0-9]* server_queue_us=[0-9]+ viewer_mailbox_generation=[1-9][0-9]* viewer_wall_ms=[1-9][0-9]* receive_to_admit_us=[0-9]+ admit_to_dequeue_us=[0-9]+ decode_us=[0-9]+ dart_session=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} publication=[1-9][0-9]* dart_wall_ms=[1-9][0-9]* event_queue_us=[0-9]+ take_us=[0-9]+ checkpoint_us=[0-9]+ decode_commit_us=[0-9]+ ui_finalize_us=[0-9]+ dart_total_us=[0-9]+ image_conversions_active=[1-3] image_conversions_waiting=([0-9]|[1-5][0-9]|6[0-4]) image_conversions_peak=[1-3] client_owner=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' \
     "$RUNTIME_LOG" || true)
@@ -1430,6 +1442,7 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         "${frame_observer_build_receipts[0]}" \
         "${frame_observer_receipts[0]}" \
         "${peer_frame_baselines[@]}" "${peer_presentation_ui_receipts[@]}" \
+        "${peer_warm_hold_receipts[0]}" \
         "${peer_presentation_stage_receipts[@]}" \
         "${peer_resource_samples[@]}" "${peer_resource_bounds[0]}" \
         "${lifecycle_receipts[0]}" "${initial_credential_receipts[0]}" \

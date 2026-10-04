@@ -25,7 +25,7 @@
 //!                additionally requires an actual directory `FileResponse` from the CM bridge.
 //!   - `cmfileauthority` : VM-only CM authority probe — pre-login create must not mutate the
 //!                fixture; post-login directory read/create, receive-write finality, and a
-//!                two-file/four-block receive job run through CM.
+//!                two-file/four-block receive job, peer error, and cancellation run through CM.
 //!
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
@@ -43,11 +43,14 @@ const CM_POSTLOGIN_CREATE_ID: i32 = 17002;
 const CM_PREMATURE_WRITE_ID: i32 = 17003;
 const CM_COMMITTED_WRITE_ID: i32 = 17004;
 const CM_MULTI_FILE_WRITE_ID: i32 = 17005;
+const CM_PEER_ERROR_ID: i32 = 17006;
+const CM_CANCEL_WRITE_ID: i32 = 17007;
 const CM_PRELOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/blocked-before-login";
 const CM_POSTLOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/allowed-after-login";
 const CM_WRITE_PAYLOAD: &[u8] = b"cm-file-write-finality-v1-0123456789";
 const CM_MULTI_FIRST: &[u8] = b"first-file-two-blocks-0123456789";
 const CM_MULTI_SECOND: &[u8] = b"second-file-two-blocks-abcdefghij";
+const CM_PEER_ERROR: &str = "peer-aborted-cm-fixture";
 
 struct ProbePassword(Vec<u8>);
 
@@ -357,6 +360,145 @@ async fn probe_cm_receive_write(stream: &mut FramedStream, report: &mut String) 
     }
     report.push_str("[FT-MULTI-MATCHING-RESPONSE-MISSING] ");
     false
+}
+
+async fn probe_cm_receive_abort(stream: &mut FramedStream, report: &mut String) -> bool {
+    use hbb_common::message_proto::{
+        file_response, FileAction, FileEntry, FileResponse, FileTransferBlock, FileTransferCancel,
+        FileTransferError, FileTransferReceiveRequest, FileType, ReadDir,
+    };
+
+    for (id, name, payload, cancel) in [
+        (CM_PEER_ERROR_ID, "peer-error.txt", &b"partial-before-peer-error"[..], false),
+        (CM_CANCEL_WRITE_ID, "cancelled.txt", &b"partial-before-cancel"[..], true),
+    ] {
+        let mut action = FileAction::new();
+        action.set_receive(FileTransferReceiveRequest {
+            id,
+            path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
+            files: vec![FileEntry {
+                entry_type: FileType::File.into(),
+                name: name.to_owned(),
+                size: (payload.len() * 2) as u64,
+                ..Default::default()
+            }],
+            file_num: 0,
+            total_size: (payload.len() * 2) as u64,
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_file_action(action);
+        if let Err(error) = send_probe_message(stream, message).await {
+            report.push_str(&format!("[FT-ABORT-REQUEST-ERROR id={id} {error}] "));
+            return false;
+        }
+
+        let mut response = FileResponse::new();
+        response.set_block(FileTransferBlock {
+            id,
+            file_num: 0,
+            data: payload.to_vec().into(),
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_file_response(response);
+        if let Err(error) = send_probe_message(stream, message).await {
+            report.push_str(&format!("[FT-ABORT-BLOCK-ERROR id={id} {error}] "));
+            return false;
+        }
+
+        let mut message = Message::new();
+        if cancel {
+            let mut action = FileAction::new();
+            action.set_cancel(FileTransferCancel {
+                id,
+                ..Default::default()
+            });
+            message.set_file_action(action);
+        } else {
+            let mut response = FileResponse::new();
+            response.set_error(FileTransferError {
+                id,
+                file_num: 0,
+                error: CM_PEER_ERROR.to_owned(),
+                ..Default::default()
+            });
+            message.set_file_response(response);
+        }
+        if let Err(error) = send_probe_message(stream, message).await {
+            report.push_str(&format!("[FT-ABORT-TERMINAL-SEND-ERROR id={id} {error}] "));
+            return false;
+        }
+        if cancel {
+            // CM handles its exact connection's FS commands sequentially. This directory reply
+            // is a read-after-cancel barrier; the guest also checks the filesystem itself.
+            let mut action = FileAction::new();
+            action.set_read_dir(ReadDir {
+                path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
+                include_hidden: true,
+                ..Default::default()
+            });
+            let mut message = Message::new();
+            message.set_file_action(action);
+            if let Err(error) = send_probe_message(stream, message).await {
+                report.push_str(&format!("[FT-CANCEL-BARRIER-SEND-ERROR {error}] "));
+                return false;
+            }
+        }
+
+        let mut matched = false;
+        for _ in 0..8 {
+            let Some(Ok(bytes)) = stream.next_timeout(4000).await else {
+                report.push_str(&format!("[FT-ABORT-NO-RESPONSE id={id}] "));
+                return false;
+            };
+            let response = match Message::parse_from_bytes(&bytes) {
+                Ok(response) => response,
+                Err(error) => {
+                    report.push_str(&format!("[FT-ABORT-PARSE-ERROR id={id} {error}] "));
+                    return false;
+                }
+            };
+            match response.union {
+                Some(message::Union::FileResponse(response)) => match response.union {
+                    Some(file_response::Union::Dir(dir)) if cancel => {
+                        if dir.path == CM_POSTLOGIN_CREATE_PATH {
+                            report.push_str("[FT-CANCEL-BARRIER id=17007] ");
+                            matched = true;
+                        } else {
+                            report.push_str(&format!("[FT-CANCEL-UNEXPECTED-DIR {dir:?}] "));
+                        }
+                        break;
+                    }
+                    Some(file_response::Union::Error(error)) if error.id == id => {
+                        if !cancel && error.file_num == 0 && error.error == CM_PEER_ERROR {
+                            report.push_str("[FT-PEER-ERROR-REPORTED id=17006] ");
+                            matched = true;
+                        } else {
+                            report.push_str(&format!("[FT-ABORT-UNEXPECTED-ERROR {error:?}] "));
+                        }
+                        break;
+                    }
+                    Some(file_response::Union::Done(done)) if done.id == id => {
+                        report.push_str(&format!("[FT-ABORT-UNEXPECTED-DONE {done:?}] "));
+                        break;
+                    }
+                    _ => {}
+                },
+                Some(message::Union::LoginResponse(response))
+                    if matches!(response.union, Some(login_response::Union::Error(_))) =>
+                {
+                    report.push_str("[FT-ABORT-LOGIN-ERROR] ");
+                    return false;
+                }
+                _ => {}
+            }
+        }
+        if !matched {
+            return false;
+        }
+    }
+    true
 }
 
 fn main() {
@@ -708,10 +850,12 @@ fn main() {
                         {
                             return (true, pk, false, true);
                         }
-                        if mode == "cmfileauthority"
-                            && !probe_cm_receive_write(&mut stream, &mut pk).await
-                        {
-                            return (true, pk, false, true);
+                        if mode == "cmfileauthority" {
+                            if !probe_cm_receive_write(&mut stream, &mut pk).await
+                                || !probe_cm_receive_abort(&mut stream, &mut pk).await
+                            {
+                                return (true, pk, false, true);
+                            }
                         }
                     }
                     // The generic post-key frame dump is for read/login/inject only; a port-forward

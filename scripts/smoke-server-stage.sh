@@ -675,16 +675,22 @@ EOS
     [ "$(grep -Fc '[FT-PREMATURE-WRITE-REFUSED id=17003]' <<<"$probe_output")" -eq 1 ]
     [ "$(grep -Fc '[FT-WRITE-COMMITTED id=17004]' <<<"$probe_output")" -eq 1 ]
     [ "$(grep -Fc '[FT-MULTI-WRITE-COMMITTED id=17005 files=2 blocks=4]' <<<"$probe_output")" -eq 1 ]
+    [ "$(grep -Fc '[FT-PEER-ERROR-REPORTED id=17006]' <<<"$probe_output")" -eq 1 ]
+    [ "$(grep -Fc '[FT-CANCEL-BARRIER id=17007]' <<<"$probe_output")" -eq 1 ]
     grep -Fxq 'probe_client: PASS' <<<"$probe_output"
     "$READY" --is-running "$SRV" "$SRV_START"
     [ ! -e "$HOME/blocked-before-login" ] && [ ! -L "$HOME/blocked-before-login" ]
     [ -d "$HOME/allowed-after-login" ] && [ ! -L "$HOME/allowed-after-login" ] \
       && [ "$(stat -c '%u:%g:%a' -- "$HOME/allowed-after-login")" = "$(id -u):$(id -g):700" ]
-    [ ! -e "$HOME/allowed-after-login/premature.txt" ] \
-      && [ ! -L "$HOME/allowed-after-login/premature.txt" ]
+    for name in premature.txt peer-error.txt cancelled.txt; do
+      [ ! -e "$HOME/allowed-after-login/$name" ] \
+        && [ ! -L "$HOME/allowed-after-login/$name" ]
+    done
     for suffix in .download .digest .download.lock; do
-      [ ! -e "$HOME/allowed-after-login/premature.txt$suffix" ] \
-        && [ ! -L "$HOME/allowed-after-login/premature.txt$suffix" ]
+      for name in premature.txt peer-error.txt cancelled.txt; do
+        [ ! -e "$HOME/allowed-after-login/$name$suffix" ] \
+          && [ ! -L "$HOME/allowed-after-login/$name$suffix" ]
+      done
       [ ! -e "$HOME/allowed-after-login/payload.txt$suffix" ] \
         && [ ! -L "$HOME/allowed-after-login/payload.txt$suffix" ]
       for name in first.txt second.txt; do
@@ -710,7 +716,7 @@ EOS
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

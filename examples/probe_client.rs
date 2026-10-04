@@ -34,7 +34,8 @@
 //!   - `cmfilecleanupfailure` : a live receive whose staging name was replaced must report
 //!                the exact cleanup failure to the peer without deleting the replacement.
 //!   - `ftreadfailure` : an unreadable direct-send source gives one terminal error for the
-//!                failed file, no later Done, and leaves the connection usable.
+//!                failed file, then the same connection confirms and reads a second file to
+//!                exact bytes and one terminal Done.
 //!
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
@@ -59,6 +60,8 @@ const CM_DOWNLOAD_COLLISION_ID: i32 = 17009;
 const CM_DIGEST_COLLISION_ID: i32 = 17010;
 const CM_CLEANUP_FAILURE_ID: i32 = 17011;
 const FT_READ_FAILURE_ID: i32 = 17012;
+const FT_READ_SUCCESS_ID: i32 = 17013;
+const FT_READ_SUCCESS_LEN: usize = 150_001;
 const CM_PRELOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/blocked-before-login";
 const CM_POSTLOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/allowed-after-login";
 const CM_WRITE_PAYLOAD: &[u8] = b"cm-file-write-finality-v1-0123456789";
@@ -1147,6 +1150,181 @@ async fn probe_direct_read_failure(stream: &mut FramedStream, report: &mut Strin
     true
 }
 
+async fn probe_direct_read_success(stream: &mut FramedStream, report: &mut String) -> bool {
+    use hbb_common::message_proto::{
+        file_response, file_transfer_send_confirm_request, FileAction,
+        FileTransferSendConfirmRequest, FileTransferSendRequest, ReadDir,
+    };
+
+    let source = "/tmp/rd-cm-file-replay/allowed-after-login/readable-source.jpg";
+    let mut action = FileAction::new();
+    action.set_send(FileTransferSendRequest {
+        id: FT_READ_SUCCESS_ID,
+        path: source.to_owned(),
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_action(action);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-READ-SUCCESS-REQUEST-ERROR {error}] "));
+        return false;
+    }
+
+    let mut listed = false;
+    let mut confirmed = false;
+    let mut received = 0usize;
+    let mut blocks = 0usize;
+    let mut done = false;
+    for _ in 0..16 {
+        let Some(Ok(bytes)) = stream.next_timeout(4000).await else {
+            report.push_str("[FT-READ-SUCCESS-NO-RESPONSE] ");
+            return false;
+        };
+        let response = match Message::parse_from_bytes(&bytes) {
+            Ok(response) => response,
+            Err(error) => {
+                report.push_str(&format!("[FT-READ-SUCCESS-PARSE-ERROR {error}] "));
+                return false;
+            }
+        };
+        match response.union {
+            Some(message::Union::FileResponse(response)) => match response.union {
+                Some(file_response::Union::Dir(dir)) if dir.id == FT_READ_SUCCESS_ID => {
+                    if listed || dir.path != source || dir.entries.len() != 1
+                        || !dir.entries[0].name.is_empty()
+                        || dir.entries[0].size != FT_READ_SUCCESS_LEN as u64
+                    {
+                        report.push_str(&format!("[FT-READ-SUCCESS-BAD-DIR {dir:?}] "));
+                        return false;
+                    }
+                    listed = true;
+                }
+                Some(file_response::Union::Digest(digest)) if digest.id == FT_READ_SUCCESS_ID => {
+                    if !listed || confirmed || digest.file_num != 0
+                        || digest.file_size != FT_READ_SUCCESS_LEN as u64
+                        || digest.is_upload || digest.is_resume
+                    {
+                        report.push_str(&format!("[FT-READ-SUCCESS-BAD-DIGEST {digest:?}] "));
+                        return false;
+                    }
+                    let mut action = FileAction::new();
+                    action.set_send_confirm(FileTransferSendConfirmRequest {
+                        id: FT_READ_SUCCESS_ID,
+                        file_num: 0,
+                        union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(0)),
+                        ..Default::default()
+                    });
+                    let mut message = Message::new();
+                    message.set_file_action(action);
+                    if let Err(error) = send_probe_message(stream, message).await {
+                        report.push_str(&format!("[FT-READ-SUCCESS-CONFIRM-ERROR {error}] "));
+                        return false;
+                    }
+                    confirmed = true;
+                }
+                Some(file_response::Union::Block(block)) if block.id == FT_READ_SUCCESS_ID => {
+                    let next = received.saturating_add(block.data.len());
+                    if !confirmed || block.file_num != 0 || block.compressed
+                        || next > FT_READ_SUCCESS_LEN
+                        || block.data.iter().any(|byte| *byte != b'A')
+                    {
+                        report.push_str(&format!("[FT-READ-SUCCESS-BAD-BLOCK {block:?}] "));
+                        return false;
+                    }
+                    received = next;
+                    if !block.data.is_empty() {
+                        blocks += 1;
+                    }
+                }
+                Some(file_response::Union::Done(result)) if result.id == FT_READ_SUCCESS_ID => {
+                    if !confirmed || result.file_num != 1 || received != FT_READ_SUCCESS_LEN
+                        || blocks < 2
+                    {
+                        report.push_str(&format!("[FT-READ-SUCCESS-BAD-DONE {result:?} bytes={received} blocks={blocks}] "));
+                        return false;
+                    }
+                    done = true;
+                    break;
+                }
+                Some(file_response::Union::Error(error)) if error.id == FT_READ_SUCCESS_ID => {
+                    report.push_str(&format!("[FT-READ-SUCCESS-ERROR {error:?}] "));
+                    return false;
+                }
+                Some(other) => {
+                    report.push_str(&format!("[FT-READ-SUCCESS-UNEXPECTED {other:?}] "));
+                    return false;
+                }
+                None => {}
+            },
+            Some(message::Union::LoginResponse(response))
+                if matches!(response.union, Some(login_response::Union::Error(_))) =>
+            {
+                report.push_str("[FT-READ-SUCCESS-LOGIN-ERROR] ");
+                return false;
+            }
+            _ => {}
+        }
+    }
+    if !done {
+        report.push_str("[FT-READ-SUCCESS-DONE-MISSING] ");
+        return false;
+    }
+
+    let mut action = FileAction::new();
+    action.set_read_dir(ReadDir {
+        path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
+        include_hidden: false,
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_action(action);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-READ-SUCCESS-BARRIER-SEND-ERROR {error}] "));
+        return false;
+    }
+    let mut barrier = false;
+    for _ in 0..8 {
+        let Some(Ok(bytes)) = stream.next_timeout(4000).await else {
+            report.push_str("[FT-READ-SUCCESS-BARRIER-MISSING] ");
+            return false;
+        };
+        let response = match Message::parse_from_bytes(&bytes) {
+            Ok(response) => response,
+            Err(error) => {
+                report.push_str(&format!("[FT-READ-SUCCESS-BARRIER-PARSE-ERROR {error}] "));
+                return false;
+            }
+        };
+        if let Some(message::Union::FileResponse(response)) = response.union {
+            match response.union {
+                Some(file_response::Union::Dir(dir)) if dir.path == CM_POSTLOGIN_CREATE_PATH => {
+                    barrier = true;
+                    break;
+                }
+                Some(file_response::Union::Block(block)) if block.id == FT_READ_SUCCESS_ID => {
+                    report.push_str("[FT-READ-SUCCESS-LATE-BLOCK] ");
+                    return false;
+                }
+                Some(file_response::Union::Done(result)) if result.id == FT_READ_SUCCESS_ID => {
+                    report.push_str("[FT-READ-SUCCESS-DUPLICATE-DONE] ");
+                    return false;
+                }
+                Some(file_response::Union::Error(error)) if error.id == FT_READ_SUCCESS_ID => {
+                    report.push_str("[FT-READ-SUCCESS-LATE-ERROR] ");
+                    return false;
+                }
+                _ => {}
+            }
+        }
+    }
+    if !barrier {
+        report.push_str("[FT-READ-SUCCESS-BARRIER-MISSING] ");
+        return false;
+    }
+    report.push_str(&format!("[FT-READ-SUCCESS id=17013 bytes={received} blocks={blocks} digest=confirmed done=once barrier=passed] "));
+    true
+}
+
 fn main() {
     let mut a: Vec<String> = std::env::args().collect();
     let addr = a
@@ -1532,7 +1710,8 @@ fn main() {
                         {
                             return (true, pk, false, true);
                         } else if mode == "ftreadfailure"
-                            && !probe_direct_read_failure(&mut stream, &mut pk).await
+                            && (!probe_direct_read_failure(&mut stream, &mut pk).await
+                                || !probe_direct_read_success(&mut stream, &mut pk).await)
                         {
                             return (true, pk, false, true);
                         }

@@ -25,7 +25,8 @@
 //!                additionally requires an actual directory `FileResponse` from the CM bridge.
 //!   - `cmfileauthority` : VM-only CM authority probe — pre-login create must not mutate the
 //!                fixture; post-login directory read/create, receive-write finality, and a
-//!                two-file/four-block receive job, peer error, and cancellation run through CM.
+//!                two-file/four-block receive job, peer error, cancellation, and abrupt owner loss
+//!                run through CM.
 //!
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
@@ -45,6 +46,7 @@ const CM_COMMITTED_WRITE_ID: i32 = 17004;
 const CM_MULTI_FILE_WRITE_ID: i32 = 17005;
 const CM_PEER_ERROR_ID: i32 = 17006;
 const CM_CANCEL_WRITE_ID: i32 = 17007;
+const CM_OWNER_LOSS_WRITE_ID: i32 = 17008;
 const CM_PRELOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/blocked-before-login";
 const CM_POSTLOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/allowed-after-login";
 const CM_WRITE_PAYLOAD: &[u8] = b"cm-file-write-finality-v1-0123456789";
@@ -501,6 +503,110 @@ async fn probe_cm_receive_abort(stream: &mut FramedStream, report: &mut String) 
     true
 }
 
+async fn probe_cm_receive_owner_loss(stream: &mut FramedStream, report: &mut String) -> bool {
+    use hbb_common::message_proto::{
+        file_response, FileAction, FileEntry, FileResponse, FileTransferBlock,
+        FileTransferReceiveRequest, FileType, ReadDir,
+    };
+
+    let payload = b"partial-before-owner-loss";
+    let mut action = FileAction::new();
+    action.set_receive(FileTransferReceiveRequest {
+        id: CM_OWNER_LOSS_WRITE_ID,
+        path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
+        files: vec![FileEntry {
+            entry_type: FileType::File.into(),
+            name: "orphaned.txt".to_owned(),
+            size: (payload.len() * 2) as u64,
+            ..Default::default()
+        }],
+        file_num: 0,
+        total_size: (payload.len() * 2) as u64,
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_action(action);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-OWNER-LOSS-REQUEST-ERROR {error}] "));
+        return false;
+    }
+
+    let mut response = FileResponse::new();
+    response.set_block(FileTransferBlock {
+        id: CM_OWNER_LOSS_WRITE_ID,
+        file_num: 0,
+        data: payload.to_vec().into(),
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_response(response);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-OWNER-LOSS-BLOCK-ERROR {error}] "));
+        return false;
+    }
+
+    // This CM directory read follows WriteBlock on the same IPC stream. Seeing all three
+    // staging artifacts proves the partial receive was live before this peer disappears.
+    let mut action = FileAction::new();
+    action.set_read_dir(ReadDir {
+        path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
+        include_hidden: true,
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_action(action);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-OWNER-LOSS-BARRIER-SEND-ERROR {error}] "));
+        return false;
+    }
+
+    for _ in 0..8 {
+        let Some(Ok(bytes)) = stream.next_timeout(4000).await else {
+            report.push_str("[FT-OWNER-LOSS-NO-RESPONSE] ");
+            return false;
+        };
+        let response = match Message::parse_from_bytes(&bytes) {
+            Ok(response) => response,
+            Err(error) => {
+                report.push_str(&format!("[FT-OWNER-LOSS-PARSE-ERROR {error}] "));
+                return false;
+            }
+        };
+        match response.union {
+            Some(message::Union::FileResponse(response)) => match response.union {
+                Some(file_response::Union::Dir(dir))
+                    if dir.path == CM_POSTLOGIN_CREATE_PATH =>
+                {
+                    let has = |name: &str| dir.entries.iter().any(|entry| entry.name == name);
+                    if has("orphaned.txt.download")
+                        && has("orphaned.txt.digest")
+                        && has("orphaned.txt.download.lock")
+                    {
+                        report.push_str("[FT-OWNER-LOSS-STAGED id=17008] ");
+                        return true;
+                    }
+                    report.push_str("[FT-OWNER-LOSS-STAGING-MISSING] ");
+                    return false;
+                }
+                Some(file_response::Union::Error(error)) => {
+                    report.push_str(&format!("[FT-OWNER-LOSS-ERROR {error:?}] "));
+                    return false;
+                }
+                _ => {}
+            },
+            Some(message::Union::LoginResponse(response))
+                if matches!(response.union, Some(login_response::Union::Error(_))) =>
+            {
+                report.push_str("[FT-OWNER-LOSS-LOGIN-ERROR] ");
+                return false;
+            }
+            _ => {}
+        }
+    }
+    report.push_str("[FT-OWNER-LOSS-BARRIER-MISSING] ");
+    false
+}
+
 fn main() {
     let mut a: Vec<String> = std::env::args().collect();
     let addr = a
@@ -853,6 +959,7 @@ fn main() {
                         if mode == "cmfileauthority" {
                             if !probe_cm_receive_write(&mut stream, &mut pk).await
                                 || !probe_cm_receive_abort(&mut stream, &mut pk).await
+                                || !probe_cm_receive_owner_loss(&mut stream, &mut pk).await
                             {
                                 return (true, pk, false, true);
                             }

@@ -705,6 +705,22 @@ struct CmTransferJob {
 }
 
 #[cfg(not(any(target_os = "ios")))]
+impl Drop for CmTransferJob {
+    fn drop(&mut self) {
+        // A peer or CM IPC stream can disappear without sending CancelWrite. Retire the
+        // receive claim even when its owning task is cancelled at an await point.
+        if let Err(error) = self.job.retire_current_file_state() {
+            log::error!(
+                "failed to retire CM transfer job {} generation {}: {}",
+                self.job.id(),
+                self.generation,
+                error
+            );
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "ios")))]
 #[derive(Clone, Copy)]
 struct CmFileResponder<'a> {
     tx: &'a CmEgressSender,
@@ -4492,6 +4508,66 @@ mod tests {
         .unwrap()
         .is_none());
         assert!(write_jobs.is_empty());
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11c_4d_cm_dropped_owner_retires_partial_receive() {
+        let temp = CmFileTestDir::new("owner_loss");
+        let final_path = temp.join("orphaned.bin");
+        let (tx, _rx) = cm_egress_channel();
+        let responder = CmFileResponder {
+            tx: &tx,
+            conn_id: 57,
+            cm_auth_token: "token-57",
+        };
+        let mut write_jobs = Vec::new();
+        let mut read_jobs = Vec::new();
+
+        handle_fs(
+            ipc::FS::NewWrite {
+                path: temp.path.to_string_lossy().into_owned(),
+                id: 77,
+                file_num: 0,
+                files: vec![("orphaned.bin".to_owned(), 0)],
+                overwrite_detection: false,
+                total_size: 32,
+                conn_id: 57,
+                generation: 16,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("admit CM receive job");
+        handle_fs(
+            ipc::FS::WriteBlock {
+                id: 77,
+                file_num: 0,
+                conn_id: 57,
+                data: bytes::Bytes::from_static(b"partial before owner loss"),
+                compressed: false,
+                generation: 16,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .expect("write partial CM receive");
+        assert_eq!(write_jobs.len(), 1);
+        assert!(temp.join("orphaned.bin.download").exists());
+        assert!(temp.join("orphaned.bin.digest").exists());
+        assert!(temp.join("orphaned.bin.download.lock").exists());
+
+        drop(write_jobs);
+        assert!(!final_path.exists());
+        for suffix in [".download", ".digest", ".download.lock"] {
+            assert!(!temp.join(&format!("orphaned.bin{suffix}")).exists());
+        }
     }
 
     #[cfg(not(target_os = "ios"))]

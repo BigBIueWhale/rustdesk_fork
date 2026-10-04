@@ -677,17 +677,28 @@ EOS
     [ "$(grep -Fc '[FT-MULTI-WRITE-COMMITTED id=17005 files=2 blocks=4]' <<<"$probe_output")" -eq 1 ]
     [ "$(grep -Fc '[FT-PEER-ERROR-REPORTED id=17006]' <<<"$probe_output")" -eq 1 ]
     [ "$(grep -Fc '[FT-CANCEL-BARRIER id=17007]' <<<"$probe_output")" -eq 1 ]
+    [ "$(grep -Fc '[FT-OWNER-LOSS-STAGED id=17008]' <<<"$probe_output")" -eq 1 ]
     grep -Fxq 'probe_client: PASS' <<<"$probe_output"
     "$READY" --is-running "$SRV" "$SRV_START"
+    # The probe exits with an incomplete live receive, without a cancel/done/error.
+    # Allow the server/CM teardown to run, then require exact retirement below.
+    for ((attempt=0; attempt<100; ++attempt)); do
+      if [ ! -e "$HOME/allowed-after-login/orphaned.txt.download" ] \
+          && [ ! -e "$HOME/allowed-after-login/orphaned.txt.digest" ] \
+          && [ ! -e "$HOME/allowed-after-login/orphaned.txt.download.lock" ]; then
+        break
+      fi
+      sleep 0.05
+    done
     [ ! -e "$HOME/blocked-before-login" ] && [ ! -L "$HOME/blocked-before-login" ]
     [ -d "$HOME/allowed-after-login" ] && [ ! -L "$HOME/allowed-after-login" ] \
       && [ "$(stat -c '%u:%g:%a' -- "$HOME/allowed-after-login")" = "$(id -u):$(id -g):700" ]
-    for name in premature.txt peer-error.txt cancelled.txt; do
+    for name in premature.txt peer-error.txt cancelled.txt orphaned.txt; do
       [ ! -e "$HOME/allowed-after-login/$name" ] \
         && [ ! -L "$HOME/allowed-after-login/$name" ]
     done
     for suffix in .download .digest .download.lock; do
-      for name in premature.txt peer-error.txt cancelled.txt; do
+      for name in premature.txt peer-error.txt cancelled.txt orphaned.txt; do
         [ ! -e "$HOME/allowed-after-login/$name$suffix" ] \
           && [ ! -L "$HOME/allowed-after-login/$name$suffix" ]
       done

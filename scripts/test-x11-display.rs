@@ -136,7 +136,6 @@ struct State {
     malformed_atom: u8,
     malformed_monitors: u8,
     malformed_query: usize,
-    diagnose_monitors: bool,
     bad_atom_reply: usize,
     bad_monitor_reply: usize,
 }
@@ -175,11 +174,6 @@ extern "C" {
                        name_len: u16, name: *const u8) -> InternAtomCookie;
     fn xcb_intern_atom_reply(c: *mut xcb_connection_t, cookie: InternAtomCookie,
                              error: *mut *mut xcb_generic_error_t) -> *mut InternAtomReply;
-    fn xcb_randr_set_monitor_checked(c: *mut xcb_connection_t, root: u32,
-                                    info: *mut xcb_randr_monitor_info_t) -> xcb_void_cookie_t;
-    fn xcb_randr_monitor_info_sizeof(info: *const libc::c_void) -> i32;
-    fn xcb_randr_delete_monitor_checked(c: *mut xcb_connection_t, root: u32,
-                                       name: u32) -> xcb_void_cookie_t;
     #[link_name = "__real_xcb_get_atom_name_name"]
     fn real_atom_bytes(reply: *const xcb_get_atom_name_reply_t) -> *const u8;
     #[link_name = "__real_xcb_get_geometry_reply"]
@@ -327,12 +321,6 @@ unsafe extern "C" fn __wrap_xcb_randr_get_monitors_reply(c: *mut xcb_connection_
     let reply = real_reply(c, cookie, error);
     STATE.with(|state| {
         let mut state = state.borrow_mut();
-        if state.diagnose_monitors {
-            eprintln!("X11_BOUNDS_VALID_DIAG query={} reply={} server_error={} connection_error={}",
-                      state.queries, !reply.is_null(),
-                      if error.is_null() || (*error).is_null() { 0 } else { (**error).error_code },
-                      xcb_connection_has_error(c));
-        }
         if !reply.is_null() {
             state.allocations.push(Allocation { pointer: reply.cast(),
                 bytes: 32 + (*reply).length as usize * 4, monitor: true, retired: false });
@@ -348,9 +336,22 @@ unsafe extern "C" fn __wrap_xcb_randr_get_monitors_reply(c: *mut xcb_connection_
                         assert!(info.n_output > 0);
                         info.n_output = if state.malformed_monitors == 4 { u16::MAX } else { 0 };
                     }
+                    6 => {
+                        // One actual one-output XCB reply becomes a valid declared
+                        // one-monitor/zero-output reply, without a SetMonitor request.
+                        assert_eq!((*reply).length, 7);
+                        assert_eq!((*reply).n_outputs, 1);
+                        let info = &mut *reply.add(1).cast::<xcb_randr_monitor_info_t>();
+                        assert_eq!(info.n_output, 1);
+                        (*reply).length = 6;
+                        (*reply).n_outputs = 0;
+                        info.n_output = 0;
+                    }
                     _ => unreachable!("unknown monitor fault"),
                 }
-                state.bad_monitor_reply = reply as usize;
+                if state.malformed_monitors != 6 {
+                    state.bad_monitor_reply = reply as usize;
+                }
             }
         }
         if !error.is_null() && !(*error).is_null() {
@@ -406,7 +407,6 @@ fn finish_case(reject: usize) {
         state.malformed_atom = 0;
         state.malformed_monitors = 0;
         state.malformed_query = 0;
-        state.diagnose_monitors = false;
         state.bad_atom_reply = 0;
         state.bad_monitor_reply = 0;
     });
@@ -420,25 +420,6 @@ fn configure_bounds(atom: u8, monitor: u8, query: usize) {
         state.malformed_monitors = monitor;
         state.malformed_query = query;
     });
-}
-
-#[cfg(corrected)]
-fn checked_fixture_request(c: *mut xcb_connection_t, cookie: xcb_void_cookie_t) -> io::Result<()> {
-    unsafe {
-        let error = xcb_request_check(c, cookie);
-        if error.is_null() {
-            let connection_error = xcb_connection_has_error(c);
-            return if connection_error == 0 {
-                Ok(())
-            } else {
-                Err(io::Error::new(io::ErrorKind::ConnectionAborted,
-                                   format!("X connection failed during checked fixture request: {connection_error}")))
-            };
-        }
-        let code = (*error).error_code;
-        libc::system_free(error.cast());
-        Err(io::Error::new(io::ErrorKind::Other, format!("fixture request server error {code}")))
-    }
 }
 
 fn main() -> io::Result<()> {
@@ -480,27 +461,12 @@ fn main() -> io::Result<()> {
             finish_case(0);
             println!("X11_BOUNDS_CASE=pass scenario={scenario} repeats=32 replies=exact enumeration=fused public_callers=explicit");
         } else if scenario == "bounds-valid" {
-            let root = unsafe { (*xcb_setup_roots_iterator(server.setup()).data).root };
-            let atom = intern_atom(server.raw(), b"bounds-native")?;
-            let mut info = xcb_randr_monitor_info_t {
-                name: atom, primary: 0, automatic: 0, n_output: 0,
-                x: 0, y: 0, width: 320, height: 480, width_mm: 100, height_mm: 100,
-            };
-            let encoded_size = unsafe { xcb_randr_monitor_info_sizeof((&info as *const xcb_randr_monitor_info_t).cast()) };
-            let request = unsafe { xcb_randr_set_monitor_checked(server.raw(), root, &mut info) };
-            eprintln!("X11_BOUNDS_VALID_REQUEST monitor_size={} cookie={} connection_error={} max_request_words={}",
-                      encoded_size, request.sequence, unsafe { xcb_connection_has_error(server.raw()) },
-                      unsafe { (*server.setup()).maximum_request_length });
-            checked_fixture_request(server.raw(), request)?;
-            STATE.with(|state| state.borrow_mut().diagnose_monitors = true);
-            let displays = x11::Server::displays(Rc::clone(&server)).collect::<io::Result<Vec<_>>>();
-            // Retire the actual server-side fixture even if enumeration returned an error.
-            checked_fixture_request(server.raw(), unsafe { xcb_randr_delete_monitor_checked(server.raw(), root, atom) })?;
-            let displays = displays?;
-            assert_eq!(displays.len(), 3, "real outputless monitor did not join the default screens");
-            assert!(displays.iter().any(|d| d.name() == "bounds-native" && d.w() == 320 && d.h() == 480));
+            configure_bounds(0, 6, 1);
+            let displays = x11::Server::displays(Rc::clone(&server)).collect::<io::Result<Vec<_>>>()?;
+            assert_eq!(displays.len(), 2, "the valid outputless reply lost a display");
+            STATE.with(|state| assert_eq!(state.borrow().queries, 2));
             finish_case(0);
-            println!("X11_BOUNDS_VALID=pass multiple_monitors=server-real outputless=server-real replies=exact");
+            println!("X11_BOUNDS_VALID=pass outputless=received-header-injected screens=server-real replies=exact");
         } else if scenario == "atom-name" {
             for _ in 0..32 {
                 assert_eq!(x11::query_atom_name(server.raw(), 0)?, "");

@@ -578,14 +578,14 @@ and nested spans before reading an owned reply by offset, and checks exact
 padded atom-name length before constructing its slice. Native acceptance is
 pending; ownership alone never established those bounds.
 The focused native fixture now exercises seven received-header injections,
-controlled old-code refusal before unsafe access, and an attempted real-server
-multiple/outputless monitor case. Its seven controlled before-cases fail on the
-previous unchecked access; all seven source-candidate after-cases passed 32
-repetitions and both public callers, but the full transaction is not accepted:
-the positive monitor case loses its XCB connection during the
-fixture's checked SetMonitor request, before product enumeration. The injection
-is not a hostile-server or LPE
-reproduction.
+controlled old-code refusal before unsafe access, and a valid outputless shape
+injected into an actual XCB reply while both Xvfb screens stay real. Its seven
+controlled before-cases fail on the previous unchecked access; all seven
+source-candidate after-cases passed 32 repetitions and both public callers.
+The earlier SetMonitor-based positive
+fixture failed locally with XCB request-length error 4 and was removed; the
+replacement positive case and full transaction are not yet accepted. The
+injection is not a hostile-server or LPE reproduction.
 
 **X11 atom-query finality — SOURCE CORRECTED; NATIVE COMPONENT A/B ACCEPTED.**
 The production helper returned an empty name when GetAtomName failed and leaked

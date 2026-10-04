@@ -100,6 +100,7 @@ pub mod libc {
     pub unsafe fn free(pointer: *mut c_void) {
         let deferred = super::STATE.with(|state| {
             let mut state = state.borrow_mut();
+            // Observe acquisitions as well as frees: an address can name a newer allocation.
             if let Some(entry) = state.allocations.iter_mut().rev().find(|e| e.pointer == pointer) {
                 assert!(!entry.retired, "reply/error freed twice");
                 entry.retired = true;
@@ -117,6 +118,9 @@ pub mod libc {
 }
 
 extern "C" {
+    #[link_name = "__real_xcb_get_geometry_reply"]
+    fn real_geometry_reply(c: *mut xcb_connection_t, cookie: xcb_get_geometry_cookie_t,
+                           error: *mut *mut xcb_generic_error_t) -> *mut xcb_get_geometry_reply_t;
     #[link_name = "__real_xcb_get_atom_name"]
     fn real_atom_request(c: *mut xcb_connection_t, atom: u32) -> xcb_get_atom_name_cookie_t;
     #[link_name = "__real_xcb_get_atom_name_reply"]
@@ -159,6 +163,25 @@ unsafe extern "C" fn __wrap_xcb_get_atom_name_reply(c: *mut xcb_connection_t,
         }
         if !error.is_null() && !(*error).is_null() {
             assert_eq!((**error).error_code, 5, "not an actual server BadAtom response");
+            state.allocations.push(Allocation { pointer: (*error).cast(),
+                bytes: 36, monitor: false, retired: false });
+        }
+    });
+    reply
+}
+
+#[no_mangle]
+unsafe extern "C" fn __wrap_xcb_get_geometry_reply(c: *mut xcb_connection_t,
+    cookie: xcb_get_geometry_cookie_t, error: *mut *mut xcb_generic_error_t)
+    -> *mut xcb_get_geometry_reply_t {
+    let reply = real_geometry_reply(c, cookie, error);
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if !reply.is_null() {
+            state.allocations.push(Allocation { pointer: reply.cast(),
+                bytes: 0, monitor: false, retired: false });
+        }
+        if !error.is_null() && !(*error).is_null() {
             state.allocations.push(Allocation { pointer: (*error).cast(),
                 bytes: 36, monitor: false, retired: false });
         }

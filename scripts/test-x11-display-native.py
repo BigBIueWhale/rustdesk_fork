@@ -45,7 +45,7 @@ def main():
         for symbol in ("get_monitors", "get_monitors_unchecked", "get_monitors_reply",
                        "get_monitors_monitors_iterator", "monitor_info_next"):
             command += ["-C", f"link-arg=-Wl,--wrap=xcb_randr_{symbol}"]
-        for symbol in ("xcb_get_atom_name", "xcb_get_atom_name_reply"):
+        for symbol in ("xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_geometry_reply"):
             command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
         subprocess.run(command, env=environment, check=True, timeout=30)
         binaries[variant] = binary

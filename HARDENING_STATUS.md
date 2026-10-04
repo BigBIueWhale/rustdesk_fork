@@ -594,8 +594,11 @@ containing UTF-8 and non-UTF-8 bytes, with exact reply retirement. This Xvfb
 server truncates an interned embedded-NUL name; that observation is not a
 client rejection. A separately labelled case injects NUL into an actual
 length-delimited XCB reply to test client conversion without claiming that
-the server emitted it. It uses scrap's Rust 2018 edition; acceptance remains
-pending while the production conversion imposes a C-string restriction.
+the server emitted it. Exact `ce734b3f` passed the unmodified server cases,
+then rejected the injected NUL with InvalidData. The production helper now
+copies the declared byte slice directly into its owned Rust name, preserving
+the existing lossy UTF-8 conversion without an intermediate CString. It uses
+scrap's Rust 2018 edition; corrected acceptance remains pending.
 
 The Windows first-video path now avoids the decoder worker's former nested Tokio runtime, second OS thread, synchronous
 join, and ignored IPC result. Remote and View Camera connections share a process-wide Tokio `OnceCell` initialization

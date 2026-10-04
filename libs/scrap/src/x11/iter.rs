@@ -1,5 +1,4 @@
 use std::convert::TryFrom;
-use std::ffi::CString;
 use std::io;
 use std::ptr;
 use std::ptr::NonNull;
@@ -163,10 +162,7 @@ fn get_atom_name(conn: *mut xcb_connection_t, atom: xcb_atom_t) -> io::Result<St
             io::Error::new(io::ErrorKind::InvalidData, "X atom name has a negative length")
         })?;
         let bytes = std::slice::from_raw_parts(xcb_get_atom_name_name(reply.0.as_ptr()), length);
-        let name = CString::new(bytes).map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "X atom name contains a null byte")
-        })?;
-        Ok(name.to_string_lossy().into_owned())
+        Ok(String::from_utf8_lossy(bytes).into_owned())
     }
 }
 

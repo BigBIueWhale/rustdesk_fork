@@ -351,7 +351,7 @@ readonly PEER_CREDENTIAL_PROMPT_LIMIT_MS=240000
 readonly PERMANENT_PASSWORD_SUBMIT_LIMIT_MS=240000
 # Keep one authenticated session across intervals below, within, and beyond the
 # reported roughly ten-second focus-loss delay window.
-readonly -a PEER_BACKGROUND_SECONDS=(2 6 12)
+readonly -a PEER_BACKGROUND_SECONDS=(2 6 120)
 # Probe a retained outgoing connection beyond the earlier short lifecycle schedule.
 # Each window still uses the independent source-bound framebuffer freshness oracle.
 readonly PEER_WARM_HOLD_SAMPLES=6
@@ -3628,27 +3628,39 @@ exercise_peer_warm_reconnect() {
 }
 
 exercise_peer_background_resume() {
-    local pid_before=$1 cycle=$2 background_seconds=$3 phase=
+    local pid_before=$1 cycle=$2 background_seconds=$3 phase= keyed_before=
     [[ "$cycle" =~ ^[1-9][0-9]*$ ]] \
         && [[ "$background_seconds" =~ ^[1-9][0-9]*$ ]] \
         || fail 'the Android background/resume phase identity is malformed'
     phase="background-resume-$cycle-${background_seconds}s"
+    keyed_before="$(peer_server_keyed_session_count)"
+    [[ "$keyed_before" =~ ^[1-9][0-9]*$ ]] \
+        && wait_peer_server_connections 1 exact \
+        || fail "$phase cannot bind the active peer before backgrounding"
     "$ADB" -s "$SERIAL" shell input keyevent KEYCODE_HOME >/dev/null \
         || fail 'cannot background the Android peer Activity'
+    assert_main_service \
+        || fail "$phase lost its foreground service while backgrounded"
     sleep "$background_seconds"
     [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$pid_before" ] \
         || fail "$phase replaced the MainService process"
+    assert_main_service \
+        || fail "$phase lost its foreground service during the background hold"
     wait_peer_server_connections 1 exact \
-        || fail "$phase retired the live Android peer connection"
+        && [ "$(peer_server_keyed_session_count)" = "$keyed_before" ] \
+        || fail "$phase retired or replaced the live Android peer connection"
     timeout --signal=TERM --kill-after=2s 60s \
         "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" >/dev/null \
         || fail "cannot resume the Android peer Activity for $phase"
     wait_resumed_activity || fail "the Android peer Activity did not resume for $phase"
     [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$pid_before" ] \
         || fail "$phase replaced the MainService process on resume"
+    assert_main_service \
+        || fail "$phase lost its foreground service on resume"
     capture_peer_freshness "$phase"
     wait_peer_server_connections 1 exact \
-        || fail "$phase duplicated or retired the Android peer connection"
+        && [ "$(peer_server_keyed_session_count)" = "$keyed_before" ] \
+        || fail "$phase duplicated or replaced the Android peer connection"
     [ "$PEER_LAST_RECOVERY_MS" -le "$PEER_BACKGROUND_RECOVERY_MS" ] \
         || PEER_BACKGROUND_RECOVERY_MS=$PEER_LAST_RECOVERY_MS
     PEER_BACKGROUND_CYCLES=$((PEER_BACKGROUND_CYCLES + 1))
@@ -4358,7 +4370,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
                 || fail 'the Android presentation-stage receipt is not ready'
             [ "$PEER_REVERSE_READY" -eq 0 ] \
                 || fail 'the Android peer reverse mapping remained live at receipt time'
-            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=%s old_sessions=closed replacements=%s warm_reconnects=%s warm_owner=preserved warm_recovery_max_ms=%s initial_credential=missing-credential initial_credential_prompt_observer=%s initial_credential_prompt_ms=%s initial_credential_prompt_limit_ms=%s initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=%s credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_cycles=%s background_seconds=2,6,12 background_recovery_max_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s resource_samples=%s resource_bound=partial-rss-threads handle_bound=open force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
+            printf 'ANDROID_EMULATOR_PEER_LIFECYCLE=pass auth=cpace server=production address=127.0.0.1:22118 transport=adb-reverse-loopback service=foreground-preserved process=same-across-task-removal task_removals=%s old_sessions=closed replacements=%s warm_reconnects=%s warm_owner=preserved warm_recovery_max_ms=%s initial_credential=missing-credential initial_credential_prompt_observer=%s initial_credential_prompt_ms=%s initial_credential_prompt_limit_ms=%s initial_network_attempts=0 wrong_credential=peer-confirmation-unavailable-prompt wrong_attempts=1 auto_retry=absent credential_prompt_observer=%s credential_prompt_ms=%s credential_prompt_limit_ms=%s auto_retry_observation_ms=%s correct_credential_connection_ms=%s credential_connection_limit_ms=%s cached_connection_max_ms=%s cached_connection_limit_ms=%s initial_recovery_ms=%s background_cycles=%s background_seconds=2,6,120 background_recovery_max_ms=%s task_recovery_max_ms=%s recovery_limit_ms=%s freshness_max_ms=%s freshness_limit_ms=%s capture_max_ms=%s capture_limit_ms=%s distinct_frames=%s resource_samples=%s resource_bound=partial-rss-threads handle_bound=open force_stop=baseline apk_sha256=%s vm_network=none container_network=none server_listener=127.0.0.1:21118 reverse_cleanup=removed x11=unix-only cleanup=joined\n' \
                 "$PEER_TASK_REPLACEMENT_CYCLES" \
                 "$PEER_TASK_REPLACEMENT_CYCLES" \
                 "$PEER_WARM_RECONNECT_CYCLES" "$PEER_WARM_RECOVERY_MAX_MS" \

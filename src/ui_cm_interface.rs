@@ -804,11 +804,18 @@ lazy_static::lazy_static! {
 #[cfg(any(target_os = "android", test))]
 lazy_static::lazy_static! {
     static ref CM_FILE_OPERATION_CHANGED: tokio::sync::Notify = tokio::sync::Notify::new();
-    static ref CM_ANDROID_FILE_OPERATION_LIMIT: Arc<Semaphore> = Arc::new(Semaphore::new(32));
+    static ref CM_ANDROID_FILE_OPERATION_LIMIT: Arc<Semaphore> =
+        Arc::new(Semaphore::new(CM_ANDROID_FILE_OPERATION_DRAIN_CAPACITY));
 }
 
 #[cfg(any(target_os = "android", test))]
 const CM_ANDROID_FILE_OPERATION_DRAIN_CAPACITY: usize = 32;
+
+#[cfg(any(target_os = "android", test))]
+struct CmFileOperationReaper {
+    sender: std_mpsc::SyncSender<CmFileOperationJoin>,
+    _thread: std::thread::JoinHandle<()>,
+}
 
 #[cfg(any(target_os = "android", test))]
 struct CmFileOperationJoin {
@@ -818,7 +825,7 @@ struct CmFileOperationJoin {
 
 #[cfg(any(target_os = "android", test))]
 static CM_ANDROID_FILE_OPERATION_REAPER: OnceLock<
-    Result<std_mpsc::SyncSender<CmFileOperationJoin>, String>,
+    Result<CmFileOperationReaper, String>,
 > = OnceLock::new();
 
 #[cfg(any(target_os = "android", test))]
@@ -837,10 +844,14 @@ fn cm_android_file_operation_reaper(
                         }
                     }
                 })
-                .map(|_| sender)
+                .map(|thread| CmFileOperationReaper {
+                    sender,
+                    _thread: thread,
+                })
                 .map_err(|error| format!("cannot start Android CM file drain: {error}"))
         })
         .as_ref()
+        .map(|reaper| &reaper.sender)
         .map_err(|error| {
             log::error!("{error}");
             "Android CM file drain is unavailable"

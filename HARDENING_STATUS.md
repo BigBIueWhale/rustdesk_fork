@@ -3147,22 +3147,33 @@ is 69,038 bytes, SHA-256
 `47f76e9189986e2d5a020d34c69035b6738dad7c39f2df7b37caa26c0a1ba0ef`.
 The outer audit found no harness-added host listener, one pre-existing-process
 drift, and joined guest-only Docker/QEMU/virtiofsd with no retained `run.*` root.
-This tests the Android in-process consumer code on Linux, not an installed Android
-device, network peer, or an already executing file operation. In particular, `start_listen`
-directly awaits `handle_fs`, whose metadata and mutation arms await Tokio `spawn_blocking` work.
-Dropping the listener future while a blocking task is running can detach its join handle and
-retire `CmClientTaskOwner` before the filesystem task finishes. Terminal priority has been
-shown for a full *queued* command lane only; an already selected file operation and abrupt
-listener cancellation still need exact drain and successor-ordering design plus an isolated
-negative test. No detached-work safety or prompt terminality is claimed for that edge. The current
-replay is headless Linux behavior, not installed service, native Windows handle semantics,
-full Android CM lifetime, stale-generation replacement, live-peer saturation,
-broader storage faults, or final-artifact evidence. The matrix below keeps those
-obligations open.
+That transaction tested queued terminal priority only. Android `start_listen` now transfers an
+already selected filesystem command, its transfer jobs, and its exact registry owner into one
+capacity-limited child task; a fixed process-lifetime drain owns its join handle if the listener
+is cancelled. Same-ID successor admission waits for the prior operation and owner/UI retirement,
+with a finite refusal if it does not drain. Exact pushed source `913e774e` (tree `8a75752d`)
+passed the 56-test Linux-target transaction in 692 seconds. The expanded production-path test
+held a real `CreateDir` worker before its filesystem effect, cancelled the listener, observed the
+old registry generation still present and same-ID replacement refused, then released the worker
+and observed the directory effect, old-owner retirement, and successor admission. Raw serial
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.6rOVdBhMUF.serial.log` is 70,325
+bytes, SHA-256 `fc8a821542ce65e0a3ef4295a4f0d7aca8c9caff3ca91c9cb32502791fee945f`.
+The outer audit reported no harness-added host listener or pre-existing-process drift, joined
+guest-only Docker/QEMU/virtiofsd, and no retained `run.*` root or overlay. The preceding compile
+attempt failed only because a test registry initializer lacked the new field; its disposable disk
+was removed after joined teardown and its raw serial remains retained. An Android-target compile
+attempt at the same source stopped *before compilation* because the full pinned online closure
+lacks `flutter-windows-3.24.5.zip`; its raw serial is
+`.harness-state/verifier-vm/android-rust-target-check-run.2nhx1Esi14.serial.log`, SHA-256
+`82a62ac7a89a038177bab1a1c5b3ed82df4fba050c8dd29bece22ceb6d4a4787`.
+No partial-cache or Android-only fallback was introduced. This is one Linux execution of the
+Android in-process consumer under `cfg(test)`, not Android-target compilation, an installed APK,
+a network peer, a terminal arriving during every file-operation type, desktop CM cancellation,
+or sustained latency/resource evidence. The matrix below keeps those obligations open.
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The current 56-test Linux-target transaction exercised terminal priority over a full Android CM command queue, not an already selected filesystem operation or abrupt cancellation during `spawn_blocking`. Still OPEN: exact in-flight operation drain and successor ordering, other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, stale-generation replacement, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and final-artifact evidence. The installed Windows result predates the later corrections. |
+| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The current 56-test Linux-target transaction also exercised Android in-process queued-terminal priority and cancellation during a selected real `CreateDir` blocking worker, including same-ID successor ordering. Still OPEN: Android-target compilation and installed APK execution, other in-flight file-operation types and true terminal-during-operation cases, desktop CM cancellation/drain, different-ID same-peer replacement, other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop/Android repeats, sustained resources/latency, and final-artifact evidence. The installed Windows result predates the later corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

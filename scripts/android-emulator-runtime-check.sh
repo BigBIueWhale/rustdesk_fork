@@ -9,7 +9,7 @@ die() {
 }
 
 [ "$#" -eq 4 ] || [ "$#" -eq 8 ] \
-    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 ARTIFACT_SOURCE_COMMIT recents | APK APK_SHA256 ARTIFACT_SOURCE_COMMIT peer-lifecycle PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256'
+    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 ARTIFACT_SOURCE_COMMIT recents | APK APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256'
 readonly APK=$1
 readonly APK_SHA256=$2
 readonly ARTIFACT_SOURCE_COMMIT=$3
@@ -20,13 +20,13 @@ readonly PEER_TREE=${7:-}
 readonly PEER_MANIFEST_SHA256=${8:-}
 case "$RUNTIME_SCENARIO" in
     recents) [ "$#" -eq 4 ] || die 'Recents-only replay accepts no peer authority' ;;
-    peer-lifecycle)
+    peer-lifecycle|controlled-cm)
         [ "$#" -eq 8 ] && [[ "$PEER_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$PEER_TREE" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$PEER_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
             || die 'peer replay requires exact source and manifest authority'
         ;;
-    *) die 'the Android runtime scenario differs from recents or peer-lifecycle' ;;
+    *) die 'the Android runtime scenario differs from recents, peer-lifecycle, or controlled-cm' ;;
 esac
 readonly RUN_UID="$(id -u)"
 readonly RUN_GID="$(id -g)"
@@ -126,7 +126,7 @@ events = {
     b"ANDROID_EMULATOR_KVM_API", b"ANDROID_EMULATOR_KVM_EXECUTION",
     b"ANDROID_EMULATOR_FRAME_ENDPOINT", b"ANDROID_EMULATOR_RENDERER",
     b"ANDROID_PEER_INFRASTRUCTURE", b"ANDROID_CONTROLLED_CPACE",
-    b"ANDROID_CONTROLLED_CM_FILE",
+    b"ANDROID_CONTROLLED_CM_FILE", b"ANDROID_CONTROLLED_CM_STOP",
     b"ANDROID_RECENTS_GESTURE_DRIVER", b"ANDROID_RECENTS_DISMISS_ACTION",
     b"ANDROID_RECENTS_DISMISS_OUTCOME", b"ANDROID_PEER_CONNECTION_WAIT",
     b"ANDROID_PEER_CONNECTION_READY", b"ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT",
@@ -612,7 +612,8 @@ readonly RECENTS_DRIVER_SHA256
 vm_docker rm "$VERIFY_CONTAINER" >/dev/null
 VERIFY_CONTAINER=
 
-if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
+if [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
+   || [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
 materialized="$(python3 -I -S "$SCRIPT_DIR/android-peer-artifact.py" materialize \
     --root "$PEER_ROOT" --root-identity "$(stat -c '%d:%i' -- "$PEER_ROOT")" \
     --parent "$WORKSPACE" --parent-identity "$WORKSPACE_ID" \
@@ -629,7 +630,9 @@ printf 'ANDROID_PEER_ARTIFACT_ADMITTED=pass commit=%s tree=%s manifest_sha256=%s
     "$PEER_COMMIT" "$PEER_TREE" "$PEER_MANIFEST_SHA256" "$DEV_CHECK_IMAGE_CONFIG_ID"
 PEER_EXECUTION_INVENTORY="$(find "$SERVER_TARGET" -xdev -mindepth 0 -printf '%p\0' \
     | LC_ALL=C sort -z | xargs -0 stat -c '%d:%i:%u:%g:%a:%h:%s')"
+fi
 
+if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
 XVFB_CONTAINER="$(vm_docker create \
     --name rustdesk-android-emulator-xvfb-prepare \
     --pull=never --network=none --read-only \
@@ -703,20 +706,27 @@ runtime_mounts=(
     --mount "type=bind,source=$RECENTS_DRIVER_JAR,target=/inputs/recents-dismiss.jar,readonly,bind-recursive=disabled"
 )
 runtime_environment=()
-if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
+if [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
+   || [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
     runtime_mounts+=(
         --mount "type=bind,source=$SERVER_TARGET,target=/smoke-target,readonly,bind-recursive=disabled"
-        --mount "type=bind,source=$FRAME_SOURCE,target=/inputs/frame-source,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$PEER_ROOT/peer-manifest.json,target=/inputs/peer-manifest.json,readonly,bind-recursive=disabled"
-        --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled"
-        --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled"
-        --mount "type=bind,source=$SERVER_MACHINE_ID,target=/etc/machine-id,readonly,bind-recursive=disabled"
-        --mount "type=bind,source=$OBSERVER_ROOT,target=/observer,bind-recursive=disabled"
     )
     runtime_environment=(
         --env "ANDROID_PEER_MANIFEST_SHA256=$PEER_MANIFEST_SHA256"
         --env "ANDROID_PEER_SOURCE_COMMIT=$PEER_COMMIT"
         --env "ANDROID_PEER_SOURCE_TREE=$PEER_TREE"
+    )
+fi
+if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
+    runtime_mounts+=(
+        --mount "type=bind,source=$FRAME_SOURCE,target=/inputs/frame-source,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$SERVER_MACHINE_ID,target=/etc/machine-id,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$OBSERVER_ROOT,target=/observer,bind-recursive=disabled"
+    )
+    runtime_environment+=(
         --env "ANDROID_FRAME_SOURCE_SHA256=$FRAME_SOURCE_SHA256"
         --env "ANDROID_FRAME_SOURCE_BYTES=$FRAME_SOURCE_BYTES"
     )
@@ -771,6 +781,14 @@ runtime_driver_mounts="$(vm_docker inspect --format \
 [ "$runtime_driver_mounts" = \
   "bind	$RECENTS_DRIVER_JAR	/inputs/recents-dismiss.jar	false" ] \
     || die 'Android Recents gesture-driver mount authority differs'
+if [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
+    runtime_peer_mounts="$(vm_docker inspect --format \
+        '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
+        "$RUNTIME_CONTAINER" | awk -F '\t' '$3 == "/smoke-target" { print }')"
+    [ "$runtime_peer_mounts" = \
+      "bind	$SERVER_TARGET	/smoke-target	false" ] \
+        || die 'Android controlled-CM peer execution mount is not the admitted read-only copy'
+fi
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
     runtime_machine_id_mounts="$(vm_docker inspect --format \
         '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
@@ -1272,13 +1290,20 @@ mapfile -t recents_driver_stage_receipts < <(grep -E \
     runtime_uiautomator_sha256=([0-9a-f]{64})\ device_path= ]] \
     || die 'Android Recents gesture-driver runtime UiAutomator digest is malformed'
 RECENTS_RUNTIME_UIAUTOMATOR_SHA256=${BASH_REMATCH[1]}
-if [ "$RUNTIME_SCENARIO" = recents ]; then
-    readonly expected_recents_cycles=10
-    readonly recents_cycle_pattern='([1-9]|10)'
-else
-    readonly expected_recents_cycles=6
-    readonly recents_cycle_pattern='[1-6]'
-fi
+case "$RUNTIME_SCENARIO" in
+    recents)
+        readonly expected_recents_cycles=10
+        readonly recents_cycle_pattern='([1-9]|10)'
+        ;;
+    peer-lifecycle)
+        readonly expected_recents_cycles=6
+        readonly recents_cycle_pattern='[1-6]'
+        ;;
+    controlled-cm)
+        readonly expected_recents_cycles=1
+        readonly recents_cycle_pattern=1
+        ;;
+esac
 mapfile -t recents_open_action_receipts < <(grep -E \
     "^ANDROID_RECENTS_OPEN_ACTION=injected cycle=$recents_cycle_pattern task_id=[1-9][0-9]* mechanism=android14-ui-automation-app-switch-key keycode=187 events=2 display_id=0 source=keyboard device=virtual-keyboard wait_for_animations=false driver_elapsed_ms=[0-9]+ driver_sha256=$RECENTS_DRIVER_SHA256$" \
     "$RUNTIME_LOG" || true)
@@ -1359,13 +1384,16 @@ for lifecycle_cycle in $(seq 1 "$expected_recents_cycles"); do
     esac
     recents_task_ids="${recents_task_ids:+$recents_task_ids }$cycle_task_id"
 done
-if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
+if [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
+   || [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
 mapfile -t controlled_cm_receipts < <(grep -Fx \
     'ANDROID_CONTROLLED_CM_FILE=pass initiator=linux-probe responder=android-mainservice auth=cpace login=filetransfer cm=admitted directory=reply transport=adb-forward-loopback forward_cleanup=removed password_transport=stdin' \
     "$RUNTIME_LOG" || true)
 [ "${#controlled_cm_receipts[@]}" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_CONTROLLED_CM_FILE=' "$RUNTIME_LOG")" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android controlled-side CM transaction receipt is absent or malformed'; }
+fi
+if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
 mapfile -t lifecycle_receipts < <(grep -E \
     '^ANDROID_EMULATOR_LIFECYCLE=pass task_removals=6 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=absent immersive_cling=(absent|dismissed-1) apk_sha256=[0-9a-f]{64} vm_network=none container_network=none cleanup=joined$' \
     "$RUNTIME_LOG" || true)
@@ -1391,6 +1419,19 @@ case "${peer_receipts[0]}" in
     *"apk_sha256=$APK_SHA256"*) ;;
     *) die 'Android real-peer lifecycle reported a different APK digest' ;;
 esac
+elif [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
+mapfile -t controlled_stop_receipts < <(grep -Fx \
+    'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent' \
+    "$RUNTIME_LOG" || true)
+[ "${#controlled_stop_receipts[@]}" -eq 1 ] \
+    && [ "$(grep -c '^ANDROID_CONTROLLED_CM_STOP=' "$RUNTIME_LOG")" -eq 1 ] \
+    || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android controlled-CM Stop receipt is absent or duplicated'; }
+mapfile -t controlled_lifecycle_receipts < <(grep -Fx \
+    "ANDROID_EMULATOR_CONTROLLED_CM=pass task_removals=1 service=foreground-across-task-relaunch-then-stopped process=same positive=filetransfer-dir-reply stopped=fresh-keyed-cm-refused framework_anr=absent apk_sha256=$APK_SHA256 vm_network=none container_network=none cleanup=joined" \
+    "$RUNTIME_LOG" || true)
+[ "${#controlled_lifecycle_receipts[@]}" -eq 1 ] \
+    && [ "$(grep -c '^ANDROID_EMULATOR_CONTROLLED_CM=' "$RUNTIME_LOG")" -eq 1 ] \
+    || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android controlled-CM lifecycle receipt is absent or duplicated'; }
 else
 mapfile -t focused_recents_receipts < <(grep -E \
     "^ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 open_actions=10 task_ids=distinct open=ui-automation-app-switch-key-display-0 driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$RECENTS_RUNTIME_UIAUTOMATOR_SHA256 driver_sha256=$RECENTS_DRIVER_SHA256 framework_anr=absent service=never-started relaunch=resumed apk_sha256=$APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
@@ -1417,13 +1458,16 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         && [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$FRAME_SOURCE_C")" = "$FRAME_SOURCE_C_ID" ] \
         && [ "$(sha256sum "$FRAME_SOURCE_C" | awk '{ print $1 }')" = "$FRAME_SOURCE_C_SHA256" ] \
         || die 'independent X11 fixture source or executable changed during replay'
-    [ "$PEER_EXECUTION_INVENTORY" = "$(find "$SERVER_TARGET" -xdev -mindepth 0 -printf '%p\0' \
-        | LC_ALL=C sort -z | xargs -0 stat -c '%d:%i:%u:%g:%a:%h:%s')" ] \
-        || die 'admitted Android peer execution layout changed during the read-only run'
     [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$SERVER_MACHINE_ID")" = \
       "$SERVER_MACHINE_ID_ID" ] \
         && [ "$(<"$SERVER_MACHINE_ID")" = "$SERVER_MACHINE_ID_VALUE" ] \
         || die 'private Android peer machine identity changed during execution'
+fi
+if [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
+   || [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
+    [ "$PEER_EXECUTION_INVENTORY" = "$(find "$SERVER_TARGET" -xdev -mindepth 0 -printf '%p\0' \
+        | LC_ALL=C sort -z | xargs -0 stat -c '%d:%i:%u:%g:%a:%h:%s')" ] \
+        || die 'admitted Android peer execution layout changed during the read-only run'
 fi
 [ "$(stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$APK")" = "$APK_ID" ] \
     && [ "$(sha256sum "$APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
@@ -1466,6 +1510,10 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         "${lifecycle_receipts[0]}" "${initial_credential_receipts[0]}" \
         "${peer_receipts[0]}"
     runtime_peer=production-loopback-cpace-changing-display
+elif [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
+    printf '%s\n' "${controlled_cm_receipts[0]}" \
+        "${controlled_stop_receipts[0]}" "${controlled_lifecycle_receipts[0]}"
+    runtime_peer=production-loopback-cpace-controlled-cm
 else
     printf '%s\n' "${focused_recents_receipts[0]}"
     runtime_peer=absent

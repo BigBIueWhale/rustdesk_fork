@@ -10,7 +10,7 @@ fail() {
 
 [ "$#" -eq 4 ] || [ "$#" -eq 5 ] || [ "$#" -eq 6 ] \
     || [ "$#" -eq 7 ] \
-    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [launch|recents|lifecycle|peer-lifecycle [RECENTS_GESTURE_JAR]]]'
+    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [launch|recents|lifecycle|peer-lifecycle|controlled-cm [RECENTS_GESTURE_JAR]]]'
 readonly EMULATOR_ZIP=$1
 readonly SYSTEM_IMAGE_ZIP=$2
 readonly INPUT_ADB=$3
@@ -18,7 +18,9 @@ readonly WORK_ROOT=$4
 readonly RUNTIME_TEST_APK=${5:-}
 readonly APP_SCENARIO=${6:-launch}
 readonly RECENTS_GESTURE_JAR=${7:-}
-if [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = peer-lifecycle ]; then
+if [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = controlled-cm ]; then
+    readonly WORKLOAD=app-controlled-cm
+elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = peer-lifecycle ]; then
     readonly WORKLOAD=app-peer-lifecycle
 elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = lifecycle ]; then
     readonly WORKLOAD=app-lifecycle
@@ -29,7 +31,7 @@ elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = launch ]; then
 elif [ -z "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = launch ]; then
     readonly WORKLOAD=boot
 else
-    fail 'the Android app scenario differs from launch, recents, lifecycle, or peer-lifecycle'
+    fail 'the Android app scenario differs from launch, recents, lifecycle, peer-lifecycle, or controlled-cm'
 fi
 EMULATOR_GRPC_ARGS=()
 if [ "$WORKLOAD" = app-peer-lifecycle ]; then
@@ -70,7 +72,8 @@ print("ANDROID_EMULATOR_KVM_API=pass scope=guest-virtual api=12 vm_create=closed
 PY
 if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
    || [ "$WORKLOAD" = app-lifecycle ] \
-   || [ "$WORKLOAD" = app-peer-lifecycle ]; then
+   || [ "$WORKLOAD" = app-peer-lifecycle ] \
+   || [ "$WORKLOAD" = app-controlled-cm ]; then
     [ "$WORK_ROOT" = /tmp/android-emulator-app ] \
         || fail 'the emulator app work root differs from the fixed private tmpfs path'
 else
@@ -102,7 +105,8 @@ verify_regular_input \
 APK_SHA256=
 if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
    || [ "$WORKLOAD" = app-lifecycle ] \
-   || [ "$WORKLOAD" = app-peer-lifecycle ]; then
+   || [ "$WORKLOAD" = app-peer-lifecycle ] \
+   || [ "$WORKLOAD" = app-controlled-cm ]; then
     [ -f "$RUNTIME_TEST_APK" ] && [ ! -L "$RUNTIME_TEST_APK" ] \
         || fail 'runtime-test APK is absent or ambiguous'
     apk_size="$(stat -c '%s' -- "$RUNTIME_TEST_APK")"
@@ -120,7 +124,8 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
 fi
 RECENTS_GESTURE_SHA256=
 if [ "$WORKLOAD" = app-recents ] || [ "$WORKLOAD" = app-lifecycle ] \
-   || [ "$WORKLOAD" = app-peer-lifecycle ]; then
+   || [ "$WORKLOAD" = app-peer-lifecycle ] \
+   || [ "$WORKLOAD" = app-controlled-cm ]; then
     [ -f "$RECENTS_GESTURE_JAR" ] && [ ! -L "$RECENTS_GESTURE_JAR" ] \
         || fail 'the Recents gesture driver is absent or ambiguous'
     gesture_size="$(stat -c '%s' -- "$RECENTS_GESTURE_JAR")"
@@ -1343,8 +1348,12 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+if [ "$WORKLOAD" = app-peer-lifecycle ] \
+   || [ "$WORKLOAD" = app-controlled-cm ]; then
     readonly PEER_TARGET=/smoke-target
+    [ "$(find /sys/class/net -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)" = lo ] \
+        || fail 'the Android peer-probe runtime container has a non-loopback interface'
+    if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     readonly PEER_XVFB_ROOT=/xvfb-root
     readonly PEER_XVFB_MANIFEST=$SCRIPT_DIR/smoke-xvfb-files.tsv
     readonly PEER_READY=$SCRIPT_DIR/smoke-ready.sh
@@ -1371,8 +1380,7 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
         || fail 'the Android emulator frame-observer exchange root differs'
     [ -z "$(find "$FRAME_OBSERVER_ROOT" -mindepth 1 -maxdepth 1 -print -quit)" ] \
         || fail 'the Android emulator frame-observer exchange root is not empty'
-    [ "$(find /sys/class/net -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)" = lo ] \
-        || fail 'the real-peer runtime container has a non-loopback interface'
+    fi
     python3 -I -S - "$DEV_CHECK_IMAGE_CONFIG_ID" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
         "$SHA256_CARGO_VENDOR_CONFIG" "$RUST_VERSION" <<'PY' \
         || fail 'the Android peer runtime bundle differs from its source-bound manifest'
@@ -1434,6 +1442,13 @@ for name, relative in layout.items():
     if manifest["files"][name] != {"bytes": info.st_size, "sha256": digest.hexdigest()}:
         raise ValueError("peer runtime execution bytes differ")
 PY
+    if [ "$WORKLOAD" = app-controlled-cm ]; then
+        [ -f "$PEER_TARGET/debug/examples/probe_client" ] \
+            && [ ! -L "$PEER_TARGET/debug/examples/probe_client" ] \
+            && [ -x "$PEER_TARGET/debug/examples/probe_client" ] \
+            || fail 'the admitted Android CM probe is absent or ambiguous'
+    fi
+    if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     [ -f "$PEER_XVFB_MANIFEST" ] && [ ! -L "$PEER_XVFB_MANIFEST" ] \
         || fail 'the Android peer Xvfb file manifest is absent or ambiguous'
     xvfb_file_count=0
@@ -1526,6 +1541,7 @@ PY
     wait_peer_server_connections 0 exact \
         || fail 'the Android peer credential probe did not close exactly'
     printf 'ANDROID_PEER_RESPONDER_CPACE=pass initiator=linux-probe responder=production-peer credential=seeded correct=keyed listener=127.0.0.1:21118 connection_cleanup=closed password_transport=stdin\n'
+    fi
 fi
 
 "$ADB" server nodaemon >"$ADB_LOG" 2>&1 &
@@ -1649,8 +1665,8 @@ adb_shell_value() {
         "$ADB" -s "$SERIAL" shell "$@" | tr -d '\r'
 }
 
-exercise_android_controlled_cpace() {
-    local forward_output forward_listing expected_probe_output
+create_android_control_forward() {
+    local forward_output forward_listing
     [ "$ANDROID_CONTROL_FORWARD_READY" -eq 0 ] \
         && [ -z "$ANDROID_CONTROL_FORWARD_LISTING" ] \
         || fail 'the Android controlled-side forward is already owned'
@@ -1679,7 +1695,11 @@ exercise_android_controlled_cpace() {
     ANDROID_CONTROL_FORWARD_LISTING=$forward_listing
     android_control_forward_is_loopback_only \
         || fail 'the Android controlled-side forward is not one exact container-loopback listener'
+}
 
+exercise_android_controlled_cpace() {
+    local expected_probe_output
+    create_android_control_forward
     {
         printf '%s\n' "$TEST_PASSWORD" \
             | timeout --signal=TERM --kill-after=2s 60s \
@@ -1721,6 +1741,66 @@ exercise_android_controlled_cpace() {
         || fail 'the private Android controlled-side forward did not close exactly'
     printf 'ANDROID_CONTROLLED_CPACE=pass initiator=linux-probe responder=android-mainservice correct=keyed wrong=refused transport=adb-forward-loopback forward_listener=127.0.0.1:22119 forward_cleanup=removed password_transport=stdin\n'
     printf 'ANDROID_CONTROLLED_CM_FILE=pass initiator=linux-probe responder=android-mainservice auth=cpace login=filetransfer cm=admitted directory=reply transport=adb-forward-loopback forward_cleanup=removed password_transport=stdin\n'
+}
+
+exercise_android_controlled_stop() {
+    local stopped=0 probe_status=0 lifecycle_log
+    tap_ui text 'Stop screen sharing' \
+        || fail 'the production Stop screen sharing command is unavailable'
+    for _ in $(seq 1 120); do
+        if assert_no_main_service; then
+            stopped=1
+            break
+        fi
+        sleep 0.25
+    done
+    [ "$stopped" -eq 1 ] \
+        || fail 'production Stop did not retire MainService'
+    [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$APP_PID" ] \
+        || fail 'production Stop killed or replaced the application process'
+    wait_ui_center text 'Screen sharing is off' >/dev/null \
+        || fail 'the production UI did not observe stopped screen sharing'
+    lifecycle_log="$(adb_shell_value logcat -d -v brief)"
+    ! grep -Eq 'FATAL EXCEPTION|MainService destruction retained incomplete generation authority|Could not quiesce controlled connection admission' \
+        <<<"$lifecycle_log" \
+        || fail 'production Stop logged incomplete MainService teardown'
+
+    create_android_control_forward
+    if printf '%s\n' "$TEST_PASSWORD" \
+        | timeout --signal=TERM --kill-after=2s 15s \
+            "$PEER_TARGET/debug/examples/probe_client" \
+            127.0.0.1:22119 --password-stdin ok cmfiletransfer \
+            >"$WORK_ROOT/android-controlled-stopped.log" 2>&1; then
+        fail 'a fresh keyed CM FileTransfer succeeded after production Stop'
+    else
+        probe_status=$?
+    fi
+    [ "$probe_status" -eq 1 ] || [ "$probe_status" -eq 2 ] \
+        || fail "the stopped CM probe did not finish with a bounded refusal: $probe_status"
+    if [ "$probe_status" -eq 1 ]; then
+        grep -Fxq 'probe_client: keying ok=false (expected=ok)' \
+            "$WORK_ROOT/android-controlled-stopped.log" \
+            && grep -Fxq 'probe_client: FAIL' \
+                "$WORK_ROOT/android-controlled-stopped.log" \
+            || fail 'the stopped CM probe did not report a failed CPace keying'
+    else
+        grep -Eq '^probe_client: CONNECT_FAIL ' \
+            "$WORK_ROOT/android-controlled-stopped.log" \
+            || fail 'the stopped CM probe did not report connection refusal'
+    fi
+    [ "$(stat -c '%u:%g:%a:%h' -- "$WORK_ROOT/android-controlled-stopped.log")" = \
+      "$RUN_UID:$RUN_GID:600:1" ] \
+        && [ "$(stat -c '%s' -- "$WORK_ROOT/android-controlled-stopped.log")" -le 4096 ] \
+        && ! grep -Fq -- "$TEST_PASSWORD" "$WORK_ROOT/android-controlled-stopped.log" \
+        && ! grep -Fq '[FT-PEERINFO ' "$WORK_ROOT/android-controlled-stopped.log" \
+        && ! grep -Fq '[FT-DIR-RESPONSE ' "$WORK_ROOT/android-controlled-stopped.log" \
+        && ! grep -Fq 'probe_client: PASS' "$WORK_ROOT/android-controlled-stopped.log" \
+        || fail 'the stopped CM probe output did not prove admission refusal'
+    assert_no_main_service \
+        || fail 'the refused CM probe restarted MainService'
+    remove_android_control_forward \
+        || fail 'the stopped CM probe forward did not close exactly'
+    printf 'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent\n'
 }
 
 readonly APP_PACKAGE=com.carriez.flutter_hbb
@@ -3794,9 +3874,11 @@ APP_PID=
 LIFECYCLE_RECEIPT_READY=0
 PEER_RECEIPT_READY=0
 RECENTS_RECEIPT_READY=0
+CONTROLLED_CM_RECEIPT_READY=0
 if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
    || [ "$WORKLOAD" = app-lifecycle ] \
-   || [ "$WORKLOAD" = app-peer-lifecycle ]; then
+   || [ "$WORKLOAD" = app-peer-lifecycle ] \
+   || [ "$WORKLOAD" = app-controlled-cm ]; then
     install_output="$(timeout --signal=TERM --kill-after=2s 180s \
         "$ADB" -s "$SERIAL" install --no-streaming --no-incremental \
         "$RUNTIME_TEST_APK")" \
@@ -3809,7 +3891,8 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
         com.carriez.flutter_hbb)"
     [ "$resolved_activity" = com.carriez.flutter_hbb/.MainActivity ] \
         || fail "runtime-test launcher activity differs: $resolved_activity"
-    if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then
+    if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ] \
+       || [ "$WORKLOAD" = app-controlled-cm ]; then
         timeout --signal=TERM --kill-after=2s 10s \
             "$ADB" -s "$SERIAL" shell pm grant "$APP_PACKAGE" \
             android.permission.POST_NOTIFICATIONS >/dev/null \
@@ -3932,7 +4015,8 @@ PY
         RECENTS_RECEIPT_READY=1
     fi
 
-    if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then
+    if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ] \
+       || [ "$WORKLOAD" = app-controlled-cm ]; then
         share_command=
         for _ in $(seq 1 3); do
             tap_ui text 'Share screen' || continue
@@ -4129,6 +4213,8 @@ PY
         task_removal_cycles=$LIFECYCLE_TASK_REMOVAL_CYCLES
         if [ "$WORKLOAD" = app-peer-lifecycle ]; then
             task_removal_cycles=$PEER_TASK_REPLACEMENT_CYCLES
+        elif [ "$WORKLOAD" = app-controlled-cm ]; then
+            task_removal_cycles=1
         fi
         for lifecycle_cycle in $(seq 1 "$task_removal_cycles"); do
             dismiss_current_app_task "$lifecycle_cycle" \
@@ -4195,6 +4281,16 @@ PY
         retire_recents_gesture_driver \
             || fail 'the lifecycle Recents gesture driver did not retire exactly'
 
+        if [ "$WORKLOAD" = app-controlled-cm ]; then
+            exercise_android_controlled_cpace
+            assert_main_service \
+                || fail 'the post-task CM transaction changed MainService state'
+            [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = \
+              "$APP_PID" ] \
+                || fail 'the post-task CM transaction changed the application process'
+            exercise_android_controlled_stop
+            CONTROLLED_CM_RECEIPT_READY=1
+        else
         readonly PRE_FORCE_PID=$APP_PID
         timeout --signal=TERM --kill-after=2s 10s \
             "$ADB" -s "$SERIAL" shell am force-stop "$APP_PACKAGE" >/dev/null \
@@ -4268,6 +4364,7 @@ PY
             PEER_RECEIPT_READY=1
         fi
         LIFECYCLE_RECEIPT_READY=1
+        fi
     fi
 fi
 
@@ -4375,7 +4472,8 @@ PY
 fi
 if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
    || [ "$WORKLOAD" = app-lifecycle ] \
-   || [ "$WORKLOAD" = app-peer-lifecycle ]; then
+   || [ "$WORKLOAD" = app-peer-lifecycle ] \
+   || [ "$WORKLOAD" = app-controlled-cm ]; then
     [ "$(sha256sum "$RUNTIME_TEST_APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
         || fail 'runtime-test APK changed during emulator execution'
     printf 'ANDROID_EMULATOR_APP=pass emulator=%s api=%s abi=%s package=com.carriez.flutter_hbb activity=MainActivity launch_wait=%s state=resumed process=stable-five-seconds apk_sha256=%s signing=test-only acceleration=kvm-nested gpu=swiftshader framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \
@@ -4395,6 +4493,18 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
             "$RECENTS_DISMISS_GESTURE_STEP_MS" \
             "$RECENTS_RUNTIME_UIAUTOMATOR_SHA256" "$RECENTS_GESTURE_SHA256" \
             "$framework_anr" \
+            "$APK_SHA256"
+    fi
+    if [ "$WORKLOAD" = app-controlled-cm ]; then
+        [ "$CONTROLLED_CM_RECEIPT_READY" -eq 1 ] \
+            || fail 'the controlled-CM service lifecycle receipt is not ready'
+        [ "$RECENTS_GESTURE_STAGED" -eq 0 ] \
+            || fail 'the controlled-CM Recents gesture driver remained staged'
+        framework_anr="$(framework_anr_receipt)" \
+            || fail 'the controlled-CM framework ANR receipt is invalid'
+        [ "$framework_anr" = absent ] \
+            || fail 'the controlled-CM lifecycle had a framework ANR'
+        printf 'ANDROID_EMULATOR_CONTROLLED_CM=pass task_removals=1 service=foreground-across-task-relaunch-then-stopped process=same positive=filetransfer-dir-reply stopped=fresh-keyed-cm-refused framework_anr=absent apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
             "$APK_SHA256"
     fi
     if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then

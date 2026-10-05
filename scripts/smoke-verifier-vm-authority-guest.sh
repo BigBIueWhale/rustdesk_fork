@@ -69,7 +69,7 @@ case "$#:${8:-}" in
         MODE=android-emulator-runtime
         ;;
     19:--android-emulator-runtime)
-        [ "${16}" = peer-lifecycle ] || exit 2
+        [ "${16}" = peer-lifecycle ] || [ "${16}" = controlled-cm ] || exit 2
         MODE=android-emulator-runtime
         ;;
     12:--apple-conform)
@@ -108,7 +108,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 peer-lifecycle PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-flutter-app-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 CONTEXT | --linux-flutter-app-replay SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 APP_COMMIT APP_TREE APP_RECIPE_SHA256 APP_MANIFEST_SHA256 CONTEXT | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 {peer-lifecycle|controlled-cm} PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-flutter-app-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 CONTEXT | --linux-flutter-app-replay SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 APP_COMMIT APP_TREE APP_RECIPE_SHA256 APP_MANIFEST_SHA256 CONTEXT | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         echo 'The seven base arguments also accept --android-execution-probe, --android-runtime-log-tests, or --linux-flutter-artifact-tests.' >&2
         echo 'CM file integration replay accepts --cm-file-replay SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         exit 2
@@ -4009,10 +4009,11 @@ run_android_emulator_runtime() {
     [[ "$ANDROID_RUNTIME_APK_SHA256" =~ ^[0-9a-f]{64}$ ]] \
         || fail 'Android emulator runtime APK digest is malformed'
     case "$ANDROID_RUNTIME_SCENARIO" in
-        recents|peer-lifecycle) ;;
-        *) fail 'Android emulator runtime scenario differs from recents or peer-lifecycle' ;;
+        recents|peer-lifecycle|controlled-cm) ;;
+        *) fail 'Android emulator runtime scenario differs from recents, peer-lifecycle, or controlled-cm' ;;
     esac
-    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
+       || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         [[ "$ANDROID_RUNTIME_PEER_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$ANDROID_RUNTIME_PEER_TREE" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
@@ -4176,7 +4177,8 @@ run_android_emulator_runtime() {
         "$apk" "$checksum")"
     runtime_arguments=("$staged_apk" "$ANDROID_RUNTIME_APK_SHA256" \
         "$ANDROID_RUNTIME_ARTIFACT_COMMIT" "$ANDROID_RUNTIME_SCENARIO")
-    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
+       || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         mkdir "$peer_mount"
         mount -t virtiofs -o ro,nodev,nosuid,noexec \
             rustdesk-android-peer-artifact-input "$peer_mount" \
@@ -4393,12 +4395,15 @@ run_android_emulator_runtime() {
     fi
     [ "$(stat -c '%s' -- "$output")" -le 2097152 ] \
         || fail 'Android emulator runtime replay output exceeds its bound'
-    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
+       || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         peer_artifact_receipt="$(grep -Fx \
             "ANDROID_PEER_ARTIFACT_ADMITTED=pass commit=$ANDROID_RUNTIME_PEER_COMMIT tree=$ANDROID_RUNTIME_PEER_TREE manifest_sha256=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 builder=$DEV_CHECK_IMAGE_CONFIG_ID files=7 build=absent execution=readonly-guest-copy" \
             "$output")" || fail 'Android peer artifact admission receipt is absent'
         [ "$(grep -c '^ANDROID_PEER_ARTIFACT_ADMITTED=' "$output")" -eq 1 ] \
             || fail 'Android peer artifact admission receipt is duplicated'
+    fi
+    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
         frame_source_receipt="$(grep -E \
             "^X11_FRAME_SOURCE_BUILD=pass source_sha256=$(sha256sum "$source_root/scripts/flutter-peer-source-x11.c" | awk '{ print $1 }') sha256=[0-9a-f]{64} bytes=[1-9][0-9]* copies=2 equality=byte-identical network=none output=private$" \
             "$output")" || fail 'independent Android display fixture build receipt differs'
@@ -4445,6 +4450,10 @@ run_android_emulator_runtime() {
         peer-lifecycle)
             recents_cycles=6
             recents_cycle_pattern='[1-6]'
+            ;;
+        controlled-cm)
+            recents_cycles=1
+            recents_cycle_pattern=1
             ;;
         *)
             recents_cycles=2
@@ -4642,6 +4651,21 @@ run_android_emulator_runtime() {
     [ "$(grep -c '^ANDROID_EMULATOR_PEER_LIFECYCLE=' "$output")" -eq 1 ] \
         || fail 'Android real-peer lifecycle receipt is duplicated'
         runtime_peer=production-loopback-cpace-changing-display
+    elif [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
+        controlled_cm_receipt="$(grep -Fx \
+            'ANDROID_CONTROLLED_CM_FILE=pass initiator=linux-probe responder=android-mainservice auth=cpace login=filetransfer cm=admitted directory=reply transport=adb-forward-loopback forward_cleanup=removed password_transport=stdin' \
+            "$output")" || fail 'Android controlled-CM positive receipt is absent'
+        controlled_stop_receipt="$(grep -Fx \
+            'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent' \
+            "$output")" || fail 'Android controlled-CM Stop receipt is absent'
+        controlled_lifecycle_receipt="$(grep -Fx \
+            "ANDROID_EMULATOR_CONTROLLED_CM=pass task_removals=1 service=foreground-across-task-relaunch-then-stopped process=same positive=filetransfer-dir-reply stopped=fresh-keyed-cm-refused framework_anr=absent apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
+            "$output")" || fail 'Android controlled-CM lifecycle receipt is absent'
+        for marker in ANDROID_CONTROLLED_CM_FILE ANDROID_CONTROLLED_CM_STOP ANDROID_EMULATOR_CONTROLLED_CM; do
+            [ "$(grep -c "^$marker=" "$output")" -eq 1 ] \
+                || fail "Android controlled-CM receipt is duplicated: $marker"
+        done
+        runtime_peer=production-loopback-cpace-controlled-cm
     else
         focused_recents_receipt="$(grep -E \
             "^ANDROID_EMULATOR_RECENTS=pass task_removals=10 actions=10 open_actions=10 task_ids=distinct open=ui-automation-app-switch-key-display-0 driver=android14-ui-automation-direct events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=$recents_runtime_uiautomator_sha256 driver_sha256=$recents_driver_sha256 framework_anr=absent service=never-started relaunch=resumed apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined$" \
@@ -4743,8 +4767,12 @@ run_android_emulator_runtime() {
         "${recents_open_action_receipts[@]}" \
         "${recents_action_receipts[@]}" "${recents_outcome_receipts[@]}" \
         "$renderer_receipt" "$runtime_receipt"
+    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
+       || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
+        printf '%s\n' "$peer_artifact_receipt"
+    fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
-        printf '%s\n' "$peer_artifact_receipt" "$frame_source_receipt"
+        printf '%s\n' "$frame_source_receipt"
         printf '%s\n' "$frame_endpoint_receipt" "$frame_parser_receipt" \
             "$frame_observer_self_test_receipt" "$frame_observer_build_receipt" \
             "$frame_observer_receipt" "$lifecycle_receipt" "$task_park_receipt" \
@@ -4752,6 +4780,9 @@ run_android_emulator_runtime() {
             "${presentation_stage_receipts[@]}" \
             "${resource_samples[@]}" "$resource_bound_receipt" \
             "$peer_receipt"
+    elif [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
+        printf '%s\n' "$controlled_cm_receipt" "$controlled_stop_receipt" \
+            "$controlled_lifecycle_receipt"
     else
         printf '%s\n' "$focused_recents_receipt"
     fi

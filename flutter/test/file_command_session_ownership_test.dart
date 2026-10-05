@@ -99,6 +99,67 @@ Entry _file(String name, String path) => Entry()
   ..size = 1;
 
 void main() {
+  test('native file-job allocation failures cannot dispatch fallback IDs',
+      () async {
+    final session = const Uuid().v4obj();
+    var allocations = 0;
+    final ids = JobID(nativeNext: () {
+      allocations++;
+      if (allocations == 2) throw StateError('bridge unavailable');
+      if (allocations == 3) return 'malformed';
+      if (allocations == 4) return '0';
+      if (allocations == 5) return '2147483648';
+      return allocations == 1 ? '31' : '32';
+    });
+    final dispatched = <int>[];
+    final jobController = JobController(() => session, () => null,
+        isCurrentSession: (actual) => actual == session,
+        requests: _jobRequests(),
+        nextJobId: ids.next);
+    final controller = FileController(
+      isLocal: true,
+      getSessionID: () => session,
+      getDialogManager: () => null,
+      isCurrentSession: (actual) => actual == session,
+      getPeerPlatform: () => 'Linux',
+      getPeerVersion: () => '1.4.0',
+      jobController: jobController,
+      fileFetcher: FileFetcher(() => session, requests: _fetcherRequests()),
+      getOtherSideDirectoryData: () =>
+          DirectoryData(FileDirectory(), DirectoryOptions()),
+      translateText: _identityTranslate,
+      requests: _controllerRequests(sendFiles: (actualSession, actionId,
+          path, to, fileNum, includeHidden, isRemote, isDirectory) async {
+        expect(actualSession, session);
+        dispatched.add(actionId);
+      }),
+    );
+    final selected = SelectedItems(isLocal: true)
+      ..add(_file('one', '/source/one'));
+    final destination = DirectoryData(
+        FileDirectory()..path = '/destination',
+        DirectoryOptions(isWindows: false));
+
+    await controller.sendFiles(selected, destination);
+    expect(dispatched, [31]);
+    for (final failure in <Matcher>[
+      isA<StateError>(),
+      isA<FormatException>(),
+      isA<StateError>(),
+      isA<StateError>(),
+    ]) {
+      await expectLater(
+          controller.sendFiles(selected, destination), throwsA(failure));
+      expect(dispatched, [31]);
+      expect(jobController.jobTable.map((job) => job.id), [31]);
+      expect(selected.items, hasLength(1));
+    }
+
+    await controller.sendFiles(selected, destination);
+    expect(dispatched, [31, 32]);
+    expect(jobController.jobTable.map((job) => job.id), [31, 32]);
+  });
+
   test('retired send continuation cannot target replacement session',
       () async {
     final retiredSession = const Uuid().v4obj();

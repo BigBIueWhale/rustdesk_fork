@@ -5087,6 +5087,7 @@ run_flutter_model_tests() {
                     test/global_event_dispatcher_test.dart
                     test/server_status_refresh_loop_test.dart
                     test/display_selection_queue_test.dart
+                    test/file_command_session_ownership_test.dart
                     test/session_event_queue_test.dart
                     test/latest_frame_queue_test.dart
                     test/session_stream_finality_test.dart
@@ -5104,7 +5105,7 @@ run_flutter_model_tests() {
                     test/android_permission_request_coordinator_test.dart
                     test/remote_key_routing_test.dart
                 )
-                [ "${#tests[@]}" -eq 19 ]
+                [ "${#tests[@]}" -eq 20 ]
                 for test_path in "${tests[@]}"; do
                     [ -f "$test_path" ] && [ ! -L "$test_path" ]
                 done
@@ -5152,7 +5153,7 @@ run_flutter_model_tests() {
         || { tail -n 240 "$output" >&2; fail 'focused display-selection verifier receipt is absent'; }
     [ "$(grep -Ec '^display selection finality verifier self-test passed \([1-9][0-9]* mutations\)$' "$output")" -eq 1 ] \
         || fail 'focused display-selection verifier receipt is duplicated'
-    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=19 tests=150' "$output")" \
+    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=20 tests=166' "$output")" \
         || { tail -n 240 "$output" >&2; fail 'focused Flutter-test success summary is absent'; }
     [ "$(grep -Fc 'FLUTTER_MODEL_TEST_JSON=' "$output")" -eq 1 ] \
         || fail 'focused Flutter-test result summary is duplicated'
@@ -5178,7 +5179,7 @@ run_flutter_model_tests() {
     printf '%s\n' "$tools_freshness_line"
     printf '%s\n' "$display_selection_line"
     printf '%s\n' "$result_line"
-    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=19 tests=150 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
+    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=20 tests=166 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
         "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
         "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
         "$SHA256_CARGO_VENDOR_CLOSURE_V1" \

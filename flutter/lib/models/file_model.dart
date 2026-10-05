@@ -28,17 +28,16 @@ enum SortBy {
 }
 
 class JobID {
+  JobID({String Function()? nativeNext})
+      : _nativeNext = nativeNext ??
+            (() => bind.mainGetCommonSync(key: 'transfer-job-id'));
+
+  final String Function() _nativeNext;
   int _count = 0;
   int next() {
-    try {
-      if (!isWeb) {
-        String v = bind.mainGetCommonSync(key: 'transfer-job-id');
-        return int.parse(v);
-      }
-    } catch (e) {
-      debugPrint("Failed to get transfer job id: $e");
+    if (!isWeb) {
+      return int.parse(_nativeNext());
     }
-    // Finally increase the count if on the web or if failed to get the id.
     _count++;
     return _count;
   }

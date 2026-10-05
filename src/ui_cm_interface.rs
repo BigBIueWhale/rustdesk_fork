@@ -1567,6 +1567,11 @@ where
                                         owner.finish_selected_file_operation();
                                         let _ = result_tx.send((selected_write_jobs, selected_read_jobs, owner, result));
                                     });
+                                    #[cfg(test)]
+                                    publish_cm_test_selected_file_abort_handle(
+                                        operation_id,
+                                        task.abort_handle(),
+                                    );
                                     let mut operation = CmFileOperationTask {
                                         join: Some(CmFileOperationJoin {
                                             task,
@@ -3350,6 +3355,25 @@ struct CmTestCreateDirPause {
 #[cfg(test)]
 static CM_TEST_CREATE_DIR_PAUSE: OnceLock<StdMutex<Option<CmTestCreateDirPause>>> = OnceLock::new();
 
+#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+static CM_TEST_SELECTED_FILE_TASK_ABORT: OnceLock<
+    StdMutex<Option<(i32, tokio::sync::oneshot::Sender<tokio::task::AbortHandle>)>>,
+> = OnceLock::new();
+
+#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+fn publish_cm_test_selected_file_abort_handle(
+    id: i32,
+    handle: tokio::task::AbortHandle,
+) {
+    let gate = CM_TEST_SELECTED_FILE_TASK_ABORT.get_or_init(|| StdMutex::new(None));
+    let mut slot = gate.lock().unwrap();
+    if slot.as_ref().map(|(expected, _)| *expected) == Some(id) {
+        if let Some((_, sender)) = slot.take() {
+            let _ = sender.send(handle);
+        }
+    }
+}
+
 #[cfg(test)]
 fn pause_cm_test_create_dir_before_effect(path: &str) {
     let mut slot = CM_TEST_CREATE_DIR_PAUSE
@@ -3486,6 +3510,10 @@ mod tests {
         }
 
         fn remove_connection(&self, id: i32, registry_generation: i64, close: bool) {
+            if id == 2_000_200_011 {
+                println!("CM_SELECTED_FILE_CHILD_LOSS=owner-retired-before-abort");
+                io::stdout().flush().unwrap();
+            }
             lock_cm_egress_test(&self.removed).push((id, registry_generation, close));
         }
 
@@ -3780,6 +3808,128 @@ mod tests {
         drop(successor_peer);
         assert_eq!(lock_cm_egress_test(&successor_ui.removed).len(), 1);
         assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11is_desktop_selected_file_child_loss_is_process_fatal() {
+        use std::os::unix::process::ExitStatusExt;
+
+        const TEST_NAME: &str =
+            "ui_cm_interface::tests::r_s11is_desktop_selected_file_child_loss_is_process_fatal";
+        const CHILD_PATH: &str = "RUSTDESK_CM_TEST_SELECTED_FILE_CHILD_LOSS_PATH";
+        const CHILD_READY: &str = "CM_SELECTED_FILE_CHILD_LOSS=selected-worker-paused";
+        const CHILD_REMOVED: &str = "CM_SELECTED_FILE_CHILD_LOSS=owner-retired-before-abort";
+
+        if let Some(path) = std::env::var_os(CHILD_PATH) {
+            let id = 2_000_200_011;
+            let directory = PathBuf::from(path);
+            let path = directory.to_string_lossy().into_owned();
+            let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+            let (_resume_tx, resume_rx) = std_mpsc::sync_channel(1);
+            let pause = CM_TEST_CREATE_DIR_PAUSE.get_or_init(|| StdMutex::new(None));
+            {
+                let mut slot = pause.lock().unwrap();
+                assert!(slot.is_none());
+                *slot = Some(CmTestCreateDirPause {
+                    path: path.clone(),
+                    entered: entered_tx,
+                    resume: resume_rx,
+                });
+            }
+            let (abort_tx, abort_rx) = tokio::sync::oneshot::channel();
+            let hook = CM_TEST_SELECTED_FILE_TASK_ABORT.get_or_init(|| StdMutex::new(None));
+            {
+                let mut slot = hook.lock().unwrap();
+                assert!(slot.is_none());
+                *slot = Some((id, abort_tx));
+            }
+
+            let (_runner, mut peer, _ui) = admitted_cm_file_raw_test(id).await;
+            peer.send(&Data::AuthorizedFS {
+                cm_auth_token: "test-token".to_owned(),
+                fs: ipc::FS::CreateDir {
+                    path,
+                    id: 1,
+                    request_id: 1,
+                },
+            })
+            .await
+            .unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(2), entered_rx)
+                .await
+                .expect("selected filesystem worker must enter its pre-effect gate")
+                .expect("selected filesystem worker must signal entry");
+            let abort = tokio::time::timeout(std::time::Duration::from_secs(2), abort_rx)
+                .await
+                .expect("desktop runner must publish its exact selected child task")
+                .expect("selected child task must retain an abort handle");
+            assert!(!directory.exists());
+            assert!(CLIENTS.read().unwrap().clients.contains_key(&id));
+            assert!(CLIENTS
+                .read()
+                .unwrap()
+                .in_flight_file_operations
+                .contains_key(&id));
+            println!("{CHILD_READY}");
+            io::stdout().flush().unwrap();
+            abort.abort();
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            panic!("selected child task loss must terminate before owner retirement");
+        }
+
+        let temp = CmFileTestDir::new("desktop_selected_child_loss");
+        let directory = temp.join("must-not-be-created-after-child-loss");
+        let child_path = directory.clone();
+        let (timed_out, output) = tokio::task::spawn_blocking(move || {
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+                .arg("--exact")
+                .arg(TEST_NAME)
+                .arg("--nocapture")
+                .env(CHILD_PATH, child_path)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .expect("start isolated selected-child-loss test process");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            loop {
+                match child.try_wait() {
+                    Ok(Some(_)) => break,
+                    Ok(None) if std::time::Instant::now() >= deadline => {
+                        let _ = child.kill();
+                        return (true, child.wait_with_output().unwrap());
+                    }
+                    Ok(None) => std::thread::sleep(std::time::Duration::from_millis(10)),
+                    Err(error) => {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        panic!("cannot observe selected-child-loss test process: {error}");
+                    }
+                }
+            }
+            (false, child.wait_with_output().unwrap())
+        })
+        .await
+        .expect("selected-child-loss process must be joined");
+        assert!(
+            !timed_out,
+            "selected-child-loss process timed out: {output:?}"
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains(CHILD_READY),
+            "selected worker did not reach abort point: {output:?}"
+        );
+        assert!(
+            !stdout.contains(CHILD_REMOVED),
+            "selected owner retired before process abort: {output:?}"
+        );
+        assert_eq!(
+            output.status.signal(),
+            Some(nix::libc::SIGABRT),
+            "selected child loss did not fail closed: {output:?}"
+        );
+        assert!(!directory.exists());
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

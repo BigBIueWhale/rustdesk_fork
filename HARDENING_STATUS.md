@@ -3099,22 +3099,23 @@ receive/commit state model and its platform limits are detailed under R-S11c-4d 
 exact CM cleanup acknowledgement; it sends one bounded peer error including a cleanup
 failure instead of dropping the authority and reporting the digest error early.
 
-Exact source `66de9c90` (tree `843b3bf1`) passed the no-NIC, guest-only Docker
-`--cm-file-replay` in 305 seconds. Its keyed Linux peers exercised pre-login refusal,
+Exact source `b6be2c9a` (tree `51086420`) passed the no-NIC, guest-only Docker
+`--cm-file-replay` in 308 seconds. Its keyed Linux peers exercised pre-login refusal,
 directory/create, exact and short writes, multi-file blocks, peer error, cancel, abrupt
 owner loss and fresh reconnect, fixed-sidecar collision, cancellation cleanup failure,
 digest-refusal cleanup failure, direct-read error followed by a confirmed exact read,
 and two *simultaneously live* connections contending for the same destination. The
-contender was refused without changing the
-first owner's staged bytes, digest, or lock inode; the first owner then committed. The
+contender was refused without changing the first owner's staged bytes, digest, or
+lock inode; the first owner then committed. The
 digest-refusal case reported both causes, and the guest independently preserved the
 replacement and displaced staging bytes. One exact Rust cancellation-outcome unit test
-also passed inside the same guest.
+also passed inside the same guest, including oversized-error fallback assertions that
+retain the fact of cleanup failure within the 4 KiB peer-error bound.
 The production Linux `Session` in that replay downloaded exact bytes, refused a
 symlink destination without changing its sentinel, and completed a fresh same-peer
-connection after that local refusal. The 399,354-byte raw serial is
-`.harness-state/verifier-vm/cm-file-replay-run.3qxNqtSIoh.serial.log`, SHA-256
-`1dc5f988b851ffd1e4e38c45a6ab79872960c975180d474541eb86be4508796d`.
+connection after that local refusal. The 399,198-byte raw serial is
+`.harness-state/verifier-vm/cm-file-replay-run.KLIHnpieEv.serial.log`, SHA-256
+`6abb8e93fdccc1dad89b97288ff6d01821e07f2a097af7bcb186a642a194d321`.
 The outer audit found no harness-added host listener or pre-existing-process drift,
 joined guest Docker/QEMU/virtiofsd, and left no `run.*` overlay.
 

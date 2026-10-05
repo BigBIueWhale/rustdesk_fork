@@ -775,9 +775,6 @@ fn production_viewer_download_refuses_a_symlink_destination_at_digest_inspection
     };
     let joined = started && session.close_and_join();
     let final_state = ui.snapshot();
-    let retained_panic_hook = std::panic::take_hook();
-    drop(retained_panic_hook);
-    std::panic::set_hook(previous_panic_hook);
 
     assert!(started, "production file viewer I/O worker did not start: {start:?}");
     assert!(joined, "production file viewer I/O worker was not joined");
@@ -812,5 +809,125 @@ fn production_viewer_download_refuses_a_symlink_destination_at_digest_inspection
     }
     println!(
         "\nPRODUCTION_VIEWER_FILE_REFUSAL_OK listing=exact digest=symlink-refused round-error=once job-error=once done=absent symlink=preserved sidecars=absent teardown=joined"
+    );
+
+    // The failed round is terminal, but it must not poison a fresh connection to the same peer
+    // or turn its visible error into an implicit retry. Reuse the same job ID and destination to
+    // catch stale round/job state after the unsafe link is removed by the local owner.
+    drop(session);
+    std::fs::remove_file(FILE_REFUSED_DESTINATION).expect("remove the exact refused symlink");
+    assert_file_absent(FILE_REFUSED_DESTINATION);
+    let recovered_ui = ViewerPipelineUi {
+        file_transfer: true,
+        ..Default::default()
+    };
+    let recovered_session = Session {
+        password: FIXTURE_PASSWORD.to_owned(),
+        ui_handler: recovered_ui.clone(),
+        ..Default::default()
+    };
+    recovered_session
+        .lc
+        .write()
+        .unwrap()
+        .initialize(EXACT_PEER.to_owned(), ConnType::FILE_TRANSFER, None, None);
+    let recovered_start = recovered_session.start_io_thread();
+    let recovered_started = matches!(&recovered_start, Ok(true));
+    let recovered_ready = if recovered_started {
+        recovered_ui.wait_for_file_ready(Duration::from_secs(20))
+    } else {
+        ViewerPipelineState::default()
+    };
+    let recovered_request = if recovered_ready.connected
+        && recovered_ready.peer_info
+        && recovered_ready.errors.is_empty()
+    {
+        Some(recovered_session.send_files(
+            FILE_JOB_ID,
+            JobType::Generic.into(),
+            FILE_SOURCE.to_owned(),
+            FILE_REFUSED_DESTINATION.to_owned(),
+            0,
+            false,
+            true,
+        ))
+    } else {
+        None
+    };
+    let recovered_snapshot = if matches!(&recovered_request, Some(Ok(()))) {
+        recovered_ui.wait_for_file_done(Duration::from_secs(30))
+    } else {
+        recovered_ready
+    };
+    let recovered_joined = recovered_started && recovered_session.close_and_join();
+    let recovered_final = recovered_ui.snapshot();
+    let old_final = ui.snapshot();
+    let retained_panic_hook = std::panic::take_hook();
+    drop(retained_panic_hook);
+    std::panic::set_hook(previous_panic_hook);
+
+    assert!(
+        recovered_started,
+        "replacement file viewer I/O worker did not start: {recovered_start:?}"
+    );
+    assert!(recovered_joined, "replacement file viewer I/O worker was not joined");
+    assert_eq!(
+        panic_count.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "a production file viewer worker panicked"
+    );
+    assert!(
+        recovered_snapshot.connected && recovered_snapshot.peer_info,
+        "replacement file viewer did not connect"
+    );
+    assert!(
+        matches!(&recovered_request, Some(Ok(()))),
+        "replacement file request was not admitted: {recovered_request:?}"
+    );
+    assert!(
+        recovered_snapshot.errors.is_empty(),
+        "replacement viewer errors: {:?}",
+        recovered_snapshot.errors
+    );
+    assert!(
+        recovered_snapshot.file_listing_seen,
+        "replacement viewer did not admit the listing"
+    );
+    assert_eq!(
+        recovered_snapshot.file_done_count, 1,
+        "replacement viewer must report one Done"
+    );
+    assert!(
+        recovered_final.errors.is_empty(),
+        "replacement teardown errors: {:?}",
+        recovered_final.errors
+    );
+    assert_eq!(
+        recovered_final.file_done_count, 1,
+        "replacement viewer reported a duplicate Done"
+    );
+    assert!(
+        old_final.errors.is_empty(),
+        "old round emitted a later error: {:?}",
+        old_final.errors
+    );
+    assert_eq!(old_final.file_refusal_errors, 1, "old round emitted a later error");
+    assert_eq!(old_final.file_refusal_job_errors, 1, "old job emitted a later error");
+    assert_eq!(old_final.file_done_count, 0, "old round acquired the replacement completion");
+    assert_eq!(
+        std::fs::read(FILE_REFUSED_DESTINATION).expect("read replacement viewer destination"),
+        expected
+    );
+    assert_eq!(
+        std::fs::read(FILE_REFUSAL_SENTINEL)
+            .expect("read preserved refusal sentinel")
+            .as_slice(),
+        FILE_REFUSAL_SENTINEL_BYTES
+    );
+    for suffix in [".download", ".digest", ".download.lock"] {
+        assert_file_absent(&format!("{FILE_REFUSED_DESTINATION}{suffix}"));
+    }
+    println!(
+        "\nPRODUCTION_VIEWER_FILE_RECOVERY_OK new-connection=same-peer same-job-id=true digest=confirmed done=once destination=exact-bytes old-round=terminal sentinel=preserved sidecars=absent teardown=joined"
     );
 }

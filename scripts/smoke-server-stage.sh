@@ -948,8 +948,11 @@ EOS
       exit "$refusal_status"
     fi
     [ "$(grep -Fxc 'PRODUCTION_VIEWER_FILE_REFUSAL_OK listing=exact digest=symlink-refused round-error=once job-error=once done=absent symlink=preserved sidecars=absent teardown=joined' <<<"$refusal_output")" -eq 1 ]
+    [ "$(grep -Fxc 'PRODUCTION_VIEWER_FILE_RECOVERY_OK new-connection=same-peer same-job-id=true digest=confirmed done=once destination=exact-bytes old-round=terminal sentinel=preserved sidecars=absent teardown=joined' <<<"$refusal_output")" -eq 1 ]
     "$READY" --is-running "$SRV" "$SRV_START"
-    [ -L "$viewer_refused" ] && [ "$(readlink -- "$viewer_refused")" = refusal-sentinel.bin ]
+    [ -f "$viewer_refused" ] && [ ! -L "$viewer_refused" ]
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$viewer_refused")" = "$(id -u):$(id -g):600:1:150001" ]
+    cmp -s -- "$viewer_refused" "$viewer_source"
     cmp -s -- "$viewer_sentinel" <(printf '%s' 'viewer-symlink-sentinel-unchanged')
     [ "$(sha256sum "$viewer_source" | awk '{ print $1 }')" = "$viewer_source_sha" ]
     for suffix in .download .digest .download.lock; do
@@ -959,7 +962,7 @@ EOS
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved viewer-after-refusal=new-connection-exact-bytes network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

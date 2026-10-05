@@ -1519,7 +1519,8 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
     runtime_peer=production-loopback-cpace-changing-display
 elif [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
     printf '%s\n' "${controlled_cm_receipts[0]}" \
-        "${controlled_stop_receipts[0]}" "${controlled_lifecycle_receipts[0]}"
+        "${controlled_stop_receipts[0]}" "${controlled_restart_receipts[0]}" \
+        "${controlled_lifecycle_receipts[0]}"
     runtime_peer=production-loopback-cpace-controlled-cm
 else
     printf '%s\n' "${focused_recents_receipts[0]}"

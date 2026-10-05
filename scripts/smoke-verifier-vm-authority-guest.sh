@@ -2115,6 +2115,7 @@ run_focused_rust_tests() {
             server::connection::cm_peer_identity_registry_tests::r_s11iu_linux_audio_peer_requires_live_exact_connection_owner
             server::connection_id_allocator_tests::r_s11iu_connection_ids_fail_closed_instead_of_wrapping
             server::connection_id_allocator_tests::r_s11iu_connection_ids_are_unique_across_concurrent_callers
+            ipc::test::r_s11iu_pa_capture_peer_comes_from_the_kernel_socket
             server::display_service::tests::r_s11iu_r_t4_resolution_restore_retains_failure_and_concurrent_replacement
             ui_cm_interface::tests::r_s11iu_android_cm_future_terminally_retires_its_registry_owner
             ui_cm_interface::tests::r_s11iu_android_terminal_preempts_queued_file_work

@@ -317,8 +317,6 @@ mod pa_impl {
         #[cfg(target_os = "linux")]
         let pa_authority = super::install_pa_capture_authority(sp.subscriber_ids())?;
         #[cfg(target_os = "linux")]
-        let owner = crate::ipc::current_linux_process_identity()?;
-        #[cfg(target_os = "linux")]
         let mut stream = crate::ipc::connect(1000, "_pa").await?;
         #[cfg(target_os = "linux")]
         super::ensure_pa_endpoint_matches_authority(&stream, &pa_authority)?;
@@ -330,7 +328,6 @@ mod pa_impl {
         stream
             .send_pulse_audio_request_timeout(
                 &crate::ipc::LinuxPulseAudioIpcRequest::StartCapture {
-                    owner,
                     token: pa_authority.token().to_owned(),
                     source: super::get_audio_input(),
                 },

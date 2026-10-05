@@ -2452,7 +2452,6 @@ pub(crate) enum ServiceIpcResponse {
 #[serde(tag = "t", deny_unknown_fields)]
 pub(crate) enum LinuxPulseAudioIpcRequest {
     StartCapture {
-        owner: LinuxProcessIdentity,
         token: String,
         source: String,
     },
@@ -7376,15 +7375,17 @@ pub(crate) async fn validate_cm_connection_authority(
 
 #[cfg(target_os = "linux")]
 async fn validate_pulse_audio_start_authority(
-    owner: &LinuxProcessIdentity,
+    peer: &LinuxProcessIdentity,
     token: &str,
 ) -> ResultType<()> {
     if token.is_empty() {
         bail!("missing pulse audio capture authority token");
     }
-    if owner.pid() == std::process::id() {
-        if let Ok(peer) = current_linux_process_identity() {
-            if &peer == owner && crate::audio_service::validate_pa_capture_authority(token, &peer) {
+    if peer.pid() == std::process::id() {
+        if let Ok(current) = current_linux_process_identity() {
+            if &current == peer
+                && crate::audio_service::validate_pa_capture_authority(token, peer)
+            {
                 return Ok(());
             }
         }
@@ -7392,11 +7393,11 @@ async fn validate_pulse_audio_start_authority(
     }
 
     let expected_owner = ipc_auth::linux_cm_owner_identity()?;
-    if &expected_owner != owner {
+    if &expected_owner != peer {
         bail!("pulse audio capture owner is not the connection-manager launch parent");
     }
-    let stream = connect_for_uid(1_000, owner.uid(), "").await?;
-    ensure_linux_process_identity_matches(&stream, owner, "")?;
+    let stream = connect_for_uid(1_000, peer.uid(), "").await?;
+    ensure_linux_process_identity_matches(&stream, peer, "")?;
     match main_ipc_request_on_stream(
         stream,
         MainIpcRequest::ValidatePulseAudioStart {
@@ -7412,6 +7413,18 @@ async fn validate_pulse_audio_start_authority(
         }
         _ => bail!("invalid pulse audio capture authority validation response"),
     }
+}
+
+#[cfg(target_os = "linux")]
+async fn validate_pulse_audio_capture_request<T>(
+    stream: &ConnectionTmpl<T>,
+    token: &str,
+) -> ResultType<()>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let peer = ipc_auth::linux_kernel_peer_process_identity(stream, "_pa")?;
+    validate_pulse_audio_start_authority(&peer, token).await
 }
 
 #[cfg(target_os = "linux")]
@@ -7458,12 +7471,11 @@ pub async fn start_pa() {
                                 }
                             };
                             let LinuxPulseAudioIpcRequest::StartCapture {
-                                owner,
                                 token,
                                 source,
                             } = request;
                             if let Err(err) =
-                                validate_pulse_audio_start_authority(&owner, &token).await
+                                validate_pulse_audio_capture_request(&stream, &token).await
                             {
                                 log::warn!(
                                     "Rejected _pa client with invalid audio capture authority: {}",
@@ -11129,17 +11141,78 @@ mod test {
     }
 
     #[cfg(target_os = "linux")]
+    #[test]
+    fn pa_capture_peer_fixture() {
+        let Ok(socket_path) = std::env::var("RUSTDESK_PA_PEER_SOCKET_FOR_TEST") else {
+            return;
+        };
+        let mut socket = std::os::unix::net::UnixStream::connect(socket_path).unwrap();
+        let mut byte = [0u8; 1];
+        assert_eq!(std::io::Read::read(&mut socket, &mut byte).unwrap(), 0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11iu_pa_capture_peer_comes_from_the_kernel_socket() {
+        use std::os::unix::fs::DirBuilderExt;
+
+        let owner = current_linux_process_identity().unwrap();
+        let (local_socket, _other_end) = tokio::net::UnixStream::pair().unwrap();
+        let local = ConnectionTmpl::new_pulse_audio(local_socket);
+        assert_eq!(ipc_auth::linux_kernel_peer_process_identity(&local, "_pa").unwrap(), owner);
+
+        let directory = std::env::temp_dir().join(format!(
+            "rustdesk-pa-peer-{}-{:016x}",
+            std::process::id(),
+            hbb_common::rand::random::<u64>()
+        ));
+        let mut builder = std::fs::DirBuilder::new();
+        builder.mode(0o700).create(&directory).unwrap();
+        let socket_path = directory.join("pa.sock");
+        let listener = tokio::net::UnixListener::bind(&socket_path).unwrap();
+        let mut child = tokio::process::Command::new(std::env::current_exe().unwrap());
+        child
+            .arg("--exact")
+            .arg("ipc::test::pa_capture_peer_fixture")
+            .env("RUSTDESK_PA_PEER_SOCKET_FOR_TEST", &socket_path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true);
+        let mut child = child.spawn().unwrap();
+        let (socket, _) = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            listener.accept(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let peer = ConnectionTmpl::new_pulse_audio(socket);
+        let observed = ipc_auth::linux_kernel_peer_process_identity(&peer, "_pa").unwrap();
+        assert_eq!(observed.pid(), child.id().unwrap());
+        assert_eq!(observed.uid(), owner.uid());
+        assert_ne!(observed, owner);
+        drop(peer);
+        assert!(tokio::time::timeout(std::time::Duration::from_secs(5), child.wait())
+            .await
+            .unwrap()
+            .unwrap()
+            .success());
+        drop(listener);
+        std::fs::remove_file(socket_path).unwrap();
+        std::fs::remove_dir(directory).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
     #[tokio::test(flavor = "current_thread")]
     async fn linux_pulse_audio_channel_uses_closed_bounded_protocol() {
         let request = LinuxPulseAudioIpcRequest::StartCapture {
-            owner: LinuxProcessIdentity::for_test(7, 1_000, "42".to_owned()),
             token: "token".to_owned(),
             source: "monitor".to_owned(),
         };
         let encoded = serde_json::to_vec(&request).unwrap();
         assert_eq!(
             encoded,
-            br#"{"t":"StartCapture","owner":{"pid":7,"uid":1000,"start_time":"42"},"token":"token","source":"monitor"}"#
+            br#"{"t":"StartCapture","token":"token","source":"monitor"}"#
         );
         assert_eq!(
             serde_json::from_slice::<LinuxPulseAudioIpcRequest>(&encoded).unwrap(),
@@ -11147,7 +11220,7 @@ mod test {
         );
         assert!(
             serde_json::from_slice::<LinuxPulseAudioIpcRequest>(
-                br#"{"t":"StartCapture","owner":{"pid":7,"uid":1000,"start_time":"42"},"token":"token","source":"monitor","extra":true}"#
+                br#"{"t":"StartCapture","owner":{"pid":7,"uid":1000,"start_time":"42"},"token":"token","source":"monitor"}"#
             )
             .is_err()
         );

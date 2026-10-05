@@ -150,7 +150,22 @@ fail() {
 }
 
 reserve_verifier_run() {
-    local descriptor root_id entry allocated
+    local descriptor root_id entry allocated parent_descriptor parent_id
+    [ -d "$INPUT_ROOT" ] && [ ! -L "$INPUT_ROOT" ] \
+        && [ "$(/usr/bin/readlink -f -- "$INPUT_ROOT")" = "$INPUT_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$INPUT_ROOT")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail "shared verifier-VM run-root authority differs: $INPUT_ROOT"
+    parent_id=$(/usr/bin/stat -c '%d:%i' -- "$INPUT_ROOT") \
+        || fail 'cannot identify the shared verifier-VM run root'
+    exec {parent_descriptor}<"$INPUT_ROOT" \
+        || fail 'cannot retain the shared verifier-VM run root'
+    [ -d "/proc/$$/fd/$parent_descriptor" ] \
+        && [ "$(/usr/bin/stat -Lc '%d:%i:%u:%g:%a' -- \
+             "/proc/$$/fd/$parent_descriptor")" = "$parent_id:$HOST_UID:$HOST_GID:700" ] \
+        || fail 'retained shared verifier-VM run-root authority differs'
+    /usr/bin/flock --exclusive --nonblock "$parent_descriptor" \
+        || fail 'another verifier is reserving a run; retry after its admission completes'
     [ -d "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ] \
         && [ "$(/usr/bin/readlink -f -- "$RUN_ROOT")" = "$RUN_ROOT" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$RUN_ROOT")" = \
@@ -166,6 +181,10 @@ reserve_verifier_run() {
         || fail 'retained acquisition-VM run-root authority differs'
     /usr/bin/flock --exclusive --nonblock "$descriptor" \
         || fail 'another verifier is reserving a run; retry after its admission completes'
+    for entry in "/proc/$$/fd/$parent_descriptor"/run.*; do
+        [ -e "$entry" ] || [ -L "$entry" ] || continue
+        fail "earlier verifier run remains: $INPUT_ROOT/${entry##*/}; inspect it and clear it only after its owned processes have exited"
+    done
     for entry in "/proc/$$/fd/$descriptor"/run.*; do
         [ -e "$entry" ] || [ -L "$entry" ] || continue
         fail "earlier verifier run remains: $RUN_ROOT/${entry##*/}; inspect it and clear it only after its owned processes have exited"
@@ -184,6 +203,7 @@ reserve_verifier_run() {
              "$RUN_ID:$HOST_UID:$HOST_GID:700" ] \
         || fail 'reserved acquisition-VM run authority differs'
     exec {descriptor}<&- || fail 'cannot close the acquisition-VM admission descriptor'
+    exec {parent_descriptor}<&- || fail 'cannot close the shared verifier-VM admission descriptor'
 }
 
 git_closed() {

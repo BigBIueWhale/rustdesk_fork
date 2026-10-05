@@ -173,6 +173,10 @@ invoke() {
         fail() { printf "%s\n" "$*" >&2; exit 1; }
         source "$1"
         RUN_ROOT=$2
+        INPUT_ROOT=${6:-$RUN_ROOT}
+        case "$1" in
+            *online-fetch-vm.function.sh) INPUT_ROOT=${6:-${RUN_ROOT%/*}} ;;
+        esac
         HOST_UID=$(/usr/bin/id -u)
         HOST_GID=$(/usr/bin/id -g)
         MODE=${3:-authority-smoke}
@@ -182,17 +186,18 @@ invoke() {
         FLUTTER_APP_BUILD_ONLY=${5:-0}
         reserve_verifier_run
         for descriptor in /proc/$$/fd/*; do
-            if [ "$descriptor" -ef "$RUN_ROOT" ]; then
+            if [ "$descriptor" -ef "$RUN_ROOT" ] \
+               || [ "$descriptor" -ef "$INPUT_ROOT" ]; then
                 fail "run-admission descriptor remains open"
             fi
         done
         printf "%s %s\n" "$RUN" "$RUN_ID"
-    ' run-admission "$function_file" "$1" "${2:-authority-smoke}" "${3:-}" "${4:-0}"
+    ' run-admission "$function_file" "$1" "${2:-authority-smoke}" "${3:-}" "${4:-0}" "${5:-}"
 }
 
 require_refusal() {
     local root=$1 expected=$2
-    if invoke "$root" "${3:-authority-smoke}" "${4:-}" "${5:-0}" >"$workspace/refusal.out" 2>"$workspace/refusal.err"; then
+    if invoke "$root" "${3:-authority-smoke}" "${4:-}" "${5:-0}" "${6:-}" >"$workspace/refusal.out" 2>"$workspace/refusal.err"; then
         printf 'Unexpected run admission: %s\n' "$root" >&2
         exit 1
     fi
@@ -298,6 +303,57 @@ run_admission_cases() {
 }
 run_admission_cases smoke-verifier-vm-authority
 run_admission_cases online-fetch-vm
+
+shared=$workspace/shared-run-root
+/usr/bin/mkdir -m 0700 -- "$shared" "$shared/online-fetch-runs"
+function_file=$workspace/smoke-verifier-vm-authority.function.sh
+result=$(invoke "$shared")
+run=${result% *}
+run_id=${result##* }
+function_file=$workspace/online-fetch-vm.function.sh
+require_refusal "$shared/online-fetch-runs" 'earlier verifier run remains' authority-smoke '' 0 "$shared"
+/usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
+    --remove-private-root "$run" --expected-identity "$run_id"
+result=$(invoke "$shared/online-fetch-runs" authority-smoke '' 0 "$shared")
+run=${result% *}
+run_id=${result##* }
+function_file=$workspace/smoke-verifier-vm-authority.function.sh
+require_refusal "$shared" 'earlier verifier run remains'
+/usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
+    --remove-private-root "$run" --expected-identity "$run_id"
+pids=()
+for index in $(/usr/bin/seq 1 16); do
+    if [ $((index % 2)) -eq 1 ]; then
+        function_file=$workspace/smoke-verifier-vm-authority.function.sh
+        root=$shared
+    else
+        function_file=$workspace/online-fetch-vm.function.sh
+        root=$shared/online-fetch-runs
+    fi
+    invoke "$root" authority-smoke '' 0 "$shared" >"$shared/concurrent.$index.out" \
+        2>"$shared/concurrent.$index.err" &
+    pids+=("$!")
+done
+winners=0
+for pid in "${pids[@]}"; do
+    if wait "$pid"; then winners=$((winners + 1)); fi
+done
+[ "$winners" -eq 1 ]
+for index in $(/usr/bin/seq 1 16); do
+    if [ -s "$shared/concurrent.$index.out" ]; then
+        [ ! -s "$shared/concurrent.$index.err" ]
+        result=$(/usr/bin/head -n 1 "$shared/concurrent.$index.out")
+        run=${result% *}
+        run_id=${result##* }
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
+            --remove-private-root "$run" --expected-identity "$run_id"
+    else
+        /usr/bin/grep -Eq \
+            'earlier verifier run remains|another verifier is reserving a run' \
+            "$shared/concurrent.$index.err"
+    fi
+done
+printf 'VERIFIER_VM_CROSS_ROOT_ADMISSION_NATIVE direct_blocks_acquisition=pass acquisition_blocks_direct=pass concurrent=16 winners=1\n' >&2
 
 HOST_UID=$uid HOST_GID=$gid
 source "$workspace/retire-disposable-vm-file.sh"

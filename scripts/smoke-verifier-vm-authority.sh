@@ -582,7 +582,7 @@ fail() {
 }
 
 reserve_verifier_run() {
-    local descriptor root_id entry allocated
+    local descriptor root_id entry allocated acquisition_root
     [ -d "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ] \
         && [ "$(/usr/bin/readlink -f -- "$RUN_ROOT")" = "$RUN_ROOT" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$RUN_ROOT")" = \
@@ -626,6 +626,19 @@ reserve_verifier_run() {
         [ -e "$entry" ] || [ -L "$entry" ] || continue
         fail "earlier verifier run remains: $RUN_ROOT/${entry##*/}; inspect it and clear it only after its owned processes have exited"
     done
+    if [ "$RUN_ROOT" = "$INPUT_ROOT" ]; then
+        acquisition_root="/proc/$$/fd/$descriptor/online-fetch-runs"
+        if [ -e "$acquisition_root" ] || [ -L "$acquisition_root" ]; then
+            [ -d "$acquisition_root" ] && [ ! -L "$acquisition_root" ] \
+                && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$acquisition_root")" = \
+                     "$HOST_UID:$HOST_GID:700" ] \
+                || fail 'acquisition-VM run-root authority differs'
+            for entry in "$acquisition_root"/run.*; do
+                [ -e "$entry" ] || [ -L "$entry" ] || continue
+                fail "earlier verifier run remains: $INPUT_ROOT/online-fetch-runs/${entry##*/}; inspect it and clear it only after its owned processes have exited"
+            done
+        fi
+    fi
     allocated=$(/usr/bin/mktemp -d "/proc/$$/fd/$descriptor/run.XXXXXXXXXX") \
         || fail 'cannot create the private verifier-VM run'
     RUN="$RUN_ROOT/${allocated##*/}"

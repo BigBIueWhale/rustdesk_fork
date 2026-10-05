@@ -12754,9 +12754,26 @@ new owner/collision/stale-retirement cases, in a zero-NIC VM with no
 harness-added host listener and joined cleanup. The retained 68,804-byte
 serial is `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.BYlvVKe6x6.serial.log`
 (SHA-256 `888043a08024a195d65135f3845e50f024eeac1eaef68f9e6f7b88165e55686f`).
-No run directory or overlay remains. Native `_pa` capture, installed-service
-principal and revocation races, and connection-ID wrap/cross-kind allocation
-are not established by these unit tests and remain OPEN.
+No run directory or overlay remains. Native `_pa` capture and installed-service
+principal and revocation races are not established by these unit tests and
+remain OPEN.
+
+**Process-wide connection IDs — source corrected, native lifecycle OPEN.**
+The former per-`Server` counters could allocate the same ID in overlapping
+controlled generations or outgoing voice audio, and their wrap scan checked
+only that server's Remote/ViewCamera connection map. Pushed `8b09b9c2`
+replaces them with one process-wide atomic sequence; neither session type nor
+server generation can reset it. Exhaustion fails closed instead of recycling
+an ID or returning zero. Two executed allocator tests cover concurrent
+uniqueness and the exact maximum boundary. Exact pushed source passed 66
+Linux-target tests in the zero-NIC VM; the outer listener audit and joined
+cleanup passed in 731 seconds.
+The retained 68,638-byte serial is
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.3DvVGzvbvl.serial.log`
+(SHA-256 `6c29d822aa53723d26b68e79a91242cf8b30351fd6085787058b317991fcc6e5`).
+No run directory or overlay remains. These guest tests do not exercise
+installed same-ID service-generation transitions, native `_pa`, or cross-process
+identity and do not close those release/security obligations.
 
 Dart receives generation-bearing events and validates exact live `ServerModel`
 ownership and connection ID before changing client, tab, file-job, or speed state.

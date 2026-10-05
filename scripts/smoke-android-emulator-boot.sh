@@ -1838,10 +1838,10 @@ exercise_android_controlled_stop() {
         || fail 'cannot confirm the production restart command'
     tap_ui resource android:id/button1 \
         || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'the restart did not request fresh MediaProjection consent'; }
-    assert_main_service \
-        || fail 'the new MainService generation is not a started foreground service'
     wait_ui_center text 'Screen capture ready' >/dev/null \
         || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'the new MainService generation did not restore visible capture readiness'; }
+    assert_main_service \
+        || fail 'the new MainService generation is not a started foreground service'
     wait_ui_center text 'Reachable on :21118' >/dev/null \
         || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'the new MainService generation did not restore visible listener reachability'; }
     [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$APP_PID" ] \

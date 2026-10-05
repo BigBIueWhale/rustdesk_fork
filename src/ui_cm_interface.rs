@@ -4076,7 +4076,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn r_s11c4d_android_terminal_preempts_queued_file_work() {
+    async fn r_s11iu_android_terminal_preempts_queued_file_work() {
         let id = 2_000_000_015;
         assert!(CLIENTS.write().unwrap().clients.remove(&id).is_none());
         let temp = CmFileTestDir::new("terminal_preempts_file_work");

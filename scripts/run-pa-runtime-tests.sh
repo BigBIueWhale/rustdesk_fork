@@ -87,7 +87,7 @@ grep -Fq 'rd_pa_test.monitor' "$WORK/sources" \
 sine_module="$("$PACTL" load-module module-sine sink=rd_pa_test frequency=440)"
 [[ "$sine_module" =~ ^[1-9][0-9]*$ ]] \
     || { echo 'private PulseAudio sine source was not admitted' >&2; exit 1; }
-"$PACTL" set-sink-suspend rd_pa_test 0
+"$PACTL" suspend-sink rd_pa_test 0
 for _ in $(seq 1 20); do
     "$PACTL" list short sink-inputs >"$WORK/sink-inputs"
     [ -s "$WORK/sink-inputs" ] && break

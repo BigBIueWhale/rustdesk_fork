@@ -153,6 +153,7 @@ readonly FRAMEBUFFER=$WORK_ROOT/framebuffer.png
 readonly ANDROID_CONNECTION_DIAGNOSTIC=$WORK_ROOT/android-connection.diagnostic
 readonly ANDROID_FRAMEWORK_DIAGNOSTIC=$WORK_ROOT/android-framework.diagnostic
 readonly ANDROID_CONTROLLED_CPACE_LOG=$WORK_ROOT/android-controlled-cpace.log
+readonly ANDROID_CONTROLLED_CM_LOG=$WORK_ROOT/android-controlled-cm.log
 readonly FRAME_OBSERVER_ROOT=/observer
 readonly FRAME_OBSERVER_FRAME=$FRAME_OBSERVER_ROOT/latest.frame
 readonly FRAME_OBSERVER_READY=$FRAME_OBSERVER_ROOT/ready
@@ -1700,9 +1701,26 @@ exercise_android_controlled_cpace() {
     expected_probe_output=$'probe_client: keying ok=true (expected=ok)\nprobe_client: PASS\nprobe_client: keying ok=false (expected=fail)\nprobe_client: PASS'
     [ "$(<"$ANDROID_CONTROLLED_CPACE_LOG")" = "$expected_probe_output" ] \
         || { tail -n 20 "$ANDROID_CONTROLLED_CPACE_LOG" >&2; fail 'the Android controlled-side CPace receipt differs'; }
+    printf '%s\n' "$TEST_PASSWORD" \
+        | timeout --signal=TERM --kill-after=2s 60s \
+            "$PEER_TARGET/debug/examples/probe_client" \
+            127.0.0.1:22119 --password-stdin ok cmfiletransfer \
+            >"$ANDROID_CONTROLLED_CM_LOG" 2>&1 \
+        || { tail -n 20 "$ANDROID_CONTROLLED_CM_LOG" >&2; fail 'the Android controlled-side CM file round-trip failed'; }
+    [ "$(stat -c '%u:%g:%a:%h' -- "$ANDROID_CONTROLLED_CM_LOG")" = \
+      "$RUN_UID:$RUN_GID:600:1" ] \
+        && [ "$(stat -c '%s' -- "$ANDROID_CONTROLLED_CM_LOG")" -le 4096 ] \
+        || fail 'the Android controlled-side CM receipt metadata differs'
+    ! grep -Fq -- "$TEST_PASSWORD" "$ANDROID_CONTROLLED_CM_LOG" \
+        && grep -Fxq 'probe_client: keying ok=true (expected=ok)' "$ANDROID_CONTROLLED_CM_LOG" \
+        && grep -Fq '[FT-PEERINFO username_nonempty=true' "$ANDROID_CONTROLLED_CM_LOG" \
+        && grep -Fq '[FT-DIR-RESPONSE ' "$ANDROID_CONTROLLED_CM_LOG" \
+        && grep -Fxq 'probe_client: PASS' "$ANDROID_CONTROLLED_CM_LOG" \
+        || { tail -n 20 "$ANDROID_CONTROLLED_CM_LOG" >&2; fail 'the Android controlled-side CM transaction did not admit and answer the directory request'; }
     remove_android_control_forward \
         || fail 'the private Android controlled-side forward did not close exactly'
     printf 'ANDROID_CONTROLLED_CPACE=pass initiator=linux-probe responder=android-mainservice correct=keyed wrong=refused transport=adb-forward-loopback forward_listener=127.0.0.1:22119 forward_cleanup=removed password_transport=stdin\n'
+    printf 'ANDROID_CONTROLLED_CM_FILE=pass initiator=linux-probe responder=android-mainservice auth=cpace login=filetransfer cm=admitted directory=reply transport=adb-forward-loopback forward_cleanup=removed password_transport=stdin\n'
 }
 
 readonly APP_PACKAGE=com.carriez.flutter_hbb

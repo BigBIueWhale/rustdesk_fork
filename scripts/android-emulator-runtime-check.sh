@@ -126,6 +126,7 @@ events = {
     b"ANDROID_EMULATOR_KVM_API", b"ANDROID_EMULATOR_KVM_EXECUTION",
     b"ANDROID_EMULATOR_FRAME_ENDPOINT", b"ANDROID_EMULATOR_RENDERER",
     b"ANDROID_PEER_INFRASTRUCTURE", b"ANDROID_CONTROLLED_CPACE",
+    b"ANDROID_CONTROLLED_CM_FILE",
     b"ANDROID_RECENTS_GESTURE_DRIVER", b"ANDROID_RECENTS_DISMISS_ACTION",
     b"ANDROID_RECENTS_DISMISS_OUTCOME", b"ANDROID_PEER_CONNECTION_WAIT",
     b"ANDROID_PEER_CONNECTION_READY", b"ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT",
@@ -1359,6 +1360,12 @@ for lifecycle_cycle in $(seq 1 "$expected_recents_cycles"); do
     recents_task_ids="${recents_task_ids:+$recents_task_ids }$cycle_task_id"
 done
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
+mapfile -t controlled_cm_receipts < <(grep -Fx \
+    'ANDROID_CONTROLLED_CM_FILE=pass initiator=linux-probe responder=android-mainservice auth=cpace login=filetransfer cm=admitted directory=reply transport=adb-forward-loopback forward_cleanup=removed password_transport=stdin' \
+    "$RUNTIME_LOG" || true)
+[ "${#controlled_cm_receipts[@]}" -eq 1 ] \
+    && [ "$(grep -c '^ANDROID_CONTROLLED_CM_FILE=' "$RUNTIME_LOG")" -eq 1 ] \
+    || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android controlled-side CM transaction receipt is absent or malformed'; }
 mapfile -t lifecycle_receipts < <(grep -E \
     '^ANDROID_EMULATOR_LIFECYCLE=pass task_removals=6 task_result=removed service=foreground-preserved process=same-across-task-removal media_projection=ready-across-relaunch relaunch=resumed force_stop=process-and-service-stopped post_force_stop=new-process-service-stopped framework_anr=absent immersive_cling=(absent|dismissed-1) apk_sha256=[0-9a-f]{64} vm_network=none container_network=none cleanup=joined$' \
     "$RUNTIME_LOG" || true)

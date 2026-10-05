@@ -12903,9 +12903,13 @@ changing its owner map. The acknowledgment proves owner-map admission only, not
 capture/audio/notification readiness. Pending admission suppresses predecessor
 registry actions; a retained row on refusal does not prove that an overlapping
 predecessor remained operational.
-R-S11iu's original single-registry-lock wording predates this two-stage JNI
-admission; its linearization contract and the Service-stop/replacement race need
-explicit reconciliation before this boundary can be called closed.
+Pushed `c4908727` serializes Android native listener deactivation with that
+admission transaction: `MainService` closes admission and calls native deactivation
+before clearing controlled resources on destruction, incomplete-generation retry,
+or listener-worker convergence; the native deactivation waits for an in-flight
+Service acknowledgment to commit and publish or abort. The normative R-S11iu
+contract now describes this two-stage transaction rather than requiring one
+registry write lock across JNI. An installed Service/JNI race test is still missing.
 
 The exact-source 60-test VM receipt is
 `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.4G3rcGsn0s.serial.log`
@@ -12921,11 +12925,25 @@ and the run root and overlay were retired after 892 seconds. Its retained serial
 is `.harness-state/verifier-vm/android-rust-target-check-run.lc2Uq8TRln.serial.log`
 (SHA-256 `0b2e2d6d4d0e8319b0df0a18b9f0af84e4f7a4ddbbb7d642d509d4b0f822f411`).
 The serial retains the checked guest verdict, not the full transient Cargo stdout.
+Pushed `c4908727` passed 61 Linux-target Rust lifecycle tests, including
+a paused callback-versus-stop admission barrier case, in 918 seconds. The retained
+serial is `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.Uol9QzE4h1.serial.log`
+(SHA-256 `df55c8eb577bcfecf1aeb8dc2ad70e1481f5f297ed2b3c7b912bb25fba9083ba`);
+the outer host-listener audit passed and cleanup retired the run root and overlay.
+A zero-NIC guest also built, verified, installed, and launched the exact-source
+x86_64 test-only APK (SHA-256 `b1973e2a602f11de9d801fcd4c0284fe4a76b507ad898211ff24f09159e39541`).
+That APK transaction is **not an outer pass**: two new host loopback `fixed_relay`
+listeners on ports 8000 and 8090 appeared after its baseline, so the strict outer
+listener audit failed and no APK artifact was published. Its retained guest serial
+is `.harness-state/verifier-vm/android-emulator-app-run.6GnAfY142v.serial.log`
+(SHA-256 `9dc6d402c2ad6a344ceb6d8c66f66190f05efb9e8b7c8cf367d25d7b024cc835`);
+the failed run root and overlay were retired after process exit. The app-launch
+check did not drive an incoming controlled connection or the stop/admission race.
 The default full-closure release check still cannot start because the canonical
 inputs lack `flutter-windows-3.24.5.zip`; its earlier failed serial remains
 `.harness-state/verifier-vm/android-rust-target-check-run.LaL1NJflmp.serial.log`
 (SHA-256 `b2a952ce2116e6935788e717e9799677fef9d49ccb8ff76406c9ca6644c867f8`).
-An installed-APK negative replacement/stale-generation callback test spanning
+An outer-valid installed-APK negative replacement/stale-generation callback test spanning
 input, voice, capture, notification, and task lifecycle remains required. Neither
 the Linux tests nor Android-target compilation explains the outgoing-viewer hang.
 

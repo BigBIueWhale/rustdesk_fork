@@ -989,7 +989,9 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   survives, and CM cancellation retains its exact generation until cleanup finality instead of manufacturing `Done`.
 - **R-S11fj/R-S11e-197 viewer download digest inspection failure** — **SOURCE CORRECTED; EXACT-CURRENT EXECUTION
   PARTIAL, FAILURE PATHS OPEN.** One exact-current headless Linux production-`Session` download completed through
-  the ordinary absent-destination digest path and committed exact bytes; it did not inject inspection failures.
+  the ordinary absent-destination digest path and committed exact bytes. A second source-bound Linux replay
+  refused a symlink destination during digest inspection, surfaced one round and job error, published no `Done`,
+  and preserved the symlink, target bytes, and absent sidecars. Other inspection faults remain untested natively.
   Signed file identity is validated before lookup. Leased handle-based destination/resume inspection now
   distinguishes only true absence from explicit parse, authority, object-type, metadata, timestamp, and cleanup
   failure; mutation follows success, and failure remains bound to the exact terminal viewer/CM operation.
@@ -3411,9 +3413,23 @@ guest-only owners joined, and no run directory or overlay remains. This is one
 headless Linux positive path, not injected viewer failure/reconnect, native installed
 desktop, Android, Windows, or final-artifact evidence.
 
+Pushed test-only `2915190b` (tree `91331cb7`) added a separate production
+`Session` replay with a symlink destination and a regular sentinel target. The
+viewer observed the real peer's listing, rejected the destination at digest
+inspection, reported one round error and one exact job error, and joined without
+`Done`; guest checks preserved the link and target bytes and found no receive
+sidecars. The positive download also passed unchanged. The no-NIC VM exited 0
+in 320 seconds; raw serial `cm-file-replay-run.86PWbxESyk.serial.log` is
+397,302 bytes, SHA-256
+`54d4f51c44f148357cddc8f202f56813ed0f022da5cc10b1f21c439c95187740`.
+The outer listener/process audit passed and all run/overlay owners retired.
+This tests one headless Linux inspection refusal, not every malformed or
+inaccessible destination, peer-side terminal receipt, installed/client-native
+behavior, or a release artifact.
+
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | Current Linux evidence: 64 Rust filesystem tests plus four config tests, a 55-test Rust-app guest pass (outer receipt count corrected later), and keyed real-peer CM upload, short-write refusal, cancel, owner-loss/reconnect, collision, and cleanup-failure replays; direct-send unreadable-source error is terminal, followed on the same connection by a confirmed, exact-byte two-block direct read and one `Done`. One headless production-viewer download committed exact bytes after the normal listing/digest/confirmation path. The exact receipts and limits are above. Still OPEN: viewer failure and reconnect paths, saturation, terminal-first disconnect, concurrent/stale-generation reconnect, broader cleanup faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and release-artifact evidence. The installed Windows result predates these corrections. |
+| CM/file finality (R-S11c-4c/4d) | Current Linux evidence: 64 Rust filesystem tests plus four config tests, a 55-test Rust-app guest pass (outer receipt count corrected later), and keyed real-peer CM upload, short-write refusal, cancel, owner-loss/reconnect, collision, and cleanup-failure replays; direct-send unreadable-source error is terminal, followed on the same connection by a confirmed, exact-byte two-block direct read and one `Done`. One headless production-viewer download committed exact bytes after the normal listing/digest/confirmation path; a separate symlink-destination inspection was terminal and preserved its target. The exact receipts and limits are above. Still OPEN: other viewer failure and reconnect paths, saturation, terminal-first disconnect, concurrent/stale-generation reconnect, broader cleanup faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and release-artifact evidence. The installed Windows result predates these corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

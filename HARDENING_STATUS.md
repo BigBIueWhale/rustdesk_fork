@@ -988,7 +988,9 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   through one fallible operation. Cleanup uncertainty is terminal and visible; an identity-mismatched replacement
   survives, and CM cancellation retains its exact generation until cleanup finality instead of manufacturing `Done`.
 - **R-S11fj/R-S11e-197 viewer download digest inspection failure** — **SOURCE CORRECTED; EXACT-CURRENT EXECUTION
-  OPEN.** Signed file identity is validated before lookup. Leased handle-based destination/resume inspection now
+  PARTIAL, FAILURE PATHS OPEN.** One exact-current headless Linux production-`Session` download completed through
+  the ordinary absent-destination digest path and committed exact bytes; it did not inject inspection failures.
+  Signed file identity is validated before lookup. Leased handle-based destination/resume inspection now
   distinguishes only true absence from explicit parse, authority, object-type, metadata, timestamp, and cleanup
   failure; mutation follows success, and failure remains bound to the exact terminal viewer/CM operation.
 - **R-S11fk/R-S11e-198 controlled-video exact peer receipt** — **PARTIAL / RELEASE-BLOCKING.** Versioned video
@@ -3393,12 +3395,25 @@ in 275 seconds; raw serial `cm-file-replay-run.oWjdUQ4wUR.serial.log` is 317,351
 bytes, SHA-256 `818ec27194827cc140d5987c43bf4074fcc64d6778adb85a4cc37ad73c69b7c6`.
 The outer listener/process audit passed, all exact owners joined, and no `run.*` or
 overlay remains. This proves one headless Linux direct-send read/digest/confirmation
-and error-to-next-job progression, **not** a viewer writing the download, Windows CM
-read, installed desktop, Android, or a final artifact.
+and error-to-next-job progression, not a viewer writing the download.
+
+Pushed test-only `c9c06a68` (tree `f8b4f32e`) then built a production Linux `Session`
+test artifact alongside the real controlled peer in the no-NIC VM. The FileTransfer
+session requested a distinct deterministic 150,001-byte source, observed its one-file
+listing, completed one download through the normal digest/confirmation path, and joined
+its I/O worker. The guest independently checked the committed destination's exact
+bytes, owner/mode, and absent receive sidecars; the source digest stayed unchanged.
+`--cm-file-replay` exited 0 in 312 seconds. Retained raw serial
+`cm-file-replay-run.xpct1esu7R.serial.log` is 395,763 bytes, SHA-256
+`6e000ceef3800136449a983295cbc0942244baca6605eb9e235d04db430f1e57`.
+The outer audit found no host listener addition or pre-existing-process drift, all
+guest-only owners joined, and no run directory or overlay remains. This is one
+headless Linux positive path, not injected viewer failure/reconnect, native installed
+desktop, Android, Windows, or final-artifact evidence.
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | Current Linux evidence: 64 Rust filesystem tests plus four config tests, a 55-test Rust-app guest pass (outer receipt count corrected later), and keyed real-peer CM upload, short-write refusal, cancel, owner-loss/reconnect, collision, and cleanup-failure replays; direct-send unreadable-source error is terminal, followed on the same connection by a confirmed, exact-byte two-block direct read and one `Done`. The exact receipts and limits are above. Still OPEN: real viewer download/write-to-disk and its digest/confirmation behavior, saturation, terminal-first disconnect, concurrent/stale-generation reconnect, broader cleanup faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and release-artifact evidence. The installed Windows result predates these corrections. |
+| CM/file finality (R-S11c-4c/4d) | Current Linux evidence: 64 Rust filesystem tests plus four config tests, a 55-test Rust-app guest pass (outer receipt count corrected later), and keyed real-peer CM upload, short-write refusal, cancel, owner-loss/reconnect, collision, and cleanup-failure replays; direct-send unreadable-source error is terminal, followed on the same connection by a confirmed, exact-byte two-block direct read and one `Done`. One headless production-viewer download committed exact bytes after the normal listing/digest/confirmation path. The exact receipts and limits are above. Still OPEN: viewer failure and reconnect paths, saturation, terminal-first disconnect, concurrent/stale-generation reconnect, broader cleanup faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and release-artifact evidence. The installed Windows result predates these corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

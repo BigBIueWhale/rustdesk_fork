@@ -104,12 +104,15 @@ where
     Ok(())
 }
 
-async fn capture(
-    stream: &mut Connection,
+async fn capture<T>(
+    stream: &mut ConnectionTmpl<T>,
     peer: &LinuxProcessIdentity,
     token: &str,
     requested_source: &str,
-) -> ResultType<()> {
+) -> ResultType<()>
+where
+    T: AsyncRead + AsyncWrite + Unpin,
+{
     let mut mainloop = pulse::mainloop::standard::Mainloop::new()
         .ok_or_else(|| anyhow::anyhow!("could not create PulseAudio main loop"))?;
     let mut context = pulse::context::Context::new(&mainloop, &crate::get_app_name())
@@ -323,5 +326,66 @@ mod tests {
         .await
         .unwrap()
         .is_err());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires the private PulseAudio daemon and monitor fixture"]
+    async fn real_monitor_capture_revokes_after_audio_stops() {
+        assert_eq!(std::env::var("RUSTDESK_PA_NATIVE_TEST").unwrap(), "1");
+        let authority = crate::audio_service::PaCaptureNativeFixture::new().unwrap();
+        let peer = current_linux_process_identity().unwrap();
+        let (helper_socket, client_socket) = tokio::net::UnixStream::pair().unwrap();
+        let mut helper = ConnectionTmpl::new_pulse_audio(helper_socket);
+        let mut client = ConnectionTmpl::new_pulse_audio(client_socket);
+        let mut capture = Box::pin(capture(&mut helper, &peer, authority.token(), ""));
+
+        let signal_deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            let frame = tokio::select! {
+                result = &mut capture => panic!("capture ended before source audio: {result:?}"),
+                frame = client.next_pulse_audio_frame_timeout(500) => frame.unwrap(),
+                _ = tokio::time::sleep_until(signal_deadline) => panic!("real monitor produced no audio"),
+            };
+            if frame
+                .as_ref()
+                .is_some_and(|frame| frame.iter().any(|sample| *sample != 0))
+            {
+                break;
+            }
+        }
+
+        let pactl = std::env::var("RUSTDESK_PA_NATIVE_PACTL").unwrap();
+        let module = std::env::var("RUSTDESK_PA_NATIVE_SINE_MODULE").unwrap();
+        let unload = tokio::task::spawn_blocking(move || {
+            std::process::Command::new(pactl)
+                .args(["unload-module", &module])
+                .status()
+        })
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(unload.success());
+
+        let quiet_until = tokio::time::Instant::now() + Duration::from_millis(200);
+        loop {
+            tokio::select! {
+                result = &mut capture => panic!("capture ended before authority revocation: {result:?}"),
+                frame = client.next_pulse_audio_frame_timeout(100) => { frame.unwrap(); }
+                _ = tokio::time::sleep_until(quiet_until) => break,
+            }
+        }
+        authority.revoke();
+        let result = tokio::time::timeout(Duration::from_millis(600), async {
+            loop {
+                tokio::select! {
+                    result = &mut capture => break result,
+                    frame = client.next_pulse_audio_frame_timeout(100) => { frame.unwrap(); }
+                }
+            }
+        })
+        .await
+        .unwrap();
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("authority"), "{err}");
     }
 }

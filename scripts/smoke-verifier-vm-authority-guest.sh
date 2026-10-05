@@ -1970,6 +1970,7 @@ run_focused_rust_tests() {
     local source_archive_sha source_before input_mount_options pub_receipt post_pub_receipt
     local path remainder size digest
     local -a required_tests result_lines toolchain_mount bridge_mounts bridge_inputs
+    local -a pa_mounts=() pa_env=()
 
     if [ "$MODE" = hbb-common-fs ]; then
         container_name=rustdesk-hbb-common-fs
@@ -2060,6 +2061,8 @@ run_focused_rust_tests() {
         bridge_mounts=()
         source_fingerprints=(
             Cargo.lock
+            scripts/run-pa-runtime-tests.sh
+            scripts/verify-pa-runtime-candidate.py
             src/ipc.rs
             src/ipc/pulse_audio.rs
             src/server/audio_service.rs
@@ -2076,6 +2079,7 @@ run_focused_rust_tests() {
             server::service::pa_dispatch_tests::r_s11iu_pa_audio_dispatch_excludes_later_subscribers
             ipc::pulse_audio::tests::record_fragments_preserve_frame_shape_and_bound_stale_audio
             ipc::pulse_audio::tests::accepted_owner_close_interrupts_silent_capture_wait
+            ipc::pulse_audio::tests::real_monitor_capture_revokes_after_audio_stops
         )
     else
         [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -2239,6 +2243,36 @@ run_focused_rust_tests() {
     case ",$input_mount_options," in *,nosuid,*) ;; *) fail 'sealed focused-test inputs permit set-user-ID execution' ;; esac
     case ",$input_mount_options," in *,noexec,*) ;; *) fail 'sealed focused-test inputs permit direct execution' ;; esac
 
+    if [ "$MODE" = linux-pa-authority-tests ]; then
+        local pa_candidate=/mnt/rustdesk-verifier-inputs/pa-runtime-candidate.tar.gz
+        local pa_copy=$ROOT/pa-runtime.tar.gz
+        [ -f "$pa_candidate" ] && [ ! -L "$pa_candidate" ] \
+            && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$pa_candidate")" = \
+                 "4000:4000:400:1:$PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
+            && [ "$(sha256sum "$pa_candidate" | awk '{ print $1 }')" = \
+                 "$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256" ] \
+            || fail 'PulseAudio runtime candidate input differs'
+        install -o 1000 -g 1000 -m 0400 -- "$pa_candidate" "$pa_copy" \
+            || fail 'cannot make the private PulseAudio candidate copy'
+        [ "$(stat -c '%u:%g:%a:%h:%s' -- "$pa_copy")" = \
+          "1000:1000:400:1:$PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
+            && [ "$(sha256sum "$pa_copy" | awk '{ print $1 }')" = \
+                 "$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256" ] \
+            || fail 'private PulseAudio candidate copy differs'
+        pa_mounts=(--mount "type=bind,source=$pa_copy,target=/inputs/pa-runtime.tar.gz,readonly")
+        pa_env=(
+            --env "PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE=$PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE"
+            --env "PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+            --env "PA_RUNTIME_CANDIDATE_MANIFEST_SHA256=$PA_RUNTIME_CANDIDATE_MANIFEST_SHA256"
+            --env "DEV_CHECK_IMAGE_ID=$DEV_CHECK_IMAGE_ID"
+            --env "DEV_CHECK_DEBIAN_SNAPSHOT=$DEV_CHECK_DEBIAN_SNAPSHOT"
+            --env "DEV_CHECK_SECURITY_SNAPSHOT=$DEV_CHECK_SECURITY_SNAPSHOT"
+            --env "PA_RUNTIME_PULSEAUDIO_VERSION=$PA_RUNTIME_PULSEAUDIO_VERSION"
+            --env "PA_RUNTIME_PULSEAUDIO_SHA256=$PA_RUNTIME_PULSEAUDIO_SHA256"
+            --env "PA_RUNTIME_PULSEAUDIO_SIZE=$PA_RUNTIME_PULSEAUDIO_SIZE"
+        )
+    fi
+
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$vendor_config")" = \
       "1000:1000:400:1:$SIZE_CARGO_VENDOR_CONFIG" ] \
         && [ "$(sha256sum "$vendor_config" | awk '{ print $1 }')" = \
@@ -2386,6 +2420,8 @@ run_focused_rust_tests() {
             --mount "type=bind,source=$vendor_config,target=/inputs/config.toml,readonly" \
             "${toolchain_mount[@]}" \
             "${bridge_mounts[@]}" \
+            "${pa_mounts[@]}" \
+            "${pa_env[@]}" \
             --tmpfs "/tmp:rw,exec,nosuid,nodev,size=$tmpfs_size,mode=700,uid=1000,gid=1000" \
             --workdir /source \
             "$image_config" /bin/bash --noprofile --norc -euo pipefail -c '
@@ -2447,15 +2483,7 @@ run_focused_rust_tests() {
                             --color never -- --test-threads=1
                         ;;
                     linux-pa-authority-tests)
-                        cargo test --offline --locked --lib --features linux-pkg-config \
-                            r_s11iu_pa_capture_ --color never -- --test-threads=1
-                        cargo test --offline --locked --lib --features linux-pkg-config \
-                            ipc::test::linux_pulse_audio_channel_uses_closed_bounded_protocol \
-                            --color never -- --test-threads=1
-                        cargo test --offline --locked --lib --features linux-pkg-config \
-                            server::service::pa_dispatch_tests:: --color never -- --test-threads=1
-                        cargo test --offline --locked --lib --features linux-pkg-config \
-                            ipc::pulse_audio::tests:: --color never -- --test-threads=1
+                        /bin/bash /source/scripts/run-pa-runtime-tests.sh /inputs/pa-runtime.tar.gz
                         ;;
                     android-rust-lifecycle-tests)
                         cargo test --offline --locked --lib --features linux-pkg-config \
@@ -2530,8 +2558,12 @@ run_focused_rust_tests() {
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
     elif [ "$MODE" = linux-pa-authority-tests ]; then
-        [ "${#result_lines[@]}" -eq 4 ] \
+        [ "${#result_lines[@]}" -eq 5 ] \
             || { tail -n 200 "$output" >&2; fail 'focused Linux PulseAudio summary count differs'; }
+        grep -Fxq "PA_RUNTIME_ARCHIVE=pass packages=40 base=$DEV_CHECK_IMAGE_ID sha256=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256" "$output" \
+            || { tail -n 200 "$output" >&2; fail 'PulseAudio candidate admission receipt is absent'; }
+        grep -Fxq 'PA_RUNTIME_NATIVE=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 revocation=after-unload network=none uid=1000 cleanup=joined' "$output" \
+            || { tail -n 200 "$output" >&2; fail 'native PulseAudio capture receipt is absent'; }
     else
         [ "${#result_lines[@]}" -eq 12 ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
@@ -2586,9 +2618,10 @@ run_focused_rust_tests() {
     elif [ "$MODE" = linux-pa-authority-tests ]; then
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Linux PulseAudio authority test count differs: $tests_passed"
-        printf 'LINUX_PA_AUTHORITY_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        printf 'LINUX_PA_AUTHORITY_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s pa_candidate=%s pa_native=monitor-capture-revocation uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
-            "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+            "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config" \
+            "$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"

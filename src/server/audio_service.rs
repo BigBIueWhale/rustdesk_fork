@@ -189,6 +189,30 @@ fn install_pa_capture_authority(service: &GenericService) -> ResultType<PaCaptur
     })
 }
 
+#[cfg(all(test, target_os = "linux"))]
+pub(crate) struct PaCaptureNativeFixture {
+    service: GenericService,
+    authority: PaCaptureAuthorityGuard,
+}
+
+#[cfg(all(test, target_os = "linux"))]
+impl PaCaptureNativeFixture {
+    pub(crate) fn new() -> ResultType<Self> {
+        let service = EmptyExtraFieldService::new(NAME.to_owned(), true).sp;
+        service.on_subscribe(ConnInner::new(42, None, None));
+        let authority = install_pa_capture_authority(&service)?;
+        Ok(Self { service, authority })
+    }
+
+    pub(crate) fn token(&self) -> &str {
+        self.authority.token()
+    }
+
+    pub(crate) fn revoke(&self) {
+        self.service.on_unsubscribe(42);
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn ensure_pa_endpoint_matches_authority<T>(
     stream: &crate::ipc::ConnectionTmpl<T>,

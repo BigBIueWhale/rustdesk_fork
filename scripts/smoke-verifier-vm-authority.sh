@@ -288,6 +288,7 @@ readonly CARGO_VENDOR_CONFIG="$ONLINE_INPUTS/cargo-vendor-config.toml"
 readonly DEB_BUILDER_ARCHIVE="$ONLINE_INPUTS/build-images/deb-builder.docker.tar.gz"
 readonly ANDROID_BUILDER_ARCHIVE="$ONLINE_INPUTS/build-images/android-builder.docker.tar.gz"
 readonly DEV_CHECK_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/devcheck.docker.tar.gz"
+readonly PA_RUNTIME_CANDIDATE="$REPO_ROOT/online/candidates/pa-runtime/pa-runtime-candidate.tar.gz"
 readonly APPLE_CHECK_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/apple-check.docker.tar.gz"
 readonly DART_AUDIT_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/dart-audit.docker.tar.gz"
 readonly RUST_AUDIT_IMAGE_ARCHIVE="$ONLINE_INPUTS/verifier-images/rust-audit.docker.tar.gz"
@@ -1707,6 +1708,7 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
         focused_input_files=(
             "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG"
             "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
+            "$PA_RUNTIME_CANDIDATE:$PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE:$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
             "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"
         )
     else
@@ -2844,9 +2846,11 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
         if [ "$MODE" = linux-pa-authority-tests ]; then
             /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-                "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+                "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" \
+                "$PA_RUNTIME_CANDIDATE" "$VIRTIOFSD_PACKAGE"
             /usr/bin/sha256sum -- \
-                "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+                "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" \
+                "$PA_RUNTIME_CANDIDATE" "$VIRTIOFSD_PACKAGE"
         else
             /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
                 "$RUST_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$DEB_BUILDER_ARCHIVE" \
@@ -3148,6 +3152,9 @@ elif [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
    || [ "$MODE" = android-rust-target-check ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$RUST_TEST_SOURCE_ARCHIVE")
+    if [ "$MODE" = linux-pa-authority-tests ]; then
+        lifecycle_payload_grafts+=("pa-runtime-candidate.tar.gz=$PA_RUNTIME_CANDIDATE")
+    fi
 elif [ "$MODE" = apple-conform ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$APPLE_SOURCE_ARCHIVE")
@@ -4138,7 +4145,7 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
         'focused CPace recovery cloud-init completion marker'
 elif [ "$MODE" = linux-pa-authority-tests ]; then
     require_exact_fixed_receipt \
-        "LINUX_PA_AUTHORITY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=9 rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "LINUX_PA_AUTHORITY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=10 rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID pa_candidate=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256 pa_native=monitor-capture-revocation uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused Linux PulseAudio authority receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
@@ -4648,9 +4655,11 @@ if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT"
         if [ "$MODE" = linux-pa-authority-tests ]; then
             /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-                "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+                "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" \
+                "$PA_RUNTIME_CANDIDATE" "$VIRTIOFSD_PACKAGE"
             /usr/bin/sha256sum -- \
-                "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+                "$CARGO_VENDOR_CONFIG" "$DEV_CHECK_IMAGE_ARCHIVE" \
+                "$PA_RUNTIME_CANDIDATE" "$VIRTIOFSD_PACKAGE"
         else
             /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
                 "$RUST_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$DEB_BUILDER_ARCHIVE" \
@@ -4938,7 +4947,7 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
     printf 'CPACE_RECOVERY_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-pa-authority-tests ]; then
-    printf 'LINUX_PA_AUTHORITY_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=pa-admission-and-wire network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+    printf 'LINUX_PA_AUTHORITY_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=pa-admission-wire-native-capture network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     printf 'ANDROID_RUST_LIFECYCLE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

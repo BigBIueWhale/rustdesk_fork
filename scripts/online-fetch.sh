@@ -3304,63 +3304,74 @@ maintenance_discover_devcheck_image() {
     printf 'discovery_image_id=%s\n' "$image_id"
 }
 
-maintenance_discover_pa_runtime() {
-    require_devcheck_recipe_pins
-    local root="$ONLINE_FETCH_TMP/pa-runtime-discovery"
-    local sources="$root/snapshot.sources"
-    local simulation package_record
-    local -a apt_options=(
-        -o "Dir::Etc::sourcelist=$sources"
-        -o Dir::Etc::sourceparts=-
-        -o "Dir::State::lists=$root/lists"
-        -o "Dir::Cache::archives=$root/archives"
-        -o "APT::Sandbox::User=$(/usr/bin/id -un)"
-        -o APT::Get::List-Cleanup=0
-    )
-    [ "$ONLINE_FETCH_UID" -ne 0 ] \
-        || die 'PulseAudio package discovery refuses root'
-    [ -f /usr/share/keyrings/debian-archive-keyring.gpg ] \
-        && [ ! -L /usr/share/keyrings/debian-archive-keyring.gpg ] \
-        || die 'Debian archive signing keyring is unavailable'
-    /usr/bin/install -d -m 0700 -- \
-        "$root" "$root/lists" "$root/lists/partial" \
-        "$root/archives" "$root/archives/partial"
-    /usr/bin/printf '%s\n' \
-        'Types: deb' \
-        "URIs: https://snapshot.debian.org/archive/debian/${DEV_CHECK_DEBIAN_SNAPSHOT}/" \
-        'Suites: bookworm bookworm-updates' \
-        'Components: main' \
-        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-        'Check-Valid-Until: no' \
-        '' \
-        'Types: deb' \
-        "URIs: https://snapshot.debian.org/archive/debian-security/${DEV_CHECK_SECURITY_SNAPSHOT}/" \
-        'Suites: bookworm-security' \
-        'Components: main' \
-        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-        'Check-Valid-Until: no' \
-        >"$sources"
-    /usr/bin/env -i PATH=/usr/bin:/bin HOME="$root" LC_ALL=C \
-        /usr/bin/apt-get "${apt_options[@]}" \
-        -o APT::Update::Error-Mode=any update -qq \
-        || die 'signed Debian snapshot update failed for PulseAudio discovery'
-    package_record="$(/usr/bin/env -i PATH=/usr/bin:/bin HOME="$root" LC_ALL=C \
-        /usr/bin/apt-cache "${apt_options[@]}" show pulseaudio)" \
-        || die 'PulseAudio is absent from the signed snapshot'
-    [[ "$package_record" == *$'Package: pulseaudio\n'* ]] \
-        || die 'PulseAudio package record is malformed'
-    simulation="$(/usr/bin/env -i PATH=/usr/bin:/bin HOME="$root" LC_ALL=C \
-        /usr/bin/apt-get "${apt_options[@]}" --simulate --no-install-recommends \
-        install pulseaudio)" \
-        || die 'PulseAudio package dependency simulation failed'
-    [[ "$simulation" == *'Inst pulseaudio '* ]] \
-        || die 'PulseAudio package dependency simulation did not select the daemon'
-    /usr/bin/printf 'PA_RUNTIME_DISCOVERY=signed-snapshot-only debian=%s security=%s uid=%s\n' \
-        "$DEV_CHECK_DEBIAN_SNAPSHOT" "$DEV_CHECK_SECURITY_SNAPSHOT" "$ONLINE_FETCH_UID"
-    /usr/bin/printf '%s\n' "$package_record" \
-        | /usr/bin/awk '/^(Package|Version|Architecture|Depends|Filename|Size|SHA256):/ {print}'
-    /usr/bin/printf '%s\n' "$simulation" \
-        | /usr/bin/awk '/^Inst / {print}'
+maintenance_stage_pa_runtime_candidate() {
+    require_devcheck_image_pins
+    require_image_pin PA_RUNTIME_PULSEAUDIO_VERSION
+    require_image_pin PA_RUNTIME_PULSEAUDIO_SIZE
+    require_image_pin PA_RUNTIME_PULSEAUDIO_SHA256
+    local output="$ONLINE_FETCH_TMP/pa-runtime-output"
+    local parent="$ONLINE_CANDIDATE_ROOT/pa-runtime"
+    local part="$parent/.pa-runtime-candidate.tar.gz.part"
+    local candidate="$parent/pa-runtime-candidate.tar.gz"
+    local archive_size archive_sha package_count
+    [ "$PA_RUNTIME_PULSEAUDIO_SIZE" = 1173760 ] \
+        && [[ "$PA_RUNTIME_PULSEAUDIO_VERSION" =~ ^[0-9A-Za-z.+:~\-]+$ ]] \
+        || die 'PulseAudio package version or size pin differs from signed discovery'
+    for directory in "$ONLINE_CANDIDATE_ROOT" "$parent"; do
+        if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then
+            /usr/bin/install -d -m 0700 -- "$directory"
+        fi
+        [ -d "$directory" ] && [ ! -L "$directory" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' "$directory")" \
+                = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+            || die "PulseAudio candidate directory authority differs: $directory"
+    done
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        && [ ! -e "$part" ] && [ ! -L "$part" ] \
+        || die 'PulseAudio candidate or staging already exists; inspect it before another acquisition'
+    /usr/bin/install -d -m 0700 -- "$output"
+    verify_or_load_devcheck_image
+    online_docker_run_archive_acquisition \
+        --mount "type=bind,source=$SCRIPT_DIR/stage-pa-runtime-candidate.sh,target=/stage-pa-runtime-candidate.sh,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$output,target=/outputs,bind-recursive=disabled" \
+        --env "PA_RUNTIME_UID=$ONLINE_FETCH_UID" \
+        --env "PA_RUNTIME_GID=$ONLINE_FETCH_GID" \
+        --env "PA_DEV_CHECK_IMAGE_ID=$DEV_CHECK_IMAGE_ID" \
+        --env "PA_DEBIAN_SNAPSHOT=$DEV_CHECK_DEBIAN_SNAPSHOT" \
+        --env "PA_SECURITY_SNAPSHOT=$DEV_CHECK_SECURITY_SNAPSHOT" \
+        --env "PA_VERSION=$PA_RUNTIME_PULSEAUDIO_VERSION" \
+        --env "PA_SIZE=$PA_RUNTIME_PULSEAUDIO_SIZE" \
+        --env "PA_SHA256=$PA_RUNTIME_PULSEAUDIO_SHA256" \
+        "$DEV_CHECK_IMAGE_ID" \
+        /bin/bash --noprofile --norc /stage-pa-runtime-candidate.sh /outputs \
+        || die 'signed PulseAudio package candidate acquisition failed'
+    [ -f "$output/manifest.tsv" ] && [ ! -L "$output/manifest.tsv" ] \
+        && [ -f "$output/contract" ] && [ ! -L "$output/contract" ] \
+        && [ -d "$output/packages" ] && [ ! -L "$output/packages" ] \
+        || die 'PulseAudio candidate output inventory differs'
+    package_count="$(/usr/bin/find "$output/packages" -maxdepth 1 -type f -name '*.deb' \
+        | /usr/bin/wc -l)"
+    [ "$package_count" -gt 0 ] && [ "$package_count" -le 64 ] \
+        && [ "$package_count" -eq "$(/usr/bin/wc -l < "$output/manifest.tsv")" ] \
+        || die 'PulseAudio candidate manifest cardinality differs'
+    (
+        cd "$output"
+        /usr/bin/tar --sort=name --format=gnu \
+            --mtime="@$DEV_CHECK_SOURCE_DATE_EPOCH" \
+            --owner=0 --group=0 --numeric-owner \
+            -cf - contract manifest.tsv packages/*.deb
+    ) | /usr/bin/gzip -n >"$part" \
+        || die 'PulseAudio candidate archive creation failed'
+    archive_size="$(/usr/bin/stat -c '%s' "$part")"
+    [ "$archive_size" -gt 0 ] && [ "$archive_size" -le 134217728 ] \
+        || die 'PulseAudio candidate archive size is outside its bound'
+    archive_sha="$(/usr/bin/sha256sum "$part" | /usr/bin/cut -d' ' -f1)"
+    /usr/bin/chmod 0400 -- "$part"
+    online_image_provenance maintenance-rename-noreplace \
+        --source "$part" --destination "$candidate" \
+        || die 'PulseAudio candidate publication failed'
+    /usr/bin/printf 'PA_RUNTIME_CANDIDATE=staged base=%s packages=%s bytes=%s sha256=%s path=%s\n' \
+        "$DEV_CHECK_IMAGE_ID" "$package_count" "$archive_size" "$archive_sha" "$candidate"
 }
 
 capture_devcheck_rebuild() {
@@ -8342,9 +8353,9 @@ main() {
             maintenance_discover_devcheck_image
             return 0
             ;;
-        --maintenance-discover-pa-runtime)
-            [ "$#" -eq 1 ] || die "--maintenance-discover-pa-runtime takes no arguments"
-            maintenance_discover_pa_runtime
+        --maintenance-stage-pa-runtime-candidate)
+            [ "$#" -eq 1 ] || die "--maintenance-stage-pa-runtime-candidate takes no arguments"
+            maintenance_stage_pa_runtime_candidate
             return 0
             ;;
         --maintenance-discover-osv-pub-database)

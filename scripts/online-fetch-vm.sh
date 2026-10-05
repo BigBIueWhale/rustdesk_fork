@@ -42,7 +42,7 @@ case "$#:${1:-}" in
     1:--maintenance-promote-android-builder-certified-candidate|\
     1:--maintenance-build-win-helper-certified-candidate|\
     1:--maintenance-promote-win-helper-certified-candidate|\
-    1:--maintenance-discover-devcheck-image|1:--maintenance-discover-pa-runtime|\
+    1:--maintenance-discover-devcheck-image|1:--maintenance-stage-pa-runtime-candidate|\
     1:--maintenance-build-devcheck-image-candidate|\
     1:--maintenance-promote-devcheck-image-candidate|\
     1:--maintenance-build-apple-check-image-candidate|\
@@ -97,7 +97,7 @@ elif [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=4096
-elif [ "$REQUEST" = --maintenance-discover-pa-runtime ]; then
+elif [ "$REQUEST" = --maintenance-stage-pa-runtime-candidate ]; then
     readonly VM_TIMEOUT_SECONDS=900
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=4096
@@ -729,6 +729,7 @@ for source in "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$BOOT_DERIVER" \
     "$SCRIPT_DIR/discover-flutter-android-maven.py" \
     "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" \
     "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" \
+    "$SCRIPT_DIR/stage-pa-runtime-candidate.sh" \
     "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" \
     "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" \
     "$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py" \

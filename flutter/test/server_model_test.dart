@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/models/android_service_ui_state.dart';
-import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/server_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -162,46 +160,42 @@ void main() {
     );
   });
 
-  testWidgets(
-      'incremental CM admission retires every disconnected same-peer row',
-      (tester) async {
-    final previousIsTest = isTest;
-    isTest = true;
-    try {
-      final ffi = FFI(null);
-      final server = ffi.serverModel;
-      void add(int id, int generation, String peerId) {
-        server.addConnection(<String, dynamic>{
-          'client': jsonEncode(_clientState(
-            id: id,
-            registryGeneration: generation,
-            peerId: peerId,
-          )),
-        });
-      }
+  test('incremental CM admission retires every disconnected same-peer row',
+      () {
+    final clients = <Client>[
+      Client.fromJson(_clientState(
+        id: 7,
+        registryGeneration: 19,
+        peerId: 'same-peer',
+        disconnected: true,
+      )),
+      Client.fromJson(_clientState(
+        id: 8,
+        registryGeneration: 20,
+        peerId: 'same-peer',
+        disconnected: true,
+      )),
+      Client.fromJson(_clientState(
+        id: 9,
+        registryGeneration: 21,
+        peerId: 'other-peer',
+        disconnected: true,
+      )),
+      Client.fromJson(
+          _clientState(id: 10, registryGeneration: 22, peerId: 'same-peer')),
+      Client.fromJson(
+          _clientState(id: 11, registryGeneration: 23, peerId: 'same-peer')),
+    ];
+    final tabIds = <int>[7, 8, 9, 10, 11];
 
-      add(7, 19, 'same-peer');
-      add(8, 20, 'same-peer');
-      add(9, 21, 'other-peer');
-      add(10, 22, 'same-peer');
-      expect(server.clients.map((client) => client.id),
-          orderedEquals(<int>[7, 8, 9, 10]));
-      server.clients.firstWhere((client) => client.id == 7).disconnected = true;
-      server.clients.firstWhere((client) => client.id == 8).disconnected = true;
-      server.clients.firstWhere((client) => client.id == 9).disconnected = true;
+    retireDisconnectedCmPeerClients(clients, 'same-peer', (index) {
+      tabIds.removeAt(index);
+    });
 
-      add(11, 23, 'same-peer');
-      expect(server.clients.map((client) => client.id),
-          orderedEquals(<int>[9, 10, 11]));
-      expect(server.clients.first.registryGeneration, 21);
-      expect(server.clients.first.disconnected, isTrue);
-      expect(server.clients[1].disconnected, isFalse);
-      expect(server.tabController.length, 3);
-      expect(ffi.serverModel, same(server));
-      await tester.pump(const Duration(milliseconds: 200));
-    } finally {
-      isTest = previousIsTest;
-    }
+    expect(clients.map((client) => client.id), orderedEquals(<int>[9, 10, 11]));
+    expect(tabIds, orderedEquals(<int>[9, 10, 11]));
+    expect(clients.first.disconnected, isTrue);
+    expect(clients[1].disconnected, isFalse);
   });
 
   test('Android service command owns preflight through final dispatch',

@@ -103,6 +103,17 @@ CmClientStateReconciliation reconcileCmClientState(
   );
 }
 
+void retireDisconnectedCmPeerClients(
+    List<Client> clients, String peerId, void Function(int) removeTab) {
+  for (var index = clients.length - 1; index >= 0; index -= 1) {
+    final current = clients[index];
+    if (current.disconnected && current.peerId == peerId) {
+      clients.removeAt(index);
+      removeTab(index);
+    }
+  }
+}
+
 class ServerModel with ChangeNotifier {
   final _androidServiceUiState = AndroidServiceUiState();
   bool _mediaOk = false;
@@ -622,15 +633,10 @@ class ServerModel with ChangeNotifier {
         }
       }
       _addTab(client);
-      // The native CM registry retires every disconnected owner for this peer on
-      // admission, while retaining other peers and still-live connections.
-      for (var index = _clients.length - 1; index >= 0; index -= 1) {
-        final current = _clients[index];
-        if (current.disconnected && current.peerId == client.peerId) {
-          _clients.removeAt(index);
-          tabController.remove(index);
-        }
-      }
+      // Mirror the native registry's retirement of every disconnected owner
+      // for this peer while retaining other peers and live connections.
+      retireDisconnectedCmPeerClients(
+          _clients, client.peerId, tabController.remove);
       _commitClientStateMutation();
       if (desktopType == DesktopType.cm && !hideCm) {
         showCmWindow();

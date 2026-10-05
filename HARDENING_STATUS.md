@@ -3137,14 +3137,27 @@ joined guest Docker/QEMU/virtiofsd, and left no `run.*` overlay.
 Earlier focused source `e05a2e91` passed 64 Linux filesystem tests and four config
 tests; its serial `hbb-common-fs-run.8dsa1iW9yk.serial.log` is retained. An older
 55-test Rust-app guest pass was rejected by its outer receipt count and is **not**
-an accepted whole-transaction pass. The current replay is headless Linux behavior,
-not installed service, native Windows handle semantics, Android CM lifetime,
-stale-generation replacement, saturation, broader storage faults, or final-artifact
-evidence. The matrix below keeps those obligations open.
+an accepted whole-transaction pass. A separate exact-source Linux-target focused
+transaction at `2aed490c` (tree `de46c223`) passed 56 tests and its outer receipt
+in 693 seconds. Its production `start_listen` test filled the two-slot Android CM
+command queue with authorized `CreateDir` requests, published independent terminal
+intent before polling the consumer, and observed neither disk mutation nor stale
+egress while the exact registry owner retired. Raw serial
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.TcR2oyfPqG.serial.log`
+is 69,038 bytes, SHA-256
+`47f76e9189986e2d5a020d34c69035b6738dad7c39f2df7b37caa26c0a1ba0ef`.
+The outer audit found no harness-added host listener, one pre-existing-process
+drift, and joined guest-only Docker/QEMU/virtiofsd with no retained `run.*` root.
+This tests the Android in-process consumer code on Linux, not an installed Android
+device, network peer, or an already executing file operation. The current replay
+is headless Linux behavior, not installed service, native Windows handle semantics,
+full Android CM lifetime, stale-generation replacement, live-peer saturation,
+broader storage faults, or final-artifact evidence. The matrix below keeps those
+obligations open.
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed; earlier focused filesystem tests are historical-source evidence, and the 55-test app guest pass lacked an accepted outer receipt. Still OPEN: other viewer failure/reconnect paths, saturation, terminal-first disconnect, stale-generation replacement, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and final-artifact evidence. The installed Windows result predates the later corrections. |
+| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The current 56-test Linux-target transaction also exercised terminal priority over a full Android CM command queue; the older 55-test app guest pass still lacked an accepted outer receipt. Still OPEN: other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, stale-generation replacement, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and final-artifact evidence. The installed Windows result predates the later corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

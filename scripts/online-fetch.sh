@@ -3307,7 +3307,7 @@ maintenance_discover_devcheck_image() {
 maintenance_discover_pa_runtime() {
     require_devcheck_recipe_pins
     local root="$ONLINE_FETCH_TMP/pa-runtime-discovery"
-    local sources="$root/sources.list"
+    local sources="$root/snapshot.sources"
     local simulation package_record
     local -a apt_options=(
         -o "Dir::Etc::sourcelist=$sources"

@@ -6350,66 +6350,25 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   explicit stop-ship boundaries.
 
 - **R-S11gf/R-S11e-218 Linux Flutter texture-plugin load authority — SOURCE IMPLEMENTED;
-  EXACT-CURRENT FULL-PEER, PACKAGED-ARTIFACT, AND CROSS-PLATFORM EVIDENCE PENDING.** Platform:
-  Linux outgoing Flutter viewer. Endpoint/action: lazy Rust loading of the repository-owned software
-  RGBA renderer before native texture registration. Boundary: exact application-bundle code identity
-  versus ambient ELF dynamic-loader search.
+  NAMED BUNDLE PIXELS OBSERVED; INSTALLED AND CURRENT-RELEASE EVIDENCE OPEN.** The former bare
+  `dlopen("libtexture_rgba_renderer_plugin.so")` delegated viewer renderer identity to ambient ELF
+  search. `src/flutter.rs::load_linux_texture_plugin` now resolves the current executable, derives
+  only its clean absolute sibling `lib/libtexture_rgba_renderer_plugin.so`, and opens that path;
+  missing or unclean identity has no fallback. The two `r_s11gf_` Rust tests cover the Debian and
+  portable bundle layouts and reject relative, parent-traversing, and fileless roots. They prove
+  path construction, not loader behavior. The old desktop-texture and workspace mutation verifiers
+  named in the historical entry were deleted; they are not current acceptance gates.
 
-  Read-only source tracing found that Linux alone initialized `TEXTURE_RGBA_RENDERER_PLUGIN` with
-  `Library::open("libtexture_rgba_renderer_plugin.so")`. The `dlopen(3)` contract treats a name with
-  no slash as a search request: calling-object RPATH/RUNPATH, `LD_LIBRARY_PATH`, the loader cache,
-  and default directories can participate. This contradicted the existing Debian package authority,
-  which admits exactly one renderer member at
-  `/usr/share/rustdesk/lib/libtexture_rgba_renderer_plugin.so`, while Windows already constructs an
-  application-relative DLL path and macOS opens the current image. The renderer is outgoing-viewer
-  presentation code; the installed Linux root service ordinarily controls a separate user-owned
-  server role and no root-service reachability, exploit, host mutation, or compromise was
-  demonstrated. This is nevertheless concrete ambient-library authority and a future-reactivation
-  risk, not a merely stylistic path choice.
-
-  Linux now obtains the current executable, rejects anything other than a clean absolute file path,
-  derives exactly `<executable-parent>/lib/libtexture_rgba_renderer_plugin.so`, and passes that
-  slash-containing pathname to `Library::open`. A missing executable identity, malformed path,
-  absent plugin, or loader error leaves the renderer unavailable. There is no bare-soname,
-  environment-selected, current-working-directory, system-library, or compatibility fallback.
-  Focused path regressions bind the installed `/usr/share/rustdesk` and ordinary portable/bundle
-  layouts and reject relative, parent-traversing, and fileless roots. The desktop-texture verifier
-  binds the fixed basename, path derivation, exact loader call, tests, shared/fresh-bridge gate
-  wiring, R-S11gf, Appendix C #341, and this ledger; the independent workspace verifier binds those
-  same source families and mutations separately.
-
-  The counted compile transaction ran as numeric UID/GID 1000:1000 in the pinned Debian-builder
-  image `sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2` with
-  no network, a read-only root and offline inputs, all capabilities dropped, no-new-privileges, no
-  Docker socket or host namespace, no port publication, one disposable tmpfs source, and one fresh
-  private compiler target. It hash-checked the individually required Rust 1.75.0, Flutter 3.24.5,
-  LLVM 15.0.6, and FRB 1.80.1 archives; generated all four bridge outputs from an exact tracked
-  source archive plus this pending `src/flutter.rs`; rejected any `[SEVERE]` generator diagnostic;
-  passed exact Rust 1.75 rustfmt; compiled the production library with
-  `flutter,unix-file-copy-paste`; and passed both selected regressions (`2 passed`, `0 failed`, 483
-  filtered). The warning-only generator output and existing compiler warnings are retained as
-  warnings, not promoted to failures or hidden. An earlier direct compile against the checkout's
-  ignored stale bridge failed on its older FFI signatures; a fresh-generation attempt then failed
-  rustfmt; and a second attempt reused an output whose dependency-owned copied headers were mode
-  0400. None count as success. The counted transaction used a new target rather than changing those
-  permissions.
-
-  This narrow transaction verified the four individually required archive hashes and exercised the
-  current Cargo vendor/Pub-cache contents offline; it does not certify the canonical full-online
-  closure. That closure's current manifest identity still differs from the pinned expected identity,
-  so the full-peer harness remains fail-closed and no runtime result is claimed from it.
-
-  On the tracked verifier bytes, the focused desktop-texture verifier, Python AST parsing, and the three shell-gate
-  parses passed. This remains source-only evidence and did not start a RustDesk process or listener.
-
-  This source correction does not inherit R-S11gc's earlier exact commit `38ad03e` runtime result:
-  that artifact predates the changed loader bytes. An exact-current full-peer run must prove the
-  release bundle actually resolves the new path, authenticates, presents current pixels through
-  focus loss, and exits cleanly. Exact Debian-artifact execution, Windows/Android/macOS/iOS behavior,
-  focus/background/reconnect/resource soak, current cold R-B2/R-B10 artifacts, independent
-  reproduction, and external review remain explicit release blockers. No host RustDesk process,
-  service, binary, configuration, listener, display, firewall/UFW/nftables/iptables state, or host
-  network state was inspected or changed for this source slice.
+  The retained source-bound app `a3755044` descends from the loader correction, and its manifest
+  inventories the renderer at the exact bundle path. Its `7f6649f0` no-NIC real-peer replay
+  observed Flutter/X11 pixels through six viewer lifecycles and eighteen focus/reconnect cycles;
+  the complete 511,118-byte serial and digest are recorded in the named app entry above. This is
+  stronger than the earlier source/compile receipt but does not separately attest the mapped plugin
+  inode, execute an installed `.deb`, or test current-master/final-release artifacts. An exact
+  installed package, native loader identity, current release, broader OS/lifecycle/soak, cold
+  R-B2/R-B10 equality, independent reproduction, and external review remain OPEN. No installed
+  root-service exploitation or local privilege escalation was demonstrated by the old bare-name
+  defect.
 
 - **R-S11gc/R-S11e-216 Linux full-peer presentation — NAMED PRODUCT RUNTIME EVIDENCE;
   PUBLICATION-AGE ORACLE, CURRENT ARTIFACT, INSTALLED, CROSS-PLATFORM, AND SOAK EVIDENCE OPEN.**

@@ -72,6 +72,73 @@ require_verifier_vm_android_builder() {
         || die "pinned Android builder image provenance verification failed"
 }
 
+# Compilation-only evidence can use Android inputs; the default release-check
+# path still requires the complete canonical closure.
+verify_focused_android_inputs() {
+    local pub_cache_receipt libvpx_key tool version
+    [ -d "$ONLINE_DIR" ] && [ ! -L "$ONLINE_DIR" ] \
+        && [ "$(/usr/bin/readlink -f -- "$ONLINE_DIR")" = "$ONLINE_DIR" ] \
+        || die "focused Android Rust inputs are absent or ambiguous"
+    verify_online_shas \
+        "rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75" \
+        "rust-std-${RUST_VERSION}-aarch64-linux-android.tar.xz" "$SHA256_RUST_STD_ANDROID_1_75" \
+        "flutter-${FLUTTER_VERSION}.tar.xz" "$SHA256_FLUTTER_3_24_5" \
+        "llvm-${LLVM_VERSION}.tar.xz" "$SHA256_LLVM_15_0_6" \
+        "android-ndk-${ANDROID_NDK_VERSION}.zip" "$SHA256_ANDROID_NDK_R28C" \
+        android-cmdline-tools.zip "$SHA256_ANDROID_CMDLINE_TOOLS" \
+        cargo-vendor-config.toml "$SHA256_CARGO_VENDOR_CONFIG"
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/online-input-provenance.py" verify-subtree \
+        --tree "$ONLINE_DIR/cargo-vendor" \
+        --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"
+    pub_cache_receipt="$(
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/online-pub-cache-output.py" check-complete \
+            --online "$ONLINE_DIR" --uid "$BUILD_UID" --gid "$BUILD_GID"
+    )" || die "focused Android Pub cache is incomplete or unsafe"
+    [ "$pub_cache_receipt" = "sha256=$SHA256_PUB_CACHE_CLOSURE_V1" ] \
+        || die "focused Android Pub cache differs from its pin"
+    for tool in frb cargo-ndk; do
+        case "$tool" in
+            frb) version=$FLUTTER_RUST_BRIDGE_VERSION ;;
+            cargo-ndk) version=$CARGO_NDK_VERSION ;;
+        esac
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/online-cargo-tool-output.py" check-complete \
+            --online "$ONLINE_DIR" --uid "$BUILD_UID" --gid "$BUILD_GID" \
+            --kind "$tool" --tool-version "$version" --rust-version "$RUST_VERSION"
+    done
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/online-android-ndk-output.py" check-complete \
+        --online "$ONLINE_DIR" \
+        --archive "$ONLINE_DIR/android-ndk-${ANDROID_NDK_VERSION}.zip" \
+        --uid "$BUILD_UID" --gid "$BUILD_GID" \
+        --version "$ANDROID_NDK_VERSION" --sha256 "$SHA256_ANDROID_NDK_R28C" \
+        --builder "$ANDROID_BUILDER_CONFIG_ID"
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/online-android-sdk-output.py" check-complete \
+        --online "$ONLINE_DIR" \
+        --cmdline-archive "$ONLINE_DIR/android-cmdline-tools.zip" \
+        --uid "$BUILD_UID" --gid "$BUILD_GID" \
+        --builder "$ANDROID_BUILDER_CONFIG_ID" \
+        --package-pin "cmdline-tools=$SHA256_ANDROID_CMDLINE_TOOLS" \
+        --package-pin "platform-tools=$SHA256_ANDROID_PLATFORM_TOOLS_37_0_1" \
+        --package-pin "build-tools-30.0.3=$SHA256_ANDROID_BUILD_TOOLS_30_0_3" \
+        --package-pin "build-tools-34.0.0=$SHA256_ANDROID_BUILD_TOOLS_34_0_0" \
+        --package-pin "platform-31=$SHA256_ANDROID_PLATFORM_31" \
+        --package-pin "platform-32=$SHA256_ANDROID_PLATFORM_32" \
+        --package-pin "platform-33=$SHA256_ANDROID_PLATFORM_33" \
+        --package-pin "platform-34=$SHA256_ANDROID_PLATFORM_34"
+    [ -f "$ONLINE_DIR/vcpkg/installed/arm64-android/.rustdesk-libvpx-native-key" ] \
+        && [ ! -L "$ONLINE_DIR/vcpkg/installed/arm64-android/.rustdesk-libvpx-native-key" ] \
+        || die "focused Android native-codec key is absent or ambiguous"
+    libvpx_key="$(<"$ONLINE_DIR/vcpkg/installed/arm64-android/.rustdesk-libvpx-native-key")"
+    [[ "$libvpx_key" =~ ^[0-9a-f]{64}$ ]] \
+        || die "focused Android native-codec key is malformed"
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/online-vcpkg-native-output.py" check-complete \
+        --online "$ONLINE_DIR" --uid "$BUILD_UID" --gid "$BUILD_GID" \
+        --kind arm64-android --output-key "$VCPKG_ARM64_ANDROID_OUTPUT_KEY_V1" \
+        --libvpx-key "$libvpx_key" --builder "$ANDROID_BUILDER_CONFIG_ID"
+    printf 'ANDROID_RUST_FOCUSED_INPUTS=verified vendor=%s pub_cache=%s vcpkg_key=%s\n' \
+        "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_PUB_CACHE_CLOSURE_V1" \
+        "$VCPKG_ARM64_ANDROID_OUTPUT_KEY_V1"
+}
+
 if [ "$#" -eq 1 ] && [ "$1" = --self-test-vm-authority ]; then
     authority_version="$(verifier_vm_docker version \
         --format '{{.Client.Version}}|{{.Server.Version}}')" \
@@ -83,8 +150,15 @@ if [ "$#" -eq 1 ] && [ "$1" = --self-test-vm-authority ]; then
         "$BUILD_UID" "$BUILD_GID" "$VERIFIER_VM_DOCKER_VERSION"
     exit 0
 fi
-[ "$#" -eq 0 ] \
-    || die "Android Rust release check accepts no arguments except --self-test-vm-authority"
+case "${1:-}" in
+    '') [ "$#" -eq 0 ] || die "Android Rust check accepts no extra arguments" ;;
+    --focused-target-check)
+        [ "$#" -eq 1 ] || die "focused Android Rust check accepts no extra arguments" ;;
+    *) die "Android Rust check accepts only --focused-target-check or --self-test-vm-authority" ;;
+esac
+FOCUSED_TARGET_CHECK=0
+[ "${1:-}" != --focused-target-check ] || FOCUSED_TARGET_CHECK=1
+readonly FOCUSED_TARGET_CHECK
 
 cd "$REPO_ROOT"
 
@@ -146,7 +220,11 @@ for relative in sys.stdin.buffer.read().split(b"\0"):
 }
 
 require_cmd git python3 sha256sum tar
-require_online_complete
+if [ "$FOCUSED_TARGET_CHECK" -eq 1 ]; then
+    verify_focused_android_inputs
+else
+    require_online_complete
+fi
 [[ "$ANDROID_BUILDER_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
     && [[ "$ANDROID_BUILDER_CONFIG_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
     || die "Android Rust release check has malformed certified/runtime builder identities"
@@ -199,7 +277,11 @@ if ! verifier_vm_docker run --rm --pull=never --network=none --read-only \
 fi
 /usr/bin/python3 -I -S "$SOURCE_AUTHORITY/scripts/verify-android-build-source.py" \
     --reference "$SOURCE_AUTHORITY" --candidate "$BUILD_SOURCE" --allow-extras
-require_online_complete
+if [ "$FOCUSED_TARGET_CHECK" -eq 1 ]; then
+    verify_focused_android_inputs
+else
+    require_online_complete
+fi
 SOURCE_DIGEST_AFTER="$(archive_current_source | /usr/bin/sha256sum | /usr/bin/awk '{print $1}')"
 [ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ] \
     || die "live source changed while the disposable Android Rust check was running"

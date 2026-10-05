@@ -2532,7 +2532,7 @@ run_android_rust_target_check() {
     local builder_archive=$inputs/build-images/android-builder.docker.tar.gz
     local source_archive_sha source_tree_before source_tree_after
     local input_mount_options online_mount_options load_output workload_status=0
-    local entry_count online_verification_count
+    local entry_count focused_input_verification_count
     local expected_entry="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=1000 gid=1000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root"
     local -a git_builder=(
         setpriv --reuid=1000 --regid=1000 --clear-groups
@@ -2646,7 +2646,7 @@ run_android_rust_target_check() {
     [ "$load_output" = "loaded and verified android-builder $ANDROID_BUILDER_IMAGE_ID" ] \
         || fail "Android-builder image receipt differs: $load_output"
 
-    if /bin/bash "$source_root/scripts/android-rust-check.sh" \
+    if /bin/bash "$source_root/scripts/android-rust-check.sh" --focused-target-check \
         >"$ROOT/root-android-rust-target.out" \
         2>"$ROOT/root-android-rust-target.err"; then
         fail 'VM root passed the Android Rust target-check entry'
@@ -2657,7 +2657,7 @@ run_android_rust_target_check() {
       'Android Rust release check refuses host or container-root execution' ] \
         || fail 'root Android Rust target-check refusal diagnostic differs'
     if setpriv --reuid=4001 --regid=4001 --clear-groups \
-        /bin/bash "$source_root/scripts/android-rust-check.sh" \
+        /bin/bash "$source_root/scripts/android-rust-check.sh" --focused-target-check \
         >"$ROOT/foreign-android-rust-target.out" \
         2>"$ROOT/foreign-android-rust-target.err"; then
         fail 'foreign principal passed the Android Rust target-check entry'
@@ -2671,7 +2671,7 @@ run_android_rust_target_check() {
     set +e
     setpriv --reuid=1000 --regid=1000 --clear-groups \
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-        /bin/bash "$source_root/scripts/android-rust-check.sh" \
+        /bin/bash "$source_root/scripts/android-rust-check.sh" --focused-target-check \
         >"$output" 2>&1
     workload_status=$?
     set -e
@@ -2687,9 +2687,9 @@ run_android_rust_target_check() {
         || { tail -n 240 "$output" >&2; fail 'Android Rust target-check production verdict is absent or duplicated'; }
     [ "$(grep -Fc 'R-B10 canary: build confirmed network-isolated (offline compile stage).' "$output")" -ge 1 ] \
         || { tail -n 240 "$output" >&2; fail 'Android Rust target check did not execute its offline network canary'; }
-    online_verification_count="$(grep -Fxc "verified $SHA256_ONLINE_CLOSURE_V1" "$output")"
-    [ "$online_verification_count" -eq 2 ] \
-        || { tail -n 240 "$output" >&2; fail 'Android Rust target check did not verify the full online closure before and after execution'; }
+    focused_input_verification_count="$(grep -Fxc "ANDROID_RUST_FOCUSED_INPUTS=verified vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 vcpkg_key=$VCPKG_ARM64_ANDROID_OUTPUT_KEY_V1" "$output")"
+    [ "$focused_input_verification_count" -eq 2 ] \
+        || { tail -n 240 "$output" >&2; fail 'Android Rust target check did not verify its focused Android inputs before and after execution'; }
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         || fail 'Android Rust target check left a container'
     "$CLIENT" --host "unix://$SOCK" image rm "$ANDROID_BUILDER_CONFIG_ID" >/dev/null \
@@ -2720,10 +2720,11 @@ run_android_rust_target_check() {
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$expected_entry"
     printf 'ANDROID-RUST-CHECK: aarch64 Android Rust library is GREEN\n'
-    printf 'ANDROID_RUST_TARGET_VM=pass commit=%s tree=%s target=aarch64-linux-android profile=release-check builder_index=%s builder_runtime=%s online=%s uid=1000 gid=1000 root=refused foreign=refused vm_network=none container_network=none inputs=readonly-landlocked source=exact-pushed offline_canary=pass cleanup=joined\n' \
+    printf 'ANDROID_RUST_TARGET_VM=pass commit=%s tree=%s target=aarch64-linux-android profile=focused-target-check builder_index=%s builder_runtime=%s vendor=%s pub_cache=%s vcpkg_key=%s uid=1000 gid=1000 root=refused foreign=refused vm_network=none container_network=none inputs=readonly-landlocked source=exact-pushed offline_canary=pass cleanup=joined\n' \
         "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$ANDROID_BUILDER_IMAGE_ID" "$ANDROID_BUILDER_CONFIG_ID" \
-        "$SHA256_ONLINE_CLOSURE_V1"
+        "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_PUB_CACHE_CLOSURE_V1" \
+        "$VCPKG_ARM64_ANDROID_OUTPUT_KEY_V1"
 }
 
 stage_android_owner_kotlin_jar() {

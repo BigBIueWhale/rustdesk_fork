@@ -12743,63 +12743,33 @@ its fixed `id`, `registry_generation`, `action`, and `log` fields prevent action
 text from selecting an authority field. No blanket assertion for every possible
 CM side effect is made.
 
-**Linux `_pa` CM-peer identity — source corrected, native audio OPEN.**
-Pushed `cc532359` replaces the bare-ID peer map, which allowed an overlapping
-registration and stale cleanup to replace or erase another connection's
-identity. The map now refuses an occupied ID, retires only the exact CM token,
-and returns an audio subscriber's identity only for a published, nonretiring
-authenticated connection with that token; generic bare-ID cleanup is gone.
-Exact pushed `cfe17091` passed 64 Linux-target Rust tests, including three
-new owner/collision/stale-retirement cases, in a zero-NIC VM with no
-harness-added host listener and joined cleanup. The retained 68,804-byte
-serial is `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.BYlvVKe6x6.serial.log`
-(SHA-256 `888043a08024a195d65135f3845e50f024eeac1eaef68f9e6f7b88165e55686f`).
-No run directory or overlay remains. Native `_pa` capture and installed-service
-principal and revocation races are not established by these unit tests and
-remain OPEN.
+**Linux `_pa` authority and capture lifetime — source corrected; native capture OPEN.**
+The CM peer registry refuses ID overlap and retires only an exact token; audio
+identity resolves only a live published authenticated connection. `StartCapture`
+has no caller-supplied owner: the receiver derives PID/UID/start identity from
+the accepted Unix socket and validates the current positive audio subscribers
+before source discovery. Pushed `baf2ba5c` replaces blocking `Simple::read` and
+blocking source discovery in the accepted helper with one event-driven
+PulseAudio context, introspection, and record stream. It observes owner EOF and
+revalidates the exact live authority during silence, bounds setup and queued
+audio, and does not autospawn a daemon. The sender rechecks live subscribers
+for every frame and dispatches only to that check's IDs, so a later subscriber
+cannot receive a frame from an earlier authority snapshot. The old blocking
+read and broadcast path is absent.
 
-**Linux `_pa` receiver peer proof — source corrected, capture/revocation OPEN.**
-Pushed `12c40db1` removes the caller-supplied `owner` from `StartCapture`.
-The `_pa` receiver derives PID/UID/start identity from the accepted Unix
-socket before applying the token and exact launch-parent checks; the old
-`owner` field is rejected by the closed request decoder. A guest test
-observed distinct kernel peer identities for a local socket and a separate
-same-UID child process. Exact pushed source passed 67 Linux-target tests in
-the zero-NIC VM; the outer run passed listener and joined-cleanup checks in
-728 seconds, with one pre-existing-process drift and no harness addition.
-The retained 68,592-byte serial is
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.2oYWnOldlg.serial.log`
-(SHA-256 `688379db753141f41f3b3d574ef3db80fd6deb2700cb055f596b04290d681bf6`).
-No run directory or overlay remains. The guest did not run a PulseAudio
-device or an installed `_pa` capture. An already-accepted capture is validated
-only at start, then enters a synchronous PulseAudio read and timed send loop;
-token and subscriber revocation during that loop remain OPEN, as do
-installed positive/negative principal and lifecycle tests. The updated
-wire-format test was not executed by that 67-test shard; it passed in the
-separate focused Linux-target run below.
-
-**Linux `_pa` live-subscriber admission — focused Linux-target tests PASS; native capture OPEN.**
-Pushed `7ef38634` replaces the token registry's one-time subscriber-ID snapshot
-with the owning audio-service handle. At `StartCapture` validation, it now reads
-the service's current positive subscribers, refuses a stopped or empty service,
-and requires the resolved peer to match the token's expected helper (the exact
-authenticated CM child in installed server mode, self in user mode). Three
-focused regressions were added, and R-S11dy/Appendix C
-#278 now specify kernel-derived peer identity rather than a caller-supplied
-`owner`. Pushed `0233f047` adds a separate 12-GiB,
-Flutter-free `--linux-pa-authority-tests` VM lane. On that exact pushed source,
-the zero-NIC VM and networkless guest Docker compiled the Linux Rust library
-and passed all five named `_pa` socket-peer, live-subscriber, and closed-wire
-tests in 253 seconds (four plus one test summaries). The outer before/during/after
-listener audit found no harness addition or pre-existing-process drift; joined
-cleanup left no `run.*` directory or overlay. Retained 66,533-byte serial:
-`.harness-state/verifier-vm/linux-pa-authority-tests-run.nlYE9r129y.serial.log`
-(SHA-256 `f9afdee64c72eaf2ed3315e15ca3044579666498c94dcf98f716acf4fc106b67`).
-This proves Linux-target in-process authority and wire behavior, not an
-installed service or a PulseAudio device. Admission remains a snapshot at the instant checked;
-the already-accepted capture still uses blocking PulseAudio `Simple::read`
-without a revocation/cancellation path. Native installed positive/negative
-capture, subscriber churn, cleanup, and resource evidence remain OPEN.
+The exact pushed source `baf2ba5cb55befc7a86e9f433ff856e9d6da1a07`
+(tree `4db85ab9a2102018f158fcdf73f588ecb77f1e1b`) passed nine focused
+Linux-target closed-wire, kernel-peer, current-subscriber, recipient-isolation,
+fragment-bound, and silent-owner-closure tests in the zero-NIC VM/networkless
+guest Docker lane in 293 seconds. The outer listener audit had no harness
+addition or pre-existing-process drift; joined cleanup left no `run.*` directory
+or overlay. Retained 66,698-byte serial:
+`.harness-state/verifier-vm/linux-pa-authority-tests-run.ahXaLdSMdT.serial.log`
+(SHA-256 `dc309b6e3b4323547bdda002e3fc20a7e22bfb410f71ae8304d66c19be7a319a`).
+These tests did **not** run a real PulseAudio server/source or an installed
+service. Authorized capture, unauthorized same-machine principals, revocation
+under native silence, subscriber churn, latency, and cleanup on a real PA
+device/service remain OPEN and are not inferred from Linux-target unit tests.
 
 **Process-wide connection IDs — source corrected, native lifecycle OPEN.**
 The former per-`Server` counters could allocate the same ID in overlapping

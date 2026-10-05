@@ -1750,7 +1750,7 @@ exercise_android_controlled_stop() {
     for _ in $(seq 1 3); do
         [[ "$stop_center" =~ ^[0-9]+\ [0-9]+$ ]] && break
         timeout --signal=TERM --kill-after=2s 10s \
-            "$ADB" -s "$SERIAL" shell input swipe 240 650 240 220 300 \
+            "$ADB" -s "$SERIAL" shell input swipe 240 580 240 180 300 \
             >/dev/null || fail 'cannot scroll to the production Stop command'
         stop_center="$(wait_ui_center text 'Stop screen sharing' 2>/dev/null || true)"
     done

@@ -952,8 +952,9 @@ those obligations.
 
 ## R-S11b/R-S11c/R-S11i — service-owned IPC authority
 
-**Verdict: source topology implemented; native and release evidence remains incomplete.** The ordinary
-desktop IPC protocol has no password request, whole-configuration transfer, generic privileged mutation,
+**Verdict: source topology largely implemented; Android controlled-CM admission and native/release
+evidence remain OPEN.** The ordinary desktop IPC protocol has no password request,
+whole-configuration transfer, generic privileged mutation,
 or fallback into user storage. Installed Linux, Windows, and macOS service state is owned by the
 root/LocalSystem/LaunchDaemon authority that enforces it. Local path, UID/session, and executable checks are
 prerequisites only; each privileged receiver validates the exact typed action and its live authority.
@@ -971,7 +972,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Unattended credential ownership | Linux/macOS raw `_password` and `_service_password`, Windows first-instance local-only password pipes, and the read-only runtime-PRS replica channels are typed and bounded. Peer proof precedes secret-body read. The root/LocalSystem/LaunchDaemon receiver performs OS authorization and the final durable commit; ordinary UI/main IPC cannot write or mirror the credential. Operation IDs, bounded values, process-keyed replay fingerprints, explicit final status, wiping, admission closure, and joined drain prevent generic config or detached-work fallbacks. |
 | Machine policy and configuration | Main IPC carries one allowlisted nonsecret option at a time and returns the receiver-derived effective value. Whole Config/Config2 synchronization, GUI import, generic option maps, standalone salt readers, automatic password generation, preset credential compatibility, structured SOCKS/proxy state, and service-side ordinary option writes are absent. Salt reads are side-effect-free and service identity is not created by a read path. |
 | Privileged service control | Generic `_service` is a closed directional liveness/control protocol. Windows session selection is removed; RDP sharing and SAS use distinct typed receiver-owned actions. Protected service channels have separate capacities, transaction ownership, shutdown admission latches, and result finality. Windows impersonation is disposable-thread confined and requires successful RevertToSelf before a result. |
-| CM, file, clipboard, audio, whiteboard, and terminal helpers | Authority is connection/generation scoped rather than ambient same-UID trust. CM admission binds the exact launched helper generation and a connection nonce to AuthConnType. Login is published before AuthorizedFS, all filesystem sends recheck live file authority, ordinary CM publication is bounded and terminal-first, and pre-login or stale/wrong-generation work is rejected rather than buffered. Linux audio, whiteboard, Windows clipboard, and terminal helper paths use purpose-specific capabilities and exact process identity. |
+| CM, file, clipboard, audio, whiteboard, and terminal helpers | Authority is connection/generation scoped rather than ambient same-UID trust. CM admission binds the exact launched helper generation and a connection nonce to AuthConnType. Login is published before AuthorizedFS, all filesystem sends recheck live file authority, ordinary CM publication is bounded and terminal-first, and pre-login or stale/wrong-generation work is rejected rather than buffered. Linux audio, whiteboard, Windows clipboard, and terminal helper paths use purpose-specific capabilities and exact process identity. Android controlled-side Service admission still lacks a result-bearing JNI transaction, as detailed under R-S11iu below. |
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
@@ -3228,7 +3229,7 @@ not Android framework, APK, installed desktop, or other file-operation types.
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The 56-test Linux-target transaction exercised Android queued-terminal priority and cancellation during a selected real `CreateDir`; the 57-test transaction exercised desktop selected-command cancellation, same-ID refusal until effect and retirement, and idle-runner cancellation; the 58-test transaction exercised fatal loss of the selected desktop child before owner retirement; a 59-test transaction exercised desktop read-tick cancellation and same-ID refusal until exact retirement; the later 59-test transaction exercised Android terminal arrival during a selected `CreateDir`, exact response, one retirement, and queued-work refusal. Still OPEN: Android-target compilation and installed APK execution, other in-flight operation types and terminal overlap on installed targets, native installed read-tick behavior and throughput/resource bounds, child-loss behavior on target Android/Windows/macOS, different-ID same-peer replacement, other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop/Android repeats, sustained resources/latency, and final-artifact evidence. The installed Windows result predates the later corrections. |
+| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The 56-test Linux-target transaction exercised Android queued-terminal priority and cancellation during a selected real `CreateDir`; the 57-test transaction exercised desktop selected-command cancellation, same-ID refusal until effect and retirement, and idle-runner cancellation; the 58-test transaction exercised fatal loss of the selected desktop child before owner retirement; a 59-test transaction exercised desktop read-tick cancellation and same-ID refusal until exact retirement; the later 59-test transaction exercised Android terminal arrival during a selected `CreateDir`, exact response, one retirement, and queued-work refusal. Still OPEN: controlled-side Android Service/JNI admission result finality (R-S11iu), Android-target compilation and installed APK execution, other in-flight operation types and terminal overlap on installed targets, native installed read-tick behavior and throughput/resource bounds, child-loss behavior on target Android/Windows/macOS, different-ID same-peer replacement, other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop/Android repeats, sustained resources/latency, and final-artifact evidence. The installed Windows result predates the later corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
@@ -12989,91 +12990,37 @@ these two, with guest-only networkless containers, no host listener addition, an
 cleanup. This is receiver/source behavior, not installed Windows/Android UI or native voice
 device evidence; those lifecycle and release obligations remain OPEN.
 
-Five Rust tests exercise stale-owner reuse, same-source/stale collision refusal,
-disconnected replacement, generation-exhaustion no-commit, and exact-owner file-log publication
-with stale/unknown refusal. Another focused unit regression proves that a privacy resource rejects
-same-ID replacement with a different connection token. Three additional Tokio regressions execute
-the activation worker/reaper rendezvous: successful prepare/commit, deadline cancellation that
-cannot return before the held worker drains, and connection-future cancellation that makes a late
-commit fail. A fourth executable regression stalls the retirement worker inside its first teardown
-callback, proves a later exact-owner request is admitted without waiting on that callback, then
-requires both accepted requests to execute in FIFO order before the worker joins. It exercises the
-real bounded dispatcher loop but not Windows display APIs or a complete `Connection` destructor. The
-callback regression first rejects a
-stale token at the registry
-egress edge, then drives the valid one-shot callback over the real framed runner. Three
-additional focused Rust tests drive the actual Android CM future through one-shot terminal
-completion, direct future cancellation after admission, and same-ID service-generation
-supersession followed by a real `CreateDir` command. The last requires predecessor
-termination with no directory effect, followed by exact successor cleanup.
-Six additional Rust state regressions cover unclaimed-cleanup supersession, claimed-cleanup
-admission blocking, last-live-lease finality, exact-revision retry isolation, stale cleanup-lease
-retirement, and authenticated same-ID collision/stale-removal refusal. A focused resolution regression executes partial failure and
-concurrent-record replacement against the real restoration transaction helper. They are selected by
-the existing serial `r_s11iu_` target lanes. Exact pushed commit
-`ceec168e8a25d231156e59c25b08365a29fef5d7`, tree
-`77196a66051884a2e90a14b19588171a93eb2407`, passed all 20 of these named Rust tests on the Linux target.
-The zero-NIC VM freshly generated the exact source's bridge with pinned Flutter 3.24.5, Rust 1.75.0,
-LLVM 15.0.6, and FRB, then compiled the complete library in a separate networkless devcheck container.
-That execution also passed the four listener/owned-child tests described in R-S11el/R-S11hq, for 24 exact
-tests total. Both containers were UID/GID 1000 with read-only roots, no capabilities, no-new-privileges,
-AppArmor, no devices or ports, and read-only sealed inputs; the build-time offline canary, before/after
-Cargo/Pub closure checks, unchanged host listeners, and joined cleanup passed. The shared runner uses
-`cargo test --lib --features linux-pkg-config,flutter r_s11iu_ --color never -- --test-threads=1`
-because these regressions intentionally exercise one process-global activation admission gate.
-The pinned offline Windows artifact lane now runs the same filter serially before packaging, so the
-Windows implementations must compile with the exact-owner API and the lifecycle regressions must
-execute on that target; this wiring is not a claim that the lane has run for the current source.
-That lane also runs the Windows-only native privacy escape regression serially; it is authored but
-has not executed for this source because no disposable Windows VM is currently registered.
-`flutter/test/server_model_test.dart` retains registry-generation JSON serialization and adds three
-state regressions for same-count replacement/disconnect/voice repair, exact-owner UI-state retention,
-unchanged-snapshot inertness, canonical generation order, whole-snapshot duplicate owner refusal,
-and incremental removal of every disconnected row for the admitted peer while preserving live and
-other-peer rows and aligned tab indices. Native `CmClientRegistry::admit` already retires all such
-rows; `ServerModel.addConnection` now mirrors that operation instead of removing only the first.
-Exact pushed source `5d74102b53596d0488ac984fcd3e16bffcc86560` passed 21 Flutter model
-suites and 173 tests in a 287-second zero-NIC VM transaction with guest-only networkless Docker,
-no harness-added host listener, and joined cleanup. Retained serial
-`.harness-state/verifier-vm/flutter-model-tests-run.5eBzwzkPqT.serial.log` is 66,637 bytes,
-SHA-256 `413fd684bd7e8c91fb1ee4d6ac644715a8411f7c2eacd2fc1234c1145f1dd7bc`.
-The regression executes the production row-retirement function with real `Client` records and a
-tab-index callback; it does not construct the native FFI, render CM tabs, or prove Android/Windows
-presentation or installed-service behavior.
-`flutter/test/cm_file_owner_test.dart`, now invoked by `scripts/dart-verify.sh`, adds two executable
-Dart cases for the fixed envelope, closed action vocabulary, same-ID fresh-table replacement,
-payload-ID refusal, selected-table retirement, and invalidation of a delayed predecessor selection.
-These state tests do not exercise the complete rendered Flutter window or native event stream.
-Exact-current Android owner-state evidence at `a2cbbbd27228aa053994a2f65ee075baf7e88f68` includes the focused
-no-NIC VM execution of seven exact production Kotlin classes:
-`ControlledConnectionType`, `ControlledCaptureOwnerState`, `ControlledInputOwner`, `ExactOwnerBoundedQueue`,
-`MainServiceGenerationOwner`, `MainServiceStatusOwner`, and the `VoiceCallOwnerState` described in R-S11br. Fifteen
-standard-source-set scenarios and 293 assertions compile and run the closed type policy, replacement/ABA, bounded
-FIFO, exact retirement, status/startup ordering and exhaustion, voice ownership, and independent owner-domain
-behavior. The executable does not run any coordinator, Android framework, JNI, recorder, handler, gesture, service,
-Activity, package, or device lifecycle. Five standalone owner `main()` programs outside Gradle test source sets are
-deleted rather than retained as tests; the last four deletions removed six shell prose searches plus the workspace
-meta-verifier's twelve repeated assertions and three source loads. The shared source gate still checks the retained
-Android child future, exact generation transfer, terminal/connection finality, RAII registry retirement, and
-selected production owner topology without treating model text as behavior.
+Focused behavior: source `ceec168e` passed 20 serial `r_s11iu_` Linux-target Rust
+regressions and four listener/child tests in a zero-NIC VM. They exercise registry
+collision/replacement, exact file-log publication, selected Android CM future
+cancellation, privacy activation/retirement, final-Remote cleanup, and resolution
+rollback; they do not run Android JNI or Windows native APIs. Source `5d74102b`
+passed 21 Flutter model suites/173 tests, including production disconnected-peer row
+retirement and tab-index alignment. Its raw serial is
+`.harness-state/verifier-vm/flutter-model-tests-run.5eBzwzkPqT.serial.log`
+(SHA-256 `413fd684bd7e8c91fb1ee4d6ac644715a8411f7c2eacd2fc1234c1145f1dd7bc`).
+The Kotlin owner-state lane at `a2cbbbd2` passed 15 scenarios/293 assertions against
+seven production state classes. These are bounded state/runner results, not a
+native-to-rendered event, Android Service/JNI, installed Windows CM/privacy, or
+physical-device result.
 
-The 20 Rust activation, child-future, registry, file-owner, privacy, final-cleanup, and resolution cases have
-now executed against the current pinned Cargo-vendor, Pub-cache, Flutter, LLVM, FRB, and certified-image
-sub-closures. This is real Linux-target Rust behavior, not Android-target, Android framework, rendered-UI,
-or native Windows behavior. The exact clean transaction at `2403bef449d67778cc89a580c34840d2cd029cc3`
-freshly generated the bridges and executed the current 13-suite/107-test Flutter model set, including the CM
-owner and session-stream cases. That is Dart/model evidence, not the complete native-to-rendered event path.
-The complete canonical release input closure and repository Windows image remain absent; host execution was
-not used as a fallback. Required evidence remains the complete native-to-rendered Flutter event path, an Android target
-compile, plus current Android package execution for same-ID supersession, stale/duplicate
-callbacks, input, queued/delayed
-actions, voice/recorder demand, capture, notification, task swipe, reopen, Force Stop,
-reconnect, and bounded cleanup without treating service death as recovery. Desktop and
-installed Windows same-ID collisions, complete file transactions, latency/resource soak,
-signed artifact binding, cold R-B2/R-B10 equality, independent reproduction, causation,
-R-V3 external review, and correct/performant end-to-end connection behavior remain open.
-This source correction is not evidence that it caused or resolves the user-reported
-outgoing Android screen-control hang or the Windows focus/minimize display-only latency.
+**OPEN:** The Android controlled-side JNI add callback is still a void, stringly
+typed call. `FlutterHandler::add_connection` commits the Rust registry owner before
+calling `MainService.rustSetByName("add_connection", ...)`; the Java method may
+return early when the Service is stopping or `ControlledCaptureOwnerState.upsert`
+rejects the owner, while JNI reports a successful void call and Rust still publishes
+the UI add event. This is a source-visible admission/result gap, not a demonstrated
+cause of the outgoing-viewer hang. Correct it as one exact admission transaction
+with explicit failure/rollback semantics and an installed-APK negative test; a
+Kotlin owner-state test cannot establish Service/JNI behavior.
+
+The native-to-rendered Flutter event path, Android-target compilation and installed
+APK replacement/callback/input/voice/capture/notification/task lifecycle, different-ID
+same-peer CM replacement, native Windows same-ID collision and privacy behavior,
+file transactions, sustained resource/latency bounds, final signed artifacts,
+cold R-B2/R-B10 equality, independent reproduction, and external review remain
+OPEN. None of the model or historical source runs proves causation or resolution of
+the reported Android outgoing-screen hang or Windows focus-loss display delay.
 
 ### R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit
 

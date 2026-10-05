@@ -1421,7 +1421,7 @@ case "${peer_receipts[0]}" in
 esac
 elif [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
 mapfile -t controlled_stop_receipts < <(grep -Fx \
-    'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent' \
+    'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent restart=bound' \
     "$RUNTIME_LOG" || true)
 [ "${#controlled_stop_receipts[@]}" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_CONTROLLED_CM_STOP=' "$RUNTIME_LOG")" -eq 1 ] \

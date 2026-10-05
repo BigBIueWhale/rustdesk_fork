@@ -4656,7 +4656,7 @@ run_android_emulator_runtime() {
             'ANDROID_CONTROLLED_CM_FILE=pass initiator=linux-probe responder=android-mainservice auth=cpace login=filetransfer cm=admitted directory=reply transport=adb-forward-loopback forward_cleanup=removed password_transport=stdin' \
             "$output")" || fail 'Android controlled-CM positive receipt is absent'
         controlled_stop_receipt="$(grep -Fx \
-            'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent' \
+            'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent restart=bound' \
             "$output")" || fail 'Android controlled-CM Stop receipt is absent'
         controlled_lifecycle_receipt="$(grep -Fx \
             "ANDROID_EMULATOR_CONTROLLED_CM=pass task_removals=1 service=foreground-across-task-relaunch-then-stopped process=same positive=filetransfer-dir-reply stopped=fresh-keyed-cm-refused framework_anr=absent apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \

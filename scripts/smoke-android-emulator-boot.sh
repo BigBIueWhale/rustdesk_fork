@@ -1786,9 +1786,12 @@ exercise_android_controlled_stop() {
             || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'the production UI did not observe stopped screen sharing'; }
     fi
     lifecycle_log="$(adb_shell_value logcat -d -v brief)"
-    ! grep -Eq 'FATAL EXCEPTION|MainService destruction retained incomplete generation authority|Could not quiesce controlled connection admission' \
+    # onDestroy may observe a pending native worker. Its generation-bound terminal callback
+    # finishes retirement asynchronously on the main looper; the fresh start below proves
+    # that the old callback owner was actually released rather than merely hidden by Stop.
+    ! grep -Eq 'FATAL EXCEPTION|Could not quiesce controlled connection admission|Could not reconcile terminal listener worker generation|Could not release destroyed MainService callback authority' \
         <<<"$lifecycle_log" \
-        || fail 'production Stop logged incomplete MainService teardown'
+        || fail 'production Stop logged a terminal MainService teardown failure'
 
     create_android_control_forward
     if printf '%s\n' "$TEST_PASSWORD" \
@@ -1825,7 +1828,27 @@ exercise_android_controlled_stop() {
         || fail 'the refused CM probe restarted MainService'
     remove_android_control_forward \
         || fail 'the stopped CM probe forward did not close exactly'
-    printf 'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent\n'
+    tap_ui text 'Start screen sharing' \
+        || fail 'the stopped production UI cannot start a fresh Service generation'
+    wait_ui_center text 'Warning' >/dev/null \
+        && capture_unobscured_ui_hierarchy complete \
+        && [[ "$(ui_center text "$SERVICE_START_WARNING_TEXT" 2>/dev/null || true)" =~ ^[0-9]+\ [0-9]+$ ]] \
+        || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'the restart confirmation differs'; }
+    tap_ui text 'OK' \
+        || fail 'cannot confirm the production restart command'
+    tap_ui resource android:id/button1 \
+        || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'the restart did not request fresh MediaProjection consent'; }
+    wait_ui_center text 'Screen capture ready' >/dev/null \
+        && wait_ui_center text 'Reachable on :21118' >/dev/null \
+        && assert_main_service \
+        || fail 'the new MainService generation did not restore capture and listener readiness'
+    [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$APP_PID" ] \
+        || fail 'the new MainService generation replaced the application process'
+    lifecycle_log="$(adb_shell_value logcat -d -v brief)"
+    ! grep -Eq 'FATAL EXCEPTION|Could not reconcile terminal listener worker generation|Could not release destroyed MainService callback authority|refusing to replace an active MainService callback owner without exact retirement' \
+        <<<"$lifecycle_log" \
+        || fail 'the fresh MainService generation logged unresolved predecessor authority'
+    printf 'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent restart=bound\n'
 }
 
 readonly APP_PACKAGE=com.carriez.flutter_hbb

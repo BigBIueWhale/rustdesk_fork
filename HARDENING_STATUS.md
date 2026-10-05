@@ -3115,25 +3115,27 @@ receive/commit state model and its platform limits are detailed under R-S11c-4d 
 exact CM cleanup acknowledgement; it sends one bounded peer error including a cleanup
 failure instead of dropping the authority and reporting the digest error early.
 
-Exact source `b6be2c9a` (tree `51086420`) passed the no-NIC, guest-only Docker
-`--cm-file-replay` in 308 seconds. Its keyed Linux peers exercised pre-login refusal,
+Exact source `dc33187b` (tree `704db592`) passed the no-NIC, guest-only Docker
+`--cm-file-replay` in 326 seconds. Its keyed Linux peers exercised pre-login refusal,
 directory/create, exact and short writes, multi-file blocks, peer error, cancel, abrupt
 owner loss and fresh reconnect, fixed-sidecar collision, cancellation cleanup failure,
 digest-refusal cleanup failure, direct-read error followed by a confirmed exact read,
 and two *simultaneously live* connections contending for the same destination. The
 contender was refused without changing the first owner's staged bytes, digest, or
-lock inode; the first owner then committed. The
+lock inode; the first owner then committed. A second authenticated connection with the
+same viewer identity remained live during that commit and served a fresh CM directory
+request afterward, showing no cross-retirement in this headless Linux overlap case. The
 digest-refusal case reported both causes, and the guest independently preserved the
 replacement and displaced staging bytes. One exact Rust cancellation-outcome unit test
 also passed inside the same guest, including oversized-error fallback assertions that
 retain the fact of cleanup failure within the 4 KiB peer-error bound.
 The production Linux `Session` in that replay downloaded exact bytes, refused a
 symlink destination without changing its sentinel, and completed a fresh same-peer
-connection after that local refusal. The 399,198-byte raw serial is
-`.harness-state/verifier-vm/cm-file-replay-run.KLIHnpieEv.serial.log`, SHA-256
-`6abb8e93fdccc1dad89b97288ff6d01821e07f2a097af7bcb186a642a194d321`.
-The outer audit found no harness-added host listener or pre-existing-process drift,
-joined guest Docker/QEMU/virtiofsd, and left no `run.*` overlay.
+connection after that local refusal. The 400,052-byte raw serial is
+`.harness-state/verifier-vm/cm-file-replay-run.fBVKgJsCyx.serial.log`, SHA-256
+`05845692e792780f89121a30179b903edaf593b5972c2510f04177eb39254db6`.
+The outer audit found no harness-added host listener (it recorded two pre-existing-process
+drifts), joined guest Docker/QEMU/virtiofsd, and left no `run.*` overlay.
 
 Earlier focused source `e05a2e91` passed 64 Linux filesystem tests and four config
 tests; its serial `hbb-common-fs-run.8dsa1iW9yk.serial.log` is retained. An older
@@ -3232,7 +3234,7 @@ not Android framework, APK, installed desktop, or other file-operation types.
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The 56-test Linux-target transaction exercised Android queued-terminal priority and cancellation during a selected real `CreateDir`; the 57-test transaction exercised desktop selected-command cancellation, same-ID refusal until effect and retirement, and idle-runner cancellation; the 58-test transaction exercised fatal loss of the selected desktop child before owner retirement; a 59-test transaction exercised desktop read-tick cancellation and same-ID refusal until exact retirement; the later 59-test transaction exercised Android terminal arrival during a selected `CreateDir`, exact response, one retirement, and queued-work refusal. Exact `74a26780` passed 60 Linux-target tests, adding a production-listener callback-refusal/retry case; this does not exercise Android Service/JNI. Still OPEN: controlled-side installed Android Service/JNI admission finality (R-S11iu), full-closure Android release check and installed APK execution (focused aarch64 Rust target compilation passed separately), other in-flight operation types and terminal overlap on installed targets, native installed read-tick behavior and throughput/resource bounds, child-loss behavior on target Android/Windows/macOS, different-ID same-peer replacement, other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop/Android repeats, sustained resources/latency, and final-artifact evidence. The installed Windows result predates the later corrections. |
+| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed, including one live different-ID same-peer overlap and fresh survivor CM reply after predecessor commit. The 56-test Linux-target transaction exercised Android queued-terminal priority and cancellation during a selected real `CreateDir`; the 57-test transaction exercised desktop selected-command cancellation, same-ID refusal until effect and retirement, and idle-runner cancellation; the 58-test transaction exercised fatal loss of the selected desktop child before owner retirement; a 59-test transaction exercised desktop read-tick cancellation and same-ID refusal until exact retirement; the later 59-test transaction exercised Android terminal arrival during a selected `CreateDir`, exact response, one retirement, and queued-work refusal. Exact `74a26780` passed 60 Linux-target tests, adding a production-listener callback-refusal/retry case; this does not exercise Android Service/JNI. Still OPEN: controlled-side installed Android Service/JNI admission finality (R-S11iu), full-closure Android release check and installed APK execution (focused aarch64 Rust target compilation passed separately), other in-flight operation types and terminal overlap on installed targets, native installed read-tick behavior and throughput/resource bounds, child-loss behavior on target Android/Windows/macOS, true different-ID same-peer replacement and stale effects, other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop/Android repeats, sustained resources/latency, and final-artifact evidence. The installed Windows result predates the later corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

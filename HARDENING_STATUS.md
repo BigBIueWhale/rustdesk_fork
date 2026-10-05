@@ -2926,7 +2926,7 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   `0a12ed407e63129cac4065f4418911ab71adf3ca`: the installed CLI/LocalSystem service path exercised
   authorization refusal, credential mutation, live replica convergence, service restart, store reload, and
   stop finality for those package bytes. It remains a named single-build result, not current-master R-B2.
-- R-S11dh verifier-VM run admission now permits only one unreconciled `run.*` entry per run root.
+- R-S11dh verifier-VM run admission now permits only one unreconciled `run.*` entry per run root, with the default verifier and acquisition roots mutually exclusive.
   `smoke-verifier-vm-authority.sh::reserve_verifier_run` retains and validates the private directory,
   takes a nonblocking exclusive directory lock, checks for any existing run entry, and allocates the
   sole run relative to that descriptor before releasing it. Refusal precedes input digest walks,
@@ -2966,6 +2966,14 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   `a9f9027915961ef6363152c553d59ad7b89253889d0125c452b744a90dc62a56`);
   duplicate diagnostics are retained separately. This closes acquisition run admission,
   not engine-input acquisition, Flutter/product behavior, LPE or release evidence.
+  Commit `23218f93` closed the remaining cross-root gap: both default entry points serialize
+  admission on the shared parent directory and refuse a retained run in either root.
+  In a zero-NIC VM the focused native test passed both cross-root refusal directions and
+  16 mixed concurrent callers with one winner. The broader authority smoke reached that
+  result but timed out at its 90-second bound while another VM was running, so it is not a full
+  smoke pass. Its disposable disk was retired after joined cleanup; the exact 124 KiB
+  retained diagnostic directory was then explicitly reconciled. Zero run directories and
+  overlays remain under the verifier-VM root.
 - The R-S11dh VM-entry preflight now parses the kernel's complete `/proc/PID/stat`
   record after the final closing parenthesis, not whitespace field 22, for both daemon-generation
   checks. Canonical PID, bounded record, fixed-field shape/state and decimal start time are required;

@@ -193,6 +193,9 @@ impl<T: Subscriber + From<ConnInner>> ServiceTmpl<T> {
 
     pub fn subscriber_ids(&self) -> Vec<i32> {
         let lock = self.0.read().unwrap();
+        if !lock.active {
+            return Vec::new();
+        }
         let mut ids = lock
             .subscribes
             .keys()

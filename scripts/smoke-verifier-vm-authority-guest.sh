@@ -2074,7 +2074,9 @@ run_focused_rust_tests() {
             src/port_forward.rs
             src/privacy_mode.rs
             src/server/connection.rs
+            src/server/audio_service.rs
             src/server/display_service.rs
+            src/server/service.rs
             src/ui_cm_interface.rs
             src/ui_session_interface.rs
         )
@@ -2116,6 +2118,9 @@ run_focused_rust_tests() {
             server::connection_id_allocator_tests::r_s11iu_connection_ids_fail_closed_instead_of_wrapping
             server::connection_id_allocator_tests::r_s11iu_connection_ids_are_unique_across_concurrent_callers
             ipc::test::r_s11iu_pa_capture_peer_comes_from_the_kernel_socket
+            server::audio_service::test::r_s11iu_pa_capture_authority_rejects_missing_wrong_and_stale_tokens
+            server::audio_service::test::r_s11iu_pa_capture_authority_rejects_a_stopped_service
+            server::audio_service::test::r_s11iu_pa_capture_authority_requires_a_positive_subscriber_id
             server::display_service::tests::r_s11iu_r_t4_resolution_restore_retains_failure_and_concurrent_replacement
             ui_cm_interface::tests::r_s11iu_android_cm_future_terminally_retires_its_registry_owner
             ui_cm_interface::tests::r_s11iu_android_terminal_preempts_queued_file_work

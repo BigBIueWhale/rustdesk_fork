@@ -90,7 +90,7 @@ impl Drop for VoiceCallInputLease {
 #[derive(Clone)]
 struct PaCaptureAuthority {
     token: String,
-    conn_ids: Vec<i32>,
+    service: GenericService,
     expected_peer: crate::ipc::LinuxProcessIdentity,
 }
 
@@ -152,13 +152,9 @@ fn expected_pa_peer(conn_ids: &[i32]) -> ResultType<crate::ipc::LinuxProcessIden
 }
 
 #[cfg(target_os = "linux")]
-fn install_pa_capture_authority(conn_ids: Vec<i32>) -> ResultType<PaCaptureAuthorityGuard> {
-    let conn_ids = conn_ids
-        .into_iter()
-        .filter(|conn_id| *conn_id > 0)
-        .collect::<Vec<_>>();
-    if conn_ids.is_empty() {
-        *PA_CAPTURE_AUTHORITY.lock().unwrap() = None;
+fn install_pa_capture_authority(service: &GenericService) -> ResultType<PaCaptureAuthorityGuard> {
+    let conn_ids = service.subscriber_ids();
+    if conn_ids.is_empty() || conn_ids.iter().any(|conn_id| *conn_id <= 0) {
         bail!("no active audio subscriber");
     }
 
@@ -166,7 +162,7 @@ fn install_pa_capture_authority(conn_ids: Vec<i32>) -> ResultType<PaCaptureAutho
     let token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     *PA_CAPTURE_AUTHORITY.lock().unwrap() = Some(PaCaptureAuthority {
         token: token.clone(),
-        conn_ids,
+        service: service.clone(),
         expected_peer: expected_peer.clone(),
     });
     Ok(PaCaptureAuthorityGuard {
@@ -226,7 +222,14 @@ where
     token_eq(&authority.token, token)
         && authority.expected_peer == *peer
         && peer_is_live()
-        && !authority.conn_ids.is_empty()
+        && {
+            let conn_ids = authority.service.subscriber_ids();
+            !conn_ids.is_empty()
+                && conn_ids.iter().all(|conn_id| *conn_id > 0)
+                && expected_pa_peer(&conn_ids)
+                    .map(|expected| expected == authority.expected_peer)
+                    .unwrap_or(false)
+        }
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
@@ -315,7 +318,7 @@ mod pa_impl {
         hbb_common::sleep(0.1).await; // one moment to wait for _pa ipc
         RESTARTING.store(false, Ordering::SeqCst);
         #[cfg(target_os = "linux")]
-        let pa_authority = super::install_pa_capture_authority(sp.subscriber_ids())?;
+        let pa_authority = super::install_pa_capture_authority(&sp.sp)?;
         #[cfg(target_os = "linux")]
         let mut stream = crate::ipc::connect(1000, "_pa").await?;
         #[cfg(target_os = "linux")]
@@ -689,7 +692,7 @@ mod test {
     static PA_CAPTURE_AUTHORITY_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
-    fn pa_capture_authority_rejects_missing_wrong_and_stale_tokens() {
+    fn r_s11iu_pa_capture_authority_rejects_missing_wrong_and_stale_tokens() {
         let _lock = PA_CAPTURE_AUTHORITY_TEST_LOCK.lock().unwrap();
         *PA_CAPTURE_AUTHORITY.lock().unwrap() = None;
 
@@ -697,7 +700,9 @@ mod test {
         assert!(!validate_pa_capture_authority("", &expected_peer));
         assert!(!validate_pa_capture_authority("wrong", &expected_peer));
 
-        let authority = install_pa_capture_authority(vec![42]).unwrap();
+        let service = EmptyExtraFieldService::new(NAME.to_owned(), true).sp;
+        service.on_subscribe(ConnInner::new(42, None, None));
+        let authority = install_pa_capture_authority(&service).unwrap();
         let token = authority.token().to_owned();
         let authority_snapshot = PA_CAPTURE_AUTHORITY
             .lock()
@@ -731,17 +736,39 @@ mod test {
         ));
         assert!(!validate_pa_capture_authority("wrong", &expected_peer));
 
+        service.on_unsubscribe(42);
+        assert!(!validate_pa_capture_authority(&token, &expected_peer));
+
         drop(authority);
         assert!(!validate_pa_capture_authority(&token, &expected_peer));
     }
 
     #[test]
-    fn pa_capture_authority_requires_a_positive_subscriber_id() {
+    fn r_s11iu_pa_capture_authority_rejects_a_stopped_service() {
         let _lock = PA_CAPTURE_AUTHORITY_TEST_LOCK.lock().unwrap();
         *PA_CAPTURE_AUTHORITY.lock().unwrap() = None;
 
-        assert!(install_pa_capture_authority(Vec::new()).is_err());
-        assert!(install_pa_capture_authority(vec![0, -7]).is_err());
+        let service = EmptyExtraFieldService::new(NAME.to_owned(), true).sp;
+        service.on_subscribe(ConnInner::new(42, None, None));
+        let authority = install_pa_capture_authority(&service).unwrap();
+        let token = authority.token().to_owned();
+        let expected_peer = crate::ipc::current_linux_process_identity().unwrap();
+        assert!(validate_pa_capture_authority(&token, &expected_peer));
+
+        service.join();
+        assert!(!validate_pa_capture_authority(&token, &expected_peer));
+    }
+
+    #[test]
+    fn r_s11iu_pa_capture_authority_requires_a_positive_subscriber_id() {
+        let _lock = PA_CAPTURE_AUTHORITY_TEST_LOCK.lock().unwrap();
+        *PA_CAPTURE_AUTHORITY.lock().unwrap() = None;
+
+        let service = EmptyExtraFieldService::new(NAME.to_owned(), true).sp;
+        assert!(install_pa_capture_authority(&service).is_err());
+        service.on_subscribe(ConnInner::new(0, None, None));
+        service.on_subscribe(ConnInner::new(-7, None, None));
+        assert!(install_pa_capture_authority(&service).is_err());
     }
 
     #[test]

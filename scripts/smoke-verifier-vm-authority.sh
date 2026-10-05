@@ -4464,9 +4464,12 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         require_exact_fixed_receipt \
             'ANDROID_RUNTIME_PROGRESS event=runtime-stage stage=controlled-cm-stop result=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent' \
             'Android controlled-CM Stop transaction'
+        require_exact_fixed_receipt \
+            'ANDROID_RUNTIME_PROGRESS event=runtime-stage stage=controlled-cm-restart result=pass auth=cpace login=filetransfer cm=admitted directory=reply service=foreground process=same forward_cleanup=removed force_stop=absent' \
+            'Android controlled-CM restart transaction'
         mapfile -t android_controlled_cm_receipts < <(
             /usr/bin/grep -Eo \
-                "ANDROID_EMULATOR_CONTROLLED_CM=pass task_removals=1 service=foreground-across-task-relaunch-then-stopped process=same positive=filetransfer-dir-reply stopped=fresh-keyed-cm-refused framework_anr=absent apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
+                "ANDROID_EMULATOR_CONTROLLED_CM=pass task_removals=1 service=foreground-across-task-relaunch-then-stopped process=same positive=filetransfer-dir-reply stopped=fresh-keyed-cm-refused restart=filetransfer-dir-reply framework_anr=absent apk_sha256=$ANDROID_RUNTIME_APK_SHA256 vm_network=none container_network=none cleanup=joined" \
                 "$SERIAL_LOG" || true
         )
         [ "${#android_controlled_cm_receipts[@]}" -eq 1 ] \

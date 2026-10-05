@@ -159,6 +159,7 @@ readonly ANDROID_CONNECTION_DIAGNOSTIC=$WORK_ROOT/android-connection.diagnostic
 readonly ANDROID_FRAMEWORK_DIAGNOSTIC=$WORK_ROOT/android-framework.diagnostic
 readonly ANDROID_CONTROLLED_CPACE_LOG=$WORK_ROOT/android-controlled-cpace.log
 readonly ANDROID_CONTROLLED_CM_LOG=$WORK_ROOT/android-controlled-cm.log
+readonly ANDROID_CONTROLLED_CM_RESTART_LOG=$WORK_ROOT/android-controlled-cm-restart.log
 readonly FRAME_OBSERVER_ROOT=/observer
 readonly FRAME_OBSERVER_FRAME=$FRAME_OBSERVER_ROOT/latest.frame
 readonly FRAME_OBSERVER_READY=$FRAME_OBSERVER_ROOT/ready
@@ -1697,6 +1698,26 @@ create_android_control_forward() {
         || fail 'the Android controlled-side forward is not one exact container-loopback listener'
 }
 
+probe_android_controlled_cm_file() {
+    local receipt_path=$1
+    printf '%s\n' "$TEST_PASSWORD" \
+        | timeout --signal=TERM --kill-after=2s 60s \
+            "$PEER_TARGET/debug/examples/probe_client" \
+            127.0.0.1:22119 --password-stdin ok cmfiletransfer \
+            >"$receipt_path" 2>&1 \
+        || { tail -n 20 "$receipt_path" >&2; fail 'the Android controlled-side CM file round-trip failed'; }
+    [ "$(stat -c '%u:%g:%a:%h' -- "$receipt_path")" = \
+      "$RUN_UID:$RUN_GID:600:1" ] \
+        && [ "$(stat -c '%s' -- "$receipt_path")" -le 4096 ] \
+        || fail 'the Android controlled-side CM receipt metadata differs'
+    ! grep -Fq -- "$TEST_PASSWORD" "$receipt_path" \
+        && grep -Fxq 'probe_client: keying ok=true (expected=ok)' "$receipt_path" \
+        && grep -Fq '[FT-PEERINFO username_nonempty=true' "$receipt_path" \
+        && grep -Fq '[FT-DIR-RESPONSE ' "$receipt_path" \
+        && grep -Fxq 'probe_client: PASS' "$receipt_path" \
+        || { tail -n 20 "$receipt_path" >&2; fail 'the Android controlled-side CM transaction did not admit and answer the directory request'; }
+}
+
 exercise_android_controlled_cpace() {
     local expected_probe_output
     create_android_control_forward
@@ -1721,22 +1742,7 @@ exercise_android_controlled_cpace() {
     expected_probe_output=$'probe_client: keying ok=true (expected=ok)\nprobe_client: PASS\nprobe_client: keying ok=false (expected=fail)\nprobe_client: PASS'
     [ "$(<"$ANDROID_CONTROLLED_CPACE_LOG")" = "$expected_probe_output" ] \
         || { tail -n 20 "$ANDROID_CONTROLLED_CPACE_LOG" >&2; fail 'the Android controlled-side CPace receipt differs'; }
-    printf '%s\n' "$TEST_PASSWORD" \
-        | timeout --signal=TERM --kill-after=2s 60s \
-            "$PEER_TARGET/debug/examples/probe_client" \
-            127.0.0.1:22119 --password-stdin ok cmfiletransfer \
-            >"$ANDROID_CONTROLLED_CM_LOG" 2>&1 \
-        || { tail -n 20 "$ANDROID_CONTROLLED_CM_LOG" >&2; fail 'the Android controlled-side CM file round-trip failed'; }
-    [ "$(stat -c '%u:%g:%a:%h' -- "$ANDROID_CONTROLLED_CM_LOG")" = \
-      "$RUN_UID:$RUN_GID:600:1" ] \
-        && [ "$(stat -c '%s' -- "$ANDROID_CONTROLLED_CM_LOG")" -le 4096 ] \
-        || fail 'the Android controlled-side CM receipt metadata differs'
-    ! grep -Fq -- "$TEST_PASSWORD" "$ANDROID_CONTROLLED_CM_LOG" \
-        && grep -Fxq 'probe_client: keying ok=true (expected=ok)' "$ANDROID_CONTROLLED_CM_LOG" \
-        && grep -Fq '[FT-PEERINFO username_nonempty=true' "$ANDROID_CONTROLLED_CM_LOG" \
-        && grep -Fq '[FT-DIR-RESPONSE ' "$ANDROID_CONTROLLED_CM_LOG" \
-        && grep -Fxq 'probe_client: PASS' "$ANDROID_CONTROLLED_CM_LOG" \
-        || { tail -n 20 "$ANDROID_CONTROLLED_CM_LOG" >&2; fail 'the Android controlled-side CM transaction did not admit and answer the directory request'; }
+    probe_android_controlled_cm_file "$ANDROID_CONTROLLED_CM_LOG"
     remove_android_control_forward \
         || fail 'the private Android controlled-side forward did not close exactly'
     printf 'ANDROID_CONTROLLED_CPACE=pass initiator=linux-probe responder=android-mainservice correct=keyed wrong=refused transport=adb-forward-loopback forward_listener=127.0.0.1:22119 forward_cleanup=removed password_transport=stdin\n'
@@ -1846,11 +1852,20 @@ exercise_android_controlled_stop() {
         || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'the new MainService generation did not restore visible listener reachability'; }
     [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$APP_PID" ] \
         || fail 'the new MainService generation replaced the application process'
+    create_android_control_forward
+    probe_android_controlled_cm_file "$ANDROID_CONTROLLED_CM_RESTART_LOG"
+    remove_android_control_forward \
+        || fail 'the restarted CM probe forward did not close exactly'
+    assert_main_service \
+        || fail 'the restarted CM transaction changed MainService state'
+    [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$APP_PID" ] \
+        || fail 'the restarted CM transaction changed the application process'
     lifecycle_log="$(adb_shell_value logcat -d -v brief)"
     ! grep -Eq 'FATAL EXCEPTION|Could not reconcile terminal listener worker generation|Could not release destroyed MainService callback authority|refusing to replace an active MainService callback owner without exact retirement' \
         <<<"$lifecycle_log" \
         || fail 'the fresh MainService generation logged unresolved predecessor authority'
-    printf 'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent restart=bound\n'
+    printf 'ANDROID_CONTROLLED_CM_RESTART=pass auth=cpace login=filetransfer cm=admitted directory=reply service=foreground process=same forward_cleanup=removed force_stop=absent\n'
+    printf 'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent restart=keyed-cm-file-reply\n'
 }
 
 readonly APP_PACKAGE=com.carriez.flutter_hbb
@@ -4555,7 +4570,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
             || fail 'the controlled-CM framework ANR receipt is invalid'
         [ "$framework_anr" = absent ] \
             || fail 'the controlled-CM lifecycle had a framework ANR'
-        printf 'ANDROID_EMULATOR_CONTROLLED_CM=pass task_removals=1 service=foreground-across-task-relaunch-then-stopped process=same positive=filetransfer-dir-reply stopped=fresh-keyed-cm-refused framework_anr=absent apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
+        printf 'ANDROID_EMULATOR_CONTROLLED_CM=pass task_removals=1 service=foreground-across-task-relaunch-then-stopped process=same positive=filetransfer-dir-reply stopped=fresh-keyed-cm-refused restart=filetransfer-dir-reply framework_anr=absent apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
             "$APK_SHA256"
     fi
     if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then

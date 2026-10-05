@@ -127,6 +127,7 @@ events = {
     b"ANDROID_EMULATOR_FRAME_ENDPOINT", b"ANDROID_EMULATOR_RENDERER",
     b"ANDROID_PEER_INFRASTRUCTURE", b"ANDROID_CONTROLLED_CPACE",
     b"ANDROID_CONTROLLED_CM_FILE", b"ANDROID_CONTROLLED_CM_STOP",
+    b"ANDROID_CONTROLLED_CM_RESTART",
     b"ANDROID_RECENTS_GESTURE_DRIVER", b"ANDROID_RECENTS_DISMISS_ACTION",
     b"ANDROID_RECENTS_DISMISS_OUTCOME", b"ANDROID_PEER_CONNECTION_WAIT",
     b"ANDROID_PEER_CONNECTION_READY", b"ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT",
@@ -1420,14 +1421,20 @@ case "${peer_receipts[0]}" in
     *) die 'Android real-peer lifecycle reported a different APK digest' ;;
 esac
 elif [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
+mapfile -t controlled_restart_receipts < <(grep -Fx \
+    'ANDROID_CONTROLLED_CM_RESTART=pass auth=cpace login=filetransfer cm=admitted directory=reply service=foreground process=same forward_cleanup=removed force_stop=absent' \
+    "$RUNTIME_LOG" || true)
+[ "${#controlled_restart_receipts[@]}" -eq 1 ] \
+    && [ "$(grep -c '^ANDROID_CONTROLLED_CM_RESTART=' "$RUNTIME_LOG")" -eq 1 ] \
+    || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android controlled-CM restart receipt is absent or duplicated'; }
 mapfile -t controlled_stop_receipts < <(grep -Fx \
-    'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent restart=bound' \
+    'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent restart=keyed-cm-file-reply' \
     "$RUNTIME_LOG" || true)
 [ "${#controlled_stop_receipts[@]}" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_CONTROLLED_CM_STOP=' "$RUNTIME_LOG")" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android controlled-CM Stop receipt is absent or duplicated'; }
 mapfile -t controlled_lifecycle_receipts < <(grep -Fx \
-    "ANDROID_EMULATOR_CONTROLLED_CM=pass task_removals=1 service=foreground-across-task-relaunch-then-stopped process=same positive=filetransfer-dir-reply stopped=fresh-keyed-cm-refused framework_anr=absent apk_sha256=$APK_SHA256 vm_network=none container_network=none cleanup=joined" \
+    "ANDROID_EMULATOR_CONTROLLED_CM=pass task_removals=1 service=foreground-across-task-relaunch-then-stopped process=same positive=filetransfer-dir-reply stopped=fresh-keyed-cm-refused restart=filetransfer-dir-reply framework_anr=absent apk_sha256=$APK_SHA256 vm_network=none container_network=none cleanup=joined" \
     "$RUNTIME_LOG" || true)
 [ "${#controlled_lifecycle_receipts[@]}" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_EMULATOR_CONTROLLED_CM=' "$RUNTIME_LOG")" -eq 1 ] \

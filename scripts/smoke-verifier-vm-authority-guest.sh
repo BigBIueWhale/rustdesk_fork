@@ -2595,7 +2595,7 @@ run_android_rust_target_check() {
         || fail 'Android Rust target-check reconstructed source tree differs'
 
     mkdir "$inputs"
-    mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
+    mount -t virtiofs -o ro,nodev,nosuid rustdesk-sealed-inputs "$inputs" \
         || fail 'cannot mount the sealed Android Rust target-check input authority'
     SEALED_INPUTS_MOUNTED=1
     input_mount_options="$(findmnt -n -o OPTIONS --target "$inputs")" \
@@ -2603,20 +2603,24 @@ run_android_rust_target_check() {
     case ",$input_mount_options," in *,ro,*) ;; *) fail 'sealed Android Rust target-check inputs are writable' ;; esac
     case ",$input_mount_options," in *,nodev,*) ;; *) fail 'sealed Android Rust target-check inputs permit devices' ;; esac
     case ",$input_mount_options," in *,nosuid,*) ;; *) fail 'sealed Android Rust target-check inputs permit set-user-ID execution' ;; esac
-    case ",$input_mount_options," in *,noexec,*) ;; *) fail 'sealed Android Rust target-check inputs permit direct execution' ;; esac
+    case ",$input_mount_options," in
+        *,noexec,*) fail 'sealed Android Rust target-check inputs forbid the authenticated toolchain' ;;
+    esac
 
     install -d -o 1000 -g 1000 -m 0755 -- "$source_root/online" "$online_mount"
     mount --bind "$inputs" "$online_mount" \
         || fail 'cannot project the sealed closure into the Android Rust target-check source'
     ANDROID_RUST_ONLINE_MOUNTED=1
-    mount -o remount,bind,ro,nodev,nosuid,noexec "$online_mount" \
+    mount -o remount,bind,ro,nodev,nosuid "$online_mount" \
         || fail 'cannot make the Android Rust target-check input projection read-only'
     online_mount_options="$(findmnt -n -o OPTIONS --target "$online_mount")" \
         || fail 'Android Rust target-check input projection is absent'
     case ",$online_mount_options," in *,ro,*) ;; *) fail 'Android Rust target-check input projection is writable' ;; esac
     case ",$online_mount_options," in *,nodev,*) ;; *) fail 'Android Rust target-check input projection permits devices' ;; esac
     case ",$online_mount_options," in *,nosuid,*) ;; *) fail 'Android Rust target-check input projection permits set-user-ID execution' ;; esac
-    case ",$online_mount_options," in *,noexec,*) ;; *) fail 'Android Rust target-check input projection permits direct execution' ;; esac
+    case ",$online_mount_options," in
+        *,noexec,*) fail 'Android Rust target-check input projection forbids the authenticated toolchain' ;;
+    esac
 
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$builder_archive")" = \
       "1000:1000:400:1:$ANDROID_BUILDER_IMAGE_ARCHIVE_SIZE" ] \

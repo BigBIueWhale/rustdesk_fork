@@ -972,7 +972,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Unattended credential ownership | Linux/macOS raw `_password` and `_service_password`, Windows first-instance local-only password pipes, and the read-only runtime-PRS replica channels are typed and bounded. Peer proof precedes secret-body read. The root/LocalSystem/LaunchDaemon receiver performs OS authorization and the final durable commit; ordinary UI/main IPC cannot write or mirror the credential. Operation IDs, bounded values, process-keyed replay fingerprints, explicit final status, wiping, admission closure, and joined drain prevent generic config or detached-work fallbacks. |
 | Machine policy and configuration | Main IPC carries one allowlisted nonsecret option at a time and returns the receiver-derived effective value. Whole Config/Config2 synchronization, GUI import, generic option maps, standalone salt readers, automatic password generation, preset credential compatibility, structured SOCKS/proxy state, and service-side ordinary option writes are absent. Salt reads are side-effect-free and service identity is not created by a read path. |
 | Privileged service control | Generic `_service` is a closed directional liveness/control protocol. Windows session selection is removed; RDP sharing and SAS use distinct typed receiver-owned actions. Protected service channels have separate capacities, transaction ownership, shutdown admission latches, and result finality. Windows impersonation is disposable-thread confined and requires successful RevertToSelf before a result. |
-| CM, file, clipboard, audio, whiteboard, and terminal helpers | Authority is connection/generation scoped rather than ambient same-UID trust. CM admission binds the exact launched helper generation and a connection nonce to AuthConnType. Login is published before AuthorizedFS, all filesystem sends recheck live file authority, ordinary CM publication is bounded and terminal-first, and pre-login or stale/wrong-generation work is rejected rather than buffered. Linux audio, whiteboard, Windows clipboard, and terminal helper paths use purpose-specific capabilities and exact process identity. Android controlled-side Service admission now has a result-bearing JNI owner-acknowledgment boundary, but installed Service/JNI behavior remains unproved, as detailed under R-S11iu below. |
+| CM, file, clipboard, audio, whiteboard, and terminal helpers | Authority is connection/generation scoped rather than ambient same-UID trust. CM admission binds the exact launched helper generation and a connection nonce to AuthConnType. Login is published before AuthorizedFS, all filesystem sends recheck live file authority, ordinary CM publication is bounded and terminal-first, and pre-login or stale/wrong-generation work is rejected rather than buffered. Linux audio, whiteboard, Windows clipboard, and terminal helper paths use purpose-specific capabilities and exact process identity. Android controlled-side Service admission has a result-bearing JNI owner-acknowledgment boundary and one installed positive CM FileTransfer round-trip; stop/admission and stale-generation negative behavior remain unproved, as detailed under R-S11iu below. |
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
@@ -12930,22 +12930,30 @@ a paused callback-versus-stop admission barrier case, in 918 seconds. The retain
 serial is `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.Uol9QzE4h1.serial.log`
 (SHA-256 `df55c8eb577bcfecf1aeb8dc2ad70e1481f5f297ed2b3c7b912bb25fba9083ba`);
 the outer host-listener audit passed and cleanup retired the run root and overlay.
-A zero-NIC guest also built, verified, installed, and launched the exact-source
-x86_64 test-only APK (SHA-256 `b1973e2a602f11de9d801fcd4c0284fe4a76b507ad898211ff24f09159e39541`).
-That APK transaction is **not an outer pass**: two new host loopback `fixed_relay`
-listeners on ports 8000 and 8090 appeared after its baseline, so the strict outer
-listener audit failed and no APK artifact was published. Its retained guest serial
-is `.harness-state/verifier-vm/android-emulator-app-run.6GnAfY142v.serial.log`
-(SHA-256 `9dc6d402c2ad6a344ceb6d8c66f66190f05efb9e8b7c8cf367d25d7b024cc835`);
-the failed run root and overlay were retired after process exit. The app-launch
-check did not drive an incoming controlled connection or the stop/admission race.
+Exact pushed `15492256` built, verified, installed, launched, and rendered a
+test-only Android 14 x86_64 APK (SHA-256
+`97a91d485cb45e95f2f81d3ee0be6810d500faadab599fdfdddb58cc69c47f07`)
+in the zero-NIC VM. The retained APK then passed a production Linux-peer replay
+under pushed harness `1a4a7b61`: CPace-keyed FileTransfer Login reached the
+installed MainService/CM admission callback and a subsequent directory request
+received a CM-backed response through a container-loopback ADB forward. The same
+replay passed its existing outgoing-viewer background, reconnect, task-removal,
+presentation, and Force Stop schedule. Retained serial
+`.harness-state/verifier-vm/android-emulator-runtime-run.usxC88G9OC.serial.log`
+is 122,832 bytes, SHA-256
+`2543ee5a31bc8c8f5b2b3b98cdfc8d3f5c92ebf3c389921392dbe3f5cb4f2b30`;
+the outer listener audit found no harness addition and joined cleanup retired
+the run root and overlay after 1,368 seconds. This is one installed positive
+CM file-admission transaction, not an installed stop/admission race or stale
+callback negative test. The peer replay is an integration schedule, not a fast
+focused development shard.
 The default full-closure release check still cannot start because the canonical
 inputs lack `flutter-windows-3.24.5.zip`; its earlier failed serial remains
 `.harness-state/verifier-vm/android-rust-target-check-run.LaL1NJflmp.serial.log`
 (SHA-256 `b2a952ce2116e6935788e717e9799677fef9d49ccb8ff76406c9ca6644c867f8`).
-An outer-valid installed-APK negative replacement/stale-generation callback test spanning
+An installed-APK negative stop/replacement/stale-generation callback test spanning
 input, voice, capture, notification, and task lifecycle remains required. Neither
-the Linux tests nor Android-target compilation explains the outgoing-viewer hang.
+the Linux tests nor this positive Android CM transaction explains the outgoing-viewer hang.
 
 The native-to-rendered Flutter event path, full-closure Android release check and installed
 APK replacement/callback/input/voice/capture/notification/task lifecycle, different-ID

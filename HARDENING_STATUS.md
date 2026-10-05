@@ -28,9 +28,8 @@ target-native, installed-service, performance, or later-tree behavior.
 Source has one mandatory CPace-keyed direct TCP transport; rendezvous, relay, KCP, LAN discovery, and downgrade
 paths are absent. Controlled-side policy is compile-time pinned, session
 capabilities derive from `AuthConnType`, and privileged IPC is receiver-authorized rather than
-whole-config or ambient same-UID authority. Connection, media,
-presentation, file, and helper work has bounded exact-owner source lifetimes. These are source dispositions,
-not a claim that every target OS has executed them.
+whole-config or ambient same-UID authority. These are source dispositions, not a claim that every
+target OS has executed them or that every in-flight helper operation drains on cancellation.
 
 | Retained evidence | What it establishes—and does not establish |
 | --- | --- |
@@ -3149,15 +3148,21 @@ is 69,038 bytes, SHA-256
 The outer audit found no harness-added host listener, one pre-existing-process
 drift, and joined guest-only Docker/QEMU/virtiofsd with no retained `run.*` root.
 This tests the Android in-process consumer code on Linux, not an installed Android
-device, network peer, or an already executing file operation. The current replay
-is headless Linux behavior, not installed service, native Windows handle semantics,
+device, network peer, or an already executing file operation. In particular, `start_listen`
+directly awaits `handle_fs`, whose metadata and mutation arms await Tokio `spawn_blocking` work.
+Dropping the listener future while a blocking task is running can detach its join handle and
+retire `CmClientTaskOwner` before the filesystem task finishes. Terminal priority has been
+shown for a full *queued* command lane only; an already selected file operation and abrupt
+listener cancellation still need exact drain and successor-ordering design plus an isolated
+negative test. No detached-work safety or prompt terminality is claimed for that edge. The current
+replay is headless Linux behavior, not installed service, native Windows handle semantics,
 full Android CM lifetime, stale-generation replacement, live-peer saturation,
 broader storage faults, or final-artifact evidence. The matrix below keeps those
 obligations open.
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The current 56-test Linux-target transaction also exercised terminal priority over a full Android CM command queue; the older 55-test app guest pass still lacked an accepted outer receipt. Still OPEN: other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, stale-generation replacement, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and final-artifact evidence. The installed Windows result predates the later corrections. |
+| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The current 56-test Linux-target transaction exercised terminal priority over a full Android CM command queue, not an already selected filesystem operation or abrupt cancellation during `spawn_blocking`. Still OPEN: exact in-flight operation drain and successor ordering, other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, stale-generation replacement, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and final-artifact evidence. The installed Windows result predates the later corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

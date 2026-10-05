@@ -923,11 +923,43 @@ EOS
     for suffix in .download .digest .download.lock; do
       [ ! -e "$viewer_destination$suffix" ] && [ ! -L "$viewer_destination$suffix" ]
     done
+    viewer_refused="$viewer_directory/viewer-refused.bin"
+    viewer_sentinel="$viewer_directory/refusal-sentinel.bin"
+    [ ! -e "$viewer_refused" ] && [ ! -L "$viewer_refused" ] \
+      && [ ! -e "$viewer_sentinel" ] && [ ! -L "$viewer_sentinel" ]
+    printf '%s' 'viewer-symlink-sentinel-unchanged' >"$viewer_sentinel"
+    chmod 0600 "$viewer_sentinel"
+    ln -s -- refusal-sentinel.bin "$viewer_refused"
+    [ -L "$viewer_refused" ] && [ "$(readlink -- "$viewer_refused")" = refusal-sentinel.bin ]
+    [ "$(stat -c '%u:%g:%a:%h' -- "$viewer_sentinel")" = "$(id -u):$(id -g):600:1" ]
+    if refusal_output=$(RUSTDESK_PRODUCTION_VIEWER_FILE_SMOKE=1 \
+        timeout --signal=TERM --kill-after=5s 55s \
+        /smoke-target/production-viewer-file-tests --exact --ignored --nocapture \
+        --test-threads=1 \
+        viewer_pipeline_smoke_tests::production_viewer_download_refuses_a_symlink_destination_at_digest_inspection \
+        2>&1); then
+      refusal_status=0
+    else
+      refusal_status=$?
+    fi
+    printf '%s\n' "$refusal_output"
+    if [ "$refusal_status" -ne 0 ]; then
+      tail -n 120 /tmp/cm-file-server.log >&2
+      exit "$refusal_status"
+    fi
+    [ "$(grep -Fxc 'PRODUCTION_VIEWER_FILE_REFUSAL_OK listing=exact digest=symlink-refused round-error=once job-error=once done=absent symlink=preserved sidecars=absent teardown=joined' <<<"$refusal_output")" -eq 1 ]
+    "$READY" --is-running "$SRV" "$SRV_START"
+    [ -L "$viewer_refused" ] && [ "$(readlink -- "$viewer_refused")" = refusal-sentinel.bin ]
+    cmp -s -- "$viewer_sentinel" <(printf '%s' 'viewer-symlink-sentinel-unchanged')
+    [ "$(sha256sum "$viewer_source" | awk '{ print $1 }')" = "$viewer_source_sha" ]
+    for suffix in .download .digest .download.lock; do
+      [ ! -e "$viewer_refused$suffix" ] && [ ! -L "$viewer_refused$suffix" ]
+    done
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/cm-file-server.log
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

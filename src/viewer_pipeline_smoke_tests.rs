@@ -27,6 +27,9 @@ const EXACT_FILE_TEST_EXECUTABLE: &str = "/smoke-target/production-viewer-file-t
 const EXACT_FILE_HOME: &str = "/tmp/rd-cm-file-replay";
 const FILE_SOURCE: &str = "/tmp/rd-cm-file-replay/viewer-source.bin";
 const FILE_DESTINATION: &str = "/tmp/rd-cm-file-replay/viewer-downloads/viewer-source.bin";
+const FILE_REFUSED_DESTINATION: &str = "/tmp/rd-cm-file-replay/viewer-downloads/viewer-refused.bin";
+const FILE_REFUSAL_SENTINEL: &str = "/tmp/rd-cm-file-replay/viewer-downloads/refusal-sentinel.bin";
+const FILE_REFUSAL_SENTINEL_BYTES: &[u8] = b"viewer-symlink-sentinel-unchanged";
 const FILE_JOB_ID: i32 = 18001;
 const FILE_LENGTH: usize = 150_001;
 const EXACT_PEER: &str = "127.0.0.1:21118";
@@ -65,6 +68,8 @@ struct ViewerPipelineState {
     errors: Vec<String>,
     file_listing_seen: bool,
     file_done_count: usize,
+    file_refusal_errors: usize,
+    file_refusal_job_errors: usize,
 }
 
 impl ViewerPipelineState {
@@ -105,6 +110,7 @@ impl ViewerPipelineState {
 struct ViewerPipelineUi {
     state: Arc<(Mutex<ViewerPipelineState>, Condvar)>,
     file_transfer: bool,
+    expect_file_inspection_refusal: bool,
 }
 
 impl ViewerPipelineUi {
@@ -150,6 +156,12 @@ impl ViewerPipelineUi {
 
     fn wait_for_file_done(&self, timeout: Duration) -> ViewerPipelineState {
         self.wait_until(timeout, |state| state.file_done_count > 0)
+    }
+
+    fn wait_for_file_refusal(&self, timeout: Duration) -> ViewerPipelineState {
+        self.wait_until(timeout, |state| {
+            state.file_refusal_errors == 1 && state.file_refusal_job_errors == 1
+        })
     }
 
     fn snapshot(&self) -> ViewerPipelineState {
@@ -264,9 +276,15 @@ impl InvokeUiSession for ViewerPipelineUi {
 
     fn job_error(&self, id: i32, error: String, file_num: i32) {
         self.update(|state| {
-            state.record_error(format!(
-                "unexpected file job error {id}/{file_num}: {error}"
-            ))
+            if self.expect_file_inspection_refusal
+                && id == FILE_JOB_ID
+                && file_num == 0
+                && error.starts_with("inspect download digest failed before peer operation completion: local download digest check failed:")
+            {
+                state.file_refusal_job_errors += 1;
+            } else {
+                state.record_error(format!("unexpected file job error {id}/{file_num}: {error}"));
+            }
         });
     }
 
@@ -369,7 +387,12 @@ impl InvokeUiSession for ViewerPipelineUi {
     }
 
     fn msgbox(&self, msgtype: &str, title: &str, text: &str, _link: &str, _retry: bool) {
-        if msgtype == "error" || msgtype == "connect-password-prompt" {
+        if self.expect_file_inspection_refusal
+            && msgtype == "error"
+            && text.starts_with("inspect download digest failed before peer operation completion: local download digest check failed:")
+        {
+            self.update(|state| state.file_refusal_errors += 1);
+        } else if msgtype == "error" || msgtype == "connect-password-prompt" {
             self.update(|state| state.record_error(format!("{msgtype}: {title}: {text}")));
         }
     }
@@ -653,5 +676,141 @@ fn production_viewer_download_commits_the_exact_file_after_digest_confirmation()
     }
     println!(
         "\nPRODUCTION_VIEWER_FILE_OK bytes={FILE_LENGTH} listing=exact digest=confirmed done=once destination=exact-bytes sidecars=absent teardown=joined"
+    );
+}
+
+#[test]
+#[ignore = "runs only in the exact no-NIC CM file replay container"]
+fn production_viewer_download_refuses_a_symlink_destination_at_digest_inspection() {
+    assert_eq!(
+        std::env::var("RUSTDESK_PRODUCTION_VIEWER_FILE_SMOKE").as_deref(),
+        Ok("1")
+    );
+    assert_eq!(
+        std::env::current_exe()
+            .expect("resolve exact viewer test executable")
+            .as_path(),
+        Path::new(EXACT_FILE_TEST_EXECUTABLE)
+    );
+    assert_eq!(
+        std::env::current_dir()
+            .expect("resolve viewer test working directory")
+            .as_path(),
+        Path::new(EXACT_WORKING_DIRECTORY)
+    );
+    assert_eq!(std::env::var("HOME").as_deref(), Ok(EXACT_FILE_HOME));
+
+    let expected: Vec<u8> = (0..FILE_LENGTH)
+        .map(|index| ((index * 37 + 11) % 251) as u8)
+        .collect();
+    assert_eq!(std::fs::read(FILE_SOURCE).expect("read server fixture"), expected);
+    assert!(
+        std::fs::symlink_metadata(FILE_REFUSED_DESTINATION)
+            .expect("inspect refusal destination")
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(
+        std::fs::read_link(FILE_REFUSED_DESTINATION).expect("read refusal symlink"),
+        Path::new("refusal-sentinel.bin").to_path_buf()
+    );
+    assert_eq!(
+        std::fs::read(FILE_REFUSAL_SENTINEL)
+            .expect("read refusal sentinel")
+            .as_slice(),
+        FILE_REFUSAL_SENTINEL_BYTES
+    );
+    for suffix in [".download", ".digest", ".download.lock"] {
+        assert_file_absent(&format!("{FILE_REFUSED_DESTINATION}{suffix}"));
+    }
+
+    let ui = ViewerPipelineUi {
+        file_transfer: true,
+        expect_file_inspection_refusal: true,
+        ..Default::default()
+    };
+    let session = Session {
+        password: FIXTURE_PASSWORD.to_owned(),
+        ui_handler: ui.clone(),
+        ..Default::default()
+    };
+    session
+        .lc
+        .write()
+        .unwrap()
+        .initialize(EXACT_PEER.to_owned(), ConnType::FILE_TRANSFER, None, None);
+
+    let panic_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let observed_panics = Arc::clone(&panic_count);
+    let previous_panic_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        observed_panics.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        eprintln!("PRODUCTION_VIEWER_FILE_REFUSAL_PANIC {info}");
+    }));
+
+    let start = session.start_io_thread();
+    let started = matches!(&start, Ok(true));
+    let ready = if started {
+        ui.wait_for_file_ready(Duration::from_secs(20))
+    } else {
+        ViewerPipelineState::default()
+    };
+    let request = if ready.connected && ready.peer_info && ready.errors.is_empty() {
+        Some(session.send_files(
+            FILE_JOB_ID,
+            JobType::Generic.into(),
+            FILE_SOURCE.to_owned(),
+            FILE_REFUSED_DESTINATION.to_owned(),
+            0,
+            false,
+            true,
+        ))
+    } else {
+        None
+    };
+    let snapshot = if matches!(&request, Some(Ok(()))) {
+        ui.wait_for_file_refusal(Duration::from_secs(30))
+    } else {
+        ready
+    };
+    let joined = started && session.close_and_join();
+    let final_state = ui.snapshot();
+    let retained_panic_hook = std::panic::take_hook();
+    drop(retained_panic_hook);
+    std::panic::set_hook(previous_panic_hook);
+
+    assert!(started, "production file viewer I/O worker did not start: {start:?}");
+    assert!(joined, "production file viewer I/O worker was not joined");
+    assert_eq!(
+        panic_count.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "a production file viewer worker panicked"
+    );
+    assert!(snapshot.errors.is_empty(), "viewer errors: {:?}", snapshot.errors);
+    assert!(snapshot.connected && snapshot.peer_info, "file viewer did not connect");
+    assert!(matches!(&request, Some(Ok(()))), "file request was not admitted: {request:?}");
+    assert!(snapshot.file_listing_seen, "viewer did not admit the listed file size");
+    assert_eq!(snapshot.file_refusal_errors, 1, "round error was not visible once");
+    assert_eq!(snapshot.file_refusal_job_errors, 1, "job error was not visible once");
+    assert_eq!(snapshot.file_done_count, 0, "unsafe destination completed a file job");
+    assert!(final_state.errors.is_empty(), "viewer teardown errors: {:?}", final_state.errors);
+    assert_eq!(final_state.file_refusal_errors, 1, "later round error appeared");
+    assert_eq!(final_state.file_refusal_job_errors, 1, "later job error appeared");
+    assert_eq!(final_state.file_done_count, 0, "later file completion appeared");
+    assert_eq!(
+        std::fs::read_link(FILE_REFUSED_DESTINATION).expect("read retained refusal symlink"),
+        Path::new("refusal-sentinel.bin").to_path_buf()
+    );
+    assert_eq!(
+        std::fs::read(FILE_REFUSAL_SENTINEL)
+            .expect("read retained refusal sentinel")
+            .as_slice(),
+        FILE_REFUSAL_SENTINEL_BYTES
+    );
+    for suffix in [".download", ".digest", ".download.lock"] {
+        assert_file_absent(&format!("{FILE_REFUSED_DESTINATION}{suffix}"));
+    }
+    println!(
+        "\nPRODUCTION_VIEWER_FILE_REFUSAL_OK listing=exact digest=symlink-refused round-error=once job-error=once done=absent symlink=preserved sidecars=absent teardown=joined"
     );
 }

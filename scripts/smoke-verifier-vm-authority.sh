@@ -4364,7 +4364,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android runtime app receipt is absent or duplicated'; }
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
     require_exact_fixed_receipt \
-        'ANDROID_CONTROLLED_CM_FILE=pass initiator=linux-probe responder=android-mainservice auth=cpace login=filetransfer cm=admitted directory=reply transport=adb-forward-loopback forward_cleanup=removed password_transport=stdin' \
+        'ANDROID_RUNTIME_PROGRESS event=runtime-stage stage=controlled-cm-file result=pass initiator=linux-probe responder=android-mainservice auth=cpace login=filetransfer cm=admitted directory=reply transport=adb-forward-loopback forward_cleanup=removed password_transport=stdin' \
         'Android controlled-side CM file transaction'
     mapfile -t android_lifecycle_receipts < <(
         /usr/bin/grep -Eo \

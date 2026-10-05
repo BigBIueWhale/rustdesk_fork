@@ -314,6 +314,15 @@ with tempfile.TemporaryDirectory(prefix="android-runtime-progress.") as root:
     observe(["/bin/bash", "--noprofile", "--norc", "-euo", "pipefail", "-c",
              runtime_functions + function + 'capture_runtime_log "$1" | forward_android_runtime_progress',
              "runtime-progress", str(log)], True, renderer, diagnostic, log)
+    park_sample = (b"ANDROID_PEER_TASK_PARK_SAMPLE=pass ordinal=1 task=absent "
+                   b"process=stable service=foreground-preserved peer_connections=0\n")
+    park_progress = (b"ANDROID_RUNTIME_PROGRESS event=runtime-stage "
+                     b"stage=peer-task-park-sample result=pass ordinal=1 task=absent "
+                     b"process=stable service=foreground-preserved peer_connections=0\n")
+    log = root / "task-park.log"
+    observe(["/bin/bash", "--noprofile", "--norc", "-euo", "pipefail", "-c",
+             runtime_functions + function + 'capture_runtime_log "$1" | forward_android_runtime_progress',
+             "runtime-progress", str(log)], True, park_sample, park_progress, log)
     outer = (scripts / "smoke-verifier-vm-authority.sh").read_text()
     marker = "require_android_renderer_receipt() {\n"
     if outer.count(marker) != 1:

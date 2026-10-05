@@ -3598,7 +3598,7 @@ exercise_peer_task_park() {
             && [ "$(peer_server_keyed_session_count)" = "$keyed_before" ] \
             && wait_peer_server_connections 0 exact \
             || fail "removed-task hold sample $sample regained a task or lost service/peer finality"
-        printf 'ANDROID_RUNTIME_STAGE stage=task-park-sample result=pass ordinal=%s task=absent process=stable service=foreground-preserved peer_connections=0\n' \
+        printf 'ANDROID_PEER_TASK_PARK_SAMPLE=pass ordinal=%s task=absent process=stable service=foreground-preserved peer_connections=0\n' \
             "$sample"
     done
     elapsed_ms="$(monotonic_millis)" \

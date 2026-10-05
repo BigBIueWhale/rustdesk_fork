@@ -979,7 +979,12 @@ exist; it does not upgrade those checks into target-native, package, latency, so
 - **R-S11fg/R-S11e-194 outgoing viewer file-command admission and exact local writer finality** — Source closed.
   Flutter file operations await fallible exact-round admission; file actions use their typed path; and one bounded
   receipt tracker owns the exact local encrypted-frame write. Peer operation completion remains a separate
-  authenticated `FileResponse`, not a cosmetic acknowledgement.
+  authenticated `FileResponse`, not a cosmetic acknowledgement. Native Flutter file-job IDs now come only from
+  Rust's process-global allocator; bridge failure, malformed text, and out-of-range values fail before a UI row or
+  file command is admitted. Clean pushed `7c5a1b1d` passed 20 focused Flutter suites and 166 tests in 293 seconds
+  in the no-NIC verifier VM, including injected allocator failures through production Dart controller code. This is
+  generated-bridge/Dart-model evidence, not a real native bridge failure, peer operation, or installed target result;
+  the wider CM/file and native release obligations below remain OPEN.
 - **R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality** — Source closed. Directory,
   digest, block, done, and error responses from direct and CM paths retain bounded exact writer receipts through
   the controlled connection, with writer failure/timeout terminal for that round.

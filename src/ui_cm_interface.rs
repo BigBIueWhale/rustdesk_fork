@@ -4892,6 +4892,120 @@ mod tests {
             .expect("retired CM egress must close")
             .is_none());
 
+        // Terminal intent may arrive while one filesystem command is already
+        // selected. That command must keep its owner through the disk effect;
+        // the next queued command must never start after terminal publication.
+        let overlap_id = 2_000_000_016;
+        assert!(CLIENTS.write().unwrap().clients.remove(&overlap_id).is_none());
+        let selected_directory = temp.join("selected-before-terminal");
+        let skipped_directory = temp.join("queued-after-terminal");
+        let (selected_tx, selected_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std_mpsc::sync_channel(1);
+        let gate = CM_TEST_CREATE_DIR_PAUSE.get_or_init(|| StdMutex::new(None));
+        {
+            let mut slot = gate.lock().unwrap();
+            assert!(slot.is_none());
+            *slot = Some(CmTestCreateDirPause {
+                path: selected_directory.to_string_lossy().into_owned(),
+                entered: selected_tx,
+                resume: release_rx,
+            });
+        }
+        let overlap_ui = CmTaskOwnerTestUi::default();
+        let overlap_manager = ConnectionManager::new(overlap_ui.clone(), 66);
+        let (overlap_tx, overlap_rx) = mpsc::channel(2);
+        let (overlap_terminal_tx, overlap_terminal_rx) = tokio::sync::oneshot::channel();
+        let (overlap_egress_tx, mut overlap_egress_rx) = cm_egress_channel();
+        overlap_tx
+            .send(cm_test_login_with_file_authority(overlap_id, true))
+            .await
+            .unwrap();
+        let overlap = tokio::spawn(start_listen(
+            overlap_manager,
+            overlap_rx,
+            overlap_terminal_rx,
+            overlap_egress_tx,
+        ));
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while !overlap_ui.added.load(Ordering::Acquire) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("overlap owner must be admitted");
+        let overlap_generation = CLIENTS
+            .read()
+            .unwrap()
+            .clients
+            .get(&overlap_id)
+            .map(|client| client.registry_generation)
+            .unwrap();
+        overlap_tx
+            .send(Data::FS(ipc::FS::CreateDir {
+                path: selected_directory.to_string_lossy().into_owned(),
+                id: 1,
+                request_id: 4,
+            }))
+            .await
+            .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), selected_rx)
+            .await
+            .expect("selected operation must reach its pre-effect gate")
+            .expect("selected operation must report its gate");
+        overlap_tx
+            .send(Data::FS(ipc::FS::CreateDir {
+                path: skipped_directory.to_string_lossy().into_owned(),
+                id: 1,
+                request_id: 5,
+            }))
+            .await
+            .unwrap();
+        overlap_terminal_tx.send(CmConnectionTerminal::Close).unwrap();
+        assert!(!selected_directory.exists());
+        assert!(!skipped_directory.exists());
+        assert!(lock_cm_egress_test(&overlap_ui.removed).is_empty());
+        assert_eq!(
+            CLIENTS
+                .read()
+                .unwrap()
+                .in_flight_file_operations
+                .get(&overlap_id),
+            Some(&overlap_generation)
+        );
+        let mut premature_successor = registry_test_client(overlap_id, "same-peer");
+        assert!(matches!(
+            CLIENTS.write().unwrap().admit(&mut premature_successor, 67),
+            Err(CmClientAdmissionError::FileOperationInFlight)
+        ));
+
+        release_tx.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), overlap)
+            .await
+            .expect("selected operation and terminal cleanup must finish")
+            .expect("terminal overlap listener must not panic");
+        assert!(selected_directory.is_dir());
+        assert!(!skipped_directory.exists());
+        assert_eq!(
+            *lock_cm_egress_test(&overlap_ui.removed),
+            vec![(overlap_id, overlap_generation, true)]
+        );
+        assert!(!CLIENTS.read().unwrap().in_flight_file_operations.contains_key(&overlap_id));
+        assert!(matches!(
+            next_cm_file_test_response(&mut overlap_egress_rx).await,
+            ipc::CmFileResponseKind::Operation {
+                request_id: 4,
+                result: Ok(()),
+                ..
+            }
+        ));
+        assert!(tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            overlap_egress_rx.recv()
+        )
+        .await
+        .expect("terminal overlap egress must close")
+        .is_none());
+
         // Once selected, the real blocking filesystem operation is allowed to finish,
         // but cancellation may not retire its registry owner or admit a same-ID
         // successor before its effect and transfer-job cleanup are complete.

@@ -622,12 +622,14 @@ class ServerModel with ChangeNotifier {
         }
       }
       _addTab(client);
-      // remove disconnected
-      final index_disconnected = _clients
-          .indexWhere((c) => c.disconnected && c.peerId == client.peerId);
-      if (index_disconnected >= 0) {
-        _clients.removeAt(index_disconnected);
-        tabController.remove(index_disconnected);
+      // The native CM registry retires every disconnected owner for this peer on
+      // admission, while retaining other peers and still-live connections.
+      for (var index = _clients.length - 1; index >= 0; index -= 1) {
+        final current = _clients[index];
+        if (current.disconnected && current.peerId == client.peerId) {
+          _clients.removeAt(index);
+          tabController.remove(index);
+        }
       }
       _commitClientStateMutation();
       if (desktopType == DesktopType.cm && !hideCm) {

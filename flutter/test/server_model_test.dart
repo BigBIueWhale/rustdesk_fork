@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/models/android_service_ui_state.dart';
+import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/server_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -158,6 +160,48 @@ void main() {
       ordered.clients.map((client) => client.registryGeneration),
       orderedEquals(<int>[20, 21]),
     );
+  });
+
+  testWidgets(
+      'incremental CM admission retires every disconnected same-peer row',
+      (tester) async {
+    final previousIsTest = isTest;
+    isTest = true;
+    try {
+      final ffi = FFI(null);
+      final server = ffi.serverModel;
+      void add(int id, int generation, String peerId) {
+        server.addConnection(<String, dynamic>{
+          'client': jsonEncode(_clientState(
+            id: id,
+            registryGeneration: generation,
+            peerId: peerId,
+          )),
+        });
+      }
+
+      add(7, 19, 'same-peer');
+      add(8, 20, 'same-peer');
+      add(9, 21, 'other-peer');
+      add(10, 22, 'same-peer');
+      expect(server.clients.map((client) => client.id),
+          orderedEquals(<int>[7, 8, 9, 10]));
+      server.clients.firstWhere((client) => client.id == 7).disconnected = true;
+      server.clients.firstWhere((client) => client.id == 8).disconnected = true;
+      server.clients.firstWhere((client) => client.id == 9).disconnected = true;
+
+      add(11, 23, 'same-peer');
+      expect(server.clients.map((client) => client.id),
+          orderedEquals(<int>[9, 10, 11]));
+      expect(server.clients.first.registryGeneration, 21);
+      expect(server.clients.first.disconnected, isTrue);
+      expect(server.clients[1].disconnected, isFalse);
+      expect(server.tabController.length, 3);
+      expect(ffi.serverModel, same(server));
+      await tester.pump(const Duration(milliseconds: 200));
+    } finally {
+      isTest = previousIsTest;
+    }
   });
 
   test('Android service command owns preflight through final dispatch',

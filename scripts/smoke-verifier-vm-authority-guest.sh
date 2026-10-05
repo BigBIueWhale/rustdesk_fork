@@ -40,6 +40,9 @@ case "$#:${8:-}" in
     12:--cpace-recovery-tests)
         MODE=cpace-recovery-tests
         ;;
+    12:--linux-pa-authority-tests)
+        MODE=linux-pa-authority-tests
+        ;;
     12:--android-rust-lifecycle-tests)
         MODE=android-rust-lifecycle-tests
         ;;
@@ -108,7 +111,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 {peer-lifecycle|controlled-cm} PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-flutter-app-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 CONTEXT | --linux-flutter-app-replay SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 APP_COMMIT APP_TREE APP_RECIPE_SHA256 APP_MANIFEST_SHA256 CONTEXT | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-pa-authority-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 {peer-lifecycle|controlled-cm} PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-flutter-app-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 CONTEXT | --linux-flutter-app-replay SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 APP_COMMIT APP_TREE APP_RECIPE_SHA256 APP_MANIFEST_SHA256 CONTEXT | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         echo 'The seven base arguments also accept --android-execution-probe, --android-runtime-log-tests, or --linux-flutter-artifact-tests.' >&2
         echo 'CM file integration replay accepts --cm-file-replay SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         exit 2
@@ -1966,7 +1969,7 @@ run_focused_rust_tests() {
     local container_name memory memory_bytes tmpfs_size source_fingerprints
     local source_archive_sha source_before input_mount_options pub_receipt post_pub_receipt
     local path remainder size digest
-    local -a required_tests result_lines toolchain_mount bridge_mounts
+    local -a required_tests result_lines toolchain_mount bridge_mounts bridge_inputs
 
     if [ "$MODE" = hbb-common-fs ]; then
         container_name=rustdesk-hbb-common-fs
@@ -2043,6 +2046,31 @@ run_focused_rust_tests() {
             wrong_password_aborts_at_confirmation
             initiator_eof_before_step2_remains_plain_io
             initiator_invalid_step4_tag_remains_confirmation
+        )
+    elif [ "$MODE" = linux-pa-authority-tests ]; then
+        container_name=rustdesk-linux-pa-authority-tests
+        memory=8g
+        memory_bytes=8589934592
+        tmpfs_size=3g
+        image_archive=$inputs/verifier-images/devcheck.docker.tar.gz
+        image_config=$DEV_CHECK_IMAGE_CONFIG_ID
+        image_index=$DEV_CHECK_IMAGE_ID
+        toolchain_mode=devcheck-image
+        toolchain_mount=()
+        bridge_mounts=()
+        source_fingerprints=(
+            Cargo.lock
+            src/ipc.rs
+            src/server/audio_service.rs
+            src/server/connection.rs
+            src/server/service.rs
+        )
+        required_tests=(
+            ipc::test::linux_pulse_audio_channel_uses_closed_bounded_protocol
+            ipc::test::r_s11iu_pa_capture_peer_comes_from_the_kernel_socket
+            server::audio_service::test::r_s11iu_pa_capture_authority_rejects_missing_wrong_and_stale_tokens
+            server::audio_service::test::r_s11iu_pa_capture_authority_rejects_a_stopped_service
+            server::audio_service::test::r_s11iu_pa_capture_authority_requires_a_positive_subscriber_id
         )
     else
         [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -2253,11 +2281,17 @@ run_focused_rust_tests() {
         [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
             || fail "Debian-builder image receipt differs: $load_output"
     else
-        for input in \
-            "$rust_archive:$SIZE_RUST_1_75:$SHA256_RUST_1_75" \
-            "$flutter_archive:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5" \
-            "$llvm_archive:$SIZE_LLVM_15_0_6:$SHA256_LLVM_15_0_6" \
-            "$builder_archive:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE"; do
+        if [ "$MODE" = android-rust-lifecycle-tests ]; then
+            bridge_inputs=(
+                "$rust_archive:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
+                "$flutter_archive:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5"
+                "$llvm_archive:$SIZE_LLVM_15_0_6:$SHA256_LLVM_15_0_6"
+                "$builder_archive:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE"
+            )
+        else
+            bridge_inputs=()
+        fi
+        for input in "${bridge_inputs[@]}"; do
             path=${input%%:*}
             remainder=${input#*:}
             size=${remainder%%:*}
@@ -2267,22 +2301,24 @@ run_focused_rust_tests() {
                 && [ "$(sha256sum "$path" | awk '{ print $1 }')" = "$digest" ] \
                 || fail "sealed Android Rust bridge input differs: $path"
         done
-        [ "$(stat -c '%u:%g:%a:%h:%s' -- "$frb_codegen")" = \
-          "1000:1000:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
-            && [ "$(sha256sum "$frb_codegen" | awk '{ print $1 }')" = \
-                 "$SHA256_FLUTTER_PEER_FRB_CODEGEN" ] \
-            || fail 'sealed Android Rust FRB generator differs'
-        [ -d "$pub_cache" ] && [ ! -L "$pub_cache" ] \
-            && [ "$(stat -c '%u:%g:%a' -- "$pub_cache")" = 1000:1000:500 ] \
-            || fail 'sealed Android Rust Pub-cache root metadata differs'
-        pub_receipt="$(
-            setpriv --reuid=1000 --regid=1000 --clear-groups \
-                env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-                python3 -I -S "$pub_validator" \
-                    check-complete --online "$inputs" --uid 1000 --gid 1000
-        )" || fail 'sealed Android Rust Pub-cache closure validation failed'
-        [ "$pub_receipt" = "sha256=$SHA256_PUB_CACHE_CLOSURE_V1" ] \
-            || fail "sealed Android Rust Pub-cache receipt differs: $pub_receipt"
+        if [ "$MODE" = android-rust-lifecycle-tests ]; then
+            [ "$(stat -c '%u:%g:%a:%h:%s' -- "$frb_codegen")" = \
+              "1000:1000:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
+                && [ "$(sha256sum "$frb_codegen" | awk '{ print $1 }')" = \
+                     "$SHA256_FLUTTER_PEER_FRB_CODEGEN" ] \
+                || fail 'sealed Android Rust FRB generator differs'
+            [ -d "$pub_cache" ] && [ ! -L "$pub_cache" ] \
+                && [ "$(stat -c '%u:%g:%a' -- "$pub_cache")" = 1000:1000:500 ] \
+                || fail 'sealed Android Rust Pub-cache root metadata differs'
+            pub_receipt="$(
+                setpriv --reuid=1000 --regid=1000 --clear-groups \
+                    env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+                    python3 -I -S "$pub_validator" \
+                        check-complete --online "$inputs" --uid 1000 --gid 1000
+            )" || fail 'sealed Android Rust Pub-cache closure validation failed'
+            [ "$pub_receipt" = "sha256=$SHA256_PUB_CACHE_CLOSURE_V1" ] \
+                || fail "sealed Android Rust Pub-cache receipt differs: $pub_receipt"
+        fi
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$image_archive")" = \
           "1000:1000:400:1:$SIZE_DEV_CHECK_IMAGE_ARCHIVE" ] \
             && [ "$(sha256sum "$image_archive" | awk '{ print $1 }')" = \
@@ -2311,11 +2347,13 @@ run_focused_rust_tests() {
         )" || fail 'development-check image verification/load failed'
         [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
             || fail "development-check image receipt differs: $load_output"
-        generate_focused_rust_flutter_bridge
-        bridge_mounts=(
-            --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.rs,target=/source/src/bridge_generated.rs,readonly"
-            --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.io.rs,target=/source/src/bridge_generated.io.rs,readonly"
-        )
+        if [ "$MODE" = android-rust-lifecycle-tests ]; then
+            generate_focused_rust_flutter_bridge
+            bridge_mounts=(
+                --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.rs,target=/source/src/bridge_generated.rs,readonly"
+                --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.io.rs,target=/source/src/bridge_generated.io.rs,readonly"
+            )
+        fi
     fi
 
     CONTAINER_ID="$(
@@ -2403,6 +2441,13 @@ run_focused_rust_tests() {
                         cargo test --offline --locked -p cpace_it --test handshake \
                             --color never -- --test-threads=1
                         ;;
+                    linux-pa-authority-tests)
+                        cargo test --offline --locked --lib --features linux-pkg-config \
+                            r_s11iu_pa_capture_ --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config \
+                            ipc::test::linux_pulse_audio_channel_uses_closed_bounded_protocol \
+                            --color never -- --test-threads=1
+                        ;;
                     android-rust-lifecycle-tests)
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             android_listener_lifecycle::tests:: --color never -- --test-threads=1
@@ -2461,7 +2506,8 @@ run_focused_rust_tests() {
         || { tail -n 200 "$output" >&2; fail "focused Rust tests exited with status $container_status"; }
     [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
         || fail 'focused Rust-test output exceeds its bound'
-    if [ "$MODE" = android-rust-lifecycle-tests ]; then
+    if [ "$MODE" = android-rust-lifecycle-tests ] \
+       || [ "$MODE" = linux-pa-authority-tests ]; then
         grep -Fq 'R-B10 canary: build confirmed network-isolated (offline compile stage).' "$output" \
             || { tail -n 200 "$output" >&2; fail 'focused Rust build did not execute its offline network canary'; }
     fi
@@ -2474,6 +2520,9 @@ run_focused_rust_tests() {
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
+    elif [ "$MODE" = linux-pa-authority-tests ]; then
+        [ "${#result_lines[@]}" -eq 2 ] \
+            || { tail -n 200 "$output" >&2; fail 'focused Linux PulseAudio summary count differs'; }
     else
         [ "${#result_lines[@]}" -eq 12 ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
@@ -2525,6 +2574,12 @@ run_focused_rust_tests() {
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
             "$DEB_BUILDER_CONFIG_ID"
+    elif [ "$MODE" = linux-pa-authority-tests ]; then
+        [ "$tests_passed" -eq "${#required_tests[@]}" ] \
+            || fail "Linux PulseAudio authority test count differs: $tests_passed"
+        printf 'LINUX_PA_AUTHORITY_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+            "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
@@ -5950,6 +6005,7 @@ done
 [ "$(<"$PIDFILE")" = "$DAEMON_PID" ] || fail 'Docker daemon PID file differs'
 docker_socket_gid=4000
 if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ] \
+   || [ "$MODE" = linux-pa-authority-tests ] \
    || [ "$MODE" = android-rust-lifecycle-tests ] \
    || [ "$MODE" = android-rust-target-check ] \
    || [ "$MODE" = flutter-model-tests ] \
@@ -6130,6 +6186,11 @@ if [ "$MODE" = hbb-common-fs ]; then
 fi
 
 if [ "$MODE" = cpace-recovery-tests ]; then
+    run_focused_rust_tests
+    exit 0
+fi
+
+if [ "$MODE" = linux-pa-authority-tests ]; then
     run_focused_rust_tests
     exit 0
 fi

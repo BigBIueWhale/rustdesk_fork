@@ -38,7 +38,7 @@ use std::{
         Arc, Mutex as StdMutex, OnceLock, RwLock,
     },
 };
-#[cfg(any(target_os = "android", test))]
+#[cfg(not(target_os = "ios"))]
 use std::sync::mpsc as std_mpsc;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -674,6 +674,15 @@ struct IpcTaskRunner<T: InvokeUiCM, S> {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl<T: InvokeUiCM, S> Drop for IpcTaskRunner<T, S> {
+    fn drop(&mut self) {
+        if let Some(owner) = self.client_owner.take() {
+            self.cm.remove_connection(owner, true);
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn cm_message_is_admissible_before_login(data: &Data) -> bool {
     match data {
         Data::Login { .. } | Data::Close | Data::Disconnected => true,
@@ -801,46 +810,47 @@ lazy_static::lazy_static! {
     static ref CLIENTS: RwLock<CmClientRegistry> = Default::default();
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(not(target_os = "ios"))]
 lazy_static::lazy_static! {
     static ref CM_FILE_OPERATION_CHANGED: tokio::sync::Notify = tokio::sync::Notify::new();
-    static ref CM_ANDROID_FILE_OPERATION_LIMIT: Arc<Semaphore> =
-        Arc::new(Semaphore::new(CM_ANDROID_FILE_OPERATION_DRAIN_CAPACITY));
+    static ref CM_FILE_OPERATION_LIMIT: Arc<Semaphore> =
+        Arc::new(Semaphore::new(CM_FILE_OPERATION_DRAIN_CAPACITY));
 }
 
-#[cfg(any(target_os = "android", test))]
-const CM_ANDROID_FILE_OPERATION_DRAIN_CAPACITY: usize = 32;
+#[cfg(not(target_os = "ios"))]
+const CM_FILE_OPERATION_DRAIN_CAPACITY: usize = 32;
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(not(target_os = "ios"))]
 struct CmFileOperationReaper {
     sender: std_mpsc::SyncSender<CmFileOperationJoin>,
     _thread: std::thread::JoinHandle<()>,
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(not(target_os = "ios"))]
 struct CmFileOperationJoin {
     task: tokio::task::JoinHandle<()>,
     _permit: OwnedSemaphorePermit,
 }
 
-#[cfg(any(target_os = "android", test))]
-static CM_ANDROID_FILE_OPERATION_REAPER: OnceLock<
+#[cfg(not(target_os = "ios"))]
+static CM_FILE_OPERATION_REAPER: OnceLock<
     Result<CmFileOperationReaper, String>,
 > = OnceLock::new();
 
-#[cfg(any(target_os = "android", test))]
-fn cm_android_file_operation_reaper(
+#[cfg(not(target_os = "ios"))]
+fn cm_file_operation_reaper(
 ) -> Result<&'static std_mpsc::SyncSender<CmFileOperationJoin>, &'static str> {
-    CM_ANDROID_FILE_OPERATION_REAPER
+    CM_FILE_OPERATION_REAPER
         .get_or_init(|| {
             let (sender, receiver) =
-                std_mpsc::sync_channel::<CmFileOperationJoin>(CM_ANDROID_FILE_OPERATION_DRAIN_CAPACITY);
+                std_mpsc::sync_channel::<CmFileOperationJoin>(CM_FILE_OPERATION_DRAIN_CAPACITY);
             std::thread::Builder::new()
-                .name("rustdesk-android-cm-file-drain".to_owned())
+                .name("rustdesk-cm-file-drain".to_owned())
                 .spawn(move || {
                     while let Ok(join) = receiver.recv() {
                         if let Err(error) = hbb_common::futures::executor::block_on(join.task) {
-                            log::error!("Android CM file operation failed during cancellation drain: {error}");
+                            log::error!("CM file operation failed during cancellation drain: {error}");
+                            std::process::abort();
                         }
                     }
                 })
@@ -848,22 +858,22 @@ fn cm_android_file_operation_reaper(
                     sender,
                     _thread: thread,
                 })
-                .map_err(|error| format!("cannot start Android CM file drain: {error}"))
+                .map_err(|error| format!("cannot start CM file drain: {error}"))
         })
         .as_ref()
         .map(|reaper| &reaper.sender)
         .map_err(|error| {
             log::error!("{error}");
-            "Android CM file drain is unavailable"
+            "CM file drain is unavailable"
         })
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(not(target_os = "ios"))]
 struct CmFileOperationTask {
     join: Option<CmFileOperationJoin>,
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(not(target_os = "ios"))]
 impl CmFileOperationTask {
     async fn join(&mut self) -> Result<(), tokio::task::JoinError> {
         let result = match self.join.as_mut() {
@@ -871,20 +881,24 @@ impl CmFileOperationTask {
             None => return Ok(()),
         };
         self.join.take();
+        if let Err(error) = &result {
+            log::error!("CM file operation lost its exact task: {error}");
+            std::process::abort();
+        }
         result
     }
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(not(target_os = "ios"))]
 impl Drop for CmFileOperationTask {
     fn drop(&mut self) {
         if let Some(join) = self.join.take() {
-            let Ok(reaper) = cm_android_file_operation_reaper() else {
-                log::error!("Android CM file operation lost its drain before handoff");
+            let Ok(reaper) = cm_file_operation_reaper() else {
+                log::error!("CM file operation lost its drain before handoff");
                 std::process::abort();
             };
             if reaper.try_send(join).is_err() {
-                log::error!("Android CM file-operation drain capacity or worker failed");
+                log::error!("CM file-operation drain capacity or worker failed");
                 std::process::abort();
             }
         }
@@ -1079,12 +1093,12 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         CLIENTS.read().unwrap().is_current(owner)
     }
 
-    #[cfg(any(target_os = "android", test))]
+    #[cfg(not(target_os = "ios"))]
     fn begin_file_operation(&self, owner: CmClientOwner) -> bool {
         CLIENTS.write().unwrap().begin_file_operation(owner)
     }
 
-    #[cfg(any(target_os = "android", test))]
+    #[cfg(not(target_os = "ios"))]
     fn finish_file_operation(&self, owner: CmClientOwner) {
         if CLIENTS.write().unwrap().finish_file_operation(owner) {
             CM_FILE_OPERATION_CHANGED.notify_waiters();
@@ -1487,7 +1501,7 @@ where
                                         );
                                         break;
                                     }
-                                    let result = if let ipc::FS::WriteBlock { id, file_num, conn_id, data: _, compressed, generation } = fs {
+                                    if let ipc::FS::WriteBlock { id, file_num, conn_id, data: _, compressed, generation } = fs {
                                         self.stream.set_max_packet_length(
                                             ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES,
                                         );
@@ -1510,32 +1524,69 @@ where
                                         self.stream
                                             .set_max_packet_length(ipc::CM_IPC_MAX_FRAME_BYTES);
                                         fs = ipc::FS::WriteBlock{id, file_num, conn_id, data:bytes.into(), compressed, generation};
-                                        handle_fs(
-                                            fs,
-                                            &mut write_jobs,
-                                            &mut self.read_jobs,
-                                            CmFileResponder {
-                                                tx: &self.tx,
-                                                conn_id: self.conn_id,
-                                                cm_auth_token: &self.cm_auth_token,
-                                            },
-                                            true,
-                                        )
-                                        .await
-                                    } else {
-                                        handle_fs(
-                                            fs,
-                                            &mut write_jobs,
-                                            &mut self.read_jobs,
-                                            CmFileResponder {
-                                                tx: &self.tx,
-                                                conn_id: self.conn_id,
-                                                cm_auth_token: &self.cm_auth_token,
-                                            },
-                                            true,
-                                        )
-                                        .await
+                                    }
+                                    if cm_file_operation_reaper().is_err() {
+                                        break;
+                                    }
+                                    let permit = match CM_FILE_OPERATION_LIMIT.clone().try_acquire_owned() {
+                                        Ok(permit) => permit,
+                                        Err(error) => {
+                                            log::warn!("Rejected desktop CM file operation without drain capacity: {error}");
+                                            break;
+                                        }
                                     };
+                                    let Some(owner_key) = self.client_owner.take() else {
+                                        log::warn!("Rejected desktop CM file operation without its registry owner");
+                                        break;
+                                    };
+                                    let owner = CmClientTaskOwner::new(self.cm.clone(), owner_key);
+                                    if !self.cm.begin_file_operation(owner_key) {
+                                        log::warn!("Rejected desktop CM file operation from a stale or busy registry owner");
+                                        break;
+                                    }
+                                    let mut selected_write_jobs = std::mem::take(&mut write_jobs);
+                                    let mut selected_read_jobs = std::mem::take(&mut self.read_jobs);
+                                    let operation_tx = self.tx.clone();
+                                    let operation_token = self.cm_auth_token.clone();
+                                    let operation_id = self.conn_id;
+                                    let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+                                    let task = tokio::spawn(async move {
+                                        let result = handle_fs(
+                                            fs,
+                                            &mut selected_write_jobs,
+                                            &mut selected_read_jobs,
+                                            CmFileResponder {
+                                                tx: &operation_tx,
+                                                conn_id: operation_id,
+                                                cm_auth_token: &operation_token,
+                                            },
+                                            true,
+                                        )
+                                        .await;
+                                        let _ = result_tx.send((selected_write_jobs, selected_read_jobs, owner, result));
+                                    });
+                                    let mut operation = CmFileOperationTask {
+                                        join: Some(CmFileOperationJoin {
+                                            task,
+                                            _permit: permit,
+                                        }),
+                                    };
+                                    let outcome = result_rx.await;
+                                    let joined = operation.join().await;
+                                    let (jobs, read_jobs, owner, result) = match (outcome, joined) {
+                                        (Ok(outcome), Ok(())) => outcome,
+                                        (outcome, joined) => {
+                                            log::error!(
+                                                "Desktop CM file operation lost its exact outcome: result={}, join={joined:?}",
+                                                outcome.is_ok()
+                                            );
+                                            break;
+                                        }
+                                    };
+                                    write_jobs = jobs;
+                                    self.read_jobs = read_jobs;
+                                    self.client_owner = Some(owner.into_owner());
+                                    self.cm.finish_file_operation(owner_key);
                                     let job_log = match result {
                                         Ok(job_log) => job_log,
                                         Err(error) => {
@@ -1962,28 +2013,37 @@ pub fn start_cm_no_ui() {
     start_ipc(ConnectionManager::new(NoUiCmHandler, 0));
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(not(target_os = "ios"))]
 struct CmClientTaskOwner<T: InvokeUiCM> {
     cm: ConnectionManager<T>,
     owner: CmClientOwner,
+    armed: bool,
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(not(target_os = "ios"))]
 impl<T: InvokeUiCM> CmClientTaskOwner<T> {
     fn new(cm: ConnectionManager<T>, owner: CmClientOwner) -> Self {
-        Self { cm, owner }
+        Self { cm, owner, armed: true }
     }
 
     fn owner(&self) -> CmClientOwner {
         self.owner
     }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn into_owner(mut self) -> CmClientOwner {
+        self.armed = false;
+        self.owner
+    }
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(not(target_os = "ios"))]
 impl<T: InvokeUiCM> Drop for CmClientTaskOwner<T> {
     fn drop(&mut self) {
-        self.cm.remove_connection(self.owner, true);
-        self.cm.finish_file_operation(self.owner);
+        if self.armed {
+            self.cm.remove_connection(self.owner, true);
+            self.cm.finish_file_operation(self.owner);
+        }
     }
 }
 
@@ -2155,11 +2215,11 @@ pub async fn start_listen<T: InvokeUiCM>(
                     break;
                 };
                 let owner_key = owner.owner();
-                if cm_android_file_operation_reaper().is_err() {
+                if cm_file_operation_reaper().is_err() {
                     current_owner = Some(owner);
                     break;
                 }
-                let permit = match CM_ANDROID_FILE_OPERATION_LIMIT.clone().try_acquire_owned() {
+                let permit = match CM_FILE_OPERATION_LIMIT.clone().try_acquire_owned() {
                     Ok(permit) => permit,
                     Err(error) => {
                         log::warn!("Rejected Android CM file operation without drain capacity: {error}");
@@ -3606,6 +3666,102 @@ mod tests {
         CmTaskOwnerTestUi,
     ) {
         admitted_cm_raw_test(id, ipc::CmAuthConnType::FileTransfer).await
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11is_desktop_cm_cancellation_drains_selected_file_operation() {
+        let id = 2_000_200_010;
+        let temp = CmFileTestDir::new("desktop_cancel_selected_file_operation");
+        let directory = temp.join("must-finish-before-successor");
+        let path = directory.to_string_lossy().into_owned();
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (resume_tx, resume_rx) = std_mpsc::sync_channel(1);
+        let gate = CM_TEST_CREATE_DIR_PAUSE.get_or_init(|| StdMutex::new(None));
+        {
+            let mut slot = gate.lock().unwrap();
+            assert!(slot.is_none());
+            *slot = Some(CmTestCreateDirPause {
+                path: path.clone(),
+                entered: entered_tx,
+                resume: resume_rx,
+            });
+        }
+
+        let (task, mut peer, ui) = admitted_cm_file_raw_test(id).await;
+        let generation = CLIENTS
+            .read()
+            .unwrap()
+            .clients
+            .get(&id)
+            .map(|client| client.registry_generation)
+            .unwrap();
+        peer.send(&Data::AuthorizedFS {
+            cm_auth_token: "test-token".to_owned(),
+            fs: ipc::FS::CreateDir {
+                path,
+                id: 1,
+                request_id: 1,
+            },
+        })
+        .await
+        .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), entered_rx)
+            .await
+            .expect("real filesystem worker must enter its pre-effect gate")
+            .expect("real filesystem worker must signal entry");
+
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert!(!directory.exists());
+        assert_eq!(
+            CLIENTS
+                .read()
+                .unwrap()
+                .clients
+                .get(&id)
+                .map(|client| client.registry_generation),
+            Some(generation)
+        );
+        assert!(lock_cm_egress_test(&ui.removed).is_empty());
+        let mut successor = registry_test_client(id, "same-peer");
+        assert!(matches!(
+            CLIENTS.write().unwrap().admit(&mut successor, 1),
+            Err(CmClientAdmissionError::FileOperationInFlight)
+        ));
+
+        resume_tx.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            loop {
+                let registry = CLIENTS.read().unwrap();
+                if !registry.clients.contains_key(&id)
+                    && !registry.in_flight_file_operations.contains_key(&id)
+                {
+                    break;
+                }
+                drop(registry);
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("cancelled desktop file work must retire before successor admission");
+        assert!(directory.is_dir());
+        assert_eq!(
+            *lock_cm_egress_test(&ui.removed),
+            vec![(id, generation, true)]
+        );
+
+        let (successor_task, successor_peer, successor_ui) =
+            admitted_cm_file_raw_test(id).await;
+        successor_task.abort();
+        assert!(tokio::time::timeout(std::time::Duration::from_secs(2), successor_task)
+            .await
+            .expect("idle successor cancellation must finish")
+            .unwrap_err()
+            .is_cancelled());
+        drop(successor_peer);
+        assert_eq!(lock_cm_egress_test(&successor_ui.removed).len(), 1);
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

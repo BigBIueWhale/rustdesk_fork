@@ -2087,6 +2087,7 @@ run_focused_rust_tests() {
             direct_service::direct_connection_task_tests::parent_cancellation_converges_every_owned_child_before_listener_completion
             ui_cm_interface::tests::r_s11is_cm_file_raw_ceiling_rejects_oversize_after_accepting_exact_limit
             ui_cm_interface::tests::r_s11is_cm_file_raw_timeout_retires_authenticated_runner
+            ui_cm_interface::tests::r_s11is_desktop_cm_cancellation_drains_selected_file_operation
             ui_cm_interface::tests::r_s11is_cm_file_response_refusal_is_returned_to_the_command_owner
             ui_cm_interface::tests::r_s11is_cm_receive_rejects_an_inconsistent_aggregate_size
             ui_cm_interface::tests::r_s11is_read_job_commits_only_after_initial_response_admission

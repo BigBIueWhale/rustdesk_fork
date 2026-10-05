@@ -38,6 +38,8 @@ use std::{
         Arc, Mutex as StdMutex, OnceLock, RwLock,
     },
 };
+#[cfg(any(target_os = "android", test))]
+use std::sync::mpsc as std_mpsc;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CmConnectionTerminal {
@@ -544,6 +546,7 @@ enum CmClientAdmissionError {
     GenerationExhausted,
     StaleSourceGeneration,
     ActiveIdCollision,
+    FileOperationInFlight,
 }
 
 impl fmt::Display for CmClientAdmissionError {
@@ -554,6 +557,7 @@ impl fmt::Display for CmClientAdmissionError {
             Self::GenerationExhausted => "client registry generation is exhausted",
             Self::StaleSourceGeneration => "client source generation is stale",
             Self::ActiveIdCollision => "connection ID is owned by an active peer generation",
+            Self::FileOperationInFlight => "connection ID has an unfinished file operation",
         };
         write!(f, "{reason}")
     }
@@ -563,6 +567,7 @@ impl fmt::Display for CmClientAdmissionError {
 struct CmClientRegistry {
     clients: HashMap<i32, Client>,
     generation: i64,
+    in_flight_file_operations: HashMap<i32, i64>,
 }
 
 impl CmClientRegistry {
@@ -576,6 +581,9 @@ impl CmClientRegistry {
         }
         if client.cm_auth_token.is_empty() {
             return Err(CmClientAdmissionError::MissingAuthorityToken);
+        }
+        if self.in_flight_file_operations.contains_key(&client.id) {
+            return Err(CmClientAdmissionError::FileOperationInFlight);
         }
         if let Some(current) = self.clients.get(&client.id) {
             if source_generation < current.source_generation {
@@ -609,6 +617,22 @@ impl CmClientRegistry {
             .get(&owner.id)
             .map(|client| client.registry_generation == owner.generation)
             .unwrap_or(false)
+    }
+
+    fn begin_file_operation(&mut self, owner: CmClientOwner) -> bool {
+        if !self.is_current(owner) || self.in_flight_file_operations.contains_key(&owner.id) {
+            return false;
+        }
+        self.in_flight_file_operations.insert(owner.id, owner.generation);
+        true
+    }
+
+    fn finish_file_operation(&mut self, owner: CmClientOwner) -> bool {
+        if self.in_flight_file_operations.get(&owner.id) != Some(&owner.generation) {
+            return false;
+        }
+        self.in_flight_file_operations.remove(&owner.id);
+        true
     }
 
     fn current_mut(&mut self, owner: CmClientOwner) -> Option<&mut Client> {
@@ -775,6 +799,85 @@ fn cm_file_directory(directory: FileDirectory) -> Result<ipc::CmFileDirectory, S
 
 lazy_static::lazy_static! {
     static ref CLIENTS: RwLock<CmClientRegistry> = Default::default();
+}
+
+#[cfg(any(target_os = "android", test))]
+lazy_static::lazy_static! {
+    static ref CM_FILE_OPERATION_CHANGED: tokio::sync::Notify = tokio::sync::Notify::new();
+    static ref CM_ANDROID_FILE_OPERATION_LIMIT: Arc<Semaphore> = Arc::new(Semaphore::new(32));
+}
+
+#[cfg(any(target_os = "android", test))]
+const CM_ANDROID_FILE_OPERATION_DRAIN_CAPACITY: usize = 32;
+
+#[cfg(any(target_os = "android", test))]
+struct CmFileOperationJoin {
+    task: tokio::task::JoinHandle<()>,
+    _permit: OwnedSemaphorePermit,
+}
+
+#[cfg(any(target_os = "android", test))]
+static CM_ANDROID_FILE_OPERATION_REAPER: OnceLock<
+    Result<std_mpsc::SyncSender<CmFileOperationJoin>, String>,
+> = OnceLock::new();
+
+#[cfg(any(target_os = "android", test))]
+fn cm_android_file_operation_reaper(
+) -> Result<&'static std_mpsc::SyncSender<CmFileOperationJoin>, &'static str> {
+    CM_ANDROID_FILE_OPERATION_REAPER
+        .get_or_init(|| {
+            let (sender, receiver) =
+                std_mpsc::sync_channel::<CmFileOperationJoin>(CM_ANDROID_FILE_OPERATION_DRAIN_CAPACITY);
+            std::thread::Builder::new()
+                .name("rustdesk-android-cm-file-drain".to_owned())
+                .spawn(move || {
+                    while let Ok(join) = receiver.recv() {
+                        if let Err(error) = hbb_common::futures::executor::block_on(join.task) {
+                            log::error!("Android CM file operation failed during cancellation drain: {error}");
+                        }
+                    }
+                })
+                .map(|_| sender)
+                .map_err(|error| format!("cannot start Android CM file drain: {error}"))
+        })
+        .as_ref()
+        .map_err(|error| {
+            log::error!("{error}");
+            "Android CM file drain is unavailable"
+        })
+}
+
+#[cfg(any(target_os = "android", test))]
+struct CmFileOperationTask {
+    join: Option<CmFileOperationJoin>,
+}
+
+#[cfg(any(target_os = "android", test))]
+impl CmFileOperationTask {
+    async fn join(&mut self) -> Result<(), tokio::task::JoinError> {
+        let result = match self.join.as_mut() {
+            Some(join) => (&mut join.task).await,
+            None => return Ok(()),
+        };
+        self.join.take();
+        result
+    }
+}
+
+#[cfg(any(target_os = "android", test))]
+impl Drop for CmFileOperationTask {
+    fn drop(&mut self) {
+        if let Some(join) = self.join.take() {
+            let Ok(reaper) = cm_android_file_operation_reaper() else {
+                log::error!("Android CM file operation lost its drain before handoff");
+                std::process::abort();
+            };
+            if reaper.try_send(join).is_err() {
+                log::error!("Android CM file-operation drain capacity or worker failed");
+                std::process::abort();
+            }
+        }
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -963,6 +1066,18 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
 
     fn is_current_client_owner(&self, owner: CmClientOwner) -> bool {
         CLIENTS.read().unwrap().is_current(owner)
+    }
+
+    #[cfg(any(target_os = "android", test))]
+    fn begin_file_operation(&self, owner: CmClientOwner) -> bool {
+        CLIENTS.write().unwrap().begin_file_operation(owner)
+    }
+
+    #[cfg(any(target_os = "android", test))]
+    fn finish_file_operation(&self, owner: CmClientOwner) {
+        if CLIENTS.write().unwrap().finish_file_operation(owner) {
+            CM_FILE_OPERATION_CHANGED.notify_waiters();
+        }
     }
 
     fn new_message(&self, owner: CmClientOwner, text: String) {
@@ -1857,6 +1972,38 @@ impl<T: InvokeUiCM> CmClientTaskOwner<T> {
 impl<T: InvokeUiCM> Drop for CmClientTaskOwner<T> {
     fn drop(&mut self) {
         self.cm.remove_connection(self.owner, true);
+        self.cm.finish_file_operation(self.owner);
+    }
+}
+
+#[cfg(any(target_os = "android", test))]
+async fn wait_for_prior_android_file_operation(
+    id: i32,
+    terminal: &mut tokio::sync::oneshot::Receiver<CmConnectionTerminal>,
+) -> bool {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let notified = CM_FILE_OPERATION_CHANGED.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        if !CLIENTS
+            .read()
+            .unwrap()
+            .in_flight_file_operations
+            .contains_key(&id)
+        {
+            return true;
+        }
+        tokio::select! {
+            biased;
+            _ = &mut *terminal => return false,
+            result = tokio::time::timeout_at(deadline, &mut notified) => {
+                if result.is_err() {
+                    log::warn!("Android CM login timed out waiting for prior file operation: conn_id={id}");
+                    return false;
+                }
+            }
+        }
     }
 }
 
@@ -1933,6 +2080,9 @@ pub async fn start_listen<T: InvokeUiCM>(
                     );
                     break;
                 }
+                if !wait_for_prior_android_file_operation(id, &mut terminal).await {
+                    break;
+                }
                 let admitted_file_authority = CmFileAuthority::from_login(
                     id,
                     authorized,
@@ -1989,21 +2139,72 @@ pub async fn start_listen<T: InvokeUiCM>(
                     );
                     continue;
                 }
-                // Android doesn't need CM-side file reading (no need_validate_file_read_access)
-                let mut read_jobs_placeholder: Vec<CmTransferJob> = Vec::new();
-                if let Err(error) = handle_fs(
-                    fs,
-                    &mut write_jobs,
-                    &mut read_jobs_placeholder,
-                    CmFileResponder {
-                        tx: &tx,
-                        conn_id: current_id,
-                        cm_auth_token: &current_cm_auth_token,
-                    },
-                    false,
-                )
-                .await
-                {
+                let Some(owner) = current_owner.take() else {
+                    log::warn!("Rejected Android CM file command without a registry owner");
+                    break;
+                };
+                let owner_key = owner.owner();
+                if cm_android_file_operation_reaper().is_err() {
+                    current_owner = Some(owner);
+                    break;
+                }
+                let permit = match CM_ANDROID_FILE_OPERATION_LIMIT.clone().try_acquire_owned() {
+                    Ok(permit) => permit,
+                    Err(error) => {
+                        log::warn!("Rejected Android CM file operation without drain capacity: {error}");
+                        current_owner = Some(owner);
+                        break;
+                    }
+                };
+                if !cm.begin_file_operation(owner_key) {
+                    log::warn!("Rejected Android CM file operation from a stale or busy registry owner");
+                    current_owner = Some(owner);
+                    break;
+                }
+                let mut jobs = std::mem::take(&mut write_jobs);
+                let operation_tx = tx.clone();
+                let operation_token = current_cm_auth_token.clone();
+                let operation_id = current_id;
+                let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+                let task = tokio::spawn(async move {
+                    // Android doesn't need CM-side file reading (no need_validate_file_read_access).
+                    let mut read_jobs_placeholder: Vec<CmTransferJob> = Vec::new();
+                    let result = handle_fs(
+                        fs,
+                        &mut jobs,
+                        &mut read_jobs_placeholder,
+                        CmFileResponder {
+                            tx: &operation_tx,
+                            conn_id: operation_id,
+                            cm_auth_token: &operation_token,
+                        },
+                        false,
+                    )
+                    .await;
+                    let _ = result_tx.send((jobs, owner, result));
+                });
+                let mut operation = CmFileOperationTask {
+                    join: Some(CmFileOperationJoin {
+                        task,
+                        _permit: permit,
+                    }),
+                };
+                let outcome = result_rx.await;
+                let joined = operation.join().await;
+                let (jobs, owner, result) = match (outcome, joined) {
+                    (Ok(outcome), Ok(())) => outcome,
+                    (outcome, joined) => {
+                        log::error!(
+                            "Android CM file operation lost its exact outcome: result={}, join={joined:?}",
+                            outcome.is_ok()
+                        );
+                        break;
+                    }
+                };
+                write_jobs = jobs;
+                current_owner = Some(owner);
+                cm.finish_file_operation(owner_key);
+                if let Err(error) = result {
                     log::error!("failed to publish Android CM file response: {error}");
                     break;
                 }
@@ -2053,6 +2254,7 @@ pub async fn start_listen<T: InvokeUiCM>(
             _ => {}
         }
     }
+    drop(write_jobs);
     drop(current_owner);
 }
 
@@ -3037,11 +3239,44 @@ async fn create_dir(
 ) -> Result<(), CmEgressAdmissionError> {
     let operation = ipc::CmFileOperation::CreateDirectory { path: path.clone() };
     handle_result(
-        spawn_blocking(move || fs::create_dir(&path)).await,
+        spawn_blocking(move || {
+            #[cfg(test)]
+            pause_cm_test_create_dir_before_effect(&path);
+            fs::create_dir(&path)
+        })
+        .await,
         request_id,
         operation,
         responder,
     )
+}
+
+#[cfg(test)]
+struct CmTestCreateDirPause {
+    path: String,
+    entered: tokio::sync::oneshot::Sender<()>,
+    resume: std_mpsc::Receiver<()>,
+}
+
+#[cfg(test)]
+static CM_TEST_CREATE_DIR_PAUSE: OnceLock<StdMutex<Option<CmTestCreateDirPause>>> = OnceLock::new();
+
+#[cfg(test)]
+fn pause_cm_test_create_dir_before_effect(path: &str) {
+    let mut slot = CM_TEST_CREATE_DIR_PAUSE
+        .get_or_init(|| StdMutex::new(None))
+        .lock()
+        .unwrap();
+    let pause = if slot.as_ref().map(|pause| pause.path.as_str()) == Some(path) {
+        slot.take()
+    } else {
+        None
+    };
+    drop(slot);
+    if let Some(pause) = pause {
+        let _ = pause.entered.send(());
+        let _ = pause.resume.recv();
+    }
 }
 
 #[cfg(not(any(target_os = "ios")))]
@@ -4135,6 +4370,128 @@ mod tests {
             .await
             .expect("retired CM egress must close")
             .is_none());
+
+        // Once selected, the real blocking filesystem operation is allowed to finish,
+        // but cancellation may not retire its registry owner or admit a same-ID
+        // successor before its effect and transfer-job cleanup are complete.
+        let in_flight_directory = temp.join("selected-operation-must-finish-first");
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (resume_tx, resume_rx) = std_mpsc::sync_channel(1);
+        let gate = CM_TEST_CREATE_DIR_PAUSE.get_or_init(|| StdMutex::new(None));
+        {
+            let mut slot = gate.lock().unwrap();
+            assert!(slot.is_none());
+            *slot = Some(CmTestCreateDirPause {
+                path: in_flight_directory.to_string_lossy().into_owned(),
+                entered: entered_tx,
+                resume: resume_rx,
+            });
+        }
+        let predecessor_ui = CmTaskOwnerTestUi::default();
+        let predecessor_manager = ConnectionManager::new(predecessor_ui.clone(), 66);
+        let (predecessor_tx, predecessor_rx) = mpsc::channel(2);
+        let (_predecessor_terminal_tx, predecessor_terminal_rx) = tokio::sync::oneshot::channel();
+        let (predecessor_egress_tx, predecessor_egress_rx) = cm_egress_channel();
+        predecessor_tx
+            .send(cm_test_login_with_file_authority(id, true))
+            .await
+            .unwrap();
+        let predecessor = tokio::spawn(start_listen(
+            predecessor_manager,
+            predecessor_rx,
+            predecessor_terminal_rx,
+            predecessor_egress_tx,
+        ));
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while !predecessor_ui.added.load(Ordering::Acquire) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("predecessor CM login must be admitted");
+        let predecessor_generation = CLIENTS
+            .read()
+            .unwrap()
+            .clients
+            .get(&id)
+            .map(|client| client.registry_generation)
+            .unwrap();
+        predecessor_tx
+            .send(Data::FS(ipc::FS::CreateDir {
+                path: in_flight_directory.to_string_lossy().into_owned(),
+                id: 1,
+                request_id: 3,
+            }))
+            .await
+            .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), entered_rx)
+            .await
+            .expect("production CreateDir worker must reach its pre-effect gate")
+            .expect("production CreateDir worker must report its gate");
+
+        predecessor.abort();
+        assert!(predecessor.await.unwrap_err().is_cancelled());
+        drop(predecessor_egress_rx);
+        assert!(!in_flight_directory.exists());
+        assert_eq!(
+            CLIENTS
+                .read()
+                .unwrap()
+                .clients
+                .get(&id)
+                .map(|client| client.registry_generation),
+            Some(predecessor_generation)
+        );
+        assert!(lock_cm_egress_test(&predecessor_ui.removed).is_empty());
+        let mut direct_successor = registry_test_client(id, "same-peer");
+        assert!(matches!(
+            CLIENTS.write().unwrap().admit(&mut direct_successor, 67),
+            Err(CmClientAdmissionError::FileOperationInFlight)
+        ));
+
+        let successor_ui = CmTaskOwnerTestUi::default();
+        let successor_manager = ConnectionManager::new(successor_ui.clone(), 67);
+        let (successor_tx, successor_rx) = mpsc::channel(2);
+        let (successor_terminal_tx, successor_terminal_rx) = tokio::sync::oneshot::channel();
+        let (successor_egress_tx, _successor_egress_rx) = cm_egress_channel();
+        successor_tx
+            .send(cm_test_login_with_file_authority(id, true))
+            .await
+            .unwrap();
+        let successor = tokio::spawn(start_listen(
+            successor_manager,
+            successor_rx,
+            successor_terminal_rx,
+            successor_egress_tx,
+        ));
+        tokio::task::yield_now().await;
+        assert!(!successor_ui.added.load(Ordering::Acquire));
+        resume_tx.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while lock_cm_egress_test(&predecessor_ui.removed).is_empty() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("cancelled predecessor must drain and retire after the file effect");
+        assert!(in_flight_directory.is_dir());
+        assert_eq!(
+            *lock_cm_egress_test(&predecessor_ui.removed),
+            vec![(id, predecessor_generation, true)]
+        );
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while !successor_ui.added.load(Ordering::Acquire) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("successor must admit after predecessor drain");
+        successor_terminal_tx.send(CmConnectionTerminal::Close).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), successor)
+            .await
+            .expect("successor must retire")
+            .expect("successor listener must not panic");
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
     }
 
     #[tokio::test(flavor = "current_thread")]

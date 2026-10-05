@@ -1585,7 +1585,8 @@ where
                                     };
                                     write_jobs = jobs;
                                     self.read_jobs = read_jobs;
-                                    self.client_owner = Some(owner.into_owner());
+                                    let owner = owner.into_owner();
+                                    self.client_owner = Some(owner);
                                     self.cm.finish_file_operation(owner_key);
                                     let job_log = match result {
                                         Ok(job_log) => job_log,

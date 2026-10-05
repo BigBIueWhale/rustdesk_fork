@@ -150,7 +150,9 @@ struct CmReadAuthority {
 #[derive(Debug)]
 enum CmWritePhase {
     Active,
-    Cancelling,
+    Cancelling {
+        pending_peer_error: Option<(i32, String)>,
+    },
     CheckingDigest {
         request_id: u64,
         file_num: i32,
@@ -1598,7 +1600,23 @@ fn cm_write_cancellation_authorized(
     authority: &CmWriteAuthority,
     generation: u64,
 ) -> bool {
-    authority.generation == generation && matches!(authority.phase, CmWritePhase::Cancelling)
+    authority.generation == generation
+        && matches!(authority.phase, CmWritePhase::Cancelling { .. })
+}
+
+fn cm_write_cancellation_outcome(
+    pending_peer_error: Option<(i32, String)>,
+    file_num: i32,
+    result: Result<(), String>,
+) -> Option<(i32, String)> {
+    match (pending_peer_error, result) {
+        (None, Ok(())) => None,
+        (Some(error), Ok(())) => Some(error),
+        (None, Err(error)) => Some((file_num, error)),
+        (Some((file_num, error)), Err(cleanup_error)) => {
+            Some((file_num, format!("{error}; {cleanup_error}")))
+        }
+    }
 }
 
 // R-X14 / R-T15 (line 254): the Linux-headless OS-auth limiter helpers
@@ -10938,12 +10956,14 @@ impl Connection {
         let authority = self.cm_write_jobs.get_mut(&id)?;
         if matches!(
             authority.phase,
-            CmWritePhase::Cancelling | CmWritePhase::Finalizing { .. }
+            CmWritePhase::Cancelling { .. } | CmWritePhase::Finalizing { .. }
         ) {
             return None;
         }
         let generation = authority.generation;
-        authority.phase = CmWritePhase::Cancelling;
+        authority.phase = CmWritePhase::Cancelling {
+            pending_peer_error: None,
+        };
         Some(generation)
     }
 
@@ -11302,14 +11322,20 @@ impl Connection {
                 file_num,
                 result,
             } => {
-                if !matches!(
-                    self.cm_write_jobs.get(&id),
-                    Some(authority) if cm_write_cancellation_authorized(authority, generation)
-                ) {
+                let Some(authority) = self.cm_write_jobs.get(&id) else {
+                    return;
+                };
+                if !cm_write_cancellation_authorized(authority, generation) {
                     return;
                 }
+                let CmWritePhase::Cancelling { pending_peer_error } = &authority.phase else {
+                    return;
+                };
+                let pending_peer_error = pending_peer_error.clone();
                 self.cm_write_jobs.remove(&id);
-                if let Err(error) = result {
+                if let Some((file_num, error)) =
+                    cm_write_cancellation_outcome(pending_peer_error, file_num, result)
+                {
                     self.send(fs::new_error(
                         id,
                         Self::valid_cm_file_error(error),
@@ -11412,7 +11438,9 @@ impl Connection {
                         self.send(message).await;
                     }
                     ipc::CmWriteDigestResult::Error(error) => {
-                        self.cm_write_jobs.remove(&id);
+                        authority.phase = CmWritePhase::Cancelling {
+                            pending_peer_error: Some((file_num, Self::valid_cm_file_error(error))),
+                        };
                         if let Err(cancel_error) = self
                             .send_fs(ipc::FS::CancelWrite {
                                 id,
@@ -11421,14 +11449,9 @@ impl Connection {
                             })
                             .await
                         {
-                            log::warn!("Failed to cancel CM write job {}: {}", id, cancel_error);
+                            self.cm_write_jobs.remove(&id);
+                            self.send(fs::new_error(id, cancel_error, file_num)).await;
                         }
-                        self.send(fs::new_error(
-                            id,
-                            Self::valid_cm_file_error(error),
-                            file_num,
-                        ))
-                        .await;
                     }
                 }
             }
@@ -12175,7 +12198,9 @@ mod cm_file_response_authority_tests {
         assert_eq!(active_cm_write_authority_generation(&jobs, 4), None);
         assert!(cm_write_failure_authorized(jobs.get(&4).unwrap(), 20));
 
-        jobs.get_mut(&4).unwrap().phase = CmWritePhase::Cancelling;
+        jobs.get_mut(&4).unwrap().phase = CmWritePhase::Cancelling {
+            pending_peer_error: None,
+        };
         assert_eq!(active_cm_write_authority_generation(&jobs, 4), None);
         assert!(cm_write_failure_authorized(jobs.get(&4).unwrap(), 20));
         assert!(cm_write_cancellation_authorized(
@@ -12220,9 +12245,39 @@ mod cm_file_response_authority_tests {
             true
         ));
         assert!(!cm_write_finalization_authorized(
-            &CmWritePhase::Cancelling,
+            &CmWritePhase::Cancelling {
+                pending_peer_error: None,
+            },
             true
         ));
+    }
+
+    #[test]
+    fn digest_refusal_waits_for_exact_cleanup_outcome() {
+        assert_eq!(cm_write_cancellation_outcome(None, 0, Ok(())), None);
+        assert_eq!(
+            cm_write_cancellation_outcome(None, 0, Err("cleanup failed".to_owned())),
+            Some((0, "cleanup failed".to_owned()))
+        );
+        assert_eq!(
+            cm_write_cancellation_outcome(
+                Some((2, "digest refused".to_owned())),
+                0,
+                Ok(())
+            ),
+            Some((2, "digest refused".to_owned()))
+        );
+        assert_eq!(
+            cm_write_cancellation_outcome(
+                Some((2, "digest refused".to_owned())),
+                0,
+                Err("partial receive cleanup failed: generation changed".to_owned())
+            ),
+            Some((
+                2,
+                "digest refused; partial receive cleanup failed: generation changed".to_owned()
+            ))
+        );
     }
 
     #[test]

@@ -36,6 +36,8 @@
 //!                without changing either older generation.
 //!   - `cmfilecleanupfailure` : a live receive whose staging name was replaced must report
 //!                the exact cleanup failure to the peer without deleting the replacement.
+//!   - `cmfiledigestcleanupfailure` : a rejected digest must wait for CM cancellation and
+//!                report an exact cleanup failure before retiring its peer-visible job.
 //!   - `ftreadfailure` : an unreadable direct-send source gives one terminal error for the
 //!                failed file, then the same connection confirms and reads a second file to
 //!                exact bytes and one terminal Done.
@@ -43,7 +45,7 @@
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
 //!
-//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfileauthority|cmfilereconnect|cmfilebusyowner|cmfilebusycontender|cmfilecollision|cmfilecleanupfailure|ftreadfailure] [local_addr]`  (exit 0 = matched)
+//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfileauthority|cmfilereconnect|cmfilebusyowner|cmfilebusycontender|cmfilecollision|cmfilecleanupfailure|cmfiledigestcleanupfailure|ftreadfailure] [local_addr]`  (exit 0 = matched)
 use hbb_common::cpace::run_initiator;
 use hbb_common::message_proto::{login_response, message, Message};
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
@@ -66,6 +68,7 @@ const FT_READ_FAILURE_ID: i32 = 17012;
 const FT_READ_SUCCESS_ID: i32 = 17013;
 const CM_SHORT_WRITE_ID: i32 = 17014;
 const CM_BUSY_WRITE_ID: i32 = 17015;
+const CM_DIGEST_CLEANUP_FAILURE_ID: i32 = 17016;
 const FT_READ_SUCCESS_LEN: usize = 150_001;
 const CM_PRELOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/blocked-before-login";
 const CM_POSTLOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/allowed-after-login";
@@ -1031,23 +1034,41 @@ async fn probe_cm_receive_collision(stream: &mut FramedStream, report: &mut Stri
     true
 }
 
-async fn probe_cm_receive_cleanup_failure(stream: &mut FramedStream, report: &mut String) -> bool {
+async fn probe_cm_receive_cleanup_failure(
+    stream: &mut FramedStream,
+    report: &mut String,
+    digest_refusal: bool,
+) -> bool {
     use hbb_common::message_proto::{
         file_response, FileAction, FileEntry, FileResponse, FileTransferBlock,
-        FileTransferCancel, FileTransferReceiveRequest, FileType, ReadDir,
+        FileTransferCancel, FileTransferDigest, FileTransferReceiveRequest, FileType, ReadDir,
     };
     use std::fs::OpenOptions;
     use std::io::Write;
     use std::time::Duration;
 
-    let payload = b"partial-before-cleanup-failure";
+    let (id, name, payload, marker) = if digest_refusal {
+        (
+            CM_DIGEST_CLEANUP_FAILURE_ID,
+            "digest-cleanup-failure.txt",
+            &b"partial-before-digest-cleanup-failure"[..],
+            "/tmp/rd-cm-file-replay/digest-cleanup-failure",
+        )
+    } else {
+        (
+            CM_CLEANUP_FAILURE_ID,
+            "cleanup-failure.txt",
+            &b"partial-before-cleanup-failure"[..],
+            "/tmp/rd-cm-file-replay/cleanup-failure",
+        )
+    };
     let mut action = FileAction::new();
     action.set_receive(FileTransferReceiveRequest {
-        id: CM_CLEANUP_FAILURE_ID,
+        id,
         path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
         files: vec![FileEntry {
             entry_type: FileType::File.into(),
-            name: "cleanup-failure.txt".to_owned(),
+            name: name.to_owned(),
             size: (payload.len() * 2) as u64,
             ..Default::default()
         }],
@@ -1064,7 +1085,7 @@ async fn probe_cm_receive_cleanup_failure(stream: &mut FramedStream, report: &mu
 
     let mut block = FileResponse::new();
     block.set_block(FileTransferBlock {
-        id: CM_CLEANUP_FAILURE_ID,
+        id,
         file_num: 0,
         data: payload.to_vec().into(),
         ..Default::default()
@@ -1107,9 +1128,9 @@ async fn probe_cm_receive_cleanup_failure(stream: &mut FramedStream, report: &mu
             Some(message::Union::FileResponse(response)) => match response.union {
                 Some(file_response::Union::Dir(dir)) if dir.path == CM_POSTLOGIN_CREATE_PATH => {
                     let has = |name: &str| dir.entries.iter().any(|entry| entry.name == name);
-                    staged = has("cleanup-failure.txt.download")
-                        && has("cleanup-failure.txt.digest")
-                        && has("cleanup-failure.txt.download.lock");
+                    staged = has(&format!("{name}.download"))
+                        && has(&format!("{name}.digest"))
+                        && has(&format!("{name}.download.lock"));
                     break;
                 }
                 Some(file_response::Union::Error(error)) => {
@@ -1131,11 +1152,11 @@ async fn probe_cm_receive_cleanup_failure(stream: &mut FramedStream, report: &mu
         report.push_str("[FT-CLEANUP-STAGING-MISSING] ");
         return false;
     }
-    let marker = "/tmp/rd-cm-file-replay/cleanup-failure.staged";
+    let staged_marker = format!("{marker}.staged");
     if OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(marker)
+        .open(staged_marker)
         .and_then(|mut file| file.write_all(b"staged"))
         .is_err()
     {
@@ -1144,7 +1165,7 @@ async fn probe_cm_receive_cleanup_failure(stream: &mut FramedStream, report: &mu
     }
     let mut tampered = false;
     for _ in 0..200 {
-        if std::fs::metadata("/tmp/rd-cm-file-replay/cleanup-failure.tampered").is_ok() {
+        if std::fs::metadata(format!("{marker}.tampered")).is_ok() {
             tampered = true;
             break;
         }
@@ -1155,13 +1176,24 @@ async fn probe_cm_receive_cleanup_failure(stream: &mut FramedStream, report: &mu
         return false;
     }
 
-    let mut action = FileAction::new();
-    action.set_cancel(FileTransferCancel {
-        id: CM_CLEANUP_FAILURE_ID,
-        ..Default::default()
-    });
     let mut message = Message::new();
-    message.set_file_action(action);
+    if digest_refusal {
+        let mut response = FileResponse::new();
+        response.set_digest(FileTransferDigest {
+            id,
+            file_num: 0,
+            file_size: (payload.len() * 2) as u64,
+            ..Default::default()
+        });
+        message.set_file_response(response);
+    } else {
+        let mut action = FileAction::new();
+        action.set_cancel(FileTransferCancel {
+            id,
+            ..Default::default()
+        });
+        message.set_file_action(action);
+    }
     if let Err(error) = send_probe_message(stream, message).await {
         report.push_str(&format!("[FT-CLEANUP-CANCEL-SEND-ERROR {error}] "));
         return false;
@@ -1180,18 +1212,26 @@ async fn probe_cm_receive_cleanup_failure(stream: &mut FramedStream, report: &mu
         };
         match response.union {
             Some(message::Union::FileResponse(response)) => match response.union {
-                Some(file_response::Union::Error(error)) if error.id == CM_CLEANUP_FAILURE_ID => {
+                Some(file_response::Union::Error(error)) if error.id == id => {
                     if error.file_num == 0
                         && error.error.contains("partial receive cleanup failed")
                         && error.error.contains("generation changed")
+                        && (!digest_refusal
+                            || error
+                                .error
+                                .contains("another receive job owns this destination"))
                     {
-                        report.push_str("[FT-CLEANUP-FAILURE-REPORTED id=17011] ");
+                        if digest_refusal {
+                            report.push_str("[FT-DIGEST-CLEANUP-FAILURE-REPORTED id=17016] ");
+                        } else {
+                            report.push_str("[FT-CLEANUP-FAILURE-REPORTED id=17011] ");
+                        }
                         return true;
                     }
                     report.push_str(&format!("[FT-CLEANUP-UNEXPECTED-ERROR {error:?}] "));
                     return false;
                 }
-                Some(file_response::Union::Done(done)) if done.id == CM_CLEANUP_FAILURE_ID => {
+                Some(file_response::Union::Done(done)) if done.id == id => {
                     report.push_str(&format!("[FT-CLEANUP-UNEXPECTED-DONE {done:?}] "));
                     return false;
                 }
@@ -1572,6 +1612,7 @@ fn main() {
         || mode == "cmfilebusycontender"
         || mode == "cmfilecollision"
         || mode == "cmfilecleanupfailure"
+        || mode == "cmfiledigestcleanupfailure"
         || mode == "ftreadfailure";
     // Optional local source address (6th arg) — e.g. 127.0.0.2:0 to connect as a DIFFERENT source,
     // for the R-A8.2 owner-safe limiter test (a flood from one source must not block another).
@@ -1724,6 +1765,7 @@ fn main() {
                         || mode == "cmfilebusycontender"
                         || mode == "cmfilecollision"
                         || mode == "cmfilecleanupfailure"
+                        || mode == "cmfiledigestcleanupfailure"
                         || mode == "ftreadfailure"
                     {
                         // R-F1/R-F2 END-TO-END against a headless unix --server. Before the fix this box
@@ -1910,6 +1952,7 @@ fn main() {
                                 || mode == "cmfilebusycontender"
                                 || mode == "cmfilecollision"
                                 || mode == "cmfilecleanupfailure"
+                                || mode == "cmfiledigestcleanupfailure"
                                 || mode == "ftreadfailure")
                                 && !received_directory)
                             || (mode == "cmfileauthority" && (!received_directory || !created))
@@ -1940,8 +1983,14 @@ fn main() {
                             && !probe_cm_receive_collision(&mut stream, &mut pk).await
                         {
                             return (true, pk, false, true);
-                        } else if mode == "cmfilecleanupfailure"
-                            && !probe_cm_receive_cleanup_failure(&mut stream, &mut pk).await
+                        } else if (mode == "cmfilecleanupfailure"
+                            || mode == "cmfiledigestcleanupfailure")
+                            && !probe_cm_receive_cleanup_failure(
+                                &mut stream,
+                                &mut pk,
+                                mode == "cmfiledigestcleanupfailure",
+                            )
+                            .await
                         {
                             return (true, pk, false, true);
                         } else if mode == "ftreadfailure"
@@ -1964,6 +2013,7 @@ fn main() {
                             || mode == "cmfilebusycontender"
                             || mode == "cmfilecollision"
                             || mode == "cmfilecleanupfailure"
+                            || mode == "cmfiledigestcleanupfailure"
                             || mode == "ftreadfailure"
                         {
                             break;
@@ -2061,6 +2111,7 @@ fn main() {
             && mode != "cmfilebusycontender"
             && mode != "cmfilecollision"
             && mode != "cmfilecleanupfailure"
+            && mode != "cmfiledigestcleanupfailure"
             && mode != "ftreadfailure")
             || file_transfer_ok)
         && (mode != "login" || remote_login_ok);

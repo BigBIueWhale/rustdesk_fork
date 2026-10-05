@@ -681,6 +681,20 @@ EOS
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
+    if digest_unit_output=$(timeout --signal=TERM --kill-after=5s 15s \
+        /smoke-target/production-viewer-file-tests --nocapture --test-threads=1 \
+        digest_refusal_waits_for_exact_cleanup_outcome 2>&1); then
+      digest_unit_status=0
+    else
+      digest_unit_status=$?
+    fi
+    printf '%s\n' "$digest_unit_output"
+    [ "$digest_unit_status" -eq 0 ]
+    [ "$(grep -Ec '^test .*::digest_refusal_waits_for_exact_cleanup_outcome \.\.\. ok$' \
+        <<<"$digest_unit_output")" -eq 1 ]
+    [ "$(grep -Ec '^test result: ok\. 1 passed; 0 failed; 0 ignored; [0-9]+ measured; [0-9]+ filtered out;' \
+        <<<"$digest_unit_output")" -eq 1 ]
+    printf 'CM_DIGEST_CLEANUP_UNIT=pass exact-test=1\n'
     if ! /smoke-target/debug/examples/seed_password 'Str0ng-Test-Pw-123' \
         >/tmp/cm-file-seed.log 2>&1; then
       printf 'SEED_FAIL\n' >&2
@@ -883,14 +897,15 @@ EOS
     [ ! -e "$HOME/cleanup-failure.staged" ] && [ ! -L "$HOME/cleanup-failure.staged" ] \
       && [ ! -e "$HOME/cleanup-failure.tampered" ] && [ ! -L "$HOME/cleanup-failure.tampered" ]
     tamper_cm_receive_staging() {
-      local attempt base="$HOME/allowed-after-login/cleanup-failure.txt"
+      local name=$1 expected=$2 marker=$3 attempt
+      local base="$HOME/allowed-after-login/$name"
       for ((attempt=0; attempt<400; ++attempt)); do
-        [ -f "$HOME/cleanup-failure.staged" ] && break
+        [ -f "$HOME/$marker.staged" ] && break
         sleep 0.05
       done
-      [ -f "$HOME/cleanup-failure.staged" ]
+      [ -f "$HOME/$marker.staged" ]
       [ -f "$base.download" ] && [ ! -L "$base.download" ] \
-        && cmp -s -- "$base.download" <(printf '%s' 'partial-before-cleanup-failure')
+        && cmp -s -- "$base.download" <(printf '%s' "$expected")
       [ -f "$base.digest" ] && [ ! -L "$base.digest" ]
       [ -f "$base.download.lock" ] && [ ! -L "$base.download.lock" ]
       [ ! -e "$base" ] && [ ! -L "$base" ] \
@@ -898,9 +913,10 @@ EOS
       mv -- "$base.download" "$base.displaced-download"
       printf '%s' 'replacement-generation-must-survive' >"$base.download"
       chmod 0600 "$base.download"
-      printf '%s' 'tampered' >"$HOME/cleanup-failure.tampered"
+      printf '%s' 'tampered' >"$HOME/$marker.tampered"
     }
-    tamper_cm_receive_staging &
+    tamper_cm_receive_staging cleanup-failure.txt \
+      partial-before-cleanup-failure cleanup-failure &
     TAMPER_PID=$!
     if cleanup_output=$(timeout --signal=TERM --kill-after=5s 30s \
         /smoke-target/debug/examples/probe_client \
@@ -927,6 +943,40 @@ EOS
       && cmp -s -- "$base.download" <(printf '%s' 'replacement-generation-must-survive')
     [ -f "$base.displaced-download" ] && [ ! -L "$base.displaced-download" ] \
       && cmp -s -- "$base.displaced-download" <(printf '%s' 'partial-before-cleanup-failure')
+    [ ! -e "$base.digest" ] && [ ! -L "$base.digest" ]
+    [ -f "$base.download.lock" ] && [ ! -L "$base.download.lock" ]
+    [ ! -e "$HOME/digest-cleanup-failure.staged" ] \
+      && [ ! -L "$HOME/digest-cleanup-failure.staged" ] \
+      && [ ! -e "$HOME/digest-cleanup-failure.tampered" ] \
+      && [ ! -L "$HOME/digest-cleanup-failure.tampered" ]
+    tamper_cm_receive_staging digest-cleanup-failure.txt \
+      partial-before-digest-cleanup-failure digest-cleanup-failure &
+    TAMPER_PID=$!
+    if digest_cleanup_output=$(timeout --signal=TERM --kill-after=5s 30s \
+        /smoke-target/debug/examples/probe_client \
+        '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfiledigestcleanupfailure 2>&1); then
+      digest_cleanup_status=0
+    else
+      digest_cleanup_status=$?
+    fi
+    printf '%s\n' "$digest_cleanup_output"
+    wait "$TAMPER_PID"
+    TAMPER_PID=
+    if [ "$digest_cleanup_status" -ne 0 ]; then
+      tail -n 120 /tmp/cm-file-server.log >&2
+      exit "$digest_cleanup_status"
+    fi
+    [ "$(grep -Fc '[FT-DIGEST-CLEANUP-FAILURE-REPORTED id=17016]' <<<"$digest_cleanup_output")" -eq 1 ]
+    grep -Fxq 'probe_client: PASS' <<<"$digest_cleanup_output"
+    "$READY" --is-running "$SRV" "$SRV_START"
+    base="$HOME/allowed-after-login/digest-cleanup-failure.txt"
+    [ ! -e "$base" ] && [ ! -L "$base" ]
+    [ -f "$base.download" ] && [ ! -L "$base.download" ] \
+      && [ "$(stat -c '%u:%g:%a' -- "$base.download")" = "$(id -u):$(id -g):600" ] \
+      && cmp -s -- "$base.download" <(printf '%s' 'replacement-generation-must-survive')
+    [ -f "$base.displaced-download" ] && [ ! -L "$base.displaced-download" ] \
+      && cmp -s -- "$base.displaced-download" \
+        <(printf '%s' 'partial-before-digest-cleanup-failure')
     [ ! -e "$base.digest" ] && [ ! -L "$base.digest" ]
     [ -f "$base.download.lock" ] && [ ! -L "$base.download.lock" ]
     source="$HOME/allowed-after-login/unreadable-source.txt"
@@ -1029,7 +1079,7 @@ EOS
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes live-owner=contender-refused-first-commit sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved viewer-after-refusal=new-connection-exact-bytes network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes live-owner=contender-refused-first-commit sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved digest-cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved viewer-after-refusal=new-connection-exact-bytes network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

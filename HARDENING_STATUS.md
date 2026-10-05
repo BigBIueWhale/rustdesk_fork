@@ -12743,6 +12743,21 @@ its fixed `id`, `registry_generation`, `action`, and `log` fields prevent action
 text from selecting an authority field. No blanket assertion for every possible
 CM side effect is made.
 
+**Linux `_pa` CM-peer identity — source corrected, native audio OPEN.**
+Pushed `cc532359` replaces the bare-ID peer map, which allowed an overlapping
+registration and stale cleanup to replace or erase another connection's
+identity. The map now refuses an occupied ID, retires only the exact CM token,
+and returns an audio subscriber's identity only for a published, nonretiring
+authenticated connection with that token; generic bare-ID cleanup is gone.
+Exact pushed `cfe17091` passed 64 Linux-target Rust tests, including three
+new owner/collision/stale-retirement cases, in a zero-NIC VM with no
+harness-added host listener and joined cleanup. The retained 68,804-byte
+serial is `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.BYlvVKe6x6.serial.log`
+(SHA-256 `888043a08024a195d65135f3845e50f024eeac1eaef68f9e6f7b88165e55686f`).
+No run directory or overlay remains. Native `_pa` capture, installed-service
+principal and revocation races, and connection-ID wrap/cross-kind allocation
+are not established by these unit tests and remain OPEN.
+
 Dart receives generation-bearing events and validates exact live `ServerModel`
 ownership and connection ID before changing client, tab, file-job, or speed state.
 Desktop and mobile use one non-overlapping 500-ms full-snapshot repair turn. It

@@ -655,6 +655,9 @@ EOS
     mkdir -m 0700 "$HOME"
     TAMPER_PID=
     BUSY_OWNER_PID=
+    BUSY_OWNER_START=
+    SAME_PEER_SUCCESSOR_PID=
+    SAME_PEER_SUCCESSOR_START=
     [ ! -e "$HOME/blocked-before-login" ] && [ ! -L "$HOME/blocked-before-login" ] \
       && [ ! -e "$HOME/allowed-after-login" ] && [ ! -L "$HOME/allowed-after-login" ]
     cleanup_cm_file_replay() {
@@ -666,9 +669,22 @@ EOS
         TAMPER_PID=
       fi
       if [ -n "$BUSY_OWNER_PID" ]; then
-        kill -TERM "$BUSY_OWNER_PID" 2>/dev/null || true
+        if [ -n "$BUSY_OWNER_START" ] \
+            && "$READY" --is-running "$BUSY_OWNER_PID" "$BUSY_OWNER_START" 2>/dev/null; then
+          kill -TERM "$BUSY_OWNER_PID" 2>/dev/null || true
+        fi
         wait "$BUSY_OWNER_PID" 2>/dev/null || true
         BUSY_OWNER_PID=
+        BUSY_OWNER_START=
+      fi
+      if [ -n "$SAME_PEER_SUCCESSOR_PID" ]; then
+        if [ -n "$SAME_PEER_SUCCESSOR_START" ] \
+            && "$READY" --is-running "$SAME_PEER_SUCCESSOR_PID" "$SAME_PEER_SUCCESSOR_START" 2>/dev/null; then
+          kill -TERM "$SAME_PEER_SUCCESSOR_PID" 2>/dev/null || true
+        fi
+        wait "$SAME_PEER_SUCCESSOR_PID" 2>/dev/null || true
+        SAME_PEER_SUCCESSOR_PID=
+        SAME_PEER_SUCCESSOR_START=
       fi
       if [ -n "$SRV" ] && [ -n "$SRV_START" ] \
           && "$READY" --is-running "$SRV" "$SRV_START" 2>/dev/null; then
@@ -802,9 +818,10 @@ EOS
       '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfilebusyowner \
       >/tmp/cm-file-busy-owner.log 2>&1 &
     BUSY_OWNER_PID=$!
+    BUSY_OWNER_START=$($READY --identity "$BUSY_OWNER_PID")
     for ((attempt=0; attempt<200; ++attempt)); do
       [ -f "$HOME/busy-owner.staged" ] && break
-      if ! kill -0 "$BUSY_OWNER_PID" 2>/dev/null; then
+      if ! "$READY" --is-running "$BUSY_OWNER_PID" "$BUSY_OWNER_START"; then
         printf 'CM_BUSY_OWNER_EXITED_BEFORE_STAGING\n' >&2
         tail -n 60 /tmp/cm-file-busy-owner.log >&2
         exit 1
@@ -837,6 +854,28 @@ EOS
       <(printf '%s' 'first-live-owner-exact-bytes-0123456789')
     [ "$(sha256sum -- "$HOME/allowed-after-login/contended.txt.digest")" = "$busy_digest_before" ]
     [ "$(stat -c '%d:%i' -- "$HOME/allowed-after-login/contended.txt.download.lock")" = "$busy_lock_before" ]
+    [ ! -e "$HOME/same-peer-successor.ready" ] && [ ! -L "$HOME/same-peer-successor.ready" ]
+    [ ! -e "$HOME/same-peer-successor.release" ] && [ ! -L "$HOME/same-peer-successor.release" ]
+    timeout --signal=TERM --kill-after=5s 40s \
+      /smoke-target/debug/examples/probe_client \
+      '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfilesamepeersuccessor \
+      >/tmp/cm-file-same-peer-successor.log 2>&1 &
+    SAME_PEER_SUCCESSOR_PID=$!
+    SAME_PEER_SUCCESSOR_START=$($READY --identity "$SAME_PEER_SUCCESSOR_PID")
+    for ((attempt=0; attempt<200; ++attempt)); do
+      [ -f "$HOME/same-peer-successor.ready" ] && break
+      if ! "$READY" --is-running "$SAME_PEER_SUCCESSOR_PID" "$SAME_PEER_SUCCESSOR_START"; then
+        printf 'CM_SAME_PEER_SUCCESSOR_EXITED_BEFORE_READY\n' >&2
+        tail -n 60 /tmp/cm-file-same-peer-successor.log >&2
+        exit 1
+      fi
+      sleep 0.05
+    done
+    [ -f "$HOME/same-peer-successor.ready" ] && [ ! -L "$HOME/same-peer-successor.ready" ]
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$HOME/same-peer-successor.ready")" = "$(id -u):$(id -g):600:1:0" ]
+    "$READY" --is-running "$SAME_PEER_SUCCESSOR_PID" "$SAME_PEER_SUCCESSOR_START"
+    "$READY" --is-running "$BUSY_OWNER_PID" "$BUSY_OWNER_START"
+    [ ! -e "$HOME/allowed-after-login/contended.txt" ]
     : >"$HOME/busy-owner.release"
     if wait "$BUSY_OWNER_PID"; then
       busy_owner_status=0
@@ -844,6 +883,7 @@ EOS
       busy_owner_status=$?
     fi
     BUSY_OWNER_PID=
+    BUSY_OWNER_START=
     busy_owner_output=$(</tmp/cm-file-busy-owner.log)
     printf '%s\n' "$busy_owner_output"
     [ "$busy_owner_status" -eq 0 ]
@@ -858,6 +898,22 @@ EOS
       [ ! -e "$HOME/allowed-after-login/contended.txt$suffix" ] \
         && [ ! -L "$HOME/allowed-after-login/contended.txt$suffix" ]
     done
+    "$READY" --is-running "$SAME_PEER_SUCCESSOR_PID" "$SAME_PEER_SUCCESSOR_START"
+    : >"$HOME/same-peer-successor.release"
+    if wait "$SAME_PEER_SUCCESSOR_PID"; then
+      same_peer_successor_status=0
+    else
+      same_peer_successor_status=$?
+    fi
+    SAME_PEER_SUCCESSOR_PID=
+    SAME_PEER_SUCCESSOR_START=
+    same_peer_successor_output=$(</tmp/cm-file-same-peer-successor.log)
+    printf '%s\n' "$same_peer_successor_output"
+    [ "$same_peer_successor_status" -eq 0 ]
+    [ "$(grep -Fc '[FT-DIR-RESPONSE path=' <<<"$same_peer_successor_output")" -eq 1 ]
+    [ "$(grep -Fc '[FT-SAME-PEER-SUCCESSOR-DIR after_predecessor=true committed=true]' <<<"$same_peer_successor_output")" -eq 1 ]
+    grep -Fxq 'probe_client: PASS' <<<"$same_peer_successor_output"
+    "$READY" --is-running "$SRV" "$SRV_START"
     printf '%s' 'older-download-generation-0123456789' \
       >"$HOME/allowed-after-login/collision-download.txt.download"
     printf '%s' 'older-digest-generation-abcdefghij' \
@@ -1079,7 +1135,7 @@ EOS
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes live-owner=contender-refused-first-commit sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved digest-cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved viewer-after-refusal=new-connection-exact-bytes network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes live-owner=contender-refused-first-commit same-peer-overlap=successor-serves-after-predecessor-retire sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved digest-cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved viewer-after-refusal=new-connection-exact-bytes network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

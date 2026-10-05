@@ -34,6 +34,9 @@
 //!   - `cmfilebusyowner` / `cmfilebusycontender` : two live keyed FileTransfer connections use
 //!                the same write ID and destination; the second must be refused without
 //!                disturbing the first owner's staged bytes or final commit.
+//!   - `cmfilesamepeersuccessor` : while a same-peer FileTransfer predecessor owns a live
+//!                receive, retain a second keyed CM connection and require a fresh directory
+//!                reply after the predecessor exits and commits its file.
 //!   - `cmfilecollision` : a new receive must refuse two pre-existing fixed sidecar names
 //!                without changing either older generation.
 //!   - `cmfilecleanupfailure` : a live receive whose staging name was replaced must report
@@ -47,7 +50,7 @@
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
 //!
-//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfilestop|cmfileauthority|cmfilereconnect|cmfilebusyowner|cmfilebusycontender|cmfilecollision|cmfilecleanupfailure|cmfiledigestcleanupfailure|ftreadfailure] [local_addr]`  (exit 0 = matched)
+//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfilestop|cmfileauthority|cmfilereconnect|cmfilebusyowner|cmfilebusycontender|cmfilesamepeersuccessor|cmfilecollision|cmfilecleanupfailure|cmfiledigestcleanupfailure|ftreadfailure] [local_addr]`  (exit 0 = matched)
 use hbb_common::cpace::run_initiator;
 use hbb_common::message_proto::{login_response, message, Message};
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
@@ -81,6 +84,8 @@ const CM_RECONNECT_PAYLOAD: &[u8] = b"new-owner-after-abrupt-loss-0123456789";
 const CM_BUSY_PAYLOAD: &[u8] = b"first-live-owner-exact-bytes-0123456789";
 const CM_BUSY_STAGE_MARKER: &str = "/tmp/rd-cm-file-replay/busy-owner.staged";
 const CM_BUSY_RELEASE_MARKER: &str = "/tmp/rd-cm-file-replay/busy-owner.release";
+const CM_SAME_PEER_READY_MARKER: &str = "/tmp/rd-cm-file-replay/same-peer-successor.ready";
+const CM_SAME_PEER_RELEASE_MARKER: &str = "/tmp/rd-cm-file-replay/same-peer-successor.release";
 const CM_LIVE_STOP_READY_MARKER: &str = "/tmp/android-emulator-app/cm-live-ready";
 const CM_LIVE_STOP_ARM_MARKER: &str = "/tmp/android-emulator-app/cm-live-arm";
 const CM_LIVE_STOP_ARMED_MARKER: &str = "/tmp/android-emulator-app/cm-live-armed";
@@ -1089,6 +1094,95 @@ async fn probe_cm_receive_busy(
     false
 }
 
+async fn probe_cm_same_peer_successor(stream: &mut FramedStream, report: &mut String) -> bool {
+    use hbb_common::message_proto::{file_response, FileAction, ReadDir};
+    use std::time::Duration;
+
+    if std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(CM_SAME_PEER_READY_MARKER)
+        .is_err()
+    {
+        report.push_str("[FT-SAME-PEER-READY-FAILED] ");
+        return false;
+    }
+    let deadline = hbb_common::tokio::time::Instant::now() + Duration::from_secs(20);
+    loop {
+        match std::fs::symlink_metadata(CM_SAME_PEER_RELEASE_MARKER) {
+            Ok(metadata) if metadata.file_type().is_file() && metadata.len() == 0 => break,
+            Ok(_) => {
+                report.push_str("[FT-SAME-PEER-RELEASE-INVALID] ");
+                return false;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => {
+                report.push_str("[FT-SAME-PEER-RELEASE-FAILED] ");
+                return false;
+            }
+        }
+        if hbb_common::tokio::time::Instant::now() >= deadline {
+            report.push_str("[FT-SAME-PEER-RELEASE-TIMEOUT] ");
+            return false;
+        }
+        hbb_common::tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    let mut action = FileAction::new();
+    action.set_read_dir(ReadDir {
+        path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
+        include_hidden: true,
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_action(action);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-SAME-PEER-READDIR-SEND-ERROR {error}] "));
+        return false;
+    }
+    for _ in 0..3 {
+        let Some(Ok(bytes)) = stream.next_timeout(4000).await else {
+            report.push_str("[FT-SAME-PEER-NO-RESPONSE] ");
+            return false;
+        };
+        match Message::parse_from_bytes(&bytes).map(|message| message.union) {
+            Ok(Some(message::Union::FileResponse(response))) => match response.union {
+                Some(file_response::Union::Dir(dir))
+                    if dir.path == CM_POSTLOGIN_CREATE_PATH =>
+                {
+                    if dir.entries.iter().any(|entry| entry.name == "contended.txt")
+                        && !dir.entries.iter().any(|entry| {
+                            matches!(
+                                entry.name.as_str(),
+                                "contended.txt.download"
+                                    | "contended.txt.digest"
+                                    | "contended.txt.download.lock"
+                            )
+                        })
+                    {
+                        report.push_str("[FT-SAME-PEER-SUCCESSOR-DIR after_predecessor=true committed=true] ");
+                        return true;
+                    }
+                    report.push_str("[FT-SAME-PEER-COMMIT-ABSENT] ");
+                    return false;
+                }
+                Some(file_response::Union::Error(error)) => {
+                    report.push_str(&format!("[FT-SAME-PEER-FILE-ERROR {error:?}] "));
+                    return false;
+                }
+                _ => {}
+            },
+            Ok(_) => {}
+            Err(error) => {
+                report.push_str(&format!("[FT-SAME-PEER-PARSE-ERROR {error}] "));
+                return false;
+            }
+        }
+    }
+    report.push_str("[FT-SAME-PEER-DIR-MISSING] ");
+    false
+}
+
 async fn probe_cm_receive_collision(stream: &mut FramedStream, report: &mut String) -> bool {
     use hbb_common::message_proto::{
         file_response, FileAction, FileEntry, FileResponse, FileTransferBlock,
@@ -1757,6 +1851,7 @@ fn main() {
         || mode == "cmfilereconnect"
         || mode == "cmfilebusyowner"
         || mode == "cmfilebusycontender"
+        || mode == "cmfilesamepeersuccessor"
         || mode == "cmfilecollision"
         || mode == "cmfilecleanupfailure"
         || mode == "cmfiledigestcleanupfailure"
@@ -1911,6 +2006,7 @@ fn main() {
                         || mode == "cmfilereconnect"
                         || mode == "cmfilebusyowner"
                         || mode == "cmfilebusycontender"
+                        || mode == "cmfilesamepeersuccessor"
                         || mode == "cmfilecollision"
                         || mode == "cmfilecleanupfailure"
                         || mode == "cmfiledigestcleanupfailure"
@@ -1999,6 +2095,7 @@ fn main() {
                                             && mode != "cmfileauthority"
                                             && mode != "ftreadfailure"
                                             && mode != "cmfilestop"
+                                            && mode != "cmfilesamepeersuccessor"
                                         {
                                             let mut fa = FileAction::new();
                                             fa.set_read_dir(ReadDir {
@@ -2102,6 +2199,7 @@ fn main() {
                                 || mode == "cmfilereconnect"
                                 || mode == "cmfilebusyowner"
                                 || mode == "cmfilebusycontender"
+                                || mode == "cmfilesamepeersuccessor"
                                 || mode == "cmfilecollision"
                                 || mode == "cmfilecleanupfailure"
                                 || mode == "cmfiledigestcleanupfailure"
@@ -2133,6 +2231,10 @@ fn main() {
                                 mode == "cmfilebusyowner",
                             )
                             .await
+                        {
+                            return (true, pk, false, true);
+                        } else if mode == "cmfilesamepeersuccessor"
+                            && !probe_cm_same_peer_successor(&mut stream, &mut pk).await
                         {
                             return (true, pk, false, true);
                         } else if mode == "cmfilecollision"
@@ -2168,6 +2270,7 @@ fn main() {
                             || mode == "cmfilereconnect"
                             || mode == "cmfilebusyowner"
                             || mode == "cmfilebusycontender"
+                            || mode == "cmfilesamepeersuccessor"
                             || mode == "cmfilecollision"
                             || mode == "cmfilecleanupfailure"
                             || mode == "cmfiledigestcleanupfailure"
@@ -2267,6 +2370,7 @@ fn main() {
             && mode != "cmfilereconnect"
             && mode != "cmfilebusyowner"
             && mode != "cmfilebusycontender"
+            && mode != "cmfilesamepeersuccessor"
             && mode != "cmfilecollision"
             && mode != "cmfilecleanupfailure"
             && mode != "cmfiledigestcleanupfailure"

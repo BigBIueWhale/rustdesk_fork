@@ -60,6 +60,15 @@ const val MAX_SCREEN_SIZE = 1200
 
 class MainService : Service() {
 
+    private data class ControlledConnectionAdmission(
+        val id: Int,
+        val registryGeneration: Long,
+        val username: String,
+        val peerId: String,
+        val authorized: Boolean,
+        val connectionType: ControlledConnectionType,
+    )
+
     @Keep
     @RequiresApi(Build.VERSION_CODES.N)
     @Synchronized
@@ -116,83 +125,99 @@ class MainService : Service() {
 
     @Keep
     @Synchronized
+    fun rustAdmitControlledConnection(generation: Long, clientJson: String): Boolean {
+        if (generation <= 0L || generation != nativeServerGeneration ||
+            !serviceGenerationOwner.isCommitted(generation) || !acceptingControlledConnections
+        ) {
+            Log.w(logTag, "Rejected controlled connection without an active Service generation")
+            return false
+        }
+        val request = try {
+            val jsonObject = JSONObject(clientJson)
+            val connectionType = ControlledConnectionType.fromWireTag(
+                jsonObject.getJSONObject("conn_type").getString("t")
+            ) ?: return false
+            ControlledConnectionAdmission(
+                jsonObject["id"] as Int,
+                jsonObject.getLong("registry_generation"),
+                jsonObject["name"] as String,
+                jsonObject["peer_id"] as String,
+                jsonObject["authorized"] as Boolean,
+                connectionType,
+            )
+        } catch (e: JSONException) {
+            Log.e(logTag, "Rejected malformed controlled connection admission", e)
+            return false
+        } catch (e: ClassCastException) {
+            Log.e(logTag, "Rejected wrong-typed controlled connection admission", e)
+            return false
+        }
+        val previousRegistryGeneration = controlledCaptureOwners.registryGeneration(request.id)
+        if (!controlledCaptureOwners.upsert(
+                request.id, request.registryGeneration, request.authorized, request.connectionType,
+            )
+        ) {
+            Log.e(logTag, "Rejected invalid or stale controlled capture owner: ${request.id}")
+            return false
+        }
+        if (previousRegistryGeneration != null) {
+            try {
+                InputService.ctx?.retireInputOwner(
+                    ControlledInputOwner(generation, request.id, previousRegistryGeneration)
+                )
+                if (!VoiceCallAudioCoordinator.unregisterControlledConnection(
+                        generation, request.id, previousRegistryGeneration,
+                    )
+                ) {
+                    Log.e(logTag, "Failed to retire superseded controlled voice owner: ${request.id}")
+                }
+            } catch (e: RuntimeException) {
+                Log.e(logTag, "Failed to retire predecessor resources after controlled admission", e)
+            }
+            try {
+                cancelNotification(request.id)
+            } catch (e: RuntimeException) {
+                Log.e(logTag, "Failed to retire predecessor notification", e)
+            }
+        }
+        if (request.connectionType.allowsVoiceCall) {
+            try {
+                if (!VoiceCallAudioCoordinator.registerControlledConnection(
+                        generation, request.id, request.registryGeneration,
+                    )
+                ) {
+                    Log.e(logTag, "Failed to register controlled voice owner: ${request.id}")
+                }
+            } catch (e: RuntimeException) {
+                Log.e(logTag, "Failed to register controlled voice owner", e)
+            }
+        }
+        try {
+            reconcileControlledCaptureDemand()
+        } catch (e: RuntimeException) {
+            Log.e(logTag, "Failed to reconcile admitted controlled capture demand", e)
+        }
+        try {
+            val type = if (request.connectionType == ControlledConnectionType.FILE_TRANSFER) {
+                translate("Transfer file")
+            } else {
+                translate("Share screen")
+            }
+            if (request.authorized) {
+                onClientAuthorizedNotification(request.id, type, request.username, request.peerId)
+            } else {
+                loginRequestNotification(request.id, type, request.username, request.peerId)
+            }
+        } catch (e: RuntimeException) {
+            Log.e(logTag, "Failed to publish admitted controlled connection notification", e)
+        }
+        return true
+    }
+
+    @Keep
+    @Synchronized
     fun rustSetByName(name: String, arg1: String, arg2: String) {
         when (name) {
-            "add_connection" -> {
-                if (!acceptingControlledConnections) {
-                    Log.w(logTag, "Rejected controlled connection while service is stopping")
-                    return
-                }
-                try {
-                    val jsonObject = JSONObject(arg1)
-                    val id = jsonObject["id"] as Int
-                    val registryGeneration = jsonObject.getLong("registry_generation")
-                    val username = jsonObject["name"] as String
-                    val peerId = jsonObject["peer_id"] as String
-                    val authorized = jsonObject["authorized"] as Boolean
-                    val connectionType = ControlledConnectionType.fromWireTag(
-                        jsonObject.getJSONObject("conn_type").getString("t")
-                    )
-                    if (connectionType == null) {
-                        Log.e(logTag, "Rejected unknown controlled connection type")
-                        return
-                    }
-                    val previousRegistryGeneration =
-                        controlledCaptureOwners.registryGeneration(id)
-                    if (!controlledCaptureOwners.upsert(
-                            id,
-                            registryGeneration,
-                            authorized,
-                            connectionType,
-                        )
-                    ) {
-                        Log.e(logTag, "Rejected invalid controlled capture owner: $id")
-                        return
-                    }
-                    if (previousRegistryGeneration != null) {
-                        InputService.ctx?.retireInputOwner(
-                            ControlledInputOwner(
-                                nativeServerGeneration,
-                                id,
-                                previousRegistryGeneration,
-                            )
-                        )
-                        if (!VoiceCallAudioCoordinator.unregisterControlledConnection(
-                                nativeServerGeneration,
-                                id,
-                                previousRegistryGeneration,
-                            )
-                        ) {
-                            Log.e(logTag, "Failed to retire superseded controlled voice owner: $id")
-                        }
-                        cancelNotification(id)
-                    }
-                    // R-S14/R-S19: resource authority comes from the exact AuthConnType carried
-                    // by Rust, never by reconstructing Remote from parallel presentation fields.
-                    if (connectionType.allowsVoiceCall &&
-                        !VoiceCallAudioCoordinator.registerControlledConnection(
-                            nativeServerGeneration,
-                            id,
-                            registryGeneration,
-                        )
-                    ) {
-                        Log.e(logTag, "Rejected invalid controlled voice-call owner: $id")
-                    }
-                    reconcileControlledCaptureDemand()
-                    val type = if (connectionType == ControlledConnectionType.FILE_TRANSFER) {
-                        translate("Transfer file")
-                    } else {
-                        translate("Share screen")
-                    }
-                    if (authorized) {
-                        onClientAuthorizedNotification(id, type, username, peerId)
-                    } else {
-                        loginRequestNotification(id, type, username, peerId)
-                    }
-                } catch (e: JSONException) {
-                    e.printStackTrace()
-                }
-            }
             "remove_connection" -> {
                 val id = arg1.toIntOrNull()
                 val registryGeneration = arg2.toLongOrNull()

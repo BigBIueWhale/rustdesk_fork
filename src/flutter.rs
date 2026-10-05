@@ -3058,10 +3058,14 @@ pub fn send_clipboard_msg(msg: Message, _is_file: bool) {
 pub mod connection_manager {
     use std::collections::HashMap;
 
+    use hbb_common::log;
     #[cfg(target_os = "android")]
-    use hbb_common::{bail, log, ResultType};
+    use hbb_common::{bail, ResultType};
     #[cfg(any(target_os = "android"))]
-    use scrap::android::call_main_service_set_by_name_for_generation;
+    use scrap::android::{
+        call_main_service_admit_controlled_connection_for_generation,
+        call_main_service_set_by_name_for_generation,
+    };
     use serde_json::json;
 
     use crate::ui_cm_interface::InvokeUiCM;
@@ -3076,19 +3080,32 @@ pub mod connection_manager {
 
     impl InvokeUiCM for FlutterHandler {
         //TODO port_forward
-        fn add_connection(&self, client: &crate::ui_cm_interface::Client) {
-            let client_json = serde_json::to_string(&client).unwrap_or("".into());
-            // send to Android service, active notification no matter UI is shown or not.
+        fn admit_connection(&self, client: &crate::ui_cm_interface::Client) -> Result<(), String> {
             #[cfg(target_os = "android")]
-            if let Err(e) = call_main_service_set_by_name_for_generation(
-                self.service_generation,
-                "add_connection",
-                Some(&client_json),
-                None,
-            ) {
-                log::debug!("call_main_service_set_by_name fail,{}", e);
+            {
+                let client_json = serde_json::to_string(client).map_err(|error| error.to_string())?;
+                match call_main_service_admit_controlled_connection_for_generation(
+                    self.service_generation,
+                    &client_json,
+                ) {
+                    Ok(true) => {}
+                    Ok(false) => return Err("MainService rejected the controlled connection".to_owned()),
+                    Err(error) => return Err(format!("MainService admission callback failed: {error}")),
+                }
             }
-            // send to UI, refresh widget
+            #[cfg(not(target_os = "android"))]
+            let _ = client;
+            Ok(())
+        }
+
+        fn publish_connection(&self, client: &crate::ui_cm_interface::Client) {
+            let client_json = match serde_json::to_string(client) {
+                Ok(json) => json,
+                Err(error) => {
+                    log::error!("cannot publish admitted CM client to Flutter: {error}");
+                    return;
+                }
+            };
             self.push_event("add_connection", &[("client", &client_json)]);
         }
 

@@ -2114,6 +2114,7 @@ run_focused_rust_tests() {
             ui_cm_interface::tests::r_s11iu_android_cm_future_terminally_retires_its_registry_owner
             ui_cm_interface::tests::r_s11iu_android_terminal_preempts_queued_file_work
             ui_cm_interface::tests::r_s11iu_android_cm_future_cancellation_retires_its_registry_owner
+            ui_cm_interface::tests::r_s11iu_refused_android_callback_preserves_the_existing_cm_owner
             ui_cm_interface::tests::r_s11iu_superseded_android_cm_owner_cannot_dispatch_filesystem_work
             ui_cm_interface::tests::r_s11iu_stale_owner_cannot_mutate_or_retire_a_reused_client_id
             ui_cm_interface::tests::r_s11iu_registry_rejects_stale_and_same_source_active_collisions

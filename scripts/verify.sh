@@ -15986,7 +15986,7 @@ projection_release_block=$(sed -n '/private fun releaseMediaProjection/,/private
 projection_install_block=$(sed -n '/private fun installMediaProjection/,/private fun onMediaProjectionStopped/p' "$r_s14_kt")
 projection_stop_block=$(sed -n '/private fun onMediaProjectionStopped/,/private fun releaseControlledConnectionResources()/p' "$r_s14_kt")
 virtual_display_block=$(sed -n '/private fun createOrSetVirtualDisplay/,/private fun initNotification/p' "$r_s14_kt")
-add_connection_block=$(sed -n '/"add_connection" -> {/,/"remove_connection" -> {/p' "$r_s14_kt")
+add_connection_block=$(sed -n '/fun rustAdmitControlledConnection(/,/fun rustSetByName(/p' "$r_s14_kt")
 remove_connection_kt_block=$(sed -n '/"remove_connection" -> {/,/"update_voice_call_state" -> {/p' "$r_s14_kt")
 resource_release_block=$(sed -n '/private fun releaseControlledConnectionResources()/,/fun checkMediaPermission()/p' "$r_s14_kt")
 generation_start_block=$(sed -n '/private fun initializeControlledServiceGeneration()/,/private fun retireControlledServiceGeneration/p' "$r_s14_kt")
@@ -16047,10 +16047,10 @@ printf '%s\n' "$virtual_display_block" | grep -qF 'catch (e: SecurityException)'
 printf '%s\n' "$virtual_display_block" | grep -qF 'catch (e: IllegalStateException)' || r_s14_missing="$r_s14_missing stopped-projection-not-failed"
 printf '%s\n' "$add_connection_block" | grep -qF 'jsonObject.getJSONObject("conn_type").getString("t")' || r_s14_missing="$r_s14_missing exact-connection-type-not-decoded"
 printf '%s\n' "$add_connection_block" | grep -qF 'jsonObject.getLong("registry_generation")' || r_s14_missing="$r_s14_missing exact-client-generation-not-decoded"
-printf '%s\n' "$add_connection_block" | grep -qF 'if (connectionType == null)' || r_s14_missing="$r_s14_missing unknown-connection-type-not-rejected"
+printf '%s\n' "$add_connection_block" | grep -qF ') ?: return false' || r_s14_missing="$r_s14_missing unknown-connection-type-not-rejected"
 printf '%s\n' "$add_connection_block" | grep -qF 'controlledCaptureOwners.upsert(' || r_s14_missing="$r_s14_missing exact-capture-owner-not-upserted"
 printf '%s\n' "$add_connection_block" | grep -qF 'registryGeneration' || r_s14_missing="$r_s14_missing capture-owner-generation-not-bound"
-printf '%s\n' "$add_connection_block" | grep -qF 'controlledCaptureOwners.registryGeneration(id)' || r_s14_missing="$r_s14_missing predecessor-client-generation-not-retained"
+printf '%s\n' "$add_connection_block" | grep -qF 'controlledCaptureOwners.registryGeneration(request.id)' || r_s14_missing="$r_s14_missing predecessor-client-generation-not-retained"
 printf '%s\n' "$add_connection_block" | grep -qF 'previousRegistryGeneration' || r_s14_missing="$r_s14_missing predecessor-resources-not-retired"
 printf '%s\n' "$add_connection_block" | grep -qF 'VoiceCallAudioCoordinator.registerControlledConnection(' || r_s14_missing="$r_s14_missing controlled-voice-owner-not-registered"
 printf '%s\n' "$add_connection_block" | grep -qF 'nativeServerGeneration' || r_s14_missing="$r_s14_missing controlled-voice-registration-not-generation-bound"
@@ -16065,6 +16065,11 @@ printf '%s\n' "$update_voice_block" | grep -qF 'VoiceCallAudioCoordinator.setCon
 printf '%s\n' "$update_voice_block" | grep -qF 'nativeServerGeneration' || r_s14_missing="$r_s14_missing controlled-voice-update-not-generation-bound"
 printf '%s\n' "$update_voice_block" | grep -qF 'controlledCaptureOwners.isCurrent(id, registryGeneration)' || r_s14_missing="$r_s14_missing controlled-voice-update-not-client-generation-bound"
 awk 'previous ~ /^[[:space:]]*@Synchronized[[:space:]]*$/ && $0 ~ /^[[:space:]]*fun rustSetByName\(/ { serialized = 1 } { previous = $0 } END { exit serialized ? 0 : 1 }' "$r_s14_kt" || r_s14_missing="$r_s14_missing controlled-resource-dispatch-not-serialized"
+awk 'previous ~ /^[[:space:]]*@Synchronized[[:space:]]*$/ && $0 ~ /^[[:space:]]*fun rustAdmitControlledConnection\(/ { serialized = 1 } { previous = $0 } END { exit serialized ? 0 : 1 }' "$r_s14_kt" || r_s14_missing="$r_s14_missing controlled-admission-not-serialized"
+grep -qF 'fun rustAdmitControlledConnection(generation: Long, clientJson: String): Boolean' "$r_s14_kt" || r_s14_missing="$r_s14_missing controlled-admission-not-result-bearing"
+if grep -qF '"add_connection" ->' "$r_s14_kt"; then
+  r_s14_missing="$r_s14_missing generic-controlled-admission-retained"
+fi
 if printf '%s\n' "$add_connection_block" | grep -qE 'isFileTransfer|isViewCamera|isTerminal|portForward'; then
   r_s14_missing="$r_s14_missing reconstructed-connection-type"
 fi
@@ -16131,11 +16136,12 @@ grep -qF 'env.new_global_ref(application_context)' "$r_s14_ffi_rs" || r_s14_miss
 grep -qF 'init_ndk_context(java_vm, context_jobject)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing ndk-context-not-application-global-bound"
 grep -qF 'pub fn bind_main_service_generation<Begin, Rollback>(' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-binding-missing"
 grep -qF 'env.is_same_object(current.owner.as_obj(), service)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-not-exact-object-bound"
-[ "$(grep -cF '!context.generation.is_activation_claimed(generation)' "$r_s14_ffi_rs")" -eq 4 ] || r_s14_missing="$r_s14_missing service-generation-callback-gate-missing"
+[ "$(grep -cF '!context.generation.is_activation_claimed(generation' "$r_s14_ffi_rs")" -eq 5 ] || r_s14_missing="$r_s14_missing service-generation-callback-gate-missing"
 grep -qF 'reserve and bind that generation only after JNI proves that its caller is the exact currently retained <code>MainService</code> object' requirements.html || r_s14_missing="$r_s14_missing exact-object-listener-generation-requirement-missing"
 grep -qF 'a retained global <code>applicationContext</code> reference' requirements.html || r_s14_missing="$r_s14_missing application-context-global-reference-requirement-missing"
 grep -qF 'service_generation: u64' "$r_s14_flutter" || r_s14_missing="$r_s14_missing connection-manager-generation-owner-missing"
 grep -qF 'call_main_service_set_by_name_for_generation(' "$r_s14_flutter" || r_s14_missing="$r_s14_missing controlled-callback-not-generation-bound"
+grep -qF 'call_main_service_admit_controlled_connection_for_generation(' "$r_s14_flutter" || r_s14_missing="$r_s14_missing controlled-admission-not-generation-bound"
 grep -qF 'android_server_generation: u64' "$r_s14_connection" || r_s14_missing="$r_s14_missing connection-generation-owner-missing"
 grep -qF 'call_main_service_pointer_input_for_generation' "$r_s14_connection" || r_s14_missing="$r_s14_missing pointer-input-not-generation-bound"
 grep -qF 'call_main_service_key_event_for_generation' "$r_s14_connection" || r_s14_missing="$r_s14_missing key-input-not-generation-bound"

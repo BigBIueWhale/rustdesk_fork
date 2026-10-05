@@ -735,6 +735,35 @@ pub fn call_clipboard_manager_enable_client_clipboard(enable: bool) -> JniResult
     )
 }
 
+pub fn call_main_service_admit_controlled_connection_for_generation(
+    generation: u64,
+    client_json: &str,
+) -> JniResult<bool> {
+    let generation = jlong::try_from(generation).map_err(|_| JniError::ThrowFailed(-1))?;
+    let jvm = JVM.read().unwrap();
+    let context = MAIN_SERVICE_CTX.read().unwrap();
+    let (Some(jvm), Some(context)) = (jvm.as_ref(), context.as_ref()) else {
+        return Err(JniError::ThrowFailed(-1));
+    };
+    if generation <= 0 || !context.generation.is_activation_claimed(generation as u64) {
+        return Err(JniError::ThrowFailed(-1));
+    }
+    let mut env = jvm.attach_current_thread_as_daemon()?;
+    env.with_local_frame(4, |env| -> JniResult<bool> {
+        let client_json = env.new_string(client_json)?;
+        env.call_method(
+            &context.owner,
+            "rustAdmitControlledConnection",
+            "(JLjava/lang/String;)Z",
+            &[
+                JValue::Long(generation),
+                JValue::Object(&JObject::from(client_json)),
+            ],
+        )?
+        .z()
+    })
+}
+
 pub fn call_main_service_set_by_name_for_generation(
     generation: u64,
     name: &str,

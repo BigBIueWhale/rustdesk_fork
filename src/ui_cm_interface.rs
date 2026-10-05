@@ -547,6 +547,8 @@ enum CmClientAdmissionError {
     StaleSourceGeneration,
     ActiveIdCollision,
     FileOperationInFlight,
+    CallbackAdmissionFailed,
+    AdmissionReservationLost,
 }
 
 impl fmt::Display for CmClientAdmissionError {
@@ -558,6 +560,8 @@ impl fmt::Display for CmClientAdmissionError {
             Self::StaleSourceGeneration => "client source generation is stale",
             Self::ActiveIdCollision => "connection ID is owned by an active peer generation",
             Self::FileOperationInFlight => "connection ID has an unfinished file operation",
+            Self::CallbackAdmissionFailed => "connection owner was not admitted by its callback receiver",
+            Self::AdmissionReservationLost => "connection admission reservation was lost",
         };
         write!(f, "{reason}")
     }
@@ -568,14 +572,15 @@ struct CmClientRegistry {
     clients: HashMap<i32, Client>,
     generation: i64,
     in_flight_file_operations: HashMap<i32, i64>,
+    pending_admissions: HashMap<i32, i64>,
 }
 
 impl CmClientRegistry {
-    fn admit(
+    fn prepare_admission(
         &mut self,
         client: &mut Client,
         source_generation: u64,
-    ) -> Result<(CmClientOwner, Option<Client>), CmClientAdmissionError> {
+    ) -> Result<CmClientOwner, CmClientAdmissionError> {
         if client.id <= 0 {
             return Err(CmClientAdmissionError::InvalidConnectionId);
         }
@@ -584,6 +589,9 @@ impl CmClientRegistry {
         }
         if self.in_flight_file_operations.contains_key(&client.id) {
             return Err(CmClientAdmissionError::FileOperationInFlight);
+        }
+        if self.pending_admissions.contains_key(&client.id) {
+            return Err(CmClientAdmissionError::ActiveIdCollision);
         }
         if let Some(current) = self.clients.get(&client.id) {
             if source_generation < current.source_generation {
@@ -600,23 +608,56 @@ impl CmClientRegistry {
         self.generation = generation;
         client.registry_generation = generation;
         client.source_generation = source_generation;
-        self.clients
-            .retain(|_, current| !(current.disconnected && current.peer_id == client.peer_id));
-        let replaced = self.clients.insert(client.id, client.clone());
-        Ok((
-            CmClientOwner {
-                id: client.id,
-                generation,
-            },
-            replaced,
-        ))
+        self.pending_admissions.insert(client.id, generation);
+        Ok(CmClientOwner {
+            id: client.id,
+            generation,
+        })
     }
 
-    fn is_current(&self, owner: CmClientOwner) -> bool {
+    fn commit_admission(
+        &mut self,
+        client: &Client,
+        owner: CmClientOwner,
+    ) -> Result<Option<Client>, CmClientAdmissionError> {
+        if self.pending_admissions.get(&owner.id) != Some(&owner.generation)
+            || client.id != owner.id
+            || client.registry_generation != owner.generation
+        {
+            return Err(CmClientAdmissionError::AdmissionReservationLost);
+        }
+        self.pending_admissions.remove(&owner.id);
+        self.clients
+            .retain(|_, current| !(current.disconnected && current.peer_id == client.peer_id));
+        Ok(self.clients.insert(client.id, client.clone()))
+    }
+
+    fn abort_admission(&mut self, owner: CmClientOwner) {
+        if self.pending_admissions.get(&owner.id) == Some(&owner.generation) {
+            self.pending_admissions.remove(&owner.id);
+        }
+    }
+
+    #[cfg(test)]
+    fn admit(
+        &mut self,
+        client: &mut Client,
+        source_generation: u64,
+    ) -> Result<(CmClientOwner, Option<Client>), CmClientAdmissionError> {
+        let owner = self.prepare_admission(client, source_generation)?;
+        let replaced = self.commit_admission(client, owner)?;
+        Ok((owner, replaced))
+    }
+
+    fn record_is_current(&self, owner: CmClientOwner) -> bool {
         self.clients
             .get(&owner.id)
             .map(|client| client.registry_generation == owner.generation)
             .unwrap_or(false)
+    }
+
+    fn is_current(&self, owner: CmClientOwner) -> bool {
+        !self.pending_admissions.contains_key(&owner.id) && self.record_is_current(owner)
     }
 
     fn begin_file_operation(&mut self, owner: CmClientOwner) -> bool {
@@ -636,13 +677,16 @@ impl CmClientRegistry {
     }
 
     fn current_mut(&mut self, owner: CmClientOwner) -> Option<&mut Client> {
+        if self.pending_admissions.contains_key(&owner.id) {
+            return None;
+        }
         self.clients
             .get_mut(&owner.id)
             .filter(|client| client.registry_generation == owner.generation)
     }
 
     fn retire(&mut self, owner: CmClientOwner, close: bool) -> bool {
-        if !self.is_current(owner) {
+        if !self.record_is_current(owner) {
             return false;
         }
         if close {
@@ -651,6 +695,31 @@ impl CmClientRegistry {
             client.disconnected = true;
         }
         true
+    }
+}
+
+struct CmPendingAdmission {
+    owner: CmClientOwner,
+    armed: bool,
+}
+
+impl CmPendingAdmission {
+    fn new(owner: CmClientOwner) -> Self {
+        Self { owner, armed: true }
+    }
+
+    fn commit(mut self, client: &Client) -> Result<Option<Client>, CmClientAdmissionError> {
+        let replaced = CLIENTS.write().unwrap().commit_admission(client, self.owner)?;
+        self.armed = false;
+        Ok(replaced)
+    }
+}
+
+impl Drop for CmPendingAdmission {
+    fn drop(&mut self) {
+        if self.armed {
+            CLIENTS.write().unwrap().abort_admission(self.owner);
+        }
     }
 }
 
@@ -808,6 +877,7 @@ fn cm_file_directory(directory: FileDirectory) -> Result<ipc::CmFileDirectory, S
 
 lazy_static::lazy_static! {
     static ref CLIENTS: RwLock<CmClientRegistry> = Default::default();
+    static ref CM_ADMISSION: StdMutex<()> = StdMutex::new(());
 }
 
 #[cfg(not(target_os = "ios"))]
@@ -930,7 +1000,9 @@ pub struct ConnectionManager<T: InvokeUiCM> {
 }
 
 pub trait InvokeUiCM: Send + Clone + 'static + Sized {
-    fn add_connection(&self, client: &Client);
+    fn admit_connection(&self, client: &Client) -> Result<(), String>;
+
+    fn publish_connection(&self, client: &Client);
 
     fn remove_connection(&self, id: i32, registry_generation: i64, close: bool);
 
@@ -957,7 +1029,11 @@ struct NoUiCmHandler;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl InvokeUiCM for NoUiCmHandler {
-    fn add_connection(&self, _client: &Client) {}
+    fn admit_connection(&self, _client: &Client) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn publish_connection(&self, _client: &Client) {}
 
     fn remove_connection(&self, _id: i32, _registry_generation: i64, _close: bool) {}
 
@@ -1046,10 +1122,17 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             source_generation: 0,
             cm_auth_token,
         };
-        let (owner, replaced) = CLIENTS
+        let _admission_lock = CM_ADMISSION.lock().unwrap();
+        let owner = CLIENTS
             .write()
             .unwrap()
-            .admit(&mut client, self.source_generation)?;
+            .prepare_admission(&mut client, self.source_generation)?;
+        let pending = CmPendingAdmission::new(owner);
+        if let Err(error) = self.ui_handler.admit_connection(&client) {
+            log::warn!("CM client callback admission rejected {}:{}: {}", id, owner.generation, error);
+            return Err(CmClientAdmissionError::CallbackAdmissionFailed);
+        }
+        let replaced = pending.commit(&client)?;
         #[cfg(not(any(target_os = "ios")))]
         if let Some(replaced) = replaced.filter(|client| !client.disconnected) {
             if let Err(error) = replaced.tx.send(Data::Close) {
@@ -1060,7 +1143,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
                 );
             }
         }
-        self.ui_handler.add_connection(&client);
+        self.ui_handler.publish_connection(&client);
         Ok(owner)
     }
 
@@ -3584,13 +3667,22 @@ mod tests {
     #[derive(Clone, Default)]
     struct CmTaskOwnerTestUi {
         added: Arc<AtomicBool>,
+        reject_admission: Arc<AtomicBool>,
         removed: Arc<StdMutex<Vec<(i32, i64, bool)>>>,
         file_logs: Arc<StdMutex<Vec<(i32, i64, String, String)>>>,
         voice_states: Arc<StdMutex<Vec<(i32, i64, bool, bool)>>>,
     }
 
     impl InvokeUiCM for CmTaskOwnerTestUi {
-        fn add_connection(&self, _client: &Client) {
+        fn admit_connection(&self, _client: &Client) -> Result<(), String> {
+            if self.reject_admission.load(Ordering::Acquire) {
+                Err("test receiver refused admission".to_owned())
+            } else {
+                Ok(())
+            }
+        }
+
+        fn publish_connection(&self, _client: &Client) {
             self.added.store(true, Ordering::Release);
         }
 
@@ -4288,7 +4380,11 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     impl InvokeUiCM for CmRouteTestUi {
-        fn add_connection(&self, client: &Client) {
+        fn admit_connection(&self, _client: &Client) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn publish_connection(&self, client: &Client) {
             lock_cm_egress_test(&self.added).push((client.id, client.registry_generation));
         }
 
@@ -5149,6 +5245,79 @@ mod tests {
         assert_eq!(lock_cm_egress_test(&ui.removed).len(), 1);
         assert_eq!(lock_cm_egress_test(&ui.removed)[0].0, id);
         assert!(lock_cm_egress_test(&ui.removed)[0].2);
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11iu_refused_android_callback_preserves_the_existing_cm_owner() {
+        let id = 2_000_000_020;
+        let (predecessor_tx, mut predecessor_rx) = cm_egress_channel();
+        let predecessor_owner = {
+            let mut registry = CLIENTS.write().unwrap();
+            assert!(!registry.clients.contains_key(&id));
+            let mut predecessor = registry_test_client(id, "same-peer");
+            predecessor.tx = predecessor_tx;
+            registry.admit(&mut predecessor, 70).unwrap().0
+        };
+        let ui = CmTaskOwnerTestUi::default();
+        ui.reject_admission.store(true, Ordering::Release);
+        let (command_tx, command_rx) = mpsc::channel(2);
+        let (_terminal_tx, terminal_rx) = tokio::sync::oneshot::channel();
+        let (egress_tx, _egress_rx) = cm_egress_channel();
+        command_tx.send(cm_test_login(id)).await.unwrap();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            start_listen(
+                ConnectionManager::new(ui.clone(), 71),
+                command_rx,
+                terminal_rx,
+                egress_tx,
+            ),
+        )
+        .await
+        .expect("refused callback must terminate the CM listener");
+        {
+            let registry = CLIENTS.read().unwrap();
+            assert!(registry.record_is_current(predecessor_owner));
+            assert!(!registry.pending_admissions.contains_key(&id));
+        }
+        assert!(!ui.added.load(Ordering::Acquire));
+        assert!(lock_cm_egress_test(&ui.removed).is_empty());
+        assert!(tokio::time::timeout(std::time::Duration::from_millis(20), predecessor_rx.recv())
+            .await
+            .is_err());
+
+        ui.reject_admission.store(false, Ordering::Release);
+        let (successor_tx, successor_rx) = mpsc::channel(2);
+        let (successor_terminal_tx, successor_terminal_rx) = tokio::sync::oneshot::channel();
+        let (successor_egress_tx, _successor_egress_rx) = cm_egress_channel();
+        successor_tx.send(cm_test_login(id)).await.unwrap();
+        let successor = tokio::spawn(start_listen(
+            ConnectionManager::new(ui.clone(), 71),
+            successor_rx,
+            successor_terminal_rx,
+            successor_egress_tx,
+        ));
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while !ui.added.load(Ordering::Acquire) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("accepted successor must publish after registry commit");
+        assert!(!CLIENTS.read().unwrap().record_is_current(predecessor_owner));
+        assert!(matches!(
+            tokio::time::timeout(std::time::Duration::from_secs(1), predecessor_rx.recv())
+                .await
+                .expect("superseded predecessor must receive Close"),
+            Some(CmEgressItem::Data(Data::Close))
+        ));
+        successor_terminal_tx.send(CmConnectionTerminal::Close).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), successor)
+            .await
+            .expect("accepted successor must retire")
+            .expect("accepted successor listener must not panic");
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
     }
 
     #[cfg(not(target_os = "ios"))]
@@ -6524,6 +6693,7 @@ mod tests {
             clients: HashMap::new(),
             generation: i64::MAX,
             in_flight_file_operations: HashMap::new(),
+            pending_admissions: HashMap::new(),
         };
         let mut client = registry_test_client(7, "peer");
         assert!(matches!(

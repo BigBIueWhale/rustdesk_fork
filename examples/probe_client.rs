@@ -29,6 +29,9 @@
 //!                run through CM.
 //!   - `cmfilereconnect` : after that owner's loss, a fresh keyed FileTransfer connection reuses
 //!                its write ID and destination and must commit a new exact payload through CM.
+//!   - `cmfilebusyowner` / `cmfilebusycontender` : two live keyed FileTransfer connections use
+//!                the same write ID and destination; the second must be refused without
+//!                disturbing the first owner's staged bytes or final commit.
 //!   - `cmfilecollision` : a new receive must refuse two pre-existing fixed sidecar names
 //!                without changing either older generation.
 //!   - `cmfilecleanupfailure` : a live receive whose staging name was replaced must report
@@ -40,7 +43,7 @@
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
 //!
-//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfileauthority|cmfilereconnect|cmfilecollision|cmfilecleanupfailure|ftreadfailure] [local_addr]`  (exit 0 = matched)
+//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfileauthority|cmfilereconnect|cmfilebusyowner|cmfilebusycontender|cmfilecollision|cmfilecleanupfailure|ftreadfailure] [local_addr]`  (exit 0 = matched)
 use hbb_common::cpace::run_initiator;
 use hbb_common::message_proto::{login_response, message, Message};
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
@@ -62,6 +65,7 @@ const CM_CLEANUP_FAILURE_ID: i32 = 17011;
 const FT_READ_FAILURE_ID: i32 = 17012;
 const FT_READ_SUCCESS_ID: i32 = 17013;
 const CM_SHORT_WRITE_ID: i32 = 17014;
+const CM_BUSY_WRITE_ID: i32 = 17015;
 const FT_READ_SUCCESS_LEN: usize = 150_001;
 const CM_PRELOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/blocked-before-login";
 const CM_POSTLOGIN_CREATE_PATH: &str = "/tmp/rd-cm-file-replay/allowed-after-login";
@@ -69,6 +73,9 @@ const CM_WRITE_PAYLOAD: &[u8] = b"cm-file-write-finality-v1-0123456789";
 const CM_MULTI_FIRST: &[u8] = b"first-file-two-blocks-0123456789";
 const CM_MULTI_SECOND: &[u8] = b"second-file-two-blocks-abcdefghij";
 const CM_RECONNECT_PAYLOAD: &[u8] = b"new-owner-after-abrupt-loss-0123456789";
+const CM_BUSY_PAYLOAD: &[u8] = b"first-live-owner-exact-bytes-0123456789";
+const CM_BUSY_STAGE_MARKER: &str = "/tmp/rd-cm-file-replay/busy-owner.staged";
+const CM_BUSY_RELEASE_MARKER: &str = "/tmp/rd-cm-file-replay/busy-owner.release";
 const CM_PEER_ERROR: &str = "peer-aborted-cm-fixture";
 
 struct ProbePassword(Vec<u8>);
@@ -743,6 +750,196 @@ async fn probe_cm_receive_reconnect(stream: &mut FramedStream, report: &mut Stri
     false
 }
 
+async fn probe_cm_receive_busy(
+    stream: &mut FramedStream,
+    report: &mut String,
+    owner: bool,
+) -> bool {
+    use hbb_common::message_proto::{
+        file_response, FileAction, FileEntry, FileResponse, FileTransferBlock, FileTransferDone,
+        FileTransferReceiveRequest, FileType, ReadDir,
+    };
+
+    let mut action = FileAction::new();
+    action.set_receive(FileTransferReceiveRequest {
+        id: CM_BUSY_WRITE_ID,
+        path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
+        files: vec![FileEntry {
+            entry_type: FileType::File.into(),
+            name: "contended.txt".to_owned(),
+            size: CM_BUSY_PAYLOAD.len() as u64,
+            ..Default::default()
+        }],
+        file_num: 0,
+        total_size: CM_BUSY_PAYLOAD.len() as u64,
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_action(action);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-BUSY-REQUEST-ERROR {error}] "));
+        return false;
+    }
+
+    let mut response = FileResponse::new();
+    response.set_block(FileTransferBlock {
+        id: CM_BUSY_WRITE_ID,
+        file_num: 0,
+        data: if owner {
+            CM_BUSY_PAYLOAD.to_vec()
+        } else {
+            b"competing-owner-must-not-write".to_vec()
+        }
+        .into(),
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_response(response);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-BUSY-BLOCK-ERROR {error}] "));
+        return false;
+    }
+
+    // A directory reply on this connection is a CM round-trip after its block.
+    let mut action = FileAction::new();
+    action.set_read_dir(ReadDir {
+        path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
+        include_hidden: true,
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_action(action);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-BUSY-BARRIER-SEND-ERROR {error}] "));
+        return false;
+    }
+
+    let mut saw_dir = false;
+    let mut saw_refusal = false;
+    for _ in 0..8 {
+        let Some(Ok(bytes)) = stream.next_timeout(4000).await else {
+            report.push_str("[FT-BUSY-NO-RESPONSE] ");
+            return false;
+        };
+        let response = match Message::parse_from_bytes(&bytes) {
+            Ok(response) => response,
+            Err(error) => {
+                report.push_str(&format!("[FT-BUSY-PARSE-ERROR {error}] "));
+                return false;
+            }
+        };
+        if let Some(message::Union::FileResponse(response)) = response.union {
+            match response.union {
+                Some(file_response::Union::Dir(dir)) if dir.path == CM_POSTLOGIN_CREATE_PATH => {
+                    let has = |name: &str| dir.entries.iter().any(|entry| entry.name == name);
+                    if !has("contended.txt.download")
+                        || !has("contended.txt.digest")
+                        || !has("contended.txt.download.lock")
+                    {
+                        report.push_str("[FT-BUSY-STAGING-MISSING] ");
+                        return false;
+                    }
+                    saw_dir = true;
+                }
+                Some(file_response::Union::Error(error)) if error.id == CM_BUSY_WRITE_ID => {
+                    if owner
+                        || error.file_num != 0
+                        || !error.error.contains("another receive job owns this destination")
+                    {
+                        report.push_str(&format!("[FT-BUSY-UNEXPECTED-ERROR {error:?}] "));
+                        return false;
+                    }
+                    saw_refusal = true;
+                }
+                Some(file_response::Union::Done(done)) if done.id == CM_BUSY_WRITE_ID => {
+                    report.push_str(&format!("[FT-BUSY-PREMATURE-DONE {done:?}] "));
+                    return false;
+                }
+                _ => {}
+            }
+        }
+        if saw_dir && (owner || saw_refusal) {
+            break;
+        }
+    }
+    if !saw_dir || (!owner && !saw_refusal) {
+        report.push_str("[FT-BUSY-BARRIER-MISSING] ");
+        return false;
+    }
+    if !owner {
+        report.push_str("[FT-BUSY-CONTENDER-REFUSED id=17015] ");
+        return true;
+    }
+
+    use std::io::Write;
+    let staged = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(CM_BUSY_STAGE_MARKER)
+        .and_then(|mut file| file.write_all(b"staged"));
+    if let Err(error) = staged {
+        report.push_str(&format!("[FT-BUSY-STAGE-MARKER-ERROR {error}] "));
+        return false;
+    }
+    let mut released = false;
+    for _ in 0..600 {
+        if std::fs::metadata(CM_BUSY_RELEASE_MARKER).is_ok() {
+            released = true;
+            break;
+        }
+        hbb_common::tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    if !released {
+        report.push_str("[FT-BUSY-RELEASE-MISSING] ");
+        return false;
+    }
+
+    let mut response = FileResponse::new();
+    response.set_done(FileTransferDone {
+        id: CM_BUSY_WRITE_ID,
+        file_num: 1,
+        ..Default::default()
+    });
+    let mut message = Message::new();
+    message.set_file_response(response);
+    if let Err(error) = send_probe_message(stream, message).await {
+        report.push_str(&format!("[FT-BUSY-DONE-SEND-ERROR {error}] "));
+        return false;
+    }
+    for _ in 0..8 {
+        let Some(Ok(bytes)) = stream.next_timeout(4000).await else {
+            report.push_str("[FT-BUSY-DONE-MISSING] ");
+            return false;
+        };
+        let response = match Message::parse_from_bytes(&bytes) {
+            Ok(response) => response,
+            Err(error) => {
+                report.push_str(&format!("[FT-BUSY-PARSE-ERROR {error}] "));
+                return false;
+            }
+        };
+        if let Some(message::Union::FileResponse(response)) = response.union {
+            match response.union {
+                Some(file_response::Union::Done(done)) if done.id == CM_BUSY_WRITE_ID => {
+                    if done.file_num == 1 {
+                        report.push_str("[FT-BUSY-OWNER-COMMITTED id=17015] ");
+                        return true;
+                    }
+                    report.push_str(&format!("[FT-BUSY-UNEXPECTED-DONE {done:?}] "));
+                    return false;
+                }
+                Some(file_response::Union::Error(error)) if error.id == CM_BUSY_WRITE_ID => {
+                    report.push_str(&format!("[FT-BUSY-OWNER-ERROR {error:?}] "));
+                    return false;
+                }
+                _ => {}
+            }
+        }
+    }
+    report.push_str("[FT-BUSY-DONE-MISSING] ");
+    false
+}
+
 async fn probe_cm_receive_collision(stream: &mut FramedStream, report: &mut String) -> bool {
     use hbb_common::message_proto::{
         file_response, FileAction, FileEntry, FileResponse, FileTransferBlock,
@@ -1371,6 +1568,8 @@ fn main() {
         || mode == "cmfiletransfer"
         || mode == "cmfileauthority"
         || mode == "cmfilereconnect"
+        || mode == "cmfilebusyowner"
+        || mode == "cmfilebusycontender"
         || mode == "cmfilecollision"
         || mode == "cmfilecleanupfailure"
         || mode == "ftreadfailure";
@@ -1521,6 +1720,8 @@ fn main() {
                         || mode == "cmfiletransfer"
                         || mode == "cmfileauthority"
                         || mode == "cmfilereconnect"
+                        || mode == "cmfilebusyowner"
+                        || mode == "cmfilebusycontender"
                         || mode == "cmfilecollision"
                         || mode == "cmfilecleanupfailure"
                         || mode == "ftreadfailure"
@@ -1705,6 +1906,8 @@ fn main() {
                             || !readdir_send_ok
                             || ((mode == "cmfiletransfer"
                                 || mode == "cmfilereconnect"
+                                || mode == "cmfilebusyowner"
+                                || mode == "cmfilebusycontender"
                                 || mode == "cmfilecollision"
                                 || mode == "cmfilecleanupfailure"
                                 || mode == "ftreadfailure")
@@ -1722,6 +1925,15 @@ fn main() {
                             }
                         } else if mode == "cmfilereconnect"
                             && !probe_cm_receive_reconnect(&mut stream, &mut pk).await
+                        {
+                            return (true, pk, false, true);
+                        } else if (mode == "cmfilebusyowner" || mode == "cmfilebusycontender")
+                            && !probe_cm_receive_busy(
+                                &mut stream,
+                                &mut pk,
+                                mode == "cmfilebusyowner",
+                            )
+                            .await
                         {
                             return (true, pk, false, true);
                         } else if mode == "cmfilecollision"
@@ -1748,6 +1960,8 @@ fn main() {
                             || mode == "cmfiletransfer"
                             || mode == "cmfileauthority"
                             || mode == "cmfilereconnect"
+                            || mode == "cmfilebusyowner"
+                            || mode == "cmfilebusycontender"
                             || mode == "cmfilecollision"
                             || mode == "cmfilecleanupfailure"
                             || mode == "ftreadfailure"
@@ -1843,6 +2057,8 @@ fn main() {
             && mode != "cmfiletransfer"
             && mode != "cmfileauthority"
             && mode != "cmfilereconnect"
+            && mode != "cmfilebusyowner"
+            && mode != "cmfilebusycontender"
             && mode != "cmfilecollision"
             && mode != "cmfilecleanupfailure"
             && mode != "ftreadfailure")

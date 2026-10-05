@@ -654,6 +654,7 @@ EOS
     export HOME=/tmp/rd-cm-file-replay
     mkdir -m 0700 "$HOME"
     TAMPER_PID=
+    BUSY_OWNER_PID=
     [ ! -e "$HOME/blocked-before-login" ] && [ ! -L "$HOME/blocked-before-login" ] \
       && [ ! -e "$HOME/allowed-after-login" ] && [ ! -L "$HOME/allowed-after-login" ]
     cleanup_cm_file_replay() {
@@ -663,6 +664,11 @@ EOS
         kill -TERM "$TAMPER_PID" 2>/dev/null || true
         wait "$TAMPER_PID" 2>/dev/null || true
         TAMPER_PID=
+      fi
+      if [ -n "$BUSY_OWNER_PID" ]; then
+        kill -TERM "$BUSY_OWNER_PID" 2>/dev/null || true
+        wait "$BUSY_OWNER_PID" 2>/dev/null || true
+        BUSY_OWNER_PID=
       fi
       if [ -n "$SRV" ] && [ -n "$SRV_START" ] \
           && "$READY" --is-running "$SRV" "$SRV_START" 2>/dev/null; then
@@ -776,6 +782,67 @@ EOS
     for suffix in .download .digest .download.lock; do
       [ ! -e "$HOME/allowed-after-login/orphaned.txt$suffix" ] \
         && [ ! -L "$HOME/allowed-after-login/orphaned.txt$suffix" ]
+    done
+    timeout --signal=TERM --kill-after=5s 60s \
+      /smoke-target/debug/examples/probe_client \
+      '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfilebusyowner \
+      >/tmp/cm-file-busy-owner.log 2>&1 &
+    BUSY_OWNER_PID=$!
+    for ((attempt=0; attempt<200; ++attempt)); do
+      [ -f "$HOME/busy-owner.staged" ] && break
+      if ! kill -0 "$BUSY_OWNER_PID" 2>/dev/null; then
+        printf 'CM_BUSY_OWNER_EXITED_BEFORE_STAGING\n' >&2
+        tail -n 60 /tmp/cm-file-busy-owner.log >&2
+        exit 1
+      fi
+      sleep 0.05
+    done
+    [ -f "$HOME/busy-owner.staged" ] && [ ! -L "$HOME/busy-owner.staged" ]
+    [ ! -e "$HOME/allowed-after-login/contended.txt" ]
+    cmp -s -- "$HOME/allowed-after-login/contended.txt.download" \
+      <(printf '%s' 'first-live-owner-exact-bytes-0123456789')
+    busy_digest_before=$(sha256sum -- "$HOME/allowed-after-login/contended.txt.digest")
+    busy_lock_before=$(stat -c '%d:%i' -- "$HOME/allowed-after-login/contended.txt.download.lock")
+    if busy_contender_output=$(timeout --signal=TERM --kill-after=5s 20s \
+        /smoke-target/debug/examples/probe_client \
+        '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfilebusycontender 2>&1); then
+      busy_contender_status=0
+    else
+      busy_contender_status=$?
+    fi
+    printf '%s\n' "$busy_contender_output"
+    if [ "$busy_contender_status" -ne 0 ]; then
+      tail -n 60 /tmp/cm-file-busy-owner.log >&2
+      tail -n 120 /tmp/cm-file-server.log >&2
+      exit "$busy_contender_status"
+    fi
+    [ "$(grep -Fc '[FT-BUSY-CONTENDER-REFUSED id=17015]' <<<"$busy_contender_output")" -eq 1 ]
+    grep -Fxq 'probe_client: PASS' <<<"$busy_contender_output"
+    [ ! -e "$HOME/allowed-after-login/contended.txt" ]
+    cmp -s -- "$HOME/allowed-after-login/contended.txt.download" \
+      <(printf '%s' 'first-live-owner-exact-bytes-0123456789')
+    [ "$(sha256sum -- "$HOME/allowed-after-login/contended.txt.digest")" = "$busy_digest_before" ]
+    [ "$(stat -c '%d:%i' -- "$HOME/allowed-after-login/contended.txt.download.lock")" = "$busy_lock_before" ]
+    : >"$HOME/busy-owner.release"
+    if wait "$BUSY_OWNER_PID"; then
+      busy_owner_status=0
+    else
+      busy_owner_status=$?
+    fi
+    BUSY_OWNER_PID=
+    busy_owner_output=$(</tmp/cm-file-busy-owner.log)
+    printf '%s\n' "$busy_owner_output"
+    [ "$busy_owner_status" -eq 0 ]
+    [ "$(grep -Fc '[FT-BUSY-OWNER-COMMITTED id=17015]' <<<"$busy_owner_output")" -eq 1 ]
+    grep -Fxq 'probe_client: PASS' <<<"$busy_owner_output"
+    [ -f "$HOME/allowed-after-login/contended.txt" ] \
+      && [ ! -L "$HOME/allowed-after-login/contended.txt" ] \
+      && [ "$(stat -c '%u:%g:%a' -- "$HOME/allowed-after-login/contended.txt")" = "$(id -u):$(id -g):600" ] \
+      && cmp -s -- "$HOME/allowed-after-login/contended.txt" \
+        <(printf '%s' 'first-live-owner-exact-bytes-0123456789')
+    for suffix in .download .digest .download.lock; do
+      [ ! -e "$HOME/allowed-after-login/contended.txt$suffix" ] \
+        && [ ! -L "$HOME/allowed-after-login/contended.txt$suffix" ]
     done
     printf '%s' 'older-download-generation-0123456789' \
       >"$HOME/allowed-after-login/collision-download.txt.download"
@@ -962,7 +1029,7 @@ EOS
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved viewer-after-refusal=new-connection-exact-bytes network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes live-owner=contender-refused-first-commit sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved viewer-after-refusal=new-connection-exact-bytes network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

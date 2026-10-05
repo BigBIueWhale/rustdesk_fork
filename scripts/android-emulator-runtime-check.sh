@@ -1453,7 +1453,7 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         "${frame_observer_build_receipts[0]}" \
         "${frame_observer_receipts[0]}" \
         "${peer_frame_baselines[@]}" "${peer_presentation_ui_receipts[@]}" \
-        "${peer_warm_hold_receipts[0]}" \
+        "${peer_warm_hold_receipts[0]}" "${peer_task_park_receipts[0]}" \
         "${peer_presentation_stage_receipts[@]}" \
         "${peer_resource_samples[@]}" "${peer_resource_bounds[0]}" \
         "${lifecycle_receipts[0]}" "${initial_credential_receipts[0]}" \

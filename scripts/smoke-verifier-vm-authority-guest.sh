@@ -3966,7 +3966,7 @@ run_android_emulator_runtime() {
     local staged_apk_before
     local entry_receipt apk_receipt renderer_receipt runtime_receipt peer_artifact_receipt frame_source_receipt
     local -a runtime_arguments=()
-    local lifecycle_receipt peer_receipt focused_recents_receipt check_receipt
+    local lifecycle_receipt task_park_receipt peer_receipt focused_recents_receipt check_receipt
     local resource_bound_receipt
     local checksum_line runtime_peer phase_ordinal phase ordinal
     local recents_build_receipt recents_driver_receipt recents_driver_sha256
@@ -4570,6 +4570,16 @@ run_android_emulator_runtime() {
         || { tail -n 320 "$output" >&2; fail 'Android lifecycle runtime receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_LIFECYCLE=' "$output")" -eq 1 ] \
         || fail 'Android lifecycle runtime receipt is duplicated'
+    task_park_receipt="$(grep -E \
+        '^ANDROID_PEER_TASK_PARK=pass samples=6 interval_seconds=20 elapsed_ms=[1-9][0-9]* task=absent process=stable service=foreground-preserved keyed_sessions=unchanged peer_connections=0$' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android removed-task hold receipt is absent'; }
+    [ "$(grep -c '^ANDROID_PEER_TASK_PARK=' "$output")" -eq 1 ] \
+        || fail 'Android removed-task hold receipt is duplicated'
+    [[ "$task_park_receipt" =~ elapsed_ms=([1-9][0-9]*)\ task=absent ]] \
+        && [ "${BASH_REMATCH[1]}" -ge 120000 ] \
+        && [ "${BASH_REMATCH[1]}" -le 180000 ] \
+        || fail 'Android removed-task hold duration is outside its bounded schedule'
     initial_credential_receipt="$(grep -E \
         '^ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT=pass reason=missing-credential observer=(exact|android-accessibility-prefix-240) observed_network_attempts=0 pre_session_failure_delta=0 key_failure_delta=0 keyed_session_delta=0 established=0 prompt_ms=[0-9]+ prompt_limit_ms=240000$' \
         "$output")" \
@@ -4726,7 +4736,7 @@ run_android_emulator_runtime() {
         printf '%s\n' "$peer_artifact_receipt" "$frame_source_receipt"
         printf '%s\n' "$frame_endpoint_receipt" "$frame_parser_receipt" \
             "$frame_observer_self_test_receipt" "$frame_observer_build_receipt" \
-            "$frame_observer_receipt" "$lifecycle_receipt" \
+            "$frame_observer_receipt" "$lifecycle_receipt" "$task_park_receipt" \
             "$initial_credential_receipt" \
             "${presentation_stage_receipts[@]}" \
             "${resource_samples[@]}" "$resource_bound_receipt" \

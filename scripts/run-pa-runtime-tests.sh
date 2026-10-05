@@ -127,7 +127,8 @@ cargo test --offline --locked --lib --features linux-pkg-config \
 cargo test --offline --locked --lib --features linux-pkg-config \
     server::service::pa_dispatch_tests:: --color never -- --test-threads=1
 cargo test --offline --locked --lib --features linux-pkg-config \
-    ipc::pulse_audio::tests:: --color never -- --test-threads=1
+    ipc::pulse_audio::tests:: --color never -- \
+    --skip real_monitor_capture_revokes_after_audio_stops --test-threads=1
 cargo test --offline --locked --lib --features linux-pkg-config \
     ipc::pulse_audio::tests::real_monitor_capture_revokes_after_audio_stops \
     --color never -- --ignored --exact --test-threads=1

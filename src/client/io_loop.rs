@@ -1813,9 +1813,12 @@ impl<T: InvokeUiSession> Remote<T> {
                         return None;
                     }
                 };
-            let (tx_audio_data, rx_audio_data) = audio_egress_channel();
             // Create a stand-alone inner, add subscribe to audio service
-            let conn_id = CLIENT_SERVER.write().unwrap().get_new_id();
+            let Some(conn_id) = crate::server::allocate_connection_id() else {
+                log::error!("process-wide connection IDs are exhausted");
+                return None;
+            };
+            let (tx_audio_data, rx_audio_data) = audio_egress_channel();
             let client_conn_inner = ConnInner::with_audio(conn_id, None, None, Some(tx_audio_data));
             // now we subscribe
             CLIENT_SERVER.write().unwrap().subscribe(

@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicI32, Ordering},
         Arc, Mutex, RwLock, Weak,
     },
     time::Duration,
@@ -307,6 +307,10 @@ type ConnMap = HashMap<i32, ConnInner>;
 
 lazy_static::lazy_static! {
     pub static ref CHILD_PROCESS: Childs = Default::default();
+    // IDs are process-wide because controlled Server generations and the outgoing-audio
+    // CLIENT_SERVER share connection-manager and live-connection bookkeeping.
+    static ref LAST_CONNECTION_ID: AtomicI32 =
+        AtomicI32::new(hbb_common::rand::random::<i32>() % 1000 + 1000);
     // A client server used to provide local services(audio, video, clipboard, etc.)
     // for all initiative connections.
     //
@@ -315,6 +319,56 @@ lazy_static::lazy_static! {
     // Now we use this [`CLIENT_SERVER`] to do following operations:
     // - record local audio, and send to remote
     pub static ref CLIENT_SERVER: ServerPtr = new_client_server();
+}
+
+fn allocate_connection_id_from(last_id: &AtomicI32) -> Option<i32> {
+    last_id
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .ok()
+        .and_then(|previous| previous.checked_add(1))
+}
+
+pub(crate) fn allocate_connection_id() -> Option<i32> {
+    allocate_connection_id_from(&LAST_CONNECTION_ID)
+}
+
+#[cfg(test)]
+mod connection_id_allocator_tests {
+    use super::*;
+
+    #[test]
+    fn r_s11iu_connection_ids_fail_closed_instead_of_wrapping() {
+        let last_id = AtomicI32::new(i32::MAX - 1);
+        assert_eq!(allocate_connection_id_from(&last_id), Some(i32::MAX));
+        assert_eq!(allocate_connection_id_from(&last_id), None);
+        assert_eq!(allocate_connection_id_from(&last_id), None);
+        assert_eq!(last_id.load(Ordering::Relaxed), i32::MAX);
+    }
+
+    #[test]
+    fn r_s11iu_connection_ids_are_unique_across_concurrent_callers() {
+        let ids = std::thread::scope(|scope| {
+            let mut workers = Vec::new();
+            for _ in 0..16 {
+                workers.push(scope.spawn(|| {
+                    (0..32)
+                        .map(|_| allocate_connection_id().unwrap())
+                        .collect::<Vec<_>>()
+                }));
+            }
+            workers
+                .into_iter()
+                .flat_map(|worker| worker.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        let mut sorted = ids;
+        sorted.sort_unstable();
+        assert!(sorted.iter().all(|id| *id > 0));
+        sorted.dedup();
+        assert_eq!(sorted.len(), 16 * 32);
+    }
 }
 
 // ── R-T1 / R-T0 / R-T12: DMZ connection-flood bound + flood-safe observability ────────────
@@ -609,7 +663,6 @@ mod graceful_shutdown_tests {
 pub struct Server {
     connections: ConnMap,
     services: HashMap<String, Box<dyn Service>>,
-    id_count: i32,
     #[cfg(target_os = "android")]
     android_generation: Option<std::num::NonZeroU64>,
 }
@@ -622,7 +675,6 @@ fn new_client_server() -> ServerPtr {
     let mut server = Server {
         connections: HashMap::new(),
         services: HashMap::new(),
-        id_count: hbb_common::rand::random::<i32>() % 1000 + 1000,
         android_generation: None,
     };
     // The Android client-side server owns outgoing voice-call audio only. It has no
@@ -640,7 +692,6 @@ pub fn new(#[cfg(target_os = "android")] android_generation: std::num::NonZeroU6
     let mut server = Server {
         connections: HashMap::new(),
         services: HashMap::new(),
-        id_count: hbb_common::rand::random::<i32>() % 1000 + 1000, // ensure positive
         #[cfg(target_os = "android")]
         android_generation: Some(android_generation),
     };
@@ -717,7 +768,9 @@ pub async fn create_tcp_connection(
     if cancellation.is_cancelled() {
         return Ok(());
     }
-    let id = server.write().unwrap().get_new_id();
+    let Some(id) = allocate_connection_id() else {
+        bail!("process-wide connection IDs are exhausted");
+    };
 
     #[cfg(target_os = "macos")]
     crate::platform::declare_remote_user_activity();
@@ -930,27 +983,6 @@ impl Server {
             #[cfg(target_os = "macos")]
             self.update_enable_retina();
         }
-    }
-
-    // get a new unique id
-    pub fn get_new_id(&mut self) -> i32 {
-        // Authenticated-session ids must not rely on unchecked i32 overflow. A long-running
-        // process can wrap the counter eventually; scan for an unused positive id instead of
-        // colliding with a live connection or tripping debug-overflow behavior.
-        for _ in 0..i32::MAX {
-            self.id_count = if self.id_count == i32::MAX {
-                1
-            } else {
-                self.id_count + 1
-            };
-            if !self.connections.contains_key(&self.id_count) {
-                return self.id_count;
-            }
-        }
-        log::error!(
-            "R-T12: all positive connection ids are in use; returning 0 as a fail-visible sentinel"
-        );
-        0
     }
 
     pub fn set_video_service_opt(

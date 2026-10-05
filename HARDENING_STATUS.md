@@ -952,8 +952,8 @@ those obligations.
 
 ## R-S11b/R-S11c/R-S11i — service-owned IPC authority
 
-**Verdict: source topology largely implemented; Android controlled-CM admission and native/release
-evidence remain OPEN.** The ordinary desktop IPC protocol has no password request,
+**Verdict: source topology largely implemented; Android controlled-CM admission is source-corrected,
+but installed/native and release evidence remain OPEN.** The ordinary desktop IPC protocol has no password request,
 whole-configuration transfer, generic privileged mutation,
 or fallback into user storage. Installed Linux, Windows, and macOS service state is owned by the
 root/LocalSystem/LaunchDaemon authority that enforces it. Local path, UID/session, and executable checks are
@@ -972,7 +972,7 @@ requirement and verifier traceability; it does not upgrade source evidence into 
 | Unattended credential ownership | Linux/macOS raw `_password` and `_service_password`, Windows first-instance local-only password pipes, and the read-only runtime-PRS replica channels are typed and bounded. Peer proof precedes secret-body read. The root/LocalSystem/LaunchDaemon receiver performs OS authorization and the final durable commit; ordinary UI/main IPC cannot write or mirror the credential. Operation IDs, bounded values, process-keyed replay fingerprints, explicit final status, wiping, admission closure, and joined drain prevent generic config or detached-work fallbacks. |
 | Machine policy and configuration | Main IPC carries one allowlisted nonsecret option at a time and returns the receiver-derived effective value. Whole Config/Config2 synchronization, GUI import, generic option maps, standalone salt readers, automatic password generation, preset credential compatibility, structured SOCKS/proxy state, and service-side ordinary option writes are absent. Salt reads are side-effect-free and service identity is not created by a read path. |
 | Privileged service control | Generic `_service` is a closed directional liveness/control protocol. Windows session selection is removed; RDP sharing and SAS use distinct typed receiver-owned actions. Protected service channels have separate capacities, transaction ownership, shutdown admission latches, and result finality. Windows impersonation is disposable-thread confined and requires successful RevertToSelf before a result. |
-| CM, file, clipboard, audio, whiteboard, and terminal helpers | Authority is connection/generation scoped rather than ambient same-UID trust. CM admission binds the exact launched helper generation and a connection nonce to AuthConnType. Login is published before AuthorizedFS, all filesystem sends recheck live file authority, ordinary CM publication is bounded and terminal-first, and pre-login or stale/wrong-generation work is rejected rather than buffered. Linux audio, whiteboard, Windows clipboard, and terminal helper paths use purpose-specific capabilities and exact process identity. Android controlled-side Service admission still lacks a result-bearing JNI transaction, as detailed under R-S11iu below. |
+| CM, file, clipboard, audio, whiteboard, and terminal helpers | Authority is connection/generation scoped rather than ambient same-UID trust. CM admission binds the exact launched helper generation and a connection nonce to AuthConnType. Login is published before AuthorizedFS, all filesystem sends recheck live file authority, ordinary CM publication is bounded and terminal-first, and pre-login or stale/wrong-generation work is rejected rather than buffered. Linux audio, whiteboard, Windows clipboard, and terminal helper paths use purpose-specific capabilities and exact process identity. Android controlled-side Service admission now has a result-bearing JNI owner-acknowledgment boundary, but installed Service/JNI behavior remains unproved, as detailed under R-S11iu below. |
 | Service and child process lifetime | Linux supervisor/child selection, environment, working directory, descriptors, helper provenance, pidfd records, shutdown, and installed init templates are source-owned. Windows uses exact process/token/session identity, suspended creation where required, kill-on-close jobs, fixed installed paths, protected registry/file authorities, and capacity-independent SCM stop; once Windows accepts cancellation, the caller stops issuing cancellation requests and waits for the owned worker result. macOS service/client proof uses audit-token code identity, exact launchd records, retained child ownership, bounded proof workers, and root-owned fixed support/log/helper paths. |
 | Packaging, loaders, and OS commands | Privileged helpers and libraries resolve from fixed verified roots; PATH/current-directory search, root shell interpolation, caller-selected registry paths, stale updater/IDD/runtime-cleanup compatibility paths, world-writable staging, and generated Docker helper residue are deleted or fail closed. macOS LaunchDaemon installation uses the fixed signed helper rather than root execution from the app bundle. |
 | Credential-bearing files | Unix writes and corruption backups are owner-only and no-follow hardened. Windows config directories/files use a protected DACL limited to LocalSystem and the process user and fail closed on insecure existing files. This is filesystem hardening, not a claim that machine-UUID wrapping protects against a local reader. |
@@ -3229,7 +3229,7 @@ not Android framework, APK, installed desktop, or other file-operation types.
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The 56-test Linux-target transaction exercised Android queued-terminal priority and cancellation during a selected real `CreateDir`; the 57-test transaction exercised desktop selected-command cancellation, same-ID refusal until effect and retirement, and idle-runner cancellation; the 58-test transaction exercised fatal loss of the selected desktop child before owner retirement; a 59-test transaction exercised desktop read-tick cancellation and same-ID refusal until exact retirement; the later 59-test transaction exercised Android terminal arrival during a selected `CreateDir`, exact response, one retirement, and queued-work refusal. Still OPEN: controlled-side Android Service/JNI admission result finality (R-S11iu), Android-target compilation and installed APK execution, other in-flight operation types and terminal overlap on installed targets, native installed read-tick behavior and throughput/resource bounds, child-loss behavior on target Android/Windows/macOS, different-ID same-peer replacement, other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop/Android repeats, sustained resources/latency, and final-artifact evidence. The installed Windows result predates the later corrections. |
+| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The 56-test Linux-target transaction exercised Android queued-terminal priority and cancellation during a selected real `CreateDir`; the 57-test transaction exercised desktop selected-command cancellation, same-ID refusal until effect and retirement, and idle-runner cancellation; the 58-test transaction exercised fatal loss of the selected desktop child before owner retirement; a 59-test transaction exercised desktop read-tick cancellation and same-ID refusal until exact retirement; the later 59-test transaction exercised Android terminal arrival during a selected `CreateDir`, exact response, one retirement, and queued-work refusal. Exact `74a26780` passed 60 Linux-target tests, adding a production-listener callback-refusal/retry case; this does not exercise Android Service/JNI. Still OPEN: controlled-side installed Android Service/JNI admission finality (R-S11iu), Android-target compilation and installed APK execution, other in-flight operation types and terminal overlap on installed targets, native installed read-tick behavior and throughput/resource bounds, child-loss behavior on target Android/Windows/macOS, different-ID same-peer replacement, other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop/Android repeats, sustained resources/latency, and final-artifact evidence. The installed Windows result predates the later corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
@@ -13004,15 +13004,32 @@ seven production state classes. These are bounded state/runner results, not a
 native-to-rendered event, Android Service/JNI, installed Windows CM/privacy, or
 physical-device result.
 
-**OPEN:** The Android controlled-side JNI add callback is still a void, stringly
-typed call. `FlutterHandler::add_connection` commits the Rust registry owner before
-calling `MainService.rustSetByName("add_connection", ...)`; the Java method may
-return early when the Service is stopping or `ControlledCaptureOwnerState.upsert`
-rejects the owner, while JNI reports a successful void call and Rust still publishes
-the UI add event. This is a source-visible admission/result gap, not a demonstrated
-cause of the outgoing-viewer hang. Correct it as one exact admission transaction
-with explicit failure/rollback semantics and an installed-APK negative test; a
-Kotlin owner-state test cannot establish Service/JNI behavior.
+**OPEN / source-corrected:** At pushed `74a26780`, Android controlled-side add
+uses the exact Service-generation-bound `rustAdmitControlledConnection` Boolean JNI
+callback instead of void `rustSetByName("add_connection", ...)`. The Service rejects
+stopped/stale generation, malformed/unknown-type, and stale owner admission before
+changing its owner map; Rust reserves the registry generation, calls the receiver,
+commits only on acknowledgment, and publishes the Flutter add event only afterward.
+Refusal drops the reservation and terminates the incoming CM listener; it does not
+commit or publish the successor. Service acknowledgment establishes owner-map
+admission, **not** capture/audio/notification readiness: those follow-on outcomes
+still have separate failure handling. Pending admission suppresses concurrent
+predecessor-side registry actions, so preservation of its registry row on refusal
+must not be mistaken for proof that an overlapping predecessor stayed operational.
+The zero-NIC VM passed 60 Linux-target tests in 1,011 seconds from this exact pushed
+source; raw serial `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.4G3rcGsn0s.serial.log`
+is 71,493 bytes, SHA-256 `4eb81a195bd8df872d5668315019422a1179bd665010206568ce67bae627b9d9`.
+The outer audit found no harness-added host listener and joined cleanup removed
+the overlay and `run.*` directory. An Android Rust target-check attempt from this
+source stopped **before compilation** because the full pinned online closure still
+lacks `flutter-windows-3.24.5.zip`; archived serial
+`.harness-state/verifier-vm/android-rust-target-check-run.LaL1NJflmp.serial.log`
+has SHA-256 `b2a952ce2116e6935788e717e9799677fef9d49ccb8ff76406c9ca6644c867f8`.
+Its disposable overlay and 34-MiB failed private run were removed after joined
+cleanup. Android-target compilation and an installed-APK negative replacement,
+stale-generation, callback/input/voice/capture/notification test remain required.
+Neither the Linux-target pass nor the blocked target check proves Service/JNI
+behavior or explains the reported outgoing-viewer hang.
 
 The native-to-rendered Flutter event path, Android-target compilation and installed
 APK replacement/callback/input/voice/capture/notification/task lifecycle, different-ID

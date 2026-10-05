@@ -2562,6 +2562,8 @@ run_focused_rust_tests() {
             || { tail -n 200 "$output" >&2; fail 'focused Linux PulseAudio summary count differs'; }
         grep -Fxq "PA_RUNTIME_ARCHIVE=pass packages=40 base=$DEV_CHECK_IMAGE_ID sha256=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256" "$output" \
             || { tail -n 200 "$output" >&2; fail 'PulseAudio candidate admission receipt is absent'; }
+        grep -Fxq 'PA_RUNTIME_MONITOR=pass source=rd_pa_test.monitor signal=sine440 probe=pacat-native' "$output" \
+            || { tail -n 200 "$output" >&2; fail 'native PulseAudio monitor probe receipt is absent'; }
         grep -Fxq 'PA_RUNTIME_NATIVE=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 revocation=after-unload network=none uid=1000 cleanup=joined' "$output" \
             || { tail -n 200 "$output" >&2; fail 'native PulseAudio capture receipt is absent'; }
     else

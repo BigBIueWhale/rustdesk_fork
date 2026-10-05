@@ -13,6 +13,7 @@ readonly RUNTIME=$WORK/runtime
 readonly MODULES=$IMAGE_ROOT/usr/lib/pulse-16.1+dfsg1/modules
 readonly DAEMON=$IMAGE_ROOT/usr/bin/pulseaudio
 readonly PACTL=$IMAGE_ROOT/usr/bin/pactl
+readonly PACAT=$IMAGE_ROOT/usr/bin/pacat
 mkdir -m 0700 -- "$WORK" "$PACKAGE_ROOT" "$IMAGE_ROOT" "$RUNTIME"
 python3 -I -S /source/scripts/verify-pa-runtime-candidate.py \
     --archive "$1" --output "$PACKAGE_ROOT" \
@@ -31,7 +32,7 @@ packages=("$PACKAGE_ROOT"/*.deb)
 for package in "${packages[@]}"; do
     dpkg-deb --extract "$package" "$IMAGE_ROOT"
 done
-[ -x "$DAEMON" ] && [ -x "$PACTL" ] \
+[ -x "$DAEMON" ] && [ -x "$PACTL" ] && [ -x "$PACAT" ] \
     && [ -f "$MODULES/module-native-protocol-unix.so" ] \
     && [ -f "$MODULES/module-null-sink.so" ] \
     && [ -f "$MODULES/module-sine.so" ] \
@@ -86,6 +87,20 @@ grep -Fq 'rd_pa_test.monitor' "$WORK/sources" \
 sine_module="$("$PACTL" load-module module-sine sink=rd_pa_test frequency=440)"
 [[ "$sine_module" =~ ^[1-9][0-9]*$ ]] \
     || { echo 'private PulseAudio sine source was not admitted' >&2; exit 1; }
+monitor_status=0
+timeout 2 "$PACAT" --record --device=rd_pa_test.monitor --raw \
+    --format=float32le --rate=48000 --channels=2 \
+    >"$WORK/monitor-sample" 2>"$WORK/pacat.log" || monitor_status=$?
+[ "$monitor_status" -eq 0 ] || [ "$monitor_status" -eq 124 ] \
+    || { tail -n 40 "$WORK/pacat.log" >&2; echo 'private monitor probe failed' >&2; exit 1; }
+sample_size="$(stat -c '%s' -- "$WORK/monitor-sample")"
+[ "$sample_size" -ge 3840 ] \
+    || { echo 'private monitor probe produced no complete frame' >&2; exit 1; }
+cmp_status=0
+cmp -s -n "$sample_size" "$WORK/monitor-sample" /dev/zero || cmp_status=$?
+[ "$cmp_status" -eq 1 ] \
+    || { echo 'private monitor probe produced no nonzero frame' >&2; exit 1; }
+printf 'PA_RUNTIME_MONITOR=pass source=rd_pa_test.monitor signal=sine440 probe=pacat-native\n'
 export RUSTDESK_PA_NATIVE_TEST=1 RUSTDESK_PA_NATIVE_PACTL="$PACTL" \
     RUSTDESK_PA_NATIVE_SINE_MODULE="$sine_module"
 

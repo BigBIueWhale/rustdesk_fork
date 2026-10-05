@@ -339,13 +339,23 @@ mod tests {
         let mut client = ConnectionTmpl::new_pulse_audio(client_socket);
         let mut capture = Box::pin(capture(&mut helper, &peer, authority.token(), ""));
 
-        let signal_deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        let signal_deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+        let mut frames_seen = 0;
+        let mut empty_frames = 0;
         loop {
             let frame = tokio::select! {
                 result = &mut capture => panic!("capture ended before source audio: {result:?}"),
                 frame = client.next_pulse_audio_frame_timeout(500) => frame.unwrap(),
-                _ = tokio::time::sleep_until(signal_deadline) => panic!("real monitor produced no audio"),
+                _ = tokio::time::sleep_until(signal_deadline) => panic!(
+                    "real monitor produced no audio: frames={frames_seen} empty={empty_frames}"
+                ),
             };
+            if let Some(frame) = frame.as_ref() {
+                frames_seen += 1;
+                if frame.is_empty() {
+                    empty_frames += 1;
+                }
+            }
             if frame
                 .as_ref()
                 .is_some_and(|frame| frame.iter().any(|sample| *sample != 0))

@@ -23,6 +23,8 @@
 //!                refusal) plus any directory `FileResponse`.
 //!   - `cmfiletransfer` : strict installed-service CM lifecycle probe — the same exchange, but PASS
 //!                additionally requires an actual directory `FileResponse` from the CM bridge.
+//!   - `cmfilestop` : after that CM response, retain the keyed connection until the isolated
+//!                Android harness confirms production Stop, then require exact peer closure.
 //!   - `cmfileauthority` : VM-only CM authority probe — pre-login create must not mutate the
 //!                fixture; post-login directory read/create, receive-write finality, and a
 //!                two-file/four-block receive job, peer error, cancellation, and abrupt owner loss
@@ -45,7 +47,7 @@
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
 //!
-//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfileauthority|cmfilereconnect|cmfilebusyowner|cmfilebusycontender|cmfilecollision|cmfilecleanupfailure|cmfiledigestcleanupfailure|ftreadfailure] [local_addr]`  (exit 0 = matched)
+//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer|cmfilestop|cmfileauthority|cmfilereconnect|cmfilebusyowner|cmfilebusycontender|cmfilecollision|cmfilecleanupfailure|cmfiledigestcleanupfailure|ftreadfailure] [local_addr]`  (exit 0 = matched)
 use hbb_common::cpace::run_initiator;
 use hbb_common::message_proto::{login_response, message, Message};
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
@@ -79,6 +81,8 @@ const CM_RECONNECT_PAYLOAD: &[u8] = b"new-owner-after-abrupt-loss-0123456789";
 const CM_BUSY_PAYLOAD: &[u8] = b"first-live-owner-exact-bytes-0123456789";
 const CM_BUSY_STAGE_MARKER: &str = "/tmp/rd-cm-file-replay/busy-owner.staged";
 const CM_BUSY_RELEASE_MARKER: &str = "/tmp/rd-cm-file-replay/busy-owner.release";
+const CM_LIVE_STOP_READY_MARKER: &str = "/tmp/android-emulator-app/cm-live-ready";
+const CM_LIVE_STOP_RELEASE_MARKER: &str = "/tmp/android-emulator-app/cm-live-release";
 const CM_PEER_ERROR: &str = "peer-aborted-cm-fixture";
 
 struct ProbePassword(Vec<u8>);
@@ -157,6 +161,66 @@ fn remote_login_admission(response: &login_response::Union) -> Option<&'static s
         }
         _ => None,
     }
+}
+
+async fn probe_cm_live_stop(stream: &mut FramedStream, report: &mut String) -> bool {
+    use std::time::Duration;
+
+    if std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(CM_LIVE_STOP_READY_MARKER)
+        .is_err()
+    {
+        report.push_str("[CM-LIVE-READY-FAILED] ");
+        return false;
+    }
+    let deadline = hbb_common::tokio::time::Instant::now() + Duration::from_secs(90);
+    loop {
+        match std::fs::symlink_metadata(CM_LIVE_STOP_RELEASE_MARKER) {
+            Ok(metadata) if metadata.file_type().is_file() && metadata.len() == 0 => break,
+            Ok(_) => {
+                report.push_str("[CM-LIVE-RELEASE-INVALID] ");
+                return false;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => {
+                report.push_str("[CM-LIVE-RELEASE-FAILED] ");
+                return false;
+            }
+        }
+        if hbb_common::tokio::time::Instant::now() >= deadline {
+            report.push_str("[CM-LIVE-RELEASE-TIMEOUT] ");
+            return false;
+        }
+        hbb_common::tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let close_deadline = hbb_common::tokio::time::Instant::now() + Duration::from_secs(5);
+    let mut closed = false;
+    for _ in 0..16 {
+        match hbb_common::tokio::time::timeout_at(close_deadline, stream.next()).await {
+            Ok(None) | Ok(Some(Err(_))) => {
+                closed = true;
+                break;
+            }
+            Ok(Some(Ok(bytes))) => {
+                if matches!(
+                    Message::parse_from_bytes(&bytes).map(|message| message.union),
+                    Ok(Some(message::Union::FileResponse(_)))
+                ) {
+                    report.push_str("[CM-LIVE-STOP-FILE-AFTER-STOP] ");
+                    return false;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    if closed {
+        report.push_str("[CM-LIVE-STOP-CLOSED] ");
+    } else {
+        report.push_str("[CM-LIVE-STOP-STILL-OPEN] ");
+    }
+    closed
 }
 
 async fn send_probe_message(stream: &mut FramedStream, message: Message) -> Result<(), String> {
@@ -1606,6 +1670,7 @@ fn main() {
         || mode == "portforward"
         || mode == "filetransfer"
         || mode == "cmfiletransfer"
+        || mode == "cmfilestop"
         || mode == "cmfileauthority"
         || mode == "cmfilereconnect"
         || mode == "cmfilebusyowner"
@@ -1759,6 +1824,7 @@ fn main() {
                     }
                     if mode == "filetransfer"
                         || mode == "cmfiletransfer"
+                        || mode == "cmfilestop"
                         || mode == "cmfileauthority"
                         || mode == "cmfilereconnect"
                         || mode == "cmfilebusyowner"
@@ -1946,7 +2012,8 @@ fn main() {
                         }
                         if !peer_username_nonempty
                             || !readdir_send_ok
-                            || ((mode == "cmfiletransfer"
+                            || (mode == "cmfiletransfer" && !received_directory)
+                            || ((mode == "cmfilestop"
                                 || mode == "cmfilereconnect"
                                 || mode == "cmfilebusyowner"
                                 || mode == "cmfilebusycontender"
@@ -1966,6 +2033,10 @@ fn main() {
                             {
                                 return (true, pk, false, true);
                             }
+                        } else if mode == "cmfilestop"
+                            && !probe_cm_live_stop(&mut stream, &mut pk).await
+                        {
+                            return (true, pk, false, true);
                         } else if mode == "cmfilereconnect"
                             && !probe_cm_receive_reconnect(&mut stream, &mut pk).await
                         {
@@ -2007,6 +2078,7 @@ fn main() {
                         if mode == "portforward"
                             || mode == "filetransfer"
                             || mode == "cmfiletransfer"
+                            || mode == "cmfilestop"
                             || mode == "cmfileauthority"
                             || mode == "cmfilereconnect"
                             || mode == "cmfilebusyowner"
@@ -2105,6 +2177,7 @@ fn main() {
     let pass = keying_matches
         && ((mode != "filetransfer"
             && mode != "cmfiletransfer"
+            && mode != "cmfilestop"
             && mode != "cmfileauthority"
             && mode != "cmfilereconnect"
             && mode != "cmfilebusyowner"

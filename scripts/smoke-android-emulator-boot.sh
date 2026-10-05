@@ -160,6 +160,9 @@ readonly ANDROID_FRAMEWORK_DIAGNOSTIC=$WORK_ROOT/android-framework.diagnostic
 readonly ANDROID_CONTROLLED_CPACE_LOG=$WORK_ROOT/android-controlled-cpace.log
 readonly ANDROID_CONTROLLED_CM_LOG=$WORK_ROOT/android-controlled-cm.log
 readonly ANDROID_CONTROLLED_CM_RESTART_LOG=$WORK_ROOT/android-controlled-cm-restart.log
+readonly ANDROID_CONTROLLED_CM_LIVE_LOG=$WORK_ROOT/android-controlled-cm-live.log
+readonly ANDROID_CONTROLLED_CM_LIVE_READY=$WORK_ROOT/cm-live-ready
+readonly ANDROID_CONTROLLED_CM_LIVE_RELEASE=$WORK_ROOT/cm-live-release
 readonly FRAME_OBSERVER_ROOT=/observer
 readonly FRAME_OBSERVER_FRAME=$FRAME_OBSERVER_ROOT/latest.frame
 readonly FRAME_OBSERVER_READY=$FRAME_OBSERVER_ROOT/ready
@@ -342,6 +345,7 @@ PEER_RESOURCE_FINAL_THREADS=0
 PEER_RESOURCE_PARTIAL_BOUND_READY=0
 ANDROID_CONTROL_FORWARD_READY=0
 ANDROID_CONTROL_FORWARD_LISTING=
+ANDROID_CONTROLLED_CM_LIVE_PID=
 FRAME_OBSERVER_STOP_REQUESTED=0
 FRAME_OBSERVER_JOINED=0
 readonly PEER_RECOVERY_LIMIT_MS=8000
@@ -1313,6 +1317,16 @@ stop_emulator() {
 cleanup() {
     local status=$? cleanup_status=0
     trap - EXIT HUP INT TERM
+    if [ -n "$ANDROID_CONTROLLED_CM_LIVE_PID" ]; then
+        if [ -d "$WORK_ROOT" ] && [ ! -L "$WORK_ROOT" ] \
+           && [ ! -e "$ANDROID_CONTROLLED_CM_LIVE_RELEASE" ] \
+           && [ ! -L "$ANDROID_CONTROLLED_CM_LIVE_RELEASE" ]; then
+            install -m 0600 /dev/null "$ANDROID_CONTROLLED_CM_LIVE_RELEASE" \
+                || cleanup_status=1
+        fi
+        wait "$ANDROID_CONTROLLED_CM_LIVE_PID" 2>/dev/null || true
+        ANDROID_CONTROLLED_CM_LIVE_PID=
+    fi
     if [ "$status" -ne 0 ]; then
         print_connect_password_prompt_diagnostic || true
         if [ ! -e "$ANDROID_FRAMEWORK_DIAGNOSTIC" ] \
@@ -1750,8 +1764,34 @@ exercise_android_controlled_cpace() {
 }
 
 exercise_android_controlled_stop() {
-    local stopped=0 probe_status=0 lifecycle_log stop_center= stop_warning=
+    local stopped=0 probe_status=0 lifecycle_log stop_center= stop_warning= live_ready=0
     local stop_x= stop_y=
+    create_android_control_forward
+    [ ! -e "$ANDROID_CONTROLLED_CM_LIVE_READY" ] \
+        && [ ! -L "$ANDROID_CONTROLLED_CM_LIVE_READY" ] \
+        && [ ! -e "$ANDROID_CONTROLLED_CM_LIVE_RELEASE" ] \
+        && [ ! -L "$ANDROID_CONTROLLED_CM_LIVE_RELEASE" ] \
+        || fail 'the controlled CM live-stop markers pre-exist'
+    printf '%s\n' "$TEST_PASSWORD" \
+        | timeout --signal=TERM --kill-after=2s 120s \
+            "$PEER_TARGET/debug/examples/probe_client" \
+            127.0.0.1:22119 --password-stdin ok cmfilestop \
+            >"$ANDROID_CONTROLLED_CM_LIVE_LOG" 2>&1 &
+    ANDROID_CONTROLLED_CM_LIVE_PID=$!
+    for _ in $(seq 1 300); do
+        if [ -f "$ANDROID_CONTROLLED_CM_LIVE_READY" ] \
+           && [ ! -L "$ANDROID_CONTROLLED_CM_LIVE_READY" ]; then
+            live_ready=1
+            break
+        fi
+        kill -0 "$ANDROID_CONTROLLED_CM_LIVE_PID" 2>/dev/null \
+            || break
+        sleep 0.1
+    done
+    [ "$live_ready" -eq 1 ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$ANDROID_CONTROLLED_CM_LIVE_READY")" = \
+             "$RUN_UID:$RUN_GID:600:1:0" ] \
+        || { tail -n 20 "$ANDROID_CONTROLLED_CM_LIVE_LOG" >&2; fail 'the live keyed CM connection did not reach a directory reply'; }
     stop_center="$(wait_ui_center text 'Stop screen sharing' 2>/dev/null || true)"
     for _ in $(seq 1 3); do
         [[ "$stop_center" =~ ^[0-9]+\ [0-9]+$ ]] && break
@@ -1784,6 +1824,23 @@ exercise_android_controlled_stop() {
         || fail 'production Stop did not retire MainService'
     [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$APP_PID" ] \
         || fail 'production Stop killed or replaced the application process'
+    install -m 0600 /dev/null "$ANDROID_CONTROLLED_CM_LIVE_RELEASE" \
+        || fail 'cannot release the live controlled CM peer after production Stop'
+    if ! wait "$ANDROID_CONTROLLED_CM_LIVE_PID"; then
+        tail -n 20 "$ANDROID_CONTROLLED_CM_LIVE_LOG" >&2
+        fail 'the live controlled CM connection survived production Stop'
+    fi
+    ANDROID_CONTROLLED_CM_LIVE_PID=
+    [ "$(stat -c '%u:%g:%a:%h' -- "$ANDROID_CONTROLLED_CM_LIVE_LOG")" = \
+      "$RUN_UID:$RUN_GID:600:1" ] \
+        && [ "$(stat -c '%s' -- "$ANDROID_CONTROLLED_CM_LIVE_LOG")" -le 4096 ] \
+        && ! grep -Fq -- "$TEST_PASSWORD" "$ANDROID_CONTROLLED_CM_LIVE_LOG" \
+        && grep -Fxq 'probe_client: keying ok=true (expected=ok)' "$ANDROID_CONTROLLED_CM_LIVE_LOG" \
+        && grep -Fq '[FT-DIR-RESPONSE ' "$ANDROID_CONTROLLED_CM_LIVE_LOG" \
+        && grep -Fq '[CM-LIVE-STOP-CLOSED] ' "$ANDROID_CONTROLLED_CM_LIVE_LOG" \
+        && grep -Fxq 'probe_client: PASS' "$ANDROID_CONTROLLED_CM_LIVE_LOG" \
+        || fail 'the live controlled CM Stop result did not prove exact peer closure'
+    rm -- "$ANDROID_CONTROLLED_CM_LIVE_READY" "$ANDROID_CONTROLLED_CM_LIVE_RELEASE"
     if ! wait_ui_center text 'Screen sharing is off' >/dev/null; then
         timeout --signal=TERM --kill-after=2s 10s \
             "$ADB" -s "$SERIAL" shell input swipe 240 220 240 650 300 \
@@ -1799,7 +1856,6 @@ exercise_android_controlled_stop() {
         <<<"$lifecycle_log" \
         || fail 'production Stop logged a terminal MainService teardown failure'
 
-    create_android_control_forward
     if printf '%s\n' "$TEST_PASSWORD" \
         | timeout --signal=TERM --kill-after=2s 15s \
             "$PEER_TARGET/debug/examples/probe_client" \
@@ -1865,7 +1921,7 @@ exercise_android_controlled_stop() {
         <<<"$lifecycle_log" \
         || fail 'the fresh MainService generation logged unresolved predecessor authority'
     printf 'ANDROID_CONTROLLED_CM_RESTART=pass auth=cpace login=filetransfer cm=admitted directory=reply service=foreground process=same forward_cleanup=removed force_stop=absent\n'
-    printf 'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent restart=keyed-cm-file-reply\n'
+    printf 'ANDROID_CONTROLLED_CM_STOP=pass command=production-ui-stop service=absent process=same live_keyed_cm=closed fresh_keyed_cm=refused forward_cleanup=removed force_stop=absent restart=keyed-cm-file-reply\n'
 }
 
 readonly APP_PACKAGE=com.carriez.flutter_hbb
@@ -4570,7 +4626,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
             || fail 'the controlled-CM framework ANR receipt is invalid'
         [ "$framework_anr" = absent ] \
             || fail 'the controlled-CM lifecycle had a framework ANR'
-        printf 'ANDROID_EMULATOR_CONTROLLED_CM=pass task_removals=1 service=foreground-across-task-relaunch-then-stopped process=same positive=filetransfer-dir-reply stopped=fresh-keyed-cm-refused restart=filetransfer-dir-reply framework_anr=absent apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
+        printf 'ANDROID_EMULATOR_CONTROLLED_CM=pass task_removals=1 service=foreground-across-task-relaunch-then-stopped process=same positive=filetransfer-dir-reply stopped=live-keyed-cm-closed-and-fresh-refused restart=filetransfer-dir-reply framework_anr=absent apk_sha256=%s vm_network=none container_network=none cleanup=joined\n' \
             "$APK_SHA256"
     fi
     if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ]; then

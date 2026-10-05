@@ -12911,6 +12911,20 @@ Service acknowledgment to commit and publish or abort. The normative R-S11iu
 contract now describes this two-stage transaction rather than requiring one
 registry write lock across JNI. An installed Service/JNI race test is still missing.
 
+Pushed `0ed76a4f` corrects a second Service-side ordering gap: a replacement
+previously published the successor owner before retiring same-ID predecessor
+input, voice, and notification resources, then acknowledged despite retirement
+errors. `MainService.rustAdmitControlledConnection` now preflights without
+publication, retires predecessor resources and confirms voice-owner absence,
+then publishes the successor under its Service monitor; an uncertain retirement
+refuses admission. Recorder readiness remains separate from owner retirement.
+The focused zero-NIC Kotlin owner-state VM passed 15 scenarios/305 assertions
+in 28 seconds. The exact-source Android guest built, installed, launched, and
+rendered an APK, but its outer transaction failed due after-snapshot Firefox/
+geckodriver loopback-listener drift; no APK was published or outer-valid app pass
+claimed. Exact receipts and cleanup are in the audit. Installed negative
+replacement/stop/stale-callback behavior remains OPEN.
+
 The exact-source 60-test VM receipt is
 `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.4G3rcGsn0s.serial.log`
 (SHA-256 `4eb81a195bd8df872d5668315019422a1179bd665010206568ce67bae627b9d9`);

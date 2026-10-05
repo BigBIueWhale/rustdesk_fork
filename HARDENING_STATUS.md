@@ -13063,9 +13063,20 @@ Windows implementations must compile with the exact-owner API and the lifecycle 
 execute on that target; this wiring is not a claim that the lane has run for the current source.
 That lane also runs the Windows-only native privacy escape regression serially; it is authored but
 has not executed for this source because no disposable Windows VM is currently registered.
-`flutter/test/server_model_test.dart` retains registry-generation JSON serialization and adds two
+`flutter/test/server_model_test.dart` retains registry-generation JSON serialization and adds three
 state regressions for same-count replacement/disconnect/voice repair, exact-owner UI-state retention,
-unchanged-snapshot inertness, canonical generation order, and whole-snapshot duplicate owner refusal.
+unchanged-snapshot inertness, canonical generation order, whole-snapshot duplicate owner refusal,
+and incremental removal of every disconnected row for the admitted peer while preserving live and
+other-peer rows and aligned tab indices. Native `CmClientRegistry::admit` already retires all such
+rows; `ServerModel.addConnection` now mirrors that operation instead of removing only the first.
+Exact pushed source `5d74102b53596d0488ac984fcd3e16bffcc86560` passed 21 Flutter model
+suites and 173 tests in a 287-second zero-NIC VM transaction with guest-only networkless Docker,
+no harness-added host listener, and joined cleanup. Retained serial
+`.harness-state/verifier-vm/flutter-model-tests-run.5eBzwzkPqT.serial.log` is 66,637 bytes,
+SHA-256 `413fd684bd7e8c91fb1ee4d6ac644715a8411f7c2eacd2fc1234c1145f1dd7bc`.
+The regression executes the production row-retirement function with real `Client` records and a
+tab-index callback; it does not construct the native FFI, render CM tabs, or prove Android/Windows
+presentation or installed-service behavior.
 `flutter/test/cm_file_owner_test.dart`, now invoked by `scripts/dart-verify.sh`, adds two executable
 Dart cases for the fixed envelope, closed action vocabulary, same-ID fresh-table replacement,
 payload-ID refusal, selected-table retirement, and invalidation of a delayed predecessor selection.

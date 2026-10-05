@@ -87,16 +87,26 @@ start_server() {
 }
 
 case "$1" in
-  android-peer-build)
-    # Build only the controlled peer and the exact fixtures consumed by the native Android
-    # lifecycle transaction.  The broad server smoke builds many unrelated probes and test
-    # executables; keeping this target narrow makes retained-APK iteration bounded without
-    # replacing the production server or authentication path with a model.
+  android-peer-build|cm-file-build)
+    # Build the production peer and only the fixtures needed by the selected runtime replay.
+    # The CM file replay also builds its production Session test artifact.
     verify_smoke_build_inputs
     prepare_smoke_cargo_home
     cargo build --locked --offline --features linux-pkg-config \
       --bin rustdesk --example seed_password --example probe_client \
       --example smoke_readiness --color never
+    if [ "$1" = cm-file-build ]; then
+      cargo test --locked --offline --features linux-pkg-config --lib --no-run --color never
+      mapfile -t viewer_file_test_artifacts < <(
+        find /smoke-target/debug/deps -maxdepth 1 -type f -name 'librustdesk-*' -perm -u+x -print
+      )
+      [ "${#viewer_file_test_artifacts[@]}" -eq 1 ] \
+        || { echo 'CM file build did not produce one viewer test executable' >&2; exit 1; }
+      [ ! -e /smoke-target/production-viewer-file-tests ] \
+        && [ ! -L /smoke-target/production-viewer-file-tests ]
+      install -m 0555 -- "${viewer_file_test_artifacts[0]}" \
+        /smoke-target/production-viewer-file-tests
+    fi
     verify_smoke_build_postconditions
     chmod 0755 /smoke-target/debug/rustdesk \
       /smoke-target/debug/examples/seed_password \
@@ -111,14 +121,26 @@ case "$1" in
       -o /smoke-target/smoke-server-launcher scripts/smoke-server-launcher.c
     chmod 0555 /smoke-target/flutter-peer-source-x11 \
       /smoke-target/smoke-bind-loopback.so /smoke-target/smoke-server-launcher
-    (
-      cd /smoke-target
-      sha256sum debug/rustdesk debug/examples/seed_password \
-        debug/examples/probe_client debug/examples/smoke_readiness flutter-peer-source-x11 \
-        smoke-bind-loopback.so smoke-server-launcher > android-peer-manifest.sha256
-    )
-    chmod 0444 /smoke-target/android-peer-manifest.sha256
-    printf 'ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=7 network=none\n'
+    if [ "$1" = cm-file-build ]; then
+      (
+        cd /smoke-target
+        sha256sum debug/rustdesk debug/examples/seed_password \
+          debug/examples/probe_client debug/examples/smoke_readiness flutter-peer-source-x11 \
+          smoke-bind-loopback.so smoke-server-launcher production-viewer-file-tests \
+          >android-peer-manifest.sha256
+      )
+      chmod 0444 /smoke-target/android-peer-manifest.sha256
+      printf 'CM_FILE_BUILD=pass server=production viewer=production-session files=8 network=none\n'
+    else
+      (
+        cd /smoke-target
+        sha256sum debug/rustdesk debug/examples/seed_password \
+          debug/examples/probe_client debug/examples/smoke_readiness flutter-peer-source-x11 \
+          smoke-bind-loopback.so smoke-server-launcher > android-peer-manifest.sha256
+      )
+      chmod 0444 /smoke-target/android-peer-manifest.sha256
+      printf 'ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=7 network=none\n'
+    fi
     ;;
   build)
     verify_smoke_build_inputs
@@ -867,11 +889,45 @@ EOS
     chmod 0600 "$source"
     cmp -s -- "$source" <(printf '%s' 'unreadable-source-fixture')
     cmp -s -- "$readable" <(head -c 150001 /dev/zero | tr '\0' 'A')
+    viewer_source="$HOME/viewer-source.bin"
+    viewer_directory="$HOME/viewer-downloads"
+    [ ! -e "$viewer_source" ] && [ ! -L "$viewer_source" ] \
+      && [ ! -e "$viewer_directory" ] && [ ! -L "$viewer_directory" ]
+    mkdir -m 0700 "$viewer_directory"
+    python3 -I -S -c 'import sys; sys.stdout.buffer.write(bytes((i * 37 + 11) % 251 for i in range(150001)))' \
+      >"$viewer_source"
+    chmod 0600 "$viewer_source"
+    [ "$(stat -c '%u:%g:%a:%s' -- "$viewer_source")" = "$(id -u):$(id -g):600:150001" ]
+    viewer_source_sha=$(sha256sum "$viewer_source" | awk '{ print $1 }')
+    if viewer_output=$(RUSTDESK_PRODUCTION_VIEWER_FILE_SMOKE=1 \
+        timeout --signal=TERM --kill-after=5s 55s \
+        /smoke-target/production-viewer-file-tests --exact --ignored --nocapture \
+        --test-threads=1 \
+        viewer_pipeline_smoke_tests::production_viewer_download_commits_the_exact_file_after_digest_confirmation \
+        2>&1); then
+      viewer_status=0
+    else
+      viewer_status=$?
+    fi
+    printf '%s\n' "$viewer_output"
+    if [ "$viewer_status" -ne 0 ]; then
+      tail -n 120 /tmp/cm-file-server.log >&2
+      exit "$viewer_status"
+    fi
+    [ "$(grep -Fxc 'PRODUCTION_VIEWER_FILE_OK bytes=150001 listing=exact digest=confirmed done=once destination=exact-bytes sidecars=absent teardown=joined' <<<"$viewer_output")" -eq 1 ]
+    "$READY" --is-running "$SRV" "$SRV_START"
+    viewer_destination="$viewer_directory/viewer-source.bin"
+    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$viewer_destination")" = "$(id -u):$(id -g):600:1:150001" ]
+    cmp -s -- "$viewer_destination" "$viewer_source"
+    [ "$(sha256sum "$viewer_source" | awk '{ print $1 }')" = "$viewer_source_sha" ]
+    for suffix in .download .digest .download.lock; do
+      [ ! -e "$viewer_destination$suffix" ] && [ ! -L "$viewer_destination$suffix" ]
+    done
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/cm-file-server.log
     wait "$SRV"
     SRV=
     SRV_START=
-    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once network=container-loopback cleanup=server-joined\n'
+    printf 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes network=container-loopback cleanup=server-joined\n'
     trap - EXIT HUP INT TERM
     ;;
   inject)

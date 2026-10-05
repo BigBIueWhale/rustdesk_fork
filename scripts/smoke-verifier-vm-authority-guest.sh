@@ -3055,7 +3055,7 @@ run_cm_file_replay() {
         --mount "type=bind,source=$inputs,target=/online,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$target,target=/smoke-target,bind-recursive=disabled" \
         --workdir /work "$DEV_CHECK_IMAGE_CONFIG_ID" \
-        /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh android-peer-build)"
+        /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh cm-file-build)"
     [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'CM file build container identity is malformed'
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}' "$CONTAINER_ID")"
@@ -3069,7 +3069,7 @@ run_cm_file_replay() {
         | tee "$build_output" || status=$?
     [ "$status" -eq 0 ] && [ "$(stat -c '%s' -- "$build_output")" -le 4194304 ] \
         || { tail -n 160 "$build_output" >&2; fail "CM file build failed: $status"; }
-    [ "$(grep -Fxc 'ANDROID_PEER_BUILD=pass server=production auth=cpace source=x11-changing files=7 network=none' "$build_output")" -eq 1 ] \
+    [ "$(grep -Fxc 'CM_FILE_BUILD=pass server=production viewer=production-session files=8 network=none' "$build_output")" -eq 1 ] \
         || fail 'CM file build product receipt differs'
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'CM file build container did not exit cleanly'
@@ -3097,14 +3097,15 @@ debug/examples/smoke_readiness 755
 flutter-peer-source-x11 555
 smoke-bind-loopback.so 555
 smoke-server-launcher 555
+production-viewer-file-tests 555
 LAYOUT
-    [ "$(wc -l < "$target/android-peer-manifest.sha256")" -eq 7 ] \
+    [ "$(wc -l < "$target/android-peer-manifest.sha256")" -eq 8 ] \
         || fail 'CM file build manifest entry count differs'
     (cd "$target" && sha256sum --check --status android-peer-manifest.sha256) \
         || fail 'CM file build artifact digests differ'
     manifest_sha="$(sha256sum "$target/android-peer-manifest.sha256" | awk '{ print $1 }')"
     sed 's/^/CM_FILE_BUILD_ARTIFACT /' "$target/android-peer-manifest.sha256"
-    printf 'CM_FILE_PEER_BUILD=pass commit=%s tree=%s builder=%s files=7 network=none\n' \
+    printf 'CM_FILE_PEER_BUILD=pass commit=%s tree=%s builder=%s files=8 network=none\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" "$DEV_CHECK_IMAGE_CONFIG_ID"
     printf '%s\n' "$machine_id_value" >"$machine_id"
     chown 1000:1000 "$machine_id"
@@ -3145,7 +3146,7 @@ LAYOUT
     set -e
     [ "$status" -eq 0 ] && [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
         || { tail -n 160 "$output" >&2; fail "CM file replay failed: $status"; }
-    [ "$(grep -Fxc 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once network=container-loopback cleanup=server-joined' "$output")" -eq 1 ] \
+    [ "$(grep -Fxc 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes network=container-loopback cleanup=server-joined' "$output")" -eq 1 ] \
         || fail 'CM file replay product receipt is absent or duplicated'
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'CM file replay container did not exit cleanly'
@@ -3169,6 +3170,7 @@ debug/examples/smoke_readiness 755
 flutter-peer-source-x11 555
 smoke-bind-loopback.so 555
 smoke-server-launcher 555
+production-viewer-file-tests 555
 LAYOUT
     "$CLIENT" --host "unix://$SOCK" image rm "$DEV_CHECK_IMAGE_CONFIG_ID" >/dev/null
     stop_docker_authority

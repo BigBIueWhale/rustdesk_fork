@@ -1,16 +1,16 @@
-//! Container-gated integration evidence for the production outgoing-viewer video path.
+//! Container-gated integration evidence for production outgoing-viewer video and file paths.
 //!
-//! This module is compiled only into the Linux library test artifact, and its sole test is ignored
-//! by default. The test refuses to dial unless the exact smoke runtime contract is present. It is
-//! intentionally not a Flutter, compositor, focus, Android-lifecycle, Windows, or installed-service
-//! test.
+//! This module is compiled only into the Linux library test artifact. Its tests are ignored by
+//! default and refuse to dial outside their exact smoke runtime contracts. They are not Flutter,
+//! compositor, focus, Android-lifecycle, Windows, or installed-service tests.
 
 use crate::{
-    client::QualityStatus,
+    client::{FileManager, QualityStatus},
     ui_session_interface::{InvokeUiSession, Session},
 };
 use hbb_common::{
-    message_proto::*, rendezvous_proto::ConnType, ResultType, VIDEO_FRAME_RECEIPT_VERSION,
+    fs::JobType, message_proto::*, rendezvous_proto::ConnType, ResultType,
+    VIDEO_FRAME_RECEIPT_VERSION,
 };
 use sha2::{Digest, Sha256};
 use std::{
@@ -23,6 +23,12 @@ use std::{
 const EXACT_TEST_EXECUTABLE: &str = "/smoke-target/production-viewer-pipeline-tests";
 const EXACT_WORKING_DIRECTORY: &str = "/work";
 const EXACT_HOME: &str = "/tmp/rd-video-pipeline";
+const EXACT_FILE_TEST_EXECUTABLE: &str = "/smoke-target/production-viewer-file-tests";
+const EXACT_FILE_HOME: &str = "/tmp/rd-cm-file-replay";
+const FILE_SOURCE: &str = "/tmp/rd-cm-file-replay/viewer-source.bin";
+const FILE_DESTINATION: &str = "/tmp/rd-cm-file-replay/viewer-downloads/viewer-source.bin";
+const FILE_JOB_ID: i32 = 18001;
+const FILE_LENGTH: usize = 150_001;
 const EXACT_PEER: &str = "127.0.0.1:21118";
 const FIXTURE_PASSWORD: &str = "Str0ng-Test-Pw-123";
 const EXPECTED_WIDTH: usize = 640;
@@ -33,6 +39,13 @@ const MAX_POST_STALL_RECOVERY: Duration = Duration::from_millis(2_500);
 const PIPELINE_DEADLINE: Duration = Duration::from_secs(25);
 const MIN_PUBLISHED_FRAMES: usize = 20;
 const MIN_DISTINCT_FRAMES: usize = 10;
+
+fn assert_file_absent(path: &str) {
+    match std::fs::symlink_metadata(path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        other => panic!("expected absent viewer artifact {path}: {other:?}"),
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 struct ViewerPipelineState {
@@ -50,6 +63,8 @@ struct ViewerPipelineState {
     first_post_stall_frame: Option<Instant>,
     stall_timed_out: bool,
     errors: Vec<String>,
+    file_listing_seen: bool,
+    file_done_count: usize,
 }
 
 impl ViewerPipelineState {
@@ -89,6 +104,7 @@ impl ViewerPipelineState {
 #[derive(Clone, Default)]
 struct ViewerPipelineUi {
     state: Arc<(Mutex<ViewerPipelineState>, Condvar)>,
+    file_transfer: bool,
 }
 
 impl ViewerPipelineUi {
@@ -100,12 +116,16 @@ impl ViewerPipelineUi {
         ready.notify_all();
     }
 
-    fn wait_for_completion(&self, timeout: Duration) -> ViewerPipelineState {
+    fn wait_until(
+        &self,
+        timeout: Duration,
+        complete: impl Fn(&ViewerPipelineState) -> bool,
+    ) -> ViewerPipelineState {
         let deadline = Instant::now() + timeout;
         let (state, ready) = &*self.state;
         let mut state = state.lock().unwrap();
         loop {
-            if state.complete() || !state.errors.is_empty() {
+            if complete(&state) || !state.errors.is_empty() {
                 return state.clone();
             }
             let now = Instant::now();
@@ -118,6 +138,22 @@ impl ViewerPipelineUi {
                 return state.clone();
             }
         }
+    }
+
+    fn wait_for_completion(&self, timeout: Duration) -> ViewerPipelineState {
+        self.wait_until(timeout, ViewerPipelineState::complete)
+    }
+
+    fn wait_for_file_ready(&self, timeout: Duration) -> ViewerPipelineState {
+        self.wait_until(timeout, |state| state.connected && state.peer_info)
+    }
+
+    fn wait_for_file_done(&self, timeout: Duration) -> ViewerPipelineState {
+        self.wait_until(timeout, |state| state.file_done_count > 0)
+    }
+
+    fn snapshot(&self) -> ViewerPipelineState {
+        self.state.0.lock().unwrap().clone()
     }
 }
 
@@ -168,6 +204,15 @@ impl InvokeUiSession for ViewerPipelineUi {
 
     fn set_peer_info(&self, peer_info: &PeerInfo) {
         self.update(|state| {
+            if self.file_transfer {
+                if hbb_common::get_version_number(&peer_info.version)
+                    < hbb_common::get_version_number("1.1.10")
+                {
+                    state.record_error("file peer does not support digest confirmation".to_owned());
+                }
+                state.peer_info = true;
+                return;
+            }
             if state.initial_display_owner.is_none()
                 || (!state.peer_info
                     && state.initial_display_owner
@@ -192,7 +237,12 @@ impl InvokeUiSession for ViewerPipelineUi {
 
     fn on_connected(&self, conn_type: ConnType) {
         self.update(|state| {
-            if conn_type != ConnType::DEFAULT_CONN {
+            let expected = if self.file_transfer {
+                ConnType::FILE_TRANSFER
+            } else {
+                ConnType::DEFAULT_CONN
+            };
+            if conn_type != expected {
                 state.record_error(format!("unexpected connection type {conn_type:?}"));
             }
             state.connected = true;
@@ -220,7 +270,15 @@ impl InvokeUiSession for ViewerPipelineUi {
         });
     }
 
-    fn job_done(&self, _id: i32, _file_num: i32) {}
+    fn job_done(&self, id: i32, file_num: i32) {
+        self.update(|state| {
+            if self.file_transfer && id == FILE_JOB_ID && file_num == 1 {
+                state.file_done_count += 1;
+            } else {
+                state.record_error(format!("unexpected file job completion {id}/{file_num}"));
+            }
+        });
+    }
     fn clear_all_jobs(&self) {}
     fn new_message(&self, _msg: String) {}
     fn update_transfer_list(&self) {}
@@ -228,12 +286,21 @@ impl InvokeUiSession for ViewerPipelineUi {
 
     fn update_folder_files(
         &self,
-        _id: i32,
-        _entries: &Vec<FileEntry>,
+        id: i32,
+        entries: &Vec<FileEntry>,
         _path: String,
-        _is_local: bool,
-        _only_count: bool,
+        is_local: bool,
+        only_count: bool,
     ) {
+        if self.file_transfer && id == FILE_JOB_ID && !is_local && !only_count {
+            self.update(|state| {
+                if entries.len() != 1 || entries[0].size != FILE_LENGTH as u64 {
+                    state.record_error("remote file listing did not match the fixture".to_owned());
+                } else {
+                    state.file_listing_seen = true;
+                }
+            });
+        }
     }
 
     fn confirm_delete_files(&self, _id: i32, _file_num: i32, _name: String) {}
@@ -385,7 +452,7 @@ fn production_viewer_pipeline_recovers_after_stalled_publication_without_reconne
     }));
 
     let start = session.start_io_thread();
-    let started = matches!(start, Ok(true));
+    let started = matches!(&start, Ok(true));
     let snapshot = if started {
         ui.wait_for_completion(PIPELINE_DEADLINE)
     } else {
@@ -473,5 +540,118 @@ fn production_viewer_pipeline_recovers_after_stalled_publication_without_reconne
         stall.as_millis(),
         recovery.as_millis(),
         snapshot.close_successes,
+    );
+}
+
+#[test]
+#[ignore = "runs only in the exact no-NIC CM file replay container"]
+fn production_viewer_download_commits_the_exact_file_after_digest_confirmation() {
+    assert_eq!(
+        std::env::var("RUSTDESK_PRODUCTION_VIEWER_FILE_SMOKE").as_deref(),
+        Ok("1"),
+        "the file viewer smoke requires its explicit runtime marker"
+    );
+    assert_eq!(
+        std::env::current_exe()
+            .expect("resolve exact viewer test executable")
+            .as_path(),
+        Path::new(EXACT_FILE_TEST_EXECUTABLE)
+    );
+    assert_eq!(
+        std::env::current_dir()
+            .expect("resolve viewer test working directory")
+            .as_path(),
+        Path::new(EXACT_WORKING_DIRECTORY)
+    );
+    assert_eq!(std::env::var("HOME").as_deref(), Ok(EXACT_FILE_HOME));
+
+    let expected: Vec<u8> = (0..FILE_LENGTH)
+        .map(|index| ((index * 37 + 11) % 251) as u8)
+        .collect();
+    assert_eq!(
+        std::fs::read(FILE_SOURCE).expect("read independent server-side file fixture"),
+        expected
+    );
+    for suffix in ["", ".download", ".digest", ".download.lock"] {
+        assert_file_absent(&format!("{FILE_DESTINATION}{suffix}"));
+    }
+
+    let ui = ViewerPipelineUi {
+        file_transfer: true,
+        ..Default::default()
+    };
+    let session = Session {
+        password: FIXTURE_PASSWORD.to_owned(),
+        ui_handler: ui.clone(),
+        ..Default::default()
+    };
+    session
+        .lc
+        .write()
+        .unwrap()
+        .initialize(EXACT_PEER.to_owned(), ConnType::FILE_TRANSFER, None, None);
+
+    let panic_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let observed_panics = Arc::clone(&panic_count);
+    let previous_panic_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        observed_panics.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        eprintln!("PRODUCTION_VIEWER_FILE_PANIC {info}");
+    }));
+
+    let start = session.start_io_thread();
+    let started = matches!(&start, Ok(true));
+    let ready = if started {
+        ui.wait_for_file_ready(Duration::from_secs(20))
+    } else {
+        ViewerPipelineState::default()
+    };
+    let request = if ready.connected && ready.peer_info && ready.errors.is_empty() {
+        Some(session.send_files(
+            FILE_JOB_ID,
+            JobType::Generic.into(),
+            FILE_SOURCE.to_owned(),
+            FILE_DESTINATION.to_owned(),
+            0,
+            false,
+            true,
+        ))
+    } else {
+        None
+    };
+    let snapshot = if matches!(&request, Some(Ok(()))) {
+        ui.wait_for_file_done(Duration::from_secs(30))
+    } else {
+        ready
+    };
+    let joined = started && session.close_and_join();
+    let final_state = ui.snapshot();
+    let retained_panic_hook = std::panic::take_hook();
+    drop(retained_panic_hook);
+    std::panic::set_hook(previous_panic_hook);
+
+    assert!(started, "production file viewer I/O worker did not start: {start:?}");
+    assert!(joined, "production file viewer I/O worker was not joined");
+    assert_eq!(
+        panic_count.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "a production file viewer worker panicked"
+    );
+    assert!(snapshot.errors.is_empty(), "viewer errors: {:?}", snapshot.errors);
+    assert!(snapshot.connected && snapshot.peer_info, "file viewer did not connect");
+    assert!(matches!(&request, Some(Ok(()))), "file request was not admitted: {request:?}");
+    assert!(snapshot.file_listing_seen, "viewer did not admit the listed file size");
+    assert_eq!(snapshot.file_done_count, 1, "viewer must report one exact Done");
+    assert!(final_state.errors.is_empty(), "viewer teardown errors: {:?}", final_state.errors);
+    assert_eq!(final_state.file_done_count, 1, "viewer reported a later duplicate Done");
+    assert_eq!(
+        std::fs::read(FILE_DESTINATION).expect("read committed viewer destination"),
+        expected
+    );
+    for suffix in [".download", ".digest", ".download.lock"] {
+        assert_file_absent(&format!("{FILE_DESTINATION}{suffix}"));
+    }
+    println!(
+        "\nPRODUCTION_VIEWER_FILE_OK bytes={FILE_LENGTH} listing=exact digest=confirmed done=once destination=exact-bytes sidecars=absent teardown=joined"
     );
 }

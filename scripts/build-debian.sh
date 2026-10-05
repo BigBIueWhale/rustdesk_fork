@@ -91,7 +91,7 @@ OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 OUT_PARENT=""
 OUT_DESTINATION=""
 OUT_PARENT_ID=""
-# The §3.2 x64-linux feature set minus hwcodec: CPU-only VP8/VP9.
+# The §3.2 x64-linux software-codec feature set: CPU-only VP8/VP9.
 FEATURES="--flutter --unix-file-copy-paste"
 # Determinism (R-B2): SOURCE_DATE_EPOCH is a FIXED pinned epoch (SOURCE_DATE_EPOCH_PIN in pins.env),
 # NOT a commit date — so the .deb depends only on the source tree; build.rs honours it. (An

@@ -2914,39 +2914,23 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
   `smoke-verifier-vm-authority.sh::reserve_verifier_run` retains and validates the private directory,
   takes a nonblocking exclusive directory lock, checks for any existing run entry, and allocates the
   sole run relative to that descriptor before releasing it. Refusal precedes input digest walks,
-  payload construction, VM-disk creation, or process launch; no automatic failed-evidence deletion or
-  bypass exists. Successful joined cleanup still removes its exact run; failure retains it and blocks
-  another attempt until explicitly reconciled. The real zero-NIC guest test exercised retained-directory,
-  ordinary-file, dangling-symlink, lock-contention, unsafe-mode, cleanup/readmission, and 16-concurrent-caller
-  cases with exactly one admission and no leaked admission descriptor. The complete authority transaction
-  passed in 71 seconds with no added host listener or process drift and joined, residue-free cleanup;
-  a concurrent outer invocation also refused without creating another root. User-authorized removal of
-  the 119 accumulated run roots recovered approximately 975 GiB; reusable inputs and bounded
-  diagnostics are retained. Latest successful joined cleanup is recorded in the matching-toolkit
-  disposition above; earlier failed runs were explicitly reconciled after evidence retention.
-  The 2026-10-02 storage recheck found zero `run.*` entries and zero `overlay.qcow2` files after
-  exact retirement of the stopped `3f4fc47c` failed focused-Dart run, reclaiming another
-  12,276,133,888 allocated bytes (11.43 GiB). Its outer owner was absent, no QEMU/virtiofsd
-  owner or mount remained, and the disk/input files had no open users. Complete raw serial,
-  outer log and bounded diagnostics were retained before descriptor-relative removal under
-  the admission lock. After the subsequent display-key A/B and joined cleanup, reusable
-  verifier inputs and small evidence records occupy 633,171,968 allocated bytes (0.590 GiB).
-  The 2026-10-04 recheck likewise found zero top-level `run.*` entries and zero
-  `overlay.qcow2` files after retirement of stopped Android run `run.F8DyufrnjH`,
-  reclaiming 5,133,639,680 allocated bytes (4.78 GiB). Exact owner, mount and file-user
-  absence were checked; raw serial and twelve bounded diagnostics were retained before
-  descriptor-relative removal under the admission lock. Its before/during/after listener
-  inventories matched. Reusable verifier inputs and retained evidence now occupy
-  634,589,184 allocated bytes (0.591 GiB). Storage retirement does not turn either
-  failed product transaction into a pass or supply missing native evidence.
-  The separate intentional toolkit capsule occupies
-  89,096,192 allocated bytes (0.083 GiB), not a retained VM disk. The successful
-  `9f3f0df2` direct-GTK provider run joined and automatically removed its exact scratch root. The actual outer
-  duplicate invocation returned status 1 before allocation and left the sole run identity/count
-  unchanged. The failure-retention message now explicitly warns that this retained directory blocks
-  new runs until its owned processes have exited and it is reconciled. No host-root/Docker authority,
-  host RustDesk, Haggai, or unrelated cache was used or modified. This is harness storage/admission
-  evidence, not product or release closure.
+  payload construction, VM-disk creation, or process launch; no failed-run admission bypass exists.
+  Successful joined cleanup removes the exact run. Failure retains its run directory and diagnostics,
+  blocking the next run until explicit reconciliation. After exact VM/virtiofsd cleanup succeeds,
+  the receiver now checks the disposable overlay and ISO files are current-user regular single-link
+  files before removing them; cleanup uncertainty or a substituted path retains the files for manual
+  inspection rather than risking an active or foreign target. The historical 119-run cleanup recovered
+  approximately 975 GiB; later individual failed roots were explicitly reconciled, not counted as
+  successful product tests. The current directory has zero `run.*` entries and zero overlays.
+  The focused nonroot guest test exercised retained-directory, file, symlink, lock, unsafe-mode,
+  readmission, and 16-caller/one-winner admission; it also executed the exact new retirement helper
+  against regular, symlink, and hardlink files. The zero-NIC authority transaction passed in 79 seconds;
+  raw serial `authority-smoke-run.iutqcaUaPv.serial.log` is 81,467 bytes, SHA-256
+  `af7f068830ce07ab274ae304f9f6c0a41e13f627d9b28bbc6cece4ae9dc6f5fe`.
+  Its outer audit found no harness-added listener and all owned VM/container processes joined.
+  A deliberately failed full-QEMU cleanup path was not exercised in this slice; the native helper
+  fixture plus the reviewed cleanup ordering are narrower evidence. This is harness storage/admission
+  work, not product, installed-service, or release closure.
   The separate outbound acquisition entry now uses the same descriptor-relative, nonblocking
   one-run reservation for `online-fetch-runs`, before input digest walks, boot derivation,
   payload construction or process launch. Its prior unguarded allocation is removed. Failed

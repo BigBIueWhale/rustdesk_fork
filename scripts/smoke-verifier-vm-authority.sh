@@ -1419,8 +1419,19 @@ verify_private_socket() {
     [ $((8#$mode & 077)) -eq 0 ] || return 1
 }
 
+retire_disposable_vm_file() {
+    local path=$1
+    if [ -e "$path" ] || [ -L "$path" ]; then
+        [ -f "$path" ] && [ ! -L "$path" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%h' -- "$path" 2>/dev/null)" = \
+                 "$HOST_UID:$HOST_GID:1" ] \
+            || return 1
+        /usr/bin/rm -- "$path"
+    fi
+}
+
 cleanup() {
-    local status=$? cleanup_failed=0 index pid start socket
+    local status=$? cleanup_failed=0 index pid start socket disposable
     trap - EXIT HUP INT TERM
     if [ -n "$VM_OWNER_PID" ]; then
         if is_exact_vm_owner_process; then
@@ -1492,7 +1503,12 @@ cleanup() {
                 --remove-private-root "$RUN" --expected-identity "$RUN_ID" \
                 || cleanup_failed=1
         else
-            printf 'verifier-VM authority smoke: retaining failed private evidence at %s; new runs are blocked until this directory is explicitly reconciled after its owned processes have exited\n' \
+            if [ "$cleanup_failed" -eq 0 ]; then
+                for disposable in "$RUN/overlay.qcow2" "$RUN/payload.iso" "$RUN/seed.iso"; do
+                    retire_disposable_vm_file "$disposable" || cleanup_failed=1
+                done
+            fi
+            printf 'verifier-VM authority smoke: retaining failed private diagnostics at %s; disposable VM disks are retired only after joined cleanup, and new runs are blocked until this directory is explicitly reconciled\n' \
                 "$RUN" >&2
         fi
     elif [ -n "$RUN" ]; then

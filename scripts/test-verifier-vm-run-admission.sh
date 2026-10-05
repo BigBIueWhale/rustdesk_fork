@@ -33,6 +33,11 @@ for entry in smoke-verifier-vm-authority online-fetch-vm; do
         END { if (found != 1 || copy) exit 1 }
     ' "$SCRIPT_DIR/$entry.sh" >"$workspace/$entry.function.sh"
 done
+/usr/bin/awk '
+    /^retire_disposable_vm_file\(\) \{$/ { found++; copy = 1 }
+    copy { print; if ($0 == "}") copy = 0 }
+    END { if (found != 1 || copy) exit 1 }
+' "$SCRIPT_DIR/smoke-verifier-vm-authority.sh" >"$workspace/retire-disposable-vm-file.sh"
 
 /usr/bin/awk '
     /^process_start_time\(\) \{$/ { found++; copy = 1 }
@@ -293,6 +298,23 @@ run_admission_cases() {
 }
 run_admission_cases smoke-verifier-vm-authority
 run_admission_cases online-fetch-vm
+
+HOST_UID=$uid HOST_GID=$gid
+source "$workspace/retire-disposable-vm-file.sh"
+storage=$workspace/disposable-vm-storage
+/usr/bin/mkdir -m 0700 -- "$storage"
+/usr/bin/printf 'diagnostic\n' >"$storage/serial.log"
+/usr/bin/printf 'disposable\n' >"$storage/overlay.qcow2"
+retire_disposable_vm_file "$storage/overlay.qcow2"
+[ ! -e "$storage/overlay.qcow2" ] && [ -f "$storage/serial.log" ]
+/usr/bin/ln -s -- serial.log "$storage/payload.iso"
+if retire_disposable_vm_file "$storage/payload.iso"; then exit 1; fi
+[ -L "$storage/payload.iso" ] && [ -f "$storage/serial.log" ]
+/usr/bin/ln -- "$storage/serial.log" "$storage/seed.iso"
+if retire_disposable_vm_file "$storage/seed.iso"; then exit 1; fi
+[ -f "$storage/seed.iso" ] && [ -f "$storage/serial.log" ]
+/usr/bin/rm -- "$storage/payload.iso" "$storage/seed.iso"
+/usr/bin/printf 'VERIFIER_VM_FAILURE_STORAGE_NATIVE regular=retired diagnostic=retained symlink=refused hardlink=refused\n' >&2
 
 root=$workspace/acquisition-old-primitive
 /usr/bin/mkdir -m 0700 -- "$root"

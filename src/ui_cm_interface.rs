@@ -1539,11 +1539,12 @@ where
                                         log::warn!("Rejected desktop CM file operation without its registry owner");
                                         break;
                                     };
-                                    let owner = CmClientTaskOwner::new(self.cm.clone(), owner_key);
+                                    let mut owner = CmClientTaskOwner::new(self.cm.clone(), owner_key);
                                     if !self.cm.begin_file_operation(owner_key) {
                                         log::warn!("Rejected desktop CM file operation from a stale or busy registry owner");
                                         break;
                                     }
+                                    owner.begin_selected_file_operation();
                                     let mut selected_write_jobs = std::mem::take(&mut write_jobs);
                                     let mut selected_read_jobs = std::mem::take(&mut self.read_jobs);
                                     let operation_tx = self.tx.clone();
@@ -1563,6 +1564,7 @@ where
                                             true,
                                         )
                                         .await;
+                                        owner.finish_selected_file_operation();
                                         let _ = result_tx.send((selected_write_jobs, selected_read_jobs, owner, result));
                                     });
                                     let mut operation = CmFileOperationTask {
@@ -2019,16 +2021,25 @@ struct CmClientTaskOwner<T: InvokeUiCM> {
     cm: ConnectionManager<T>,
     owner: CmClientOwner,
     armed: bool,
+    file_operation_complete: bool,
 }
 
 #[cfg(not(target_os = "ios"))]
 impl<T: InvokeUiCM> CmClientTaskOwner<T> {
     fn new(cm: ConnectionManager<T>, owner: CmClientOwner) -> Self {
-        Self { cm, owner, armed: true }
+        Self { cm, owner, armed: true, file_operation_complete: true }
     }
 
     fn owner(&self) -> CmClientOwner {
         self.owner
+    }
+
+    fn begin_selected_file_operation(&mut self) {
+        self.file_operation_complete = false;
+    }
+
+    fn finish_selected_file_operation(&mut self) {
+        self.file_operation_complete = true;
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2042,6 +2053,10 @@ impl<T: InvokeUiCM> CmClientTaskOwner<T> {
 impl<T: InvokeUiCM> Drop for CmClientTaskOwner<T> {
     fn drop(&mut self) {
         if self.armed {
+            if !self.file_operation_complete {
+                log::error!("CM file-operation owner was dropped before its selected work completed");
+                std::process::abort();
+            }
             self.cm.remove_connection(self.owner, true);
             self.cm.finish_file_operation(self.owner);
         }
@@ -2211,7 +2226,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                     );
                     continue;
                 }
-                let Some(owner) = current_owner.take() else {
+                let Some(mut owner) = current_owner.take() else {
                     log::warn!("Rejected Android CM file command without a registry owner");
                     break;
                 };
@@ -2233,6 +2248,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                     current_owner = Some(owner);
                     break;
                 }
+                owner.begin_selected_file_operation();
                 let mut jobs = std::mem::take(&mut write_jobs);
                 let operation_tx = tx.clone();
                 let operation_token = current_cm_auth_token.clone();
@@ -2253,6 +2269,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                         false,
                     )
                     .await;
+                    owner.finish_selected_file_operation();
                     let _ = result_tx.send((jobs, owner, result));
                 });
                 let mut operation = CmFileOperationTask {

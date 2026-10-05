@@ -12775,9 +12775,10 @@ device or an installed `_pa` capture. An already-accepted capture is validated
 only at start, then enters a synchronous PulseAudio read and timed send loop;
 token and subscriber revocation during that loop remain OPEN, as do
 installed positive/negative principal and lifecycle tests. The updated
-wire-format test was compiled but not executed by this focused shard.
+wire-format test was not executed by that 67-test shard; it passed in the
+separate focused Linux-target run below.
 
-**Linux `_pa` live-subscriber admission — source candidate, verification OPEN.**
+**Linux `_pa` live-subscriber admission — focused Linux-target tests PASS; native capture OPEN.**
 Pushed `7ef38634` replaces the token registry's one-time subscriber-ID snapshot
 with the owning audio-service handle. At `StartCapture` validation, it now reads
 the service's current positive subscribers, refuses a stopped or empty service,
@@ -12785,15 +12786,17 @@ and requires the resolved peer to match the token's expected helper (the exact
 authenticated CM child in installed server mode, self in user mode). Three
 focused regressions were added, and R-S11dy/Appendix C
 #278 now specify kernel-derived peer identity rather than a caller-supplied
-`owner`. The exact-source zero-NIC VM reached its offline bridge-preparation
-stage, but its QEMU/timeout owner was killed with status 137 before any Rust
-test summary; this is **not a passing test**. The 55,808-byte serial is
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.cb7iZUtRd6.serial.log`
-(SHA-256 `22534927946c695b36e13426eeea5b9711532fcfafc2266c9dbfea6af0acdbb8`).
-The owned VM process exited, the failed run root was identity-bound retired,
-and no `run.*` directory or overlay remains. Host swap was full afterward;
-no accessible kernel log established the kill cause. Re-run the focused tests
-under adequate resources. Admission remains a snapshot at the instant checked;
+`owner`. Pushed `0233f047` adds a separate 12-GiB,
+Flutter-free `--linux-pa-authority-tests` VM lane. On that exact pushed source,
+the zero-NIC VM and networkless guest Docker compiled the Linux Rust library
+and passed all five named `_pa` socket-peer, live-subscriber, and closed-wire
+tests in 253 seconds (four plus one test summaries). The outer before/during/after
+listener audit found no harness addition or pre-existing-process drift; joined
+cleanup left no `run.*` directory or overlay. Retained 66,533-byte serial:
+`.harness-state/verifier-vm/linux-pa-authority-tests-run.nlYE9r129y.serial.log`
+(SHA-256 `f9afdee64c72eaf2ed3315e15ca3044579666498c94dcf98f716acf4fc106b67`).
+This proves Linux-target in-process authority and wire behavior, not an
+installed service or a PulseAudio device. Admission remains a snapshot at the instant checked;
 the already-accepted capture still uses blocking PulseAudio `Simple::read`
 without a revocation/cancellation path. Native installed positive/negative
 capture, subscriber churn, cleanup, and resource evidence remain OPEN.

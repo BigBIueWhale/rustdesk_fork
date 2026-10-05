@@ -3304,6 +3304,65 @@ maintenance_discover_devcheck_image() {
     printf 'discovery_image_id=%s\n' "$image_id"
 }
 
+maintenance_discover_pa_runtime() {
+    require_devcheck_recipe_pins
+    local root="$ONLINE_FETCH_TMP/pa-runtime-discovery"
+    local sources="$root/sources.list"
+    local simulation package_record
+    local -a apt_options=(
+        -o "Dir::Etc::sourcelist=$sources"
+        -o Dir::Etc::sourceparts=-
+        -o "Dir::State::lists=$root/lists"
+        -o "Dir::Cache::archives=$root/archives"
+        -o "APT::Sandbox::User=$(/usr/bin/id -un)"
+        -o APT::Get::List-Cleanup=0
+    )
+    [ "$ONLINE_FETCH_UID" -ne 0 ] \
+        || die 'PulseAudio package discovery refuses root'
+    [ -f /usr/share/keyrings/debian-archive-keyring.gpg ] \
+        && [ ! -L /usr/share/keyrings/debian-archive-keyring.gpg ] \
+        || die 'Debian archive signing keyring is unavailable'
+    /usr/bin/install -d -m 0700 -- \
+        "$root" "$root/lists" "$root/lists/partial" \
+        "$root/archives" "$root/archives/partial"
+    /usr/bin/printf '%s\n' \
+        'Types: deb' \
+        "URIs: https://snapshot.debian.org/archive/debian/${DEV_CHECK_DEBIAN_SNAPSHOT}/" \
+        'Suites: bookworm bookworm-updates' \
+        'Components: main' \
+        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+        'Check-Valid-Until: no' \
+        '' \
+        'Types: deb' \
+        "URIs: https://snapshot.debian.org/archive/debian-security/${DEV_CHECK_SECURITY_SNAPSHOT}/" \
+        'Suites: bookworm-security' \
+        'Components: main' \
+        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+        'Check-Valid-Until: no' \
+        >"$sources"
+    /usr/bin/env -i PATH=/usr/bin:/bin HOME="$root" LC_ALL=C \
+        /usr/bin/apt-get "${apt_options[@]}" \
+        -o APT::Update::Error-Mode=any update -qq \
+        || die 'signed Debian snapshot update failed for PulseAudio discovery'
+    package_record="$(/usr/bin/env -i PATH=/usr/bin:/bin HOME="$root" LC_ALL=C \
+        /usr/bin/apt-cache "${apt_options[@]}" show pulseaudio)" \
+        || die 'PulseAudio is absent from the signed snapshot'
+    [[ "$package_record" == *$'Package: pulseaudio\n'* ]] \
+        || die 'PulseAudio package record is malformed'
+    simulation="$(/usr/bin/env -i PATH=/usr/bin:/bin HOME="$root" LC_ALL=C \
+        /usr/bin/apt-get "${apt_options[@]}" --simulate --no-install-recommends \
+        install pulseaudio)" \
+        || die 'PulseAudio package dependency simulation failed'
+    [[ "$simulation" == *'Inst pulseaudio '* ]] \
+        || die 'PulseAudio package dependency simulation did not select the daemon'
+    /usr/bin/printf 'PA_RUNTIME_DISCOVERY=signed-snapshot-only debian=%s security=%s uid=%s\n' \
+        "$DEV_CHECK_DEBIAN_SNAPSHOT" "$DEV_CHECK_SECURITY_SNAPSHOT" "$ONLINE_FETCH_UID"
+    /usr/bin/printf '%s\n' "$package_record" \
+        | /usr/bin/awk '/^(Package|Version|Architecture|Depends|Filename|Size|SHA256):/ {print}'
+    /usr/bin/printf '%s\n' "$simulation" \
+        | /usr/bin/awk '/^Inst / {print}'
+}
+
 capture_devcheck_rebuild() {
     [ "$#" -eq 2 ] || die "internal devcheck rebuild capture error"
     local output="$1" expected_id="$2"
@@ -8281,6 +8340,11 @@ main() {
         --maintenance-discover-devcheck-image)
             [ "$#" -eq 1 ] || die "--maintenance-discover-devcheck-image takes no arguments"
             maintenance_discover_devcheck_image
+            return 0
+            ;;
+        --maintenance-discover-pa-runtime)
+            [ "$#" -eq 1 ] || die "--maintenance-discover-pa-runtime takes no arguments"
+            maintenance_discover_pa_runtime
             return 0
             ;;
         --maintenance-discover-osv-pub-database)

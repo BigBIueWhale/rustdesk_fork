@@ -42,7 +42,7 @@ case "$#:${1:-}" in
     1:--maintenance-promote-android-builder-certified-candidate|\
     1:--maintenance-build-win-helper-certified-candidate|\
     1:--maintenance-promote-win-helper-certified-candidate|\
-    1:--maintenance-discover-devcheck-image|\
+    1:--maintenance-discover-devcheck-image|1:--maintenance-discover-pa-runtime|\
     1:--maintenance-build-devcheck-image-candidate|\
     1:--maintenance-promote-devcheck-image-candidate|\
     1:--maintenance-build-apple-check-image-candidate|\
@@ -96,6 +96,10 @@ elif [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
      || [ "$REQUEST" = --maintenance-probe-flutter-linux-engine-bootstrap ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=16G
+    readonly VM_MEMORY=4096
+elif [ "$REQUEST" = --maintenance-discover-pa-runtime ]; then
+    readonly VM_TIMEOUT_SECONDS=900
+    readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=4096
 elif [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ]; then
     readonly VM_TIMEOUT_SECONDS=3600

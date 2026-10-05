@@ -864,7 +864,9 @@ start_virtiofsd() {
             ready=1
             break
         fi
-        is_owned_virtiofsd_generation "$pid" "$start" || break
+        # The child can still be the launching shell before Python execs the
+        # confined exporter. Keep waiting only while this exact child lives.
+        is_live_process_generation "$pid" "$start" || break
         /usr/bin/sleep 0.05
     done
     [ "$ready" -eq 1 ] \

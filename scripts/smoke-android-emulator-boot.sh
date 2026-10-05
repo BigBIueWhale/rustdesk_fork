@@ -1744,9 +1744,29 @@ exercise_android_controlled_cpace() {
 }
 
 exercise_android_controlled_stop() {
-    local stopped=0 probe_status=0 lifecycle_log
-    tap_ui text 'Stop screen sharing' \
-        || fail 'the production Stop screen sharing command is unavailable'
+    local stopped=0 probe_status=0 lifecycle_log stop_center= stop_warning=
+    local stop_x= stop_y=
+    stop_center="$(wait_ui_center text 'Stop screen sharing' 2>/dev/null || true)"
+    for _ in $(seq 1 3); do
+        [[ "$stop_center" =~ ^[0-9]+\ [0-9]+$ ]] && break
+        timeout --signal=TERM --kill-after=2s 10s \
+            "$ADB" -s "$SERIAL" shell input swipe 240 650 240 220 300 \
+            >/dev/null || fail 'cannot scroll to the production Stop command'
+        stop_center="$(wait_ui_center text 'Stop screen sharing' 2>/dev/null || true)"
+    done
+    [[ "$stop_center" =~ ^[0-9]+\ [0-9]+$ ]] \
+        || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'the production Stop screen sharing command is unavailable'; }
+    read -r stop_x stop_y <<<"$stop_center"
+    timeout --signal=TERM --kill-after=2s 10s \
+        "$ADB" -s "$SERIAL" shell input tap "$stop_x" "$stop_y" \
+        >/dev/null || fail 'cannot invoke the production Stop command'
+    stop_warning="$(wait_ui_center text 'Warning' 2>/dev/null || true)"
+    [[ "$stop_warning" =~ ^[0-9]+\ [0-9]+$ ]] \
+        && capture_unobscured_ui_hierarchy complete \
+        && [[ "$(ui_center text "$SERVICE_STOP_WARNING_TEXT" 2>/dev/null || true)" =~ ^[0-9]+\ [0-9]+$ ]] \
+        || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'the production Stop confirmation differs'; }
+    tap_ui text 'OK' \
+        || fail 'cannot confirm the production Stop command'
     for _ in $(seq 1 120); do
         if assert_no_main_service; then
             stopped=1
@@ -1758,8 +1778,13 @@ exercise_android_controlled_stop() {
         || fail 'production Stop did not retire MainService'
     [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$APP_PID" ] \
         || fail 'production Stop killed or replaced the application process'
-    wait_ui_center text 'Screen sharing is off' >/dev/null \
-        || fail 'the production UI did not observe stopped screen sharing'
+    if ! wait_ui_center text 'Screen sharing is off' >/dev/null; then
+        timeout --signal=TERM --kill-after=2s 10s \
+            "$ADB" -s "$SERIAL" shell input swipe 240 220 240 650 300 \
+            >/dev/null || fail 'cannot scroll to the stopped-state card'
+        wait_ui_center text 'Screen sharing is off' >/dev/null \
+            || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'the production UI did not observe stopped screen sharing'; }
+    fi
     lifecycle_log="$(adb_shell_value logcat -d -v brief)"
     ! grep -Eq 'FATAL EXCEPTION|MainService destruction retained incomplete generation authority|Could not quiesce controlled connection admission' \
         <<<"$lifecycle_log" \
@@ -1809,6 +1834,7 @@ readonly PEER_VIEW_ADDRESS=127.0.0.1:22118
 readonly PEER_REVERSE_DEVICE_SPEC=tcp:22118
 readonly PEER_REVERSE_CONTAINER_SPEC=tcp:21118
 readonly SERVICE_START_WARNING_TEXT='Turning on "Screen Capture" will automatically start the service, allowing other devices to request a connection to your device.'
+readonly SERVICE_STOP_WARNING_TEXT='Stopping screen sharing also closes the listener on :21118 and ends all established connections.'
 readonly UI_XML=$WORK_ROOT/window.xml
 readonly IMMERSIVE_CLING_MARKER=$WORK_ROOT/immersive-cling.dismissed
 FRAMEWORK_INTERRUPTION_HANDLED=0

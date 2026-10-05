@@ -1905,22 +1905,72 @@ where
                             );
                             break;
                         }
+                        if cm_file_operation_reaper().is_err() {
+                            break;
+                        }
+                        let permit = match CM_FILE_OPERATION_LIMIT.clone().try_acquire_owned() {
+                            Ok(permit) => permit,
+                            Err(error) => {
+                                log::warn!("Rejected CM read-job tick without drain capacity: {error}");
+                                break;
+                            }
+                        };
+                        let Some(owner_key) = self.client_owner.take() else {
+                            log::warn!("Rejected CM read-job tick without its registry owner");
+                            break;
+                        };
+                        if !self.cm.begin_file_operation(owner_key) {
+                            self.client_owner = Some(owner_key);
+                            log::warn!("Rejected CM read-job tick from a stale or busy registry owner");
+                            break;
+                        }
+                        let mut owner = CmClientTaskOwner::new(self.cm.clone(), owner_key);
+                        owner.begin_selected_file_operation();
+                        let mut read_jobs = std::mem::take(&mut self.read_jobs);
+                        let tx = self.tx.clone();
+                        let token = self.cm_auth_token.clone();
                         let conn_id = self.conn_id;
-                        if let Err(error) = handle_read_jobs_tick(
-                            &mut self.read_jobs,
-                            CmFileResponder {
-                                tx: &self.tx,
-                                conn_id,
-                                cm_auth_token: &self.cm_auth_token,
-                            },
-                        )
-                        .await
-                        {
+                        let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+                        let task = tokio::spawn(async move {
+                            let result = handle_read_jobs_tick(
+                                &mut read_jobs,
+                                CmFileResponder {
+                                    tx: &tx,
+                                    conn_id,
+                                    cm_auth_token: &token,
+                                },
+                            )
+                            .await;
+                            owner.finish_selected_file_operation();
+                            let _ = result_tx.send((read_jobs, owner, result));
+                        });
+                        let mut operation = CmFileOperationTask {
+                            join: Some(CmFileOperationJoin {
+                                task,
+                                _permit: permit,
+                            }),
+                        };
+                        let outcome = result_rx.await;
+                        let joined = operation.join().await;
+                        let (jobs, owner, result) = match (outcome, joined) {
+                            (Ok(outcome), Ok(())) => outcome,
+                            (outcome, joined) => {
+                                log::error!(
+                                    "CM read-job tick lost its exact outcome: result={}, join={joined:?}",
+                                    outcome.is_ok()
+                                );
+                                break;
+                            }
+                        };
+                        self.read_jobs = jobs;
+                        self.client_owner = Some(owner.into_owner());
+                        self.cm.finish_file_operation(owner_key);
+                        if let Err(error) = result {
                             log::error!("failed to publish CM read-job response: {error}");
                             break;
                         }
                         let log = serialize_cm_transfer_jobs(&self.read_jobs);
-                        if !self.cm.file_transfer_log(owner, "transfer", &log) {
+                        if !self.cm.file_transfer_log(owner_key, "transfer", &log) {
                             break;
                         }
                     } else {
@@ -3092,6 +3142,8 @@ async fn handle_read_jobs_tick(
         }
 
         // Read a block from the file
+        #[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+        pause_cm_test_read_tick_before_block(job.id, job.conn_id).await;
         match job.read().await {
             Err(err) => {
                 responder.send(ipc::CmFileResponseKind::ReadError {
@@ -3354,6 +3406,39 @@ struct CmTestCreateDirPause {
 
 #[cfg(test)]
 static CM_TEST_CREATE_DIR_PAUSE: OnceLock<StdMutex<Option<CmTestCreateDirPause>>> = OnceLock::new();
+
+#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+struct CmTestReadTickPause {
+    conn_id: i32,
+    job_id: i32,
+    entered: tokio::sync::oneshot::Sender<()>,
+    resume: tokio::sync::oneshot::Receiver<()>,
+}
+
+#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+static CM_TEST_READ_TICK_PAUSE: OnceLock<StdMutex<Option<CmTestReadTickPause>>> =
+    OnceLock::new();
+
+#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+async fn pause_cm_test_read_tick_before_block(job_id: i32, conn_id: i32) {
+    let gate = CM_TEST_READ_TICK_PAUSE.get_or_init(|| StdMutex::new(None));
+    let pause = {
+        let mut slot = gate.lock().unwrap();
+        if slot
+            .as_ref()
+            .map(|pause| (pause.job_id, pause.conn_id))
+            == Some((job_id, conn_id))
+        {
+            slot.take()
+        } else {
+            None
+        }
+    };
+    if let Some(pause) = pause {
+        let _ = pause.entered.send(());
+        let _ = pause.resume.await;
+    }
+}
 
 #[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
 static CM_TEST_SELECTED_FILE_TASK_ABORT: OnceLock<
@@ -3930,6 +4015,107 @@ mod tests {
             "selected child loss did not fail closed: {output:?}"
         );
         assert!(!directory.exists());
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11is_desktop_read_tick_cancellation_drains_exact_owner() {
+        let id = 2_000_200_012;
+        let job_id = 77;
+        let temp = CmFileTestDir::new("desktop_read_tick_cancel");
+        fs::write(temp.join("sample.bin"), b"read-job-owner").unwrap();
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (resume_tx, resume_rx) = tokio::sync::oneshot::channel();
+        let gate = CM_TEST_READ_TICK_PAUSE.get_or_init(|| StdMutex::new(None));
+        {
+            let mut slot = gate.lock().unwrap();
+            assert!(slot.is_none());
+            *slot = Some(CmTestReadTickPause {
+                conn_id: id,
+                job_id,
+                entered: entered_tx,
+                resume: resume_rx,
+            });
+        }
+
+        let (task, mut peer, ui) = admitted_cm_file_raw_test(id).await;
+        let generation = CLIENTS
+            .read()
+            .unwrap()
+            .clients
+            .get(&id)
+            .map(|client| client.registry_generation)
+            .unwrap();
+        peer.send(&Data::AuthorizedFS {
+            cm_auth_token: "test-token".to_owned(),
+            fs: ipc::FS::ReadFile {
+                path: temp.path.to_string_lossy().into_owned(),
+                id: job_id,
+                file_num: 0,
+                include_hidden: false,
+                conn_id: id,
+                overwrite_detection: false,
+                generation: 1,
+            },
+        })
+        .await
+        .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(3), entered_rx)
+            .await
+            .expect("real read job must reach its selected timer tick")
+            .expect("selected timer tick must signal entry");
+        assert_eq!(
+            CLIENTS
+                .read()
+                .unwrap()
+                .in_flight_file_operations
+                .get(&id),
+            Some(&generation)
+        );
+
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert_eq!(
+            CLIENTS
+                .read()
+                .unwrap()
+                .clients
+                .get(&id)
+                .map(|client| client.registry_generation),
+            Some(generation)
+        );
+        assert!(lock_cm_egress_test(&ui.removed).is_empty());
+        let mut successor = registry_test_client(id, "same-peer");
+        assert!(matches!(
+            CLIENTS.write().unwrap().admit(&mut successor, 1),
+            Err(CmClientAdmissionError::FileOperationInFlight)
+        ));
+
+        resume_tx.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            loop {
+                let registry = CLIENTS.read().unwrap();
+                if !registry.clients.contains_key(&id)
+                    && !registry.in_flight_file_operations.contains_key(&id)
+                {
+                    break;
+                }
+                drop(registry);
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("cancelled read tick must finish before owner retirement");
+        assert_eq!(*lock_cm_egress_test(&ui.removed), vec![(id, generation, true)]);
+        drop(peer);
+
+        let (successor_task, successor_peer, successor_ui) =
+            admitted_cm_file_raw_test(id).await;
+        successor_task.abort();
+        assert!(successor_task.await.unwrap_err().is_cancelled());
+        drop(successor_peer);
+        assert_eq!(lock_cm_egress_test(&successor_ui.removed).len(), 1);
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

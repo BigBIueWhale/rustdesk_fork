@@ -12758,6 +12758,25 @@ No run directory or overlay remains. Native `_pa` capture and installed-service
 principal and revocation races are not established by these unit tests and
 remain OPEN.
 
+**Linux `_pa` receiver peer proof — source corrected, capture/revocation OPEN.**
+Pushed `12c40db1` removes the caller-supplied `owner` from `StartCapture`.
+The `_pa` receiver derives PID/UID/start identity from the accepted Unix
+socket before applying the token and exact launch-parent checks; the old
+`owner` field is rejected by the closed request decoder. A guest test
+observed distinct kernel peer identities for a local socket and a separate
+same-UID child process. Exact pushed source passed 67 Linux-target tests in
+the zero-NIC VM; the outer run passed listener and joined-cleanup checks in
+728 seconds, with one pre-existing-process drift and no harness addition.
+The retained 68,592-byte serial is
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.2oYWnOldlg.serial.log`
+(SHA-256 `688379db753141f41f3b3d574ef3db80fd6deb2700cb055f596b04290d681bf6`).
+No run directory or overlay remains. The guest did not run a PulseAudio
+device or an installed `_pa` capture. An already-accepted capture is validated
+only at start, then enters a synchronous PulseAudio read and timed send loop;
+token and subscriber revocation during that loop remain OPEN, as do
+installed positive/negative principal and lifecycle tests. The updated
+wire-format test was compiled but not executed by this focused shard.
+
 **Process-wide connection IDs — source corrected, native lifecycle OPEN.**
 The former per-`Server` counters could allocate the same ID in overlapping
 controlled generations or outgoing voice audio, and their wrap scan checked

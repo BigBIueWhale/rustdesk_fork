@@ -12781,8 +12781,9 @@ wire-format test was compiled but not executed by this focused shard.
 Pushed `7ef38634` replaces the token registry's one-time subscriber-ID snapshot
 with the owning audio-service handle. At `StartCapture` validation, it now reads
 the service's current positive subscribers, refuses a stopped or empty service,
-and requires their current authenticated CM peer identity to match the token's
-expected helper. Three focused regressions were added, and R-S11dy/Appendix C
+and requires the resolved peer to match the token's expected helper (the exact
+authenticated CM child in installed server mode, self in user mode). Three
+focused regressions were added, and R-S11dy/Appendix C
 #278 now specify kernel-derived peer identity rather than a caller-supplied
 `owner`. The exact-source zero-NIC VM reached its offline bridge-preparation
 stage, but its QEMU/timeout owner was killed with status 137 before any Rust

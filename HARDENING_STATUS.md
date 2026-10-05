@@ -3295,9 +3295,21 @@ This tests one headless Linux inspection refusal, not every malformed or
 inaccessible destination, peer-side terminal receipt, installed/client-native
 behavior, or a release artifact.
 
+Test-only `818214ed` (tree `aa7c0868`) added a two-live-peer CM receive replay.
+While one keyed FileTransfer connection held job ID 17015 and a staged destination,
+a second keyed connection using the same ID/path was refused. Guest checks found
+the first owner's staged bytes, digest, and lock inode unchanged; that owner then
+committed exact bytes and retired its sidecars. The no-NIC VM exited 0 in 311
+seconds; raw serial `cm-file-replay-run.khu7YOJX9s.serial.log` is 397,501 bytes,
+SHA-256 `3786324d31f54a52a64ac976a686a0a9eb1018c39ad2adfb8e1ceb1132772e33`.
+The outer audit found no harness-added listener and reported one pre-existing
+process drift; guest Docker, QEMU, and virtiofsd joined, leaving no run overlay.
+This is same-destination contention between two live headless Linux peers, not
+stale-generation replacement, saturation, native/installed behavior, or release proof.
+
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | Current Linux evidence: 64 Rust filesystem tests plus four config tests, a 55-test Rust-app guest pass (outer receipt count corrected later), and keyed real-peer CM upload, short-write refusal, cancel, owner-loss/reconnect, collision, and cleanup-failure replays; direct-send unreadable-source error is terminal, followed on the same connection by a confirmed, exact-byte two-block direct read and one `Done`. One headless production-viewer download committed exact bytes after the normal listing/digest/confirmation path; a symlink-destination refusal stayed terminal, and a fresh same-peer connection then committed to the same path after local link removal without disturbing the sentinel. The exact receipts and limits are above. Still OPEN: other viewer failure and reconnect paths, saturation, terminal-first disconnect, concurrent/stale-generation reconnect, broader cleanup faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and release-artifact evidence. The installed Windows result predates these corrections. |
+| CM/file finality (R-S11c-4c/4d) | Current Linux evidence: 64 Rust filesystem tests plus four config tests, a 55-test Rust-app guest pass (outer receipt count corrected later), and keyed real-peer CM upload, short-write refusal, cancel, owner-loss/reconnect, live same-destination contention, collision, and cleanup-failure replays; direct-send unreadable-source error is terminal, followed on the same connection by a confirmed, exact-byte two-block direct read and one `Done`. One headless production-viewer download committed exact bytes after the normal listing/digest/confirmation path; a symlink-destination refusal stayed terminal, and a fresh same-peer connection then committed to the same path after local link removal without disturbing the sentinel. The exact receipts and limits are above. Still OPEN: other viewer failure and reconnect paths, saturation, terminal-first disconnect, stale-generation replacement, broader cleanup faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and release-artifact evidence. The installed Windows result predates these corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

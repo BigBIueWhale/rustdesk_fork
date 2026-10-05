@@ -1,0 +1,327 @@
+use super::*;
+use std::{
+    cell::RefCell,
+    collections::VecDeque,
+    rc::Rc,
+    time::{Duration, Instant},
+};
+
+const PA_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const PA_AUTHORITY_INTERVAL: Duration = Duration::from_millis(100);
+const PA_SETUP_TIMEOUT: Duration = Duration::from_secs(2);
+const PA_QUEUED_FRAMES: usize = 8;
+const PA_MAX_FRAGMENT_BYTES: usize = PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES * 32;
+
+#[derive(Default)]
+struct PaSourceLookup {
+    selected: Option<String>,
+    monitor: Option<String>,
+    done: bool,
+    failed: bool,
+}
+
+#[derive(Default)]
+struct PaCaptureFrames {
+    partial: Vec<u8>,
+    ready: VecDeque<Bytes>,
+}
+
+impl PaCaptureFrames {
+    fn append(&mut self, data: &[u8]) -> ResultType<()> {
+        if data.len() > PA_MAX_FRAGMENT_BYTES {
+            bail!("PulseAudio capture fragment exceeds the bounded record buffer");
+        }
+        let mut remaining = data;
+        while !remaining.is_empty() {
+            let take = remaining
+                .len()
+                .min(PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES - self.partial.len());
+            self.partial.extend_from_slice(&remaining[..take]);
+            remaining = &remaining[take..];
+            if self.partial.len() == PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES {
+                if self.ready.len() == PA_QUEUED_FRAMES {
+                    self.ready.pop_front();
+                }
+                self.ready.push_back(Bytes::from(std::mem::take(&mut self.partial)));
+            }
+        }
+        Ok(())
+    }
+
+    fn append_hole(&mut self, mut bytes: usize) -> ResultType<()> {
+        if bytes > PA_MAX_FRAGMENT_BYTES {
+            bail!("PulseAudio capture hole exceeds the bounded record buffer");
+        }
+        let zeros = [0; PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES];
+        while bytes != 0 {
+            let take = bytes.min(zeros.len());
+            self.append(&zeros[..take])?;
+            bytes -= take;
+        }
+        Ok(())
+    }
+
+    fn next_frame(&mut self) -> Option<Bytes> {
+        self.ready.pop_front().map(|frame| {
+            if frame.iter().all(|byte| *byte == 0) {
+                Bytes::new()
+            } else {
+                frame
+            }
+        })
+    }
+}
+
+fn iterate_pa(mainloop: &mut pulse::mainloop::standard::Mainloop) -> ResultType<()> {
+    match mainloop.iterate(false) {
+        pulse::mainloop::standard::IterateResult::Success(_) => Ok(()),
+        pulse::mainloop::standard::IterateResult::Quit(_) => bail!("PulseAudio main loop quit"),
+        pulse::mainloop::standard::IterateResult::Err(err) => {
+            bail!("PulseAudio main loop failed: {err}")
+        }
+    }
+}
+
+async fn wait_for_pa<T>(
+    stream: &mut ConnectionTmpl<T>,
+    peer: &LinuxProcessIdentity,
+    token: &str,
+    last_authority_check: &mut Instant,
+) -> ResultType<()>
+where
+    T: AsyncRead + AsyncWrite + Unpin,
+{
+    match tokio::time::timeout(PA_POLL_INTERVAL, stream.inner.next()).await {
+        Err(_) => {}
+        Ok(None) => bail!("PulseAudio capture owner closed the IPC stream"),
+        Ok(Some(Ok(_))) => bail!("unexpected _pa client frame after StartCapture"),
+        Ok(Some(Err(err))) => return Err(err.into()),
+    }
+    if last_authority_check.elapsed() >= PA_AUTHORITY_INTERVAL {
+        validate_pulse_audio_start_authority(peer, token).await?;
+        *last_authority_check = Instant::now();
+    }
+    Ok(())
+}
+
+async fn capture(
+    stream: &mut Connection,
+    peer: &LinuxProcessIdentity,
+    token: &str,
+    requested_source: &str,
+) -> ResultType<()> {
+    let mut mainloop = pulse::mainloop::standard::Mainloop::new()
+        .ok_or_else(|| anyhow::anyhow!("could not create PulseAudio main loop"))?;
+    let mut context = pulse::context::Context::new(&mainloop, &crate::get_app_name())
+        .ok_or_else(|| anyhow::anyhow!("could not create PulseAudio context"))?;
+    context.connect(None, pulse::context::FlagSet::NOAUTOSPAWN, None)?;
+    let mut last_authority_check = Instant::now();
+    let deadline = Instant::now() + PA_SETUP_TIMEOUT;
+    loop {
+        iterate_pa(&mut mainloop)?;
+        match context.get_state() {
+            pulse::context::State::Ready => break,
+            pulse::context::State::Failed | pulse::context::State::Terminated => {
+                bail!("PulseAudio context did not become ready")
+            }
+            _ => {}
+        }
+        if Instant::now() >= deadline {
+            bail!("PulseAudio context connection timed out");
+        }
+        wait_for_pa(stream, peer, token, &mut last_authority_check).await?;
+    }
+
+    let lookup = Rc::new(RefCell::new(PaSourceLookup::default()));
+    let callback_lookup = Rc::clone(&lookup);
+    let requested = requested_source.to_owned();
+    let introspector = context.introspect();
+    let operation = introspector.get_source_info_list(move |item| {
+        let mut lookup = callback_lookup.borrow_mut();
+        match item {
+            pulse::callbacks::ListResult::Item(info) => {
+                if let Some(name) = info.name.as_ref() {
+                    if name.len() > 1024 {
+                        return;
+                    }
+                    if lookup.monitor.is_none() && name.contains("monitor") {
+                        lookup.monitor = Some(name.to_string());
+                    }
+                    if lookup.selected.is_none()
+                        && !requested.is_empty()
+                        && info.description.as_deref() == Some(requested.as_str())
+                    {
+                        lookup.selected = Some(name.to_string());
+                    }
+                }
+            }
+            pulse::callbacks::ListResult::End => lookup.done = true,
+            pulse::callbacks::ListResult::Error => lookup.failed = true,
+        }
+    });
+    let deadline = Instant::now() + PA_SETUP_TIMEOUT;
+    loop {
+        iterate_pa(&mut mainloop)?;
+        if lookup.borrow().failed {
+            bail!("PulseAudio source lookup failed");
+        }
+        if lookup.borrow().done {
+            break;
+        }
+        if context.get_state() != pulse::context::State::Ready {
+            bail!("PulseAudio context disconnected during source lookup");
+        }
+        if Instant::now() >= deadline {
+            bail!("PulseAudio source lookup timed out");
+        }
+        wait_for_pa(stream, peer, token, &mut last_authority_check).await?;
+    }
+    drop(operation);
+    drop(introspector);
+    let source = {
+        let mut lookup = lookup.borrow_mut();
+        lookup.selected.take().or_else(|| lookup.monitor.take())
+    }
+    .ok_or_else(|| anyhow::anyhow!("no PulseAudio source or monitor available"))?;
+
+    let spec = pulse::sample::Spec {
+        format: pulse::sample::Format::F32le,
+        channels: 2,
+        rate: crate::platform::PA_SAMPLE_RATE,
+    };
+    let mut recorder = pulse::stream::Stream::new(&mut context, "record", &spec, None)
+        .ok_or_else(|| anyhow::anyhow!("could not create PulseAudio record stream"))?;
+    let attr = pulse::def::BufferAttr {
+        maxlength: (PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES * PA_QUEUED_FRAMES) as u32,
+        tlength: u32::MAX,
+        prebuf: u32::MAX,
+        minreq: u32::MAX,
+        fragsize: PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES as u32,
+    };
+    recorder.connect_record(Some(&source), Some(&attr), pulse::stream::FlagSet::NOFLAGS)?;
+    let deadline = Instant::now() + PA_SETUP_TIMEOUT;
+    loop {
+        iterate_pa(&mut mainloop)?;
+        match recorder.get_state() {
+            pulse::stream::State::Ready => break,
+            pulse::stream::State::Failed | pulse::stream::State::Terminated => {
+                bail!("PulseAudio record stream did not become ready")
+            }
+            _ => {}
+        }
+        if Instant::now() >= deadline {
+            bail!("PulseAudio record stream connection timed out");
+        }
+        wait_for_pa(stream, peer, token, &mut last_authority_check).await?;
+    }
+    log::info!("pa monitor: {:?}", source);
+
+    let mut frames = PaCaptureFrames::default();
+    loop {
+        iterate_pa(&mut mainloop)?;
+        if context.get_state() != pulse::context::State::Ready
+            || recorder.get_state() != pulse::stream::State::Ready
+        {
+            bail!("PulseAudio capture stream disconnected");
+        }
+        loop {
+            match recorder.peek()? {
+                pulse::stream::PeekResult::Empty => break,
+                pulse::stream::PeekResult::Hole(bytes) => frames.append_hole(bytes)?,
+                pulse::stream::PeekResult::Data(data) => frames.append(data)?,
+            }
+            recorder.discard()?;
+        }
+        if let Some(frame) = frames.next_frame() {
+            stream
+                .send_pulse_audio_frame_timeout(frame, PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+                .await?;
+        }
+        wait_for_pa(stream, peer, token, &mut last_authority_check).await?;
+    }
+}
+
+#[tokio::main(flavor = "current_thread")]
+pub async fn start_pa() {
+    match new_listener("_pa").await {
+        Ok(mut incoming) => {
+            while let Some(result) = incoming.next().await {
+                match result {
+                    Ok(stream) => {
+                        let mut stream = Connection::new_pulse_audio(stream);
+                        let request = match stream
+                            .next_pulse_audio_request_timeout(PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+                            .await
+                        {
+                            Ok(Some(request)) => request,
+                            Ok(None) => {
+                                log::warn!("Rejected _pa client with malformed capture request");
+                                continue;
+                            }
+                            Err(err) => {
+                                log::warn!("Rejected _pa client without timely capture authority: {err}");
+                                continue;
+                            }
+                        };
+                        let LinuxPulseAudioIpcRequest::StartCapture { token, source } = request;
+                        let peer = match validate_pulse_audio_capture_request(&stream, &token).await {
+                            Ok(peer) => peer,
+                            Err(err) => {
+                                log::warn!("Rejected _pa client with invalid audio capture authority: {err}");
+                                continue;
+                            }
+                        };
+                        if let Err(err) = capture(&mut stream, &peer, &token, &source).await {
+                            log::info!("PulseAudio capture ended: {err}");
+                        }
+                    }
+                    Err(err) => log::error!("Couldn't get pa client: {err:?}"),
+                }
+            }
+        }
+        Err(err) => log::error!("Failed to start pa ipc server: {err}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn record_fragments_preserve_frame_shape_and_bound_stale_audio() {
+        let mut frames = PaCaptureFrames::default();
+        frames.append(&vec![1; PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES / 2]).unwrap();
+        assert!(frames.next_frame().is_none());
+        frames.append(&vec![2; PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES / 2]).unwrap();
+        let frame = frames.next_frame().unwrap();
+        assert_eq!(frame.len(), PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES);
+        assert!(frame[..frame.len() / 2].iter().all(|byte| *byte == 1));
+        assert!(frame[frame.len() / 2..].iter().all(|byte| *byte == 2));
+
+        frames.append_hole(PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES).unwrap();
+        assert!(frames.next_frame().unwrap().is_empty());
+        for value in 1..=PA_QUEUED_FRAMES + 2 {
+            frames.append(&vec![value as u8; PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES]).unwrap();
+        }
+        assert_eq!(frames.ready.len(), PA_QUEUED_FRAMES);
+        assert_eq!(frames.next_frame().unwrap()[0], 3);
+        assert!(frames.append(&vec![0; PA_MAX_FRAGMENT_BYTES + 1]).is_err());
+        assert!(frames.append_hole(PA_MAX_FRAGMENT_BYTES + 1).is_err());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn accepted_owner_close_interrupts_silent_capture_wait() {
+        let (socket, owner) = tokio::net::UnixStream::pair().unwrap();
+        let mut stream = ConnectionTmpl::new_pulse_audio(socket);
+        let peer = current_linux_process_identity().unwrap();
+        let mut last_authority_check = Instant::now();
+        drop(owner);
+        assert!(tokio::time::timeout(
+            Duration::from_millis(100),
+            wait_for_pa(&mut stream, &peer, "unused", &mut last_authority_check)
+        )
+        .await
+        .unwrap()
+        .is_err());
+    }
+}

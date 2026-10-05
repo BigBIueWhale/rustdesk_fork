@@ -230,6 +230,17 @@ impl<T: Subscriber + From<ConnInner>> ServiceTmpl<T> {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    pub fn send_to_ids(&self, msg: Message, ids: &[i32]) {
+        let msg = Arc::new(msg);
+        let mut lock = self.0.write().unwrap();
+        for id in ids {
+            if let Some(subscriber) = lock.subscribes.get_mut(id) {
+                subscriber.send(Arc::clone(&msg));
+            }
+        }
+    }
+
     pub fn send_to_others(&self, msg: Message, id: i32) {
         let msg = Arc::new(msg);
         let mut lock = self.0.write().unwrap();
@@ -413,5 +424,46 @@ impl<T: Subscriber + From<ConnInner>> ServiceSwap<T> {
 impl<T: Subscriber + From<ConnInner>> Drop for ServiceSwap<T> {
     fn drop(&mut self) {
         (self.0).0.write().unwrap().swap_new_subscribes();
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod pa_dispatch_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn r_s11iu_pa_audio_dispatch_excludes_later_subscribers() {
+        let service = EmptyExtraFieldService::new("audio".to_owned(), false).sp;
+        let (first_tx, mut first_rx) = super::super::connection::audio_egress_channel();
+        let (later_tx, mut later_rx) = super::super::connection::audio_egress_channel();
+        service.on_subscribe(ConnInner::with_audio(42, None, None, Some(first_tx)));
+        let recipients = service.subscriber_ids();
+        service.on_subscribe(ConnInner::with_audio(43, None, None, Some(later_tx)));
+
+        let mut frame = Message::new();
+        frame.set_audio_frame(AudioFrame {
+            data: vec![1].into(),
+            ..Default::default()
+        });
+        service.send_to_ids(frame, &recipients);
+
+        assert!(tokio::time::timeout(time::Duration::from_millis(50), first_rx.recv())
+            .await
+            .unwrap()
+            .is_some());
+        assert!(tokio::time::timeout(time::Duration::from_millis(10), later_rx.recv())
+            .await
+            .is_err());
+        service.on_unsubscribe(42);
+
+        let mut frame = Message::new();
+        frame.set_audio_frame(AudioFrame {
+            data: vec![2].into(),
+            ..Default::default()
+        });
+        service.send_to_ids(frame, &recipients);
+        assert!(tokio::time::timeout(time::Duration::from_millis(10), later_rx.recv())
+            .await
+            .is_err());
     }
 }

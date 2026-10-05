@@ -7419,12 +7419,13 @@ async fn validate_pulse_audio_start_authority(
 async fn validate_pulse_audio_capture_request<T>(
     stream: &ConnectionTmpl<T>,
     token: &str,
-) -> ResultType<()>
+) -> ResultType<LinuxProcessIdentity>
 where
     T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
 {
     let peer = ipc_auth::linux_kernel_peer_process_identity(stream, "_pa")?;
-    validate_pulse_audio_start_authority(&peer, token).await
+    validate_pulse_audio_start_authority(&peer, token).await?;
+    Ok(peer)
 }
 
 #[cfg(target_os = "linux")]
@@ -7438,117 +7439,10 @@ pub async fn connect_for_uid(
 }
 
 #[cfg(target_os = "linux")]
-#[tokio::main(flavor = "current_thread")]
-pub async fn start_pa() {
-    use crate::audio_service::AUDIO_DATA_SIZE_U8;
-
-    match new_listener("_pa").await {
-        Ok(mut incoming) => {
-            loop {
-                if let Some(result) = incoming.next().await {
-                    match result {
-                        Ok(stream) => {
-                            let mut stream = Connection::new_pulse_audio(stream);
-                            let request = match stream
-                                .next_pulse_audio_request_timeout(
-                                    PULSE_AUDIO_IPC_IO_TIMEOUT_MS,
-                                )
-                                .await
-                            {
-                                Ok(Some(request)) => request,
-                                Ok(None) => {
-                                    log::warn!(
-                                        "Rejected _pa client with malformed capture request"
-                                    );
-                                    continue;
-                                }
-                                Err(err) => {
-                                    log::warn!(
-                                        "Rejected _pa client without timely capture authority: {}",
-                                        err
-                                    );
-                                    continue;
-                                }
-                            };
-                            let LinuxPulseAudioIpcRequest::StartCapture {
-                                token,
-                                source,
-                            } = request;
-                            if let Err(err) =
-                                validate_pulse_audio_capture_request(&stream, &token).await
-                            {
-                                log::warn!(
-                                    "Rejected _pa client with invalid audio capture authority: {}",
-                                    err
-                                );
-                                continue;
-                            }
-                            let mut device = source;
-                            if !device.is_empty() {
-                                device = crate::platform::linux::get_pa_source_name(&device);
-                            }
-                            if device.is_empty() {
-                                device = crate::platform::linux::get_pa_monitor();
-                            }
-                            if device.is_empty() {
-                                continue;
-                            }
-                            let spec = pulse::sample::Spec {
-                                format: pulse::sample::Format::F32le,
-                                channels: 2,
-                                rate: crate::platform::PA_SAMPLE_RATE,
-                            };
-                            log::info!("pa monitor: {:?}", device);
-                            // systemctl --user status pulseaudio.service
-                            let mut buf: Vec<u8> = vec![0; AUDIO_DATA_SIZE_U8];
-                            match psimple::Simple::new(
-                                None,                             // Use the default server
-                                &crate::get_app_name(),           // Our application’s name
-                                pulse::stream::Direction::Record, // We want a record stream
-                                Some(&device),                    // Use the default device
-                                "record",                         // Description of our stream
-                                &spec,                            // Our sample format
-                                None,                             // Use default channel map
-                                None, // Use default buffering attributes
-                            ) {
-                                Ok(s) => loop {
-                                    if let Err(err) = s.read(&mut buf) {
-                                        log::error!("Failed to read PulseAudio capture data: {err}");
-                                        break;
-                                    }
-                                    let out = if buf.iter().all(|byte| *byte == 0) {
-                                        vec![]
-                                    } else {
-                                        buf.clone()
-                                    };
-                                    if let Err(err) = stream
-                                        .send_pulse_audio_frame_timeout(
-                                            out.into(),
-                                            PULSE_AUDIO_IPC_IO_TIMEOUT_MS,
-                                        )
-                                        .await
-                                    {
-                                        log::error!("Failed to send audio data: {err}");
-                                        break;
-                                    }
-                                },
-                                Err(err) => {
-                                    log::error!("Could not create simple pulse: {}", err);
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            log::error!("Couldn't get pa client: {:?}", err);
-                        }
-                    }
-                }
-            }
-        }
-        Err(err) => {
-            log::error!("Failed to start pa ipc server: {}", err);
-        }
-    }
-}
+#[path = "ipc/pulse_audio.rs"]
+mod pulse_audio;
+#[cfg(target_os = "linux")]
+pub use self::pulse_audio::start_pa;
 pub struct ConnectionTmpl<T> {
     inner: Framed<T, BytesCodec>,
 }

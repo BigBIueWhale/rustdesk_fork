@@ -114,6 +114,24 @@ impl PaCaptureAuthorityGuard {
     fn expected_peer(&self) -> &crate::ipc::LinuxProcessIdentity {
         &self.expected_peer
     }
+
+    fn current_subscribers(&self) -> ResultType<Vec<i32>> {
+        let registry = PA_CAPTURE_AUTHORITY.lock().unwrap();
+        let authority = registry
+            .as_ref()
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("pulse audio capture authority was retired"))?;
+        pa_capture_authority_subscribers(authority, &self.token, &self.expected_peer, || {
+            if self.expected_peer.pid() == std::process::id() {
+                crate::ipc::linux_process_identity_is_live(&self.expected_peer)
+            } else {
+                crate::ipc::linux_cm_child_identity_is_live(
+                    &self.expected_peer,
+                    std::process::id(),
+                )
+            }
+        })
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("pulse audio capture authority was revoked"))
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -219,17 +237,30 @@ fn pa_capture_authority_matches<F>(
 where
     F: FnOnce() -> bool,
 {
-    token_eq(&authority.token, token)
-        && authority.expected_peer == *peer
-        && peer_is_live()
-        && {
-            let conn_ids = authority.service.subscriber_ids();
-            !conn_ids.is_empty()
-                && conn_ids.iter().all(|conn_id| *conn_id > 0)
-                && expected_pa_peer(&conn_ids)
-                    .map(|expected| expected == authority.expected_peer)
-                    .unwrap_or(false)
-        }
+    pa_capture_authority_subscribers(authority, token, peer, peer_is_live).is_some()
+}
+
+#[cfg(target_os = "linux")]
+fn pa_capture_authority_subscribers<F>(
+    authority: &PaCaptureAuthority,
+    token: &str,
+    peer: &crate::ipc::LinuxProcessIdentity,
+    peer_is_live: F,
+) -> Option<Vec<i32>>
+where
+    F: FnOnce() -> bool,
+{
+    if !token_eq(&authority.token, token) || authority.expected_peer != *peer || !peer_is_live() {
+        return None;
+    }
+    let conn_ids = authority.service.subscriber_ids();
+    if conn_ids.is_empty() || conn_ids.iter().any(|conn_id| *conn_id <= 0) {
+        return None;
+    }
+    if expected_pa_peer(&conn_ids).ok().as_ref() != Some(&authority.expected_peer) {
+        return None;
+    }
+    Some(conn_ids)
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
@@ -352,8 +383,11 @@ mod pa_impl {
                 .next_pulse_audio_frame_timeout(crate::ipc::PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
                 .await?
             {
+                let recipients = pa_authority.current_subscribers()?;
                 if data.is_empty() {
-                    send_f32(&zero_audio_frame, &mut encoder, &sp);
+                    send_f32_with(&zero_audio_frame, &mut encoder, |msg| {
+                        sp.send_to_ids(msg, &recipients)
+                    });
                     continue;
                 }
 
@@ -361,7 +395,7 @@ mod pa_impl {
                 let data = unsafe {
                     std::slice::from_raw_parts::<f32>(data.as_ptr() as _, data.len() / 4)
                 };
-                send_f32(data, &mut encoder, &sp);
+                send_f32_with(data, &mut encoder, |msg| sp.send_to_ids(msg, &recipients));
             }
 
             #[cfg(target_os = "android")]
@@ -760,6 +794,31 @@ mod test {
     }
 
     #[test]
+    fn r_s11iu_pa_capture_rechecks_exact_current_recipients() {
+        let _lock = PA_CAPTURE_AUTHORITY_TEST_LOCK.lock().unwrap();
+        *PA_CAPTURE_AUTHORITY.lock().unwrap() = None;
+
+        let service = EmptyExtraFieldService::new(NAME.to_owned(), true).sp;
+        service.on_subscribe(ConnInner::new(42, None, None));
+        let authority = install_pa_capture_authority(&service).unwrap();
+        assert_eq!(authority.current_subscribers().unwrap(), vec![42]);
+
+        service.on_subscribe(ConnInner::new(43, None, None));
+        assert_eq!(authority.current_subscribers().unwrap(), vec![42, 43]);
+        service.on_unsubscribe(42);
+        assert_eq!(authority.current_subscribers().unwrap(), vec![43]);
+        service.on_unsubscribe(43);
+        assert!(authority.current_subscribers().is_err());
+
+        service.on_subscribe(ConnInner::new(44, None, None));
+        let successor = install_pa_capture_authority(&service).unwrap();
+        assert!(authority.current_subscribers().is_err());
+        assert_eq!(successor.current_subscribers().unwrap(), vec![44]);
+        drop(authority);
+        assert_eq!(successor.current_subscribers().unwrap(), vec![44]);
+    }
+
+    #[test]
     fn r_s11iu_pa_capture_authority_requires_a_positive_subscriber_id() {
         let _lock = PA_CAPTURE_AUTHORITY_TEST_LOCK.lock().unwrap();
         *PA_CAPTURE_AUTHORITY.lock().unwrap() = None;
@@ -819,6 +878,13 @@ const MAX_AUDIO_ZERO_COUNT: u16 = 800;
 static mut AUDIO_ZERO_COUNT: u16 = 0;
 
 fn send_f32(data: &[f32], encoder: &mut Encoder, sp: &GenericService) {
+    send_f32_with(data, encoder, |msg| sp.send(msg));
+}
+
+fn send_f32_with<F>(data: &[f32], encoder: &mut Encoder, mut send: F)
+where
+    F: FnMut(Message),
+{
     if data.iter().filter(|x| **x != 0.).next().is_some() {
         unsafe {
             AUDIO_ZERO_COUNT = 0;
@@ -854,7 +920,7 @@ fn send_f32(data: &[f32], encoder: &mut Encoder, sp: &GenericService) {
                             data: data.into(),
                             ..Default::default()
                         });
-                        sp.send(msg_out);
+                        send(msg_out);
                     }
                     Err(_) => {}
                 }
@@ -873,7 +939,7 @@ fn send_f32(data: &[f32], encoder: &mut Encoder, sp: &GenericService) {
                 data: data.into(),
                 ..Default::default()
             });
-            sp.send(msg_out);
+            send(msg_out);
         }
         Err(_) => {}
     }

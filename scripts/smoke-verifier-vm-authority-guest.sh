@@ -2061,6 +2061,7 @@ run_focused_rust_tests() {
         source_fingerprints=(
             Cargo.lock
             src/ipc.rs
+            src/ipc/pulse_audio.rs
             src/server/audio_service.rs
             src/server/connection.rs
             src/server/service.rs
@@ -2071,6 +2072,10 @@ run_focused_rust_tests() {
             server::audio_service::test::r_s11iu_pa_capture_authority_rejects_missing_wrong_and_stale_tokens
             server::audio_service::test::r_s11iu_pa_capture_authority_rejects_a_stopped_service
             server::audio_service::test::r_s11iu_pa_capture_authority_requires_a_positive_subscriber_id
+            server::audio_service::test::r_s11iu_pa_capture_rechecks_exact_current_recipients
+            server::service::pa_dispatch_tests::r_s11iu_pa_audio_dispatch_excludes_later_subscribers
+            ipc::pulse_audio::tests::record_fragments_preserve_frame_shape_and_bound_stale_audio
+            ipc::pulse_audio::tests::accepted_owner_close_interrupts_silent_capture_wait
         )
     else
         [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -2447,6 +2452,10 @@ run_focused_rust_tests() {
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             ipc::test::linux_pulse_audio_channel_uses_closed_bounded_protocol \
                             --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config \
+                            server::service::pa_dispatch_tests:: --color never -- --test-threads=1
+                        cargo test --offline --locked --lib --features linux-pkg-config \
+                            ipc::pulse_audio::tests:: --color never -- --test-threads=1
                         ;;
                     android-rust-lifecycle-tests)
                         cargo test --offline --locked --lib --features linux-pkg-config \
@@ -2521,7 +2530,7 @@ run_focused_rust_tests() {
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
     elif [ "$MODE" = linux-pa-authority-tests ]; then
-        [ "${#result_lines[@]}" -eq 2 ] \
+        [ "${#result_lines[@]}" -eq 4 ] \
             || { tail -n 200 "$output" >&2; fail 'focused Linux PulseAudio summary count differs'; }
     else
         [ "${#result_lines[@]}" -eq 12 ] \

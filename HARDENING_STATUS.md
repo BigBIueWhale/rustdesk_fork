@@ -3089,227 +3089,39 @@ installed lifecycle, native presentation, cold R-B2/R-B10, or independent-reprod
 
 ### Open / STOP-SHIP evidence
 
-**CM/file current-source directory, create, and receive-write replay; broader finality OPEN:**
-exact pushed source `73393c5c` (tree `d53f592f`) built the production Linux peer and probe
-inside a disposable no-NIC VM, then ran them in a separate networkless nonroot container.
-CPace keying, post-login `PeerInfo`, the automatic CM `FileResponse::Dir` for `ReadDir("")`,
-and `Done(id=17002)` for a post-login directory create passed. A keyed pre-login create did
-not create its target. After Login, a receive-write job with one real block and a premature
-terminal file index was refused with the active-file terminal error; its final path and
-`.download`/`.digest`/`.download.lock` sidecars were absent. A second receive-write job
-returned `Done(id=17004,file_num=1)` and left the exact expected bytes in a mode-0600 file
-owned by the container user, with no sidecars. A third job sent two blocks for each of two
-files, then `Done(id=17005,file_num=2)`. Both final files matched independent literal
-payloads byte-for-byte, were mode 0600 with the container user's UID/GID, and had no
-receive sidecars. The directory had that user's UID/GID and mode 0700 while the server
-remained alive. Two further jobs wrote partial blocks: the peer-error job returned its
-exact reported error, and the cancel job was followed by a CM directory-response barrier.
-Neither aborted final file nor its receive sidecars existed at the barrier while the server
-was live. The fixture username was `"unknown"`, not installed-user identity evidence.
-Retained raw serial `cm-file-replay-run.G6XteM2yA5.serial.log` is 314,210 bytes, SHA-256
-`e7eb4a5a691911f8a584465031864efd6509bd7fa34114b95d0778c82dcd7482`; it includes
-the seven built-file digests and manifest digest. The outer run passed in 263 seconds with
-no harness-added host listener or pre-existing-process drift and joined cleanup; no `run.*`
-or overlay remains. Earlier `ae4f3fd1` and `77cd4ddd` replays are historical.
-This is one headless Linux receive-write terminal/commit, multi-file, and abort check,
-not wrong-OS-principal, installed-service, full file-transfer, Android, or cross-platform evidence.
+**CM/file finality — headless Linux replay passed; broader native and release evidence OPEN.**
+Current source makes CM filesystem work post-login and connection/generation scoped, and
+makes each receive destination an exact-owner claim with a nonblocking lease, exclusive
+sidecars, fallible cleanup, and size-checked publication. Direct-send errors are terminal;
+the production viewer owns its download and error-to-next-session progression. The
+receive/commit state model and its platform limits are detailed under R-S11c-4d below.
 
-**Abrupt CM receive-owner loss (current source, Linux VM):** pushed `81a03231` (tree
-`e0c3434c`) makes the shared desktop/Android CM job wrapper retire a receive claim already
-attached to that job on drop, including task cancellation or peer/IPC closure without
-`Done`, error, or cancel. Cancellation while a blocking worker still owned its result
-required the separate correction below.
-The no-NIC VM built that exact source and ran a keyed FileTransfer peer against the
-production Linux server in guest-only nonroot Docker. The peer sent a partial block, then
-used a same-CM-stream directory reply to observe `orphaned.txt.download`, `.digest`, and
-`.download.lock` while the server was live; it exited without a transfer terminal message.
-The guest then boundedly waited for CM teardown and verified the final file and all three
-sidecars absent while the server remained live. The replay exited 0 in 263 seconds; raw
-serial `cm-file-replay-run.PbExV3UzZo.serial.log` is 314,310 bytes, SHA-256
-`d2c0621051d7497c72e51cabb0f6e0ef001769cb94887e05a2ab41716a549e6c`.
-The outer audit found no harness-added host listener or pre-existing-process drift;
-guest/container/VM cleanup joined and no run overlay remained. The added focused Rust
-unit test has not separately been executed. This is one headless Linux abrupt-loss path,
-not installed-service, Android, Windows/macOS, reconnect, failure-injected cleanup, or
-release-artifact evidence.
+Exact source `818214ed` (tree `aa7c0868`) passed the no-NIC, guest-only Docker
+`--cm-file-replay` in 311 seconds. Its keyed Linux peers exercised pre-login refusal,
+directory/create, exact and short writes, multi-file blocks, peer error, cancel, abrupt
+owner loss and fresh reconnect, fixed-sidecar collision, cleanup failure, direct-read
+error followed by a confirmed exact read, and two *simultaneously live* connections
+contending for the same destination. The contender was refused without changing the
+first owner's staged bytes, digest, or lock inode; the first owner then committed.
+The production Linux `Session` in that replay downloaded exact bytes, refused a
+symlink destination without changing its sentinel, and completed a fresh same-peer
+connection after that local refusal. The 397,501-byte raw serial is
+`.harness-state/verifier-vm/cm-file-replay-run.khu7YOJX9s.serial.log`, SHA-256
+`3786324d31f54a52a64ac976a686a0a9eb1018c39ad2adfb8e1ceb1132772e33`.
+The outer audit found no harness-added host listener, reported one pre-existing
+process drift, joined guest Docker/QEMU/virtiofsd, and left no `run.*` overlay.
 
-**Fresh CM peer after that loss (current source, Linux VM):** pushed `9ccb23cc`
-(tree `1cb2658e`) used the same source-bound peer binary for a second CPace/FileTransfer
-connection after the first owner's partial receive was retired. The new connection reused
-job ID `17008` and `orphaned.txt`, received its exact `Done(1)`, and left independent
-expected bytes in a mode-0600 file owned by the guest container user, with no receive
-sidecars while the server remained alive. The no-NIC VM replay exited 0 in 264 seconds;
-raw serial `cm-file-replay-run.yzbxwClHJL.serial.log` is 314,870 bytes, SHA-256
-`7a378e094274e6fd93a6addab2ee8c6120d60995aadb5aeab5f0046282d97014`.
-The outer host-listener/process audit and joined cleanup passed, leaving no run overlay.
-An earlier candidate `3d01e3dd` executed and passed the product transaction, but its VM
-failed a stale guest receipt string; that result was not accepted. The failed exact run
-was identity-checked and removed after its processes and mounts had exited; its raw serial
-remains archived. This establishes one sequential headless Linux reconnect, not a racy
-handoff, stale-generation attack, Android/Windows/macOS lifecycle, or installed artifact.
-
-**Abandoned blocking receive result (current source, Linux VM):** pushed `f37a14f9`
-(tree `86811208`) gives each `ReceiveWriteClaim` fallback retirement on drop until
-successful finish or explicit cleanup disarms it. `start_new` and `resume` return
-the stream before the claim so a discarded blocking result closes the stream first;
-the intended Windows close-before-unlink ordering is not yet natively tested. This
-closes the gap where the CM job vanished before `spawn_blocking` delivered its newly
-opened claim or a failed finalization result. The focused zero-NIC VM ran 59 real
-filesystem/Tokio tests and four config tests in 164 seconds, including both
-abandoned-result cases; raw serial
-`hbb-common-fs-run.MUuihtRjsJ.serial.log` is 68,503 bytes, SHA-256
-`b42eb0ac606269bbbcc0d781aee5b3ae8bf6a016499f0d1da4d1d95bad343159`.
-The same candidate passed the keyed real-peer Linux CM replay in 263 seconds; raw serial
-`cm-file-replay-run.hTayQunpmg.serial.log` is 314,779 bytes, SHA-256
-`600b281832ca8ed3957d57e1358689216c3ad1b91c0ac915baedbb7b2380e49c`.
-Both outer runs reported no harness-added host listener or pre-existing-process drift,
-joined cleanup, and no retained run overlay. The new cancellation cases execute the
-real filesystem and Tokio handoff on Linux, not a native Windows open/unlink, installed
-service, Android process-lifecycle, or release-artifact transaction. Native Windows
-sidecar collision and cleanup-failure behavior remain open.
-
-**Fixed-sidecar collision (current source, Linux VM):** pushed `af2fce08`
-(tree `8d949ded`) changes new receive admission from create-or-open followed by
-truncate to atomic exclusive creation of `.download` and `.digest`. The stable
-lease and explicit resume retain their distinct open-existing semantics. A collision
-now refuses before modifying an older generation; if digest creation collides, the
-newly created download and idle lease are retired while the older digest is preserved.
-The focused zero-NIC VM passed 60 filesystem
-and four config tests in 164 seconds, including the two-sidecar byte-preservation
-case; raw serial `hbb-common-fs-run.VlVlb7DMS3.serial.log` is 68,489 bytes,
-SHA-256 `e4075b23c5d373729dced5bcecb8d5251f2cb3531106e0afa6ec5a83d42ceaef`.
-The same candidate passed the keyed real-peer Linux CM replay in 270 seconds: separate
-pre-existing download and digest fixtures each caused an exact-ID peer error, and the
-guest checked both original byte strings, absent final files and new sidecars while
-the production server was live. Raw serial `cm-file-replay-run.BkUeSWoDRj.serial.log`
-is 315,504 bytes, SHA-256
-`5675acfac26ce1dff06dcf5723f78bb388255878d205e4623484aeff582278cc`.
-Both outer runs reported no harness-added host listener or pre-existing-process drift,
-joined cleanup, and zero retained run overlays. This is Linux filesystem and headless
-CM behavior, not native Windows `FILE_CREATE`/handle deletion, installed service,
-Android, or release-artifact evidence.
-
-At clean pushed `cb455e0f` (tree `64d2d824`), a keyed Linux FileTransfer peer staged a
-partial receive and waited for a CM directory barrier while a separate guest process
-replaced its `.download` name. Cancellation returned the exact cleanup-failure error;
-the live guest verified the replacement and displaced original bytes intact, the
-digest absent, the lease name retained, and the final path absent. The no-NIC VM exited
-0 in 263 seconds with no host listener/process drift and joined cleanup; raw serial
-`cm-file-replay-run.dvrGQH2arg.serial.log` is 316,039 bytes, SHA-256
-`73137dd6ea77e25732a7159116c179219f9f6866bed461717d56aeca5aefc1fd`.
-This establishes one Linux headless cleanup-failure path, not Windows handle semantics
-or a general cleanup-fault matrix.
-
-Direct-send read failure had a separate terminality defect: on source-open/read error,
-`TransferJob` advanced the file number, and the non-Windows producer emitted `Error`
-without retiring the job, allowing a later `Done` although viewers treat `Error` as
-terminal. Product commit `87dc487c` retains the failing file number and retires the
-exact job on either error path; the Windows CM producer already did so. Its no-NIC
-filesystem VM passed four config and 61 filesystem tests in 164 seconds (raw serial
-`hbb-common-fs-run.qgGxFGCmAJ.serial.log`, 67,250 bytes, SHA-256
-`dcd2adf13138d52e9fc5be906f1c5701caff43b461c2a761bc1f3c5f7e829ebf`).
-The first keyed replay failed in the new probe before reaching that outcome because
-it sent a duplicate initial directory request. Its failed serial
-`cm-file-replay-run.6dMTwtqddI.serial.log` (338,456 bytes, SHA-256
-`d146a66f256647b6799c264012047a4d2c8badd335870c029ce3ac38d947a749`)
-was retained; only its idle 8.2-GiB run root was identity-checked and removed.
-Probe-only correction `3fefe68b` passed the same-product-source keyed replay in
-266 seconds: an unreadable file produced one exact-ID/file-0 error, no later block
-or `Done` through a subsequent directory response and bounded quiet check, while
-the connection and server stayed live. Raw serial
-`cm-file-replay-run.hB4tn2ENFS.serial.log` is 318,516 bytes, SHA-256
-`015d00997320fa00e3bd1fcb982d08267c42cf734580b6e36ecc8ae861ccb167`;
-the outer listener/process audit and joined cleanup passed with no run overlay.
-This is Linux direct-send error finality, not a full download or native Windows read result.
-
-Exact-length receive closure (2026-10-05): product `625564c3` now retains each
-listed file size through the CM `NewWrite` IPC, rejects an inconsistent aggregate,
-bounds each decoded receive block and resumed offset to the listed file, and
-requires both the logical byte count and staged inode length to equal that size
-before publication. The viewer also rejects a digest whose size differs from its
-listing before destination inspection. The pre-existing correct-index `Done`
-check alone had allowed a short file to be published; an oversized block could
-also be written. Focused fixture corrections `a060b08f` and `e05a2e91` followed
-two failed test-only VM runs (retained raw serials
-`hbb-common-fs-run.bu8rMRwT3y.serial.log` and
-`hbb-common-fs-run.JUovwlEcaY.serial.log`; their idle overlays were
-identity-bound retired). At `e05a2e91`, the no-NIC filesystem VM passed four
-config and 64 filesystem tests in 164 seconds (raw serial
-`hbb-common-fs-run.8dsa1iW9yk.serial.log`, 69,391 bytes, SHA-256
-`112e57c3b1e02839b491bcb93b3d7e7eee4607f4a5e39a4c070582488860ba9b`).
-The same source passed the keyed real-peer CM replay in 266 seconds: normal
-receive still committed exact bytes, while a short payload followed by the
-correct `Done(1)` returned a size error and left no final file or owned sidecars.
-Raw serial `cm-file-replay-run.YRuNlH5dxR.serial.log` is 316,285 bytes,
-SHA-256 `d6f7b3386760f4ffc1b0d34ba9bac77dfdbad37ac182c99dfdd1558a52496d12`.
-Both outer listener/process audits found no host addition or drift, with joined
-guest-only Docker/QEMU cleanup and zero retained run overlays. The expanded
-Linux Rust-app guest test transaction at `4aedee4e` passed 55 focused tests,
-including CM aggregate-size and viewer cleanup/digest cases, but its outer
-wrapper rejected the receipt because it still expected 48 tests. The raw serial
-`android-rust-lifecycle-tests-run.aSRpqaFkEe.serial.log` (69,121 bytes, SHA-256
-`542f680bb9bd9fb6c148e4e04505f4af49cadc514ab60b7ee0c1046c5ca634d9`)
-is retained, its failed-run overlay was identity-bound retired, and `23f890c7`
-corrects the outer expected count; a full outer rerun of that correction is not
-claimed. This does not yet exercise an actual viewer writing a download or
-native Windows/Android/installed artifacts.
-
-Pushed test candidate `dfeb3dba` (tree `8c3d576d`) then replayed a readable source on
-the **same keyed Linux FileTransfer connection after that terminal error**. The real
-server listed one 150,001-byte file, sent its file-0 digest, accepted an explicit
-`OffsetBlk(0)` confirmation, sent two nonempty blocks whose every byte matched the
-independent guest fixture, and ended with one `Done(id=17013,file_num=1)`. A subsequent
-directory response on that connection was the post-terminal ordering barrier; the
-guest checked the unchanged source bytes/mode and live server. The no-NIC VM exited 0
-in 275 seconds; raw serial `cm-file-replay-run.oWjdUQ4wUR.serial.log` is 317,351
-bytes, SHA-256 `818ec27194827cc140d5987c43bf4074fcc64d6778adb85a4cc37ad73c69b7c6`.
-The outer listener/process audit passed, all exact owners joined, and no `run.*` or
-overlay remains. This proves one headless Linux direct-send read/digest/confirmation
-and error-to-next-job progression, not a viewer writing the download.
-
-Pushed test-only `c9c06a68` (tree `f8b4f32e`) then built a production Linux `Session`
-test artifact alongside the real controlled peer in the no-NIC VM. The FileTransfer
-session requested a distinct deterministic 150,001-byte source, observed its one-file
-listing, completed one download through the normal digest/confirmation path, and joined
-its I/O worker. The guest independently checked the committed destination's exact
-bytes, owner/mode, and absent receive sidecars; the source digest stayed unchanged.
-`--cm-file-replay` exited 0 in 312 seconds. Retained raw serial
-`cm-file-replay-run.xpct1esu7R.serial.log` is 395,763 bytes, SHA-256
-`6e000ceef3800136449a983295cbc0942244baca6605eb9e235d04db430f1e57`.
-The outer audit found no host listener addition or pre-existing-process drift, all
-guest-only owners joined, and no run directory or overlay remains. This is one
-headless Linux positive path, not injected viewer failure/reconnect, native installed
-desktop, Android, Windows, or final-artifact evidence.
-
-Pushed test-only `2915190b` (tree `91331cb7`) added a separate production
-`Session` replay with a symlink destination and a regular sentinel target. The
-viewer observed the real peer's listing, rejected the destination at digest
-inspection, reported one round error and one exact job error, and joined without
-`Done`; guest checks preserved the link and target bytes and found no receive
-sidecars. The positive download also passed unchanged. The no-NIC VM exited 0
-in 320 seconds; raw serial `cm-file-replay-run.86PWbxESyk.serial.log` is
-397,302 bytes, SHA-256
-`54d4f51c44f148357cddc8f202f56813ed0f022da5cc10b1f21c439c95187740`.
-The outer listener/process audit passed and all run/overlay owners retired.
-This tests one headless Linux inspection refusal, not every malformed or
-inaccessible destination, peer-side terminal receipt, installed/client-native
-behavior, or a release artifact.
-
-Test-only `818214ed` (tree `aa7c0868`) added a two-live-peer CM receive replay.
-While one keyed FileTransfer connection held job ID 17015 and a staged destination,
-a second keyed connection using the same ID/path was refused. Guest checks found
-the first owner's staged bytes, digest, and lock inode unchanged; that owner then
-committed exact bytes and retired its sidecars. The no-NIC VM exited 0 in 311
-seconds; raw serial `cm-file-replay-run.khu7YOJX9s.serial.log` is 397,501 bytes,
-SHA-256 `3786324d31f54a52a64ac976a686a0a9eb1018c39ad2adfb8e1ceb1132772e33`.
-The outer audit found no harness-added listener and reported one pre-existing
-process drift; guest Docker, QEMU, and virtiofsd joined, leaving no run overlay.
-This is same-destination contention between two live headless Linux peers, not
-stale-generation replacement, saturation, native/installed behavior, or release proof.
+Earlier focused source `e05a2e91` passed 64 Linux filesystem tests and four config
+tests; its serial `hbb-common-fs-run.8dsa1iW9yk.serial.log` is retained. An older
+55-test Rust-app guest pass was rejected by its outer receipt count and is **not**
+an accepted whole-transaction pass. The current replay is headless Linux behavior,
+not installed service, native Windows handle semantics, Android CM lifetime,
+stale-generation replacement, saturation, broader storage faults, or final-artifact
+evidence. The matrix below keeps those obligations open.
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | Current Linux evidence: 64 Rust filesystem tests plus four config tests, a 55-test Rust-app guest pass (outer receipt count corrected later), and keyed real-peer CM upload, short-write refusal, cancel, owner-loss/reconnect, live same-destination contention, collision, and cleanup-failure replays; direct-send unreadable-source error is terminal, followed on the same connection by a confirmed, exact-byte two-block direct read and one `Done`. One headless production-viewer download committed exact bytes after the normal listing/digest/confirmation path; a symlink-destination refusal stayed terminal, and a fresh same-peer connection then committed to the same path after local link removal without disturbing the sentinel. The exact receipts and limits are above. Still OPEN: other viewer failure and reconnect paths, saturation, terminal-first disconnect, stale-generation replacement, broader cleanup faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and release-artifact evidence. The installed Windows result predates these corrections. |
+| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed; earlier focused filesystem tests are historical-source evidence, and the 55-test app guest pass lacked an accepted outer receipt. Still OPEN: other viewer failure/reconnect paths, saturation, terminal-first disconnect, stale-generation replacement, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop and Android repeats, and final-artifact evidence. The installed Windows result predates the later corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |
@@ -12849,9 +12661,9 @@ platform behavior, performance/soak, cold equality, independent reproduction, an
 
 ### R-S11c-4d — receive-file commit, resume, and failure finality
 
-**SOURCE CORRECTED; PRIOR PINNED LINUX CROSS-PROCESS/PROCESS-DEATH AND SYSCALL-TRACED
-DURABILITY EVIDENCE RETAINED; EXACT-CURRENT EXECUTION, NATIVE INSTALLED, AND PHYSICAL POWER-LOSS
-EVIDENCE OPEN.**
+**SOURCE CORRECTED; EXACT-SOURCE HEADLESS LINUX CM/VIEWER REPLAY PASSED; PRIOR
+CROSS-PROCESS/PROCESS-DEATH AND SYSCALL-TRACED DURABILITY EVIDENCE RETAINED;
+NATIVE INSTALLED AND PHYSICAL POWER-LOSS EVIDENCE OPEN.**
 A transfer job has one immutable send or receive role.
 Only receive jobs may write, own receive sidecars, clean them, or commit them; only send jobs may
 read. File-list admission rejects invalid initial indexes and aggregate-size overflow. Confirmation

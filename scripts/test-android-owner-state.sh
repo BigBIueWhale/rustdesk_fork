@@ -111,7 +111,7 @@ voice_result="$(
             com.carriez.flutter_hbb.VoiceCallOwnerStateTestKt
 )"
 [ "$voice_result" = \
-  'ANDROID_VOICE_OWNER_STATE_TEST=pass scenarios=7 assertions=93 kotlin=2.0.21' ] \
+  'ANDROID_VOICE_OWNER_STATE_TEST=pass scenarios=7 assertions=99 kotlin=2.0.21' ] \
     || { echo "Android voice-owner result differs: $voice_result" >&2; exit 1; }
 owner_result="$(
     /usr/bin/timeout --signal=TERM --kill-after=2s 10s \
@@ -120,7 +120,7 @@ owner_result="$(
             com.carriez.flutter_hbb.AndroidOwnerStateTestKt
 )"
 [ "$owner_result" = \
-  'ANDROID_OWNER_STATE_TEST=pass scenarios=8 assertions=200 kotlin=2.0.21' ] \
+  'ANDROID_OWNER_STATE_TEST=pass scenarios=8 assertions=206 kotlin=2.0.21' ] \
     || { echo "Android owner-state result differs: $owner_result" >&2; exit 1; }
 printf '%s\n' "$voice_result" "$owner_result"
-printf 'ANDROID_OWNER_STATE_SUITE=pass classes=7 scenarios=15 assertions=293 kotlin=2.0.21\n'
+printf 'ANDROID_OWNER_STATE_SUITE=pass classes=7 scenarios=15 assertions=305 kotlin=2.0.21\n'

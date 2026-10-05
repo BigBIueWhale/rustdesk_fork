@@ -37,12 +37,18 @@ private fun connectionTypePolicyIsClosedAndExact() {
 private fun captureOwnersRejectStaleAndUnauthorizedDemand() {
     val state = ControlledCaptureOwnerState()
     expectOwner(!state.requiresDesktopCapture, "empty capture registry required capture")
+    expectOwner(!state.canUpsert(0, 1), "zero connection ID passed admission preflight")
+    expectOwner(!state.canUpsert(1, 0), "zero registry generation passed admission preflight")
+    expectOwner(state.canUpsert(1, 1), "first owner failed admission preflight")
     expectOwner(!state.upsert(0, 1, true, ControlledConnectionType.REMOTE), "zero connection ID was admitted")
     expectOwner(!state.upsert(1, 0, true, ControlledConnectionType.REMOTE), "zero registry generation was admitted")
     expectOwner(state.upsert(1, 1, false, ControlledConnectionType.REMOTE), "unauthorized owner was not recorded")
     expectOwner(!state.requiresDesktopCapture, "unauthorized Remote required capture")
     expectOwner(state.remoteInputRegistryGeneration(1) == null, "unauthorized Remote gained input authority")
     expectOwner(state.registryGeneration(1) == 1L, "unauthorized registry generation was not retained")
+    expectOwner(!state.canUpsert(1, 1), "same generation passed replacement preflight")
+    expectOwner(state.canUpsert(1, 2), "newer generation failed replacement preflight")
+    expectOwner(state.registryGeneration(1) == 1L, "replacement preflight published the successor")
     expectOwner(!state.upsert(1, 1, true, ControlledConnectionType.REMOTE), "same registry generation replaced its owner")
     expectOwner(state.upsert(1, 2, true, ControlledConnectionType.FILE_TRANSFER), "new FileTransfer generation was refused")
     expectOwner(!state.requiresDesktopCapture, "FileTransfer required capture")
@@ -235,6 +241,6 @@ fun main() {
     serviceStatusGenerationIsMonotonicAndIdempotent()
     serviceGenerationCommitsOnlyCompleteStartup()
     serviceGenerationRetirementPlansAreStableAndExact()
-    check(ownerAssertions == 200) { "owner-state assertion inventory changed: $ownerAssertions" }
+    check(ownerAssertions == 206) { "owner-state assertion inventory changed: $ownerAssertions" }
     println("ANDROID_OWNER_STATE_TEST=pass scenarios=8 assertions=$ownerAssertions kotlin=2.0.21")
 }

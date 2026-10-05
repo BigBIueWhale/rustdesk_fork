@@ -77,6 +77,10 @@ internal object VoiceCallAudioCoordinator {
     }
 
     @Synchronized
+    fun isControlledConnectionAbsent(generation: Long, connectionId: Int): Boolean =
+        owners.isControlledConnectionAbsent(generation, connectionId)
+
+    @Synchronized
     fun clearControlledConnections(generation: Long): Boolean {
         val currentProjection = playbackProjection
         if (currentProjection != null && currentProjection.first != generation) {

@@ -28,20 +28,26 @@ private fun controlledServiceGenerationIsMonotonic() {
 
 private fun controlledRegistryGenerationPreventsConnectionAba() {
     val state = VoiceCallOwnerState()
+    expect(!state.isControlledConnectionAbsent(10, 7), "inactive service reported a retired connection")
     expect(state.beginControlledServiceGeneration(10), "controlled generation setup failed")
+    expect(state.isControlledConnectionAbsent(10, 7), "empty service reported a voice owner")
     expect(state.registerControlledConnection(10, 7, 100), "controlled connection registration failed")
+    expect(!state.isControlledConnectionAbsent(10, 7), "registered voice owner appeared absent")
     expect(state.setControlledVoiceCallActive(10, 7, 100, true), "controlled voice activation failed")
     expectCapture(state, true, "active controlled owner did not require capture")
     expect(!state.registerControlledConnection(10, 7, 100), "duplicate registry generation was admitted")
     expect(state.registerControlledConnection(10, 7, 101), "new registry generation was refused")
+    expect(!state.isControlledConnectionAbsent(10, 7), "replacement voice owner appeared absent")
     expectCapture(state, false, "connection replacement retained predecessor activity")
     expect(!state.setControlledVoiceCallActive(10, 7, 100, true), "stale registry generation became active")
     expect(!state.unregisterControlledConnection(10, 7, 100), "stale registry generation retired successor")
     expect(state.setControlledVoiceCallActive(10, 7, 101, true), "replacement controlled owner did not activate")
     expectCapture(state, true, "replacement controlled owner did not require capture")
     expect(state.unregisterControlledConnection(10, 7, 101), "replacement controlled owner did not retire")
+    expect(state.isControlledConnectionAbsent(10, 7), "retired voice owner remained present")
     expectCapture(state, false, "retired replacement still required capture")
     expect(state.unregisterControlledConnection(10, 7, 101), "exact controlled retirement was not idempotent")
+    expect(!state.isControlledConnectionAbsent(9, 7), "stale service generation confirmed voice retirement")
 }
 
 private fun concurrentControlledOwnersRetireIndependently() {
@@ -149,6 +155,6 @@ fun main() {
     outgoingResumeTransfersOnlyToSameSessionAndNewerGeneration()
     controlledAndOutgoingDomainsRetireIndependently()
     activityInvalidationPreservesControlledOwners()
-    check(assertions == 93) { "test assertion inventory changed: $assertions" }
+    check(assertions == 99) { "test assertion inventory changed: $assertions" }
     println("ANDROID_VOICE_OWNER_STATE_TEST=pass scenarios=7 assertions=$assertions kotlin=2.0.21")
 }

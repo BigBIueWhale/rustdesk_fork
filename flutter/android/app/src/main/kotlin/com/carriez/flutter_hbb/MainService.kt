@@ -153,10 +153,9 @@ class MainService : Service() {
             return false
         }
         val previousRegistryGeneration = controlledCaptureOwners.registryGeneration(request.id)
-        if (!controlledCaptureOwners.upsert(
-                request.id, request.registryGeneration, request.authorized, request.connectionType,
-            )
-        ) {
+        // The Service monitor keeps this preflight and the final map write indivisible from
+        // every controlled callback. Retire the old resource owner before publishing the new one.
+        if (!controlledCaptureOwners.canUpsert(request.id, request.registryGeneration)) {
             Log.e(logTag, "Rejected invalid or stale controlled capture owner: ${request.id}")
             return false
         }
@@ -165,20 +164,33 @@ class MainService : Service() {
                 InputService.ctx?.retireInputOwner(
                     ControlledInputOwner(generation, request.id, previousRegistryGeneration)
                 )
-                if (!VoiceCallAudioCoordinator.unregisterControlledConnection(
+                val recorderReady = VoiceCallAudioCoordinator.unregisterControlledConnection(
                         generation, request.id, previousRegistryGeneration,
                     )
-                ) {
+                if (!VoiceCallAudioCoordinator.isControlledConnectionAbsent(generation, request.id)) {
                     Log.e(logTag, "Failed to retire superseded controlled voice owner: ${request.id}")
+                    return false
+                }
+                if (!recorderReady) {
+                    Log.w(logTag, "Audio capture is unavailable after controlled voice retirement")
                 }
             } catch (e: RuntimeException) {
-                Log.e(logTag, "Failed to retire predecessor resources after controlled admission", e)
+                Log.e(logTag, "Failed to retire predecessor resources before controlled admission", e)
+                return false
             }
             try {
                 cancelNotification(request.id)
             } catch (e: RuntimeException) {
                 Log.e(logTag, "Failed to retire predecessor notification", e)
+                return false
             }
+        }
+        if (!controlledCaptureOwners.upsert(
+                request.id, request.registryGeneration, request.authorized, request.connectionType,
+            )
+        ) {
+            Log.e(logTag, "Controlled capture owner changed during admission: ${request.id}")
+            return false
         }
         if (request.connectionType.allowsVoiceCall) {
             try {

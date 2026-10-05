@@ -21,17 +21,21 @@ internal class ControlledCaptureOwnerState {
     fun isCurrent(connectionId: Int, registryGeneration: Long): Boolean =
         registryGeneration > 0 && owners[connectionId]?.registryGeneration == registryGeneration
 
+    fun canUpsert(connectionId: Int, registryGeneration: Long): Boolean {
+        if (connectionId <= 0 || registryGeneration <= 0) {
+            return false
+        }
+        val current = owners[connectionId]
+        return current == null || registryGeneration > current.registryGeneration
+    }
+
     fun upsert(
         connectionId: Int,
         registryGeneration: Long,
         authorized: Boolean,
         connectionType: ControlledConnectionType,
     ): Boolean {
-        if (connectionId <= 0 || registryGeneration <= 0) {
-            return false
-        }
-        val current = owners[connectionId]
-        if (current != null && registryGeneration <= current.registryGeneration) {
+        if (!canUpsert(connectionId, registryGeneration)) {
             return false
         }
         owners[connectionId] = Owner(

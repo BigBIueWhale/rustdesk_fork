@@ -41,6 +41,10 @@ internal class VoiceCallOwnerState {
         return generation > 0 && activeControlledServiceGeneration == generation
     }
 
+    fun isControlledConnectionAbsent(generation: Long, connectionId: Int): Boolean =
+        isControlledServiceGeneration(generation) &&
+            connectionId > 0 && !controlledConnections.containsKey(connectionId)
+
     fun registerControlledConnection(
         generation: Long,
         connectionId: Int,

@@ -2933,7 +2933,7 @@ run_android_owner_tests() {
     [ "$(stat -c '%s' -- "$output")" -le 65536 ] \
         || fail 'focused Android owner-state output exceeds its bound'
     result_line="$(grep -Fx \
-        'ANDROID_OWNER_STATE_SUITE=pass classes=7 scenarios=15 assertions=293 kotlin=2.0.21' \
+        'ANDROID_OWNER_STATE_SUITE=pass classes=7 scenarios=15 assertions=305 kotlin=2.0.21' \
         "$output")" \
         || { tail -n 160 "$output" >&2; fail 'focused Android owner-state success receipt is absent'; }
     [ "$(grep -Fc 'ANDROID_OWNER_STATE_SUITE=' "$output")" -eq 1 ] \
@@ -2964,7 +2964,7 @@ run_android_owner_tests() {
     umount "$inputs" || fail 'cannot retire the sealed Android owner-state input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$result_line"
-    printf 'ANDROID_OWNER_STATE_VM=pass commit=%s tree=%s classes=7 scenarios=15 assertions=293 kotlin=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none compiler_inputs=verified-copy-readonly root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+    printf 'ANDROID_OWNER_STATE_VM=pass commit=%s tree=%s classes=7 scenarios=15 assertions=305 kotlin=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none compiler_inputs=verified-copy-readonly root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
         "$ANDROID_OWNER_SOURCE_COMMIT" "$ANDROID_OWNER_SOURCE_TREE" \
         "$ANDROID_KOTLIN_VERSION" "$ANDROID_BUILDER_IMAGE_ID" \
         "$ANDROID_BUILDER_CONFIG_ID"

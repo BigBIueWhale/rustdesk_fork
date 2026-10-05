@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-a90b3538188eb7b6dc11ec2f4da80b070037d961cdc67fd2b68c794880f690a0  requirements.html
+30a26a09fff244f7336ac5d3f59fac9a98d61bc2ed1eb0799ab1593089d61ca3  requirements.html
 ```
 
 ## Current Verdict
@@ -3993,86 +3993,6 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   - Bind all executed artifacts and VM bases to hashes, preserve compact reproducible evidence,
     reproduce independently, and obtain external security review. Until then, the source topology
     is implemented but installed current-release behavior and release readiness remain **OPEN**.
-
-- **CURRENT RELEASE HARNESS — same-host smoke coexistence with an operational
-  older RustDesk service — USER-REQUESTED 2026-07-16; CLOSED / RUNTIME PROVEN.**
-  The current release verifier must
-  be safe to run on a build host whose currently deployed RustDesk release is
-  operationally untouchable and may still contain the historical root
-  `ps | grep -E 'rustdesk +--server' | ... | kill -9` cleanup. The verifier and
-  smoke harness MUST NOT request sudo/polkit, stop/restart/upgrade/reconfigure the
-  service, signal any pre-existing RustDesk process, or require a VM merely to
-  avoid that historical matcher. Failure to establish safe coexistence must stop
-  before the runtime stage and leave the release smoke **unproven**; it must never
-  silently skip the gate or claim a full release pass.
-
-  Required smoke-harness closure:
-
-  - Remove literal `rustdesk --server` text from host-visible Docker-client and
-    container-shell command lines. In particular, do not pass the current large
-    inline `bash -c` stage bodies through `docker run`; invoke mounted, immutable
-    stage files (or an equivalently inspectable mechanism) whose contents are not
-    copied into those processes' argv.
-  - Launch the exact built RustDesk executable through a minimal audited smoke
-    launcher that supplies a neutral test-only `argv[0]` and exact argument 1
-    `--server`. The executable file, `/proc/<pid>/exe`, role argument, environment,
-    HOME/config behavior, privilege/UID cases, IPC, bind shim, and runtime code
-    must otherwise remain the same. A source/behavior gate must prove that Linux
-    RustDesk role selection and security identity ignore `argv[0]`, consume
-    `--server` from argument 1, and obtain executable identity from
-    `current_exe()`/`/proc`; any future semantic use of `argv[0]` invalidates this
-    compatibility launcher and fails the release gate.
-  - Before the smoke, record the host's pre-existing matcher baseline without
-    signaling anything. While every runtime stage is live, prove that no new
-    Docker client, shell, launcher, RustDesk server, helper, or cleanup process is
-    selectable by the historical regex. The expected old host server may remain
-    in the immutable baseline; the smoke must add zero matches. The proof must
-    cover the full host-visible process tree, not only `/proc` inside the
-    container.
-  - Add a non-destructive regression fixture for the historical selector and
-    prove it selects a production-shaped `argv[0]=rustdesk, argv[1]=--server`
-    control process but does not select any smoke process. Separately prove via
-    `/proc/<pid>/exe` and NUL-delimited `/proc/<pid>/cmdline` that the smoke still
-    runs the exact intended executable with exact role argument; textual evasion
-    must not become executable substitution or role weakening.
-  - Preserve the existing network invariants: Docker publishes no host port, the
-    test listener is rewritten only to container loopback `127.0.0.1:21118`, and
-    the runtime socket audit still requires exactly one IPv4 TCP listener and
-    zero UDP. Smoke cleanup must retain and signal only stage-owned identities,
-    never use `pkill`/name scans, and remain bounded on every failure path.
-  - `scripts/verify-release.sh` must exercise this coexistence contract as part
-    of the mandatory smoke gate. Its test must include an inert pre-existing
-    production-shaped matcher baseline and must fail if any stage reintroduces a
-    host-visible `rustdesk +--server` candidate. Documentation and diagnostics
-    must distinguish this current harness compatibility work from the separate
-    upcoming-release fix to RustDesk service-child ownership above. This smoke
-    work must be completed before the current verifier is resumed on the
-    operational host.
-
-  Implemented current-release closure: `scripts/smoke-server-stage.sh` removes
-  inline stage bodies from host-visible Docker argv; the descriptor-bound
-  `scripts/smoke-server-launcher.c` executes the intended ELF with neutral
-  `argv[0]=rd-smoke-server` and exact argument 1 `--server`; and
-  `scripts/smoke-process-guard.py` records and monitors the full host `/proc`
-  selector baseline without signal authority. Each server start separately
-  proves exact PID/start time, executable device/inode, and NUL-delimited argv.
-  The release source gate rejects host networking/PID sharing, published ports,
-  inline shell bodies, broad signals, selector-shaped launches, weakened process
-  proof, or any Rust semantic dependency on argv zero. Runtime source remains
-  read-only after the build, binds only container loopback, and the existing
-  one-TCP/zero-UDP audit remains mandatory. This closure makes no lifecycle
-  change to RustDesk itself and does not close or advance the upcoming-release
-  service-child ownership item above.
-
-  Closure evidence (2026-07-16): the complete default `scripts/smoke-server.sh`
-  passed beside three stable pre-existing historical-selector matches. The
-  whole-host monitor reported `baseline_matches=3` and zero new matches; every
-  tested server reported exact executable device/inode plus
-  `argv0=rd-smoke-server role=--server`; the runtime socket proof reported only
-  `127.0.0.1:21118` inside the container and zero UDP; and the final guard drain
-  completed cleanly. No service operation or pre-existing-process signal was
-  performed. The separate upcoming-release Linux service-child lifecycle item
-  remains **OPEN**.
 
 - **Appendix C #2b decode sandbox** — accepted residual (above); SHOULD, not MUST.
 - **Desktop GPU texture-upload display** — #2b-adjacent native viewer surface

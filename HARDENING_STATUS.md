@@ -12777,6 +12777,26 @@ token and subscriber revocation during that loop remain OPEN, as do
 installed positive/negative principal and lifecycle tests. The updated
 wire-format test was compiled but not executed by this focused shard.
 
+**Linux `_pa` live-subscriber admission — source candidate, verification OPEN.**
+Pushed `7ef38634` replaces the token registry's one-time subscriber-ID snapshot
+with the owning audio-service handle. At `StartCapture` validation, it now reads
+the service's current positive subscribers, refuses a stopped or empty service,
+and requires their current authenticated CM peer identity to match the token's
+expected helper. Three focused regressions were added, and R-S11dy/Appendix C
+#278 now specify kernel-derived peer identity rather than a caller-supplied
+`owner`. The exact-source zero-NIC VM reached its offline bridge-preparation
+stage, but its QEMU/timeout owner was killed with status 137 before any Rust
+test summary; this is **not a passing test**. The 55,808-byte serial is
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.cb7iZUtRd6.serial.log`
+(SHA-256 `22534927946c695b36e13426eeea5b9711532fcfafc2266c9dbfea6af0acdbb8`).
+The owned VM process exited, the failed run root was identity-bound retired,
+and no `run.*` directory or overlay remains. Host swap was full afterward;
+no accessible kernel log established the kill cause. Re-run the focused tests
+under adequate resources. Admission remains a snapshot at the instant checked;
+the already-accepted capture still uses blocking PulseAudio `Simple::read`
+without a revocation/cancellation path. Native installed positive/negative
+capture, subscriber churn, cleanup, and resource evidence remain OPEN.
+
 **Process-wide connection IDs — source corrected, native lifecycle OPEN.**
 The former per-`Server` counters could allocate the same ID in overlapping
 controlled generations or outgoing voice audio, and their wrap scan checked

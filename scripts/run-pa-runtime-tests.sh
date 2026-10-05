@@ -37,7 +37,7 @@ done
     && [ -f "$MODULES/module-sine.so" ] \
     || { echo 'PulseAudio runtime executable or modules are absent' >&2; exit 1; }
 
-export LD_LIBRARY_PATH="$IMAGE_ROOT/usr/lib/x86_64-linux-gnu:$IMAGE_ROOT/lib/x86_64-linux-gnu:$MODULES"
+export LD_LIBRARY_PATH="$IMAGE_ROOT/usr/lib/x86_64-linux-gnu/pulseaudio:$IMAGE_ROOT/usr/lib/x86_64-linux-gnu:$IMAGE_ROOT/lib/x86_64-linux-gnu:$MODULES"
 export PULSE_DLPATH="$MODULES"
 export XDG_RUNTIME_DIR="$RUNTIME"
 export PULSE_RUNTIME_PATH="$RUNTIME/pulse"

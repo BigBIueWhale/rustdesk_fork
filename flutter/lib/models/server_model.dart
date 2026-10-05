@@ -116,6 +116,7 @@ void retireDisconnectedCmPeerClients(
 
 class ServerModel with ChangeNotifier {
   final _androidServiceUiState = AndroidServiceUiState();
+  bool _directListenerBound = false;
   bool _mediaOk = false;
   bool _inputOk = false;
   bool _audioOk = false;
@@ -145,6 +146,8 @@ class ServerModel with ChangeNotifier {
   final _wakelockKey = UniqueKey();
 
   bool get isStart => _androidServiceUiState.observedRunning;
+
+  bool get directListenerBound => _directListenerBound;
 
   bool get mediaOk => _mediaOk;
 
@@ -209,6 +212,14 @@ class ServerModel with ChangeNotifier {
   }
 
   Future<void> _refreshStatus() async {
+    if (isMobile) {
+      final bound =
+          bind.mainGetCommonSync(key: 'direct-listener-bound') == 'true';
+      if (_directListenerBound != bound) {
+        _directListenerBound = bound;
+        notifyListeners();
+      }
+    }
     if (desktopType == DesktopType.cm || isMobile) {
       // Incremental events are the low-latency path. This complete snapshot is the repair path:
       // list length cannot detect replacement or state changes that preserve cardinality.

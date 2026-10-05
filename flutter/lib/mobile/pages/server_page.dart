@@ -15,14 +15,9 @@ import '../../models/platform_model.dart';
 import '../../models/server_model.dart';
 import 'home_page.dart';
 
-// R-D7a / R-S9 / R-G1 (verify-ground-truth): the REAL reachability of the direct listener, read
-// synchronously from the Rust `direct-listener-bound` signal (the actual bound-TcpListener state) —
-// NOT Dart `serverModel.isStart`, which observes the exact MainService lifecycle but remains a
-// service-lifecycle signal rather than socket state. On
-// Android the listener is FGS-owned (R-D7a): bound iff the service runs AND a permanent password is
-// set (R-S9 park), and Stop closes it.
-bool _directListenerBound() =>
-    bind.mainGetCommonSync(key: 'direct-listener-bound') == 'true';
+// R-D7a / R-S9 / R-G1: ServerModel samples the native bound-TcpListener state in its retained
+// status refresh turn and notifies on changes. Service-lifecycle callbacks alone can precede a
+// listener bind, so a build-time FFI read without a matching notifier can leave this card stale.
 bool _permanentPasswordSet() =>
     bind.mainGetCommonSync(key: 'permanent-password-set') == 'true';
 
@@ -138,11 +133,11 @@ class ServiceNotRunningNotification extends StatelessWidget {
 
     // BR-15 (§19): "service" mislabels the CAPTURE toggle as the listener. This card controls
     // SCREEN SHARING (MediaProjection capture), distinct from the direct listener. Report the REAL
-    // listener state (from the Rust direct-listener-bound signal), NOT a static "port stays open"
-    // claim: on Android the listener is FGS-owned (R-D7a), bound iff the service runs AND a
+    // listener state (sampled from the Rust direct-listener-bound signal), NOT a static "port stays
+    // open" claim: on Android the listener is FGS-owned (R-D7a), bound iff the service runs AND a
     // permanent password is set (R-S9), and Stop closes it — so an unconditional "port is open"
     // line was false in the stopped state and contradicted android_stop_service_tip.
-    final bound = _directListenerBound();
+    final bound = serverModel.directListenerBound;
     final passwordSet = _permanentPasswordSet();
     final String portStatus = bound
         ? translate(
@@ -207,14 +202,15 @@ class ServerInfo extends StatelessWidget {
       // listens on the pinned direct port (config::DIRECT_PORT = 21118); no rendezvous
       // "connecting"/"not ready" state. Report TWO distinct, honest facts instead of one static
       // green check:
-      //  1. REACHABLE — driven by the REAL Rust `direct-listener-bound` signal (the actual bound
-      //     TcpListener), NOT `serverModel.isStart` (an exact MainService lifecycle observation,
-      //     not proof that native listener activation succeeded). `permanent-password-set` only
+      //  1. REACHABLE — driven by ServerModel's refresh of the REAL Rust
+      //     `direct-listener-bound` signal (the actual bound TcpListener), NOT
+      //     `serverModel.isStart` (an exact MainService lifecycle observation, not proof that
+      //     native listener activation succeeded). `permanent-password-set` only
       //     picks the "why not reachable" wording (no password vs service stopped).
       //  2. Screen capture only actually flows once MediaProjection consent is in hand (mediaOk,
       //     re-synced from native MainService.isReady by the check_service poll) — so the card
       //     must not imply capture is ready before that consent, or after it is lost.
-      final reachable = _directListenerBound();
+      final reachable = serverModel.directListenerBound;
       final passwordSet = _permanentPasswordSet();
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [

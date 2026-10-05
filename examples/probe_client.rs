@@ -82,6 +82,8 @@ const CM_BUSY_PAYLOAD: &[u8] = b"first-live-owner-exact-bytes-0123456789";
 const CM_BUSY_STAGE_MARKER: &str = "/tmp/rd-cm-file-replay/busy-owner.staged";
 const CM_BUSY_RELEASE_MARKER: &str = "/tmp/rd-cm-file-replay/busy-owner.release";
 const CM_LIVE_STOP_READY_MARKER: &str = "/tmp/android-emulator-app/cm-live-ready";
+const CM_LIVE_STOP_ARM_MARKER: &str = "/tmp/android-emulator-app/cm-live-arm";
+const CM_LIVE_STOP_ARMED_MARKER: &str = "/tmp/android-emulator-app/cm-live-armed";
 const CM_LIVE_STOP_RELEASE_MARKER: &str = "/tmp/android-emulator-app/cm-live-release";
 const CM_PEER_ERROR: &str = "peer-aborted-cm-fixture";
 
@@ -164,6 +166,7 @@ fn remote_login_admission(response: &login_response::Union) -> Option<&'static s
 }
 
 async fn probe_cm_live_stop(stream: &mut FramedStream, report: &mut String) -> bool {
+    use hbb_common::message_proto::TestDelay;
     use std::time::Duration;
 
     if std::fs::OpenOptions::new()
@@ -176,6 +179,85 @@ async fn probe_cm_live_stop(stream: &mut FramedStream, report: &mut String) -> b
         return false;
     }
     let deadline = hbb_common::tokio::time::Instant::now() + Duration::from_secs(90);
+    let mut pings = 0u32;
+    // The UI confirmation can take longer than the server's 30-second idle limit.
+    // Require a real keyed round trip immediately before the harness confirms Stop.
+    loop {
+        match std::fs::symlink_metadata(CM_LIVE_STOP_ARM_MARKER) {
+            Ok(metadata) if metadata.file_type().is_file() && metadata.len() == 0 => break,
+            Ok(_) => {
+                report.push_str("[CM-LIVE-ARM-INVALID] ");
+                return false;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => {
+                report.push_str("[CM-LIVE-ARM-FAILED] ");
+                return false;
+            }
+        }
+        if hbb_common::tokio::time::Instant::now() >= deadline {
+            report.push_str("[CM-LIVE-ARM-TIMEOUT] ");
+            return false;
+        }
+        let mut ping = Message::new();
+        ping.set_test_delay(TestDelay {
+            from_client: true,
+            ..Default::default()
+        });
+        if let Err(error) = send_probe_message(stream, ping).await {
+            report.push_str(&format!("[CM-LIVE-PING-SEND-FAILED {error}] "));
+            return false;
+        }
+        let ping_deadline = hbb_common::tokio::time::Instant::now() + Duration::from_secs(4);
+        loop {
+            match hbb_common::tokio::time::timeout_at(ping_deadline, stream.next()).await {
+                Ok(Some(Ok(bytes))) => match Message::parse_from_bytes(&bytes).map(|m| m.union) {
+                    Ok(Some(message::Union::TestDelay(delay))) if delay.from_client => {
+                        pings += 1;
+                        break;
+                    }
+                    Ok(Some(message::Union::TestDelay(delay))) => {
+                        let mut reply = Message::new();
+                        reply.set_test_delay(delay);
+                        if let Err(error) = send_probe_message(stream, reply).await {
+                            report.push_str(&format!("[CM-LIVE-DELAY-REPLY-FAILED {error}] "));
+                            return false;
+                        }
+                    }
+                    Ok(Some(message::Union::FileResponse(_))) => {
+                        report.push_str("[CM-LIVE-UNEXPECTED-FILE-RESPONSE] ");
+                        return false;
+                    }
+                    Ok(_) => {}
+                    Err(_) => {
+                        report.push_str("[CM-LIVE-UNREADABLE] ");
+                        return false;
+                    }
+                },
+                Ok(None) | Ok(Some(Err(_))) => {
+                    report.push_str("[CM-LIVE-PREMATURE-CLOSE] ");
+                    return false;
+                }
+                Err(_) => {
+                    report.push_str("[CM-LIVE-PING-TIMEOUT] ");
+                    return false;
+                }
+            }
+        }
+        hbb_common::tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    if pings == 0
+        || std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(CM_LIVE_STOP_ARMED_MARKER)
+            .is_err()
+    {
+        report.push_str("[CM-LIVE-ARMED-FAILED] ");
+        return false;
+    }
+    report.push_str(&format!("[CM-LIVE-ARMED pings={pings}] "));
+    let release_deadline = hbb_common::tokio::time::Instant::now() + Duration::from_secs(45);
     loop {
         match std::fs::symlink_metadata(CM_LIVE_STOP_RELEASE_MARKER) {
             Ok(metadata) if metadata.file_type().is_file() && metadata.len() == 0 => break,
@@ -189,7 +271,7 @@ async fn probe_cm_live_stop(stream: &mut FramedStream, report: &mut String) -> b
                 return false;
             }
         }
-        if hbb_common::tokio::time::Instant::now() >= deadline {
+        if hbb_common::tokio::time::Instant::now() >= release_deadline {
             report.push_str("[CM-LIVE-RELEASE-TIMEOUT] ");
             return false;
         }
@@ -1911,9 +1993,12 @@ fn main() {
                                             peer.username,
                                             peer.platform
                                         ));
+                                        // cmfilestop uses the login's initial directory request
+                                        // alone, so no pre-Stop reply can be mistaken for post-Stop.
                                         if !sent_readdir
                                             && mode != "cmfileauthority"
                                             && mode != "ftreadfailure"
+                                            && mode != "cmfilestop"
                                         {
                                             let mut fa = FileAction::new();
                                             fa.set_read_dir(ReadDir {

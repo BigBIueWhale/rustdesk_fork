@@ -162,6 +162,8 @@ readonly ANDROID_CONTROLLED_CM_LOG=$WORK_ROOT/android-controlled-cm.log
 readonly ANDROID_CONTROLLED_CM_RESTART_LOG=$WORK_ROOT/android-controlled-cm-restart.log
 readonly ANDROID_CONTROLLED_CM_LIVE_LOG=$WORK_ROOT/android-controlled-cm-live.log
 readonly ANDROID_CONTROLLED_CM_LIVE_READY=$WORK_ROOT/cm-live-ready
+readonly ANDROID_CONTROLLED_CM_LIVE_ARM=$WORK_ROOT/cm-live-arm
+readonly ANDROID_CONTROLLED_CM_LIVE_ARMED=$WORK_ROOT/cm-live-armed
 readonly ANDROID_CONTROLLED_CM_LIVE_RELEASE=$WORK_ROOT/cm-live-release
 readonly FRAME_OBSERVER_ROOT=/observer
 readonly FRAME_OBSERVER_FRAME=$FRAME_OBSERVER_ROOT/latest.frame
@@ -1319,6 +1321,12 @@ cleanup() {
     trap - EXIT HUP INT TERM
     if [ -n "$ANDROID_CONTROLLED_CM_LIVE_PID" ]; then
         if [ -d "$WORK_ROOT" ] && [ ! -L "$WORK_ROOT" ] \
+           && [ ! -e "$ANDROID_CONTROLLED_CM_LIVE_ARM" ] \
+           && [ ! -L "$ANDROID_CONTROLLED_CM_LIVE_ARM" ]; then
+            install -m 0600 /dev/null "$ANDROID_CONTROLLED_CM_LIVE_ARM" \
+                || cleanup_status=1
+        fi
+        if [ -d "$WORK_ROOT" ] && [ ! -L "$WORK_ROOT" ] \
            && [ ! -e "$ANDROID_CONTROLLED_CM_LIVE_RELEASE" ] \
            && [ ! -L "$ANDROID_CONTROLLED_CM_LIVE_RELEASE" ]; then
             install -m 0600 /dev/null "$ANDROID_CONTROLLED_CM_LIVE_RELEASE" \
@@ -1764,16 +1772,20 @@ exercise_android_controlled_cpace() {
 }
 
 exercise_android_controlled_stop() {
-    local stopped=0 probe_status=0 lifecycle_log stop_center= stop_warning= live_ready=0
+    local stopped=0 probe_status=0 lifecycle_log stop_center= stop_warning= live_ready=0 live_armed=0
     local stop_x= stop_y=
     create_android_control_forward
     [ ! -e "$ANDROID_CONTROLLED_CM_LIVE_READY" ] \
         && [ ! -L "$ANDROID_CONTROLLED_CM_LIVE_READY" ] \
+        && [ ! -e "$ANDROID_CONTROLLED_CM_LIVE_ARM" ] \
+        && [ ! -L "$ANDROID_CONTROLLED_CM_LIVE_ARM" ] \
+        && [ ! -e "$ANDROID_CONTROLLED_CM_LIVE_ARMED" ] \
+        && [ ! -L "$ANDROID_CONTROLLED_CM_LIVE_ARMED" ] \
         && [ ! -e "$ANDROID_CONTROLLED_CM_LIVE_RELEASE" ] \
         && [ ! -L "$ANDROID_CONTROLLED_CM_LIVE_RELEASE" ] \
         || fail 'the controlled CM live-stop markers pre-exist'
     printf '%s\n' "$TEST_PASSWORD" \
-        | timeout --signal=TERM --kill-after=2s 120s \
+        | timeout --signal=TERM --kill-after=2s 150s \
             "$PEER_TARGET/debug/examples/probe_client" \
             127.0.0.1:22119 --password-stdin ok cmfilestop \
             >"$ANDROID_CONTROLLED_CM_LIVE_LOG" 2>&1 &
@@ -1811,6 +1823,22 @@ exercise_android_controlled_stop() {
         && capture_unobscured_ui_hierarchy complete \
         && [[ "$(ui_center text "$SERVICE_STOP_WARNING_TEXT" 2>/dev/null || true)" =~ ^[0-9]+\ [0-9]+$ ]] \
         || { capture_ui_hierarchy complete && print_initial_ui_semantics; fail 'the production Stop confirmation differs'; }
+    install -m 0600 /dev/null "$ANDROID_CONTROLLED_CM_LIVE_ARM" \
+        || fail 'cannot arm the live controlled CM peer before final Stop confirmation'
+    for _ in $(seq 1 100); do
+        if [ -f "$ANDROID_CONTROLLED_CM_LIVE_ARMED" ] \
+           && [ ! -L "$ANDROID_CONTROLLED_CM_LIVE_ARMED" ]; then
+            live_armed=1
+            break
+        fi
+        kill -0 "$ANDROID_CONTROLLED_CM_LIVE_PID" 2>/dev/null \
+            || break
+        sleep 0.1
+    done
+    [ "$live_armed" -eq 1 ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$ANDROID_CONTROLLED_CM_LIVE_ARMED")" = \
+             "$RUN_UID:$RUN_GID:600:1:0" ] \
+        || { tail -n 20 "$ANDROID_CONTROLLED_CM_LIVE_LOG" >&2; fail 'the live controlled CM peer was not freshly responsive before Stop'; }
     tap_ui text 'OK' \
         || fail 'cannot confirm the production Stop command'
     for _ in $(seq 1 120); do
@@ -1837,10 +1865,12 @@ exercise_android_controlled_stop() {
         && ! grep -Fq -- "$TEST_PASSWORD" "$ANDROID_CONTROLLED_CM_LIVE_LOG" \
         && grep -Fxq 'probe_client: keying ok=true (expected=ok)' "$ANDROID_CONTROLLED_CM_LIVE_LOG" \
         && grep -Fq '[FT-DIR-RESPONSE ' "$ANDROID_CONTROLLED_CM_LIVE_LOG" \
+        && grep -Fq '[CM-LIVE-ARMED pings=' "$ANDROID_CONTROLLED_CM_LIVE_LOG" \
         && grep -Fq '[CM-LIVE-STOP-CLOSED] ' "$ANDROID_CONTROLLED_CM_LIVE_LOG" \
         && grep -Fxq 'probe_client: PASS' "$ANDROID_CONTROLLED_CM_LIVE_LOG" \
         || fail 'the live controlled CM Stop result did not prove exact peer closure'
-    rm -- "$ANDROID_CONTROLLED_CM_LIVE_READY" "$ANDROID_CONTROLLED_CM_LIVE_RELEASE"
+    rm -- "$ANDROID_CONTROLLED_CM_LIVE_READY" "$ANDROID_CONTROLLED_CM_LIVE_ARM" \
+        "$ANDROID_CONTROLLED_CM_LIVE_ARMED" "$ANDROID_CONTROLLED_CM_LIVE_RELEASE"
     if ! wait_ui_center text 'Screen sharing is off' >/dev/null; then
         timeout --signal=TERM --kill-after=2s 10s \
             "$ADB" -s "$SERIAL" shell input swipe 240 220 240 650 300 \

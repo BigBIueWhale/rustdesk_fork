@@ -2549,12 +2549,17 @@ pub mod server_side {
             return jboolean::from(false);
         }
         let generation = generation as u64;
-        let retired = scrap::android::deactivate_main_service_generation(
-            &env,
-            &service,
-            generation,
-            crate::direct_service::android_request_stop,
-        );
+        // Do not deactivate past an accepted Service callback whose registry owner has not yet
+        // committed and published. Kotlin retires its controlled resources only after this
+        // barrier returns, so no old-generation add can appear after that retirement.
+        let retired = crate::ui_cm_interface::with_cm_admission_barrier(|| {
+            scrap::android::deactivate_main_service_generation(
+                &env,
+                &service,
+                generation,
+                crate::direct_service::android_request_stop,
+            )
+        });
         if !retired {
             log::warn!(
                 "deactivateServer could not stop the exact owned MainService listener generation {generation}"

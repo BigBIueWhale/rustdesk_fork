@@ -444,6 +444,13 @@ class MainService : Service() {
             initializeControlledServiceGenerationLocked()
         }
 
+    private fun quiesceControlledConnectionAdmission(generation: Long, reason: String) {
+        acceptingControlledConnections = false
+        if (generation > 0L && !FFI.deactivateServer(this, generation)) {
+            Log.e(logTag, "Could not quiesce controlled connection admission ($reason)")
+        }
+    }
+
     private fun initializeControlledServiceGenerationLocked(): Boolean {
         if (!nativeCallbackContextReady) {
             Log.e(logTag, "Cannot start MainService without its exact native callback context")
@@ -462,6 +469,7 @@ class MainService : Service() {
                 logTag,
                 "Retiring an incomplete or inactive MainService generation before explicit retry",
             )
+            quiesceControlledConnectionAdmission(currentGeneration, "incomplete generation before retry")
             val resourcesRetired = retireControlledConnectionResourcesForRetry(
                 currentGeneration,
                 keepProjection = callbackWorkerReady,
@@ -618,6 +626,7 @@ class MainService : Service() {
                 )
                 return@synchronized
             }
+            quiesceControlledConnectionAdmission(generation, "listener worker stopped")
             if (!retireControlledConnectionResourcesForRetry(generation)) {
                 Log.e(
                     logTag,
@@ -778,6 +787,7 @@ class MainService : Service() {
     override fun onDestroy() {
         destroying = true
         val generation = nativeServerGeneration
+        quiesceControlledConnectionAdmission(generation, "MainService destruction")
         publishControlledServiceStatus(false)
         releaseControlledConnectionResources()
         stopServiceCallbackThread()

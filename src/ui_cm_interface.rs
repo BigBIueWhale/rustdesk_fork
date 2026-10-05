@@ -880,6 +880,12 @@ lazy_static::lazy_static! {
     static ref CM_ADMISSION: StdMutex<()> = StdMutex::new(());
 }
 
+#[cfg(any(target_os = "android", test))]
+pub(crate) fn with_cm_admission_barrier<T>(operation: impl FnOnce() -> T) -> T {
+    let _admission_lock = CM_ADMISSION.lock().unwrap();
+    operation()
+}
+
 #[cfg(not(target_os = "ios"))]
 lazy_static::lazy_static! {
     static ref CM_FILE_OPERATION_CHANGED: tokio::sync::Notify = tokio::sync::Notify::new();
@@ -3668,9 +3674,15 @@ mod tests {
     struct CmTaskOwnerTestUi {
         added: Arc<AtomicBool>,
         reject_admission: Arc<AtomicBool>,
+        admission_pause: Arc<StdMutex<Option<CmAdmissionPause>>>,
         removed: Arc<StdMutex<Vec<(i32, i64, bool)>>>,
         file_logs: Arc<StdMutex<Vec<(i32, i64, String, String)>>>,
         voice_states: Arc<StdMutex<Vec<(i32, i64, bool, bool)>>>,
+    }
+
+    struct CmAdmissionPause {
+        entered: std::sync::mpsc::SyncSender<()>,
+        resume: std::sync::mpsc::Receiver<()>,
     }
 
     impl InvokeUiCM for CmTaskOwnerTestUi {
@@ -3678,6 +3690,10 @@ mod tests {
             if self.reject_admission.load(Ordering::Acquire) {
                 Err("test receiver refused admission".to_owned())
             } else {
+                if let Some(pause) = lock_cm_egress_test(&self.admission_pause).take() {
+                    pause.entered.send(()).map_err(|error| error.to_string())?;
+                    pause.resume.recv().map_err(|error| error.to_string())?;
+                }
                 Ok(())
             }
         }
@@ -5318,6 +5334,73 @@ mod tests {
             .expect("accepted successor must retire")
             .expect("accepted successor listener must not panic");
         assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    #[test]
+    fn r_s11iu_service_stop_waits_for_callback_admission_publication() {
+        let id = 2_000_000_021;
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        let ui = CmTaskOwnerTestUi::default();
+        let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(1);
+        let (resume_tx, resume_rx) = std::sync::mpsc::sync_channel(1);
+        *lock_cm_egress_test(&ui.admission_pause) = Some(CmAdmissionPause {
+            entered: entered_tx,
+            resume: resume_rx,
+        });
+        let (egress_tx, _egress_rx) = cm_egress_channel();
+        let manager = ConnectionManager::new(ui.clone(), 72);
+        let admission = std::thread::spawn(move || {
+            manager.add_connection(
+                id,
+                false,
+                false,
+                false,
+                String::new(),
+                ipc::CmAuthConnType::Remote,
+                "peer".to_owned(),
+                "owner".to_owned(),
+                String::new(),
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                "test-token".to_owned(),
+                egress_tx,
+            )
+        });
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("Service callback must enter before stop");
+        let (stop_started_tx, stop_started_rx) = std::sync::mpsc::sync_channel(1);
+        let (stop_done_tx, stop_done_rx) = std::sync::mpsc::sync_channel(1);
+        let stopped_ui = ui.clone();
+        let stop = std::thread::spawn(move || {
+            stop_started_tx.send(()).unwrap();
+            with_cm_admission_barrier(|| {
+                assert!(stopped_ui.added.load(Ordering::Acquire));
+                assert!(CLIENTS.read().unwrap().clients.contains_key(&id));
+                stop_done_tx.send(()).unwrap();
+            });
+        });
+        stop_started_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("stop must attempt the admission barrier");
+        assert!(stop_done_rx
+            .recv_timeout(std::time::Duration::from_millis(50))
+            .is_err());
+        resume_tx.send(()).expect("release admitted Service callback");
+        let owner = admission
+            .join()
+            .expect("admission thread must not panic")
+            .expect("accepted Service callback must commit");
+        stop_done_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("stop barrier must complete after publication");
+        stop.join().expect("stop thread must not panic");
+        assert!(CLIENTS.write().unwrap().retire(owner, true));
     }
 
     #[cfg(not(target_os = "ios"))]

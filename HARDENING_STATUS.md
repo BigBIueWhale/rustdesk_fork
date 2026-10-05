@@ -3198,9 +3198,25 @@ outer audit found no harness-added host listener or pre-existing-process drift, 
 Docker/QEMU/virtiofsd, and left no `run.*` root or overlay. This executes the forced-child-loss
 case only in a Linux test process, not installed Android, Windows, or macOS behavior.
 
+Exact pushed `deb90cbb` (tree `56838eea`) moves desktop CM read-job timer ticks through the
+same capacity-32 selected-operation owner and cancellation drain as `AuthorizedFS`. Previously
+the tick checked its registry owner once, then awaited file initialization/read and could publish
+after a newer same-ID source generation replaced it; cancellation dropped the runner's owner
+without retaining that selected read tick. The new Linux-target regression starts a real
+`ReadFile` job from a temporary file, pauses the selected tick immediately before its block read,
+aborts the runner, requires the old owner and in-flight generation to remain visible and same-ID
+admission to refuse, then releases the tick and observes exact owner retirement and successor
+admission. The zero-NIC VM accepted 59 focused tests in 713 seconds, with no harness-added host
+listener or pre-existing-process drift and joined Docker/QEMU/virtiofsd cleanup. Retained serial
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.fEckwCrnZu.serial.log` is 68,952
+bytes, SHA-256 `afeccfb3f6c91e061b896fd890dd1f84faa9f35553b1dd416e4f70a6aa2e441f`;
+it contains summaries and the receipt, not the full bounded container test output. No `run.*`
+directory or overlay remains. This is not native Windows/macOS installed behavior, a measured
+read-throughput/resource soak, or proof of every file operation's terminal race.
+
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The 56-test Linux-target transaction exercised Android queued-terminal priority and cancellation during a selected real `CreateDir`; the 57-test transaction exercised desktop selected-command cancellation, same-ID refusal until effect and retirement, and idle-runner cancellation; the current 58-test transaction additionally exercised fatal loss of the selected desktop child before owner retirement. Still OPEN: Android-target compilation and installed APK execution, other in-flight operation types and true terminal-during-operation cases, desktop read-job timer cancellation and native installed behavior, child-loss behavior on target Android/Windows/macOS, different-ID same-peer replacement, other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop/Android repeats, sustained resources/latency, and final-artifact evidence. The installed Windows result predates the later corrections. |
+| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The 56-test Linux-target transaction exercised Android queued-terminal priority and cancellation during a selected real `CreateDir`; the 57-test transaction exercised desktop selected-command cancellation, same-ID refusal until effect and retirement, and idle-runner cancellation; the 58-test transaction exercised fatal loss of the selected desktop child before owner retirement; the current 59-test transaction exercised desktop read-tick cancellation and same-ID refusal until exact retirement. Still OPEN: Android-target compilation and installed APK execution, other in-flight operation types and true terminal-during-operation cases, native installed read-tick behavior and throughput/resource bounds, child-loss behavior on target Android/Windows/macOS, different-ID same-peer replacement, other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop/Android repeats, sustained resources/latency, and final-artifact evidence. The installed Windows result predates the later corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

@@ -2110,6 +2110,9 @@ run_focused_rust_tests() {
             server::connection::final_remote_cleanup_state_tests::r_s11iu_final_remote_failure_has_one_retry_per_admission
             server::connection::final_remote_cleanup_state_tests::r_s11iu_stale_final_remote_lease_retirement_is_inert
             server::connection::final_remote_cleanup_state_tests::r_s11iu_authenticated_registry_refuses_id_overlap_and_stale_removal
+            server::connection::cm_peer_identity_registry_tests::r_s11iu_linux_cm_peer_identity_rejects_collision_and_stale_retirement
+            server::connection::cm_peer_identity_registry_tests::r_s11iu_linux_cm_peer_identity_requires_positive_exact_owner
+            server::connection::cm_peer_identity_registry_tests::r_s11iu_linux_audio_peer_requires_live_exact_connection_owner
             server::display_service::tests::r_s11iu_r_t4_resolution_restore_retains_failure_and_concurrent_replacement
             ui_cm_interface::tests::r_s11iu_android_cm_future_terminally_retires_its_registry_owner
             ui_cm_interface::tests::r_s11iu_android_terminal_preempts_queued_file_work

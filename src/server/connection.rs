@@ -1236,7 +1236,7 @@ pub(crate) fn live_port_forward_connection_count() -> usize {
 
 #[cfg(target_os = "linux")]
 lazy_static::lazy_static! {
-    static ref CM_PEER_IDENTITIES: Arc::<Mutex<Vec<(i32, crate::ipc::LinuxProcessIdentity)>>> = Default::default();
+    static ref CM_PEER_IDENTITIES: Mutex<CmPeerIdentityRegistry> = Default::default();
 }
 
 #[cfg(target_os = "linux")]
@@ -1400,38 +1400,104 @@ lazy_static::lazy_static! {
 #[cfg(target_os = "linux")]
 struct CmPeerIdentityRegistration {
     conn_id: i32,
+    cm_auth_token: String,
 }
 
 #[cfg(target_os = "linux")]
 impl Drop for CmPeerIdentityRegistration {
     fn drop(&mut self) {
-        clear_cm_peer_identity_for_conn(self.conn_id);
+        if !CM_PEER_IDENTITIES
+            .lock()
+            .unwrap()
+            .retire(self.conn_id, &self.cm_auth_token)
+        {
+            log::debug!(
+                "ignored stale connection-manager peer identity cleanup for {}",
+                self.conn_id
+            );
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Default)]
+struct CmPeerIdentityRegistry {
+    entries: Vec<CmPeerIdentityEntry>,
+}
+
+#[cfg(target_os = "linux")]
+struct CmPeerIdentityEntry {
+    conn_id: i32,
+    cm_auth_token: String,
+    peer_identity: crate::ipc::LinuxProcessIdentity,
+}
+
+#[cfg(target_os = "linux")]
+impl CmPeerIdentityRegistry {
+    fn register(
+        &mut self,
+        conn_id: i32,
+        cm_auth_token: &str,
+        peer_identity: crate::ipc::LinuxProcessIdentity,
+    ) -> ResultType<()> {
+        if conn_id <= 0 || cm_auth_token.is_empty() || peer_identity.pid() == 0 {
+            bail!("invalid connection-manager peer identity owner");
+        }
+        if self.entries.iter().any(|entry| entry.conn_id == conn_id) {
+            bail!("connection-manager peer identity ID is already owned");
+        }
+        self.entries.push(CmPeerIdentityEntry {
+            conn_id,
+            cm_auth_token: cm_auth_token.to_owned(),
+            peer_identity,
+        });
+        Ok(())
+    }
+
+    fn retire(&mut self, conn_id: i32, cm_auth_token: &str) -> bool {
+        let Some(position) = self.entries.iter().position(|entry| {
+            entry.conn_id == conn_id && entry.cm_auth_token == cm_auth_token
+        }) else {
+            return false;
+        };
+        self.entries.remove(position);
+        true
+    }
+
+    fn get(&self, conn_id: i32, cm_auth_token: &str) -> Option<&crate::ipc::LinuxProcessIdentity> {
+        self.entries
+            .iter()
+            .find(|entry| entry.conn_id == conn_id && entry.cm_auth_token == cm_auth_token)
+            .map(|entry| &entry.peer_identity)
     }
 }
 
 #[cfg(target_os = "linux")]
 fn register_cm_peer_identity_for_conn(
     conn_id: i32,
+    cm_auth_token: &str,
     cm_peer_identity: crate::ipc::LinuxProcessIdentity,
 ) -> ResultType<CmPeerIdentityRegistration> {
-    if conn_id <= 0 || cm_peer_identity.pid() == 0 {
-        bail!("invalid connection-manager peer identity");
-    }
-    let mut peer_identities = CM_PEER_IDENTITIES.lock().unwrap();
-    if let Some((_, peer_identity)) = peer_identities.iter_mut().find(|(id, _)| *id == conn_id) {
-        *peer_identity = cm_peer_identity;
-    } else {
-        peer_identities.push((conn_id, cm_peer_identity));
-    }
-    Ok(CmPeerIdentityRegistration { conn_id })
-}
-
-#[cfg(target_os = "linux")]
-pub(crate) fn clear_cm_peer_identity_for_conn(conn_id: i32) {
     CM_PEER_IDENTITIES
         .lock()
         .unwrap()
-        .retain(|(id, _)| *id != conn_id);
+        .register(conn_id, cm_auth_token, cm_peer_identity)?;
+    Ok(CmPeerIdentityRegistration {
+        conn_id,
+        cm_auth_token: cm_auth_token.to_owned(),
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn cm_peer_identity_for_live_audio_subscriber<'a>(
+    authed_conns: &[AuthedConn],
+    peer_identities: &'a CmPeerIdentityRegistry,
+    conn_id: i32,
+) -> Option<&'a crate::ipc::LinuxProcessIdentity> {
+    let conn = authed_conns
+        .iter()
+        .find(|conn| conn.is_live() && conn.conn_id == conn_id)?;
+    peer_identities.get(conn_id, &conn.cm_auth_token)
 }
 
 #[cfg(target_os = "linux")]
@@ -1442,15 +1508,17 @@ pub(crate) fn expected_cm_peer_identity_for_conn_ids(
         bail!("no active audio subscriber");
     }
 
+    let authed_conns = AUTHED_CONNS.lock().unwrap();
     let peer_identities = CM_PEER_IDENTITIES.lock().unwrap();
     let mut expected_peer_identity = None;
     for conn_id in conn_ids {
-        let Some((_, cm_peer_identity)) = peer_identities.iter().find(|(id, _)| id == conn_id)
+        let Some(cm_peer_identity) = cm_peer_identity_for_live_audio_subscriber(
+            &authed_conns,
+            &peer_identities,
+            *conn_id,
+        )
         else {
-            bail!(
-                "missing connection-manager peer identity for audio subscriber {}",
-                conn_id
-            );
+            bail!("missing live exact connection-manager peer identity for audio subscriber {}", conn_id);
         };
         if !crate::ipc::linux_cm_child_identity_is_live(cm_peer_identity, std::process::id()) {
             bail!(
@@ -1471,6 +1539,94 @@ pub(crate) fn expected_cm_peer_identity_for_conn_ids(
         bail!("missing connection-manager peer identity for audio subscribers");
     };
     Ok(expected_peer_identity)
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod cm_peer_identity_registry_tests {
+    use super::*;
+
+    #[test]
+    fn r_s11iu_linux_cm_peer_identity_rejects_collision_and_stale_retirement() {
+        let mut registry = CmPeerIdentityRegistry::default();
+        let predecessor = crate::ipc::LinuxProcessIdentity::for_test(101, 1000, "11".to_owned());
+        let successor = crate::ipc::LinuxProcessIdentity::for_test(102, 1000, "12".to_owned());
+
+        registry.register(7, "predecessor", predecessor.clone()).unwrap();
+        assert!(registry.register(7, "successor", successor.clone()).is_err());
+        assert_eq!(registry.get(7, "predecessor"), Some(&predecessor));
+        assert_eq!(registry.get(7, "successor"), None);
+        assert!(!registry.retire(7, "successor"));
+        assert_eq!(registry.get(7, "predecessor"), Some(&predecessor));
+
+        assert!(registry.retire(7, "predecessor"));
+        registry.register(7, "successor", successor.clone()).unwrap();
+        assert!(!registry.retire(7, "predecessor"));
+        assert_eq!(registry.get(7, "successor"), Some(&successor));
+        assert_eq!(registry.get(7, "predecessor"), None);
+        assert!(registry.retire(7, "successor"));
+        assert_eq!(registry.get(7, "successor"), None);
+    }
+
+    #[test]
+    fn r_s11iu_linux_cm_peer_identity_requires_positive_exact_owner() {
+        let mut registry = CmPeerIdentityRegistry::default();
+        let peer = crate::ipc::LinuxProcessIdentity::for_test(101, 1000, "11".to_owned());
+        assert!(registry.register(0, "owner", peer.clone()).is_err());
+        assert!(registry.register(7, "", peer.clone()).is_err());
+        assert!(registry
+            .register(
+                7,
+                "owner",
+                crate::ipc::LinuxProcessIdentity::for_test(0, 1000, "11".to_owned())
+            )
+            .is_err());
+        assert!(registry.entries.is_empty());
+        registry.register(7, "owner", peer.clone()).unwrap();
+        assert!(registry.register(7, "owner", peer).is_err());
+        assert_eq!(registry.entries.len(), 1);
+    }
+
+    #[test]
+    fn r_s11iu_linux_audio_peer_requires_live_exact_connection_owner() {
+        let mut registry = CmPeerIdentityRegistry::default();
+        let predecessor = crate::ipc::LinuxProcessIdentity::for_test(101, 1000, "11".to_owned());
+        let successor = crate::ipc::LinuxProcessIdentity::for_test(102, 1000, "12".to_owned());
+        registry.register(7, "predecessor", predecessor.clone()).unwrap();
+        let mut connections = vec![AuthedConn {
+            conn_id: 7,
+            conn_type: AuthConnType::Remote,
+            session_key: SessionKey {
+                peer_id: String::new(),
+                name: String::new(),
+                session_id: 1,
+            },
+            registry_generation: 1,
+            published: true,
+            retiring: false,
+            cm_auth_token: "predecessor".to_owned(),
+            cm_file: false,
+            cm_clipboard: false,
+        }];
+        assert_eq!(
+            cm_peer_identity_for_live_audio_subscriber(&connections, &registry, 7),
+            Some(&predecessor)
+        );
+        connections[0].published = false;
+        assert_eq!(cm_peer_identity_for_live_audio_subscriber(&connections, &registry, 7), None);
+        connections[0].published = true;
+        connections[0].retiring = true;
+        assert_eq!(cm_peer_identity_for_live_audio_subscriber(&connections, &registry, 7), None);
+        connections[0].retiring = false;
+        connections[0].cm_auth_token = "successor".to_owned();
+        connections[0].registry_generation = 2;
+        assert_eq!(cm_peer_identity_for_live_audio_subscriber(&connections, &registry, 7), None);
+        assert!(registry.retire(7, "predecessor"));
+        registry.register(7, "successor", successor.clone()).unwrap();
+        assert_eq!(
+            cm_peer_identity_for_live_audio_subscriber(&connections, &registry, 7),
+            Some(&successor)
+        );
+    }
 }
 
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
@@ -12928,6 +13084,7 @@ async fn start_ipc(
     #[cfg(target_os = "linux")]
     let _cm_peer_identity_registration = register_cm_peer_identity_for_conn(
         conn_id,
+        &cm_auth_token,
         cm_peer_identity.ok_or_else(|| anyhow!("missing authenticated _cm peer identity"))?,
     )?;
     bootstrap_complete
@@ -13759,8 +13916,6 @@ mod raii {
 
     impl Drop for ConnectionID {
         fn drop(&mut self) {
-            #[cfg(target_os = "linux")]
-            clear_cm_peer_identity_for_conn(self.0);
             let mut active_conns_lock = ALIVE_CONNS.lock().unwrap();
             active_conns_lock.retain(|&c| c != self.0);
         }

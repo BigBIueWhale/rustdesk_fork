@@ -3186,12 +3186,21 @@ bytes, SHA-256 `f5f02740a1587be899a9806486a51c6bf045e8257777581a587a518589201b47
 The zero-NIC outer audit found no harness-added host listener or pre-existing-process drift and
 joined guest Docker/QEMU/virtiofsd; no `run.*` root or overlay remains. This does not
 execute native Windows/macOS IPC, an installed desktop package, an authenticated network peer,
-read-job timer cancellation, a forced child-task-loss runtime case, or sustained saturation and
-resource behavior.
+read-job timer cancellation, or sustained saturation and resource behavior. Exact pushed
+`182d4db0` (tree `f949df16`) then passed 58 Linux-target tests in 701 seconds. Its new
+subprocess case aborts the exact selected desktop CM child while a real `CreateDir` worker is
+paused before its filesystem effect, and requires SIGABRT before the test UI's owner-retirement
+callback; the directory remains absent. The guest gate required that exact test to pass. Retained
+VM serial `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.e9TYUvbOse.serial.log`
+is 69,675 bytes, SHA-256 `803a06306a81b8c17a2fc7df5bf90a2e13136544f8eed7ae5cb8015e07d47706`;
+it records the 58-test summaries and receipt, not the full bounded container test output. The
+outer audit found no harness-added host listener or pre-existing-process drift, joined guest
+Docker/QEMU/virtiofsd, and left no `run.*` root or overlay. This executes the forced-child-loss
+case only in a Linux test process, not installed Android, Windows, or macOS behavior.
 
 | Platform or boundary | Evidence still required |
 | --- | --- |
-| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The 56-test Linux-target transaction exercised Android queued-terminal priority and cancellation during a selected real `CreateDir`; the current 57-test transaction additionally exercised desktop selected-command cancellation, same-ID refusal until effect and retirement, and idle-runner cancellation. Still OPEN: Android-target compilation and installed APK execution, other in-flight operation types and true terminal-during-operation cases, desktop read-job timer cancellation and native installed behavior, a forced child-task-loss runtime case, different-ID same-peer replacement, other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop/Android repeats, sustained resources/latency, and final-artifact evidence. The installed Windows result predates the later corrections. |
+| CM/file finality (R-S11c-4c/4d) | The exact-source keyed CM/direct-send and production-viewer Linux replay above passed. The 56-test Linux-target transaction exercised Android queued-terminal priority and cancellation during a selected real `CreateDir`; the 57-test transaction exercised desktop selected-command cancellation, same-ID refusal until effect and retirement, and idle-runner cancellation; the current 58-test transaction additionally exercised fatal loss of the selected desktop child before owner retirement. Still OPEN: Android-target compilation and installed APK execution, other in-flight operation types and true terminal-during-operation cases, desktop read-job timer cancellation and native installed behavior, child-loss behavior on target Android/Windows/macOS, different-ID same-peer replacement, other viewer failure/reconnect paths, live-peer saturation and terminal-first disconnect, broader cleanup/storage faults, native Windows CM read and handle/junction/unlink behavior, installed desktop/Android repeats, sustained resources/latency, and final-artifact evidence. The installed Windows result predates the later corrections. |
 | Linux installed service | Execute the exact final Debian artifact under the supported systemd, SysV, OpenRC, runit, and manual supervisors across X11/Xwayland and the required desktop/login transitions. Include unauthorized local actors, restart/identity races, liveness, bounded CPU/memory/handles, and cleanup. Portable rootless smoke is not installed-service proof. |
 | Windows | Repeat affected native suites from the eventual release commit, perform the cold two-pass build/equality transaction, and retain installed credential/CM negative-principal results. Exercise a real peer, native capture/decode/presentation, focus/minimize/background/reconnect, concurrency races, session changes, and resource/latency soak. |
 | macOS | Compile, sign, install, and run the exact app/helper/LaunchDaemon/LaunchAgent artifacts on legitimate Apple hardware or an acceptable isolated Apple environment. Exercise audit-token identity, Authorization Services, helper replacement/refusal, launchd restart, abrupt parent/child exit, CM generation races, filesystem modes/ACLs, and cleanup. Source conformance is not native Apple evidence. |

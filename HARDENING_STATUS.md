@@ -12979,6 +12979,28 @@ in-flight admission/Stop race, same-ID replacement, stale JNI callback, or
 input/voice/capture/notification retirement test. Physical Android, stable
 release artifacts, and sustained resource/latency evidence remain OPEN; the
 focused scenario still takes minutes rather than serving as a fast edit loop.
+Pushed test-only `ab9e9090` added a live keyed CM FileTransfer Stop probe.
+Its first replay **failed**: the probe idled past the server's 30-second
+timeout before UI Stop and mistook a queued second directory reply for a
+post-Stop effect. That run is not product validation. Pushed `1c8aece6`
+uses only the login's directory reply, keeps the same connection responsive
+through real keyed TestDelay round trips, and requires a fresh reply just
+before final production Stop confirmation. Pushed `f6170c1b` corrects an
+independent verifier virtiofsd launch race. The exact retained `100746a7`
+test APK and `f6170c1b` peer then passed one 574-second Android 14/API-34
+zero-NIC replay: the already-open keyed CM session closed after Stop, fresh
+keyed CM was refused while `MainService` was absent, and restart served a
+new directory request in the same app process without Force Stop. Outer
+before/during/after host-listener checks passed with no harness addition or
+pre-existing-process drift; all owned VM/guest-Docker processes joined and
+the run/overlay were retired. Retained serial
+`.harness-state/verifier-vm/android-emulator-runtime-run.70AwqB5iRM.serial.log`
+is 76,280 bytes, SHA-256
+`e138c0fad895eb6e0f71464f18c70ab1fb82db06d87772dc41841f75541c9311`.
+No product source changed in this slice. This covers one sequential live
+FileTransfer session, not a paused admission/Stop race, same-ID replacement,
+stale callbacks, input/voice/capture/notification retirement, outgoing-viewer
+hang, Windows display delay, physical Android, or release artifacts.
 The default full-closure release check still cannot start because the canonical
 inputs lack `flutter-windows-3.24.5.zip`; its earlier failed serial remains
 `.harness-state/verifier-vm/android-rust-target-check-run.LaL1NJflmp.serial.log`

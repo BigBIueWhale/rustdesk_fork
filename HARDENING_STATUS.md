@@ -11479,141 +11479,33 @@ release obligations and explicit user requests.
 
 ### R-S11hp/R-S11e-253 — exact-owner whiteboard presentation and redraw lifecycle
 
-**Status:** SOURCE IMPLEMENTED / FOCUSED RUST TESTS AUTHORED BUT UNEXECUTED /
-CONFINED SOURCE AND MUTATION EVIDENCE COMPLETE / EXACT RUST/NATIVE, PLATFORM,
-DEVICE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.
+**Current disposition: SOURCE IMPLEMENTED; target-native presentation and resource evidence OPEN.**
+`src/ipc.rs` restricts the helper wire to Bind, typed Cursor, Close, and Shutdown;
+`src/whiteboard/server.rs` derives renderer-internal Clear only after exact-token Close.
+`src/server/connection.rs` admits cursor registration only for authenticated Remote
+connections and explicitly unregisters on refusal, disable, and retirement. The shared
+`WhiteboardPresentationState` caps ownership at 16 connections, one cursor and 64
+oldest-first ripples per owner, and Clear retires only that owner's state. Windows,
+macOS, and Linux renderers consume that owner and wait while idle, using one
+event-loop deadline only while ripples remain. macOS also retires exact-owner text
+layouts and redraws both old and new monitor surfaces on movement.
 
-Read-only continuation review of the whiteboard flow after R-S11hn and
-R-S11ho found a third, independent presentation-lifecycle defect. The
-authenticated helper converted an authorized connection Close into
-`CustomEvent::Clear`, but none of the Windows, macOS, or Linux renderers
-handled Clear. If another connection kept the shared helper alive, the
-retiring connection's last cursor could therefore remain visible. Click
-ripples were stored by window or in one global vector rather than by their
-connection owner, with no explicit per-owner admission ceiling, so they could
-not be retired with that connection. macOS additionally retained text layouts
-by historical `(text, color)` values instead of by the connection whose cursor
-needed the layout.
+Two focused Rust tests in `src/whiteboard/server.rs` cover exact-owner Clear and
+owner/ripple bounds. `scripts/verify-whiteboard-presentation-lifecycle.py` and the
+shared/Apple source gates cover the closed source topology; the recorded confined
+checks for this slice had no Rust or native toolchain and cannot establish that
+those tests or any target renderer ran. The original review and source-check
+receipts remain in Git history at `78bbce8e4`.
 
-All three renderer event loops also used continuous polling or an equivalent
-redraw cycle while idle. macOS requested another display from inside each
-draw, creating a self-perpetuating redraw edge. This was avoidable idle CPU/GPU
-and presentation-resource debt in the dedicated helper, not remote-display
-frame transport. The authenticated wire accepted a generic `CustomEvent`
-payload even though Clear and Exit are helper-internal lifecycle decisions,
-and each high-frequency cursor update formatted its numeric connection ID into
-a heap string before event-loop publication.
-
-Further exact review corrected an overly broad preliminary reading of the
-option branch: the old supported disable path already called
-`unregister_whiteboard`; it did not strand supported-disable demand. The
-narrower option debt was that platform support was computed before both enable
-and disable, and an unsupported enable transition did not explicitly retire a
-possibly pre-existing registration. The correction moves support probing
-inside the enable branch and makes authenticated Remote enable, non-Remote
-refusal, unsupported refusal, and disable transitions explicit. No deployed
-artifact was inspected, so this source review does not establish which version
-or path ran on a user's device.
-
-The corrected wire vocabulary now contains Bind, typed Cursor, Close, and
-process Shutdown only. Cursor carries the positive numeric connection ID,
-token, and cursor value. Renderer-internal Clear and Exit cannot be named on
-the wire. The authenticated helper validates the cursor token before deriving
-an internal numeric-owner Cursor action; authorized Close removes the exact
-token before deriving internal Clear. A reserved owner value is used only for
-terminal Exit. The former formatted cursor-key helper and generic client event
-API are deleted. The two cursor producers publish typed Cursor values, use
-fixed at-most-two-command storage, and periodically flush into fixed storage
-bounded by the existing 16-connection authority rather than allocating a new
-vector on each tick.
-
-One shared generic `WhiteboardPresentationState` now owns cursors and click
-ripples by positive numeric connection ID. It accepts no more than the
-existing 16 active whiteboard owners. Each owner retains one current cursor
-and at most 64 active ripples; when full, the oldest ripple is removed before
-the next is accepted. Exact Clear removes that owner's cursor and complete
-ripple queue and leaves all other owners unchanged. Expired ripple retention
-also removes empty owner buckets. Windows, macOS, and Linux all consume this
-same owner rather than parallel cursor/ripple containers. macOS keys its
-derived text layout by connection ID, rebuilds it only when that owner's text
-or color changes, and removes it on exact Clear.
-
-Demand-driven macOS drawing also binds surface retirement across monitor
-windows. Before replacing an owner's cursor, the renderer snapshots its prior
-window ID. A move to another monitor requests redraw for both the new and
-prior windows, so removing perpetual redraw cannot leave pixels on the former
-surface. A cursor coordinate owned by no current monitor clears that owner's
-cursor, ripples, and text layout and redraws any prior surface instead of
-retaining an unmapped last position. Monitor ownership uses half-open logical
-rectangles, so the first pixel on an adjacent display is not misassigned to
-the preceding window's inclusive right or bottom edge.
-
-Each platform now waits in its native event loop while no animation exists.
-Initialization, accepted Cursor, and exact Clear request a redraw. While any
-ripple remains, the event loop owns one 16-millisecond deadline. Its
-ResumeTimeReached edge first retires expired ripple state, requests a final
-clearing frame whenever a ripple existed, and rearms only while active ripples
-remain. Drawing also prunes defensively. Suppressed or occluded painting is
-therefore not required to stop the deadline after the 500-millisecond ripple
-lifetime. Once no ripple remains, the control-flow choice is Wait. The
-continuous Poll choices and macOS draw-triggered `setNeedsDisplay` call are
-removed. This does not add a timer task, worker, thread, runtime, poller,
-retry/reconnect path, alternate session reuse, service/activity kill, Android
-foreground-service weakening, listener, transport, port, network behavior,
-dependency, privilege transition, or alternate command route.
-
-Two deterministic generic Rust state regressions prove that Clear is exact
-and final for the named owner's cursor and all ripples while preserving another
-owner, and that total owner admission plus oldest-first per-owner ripple
-admission remain bounded. The focused
-`scripts/verify-whiteboard-presentation-lifecycle.py` contract derives the
-closed IPC vocabulary, option transitions, typed fixed-storage client path,
-authenticated internal action derivation, shared state bounds, every platform
-renderer, macOS derived-layout lifetime, demand-driven redraw, regressions,
-shared and Apple gates, normative requirement, Appendix disposition,
-independent workspace binding and dispatch, and exact requirements hashes. Its
-self-test deliberately weakens those boundaries. The workspace verifier also
-derives the product and platform contract directly and carries separate
-product, renderer, behavior, gate, requirement, ledger, focused-verifier,
-source-binding, and dispatch mutations rather than trusting the focused
-verifier's verdict.
-
-Accepted confined evidence used only the approved immutable image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
-as uid/gid 1000 with no network, a read-only repository bind, a read-only
-container root, all capabilities dropped, no-new-privileges, no devices,
-ports, host namespaces, Docker socket, image pull/build, root, or persistent
-container. Python AST, requirements HTML, requirements-hash bindings, and
-shell syntax passed. The whiteboard IPC, whiteboard client, whiteboard
-presentation, and Linux nondumpable CM/PA/whiteboard focused suites rejected
-their focused weakening cases. The sole approved verifier image has no Rust,
-Cargo, rustfmt, Dart, Flutter, or native platform
-toolchain, so native compilation and behavior cannot be substituted by that
-source-verification environment.
-
-This slice does not inspect, stop, restart, modify, or connect to a host
-RustDesk process or service; inspect or change host firewall/network/listener
-state; touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or
-unrelated container/image; or request/acquire root. It is source-proven shared
-Windows/macOS/Linux whiteboard presentation, resource, and idle-redraw debt.
-It is not evidence of compromise, exploitation, public exposure, privilege
-escalation, host/service/firewall/network modification, or proof that an
-unidentified deployed artifact exercised the defect. Because the separately
-reported Android task-swipe/reopen/Force-Stop and Windows focus/minimize delay
-affects remote display frames while input control remains immediate, this
-helper-overlay correction is not claimed as its cause or fix.
-
-Exact Rust/native compilation and tests, Windows/macOS/Linux physical
-multi-connection/toggle/close behavior, idle-versus-animation overlay CPU/GPU
-and memory measurement, current physical Android
-task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect reproduction,
-capture-through-compositor timestamps, explicit end-to-end
-latency/queue/CPU/memory budgets, sustained
-connection/reconnect/focus/background/file/control/resource/performance soak,
-cross-version behavior, clean committed cold R-B2/R-B10 equality, installed
-artifacts/service behavior, fresh independent reproduction, R-V3 external
-review, causation, and proof that the complete connection flow is correct and
-performant remain explicit release obligations and explicit user requests.
+**Still required:** execute the focused tests from the exact current source, then
+exercise two concurrent owners, refusal/toggle/Close/abrupt retirement, boundary
+owners/ripples, occlusion, cross-monitor cleanup, actual compositor output,
+final clearing frames, idle/animation CPU/GPU and bounded memory/thread/handle
+state on installed Windows, macOS, and Linux artifacts. Exact release artifacts,
+sustained resource/latency measurements, independent reproduction, and external
+review remain open. This whiteboard overlay is separate from the Android/Windows
+remote-display freshness defect; its source correction is not evidence of a fix
+for that defect.
 
 ### R-S11hq/R-S11e-254 — exact-generation Android MainService startup transaction
 

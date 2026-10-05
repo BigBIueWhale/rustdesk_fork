@@ -3095,21 +3095,28 @@ makes each receive destination an exact-owner claim with a nonblocking lease, ex
 sidecars, fallible cleanup, and size-checked publication. Direct-send errors are terminal;
 the production viewer owns its download and error-to-next-session progression. The
 receive/commit state model and its platform limits are detailed under R-S11c-4d below.
+`src/server/connection.rs` retains a digest-refused write in `Cancelling` until the
+exact CM cleanup acknowledgement; it sends one bounded peer error including a cleanup
+failure instead of dropping the authority and reporting the digest error early.
 
-Exact source `818214ed` (tree `aa7c0868`) passed the no-NIC, guest-only Docker
-`--cm-file-replay` in 311 seconds. Its keyed Linux peers exercised pre-login refusal,
+Exact source `66de9c90` (tree `843b3bf1`) passed the no-NIC, guest-only Docker
+`--cm-file-replay` in 305 seconds. Its keyed Linux peers exercised pre-login refusal,
 directory/create, exact and short writes, multi-file blocks, peer error, cancel, abrupt
-owner loss and fresh reconnect, fixed-sidecar collision, cleanup failure, direct-read
-error followed by a confirmed exact read, and two *simultaneously live* connections
-contending for the same destination. The contender was refused without changing the
-first owner's staged bytes, digest, or lock inode; the first owner then committed.
+owner loss and fresh reconnect, fixed-sidecar collision, cancellation cleanup failure,
+digest-refusal cleanup failure, direct-read error followed by a confirmed exact read,
+and two *simultaneously live* connections contending for the same destination. The
+contender was refused without changing the
+first owner's staged bytes, digest, or lock inode; the first owner then committed. The
+digest-refusal case reported both causes, and the guest independently preserved the
+replacement and displaced staging bytes. One exact Rust cancellation-outcome unit test
+also passed inside the same guest.
 The production Linux `Session` in that replay downloaded exact bytes, refused a
 symlink destination without changing its sentinel, and completed a fresh same-peer
-connection after that local refusal. The 397,501-byte raw serial is
-`.harness-state/verifier-vm/cm-file-replay-run.khu7YOJX9s.serial.log`, SHA-256
-`3786324d31f54a52a64ac976a686a0a9eb1018c39ad2adfb8e1ceb1132772e33`.
-The outer audit found no harness-added host listener, reported one pre-existing
-process drift, joined guest Docker/QEMU/virtiofsd, and left no `run.*` overlay.
+connection after that local refusal. The 399,354-byte raw serial is
+`.harness-state/verifier-vm/cm-file-replay-run.3qxNqtSIoh.serial.log`, SHA-256
+`1dc5f988b851ffd1e4e38c45a6ab79872960c975180d474541eb86be4508796d`.
+The outer audit found no harness-added host listener or pre-existing-process drift,
+joined guest Docker/QEMU/virtiofsd, and left no `run.*` overlay.
 
 Earlier focused source `e05a2e91` passed 64 Linux filesystem tests and four config
 tests; its serial `hbb-common-fs-run.8dsa1iW9yk.serial.log` is retained. An older

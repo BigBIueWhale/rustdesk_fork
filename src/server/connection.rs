@@ -1612,9 +1612,25 @@ fn cm_write_cancellation_outcome(
     match (pending_peer_error, result) {
         (None, Ok(())) => None,
         (Some(error), Ok(())) => Some(error),
-        (None, Err(error)) => Some((file_num, error)),
+        (None, Err(error)) => Some((
+            file_num,
+            if error.len() <= MAX_CM_FILE_ERROR_BYTES {
+                error
+            } else {
+                "partial receive cleanup failed (details exceeded limit)".to_owned()
+            },
+        )),
         (Some((file_num, error)), Err(cleanup_error)) => {
-            Some((file_num, format!("{error}; {cleanup_error}")))
+            let combined = format!("{error}; {cleanup_error}");
+            if combined.len() <= MAX_CM_FILE_ERROR_BYTES {
+                Some((file_num, combined))
+            } else {
+                Some((
+                    file_num,
+                    "digest refused; partial receive cleanup failed (details exceeded limit)"
+                        .to_owned(),
+                ))
+            }
         }
     }
 }
@@ -12261,6 +12277,17 @@ mod cm_file_response_authority_tests {
         );
         assert_eq!(
             cm_write_cancellation_outcome(
+                None,
+                0,
+                Err("x".repeat(MAX_CM_FILE_ERROR_BYTES + 1))
+            ),
+            Some((
+                0,
+                "partial receive cleanup failed (details exceeded limit)".to_owned()
+            ))
+        );
+        assert_eq!(
+            cm_write_cancellation_outcome(
                 Some((2, "digest refused".to_owned())),
                 0,
                 Ok(())
@@ -12276,6 +12303,18 @@ mod cm_file_response_authority_tests {
             Some((
                 2,
                 "digest refused; partial receive cleanup failed: generation changed".to_owned()
+            ))
+        );
+        assert_eq!(
+            cm_write_cancellation_outcome(
+                Some((2, "x".repeat(MAX_CM_FILE_ERROR_BYTES))),
+                0,
+                Err("cleanup failed".to_owned())
+            ),
+            Some((
+                2,
+                "digest refused; partial receive cleanup failed (details exceeded limit)"
+                    .to_owned()
             ))
         );
     }

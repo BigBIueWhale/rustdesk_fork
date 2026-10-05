@@ -5888,6 +5888,7 @@ mod tests {
         let mut registry = CmClientRegistry {
             clients: HashMap::new(),
             generation: i64::MAX,
+            in_flight_file_operations: HashMap::new(),
         };
         let mut client = registry_test_client(7, "peer");
         assert!(matches!(

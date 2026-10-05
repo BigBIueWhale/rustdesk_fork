@@ -12771,6 +12771,17 @@ service. Authorized capture, unauthorized same-machine principals, revocation
 under native silence, subscriber churn, latency, and cleanup on a real PA
 device/service remain OPEN and are not inferred from Linux-target unit tests.
 
+The outbound-only acquisition VM at source `9f122dc8` successfully read the
+publisher-signed 2026-09-01 Debian bookworm/security snapshots in 30 seconds.
+It selected `pulseaudio` `16.1+dfsg1-2+b1` (amd64 package SHA-256
+`9937623ed1b9e8c663f0d1be510821e2d18306c5c05658a4c717847ce36f8aa2`)
+and simulated its dependencies against the acquisition-VM base. The bounded
+receipt is `.harness-state/verifier-vm/online-fetch-receipts/run.RM5j5M8R7F.receipt`;
+the outer listener audit and joined cleanup passed. This did not stage a
+package, establish the devcheck image's exact dependency delta, or run `_pa`.
+Next: pin and stage the exact test-runtime closure, then execute positive capture,
+silent revocation, wrong-principal refusal, and cleanup in the zero-NIC VM.
+
 **Process-wide connection IDs — source corrected, native lifecycle OPEN.**
 The former per-`Server` counters could allocate the same ID in overlapping
 controlled generations or outgoing voice audio, and their wrap scan checked

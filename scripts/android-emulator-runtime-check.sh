@@ -1199,6 +1199,17 @@ mapfile -t peer_warm_hold_receipts < <(grep -E \
 [ "${BASH_REMATCH[1]}" -ge 120000 ] \
     && [ "${BASH_REMATCH[1]}" -le 240000 ] \
     || die 'Android peer warm-hold duration is outside its bounded schedule'
+mapfile -t peer_task_park_receipts < <(grep -E \
+    '^ANDROID_PEER_TASK_PARK=pass samples=6 interval_seconds=20 elapsed_ms=[1-9][0-9]* task=absent process=stable service=foreground-preserved keyed_sessions=unchanged peer_connections=0$' \
+    "$RUNTIME_LOG" || true)
+[ "${#peer_task_park_receipts[@]}" -eq 1 ] \
+    && [ "$(grep -c '^ANDROID_PEER_TASK_PARK=' "$RUNTIME_LOG")" -eq 1 ] \
+    || die 'Android peer removed-task hold receipt is absent, malformed, or duplicated'
+[[ "${peer_task_park_receipts[0]}" =~ elapsed_ms=([1-9][0-9]*)\ task=absent ]] \
+    || die 'Android peer removed-task hold duration is malformed'
+[ "${BASH_REMATCH[1]}" -ge 120000 ] \
+    && [ "${BASH_REMATCH[1]}" -le 180000 ] \
+    || die 'Android peer removed-task hold duration is outside its bounded schedule'
 mapfile -t peer_presentation_stage_receipts < <(grep -E \
     '^ANDROID_PEER_PRESENTATION_STAGE=pass phase=(initial|warm-reconnect-[1-6]|task-relaunch-[1-6]) ordinal=([1-9]|1[0-3]) server_connection=[1-9][0-9]* display=[0-9]+ server_wire_generation=[1-9][0-9]* viewer_wire_generation=[1-9][0-9]* server_wall_ms=[1-9][0-9]* server_queue_us=[0-9]+ viewer_mailbox_generation=[1-9][0-9]* viewer_wall_ms=[1-9][0-9]* receive_to_admit_us=[0-9]+ admit_to_dequeue_us=[0-9]+ decode_us=[0-9]+ dart_session=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} publication=[1-9][0-9]* dart_wall_ms=[1-9][0-9]* event_queue_us=[0-9]+ take_us=[0-9]+ checkpoint_us=[0-9]+ decode_commit_us=[0-9]+ ui_finalize_us=[0-9]+ dart_total_us=[0-9]+ image_conversions_active=[1-3] image_conversions_waiting=([0-9]|[1-5][0-9]|6[0-4]) image_conversions_peak=[1-3] client_owner=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' \
     "$RUNTIME_LOG" || true)

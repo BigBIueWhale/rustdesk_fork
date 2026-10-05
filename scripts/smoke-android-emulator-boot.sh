@@ -356,6 +356,8 @@ readonly -a PEER_BACKGROUND_SECONDS=(2 6 120)
 # Each window still uses the independent source-bound framebuffer freshness oracle.
 readonly PEER_WARM_HOLD_SAMPLES=6
 readonly PEER_WARM_HOLD_INTERVAL_SECONDS=20
+readonly PEER_TASK_PARK_SAMPLES=6
+readonly PEER_TASK_PARK_INTERVAL_SECONDS=20
 readonly PEER_TASK_REPLACEMENT_CYCLES=6
 readonly PEER_WARM_RECONNECT_CYCLES=6
 readonly LIFECYCLE_TASK_REMOVAL_CYCLES=2
@@ -3581,6 +3583,32 @@ exercise_peer_warm_hold() {
         "$PEER_WARM_HOLD_SAMPLES" "$PEER_WARM_HOLD_INTERVAL_SECONDS" "$elapsed_ms"
 }
 
+exercise_peer_task_park() {
+    local sample keyed_before elapsed_ms started_ms
+    keyed_before="$(peer_server_keyed_session_count)"
+    [[ "$keyed_before" =~ ^[1-9][0-9]*$ ]] \
+        || fail 'the removed-task hold cannot bind the keyed peer count'
+    started_ms="$(monotonic_millis)" \
+        || fail 'the removed-task hold cannot read the monotonic clock'
+    for sample in $(seq 1 "$PEER_TASK_PARK_SAMPLES"); do
+        sleep "$PEER_TASK_PARK_INTERVAL_SECONDS"
+        [ "$(app_task_state)" = absent ] \
+            && [ "$(adb_shell_value pidof "$APP_PACKAGE" 2>/dev/null || true)" = "$APP_PID" ] \
+            && assert_main_service \
+            && [ "$(peer_server_keyed_session_count)" = "$keyed_before" ] \
+            && wait_peer_server_connections 0 exact \
+            || fail "removed-task hold sample $sample regained a task or lost service/peer finality"
+    done
+    elapsed_ms="$(monotonic_millis)" \
+        || fail 'the removed-task hold cannot finish its monotonic measurement'
+    elapsed_ms=$((elapsed_ms - started_ms))
+    [ "$elapsed_ms" -ge "$((PEER_TASK_PARK_SAMPLES * PEER_TASK_PARK_INTERVAL_SECONDS * 1000))" ] \
+        && [ "$elapsed_ms" -le 180000 ] \
+        || fail 'the removed-task hold duration differs from its bounded schedule'
+    printf 'ANDROID_PEER_TASK_PARK=pass samples=%s interval_seconds=%s elapsed_ms=%s task=absent process=stable service=foreground-preserved keyed_sessions=unchanged peer_connections=0\n' \
+        "$PEER_TASK_PARK_SAMPLES" "$PEER_TASK_PARK_INTERVAL_SECONDS" "$elapsed_ms"
+}
+
 exercise_peer_warm_reconnect() {
     local cycle=$1 phase= task_before= lifecycle_log=
     [[ "$cycle" =~ ^[1-9][0-9]*$ ]] \
@@ -4096,6 +4124,9 @@ PY
             if [ "$WORKLOAD" = app-peer-lifecycle ]; then
                 wait_peer_server_connections 0 exact \
                     || fail "task removal $lifecycle_cycle retained the obsolete Android peer connection"
+                if [ "$lifecycle_cycle" -eq 1 ]; then
+                    exercise_peer_task_park
+                fi
             fi
             timeout --signal=TERM --kill-after=2s 60s \
                 "$ADB" -s "$SERIAL" shell am start -W -n "$APP_ACTIVITY" \

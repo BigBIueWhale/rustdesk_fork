@@ -4370,6 +4370,18 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     )
     [ "${#android_lifecycle_receipts[@]}" -eq 1 ] \
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android lifecycle runtime receipt is absent or duplicated'; }
+    mapfile -t android_task_park_receipts < <(
+        /usr/bin/grep -Eo \
+            'ANDROID_PEER_TASK_PARK=pass samples=6 interval_seconds=20 elapsed_ms=[1-9][0-9]* task=absent process=stable service=foreground-preserved keyed_sessions=unchanged peer_connections=0' \
+            "$SERIAL_LOG" || true
+    )
+    [ "${#android_task_park_receipts[@]}" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android removed-task hold receipt is absent or duplicated'; }
+    [[ "${android_task_park_receipts[0]}" =~ elapsed_ms=([1-9][0-9]*)\ task=absent ]] \
+        && [ "${BASH_REMATCH[1]}" -ge 120000 ] \
+        && [ "${BASH_REMATCH[1]}" -le 180000 ] \
+        || fail 'Android removed-task hold duration is outside its bounded schedule'
+    printf '%s\n' "${android_task_park_receipts[@]}"
     mapfile -t android_initial_credential_receipts < <(
         /usr/bin/grep -Eo \
             'ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT=pass reason=missing-credential observer=(exact|android-accessibility-prefix-240) observed_network_attempts=0 pre_session_failure_delta=0 key_failure_delta=0 keyed_session_delta=0 established=0 prompt_ms=[0-9]+ prompt_limit_ms=240000' \

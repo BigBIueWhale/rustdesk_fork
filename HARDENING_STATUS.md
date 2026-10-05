@@ -12804,161 +12804,63 @@ shape is not promoted to native or lifecycle proof.
 
 ### R-S11iu/R-S11e-284 — exact-generation CM client-registry ownership
 
-**CORE REGISTRY, SNAPSHOT RECONCILIATION, CM FILE-LOG, AND FINAL-REMOTE CLEANUP SOURCE
-IMPLEMENTED; OTHER SIDE-EFFECT LIFETIME WORK REMAINS; FOCUSED LINUX RUST REGRESSIONS
-EXECUTED; CURRENT DART MODEL EXECUTED; ANDROID-TARGET, DEVICE, RENDERED-UI, AND NATIVE WINDOWS EVIDENCE OPEN.**
-`CmClientRegistry` owns a checked process-lifetime
-generation and exact `CmClientOwner`. Admission rejects nonpositive IDs, empty connection
-authority tokens, stale source generations, active same-source collisions, and exhaustion
-without partial mutation. The registry token is internal, serde-skipped authority state;
-the UI-facing client representation omits it.
-Disconnected owners may be replaced; only a newer Android MainService generation may
-supersede an active predecessor, whose egress owner closes before replacement. Desktop
-source generation zero cannot supersede an active collision. Registry mutation, chat,
-voice, Android notification/input/capture mirrors, and generation-bearing
-add/remove/chat/voice UI events carry or check the exact owner. This is not yet a blanket
-claim for every CM side effect. CM file-log publication now carries the retained exact owner
-through every desktop filesystem, forwarded-log, and read-tick site. Publication checks that
-owner immediately before the Flutter handoff; stale ownership or an unknown action terminates
-the stream path. The fixed event schema is `id`, `registry_generation`, `action`, and `log`, so
-an action string cannot select or overwrite an authority field. Dart dispatch uses its receiving
-`FFI`, requires the exact live `ServerModel` generation, rejects every embedded `connId` mismatch,
-and stores jobs plus speed-sampling state under the exact owner. Full-state refresh, add,
-replacement, remove, and close reconcile those tables; retirement deletes the predecessor table,
-and deferred tab selection rechecks both its request generation and client owner before
-publication. The former desktop length-only refresh gate is deleted: count is not state identity.
-The desktop CM and live mobile UI now use the same non-overlapping 500 ms repair turn, which obtains
-the complete native registry snapshot, validates the top-level list and every positive, unique
-connection ID and process-lifetime registry generation before any mutation, and canonicalizes
-admission order by generation. An asynchronous snapshot carries the
-local observation revision from before its native call and cannot overwrite an intervening add,
-remove, disconnect, or voice event. Reconciliation reuses only the exact `(id, generation)` Dart
-owner, preserves its UI-local unread state, replaces a successor rather than inheriting predecessor
-state, and rebuilds tabs only when owners or tab identity change; an unchanged snapshot causes no
-client-list, file-table, tab, or listener notification mutation. Native serialization borrows the
-registry entries and does not clone their egress senders on each repair turn. Consequently a missed
-same-count replacement, disconnect, voice transition, or remove-plus-add is repaired by the next
-refresh rather than persisting indefinitely. `closeAll` removes only the exact generations it
-captured, preserving a concurrently admitted successor. Disconnected owners retain their table only
-while that exact generation remains in the client registry. The unused
-process-global desktop click-time request/response and FFI surface are deleted end to end. The
-previously recorded Windows clipboard-cleanup gap is not reachable:
-the exact controlled-route lease remains occupied through registry retirement and native emptying,
-and a same-ID successor must acquire that route before it can enter the client registry.
+**Source largely implemented; target-native lifecycle and release evidence OPEN.**
+`CmClientRegistry` allocates checked process-lifetime generations and retains a
+private `(connection_id, registry_generation)` owner. It rejects invalid IDs or
+tokens, stale source generations, active same-source collisions, and exhaustion
+without committing a client. A disconnected owner may be replaced; only a strictly
+newer Android Service generation may supersede an active owner, while desktop source
+generation zero cannot. The displaced egress owner closes after receiver acceptance
+and before successor UI publication. Terminal cleanup, chat, voice, CM file logs,
+Android controlled resources, and UI add/remove/chat/voice events use exact owner
+identity. CM file-log publication rejects stale ownership and unknown actions;
+its fixed `id`, `registry_generation`, `action`, and `log` fields prevent action
+text from selecting an authority field. No blanket assertion for every possible
+CM side effect is made.
 
-Windows privacy mode now retains one typed connection owner containing the positive
-connection ID and nonempty CM authority token for the physical privacy resource's full
-lifetime. A same-ID request with a different token is not treated as the same owner.
-Privacy activation does not acquire local-input suppression: the inherited global low-level
-keyboard/mouse hook and its arbitrary physical-input filtering are deleted. Windows reserves only
-the explicit Ctrl+P machine-local escape chord with `RegisterHotKey`. One owned queue thread creates
-its message queue before publishing its ID, and its exact `JoinHandle` is retained from creation
-through `UnregisterHotKey` and joined teardown; a second registration cannot start while that owner
-exists, and cleanup uncertainty poisons reuse. `GetMessage` error and `WM_QUIT` are distinguished.
-The queue handler performs no privacy, network, display, or runtime work: it only makes a bounded
-nonblocking handoff to one retained process-lifetime control worker and resumes pumping. The queued
-request carries the exact connection ID and CM token captured by that hotkey registration, so delayed
-work cannot force off a same-ID replacement or another owner. That worker
-reuses the Tokio runtime handle retained by the exact privacy owner; the former per-callback
-`#[tokio::main]` runtime is absent, and the synchronous bridge fails closed on a Tokio runtime
-thread. Teardown sends a distinct
-`AuthorizedPrivacyModeState` one-shot request; the CM fixes Remote as the type, validates
-the live token, and routes a token-free response only to a current registry entry retaining
-that same token. A validator-approved stale
-token therefore cannot cross a same-ID CM replacement. The old bare-ID
-`PrivacyModeState` request and multi-client broadcast helper are deleted. Privacy activation
-now has one blocking-worker path for every implementation instead of choosing whether to
-block the Tokio worker from the previously selected implementation. A one-permit admission gate
-allows only one activation thread through the complete registered-and-joined lifetime, while one
-process-lifetime reaper retains and joins its exact handle. The worker cannot begin native work
-until that handoff succeeds. Each physical implementation reaches a two-phase
-prepare/commit gate before it publishes the owner; the 7.5-second response deadline sends a
-cancel decision and then waits for the owned operation to roll back and drain rather than
-returning while it can commit later. A connection-future drop also publishes cancellation through
-a shared activation flag, and each implementation checks that flag before and between native
-mutation stages; a worker already inside one opaque native call cannot be interrupted by this
-source mechanism, but it must stop at the next checkpoint and roll back. Dropping the connection-
-side future also closes the final commit gate, so a worker that reaches it afterward must roll back.
-Connection-driven off, capture-validation rollback, `Connection::drop`, and the physical Ctrl+P
-escape now require the exact ID and CM token; only the final-Remote machine reset retains explicitly
-named force-off authority. Drop/activation-error retirement is idempotent when a different exact owner is current,
-so routine cleanup neither revokes nor log-amplifies an incumbent connection. An activation
-refusal no longer force-disables an incumbent connection's privacy resource. Unsupported nonempty
-implementation names fail instead of silently selecting a
-fallback. Virtual-display and window implementations attempt physical rollback before a
-cancelled transaction reports completion, and teardown continues display/window restoration
-even if escape-hotkey retirement fails. Virtual-display teardown now checks display staging,
-display commit, monitor removal, and registry recovery instead of discarding their results; it
-retains the relevant snapshots for retry until each class succeeds and aggregates simultaneous
-failures. The inherited fallback that force-unplugged every pre-existing virtual display when this
-activation had created none is removed. The Amyuni interface does not expose stable monitor
-identities, so the former vector of fake zero-valued "indices" is replaced by an honest count that
-is recorded immediately after this activation's plug-in succeeds; teardown requests exactly that
-many removals and none when the activation created none. A returned rollback/hotkey-retirement failure retains
-the pending exact owner instead of erasing cleanup authority; the activation-error path retries
-teardown only for its own exact ID/token.
-Switching implementations now refuses to replace the old implementation when its reported
-teardown fails. The first-plug resolution workaround no longer launches an unretained child thread;
-its bounded poll completes synchronously inside the same calling operation and logs each resolution
-failure. Non-privacy virtual-display callers still need installed proof that this blocking work is
-off their Tokio/UI execution paths.
+Dart receives generation-bearing events and validates exact live `ServerModel`
+ownership and connection ID before changing client, tab, file-job, or speed state.
+Desktop and mobile use one non-overlapping 500-ms full-snapshot repair turn. It
+validates positive unique IDs/generations, orders entries by generation, and refuses
+to overwrite a newer local event revision; a no-change snapshot does not rebuild
+tables or notify listeners. Replacement discards predecessor-owned UI state, and
+`closeAll` removes only captured generations. The old count-only refresh gate and
+desktop click-time request/response surface are absent. Windows file-clipboard route
+ownership remains occupied through registry retirement and native emptying, so a
+same-ID successor cannot reuse it early (R-S11iu).
 
-This is source and model closure for activation publication and hotkey ownership, not native Windows
-display evidence. The Windows-only regression performs two real `RegisterHotKey`/`UnregisterHotKey`
-lifecycles, refuses a concurrent registration, and requires reuse only after exact joined teardown;
-the pinned Windows lane invokes it, but that lane has not run for this source. Native hotkey,
-display, and registry APIs may still have target-specific blocking and failure semantics. In
-particular, Amyuni exposes count-based
-plug/unplug rather than resource identities, so cross-process driver churn can make ownership
-ambiguous and must be exercised/refused correctly in the installed race matrix. Disconnect-time
-exact-owner privacy retirement now makes one nonblocking submission to a bounded 32-request queue.
-A short independent lifecycle snapshot admits a queue entry only for the exact active owner or the
-single admitted activation, preventing unauthenticated or unrelated connection churn from consuming
-retirement capacity. The activation reaper retains that pending identity until its exact native
-worker joins; final activation and every central teardown path refresh the active identity before
-pending authority is released. One retained process-lifetime worker drains accepted ID/token
-requests in order and performs the existing idempotent exact-owner teardown, so this step no longer
-waits in `Connection::drop` for the global privacy mutex or native restore; submission or worker
-failure is logged and never falls back to inline teardown. Unsupported platforms allocate no worker
-or queue. The unused public `privacy_mode::init`, `clear`, and `switch` facades are deleted; the last
-could replace an implementation through destructor cleanup while discarding its failure, outside the
-one fallible activation-switch transaction. The trait's internal `clear` operation remains for that
-transaction. Final-Remote cleanup no longer infers global finality from an unlocked connection count
-or runs native display work in `AuthedConnID::drop`. Each desktop Remote owns an exact cleanup lease;
-the last retirement coalesces one cleanup request on a retained process-lifetime worker. Admission
-invalidates an unclaimed request or asynchronously waits for a claimed request, and a failed cleanup
-permits one retry bound to that admission's exact retry revision. A failed or older waiter cannot
-benefit from a later admission's retry. The authenticated registry assigns a checked generation,
-refuses same-ID overlap, retains an unpublished capacity-counted reservation before the next await,
-keeps its mutable entries private, and exposes only narrow read-only counts to shutdown, cursor, and
-Windows service-control consumers. The final credential-current commit atomically publishes that
-reservation; retirement marks the exact entry unavailable
-before local capability validation can use it,
-performs ID-keyed codec/QoS/mouse/whiteboard retirement while the ID remains reserved, and removes only
-that generation. If exact registry retirement cannot be proved, the Remote cleanup lease is poisoned;
-it cannot launch uncertain physical cleanup, and Remote admission plus graceful drain remain failed closed
-until process restart. Because cleanup admission may wait, authorization now revalidates the exact credential
-generation after cleanup and input-worker startup before committing `authorized = true`; mismatch drains
-those exact owners and fails login. The worker waits for any admitted privacy activation to join, restores wallpaper,
-resolution, privacy, virtual-display, and cursor state, aggregates fallible native results, and is
-part of graceful-shutdown drain; a latched cleanup failure is not reported as drained. Resolution
-restoration no longer holds its registry lock across a native call or clears failed work: a successful
-unchanged snapshot is removed, while failure or a concurrent replacement fails the transaction and
-remains retryable. Windows reset removes only the remaining process-counted virtual displays, treats
-zero owned displays as successful finality, rejects negative-index global removal, and does not mutate
-implementation-owned display state after a failed privacy teardown. Multi-display teardown decrements
-the exact owner's remaining count after each success, so a partial failure cannot over-remove on retry.
-When no Amyuni display remains observable, one successful exact cleanup step also retires one stale
-process-owned count; contradictory enumeration remains a visible retryable failure.
-The primary post-authentication type gate now reserves physical resolution changes and every other
-host-display mutation for Remote sessions, the only sessions that own final-cleanup leases. ViewCamera
-retains video observation, camera/display selection, refresh, query, and bounded video-feedback messages,
-while FileTransfer, Terminal, and PortForward cannot reach those per-video QoS sinks.
-Explicit peer-off and
-capture-validation/activation-error
-rollback remain synchronous and result-bearing. Real cancellation, disconnect, concurrent successor,
-session-change, driver-delay/failure, restore-failure, queue/worker refusal, shutdown, and bounded
-resource/latency behavior remain open for exact installed desktop artifacts.
+Windows privacy source retains the exact positive connection ID and CM token as its
+physical resource owner. Activation uses one bounded, retained blocking transaction
+with a two-phase commit/cancel gate; delayed or failed activation rolls back before
+publication. Disconnect submits only the exact active or activating owner to a bounded,
+retained retirement worker, while explicit peer-off remains result-bearing. The
+Windows machine-local Ctrl+P escape uses an exactly owned
+`RegisterHotKey`/queue-thread/worker lifecycle; no low-level input-suppression hook
+is installed. Its queued action carries the registration's ID/token and the CM accepts
+only the matching live Remote owner through `AuthorizedPrivacyModeState`. Unsupported
+implementation names and ambiguous teardown fail closed; no old bare-ID broadcast or
+inline-disconnect fallback remains (R-S19a).
+
+Virtual-display/window rollback retains failed native cleanup for retry. Amyuni exposes
+a count, not stable monitor identities: source removes only process-counted displays,
+decrements after each success, and treats contradictory enumeration as failure rather
+than global unplug authority. Exact installed Windows testing must still exercise
+hotkey registration/unregistration, same-ID replacement, activation cancellation,
+driver churn, partial restoration, queue/worker refusal, shutdown, and resource/latency
+bounds. The Windows-only hotkey regression exists but has not run against this source;
+portable source/model tests do not establish native behavior.
+
+Each desktop Remote holds an exact final-cleanup lease; its last retirement dispatches
+one retained off-runtime restoration transaction after admitted privacy activation
+joins. A new Remote invalidates unclaimed cleanup or waits for claimed cleanup; failure
+is visible and only one admission-bound retry revision may recover it. The authenticated
+registry reserves a checked generation before awaiting, publishes only after current
+credential validation, and makes retiring entries unavailable before ID-keyed teardown.
+Unprovable exact retirement poisons the cleanup lease and fails further admission and
+graceful drain closed. Restoration aggregates wallpaper, resolution, privacy, virtual
+display, and cursor outcomes, retaining failed or concurrently replaced resolution work
+for retry (R-T4). Installed desktop cancellation, concurrent successor, native
+restore failure, and sustained resources remain OPEN.
 
 The Android CM/file bridge now runs as one retained child future of the exact network
 `Connection` on its existing Tokio runtime. The former unretained OS thread and hidden
@@ -12979,57 +12881,44 @@ is terminal before filesystem dispatch or any other command effect. Work admitte
 the owner was current may finish; supersession does not invent rollback or report an
 already completed filesystem effect as unperformed.
 
-CM voice-state reception now uses the exact current registry owner and its authenticated
-`CmAuthConnType`: only Remote and ViewCamera may publish incoming, started, or closed state.
-Desktop and Android receivers terminate a non-voice or stale owner's stream; FileTransfer,
-Terminal, and PortForward cannot mutate CM voice state. The two new Tokio regressions drive
-desktop framed IPC and the Android listener, require refusal and exact retirement for all
-three non-voice messages, and preserve all three transitions for Remote and ViewCamera.
-Exact pushed `961c9b78` passed the no-NIC VM's 47 named Linux-target Rust tests, including
-these two, with guest-only networkless containers, no host listener addition, and joined
-cleanup. This is receiver/source behavior, not installed Windows/Android UI or native voice
-device evidence; those lifecycle and release obligations remain OPEN.
+CM voice-state reception checks the exact current owner and authenticated
+`CmAuthConnType`: only Remote and ViewCamera may publish state. Desktop and Android
+listeners terminate stale or non-voice owners. The pushed `74a26780` source passed
+60 focused Linux-target Rust tests in the zero-NIC VM, including registry
+collision/replacement, listener callback refusal/retry, CM file-log ownership,
+selected file-work cancellation, voice type refusal, privacy and final-Remote
+retirement. This is in-process Linux-target behavior, not Android JNI or Windows
+native execution. Earlier Flutter model and Kotlin owner-state transactions
+exercised exact Dart reconciliation and seven production Kotlin state classes,
+respectively; their source-bound receipts remain in Git history and the audit.
+Neither model lane executes a rendered Flutter event, Android framework Service,
+native voice device, or installed Windows privacy API.
 
-Focused behavior: source `ceec168e` passed 20 serial `r_s11iu_` Linux-target Rust
-regressions and four listener/child tests in a zero-NIC VM. They exercise registry
-collision/replacement, exact file-log publication, selected Android CM future
-cancellation, privacy activation/retirement, final-Remote cleanup, and resolution
-rollback; they do not run Android JNI or Windows native APIs. Source `5d74102b`
-passed 21 Flutter model suites/173 tests, including production disconnected-peer row
-retirement and tab-index alignment. Its raw serial is
-`.harness-state/verifier-vm/flutter-model-tests-run.5eBzwzkPqT.serial.log`
-(SHA-256 `413fd684bd7e8c91fb1ee4d6ac644715a8411f7c2eacd2fc1234c1145f1dd7bc`).
-The Kotlin owner-state lane at `a2cbbbd2` passed 15 scenarios/293 assertions against
-seven production state classes. These are bounded state/runner results, not a
-native-to-rendered event, Android Service/JNI, installed Windows CM/privacy, or
-physical-device result.
+**OPEN / source-corrected:** Pushed `74a26780` makes Android controlled add a
+Boolean JNI acknowledgment bound to the exact Service generation. Rust reserves its
+registry owner, asks the Service, commits only on acceptance, then publishes the UI
+add event; refusal drops the reservation and terminates that incoming listener.
+The Service rejects stopped/stale generations and invalid or stale owners before
+changing its owner map. The acknowledgment proves owner-map admission only, not
+capture/audio/notification readiness. Pending admission suppresses predecessor
+registry actions; a retained row on refusal does not prove that an overlapping
+predecessor remained operational.
+R-S11iu's original single-registry-lock wording predates this two-stage JNI
+admission; its linearization contract and the Service-stop/replacement race need
+explicit reconciliation before this boundary can be called closed.
 
-**OPEN / source-corrected:** At pushed `74a26780`, Android controlled-side add
-uses the exact Service-generation-bound `rustAdmitControlledConnection` Boolean JNI
-callback instead of void `rustSetByName("add_connection", ...)`. The Service rejects
-stopped/stale generation, malformed/unknown-type, and stale owner admission before
-changing its owner map; Rust reserves the registry generation, calls the receiver,
-commits only on acknowledgment, and publishes the Flutter add event only afterward.
-Refusal drops the reservation and terminates the incoming CM listener; it does not
-commit or publish the successor. Service acknowledgment establishes owner-map
-admission, **not** capture/audio/notification readiness: those follow-on outcomes
-still have separate failure handling. Pending admission suppresses concurrent
-predecessor-side registry actions, so preservation of its registry row on refusal
-must not be mistaken for proof that an overlapping predecessor stayed operational.
-The zero-NIC VM passed 60 Linux-target tests in 1,011 seconds from this exact pushed
-source; raw serial `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.4G3rcGsn0s.serial.log`
-is 71,493 bytes, SHA-256 `4eb81a195bd8df872d5668315019422a1179bd665010206568ce67bae627b9d9`.
-The outer audit found no harness-added host listener and joined cleanup removed
-the overlay and `run.*` directory. An Android Rust target-check attempt from this
-source stopped **before compilation** because the full pinned online closure still
-lacks `flutter-windows-3.24.5.zip`; archived serial
-`.harness-state/verifier-vm/android-rust-target-check-run.LaL1NJflmp.serial.log`
-has SHA-256 `b2a952ce2116e6935788e717e9799677fef9d49ccb8ff76406c9ca6644c867f8`.
-Its disposable overlay and 34-MiB failed private run were removed after joined
-cleanup. Android-target compilation and an installed-APK negative replacement,
-stale-generation, callback/input/voice/capture/notification test remain required.
-Neither the Linux-target pass nor the blocked target check proves Service/JNI
-behavior or explains the reported outgoing-viewer hang.
+The exact-source 60-test VM receipt is
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.4G3rcGsn0s.serial.log`
+(SHA-256 `4eb81a195bd8df872d5668315019422a1179bd665010206568ce67bae627b9d9`);
+it records no harness-added host listener and joined cleanup. Android Rust target
+compilation did **not** begin: the full pinned closure lacks
+`flutter-windows-3.24.5.zip` (archived failed serial
+`.harness-state/verifier-vm/android-rust-target-check-run.LaL1NJflmp.serial.log`,
+SHA-256 `b2a952ce2116e6935788e717e9799677fef9d49ccb8ff76406c9ca6644c867f8`).
+The failed private run and overlay were retired. Android-target compilation and an
+installed-APK negative replacement/stale-generation callback test spanning input,
+voice, capture, notification, and task lifecycle remain required. Neither Linux
+tests nor the blocked target check explain the outgoing-viewer hang.
 
 The native-to-rendered Flutter event path, Android-target compilation and installed
 APK replacement/callback/input/voice/capture/notification/task lifecycle, different-ID

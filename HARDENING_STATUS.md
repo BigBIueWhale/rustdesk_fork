@@ -3150,19 +3150,20 @@ drift, and joined guest-only Docker/QEMU/virtiofsd with no retained `run.*` root
 That transaction tested queued terminal priority only. Android `start_listen` now transfers an
 already selected filesystem command, its transfer jobs, and its exact registry owner into one
 capacity-limited child task; a fixed process-lifetime drain owns its join handle if the listener
-is cancelled. Same-ID successor admission waits for the prior operation and owner/UI retirement,
-with a finite refusal if it does not drain. Exact pushed source `913e774e` (tree `8a75752d`)
+is cancelled; the process-lifetime drain also retains its own thread handle. Same-ID successor
+admission waits for the prior operation and owner/UI retirement, with a finite refusal if it does
+not drain. Exact pushed source `ac56d23b` (tree `1b0d0d46`)
 passed the 56-test Linux-target transaction in 692 seconds. The expanded production-path test
 held a real `CreateDir` worker before its filesystem effect, cancelled the listener, observed the
 old registry generation still present and same-ID replacement refused, then released the worker
 and observed the directory effect, old-owner retirement, and successor admission. Raw serial
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.6rOVdBhMUF.serial.log` is 70,325
-bytes, SHA-256 `fc8a821542ce65e0a3ef4295a4f0d7aca8c9caff3ca91c9cb32502791fee945f`.
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.rE2hueKpbN.serial.log` is 69,065
+bytes, SHA-256 `4de4224b452f03ec2cc6b24299c357bef777aaa762e0c47a625dbabb80120a3f`.
 The outer audit reported no harness-added host listener or pre-existing-process drift, joined
 guest-only Docker/QEMU/virtiofsd, and no retained `run.*` root or overlay. The preceding compile
 attempt failed only because a test registry initializer lacked the new field; its disposable disk
 was removed after joined teardown and its raw serial remains retained. An Android-target compile
-attempt at the same source stopped *before compilation* because the full pinned online closure
+attempt at earlier source `913e774e` stopped *before compilation* because the full pinned online closure
 lacks `flutter-windows-3.24.5.zip`; its raw serial is
 `.harness-state/verifier-vm/android-rust-target-check-run.2nhx1Esi14.serial.log`, SHA-256
 `82a62ac7a89a038177bab1a1c5b3ed82df4fba050c8dd29bece22ceb6d4a4787`.

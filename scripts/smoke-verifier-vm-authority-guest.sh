@@ -2109,6 +2109,7 @@ run_focused_rust_tests() {
             server::connection::final_remote_cleanup_state_tests::r_s11iu_authenticated_registry_refuses_id_overlap_and_stale_removal
             server::display_service::tests::r_s11iu_r_t4_resolution_restore_retains_failure_and_concurrent_replacement
             ui_cm_interface::tests::r_s11iu_android_cm_future_terminally_retires_its_registry_owner
+            ui_cm_interface::tests::r_s11c4d_android_terminal_preempts_queued_file_work
             ui_cm_interface::tests::r_s11iu_android_cm_future_cancellation_retires_its_registry_owner
             ui_cm_interface::tests::r_s11iu_superseded_android_cm_owner_cannot_dispatch_filesystem_work
             ui_cm_interface::tests::r_s11iu_stale_owner_cannot_mutate_or_retire_a_reused_client_id

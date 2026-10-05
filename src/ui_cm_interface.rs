@@ -4076,6 +4076,68 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn r_s11c4d_android_terminal_preempts_queued_file_work() {
+        let id = 2_000_000_015;
+        assert!(CLIENTS.write().unwrap().clients.remove(&id).is_none());
+        let temp = CmFileTestDir::new("terminal_preempts_file_work");
+        let first_queued_directory = temp.join("first-must-not-exist");
+        let second_queued_directory = temp.join("second-must-not-exist");
+        let ui = CmTaskOwnerTestUi::default();
+        let manager = ConnectionManager::new(ui.clone(), 65);
+        let (command_tx, command_rx) = mpsc::channel(2);
+        let (terminal_tx, terminal_rx) = tokio::sync::oneshot::channel();
+        let (egress_tx, mut egress_rx) = cm_egress_channel();
+        command_tx
+            .send(cm_test_login_with_file_authority(id, true))
+            .await
+            .unwrap();
+        let mut future = Box::pin(start_listen(manager, command_rx, terminal_rx, egress_tx));
+        wait_for_cm_test_admission(&mut future, &ui.added).await;
+        let generation = CLIENTS
+            .read()
+            .unwrap()
+            .clients
+            .get(&id)
+            .map(|client| client.registry_generation)
+            .unwrap();
+
+        // Fill the ordinary queue and keep its sender open: only the separate terminal
+        // lane can prevent these already queued, authorized commands from reaching disk.
+        for (request_id, path) in [
+            first_queued_directory.as_path(),
+            second_queued_directory.as_path(),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            command_tx
+                .send(Data::FS(ipc::FS::CreateDir {
+                    path: path.to_string_lossy().into_owned(),
+                    id: 1,
+                    request_id: request_id as u64,
+                }))
+                .await
+                .unwrap();
+        }
+        terminal_tx.send(CmConnectionTerminal::Close).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(1), future)
+            .await
+            .expect("terminal intent must retire the Android CM consumer before queued work");
+
+        assert!(!first_queued_directory.exists());
+        assert!(!second_queued_directory.exists());
+        assert!(!CLIENTS.read().unwrap().clients.contains_key(&id));
+        assert_eq!(
+            *lock_cm_egress_test(&ui.removed),
+            vec![(id, generation, true)]
+        );
+        assert!(tokio::time::timeout(std::time::Duration::from_secs(1), egress_rx.recv())
+            .await
+            .expect("retired CM egress must close")
+            .is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn r_s11iu_android_cm_future_cancellation_retires_its_registry_owner() {
         let id = 2_000_000_002;
         CLIENTS.write().unwrap().clients.remove(&id);

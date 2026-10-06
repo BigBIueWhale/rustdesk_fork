@@ -9954,196 +9954,121 @@ Exact-current zero-interface QEMU execution, Windows peer/service behavior, and 
 
 ### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality (2026-08-13)
 
-- **SOURCE IMPLEMENTED; FOCUSED 70-MUTATION AND INDEPENDENT 4,129-MUTATION SOURCE EVIDENCE PASS; NATIVE/RELEASE EVIDENCE OPEN.**
-  The audit proved several shared connection-flow defects. Native Flutter display switching exposed a void FFI carrying
-  only the connection UUID; Dart cleared or changed visible state without awaiting native admission. Signed display IDs
-  were cast before validation, missing/closed rounds were silently consumed, and local handler/RGBA state could change
-  before an operation was accepted. Switch/capture and refresh were independently schedulable, while the controlled
-  side logged invalid switch/capture/exact-refresh requests and continued the connection. A caller-supplied desktop flag
-  decided whether displays owned by other live UI sessions survived, although that ownership fact exists only in the
-  native handler inventory. Normal generated Flutter bridge calls execute on a four-worker pool, so separately awaited
-  UI/event callbacks could still enter native display selection out of order. Dart also copied the mutable selection only
-  inside that delayed worker call and could narrow a non-`i32` value before Rust validation. Controlled switch, capture,
-  and refresh helpers silently reported success when their weak server owner had already retired.
-- Two subtler defects remained after the first ordered-command draft and were corrected in this slice. First,
-  `ViewerCommandSender::try_send` could publish the typed command to the network receiver before local handler/RGBA
-  ownership committed. A fast peer's first refreshed keyframe could therefore outrun its local owner and be discarded,
-  plausibly leaving display presentation waiting for a later keyframe while input remained immediate. Second,
-  existing-window startup inserted/replaced a same-session handler before capture admission and removed the entry on
-  refusal, destroying the valid predecessor it had just replaced. These are source-level mechanisms consistent with
-  the reported Android persistent-service recovery symptom and Windows focus-loss display-only delay; they do not prove
-  causation for the weeks-old deployed binaries.
-- The correction snapshots an exactly `i32`-representable selection at Dart invocation and feeds generated normal-worker
-  calls through one per-live-session/UI-owner latest-wins sequencer bounded to one running and one pending request; a superseded pending
-  request completes false without native submission or UI commit. It carries the exact connection-session UUID and
-  current UI-owner UUID through a fallible bridge. Under the exact handler-owner lock it validates one nonempty,
-  distinct set against current bounded peer inventory. Native code on every platform derives the capture set as that
-  selection plus the union retained by every other live UI owner; the Dart/web/native `isDesktop` policy flag is gone.
-  One `DisplaySelectionCommand` contains only an optional minimal typed switch, one mandatory boxed capture set, and
-  either one legacy refresh-all plan or one boxed exact refresh set. Construction validates capture/switch/refresh
-  coherence, dimensions, indices, duplicates, cardinality, retained heap, and serialized work before admission.
-- Admission is now an explicit reserve/commit/publish transaction. The sender first reserves the exact bounded MPSC
-  slot and checked byte semaphore budget. While that slot remains invisible to the sole network loop, an infallible
-  callback commits the new handler/display ownership and retires only obsolete exact RGBA mailboxes. Only then is the
-  command published. The network loop performs optional switch, mandatory capture set, decoder refresh, and peer
-  refresh in order. Thus the first refreshed keyframe cannot outrun local display ownership. Generic display-control or
-  refresh messages terminate the round. The bounded Dart admission sequencer adds no isolate or native/background task;
-  no additional transport queue, runtime, timer, polling loop, retry, reconnect fallback, unbounded queue, or
-  generic-message bypass exists.
-- Existing-window startup now performs the same synchronous reservation and commits the replacement handler only in the
-  invisible-slot callback. Refusal leaves a same-session predecessor exactly intact; the former staged insert/rollback,
-  `sessionStartWithDisplays`, second capture FFI, and stream-time capture are deleted. Dart awaits native admission and
-  rechecks the same connection/UI owner before clearing an image, changing `currentDisplay`, moving a window, dismissing
-  the mobile selector, or reporting success. Invalid controlled-side switch/capture/exact-refresh requests terminate
-  their authenticated connection instead of preserving silent viewer/controlled divergence. A controlled server-owner
-  disappearance during switch/capture/refresh and a later viewer transport failure likewise terminate the exact round.
-  Local admission and ordered transport remain distinct from peer-operation acknowledgement, which the current wire
-  protocol does not provide.
-- The source regressions now cover command shape/byte bounds; queue invisibility during local commit; stale UI owner;
-  negative, duplicate, and out-of-inventory displays; missing round; old handler/RGBA preservation on refusal; ordered
-  typed selection; exact and legacy refresh plans; cross-owner capture union; failed same-session replacement preserving
-  its predecessor; valid startup replacement; the one-running/one-latest-pending Dart sequencer; exact typed-list
-  representation; existing-window selected-display/set coherence and exact typed snapshot; and controlled-side
-  exact-or-terminal execution. `verify.sh`, `dart-verify.sh`, and `apple-conform-check.sh` invoke the focused
-  self-test; the generated Dart gate selects the sequencer behavior test; shared and generated-bridge Rust gates select
-  all `r_s11go_` regressions.
-- This slice changes no OS-privilege boundary, host service/configuration, listener, firewall, network namespace, or
-  unrelated project. No root/sudo/privileged container, image pull/build/tag, published port, product process, VM, or
-  full release ran. A confined exact-lock targeted Rust test attempt verified 36 clean exact-commit Git packages and 845
-  registry archives against their lockfile SHA-256 values, then stopped offline before compilation because the cleaned
-  cache lacks `crossbeam-epoch 0.9.20`, `memmap2 0.9.11`, and `rustls-pki-types 1.12.0`; no substitute version was used.
-  Exact generated-bridge/Rust/Dart compilation and test execution, peer-operation acknowledgement, physical Android
-  persistent-service task-swipe/reopen/Force-Stop recovery, native Windows focus/minimize behavior, installed
-  Linux/macOS/iOS, cross-version behavior, capture-through-presentation timestamps and budgets, sustained
-  reconnect/focus/resource soak, cold R-B2/R-B10 equality, independent reproduction, and external review remain open.
-  The user's explicit requirement that the whole connection flow—not only complained-about paths—be correct and
-  performant on every supported platform remains binding and guides later slices.
+**SOURCE IMPLEMENTED; NAMED DART QUEUE BEHAVIOR PASSED; NATIVE/END-TO-END/RELEASE EVIDENCE OPEN.**
+
+Current source in `src/{client.rs,client/io_loop.rs,flutter.rs,flutter_ffi.rs,ui_session_interface.rs}`,
+`src/server/connection.rs`, `flutter/lib/common.dart`, and the viewer model/call sites implements one
+exact connection-session/UI-owner display-selection transaction. Dart snapshots an exactly representable
+selection and submits through the one-running/one-latest sequencer. Native admission validates the
+nonempty, distinct bounded inventory and derives the capture union from every live native UI owner;
+a caller's platform flag cannot select that policy.
+
+`ViewerCommandSender::send_with_commit` reserves the exact command slot and checked byte budget
+before the local handler/RGBA ownership callback runs; the command is published only afterward.
+The sole network loop executes optional switch, mandatory capture set, decoder refresh, and peer
+refresh in order. Existing-window startup uses this same admission and preserves a predecessor on
+refusal rather than inserting then rolling back. Dart awaits admission and rechecks both owners
+before UI mutation. Invalid controlled requests, retired controlled owners, or later transport
+failure terminate the exact connection. Split/generic display-control paths and reconnect-based
+recovery are absent. Local admission and ordered transport are not peer-operation acknowledgement.
+
+**Shared evidence boundary for R-S11go–R-S11gr.** Named source
+`7c5a1b1da791f501619427bd70367e0f7b960acd` passed 20 focused Flutter suites/166 tests in a
+293-second zero-NIC transaction, including `display_selection_queue_test.dart`,
+`session_event_queue_test.dart`, and `latest_frame_queue_test.dart`. Their three production queue
+modules and three test files are byte-identical to current source. Raw serial
+`.harness-state/verifier-vm/flutter-model-tests-run.kJzOp1z49w.serial.log` is 68,319 bytes,
+SHA-256 `afa8bb041749ddb58949f6416cebe4eee3273119b4f5a9bfb4c7cc19dc30dfc2`.
+The journal records the terminal outer success, read-only sealed inputs, no added host listener,
+and joined guest-only Docker/QEMU/virtiofsd cleanup. This is generated-bridge and executable
+Dart queue/model evidence, not current native FFI execution, all later caller wiring, a browser,
+an installed platform, or a full peer/presentation result. The focused display-selection source
+checker and selected `r_s11go_` Rust regressions remain; mutation counts are not native evidence.
+
+**Still OPEN:** exact native command shape/byte admission, invisible-slot commit ordering,
+owner/inventory refusal, predecessor preservation, typed startup, cross-owner capture union,
+legacy/exact refresh and controlled exact-or-terminal execution; real bridge and peer completion;
+browser rendering; Android task-swipe/reopen/Force-Stop and persistent-service recovery; Windows
+focus/minimize; Linux/macOS/iOS and supported cross-version behavior; concurrent-feature interaction;
+capture-through-compositor timestamps and explicit latency/queue budgets; sustained reconnect,
+focus, CPU/memory/thread/handle/resource soak; installed-service/release-child evidence; current
+cold Debian/Android/Windows R-B2/R-B10 artifacts; independent reproduction; and external review.
+Named native schedules elsewhere in this ledger establish only their named artifacts and scenarios.
+The reported problems in the older deployed Android/Windows/Debian binaries are not causally
+explained by these source mechanisms or queue tests. The user's requirement remains correctness
+and performance of the whole connection flow on every supported platform, not only complained-about
+paths. Normative contracts and original threat findings remain in R-S11go–R-S11gr and Appendix C
+#350–#353; superseded implementation narratives and failed attempts remain in Git/audit history.
 
 ### R-S11gp/R-S11e-228 — exact-session display-selection queue lifetime (2026-08-14)
 
-- **SOURCE IMPLEMENTED; FOCUSED 84-MUTATION, ADJACENT ANDROID 532-MUTATION, AND INDEPENDENT 4,320-MUTATION SOURCE EVIDENCE PASS; NATIVE/RELEASE EVIDENCE OPEN.** Review of the immediately preceding
-  R-S11go implementation found that its bounded Dart display-selection queue was actually one field on each `FFI`, not
-  one queue per exact live `(session UUID, UI-owner UUID)` pair as the requirement stated. This distinction is material
-  on Android: `gFFI` is intentionally permanent for the app process and keeps one stable UI-owner UUID, while `start()`
-  rotates the connection UUID. An old display operation that remained inside the generated normal-worker/native call
-  could therefore retain `_running` and prevent every display selection for the replacement session from reaching
-  native code. Activity task-swipe/reopen preserves the process and persistent service, whereas Force Stop destroys
-  them; that is a concrete source mechanism matching the user's recovery shape. It does not prove causation for the
-  older Android or Windows binaries currently deployed, which predate this new queue implementation.
-- The queue now has immutable exact owner value `(sessionId, clientOwnerId)` and a terminal retired state. Submission
-  with a mismatched owner or after retirement returns false before invoking the operation. Retirement is exact-owner
-  checked and idempotent, immediately resolves the running caller and retained pending caller false, discards the
-  pending operation, and prevents a late value or error from reviving the queue or surfacing into replacement-session
-  UI. Any already-entered native call still carries only its captured old session and owner. The reusable mobile model
-  retires its predecessor queue before reset, rotates its session UUID, and installs a fresh independently draining
-  queue before native insertion. Explicit current-session close, stream failure, and expected stream close all retire
-  the current queue before asynchronous cleanup; a stale old close cannot retire the replacement session.
-- This is deliberately a lifecycle correction to the existing bounded sequencer, not a second recovery system. It adds
-  no timer, polling loop, task, isolate, runtime, native/background worker, transport queue, retry, or reconnect fallback.
-  It neither stops nor weakens Android's persistent `MainService`; task-swipe may continue to leave that service alive.
-  The behavioral regression holds an old operation open, retires its exact queue, proves both old callers are refused,
-  proves stale-owner submission and retirement are refused, and proves a fresh replacement queue completes without
-  waiting for the old operation. The focused verifier binds exact owner admission, retirement finality, mobile rotation,
-  explicit/stream terminal paths, test selection, requirements, and ledger. The adjacent Android lifecycle and
-  voice-call ownership checks remain focused source evidence rather than native lifecycle evidence.
-- This source slice changes no host service, process, listener, firewall, network namespace, persistent Android service,
-  or OS privilege boundary. No root/sudo/privileged container, image pull/build/tag, port publication, RustDesk process,
-  VM, or release build is part of this evidence. Exact generated-bridge and Dart compilation/test execution, exact-current
-  physical Android task-swipe/reopen/Force-Stop recovery, Windows focus/minimize behavior, Linux/macOS/iOS lifecycle,
-  deployed/cross-version behavior, capture-through-presentation timestamps and latency budgets, sustained reconnect/
-  focus/resource soak, cold R-B2/R-B10 equality, independent reproduction, and external review all remain open. The
-  user's broader requirement that the whole connection flow be correct and performant on every supported platform is
-  unchanged.
+**SOURCE IMPLEMENTED; NAMED EXACT QUEUE TESTS PASSED; NATIVE LIFECYCLE/RELEASE EVIDENCE OPEN.**
+
+`DisplaySelectionQueue` owns one immutable `(session UUID, UI-owner UUID)` pair. Mismatched or
+retired submission refuses before invocation. Exact retirement is idempotent, resolves running
+and pending callers as refused, discards pending work, and prevents a late value/error from
+reviving the queue or reaching a replacement. Reusable-mobile replacement retires its predecessor
+before reset and installs a fresh independently draining queue before native insertion; current
+terminal paths retire the queue before asynchronous cleanup. A stale close cannot retire a successor.
+
+The retained queue test holds old work open, retires both old callers, refuses stale owners,
+and completes replacement work before releasing the predecessor. It also covers latest-wins,
+explicit refusal and operation failure without wedging the successor. This queue lifetime is
+not process, reusable-`FFI`, or persistent-service lifetime; Android's intentional background
+service is unchanged. No second queue, timer, poller, isolate, worker, runtime, retry or reconnect
+fallback supplies recovery. Shared evidence and all OPEN obligations above apply; the queue
+test is not an Android Activity/service or Windows focus scenario.
 
 ### R-S11gq/R-S11e-229 — exact-session topology and presentation ordering (2026-08-14)
 
-- **SOURCE IMPLEMENTED; FOCUSED 121-MUTATION, ADJACENT RGBA 55-MUTATION, ADJACENT ANDROID 532-MUTATION, AND COMPLETE
-  INDEPENDENT SOURCE EVIDENCE PASS; EXACT DART/NATIVE/RELEASE EVIDENCE OPEN.** The audit found that the
-  ordered native session stream was consumed by a synchronous `Stream.listen` callback which started and discarded one
-  asynchronous closure for every message. Any awaited `peer_info`, `sync_peer_info`, display switch/follow, cached
-  window-transfer, cursor, file, or privacy handler could therefore overlap later messages and complete out of wire
-  order. In the display path specifically, `handleSwitchDisplay`, `handlePeerInfo`, `handleSyncPeerInfo`, and
-  `switchToNewDisplay` also discarded `updateCurDisplay` futures. Native software-RGBA publication ordering prevented
-  one older publication from replacing a newer publication for the same display, but it did not bind decoded pixels or
-  first-image/canvas work to the peer/display topology from which their dimensions were read. A later topology event
-  could therefore complete while an earlier frame decode or geometry update was still in flight. This is a concrete
-  shared Flutter source defect consistent with display-only incoherence or delay while input remains responsive; it is
-  not proof that the weeks-old deployed Android, Windows, or Debian binaries exercised this exact mechanism.
-- The local authority model is now one immutable `(session UUID, UI-owner UUID)` shared by both bounded Dart lanes.
-  Cached window-transfer state and the closed low-rate topology set (`peer_info`, `sync_peer_info`, platform additions,
-  switch/follow display, and texture-render mode) enter one FIFO with one running operation and at most 32 pending
-  operations. Exact owner mismatch or retirement refuses work before invocation. Overflow or task failure retires the
-  running/pending callers and becomes a visible terminal connection error. Expected close, stream error/done, explicit
-  close, and reusable-mobile predecessor replacement retire the exact topology and display-selection lanes together.
-  Local UI display state commits enter this same topology lane only after the existing ordered native display-selection
-  admission returns; code already executing in the topology lane applies its captured revision directly and does not
-  recursively enqueue. Revision-sensitive geometry work in the lane is awaited through its commit. The existing 300 ms
-  scroll-settle callback remains outside the FIFO so it cannot add topology head-of-line delay; it consumes no lane
-  capacity and rechecks the captured exact session/topology revision immediately before mutation.
-- Media decode deliberately remains outside that FIFO. Each software RGBA, native texture, or web RGBA notification
-  captures a non-enqueuing checkpoint for all topology work observed before it. Checkpoints consume no pending capacity;
-  if later topology is accepted before the continuation resumes, the earlier checkpoint is stale and the frame is
-  refused. A checkpoint that remains current captures the exact display-topology revision. That session/revision is
-  checked before dimensions are read, after asynchronous pixel decode, after canvas/cursor initialization awaits, and
-  immediately before image commit. A later topology mutation therefore prevents an old decode or canvas continuation
-  from publishing into new state. Software RGBA atomically takes owned native bytes before its topology await, then
-  enters an exact per-display one-running/one-latest lane; superseded Dart work retains no native publication and a
-  missing or stale token is inert. First-image preparation is shared through at most one exact in-flight future; only a
-  still-current session/revision marks it complete or runs callbacks. Malformed session-stream JSON is a visible
-  terminal inconsistency rather than log-and-continue behavior. High-rate cursor/file work is not added to the topology
-  FIFO, and frame decode never occupies it.
-- This is an ordering/lifetime correction, not a recovery mechanism. It adds no reconnect, retry, timer, polling loop,
-  isolate, worker, runtime, Android service restart, native transport queue, or decode head-of-line wait. Deterministic
-  Dart queue tests cover FIFO behavior, capacity-free checkpoints, later-state invalidation, overflow retirement, task
-  failure, exact retirement, and replacement-session independence. The focused display/session finality verifier binds
-  the queue, exact owner lifecycle, topology event set, cached-state ordering, malformed-event finality, local-commit
-  serialization, checkpoint/revision guards, first-image finality, requirements, ledger, and generated Dart gate wiring.
-- This source slice changes no host service, process, listener, firewall, network namespace, persistent Android service,
-  or OS privilege boundary. Exact Dart formatting/analyzer/test and generated-bridge execution have not yet been run in
-  this slice. Physical Android task-swipe/reopen/Force-Stop recovery; native Windows focus/minimize behavior;
-  Linux/macOS/iOS lifecycle; deployed and cross-version behavior; concurrent-feature interaction;
-  capture-through-compositor timestamps and explicit latency/queue budgets; sustained reconnect/focus/resource soak;
-  clean committed cold Debian/Android/Windows R-B2/R-B10 artifact equality; installed-service/release-child proofs;
-  independent reproduction; external review; and the user's broader requirement that the whole connection flow be
-  correct and performant on every supported platform all remain open release obligations.
+**SOURCE IMPLEMENTED; NAMED EXACT QUEUE TESTS PASSED; NATIVE PRESENTATION/RELEASE EVIDENCE OPEN.**
+
+`SessionEventQueue` provides one exact-owner FIFO for cached window-transfer state and the closed
+low-rate peer/display topology set, with one running operation and at most 32 pending operations.
+Owner mismatch/retirement refuses work; overflow or operation failure retires retained callers
+and becomes a visible exact-session failure. Post-selection UI commits use this same lane;
+already-entered lane work does not recursively enqueue. Revision-sensitive geometry commits are
+awaited; delayed scroll settling remains outside the lane with an exact revision check.
+
+Media decode and high-rate cursor/file work stay outside the FIFO. Capacity-free checkpoints
+capture previously observed topology; a later accepted state event invalidates an older checkpoint.
+Session/topology/presentation revisions guard dimensions, decode, first-image canvas work and
+final image commit. Software RGBA takes owned native bytes before the topology await and retains
+exact publication finality. First-image initialization has one exact in-flight future; malformed
+session events fail visibly. The queue tests cover FIFO, checkpoints, later-state invalidation,
+capacity/task failure, exact retirement and replacement independence. Shared evidence and all
+OPEN obligations above apply; model tests do not prove actual pixels, native timing or the complete
+caller/renderer path.
 
 ### R-S11gr/R-S11e-230 — bounded exact-session web frame ownership (2026-08-14)
 
-- **SOURCE IMPLEMENTED; FOCUSED AND COMPLETE INDEPENDENT SOURCE/MUTATION VERIFICATION GREEN; EXACT
-  DART/WEB/NATIVE/RELEASE EVIDENCE OPEN.** Follow-up review of R-S11gq's media checkpoint path found that the live web
-  RGBA callback handed its
-  caller-owned `Uint8List` directly to an asynchronous handler which awaited topology completion before reading it.
-  The old, unused `ImageModel.webOnRgba` helper explicitly recorded that a browser callback buffer can be detached after
-  callback return and therefore deep-copied it, but the live callback never used that helper. The helper's growable list
-  was not a valid resource bound either. Every live web frame also created and detached a separate checkpoint/decode
-  continuation, so delayed topology or decode could retain an unbounded number of futures and full-frame buffers before
-  resuming them together. Rust's native software-RGBA path is not this defect: its exact session/display mailbox owns at
-  most one published token and one latest pending frame, and an exact atomic take selects the newest bytes while freeing
-  the native slot before Dart awaits.
-  This is web buffer-lifetime and presentation-resource debt, not proof of the reported older Android/Windows delay, a
-  native mailbox failure, network exposure, privilege escalation, host mutation, exploitation, or compromise.
-- The live web callback now takes one synchronous `Uint8List.fromList` copy before any await and submits that owned frame
-  to a queue owned by the immutable `(session UUID, UI-owner UUID)`. Each display has an independent lane containing one
-  running frame and at most its latest pending successor; supersession resolves and releases the older pending frame
-  without invoking it. The queue admits at most 32 active display keys. Owner mismatch or retirement refuses work before
-  presentation. Capacity exhaustion and unexpected presentation failure retire every retained lane and are routed to
-  the existing visible exact-session failure path. Installation and fail-closed retirement occur with the topology and
-  display-selection queues, so task-swipe/reusable-mobile replacement, explicit close, expected close, stream failure,
-  and later replacement cannot share a frame queue. Running old work remains unable to commit because the existing
-  session/topology checks surround decode, first-image work, and image publication. The obsolete growable web backlog,
-  alternate helper, and frame wrapper are deleted.
-- This is a bounded ownership correction, not a recovery system. It adds no timer, retry, reconnect, poll, worker,
-  isolate, runtime, Android service restart, native transport queue, or cross-display head-of-line wait, and it does not
-  change or duplicate Rust's software-RGBA mailbox. Deterministic tests cover one-running/one-latest behavior,
-  cross-display independence, terminal task failure, owner/capacity refusal, exact retirement, and replacement-session
-  independence. R-S11gr and Appendix C #353 make the contract normative; the focused display/session verifier binds
-  the production topology and behavior gates.
-- No host service, process, listener, firewall, network namespace, persistent Android service, unrelated image, or OS
-  privilege boundary is changed by this source slice. Exact Flutter formatting/tests/analyzer, generated bridge, browser
-  execution, physical Android task-swipe/reopen/Force-Stop recovery, native Windows focus/minimize behavior,
-  Linux/macOS/iOS lifecycle, deployed/cross-version behavior, concurrent-feature interaction, capture-through-compositor
-  timestamps and budgets, sustained reconnect/focus/resource soak, cold R-B2/R-B10 equality, installed-service proof,
-  independent reproduction, and external review remain open.
+**PER-QUEUE SOURCE IMPLEMENTED; NAMED FRAME-QUEUE TESTS PASSED; CROSS-SESSION RESOURCE,
+BROWSER/END-TO-END/RELEASE EVIDENCE OPEN.**
+
+The live web RGBA callback copies its caller-owned `Uint8List` synchronously before any await.
+The exact session/UI-owner `LatestFrameQueue` retains one current running frame and at most the
+latest pending successor per display, with at most 32 keys and independent display lanes.
+Supersession releases pending bytes without presentation; owner mismatch/retirement refuses work.
+Overflow or unexpected presentation failure retires the queue through the visible exact-session
+failure path. Terminal/replacement edges retire it with topology and selection ownership, while
+late old work remains unable to commit through session/topology/presentation-revision checks.
+
+The growable backlog and alternate web helper are absent. This path neither duplicates the native
+software-RGBA mailbox nor adds cross-display decode serialization, a service restart, timer,
+poller, retry, reconnect, worker, isolate, runtime or native transport queue. Named frame-queue
+tests cover latest-wins, independent displays, capacity/failure, exact retirement and replacement;
+they execute the unchanged production queue class, not JS/Wasm callback detachment or browser
+presentation. Browser and concurrent-feature behavior plus every shared OPEN obligation above
+remain required.
+
+**Cross-session web drain accounting is OPEN.** `FFI._installSessionOwner` constructs
+`_webRgbaFrames` without the shared drain pool used by software RGBA. `LatestFrameQueue.retire`
+detaches but cannot cancel an already-entered presentation future; its active-drain accounting
+stays on that old queue, while a replacement gets independent accounting. The current per-queue
+limits/tests therefore do not establish an isolate-wide bound across session replacement with
+unfinished browser work. Derive one lifetime/resource budget for those unfinished and replacement
+operations, then verify replacement/failure and actual browser presentation under that budget.
+This is a source-visible accounting gap, not a measured browser leak or Android/Windows causation.
 
 ### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority
 

@@ -1,4 +1,5 @@
 pub use self::vpxcodec::*;
+pub use self::frame_compare::would_block_if_equal;
 use hbb_common::{
     anyhow::anyhow,
     bail, log,
@@ -35,6 +36,7 @@ cfg_if! {
 
 pub mod codec;
 pub mod convert;
+mod frame_compare;
 #[cfg(feature = "hwcodec")]
 pub mod hwcodec;
 #[cfg(feature = "mediacodec")]
@@ -114,17 +116,6 @@ impl Default for ImageTexture {
             h: 0,
         }
     }
-}
-
-#[inline]
-pub fn would_block_if_equal(old: &mut Vec<u8>, b: &[u8]) -> std::io::Result<()> {
-    // does this really help?
-    if b == &old[..] {
-        return Err(std::io::ErrorKind::WouldBlock.into());
-    }
-    old.resize(b.len(), 0);
-    old.copy_from_slice(b);
-    Ok(())
 }
 
 pub trait TraitCapturer {

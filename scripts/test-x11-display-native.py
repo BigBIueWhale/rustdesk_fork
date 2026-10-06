@@ -111,6 +111,22 @@ def main():
             f"permissive source fixture was not refused exactly: {refusal}")
     print("X11_SOURCE_CONTRACT=pass current=accepted permissive_source=refused "
           "cases=2 scope=source-only kernel_permission_denial=unclaimed", flush=True)
+    comparator = root / "libs/scrap/src/common/frame_compare.rs"
+    comparator_test = Path("/build/frame-compare-tests")
+    subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2018", "--test",
+                    str(comparator), "-o", str(comparator_test)],
+                   env=environment, check=True, timeout=30)
+    comparison = subprocess.run([str(comparator_test), "--test-threads=1"],
+                                env=environment, capture_output=True, text=True, timeout=5)
+    require(comparison.returncode == 0 and not comparison.stderr
+            and len(comparison.stdout) <= 4096
+            and re.search(r"^test result: ok\. 3 passed; 0 failed; 0 ignored; 0 measured; "
+                          r"0 filtered out; finished in [0-9.]+s$", comparison.stdout, re.M),
+            f"production frame-comparison tests differ: {comparison}")
+    print(comparison.stdout.strip(), flush=True)
+    print("FRAME_COMPARISON_UNIT=pass source=production tests=3 scope=byte-cache "
+          f"source_sha256={hashlib.sha256(comparator.read_bytes()).hexdigest()} "
+          f"binary_sha256={hashlib.sha256(comparator_test.read_bytes()).hexdigest()}", flush=True)
     binaries = {}
     for variant in ("historical", "corrected"):
         work = Path("/build") / variant
@@ -123,6 +139,7 @@ def main():
             source = baseline if name == "iter" and variant == "historical" else root / f"libs/scrap/src/x11/{name}.rs"
             shutil.copyfile(source, work / f"x11/{name}.rs")
         shutil.copyfile(root / "libs/scrap/src/common/x11.rs", work / "common/x11.rs")
+        shutil.copyfile(comparator, work / "common/frame_compare.rs")
         binary = work / "native"
         command = ["/usr/local/cargo/bin/rustc", "--edition=2018", "-C", "debuginfo=1",
                    "-o", str(binary), str(work / "test.rs")]

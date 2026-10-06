@@ -1061,7 +1061,8 @@ android_frame_input_inventory() {
             "$REPO_ROOT/libs/scrap/src/x11/iter.rs" "$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
             "$REPO_ROOT/libs/scrap/src/x11/server.rs" "$REPO_ROOT/libs/scrap/src/x11/display.rs"
             "$REPO_ROOT/libs/scrap/src/x11/capturer.rs"
-            "$REPO_ROOT/libs/scrap/src/common/x11.rs")
+            "$REPO_ROOT/libs/scrap/src/common/x11.rs"
+            "$REPO_ROOT/libs/scrap/src/common/frame_compare.rs")
     fi
     while IFS=$'\t' read -r name size digest url extra; do
         [ -n "$name" ] || continue
@@ -3287,6 +3288,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/libs/scrap/src/x11/display.rs=$REPO_ROOT/libs/scrap/src/x11/display.rs"
             "repo/libs/scrap/src/x11/capturer.rs=$REPO_ROOT/libs/scrap/src/x11/capturer.rs"
             "repo/libs/scrap/src/common/x11.rs=$REPO_ROOT/libs/scrap/src/common/x11.rs"
+            "repo/libs/scrap/src/common/frame_compare.rs=$REPO_ROOT/libs/scrap/src/common/frame_compare.rs"
         )
     fi
 elif [ "$MODE" = cm-file-replay ]; then

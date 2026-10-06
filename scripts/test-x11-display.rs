@@ -15,12 +15,12 @@ pub enum Pixfmt {
     RGB565LE,
 }
 
+#[path = "common/frame_compare.rs"]
+mod frame_compare;
+
 pub fn would_block_if_equal(old: &mut Vec<u8>, data: &[u8]) -> io::Result<()> {
     STATE.with(|state| state.borrow_mut().frame_comparisons += 1);
-    if old.as_slice() == data { return Err(io::ErrorKind::WouldBlock.into()); }
-    old.clear();
-    old.extend_from_slice(data);
-    Ok(())
+    frame_compare::would_block_if_equal(old, data)
 }
 
 impl Pixfmt {

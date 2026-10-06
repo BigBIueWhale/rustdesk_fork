@@ -1078,9 +1078,22 @@ The lane runs the password source guard without its mutation catalog, requires t
 four exact policy tests and count, binds the compiled artifact digest to the exact
 pushed source/tree and verifier image, and retains the existing zero-NIC, read-only
 source/input, listener-audit and joined-cleanup authority. The whole-app test selectors
-now name the moved production module. Host syntax parsing and diff review passed;
-execution of this new lane is **pending**, and whole-app integration and installed
-receiver evidence remain independently OPEN.
+now name the moved production module. Host syntax parsing and diff review passed.
+The corrected fast lane passed at source
+`aa437333945074d447150bbe8d9a4ca36c5f1490`, tree
+`b884b1a3863074b6a2507b29be300d919ba452b1`, with all four exact tests, one
+4-passed/0-failed/0-ignored/0-filtered summary and the password source guard.
+VM elapsed time was **38 seconds**; the compiled test artifact SHA-256 was
+`b08af5cfeccb78db618225770cf93217b6839f6ee9a1b1ca805d3628e47ae202`.
+Raw serial `linux-service-uid-tests-run.FQjze4G9se.serial.log` is 65,958 bytes,
+SHA-256 `514d43c0aac294aee891a4afa05309dd5ab171c61ab0584325d41d55b83241ad`.
+Its 1,008-byte mode-0400 outer success receipt is retained beside it, SHA-256
+`25879b12597807c6867f0bf7382d6150099d5735ec082d769ea04721eccb1d32`.
+The complete endpoint-only
+before/during/after audit found no host listener additions, owned children joined,
+and successful scratch `run.FQjze4G9se` was automatically retired; no run root remains.
+This closes the focused production-policy execution gap only. Whole-app integration,
+installed receiver authority/resource behavior and native macOS evidence remain OPEN.
 
 The first fast-lane transaction at `ad5efb09642c3c951e13b73b44014a003f8b836e`
 failed during image load before any test, with `BrokenPipeError`. Source review found
@@ -1094,7 +1107,7 @@ the 1,200-byte mode-0400 failure receipt SHA-256 is
 All three endpoint inventories match, owned children joined and disks retired.
 Exact owned root `run.AbxcNGtMqP` (`66306:106075775`) was reconciled and removed;
 only the bounded serial and failure receipt remain. This failed run provides no
-policy-test evidence; corrected replay remains pending.
+policy-test evidence; the corrected replay's accepted scope is recorded above.
 
 ### Android runtime — intermittent presentation remains OPEN
 

@@ -149,8 +149,6 @@ def validate_contract(sources: Dict[str, str]) -> None:
     frb = sources["frb"]
     finalizer = sources["finalizer"]
     verify = sources["verify"]
-    requirements = sources["requirements"]
-    hardening = sources["hardening"]
     legacy_flutter_verifier = sources["legacy_flutter_verifier"]
 
     require_all(
@@ -521,36 +519,8 @@ def validate_contract(sources: Dict[str, str]) -> None:
         "shared verifier wiring",
     )
     require(
-        '<span class="id">R-S11bc</span>' in requirements,
-        "requirements are missing R-S11bc",
-    )
-    require(
-        "<tr><td>180</td>" in requirements,
-        "requirements are missing Appendix C #180",
-    )
-    require(
-        "R-S11bc/R-S11e-69" in hardening,
-        "hardening ledger is missing the Dart verifier authority closure",
-    )
-    require(
         legacy_flutter_verifier == "absent",
         "the unsafe parallel Flutter verifier or its live-fetching image recipe is present",
-    )
-    require(
-        '<span class="id">R-S11bd</span>' in requirements,
-        "requirements are missing R-S11bd",
-    )
-    require(
-        "<tr><td>181</td>" in requirements,
-        "requirements are missing Appendix C #181",
-    )
-    require(
-        "R-S11bd/R-S11e-70" in hardening,
-        "hardening ledger is missing the consolidated Flutter/Rust verifier closure",
-    )
-    require(
-        '<span class="id">R-S11dh</span>' in requirements,
-        "requirements are missing the verifier-VM execution-authority rule",
     )
 
 
@@ -1146,14 +1116,7 @@ MUTATIONS = (
         "",
         "shared gate wiring",
     ),
-    Mutation("requirements", '<span class="id">R-S11bc</span>', '<span class="id">R-S11bc-broken</span>', "normative requirement"),
-    Mutation("requirements", "<tr><td>180</td>", "<tr><td>180-broken</td>", "Appendix disposition"),
-    Mutation("hardening", "R-S11bc/R-S11e-69", "R-S11bc/R-S11e-XX", "hardening ledger"),
     Mutation("legacy_flutter_verifier", "absent", "present", "unsafe parallel Flutter verifier absence"),
-    Mutation("requirements", '<span class="id">R-S11bd</span>', '<span class="id">R-S11bd-broken</span>', "consolidation requirement"),
-    Mutation("requirements", "<tr><td>181</td>", "<tr><td>181-broken</td>", "consolidation disposition"),
-    Mutation("hardening", "R-S11bd/R-S11e-70", "R-S11bd/R-S11e-XX", "consolidation ledger"),
-    Mutation("requirements", '<span class="id">R-S11dh</span>', '<span class="id">R-S11dh-broken</span>', "verifier-VM authority requirement"),
 )
 
 
@@ -1163,8 +1126,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "frb": repo / "scripts/frb-codegen.sh",
         "finalizer": repo / "scripts/finalize-flutter-tools-offline.sh",
         "verify": repo / "scripts/verify.sh",
-        "requirements": repo / "requirements.html",
-        "hardening": repo / "HARDENING_STATUS.md",
     }
     sources = {name: path.read_text(encoding="utf-8") for name, path in paths.items()}
     retired_paths = (

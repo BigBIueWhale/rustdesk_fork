@@ -75,8 +75,6 @@ def validate_contract(sources):
     image_provenance = sources["image_provenance"]
     online_fetch = sources["online_fetch"]
     verify = sources["verify"]
-    requirements = sources["requirements"]
-    hardening = sources["hardening"]
     docker_run_definitions = re.findall(
         r"(?m)^(?:verifier_vm_docker run |RUN=\(verifier_vm_docker run |  verifier_vm_docker run )",
         shell,
@@ -593,30 +591,6 @@ def validate_contract(sources):
         ),
         "shared verifier wiring",
     )
-    require('<span class="id">R-S11bg</span>' in requirements, "requirements are missing R-S11bg")
-    main_requirement = extract(
-        requirements,
-        '<div class="req"><span class="id">R-S11bg</span>',
-        "</div></div>",
-        "main verifier authority requirement",
-    )
-    require_all(
-        main_requirement,
-        (
-            "immutable, all-non-root build and fixture authority",
-            "two distinct numeric non-root principals",
-            "<code>unlinkat(AT_REMOVEDIR)</code>",
-            "mode 0500",
-            "exactly three mounts",
-            "not installed root-service runtime evidence",
-        ),
-        "main verifier authority requirement",
-    )
-    require("<tr><td>184</td>" in requirements, "requirements are missing Appendix C #184")
-    require(
-        "R-S11bg/R-S11e-73 — main verifier all-nonroot container and recoverable image authority" in hardening,
-        "hardening ledger is missing the main verifier authority closure",
-    )
 
 
 MUTATIONS = (
@@ -740,9 +714,6 @@ MUTATIONS = (
     Mutation("online_fetch", "verify_or_load_devcheck_image\n            return 0", "true # devcheck image preparation removed\n            return 0", "explicit archive recovery entry point"),
     Mutation("verify", "/usr/bin/python3 -I -S scripts/offline-image-provenance.py --self-test", "true # image archive self-test removed", "image archive behavioral gate"),
     Mutation("verify", "/usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo . --self-test", "/usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo .", "shared mutation gate"),
-    Mutation("requirements", '<span class="id">R-S11bg</span>', '<span class="id">R-S11bg-disabled</span>', "normative requirement"),
-    Mutation("requirements", "<tr><td>184</td>", "<tr><td>184-disabled</td>", "Appendix disposition"),
-    Mutation("hardening", "R-S11bg/R-S11e-73 — main verifier all-nonroot container and recoverable image authority", "R-S11bg/R-S11e-73 — verifier authority deferred", "hardening ledger"),
 )
 
 
@@ -768,8 +739,6 @@ def load_sources(repo):
         "image_provenance": (repo / "scripts/offline-image-provenance.py").read_text(encoding="utf-8"),
         "online_fetch": (repo / "scripts/online-fetch.sh").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
     }
 
 

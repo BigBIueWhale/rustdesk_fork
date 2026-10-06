@@ -1082,6 +1082,20 @@ now name the moved production module. Host syntax parsing and diff review passed
 execution of this new lane is **pending**, and whole-app integration and installed
 receiver evidence remain independently OPEN.
 
+The first fast-lane transaction at `ad5efb09642c3c951e13b73b44014a003f8b836e`
+failed during image load before any test, with `BrokenPipeError`. Source review found
+the new mode omitted from the guest socket's numeric-GID-1000 selection; it retained
+GID 4000 while the loader ran as 1000. The selection is corrected and focused runs
+now check the exact socket metadata before loading. The raw serial is
+`linux-service-uid-tests-run.AbxcNGtMqP.serial.log`, 67,720 bytes/SHA-256
+`c77106c7bdbc352f921e76ffd3e0b2bab362f674e77c5c5efbde52b177e27267`;
+the 1,200-byte mode-0400 failure receipt SHA-256 is
+`043fe9adcbfb587f534df2772486291311e97a15a1dc2fc54588836b932549d9`.
+All three endpoint inventories match, owned children joined and disks retired.
+Exact owned root `run.AbxcNGtMqP` (`66306:106075775`) was reconciled and removed;
+only the bounded serial and failure receipt remain. This failed run provides no
+policy-test evidence; corrected replay remains pending.
+
 ### Android runtime — intermittent presentation remains OPEN
 
 The disposable runtime uses the pinned Emulator 37.1.11 and Android 14/API-34 x86_64 image in a

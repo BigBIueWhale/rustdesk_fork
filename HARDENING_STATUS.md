@@ -12818,6 +12818,25 @@ full process shutdown, real-device churn, or sustained resources. Those remain
 OPEN; the next native transaction must run the actual CM/server process pair
 and exercise both authorized capture and forbidden callers through that pair.
 
+Pushed `2ff52d4b143739718035d93861512a29f8befc3b` (tree
+`559afc57307116a909d219c0b60ecd6df4a3c24e`) moves kernel-derived
+PID/UID/start/direct-parent requester proof ahead of the one-second typed
+`_pa` request read. A non-owner can no longer hold this serial listener for
+that read deadline merely by connecting and staying silent; the full token,
+current-subscriber, and main-IPC proof still runs after the request. The
+source-bound native-socket test held a separate same-UID child open without
+sending a frame and required the production accepted-stream handler and child
+to terminate within 750 ms; it also retained the valid local request and
+copied-token refusal cases. The zero-NIC guest passed eleven focused tests in
+320 seconds with no harness-added host listener and joined cleanup. Raw serial
+`.harness-state/verifier-vm/linux-pa-authority-tests-run.ECAEwAphus.serial.log`
+is 67,130 bytes, SHA-256
+`517c1b0723221f3f4c69fbe2457359182b850e6637f920c5f1f740a6c921c352`.
+This closes only the pre-request wrong-peer head-of-line wait, not backlog
+flooding, a production CM/server pair, installed service authority, or the
+other OPEN native and resource cases above. The 320-second run is integration
+evidence, not a fast inner-loop timing claim.
+
 **Process-wide connection IDs — source corrected, native lifecycle OPEN.**
 The former per-`Server` counters could allocate the same ID in overlapping
 controlled generations or outgoing voice audio, and their wrap scan checked

@@ -12903,6 +12903,27 @@ the next authority smoke passed, and subsequent admission failures now report
 their line and command. The retained pair has not yet run a concurrent
 Stop/admission schedule or same-ID stale-generation regression.
 
+The retained app APK passed a separate 488-second Android 14/API-34 zero-NIC
+Recents replay from pushed harness `1bcdc0b0`: ten distinct task dismissals
+and relaunches, no harness-added host listener or pre-existing-process drift,
+and joined cleanup. Raw serial
+`.harness-state/verifier-vm/android-emulator-runtime-run.zk4LRtHwvX.serial.log`
+is 85,090 bytes/SHA-256
+`364c87542f93a7cb2e9ce748a2ab30d8d9a57385eba4be31c02dcb267df0be5d`.
+That replay checked the retained test APK's local checksum but did not execute
+the instrumentation package. Pushed `d35f0119` now requires an independently
+supplied test-APK SHA-256, checks and stages both exact files, installs the
+instrumentation package, and requires its main-process `process-smoke`
+receipt before the app workload. Its 482-second zero-NIC Recents replay
+passed with the same app/test pair, ten dismissals, no harness-added host
+listener or pre-existing-process drift, and joined Docker/VM cleanup. Raw
+serial `.harness-state/verifier-vm/android-emulator-runtime-run.kE1KxmjJMf.serial.log`
+is 86,124 bytes/SHA-256
+`a88054b85659a20062c813d89b86af77c81a208822a455cd28be48892519c6a7`;
+it directly records the main-process instrumentation receipt and both hashes.
+Neither Recents replay ran the concurrent Stop/admission or same-ID stale
+generation schedule, so those remain release-blocking.
+
 **Still OPEN / release-blocking:** installed APK concurrent Stop/admission,
 same-ID replacement and stale JNI callbacks across input, voice, capture,
 notification, file, and task lifecycle; the native-to-rendered Flutter event

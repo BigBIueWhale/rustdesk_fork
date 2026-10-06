@@ -12882,8 +12882,26 @@ process drift and joined cleanup. Raw serial:
 The test-signed app APK SHA-256 is
 `0949eff0b36e9345ae44816b445d26b5e236e13869c413a6c29884b99d3485a4`.
 This is only a process/runner smoke: the concurrent Service/JNI overlap and
-same-ID stale-generation cases have not passed. The artifact publisher still
-retains only the app APK, so an exact reusable test pair is not yet available.
+same-ID stale-generation cases have not passed. Pushed `1ee23828` then built
+and installed another same-key pair and atomically retained both validated
+APKs in its commit-bound `android-x86_64-test` directory. App SHA-256 is
+`3ef4f031eb7211fd95b79db5f538d0d125288525230be94ce538f12946712057`;
+instrumentation SHA-256 is
+`4b14fac98927ad0dea40c35cd2ce62bcd751efcf0866197e162469109bad6385`.
+The raw Android 14 serial now includes the matching signer/package receipt,
+the installed main-process smoke receipt, and the pair-preparation receipt:
+`.harness-state/verifier-vm/android-emulator-app-run.Emf3TJRqSy.serial.log`
+(70,789 bytes; SHA-256
+`47833b7ff0251e90015cd19217cd2585a064809c067a6db3442a42616a8d7dfe`).
+The 1,212-second no-NIC run joined and retired its disposable VM disk. Its
+host audit found no harness-owned listener addition; it classified one changed
+listener as belonging to a pre-existing process, whose exact identity was not
+retained in the serial. The focused no-NIC publication self-test passed atomic
+pair inventory, both checksums, and companion-tamper refusal. A prior authority
+smoke failed without an admission-test diagnostic after that publication test;
+the next authority smoke passed, and subsequent admission failures now report
+their line and command. The retained pair has not yet run a concurrent
+Stop/admission schedule or same-ID stale-generation regression.
 
 **Still OPEN / release-blocking:** installed APK concurrent Stop/admission,
 same-ID replacement and stale JNI callbacks across input, voice, capture,

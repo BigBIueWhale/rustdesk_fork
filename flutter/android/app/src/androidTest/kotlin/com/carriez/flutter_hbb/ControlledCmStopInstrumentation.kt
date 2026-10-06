@@ -14,6 +14,14 @@ class ControlledCmStopInstrumentation : Instrumentation() {
         private const val APP_PROCESS = "com.carriez.flutter_hbb"
     }
 
+    private var requestedScenario: String? = null
+
+    override fun onCreate(arguments: Bundle?) {
+        super.onCreate(arguments)
+        requestedScenario = arguments?.getString("scenario")
+        start()
+    }
+
     override fun onStart() {
         val outcome = Bundle()
         var result = Activity.RESULT_CANCELED
@@ -21,10 +29,10 @@ class ControlledCmStopInstrumentation : Instrumentation() {
             check(Application.getProcessName() == APP_PROCESS) {
                 "instrumentation did not enter the app's main process"
             }
-            if (arguments?.getString("scenario") == "process-smoke") {
+            if (requestedScenario == "process-smoke") {
                 Log.i(TAG, "PROCESS_SMOKE_PASS")
             } else {
-                check(arguments?.getString("scenario") == "cm-stop-race") {
+                check(requestedScenario == "cm-stop-race") {
                     "unknown instrumentation scenario"
                 }
                 exerciseRace()

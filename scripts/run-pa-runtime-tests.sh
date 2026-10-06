@@ -2,7 +2,8 @@
 set -euo pipefail
 umask 077
 
-[ "$#" -eq 1 ] && [ "$1" = /inputs/pa-runtime.tar.gz ] \
+[ "$#" -ge 1 ] && [ "$#" -le 2 ] && [ "$1" = /inputs/pa-runtime.tar.gz ] \
+    && { [ "$#" -eq 1 ] || [ "$2" = --product-pair ]; } \
     && [ "$(id -u):$(id -g)" = 1000:1000 ] \
     || { echo 'PulseAudio runtime test entry authority differs' >&2; exit 1; }
 
@@ -116,27 +117,35 @@ cmp -s -n "$sample_size" "$WORK/monitor-sample" /dev/zero || cmp_status=$?
 [ "$cmp_status" -eq 1 ] \
     || { echo 'private monitor probe produced no nonzero frame' >&2; exit 1; }
 printf 'PA_RUNTIME_MONITOR=pass source=rd_pa_test.monitor signal=sine440 probe=pacat-native\n'
-export RUSTDESK_PA_NATIVE_TEST=1 RUSTDESK_PA_NATIVE_PACTL="$PACTL" \
-    RUSTDESK_PA_NATIVE_SINE_MODULE="$sine_module"
-
-cargo test --offline --locked --lib --features linux-pkg-config \
-    r_s11iu_pa_capture_ --color never -- --test-threads=1
-cargo test --offline --locked --lib --features linux-pkg-config \
-    ipc::test::linux_pulse_audio_channel_uses_closed_bounded_protocol \
-    --color never -- --test-threads=1
-cargo test --offline --locked --lib --features linux-pkg-config \
-    server::service::pa_dispatch_tests:: --color never -- --test-threads=1
-cargo test --offline --locked --lib --features linux-pkg-config \
-    ipc::pulse_audio::tests:: --color never -- \
-    --skip real_monitor_capture_revokes_after_audio_stops \
-    --skip real_kernel_pa_admission_refuses_same_uid_child_with_token --test-threads=1
-cargo test --offline --locked --lib --features linux-pkg-config \
-    ipc::pulse_audio::tests::real_ \
-    --color never -- --ignored --test-threads=1
+if [ "$#" -eq 2 ]; then
+    RUSTDESK_PA_PRODUCT_PAIR=1 \
+        /bin/bash --noprofile --norc /source/scripts/smoke-server-stage.sh video-pipeline
+else
+    export RUSTDESK_PA_NATIVE_TEST=1 RUSTDESK_PA_NATIVE_PACTL="$PACTL" \
+        RUSTDESK_PA_NATIVE_SINE_MODULE="$sine_module"
+    cargo test --offline --locked --lib --features linux-pkg-config \
+        r_s11iu_pa_capture_ --color never -- --test-threads=1
+    cargo test --offline --locked --lib --features linux-pkg-config \
+        ipc::test::linux_pulse_audio_channel_uses_closed_bounded_protocol \
+        --color never -- --test-threads=1
+    cargo test --offline --locked --lib --features linux-pkg-config \
+        server::service::pa_dispatch_tests:: --color never -- --test-threads=1
+    cargo test --offline --locked --lib --features linux-pkg-config \
+        ipc::pulse_audio::tests:: --color never -- \
+        --skip real_monitor_capture_revokes_after_audio_stops \
+        --skip real_kernel_pa_admission_refuses_same_uid_child_with_token --test-threads=1
+    cargo test --offline --locked --lib --features linux-pkg-config \
+        ipc::pulse_audio::tests::real_ \
+        --color never -- --ignored --test-threads=1
+fi
 
 kill -TERM "$daemon_pid"
 wait "$daemon_pid"
 daemon_pid=
 [ ! -S "$PULSE_RUNTIME_PATH/native" ] \
     || { echo 'private PulseAudio socket survived daemon shutdown' >&2; exit 1; }
-printf 'PA_RUNTIME_NATIVE=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 revocation=after-unload same_uid_stolen_token=refused network=none uid=1000 cleanup=joined\n'
+if [ "$#" -eq 2 ]; then
+    printf 'PA_RUNTIME_PRODUCT_PAIR=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 network=none uid=1000 cleanup=joined\n'
+else
+    printf 'PA_RUNTIME_NATIVE=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 revocation=after-unload same_uid_stolen_token=refused network=none uid=1000 cleanup=joined\n'
+fi

@@ -96,6 +96,10 @@ case "$1" in
       --bin rustdesk --example seed_password --example probe_client \
       --example smoke_readiness --color never
     if [ "$1" = cm-file-build ]; then
+      cargo build --locked --offline --features linux-pkg-config \
+        --example video_pipeline_probe --color never
+      cargo test --locked --offline --features linux-pkg-config \
+        --example video_pipeline_probe --color never
       cargo test --locked --offline --features linux-pkg-config --lib --no-run --color never
       mapfile -t viewer_file_test_artifacts < <(
         find /smoke-target/debug/deps -maxdepth 1 -type f -name 'librustdesk-*' -perm -u+x -print
@@ -119,18 +123,25 @@ case "$1" in
       -o /smoke-target/smoke-bind-loopback.so scripts/smoke-bind-loopback.c -ldl
     cc -O2 -Wall -Wextra -Werror \
       -o /smoke-target/smoke-server-launcher scripts/smoke-server-launcher.c
+    if [ "$1" = cm-file-build ]; then
+      cc -O2 -Wall -Wextra -Werror \
+        -o /smoke-target/smoke-x11-motion scripts/smoke-x11-motion.c -lX11
+    fi
     chmod 0555 /smoke-target/flutter-peer-source-x11 \
       /smoke-target/smoke-bind-loopback.so /smoke-target/smoke-server-launcher
     if [ "$1" = cm-file-build ]; then
+      chmod 0755 /smoke-target/debug/examples/video_pipeline_probe
+      chmod 0555 /smoke-target/smoke-x11-motion
       (
         cd /smoke-target
         sha256sum debug/rustdesk debug/examples/seed_password \
-          debug/examples/probe_client debug/examples/smoke_readiness flutter-peer-source-x11 \
+          debug/examples/probe_client debug/examples/smoke_readiness \
+          debug/examples/video_pipeline_probe flutter-peer-source-x11 smoke-x11-motion \
           smoke-bind-loopback.so smoke-server-launcher production-viewer-file-tests \
           >android-peer-manifest.sha256
       )
       chmod 0444 /smoke-target/android-peer-manifest.sha256
-      printf 'CM_FILE_BUILD=pass server=production viewer=production-session files=8 network=none\n'
+      printf 'CM_FILE_BUILD=pass server=production viewer=production-session files=10 network=none\n'
     else
       (
         cd /smoke-target
@@ -465,6 +476,15 @@ EOS
     wait "$SRV"
     ;;
   video-pipeline)
+    pa_product_pair=${RUSTDESK_PA_PRODUCT_PAIR:-0}
+    [ "$pa_product_pair" = 0 ] || [ "$pa_product_pair" = 1 ] || {
+      echo 'invalid PulseAudio product-pair stage mode' >&2
+      exit 1
+    }
+    audio_probe_env=()
+    if [ "$pa_product_pair" = 1 ]; then
+      audio_probe_env=(RUSTDESK_VIDEO_PIPELINE_REQUIRE_AUDIO=1)
+    fi
     readonly XVFB=/xvfb-root/usr/bin/Xvfb
     readonly XKB_COMPILER=/usr/bin/xkbcomp
     readonly MOTION=/smoke-target/smoke-x11-motion
@@ -513,8 +533,11 @@ EOS
     trap 'exit 130' INT
     trap 'exit 143' TERM
 
-    for executable in "$XVFB" "$XKB_COMPILER" "$MOTION" "$VIDEO_PROBE" \
-      "$VIEWER_PIPELINE_TESTS"; do
+    executables=("$XVFB" "$XKB_COMPILER" "$MOTION" "$VIDEO_PROBE")
+    if [ "$pa_product_pair" = 0 ]; then
+      executables+=("$VIEWER_PIPELINE_TESTS")
+    fi
+    for executable in "${executables[@]}"; do
       [ -f "$executable" ] && [ ! -L "$executable" ] && [ -x "$executable" ] || {
         echo "video pipeline executable is missing or not a regular non-symlink file: $executable" >&2
         exit 1
@@ -568,7 +591,7 @@ EOS
     start_server /smoke-target/debug/rustdesk /tmp/video-server.log
     "$READY" --wait-server "$SRV" "$SRV_START" /tmp/video-server.log \
       /smoke-target/debug/examples/smoke_readiness "$(id -u)"
-    if VIDEO_OUT=$(timeout --signal=TERM --kill-after=5s 35s \
+    if VIDEO_OUT=$(env "${audio_probe_env[@]}" timeout --signal=TERM --kill-after=5s 35s \
       "$VIDEO_PROBE" 127.0.0.1:21118 <<<'Str0ng-Test-Pw-123' 2>&1); then
       VIDEO_STATUS=0
     else
@@ -578,36 +601,41 @@ EOS
     [ "$VIDEO_STATUS" -eq 0 ] || exit "$VIDEO_STATUS"
     grep -Eq '^VIDEO_PIPELINE_OK codec=VP(8|9) dimensions=640x480 frames=[0-9]+ distinct=[0-9]+ receipts=[0-9]+ first_decode_ms=[0-9]+ pts_span_ms=[0-9]+ max_decode_us=[0-9]+ mean_decode_us=[0-9]+ max_receive_backlog_drift_ms=[0-9]+$' \
       <<<"$VIDEO_OUT"
-    [ ! -e /tmp/video-stalled-peer.log ] && [ ! -L /tmp/video-stalled-peer.log ]
-    RUSTDESK_VIDEO_PIPELINE_STALLED_PEER=1 \
-      "$VIDEO_PROBE" 127.0.0.1:21118 <<<'Str0ng-Test-Pw-123' \
-      >/tmp/video-stalled-peer.log 2>&1 &
-    STALLED_PID=$!
-    STALLED_START=$($READY --identity "$STALLED_PID")
-    "$READY" --wait-log "$STALLED_PID" "$STALLED_START" /tmp/video-stalled-peer.log \
-      'VIDEO_PIPELINE_STALLED_READY receipt=withheld display=0 generation=' \
-      'stalled exact-receipt peer readiness'
-    if VIEWER_OUT=$(RUSTDESK_PRODUCTION_VIEWER_PIPELINE_SMOKE=1 \
-      timeout --signal=TERM --kill-after=5s 35s "$VIEWER_PIPELINE_TESTS" \
-      --exact --ignored --nocapture --test-threads=1 \
-      viewer_pipeline_smoke_tests::production_viewer_pipeline_recovers_after_stalled_publication_without_reconnect \
-      2>&1); then
-      VIEWER_STATUS=0
+    if [ "$pa_product_pair" = 1 ]; then
+      grep -Eq '^VIDEO_PIPELINE_AUDIO_OK frames=[1-9][0-9]* peak_milli=[1-9][0-9]*$' \
+        <<<"$VIDEO_OUT"
     else
-      VIEWER_STATUS=$?
+      [ ! -e /tmp/video-stalled-peer.log ] && [ ! -L /tmp/video-stalled-peer.log ]
+      RUSTDESK_VIDEO_PIPELINE_STALLED_PEER=1 \
+        "$VIDEO_PROBE" 127.0.0.1:21118 <<<'Str0ng-Test-Pw-123' \
+        >/tmp/video-stalled-peer.log 2>&1 &
+      STALLED_PID=$!
+      STALLED_START=$($READY --identity "$STALLED_PID")
+      "$READY" --wait-log "$STALLED_PID" "$STALLED_START" /tmp/video-stalled-peer.log \
+        'VIDEO_PIPELINE_STALLED_READY receipt=withheld display=0 generation=' \
+        'stalled exact-receipt peer readiness'
+      if VIEWER_OUT=$(RUSTDESK_PRODUCTION_VIEWER_PIPELINE_SMOKE=1 \
+        timeout --signal=TERM --kill-after=5s 35s "$VIEWER_PIPELINE_TESTS" \
+        --exact --ignored --nocapture --test-threads=1 \
+        viewer_pipeline_smoke_tests::production_viewer_pipeline_recovers_after_stalled_publication_without_reconnect \
+        2>&1); then
+        VIEWER_STATUS=0
+      else
+        VIEWER_STATUS=$?
+      fi
+      printf '%s\n' "$VIEWER_OUT"
+      [ "$VIEWER_STATUS" -eq 0 ] || exit "$VIEWER_STATUS"
+      grep -Eq '^PRODUCTION_VIEWER_PIPELINE_OK dimensions=640x480 frames=[0-9]+ distinct=[0-9]+ stall_ms=[0-9]+ recovery_ms=[0-9]+ connected=true peer_info=true close_successes=[0-9]+ teardown=io-and-media-joined$' \
+        <<<"$VIEWER_OUT"
+      "$READY" --is-running "$STALLED_PID" "$STALLED_START"
+      grep -Eq '^VIDEO_PIPELINE_STALLED_READY receipt=withheld display=0 generation=[1-9][0-9]* hold_ms=30000$' \
+        /tmp/video-stalled-peer.log
+      "$READY" --stop "$STALLED_PID" "$STALLED_START"
+      wait "$STALLED_PID" 2>/dev/null || true
+      STALLED_PID=
+      STALLED_START=
+      echo 'TWO_VIEWER_CAPTURE_ISOLATION=healthy-active,slow-receipt-withheld,no-reconnect'
     fi
-    printf '%s\n' "$VIEWER_OUT"
-    [ "$VIEWER_STATUS" -eq 0 ] || exit "$VIEWER_STATUS"
-    grep -Eq '^PRODUCTION_VIEWER_PIPELINE_OK dimensions=640x480 frames=[0-9]+ distinct=[0-9]+ stall_ms=[0-9]+ recovery_ms=[0-9]+ connected=true peer_info=true close_successes=[0-9]+ teardown=io-and-media-joined$' \
-      <<<"$VIEWER_OUT"
-    "$READY" --is-running "$STALLED_PID" "$STALLED_START"
-    grep -Eq '^VIDEO_PIPELINE_STALLED_READY receipt=withheld display=0 generation=[1-9][0-9]* hold_ms=30000$' \
-      /tmp/video-stalled-peer.log
-    "$READY" --stop "$STALLED_PID" "$STALLED_START"
-    wait "$STALLED_PID" 2>/dev/null || true
-    STALLED_PID=
-    STALLED_START=
-    echo 'TWO_VIEWER_CAPTURE_ISOLATION=healthy-active,slow-receipt-withheld,no-reconnect'
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/video-server.log
     wait "$SRV"
     SRV=
@@ -622,7 +650,12 @@ EOS
     XVFB_START=
     grep -F 'X11_MOTION_READY' /tmp/x11-motion.log
     [ ! -s /tmp/xvfb.log ] || { echo 'Xvfb emitted unexpected diagnostics:' >&2; cat /tmp/xvfb.log >&2; exit 1; }
-    echo 'VIDEO_PIPELINE_CLEANUP=server,stalled-peer,motion,xvfb-joined'
+    if [ "$pa_product_pair" = 1 ]; then
+      echo 'VIDEO_PIPELINE_CLEANUP=server,motion,xvfb-joined'
+      echo 'PA_PRODUCTION_PAIR=pass auth=cpace cm=exact-child source=private-monitor signal=nonzero-opus viewer=remote video=decoded network=container-loopback cleanup=server-motion-xvfb-joined'
+    else
+      echo 'VIDEO_PIPELINE_CLEANUP=server,stalled-peer,motion,xvfb-joined'
+    fi
     trap - EXIT HUP INT TERM
     ;;
   port-forward)

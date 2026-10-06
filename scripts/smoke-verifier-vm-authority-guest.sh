@@ -364,6 +364,8 @@ prepare_authority_probe_image() {
 
 prepare_engine_xvfb() {
     local work=$ROOT/engine-xvfb inspect status=0
+    local xvfb_inputs=${1:-/mnt/rustdesk-verifier-inputs/xvfb-debs}
+    local xvfb_scripts=${2:-$VERIFY_REPO/scripts}
     install -d -o 1000 -g 1000 -m 0700 "$work" "$work/debs" "$work/root"
     CONTAINER_ID="$(
         "$CLIENT" --host "unix://$SOCK" create --name rustdesk-engine-xvfb-prepare \
@@ -372,10 +374,10 @@ prepare_engine_xvfb() {
             --memory=512m --memory-swap=512m --cpus=2 --pids-limit=128 \
             --ulimit nofile=1024:1024 --ulimit core=0:0 --ulimit fsize=536870912:536870912 \
             --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,mode=700,uid=1000,gid=1000 \
-            --mount "type=bind,source=$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh,target=/work/scripts/smoke-xvfb-prepare.sh,readonly" \
-            --mount "type=bind,source=$VERIFY_REPO/scripts/smoke-xvfb-packages.tsv,target=/work/scripts/smoke-xvfb-packages.tsv,readonly" \
-            --mount "type=bind,source=$VERIFY_REPO/scripts/smoke-xvfb-files.tsv,target=/work/scripts/smoke-xvfb-files.tsv,readonly" \
-            --mount "type=bind,source=/mnt/rustdesk-verifier-inputs/xvfb-debs,target=/xvfb-inputs,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$xvfb_scripts/smoke-xvfb-prepare.sh,target=/work/scripts/smoke-xvfb-prepare.sh,readonly" \
+            --mount "type=bind,source=$xvfb_scripts/smoke-xvfb-packages.tsv,target=/work/scripts/smoke-xvfb-packages.tsv,readonly" \
+            --mount "type=bind,source=$xvfb_scripts/smoke-xvfb-files.tsv,target=/work/scripts/smoke-xvfb-files.tsv,readonly" \
+            --mount "type=bind,source=$xvfb_inputs,target=/xvfb-inputs,readonly,bind-recursive=disabled" \
             --mount "type=bind,source=$work/debs,target=/xvfb-debs,bind-recursive=disabled" \
             --mount "type=bind,source=$work/root,target=/xvfb-root,bind-recursive=disabled" \
             --workdir /tmp "$DEV_CHECK_IMAGE_CONFIG_ID" /bin/bash /work/scripts/smoke-xvfb-prepare.sh
@@ -388,10 +390,10 @@ prepare_engine_xvfb() {
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" | LC_ALL=C sort)"
     [ "$inspect" = "$(printf '%s\n' \
-        "bind|$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh|/work/scripts/smoke-xvfb-prepare.sh|false" \
-        "bind|$VERIFY_REPO/scripts/smoke-xvfb-packages.tsv|/work/scripts/smoke-xvfb-packages.tsv|false" \
-        "bind|$VERIFY_REPO/scripts/smoke-xvfb-files.tsv|/work/scripts/smoke-xvfb-files.tsv|false" \
-        'bind|/mnt/rustdesk-verifier-inputs/xvfb-debs|/xvfb-inputs|false' \
+        "bind|$xvfb_scripts/smoke-xvfb-prepare.sh|/work/scripts/smoke-xvfb-prepare.sh|false" \
+        "bind|$xvfb_scripts/smoke-xvfb-packages.tsv|/work/scripts/smoke-xvfb-packages.tsv|false" \
+        "bind|$xvfb_scripts/smoke-xvfb-files.tsv|/work/scripts/smoke-xvfb-files.tsv|false" \
+        "bind|$xvfb_inputs|/xvfb-inputs|false" \
         "bind|$work/debs|/xvfb-debs|true" "bind|$work/root|/xvfb-root|true" | LC_ALL=C sort)" ] \
         || fail 'engine Xvfb preparation mount envelope differs'
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" || status=$?
@@ -3091,6 +3093,10 @@ run_cm_file_replay() {
     local machine_id_value=727573746465736b2d73657276657231
     local build_output=$ROOT/cm-file-build.out
     local output=$ROOT/cm-file-replay.out
+    local pa_output=$ROOT/cm-pa-product-pair.out
+    local pa_candidate=/mnt/rustdesk-verifier-inputs/pa-runtime-candidate.tar.gz
+    local pa_copy=$ROOT/cm-pa-runtime.tar.gz
+    local xvfb_inputs=$ROOT/cm-xvfb-inputs
     local image=$inputs/verifier-images/devcheck.docker.tar.gz
     local source_sha load_output inspect machine_mount status=0 manifest_sha
     local -a git_builder=(
@@ -3157,6 +3163,30 @@ run_cm_file_replay() {
         || fail 'CM file replay devcheck image verification/load failed'
     [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
         || fail 'CM file replay devcheck load receipt differs'
+    [ -f "$pa_candidate" ] && [ ! -L "$pa_candidate" ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$pa_candidate")" = \
+             "4000:4000:400:1:$PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
+        && [ "$(sha256sum "$pa_candidate" | awk '{ print $1 }')" = \
+             "$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256" ] \
+        || fail 'CM product-pair PulseAudio candidate differs'
+    install -o 1000 -g 1000 -m 0400 -- "$pa_candidate" "$pa_copy"
+    install -d -o 1000 -g 1000 -m 0700 "$xvfb_inputs"
+    local package count=0 name size digest url extra
+    while IFS=$'\t' read -r name size digest url extra; do
+        [ -n "$name" ] || continue
+        [[ "$name" == \#* ]] && continue
+        [ -z "$extra" ] && [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
+            || fail 'CM product-pair Xvfb manifest differs'
+        package=/mnt/rustdesk-verifier-inputs/xvfb-debs/$name.deb
+        [ -f "$package" ] && [ ! -L "$package" ] \
+            && [ "$(stat -c '%u:%g:%a:%h:%s' -- "$package")" = "4000:4000:400:1:$size" ] \
+            && [ "$(sha256sum "$package" | awk '{ print $1 }')" = "$digest" ] \
+            || fail "CM product-pair Xvfb package differs: $name"
+        install -o 1000 -g 1000 -m 0400 -- "$package" "$xvfb_inputs/$name.deb"
+        count=$((count + 1))
+    done <"$source_root/scripts/smoke-xvfb-packages.tsv"
+    [ "$count" -eq 5 ] || fail 'CM product-pair Xvfb package count differs'
+    prepare_engine_xvfb "$xvfb_inputs" "$source_root/scripts"
 
     install -d -o 1000 -g 1000 -m 0700 "$work" "$target"
     printf 'CM_FILE_BUILD_STAGE=begin commit=%s tree=%s builder=%s\n' \
@@ -3192,7 +3222,7 @@ run_cm_file_replay() {
         | tee "$build_output" || status=$?
     [ "$status" -eq 0 ] && [ "$(stat -c '%s' -- "$build_output")" -le 4194304 ] \
         || { tail -n 160 "$build_output" >&2; fail "CM file build failed: $status"; }
-    [ "$(grep -Fxc 'CM_FILE_BUILD=pass server=production viewer=production-session files=8 network=none' "$build_output")" -eq 1 ] \
+    [ "$(grep -Fxc 'CM_FILE_BUILD=pass server=production viewer=production-session files=10 network=none' "$build_output")" -eq 1 ] \
         || fail 'CM file build product receipt differs'
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'CM file build container did not exit cleanly'
@@ -3217,18 +3247,20 @@ debug/rustdesk 755
 debug/examples/seed_password 755
 debug/examples/probe_client 755
 debug/examples/smoke_readiness 755
+debug/examples/video_pipeline_probe 755
 flutter-peer-source-x11 555
+smoke-x11-motion 555
 smoke-bind-loopback.so 555
 smoke-server-launcher 555
 production-viewer-file-tests 555
 LAYOUT
-    [ "$(wc -l < "$target/android-peer-manifest.sha256")" -eq 8 ] \
+    [ "$(wc -l < "$target/android-peer-manifest.sha256")" -eq 10 ] \
         || fail 'CM file build manifest entry count differs'
     (cd "$target" && sha256sum --check --status android-peer-manifest.sha256) \
         || fail 'CM file build artifact digests differ'
     manifest_sha="$(sha256sum "$target/android-peer-manifest.sha256" | awk '{ print $1 }')"
     sed 's/^/CM_FILE_BUILD_ARTIFACT /' "$target/android-peer-manifest.sha256"
-    printf 'CM_FILE_PEER_BUILD=pass commit=%s tree=%s builder=%s files=8 network=none\n' \
+    printf 'CM_FILE_PEER_BUILD=pass commit=%s tree=%s builder=%s files=10 network=none\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" "$DEV_CHECK_IMAGE_CONFIG_ID"
     printf '%s\n' "$machine_id_value" >"$machine_id"
     chown 1000:1000 "$machine_id"
@@ -3279,6 +3311,69 @@ LAYOUT
     CONTAINER_ID=
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         || fail 'CM file replay left a container'
+    CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
+        --name rustdesk-cm-pa-product-pair --pull=never --network=none --read-only \
+        --user 1000:1000 --pids-limit=256 --memory=2g --memory-swap=2g --cpus=2 \
+        --ulimit nofile=4096:4096 --ulimit core=0:0 \
+        --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
+        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=512m \
+        --env "PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE=$PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE" \
+        --env "PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256" \
+        --env "PA_RUNTIME_CANDIDATE_MANIFEST_SHA256=$PA_RUNTIME_CANDIDATE_MANIFEST_SHA256" \
+        --env "DEV_CHECK_IMAGE_ID=$DEV_CHECK_IMAGE_ID" \
+        --env "DEV_CHECK_DEBIAN_SNAPSHOT=$DEV_CHECK_DEBIAN_SNAPSHOT" \
+        --env "DEV_CHECK_SECURITY_SNAPSHOT=$DEV_CHECK_SECURITY_SNAPSHOT" \
+        --env "PA_RUNTIME_PULSEAUDIO_VERSION=$PA_RUNTIME_PULSEAUDIO_VERSION" \
+        --env "PA_RUNTIME_PULSEAUDIO_SHA256=$PA_RUNTIME_PULSEAUDIO_SHA256" \
+        --env "PA_RUNTIME_PULSEAUDIO_SIZE=$PA_RUNTIME_PULSEAUDIO_SIZE" \
+        --mount "type=bind,source=$source_root,target=/source,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$source_root,target=/work,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$flat,target=/smoke-target,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$ROOT/engine-xvfb/root,target=/xvfb-root,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$ROOT/engine-xvfb/root/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly" \
+        --mount "type=bind,source=$pa_copy,target=/inputs/pa-runtime.tar.gz,readonly" \
+        --mount "type=bind,source=$machine_id,target=/etc/machine-id,readonly,bind-recursive=disabled" \
+        --workdir /source "$DEV_CHECK_IMAGE_CONFIG_ID" \
+        /bin/bash --noprofile --norc /source/scripts/run-pa-runtime-tests.sh \
+        /inputs/pa-runtime.tar.gz --product-pair)"
+    [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'CM PulseAudio product-pair container identity differs'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}' "$CONTAINER_ID")"
+    [ "$inspect" = 'none|true|1000:1000|2147483648|2147483648|2000000000|256|["ALL"]|["no-new-privileges","apparmor=docker-default"]|{}|[]' ] \
+        || fail 'CM PulseAudio product-pair confinement differs'
+    inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{range .Mounts}}{{printf "%s|%s|%s|%t\n" .Type .Source .Destination .RW}}{{end}}' \
+        "$CONTAINER_ID" | LC_ALL=C sort)"
+    [ "$inspect" = "$(printf '%s\n' \
+        "bind|$source_root|/source|false" \
+        "bind|$source_root|/work|false" \
+        "bind|$flat|/smoke-target|false" \
+        "bind|$ROOT/engine-xvfb/root|/xvfb-root|false" \
+        "bind|$ROOT/engine-xvfb/root/usr/bin/xkbcomp|/usr/bin/xkbcomp|false" \
+        "bind|$pa_copy|/inputs/pa-runtime.tar.gz|false" \
+        "bind|$machine_id|/etc/machine-id|false" | LC_ALL=C sort)" ] \
+        || fail 'CM PulseAudio product-pair mount authority differs'
+    printf 'CM_PA_PRODUCT_PAIR_STAGE=begin commit=%s manifest_sha256=%s\n' \
+        "$ANDROID_EMULATOR_SOURCE_COMMIT" "$manifest_sha"
+    set +e
+    "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" 2>&1 | tee "$pa_output"
+    status=$?
+    set -e
+    [ "$status" -eq 0 ] && [ "$(stat -c '%s' -- "$pa_output")" -le 4194304 ] \
+        || { tail -n 160 "$pa_output" >&2; fail "CM PulseAudio product-pair failed: $status"; }
+    [ "$(grep -Fxc "PA_RUNTIME_ARCHIVE=pass packages=40 base=$DEV_CHECK_IMAGE_ID sha256=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256" "$pa_output")" -eq 1 ] \
+        && [ "$(grep -Fxc 'PA_RUNTIME_MONITOR=pass source=rd_pa_test.monitor signal=sine440 probe=pacat-native' "$pa_output")" -eq 1 ] \
+        && [ "$(grep -Ec '^VIDEO_PIPELINE_AUDIO_OK frames=[1-9][0-9]* peak_milli=[1-9][0-9]*$' "$pa_output")" -eq 1 ] \
+        || fail 'CM PulseAudio product-pair input or decoded-signal receipt differs'
+    [ "$(grep -Fxc 'PA_PRODUCTION_PAIR=pass auth=cpace cm=exact-child source=private-monitor signal=nonzero-opus viewer=remote video=decoded network=container-loopback cleanup=server-motion-xvfb-joined' "$pa_output")" -eq 1 ] \
+        && [ "$(grep -Fxc 'PA_RUNTIME_PRODUCT_PAIR=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 network=none uid=1000 cleanup=joined' "$pa_output")" -eq 1 ] \
+        || fail 'CM PulseAudio product-pair native receipts are absent or duplicated'
+    [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+        || fail 'CM PulseAudio product-pair container did not exit cleanly'
+    "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+    CONTAINER_ID=
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        || fail 'CM PulseAudio product-pair left a container'
     [ "$(sha256sum "$ANDROID_EMULATOR_SOURCE_ARCHIVE" | awk '{ print $1 }')" = "$source_sha" ] \
         && [ "$(sha256sum "$target/android-peer-manifest.sha256" | awk '{ print $1 }')" = "$manifest_sha" ] \
         && (cd "$target" && sha256sum --check --status android-peer-manifest.sha256) \
@@ -3292,7 +3387,9 @@ debug/rustdesk 755
 debug/examples/seed_password 755
 debug/examples/probe_client 755
 debug/examples/smoke_readiness 755
+debug/examples/video_pipeline_probe 755
 flutter-peer-source-x11 555
+smoke-x11-motion 555
 smoke-bind-loopback.so 555
 smoke-server-launcher 555
 production-viewer-file-tests 555

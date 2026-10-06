@@ -6,7 +6,9 @@
 //! and decode those frames with `scrap::codec::Decoder`. Its separately gated stalled-peer mode
 //! completes the same keyed Remote admission, receives and validates one exact generation, then
 //! withholds its receipt under a finite asynchronous hold so the rootless smoke can prove another
-//! production viewer remains healthy. It does not exercise Flutter/compositor presentation,
+//! production viewer remains healthy. Its separately gated audio mode also requires a real,
+//! nonzero decoded Opus packet from the same keyed Remote session. It does not exercise
+//! Flutter/compositor presentation,
 //! application focus, Android lifecycle, native Windows behavior, or an installed service.
 //!
 //! The only admitted endpoint is exactly `127.0.0.1:21118`. The password is read from bounded
@@ -16,13 +18,14 @@ use hbb_common::{
     anyhow::{anyhow, bail, Context},
     cpace::run_initiator,
     message_proto::{
-        login_response, message, supported_decoding, video_frame, Chroma, LoginRequest, Message,
-        OptionMessage, PeerInfo, VideoFrame, VideoFrameReceipt,
+        login_response, message, misc, supported_decoding, video_frame, Chroma, LoginRequest,
+        Message, OptionMessage, PeerInfo, VideoFrame, VideoFrameReceipt,
     },
     protobuf::Message as _,
     tcp::FramedStream,
     ResultType, VIDEO_FRAME_RECEIPT_VERSION,
 };
+use magnum_opus::{Channels::Stereo, Decoder as AudioDecoder};
 use scrap::{
     codec::Decoder, CodecFormat, ImageFormat, ImageRgb, ImageTexture,
     MAX_NATIVE_VIDEO_DECODED_BYTES,
@@ -51,6 +54,9 @@ const MAX_SINGLE_DECODE_LATENCY: Duration = Duration::from_secs(2);
 const MAX_RECEIVE_BACKLOG_DRIFT_MS: i64 = 2_000;
 const MAX_SESSION_MESSAGES: usize = 1_024;
 const STALLED_PEER_MODE_ENV: &str = "RUSTDESK_VIDEO_PIPELINE_STALLED_PEER";
+const REQUIRE_AUDIO_ENV: &str = "RUSTDESK_VIDEO_PIPELINE_REQUIRE_AUDIO";
+const MAX_AUDIO_PACKET_BYTES: usize = 4096;
+const MIN_AUDIO_PEAK: f32 = 0.001;
 const STALLED_PEER_HOLD: Duration = Duration::from_secs(30);
 
 struct SensitiveBytes(Vec<u8>);
@@ -125,6 +131,19 @@ struct PipelineMetrics {
     max_decode_us: u128,
     mean_decode_us: u128,
     max_receive_backlog_drift_ms: i64,
+    audio_frames: usize,
+    audio_peak: f32,
+}
+
+fn require_audio() -> ResultType<bool> {
+    match std::env::var(REQUIRE_AUDIO_ENV) {
+        Ok(value) if value == "1" => Ok(true),
+        Ok(value) => bail!("invalid audio probe mode value: {value:?}"),
+        Err(std::env::VarError::NotPresent) => Ok(false),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            bail!("audio probe mode value is not valid Unicode")
+        }
+    }
 }
 
 fn validate_endpoint(raw: &str) -> ResultType<SocketAddr> {
@@ -378,7 +397,11 @@ async fn hold_stalled_peer(endpoint: SocketAddr, prs: &str) -> ResultType<()> {
     bail!("stalled peer exhausted its bounded message inventory before video admission")
 }
 
-async fn run_pipeline(endpoint: SocketAddr, prs: &str) -> ResultType<PipelineMetrics> {
+async fn run_pipeline(
+    endpoint: SocketAddr,
+    prs: &str,
+    require_audio: bool,
+) -> ResultType<PipelineMetrics> {
     let started = Instant::now();
     let mut stream = connect_and_login(endpoint, prs, "video-pipeline-probe").await?;
 
@@ -402,6 +425,10 @@ async fn run_pipeline(endpoint: SocketAddr, prs: &str) -> ResultType<PipelineMet
     let mut max_decode_us = 0u128;
     let mut max_receive_backlog_drift_ms = 0i64;
     let mut first_batch_had_keyframe = false;
+    let mut audio_decoder: Option<AudioDecoder> = None;
+    let mut audio_buffer = vec![0f32; 5760 * 2];
+    let mut audio_frames = 0usize;
+    let mut audio_peak = 0f32;
 
     for message_index in 0..MAX_SESSION_MESSAGES {
         let now = Instant::now();
@@ -529,10 +556,45 @@ async fn run_pipeline(endpoint: SocketAddr, prs: &str) -> ResultType<PipelineMet
                     if decoded_frames >= MIN_DECODED_FRAMES
                         && distinct_frames.len() >= MIN_DISTINCT_FRAMES
                         && pts_span >= MIN_PTS_SPAN_MS
+                        && (!require_audio || (audio_frames > 0 && audio_peak >= MIN_AUDIO_PEAK))
                     {
                         break;
                     }
                 }
+            }
+            Some(message::Union::Misc(misc)) if require_audio => {
+                if let Some(misc::Union::AudioFormat(format)) = misc.union {
+                    if !peer_admitted || format.sample_rate != 48_000 || format.channels != 2 {
+                        bail!("controlled peer sent an unauthorized or unexpected audio format");
+                    }
+                    if audio_decoder.is_none() {
+                        audio_decoder = Some(AudioDecoder::new(format.sample_rate, Stereo)?);
+                    }
+                }
+            }
+            Some(message::Union::AudioFrame(frame)) if require_audio => {
+                let decoder = audio_decoder
+                    .as_mut()
+                    .ok_or_else(|| anyhow!("controlled peer sent audio before its format"))?;
+                if frame.data.is_empty() || frame.data.len() > MAX_AUDIO_PACKET_BYTES {
+                    bail!("controlled peer sent an invalid bounded Opus packet");
+                }
+                let samples = decoder
+                    .decode_float(&frame.data, &mut audio_buffer, false)
+                    .context("real Opus decoder rejected controlled audio")?;
+                let sample_count = samples
+                    .checked_mul(2)
+                    .ok_or_else(|| anyhow!("Opus output sample count overflowed"))?;
+                let decoded = audio_buffer
+                    .get(..sample_count)
+                    .ok_or_else(|| anyhow!("Opus decoder exceeded its bounded output"))?;
+                for sample in decoded {
+                    if !sample.is_finite() {
+                        bail!("controlled peer produced non-finite audio");
+                    }
+                    audio_peak = audio_peak.max(sample.abs());
+                }
+                audio_frames += 1;
             }
             Some(_) => {}
             None => bail!("controlled peer sent an empty keyed message"),
@@ -569,6 +631,9 @@ async fn run_pipeline(endpoint: SocketAddr, prs: &str) -> ResultType<PipelineMet
     if receipt_count < decoded_frames {
         bail!("fewer exact receipts were sent than frames were decoded");
     }
+    if require_audio && (audio_frames == 0 || audio_peak < MIN_AUDIO_PEAK) {
+        bail!("no nonzero Opus audio reached the authenticated Remote viewer");
+    }
     if Duration::from_millis(u64::try_from(first_decode_ms).unwrap_or(u64::MAX))
         > MAX_FIRST_DECODE_LATENCY
     {
@@ -590,6 +655,8 @@ async fn run_pipeline(endpoint: SocketAddr, prs: &str) -> ResultType<PipelineMet
         max_decode_us,
         mean_decode_us: total_decode_us / decoded_frames as u128,
         max_receive_backlog_drift_ms,
+        audio_frames,
+        audio_peak,
     })
 }
 
@@ -625,25 +692,34 @@ fn run() -> ResultType<PipelineMetrics> {
             bail!("stalled-peer mode value is not valid Unicode")
         }
     }
-    runtime.block_on(run_pipeline(endpoint, prs.as_str()))
+    runtime.block_on(run_pipeline(endpoint, prs.as_str(), require_audio()?))
 }
 
 fn main() {
     match run() {
-        Ok(metrics) => println!(
-            "VIDEO_PIPELINE_OK codec={:?} dimensions={}x{} frames={} distinct={} receipts={} first_decode_ms={} pts_span_ms={} max_decode_us={} mean_decode_us={} max_receive_backlog_drift_ms={}",
-            metrics.codec,
-            EXPECTED_WIDTH,
-            EXPECTED_HEIGHT,
-            metrics.decoded_frames,
-            metrics.distinct_frames,
-            metrics.receipts,
-            metrics.first_decode_ms,
-            metrics.pts_span_ms,
-            metrics.max_decode_us,
-            metrics.mean_decode_us,
-            metrics.max_receive_backlog_drift_ms,
-        ),
+        Ok(metrics) => {
+            println!(
+                "VIDEO_PIPELINE_OK codec={:?} dimensions={}x{} frames={} distinct={} receipts={} first_decode_ms={} pts_span_ms={} max_decode_us={} mean_decode_us={} max_receive_backlog_drift_ms={}",
+                metrics.codec,
+                EXPECTED_WIDTH,
+                EXPECTED_HEIGHT,
+                metrics.decoded_frames,
+                metrics.distinct_frames,
+                metrics.receipts,
+                metrics.first_decode_ms,
+                metrics.pts_span_ms,
+                metrics.max_decode_us,
+                metrics.mean_decode_us,
+                metrics.max_receive_backlog_drift_ms,
+            );
+            if metrics.audio_frames > 0 {
+                println!(
+                    "VIDEO_PIPELINE_AUDIO_OK frames={} peak_milli={}",
+                    metrics.audio_frames,
+                    (metrics.audio_peak * 1000.0) as u32
+                );
+            }
+        }
         Err(error) => {
             eprintln!("VIDEO_PIPELINE_FAIL: {error:#}");
             std::process::exit(1);

@@ -1479,6 +1479,41 @@ android_peer_input_inventory() {
     /usr/bin/sha256sum -- "$DEV_CHECK_IMAGE_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$VIRTIOFSD_PACKAGE"
 }
 
+cm_pa_input_inventory() {
+    local name size digest url extra count=0 file
+    android_peer_input_inventory
+    [ -d "$ONLINE_INPUTS/xvfb-debs" ] && [ ! -L "$ONLINE_INPUTS/xvfb-debs" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS/xvfb-debs")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail 'CM PulseAudio Xvfb input directory differs'
+    [ -f "$PA_RUNTIME_CANDIDATE" ] && [ ! -L "$PA_RUNTIME_CANDIDATE" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$PA_RUNTIME_CANDIDATE")" = \
+             "$HOST_UID:$HOST_GID:400:1:$PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
+        || fail 'CM PulseAudio candidate metadata differs'
+    verify_sha256 "$PA_RUNTIME_CANDIDATE" "$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+    /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$PA_RUNTIME_CANDIDATE"
+    /usr/bin/sha256sum -- "$PA_RUNTIME_CANDIDATE"
+    /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$ONLINE_INPUTS/xvfb-debs"
+    while IFS=$'\t' read -r name size digest url extra; do
+        [ -n "$name" ] || continue
+        [[ "$name" == \#* ]] && continue
+        [ -z "$extra" ] && [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
+            || fail 'CM PulseAudio Xvfb package record differs'
+        file="$ONLINE_INPUTS/xvfb-debs/$name.deb"
+        [ -f "$file" ] && [ ! -L "$file" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$file")" = \
+                 "$HOST_UID:$HOST_GID:400:1:$size" ] \
+            || fail "CM PulseAudio Xvfb package metadata differs: $name"
+        verify_sha256 "$file" "$digest"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$file"
+        /usr/bin/sha256sum -- "$file"
+        count=$((count + 1))
+    done <"$SCRIPT_DIR/smoke-xvfb-packages.tsv"
+    [ "$count" -eq 5 ] \
+        && [ "$(/usr/bin/find "$ONLINE_INPUTS/xvfb-debs" -mindepth 1 -maxdepth 1 -printf x)" = xxxxx ] \
+        || fail 'CM PulseAudio Xvfb package closure differs'
+}
+
 reconcile_socket() {
     local path=$1
     if [ -e "$path" ] || [ -L "$path" ]; then
@@ -1997,6 +2032,9 @@ elif [ "$MODE" = android-peer-build ] || [ "$MODE" = cm-file-replay ]; then
             || fail "sealed Android peer input metadata differs: $path"
         verify_sha256 "$path" "$digest"
     done
+    if [ "$MODE" = cm-file-replay ]; then
+        cm_pa_input_inventory >/dev/null
+    fi
     verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
 elif [ "$MODE" = android-emulator-runtime ]; then
     [ -d "$SEALED_INPUT_ROOT" ] && [ ! -L "$SEALED_INPUT_ROOT" ] \
@@ -2963,8 +3001,13 @@ elif [ "$MODE" = android-owner-tests ]; then
     focused_inputs_before="$(android_owner_input_inventory)" \
         || fail 'cannot inventory the sealed Android owner-state inputs'
 elif [ "$MODE" = android-peer-build ] || [ "$MODE" = cm-file-replay ]; then
-    focused_inputs_before="$(android_peer_input_inventory)" \
+    if [ "$MODE" = cm-file-replay ]; then
+        focused_inputs_before="$(cm_pa_input_inventory)" \
+            || fail 'cannot inventory CM PulseAudio product-pair inputs'
+    else
+        focused_inputs_before="$(android_peer_input_inventory)" \
         || fail 'cannot inventory sealed Android peer inputs'
+    fi
 elif [ "$MODE" = android-emulator-runtime ]; then
     focused_inputs_before="$(android_emulator_runtime_input_inventory)" \
         || fail 'cannot inventory the sealed Android runtime inputs'
@@ -3255,9 +3298,18 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/libs/scrap/src/common/x11.rs=$REPO_ROOT/libs/scrap/src/common/x11.rs"
         )
     fi
+elif [ "$MODE" = cm-file-replay ]; then
+    payload_identity=(-uid 4000 -gid 4000)
+    lifecycle_payload_grafts=(
+        "source.tar=$ANDROID_EMULATOR_SOURCE_ARCHIVE"
+        "pa-runtime-candidate.tar.gz=$PA_RUNTIME_CANDIDATE"
+        "xvfb-debs=$ONLINE_INPUTS/xvfb-debs"
+        "repo/scripts/smoke-xvfb-prepare.sh=$SCRIPT_DIR/smoke-xvfb-prepare.sh"
+        "repo/scripts/smoke-xvfb-packages.tsv=$SCRIPT_DIR/smoke-xvfb-packages.tsv"
+        "repo/scripts/smoke-xvfb-files.tsv=$SCRIPT_DIR/smoke-xvfb-files.tsv"
+    )
 elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
-   || [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-peer-build ] \
-   || [ "$MODE" = cm-file-replay ]; then
+   || [ "$MODE" = android-emulator-runtime ] || [ "$MODE" = android-peer-build ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$ANDROID_EMULATOR_SOURCE_ARCHIVE")
 elif [ "$MODE" = flutter-peer-presentation ]; then
@@ -4274,11 +4326,17 @@ elif [ "$MODE" = android-peer-build ]; then
     printf '%s\n' "${peer_artifact_receipts[0]}"
 elif [ "$MODE" = cm-file-replay ]; then
     require_exact_fixed_receipt \
-        "CM_FILE_PEER_BUILD=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE builder=$DEV_CHECK_IMAGE_CONFIG_ID files=8 network=none" \
+        "CM_FILE_PEER_BUILD=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE builder=$DEV_CHECK_IMAGE_CONFIG_ID files=10 network=none" \
         'CM file current-source peer build'
     require_exact_fixed_receipt \
         'PA_PRODUCTION_CM_REFUSAL=pass principal=same-uid-unrelated-process action=silent-connect result=eof-before-750ms endpoint=cm-owned-pa server=production network=container-loopback' \
         'production CM _pa wrong-peer refusal'
+    require_exact_fixed_receipt \
+        'PA_PRODUCTION_PAIR=pass auth=cpace cm=exact-child source=private-monitor signal=nonzero-opus viewer=remote video=decoded network=container-loopback cleanup=server-motion-xvfb-joined' \
+        'production CM authorized PulseAudio capture'
+    require_exact_fixed_receipt \
+        'PA_RUNTIME_PRODUCT_PAIR=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 network=none uid=1000 cleanup=joined' \
+        'private PulseAudio product-pair finality'
     require_exact_fixed_receipt \
         'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes live-owner=contender-refused-first-commit same-peer-overlap=successor-serves-after-predecessor-retire sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved digest-cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved viewer-after-refusal=new-connection-exact-bytes network=container-loopback cleanup=server-joined' \
         'CM file production transaction'
@@ -4824,7 +4882,7 @@ elif [ "$MODE" = android-peer-build ]; then
              "$ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'Android peer source archive changed during execution'
 elif [ "$MODE" = cm-file-replay ]; then
-    [ "$(android_peer_input_inventory)" = "$focused_inputs_before" ] \
+    [ "$(cm_pa_input_inventory)" = "$focused_inputs_before" ] \
         && [ "$(/usr/bin/sha256sum "$ANDROID_EMULATOR_SOURCE_ARCHIVE" | /usr/bin/awk '{ print $1 }')" = "$ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'CM file replay inputs changed during execution'
 elif [ "$MODE" = android-emulator-runtime ]; then

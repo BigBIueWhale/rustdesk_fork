@@ -4215,6 +4215,9 @@ elif [ "$MODE" = cm-file-replay ]; then
         "CM_FILE_PEER_BUILD=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE builder=$DEV_CHECK_IMAGE_CONFIG_ID files=8 network=none" \
         'CM file current-source peer build'
     require_exact_fixed_receipt \
+        'PA_PRODUCTION_CM_REFUSAL=pass principal=same-uid-unrelated-process action=silent-connect result=eof-before-750ms endpoint=cm-owned-pa server=production network=container-loopback' \
+        'production CM _pa wrong-peer refusal'
+    require_exact_fixed_receipt \
         'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes live-owner=contender-refused-first-commit same-peer-overlap=successor-serves-after-predecessor-retire sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved digest-cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved viewer-after-refusal=new-connection-exact-bytes network=container-loopback cleanup=server-joined' \
         'CM file production transaction'
     require_exact_fixed_receipt \

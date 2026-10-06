@@ -832,6 +832,18 @@ EOS
     [ ! -e "$HOME/allowed-after-login/contended.txt" ]
     cmp -s -- "$HOME/allowed-after-login/contended.txt.download" \
       <(printf '%s' 'first-live-owner-exact-bytes-0123456789')
+    if pa_refusal_output=$(timeout --signal=TERM --kill-after=2s 8s \
+      python3 -I -S /work/scripts/smoke-pa-process-pair-probe.py \
+      "$SRV" "$SRV_START" /smoke-target/debug/rustdesk 2>&1); then
+      pa_refusal_status=0
+    else
+      pa_refusal_status=$?
+    fi
+    printf '%s\n' "$pa_refusal_output"
+    [ "$pa_refusal_status" -eq 0 ] || exit "$pa_refusal_status"
+    grep -Fxq 'PA_PRODUCTION_CM_REFUSAL=pass principal=same-uid-unrelated-process action=silent-connect result=eof-before-750ms endpoint=cm-owned-pa server=production network=container-loopback' \
+      <<<"$pa_refusal_output"
+    "$READY" --is-running "$BUSY_OWNER_PID" "$BUSY_OWNER_START"
     busy_digest_before=$(sha256sum -- "$HOME/allowed-after-login/contended.txt.digest")
     busy_lock_before=$(stat -c '%d:%i' -- "$HOME/allowed-after-login/contended.txt.download.lock")
     if busy_contender_output=$(timeout --signal=TERM --kill-after=5s 20s \

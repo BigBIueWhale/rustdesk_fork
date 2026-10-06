@@ -3126,6 +3126,7 @@ run_cm_file_replay() {
     [ -f "$source_root/scripts/smoke-server-stage.sh" ] \
         && [ -f "$source_root/scripts/smoke-ready.sh" ] \
         && [ -f "$source_root/scripts/smoke-process-guard.py" ] \
+        && [ -f "$source_root/scripts/smoke-pa-process-pair-probe.py" ] \
         || fail 'CM file replay harness programs are absent'
 
     mkdir "$inputs"
@@ -3270,6 +3271,8 @@ LAYOUT
         || { tail -n 160 "$output" >&2; fail "CM file replay failed: $status"; }
     [ "$(grep -Fxc 'CM_FILE_REPLAY=pass auth=cpace cm=post-login-dir prelogin-create=refused postlogin-create=committed premature-write=refused-cleaned short-write=refused-cleaned committed-write=exact-bytes multi-file-write=two-files-four-blocks-exact-bytes peer-error=reported-cleaned cancel=directory-barrier-cleaned owner-loss=staged-then-cleaned reconnect=new-owner-exact-bytes live-owner=contender-refused-first-commit same-peer-overlap=successor-serves-after-predecessor-retire sidecar-collision=refused-preserved cleanup-failure=reported-replacement-preserved digest-cleanup-failure=reported-replacement-preserved direct-read-open-error=terminal-once direct-read-after-error=digest-confirmed-150001-bytes-done-once viewer-download=production-session-exact-bytes viewer-digest-symlink=terminal-preserved viewer-after-refusal=new-connection-exact-bytes network=container-loopback cleanup=server-joined' "$output")" -eq 1 ] \
         || fail 'CM file replay product receipt is absent or duplicated'
+    [ "$(grep -Fxc 'PA_PRODUCTION_CM_REFUSAL=pass principal=same-uid-unrelated-process action=silent-connect result=eof-before-750ms endpoint=cm-owned-pa server=production network=container-loopback' "$output")" -eq 1 ] \
+        || fail 'production CM _pa wrong-peer refusal receipt is absent or duplicated'
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'CM file replay container did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null

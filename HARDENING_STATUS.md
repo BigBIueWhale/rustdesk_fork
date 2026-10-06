@@ -78,7 +78,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Current documentation-sensitive item | Current disposition |
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
-| Broad source-conformance documentary coupling | Direct prose/document-mutation dependencies are absent from the main/Apple source gates, main/Dart authority helpers, and the Cargo-vendor, fixed-archive, Android-SDK, libyuv, local-libvpx, Windows-engine, and Flutter-Pub-cache acquisition/output helpers. Their documentary closure checks and literal deployment/README/codec-watch/release/signing-recovery prose assertions are removed. Source predicates and mutations, executable test commands, artifact/metadata and provenance checks, image/input/source identity, caller wiring, tracked-document presence, and VM isolation remain. Apple's three-target compilation matrix is unchanged. This is supplementary source/compile coverage, not native, signed-artifact, privilege, performance, or release acceptance. Other documentary-dependent verifiers and broader documentation/test-quality cleanup remain OPEN. |
+| Broad source-conformance documentary coupling | Direct prose/document-mutation dependencies are absent from the main/Apple source gates, main/Dart authority helpers, the Cargo-vendor, fixed-archive, Android-SDK, libyuv, local-libvpx, Windows-engine, and Flutter-Pub-cache acquisition/output helpers, and all three whiteboard lifecycle helpers. Their documentary closure checks and literal deployment/README/codec-watch/release/signing-recovery prose assertions are removed; whiteboard source checks also carry no document-hash dependency. Source predicates and mutations, executable test commands, artifact/metadata and provenance checks, image/input/source identity, caller wiring, tracked-document presence, and VM isolation remain. Apple's three-target compilation matrix is unchanged. This is supplementary source/compile coverage, not native, signed-artifact, privilege, performance, or release acceptance. Other documentary-dependent verifiers and broader documentation/test-quality cleanup remain OPEN. |
 | Build pins and target profiles (§3.1–3.2, R-B5a) | The normative table now matches the three software-codec release feature sets selected by the build entry points; its former `hwcodec`/`vram` rows and the header/footer's historical package-count/whole-tree-review claims are gone. `scripts/pins.env`, lockfiles, manifests, and toolchain files remain separate concrete authorities that must agree. This documentation correction is not a current release build, authenticated complete input closure, cold equality, or native platform proof; those remain OPEN. |
 | Appendix C #90–95, #97, #99, #101–105, #109–110, #112, #119, #122, #180–181, #185–206, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; this row does not promote source checks to native evidence. Current evidence limits remain in the relevant requirement entries and platform/open matrices. |
 | Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub and RustSec snapshots have real no-NIC VM verdicts recorded in R-S11df and R-S11dg below; future snapshot refresh, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. Documentation or mutation counts are not scanner evidence. |
@@ -11136,286 +11136,87 @@ performance/resource soak, and cleanup—remain OPEN under the global STOP-SHIP 
 
 ### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership
 
-**Status:** SOURCE IMPLEMENTED / EXACT PRODUCTION LIFECYCLE MODULE EXECUTED
-UNDER RUST 1.75 / CONFINED SOURCE AND MUTATION EVIDENCE COMPLETE / FULL ROOT
-CARGO AND NATIVE PLATFORM EXECUTION EVIDENCE OPEN.
+**Current disposition: SOURCE IMPLEMENTED; historical production-state execution retained;
+complete helper and target-native finality evidence OPEN.** `src/whiteboard/event_lifecycle.rs`
+owns the proxy and terminal latch. `src/whiteboard/server.rs` installs the terminal guard
+before runtime/startup work, serializes proxy installation and termination, and delivers
+one Exit in either publication order without resetting the latch on proxy retirement.
+`WhiteboardIpcWorker` retains one one-shot stop sender and a fallibly constructed named
+thread. Linux joins on application-construction failure and event-loop return; the shared
+Windows/macOS owner joins whenever its event loop returns. Spawn/join failure is visible.
+Handler-only termination, unbounded exit channels, detached threads, and direct platform
+proxy mutation are absent from this source topology.
 
-This continuation selected one residual helper-lifecycle slice under the
-binding R-S11b/R-S11c loop. The prior R-S11c-8/R-S11dz correction gave the
-dedicated whiteboard helper a token-derived endpoint, exact launch-parent and
-role proof, bounded directional protocol, and one authenticated stream owner.
-Its process lifecycle was nevertheless incomplete. `start_ipc` could return
-while resolving missing or invalid launch environment, creating the listener,
-observing listener end, or handling comparable early terminal outcomes. The
-only overlay `CustomEvent::Exit` publication lived after
-`handle_new_stream`, so those pre-stream returns could strand the transparent
-overlay event loop. Windows and macOS started the IPC thread before their
-event-loop constructors published `EVENT_PROXY`; a direct early event would
-therefore also have been lossy. A single terminal edge used an unbounded
-channel, each launcher used a raw detached `std::thread::spawn`, and the thread
-handle was discarded. This is source-proven local helper finality and orphan
-process debt. It is not proof of compromise, exploitation, public exposure,
-privilege escalation, host RustDesk/service/firewall/network modification, or
-causation for the separately reported Android/Windows display-only delay.
-
-The corrected authority model treats this dedicated helper process as one IPC
-generation with one locked level-triggered `(event-loop proxy, terminal
-latch)` owner. Termination before proxy installation latches the edge; the
-later platform install immediately consumes its supplied proxy to emit exactly
-one Exit and does not retain it. Proxy installation before termination retains
-that exact proxy; the first terminal finalizer takes it and emits exactly one
-Exit, while repeated finalization is inert. Event-loop retirement clears only
-the retained proxy and cannot reset terminal history. Lock ownership is
-released before synchronous event delivery. A synchronous worker entrypoint
-installs its function-scoped terminal guard as its first action, before invoking
-the runtime-backed `start_ipc` function and therefore before runtime
-construction, launch-environment, parent, listener, proof, transport, or
-command work. Runtime-construction panic and every later return path now
-converge on the same terminal publication owner. The authenticated stream
-handler observes cancellation but no longer owns or emits process termination.
-
-`WhiteboardIpcWorker` now retains one Tokio one-shot stop sender and the exact
-thread handle. Its fallible `std::thread::Builder` gives the worker a diagnostic
-name and makes spawn failure visible. Returning event-loop owners request stop
-and join that exact thread; join panic is caller-visible. Linux performs the
-join both when application construction fails and after `run_app` returns.
-The shared Windows/macOS owner performs the join whenever its platform event
-loop returns or fails. An already-finished receiver is diagnosed at debug level
-before the same exact join, rather than silently discarding that outcome. The
-unbounded lifecycle channel, raw detached spawn, inner-handler terminal event,
-direct platform-global proxy mutation, and obsolete cleanup callback are
-deleted. No retry, reconnect, polling loop, new listener/runtime/worker,
-service/activity kill, Android foreground-service weakening, port, network
-behavior, dependency, privilege transition, or alternate command route is
-added.
-
-The generic `WhiteboardEventLifecycle` is now a small production module imported
-by `server.rs`, rather than test logic duplicated beside the server. That exact
-production module can be compiled directly without first building unrelated
-capture/codec dependencies. Three deterministic state-machine regressions prove
-termination-before-proxy delivery once, proxy-before-termination exact take
-and repeated-finalization refusal, and event-loop retirement followed by
-preserved latched delivery. The shared verifier runs that fast behavior gate
-before retaining the complete root-crate Cargo gate; it does not replace,
-disable, or weaken the latter. The focused
-`scripts/verify-whiteboard-ipc-lifecycle.py` validator binds the state machine,
-terminal guards, one-shot named worker, exact join sites, all three platform
-proxy owners, absence of obsolete semantics, focused Rust tests,
-requirements/Appendix/ledger identity, shared and Apple wiring, independent
-workspace dispatch, and requirements hashes. Its self-test deliberately
-mutates those boundaries. The workspace verifier independently derives the
-product contract and carries separate product, platform, regression,
-focused-verifier, wiring, requirement, ledger, and dispatch mutations. The
-older R-S11dz shared, Apple, Linux-focused, and independent checks were updated
-to require startup-wide finality instead of incorrectly requiring termination
-inside the post-authenticated stream handler.
-
-The exact normative requirements input for this disposition is
-`9d79e12d9011d0f226c00b40fbc503ee3ce3b13fb23920aa967f954f89030e09  requirements.html`.
-
-One preflight command mistakenly invoked Python bytecode compilation directly
-on the host while checking the newly edited verifier scripts. It read only
-repository scripts, used no networking or privilege, and did not inspect or
-touch RustDesk, a service, listener, firewall, device, VM, or unrelated
-workload. Its result is discarded as validation evidence and its generated
-`scripts/__pycache__` residue is removed. All reported parser and verifier
-evidence for this slice must come from the sole approved networkless,
-read-only, capability-dropped verifier container.
-
-Earlier confined source evidence used the approved verifier image identity
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
-with no network, a read-only repository mount, all capabilities dropped,
-`no-new-privileges`, non-root UID/GID 1000, bounded PIDs/memory/CPU, and only a
-bounded private `/tmp`. The focused lifecycle verifier passed its complete
-focused self-test; a targeted preflight of the new lifecycle fixtures and the
-affected legacy whiteboard fixtures passed. The updated Linux
-nondumpable/CM/PA/whiteboard focused verifier also passed. Python AST parsing of the three edited
-verifiers, requirements HTML parsing, and Bash syntax parsing of both edited
-gate scripts passed under that confinement. That earlier image contains no
-Rust/Cargo, Dart/Flutter, or native platform toolchain.
-
-A subsequent exact-candidate run executed the independently compilable
-production lifecycle module with pinned `rustc 1.75.0` and `cargo 1.75.0` in
-builder image
+**Retained evidence:** the independently compilable exact production lifecycle module
+passed three state tests under Rust 1.75.0 in builder
 `sha256:304b251e77fafe03192e035cc22479e0909d688035fbd30b1ac685e878ae9646`.
-The snapshot-on QEMU guest had `-nic none`; before, during, and after the run it
-had only `lo`, only loopback routes, and zero listening TCP/UDP sockets. The
-guest mounted the candidate read-only with `nosuid,nodev,noexec`. Its nested
-container used `--network=none`, a read-only root and source mount, UID/GID
-1000, no effective capabilities, `no-new-privileges`, seccomp mode 2, no port
-bindings, bounded PIDs/memory/CPU, and private bounded tmpfs work areas. The
-focused verifier passed all 39 deliberate mutations; the exact production
-module passed all three Rust state tests with zero failures. The complete
-focused container took 800,367,522 ns. Candidate hashes were byte-identical
-before and after, the guest Docker container and daemon were removed/stopped,
-both virtiofs helpers exited, the guest powered off, no QEMU/virtiofs process
-remained, host listening endpoints were unchanged, and the retained child
-overlay passed `qemu-img check` at 133,111,808 allocated bytes.
+That historical zero-NIC VM/networkless nonroot guest-container transaction preserved
+candidate bytes and host listeners and joined its transient owners. The tests cover
+termination before proxy publication, exact installed-proxy take with repeated-finalization
+refusal, and proxy retirement with preserved terminal state. They do not execute the native
+event loop, real IPC, worker construction/join, or complete helper. The associated full
+root-crate Cargo attempt stopped at dependency discovery because that builder lacked
+`libyuv.pc`; it supplied no test result and is not a statement about current input availability.
+Original correction, module extraction, failures, and detailed receipts remain in Git history
+at `8d2af913`/`8d794d41` and the R-S11hn audit entry in
+`/tmp/privilege_securiry_deep_audit.md`.
 
-An attempted complete root-crate Cargo run reached dependency discovery before
-test execution and stopped because this Debian builder has no `libyuv.pc`.
-That is verifier-infrastructure incompleteness, not a product-test failure and
-not passing evidence. No dependency was downloaded or fabricated to conceal
-it. Full root-crate compilation therefore remains open alongside the target-
-native platform runs below.
+The focused Python checker is supplementary source coverage with no requirement/ledger
+wording or document-hash dependency. Shared fast module execution, full root-crate test
+commands, and Apple source-gate wiring remain; neither their presence nor old mutation
+counts prove that an exact-current native workload ran.
 
-Exact Rust/native compilation and tests, Windows/macOS/Linux platform
-execution, physical helper startup/failure/exit reproduction, orphan-process
-observation, cold committed R-B2/R-B10 equality, installed artifacts/service
-behavior, independent reproduction, R-V3 external review, connection-flow
-causation, and sustained correctness/performance/resource evidence remain
-explicitly open. The broader user-requested Android task-swipe/reopen/Force-Stop
-and Windows focus/minimize/reconnect display-latency reproduction,
-capture-through-compositor timestamps, explicit end-to-end
-latency/queue/CPU/memory budgets, cross-version behavior, and proof that the
-complete connection flow is correct and performant also remain open release
-obligations.
+**Still required:** exact-current focused/full-root tests and isolated Windows/macOS/Linux
+helper runs covering launch-identity refusal, listener construction/end/error, proof and
+transport failure, cancellation, authenticated close/shutdown, both proxy-publication
+orders, every returning event-loop path, and permitted spawn/join failure injection.
+Observe one terminal outcome, no surviving helper/thread/listener/handle, and bounded
+resources through startup, failure, replacement, and owner loss. Installed artifacts,
+sustained performance/resource bounds, cold R-B2/R-B10 equality, independent reproduction,
+and external review remain open under the global matrices. This overlay is separate from
+the Android/Windows remote-display freshness defect; these receipts establish no causation
+or fix for that defect.
 
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
-**Status:** SOURCE IMPLEMENTED / CONFINED SOURCE AND MUTATION EVIDENCE
-COMPLETE / FOCUSED RUST TESTS AUTHORED BUT UNEXECUTED / EXACT RUST/NATIVE,
-PLATFORM, DEVICE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.
+**Current disposition: SOURCE IMPLEMENTED; focused executable and target-native lifecycle
+evidence OPEN.** `src/whiteboard/client.rs` uses one mutex-owned `WhiteboardClientState`
+containing registrations, the exact-generation sender, retained Tokio task handle, and
+Idle/Starting/Running/Stopping phase. Checked generation reservation prevents wraparound;
+duplicate Starting/Running demand does not launch another task. Sender publication and the
+initial registration snapshot share the same lock. The task runs on the existing runtime,
+installs its exact-generation terminal guard first, diagnoses error/panic, and makes stale
+finalizers inert. Runtime/task installation failure cancels only its exact reservation.
 
-Read-only continuation review of the adjacent controlled-side whiteboard
-launcher found a second, independent lifecycle defect after R-S11hn corrected
-the helper process. Every call to `register_whiteboard`, including a duplicate
-`show_my_cursor=Yes` for an already-registered authenticated Remote connection,
-performed a raw detached `std::thread::spawn`. That thread constructed a nested
-current-thread Tokio runtime before discovering that a sender or
-`STARTING_WHITEBOARD` flag already existed. An authenticated peer could
-therefore drive redundant OS-thread/runtime construction without creating new
-whiteboard authority.
+Idle stop proves the locked registration set empty and retires only that Running generation's
+sender. Explicit demand crossing committed stop latches at most one successor; finalization
+starts it only while demand remains. Failed Bind admission may record that same explicit
+demand, but startup/transport/sender/task/helper failure or retained registrations alone do
+not self-retry. The queue remains nonblocking and bounded to 64 commands, registrations to
+16 connections; only cursor overflow is lossy, while required-command refusal retires the
+sender/phase. The at-most-two-command hot path uses fixed storage and a borrowed sender.
+Token-derived endpoints, exact launch/parent proof, parent-death binding, and deadline writes
+remain. Split globals, detached OS threads, nested runtimes, and automatic retry are absent.
 
-The startup flag also covered the worker's complete lifetime, not merely
-startup. Once the live worker observed an empty connection map, took the
-separately locked global sender, and committed to shutdown, a new registration
-could arrive before the old worker returned. Its newly spawned thread observed
-the lifetime-wide flag, exited as “already starting,” and discarded its handle;
-the old worker then cleared the flag and exited. The new registration remained
-in the separate global map with no command sender or worker. Reapplying the
-option later could recover it, which is source-level cleanup-mediated recovery
-debt. This is shared Windows/macOS/Linux local resource and connection-flow
-lifecycle debt. It is not evidence of compromise, exploitation, public
-exposure, privilege escalation, host RustDesk/service/firewall/network
-modification, or proof that unidentified deployed artifacts exercised the
-defect or that it caused the separately reported Android/Windows display-only
-delay.
+Four authored Rust state regressions cover duplicate demand, one successor across committed
+stop, startup/sender failure without self-retry, and stale finalization. Historical confined
+Python/source-mutation receipts did not execute those Rust tests or the native helper. The
+focused checker now loads only source/gate inputs; requirement/ledger wording and document
+hashes are not evidence. The full-root Rust test commands and shared/Apple source-gate wiring
+remain. Original review, source-only receipts, intermediate verification failures, and
+operational incidents remain in Git history at `043a6aa6` and the R-S11ho audit entry in
+`/tmp/privilege_securiry_deep_audit.md`.
 
-The correction replaces `STARTING_WHITEBOARD`, `TX_WHITEBOARD`, and `CONNS`
-with one mutex-owned `WhiteboardClientState`. It holds the registration map,
-one exact-generation bounded sender, one retained Tokio task handle, and a
-closed `Idle`/`Starting`/`Running`/`Stopping` phase. Idle demand reserves one
-checked monotonically increasing generation. Duplicate Starting demand is
-included in the eventual atomic registration snapshot; duplicate Running
-demand does not launch or bind again; a new Running registration publishes its
-exact Bind through that generation's sender. One task runs on the existing
-Tokio runtime. The raw OS thread, nested `#[tokio::main]` runtime, detached
-handle, lifetime-wide atomic flag, split connection/sender locks, and ad-hoc
-cleanup callbacks are deleted.
-
-The runtime-owned task retains its generation and installs
-`WhiteboardClientWorkerGuard` as its first action. Returned errors and caught
-panics are diagnosed before that finalizer consumes the exact retained task
-handle and clears only its exact sender. Sender publication and the initial
-registration snapshot occur under the same lifecycle lock. A stale finalizer
-cannot mutate another generation. Runtime acquisition or task installation
-failure cancels only the exact reserved generation and is visible; it does not
-create a fallback thread/runtime.
-
-Idle shutdown now proves the same locked registration map is empty, moves the
-exact Running generation to Stopping with no restart request, and takes only
-its sender. A registration arriving after that commit latches one successor
-request. Finalization rechecks that demand is still live and reserves at most
-one successor; removal of the intervening demand cancels that restart. Demand
-arriving earlier during Starting or Running remains on the current generation.
-Unexpected startup, transport, sender, task, or helper failure moves the
-generation to Idle without self-retry. If a new Bind itself observes the
-sender closing or saturated, that same explicit registration latches the
-single successor edge; background failure or retained registrations alone do
-not create a retry/reconnect loop. A later explicit option registration may
-reserve a new generation.
-
-The existing 64-command nonblocking queue, 16-registration authority cap,
-token-derived endpoint, launch/parent proof, parent-death behavior, typed
-deadline writes, and event-only lossy overflow policy remain unchanged.
-Required command refusal retires the sender and phase; it is never converted
-to blocking admission. The high-frequency cursor path uses fixed two-slot
-stack storage and a scoped sender borrow instead of adding a per-event heap
-allocation or per-command sender clone. No listener, transport, protocol,
-port, service/activity kill, Android foreground-service weakening, timer,
-poller, reconnect loop, OS thread, nested runtime, dependency, privilege
-transition, or alternate command route is added.
-
-Four deterministic Rust state regressions bind duplicate demand to one
-generation, demand crossing committed stop to one successor, startup and
-sender failure to no self-retry, and stale-finalizer refusal. The focused
-`scripts/verify-whiteboard-client-lifecycle.py` validator parses the exact
-phase/generation state, unified owner, existing-runtime task and first-action
-guard, failure-versus-demand distinction, fixed-allocation command path,
-registration/shutdown/startup interleavings, regressions, shared and Apple
-gates, adjacent Linux verifier, requirements/Appendix/ledger identity,
-independent workspace binding, and exact requirements hashes. Its deliberate
-mutations independently weaken those boundaries. The workspace verifier also
-derives the product contract directly and carries separate product, phase,
-task, hot-path, regression, gate, requirement, ledger, source-binding, and
-dispatch mutations rather than trusting the focused verifier's verdict.
-
-Confined source verification used only the approved immutable verifier image
-`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`
-with `--pull=never`, networking disabled, a read-only root and repository, all
-capabilities dropped, `no-new-privileges`, numeric UID/GID 1000, bounded
-PIDs/memory/swap/CPU, and a bounded private no-exec tmpfs. The focused
-whiteboard-client lifecycle verifier rejected all 47 deliberate mutations;
-the adjacent Linux nondumpable/CM/PA/whiteboard verifier rejected all 71; the
-independent workspace baseline passed; and a narrowed execution through the
-real `validate_sources` function rejected all 28 new R-S11ho catalog entries.
-On those exact product, gate, verifier, requirement, and digest bytes, one
-fresh complete unsliced `--source-mutations-only` execution then ran
-uninterrupted from mutation one in exact container `be9dadd446d1`. Docker's
-daemon event record reports `execDuration=9851`, `exitCode=0`, the approved
-image digest above, and the subsequent expected `--rm` destroy. The unified
-terminal handle expired after container exit before returning final stdout, so
-no captured terminal-text receipt is claimed. Only that final complete
-zero-exit execution is counted as the catalog pass.
-
-Verification was allowed to fail loudly. One initial preflight attempt stopped
-before product mutation because a focused-verifier fixture named a stale
-string. Two later complete attempts are also uncounted: each correctly
-rejected a weakened production owner, first the retained generation-bound task
-and then the existing-runtime spawn, but the new catalog entry expected a
-broader R-S11ho diagnostic than the earlier whiteboard protocol validator
-emitted. The mutation expectations were aligned to those already-enforced,
-narrower diagnostics; the same overlap audit also aligned the existing
-first-action finalizer and hot-path allocation diagnostics. No production
-code, invariant, validator requirement, or mutation was removed or weakened.
-The complete 28-entry narrowed pass preceded the final full restart.
-
-The approved verifier image contains Python, shell, and Node but no Rust,
-Cargo, rustfmt, Dart, Flutter, or native platform toolchain. No image was
-pulled, built, or tagged, and no host Rust command was run. The authored Rust
-regressions therefore remain explicitly uncompiled and unexecuted; confined
-source and mutation evidence is not represented as native behavior evidence.
-No host RustDesk process, configuration, service, listener, port,
-firewall/network state, VM, device, or privilege boundary was inspected or
-changed by this slice. One broad read-only `docker ps` status query used to
-locate the long-running verifier also returned container IDs, image IDs,
-status, commands, and names for unrelated running containers, including
-Haggai; no unrelated container was entered, signalled, stopped, restarted, or
-changed, and no unrelated files, logs, sockets, namespaces, or internal
-process state were inspected. Subsequent status queries were restricted to the
-exact verifier container ID or approved image.
-
-Exact Rust/native compilation and tests, Windows/macOS/Linux physical
-multi-connection/duplicate-toggle/stop-window execution, helper-process
-startup and orphan observation, sustained thread/task/queue/CPU/memory and
-latency soak, clean committed cold R-B2/R-B10 equality, installed
-artifacts/service behavior, fresh independent reproduction, R-V3 external
-review, connection-flow causation, physical Android
-task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect reproduction,
-capture-through-compositor timestamps, cross-version behavior, and proof that
-the complete connection flow is correct and performant remain explicitly open
-release obligations and explicit user requests.
+**Still required:** exact-current executable regressions and native Windows/macOS/Linux
+multi-connection, repeated-enable, every-phase demand, committed-stop replacement, explicit
+later retry, sender/transport/helper failure, queue/registration saturation, abrupt owner
+loss, and cleanup runs. Observe one live generation, at most one demanded successor, and
+bounded task/thread/queue/CPU/memory/latency state. Installed artifacts, sustained soak,
+cross-version behavior, cold R-B2/R-B10 equality, independent reproduction, and external
+review remain open under the global matrices. Android task-swipe/reopen/Force-Stop,
+Windows focus/minimize/reconnect, capture-to-actual-present timing, and correctness and
+performance of the whole connection flow remain separate explicit user requests; this
+whiteboard source disposition does not close them.
 
 ### R-S11hp/R-S11e-253 — exact-owner whiteboard presentation and redraw lifecycle
 

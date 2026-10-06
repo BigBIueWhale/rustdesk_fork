@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import hashlib
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -55,8 +54,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
     paths = {
         "client": "src/whiteboard/client.rs",
         "connection": "src/server/connection.rs",
-        "requirements": "requirements.html",
-        "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",
         "apple": "scripts/apple-conform-check.sh",
     }
@@ -438,28 +435,8 @@ def validate(sources: Dict[str, str]) -> None:
         ("verify", focused_gate, "shared focused gate"),
         ("verify", behavior_gate, "shared behavior gate"),
         ("apple", focused_gate, "Apple focused gate"),
-        (
-            "requirements",
-            '<div class="req"><span class="id">R-S11ho</span>',
-            "normative lifecycle requirement",
-        ),
-        ("requirements", "<tr><td>375</td>", "Appendix C lifecycle disposition"),
-        (
-            "hardening",
-            "### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership",
-            "hardening lifecycle ledger",
-        ),
     ):
         require(sources[key], needle, label)
-
-    requirements_digest = hashlib.sha256(
-        sources["requirements"].encode("utf-8")
-    ).hexdigest()
-    require(
-        sources["hardening"],
-        f"{requirements_digest}  requirements.html",
-        "exact hardening requirements digest",
-    )
 
 
 Mutation = Tuple[str, str, str, str]
@@ -507,9 +484,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("verify", "python3 scripts/verify-whiteboard-client-lifecycle.py --repo . --self-test", "true # whiteboard client lifecycle gate disabled", "shared focused gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ho_ --color never", "true # whiteboard client lifecycle tests disabled", "shared behavior gate"),
     ("apple", "python3 scripts/verify-whiteboard-client-lifecycle.py --repo . --self-test", "true # whiteboard client lifecycle gate disabled", "Apple focused gate"),
-    ("requirements", '<div class="req"><span class="id">R-S11ho</span>', '<div class="req"><span class="id">R-S11ho-disabled</span>', "normative lifecycle requirement"),
-    ("requirements", "<tr><td>375</td>", "<tr><td>375-disabled</td>", "Appendix C lifecycle disposition"),
-    ("hardening", "### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership", "### R-S11ho-disabled/R-S11e-252 — exact-generation whiteboard client worker ownership", "hardening lifecycle ledger"),
 )
 
 

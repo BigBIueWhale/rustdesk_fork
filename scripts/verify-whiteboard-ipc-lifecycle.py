@@ -3,7 +3,6 @@
 
 import argparse
 import ast
-import hashlib
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -57,8 +56,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "linux": "src/whiteboard/linux.rs",
         "windows": "src/whiteboard/windows.rs",
         "macos": "src/whiteboard/macos.rs",
-        "requirements": "requirements.html",
-        "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",
         "apple": "scripts/apple-conform-check.sh",
     }
@@ -332,28 +329,8 @@ def validate(sources: Dict[str, str]) -> None:
         ("verify", fast_behavior_gate, "shared fast behavior gate"),
         ("verify", behavior_gate, "shared behavior gate"),
         ("apple", focused_gate, "Apple focused gate"),
-        (
-            "requirements",
-            '<div class="req"><span class="id">R-S11hn</span>',
-            "normative lifecycle requirement",
-        ),
-        ("requirements", "<tr><td>374</td>", "Appendix C lifecycle disposition"),
-        (
-            "hardening",
-            "### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership",
-            "hardening lifecycle ledger",
-        ),
     ):
         require(sources[key], needle, label)
-
-    requirements_digest = hashlib.sha256(
-        sources["requirements"].encode("utf-8")
-    ).hexdigest()
-    require(
-        sources["hardening"],
-        f"{requirements_digest}  requirements.html",
-        "exact hardening requirements digest",
-    )
 
 
 Mutation = Tuple[str, str, str, str]
@@ -395,9 +372,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("verify", "rustc --edition=2021 --crate-name whiteboard_event_lifecycle --test", "true # fast lifecycle behavior gate disabled", "shared fast behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11hn_ --color never", "true # whiteboard lifecycle tests disabled", "shared behavior gate"),
     ("apple", "python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test", "true # whiteboard lifecycle gate disabled", "Apple focused gate"),
-    ("requirements", '<div class="req"><span class="id">R-S11hn</span>', '<div class="req"><span class="id">R-S11hn-disabled</span>', "normative lifecycle requirement"),
-    ("requirements", "<tr><td>374</td>", "<tr><td>374-disabled</td>", "Appendix C lifecycle disposition"),
-    ("hardening", "### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership", "### R-S11hn-disabled/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership", "hardening lifecycle ledger"),
 )
 
 

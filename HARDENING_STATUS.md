@@ -35,7 +35,7 @@ target OS has executed them or that every in-flight helper operation drains on c
 | --- | --- |
 | Portable Linux server transaction (`250e775b9a88a62a980937e1f278ad053f2d9d58`) | Real nonroot parked/listening, CPace, Remote/FileTransfer admission, capacity/refusal, and joined-shutdown behavior in confinement. It is not an installed root service or current release artifact. |
 | Named Linux full-peer lifecycles (app `a3755044`; harness `7f6649f0`) | The exact retained Flutter 3.47.5 bundle, independently selected patched engine and shared overlay passed six uninstrumented viewer lifecycles in a 458-second zero-NIC replay without rebuilding the app. Real password prompts, visible publication-bound X11 pixels, eighteen 2/6/12-second focus-loss cycles on unchanged connections, eighteen server-generation reconnects, eighteen native resizes of the same accessible dialog, sampled resource bounds and joined teardown passed. Maximum measured pixel age was 444 ms; focus recovery at most 8 ms and first fresh reconnect pixels at most 367 ms. Complete raw serial and outer receipt are retained below. This named Linux 640x480/4-Hz scenario does not establish Android/Windows causation, the full FlView restart/dispose/subtree/Wayland matrix, sustained soak, cross-version, installed-service, cold-equality or release-artifact closure. |
-| Exact-current Linux filesystem regressions (`76cc2fefc6470aeaeb76b50d34b4dc377b39ba49`) | A zero-NIC VM and networkless guest-only container executed all 57 `hbb_common::fs` tests on pinned Rust 1.75, including retained-directory, symlink-parent, path-swap, bounded-depth, create, remove, and rename authority cases. This is Linux library behavior, not Windows junction/handle, installed peer, end-to-end transfer, or release-artifact evidence. |
+| Named Linux filesystem library evidence (`76cc2fef`, `d4f9ac67`) | The earlier accepted zero-NIC transaction executed all 57 `hbb_common::fs` tests on pinned Rust 1.75. The corrected same-name rename candidate `d4f9ac67` passed all 64 filesystem and four configuration tests in its networkless guest, but a newly appeared host loopback endpoint invalidated the outer transaction; accepted current verification remains OPEN. These are Linux library results, not Windows junction/handle, installed peer, end-to-end transfer, or release-artifact evidence. |
 | Exact clean Flutter model transaction (`ca5690869c4c665c2d5a17a8e6baeeb664afbb78`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 18 focused suites and 138 tests in 278 seconds on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. In addition to presentation-generation and completion-order coverage, the executed tests prove one isolate-wide three-conversion authority across distinct queue/session replacement, latest-only pending data, FIFO live waiters, exact cancelled-waiter removal, and visible bounded-waiter exhaustion. No host listener was added and cleanup joined. This is exact Dart/model and generated-bridge evidence, not target-native behavior by itself. |
 | Exact Android owner states (`a2cbbbd27228aa053994a2f65ee075baf7e88f68`) | A zero-NIC VM and networkless guest-only container compiled seven exact production Kotlin state classes with pinned Kotlin 2.0.21 and passed 15 scenarios with 293 assertions over closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation. This is pure owner-state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, JNI, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
 | Exact Android/CM Rust lifecycles (`ceec168e8a25d231156e59c25b08365a29fef5d7`) | A zero-NIC VM freshly generated the Flutter bridge, compiled the complete Linux-host Rust library with `linux-pkg-config,flutter`, and executed 24 exact production tests in a networkless guest-only container. Four cover listener generation and owned-child convergence; 20 cover exact CM registry/file-log/Android-child ownership, privacy activation/retirement, final-Remote cleanup, and resolution restoration. The offline canary, pinned sub-closures, read-only source/generated bindings, unchanged host listeners, and joined cleanup passed. This is Linux-target Rust behavior, not Android-target, JNI, Service/Activity, real socket/peer, APK/device, task-swipe, Force Stop, rendered presentation, or native Windows evidence. |
@@ -854,10 +854,16 @@ exist; it does not upgrade those checks into target-native, package, latency, so
 - **R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality** — Source closed. Directory,
   digest, block, done, and error responses from direct and CM paths retain bounded exact writer receipts through
   the controlled connection, with writer failure/timeout terminal for that round.
-- **R-S11fi/R-S11e-196 receive-file failure and cleanup finality** — **SOURCE CORRECTED; EXACT-CURRENT EXECUTION
-  OPEN.** A block, confirmation, finalization, peer error, skip, or cancellation retires exact current-file state
-  through one fallible operation. Cleanup uncertainty is terminal and visible; an identity-mismatched replacement
+- **R-S11fi/R-S11e-196 receive-file failure and cleanup finality** — **PARTIAL; DELAYED-WRITE FINALIZATION
+  AND EXACT-CURRENT EXECUTION OPEN.** A block, confirmation, finalization, peer error, skip, or cancellation
+  retires exact current-file state through one fallible operation. Cleanup uncertainty is terminal and visible; an identity-mismatched replacement
   survives, and CM cancellation retains its exact generation until cleanup finality instead of manufacturing `Done`.
+  **Pending targeted review:** `TransferJob::finish_current_write_file` calls Tokio `File::sync_all`
+  without first consuming `flush`'s result. Pinned Tokio 1.44.2's `complete_inflight` can save a
+  preceding write error while allowing the subsequent filesystem sync to succeed. Caller-visible
+  delayed-write failure, especially on a resumed file whose length already matches, needs a real
+  fault-injected native test and a correct finalization decision. The R-S11hm length fixture does
+  not prove that property; complete receive-error propagation remains OPEN.
 - **R-S11fj/R-S11e-197 viewer download digest inspection failure** — **SOURCE CORRECTED; EXACT-CURRENT EXECUTION
   PARTIAL, FAILURE PATHS OPEN.** One exact-current headless Linux production-`Session` download completed through
   the ordinary absent-destination digest path and committed exact bytes. A second source-bound Linux replay
@@ -10909,8 +10915,9 @@ connection-flow correctness/performance.
 
 ### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership
 
-**SOURCE IMPLEMENTED; SIXTEEN DART MODEL REGRESSIONS AND FRESH BRIDGE GENERATION PASS;
-NATIVE FILESYSTEM, INSTALLED, AND TARGET-PLATFORM EVIDENCE OPEN.**
+**SOURCE CORRECTED; SIXTEEN DART MODEL REGRESSIONS AND FRESH BRIDGE GENERATION PASS;
+CURRENT LINUX TEST PAYLOAD PASSES BUT ITS OUTER TRANSACTION IS INVALID;
+ACCEPTED CURRENT NATIVE, INSTALLED, AND OTHER TARGET-PLATFORM EVIDENCE OPEN.**
 
 Current source captures exact sessions and immutable command inputs before asynchronous
 boundaries. Delete-file events settle only their bounded exact session/action/file owner;
@@ -10946,7 +10953,9 @@ Unix immediately revalidates the admitted no-follow source identity, calls retai
 parent; every post-rename failure reports that the visible/durable outcome is uncertain. As with
 unlink, POSIX has no atomic rename-by-previously-open-inode primitive, so a principal already able
 to mutate that exact parent retains the final identity-check/rename syscall window but cannot
-redirect the operation through another parent or destination link target. Create-directory and
+redirect the operation through another parent or destination link target. Same-name Unix rename
+also revalidates the current no-follow source against its admitted identity; it cannot report an
+unconditional successful no-op after that name was replaced or removed. Create-directory and
 rename reserve exact file-0 result owners before dispatch and return only after local or remote operation finality;
 the local native producer emits that same canonical identity. Invalid or unowned cancel IDs fail before
 dispatch. Desktop/mobile create dialogs and the rename dialog capture their admitted directory,
@@ -10978,6 +10987,38 @@ after its original name is replaced.
 checkpoint with fresh bridge generation. `FileController` takes an explicit translation dependency,
 so dialog-label model tests need not initialize native FFI. This checkpoint executes the Dart
 command/result owners, not a Rust filesystem mutation, live native bridge, or installed product.
+
+`unix_rename_admitted_entry` formerly returned success for equal names before its identity check.
+The existing native replacement regression now tests both equal and different destination names
+against a replacement file, missing source, and replacement symlink, preserving admitted bytes and
+the external sentinel. The unchanged-production baseline `c1b5497f` exposed the false successful
+no-op, but its outer transaction failed on a new loopback endpoint; it is diagnostic evidence,
+not accepted validation. Product correction `6ae028b9` changes only that no-op branch and preserves
+the mutating branch's immediate pre-syscall proof. [POSIX rename semantics](https://pubs.opengroup.org/onlinepubs/9799919799/functions/rename.html)
+require an existing source for a legitimate no-op; this fork additionally retains exact admission identity.
+
+The next run passed the rename cases but exposed an intermittent receive-length fixture assumption.
+The fixture appended before Tokio's pending write was known to be complete. Pinned
+[Tokio file implementation](https://github.com/tokio-rs/tokio/blob/tokio-1.44.2/tokio/src/fs/file.rs)
+returns from `poll_write` after scheduling blocking I/O; overwrite of the append is a source-based
+explanation consistent with the intermittency, not an observed syscall trace. Test correction
+`d4f9ac679f216f68bbbc384cdeb45185dabeadff` (tree `ffa81cac07593a929f6ddcc27bb481dea793117d`)
+awaits the actual stream's flush, proves staged bytes `four`, appends, and proves `fourX` before
+requiring the original size-error and exact cleanup. No receive production path or gate was weakened.
+
+The same `--hbb-common-fs` lane then passed all 64 filesystem and four configuration transactions
+on pinned Rust 1.75, vendor closure and certified Debian builder, in a zero-NIC VM and numeric
+UID/GID-1000, network-none, read-only-root, capability-dropped, NNP/AppArmor guest container.
+Its exact guest receipt and cloud-init result passed, but terminal outer exit was 1 because
+`tcp 127.0.0.1:32854` appeared after completion. Listener ownership was not inspected or changed;
+outer input-finality checks were not reached. Raw `hbb-common-fs-run.mRN0oJsRwQ.serial.log` is
+68,518 bytes, SHA-256 `bdbb2f784fb29c0442f3bfb57892553e3bd8456ce509746f3dad2705c885b187`, with
+a same-prefix assistant-observed `.outer.failure`, not independent attestation. Baseline and first
+corrected failures are retained under `run.nAZQv8l0K6` and `run.jYNprEKSzO` receipt prefixes.
+All three owned run roots were reconciled only after terminal joined cleanup, disk/socket absence,
+and raw evidence retention. No unchanged rerun or safety-gate bypass was attempted. A passing
+guest payload does not make its invalid outer transaction accepted; current accepted execution
+and a native test-executable digest remain missing. This is not a demonstrated LPE or display-delay cause.
 
 Exact Android/iOS/Windows/Linux/macOS and applicable web artifacts must still exercise native
 create/rename/delete, hostile namespace replacement, reordered results, dispatch failure,

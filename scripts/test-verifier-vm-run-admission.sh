@@ -17,7 +17,7 @@ cleanup() {
         --remove-private-root "$workspace" --expected-identity "$workspace_id" \
         || status=1
     if [ "$status" -eq 0 ] && [ "$success" -eq 1 ]; then
-        printf 'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 app_capsule=refused cleanup=joined\n'
+        printf 'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined\n'
     fi
     exit "$status"
 }
@@ -180,11 +180,25 @@ invoke() {
         HOST_UID=$(/usr/bin/id -u)
         HOST_GID=$(/usr/bin/id -g)
         MODE=${3:-authority-smoke}
+        RUN_MARKER=
+        RUN_MARKER_ID=
+        RUN_ADMISSION_FD=
         ANDROID_ARTIFACT_STATE_ROOT=${4:-}
         FLUTTER_APP_STATE_ROOT=${4:-}
         FLUTTER_ENGINE_STATE_ROOT=${4:-}
         FLUTTER_APP_BUILD_ONLY=${5:-0}
         reserve_verifier_run
+        [ -n "$RUN_ADMISSION_FD" ] \
+            && [ "/proc/$$/fd/$RUN_ADMISSION_FD" -ef "$INPUT_ROOT" ] \
+            || fail "shared run-admission descriptor was not retained"
+        exec {probe_descriptor}<"$INPUT_ROOT"
+        if /usr/bin/flock --exclusive --nonblock "$probe_descriptor"; then
+            fail "shared run-admission lock was released before the run"
+        fi
+        exec {RUN_ADMISSION_FD}<&-
+        /usr/bin/flock --exclusive --nonblock "$probe_descriptor" \
+            || fail "shared run-admission lock remained after release"
+        exec {probe_descriptor}<&-
         for descriptor in /proc/$$/fd/*; do
             if [ "$descriptor" -ef "$RUN_ROOT" ] \
                || [ "$descriptor" -ef "$INPUT_ROOT" ]; then
@@ -267,7 +281,7 @@ run_admission_cases() {
     /usr/bin/mkdir -m 0700 -- "$root"
     exec {lock_fd}<"$root"
     /usr/bin/flock --exclusive --nonblock "$lock_fd"
-    require_refusal "$root" 'another verifier is reserving a run'
+    require_refusal "$root" 'another verifier run is active or reserving'
     [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
     exec {lock_fd}<&-
 
@@ -295,7 +309,7 @@ run_admission_cases() {
             [ ! -s "$scope/concurrent.$index.err" ]
         else
             /usr/bin/grep -Eq \
-                'earlier verifier run remains|another verifier is reserving a run' \
+                'earlier verifier run remains|another verifier run is active or reserving' \
                 "$scope/concurrent.$index.err"
         fi
     done
@@ -349,11 +363,42 @@ for index in $(/usr/bin/seq 1 16); do
             --remove-private-root "$run" --expected-identity "$run_id"
     else
         /usr/bin/grep -Eq \
-            'earlier verifier run remains|another verifier is reserving a run' \
+            'earlier verifier run remains|another verifier run is active or reserving' \
             "$shared/concurrent.$index.err"
     fi
 done
 printf 'VERIFIER_VM_CROSS_ROOT_ADMISSION_NATIVE direct_blocks_acquisition=pass acquisition_blocks_direct=pass concurrent=16 winners=1\n' >&2
+
+scope=$workspace/lifecycle-distinct
+shared=$scope/shared
+root=$scope/private
+/usr/bin/mkdir -m 0700 -- "$scope" "$shared" "$shared/online-fetch-runs" "$root"
+function_file=$workspace/smoke-verifier-vm-authority.function.sh
+result=$(invoke "$root" authority-smoke '' 0 "$shared")
+run=${result% *}
+run_id=${result##* }
+marker=$(/usr/bin/find "$shared" -mindepth 1 -maxdepth 1 -type d -name 'run.*' -print)
+[[ "$marker" == "$shared"/run.* ]]
+[ "$marker" != "$run" ] && [ "$run_id" = "$(/usr/bin/stat -c '%d:%i' -- "$run")" ]
+[ "${marker##*/}" = "${run##*/}" ]
+[ "$(/usr/bin/find "$shared" -mindepth 1 -maxdepth 1 -type d -name 'run.*' | /usr/bin/wc -l)" -eq 1 ]
+marker_id=$(/usr/bin/stat -c '%d:%i' -- "$marker")
+require_refusal "$shared" 'earlier verifier run remains'
+require_refusal "$root" 'earlier verifier run remains' authority-smoke '' 0 "$shared"
+function_file=$workspace/online-fetch-vm.function.sh
+require_refusal "$shared/online-fetch-runs" 'earlier verifier run remains' authority-smoke '' 0 "$shared"
+/usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
+    --remove-private-root "$run" --expected-identity "$run_id"
+function_file=$workspace/smoke-verifier-vm-authority.function.sh
+require_refusal "$shared" 'earlier verifier run remains'
+/usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
+    --remove-empty-private-root "$marker" --expected-identity "$marker_id"
+result=$(invoke "$shared")
+run=${result% *}
+run_id=${result##* }
+/usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
+    --remove-private-root "$run" --expected-identity "$run_id"
+printf 'VERIFIER_VM_DISTINCT_ROOT_ADMISSION_NATIVE marker=blocks-direct-and-acquisition active_lock=retained readmission=pass\n' >&2
 
 HOST_UID=$uid HOST_GID=$gid
 source "$workspace/retire-disposable-vm-file.sh"

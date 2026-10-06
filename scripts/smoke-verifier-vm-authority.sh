@@ -520,13 +520,16 @@ elif [ "$MODE" = rust-audit ]; then
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=4096
 else
-    readonly VM_TIMEOUT_SECONDS=90
+    readonly VM_TIMEOUT_SECONDS=150
     readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
 fi
 
 RUN=
 RUN_ID=
+RUN_MARKER=
+RUN_MARKER_ID=
+RUN_ADMISSION_FD=
 VM_OWNER_PID=
 VM_OWNER_START=
 VM_PID=
@@ -583,22 +586,44 @@ fail() {
 }
 
 reserve_verifier_run() {
-    local descriptor root_id entry allocated acquisition_root
+    local descriptor root_id entry allocated acquisition_root shared_descriptor shared_id
     [ -d "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ] \
         && [ "$(/usr/bin/readlink -f -- "$RUN_ROOT")" = "$RUN_ROOT" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$RUN_ROOT")" = \
              "$HOST_UID:$HOST_GID:700" ] \
         || fail "run-root authority differs: $RUN_ROOT"
-    root_id=$(/usr/bin/stat -c '%d:%i' -- "$RUN_ROOT") \
-        || fail 'cannot identify the verifier-VM run root'
-    exec {descriptor}<"$RUN_ROOT" \
-        || fail 'cannot retain the verifier-VM run root'
+    [ -d "$INPUT_ROOT" ] && [ ! -L "$INPUT_ROOT" ] \
+        && [ "$(/usr/bin/readlink -f -- "$INPUT_ROOT")" = "$INPUT_ROOT" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$INPUT_ROOT")" = \
+             "$HOST_UID:$HOST_GID:700" ] \
+        || fail "shared verifier-VM run-root authority differs: $INPUT_ROOT"
+    shared_id=$(/usr/bin/stat -c '%d:%i' -- "$INPUT_ROOT") \
+        || fail 'cannot identify the shared verifier-VM run root'
+    exec {shared_descriptor}<"$INPUT_ROOT" \
+        || fail 'cannot retain the shared verifier-VM run root'
+    [ -d "/proc/$$/fd/$shared_descriptor" ] \
+        && [ "$(/usr/bin/stat -Lc '%d:%i:%u:%g:%a' -- \
+             "/proc/$$/fd/$shared_descriptor")" = "$shared_id:$HOST_UID:$HOST_GID:700" ] \
+        || fail 'retained shared verifier-VM run-root authority differs'
+    /usr/bin/flock --exclusive --nonblock "$shared_descriptor" \
+        || fail 'another verifier run is active or reserving'
+    if [ "$RUN_ROOT" = "$INPUT_ROOT" ]; then
+        descriptor=$shared_descriptor
+        root_id=$shared_id
+    else
+        root_id=$(/usr/bin/stat -c '%d:%i' -- "$RUN_ROOT") \
+            || fail 'cannot identify the verifier-VM run root'
+        exec {descriptor}<"$RUN_ROOT" \
+            || fail 'cannot retain the verifier-VM run root'
+    fi
     [ -d "/proc/$$/fd/$descriptor" ] \
         && [ "$(/usr/bin/stat -Lc '%d:%i:%u:%g:%a' -- \
              "/proc/$$/fd/$descriptor")" = "$root_id:$HOST_UID:$HOST_GID:700" ] \
         || fail 'retained verifier-VM run-root authority differs'
-    /usr/bin/flock --exclusive --nonblock "$descriptor" \
-        || fail 'another verifier is reserving a run; retry after its admission completes'
+    if [ "$RUN_ROOT" != "$INPUT_ROOT" ]; then
+        /usr/bin/flock --exclusive --nonblock "$descriptor" \
+            || fail 'another verifier run is active or reserving'
+    fi
     if [ "${MODE:-}" = linux-flutter-engine-build ] && { [ -e "$FLUTTER_ENGINE_STATE_ROOT" ] || [ -L "$FLUTTER_ENGINE_STATE_ROOT" ]; }; then
         [ -d "$FLUTTER_ENGINE_STATE_ROOT" ] && [ ! -L "$FLUTTER_ENGINE_STATE_ROOT" ] \
             && [ "$(/usr/bin/readlink -f -- "$FLUTTER_ENGINE_STATE_ROOT")" = "$FLUTTER_ENGINE_STATE_ROOT" ] \
@@ -623,25 +648,40 @@ reserve_verifier_run() {
         [ -z "$(/usr/bin/find "$ANDROID_ARTIFACT_STATE_ROOT" -mindepth 1 -maxdepth 1 -print -quit)" ] \
             || fail 'an earlier Android peer artifact remains; reuse it or explicitly reconcile it before building another'
     fi
-    for entry in "/proc/$$/fd/$descriptor"/run.*; do
+    for entry in "/proc/$$/fd/$shared_descriptor"/run.*; do
         [ -e "$entry" ] || [ -L "$entry" ] || continue
-        fail "earlier verifier run remains: $RUN_ROOT/${entry##*/}; inspect it and clear it only after its owned processes have exited"
+        fail "earlier verifier run remains: $INPUT_ROOT/${entry##*/}; inspect it and clear it only after its owned processes have exited"
     done
-    if [ "$RUN_ROOT" = "$INPUT_ROOT" ]; then
-        acquisition_root="/proc/$$/fd/$descriptor/online-fetch-runs"
-        if [ -e "$acquisition_root" ] || [ -L "$acquisition_root" ]; then
-            [ -d "$acquisition_root" ] && [ ! -L "$acquisition_root" ] \
-                && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$acquisition_root")" = \
-                     "$HOST_UID:$HOST_GID:700" ] \
-                || fail 'acquisition-VM run-root authority differs'
-            for entry in "$acquisition_root"/run.*; do
-                [ -e "$entry" ] || [ -L "$entry" ] || continue
-                fail "earlier verifier run remains: $INPUT_ROOT/online-fetch-runs/${entry##*/}; inspect it and clear it only after its owned processes have exited"
-            done
-        fi
+    acquisition_root="/proc/$$/fd/$shared_descriptor/online-fetch-runs"
+    if [ -e "$acquisition_root" ] || [ -L "$acquisition_root" ]; then
+        [ -d "$acquisition_root" ] && [ ! -L "$acquisition_root" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$acquisition_root")" = \
+                 "$HOST_UID:$HOST_GID:700" ] \
+            || fail 'acquisition-VM run-root authority differs'
+        for entry in "$acquisition_root"/run.*; do
+            [ -e "$entry" ] || [ -L "$entry" ] || continue
+            fail "earlier verifier run remains: $INPUT_ROOT/online-fetch-runs/${entry##*/}; inspect it and clear it only after its owned processes have exited"
+        done
     fi
-    allocated=$(/usr/bin/mktemp -d "/proc/$$/fd/$descriptor/run.XXXXXXXXXX") \
-        || fail 'cannot create the private verifier-VM run'
+    if [ "$RUN_ROOT" != "$INPUT_ROOT" ]; then
+        for entry in "/proc/$$/fd/$descriptor"/run.*; do
+            [ -e "$entry" ] || [ -L "$entry" ] || continue
+            fail "earlier verifier run remains: $RUN_ROOT/${entry##*/}; inspect it and clear it only after its owned processes have exited"
+        done
+        allocated=$(/usr/bin/mktemp -d "/proc/$$/fd/$shared_descriptor/run.XXXXXXXXXX") \
+            || fail 'cannot reserve the shared verifier-VM run marker'
+        RUN_MARKER="$INPUT_ROOT/${allocated##*/}"
+        RUN_MARKER_ID=$(/usr/bin/stat -c '%d:%i' -- "$allocated") \
+            || fail 'cannot identify the shared verifier-VM run marker'
+    fi
+    if [ "$RUN_ROOT" = "$INPUT_ROOT" ]; then
+        allocated=$(/usr/bin/mktemp -d "/proc/$$/fd/$descriptor/run.XXXXXXXXXX") \
+            || fail 'cannot create the private verifier-VM run'
+    else
+        allocated="/proc/$$/fd/$descriptor/${RUN_MARKER##*/}"
+        /usr/bin/mkdir -m 0700 -- "$allocated" \
+            || fail 'cannot create the private verifier-VM run paired with its shared marker'
+    fi
     RUN="$RUN_ROOT/${allocated##*/}"
     RUN_ID=$(/usr/bin/stat -c '%d:%i' -- "$allocated") \
         || fail 'cannot identify the private verifier-VM run'
@@ -649,11 +689,21 @@ reserve_verifier_run() {
         && [ "$(/usr/bin/readlink -f -- "$RUN_ROOT")" = "$RUN_ROOT" ] \
         && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$RUN_ROOT")" = \
              "$root_id:$HOST_UID:$HOST_GID:700" ] \
+        && [ "$(/usr/bin/stat -Lc '%d:%i:%u:%g:%a' -- \
+             "/proc/$$/fd/$shared_descriptor")" = \
+             "$shared_id:$HOST_UID:$HOST_GID:700" ] \
         && [ -d "$RUN" ] && [ ! -L "$RUN" ] \
         && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$RUN")" = \
              "$RUN_ID:$HOST_UID:$HOST_GID:700" ] \
+        && { [ -z "$RUN_MARKER" ] \
+            || { [ -d "$RUN_MARKER" ] && [ ! -L "$RUN_MARKER" ] \
+                && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$RUN_MARKER")" = \
+                     "$RUN_MARKER_ID:$HOST_UID:$HOST_GID:700" ]; }; } \
         || fail 'reserved verifier-VM run authority differs'
-    exec {descriptor}<&- || fail 'cannot close the verifier-VM admission descriptor'
+    if [ "$RUN_ROOT" != "$INPUT_ROOT" ]; then
+        exec {descriptor}<&- || fail 'cannot close the verifier-VM run-root admission descriptor'
+    fi
+    RUN_ADMISSION_FD=$shared_descriptor
 }
 
 engine_prepare_input_inventory() {
@@ -1535,8 +1585,8 @@ cleanup() {
                     retire_disposable_vm_file "$disposable" || cleanup_failed=1
                 done
             fi
-            printf 'verifier-VM authority smoke: retaining failed private diagnostics at %s; disposable VM disks are retired only after joined cleanup, and new runs are blocked until this directory is explicitly reconciled\n' \
-                "$RUN" >&2
+            printf 'verifier-VM authority smoke: retaining failed private diagnostics at %s; shared run marker: %s; disposable VM disks are retired only after joined cleanup, and new runs are blocked until retained state is explicitly reconciled\n' \
+                "$RUN" "${RUN_MARKER:-none}" >&2
         fi
     elif [ -n "$RUN" ]; then
         cleanup_failed=1
@@ -1566,6 +1616,18 @@ cleanup() {
             --remove-empty-private-root "$ARTIFACT_PUBLICATION_STATE_ROOT" \
             --expected-identity "$ARTIFACT_STATE_ROOT_ID" \
             || cleanup_failed=1
+    fi
+    if [ -n "$RUN_MARKER" ] \
+       && { [ -z "$RUN" ] || { [ "$RUN_COMPLETE" -eq 1 ] \
+            && [ "$status" -eq 0 ] && [ "$cleanup_failed" -eq 0 ]; }; }; then
+        /usr/bin/python3 -I -S "$CLEANUP_HELPER" \
+            --remove-empty-private-root "$RUN_MARKER" \
+            --expected-identity "$RUN_MARKER_ID" \
+            || cleanup_failed=1
+    fi
+    if [ -n "$RUN_ADMISSION_FD" ]; then
+        exec {RUN_ADMISSION_FD}<&- || cleanup_failed=1
+        RUN_ADMISSION_FD=
     fi
     [ "$cleanup_failed" -eq 0 ] || [ "$status" -ne 0 ] || status=1
     exit "$status"
@@ -3851,7 +3913,7 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     linux_flutter_test_receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=23 publication=noclobber admission=exact execution=guest-only cleanup=joined'
     require_exact_fixed_receipt \
-        'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 app_capsule=refused cleanup=joined' \
+        'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined' \
         'Linux app build/run admission result'
     linux_flutter_vm_receipt="LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=23 uid=4000 gid=4000 root=refused foreign=refused materializer=refused-before-files test_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_TEST" | /usr/bin/awk '{ print $1 }') helper_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" | /usr/bin/awk '{ print $1 }') source=readonly docker=retired network=none cleanup=joined"
     require_exact_fixed_receipt "$linux_flutter_test_receipt" 'native Linux app-capsule result'
@@ -3943,9 +4005,9 @@ require_exact_fixed_receipt \
     'generic cleanup default-path behavior'
 printf 'CLEANUP_DEFAULT_VM=pass uid=4000 process=preserved pidfile=preserved overlay=preserved source=checked cleanup=joined\n'
 require_exact_fixed_receipt \
-    'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 app_capsule=refused cleanup=joined' \
+    'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined' \
     'verifier-VM run admission result'
-printf 'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 app_capsule=refused cleanup=joined\n'
+printf 'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined\n'
 require_exact_fixed_receipt \
     'ANDROID_PEER_ARTIFACT=pass fixture=system-elf files=7 cases=22 publication=noclobber admission=exact execution=guest-only cleanup=joined' \
     'Android peer artifact authority result'

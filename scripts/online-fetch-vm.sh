@@ -121,6 +121,7 @@ fi
 
 RUN=
 RUN_ID=
+RUN_ADMISSION_FD=
 VM_OWNER_PID=
 VM_OWNER_START=
 VM_PID=
@@ -165,7 +166,7 @@ reserve_verifier_run() {
              "/proc/$$/fd/$parent_descriptor")" = "$parent_id:$HOST_UID:$HOST_GID:700" ] \
         || fail 'retained shared verifier-VM run-root authority differs'
     /usr/bin/flock --exclusive --nonblock "$parent_descriptor" \
-        || fail 'another verifier is reserving a run; retry after its admission completes'
+        || fail 'another verifier run is active or reserving'
     [ -d "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ] \
         && [ "$(/usr/bin/readlink -f -- "$RUN_ROOT")" = "$RUN_ROOT" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$RUN_ROOT")" = \
@@ -180,7 +181,7 @@ reserve_verifier_run() {
              "/proc/$$/fd/$descriptor")" = "$root_id:$HOST_UID:$HOST_GID:700" ] \
         || fail 'retained acquisition-VM run-root authority differs'
     /usr/bin/flock --exclusive --nonblock "$descriptor" \
-        || fail 'another verifier is reserving a run; retry after its admission completes'
+        || fail 'another verifier run is active or reserving'
     for entry in "/proc/$$/fd/$parent_descriptor"/run.*; do
         [ -e "$entry" ] || [ -L "$entry" ] || continue
         fail "earlier verifier run remains: $INPUT_ROOT/${entry##*/}; inspect it and clear it only after its owned processes have exited"
@@ -203,7 +204,7 @@ reserve_verifier_run() {
              "$RUN_ID:$HOST_UID:$HOST_GID:700" ] \
         || fail 'reserved acquisition-VM run authority differs'
     exec {descriptor}<&- || fail 'cannot close the acquisition-VM admission descriptor'
-    exec {parent_descriptor}<&- || fail 'cannot close the shared verifier-VM admission descriptor'
+    RUN_ADMISSION_FD=$parent_descriptor
 }
 
 git_closed() {
@@ -625,6 +626,10 @@ cleanup() {
     if [ "$RUN_COMPLETE" -eq 1 ] && [ "$status" -eq 0 ] && [ "$cleanup_failed" -eq 0 ]; then
         /usr/bin/printf 'ONLINE_FETCH_VM_OUTER=pass host_uid=%s source=%s network=qemu-user-only hostfwd=absent udp=denied listeners=causal docker=guest-only buildkit=guest-only git=pinned-deb cache=virtiofs-atomic cleanup=joined elapsed_seconds=%s receipt=%s\n' \
             "$HOST_UID" "$SOURCE_COMMIT" "$VM_ELAPSED_SECONDS" "$SUCCESS_RECEIPT_FINAL"
+    fi
+    if [ -n "$RUN_ADMISSION_FD" ]; then
+        exec {RUN_ADMISSION_FD}<&- || cleanup_failed=1
+        RUN_ADMISSION_FD=
     fi
     [ "$cleanup_failed" -eq 0 ] || [ "$status" -ne 0 ] || status=1
     exit "$status"

@@ -6374,7 +6374,7 @@ run_admission_output="$(
         /bin/bash "$VERIFY_REPO/scripts/test-verifier-vm-run-admission.sh"
 )" || fail 'numeric-nonroot verifier-VM run admission test failed'
 [ "$run_admission_output" = \
-  'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 app_capsule=refused cleanup=joined' ] \
+  'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined' ] \
     || fail "verifier-VM run admission result differs: $run_admission_output"
 printf '%s\n' "$run_admission_output"
 

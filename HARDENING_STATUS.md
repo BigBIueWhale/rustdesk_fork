@@ -10093,31 +10093,38 @@ three-slot engine budget. No retirement, replacement, failure or queue construct
 Two new executable queue regressions hold 32 retired operations open while all 32 replacement displays
 enter independently, refuse operation 65 without invocation or waiting, recover only after an actual
 old completion, preserve the replacement across a retired late error, and retire all permits. They also
-exercise same-display latest-only succession with no shared waiting capacity. Exact source
-`b67f7d461c6d573dfed6d2040bff11b7c5f26b19` (tree
-`7e8b40d643a3c6c074f809ce005b34336092372b`) passed the zero-NIC generated-bridge/Flutter checkpoint:
+exercise same-display latest-only succession with no shared waiting capacity. Correction `b67f7d46`'s
+production queue, model wiring and test bytes are unchanged at the current accepted source
+`d0a13c7a22c1a45f780ad081e4c8606a6091f5d7` (tree
+`6beb3f602b5990e6e185f422b9d85180bb20e0e9`), which passed the zero-NIC generated-bridge/Flutter checkpoint:
 21 suites/175 tests, observed outer terminal success, 317 VM seconds, read-only sealed inputs,
 no added host endpoint and joined Docker/QEMU/virtiofsd cleanup. Its normal source guard also had to
 succeed before generation/tests; no mutation catalog ran. Raw serial
-`.harness-state/verifier-vm/flutter-model-tests-run.fYnqshVdOb.serial.log` is 68,759 bytes,
-SHA-256 `54cd63838efa5a4048ddad331618451805f5a902dd9a580f8a7084935314dba1`.
+`.harness-state/verifier-vm/flutter-model-tests-run.rZ23u5R9mT.serial.log` is 67,526 bytes,
+SHA-256 `8a2bcd3d0ad50515a0f3081704039049bbb07856bccc10b0ac985ef341831532`.
 No run root or disposable disk remains. This is actual execution of the queue class with held futures,
 not a browser, real blocked image conversion, complete web caller wiring or a measured memory leak.
 
 Actual web compilation, browser/engine completion and caller wiring, aggregate frame/image byte bounds,
 native overload/failure, memory/latency/wake measurements and sustained replacement remain OPEN.
-The 317-second generated-bridge checkpoint is not the desired fast inner loop. The fixed
-`scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --frame-queue` shard is implemented,
-but runtime acceptance and its measured pace are pending. It runs the unchanged production queue and
-all 24 existing queue regressions, with exact suite/name/count and terminal-success validation.
+The 317-second generated-bridge checkpoint remains an integration check. For queue changes, use the fixed
+`scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --frame-queue` shard: the same accepted
+source passed all 24 unchanged queue regressions with exact suite/name/count and terminal-success
+validation in 110 VM seconds. This is one focused measurement, not a universal verification-time bound.
 The same zero-NIC execution authority retains pinned Flutter, the complete read-only Pub closure,
 offline lockfile enforcement, listener invariance and joined cleanup. Queue source is read-only;
 only a private guest copy receives Pub/test output. It omits unused Rust/LLVM/Cargo/bridge generation,
 uses a 300-second VM budget with 4 GiB guest/2 GiB container memory, and leaves the 21-suite/175-test
-generated-bridge checkpoint intact. Parser regressions cover both result profiles and refusal of
-wrong/duplicate/missing queue inventory, failure, skip, unfinished work and post-final events.
-Neither source presence nor parser tests establish execution or fast feedback; the new shard and
-the shared full-model path still need accepted runtime transactions on this candidate.
+generated-bridge checkpoint intact. Three parser tests passed in each transaction; they cover both
+result profiles and refusal of wrong/duplicate/missing queue inventory, failure, skip, unfinished work
+and post-final events.
+Both observed outer exits were zero, with no added host endpoint and joined cleanup; neither run root
+nor disposable disk remains. Focused raw serial
+`.harness-state/verifier-vm/flutter-model-tests-run.yLm3ZApz3e.serial.log` is 66,764 bytes,
+SHA-256 `975735c9ee815f0e2e87e65b0b3c3d4a7b28f39d29a1bd70d1c20b9c08a87c19`.
+The parser tests validate result acceptance only. The queue shard executes the production Dart class
+with held futures, not the FFI caller, actual engine conversion, browser, full native connection or
+presentation/resource/latency acceptance. Broader repeated-run pace engineering remains separate.
 The source-visible gap did not establish causation for the Android/Windows reports.
 
 ### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority

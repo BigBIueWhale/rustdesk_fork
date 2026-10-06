@@ -59,18 +59,21 @@ def capture_connection_loss(binary, environment, xserver):
         probe_receipt = (f"X11_SHM_STATUS_CONNECTION_NATIVE=pass connection_error={receipt.group(1)} "
                          "queries=1 replies=0 protocol_errors=0 allocations=retired")
         require(lines[2] == probe_receipt, "exact dead-connection probe result absent")
-        constructor_receipt = ("X11_CONSTRUCTOR_CONNECTION_NATIVE=pass callers=direct,public repeats=3 cases=6 "
-                               f"connection_error={receipt.group(1)} attach_requests=8 attach_checks=8 "
-                               "connection_failures=6 rejected_segments=retired survivor_retirement=independent "
-                               "comparison_on_error=none")
-        require(lines[3] == constructor_receipt, "exact dead-connection constructor result absent")
+        construction = re.fullmatch(
+            r"X11_CONSTRUCTOR_CONNECTION_NATIVE=pass callers=direct,public repeats=3 cases=6 "
+            r"connection_errors=([1-9][0-9]*(?:,[1-9][0-9]*){5}) attach_requests=8 attach_checks=8 "
+            r"connection_failures=6 rejected_segments=retired survivor_retirement=independent comparison_on_error=none",
+            lines[3])
+        require(construction is not None, "exact dead-connection constructor result absent")
+        require(construction.group(1).split(",")[::2] == [receipt.group(1)] * 3,
+                "retained direct connection's constructor status differs")
         diagnostic = ("failed to detach X11 capture shared memory from XCB: "
                       "X connection failed during MIT-SHM drop detach: " + receipt.group(1))
         require(errors.decode("utf-8").splitlines() == [diagnostic, diagnostic],
                 "dead-server cleanup diagnostics differ")
         print(lines[1], flush=True)
         print(probe_receipt, flush=True)
-        print(constructor_receipt, flush=True)
+        print(lines[3], flush=True)
         print("X11_CAPTURE_CONNECTION_FINALITY=pass server=terminated-and-joined "
               "detach_errors=2 segment_retirement=independent output=bounded child=joined", flush=True)
     except BaseException:

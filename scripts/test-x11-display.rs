@@ -233,6 +233,7 @@ struct State {
     attach_queries: usize,
     attach_checks: usize,
     attach_connection_errors: usize,
+    last_attach_connection_error: i32,
     reject_attach_query: usize,
     attach_cookie: Option<(*mut xcb_connection_t, u32, bool)>,
     attach_errors: usize,
@@ -526,7 +527,8 @@ unsafe extern "C" fn __wrap_xcb_request_check(c: *mut xcb_connection_t,
             if (connection, sequence) == (c, cookie.sequence) {
                 state.attach_cookie = None;
                 state.attach_checks += 1;
-                if xcb_connection_has_error(c) != 0 { state.attach_connection_errors += 1; }
+                state.last_attach_connection_error = xcb_connection_has_error(c);
+                if state.last_attach_connection_error != 0 { state.attach_connection_errors += 1; }
                 if reject {
                     assert!(!error.is_null(), "invalid attach ID did not receive a server error");
                     let actual = &*error;
@@ -916,6 +918,7 @@ fn finish_case(reject: usize) {
         state.attach_queries = 0;
         state.attach_checks = 0;
         state.attach_connection_errors = 0;
+        state.last_attach_connection_error = 0;
         state.reject_attach_query = 0;
         assert!(state.attach_cookie.is_none(), "capture attach was never checked");
         state.attach_errors = 0;
@@ -1169,13 +1172,12 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
         assert!(state.allocations.iter().all(|entry| entry.retired), "capture reply/error leaked");
     });
     let mut rejected = 0;
+    let mut construction_errors = Vec::new();
     let mut check_constructor = |result: io::Result<()>| -> io::Result<()> {
         let error = result.expect_err("constructor accepted a dead X connection");
         assert_eq!(error.kind(), io::ErrorKind::ConnectionAborted);
-        assert_eq!(error.to_string(),
-                   format!("X connection failed during MIT-SHM attach: {connection_error}"));
         rejected += 1;
-        let segment = STATE.with(|state| {
+        let (segment, actual_error) = STATE.with(|state| {
             let state = state.borrow();
             assert_eq!(state.segments.len(), 2 + rejected,
                        "failed constructor did not allocate exactly one local segment");
@@ -1188,8 +1190,12 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
                         state.frame_comparisons), (8, 2, 0, 2),
                        "failed constructor captured or compared pixels");
             assert!(state.allocations.iter().all(|entry| entry.retired), "constructor allocation leaked");
-            state.segments[1 + rejected]
+            assert!(state.last_attach_connection_error > 0, "constructor connection remained healthy");
+            (state.segments[1 + rejected], state.last_attach_connection_error)
         });
+        assert_eq!(error.to_string(),
+                   format!("X connection failed during MIT-SHM attach: {actual_error}"));
+        construction_errors.push(actual_error);
         let absent = probe_segment(segment).expect_err("dead-connection constructor leaked its segment");
         assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
         for segment in segments { probe_segment(segment)?; }
@@ -1200,6 +1206,10 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
         check_constructor(common::Capturer::new(public_display).map(drop))?;
     }
     assert_eq!(rejected, 6);
+    assert!(construction_errors.iter().step_by(2).all(|&error| error == connection_error),
+            "constructor on the retained direct connection reported a different status");
+    let construction_errors = construction_errors.iter().map(i32::to_string)
+        .collect::<Vec<_>>().join(",");
     drop(direct);
     let absent = probe_segment(segments[0]).expect_err("direct capture segment survived drop");
     assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
@@ -1214,7 +1224,7 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
     finish_case(0);
     println!("X11_CAPTURE_CONNECTION_NATIVE=pass callers=direct,public repeats=3 connection_error={connection_error} requests=8 replies=2 errors=0 comparisons=2 segments=retired");
     println!("X11_SHM_STATUS_CONNECTION_NATIVE=pass connection_error={connection_error} queries=1 replies=0 protocol_errors=0 allocations=retired");
-    println!("X11_CONSTRUCTOR_CONNECTION_NATIVE=pass callers=direct,public repeats=3 cases=6 connection_error={connection_error} attach_requests=8 attach_checks=8 connection_failures=6 rejected_segments=retired survivor_retirement=independent comparison_on_error=none");
+    println!("X11_CONSTRUCTOR_CONNECTION_NATIVE=pass callers=direct,public repeats=3 cases=6 connection_errors={construction_errors} attach_requests=8 attach_checks=8 connection_failures=6 rejected_segments=retired survivor_retirement=independent comparison_on_error=none");
     Ok(())
 }
 

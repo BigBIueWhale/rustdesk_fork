@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-1bc9a81c16a8b71cf3069f83256cd470597317aaa8a2609155e520830afabd6c  requirements.html
+c9399e890b378bca022b9e0f6c6859cb5e7e2b40830f31a57f49ef1c1921a9b3  requirements.html
 ```
 
 ## Current Verdict
@@ -78,6 +78,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Current documentation-sensitive item | Current disposition |
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
+| Shared resource-owner contracts (R-S11gx–R-S11hf) | The specification retains resource bounds, exact-owner transitions, executable regression requirements, and target-native/release acceptance without asserting source closure or symptom causation. R-S11gx–R-S11hd retain current source and regression commands but not obsolete inspection transcripts, mutation scoreboards, or superseded input-availability snapshots. Historical receipts are not native acceptance; current availability and all unproved obligations remain in the authority/open matrices. |
 | Gradle acquisition/output contract (R-S11ck/R-S11cl/R-S11cr/R-S11fv/R-S11fz, Appendix C #231) | The specification has one guest-local writable Gradle output, read-only canonical/projected SDK inputs, and post-exit trusted import into an unmounted durable candidate. Writable SDK cloning, SDK exchange and two-output commit/recovery clauses are absent from the current Gradle contract. The appendix retains the original threat finding but has a timeless required disposition. Superseded transaction history and gate-count claims are absent from R-S11cl's current-state entry; retained producer/reuse evidence and all unproved negatives, replacement, native/artifact/performance/reproduction/review obligations remain explicit there and under R-S11fv/R-S11fz. This is documentation reconciliation, not a new runtime result. |
 | Broad source-conformance documentary coupling | Literal requirement/ledger wording and document mutations are absent from the reviewed main/Apple/Dart gates and authority, acquisition/output, native-loader, whiteboard, Unix/Linux ownership, macOS helper-build/variadic-ABI, Windows build-harness, DACL/URL and libvirt-storage, GitHub automation, audio-mailbox, display-selection, and session-stream source helpers. Audio, display and whiteboard helpers carry no normative-document digest dependency. Workflow protection rests on closed inventory and inert schema, not explanatory prose or comment markers. Functional source predicates/mutations, pins/manifests, artifact/provenance checks, executable test commands, behavioral fixtures, caller wiring, tracked-document presence, and isolation checks remain; Apple's compilation matrix is unchanged. The stale Linux admission checker is absent, while its retained cached-UID policy test cannot establish receiver wiring. These are supplementary guards, not native, signed-artifact, privilege, performance or release acceptance. The crypto-audit wording checker and its caller are absent; the external-audit handoff and real PAKE/wire tests remain. Broader documentation/test-quality and all unproved runtime/release obligations remain OPEN. |
 | Windows build-harness checks | The production source predicates and seven bounded behavioral suites remain. The redundant 263-case source-string mutation catalog is absent; four focused regressions retain the default-feature and diagnostic-capture rejection branches, which raise the defined `VerificationError`. Each case requires its exact intended error, with no optional error-match bypass. Source loading, validation, behavioral commands/timeouts, CLI and caller wiring are unchanged. The retained cases and suites have not executed on this source in isolation; checker runtime acceptance remains OPEN. Syntax and structural preservation checks do not establish Windows native, installed-service, artifact, focus/display, resource or release behavior. |
@@ -976,7 +977,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `1bc9a81c16a8b71cf3069f83256cd470597317aaa8a2609155e520830afabd6c  requirements.html`.
+Current normative specification SHA-256: `c9399e890b378bca022b9e0f6c6859cb5e7e2b40830f31a57f49ef1c1921a9b3  requirements.html`.
 
 ### Current authority and source closure
 
@@ -10316,6 +10317,17 @@ R-V3 external review; causation; and complete connection-flow correctness and pe
 
 **SOURCE IMPLEMENTED; FOUR EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED; SOURCE/MUTATION
 THEATER DELETED; EXACT CURRENT NATIVE, PERFORMANCE, ARTIFACT, AND EXTERNAL EVIDENCE OPEN.**
+
+**Evidence boundary for R-S11gx–R-S11hd.** Historical inspection receipts established
+parser/syntax, focused source-gate, and document-size results only; they executed none of the
+Rust regressions or target-native socket/CM/clipboard/tray/power behavior named below.
+The obsolete source-string/mutation verifiers and duplicate workspace dispatches are absent;
+Git history and the audit retain their deletion and inspection provenance. Those receipts
+are not current Rust, native, installed, or release acceptance. Current input availability
+is recorded in the service-owned authority matrix above, not in superseded per-slice
+asset-availability snapshots. Named runtime results elsewhere retain their exact artifact,
+scenario, and evidence-layer scope; this reconciliation adds no behavior verdict.
+
 Platforms: shared Android, iOS, Windows, Linux, and macOS viewer/controlled transport. Surface:
 ordinary and receipt-bearing post-CPace sends through `FramedStream`, its bounded `WriterCommand`
 FIFO, and the sole split-sink writer task.
@@ -10347,28 +10359,6 @@ Four executable Rust regressions remain in `libs/hbb_common/src/tcp.rs`:
 The shared gate retains the direct command
 `cargo test -p hbb_common --lib r_s11gx_ --color never`. This is the relevant executable regression
 entry point; its actual execution remains an evidence obligation and is not inferred from source.
-
-The deleted `scripts/verify-keyed-writer-budget.py` was a 456-line source parser with 25 textual
-mutations. It never invoked Cargo or Tokio, opened a socket, created backpressure, exercised a sink,
-or observed nonce, delivery, latency, memory, task, or handle finality. The duplicate keyed-writer
-parser, mutation catalog, dispatch, source-map entry, and adjacency fixtures were removed from
-`scripts/verify-verifier-workspace.py`; shared and Apple calls to the deleted focused parser were
-removed, and adjacent verifier fixtures were made exact. R-T18, R-S11gx, and Appendix C #359 now
-state that these source/mutation/script-wiring checks are not behavioral evidence.
-
-No product source changed in this cleanup slice. On the final pre-commit bytes, the immutable local
-inspection image `sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea`
-ran as numeric non-root with no network, no capabilities, no-new-privileges, a read-only repository,
-and bounded CPU, memory, PIDs, and tmpfs. All 125 Python scripts passed AST parsing;
-`requirements.html` and the three changed/shared shell entry points parsed; the independent
-workspace baseline passed; and the exact changed adjacency mutation in each surviving CM egress,
-controlled egress, and display-selection verifier was rejected. Native-codec binding passed, the
-ledger measured 1,117,479 UTF-8 bytes / 372,493 estimated tokens, `git diff --check` passed, and the
-host listener snapshot remained byte-identical at
-`e5c30f61cd0c6495b4719f10dc914ddb2feab91f06f611097f032292f97fa2a4` before and after. The
-inspection image has no Cargo, and the exact pinned dev-check image
-`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` is absent. No image was
-pulled or built, no host Rust command ran, and no Rust/native or product behavior is claimed.
 
 Remaining STOP-SHIP evidence includes exact-current native execution on every supported target;
 real `FramedStream` socket backpressure, sink-failure, drain, abort, nonce/non-delivery, latency, and
@@ -10416,27 +10406,6 @@ The shared verifier retains the direct command
 `cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never`. Its execution—not its
 presence—is the relevant regression evidence.
 
-The deleted `scripts/verify-cm-egress-budget.py` was an 824-line source parser with textual mutation.
-It opened no CM stream or socket, ran no Cargo/Tokio/native process, and observed no filesystem,
-ordering, terminal cause, latency, memory, task, or handle outcome. Its duplicate workspace parser,
-mutation inventory, dispatch, source-map entry, and adjacency coupling were deleted; shared/Apple
-calls were removed and the surviving display-selection fixture now names only surviving dispatches.
-The same deletion removes its non-behavioral R-S11ha and R-S11is source assertions. No product source
-changed in this cleanup slice.
-
-In immutable inspection image
-`sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea`, run as numeric nonroot
-with no network or ports, read-only root/repository, dropped capabilities, no-new-privileges, and
-bounded resources, all 123 Python scripts parsed; requirements HTML and the affected shell gates
-parsed; the reduced independent workspace baseline passed; the exact surviving display-verifier
-adjacency mutation was present and rejected; native-codec synchronization and the status-size gate
-passed; and host `git diff --check` passed. Exact pre/post host listener bytes matched at SHA-256
-`e5c30f61cd0c6495b4719f10dc914ddb2feab91f06f611097f032292f97fa2a4`. The exact pinned devcheck
-image, authenticated `online/` closure, repository Windows golden, and Android harness state are
-absent, so none of the retained Rust or installed/native scenarios can run from current authoritative
-assets. No substitute or unrelated image was used; no image was pulled or built, no host Rust command
-ran, and no product/native behavior is claimed.
-
 Remaining STOP-SHIP evidence is the current installed/native transaction itself: complete desktop
 and Android CM/file operations after Login, both hops, saturation and terminal-first refusal, stale
 generation, abrupt owner loss, reconnect, ordering, latency, memory, task/handle finality, and cleanup;
@@ -10471,27 +10440,6 @@ Existing FUSE tests exercise exact controlled-route acquisition. The shared runn
 `cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never`.
 These are executable in-process state-machine tests, not native clipboard, Windows ABI,
 viewer/CM/FUSE lifecycle, or installed-artifact evidence.
-
-The 1,463-line `verify-clipboard-route-budget.py` and 1,450 lines of duplicated workspace
-loading, source matching, mutation catalog, dispatch, and adjacency coupling were deleted.
-The script only searched and rewrote source text while claiming R-S11gz, R-S11it, and
-R-S11iu coverage; it never ran Rust, Dart, Kotlin, Flutter, Windows, Android, IPC, or a
-clipboard route. Shared and Apple invocations were removed and four neighboring mutation
-fixtures were retargeted to the surviving dispatch sequence. Requirements and Appendix C
-now treat executable state transitions and current target observation as evidence and
-explicitly reject source matching, deliberate mutation, script wiring, and workspace
-parsing as behavioral proof.
-
-A confined structural pass in immutable image
-`sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea`
-passed Python AST and requirements HTML parsing, shared/Apple/Dart shell syntax, the
-reduced workspace baseline, all four changed adjacency mutations, native-codec
-synchronization, the status-size gate, and `git diff --check`. It used no network,
-ports, capabilities, writable repository/root, elevated user, or unbounded resources;
-the exact host listener inventory was unchanged. No product/native test ran. The
-repository `online/` closure, pinned devcheck image, and repository-owned Windows
-golden VM are absent, so the retained Rust/Dart/Kotlin/native scenarios receive no new
-behavior verdict.
 
 Exact current Windows/Linux/macOS execution must still cover native ABI identity, viewer,
 Unix-controlled, Windows-CM, and FUSE routes through connection/reconnect, refusal,
@@ -10555,38 +10503,15 @@ stale generation preserving its replacement. The shared runner retains
 never`. These are executable state-machine tests; they do not by themselves observe an OS
 clipboard callback or target lifecycle.
 
-The 429-line `verify-clipboard-listener-ownership.py` and 426 lines of duplicated workspace
-loading, source matching, mutation catalog, dispatch, and adjacency coupling were deleted.
-They only searched and deliberately rewrote source text; they never executed Rust, the
-native clipboard master, viewer or controlled workers, an Apple target, or a target OS.
-Shared and Apple invocations of that script were removed, while neighboring verifier
-fixtures were retargeted to the surviving dispatch sequence. R-S11hb and Appendix C #363
-now explicitly reject source matching, deliberate mutation, and script wiring as
-behavioral proof and require direct target-runtime lifecycle, correctness, latency, and
-resource evidence.
-
-In the existing immutable inspection image
-`sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea`,
-with no network, a read-only repository/root, numeric non-root identity, no capabilities,
-`no-new-privileges`, and bounded CPU/memory/PIDs/private tmpfs, Python AST and requirements
-HTML parsing, shared/Apple/Dart shell syntax, the reduced independent workspace baseline,
-native-codec watch, status-size gate, and each of the five changed neighboring adjacency
-mutations passed. A stable final targeted run left the exact host listener inventory
-unchanged. The container executed no Rust or native product/test code.
-
-The exact pinned devcheck/target builder inputs and authenticated repository `online/`
-closure remain unavailable locally, so the retained Rust tests were not compiled or run
-in this slice and receive no new result. Required evidence remains exact current Windows,
-Linux, and macOS execution of master startup/callback delivery, viewer and controlled
+Required evidence remains exact current Windows, Linux, and macOS execution of
+master startup/callback delivery, viewer and controlled
 subscriptions, focus/background/reconnect/replacement, every error/retirement edge,
 native clipboard correctness, latency and retained thread/handle/memory finality;
 physical Android and Windows symptom reproduction; cross-version and cross-platform
 behavior; capture-through-compositor timing; sustained coexistence/resource/performance
 soak; cold R-B2/R-B10 equality; installed artifacts/services; independent reproduction;
 R-V3 external review; causation; and the complete connection flow being correct and
-performant. This slice touches no host/Haggai RustDesk process, service, configuration,
-listener, firewall/network state, VM/device, image/cache, unrelated workload, or OS
-privilege boundary.
+performant.
 
 ### R-S11hc/R-S11e-241 — latest-state Windows tray session-count ownership (2026-08-20)
 
@@ -10612,28 +10537,14 @@ path was added.
 Four Rust regressions exercise latest-state collapse, unchanged-state silence,
 receiver-retirement refusal, and publisher-retirement observation. The shared runner keeps
 its exact `cargo test --lib --features linux-pkg-config,flutter tray::tests:: --color never`
-invocation. The 310-line `verify-tray-session-count-mailbox.py` and 390 lines of duplicated
-workspace coupling were deleted because they only matched and deliberately mutated source
-strings; they never executed Tokio, the IPC poller, Tao, or Windows. R-S11hc and Appendix C
-#364 now require the executable state-machine regressions plus exact Windows main-IPC,
-tooltip, focus/session, latency, poller-retirement, and bounded-resource observation.
+invocation.
 
-Confined Python AST/HTML parsing, shared/Apple/Dart shell syntax, the reduced independent
-workspace baseline, requirements-digest synchronization, native-codec watch, status-size
-gate, and `git diff --check` passed. The non-networked container left the exact host listener
-inventory unchanged (`e5c30f61cd0c6495b4719f10dc914ddb2feab91f06f611097f032292f97fa2a4`).
-
-Exact current Windows compilation and tray execution remain open. The authenticated
-repository `online/` closure, pinned devcheck/Windows helper inputs, and repository-owned
-golden QCOW2 are absent; unrelated local Android emulator images are not RustDesk evidence
-or test authority. The retained Rust tests were therefore not compiled or executed and
-receive no new behavior verdict. Required evidence still includes an exact candidate in a
-disposable zero-interface Windows VM, installed-service and real tray behavior,
+Exact current Windows compilation and native tray execution remain OPEN. Required evidence
+includes an exact candidate in a disposable zero-interface Windows VM, real main-IPC
+polling and Tao tooltip updates, exact poller retirement, installed-service behavior,
 focus/minimize/session transitions, sustained thread/handle/memory and latency soak, cold
 R-B2/R-B10 equality, independent reproduction, R-V3 external review, and the complete
-connection flow remaining correct and performant. This slice touches no host/Haggai RustDesk process, service,
-configuration, listener, firewall/network state, VM/device, image/cache, unrelated workload,
-or OS privilege boundary.
+connection flow remaining correct and performant.
 
 ### R-S11hd/R-S11e-242 — coherent latest-state wakelock snapshot ownership (2026-08-21)
 
@@ -10661,26 +10572,16 @@ Four Rust regressions exercise newest-snapshot collapse, identical-snapshot opti
 reevaluation, receiver-retirement refusal, and publisher-retirement observation. The shared
 runner retains its focused
 `cargo test --lib --features linux-pkg-config,flutter server::connection::wakelock_snapshot_tests:: --color never`
-invocation. The 510-line `verify-wakelock-snapshot-mailbox.py` and 691 lines of duplicated
-workspace coupling were deleted: they only matched and deliberately mutated source strings,
-never executed Rust or a platform wakelock, and therefore supplied no behavioral evidence.
-R-S11hd and Appendix C #365 now require the executable state-machine regressions plus exact
-target-runtime lifecycle, latency, power-state, and bounded-resource observation.
+invocation.
 
-Confined Python AST/HTML parsing, shared and Apple shell syntax, the reduced independent
-workspace baseline, the synchronized requirements digest, native-codec watch, status-size
-gate, and `git diff --check` passed. The non-networked container left the exact host listener
-inventory unchanged (`e5c30f61cd0c6495b4719f10dc914ddb2feab91f06f611097f032292f97fa2a4`).
-The exact pinned devcheck image and repository `online/` closure are absent, so the four Rust
-regressions were not compiled or executed and no native verdict is inferred. Physical Android
-task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect behavior; Linux/macOS/iOS and cross-version
+Exact target-runtime admission/removal/setting changes, worker and power-state lifecycle,
+latency and bounded-resource finality remain OPEN. Physical Android task-swipe/reopen/Force-Stop
+and Windows focus/minimize/reconnect behavior; Linux/macOS/iOS and cross-version
 behavior; weeks-old deployed artifacts; capture-through-compositor timestamps and explicit
 latency/queue budgets; sustained connection/reconnect/focus/background/file/control/
 resource/power/performance soak; clean cold R-B2/R-B10 equality; installed artifacts and
 service behavior; independent reproduction; R-V3 external review; causation; and proof that
-the complete connection flow is correct and performant remain release obligations. This
-slice touches no host RustDesk process, configuration, service, listener, firewall/network
-state, VM, Android device/service, unrelated workload, or OS privilege boundary.
+the complete connection flow is correct and performant remain release obligations.
 
 ### R-S11he/R-S11e-243 — serialized controlled-side status refresh ownership
 

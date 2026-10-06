@@ -150,7 +150,8 @@ def main():
                        "get_monitors_monitors_iterator", "monitor_info_next"):
             command += ["-C", f"link-arg=-Wl,--wrap=xcb_randr_{symbol}"]
         for symbol in ("xcb_get_setup", "xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_atom_name_name", "xcb_get_geometry_reply",
-                       "xcb_shm_get_image", "xcb_shm_get_image_reply", "xcb_shm_attach_checked", "xcb_request_check"):
+                       "xcb_shm_get_image", "xcb_shm_get_image_reply", "xcb_shm_attach_checked",
+                       "xcb_shm_detach_checked", "xcb_request_check"):
             command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
         subprocess.run(command, env=environment, check=True, timeout=30)
         binaries[variant] = binary
@@ -235,6 +236,18 @@ def main():
                 r"attach_requests=3 capture_requests=3 capture_replies=3 attach_errors=1 survivor=fresh retry=valid segments=retired",
                 attach_lines[0]) is not None, "exact attach rejection/retry result absent")
             print(attach_lines[0], flush=True)
+            construction = subprocess.run([str(binaries["corrected"]), "capture-construction-failure"],
+                                          env=environment, capture_output=True, text=True, timeout=15)
+            construction_receipt = ("X11_CAPTURE_CONSTRUCTION_NATIVE=pass faults=local-attach,removal-pending "
+                                    "cause=kernel-invalid-argument callers=direct,public repeats=16 cases=64 "
+                                    "rejected_segments=retired xcb_detach=checked survivor=fresh retry=valid "
+                                    "pixels=red,blue allocations=retired")
+            require(construction.returncode == 0 and not construction.stderr
+                    and len(construction.stdout) <= 4096
+                    and construction.stdout.splitlines() == [construction_receipt,
+                        "X11_DISPLAY_COMPONENT=pass scenario=capture-construction-failure replies=exact errors=explicit cleanup=joined"],
+                    f"native local-construction failure cleanup/retry differs: {construction}")
+            print(construction_receipt, flush=True)
             layout = subprocess.run([str(binaries["corrected"]), "capture-reply-layout"], env=environment,
                                     capture_output=True, text=True, timeout=15)
             layout_receipt = ("X11_CAPTURE_REPLY_NATIVE=pass received_header=injected fields=size,depth,visual "

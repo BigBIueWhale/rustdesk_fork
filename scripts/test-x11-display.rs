@@ -185,6 +185,9 @@ struct Allocation {
 #[derive(Clone, Copy)]
 enum CaptureReplyFault { Size, Depth, Visual, Missing }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConstructionFault { ServerAttach, LocalAttach, RemovalPending }
+
 #[derive(Default)]
 struct State {
     allocations: Vec<Allocation>,
@@ -213,6 +216,13 @@ struct State {
     rejected_attach_cookie: Option<(*mut xcb_connection_t, u32)>,
     attach_errors: usize,
     attach_error: Option<(u8, u8, u16, u32)>,
+    construction_fault: Option<ConstructionFault>,
+    construction_segment: Option<i32>,
+    construction_errno: Option<i32>,
+    detach_queries: usize,
+    detach_checks: usize,
+    detach_errors: usize,
+    detach_cookie: Option<(*mut xcb_connection_t, u32)>,
     frame_comparisons: usize,
     segments: Vec<i32>,
 }
@@ -232,16 +242,68 @@ pub mod libc {
         pub fn system_free(pointer: *mut c_void);
         #[link_name = "shmget"]
         fn system_shmget(key: c_int, size: usize, flags: c_int) -> c_int;
-        pub fn shmat(id: c_int, addr: *const c_void, flags: c_int) -> *mut c_void;
+        #[link_name = "shmat"]
+        fn system_shmat(id: c_int, addr: *const c_void, flags: c_int) -> *mut c_void;
         pub fn shmdt(addr: *const c_void) -> c_int;
-        pub fn shmctl(id: c_int, cmd: c_int, status: *mut c_void) -> c_int;
+        #[link_name = "shmctl"]
+        fn system_shmctl(id: c_int, cmd: c_int, status: *mut c_void) -> c_int;
+        fn __errno_location() -> *mut c_int;
     }
     pub unsafe fn shmget(key: c_int, size: usize, flags: c_int) -> c_int {
         let id = system_shmget(key, size, flags);
         if id >= 0 {
-            super::STATE.with(|state| state.borrow_mut().segments.push(id));
+            super::STATE.with(|state| {
+                let mut state = state.borrow_mut();
+                state.segments.push(id);
+                if state.construction_fault.is_some() {
+                    assert!(state.construction_segment.replace(id).is_none());
+                }
+            });
         }
         id
+    }
+    fn take_construction_fault(id: c_int, fault: super::ConstructionFault) -> bool {
+        super::STATE.with(|state| {
+            let mut state = state.borrow_mut();
+            if state.construction_segment == Some(id) && state.construction_fault == Some(fault) {
+                state.construction_fault = None;
+                true
+            } else {
+                false
+            }
+        })
+    }
+    fn record_kernel_refusal() {
+        let errno = std::io::Error::last_os_error().raw_os_error();
+        assert_eq!(errno, Some(22), "selected invalid syscall did not receive EINVAL");
+        super::STATE.with(|state| {
+            assert!(state.borrow_mut().construction_errno.replace(22).is_none());
+        });
+        // The observer must not alter the syscall error consumed by production.
+        unsafe { *__errno_location() = 22; }
+    }
+    pub unsafe fn shmat(id: c_int, addr: *const c_void, flags: c_int) -> *mut c_void {
+        let reject = take_construction_fault(id, super::ConstructionFault::LocalAttach);
+        // Only the selected real segment's address changes. Without SHM_RND,
+        // address 1 is unaligned; the kernel supplies the actual failure/errno.
+        let result = system_shmat(id, if reject { 1usize as *const c_void } else { addr }, flags);
+        if reject {
+            assert_eq!(result as isize, -1, "unaligned local attachment succeeded");
+            record_kernel_refusal();
+        }
+        result
+    }
+    pub unsafe fn shmctl(id: c_int, cmd: c_int, status: *mut c_void) -> c_int {
+        let reject = cmd == IPC_RMID
+            && take_construction_fault(id, super::ConstructionFault::RemovalPending);
+        // Refuse one transition using an invalid ID, without removing the actual
+        // segment. The owner's subsequent Drop must retire its real ID normally.
+        let result = system_shmctl(if reject { -1 } else { id }, cmd, status);
+        if reject {
+            assert_eq!(result, -1, "invalid removal ID succeeded");
+            record_kernel_refusal();
+        }
+        result
     }
     pub unsafe fn free(pointer: *mut c_void) {
         let deferred = super::STATE.with(|state| {
@@ -321,6 +383,9 @@ extern "C" {
     fn real_attach(c: *mut xcb_connection_t, shmseg: xcb_shm_seg_t,
         shmid: u32, read_only: u8) -> xcb_void_cookie_t;
     #[cfg(corrected)]
+    #[link_name = "__real_xcb_shm_detach_checked"]
+    fn real_detach(c: *mut xcb_connection_t, shmseg: xcb_shm_seg_t) -> xcb_void_cookie_t;
+    #[cfg(corrected)]
     #[link_name = "__real_xcb_request_check"]
     fn real_request_check(c: *mut xcb_connection_t, cookie: xcb_void_cookie_t)
         -> *mut xcb_generic_error_t;
@@ -347,11 +412,32 @@ unsafe extern "C" fn __wrap_xcb_shm_attach_checked(c: *mut xcb_connection_t,
 
 #[cfg(corrected)]
 #[no_mangle]
+unsafe extern "C" fn __wrap_xcb_shm_detach_checked(c: *mut xcb_connection_t,
+    shmseg: xcb_shm_seg_t) -> xcb_void_cookie_t {
+    let cookie = real_detach(c, shmseg);
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        state.detach_queries += 1;
+        assert!(state.detach_cookie.replace((c, cookie.sequence)).is_none(),
+                "previous capture detach was not checked");
+    });
+    cookie
+}
+
+#[cfg(corrected)]
+#[no_mangle]
 unsafe extern "C" fn __wrap_xcb_request_check(c: *mut xcb_connection_t,
     cookie: xcb_void_cookie_t) -> *mut xcb_generic_error_t {
     let error = real_request_check(c, cookie);
     STATE.with(|state| {
         let mut state = state.borrow_mut();
+        if state.detach_cookie == Some((c, cookie.sequence)) {
+            state.detach_cookie = None;
+            state.detach_checks += 1;
+            if !error.is_null() || xcb_connection_has_error(c) != 0 {
+                state.detach_errors += 1;
+            }
+        }
         if state.rejected_attach_cookie == Some((c, cookie.sequence)) {
             state.rejected_attach_cookie = None;
             assert!(!error.is_null(), "invalid attach ID did not receive a server error");
@@ -735,6 +821,13 @@ fn finish_case(reject: usize) {
         assert!(state.rejected_attach_cookie.is_none(), "rejected attach was never checked");
         state.attach_errors = 0;
         state.attach_error = None;
+        assert!(state.construction_fault.is_none(), "construction fault was not exercised");
+        state.construction_segment = None;
+        state.construction_errno = None;
+        state.detach_queries = 0;
+        state.detach_checks = 0;
+        state.detach_errors = 0;
+        assert!(state.detach_cookie.is_none(), "capture detach was never checked");
         state.frame_comparisons = 0;
         state.segments.clear();
     });
@@ -929,7 +1022,7 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
 }
 
 #[cfg(corrected)]
-fn exercise_attach_rejection(server: &Rc<x11::Server>,
+fn exercise_constructor_failure(server: &Rc<x11::Server>, fault: ConstructionFault,
     mut construct: impl FnMut() -> io::Result<()>) -> io::Result<u8> {
     let display = x11::Server::displays(Rc::clone(server))
         .next().expect("first real X screen")?;
@@ -938,18 +1031,46 @@ fn exercise_attach_rejection(server: &Rc<x11::Server>,
     draw_red(server, root, 0x00ff0000)?;
     let mut survivor = x11::Capturer::new(display)?;
     assert_eq!(&survivor.frame()?[..3], &[0x00, 0x00, 0xff]);
-    STATE.with(|state| state.borrow_mut().reject_attach_query = 2);
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if fault == ConstructionFault::ServerAttach {
+            state.reject_attach_query = 2;
+        } else {
+            state.construction_fault = Some(fault);
+        }
+    });
     let error = construct().expect_err("rejected constructor became success");
-    assert_eq!(error.kind(), io::ErrorKind::Other);
     let (segments, error_code) = STATE.with(|state| {
         let state = state.borrow();
         assert_eq!(state.segments.len(), 2, "failed constructor did not create a local segment");
-        let (code, major, minor, _) = state.attach_error.expect("actual attach error absent");
-        assert!(code > 0 && major > 0);
-        assert_eq!(minor, 1, "not an actual MIT-SHM Attach rejection");
-        assert_eq!(error.to_string(), format!("X server rejected MIT-SHM attach with error {code}"));
+        let code = if fault == ConstructionFault::ServerAttach {
+            assert_eq!(error.kind(), io::ErrorKind::Other);
+            let (code, major, minor, _) = state.attach_error.expect("actual attach error absent");
+            assert!(code > 0 && major > 0);
+            assert_eq!(minor, 1, "not an actual MIT-SHM Attach rejection");
+            assert_eq!(error.to_string(), format!("X server rejected MIT-SHM attach with error {code}"));
+            code
+        } else {
+            assert!(state.construction_fault.is_none(), "fault did not run");
+            assert_eq!(state.construction_segment, Some(state.segments[1]));
+            assert_eq!(state.construction_errno, Some(22));
+            let kernel_error = io::Error::from_raw_os_error(22);
+            assert_eq!(error.kind(), kernel_error.kind());
+            let expected = if fault == ConstructionFault::LocalAttach {
+                kernel_error.to_string()
+            } else {
+                format!("failed to make X11 capture shared memory deletion-pending: {kernel_error}")
+            };
+            assert_eq!(error.to_string(), expected);
+            0
+        };
+        let attach_count = if fault == ConstructionFault::LocalAttach { 1 } else { 2 };
+        let protocol_errors = usize::from(fault == ConstructionFault::ServerAttach);
         assert_eq!((state.attach_queries, state.attach_errors, state.capture_queries,
-                    state.capture_replies, state.frame_comparisons), (2, 1, 1, 1, 1));
+                    state.capture_replies, state.frame_comparisons), (attach_count, protocol_errors, 1, 1, 1));
+        let cleanup_detach = usize::from(fault == ConstructionFault::RemovalPending);
+        assert_eq!((state.detach_queries, state.detach_checks, state.detach_errors),
+                   (cleanup_detach, cleanup_detach, 0), "failed constructor's XCB detach differs");
         assert!(state.allocations.iter().all(|entry| entry.retired), "attach error allocation leaked");
         ([state.segments[0], state.segments[1]], code)
     });
@@ -962,8 +1083,11 @@ fn exercise_attach_rejection(server: &Rc<x11::Server>,
     let retry_segment = STATE.with(|state| {
         let state = state.borrow();
         assert_eq!(state.segments.len(), 3);
+        let attach_count = if fault == ConstructionFault::LocalAttach { 2 } else { 3 };
+        let protocol_errors = usize::from(fault == ConstructionFault::ServerAttach);
         assert_eq!((state.attach_queries, state.attach_errors, state.capture_queries,
-                    state.capture_replies, state.capture_errors, state.frame_comparisons), (3, 1, 3, 3, 0, 3));
+                    state.capture_replies, state.capture_errors, state.frame_comparisons),
+                   (attach_count, protocol_errors, 3, 3, 0, 3));
         assert!(state.allocations.iter().all(|entry| entry.retired), "reply/error leaked after retry");
         state.segments[2]
     });
@@ -973,6 +1097,12 @@ fn exercise_attach_rejection(server: &Rc<x11::Server>,
     drop(survivor);
     let absent = probe_segment(segments[0]).expect_err("surviving capture segment survived drop");
     assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
+    STATE.with(|state| {
+        let state = state.borrow();
+        let detaches = if fault == ConstructionFault::RemovalPending { 3 } else { 2 };
+        assert_eq!((state.detach_queries, state.detach_checks, state.detach_errors),
+                   (detaches, detaches, 0), "capture destruction did not finish exact XCB detach");
+    });
     finish_case(0);
     Ok(error_code)
 }
@@ -1032,31 +1162,42 @@ fn main() -> io::Result<()> {
             "bounds-mon-sum" => Some((0, 5)),
             _ => None,
         };
-        if scenario == "capture-attach-reject" {
+        if scenario == "capture-attach-reject" || scenario == "capture-construction-failure" {
             use crate::common::TraitCapturer;
             let mut error_code = None;
-            for public in [false, true] {
-                for _ in 0..16 {
-                    let code = exercise_attach_rejection(&server, || {
-                        if public {
-                            let mut capture = common::Capturer::new(common::Display::primary()?)?;
-                            let Frame::PixelBuffer(buffer) = capture.frame(std::time::Duration::from_millis(100))?;
-                            assert_eq!(&buffer.data()[..3], &[0xff, 0x00, 0x00]);
-                            drop(capture);
-                        } else {
-                            let display = x11::Server::displays(Rc::clone(&server))
-                                .next().expect("constructor X screen")?;
-                            let mut capture = x11::Capturer::new(display)?;
-                            assert_eq!(&capture.frame()?[..3], &[0xff, 0x00, 0x00]);
-                            drop(capture);
-                        }
-                        Ok(())
-                    })?;
-                    if let Some(previous) = error_code { assert_eq!(code, previous); }
-                    error_code = Some(code);
+            let faults: &[ConstructionFault] = if scenario == "capture-attach-reject" {
+                &[ConstructionFault::ServerAttach]
+            } else {
+                &[ConstructionFault::LocalAttach, ConstructionFault::RemovalPending]
+            };
+            for &fault in faults {
+                for public in [false, true] {
+                    for _ in 0..16 {
+                        let code = exercise_constructor_failure(&server, fault, || {
+                            if public {
+                                let mut capture = common::Capturer::new(common::Display::primary()?)?;
+                                let Frame::PixelBuffer(buffer) = capture.frame(std::time::Duration::from_millis(100))?;
+                                assert_eq!(&buffer.data()[..3], &[0xff, 0x00, 0x00]);
+                                drop(capture);
+                            } else {
+                                let display = x11::Server::displays(Rc::clone(&server))
+                                    .next().expect("constructor X screen")?;
+                                let mut capture = x11::Capturer::new(display)?;
+                                assert_eq!(&capture.frame()?[..3], &[0xff, 0x00, 0x00]);
+                                drop(capture);
+                            }
+                            Ok(())
+                        })?;
+                        if let Some(previous) = error_code { assert_eq!(code, previous); }
+                        error_code = Some(code);
+                    }
                 }
             }
-            println!("X11_CAPTURE_ATTACH_NATIVE=pass callers=direct,public repeats=16 server_error={} attach_requests=3 capture_requests=3 capture_replies=3 attach_errors=1 survivor=fresh retry=valid segments=retired", error_code.expect("attach error observed"));
+            if scenario == "capture-attach-reject" {
+                println!("X11_CAPTURE_ATTACH_NATIVE=pass callers=direct,public repeats=16 server_error={} attach_requests=3 capture_requests=3 capture_replies=3 attach_errors=1 survivor=fresh retry=valid segments=retired", error_code.expect("attach error observed"));
+            } else {
+                println!("X11_CAPTURE_CONSTRUCTION_NATIVE=pass faults=local-attach,removal-pending cause=kernel-invalid-argument callers=direct,public repeats=16 cases=64 rejected_segments=retired xcb_detach=checked survivor=fresh retry=valid pixels=red,blue allocations=retired");
+            }
         } else if scenario == "capture-connection-loss" {
             exercise_capture_connection_loss(&server)?;
         } else if scenario == "capture-reject" {

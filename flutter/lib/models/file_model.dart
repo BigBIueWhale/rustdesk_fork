@@ -2168,9 +2168,7 @@ class FileFetcher {
     }
     if (pending.responseReceived) return false;
     if (pending.isCompleted) {
-      // Consume the late response owned by a timed-out tombstone. It must not
-      // escape to a same-key request admitted afterward.
-      tasks.remove(key);
+      _retainLateResponseUntilDispatchSettles(tasks, key, pending);
       return false;
     }
     pending.complete(value);
@@ -2178,6 +2176,16 @@ class FileFetcher {
       tasks.remove(key);
     }
     return true;
+  }
+
+  void _retainLateResponseUntilDispatchSettles<K, T>(
+      Map<K, _PendingFileRequest<T>> tasks,
+      K key,
+      _PendingFileRequest<T> pending) {
+    if (!pending.markLateResponseReceived()) return;
+    if (pending.dispatchSettled && identical(tasks[key], pending)) {
+      tasks.remove(key);
+    }
   }
 
   static bool? _parseIsLocal(Object? value) {
@@ -2237,7 +2245,8 @@ class FileFetcher {
     }
     if (pending.responseReceived) return false;
     if (pending.isCompleted) {
-      _readRecursiveTasks.remove(id);
+      _retainLateResponseUntilDispatchSettles(
+          _readRecursiveTasks, id, pending);
       return false;
     }
     pending.completeResponseError(StateError(error));
@@ -2352,6 +2361,12 @@ class _PendingFileRequest<T> {
 
   void markDispatchSettled() {
     _dispatchSettled = true;
+  }
+
+  bool markLateResponseReceived() {
+    if (!_done.isCompleted || _responseReceived) return false;
+    _responseReceived = true;
+    return true;
   }
 }
 

@@ -109,7 +109,7 @@ def main():
                        "get_monitors_monitors_iterator", "monitor_info_next"):
             command += ["-C", f"link-arg=-Wl,--wrap=xcb_randr_{symbol}"]
         for symbol in ("xcb_get_setup", "xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_atom_name_name", "xcb_get_geometry_reply",
-                       "xcb_shm_get_image", "xcb_shm_get_image_reply"):
+                       "xcb_shm_get_image", "xcb_shm_get_image_reply", "xcb_shm_attach_checked", "xcb_request_check"):
             command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
         subprocess.run(command, env=environment, check=True, timeout=30)
         binaries[variant] = binary
@@ -182,6 +182,18 @@ def main():
                         "X11_DISPLAY_COMPONENT=pass scenario=capture-reject replies=exact errors=explicit cleanup=joined"],
                     f"native capture rejection/recovery differs: {rejection}")
             print(rejection_receipt, flush=True)
+            attach = subprocess.run([str(binaries["corrected"]), "capture-attach-reject"], env=environment,
+                                    capture_output=True, text=True, timeout=15)
+            attach_lines = attach.stdout.splitlines()
+            require(attach.returncode == 0 and not attach.stderr and len(attach.stdout) <= 4096
+                    and len(attach_lines) == 2
+                    and attach_lines[1] == "X11_DISPLAY_COMPONENT=pass scenario=capture-attach-reject replies=exact errors=explicit cleanup=joined",
+                    f"native attach rejection/retry differs: {attach}")
+            require(re.fullmatch(
+                r"X11_CAPTURE_ATTACH_NATIVE=pass callers=direct,public repeats=16 server_error=([1-9][0-9]*) "
+                r"attach_requests=3 capture_requests=3 capture_replies=3 attach_errors=1 survivor=fresh retry=valid segments=retired",
+                attach_lines[0]) is not None, "exact attach rejection/retry result absent")
+            print(attach_lines[0], flush=True)
             print("X11_BOUNDS_NATIVE=pass received_header=injected rejected_shapes=7 repeats=32 "
                   "enumeration=fused public_callers=explicit valid_outputless=injected screens=server-real replies=exact", flush=True)
             print("X11_SETUP_NATIVE=pass received_header=injected rejected_shapes=7 repeats=16 "

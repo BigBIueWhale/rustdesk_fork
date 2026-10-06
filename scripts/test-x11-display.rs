@@ -195,6 +195,11 @@ struct State {
     capture_replies: usize,
     capture_errors: usize,
     capture_error: Option<(u8, u8, u16, u32)>,
+    attach_queries: usize,
+    reject_attach_query: usize,
+    rejected_attach_cookie: Option<(*mut xcb_connection_t, u32)>,
+    attach_errors: usize,
+    attach_error: Option<(u8, u8, u16, u32)>,
     frame_comparisons: usize,
     segments: Vec<i32>,
 }
@@ -291,6 +296,54 @@ extern "C" {
     #[link_name = "__real_xcb_shm_get_image_reply"]
     fn real_capture_reply(c: *mut xcb_connection_t, cookie: xcb_shm_get_image_cookie_t,
         error: *mut *mut xcb_generic_error_t) -> *mut xcb_shm_get_image_reply_t;
+    #[cfg(corrected)]
+    #[link_name = "__real_xcb_shm_attach_checked"]
+    fn real_attach(c: *mut xcb_connection_t, shmseg: xcb_shm_seg_t,
+        shmid: u32, read_only: u8) -> xcb_void_cookie_t;
+    #[cfg(corrected)]
+    #[link_name = "__real_xcb_request_check"]
+    fn real_request_check(c: *mut xcb_connection_t, cookie: xcb_void_cookie_t)
+        -> *mut xcb_generic_error_t;
+}
+
+#[cfg(corrected)]
+#[no_mangle]
+unsafe extern "C" fn __wrap_xcb_shm_attach_checked(c: *mut xcb_connection_t,
+    shmseg: xcb_shm_seg_t, shmid: u32, read_only: u8) -> xcb_void_cookie_t {
+    let reject = STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        state.attach_queries += 1;
+        state.attach_queries == state.reject_attach_query
+    });
+    // Alter only the selected request's ID; XCB and Xvfb produce the actual error.
+    let cookie = real_attach(c, shmseg, if reject { u32::MAX } else { shmid }, read_only);
+    if reject {
+        STATE.with(|state| {
+            assert!(state.borrow_mut().rejected_attach_cookie.replace((c, cookie.sequence)).is_none());
+        });
+    }
+    cookie
+}
+
+#[cfg(corrected)]
+#[no_mangle]
+unsafe extern "C" fn __wrap_xcb_request_check(c: *mut xcb_connection_t,
+    cookie: xcb_void_cookie_t) -> *mut xcb_generic_error_t {
+    let error = real_request_check(c, cookie);
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if state.rejected_attach_cookie == Some((c, cookie.sequence)) {
+            state.rejected_attach_cookie = None;
+            assert!(!error.is_null(), "invalid attach ID did not receive a server error");
+            let actual = &*error;
+            state.attach_errors += 1;
+            state.attach_error = Some((actual.error_code, actual.major_code,
+                                      actual.minor_code, actual.resource_id));
+            state.allocations.push(Allocation { pointer: error.cast(),
+                bytes: 36, monitor: false, retired: false });
+        }
+    });
+    error
 }
 
 #[cfg(corrected)]
@@ -607,6 +660,11 @@ fn finish_case(reject: usize) {
         state.capture_replies = 0;
         state.capture_errors = 0;
         state.capture_error = None;
+        state.attach_queries = 0;
+        state.reject_attach_query = 0;
+        assert!(state.rejected_attach_cookie.is_none(), "rejected attach was never checked");
+        state.attach_errors = 0;
+        state.attach_error = None;
         state.frame_comparisons = 0;
         state.segments.clear();
     });
@@ -742,6 +800,55 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
     Ok(())
 }
 
+#[cfg(corrected)]
+fn exercise_attach_rejection(server: &Rc<x11::Server>,
+    mut construct: impl FnMut() -> io::Result<()>) -> io::Result<u8> {
+    let display = x11::Server::displays(Rc::clone(server))
+        .next().expect("first real X screen")?;
+    let root = display.root();
+    finish_case(0);
+    draw_red(server, root, 0x00ff0000)?;
+    let mut survivor = x11::Capturer::new(display)?;
+    assert_eq!(&survivor.frame()?[..3], &[0x00, 0x00, 0xff]);
+    STATE.with(|state| state.borrow_mut().reject_attach_query = 2);
+    let error = construct().expect_err("rejected constructor became success");
+    assert_eq!(error.kind(), io::ErrorKind::Other);
+    let (segments, error_code) = STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!(state.segments.len(), 2, "failed constructor did not create a local segment");
+        let (code, major, minor, _) = state.attach_error.expect("actual attach error absent");
+        assert!(code > 0 && major > 0);
+        assert_eq!(minor, 1, "not an actual MIT-SHM Attach rejection");
+        assert_eq!(error.to_string(), format!("X server rejected MIT-SHM attach with error {code}"));
+        assert_eq!((state.attach_queries, state.attach_errors, state.capture_queries,
+                    state.capture_replies, state.frame_comparisons), (2, 1, 1, 1, 1));
+        assert!(state.allocations.iter().all(|entry| entry.retired), "attach error allocation leaked");
+        ([state.segments[0], state.segments[1]], code)
+    });
+    let absent = probe_segment(segments[1]).expect_err("failed constructor segment is still live");
+    assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
+    probe_segment(segments[0])?;
+    draw_red(server, root, 0x000000ff)?;
+    assert_eq!(&survivor.frame()?[..3], &[0xff, 0x00, 0x00], "live capture lost fresh pixels");
+    construct()?;
+    let retry_segment = STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!(state.segments.len(), 3);
+        assert_eq!((state.attach_queries, state.attach_errors, state.capture_queries,
+                    state.capture_replies, state.capture_errors, state.frame_comparisons), (3, 1, 3, 3, 0, 3));
+        assert!(state.allocations.iter().all(|entry| entry.retired), "reply/error leaked after retry");
+        state.segments[2]
+    });
+    let absent = probe_segment(retry_segment).expect_err("retry capture segment survived drop");
+    assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
+    probe_segment(segments[0])?;
+    drop(survivor);
+    let absent = probe_segment(segments[0]).expect_err("surviving capture segment survived drop");
+    assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
+    finish_case(0);
+    Ok(error_code)
+}
+
 fn main() -> io::Result<()> {
     let scenario = std::env::args().nth(1).expect("scenario");
     finish_case(if scenario == "reject" { 1 } else { 0 });
@@ -797,7 +904,32 @@ fn main() -> io::Result<()> {
             "bounds-mon-sum" => Some((0, 5)),
             _ => None,
         };
-        if scenario == "capture-connection-loss" {
+        if scenario == "capture-attach-reject" {
+            use crate::common::TraitCapturer;
+            let mut error_code = None;
+            for public in [false, true] {
+                for _ in 0..16 {
+                    let code = exercise_attach_rejection(&server, || {
+                        if public {
+                            let mut capture = common::Capturer::new(common::Display::primary()?)?;
+                            let Frame::PixelBuffer(buffer) = capture.frame(std::time::Duration::from_millis(100))?;
+                            assert_eq!(&buffer.data()[..3], &[0xff, 0x00, 0x00]);
+                            drop(capture);
+                        } else {
+                            let display = x11::Server::displays(Rc::clone(&server))
+                                .next().expect("constructor X screen")?;
+                            let mut capture = x11::Capturer::new(display)?;
+                            assert_eq!(&capture.frame()?[..3], &[0xff, 0x00, 0x00]);
+                            drop(capture);
+                        }
+                        Ok(())
+                    })?;
+                    if let Some(previous) = error_code { assert_eq!(code, previous); }
+                    error_code = Some(code);
+                }
+            }
+            println!("X11_CAPTURE_ATTACH_NATIVE=pass callers=direct,public repeats=16 server_error={} attach_requests=3 capture_requests=3 capture_replies=3 attach_errors=1 survivor=fresh retry=valid segments=retired", error_code.expect("attach error observed"));
+        } else if scenario == "capture-connection-loss" {
             exercise_capture_connection_loss(&server)?;
         } else if scenario == "capture-reject" {
             use crate::{TraitPixelBuffer, common::TraitCapturer};

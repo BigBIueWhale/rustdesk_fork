@@ -274,6 +274,9 @@ if [ "$APK_MODE" = emulator-test ]; then
         -type f -path '*/gradle-8.7/bin/gradle' -print)
     [ "${#gradle_binaries[@]}" -eq 1 ] \
         || { echo '[FATAL] the exact offline Gradle executable is ambiguous' >&2; exit 1; }
+    # The direct test-APK invocation must keep Flutter's x86_64-only dependency closure;
+    # without this property the plugin defaults to ARM artifacts absent from the offline cache.
     ( cd android && "${gradle_binaries[0]}" --offline --no-daemon \
+        "-Ptarget-platform=$FLUTTER_TARGET_PLATFORM" \
         :app:assembleReleaseAndroidTest )
 fi

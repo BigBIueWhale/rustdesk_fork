@@ -7416,6 +7416,22 @@ async fn validate_pulse_audio_start_authority(
 }
 
 #[cfg(target_os = "linux")]
+fn validate_pulse_audio_requester<T>(stream: &ConnectionTmpl<T>) -> ResultType<LinuxProcessIdentity>
+where
+    T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
+{
+    let peer = ipc_auth::linux_kernel_peer_process_identity(stream, "_pa")?;
+    if peer.pid() == std::process::id() {
+        if current_linux_process_identity()? != peer {
+            bail!("local pulse audio capture requester changed");
+        }
+    } else if ipc_auth::linux_cm_owner_identity()? != peer {
+        bail!("pulse audio capture owner is not the connection-manager launch parent");
+    }
+    Ok(peer)
+}
+
+#[cfg(target_os = "linux")]
 async fn validate_pulse_audio_capture_request<T>(
     stream: &ConnectionTmpl<T>,
     token: &str,
@@ -7423,7 +7439,7 @@ async fn validate_pulse_audio_capture_request<T>(
 where
     T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
 {
-    let peer = ipc_auth::linux_kernel_peer_process_identity(stream, "_pa")?;
+    let peer = validate_pulse_audio_requester(stream)?;
     validate_pulse_audio_start_authority(&peer, token).await?;
     Ok(peer)
 }

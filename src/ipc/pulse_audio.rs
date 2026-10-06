@@ -244,40 +244,46 @@ where
     }
 }
 
+async fn handle_pa_stream(stream: Conn) {
+    let mut stream = Connection::new_pulse_audio(stream);
+    if let Err(err) = validate_pulse_audio_requester(&stream) {
+        log::warn!("Rejected _pa client without capture requester authority: {err}");
+        return;
+    }
+    let request = match stream
+        .next_pulse_audio_request_timeout(PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+        .await
+    {
+        Ok(Some(request)) => request,
+        Ok(None) => {
+            log::warn!("Rejected _pa client with malformed capture request");
+            return;
+        }
+        Err(err) => {
+            log::warn!("Rejected _pa client without timely capture authority: {err}");
+            return;
+        }
+    };
+    let LinuxPulseAudioIpcRequest::StartCapture { token, source } = request;
+    let peer = match validate_pulse_audio_capture_request(&stream, &token).await {
+        Ok(peer) => peer,
+        Err(err) => {
+            log::warn!("Rejected _pa client with invalid audio capture authority: {err}");
+            return;
+        }
+    };
+    if let Err(err) = capture(&mut stream, &peer, &token, &source).await {
+        log::info!("PulseAudio capture ended: {err}");
+    }
+}
+
 #[tokio::main(flavor = "current_thread")]
 pub async fn start_pa() {
     match new_listener("_pa").await {
         Ok(mut incoming) => {
             while let Some(result) = incoming.next().await {
                 match result {
-                    Ok(stream) => {
-                        let mut stream = Connection::new_pulse_audio(stream);
-                        let request = match stream
-                            .next_pulse_audio_request_timeout(PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
-                            .await
-                        {
-                            Ok(Some(request)) => request,
-                            Ok(None) => {
-                                log::warn!("Rejected _pa client with malformed capture request");
-                                continue;
-                            }
-                            Err(err) => {
-                                log::warn!("Rejected _pa client without timely capture authority: {err}");
-                                continue;
-                            }
-                        };
-                        let LinuxPulseAudioIpcRequest::StartCapture { token, source } = request;
-                        let peer = match validate_pulse_audio_capture_request(&stream, &token).await {
-                            Ok(peer) => peer,
-                            Err(err) => {
-                                log::warn!("Rejected _pa client with invalid audio capture authority: {err}");
-                                continue;
-                            }
-                        };
-                        if let Err(err) = capture(&mut stream, &peer, &token, &source).await {
-                            log::info!("PulseAudio capture ended: {err}");
-                        }
-                    }
+                    Ok(stream) => handle_pa_stream(stream).await,
                     Err(err) => log::error!("Couldn't get pa client: {err:?}"),
                 }
             }
@@ -403,6 +409,18 @@ mod tests {
     #[ignore = "requires a private native Unix _pa endpoint and a separate same-UID client"]
     async fn real_kernel_pa_admission_refuses_same_uid_child_with_token() {
         assert_eq!(std::env::var("RUSTDESK_PA_NATIVE_TEST").unwrap(), "1");
+        if std::env::var("RUSTDESK_PA_NATIVE_SILENT_ATTACKER").as_deref() == Ok("1") {
+            let path = std::env::var("RUSTDESK_PA_NATIVE_ATTACKER_SOCKET").unwrap();
+            let mut stream = connect_with_path(1_000, &path, "_pa").await.unwrap();
+            assert!(tokio::time::timeout(
+                Duration::from_millis(750),
+                stream.next_pulse_audio_frame_timeout(1_000)
+            )
+            .await
+            .unwrap()
+            .is_err());
+            return;
+        }
         if std::env::var("RUSTDESK_PA_NATIVE_ATTACKER").as_deref() == Ok("1") {
             let path = std::env::var("RUSTDESK_PA_NATIVE_ATTACKER_SOCKET").unwrap();
             let token = std::env::var("RUSTDESK_PA_NATIVE_ATTACKER_TOKEN").unwrap();
@@ -465,6 +483,38 @@ mod tests {
         assert!(parent_pid > 0);
         std::env::set_var(crate::common::CM_LAUNCH_PARENT_ENV, parent_pid.to_string());
         assert_eq!(ipc_auth::linux_cm_owner_identity().unwrap().pid(), parent_pid as u32);
+
+        let mut silent = tokio::process::Command::new(std::env::current_exe().unwrap());
+        silent
+            .args([
+                "--exact",
+                "ipc::pulse_audio::tests::real_kernel_pa_admission_refuses_same_uid_child_with_token",
+                "--ignored",
+                "--test-threads=1",
+            ])
+            .env("RUSTDESK_PA_NATIVE_SILENT_ATTACKER", "1")
+            .env("RUSTDESK_PA_NATIVE_ATTACKER_SOCKET", &path)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        let silent = silent.spawn().unwrap();
+        let accepted = tokio::time::timeout(Duration::from_secs(3), incoming.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        tokio::time::timeout(Duration::from_millis(750), handle_pa_stream(accepted))
+            .await
+            .unwrap();
+        let output = tokio::time::timeout(Duration::from_secs(5), silent.wait_with_output())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "silent attacker client failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
 
         let mut child = tokio::process::Command::new(std::env::current_exe().unwrap());
         child

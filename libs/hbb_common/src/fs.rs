@@ -5504,6 +5504,136 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn receive_finalize_refuses_a_real_partial_write_with_matching_staged_length() {
+        const TEST_NAME: &str =
+            "fs::tests::receive_finalize_refuses_a_real_partial_write_with_matching_staged_length";
+        const CHILD_ENV: &str = "RUSTDESK_TEST_RECEIVE_FSIZE_CHILD";
+        const RECEIPT: &str =
+            "RECEIVE_WRITE_FAILURE_NATIVE=pass error=EFBIG partial=oNE! length=4 final=absent sidecars=retired";
+
+        if std::env::var_os(CHILD_ENV).is_none() {
+            let output = tokio::process::Command::new(
+                std::env::current_exe().expect("resolve the exact native test executable"),
+            )
+            .args(["--exact", TEST_NAME, "--nocapture", "--test-threads=1"])
+            .env(CHILD_ENV, "1")
+            .env_remove("RUST_BACKTRACE")
+            .kill_on_drop(true)
+            .output()
+            .await
+            .expect("run and join the private file-limit child");
+            assert!(output.stdout.len() + output.stderr.len() <= 32_768);
+            assert!(
+                output.status.success(),
+                "native partial-write child failed\nstdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .filter(|line| *line == RECEIPT)
+                    .count(),
+                1
+            );
+            return;
+        }
+        assert_eq!(std::env::var_os(CHILD_ENV), Some("1".into()));
+        let arguments: Vec<_> = std::env::args().skip(1).collect();
+        assert!(arguments.iter().map(String::as_str).eq(
+            ["--exact", TEST_NAME, "--nocapture", "--test-threads=1"]
+                .iter()
+                .copied()
+        ));
+        assert_ne!(unsafe { crate::libc::geteuid() }, 0);
+        assert_ne!(unsafe { crate::libc::getegid() }, 0);
+
+        let tmp = TestTempDir::new("rustdesk_receive_real_partial_write");
+        std::fs::create_dir_all(&tmp.path).expect("create private receive directory");
+        let final_path = tmp.join("incoming.bin");
+        let staged_path = tmp.join("incoming.bin.download");
+        std::fs::write(&staged_path, b"old!").expect("seed an already full-length resume file");
+        std::fs::write(
+            tmp.join("incoming.bin.digest"),
+            serde_json::to_vec(&FileDigest {
+                size: 4,
+                modified: 17,
+            })
+            .expect("encode the exact resume digest"),
+        )
+        .expect("seed the resume digest");
+        let mut job = new_write_job(98, tmp.path.clone(), "incoming.bin")
+            .expect("create resumed receive job");
+        job.files[0].size = 4;
+        job.is_resume = true;
+        job.set_digest(4, 17);
+        job.confirm(&FileTransferSendConfirmRequest {
+            id: 98,
+            file_num: 0,
+            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(1)),
+            ..Default::default()
+        })
+        .await
+        .expect("admit the retained resume stream at offset one");
+
+        // Process-scoped limits and signal disposition belong only to this exact child.
+        let mut limit: crate::libc::rlimit = unsafe { std::mem::zeroed() };
+        assert_eq!(
+            unsafe { crate::libc::getrlimit(crate::libc::RLIMIT_FSIZE, &mut limit) },
+            0
+        );
+        assert!(limit.rlim_cur >= 4);
+        assert_ne!(
+            unsafe { crate::libc::signal(crate::libc::SIGXFSZ, crate::libc::SIG_IGN) },
+            crate::libc::SIG_ERR
+        );
+        limit.rlim_cur = 3;
+        assert_eq!(
+            unsafe { crate::libc::setrlimit(crate::libc::RLIMIT_FSIZE, &limit) },
+            0
+        );
+        job.write(FileTransferBlock {
+            id: 98,
+            file_num: 0,
+            data: b"NEW".to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("the Tokio stream admits the pending write");
+        let result = job.finalize_write(1).await;
+        let published = final_path.exists();
+        assert_eq!(
+            std::fs::read(if published { &final_path } else { &staged_path })
+                .expect("observe the actual kernel partial write"),
+            b"oNE!"
+        );
+        eprintln!(
+            "RECEIVE_WRITE_FAILURE_NATIVE_OBSERVED partial=oNE! length=4 published={} result_ok={}",
+            published,
+            result.is_ok()
+        );
+        let error = result.expect_err("a real partial write must not publish a matching-length file");
+        assert_eq!(
+            error
+                .downcast_ref::<std::io::Error>()
+                .and_then(|error| error.raw_os_error()),
+            Some(crate::libc::EFBIG)
+        );
+        assert!(!published);
+        assert_eq!(job.file_num(), 0);
+        assert!(job.data_stream.is_none());
+        assert!(job.receive_write_claim.is_some());
+        job.retire_current_file_state()
+            .expect("retire the failed exact receive generation");
+        for suffix in [".download", ".digest", ".download.lock"] {
+            assert!(!tmp.join(&format!("incoming.bin{suffix}")).exists());
+        }
+        assert!(!final_path.exists());
+        println!("\n{}", RECEIPT);
+    }
+
     #[cfg(unix)]
     #[test]
     fn receive_post_publish_sync_failure_never_deletes_visible_file() {

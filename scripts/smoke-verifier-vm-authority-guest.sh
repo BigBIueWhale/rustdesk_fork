@@ -2057,6 +2057,7 @@ run_focused_rust_tests() {
             fs::tests::abandoned_blocking_receive_result_retires_its_exact_sidecars
             fs::tests::abandoned_blocking_finalize_error_retires_only_its_claim
             fs::tests::new_receive_refuses_existing_sidecars_without_changing_their_bytes
+            fs::tests::receive_finalize_refuses_a_real_partial_write_with_matching_staged_length
             fs::tests::send_open_failure_keeps_the_failed_file_number
         )
     elif [ "$MODE" = cpace-recovery-tests ]; then

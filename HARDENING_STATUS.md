@@ -12613,6 +12613,15 @@ release input (archive SHA-256
 manifest SHA-256
 `e09cd86e2c54ef0df9348fad5343ce051b2ee28fecc7808e50228474fd32da34`).
 
+The existing native monitor lifecycle regression now also stages a fresh
+subscriber authority after the first capture retires, rejects the predecessor
+token, restarts real source audio without restarting the private daemon,
+and requires nonzero replacement frames. It then drops the old authority guard
+while the successor capture is live, requires 500 ms of continued authorized
+capture, and independently revokes and drains that successor. This extended
+scenario has not executed on the changed source; native acceptance remains OPEN.
+It uses test-owned subscriber/socket fixtures, not the installed server/CM pair.
+
 **Still OPEN:** installed-service/root principals, wrong-UID and PID-reuse
 races, real subscriber churn and capture restart, sustained latency,
 CPU/memory/handle bounds, real-device changes, and other platforms. The

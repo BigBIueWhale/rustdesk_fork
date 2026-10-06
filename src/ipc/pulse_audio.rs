@@ -403,6 +403,101 @@ mod tests {
         .unwrap();
         let err = result.unwrap_err();
         assert!(err.to_string().contains("authority"), "{err}");
+        drop(capture);
+        drop(helper);
+        drop(client);
+
+        let old_token = authority.token().to_owned();
+        let replacement = crate::audio_service::PaCaptureNativeFixture::new().unwrap();
+        assert_ne!(old_token, replacement.token());
+        assert!(validate_pulse_audio_start_authority(&peer, &old_token)
+            .await
+            .is_err());
+        validate_pulse_audio_start_authority(&peer, replacement.token())
+            .await
+            .unwrap();
+
+        let pactl = std::env::var("RUSTDESK_PA_NATIVE_PACTL").unwrap();
+        let load = tokio::task::spawn_blocking(move || {
+            std::process::Command::new(pactl)
+                .args(["load-module", "module-sine", "sink=rd_pa_test", "frequency=440"])
+                .output()
+        })
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(load.status.success());
+        let replacement_module = std::str::from_utf8(&load.stdout)
+            .unwrap()
+            .trim()
+            .parse::<u32>()
+            .unwrap();
+        assert!(replacement_module > 0);
+
+        let (helper_socket, client_socket) = tokio::net::UnixStream::pair().unwrap();
+        let mut helper = ConnectionTmpl::new_pulse_audio(helper_socket);
+        let mut client = ConnectionTmpl::new_pulse_audio(client_socket);
+        let mut capture = Box::pin(super::capture(&mut helper, &peer, replacement.token(), ""));
+        let signal_deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+        loop {
+            let frame = tokio::select! {
+                result = &mut capture => panic!("replacement capture ended before source audio: {result:?}"),
+                frame = client.next_pulse_audio_frame_timeout(500) => frame.unwrap(),
+                _ = tokio::time::sleep_until(signal_deadline) => panic!("replacement capture produced no source audio"),
+            };
+            if frame.is_some_and(|frame| frame.iter().any(|sample| *sample != 0)) {
+                break;
+            }
+        }
+        drop(authority);
+        validate_pulse_audio_start_authority(&peer, replacement.token())
+            .await
+            .unwrap();
+
+        let until = tokio::time::Instant::now() + Duration::from_millis(500);
+        let mut nonzero_frames = 0;
+        loop {
+            tokio::select! {
+                result = &mut capture => panic!("fresh capture ended after old-owner retirement: {result:?}"),
+                frame = client.next_pulse_audio_frame_timeout(100) => {
+                    if frame.unwrap().is_some_and(|frame| frame.iter().any(|sample| *sample != 0)) {
+                        nonzero_frames += 1;
+                    }
+                }
+                _ = tokio::time::sleep_until(until) => break,
+            }
+        }
+        assert!(nonzero_frames > 0, "replacement capture produced no source audio");
+        replacement.revoke();
+        let result = tokio::time::timeout(Duration::from_millis(600), async {
+            loop {
+                tokio::select! {
+                    result = &mut capture => break result,
+                    frame = client.next_pulse_audio_frame_timeout(100) => { frame.unwrap(); }
+                }
+            }
+        })
+        .await
+        .unwrap();
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("authority"), "{err}");
+        assert!(validate_pulse_audio_start_authority(&peer, replacement.token())
+            .await
+            .is_err());
+        drop(capture);
+        drop(helper);
+        drop(client);
+
+        let pactl = std::env::var("RUSTDESK_PA_NATIVE_PACTL").unwrap();
+        let unload = tokio::task::spawn_blocking(move || {
+            std::process::Command::new(pactl)
+                .args(["unload-module", &replacement_module.to_string()])
+                .status()
+        })
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(unload.success());
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -6041,7 +6041,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   independent reproduction, or external review; all of those remain STOP-SHIP.
 
 - **R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority — SOURCE IMPLEMENTED;
-  RETAINED CONFINED KERNEL TEST EVIDENCE; REAL X SERVER AND RELEASE EVIDENCE OPEN.** The current
+  CONFINED KERNEL AND NATIVE CAPTURE/RETIREMENT EVIDENCE; BROADER AUTHORITY AND RELEASE EVIDENCE OPEN.** The current
   `SharedMemory` owner rejects empty/overflowing sizes, creates an exact 0600 `IPC_PRIVATE` segment,
   establishes cleanup before its read-only local mapping, checks XCB attach acceptance, and marks the
   segment deletion-pending only after acceptance. Construction and drop retain exact detach/removal
@@ -6052,13 +6052,15 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   container run proving effective-user ownership, exact 0600 mode, one local attachment, `SHM_DEST`,
   and final disappearance. The focused source checker remains a supplement; its documentation coupling,
   mutation catalog, and stale workspace reimplementation are deleted. A current isolated real-X run must
-  still exercise attach rejection/connection failure, unauthorized-principal attempts, actual capture-to-render,
-  installed cross-user service behavior, current artifacts, cold reproduction, and independent review. The native
-  GetImage component below covers normal accepted capture and exact segment retirement only; its liveness probe
+  still exercise attach rejection/construction-time connection failure, unauthorized-principal attempts,
+  actual capture-to-render, installed cross-user service behavior, current artifacts, cold reproduction,
+  and independent review. The native GetImage component below covers accepted capture, real server loss
+  while captures remain live, and independent exact segment retirement; its liveness probe
   does not establish ownership/mode/attachment-count or unauthorized-principal refusal.
 
 - **R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality — SOURCE IMPLEMENTED;
-  NATIVE REJECTION/RECOVERY COMPONENT PASSED; FULL FLOW, FRESHNESS, AND RELEASE EVIDENCE OPEN.**
+  NATIVE REJECTION/RECOVERY AND LIVE CONNECTION-LOSS COMPONENTS PASSED;
+  FULL FLOW, FRESHNESS, AND RELEASE EVIDENCE OPEN.**
   `get_image` uses the checked request and non-null protocol-error output, snapshots diagnostics before
   freeing both allocations, and rejects protocol errors, connection failure, missing replies, and any
   reply byte count other than the exact capture buffer. `frame()` propagates failure before reading or
@@ -6069,24 +6071,34 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   failure, and missing reply. The focused source checker is supplemental and no longer treats prose or
   checker mutation strings as product evidence.
 
-  Exact fixture source `7b144d31754f5ab2ed6b36a54ea9fca4996be457` (tree
-  `d92b4a800556ca350b87628ae53bacde79e29d3e`) passed the focused zero-NIC
+  Exact fixture source `af46639ea75eb3da0e4f9c1fb1153c6e9cfa13d1` (tree
+  `4f4cd8b6bd842fb4a09c882fa9a417458765f214`) passed the focused zero-NIC
   `--x11-display-tests` transaction in 55 VM seconds. Production capture and public wrapper source were
   unchanged. For each of 16 direct and 16 public-caller cycles, the real Xvfb server returned BadDrawable
   for one request whose drawable was deliberately replaced with zero; no reply or shared bytes were fabricated.
   The test retained exact diagnostics, observed immediate reply/error frees and no comparison on rejection,
   required unchanged-frame behavior only on the subsequent valid request, then observed freshly drawn blue
   pixels through the same capture object/connection. Each cycle observed three replies, one error, and exact
-  segment liveness before use followed by absence after drop. The historical iterator A/B, reply/setup bounds,
-  and real 24/16-bit padded captures also passed; this is not an old-versus-new GetImage causation comparison.
-  Raw serial `.harness-state/verifier-vm/x11-display-tests-run.4MwU3lCdLC.serial.log` is 78,528 bytes,
-  SHA-256 `7c8baeef93c6dd06c5582afc739123abc53bb85bf1d25d39cfb444bb32d3b2b0`.
-  Its retained outer record reports numeric-nonroot guest-only execution, read-only unchanged inputs,
+  segment liveness before use followed by absence after drop.
+
+  The connection-loss case first holds one direct and one public capture, with distinct XCB connections
+  and exact SysV segments, after both receive real red pixels. A bounded handshake lets the driver
+  terminate and join only its owned Xvfb before releasing the captures. Three subsequent requests per API
+  return `ConnectionAborted` with actual XCB connection error 1, never cached pixels or `WouldBlock`.
+  Totals are eight GetImage calls, two replies, no protocol-error allocation, and two comparator calls:
+  failed capture never reaches comparison. Both initial replies are retired. Dropping the direct capture
+  removes only its segment while the public segment remains live; dropping the public capture then removes
+  its segment. Both expected dead-connection detach diagnostics are explicitly checked, not ignored.
+  The driver bounds output and waiting and joins the native child. The historical iterator A/B, reply/setup
+  bounds, and real 24/16-bit padded captures also passed; this is not an old-versus-new GetImage causation comparison.
+  Raw serial `.harness-state/verifier-vm/x11-display-tests-run.RyZfDUvVAq.serial.log` is 77,030 bytes,
+  SHA-256 `925a60f773548f6971e31615ae45e02327282a4a558037e219f711ffc78eea63`.
+  The terminal outer result reports numeric-nonroot guest-only execution, read-only unchanged inputs,
   no added host listener, joined Docker/QEMU cleanup, and no retained run root or overlay.
 
   This is instrumented native XCB/capture-component evidence, not full-product presentation or a latency
-  measurement. Actual connection loss, a missing reply without protocol error, received size/layout faults,
-  attach rejection, unauthorized principals, capture-to-codec-to-render, focus/background freshness and latency,
+  measurement. A missing reply on a healthy connection, received size/layout faults, construction-time
+  connection/attach rejection, unauthorized principals, capture-to-codec-to-render, focus/background freshness and latency,
   broader reconnect, cross-version/installed behavior, current release artifacts, cold reproduction and
   independent review remain OPEN. It does not explain the Android/Windows reports or close an LPE boundary.
 

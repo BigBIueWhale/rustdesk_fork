@@ -6053,6 +6053,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   and final disappearance. The focused source checker remains a supplement; its documentation coupling,
   mutation catalog, and stale workspace reimplementation are deleted.
 
+  Checker revision `17c33849589b6c1264cc0d58d5d48173db1a8dfe` removes test-name/assertion counting
+  and shared-verifier inspection, and follows the current checked row-stride, reply depth/visual,
+  and exact-size contract instead of obsolete production spellings. The focused VM payload now includes
+  this checker and the native driver invokes its actual CLI on current source and one private permissive-mode
+  source fixture. These are supplementary source checks, not kernel permission-denial evidence.
+
   The latest native transaction below additionally exercises 16 rejected constructors through each of
   the direct and public APIs while a valid direct capture remains live. Only the selected attach request's
   segment ID becomes invalid; real Xvfb returns protocol error 10 for MIT-SHM Attach. The checker observes
@@ -6106,6 +6112,16 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   SHA-256 `0f874b029f722b5db25b12f22b5b45312f0c99037e3db1699a7fbb68c129ae97`.
   The terminal outer result reports numeric-nonroot guest-only execution, read-only unchanged inputs,
   no added host listener, joined Docker/QEMU cleanup, and no retained run root or overlay.
+
+  **Current checker-revision transaction INCOMPLETE / not accepted:** the attempt at `17c33849`
+  retains `.harness-state/verifier-vm/x11-display-tests-run.vEY6OwXSAn.serial.log` (75,985 bytes,
+  SHA-256 `96c75a6b733f8e60e746170c992371aa40ea33834811b557d6be8d94b4139a76`). It records
+  acceptance of current source, refusal of the private permissive-mode source fixture, existing native
+  component successes, and guest Docker/container finality. The outer tool observation was truncated;
+  its session handle, terminal exit status, and source/input/listener postgate result were not recovered.
+  No run root remains, but that absence is not a substitute for the missing terminal result. This attempt
+  therefore does not supersede the accepted transaction above. No duplicate run was started to conceal
+  the observation gap; production code is unchanged and whole shared-gate acceptance remains unclaimed.
 
   This is instrumented native XCB/capture-component evidence, not full-product presentation or a latency
   measurement. A missing reply on a healthy connection, received size/layout faults, construction-time

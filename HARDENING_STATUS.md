@@ -78,7 +78,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Current documentation-sensitive item | Current disposition |
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
-| Broad source-conformance documentary coupling | Literal requirement/ledger wording and document mutations are absent from the reviewed main/Apple/Dart gates and authority, acquisition/output, native-loader, whiteboard, Unix/Linux ownership, macOS helper-build/variadic-ABI, Windows build-harness, DACL/URL and libvirt-storage, GitHub automation, audio-mailbox, display-selection, and session-stream source helpers. Audio, display and whiteboard helpers carry no normative-document digest dependency. Workflow protection rests on closed inventory and inert schema, not explanatory prose or comment markers. Functional source predicates/mutations, pins/manifests, artifact/provenance checks, executable test commands, behavioral fixtures, caller wiring, tracked-document presence, and isolation checks remain; Apple's compilation matrix is unchanged. The stale Linux admission checker is absent, while its retained cached-UID policy test cannot establish receiver wiring. These are supplementary guards, not native, signed-artifact, privilege, performance or release acceptance. Crypto-audit-handoff documentary coupling requires separate classification; broader documentation/test-quality and all unproved runtime/release obligations remain OPEN. |
+| Broad source-conformance documentary coupling | Literal requirement/ledger wording and document mutations are absent from the reviewed main/Apple/Dart gates and authority, acquisition/output, native-loader, whiteboard, Unix/Linux ownership, macOS helper-build/variadic-ABI, Windows build-harness, DACL/URL and libvirt-storage, GitHub automation, audio-mailbox, display-selection, and session-stream source helpers. Audio, display and whiteboard helpers carry no normative-document digest dependency. Workflow protection rests on closed inventory and inert schema, not explanatory prose or comment markers. Functional source predicates/mutations, pins/manifests, artifact/provenance checks, executable test commands, behavioral fixtures, caller wiring, tracked-document presence, and isolation checks remain; Apple's compilation matrix is unchanged. The stale Linux admission checker is absent, while its retained cached-UID policy test cannot establish receiver wiring. These are supplementary guards, not native, signed-artifact, privilege, performance or release acceptance. The crypto-audit wording checker and its caller are absent; the external-audit handoff and real PAKE/wire tests remain. Broader documentation/test-quality and all unproved runtime/release obligations remain OPEN. |
 | Windows build-harness rejection handling | The default-feature and two diagnostic-capture rejection branches now raise the checker's defined `VerificationError` rather than call an undefined `fail`. Four regression cases require the exact intended rejection, so an unrelated validation failure cannot stand in for branch coverage. The cases and the existing seven bounded behavioral suites have not been executed on this source in isolation; checker runtime acceptance remains OPEN. This correction does not establish Windows native, installed-service, artifact, focus/display, resource, or release behavior. |
 | VM host-observation boundary (R-S11dh/R-S11cj) | Both outer launchers retain protocol/numeric-endpoint listener snapshots and refuse every added endpoint. Broad current-user process scans, listener PID/executable metadata, and external-process drift exceptions are removed; exact tracking and joined cleanup of owned harness children are unchanged. Snapshots omit traffic-dependent queue counts. Exact source `227c3c63` passed the zero-NIC authority smoke in 79 seconds, including the acquisition source checker (`authority-smoke-run.BUz8VEr8tW.serial.log`), and the outbound-only acquisition self-test in 23 seconds (`online-fetch-receipts/run.Ivut9euxxT.receipt`). Both reported no added host endpoint, joined cleanup and unchanged inputs; their private run roots/overlays are absent. The acquisition's published v4 receipt records protocol-endpoint-v1 and no additions without attributed-drift fields; only private fixture exports were shared. These are positive launcher transactions and supplementary source checks: added-listener refusal/failure-injection coverage remains OPEN, as do product, installed/native, performance and release acceptance. |
 | Build pins and target profiles (§3.1–3.2, R-B5a) | The normative table now matches the three software-codec release feature sets selected by the build entry points; its former `hwcodec`/`vram` rows and the header/footer's historical package-count/whole-tree-review claims are gone. `scripts/pins.env`, lockfiles, manifests, and toolchain files remain separate concrete authorities that must agree. This documentation correction is not a current release build, authenticated complete input closure, cold equality, or native platform proof; those remain OPEN. |
@@ -9408,44 +9408,29 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   file unreadable whenever the device is locked — breaking backgrounded/locked config writes and
   reconnect — and it addresses only physical seizure of an unlocked-since-boot device, which §2 scopes
   out as endpoint compromise.)
-- **R-V3 independent CPace audit — ⛔ OUTSTANDING; AI REVIEW PERFORMED 2026-07-02 (findings
-  resolved @4eb6912).** The published AI-conducted review (docs/CRYPTO-AUDIT-2026-07-02.md)
-  reproduced the §10.4 construction byte-for-byte with a separately implemented stack
-  (libsodium ristretto255 + from-scratch encoding/HKDF) against the published CFRG
-  draft-21 vector AND both fork anchors; first-principles analysis of the state machine,
-  two-key secretbox, constant-time paths, R-P3 MAC composition, R-S17 host-proof, and
-  Argon2id PRS. Three findings raised and RESOLVED: F-1 (viewer stored plaintext → now
-  the derived Argon2id PRS), F-2 (constant-time gate added to verify.sh + ignored dudect
-  probe), F-3 (deps already resolved in-tree). This was a Claude Opus single-model review,
-  not organizationally independent and not a professional external cryptographic audit.
-  It therefore does not satisfy R-V3's required independent expert sign-off. The external
-  audit remains a production-exposure blocker; scope and limitations of the completed AI
-  review are recorded in the report. **AUDITOR HANDOFF PREPARED 2026-07-18 — R-V3 remains
-  OUTSTANDING.** `docs/CRYPTO-AUDIT-SCOPE.md` now defines the exact-clean-public-commit review
-  object, whole-repository follow-the-call-graph rule, current mandatory roots from password/NFC/
-  Argon2id PRS derivation through CPace, wire choreography, the authorization edge, and the
-  two-key secretbox frame lifecycle, primary draft-21/RFC 8265/libsodium references, required
-  external deliverable, and the explicit non-sign-off boundary. The prior PAKE/transport entry
-  points had drifted to stale line numbers and, after the bounded custom NFC implementation grew,
-  materially understated the trust surface as approximately 600 lines of byte-shuffling. They now
-  use symbol anchors and expose the custom normalization code as mandatory audit scope.
-  `scripts/verify-crypto-audit-scope.py --self-test`, wired into `scripts/verify.sh`, rejects a
-  missing root/current symbol, a brittle line citation, a false independent-sign-off claim, or a
-  removed R-V3 limitation; its mutation suite proves those representative regressions fail. This
-  prepares an accurate external handoff. It does not perform the independent review, assess the
-  cryptography, or remove the pre-audit release blocker. **R-A10 PARTIAL-FRAME EVIDENCE GAP CLOSED
-  AT PROJECT-TEST LEVEL 2026-07-18.**
-  `partial_prekey_frame_times_out_without_key_or_guess_charge` now drives a raw loopback peer that
-  declares a valid 64-byte pre-key frame, delivers one byte, and remains open. Under Tokio's paused
-  clock it proves the exact 5-second WAIT_1 deadline returns `HandshakeError::Io`, no cipher is
-  engaged, and the connection is dropped. Limiter mutation now has one typed production choke,
-  `record_handshake_failure`: after nine confirmation failures the partial-frame `Io` leaves the
-  source allowed, while the companion wrong-password `Confirmation` consumes the tenth slot and
-  blocks it. The oversize, out-of-order, duplicate, and malformed wire negatives also assert no
-  key engagement and no limiter charge. `scripts/verify-crypto-audit-scope.py --self-test` anchors
-  the behavioral test and the typed accounting symbol so this evidence cannot disappear while the
-  handoff still claims it. This closes only the recorded R-A10 project-test gap; it is not external
-  audit evidence, does not satisfy R-V3, and does not remove the pre-audit production blocker.
+- **R-V3 independent CPace audit — ⛔ OUTSTANDING.** An independently authored expert
+  review of an exact clean public commit must be obtained and published before exposed
+  operation. The reviewed commit, methodology, scope, independence/conflicts, limitations,
+  reproducible findings and their written dispositions must be public; project tests and
+  project-authored reports cannot provide this sign-off. The pre-audit disclosure and
+  production-exposure blocker remain.
+  `docs/CRYPTO-AUDIT-SCOPE.md` retains the whole-repository call-graph rule, mandatory
+  credential/NFC/Argon2id PRS, CPace, wire/authorization and two-key frame-lifecycle roots,
+  primary references and required external deliverable. It is a handoff, not proof of
+  cryptographic soundness. The historical AI review and its finding dispositions remain
+  in `docs/CRYPTO-AUDIT-2026-07-02.md`; that single-model report is not organizationally
+  independent and is partially superseded by host-identity retirement.
+  **R-A10 project-test scope:** the retained
+  `partial_prekey_frame_times_out_without_key_or_guess_charge` regression in
+  `libs/cpace_it/tests/handshake.rs` uses a real loopback TCP peer and paused Tokio
+  clock to check the five-second partial-frame deadline, `HandshakeError::Io`, no
+  installed cipher and peer closure. Its actual error passes through
+  `record_handshake_failure` after nine confirmation failures and must leave the
+  source allowed; the wrong-password companion must charge the tenth confirmation
+  failure and block. Oversize/order/duplicate/malformed negatives and the limiter-cap
+  test remain, and the main gate still runs `pake` and `cpace_it`. Wording/symbol
+  checks are not behavioral coverage. Retaining these executable tests is not a fresh
+  test pass, native or current-release acceptance, or external review; R-V3 remains open.
 - **Crypto protocol-logic audit — ✅ PERFORMED 2026-07-01; VERDICT SOUND.** A
   dedicated adversarial pass over the STATE-MACHINE / KEY-DISCIPLINE that KATs do
   not cover (both endpoints' keying paths traced in source): confirm-before-key

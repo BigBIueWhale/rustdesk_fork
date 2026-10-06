@@ -6,7 +6,7 @@ must be reviewed, but it is not an audit report and it is not a project-authored
 substitute for one.
 
 **Current status: R-V3 is outstanding.** Repository tests, the 2026-07-02 AI
-review, this scope document, and the scope-drift verifier do not satisfy R-V3.
+review and this scope document do not satisfy R-V3.
 Only an independently authored expert review of an exact public Git commit,
 followed by publication of the resulting report and disposition of every
 finding, can satisfy it.
@@ -242,17 +242,3 @@ finding, and a finding-by-finding disposition. Findings are resolved by code
 and evidence or explicitly risk-accepted in writing; they are not closed by
 editing the report. The final report and its reviewed commit must be publicly
 linked from the release record before the R-V3 disclosure can be removed.
-
-## 5. What this handoff proves—and does not
-
-`scripts/verify-crypto-audit-scope.py` checks that these living audit entry
-points still name the current mandatory roots and symbol anchors, contain no
-brittle source line-number citations, and do not claim project-authored
-independent sign-off while R-V3 is outstanding. Its mutation self-test proves
-those checks fail when representative scope, symbol, citation, or status facts
-are removed or falsified.
-
-That gate prevents a repeat of the documentation drift that this handoff
-corrects. It cannot assess cryptographic soundness, reviewer competence or
-independence, call-graph completeness, runtime behavior, or finding severity.
-It therefore does not satisfy R-V3.

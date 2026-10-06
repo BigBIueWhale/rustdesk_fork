@@ -195,21 +195,6 @@ else
   echo "  ok  machine-derived dependency and executable build-surface inventory"
 fi
 
-echo "== (0b) R-V3 audit handoff scope and honest-status drift gate =="
-r_v3_scope=
-git ls-files --error-unmatch docs/CRYPTO-AUDIT-SCOPE.md \
-  scripts/verify-crypto-audit-scope.py >/dev/null 2>&1 \
-  || r_v3_scope="$r_v3_scope untracked-handoff-or-verifier"
-if ! /usr/bin/python3 -I -S scripts/verify-crypto-audit-scope.py --self-test; then
-  r_v3_scope="$r_v3_scope scope-or-mutation-self-test-failed"
-fi
-if [ -n "$r_v3_scope" ]; then
-  echo "  FAIL R-V3 external-audit handoff drift:$r_v3_scope"
-  rc=1
-else
-  echo "  ok  R-V3 exact-commit external-audit handoff names current mandatory roots/symbols, rejects stale line citations and self-signoff, and remains explicitly outstanding"
-fi
-
 echo "== (0c) main verifier immutable inner-container contract (R-S11bg) =="
 r_s11bg=
 if ! /usr/bin/python3 -I -S scripts/prepare-ipc-test-artifact.py --self-test; then

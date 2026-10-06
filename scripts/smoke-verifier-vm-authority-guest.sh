@@ -3344,15 +3344,20 @@ LAYOUT
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{range .Mounts}}{{printf "%s|%s|%s|%t\n" .Type .Source .Destination .RW}}{{end}}' \
         "$CONTAINER_ID" | LC_ALL=C sort)"
-    [ "$inspect" = "$(printf '%s\n' \
+    local expected_mounts
+    expected_mounts="$(printf '%s\n' \
         "bind|$source_root|/source|false" \
         "bind|$source_root|/work|false" \
         "bind|$flat|/smoke-target|false" \
         "bind|$ROOT/engine-xvfb/root|/xvfb-root|false" \
         "bind|$ROOT/engine-xvfb/root/usr/bin/xkbcomp|/usr/bin/xkbcomp|false" \
         "bind|$pa_copy|/inputs/pa-runtime.tar.gz|false" \
-        "bind|$machine_id|/etc/machine-id|false" | LC_ALL=C sort)" ] \
-        || fail 'CM PulseAudio product-pair mount authority differs'
+        "bind|$machine_id|/etc/machine-id|false" | LC_ALL=C sort)"
+    if [ "$inspect" != "$expected_mounts" ]; then
+        printf 'CM PulseAudio product-pair actual mounts:\n%s\nexpected mounts:\n%s\n' \
+            "$inspect" "$expected_mounts" >&2
+        fail 'CM PulseAudio product-pair mount authority differs'
+    fi
     printf 'CM_PA_PRODUCT_PAIR_STAGE=begin commit=%s manifest_sha256=%s\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$manifest_sha"
     set +e

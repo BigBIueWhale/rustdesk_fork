@@ -12619,8 +12619,15 @@ token, restarts real source audio without restarting the private daemon,
 and requires nonzero replacement frames. It then drops the old authority guard
 while the successor capture is live, requires 500 ms of continued authorized
 capture, and independently revokes and drains that successor. This extended
-scenario has not executed on the changed source; native acceptance remains OPEN.
-It uses test-owned subscriber/socket fixtures, not the installed server/CM pair.
+scenario uses test-owned subscriber/socket fixtures, not the installed server/CM pair.
+**INCOMPLETE; native acceptance OPEN:** the zero-NIC attempt at source
+`5273d7880898dcb581676cdfc24dd52acddadb7e` ended with VM-owner status 137
+before any test result. The termination cause is unproven; no retry was started.
+Raw serial `linux-pa-authority-tests-run.usJogF0Qr7.serial.log` is 55,257 bytes,
+SHA-256 `1ac47a489f9d1e6decfe85a74644bc02f2932be3d7f40a313fc42d925af9b236`;
+its bounded failure receipt is retained beside it. Owned children joined, disks
+were retired, and exact scratch root `run.usJogF0Qr7` (`66306:114341109`) was
+reconciled and removed. No executable or whole-run acceptance is claimed.
 
 **Still OPEN:** installed-service/root principals, wrong-UID and PID-reuse
 races, real subscriber churn and capture restart, sustained latency,

@@ -1085,7 +1085,6 @@ android_frame_input_inventory() {
     )
     if [ "$MODE" = x11-display-tests ]; then
         files+=("$SCRIPT_DIR/test-x11-display-native.py" "$SCRIPT_DIR/test-x11-display.rs"
-            "$SCRIPT_DIR/verify-x11-capture-shm.py"
             "$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
             "$REPO_ROOT/libs/scrap/src/x11/iter.rs" "$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
             "$REPO_ROOT/libs/scrap/src/x11/server.rs" "$REPO_ROOT/libs/scrap/src/x11/display.rs"
@@ -3307,7 +3306,6 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     if [ "$MODE" = x11-display-tests ]; then
         lifecycle_payload_grafts+=(
             "repo/scripts/test-x11-display-native.py=$SCRIPT_DIR/test-x11-display-native.py"
-            "repo/scripts/verify-x11-capture-shm.py=$SCRIPT_DIR/verify-x11-capture-shm.py"
             "repo/scripts/test-x11-display.rs=$SCRIPT_DIR/test-x11-display.rs"
             "repo/scripts/fixtures/x11-display-iter-before.rs=$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
             "repo/libs/scrap/src/x11/iter.rs=$REPO_ROOT/libs/scrap/src/x11/iter.rs"

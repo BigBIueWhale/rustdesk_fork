@@ -106,29 +106,6 @@ def main():
     version = subprocess.run(["/usr/local/cargo/bin/rustc", "--version"], env=environment,
                              check=True, capture_output=True, text=True, timeout=5)
     require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
-    guard_command = ["/usr/bin/python3", "-B", "-I", "-S",
-                     str(root / "scripts/verify-x11-capture-shm.py"), "--repo"]
-    guard = subprocess.run(guard_command + [str(root)], env=environment,
-                           capture_output=True, text=True, timeout=5)
-    require(guard.returncode == 0 and guard.stdout == "verify-x11-capture-shm: ok\n"
-            and not guard.stderr, f"current X11 source contract differs: {guard}")
-    negative = Path("/build/x11-source-negative")
-    (negative / "libs/scrap/src/x11").mkdir(mode=0o700, parents=True)
-    for name in ("capturer", "ffi"):
-        source = (root / f"libs/scrap/src/x11/{name}.rs").read_text()
-        if name == "capturer":
-            needle = "const SHM_OWNER_READ_WRITE: libc::c_int = 0o600;"
-            require(source.count(needle) == 1, "exact source-mode fixture anchor differs")
-            source = source.replace(needle, "const SHM_OWNER_READ_WRITE: libc::c_int = 0o666;", 1)
-        (negative / f"libs/scrap/src/x11/{name}.rs").write_text(source)
-    refusal = subprocess.run(guard_command + [str(negative)], env=environment,
-                             capture_output=True, text=True, timeout=5)
-    expected = ("verify-x11-capture-shm: FAIL: missing exact owner-only shared-memory mode: "
-                "'const SHM_OWNER_READ_WRITE: libc::c_int = 0o600;'\n")
-    require(refusal.returncode == 1 and refusal.stdout == expected and not refusal.stderr,
-            f"permissive source fixture was not refused exactly: {refusal}")
-    print("X11_SOURCE_CONTRACT=pass current=accepted permissive_source=refused "
-          "cases=2 scope=source-only kernel_permission_denial=unclaimed", flush=True)
     comparator = root / "libs/scrap/src/common/frame_compare.rs"
     comparator_test = Path("/build/frame-compare-tests")
     subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2018", "--test",

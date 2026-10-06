@@ -1002,40 +1002,40 @@ installed lifecycle evidence cannot presently be completed from the retained loc
 those inputs must preserve R-B2 and R-B10's single complete canonical closure and must not introduce a partial-cache
 fallback.
 
-### R-S11at/R-S11e-60 — raw-password admission UID lookup remains OPEN
+### R-S11at/R-S11e-60 — shared Linux UID selection implemented; native acceptance OPEN
 
-**Source contract mismatch.** Generic Linux `_service` authorization uses
-`service_scoped_ipc_authorization_snapshot_from_stream`: root skips the active-user lookup,
-and a non-root cached-UID match only permits the fresh final lookup. Raw `_service_password`
-instead calls `authenticate_linux_service_owned_password_requester` →
-`linux_service_owned_password_requester_is_live` → `peer_process_identity_is_live`.
-The latter evaluates `active_uid_fresh()` without that prefilter, including for UID 0.
-This does not satisfy R-S11at’s both-endpoint cached-negative/root-short-circuit contract.
+Both Linux endpoints now use `linux_service_peer_active_uid` in `src/ipc/auth.rs`:
+generic `_service` through `service_scoped_ipc_authorization_snapshot_from_stream`,
+and raw `_service_password` through `peer_process_identity_is_live`. The selector takes
+lazy cached/fresh lookup providers. UID 0 invokes neither; missing/nonmatching cache
+state cannot invoke the fresh lookup or authorize a peer; a cache match selects the
+fresh result, never cached authority. The duplicate inline selection and Boolean-only
+predicate are removed.
 
-Both listener branches acquire their fixed transaction permit before identity work and
-transfer it into the tracked transaction.
-The raw password path still requires the exact live requester generation and finite role,
-with fixed-action polkit authorization. The same liveness helper is reached at initial
-admission, after polkit approval, and immediately before commit admission
-(`src/ipc.rs`: `run_service_ipc`, `grant_linux_service_owned_password_admission`,
-`LinuxServiceOwnedPasswordAdmission::admit_commit`). Filtering only the first stage
-would leave the later eager lookups unchanged. `peer_process_identity_is_live` has
-only this password-requester production caller; its full PID/UID/start/argv/executable
-and launch-ancestry replay must remain at every stage. Source ownership is not
-installed cancellation/drain evidence. This finding is not evidence
-of an unauthorized credential write or privilege escalation.
+Raw liveness still requires the exact finite requester role and full
+PID/UID/start/argv/executable and launch-ancestry replay. This shared selection applies
+at initial admission, after fixed-action polkit approval, and immediately before commit
+admission (`src/ipc.rs`: `run_service_ipc`, `grant_linux_service_owned_password_admission`,
+`LinuxServiceOwnedPasswordAdmission::admit_commit`). Both endpoint permits still precede
+identity work and remain in the tracked transaction; action authorization, credential
+ownership, and macOS behavior are unchanged. The previous eager lookup was a contract
+mismatch, not evidence of an unauthorized write or privilege escalation.
 
-The old admission checker required obsolete inline raw-password identity calls and a retired
-handler signature; it and its callers are deleted. The executable `r_s11e60_` regression
-still tests the cached-UID predicate, not whether the production helper invokes either
-lookup provider. The password-authority source guard requires the final fresh UID gate
-but does not enforce its root/cache selection. The existing Android Rust-lifecycle VM
-lane does not select this UID test, and the focused VM runner has no Linux UID selector.
-None of these establishes the missing raw-path contract or native resource
-behavior. Correct the receiver-owned lookup topology without weakening exact identity,
-fresh final authority, or action authorization, then run both installed endpoints in an isolated
-Linux VM with root/cache/session-change, contention, cancellation, drain, and lookup/resource
-observations. Until then this source discrepancy and native acceptance remain OPEN.
+Three `r_s11e60_` tests invoke the production selector and observe provider calls:
+root skips both, cached negatives skip fresh, and a cache match requires fresh matching
+authority while changed/missing fresh state refuses. The password source guard protects
+both caller wirings and the cached-only accessor; its existing stale-authority mutation
+is retargeted, not expanded into a new catalog. The existing zero-NIC Linux-target
+`--android-rust-lifecycle-tests` integration lane now selects all three tests, checks exact
+names and counts, and retains their output. **Execution remains OPEN until a source-bound
+transaction passes.** This is not an installed Android race or installed Linux receiver test.
+
+**Still OPEN:** exact-artifact installed Linux receiver runs on both endpoints with
+root/cache/session-change, capacity contention, authorized/unauthorized principals,
+cancellation and drain, and lookup/transaction resource observations. Provider-call unit
+tests and source wiring cannot close those native obligations. A fast standalone inner
+loop also remains needed; the existing whole Rust-app Linux-target transaction is an
+integration check, not the seconds-to-minutes default promised by the instructions.
 
 ### Android runtime — intermittent presentation remains OPEN
 

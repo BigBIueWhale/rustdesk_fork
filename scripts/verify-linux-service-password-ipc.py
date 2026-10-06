@@ -1008,12 +1008,30 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     fresh_uid = fresh_candidates[0]
     fresh_uid.require(("get_active_userid_fresh", "(", ")"), "fresh Linux session owner lookup", unique=True)
 
+    cached_uid = auth.function("active_uid_cached")
+    cached_uid.require(
+        ("get_active_userid_cached", "(", ")", "?"),
+        "cached-only Linux session owner lookup",
+        unique=True,
+    )
+    for alternate_lookup in ("get_active_userid", "get_active_userid_fresh", "active_uid_fresh"):
+        cached_uid.forbid((alternate_lookup,), "live lookup from the cached-only accessor")
+    selected_uid = auth.function("linux_service_peer_active_uid")
+    selected_uid.require_order(
+        (
+            (("if", "peer_uid", "==", "Some", "(", "0", ")", "{", "return", "None", ";", "}"), "root skips both lookup providers"),
+            (("let", "cached_active_uid", "=", "cached_lookup", "(", ")", ";"), "one cached lookup after root short-circuit"),
+            (("if", "matches", "!", "(", "(", "peer_uid", ",", "cached_active_uid", ")", ",", "(", "Some", "(", "peer_uid", ")", ",", "Some", "(", "active_uid", ")", ")", "if", "peer_uid", "==", "active_uid", ")", "{", "fresh_lookup", "(", ")", "}", "else", "{", "cached_active_uid", "}"), "cache match selects fresh final authority; negatives remain negative"),
+        ),
+        unique=True,
+    )
+
     snapshot = auth.function("service_scoped_ipc_authorization_snapshot_from_stream")
     snapshot.require_order(
         (
             (("peer_uid_from_fd", "(", "fd", ")"), "socket peer UID"),
             (("let", "peer_pid", "=", "peer_pid_from_fd", "(", "fd", ")"), "Linux socket peer PID binding"),
-            (("active_uid_fresh", "(", ")"), "fresh active session UID"),
+            (("linux_service_peer_active_uid", "(", "peer_uid", ",", "active_uid_cached", ",", "active_uid_fresh", ")"), "shared lazy Linux UID selection"),
             (("is_allowed_service_peer_uid", "(", "uid", ",", "active_uid", ")"), "session authority decision"),
         )
     )
@@ -1065,34 +1083,27 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     live_identity = auth.function("peer_process_identity_is_live")
     live_identity.require(
         (
-            "is_allowed_service_peer_uid",
-            "(",
-            "identity",
-            ".",
-            "uid",
-            ",",
-            "active_uid_fresh",
-            "(",
-            ")",
-            ")",
+            "let", "active_uid", "=", "linux_service_peer_active_uid", "(",
+            "Some", "(", "identity", ".", "uid", ")", ",",
+            "active_uid_cached", ",", "active_uid_fresh", ")", ";",
         ),
-        "fresh final active-session UID authority",
+        "shared lazy UID selection on every password identity replay",
         unique=True,
     )
     session_gate = (
         "if", "!", "is_allowed_service_peer_uid", "(", "identity", ".", "uid", ",",
-        "active_uid_fresh", "(", ")", ")", "{", "return", "false", ";", "}",
+        "active_uid", ")", "{", "return", "false", ";", "}",
     )
     conjunctive_session_gate = (
         "is_allowed_service_peer_uid", "(", "identity", ".", "uid", ",",
-        "active_uid_fresh", "(", ")", ")", "&&", "linux_process_identity_by_pid",
+        "active_uid", ")", "&&", "linux_process_identity_by_pid",
     )
     if not (
         live_identity.positions(session_gate)
         or live_identity.positions(conjunctive_session_gate)
     ):
         raise VerificationError(
-            f"{live_identity.label}: fresh active-session UID must gate final identity acceptance"
+            f"{live_identity.label}: selected active-session UID must gate final identity acceptance"
         )
     live_identity.require_order(
         (
@@ -5359,8 +5370,8 @@ def self_test(sources: Mapping[str, str]) -> None:
         Mutation(
             "final live identity proof uses a stale session authority",
             "src/ipc/auth.rs",
-            "if !is_allowed_service_peer_uid(identity.uid, active_uid_fresh()) {",
-            "if !is_allowed_service_peer_uid(identity.uid, None) { /* active_uid_fresh() */",
+            "if !is_allowed_service_peer_uid(identity.uid, active_uid) {",
+            "if !is_allowed_service_peer_uid(identity.uid, None) { /* active_uid */",
         ),
         Mutation(
             "service IPC parent becomes attacker-writable",

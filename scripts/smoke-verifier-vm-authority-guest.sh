@@ -2132,6 +2132,8 @@ run_focused_rust_tests() {
             src/flutter.rs
             src/flutter_ffi.rs
             src/ipc.rs
+            src/ipc/auth.rs
+            scripts/verify-linux-service-password-ipc.py
             src/port_forward.rs
             src/privacy_mode.rs
             src/server/connection.rs
@@ -2142,6 +2144,9 @@ run_focused_rust_tests() {
             src/ui_session_interface.rs
         )
         required_tests=(
+            ipc::ipc_auth::tests::r_s11e60_linux_service_root_skips_both_uid_lookups
+            ipc::ipc_auth::tests::r_s11e60_linux_service_cached_negative_skips_fresh_uid_lookup
+            ipc::ipc_auth::tests::r_s11e60_linux_service_cache_match_requires_fresh_uid_authority
             android_listener_lifecycle::tests::stale_network_callback_cannot_advance_replacement_generation_epoch
             android_listener_lifecycle::tests::worker_must_be_registered_and_converged_before_replacement
             android_listener_lifecycle::tests::invalid_exhausted_and_thread_creation_failure_edges_fail_closed
@@ -2510,6 +2515,9 @@ run_focused_rust_tests() {
                         /bin/bash /source/scripts/run-pa-runtime-tests.sh /inputs/pa-runtime.tar.gz
                         ;;
                     android-rust-lifecycle-tests)
+                        python3 -I -S /source/scripts/verify-linux-service-password-ipc.py --repo /source
+                        cargo test --offline --locked --lib --features linux-pkg-config \
+                            ipc::ipc_auth::tests::r_s11e60_ --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             android_listener_lifecycle::tests:: --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config \
@@ -2591,8 +2599,10 @@ run_focused_rust_tests() {
         grep -Fxq 'PA_RUNTIME_NATIVE=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 revocation=after-unload same_uid_stolen_token=refused network=none uid=1000 cleanup=joined' "$output" \
             || { tail -n 200 "$output" >&2; fail 'native PulseAudio capture receipt is absent'; }
     else
-        [ "${#result_lines[@]}" -eq 12 ] \
+        [ "${#result_lines[@]}" -eq 13 ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
+        grep -Fxq 'verify-linux-service-password-ipc: ok' "$output" \
+            || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }
     fi
     [ "$(grep -Ec '^test result: ' "$output")" -eq "${#result_lines[@]}" ] \
         || fail 'focused Rust-test output contains a non-success result summary'
@@ -2628,6 +2638,9 @@ run_focused_rust_tests() {
     stop_docker_authority
     umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
     SEALED_INPUTS_MOUNTED=0
+    if [ "$MODE" = android-rust-lifecycle-tests ]; then
+        grep -E '^test ipc::ipc_auth::tests::r_s11e60_.* \.\.\. ok$|^verify-linux-service-password-ipc: ok$' "$output"
+    fi
     printf '%s\n' "${result_lines[@]}"
     if [ "$MODE" = hbb-common-fs ]; then
         printf 'HBB_COMMON_FS_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
@@ -2651,7 +2664,7 @@ run_focused_rust_tests() {
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_PUB_CACHE_CLOSURE_V1" \

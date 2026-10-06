@@ -2443,14 +2443,24 @@ fn active_uid_cached() -> Option<u32> {
 
 #[cfg(target_os = "linux")]
 #[inline]
-fn linux_service_peer_requires_fresh_active_uid_lookup(
+fn linux_service_peer_active_uid(
     peer_uid: Option<u32>,
-    cached_active_uid: Option<u32>,
-) -> bool {
-    matches!(
+    cached_lookup: impl FnOnce() -> Option<u32>,
+    fresh_lookup: impl FnOnce() -> Option<u32>,
+) -> Option<u32> {
+    if peer_uid == Some(0) {
+        return None;
+    }
+    // The cache may reject a peer, but only a fresh lookup can authorize a non-root peer.
+    let cached_active_uid = cached_lookup();
+    if matches!(
         (peer_uid, cached_active_uid),
-        (Some(peer_uid), Some(active_uid)) if peer_uid != 0 && peer_uid == active_uid
-    )
+        (Some(peer_uid), Some(active_uid)) if peer_uid == active_uid
+    ) {
+        fresh_lookup()
+    } else {
+        cached_active_uid
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -3432,7 +3442,9 @@ where
 
 #[cfg(target_os = "linux")]
 pub(crate) fn peer_process_identity_is_live(identity: &PeerProcessIdentity, postfix: &str) -> bool {
-    if !is_allowed_service_peer_uid(identity.uid, active_uid_fresh()) {
+    let active_uid =
+        linux_service_peer_active_uid(Some(identity.uid), active_uid_cached, active_uid_fresh);
+    if !is_allowed_service_peer_uid(identity.uid, active_uid) {
         return false;
     }
     linux_process_identity_by_pid(identity.pid, postfix)
@@ -3827,19 +3839,7 @@ where
     #[cfg(target_os = "macos")]
     let active_uid = active_uid_fresh();
     #[cfg(target_os = "linux")]
-    let active_uid = if peer_uid == Some(0) {
-        // Root does not need an active-session lookup to pass the UID gate.
-        None
-    } else {
-        // The service-loop cache is only a negative prefilter. A match merely permits the
-        // bounded caller to perform the fresh lookup that remains the final authority.
-        let cached_active_uid = active_uid_cached();
-        if linux_service_peer_requires_fresh_active_uid_lookup(peer_uid, cached_active_uid) {
-            active_uid_fresh()
-        } else {
-            cached_active_uid
-        }
-    };
+    let active_uid = linux_service_peer_active_uid(peer_uid, active_uid_cached, active_uid_fresh);
     let uid_authorized = peer_uid.is_some_and(|uid| is_allowed_service_peer_uid(uid, active_uid));
     ServiceScopedIpcAuthorization {
         postfix: postfix.to_owned(),
@@ -5208,27 +5208,66 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
-    fn r_s11e60_linux_service_active_uid_lookup_prefilter_is_negative_only() {
-        assert!(!super::linux_service_peer_requires_fresh_active_uid_lookup(
+    fn r_s11e60_linux_service_root_skips_both_uid_lookups() {
+        let active_uid = super::linux_service_peer_active_uid(
             Some(0),
-            Some(501),
-        ));
-        assert!(super::linux_service_peer_requires_fresh_active_uid_lookup(
-            Some(501),
-            Some(501),
-        ));
-        assert!(!super::linux_service_peer_requires_fresh_active_uid_lookup(
-            Some(502),
-            Some(501),
-        ));
-        assert!(!super::linux_service_peer_requires_fresh_active_uid_lookup(
-            Some(501),
-            None,
-        ));
-        assert!(!super::linux_service_peer_requires_fresh_active_uid_lookup(
-            None,
-            Some(501),
-        ));
+            || panic!("root must not consult the cached active UID"),
+            || panic!("root must not perform a fresh active UID lookup"),
+        );
+        assert_eq!(active_uid, None);
+        assert!(super::is_allowed_service_peer_uid(0, active_uid));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn r_s11e60_linux_service_cached_negative_skips_fresh_uid_lookup() {
+        for (peer_uid, cached_uid) in [
+            (Some(502), Some(501)),
+            (Some(501), None),
+            (None, Some(501)),
+        ] {
+            let cached_calls = std::cell::Cell::new(0);
+            let active_uid = super::linux_service_peer_active_uid(
+                peer_uid,
+                || {
+                    cached_calls.set(cached_calls.get() + 1);
+                    cached_uid
+                },
+                || panic!("a cached negative must not perform a fresh UID lookup"),
+            );
+            assert_eq!(cached_calls.get(), 1);
+            assert_eq!(active_uid, cached_uid);
+            assert!(
+                !peer_uid.is_some_and(|uid| super::is_allowed_service_peer_uid(uid, active_uid))
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn r_s11e60_linux_service_cache_match_requires_fresh_uid_authority() {
+        for fresh_uid in [Some(501), Some(502), None] {
+            let cached_calls = std::cell::Cell::new(0);
+            let fresh_calls = std::cell::Cell::new(0);
+            let active_uid = super::linux_service_peer_active_uid(
+                Some(501),
+                || {
+                    cached_calls.set(cached_calls.get() + 1);
+                    Some(501)
+                },
+                || {
+                    fresh_calls.set(fresh_calls.get() + 1);
+                    fresh_uid
+                },
+            );
+            assert_eq!(cached_calls.get(), 1);
+            assert_eq!(fresh_calls.get(), 1);
+            assert_eq!(active_uid, fresh_uid);
+            assert_eq!(
+                super::is_allowed_service_peer_uid(501, active_uid),
+                fresh_uid == Some(501)
+            );
+        }
     }
 
     #[test]

@@ -1012,16 +1012,27 @@ instead calls `authenticate_linux_service_owned_password_requester` →
 The latter evaluates `active_uid_fresh()` without that prefilter, including for UID 0.
 This does not satisfy R-S11at’s both-endpoint cached-negative/root-short-circuit contract.
 
-Both listener branches still acquire their fixed transaction permit before identity work.
+Both listener branches acquire their fixed transaction permit before identity work and
+transfer it into the tracked transaction.
 The raw password path still requires the exact live requester generation and finite role,
-with fixed-action polkit authorization and another identity replay before credential admission.
-This source finding is not evidence of an unauthorized credential write or privilege escalation.
+with fixed-action polkit authorization. The same liveness helper is reached at initial
+admission, after polkit approval, and immediately before commit admission
+(`src/ipc.rs`: `run_service_ipc`, `grant_linux_service_owned_password_admission`,
+`LinuxServiceOwnedPasswordAdmission::admit_commit`). Filtering only the first stage
+would leave the later eager lookups unchanged. `peer_process_identity_is_live` has
+only this password-requester production caller; its full PID/UID/start/argv/executable
+and launch-ancestry replay must remain at every stage. Source ownership is not
+installed cancellation/drain evidence. This finding is not evidence
+of an unauthorized credential write or privilege escalation.
 
 The old admission checker required obsolete inline raw-password identity calls and a retired
 handler signature; it and its callers are deleted. The executable `r_s11e60_` regression
-still tests the cached-UID policy, while the current password-authority source guard follows
-the real requester call chain. Neither establishes the missing raw-path contract or native
-resource behavior. Correct the receiver-owned lookup topology without weakening exact identity,
+still tests the cached-UID predicate, not whether the production helper invokes either
+lookup provider. The password-authority source guard requires the final fresh UID gate
+but does not enforce its root/cache selection. The existing Android Rust-lifecycle VM
+lane does not select this UID test, and the focused VM runner has no Linux UID selector.
+None of these establishes the missing raw-path contract or native resource
+behavior. Correct the receiver-owned lookup topology without weakening exact identity,
 fresh final authority, or action authorization, then run both installed endpoints in an isolated
 Linux VM with root/cache/session-change, contention, cancellation, drain, and lookup/resource
 observations. Until then this source discrepancy and native acceptance remain OPEN.

@@ -1702,16 +1702,14 @@ run_apple_conform() {
         || { tail -n 240 "$output" >&2; fail 'Apple-conformance workspace-anchor receipts differ'; }
     [ "$(grep -Fxc "$expected_entry" "$output")" -eq 1 ] \
         || fail 'Apple-conformance VM authority receipt is absent or duplicated'
-    sed -n '/^== (3) cross-compile coherence matrix/,/^== Apple desktop port-forward mapping conformance/p' \
-        "$output" | sed -n '1,80p' >&2
-    grep -F '== apple-conform-check PASS ==' "$output" >&2
-
     source_tree_after="$(/usr/bin/git -c "safe.directory=$source_root" \
         -C "$source_root" write-tree)" \
         || fail 'cannot re-evaluate the Apple-conformance source tree'
     if [ "$source_tree_after" != "$APPLE_SOURCE_TREE" ] \
         || ! /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \
              diff-files --quiet --ignore-submodules --; then
+        sed -n '/^== (3) cross-compile coherence matrix/,/^== Apple desktop port-forward mapping conformance/p' \
+            "$output" | sed -n '1,80p' >&2
         printf 'Apple-conformance source trees: expected=%s after=%s\n' \
             "$APPLE_SOURCE_TREE" "$source_tree_after" >&2
         /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \

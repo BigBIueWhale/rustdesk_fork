@@ -47,7 +47,8 @@ def main():
         for symbol in ("get_monitors", "get_monitors_unchecked", "get_monitors_reply",
                        "get_monitors_monitors_iterator", "monitor_info_next"):
             command += ["-C", f"link-arg=-Wl,--wrap=xcb_randr_{symbol}"]
-        for symbol in ("xcb_get_setup", "xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_atom_name_name", "xcb_get_geometry_reply"):
+        for symbol in ("xcb_get_setup", "xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_atom_name_name", "xcb_get_geometry_reply",
+                       "xcb_shm_get_image", "xcb_shm_get_image_reply"):
             command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
         subprocess.run(command, env=environment, check=True, timeout=30)
         binaries[variant] = binary
@@ -109,6 +110,17 @@ def main():
                            check=True, timeout=15)
             subprocess.run([str(binaries["corrected"]), "capture-24"], env=environment,
                            check=True, timeout=15)
+            rejection = subprocess.run([str(binaries["corrected"]), "capture-reject"], env=environment,
+                                       capture_output=True, text=True, timeout=15)
+            rejection_receipt = ("X11_CAPTURE_REJECTION_NATIVE=pass server_error=BadDrawable repeats=16 "
+                                 "callers=direct,public requests=4 replies=3 errors=1 comparison_on_error=none "
+                                 "same_capture=recovered pixels=red,blue segment=retired")
+            require(rejection.returncode == 0 and not rejection.stderr
+                    and len(rejection.stdout) <= 4096
+                    and rejection.stdout.splitlines() == [rejection_receipt,
+                        "X11_DISPLAY_COMPONENT=pass scenario=capture-reject replies=exact errors=explicit cleanup=joined"],
+                    f"native capture rejection/recovery differs: {rejection}")
+            print(rejection_receipt, flush=True)
             print("X11_BOUNDS_NATIVE=pass received_header=injected rejected_shapes=7 repeats=32 "
                   "enumeration=fused public_callers=explicit valid_outputless=injected screens=server-real replies=exact", flush=True)
             print("X11_SETUP_NATIVE=pass received_header=injected rejected_shapes=7 repeats=16 "

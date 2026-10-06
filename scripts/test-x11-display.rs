@@ -16,6 +16,7 @@ pub enum Pixfmt {
 }
 
 pub fn would_block_if_equal(old: &mut Vec<u8>, data: &[u8]) -> io::Result<()> {
+    STATE.with(|state| state.borrow_mut().frame_comparisons += 1);
     if old.as_slice() == data { return Err(io::ErrorKind::WouldBlock.into()); }
     old.clear();
     old.extend_from_slice(data);
@@ -189,6 +190,13 @@ struct State {
     bad_atom_reply: usize,
     bad_monitor_reply: usize,
     malformed_setup: u8,
+    capture_queries: usize,
+    reject_capture_query: usize,
+    capture_replies: usize,
+    capture_errors: usize,
+    capture_error: Option<(u8, u8, u16, u32)>,
+    frame_comparisons: usize,
+    segments: Vec<i32>,
 }
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
@@ -204,10 +212,18 @@ pub mod libc {
     extern "C" {
         #[link_name = "free"]
         pub fn system_free(pointer: *mut c_void);
-        pub fn shmget(key: c_int, size: usize, flags: c_int) -> c_int;
+        #[link_name = "shmget"]
+        fn system_shmget(key: c_int, size: usize, flags: c_int) -> c_int;
         pub fn shmat(id: c_int, addr: *const c_void, flags: c_int) -> *mut c_void;
         pub fn shmdt(addr: *const c_void) -> c_int;
         pub fn shmctl(id: c_int, cmd: c_int, status: *mut c_void) -> c_int;
+    }
+    pub unsafe fn shmget(key: c_int, size: usize, flags: c_int) -> c_int {
+        let id = system_shmget(key, size, flags);
+        if id >= 0 {
+            super::STATE.with(|state| state.borrow_mut().segments.push(id));
+        }
+        id
     }
     pub unsafe fn free(pointer: *mut c_void) {
         let deferred = super::STATE.with(|state| {
@@ -266,6 +282,58 @@ extern "C" {
     fn real_iterator(reply: *const xcb_randr_get_monitors_reply_t) -> xcb_randr_monitor_info_iterator_t;
     #[link_name = "__real_xcb_randr_monitor_info_next"]
     fn real_next(cursor: *mut xcb_randr_monitor_info_iterator_t);
+    #[cfg(corrected)]
+    #[link_name = "__real_xcb_shm_get_image"]
+    fn real_capture_request(c: *mut xcb_connection_t, drawable: xcb_drawable_t,
+        x: i16, y: i16, width: u16, height: u16, plane_mask: u32, format: u8,
+        shmseg: xcb_shm_seg_t, offset: u32) -> xcb_shm_get_image_cookie_t;
+    #[cfg(corrected)]
+    #[link_name = "__real_xcb_shm_get_image_reply"]
+    fn real_capture_reply(c: *mut xcb_connection_t, cookie: xcb_shm_get_image_cookie_t,
+        error: *mut *mut xcb_generic_error_t) -> *mut xcb_shm_get_image_reply_t;
+}
+
+#[cfg(corrected)]
+#[no_mangle]
+unsafe extern "C" fn __wrap_xcb_shm_get_image(c: *mut xcb_connection_t,
+    drawable: xcb_drawable_t, x: i16, y: i16, width: u16, height: u16,
+    plane_mask: u32, format: u8, shmseg: xcb_shm_seg_t, offset: u32)
+    -> xcb_shm_get_image_cookie_t {
+    let drawable = STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        state.capture_queries += 1;
+        if state.capture_queries == state.reject_capture_query { 0 } else { drawable }
+    });
+    // Only the selected request's drawable changes. XCB and the real server
+    // generate the reply/error; no response or shared-memory bytes are fabricated.
+    real_capture_request(c, drawable, x, y, width, height, plane_mask, format, shmseg, offset)
+}
+
+#[cfg(corrected)]
+#[no_mangle]
+unsafe extern "C" fn __wrap_xcb_shm_get_image_reply(c: *mut xcb_connection_t,
+    cookie: xcb_shm_get_image_cookie_t, error: *mut *mut xcb_generic_error_t)
+    -> *mut xcb_shm_get_image_reply_t {
+    assert!(!error.is_null(), "capture omitted its protocol-error result pointer");
+    let reply = real_capture_reply(c, cookie, error);
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if !reply.is_null() {
+            state.capture_replies += 1;
+            state.allocations.push(Allocation { pointer: reply.cast(),
+                bytes: 0, monitor: false, retired: false });
+        }
+        if !(*error).is_null() {
+            assert!(reply.is_null(), "rejected GetImage unexpectedly returned pixels");
+            let actual = &**error;
+            state.capture_errors += 1;
+            state.capture_error = Some((actual.error_code, actual.major_code,
+                                        actual.minor_code, actual.resource_id));
+            state.allocations.push(Allocation { pointer: (*error).cast(),
+                bytes: 36, monitor: false, retired: false });
+        }
+    });
+    reply
 }
 
 #[no_mangle]
@@ -534,6 +602,13 @@ fn finish_case(reject: usize) {
         state.bad_atom_reply = 0;
         state.bad_monitor_reply = 0;
         state.malformed_setup = 0;
+        state.capture_queries = 0;
+        state.reject_capture_query = 0;
+        state.capture_replies = 0;
+        state.capture_errors = 0;
+        state.capture_error = None;
+        state.frame_comparisons = 0;
+        state.segments.clear();
     });
 }
 
@@ -545,6 +620,53 @@ fn configure_bounds(atom: u8, monitor: u8, query: usize) {
         state.malformed_monitors = monitor;
         state.malformed_query = query;
     });
+}
+
+#[cfg(corrected)]
+fn probe_segment(id: i32) -> io::Result<()> {
+    let mapping = unsafe { libc::shmat(id, std::ptr::null(), libc::SHM_RDONLY) };
+    if mapping as isize == -1 { return Err(io::Error::last_os_error()); }
+    if unsafe { libc::shmdt(mapping) } == -1 { return Err(io::Error::last_os_error()); }
+    Ok(())
+}
+
+#[cfg(corrected)]
+fn exercise_capture_rejection(
+    server: &x11::Server, root: u32,
+    mut pixel: impl FnMut() -> io::Result<[u8; 3]>,
+) -> io::Result<i32> {
+    let segment = STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!(state.segments.len(), 1, "capture did not own exactly one segment");
+        state.segments[0]
+    });
+    probe_segment(segment)?;
+    assert_eq!(pixel()?, [0x00, 0x00, 0xff], "initial real red pixel differs");
+    STATE.with(|state| state.borrow_mut().reject_capture_query = 2);
+    let error = pixel().expect_err("server rejection returned a frame");
+    assert_eq!(error.kind(), io::ErrorKind::Other, "rejection became unchanged-frame behavior");
+    STATE.with(|state| {
+        let state = state.borrow();
+        let (code, major, minor, resource) = state.capture_error.expect("actual XCB error absent");
+        assert_eq!((code, minor, resource), (9, 4, 0), "not the real BadDrawable GetImage response");
+        assert_eq!(error.to_string(), format!(
+            "X server rejected MIT-SHM GetImage with error {code} (major {major}, minor {minor}, resource {resource})"));
+        assert_eq!(state.frame_comparisons, 1, "failed capture compared shared bytes");
+        assert!(state.allocations.iter().all(|entry| entry.retired), "capture reply/error leaked");
+    });
+    // The same capture and connection remain usable; rejection must not replace
+    // the prior-frame state or turn later fresh pixels into an unchanged frame.
+    assert_eq!(pixel().expect_err("unchanged real pixels unexpectedly changed").kind(),
+               io::ErrorKind::WouldBlock);
+    draw_red(server, root, 0x000000ff)?;
+    assert_eq!(pixel()?, [0xff, 0x00, 0x00], "fresh real blue pixel did not recover");
+    STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!((state.capture_queries, state.capture_replies, state.capture_errors,
+                    state.frame_comparisons), (4, 3, 1, 3));
+        assert!(state.allocations.iter().all(|entry| entry.retired), "capture reply/error leaked");
+    });
+    Ok(segment)
 }
 
 fn main() -> io::Result<()> {
@@ -602,7 +724,44 @@ fn main() -> io::Result<()> {
             "bounds-mon-sum" => Some((0, 5)),
             _ => None,
         };
-        if scenario == "capture-24" || scenario == "capture-16" {
+        if scenario == "capture-reject" {
+            use crate::{TraitPixelBuffer, common::TraitCapturer};
+            for public in [false, true] {
+                for _ in 0..16 {
+                    let display = x11::Server::displays(Rc::clone(&server))
+                        .next().expect("first real X screen")?;
+                    assert_eq!(display.pixfmt(), Pixfmt::BGRA);
+                    let root = display.root();
+                    finish_case(0);
+                    draw_red(&server, root, 0x00ff0000)?;
+                    let segment = if public {
+                        let display = common::Display::primary()?;
+                        finish_case(0);
+                        let mut capture = common::Capturer::new(display)?;
+                        let id = exercise_capture_rejection(&server, root, || {
+                            let Frame::PixelBuffer(buffer) = capture.frame(
+                                std::time::Duration::from_millis(100))?;
+                            Ok([buffer.data()[0], buffer.data()[1], buffer.data()[2]])
+                        })?;
+                        drop(capture);
+                        id
+                    } else {
+                        let mut capture = x11::Capturer::new(display)?;
+                        let id = exercise_capture_rejection(&server, root, || {
+                            let bytes = capture.frame()?;
+                            Ok([bytes[0], bytes[1], bytes[2]])
+                        })?;
+                        drop(capture);
+                        id
+                    };
+                    let absent = probe_segment(segment).expect_err("dropped capture segment is still live");
+                    assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)),
+                            "unexpected exact-segment retirement error: {absent}");
+                    finish_case(0);
+                }
+            }
+            println!("X11_CAPTURE_REJECTION_NATIVE=pass server_error=BadDrawable repeats=16 callers=direct,public requests=4 replies=3 errors=1 comparison_on_error=none same_capture=recovered pixels=red,blue segment=retired");
+        } else if scenario == "capture-24" || scenario == "capture-16" {
             use crate::{TraitPixelBuffer, common::TraitCapturer};
             x11::reject_unsupported_layouts();
             let depth = if scenario == "capture-16" { 16 } else { 24 };

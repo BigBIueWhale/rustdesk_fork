@@ -4845,8 +4845,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   The former source-wording checker for this boundary was retired after it became
   incapable of recognizing the current PA request and CM registry. Its historical
   mutation receipts remain in Git history, not as current native evidence.
-  Focused Rust tests and the production CM wrong-peer refusal are retained;
-  authorized production-pair capture and installed-service principals remain OPEN.
+  Focused Rust tests, production CM wrong-peer refusal, and source-bound authorized
+  production-pair capture are retained. Installed-service principals remain OPEN.
 
   Confined validation used immutable image
   `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID/GID 1000 with
@@ -12867,6 +12867,24 @@ listener, not authorized capture through the production CM/server pair or an
 installed service. The full shared verifier and affected whiteboard checker
 were not executed in this slice; only their Bash/Python syntax and focused
 source absences were checked. No product code changed.
+
+Current ordinary-user production-pair positive evidence is pushed source
+`3e1466625710ad75069344c4384710b0ba730491` (tree
+`828b07d340ae4bd4aa75e8aed700f455c6234edf`). The zero-NIC `--cm-file-replay`
+VM built the real server and a bounded keyed Remote viewer probe from that tree,
+then ran a private PulseAudio 16.1 null-sink/sine monitor and Unix-only Xvfb
+inside guest-only networkless Docker. The live server/CM `_pa` path, including
+main-IPC token validation, delivered four decoded Opus frames with peak 512/1000
+alongside 34 decoded VP9 frames; the same run retained wrong-peer pre-request
+refusal and CM/file finality. The 401-second outer transaction reported no
+host-listener addition or pre-existing-process drift, joined cleanup, and no
+retained `run.*` or overlay. Raw serial:
+`.harness-state/verifier-vm/cm-file-replay-run.aawFGYsTlw.serial.log`
+(820,862 bytes; SHA-256
+`5daea31442810edb50a1f582c8dc0be6d3e3688187a8212bd2142d84a5dc7e8b`).
+This establishes authorized ordinary-user production process-pair audio, not
+installed-service/root principals, wrong-UID or PID-reuse behavior, subscriber
+churn, sustained resource/latency/device behavior, or other platforms.
 
 **Process-wide connection IDs — source corrected, native lifecycle OPEN.**
 The former per-`Server` counters could allocate the same ID in overlapping

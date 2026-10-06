@@ -756,7 +756,7 @@ fn main() -> io::Result<()> {
                     };
                     let absent = probe_segment(segment).expect_err("dropped capture segment is still live");
                     assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)),
-                            "unexpected exact-segment retirement error: {absent}");
+                            "unexpected exact-segment retirement error: {}", absent);
                     finish_case(0);
                 }
             }

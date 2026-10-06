@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-0f6cb16244ef58cf895108e549a05f1d29abe5d6a3dd45d96d085298cc77e4fe  requirements.html
+ad4a683adabbe1708f6f03b8e42e00eacf1678223504483946a2d99fe041d73b  requirements.html
 ```
 
 ## Current Verdict
@@ -78,7 +78,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Current documentation-sensitive item | Current disposition |
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
-| Shared resource-owner contracts (R-S11gx–R-S11hf) | The specification retains resource bounds, exact-owner transitions, executable regression requirements, and target-native/release acceptance without asserting source closure or symptom causation. R-S11gx–R-S11hd retain current source and regression commands but not obsolete inspection transcripts, mutation scoreboards, or superseded input-availability snapshots. Historical receipts are not native acceptance; current availability and all unproved obligations remain in the authority/open matrices. |
+| Shared resource, protocol, and storage contracts (R-S11gx–R-S11hg, R-S11hi/R-S11hj) | The selected specification contracts retain resource bounds, exact-owner/endpoint rules, executable regression requirements, and native/release acceptance without source-closure or symptom-causation verdicts. Their current ledger entries retain source references, real test/gate commands, current accepted model evidence, and all unproved obligations, not inspection transcripts, mutation scoreboards, or superseded input/toolchain availability. Current Flutter model receipts are shared under R-S11gr; they do not establish native service, audio, bridge/package absence, or release acceptance. |
 | Gradle acquisition/output contract (R-S11ck/R-S11cl/R-S11cr/R-S11fv/R-S11fz, Appendix C #231) | The specification has one guest-local writable Gradle output, read-only canonical/projected SDK inputs, and post-exit trusted import into an unmounted durable candidate. Writable SDK cloning, SDK exchange and two-output commit/recovery clauses are absent from the current Gradle contract. The appendix retains the original threat finding but has a timeless required disposition. Superseded transaction history and gate-count claims are absent from R-S11cl's current-state entry; retained producer/reuse evidence and all unproved negatives, replacement, native/artifact/performance/reproduction/review obligations remain explicit there and under R-S11fv/R-S11fz. This is documentation reconciliation, not a new runtime result. |
 | Broad source-conformance documentary coupling | Literal requirement/ledger wording and document mutations are absent from the reviewed main/Apple/Dart gates and authority, acquisition/output, native-loader, whiteboard, Unix/Linux ownership, macOS helper-build/variadic-ABI, Windows build-harness, DACL/URL and libvirt-storage, GitHub automation, audio-mailbox, display-selection, and session-stream source helpers. Audio, display and whiteboard helpers carry no normative-document digest dependency. Workflow protection rests on closed inventory and inert schema, not explanatory prose or comment markers. Functional source predicates/mutations, pins/manifests, artifact/provenance checks, executable test commands, behavioral fixtures, caller wiring, tracked-document presence, and isolation checks remain; Apple's compilation matrix is unchanged. The stale Linux admission checker is absent, while its retained cached-UID policy test cannot establish receiver wiring. These are supplementary guards, not native, signed-artifact, privilege, performance or release acceptance. The crypto-audit wording checker and its caller are absent; the external-audit handoff and real PAKE/wire tests remain. Broader documentation/test-quality and all unproved runtime/release obligations remain OPEN. |
 | Windows build-harness checks | The production source predicates and seven bounded behavioral suites remain. The redundant 263-case source-string mutation catalog is absent; four focused regressions retain the default-feature and diagnostic-capture rejection branches, which raise the defined `VerificationError`. Each case requires its exact intended error, with no optional error-match bypass. Source loading, validation, behavioral commands/timeouts, CLI and caller wiring are unchanged. The retained cases and suites have not executed on this source in isolation; checker runtime acceptance remains OPEN. Syntax and structural preservation checks do not establish Windows native, installed-service, artifact, focus/display, resource or release behavior. |
@@ -977,7 +977,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `0f6cb16244ef58cf895108e549a05f1d29abe5d6a3dd45d96d085298cc77e4fe  requirements.html`.
+Current normative specification SHA-256: `ad4a683adabbe1708f6f03b8e42e00eacf1678223504483946a2d99fe041d73b  requirements.html`.
 
 ### Current authority and source closure
 
@@ -10641,267 +10641,147 @@ the complete connection flow is correct and performant remain release obligation
 
 ### R-S11he/R-S11e-243 — serialized controlled-side status refresh ownership
 
-**SOURCE IMPLEMENTED; SIX FOCUSED REGRESSIONS AND THE CLEAN COMBINED 13-SUITE/107-TEST
-NO-NIC AUTHORITY PASS; EXACT CURRENT NATIVE/PACKAGE EVIDENCE OPEN.** The process-owned `ServerModel` uses one
-`ServerStatusRefreshLoop`: one one-shot timer, at most one active complete turn, no queue or
-catch-up path, and a terminal close that cancels pending time and awaits the active turn. The
-next 500-millisecond interval starts only after client-count/snapshot/window reconciliation and
-password-status reads settle. Failure is visible and does not wedge the next interval; the
-initial readiness check occurs once; duplicate start and start-after-close are refused. This
-owner intentionally survives individual viewer-session retirement and does not weaken Android's
-persistent foreground service.
+**SOURCE IMPLEMENTED; SIX SCHEDULER REGRESSIONS PASS; EXACT CURRENT NATIVE/PACKAGE
+EVIDENCE OPEN.** `flutter/lib/models/server_status_refresh_loop.dart` gives the process-owned
+`ServerModel` one one-shot timer and at most one complete active turn, with no queue or catch-up
+path. The next 500-millisecond interval starts after the preceding turn settles. Initial readiness
+is checked once; duplicate start and start-after-close are refused; close cancels pending time and
+awaits active work without rearming. This owner survives viewer-session retirement and does not
+stop Android's persistent foreground service.
 
-`flutter/test/server_status_refresh_loop_test.dart` exercises slow-turn nonoverlap and the full
-post-completion interval, one-time readiness, visible failure with later progress, close/drain/
-no-rearm finality, cancellation before the deferred first turn, and duplicate/restart refusal.
-Its real `flutter test --no-pub` invocation remains in `scripts/dart-verify.sh`. The former focused
-Python verifier, duplicated workspace validator/mutation catalog, and shared/Apple invocations were
-deleted because they only parsed source and documentation wording and did not execute the Dart
-scheduler.
+`ServerModel._refreshStatus` fetches one complete CM client snapshot where applicable, reconciles
+it against the captured client-state revision, awaits resulting window operations, then awaits both
+password-status option reads. It does not rely on a count mismatch or discard the returned
+snapshot for another query. Current source and tests are unchanged from accepted
+`d0a13c7a22c1a45f780ad081e4c8606a6091f5d7`; the exact 21-suite/175-test generated-bridge
+checkpoint and retained raw receipt are recorded under R-S11gr.
 
-Flutter's tool bootstrap regards `packages/flutter_tools` as stale unless `.dart_tool/version`
-byte-equals the SDK `version` file and the lock/package configuration are newer than
-`pubspec.yaml`; Flutter 3.24.5's running `PubDependencies.isUpToDate()` check also requires every
-package root to contain `pubspec.yaml`. One shared finalizer therefore checks the exact pinned SDK
-version and lock digest, current-principal ownership, non-symlink/single-link inputs, timestamp
-freshness, a bounded version-2 package configuration with 1–4096 unique file-URI package roots and
-one `pubspec.yaml` at every root, and exact marker metadata/content before publishing the marker.
-It uses shell-owned canonical-path and exact-file reads rather than assuming a merged `/usr`, so
-the pinned Ubuntu 18.04 builder and current Debian guests execute the same contract. Android,
-Debian, Dart/FRB, full-peer staging, focused model execution, and Pub-cache semantic replay all
-call it before their first relevant Flutter operation. The focused model transaction also consumes
-Flutter's supported `config --no-analytics` first-run action into bounded diagnostics before
-requesting JSON, so the validator never strips or tolerates non-JSON banners.
+`flutter/test/server_status_refresh_loop_test.dart` executes slow-turn nonoverlap/full interval,
+one-time readiness, visible refresh failure/later progress, close/drain/no-rearm, cancellation
+before the first turn, and duplicate/restart refusal. Its real
+`flutter test --no-pub test/server_status_refresh_loop_test.dart` remains in
+`scripts/dart-verify.sh`. These are scheduler/model results, not native CM IPC/window operations,
+process integration, renderer/compositor behavior, or device/package acceptance. The common
+offline Flutter-tools finalizer is covered by the verification/build authority contract above;
+Windows golden-image freshness still requires reprovisioning, inspection, a new receipt, and repinning.
 
-At clean pushed commit `2403bef449d67778cc89a580c34840d2cd029cc3` (tree
-`5dcdcbfe316efcedd7b64b8ea2d8db6b596f7381`), the authority created a fresh source archive and
-QCOW2 child, generated all Rust and Dart bridge outputs, compiled the Flutter workload, and passed
-all 13 named suites and all 107 visible tests: global-event dispatch, status refresh, display
-selection, session events, latest-frame ownership, session-stream finality, mobile-session start,
-desktop-texture lifecycle, desktop-tab retirement, presentation recovery, RGBA publication order,
-custom-cursor registry, and start-ellipsis text behavior. Inputs were
-the sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB generator
-`5f8b26a0aadbe8a14aa7cb3ba5ca55e7d1a6d5c751381d3119e73cfc686c2ad0`, Cargo-vendor closure
-`b1c746659a19393c8f38e5b36ab76f357d4f7089c53cf45ffca8a45ec7a4f1d6`, Pub-cache closure
-`e3e364cd012f19a374655ade92fc49e5c1aa631de367575ad9c5368908264c12`, and the separately pinned
-Debian-builder OCI-index/runtime-config identities. The outer run completed in 289 seconds with
-QEMU `-nic none`, container `--network=none`, a read-only container root, numeric UID/GID 1000,
-all capabilities dropped, no-new-privileges, AppArmor, read-only Landlocked inputs, unchanged host
-INET listeners, exact receipts, joined guest-only Docker/QEMU/virtiofsd cleanup, and automatic
-private-run-root retirement.
-
-This closes the clean combined Dart/model and fresh generated-bridge execution gap only. The
-Windows golden-image provisioning path has the same conceptual freshness obligation; correcting it
-still requires a new golden receipt, reprovisioning, inspection, and repinning. Exact native
-renderer/compositor behavior and the platform/device/package evidence below also remain open.
-
-Exact Android task-swipe/reopen/Force-Stop and Windows focus/minimize behavior, other platforms and
-cross-version operation, capture-through-presentation latency, sustained connection/resource soak,
-cold R-B2/R-B10 equality, installed artifacts, independent reproduction, and external review remain
-STOP-SHIP.
+STOP-SHIP: exact Android task-swipe/reopen/Force-Stop and Windows focus/minimize behavior;
+other-platform and cross-version operation; capture-through-presentation timestamps and latency;
+sustained connection/reconnect/background/file/control/resource/performance soak; installed artifacts;
+cold R-B2/R-B10 equality; independent reproduction; causation; and external review.
 
 ### R-S11hf/R-S11e-244 — bounded exact-generation global event dispatch
 
-**SOURCE IMPLEMENTED; EXACT CLEAN FLUTTER MODEL REGRESSIONS PASS WITH FRESH BRIDGES;
-NATIVE/WEB/PACKAGE EVIDENCE OPEN.** One process-owned `GlobalEventDispatcher`
-synchronously selects an exact registered-handler binding or fallback generation before admission.
-Registered/control work has one serial drain, one running entry, at most 64 pending entries, a
-16,777,216-code-unit message bound, a 67,108,864-byte retained bound, and at most 256 registered
-handlers. Replacement retires only predecessor pending work; active predecessor work settles
-before replacement work and cannot migrate. Malformed input, exhaustion, handler failure, and
-stream termination are visible to the exact route and cannot fail a later generation.
+**SOURCE IMPLEMENTED; FLUTTER MODEL REGRESSIONS PASS; NATIVE/WEB/PACKAGE EVIDENCE OPEN.**
+`flutter/lib/models/global_event_dispatcher.dart` selects the exact registered binding or fallback
+generation synchronously before admission. Its serial control drain owns one running entry,
+at most 64 pending entries, messages of at most 16,777,216 UTF-16 code units, at most 256 registered
+bindings, and at most 67,108,864 retained bytes (256 fixed bytes + two per code unit + 16 per
+captured registered reference). Size refusal precedes JSON decoding; charge is acquired before
+enqueue and released once. Replacement retires predecessor pending work; active work settles
+without overlap or migration. Malformed input, exhaustion, failure, and stream termination remain
+visible to their exact route rather than a successor generation.
 
-High-rate web cursor events remain outside that FIFO: after exact fallback capture and synchronous
-validation they enter the existing exact-owner one-running/one-latest cursor lanes without one
-future per event. Native registered-first/fallback routing and web registered-only/fallback-only
-routing remain distinct. Exact session teardown retires its fallback capability without stopping
-the persistent process or Android foreground service.
+Web cursor fallbacks synchronously hand validated values to existing exact-owner one-running/
+one-latest lanes without entering the control FIFO or creating one future per event. Native
+registered-first/fallback routing and web registered-only/fallback-only routes remain distinct.
+Session teardown retires only its fallback capability, not the persistent process or Android service.
 
-`flutter/test/global_event_dispatcher_test.dart` exercises FIFO/nonoverlap, replacement and active
-settlement, exact retirement, count/byte bounds, registered-route ownership, native/web route
-separation, synchronous cursor handoff, malformed input, visible failure, and recovery.
-`flutter/test/latest_frame_queue_test.dart` separately covers observed one-running/one-latest
-submission and exact failure retirement. Their real `flutter test --no-pub` invocations remain in
-`scripts/dart-verify.sh` and both passed in the exact clean 12-suite transaction recorded above.
-The former focused Python verifier, duplicated workspace validator/mutation catalog, and
-shared/Apple invocations were deleted because they only parsed source and documentation strings
-and did not execute either Dart owner. Exact Android task-swipe/reopen/Force-Stop, native
-desktop and web routing, Windows focus/minimize/reconnect, other-platform/cross-version behavior,
-capture-through-presentation latency, sustained resource soak, cold R-B2/R-B10 equality, installed
-artifacts, independent reproduction, causation, and external review remain STOP-SHIP.
+`flutter/test/global_event_dispatcher_test.dart` covers FIFO/nonoverlap, replacement/active settlement,
+exact retirement, count/byte bounds, registered binding ownership, route separation, synchronous
+cursor handoff, malformed input, visible failure, and recovery. It and
+`flutter/test/latest_frame_queue_test.dart` retain real `flutter test --no-pub` calls in
+`scripts/dart-verify.sh` and passed in R-S11gr's accepted 21-suite/175-test checkpoint; their current
+source/test bytes are unchanged. Model route selection is not actual native/JavaScript bridge routing.
+
+STOP-SHIP: Android task-swipe/reopen/Force-Stop; native desktop/web routing; Windows
+focus/minimize/reconnect; other-platform/cross-version operation; capture-through-presentation
+latency; sustained resource soak; installed artifacts; cold R-B2/R-B10 equality; independent
+reproduction; causation; external review; and complete connection-flow correctness/performance.
 
 ### R-S11hg/R-S11e-245 — endpoint-specific Windows service credential/control protocols
 
-**SOURCE IMPLEMENTED; ONE EXECUTABLE CROSS-PLATFORM WIRE REGRESSION RETAINED AND
-DIRECTLY WIRED; SOURCE/MUTATION THEATER DELETED; EXACT CURRENT INSTALLED WINDOWS
-AUTHORITY, LIFECYCLE, RESOURCE, ARTIFACT, AND REVIEW EVIDENCE OPEN.**
+**SOURCE IMPLEMENTED; EXECUTABLE WIRE REGRESSION WIRED; EXACT CURRENT WIRE/INSTALLED
+WINDOWS ACCEPTANCE OPEN.** `src/ipc.rs` defines four closed, disjoint, unknown-field-rejecting
+credential/control request/response types. Each endpoint has its own budget, requester capability,
+typed reader, handler, writer, and client. Shutdown retains control authority across acknowledgment
+and revalidates before its latch. There is no shared decoded union or post-deserialization endpoint
+selection.
 
-The inherited `_service_credential` and `_service_main_control` listeners authenticated distinct
-protected endpoints but deserialized one shared request/response union before a later discriminator
-rejected the wrong operation. The current source instead defines four closed, disjoint,
-unknown-field-rejecting types: credential requests/responses and control requests/responses. Each
-listener owns its own budget, requester capability, typed reader, handler, writer, and client
-endpoint. Credential operations, port-forward count, and shutdown remain reachable only through
-their endpoint-specific capability; shutdown retains control authority across acknowledgement and
-revalidates before its latch. No listener, operation, retry, runtime, service transition, or network
-surface was added.
-
-The platform-neutral Rust regression
+The retained platform-neutral regression
 `ipc::test::windows_service_credential_and_control_channels_use_closed_directional_protocols`
-serializes the exact credential/control request and response forms and rejects opposite-direction,
-cross-endpoint, unknown-field, nested-unknown-field, and generic-`Data` inputs. The shared verifier
-now invokes that test directly. Its execution is wire/parser evidence only: it does not exercise a
-Windows named pipe, LocalSystem, a retained supervisor process, protected action, acknowledgement,
-restart, or cleanup.
+checks exact encodings and rejects opposite-direction, cross-endpoint, unknown-field,
+nested-unknown-field, and generic-`Data` inputs. `scripts/verify.sh` directly invokes:
 
-The deleted `scripts/verify-windows-service-channel-protocols.py` was a 1,538-line source parser
-that conflated R-S11hg, R-S11ib, R-S11ic, R-S11iq, and R-S11ir and attacked them only by replacing
-source strings. Its duplicate workspace validator, mutation inventory, source-map entry, and
-dispatch were deleted, and its shared/Apple calls were removed. No product source changed.
+```sh
+cargo test --lib --features linux-pkg-config ipc::test::windows_service_credential_and_control_channels_use_closed_directional_protocols --color never
+```
 
-STOP-SHIP evidence remains exact current installed Windows credential/control transactions with the
-intended LocalSystem supervisor and unauthorized or wrong-generation actors; malformed and
-cross-endpoint frames; PID/creation-time/token/image/argv changes; request and acknowledgement
-failure; restart; bounded CPU/memory/handles/tasks; and cleanup. Cold R-B2/R-B10 equality,
-independent reproduction, and external review remain open.
+No exact-current accepted execution of that regression is established here. Even a wire-test pass
+would not prove Windows named-pipe, LocalSystem, protected-action, or installed lifecycle behavior.
+
+STOP-SHIP: exact installed Windows transactions with the intended supervisor and unauthorized/
+wrong-generation actors; malformed/cross-endpoint frames; PID/creation-time/token/image/argv changes;
+request/acknowledgment failure; restart; bounded CPU/memory/handles/tasks; cleanup; exact current
+artifacts; cold R-B2/R-B10 equality; independent reproduction; and external review.
 
 ### R-S11hi/R-S11e-246 — bounded format-first peer-audio decoder mailbox (2026-08-22)
 
-**SOURCE IMPLEMENTED; CONFINED SOURCE AND DELIBERATE-MUTATION VERIFICATION RECORDED
-BELOW; EXACT RUST/NATIVE EXECUTION, PHYSICAL/CROSS-PLATFORM AUDIO AND LIFECYCLE
-BEHAVIOR, COLD RELEASE, INDEPENDENT REPRODUCTION, CAUSATION, AND EXTERNAL REVIEW
-EVIDENCE OPEN.** Platform: the shared outgoing viewer on Android, iOS, Windows, Linux,
-and macOS, plus the shared accepted-call peer-audio playback path on the controlled side.
-Endpoint/action: post-transport `AudioFormat`/`AudioFrame` admission into one exact native
-Opus decoder/playback worker. This slice does not change audio capture or output-device
-selection, voice-call authorization, the connection protocol, Android's foreground
-service, any controlled listener, or any video/input/file path.
+**SOURCE IMPLEMENTED; EXACT CURRENT RUST/NATIVE AUDIO AND RELEASE EVIDENCE OPEN.**
+The shared outgoing viewer on Android/iOS/Windows/Linux/macOS and accepted controlled-call playback
+use `src/client.rs`'s `AudioMailboxState`: one immutable first-format identity, one pending format,
+at most eight timestamped frames, and terminal state under a mutex. The sole receiver uses a
+condition-variable predicate wait. Frames are refused before format; duplicate formats coalesce;
+changes are refused; format is consumed first; capacity replaces the oldest frame; dequeue refuses
+frames older than one second without expiring the format. Close releases pending payloads and
+wakes the decoder. No polling, secondary queue, per-message worker, or nested runtime is added.
 
-Read-only current-source and history tracing found one remaining real-time admission
-defect adjacent to, but distinct from, the previously corrected R-S11ev video mailbox.
-Commit `edc8a3b9` (2026-06-27) replaced the inherited unbounded generic `MediaData`
-channel with `mpsc::sync_channel` capacity eight. R-S11ev later removed video frames and
-lossy video wake tokens from that union, but deliberately left audio on the generic
-FIFO. Both outgoing-viewer and accepted controlled peer-audio callers used nonblocking
-`try_send`. A full queue discarded the newly arriving packet, so a decoder/output stall
-could retain the oldest eight frames. If production and consumption later resumed at
-the same rate, each newly opened slot could accept one new packet while the old
-eight-packet offset remained; bounded memory alone therefore did not guarantee real-time
-freshness or convergence.
+`OwnedMediaThread` retains the non-cloneable sender and exact decoder handle; the existing bounded
+completion pool owns final joining after close or hard Drop. Viewer and controlled callers retain
+native Opus packet/rate/channel limits and typed outcomes. Controlled playback retains the
+accepted-call input lease and separate pinned format; a refused fresh decoder is closed and joined
+rather than partly installed. Capture, output-device selection, voice-call authorization, protocol,
+foreground service, listener, video/input/file paths, and the existing retirement topology are unchanged.
 
-The generic queue also admitted frames before it had any codec authority. On the
-outgoing viewer, the audio worker is created with the connection, so an out-of-order or
-hostile peer could fill all eight slots with `AudioFrame` messages and make the first
-valid `AudioFormat` the dropped ninth item. The decoder would consume and ignore the
-pre-format frames, never receive a usable format, and remain silent for that connection.
-The controlled accepted-call path creates its decoder only on first format and was not
-reachable through that exact pre-format sequence, but it shared the newest-drop FIFO and
-freshness defect. `AudioHandler` already and intentionally pins the first valid Opus
-sample-rate/channel pair and rejects later changes; changing codecs in place or blindly
-recreating native playback was therefore not the correct repair.
+Four Rust regressions `client::tests::r_s11hi_` cover pre-format/format-priority, duplicate/change,
+exact-bound oldest replacement/FIFO, and stale-frame refusal. The existing
+`owned_media_thread_closes_admission_before_join` and
+`owned_media_thread_hard_drop_never_joins_inline` tests cover owner finality. The shared gate retains:
 
-The corrected authority model is explicit. The network/authorization task owns
-synchronous admission but never decoder execution. One `AudioMailboxState` owns at most
-one pending first format, its immutable `(sample_rate, channels)` identity, eight
-timestamped frames, and terminal state under one short standard-library mutex. Its
-condition variable owns only event-driven wakeup, not payload or history. The sole
-`AudioMailboxReceiver` owns dequeue and native decoder invocation. `OwnedMediaThread`
-alone owns the non-cloneable sender plus exact decoder `JoinHandle`; the existing bounded
-media completion pool alone may own a handle after graceful close or hard `Drop`.
+```sh
+cargo test --lib --features linux-pkg-config,flutter client::tests::r_s11hi_ --color never
+```
 
-First valid format admission commits its identity and pending payload before wake and
-clears impossible pre-generation frame state. A frame is refused until that identity is
-present. Duplicate formats create no replay work; a different format remains a protocol
-refusal instead of mutating live native state. Receive always takes the pending format
-before a frame. Frame admission retains at most eight packets and, at the exact bound,
-retires the oldest before appending the newest. Dequeue skips any packet older than one
-second without expiring the format. Sender or receiver close marks terminal, releases
-the retained format and every frame, and wakes the exact worker. There is no polling
-sleep, timeout loop, retry, asynchronous task, nested runtime, secondary queue, or
-per-message worker.
+`scripts/verify-viewer-audio-mailbox.py --repo . --self-test` remains wired in
+`scripts/verify.sh` and `scripts/apple-conform-check.sh`; it checks source topology and mutations,
+not native behavior, and no longer reads requirements or ledger wording. The Rust tests and wiring
+are present, but no accepted exact-current Rust execution or native playback result is established here.
+Neither the source correction nor unrelated model passes identify the defect in weeks-old deployed
+artifacts or establish causation for the reported display-only delay.
 
-Outgoing-viewer and controlled callers still enforce the existing native Opus packet,
-sample-rate, and channel limits before mailbox admission and exhaustively handle every
-typed outcome. Controlled playback still requires the accepted-call input lease and
-pins its separate `ControlledAudioThread.format` identity before installation. A fresh
-controlled decoder refusing its validated first format is drained through the exact
-existing close-and-join path rather than installed partially. Close, call termination,
-audio disable, connection retirement, hard-drop behavior, and the bounded worker-reaper
-topology are otherwise unchanged.
-
-Four deterministic Rust regressions cover pre-format refusal plus format-first order,
-duplicate/change coalescing, capacity-eight oldest-frame replacement with exact FIFO
-order among retained frames, and stale-frame refusal before delivery. Existing owner
-regressions continue to cover close-before-join and nonblocking hard-drop handoff. The
-focused `scripts/verify-viewer-audio-mailbox.py` gate independently parses the exact
-state, typed outcomes, admission/receive order, owner/worker topology, both caller
-classes, tests, requirements, ledger, and shared/Apple/independent wiring, then attacks
-those obligations with deliberate mutations. The independent workspace validator
-separately binds the source behavior and focused verifier structure rather than trusting
-the focused gate's verdict.
-
-Final verification uses only the authorized immutable local inspection image with
-network disabled, the repository bind-mounted read-only, UID/GID 1000, all capabilities
-dropped, `no-new-privileges`, a read-only root filesystem, bounded PIDs/memory/CPU, and
-no Docker socket, device, host namespace, or published port. The image contains Python
-and shell but no Rust/Cargo, Flutter/Dart, native audio stack, or platform target
-toolchain. Exact Rust unit execution, native playback, and compilation are therefore not
-claimed; no substitute image, network pull, dependency acquisition, listener, host
-process, or long release build is used. The focused peer-audio mailbox verifier passed
-all 22 deliberate mutations. The adjacent Android voice-call ownership verifier rejected all 535
-mutations. The independent workspace validator passed in normal mode, and its complete
-unfiltered 4,832-entry semantic source-mutation catalog passed; every fixture had to be
-rejected at every reachable source occurrence. Earlier exhaustive construction runs
-correctly rejected the mutated product bytes but exposed one missing focused-fixture
-binding and diagnostic-label mismatches in the new independent coverage. Those verifier
-defects were corrected, the audio-specific mutation preflight passed, and the final
-unfiltered catalog then passed unchanged. Both native-codec watch modes passed. The
-three modified Python verifiers parsed through Python's AST without writing bytecode;
-the modified shared and Apple shell gates passed `bash -n`; `requirements.html` passed
-the standard-library HTML parser; and its independently computed SHA-256 was
-`cf622bd47a8d5b0b27c6a171f8e1db34ada551a6b44708fadfd98ab947b45188`.
-The exact R-S11hi Rust regressions and their shared Cargo gate are present and
-source-bound, but the gate was not executed because the authorized image has no Rust or
-Cargo toolchain.
-
-This is source proof of a shared audio resource/order/freshness defect and its bounded
-correction. It is not evidence that an unidentified weeks-old Android, Windows, or
-Debian artifact contained or exercised the defect, not proof that it caused the reported
-display-only delay, and not evidence of exploitation, privilege escalation, compromise,
-public exposure, container escape, or a host RustDesk/service/firewall/listener/network
-change. This slice does not inspect, stop, restart, modify, or connect to a host RustDesk
-process or service; does not inspect or change host firewall/network/listener state; does
-not touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or unrelated
-container/image; and does not request or acquire root.
-
-Physical Android task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect
-behavior; Linux/macOS/iOS and cross-version audio behavior; exact weeks-old deployed
-artifacts; capture-through-encode/transport/receive/decode/publication/Dart/compositor
-timestamps and explicit latency/queue/CPU/memory budgets; sustained
-connection/reconnect/focus/background/file/control/audio/resource/power/performance soak;
-clean cold R-B2/R-B10 equality; installed process/service/package behavior; independent
-reproduction; R-V3 external review; causation; and proof that the complete connection
-flow is correct and performant all remain explicit release obligations and explicit user
-requests.
+STOP-SHIP: physical Android task-swipe/reopen/Force-Stop; Windows focus/minimize/reconnect;
+Linux/macOS/iOS and cross-version audio; exact deployed artifacts; capture/encode/transport/receive/
+decode/publication/Dart/compositor timestamps and latency/queue/CPU/memory budgets; sustained
+connection/reconnect/focus/background/file/control/audio/resource/power/performance soak; installed
+process/service/package behavior; cold R-B2/R-B10 equality; independent reproduction; causation;
+R-V3 external review; and complete connection-flow correctness/performance. These remain explicit
+user requests and release obligations.
 
 ### R-S11hj/R-S11e-247 — complete account storage and presentation authority excision
 
-**SOURCE IMPLEMENTED; EXACT COMPILATION, GENERATED-BRIDGE, PACKAGE, AND INSTALLED-ARTIFACT
-EVIDENCE OPEN.** The direct-only fork has no live account/address-book/group UI or control plane, so
-the inherited record types, encrypted raw stores, FFI/web save/load/clear surface, account options,
-password-provenance flag, main-status variants, recursive asset packaging, and retired icon-font
-families were deleted instead of acquiring a replacement worker or migration protocol. Existing
-`*_ab` and `*_group` files remain untouched inert bytes. Live peer TOML persistence and direct-session
-display-name/avatar, CPace, password, and connection-token state are separate and remain governed by
-their own requirements.
+**SOURCE IMPLEMENTED; EXACT COMPILATION, GENERATED-BRIDGE ABSENCE INSPECTION, PACKAGE,
+AND INSTALLED-ARTIFACT EVIDENCE OPEN.** The direct-only fork has no live account/address-book/group
+UI or control plane. Its inherited record types, encrypted raw stores, FFI/web save/load/clear
+surface, account options, password-provenance flag, main-status variants, recursive asset packaging,
+and retired icon fonts are absent rather than replaced by a worker or migration protocol.
+Existing `*_ab`/`*_group` files remain untouched inert bytes. Live peer TOML and direct-session
+display-name/avatar, CPace, password, and connection-token state remain separate.
 
-The former focused Python verifier, its duplicated workspace validator and mutation catalog, and the
-shared/Apple invocations were deleted because they only searched exact source and documentation text;
-they did not compile the current tree, regenerate a bridge, inspect a package, load dormant user data,
-or execute an installed client. Closure now requires exact-current compilation, fresh generated-bridge
-inspection, built-package asset and symbol inventories, cold R-B2/R-B10 equality, installed-platform
-checks, independent reproduction, and external review. The broader cross-platform connection-flow,
-latency, resource, background/focus, reconnect, and cleanup obligations remain open.
+Exact-current compilation, fresh bridge absence inspection, built-package asset/symbol inventories,
+installed-platform checks, cold R-B2/R-B10 equality, independent reproduction, and external review
+remain required. R-S11gr's generated-bridge/model checkpoint is not a complete compilation or
+account-symbol/package absence inventory. Broader cross-platform connection-flow, latency,
+resource, background/focus, reconnect, and cleanup acceptance also remains OPEN.
 
 ### R-S11hk/R-S11e-248 — bounded exact-session file-confirm ownership
 

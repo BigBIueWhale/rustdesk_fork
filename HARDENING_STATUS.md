@@ -12846,6 +12846,28 @@ no audio subscriber or capture token: authorized capture, main-IPC callback,
 wrong-UID/PID-reuse cases, installed service, backlog flooding, and sustained
 resource/device behavior remain OPEN. No production code changed in this slice.
 
+Pushed `780bbfe23936fca115cb75803bf2007681f86405` (tree
+`30af690d31be0951eda71596fc0bf8bfd460ccdd`) retires the stale 1,522-line
+CM/PA/whiteboard source-wording checker. It demanded a caller-supplied PA owner,
+the removed blocking `Simple::read`, and the old CM registry, so it could not
+evaluate the current implementation. The shared verifier retains its focused
+Rust authority/closed-wire tests and two narrow old-path absence checks, but
+does not print a synthetic native pass. R-S11cc/R-S11cd and Appendix C
+#222/#223 now require source review and source-bound native allowed/forbidden
+process evidence rather than that obsolete mutation count. The exact pushed
+source passed the existing isolated native PA lane: eleven Rust tests, the
+private sine-driven PulseAudio monitor, capture revocation after sine unload,
+and copied-token same-UID refusal. The zero-NIC outer transaction took 681
+seconds, reported no harness-added host listener or pre-existing-process drift,
+and joined cleanup. Retained 67,783-byte serial:
+`.harness-state/verifier-vm/linux-pa-authority-tests-run.hGCGDZJ1gd.serial.log`
+(SHA-256 `ca3af5c31b3c6088d4567406c907f44360053fe96d052d1d9f6b349f1fcdadeb`);
+no `run.*` directory or overlay remains. This is native PA with a test-owned
+listener, not authorized capture through the production CM/server pair or an
+installed service. The full shared verifier and affected whiteboard checker
+were not executed in this slice; only their Bash/Python syntax and focused
+source absences were checked. No product code changed.
+
 **Process-wide connection IDs — source corrected, native lifecycle OPEN.**
 The former per-`Server` counters could allocate the same ID in overlapping
 controlled generations or outgoing voice audio, and their wrap scan checked

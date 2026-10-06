@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the bounded JSON result stream from the focused Flutter model tests."""
+"""Validate bounded Flutter JSON results for the model checkpoint or queue shard."""
 
 import argparse
 import json
@@ -32,6 +32,32 @@ EXPECTED_SUITES = {
     "start_ellipsis_text_test.dart",
 }
 EXPECTED_TESTS = 175
+FRAME_QUEUE_TESTS = {
+    "retains one running frame and only the latest successor per display",
+    "different displays drain independently",
+    "nonwaiting pool bounds independent displays across replacement",
+    "nonwaiting pool retains the same-display latest successor",
+    "bounded parallel lane overtakes one stalled presentation",
+    "parallel recovery remains inside the total drain bound",
+    "parallel limit cannot exceed the total drain bound",
+    "shared drain pool survives queue replacement without minting capacity",
+    "shared drain pool retains only the latest waiting frame",
+    "shared drain pool starts live waiting lanes in FIFO order",
+    "shared drain pool refuses excess waiting lanes visibly",
+    "pool-waiting displays remain inside the queue-wide key bound",
+    "running and waiting displays share one distinct-key budget",
+    "detached and waiting displays share one distinct-key budget",
+    "parallel failure retires its peer and retained successor",
+    "observed submissions retain only running and latest without futures",
+    "observed failure is visible and retires its exact queue",
+    "a failed frame retires its retained successor",
+    "owner mismatch and display overflow refuse frames before invocation",
+    "exact retirement releases retained frames and cannot block replacement",
+    "recovery bypasses a detached asynchronous presentation",
+    "a detached failure cannot retire its recovered generation",
+    "recovery fails visibly at the per-display drain bound",
+    "detached displays remain inside the queue-wide key bound",
+}
 MAXIMUM_BYTES = 8 * 1024 * 1024
 MAXIMUM_EVENTS = 16_384
 MAXIMUM_LINE_BYTES = 1024 * 1024
@@ -46,7 +72,13 @@ def require(condition, message):
         raise ResultError(message)
 
 
-def parse_result(path):
+def parse_result(path, profile="models"):
+    require(profile in {"models", "frame-queue"}, "test profile is unknown")
+    expected_suites = EXPECTED_SUITES
+    expected_tests = EXPECTED_TESTS
+    if profile == "frame-queue":
+        expected_suites = {"latest_frame_queue_test.dart"}
+        expected_tests = len(FRAME_QUEUE_TESTS)
     metadata = os.lstat(path)
     require(stat.S_ISREG(metadata.st_mode), "result is not one regular file")
     require(metadata.st_nlink == 1, "result has multiple links")
@@ -59,6 +91,7 @@ def parse_result(path):
     done_events = 0
     events = 0
     visible_successes = 0
+    visible_names = set()
     with open(path, "rb") as stream:
         for raw_line in stream:
             events += 1
@@ -72,6 +105,7 @@ def parse_result(path):
             require(isinstance(event, dict), "result event is not an object")
             event_type = event.get("type")
             require(isinstance(event_type, str), "result event type is absent")
+            require(done_events == 0, "result contains an event after final completion")
             if event_type == "start":
                 starts += 1
             elif event_type == "suite":
@@ -91,7 +125,9 @@ def parse_result(path):
                 require(isinstance(test_id, int) and test_id >= 0, "test ID is malformed")
                 require(isinstance(suite_id, int) and suite_id in suites, "test suite is unknown")
                 require(test_id not in tests, "test ID is duplicated")
-                tests[test_id] = suite_id
+                name = test.get("name")
+                require(isinstance(name, str), "test name is malformed")
+                tests[test_id] = (suite_id, name)
             elif event_type == "error":
                 raise ResultError("Flutter reported a test error event")
             elif event_type == "testDone":
@@ -105,6 +141,10 @@ def parse_result(path):
                 completed.add(test_id)
                 if not hidden:
                     visible_successes += 1
+                    name = tests[test_id][1]
+                    if profile == "frame-queue":
+                        require(name not in visible_names, "visible test name is duplicated")
+                        visible_names.add(name)
             elif event_type == "done":
                 done_events += 1
                 require(event.get("success") is True, "final test result is not successful")
@@ -112,23 +152,31 @@ def parse_result(path):
     require(events > 0, "result is empty")
     require(starts == 1, "start event is absent or duplicated")
     require(done_events == 1, "done event is absent or duplicated")
-    require(set(suites.values()) == EXPECTED_SUITES, "executed suite inventory differs")
-    require(len(suites) == len(EXPECTED_SUITES), "suite path is duplicated")
+    require(set(suites.values()) == expected_suites, "executed suite inventory differs")
+    require(len(suites) == len(expected_suites), "suite path is duplicated")
     require(completed == set(tests), "one or more started tests never completed")
-    require(visible_successes == EXPECTED_TESTS, "executed test count differs")
+    require(visible_successes == expected_tests, "executed test count differs")
+    if profile == "frame-queue":
+        require(visible_names == FRAME_QUEUE_TESTS, "executed frame-queue test names differ")
     return len(suites), visible_successes
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
+    parser.add_argument("--profile", choices=("models", "frame-queue"), default="models")
     arguments = parser.parse_args()
     try:
-        suites, tests = parse_result(arguments.result)
+        suites, tests = parse_result(arguments.result, arguments.profile)
     except (OSError, ResultError) as error:
         print("FLUTTER MODEL TEST RESULT: FAILED — {}".format(error), file=sys.stderr)
         return 1
-    print("FLUTTER_MODEL_TEST_JSON=pass suites={} tests={}".format(suites, tests))
+    prefix = (
+        "FLUTTER_MODEL_TEST_JSON"
+        if arguments.profile == "models"
+        else "FLUTTER_FRAME_QUEUE_TEST_JSON"
+    )
+    print("{}=pass suites={} tests={}".format(prefix, suites, tests))
     return 0
 
 

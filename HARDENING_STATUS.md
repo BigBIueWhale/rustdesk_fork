@@ -10106,8 +10106,18 @@ not a browser, real blocked image conversion, complete web caller wiring or a me
 
 Actual web compilation, browser/engine completion and caller wiring, aggregate frame/image byte bounds,
 native overload/failure, memory/latency/wake measurements and sustained replacement remain OPEN.
-The 317-second generated-bridge checkpoint is not the desired fast inner loop; a narrowly selected queue
-runtime check without unrelated toolchain/generation work remains verification-engineering work.
+The 317-second generated-bridge checkpoint is not the desired fast inner loop. The fixed
+`scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --frame-queue` shard is implemented,
+but runtime acceptance and its measured pace are pending. It runs the unchanged production queue and
+all 24 existing queue regressions, with exact suite/name/count and terminal-success validation.
+The same zero-NIC execution authority retains pinned Flutter, the complete read-only Pub closure,
+offline lockfile enforcement, listener invariance and joined cleanup. Queue source is read-only;
+only a private guest copy receives Pub/test output. It omits unused Rust/LLVM/Cargo/bridge generation,
+uses a 300-second VM budget with 4 GiB guest/2 GiB container memory, and leaves the 21-suite/175-test
+generated-bridge checkpoint intact. Parser regressions cover both result profiles and refusal of
+wrong/duplicate/missing queue inventory, failure, skip, unfinished work and post-final events.
+Neither source presence nor parser tests establish execution or fast feedback; the new shard and
+the shared full-model path still need accepted runtime transactions on this candidate.
 The source-visible gap did not establish causation for the Android/Windows reports.
 
 ### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority

@@ -11,6 +11,7 @@ FLUTTER_APP_TREE=
 FLUTTER_APP_RECIPE_SHA256=
 FLUTTER_APP_MANIFEST_SHA256=
 FLUTTER_APP_ENGINE_CONTEXT=
+FLUTTER_TEST_PROFILE=models
 case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
@@ -54,6 +55,11 @@ case "$#:${8:-}" in
         ;;
     12:--flutter-model-tests)
         MODE=flutter-model-tests
+        ;;
+    13:--flutter-model-tests)
+        [ "${13}" = --frame-queue ] || exit 2
+        MODE=flutter-model-tests
+        FLUTTER_TEST_PROFILE=frame-queue
         ;;
     12:--android-owner-tests)
         MODE=android-owner-tests
@@ -117,6 +123,7 @@ case "$#:${8:-}" in
         echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-pa-authority-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-service-uid-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 TEST_APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 TEST_APK_SHA256 {peer-lifecycle|controlled-cm} PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-flutter-app-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 CONTEXT | --linux-flutter-app-replay SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 APP_COMMIT APP_TREE APP_RECIPE_SHA256 APP_MANIFEST_SHA256 CONTEXT | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         echo 'The seven base arguments also accept --android-execution-probe, --android-runtime-log-tests, or --linux-flutter-artifact-tests.' >&2
         echo 'CM file integration replay accepts --cm-file-replay SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
+        echo 'The focused Flutter queue shard appends --frame-queue to --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         exit 2
         ;;
 esac
@@ -129,6 +136,7 @@ readonly EXPECTED_SHA256=$5
 readonly EXPECTED_KERNEL_RELEASE=$6
 readonly EXPECTED_ROOT_UUID=$7
 readonly MODE FLUTTER_PEER_CANDIDATE FLUTTER_APP_BUILD_ONLY FLUTTER_APP_BUILD_CONTEXT
+readonly FLUTTER_TEST_PROFILE
 readonly FLUTTER_APP_ENGINE_CONTEXT
 if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
     [ -n "$FLUTTER_APP_ENGINE_CONTEXT" ] && [ "${#FLUTTER_APP_ENGINE_CONTEXT}" -le 2048 ] || exit 2
@@ -5186,7 +5194,28 @@ run_flutter_model_tests() {
     local builder_archive=$inputs/build-images/deb-builder.docker.tar.gz
     local load_output container_status=0 inspect namespace_inspect result_line
     local source_archive_sha input_mount_options cargo_receipt pub_receipt post_pub_receipt
-    local tools_freshness_line
+    local tools_freshness_line source_authority source_writable=true
+    local memory=8g memory_bytes=8589934592 result_prefix=FLUTTER_MODEL_TEST_JSON
+    local expected_result='suites=21 tests=175' queue_sha256 tests_sha256
+    local -a toolchain_mounts=()
+    local source_mount="type=bind,source=$source_root,target=/source"
+    if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+        memory=2g
+        memory_bytes=2147483648
+        result_prefix=FLUTTER_FRAME_QUEUE_TEST_JSON
+        expected_result='suites=1 tests=24'
+        source_mount+=,readonly
+        source_writable=false
+        printf 'FLUTTER_FRAME_QUEUE_STAGE=verify-source-and-inputs\n'
+    else
+        toolchain_mounts=(
+            --mount "type=bind,source=$cargo_vendor,target=/online/cargo-vendor,readonly"
+            --mount "type=bind,source=$rust_archive,target=/inputs/rust.tar.xz,readonly"
+            --mount "type=bind,source=$llvm_archive,target=/inputs/llvm.tar.xz,readonly"
+            --mount "type=bind,source=$cargo_config,target=/inputs/cargo-vendor-config.toml,readonly"
+            --mount "type=bind,source=$frb_codegen,target=/inputs/flutter_rust_bridge_codegen,readonly"
+        )
+    fi
 
     [[ "$FLUTTER_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         || fail 'focused Flutter-test source commit is malformed'
@@ -5214,6 +5243,9 @@ run_flutter_model_tests() {
     [ -f "$source_root/scripts/verify-flutter-model-test-result.py" ] \
         && [ ! -L "$source_root/scripts/verify-flutter-model-test-result.py" ] \
         || fail 'focused Flutter-test result validator is absent or ambiguous'
+    [ -f "$source_root/scripts/test-flutter-model-test-result.py" ] \
+        && [ ! -L "$source_root/scripts/test-flutter-model-test-result.py" ] \
+        || fail 'focused Flutter-test parser regression is absent or ambiguous'
     [ -f "$source_root/scripts/online-pub-cache-output.py" ] \
         && [ ! -L "$source_root/scripts/online-pub-cache-output.py" ] \
         || fail 'focused Flutter-test Pub-cache validator is absent or ambiguous'
@@ -5250,39 +5282,41 @@ run_flutter_model_tests() {
         && [ "$(sha256sum "$flutter_archive" | awk '{ print $1 }')" = \
              "$SHA256_FLUTTER_3_24_5" ] \
         || fail 'sealed Flutter 3.24.5 archive differs'
-    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$rust_archive")" = \
-      "1000:1000:400:1:$SIZE_RUST_1_75" ] \
-        && [ "$(sha256sum "$rust_archive" | awk '{ print $1 }')" = \
-             "$SHA256_RUST_1_75" ] \
-        || fail 'sealed Rust 1.75.0 archive differs'
-    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$llvm_archive")" = \
-      "1000:1000:400:1:$SIZE_LLVM_15_0_6" ] \
-        && [ "$(sha256sum "$llvm_archive" | awk '{ print $1 }')" = \
-             "$SHA256_LLVM_15_0_6" ] \
-        || fail 'sealed LLVM 15.0.6 archive differs'
-    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$cargo_config")" = \
-      "1000:1000:400:1:$SIZE_CARGO_VENDOR_CONFIG" ] \
-        && [ "$(sha256sum "$cargo_config" | awk '{ print $1 }')" = \
-             "$SHA256_CARGO_VENDOR_CONFIG" ] \
-        || fail 'sealed Cargo-vendor configuration differs'
-    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$frb_codegen")" = \
-      "1000:1000:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
-        && [ "$(sha256sum "$frb_codegen" | awk '{ print $1 }')" = \
-             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" ] \
-        || fail 'sealed FRB generator differs'
-    [ -d "$cargo_vendor" ] && [ ! -L "$cargo_vendor" ] \
-        && [ "$(stat -c '%u:%g:%a' -- "$cargo_vendor")" = 1000:1000:500 ] \
-        || fail 'sealed Cargo-vendor root metadata differs'
-    cargo_receipt="$(
-        setpriv --reuid=1000 --regid=1000 --clear-groups \
-            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-            python3 -I -S "$cargo_validator" verify-subtree \
-                --tree "$cargo_vendor" \
-                --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"
-    )" || fail 'sealed Cargo-vendor closure validation failed'
-    [ "$cargo_receipt" = \
-      "verified subtree $SHA256_CARGO_VENDOR_CLOSURE_V1" ] \
-        || fail "sealed Cargo-vendor closure receipt differs: $cargo_receipt"
+    if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+        [ "$(stat -c '%u:%g:%a:%h:%s' -- "$rust_archive")" = \
+          "1000:1000:400:1:$SIZE_RUST_1_75" ] \
+            && [ "$(sha256sum "$rust_archive" | awk '{ print $1 }')" = \
+                 "$SHA256_RUST_1_75" ] \
+            || fail 'sealed Rust 1.75.0 archive differs'
+        [ "$(stat -c '%u:%g:%a:%h:%s' -- "$llvm_archive")" = \
+          "1000:1000:400:1:$SIZE_LLVM_15_0_6" ] \
+            && [ "$(sha256sum "$llvm_archive" | awk '{ print $1 }')" = \
+                 "$SHA256_LLVM_15_0_6" ] \
+            || fail 'sealed LLVM 15.0.6 archive differs'
+        [ "$(stat -c '%u:%g:%a:%h:%s' -- "$cargo_config")" = \
+          "1000:1000:400:1:$SIZE_CARGO_VENDOR_CONFIG" ] \
+            && [ "$(sha256sum "$cargo_config" | awk '{ print $1 }')" = \
+                 "$SHA256_CARGO_VENDOR_CONFIG" ] \
+            || fail 'sealed Cargo-vendor configuration differs'
+        [ "$(stat -c '%u:%g:%a:%h:%s' -- "$frb_codegen")" = \
+          "1000:1000:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
+            && [ "$(sha256sum "$frb_codegen" | awk '{ print $1 }')" = \
+                 "$SHA256_FLUTTER_PEER_FRB_CODEGEN" ] \
+            || fail 'sealed FRB generator differs'
+        [ -d "$cargo_vendor" ] && [ ! -L "$cargo_vendor" ] \
+            && [ "$(stat -c '%u:%g:%a' -- "$cargo_vendor")" = 1000:1000:500 ] \
+            || fail 'sealed Cargo-vendor root metadata differs'
+        cargo_receipt="$(
+            setpriv --reuid=1000 --regid=1000 --clear-groups \
+                env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+                python3 -I -S "$cargo_validator" verify-subtree \
+                    --tree "$cargo_vendor" \
+                    --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"
+        )" || fail 'sealed Cargo-vendor closure validation failed'
+        [ "$cargo_receipt" = \
+          "verified subtree $SHA256_CARGO_VENDOR_CLOSURE_V1" ] \
+            || fail "sealed Cargo-vendor closure receipt differs: $cargo_receipt"
+    fi
     [ -d "$pub_cache" ] && [ ! -L "$pub_cache" ] \
         && [ "$(stat -c '%u:%g:%a' -- "$pub_cache")" = 1000:1000:500 ] \
         || fail 'sealed Pub-cache root metadata differs'
@@ -5331,8 +5365,8 @@ run_flutter_model_tests() {
             --network=none \
             --read-only \
             --pids-limit=2048 \
-            --memory=8g \
-            --memory-swap=8g \
+            --memory="$memory" \
+            --memory-swap="$memory" \
             --cpus=4 \
             --shm-size=1g \
             --ulimit nofile=8192:8192 \
@@ -5341,16 +5375,13 @@ run_flutter_model_tests() {
             --security-opt=no-new-privileges \
             --security-opt=apparmor=docker-default \
             --user 1000:1000 \
-            --mount "type=bind,source=$source_root,target=/source" \
+            --mount "$source_mount" \
             --mount "type=bind,source=$work_root,target=/work" \
             --mount "type=bind,source=$pub_cache,target=/online/pub-cache,readonly" \
-            --mount "type=bind,source=$cargo_vendor,target=/online/cargo-vendor,readonly" \
             --mount "type=bind,source=$flutter_archive,target=/inputs/flutter.tar.xz,readonly" \
-            --mount "type=bind,source=$rust_archive,target=/inputs/rust.tar.xz,readonly" \
-            --mount "type=bind,source=$llvm_archive,target=/inputs/llvm.tar.xz,readonly" \
-            --mount "type=bind,source=$cargo_config,target=/inputs/cargo-vendor-config.toml,readonly" \
-            --mount "type=bind,source=$frb_codegen,target=/inputs/flutter_rust_bridge_codegen,readonly" \
+            "${toolchain_mounts[@]}" \
             --mount "type=bind,source=$result_validator,target=/authority/result.py,readonly" \
+            --env "FLUTTER_TEST_PROFILE=$FLUTTER_TEST_PROFILE" \
             --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
             --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
             --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=700,uid=1000,gid=1000 \
@@ -5376,44 +5407,58 @@ run_flutter_model_tests() {
                 [ "$seccomp" = 2 ]
                 IFS= read -r apparmor </proc/self/attr/current
                 case "$apparmor" in docker-default\ *) ;; *) exit 92 ;; esac
-                mkdir /work/toolchain /work/home /work/cargo-home /work/flutter-shim
-                tar -C /work/toolchain -xf /inputs/rust.tar.xz
+                mkdir /work/toolchain /work/home /work/flutter-shim
                 tar -C /work/toolchain -xf /inputs/flutter.tar.xz
-                tar -C /work/toolchain -xf /inputs/llvm.tar.xz
-                rust_installer=(/work/toolchain/rust-1.*/install.sh)
-                [ "${#rust_installer[@]}" -eq 1 ] && [ -f "${rust_installer[0]}" ]
-                "${rust_installer[0]}" --prefix=/work/toolchain/rustinstall \
-                    --disable-ldconfig \
-                    --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview \
-                    >/dev/null
-                llvm_roots=(/work/toolchain/clang+llvm-*)
-                [ "${#llvm_roots[@]}" -eq 1 ] && [ -d "${llvm_roots[0]}" ]
-                LLVM_ROOT="${llvm_roots[0]}"
-                clang_headers=("$LLVM_ROOT"/lib/clang/*/include)
-                [ "${#clang_headers[@]}" -eq 1 ] && [ -d "${clang_headers[0]}" ]
-                cp /inputs/flutter_rust_bridge_codegen \
-                    /work/toolchain/flutter_rust_bridge_codegen
-                chmod 0500 /work/toolchain/flutter_rust_bridge_codegen
-                export HOME=/work/home CARGO_HOME=/work/cargo-home
+                if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+                    mkdir /work/cargo-home
+                    tar -C /work/toolchain -xf /inputs/rust.tar.xz
+                    tar -C /work/toolchain -xf /inputs/llvm.tar.xz
+                    rust_installer=(/work/toolchain/rust-1.*/install.sh)
+                    [ "${#rust_installer[@]}" -eq 1 ] && [ -f "${rust_installer[0]}" ]
+                    "${rust_installer[0]}" --prefix=/work/toolchain/rustinstall \
+                        --disable-ldconfig \
+                        --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview \
+                        >/dev/null
+                    llvm_roots=(/work/toolchain/clang+llvm-*)
+                    [ "${#llvm_roots[@]}" -eq 1 ] && [ -d "${llvm_roots[0]}" ]
+                    LLVM_ROOT="${llvm_roots[0]}"
+                    clang_headers=("$LLVM_ROOT"/lib/clang/*/include)
+                    [ "${#clang_headers[@]}" -eq 1 ] && [ -d "${clang_headers[0]}" ]
+                    cp /inputs/flutter_rust_bridge_codegen \
+                        /work/toolchain/flutter_rust_bridge_codegen
+                    chmod 0500 /work/toolchain/flutter_rust_bridge_codegen
+                    export CARGO_HOME=/work/cargo-home LIBCLANG_PATH="$LLVM_ROOT/lib"
+                fi
+                export HOME=/work/home
                 export PUB_CACHE=/online/pub-cache CI=true
                 export PUB_HOSTED_URL=https://pub.dev
                 export FLUTTER_SUPPRESS_ANALYTICS=true
                 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
                 export GIT_ATTR_NOSYSTEM=1 GIT_NO_REPLACE_OBJECTS=1
                 export GIT_OPTIONAL_LOCKS=0
-                export LIBCLANG_PATH="$LLVM_ROOT/lib"
-                export PATH=/work/toolchain/flutter/bin:/work/toolchain/flutter/bin/cache/dart-sdk/bin:/work/toolchain/rustinstall/bin:/usr/bin:/bin
+                export PATH=/work/toolchain/flutter/bin:/work/toolchain/flutter/bin/cache/dart-sdk/bin:/usr/bin:/bin
+                if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+                    export PATH=/work/toolchain/rustinstall/bin:$PATH
+                fi
                 [ "$(flutter --version --machine | /usr/bin/python3 -c "import json,sys; print(json.load(sys.stdin)[\"frameworkVersion\"])")" = 3.24.5 ]
-                {
-                    printf "[net]\noffline = true\n"
-                    sed "s#directory = .*#directory = \"/online/cargo-vendor\"#" \
-                        /inputs/cargo-vendor-config.toml
-                } >"$CARGO_HOME/config.toml"
+                if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+                    {
+                        printf "[net]\noffline = true\n"
+                        sed "s#directory = .*#directory = \"/online/cargo-vendor\"#" \
+                            /inputs/cargo-vendor-config.toml
+                    } >"$CARGO_HOME/config.toml"
+                fi
                 cp /source/scripts/flutter-offline-shim.sh /work/flutter-shim/flutter
                 chmod 0500 /work/flutter-shim/flutter
                 export REAL_FLUTTER=/work/toolchain/flutter/bin/flutter
                 export PATH=/work/flutter-shim:$PATH
-                project_lock="$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")"
+                project_root=/source/flutter
+                if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+                    cp -a /source/flutter /work/project
+                    project_root=/work/project
+                fi
+                cd "$project_root"
+                project_lock="$(sha256sum pubspec.lock | awk "{print \$1}")"
                 tools_lock="$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")"
                 if ! (cd /work/toolchain/flutter/packages/flutter_tools \
                     && dart pub get --offline --enforce-lockfile) \
@@ -5438,27 +5483,30 @@ run_flutter_model_tests() {
                     exit 1
                 fi
                 [ "$tools_lock" = "$(sha256sum /work/toolchain/flutter/packages/flutter_tools/pubspec.lock | awk "{print \$1}")" ]
-                [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
+                [ "$project_lock" = "$(sha256sum pubspec.lock | awk "{print \$1}")" ]
                 format_status=0
                 : >/work/format.diff
-                for format_path in \
-                    lib/models/android_permission_request_coordinator.dart \
-                    lib/models/latest_frame_queue.dart \
-                    lib/models/rgba_publication_order.dart \
-                    lib/common/widgets/overlay.dart \
-                    lib/common/remote_key_routing.dart \
-                    lib/common/widgets/permanent_password_dialog.dart \
-                    lib/common/widgets/custom_password.dart \
-                    lib/models/reconnect_schedule_authority.dart \
-                    lib/mobile/pages/remote_page.dart \
-                    lib/mobile/pages/view_camera_page.dart \
-                    test/latest_frame_queue_test.dart \
-                    test/blockable_overlay_test.dart \
-                    test/android_permission_request_coordinator_test.dart \
-                    test/remote_key_routing_test.dart \
-                    test/permanent_password_dialog_lifecycle_test.dart \
-                    test/reconnect_schedule_authority_test.dart \
-                    test/rgba_publication_order_test.dart; do
+                format_paths=(lib/models/latest_frame_queue.dart test/latest_frame_queue_test.dart)
+                if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+                    format_paths+=(
+                        lib/models/android_permission_request_coordinator.dart
+                        lib/models/rgba_publication_order.dart
+                        lib/common/widgets/overlay.dart
+                        lib/common/remote_key_routing.dart
+                        lib/common/widgets/permanent_password_dialog.dart
+                        lib/common/widgets/custom_password.dart
+                        lib/models/reconnect_schedule_authority.dart
+                        lib/mobile/pages/remote_page.dart
+                        lib/mobile/pages/view_camera_page.dart
+                        test/blockable_overlay_test.dart
+                        test/android_permission_request_coordinator_test.dart
+                        test/remote_key_routing_test.dart
+                        test/permanent_password_dialog_lifecycle_test.dart
+                        test/reconnect_schedule_authority_test.dart
+                        test/rgba_publication_order_test.dart
+                    )
+                fi
+                for format_path in "${format_paths[@]}"; do
                     formatted=/work/$(basename "$format_path").formatted
                     dart format --output=show "$format_path" \
                         >"$formatted" 2>>/work/format.err
@@ -5479,59 +5527,65 @@ run_flutter_model_tests() {
                 fi
                 /usr/bin/python3 -I -S \
                     /source/scripts/verify-display-selection-finality.py --repo /source
-                codegen_log=/work/codegen.log
-                if ! (cd /source && \
-                    /work/toolchain/flutter_rust_bridge_codegen \
-                        --rust-input ./src/flutter_ffi.rs \
-                        --dart-output ./flutter/lib/generated_bridge.dart \
-                        --llvm-path "$LLVM_ROOT" \
-                        --llvm-compiler-opts="-I${clang_headers[0]}") \
-                    >"$codegen_log" 2>&1; then
-                    tail -n 160 "$codegen_log" >&2
-                    exit 1
+                if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+                    codegen_log=/work/codegen.log
+                    if ! (cd /source && \
+                        /work/toolchain/flutter_rust_bridge_codegen \
+                            --rust-input ./src/flutter_ffi.rs \
+                            --dart-output ./flutter/lib/generated_bridge.dart \
+                            --llvm-path "$LLVM_ROOT" \
+                            --llvm-compiler-opts="-I${clang_headers[0]}") \
+                        >"$codegen_log" 2>&1; then
+                        tail -n 160 "$codegen_log" >&2
+                        exit 1
+                    fi
+                    [ "$(stat -c %s "$codegen_log")" -le 1048576 ]
+                    ! grep -Fq "[SEVERE]" "$codegen_log" \
+                        || { tail -n 160 "$codegen_log" >&2; exit 1; }
+                    for generated in \
+                        /source/src/bridge_generated.rs \
+                        /source/src/bridge_generated.io.rs \
+                        /source/flutter/lib/generated_bridge.dart \
+                        /source/flutter/lib/generated_bridge.freezed.dart; do
+                        [ -s "$generated" ] && [ ! -L "$generated" ]
+                    done
+                    sed -i "s/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g" \
+                        /source/flutter/lib/generated_bridge.dart
                 fi
-                [ "$(stat -c %s "$codegen_log")" -le 1048576 ]
-                ! grep -Fq "[SEVERE]" "$codegen_log" \
-                    || { tail -n 160 "$codegen_log" >&2; exit 1; }
-                for generated in \
-                    /source/src/bridge_generated.rs \
-                    /source/src/bridge_generated.io.rs \
-                    /source/flutter/lib/generated_bridge.dart \
-                    /source/flutter/lib/generated_bridge.freezed.dart; do
-                    [ -s "$generated" ] && [ ! -L "$generated" ]
-                done
-                sed -i "s/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g" \
-                    /source/flutter/lib/generated_bridge.dart
-                [ "$project_lock" = "$(sha256sum /source/flutter/pubspec.lock | awk "{print \$1}")" ]
-                cd /source/flutter
-                tests=(
-                    test/global_event_dispatcher_test.dart
-                    test/server_status_refresh_loop_test.dart
-                    test/server_model_test.dart
-                    test/display_selection_queue_test.dart
-                    test/file_command_session_ownership_test.dart
-                    test/session_event_queue_test.dart
-                    test/latest_frame_queue_test.dart
-                    test/session_stream_finality_test.dart
-                    test/mobile_session_start_queue_test.dart
-                    test/desktop_texture_lifecycle_test.dart
-                    test/desktop_tab_retirement_test.dart
-                    test/presentation_recovery_test.dart
-                    test/reconnect_schedule_authority_test.dart
-                    test/rgba_publication_order_test.dart
-                    test/owned_image_paint_test.dart
-                    test/blockable_overlay_test.dart
-                    test/custom_cursor_registry_test.dart
-                    test/start_ellipsis_text_test.dart
-                    test/permanent_password_dialog_lifecycle_test.dart
-                    test/android_permission_request_coordinator_test.dart
-                    test/remote_key_routing_test.dart
-                )
-                [ "${#tests[@]}" -eq 21 ]
+                [ "$project_lock" = "$(sha256sum pubspec.lock | awk "{print \$1}")" ]
+                tests=(test/latest_frame_queue_test.dart)
+                test_budget=90s
+                if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+                    tests=(
+                        test/global_event_dispatcher_test.dart
+                        test/server_status_refresh_loop_test.dart
+                        test/server_model_test.dart
+                        test/display_selection_queue_test.dart
+                        test/file_command_session_ownership_test.dart
+                        test/session_event_queue_test.dart
+                        test/latest_frame_queue_test.dart
+                        test/session_stream_finality_test.dart
+                        test/mobile_session_start_queue_test.dart
+                        test/desktop_texture_lifecycle_test.dart
+                        test/desktop_tab_retirement_test.dart
+                        test/presentation_recovery_test.dart
+                        test/reconnect_schedule_authority_test.dart
+                        test/rgba_publication_order_test.dart
+                        test/owned_image_paint_test.dart
+                        test/blockable_overlay_test.dart
+                        test/custom_cursor_registry_test.dart
+                        test/start_ellipsis_text_test.dart
+                        test/permanent_password_dialog_lifecycle_test.dart
+                        test/android_permission_request_coordinator_test.dart
+                        test/remote_key_routing_test.dart
+                    )
+                    [ "${#tests[@]}" -eq 21 ]
+                    test_budget=900s
+                fi
                 for test_path in "${tests[@]}"; do
                     [ -f "$test_path" ] && [ ! -L "$test_path" ]
                 done
-                if ! timeout --signal=TERM --kill-after=10s 900s \
+                if ! timeout --signal=TERM --kill-after=10s "$test_budget" \
                     flutter test --no-pub --reporter json --concurrency=4 \
                         --timeout=30s \
                         "${tests[@]}" >/work/test.json 2>/work/test.err; then
@@ -5541,7 +5595,20 @@ run_flutter_model_tests() {
                 fi
                 [ "$(stat -c %s /work/test.err)" -le 1048576 ]
                 [ ! -s /work/test.err ] || tail -n 120 /work/test.err >&2
-                /usr/bin/python3 -I -S /authority/result.py /work/test.json
+                /usr/bin/python3 -I -S /source/scripts/test-flutter-model-test-result.py
+                printf "FLUTTER_TEST_RESULT_PARSER=pass tests=3\n"
+                /usr/bin/python3 -I -S /authority/result.py \
+                    /work/test.json --profile "$FLUTTER_TEST_PROFILE"
+                if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+                    cmp /source/flutter/lib/models/latest_frame_queue.dart lib/models/latest_frame_queue.dart
+                    cmp /source/flutter/test/latest_frame_queue_test.dart test/latest_frame_queue_test.dart
+                    [ ! -e /work/toolchain/rustinstall ]
+                    [ ! -e /work/toolchain/flutter_rust_bridge_codegen ]
+                    [ ! -e /inputs/rust.tar.xz ]
+                    [ ! -e /inputs/llvm.tar.xz ]
+                    [ ! -e /online/cargo-vendor ]
+                    [ ! -e lib/generated_bridge.dart ]
+                fi
             '
     )"
     [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] \
@@ -5550,13 +5617,21 @@ run_flutter_model_tests() {
         '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{.HostConfig.ShmSize}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' \
         "$CONTAINER_ID")"
     [ "$inspect" = \
-      'none|true|1000:1000|8589934592|8589934592|4000000000|2048|1073741824|["ALL"]|["no-new-privileges","apparmor=docker-default"]' ] \
+      "none|true|1000:1000|$memory_bytes|$memory_bytes|4000000000|2048|1073741824|[\"ALL\"]|[\"no-new-privileges\",\"apparmor=docker-default\"]" ] \
         || fail "focused Flutter-test container authority differs: $inspect"
     namespace_inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.UTSMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}' \
         "$CONTAINER_ID")"
     [ "$namespace_inspect" = 'false||private||private|[]|{}' ] \
         || fail "focused Flutter-test container namespace/device/port authority differs: $namespace_inspect"
+    source_authority="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+        '{{range .Mounts}}{{if eq .Destination "/source"}}{{.Source}}|{{.Type}}|{{.RW}}{{end}}{{end}}' \
+        "$CONTAINER_ID")"
+    [ "$source_authority" = "$source_root|bind|$source_writable" ] \
+        || fail 'focused Flutter-test source mount authority differs'
+    if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+        printf 'FLUTTER_FRAME_QUEUE_STAGE=run-production-queue-tests\n'
+    fi
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
     [ "$container_status" -eq 0 ] \
@@ -5569,9 +5644,11 @@ run_flutter_model_tests() {
         || { tail -n 240 "$output" >&2; fail 'Flutter-tools offline-freshness receipt is absent'; }
     [ "$(grep -Fc 'FLUTTER_TOOLS_OFFLINE_FRESHNESS=' "$output")" -eq 1 ] \
         || fail 'Flutter-tools offline-freshness receipt is duplicated'
-    result_line="$(grep -Fx 'FLUTTER_MODEL_TEST_JSON=pass suites=21 tests=175' "$output")" \
+    [ "$(grep -Fxc 'FLUTTER_TEST_RESULT_PARSER=pass tests=3' "$output")" -eq 1 ] \
+        || fail 'Flutter-test result parser regression receipt differs'
+    result_line="$(grep -Fx "$result_prefix=pass $expected_result" "$output")" \
         || { tail -n 240 "$output" >&2; fail 'focused Flutter-test success summary is absent'; }
-    [ "$(grep -Fc 'FLUTTER_MODEL_TEST_JSON=' "$output")" -eq 1 ] \
+    [ "$(grep -Fc "$result_prefix=" "$output")" -eq 1 ] \
         || fail 'focused Flutter-test result summary is duplicated'
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'focused Flutter-test container did not exit cleanly'
@@ -5593,13 +5670,23 @@ run_flutter_model_tests() {
     umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$tools_freshness_line"
+    printf 'FLUTTER_TEST_RESULT_PARSER=pass tests=3\n'
     printf '%s\n' "$result_line"
-    printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=21 tests=175 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
-        "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-        "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
-        "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-        "$SHA256_PUB_CACHE_CLOSURE_V1" \
-        "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+        queue_sha256="$(sha256sum "$source_root/flutter/lib/models/latest_frame_queue.dart" | awk '{print $1}')"
+        tests_sha256="$(sha256sum "$source_root/flutter/test/latest_frame_queue_test.dart" | awk '{print $1}')"
+        printf 'FLUTTER_FRAME_QUEUE_TESTS_VM=pass commit=%s tree=%s suites=1 tests=24 flutter=3.24.5 queue=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-queue-tests cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+            "$queue_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
+            "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    else
+        printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=21 tests=175 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+            "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
+            "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+            "$SHA256_PUB_CACHE_CLOSURE_V1" \
+            "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    fi
 }
 
 run_flutter_peer_presentation() {

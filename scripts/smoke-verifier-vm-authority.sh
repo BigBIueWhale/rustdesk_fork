@@ -15,6 +15,7 @@ source "$SCRIPT_DIR/lib.sh"
 load_pins
 
 MODE=authority-smoke
+FLUTTER_TEST_PROFILE=models
 LIFECYCLE_ARTIFACT=
 LIFECYCLE_ARTIFACT_SHA256=
 LIFECYCLE_COMMIT=
@@ -80,6 +81,14 @@ case "$#:${1:-}" in
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Flutter-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=flutter-model-tests
+        ;;
+    2:--flutter-model-tests)
+        [ "$2" = --frame-queue ] \
+            && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'focused Flutter shard or input/run authority differs' >&2; exit 2; }
+        MODE=flutter-model-tests
+        FLUTTER_TEST_PROFILE=frame-queue
         ;;
     1:--android-owner-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -243,11 +252,13 @@ case "$#:${1:-}" in
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
         printf 'Focused production X11 enumeration/capture check: %s --x11-display-tests\n' "${0##*/}" >&2
         printf 'Current-source CM file replay: %s --cm-file-replay\n' "${0##*/}" >&2
+        printf 'Focused production frame-queue runtime: %s --flutter-model-tests --frame-queue\n' "${0##*/}" >&2
         printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --linux-pa-authority-tests | --linux-service-uid-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario {peer-lifecycle|controlled-cm} --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --linux-flutter-app-build | --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCH]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
 readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_EXPECTED_MANIFEST_SHA256
+readonly FLUTTER_TEST_PROFILE
 readonly FLUTTER_APP_ENGINE_COMMIT FLUTTER_APP_ENGINE_ARCHIVE_SHA256 FLUTTER_APP_ENGINE_MANIFEST_SHA256
 if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
     [[ "$FLUTTER_APP_ENGINE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -477,9 +488,15 @@ elif [ "$MODE" = linux-pa-authority-tests ]; then
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=12288
 elif [ "$MODE" = flutter-model-tests ]; then
-    readonly VM_TIMEOUT_SECONDS=1800
-    readonly OVERLAY_SIZE=24G
-    readonly VM_MEMORY=8192
+    if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+        readonly VM_TIMEOUT_SECONDS=300
+        readonly OVERLAY_SIZE=12G
+        readonly VM_MEMORY=4096
+    else
+        readonly VM_TIMEOUT_SECONDS=1800
+        readonly OVERLAY_SIZE=24G
+        readonly VM_MEMORY=8192
+    fi
 elif [ "$MODE" = android-owner-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
@@ -1017,6 +1034,18 @@ flutter_peer_input_inventory() {
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$FLUTTER_PEER_CANDIDATE_LOCK"
         /usr/bin/sha256sum -- "$FLUTTER_PEER_CANDIDATE_LOCK"
     fi
+}
+
+flutter_model_input_inventory() {
+    local -a directories=("$ONLINE_INPUTS" "$PUB_CACHE_ROOT")
+    local -a files=("$FLUTTER_TEST_ARCHIVE" "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE")
+    if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+        directories+=("$CARGO_VENDOR_ROOT")
+        files+=("$RUST_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN")
+    fi
+    /usr/bin/stat -c '%d:%i:%u:%g:%a' -- "${directories[@]}"
+    /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "${files[@]}"
+    /usr/bin/sha256sum -- "${files[@]}"
 }
 
 android_owner_input_inventory() {
@@ -1925,13 +1954,19 @@ elif [ "$MODE" = flutter-model-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
              "$HOST_UID:$HOST_GID:700" ] \
         || fail 'sealed focused-test input root metadata differs'
-    for input in \
-        "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75" \
-        "$FLUTTER_TEST_ARCHIVE:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5" \
-        "$LLVM_TEST_ARCHIVE:$SIZE_LLVM_15_0_6:$SHA256_LLVM_15_0_6" \
-        "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG" \
-        "$DEB_BUILDER_ARCHIVE:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
-        "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
+    flutter_inputs=(
+        "$FLUTTER_TEST_ARCHIVE:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5"
+        "$DEB_BUILDER_ARCHIVE:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE"
+        "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"
+    )
+    if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+        flutter_inputs+=(
+            "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
+            "$LLVM_TEST_ARCHIVE:$SIZE_LLVM_15_0_6:$SHA256_LLVM_15_0_6"
+            "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG"
+        )
+    fi
+    for input in "${flutter_inputs[@]}"; do
         path=${input%%:*}
         remainder=${input#*:}
         size=${remainder%%:*}
@@ -1942,11 +1977,17 @@ elif [ "$MODE" = flutter-model-tests ]; then
             || fail "sealed focused-test input metadata differs: $path"
         verify_sha256 "$path" "$digest"
     done
-    [ -f "$FRB_CODEGEN" ] && [ ! -L "$FRB_CODEGEN" ] \
-        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$FRB_CODEGEN")" = \
-             "$HOST_UID:$HOST_GID:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
-        || fail "sealed focused-test executable metadata differs: $FRB_CODEGEN"
-    verify_sha256 "$FRB_CODEGEN" "$SHA256_FLUTTER_PEER_FRB_CODEGEN"
+    if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+        [ -f "$FRB_CODEGEN" ] && [ ! -L "$FRB_CODEGEN" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$FRB_CODEGEN")" = \
+                 "$HOST_UID:$HOST_GID:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
+            || fail "sealed focused-test executable metadata differs: $FRB_CODEGEN"
+        verify_sha256 "$FRB_CODEGEN" "$SHA256_FLUTTER_PEER_FRB_CODEGEN"
+        [ -d "$CARGO_VENDOR_ROOT" ] && [ ! -L "$CARGO_VENDOR_ROOT" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
+                 "$HOST_UID:$HOST_GID:500" ] \
+            || fail 'sealed Cargo vendor root metadata differs'
+    fi
     verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
     [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Package)" = virtiofsd ] \
         && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Version)" = \
@@ -1957,10 +1998,6 @@ elif [ "$MODE" = flutter-model-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$PUB_CACHE_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Pub-cache root metadata differs'
-    [ -d "$CARGO_VENDOR_ROOT" ] && [ ! -L "$CARGO_VENDOR_ROOT" ] \
-        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
-             "$HOST_UID:$HOST_GID:500" ] \
-        || fail 'sealed Cargo vendor root metadata differs'
 elif [ "$MODE" = android-owner-tests ]; then
     [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
@@ -2978,17 +3015,8 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     focused_inputs_before="$(flutter_peer_input_inventory)" \
         || fail 'cannot inventory the sealed Flutter full-peer inputs'
 elif [ "$MODE" = flutter-model-tests ]; then
-    focused_inputs_before="$(
-        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
-            "$ONLINE_INPUTS" "$PUB_CACHE_ROOT" "$CARGO_VENDOR_ROOT"
-        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-            "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" \
-            "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" "$DEB_BUILDER_ARCHIVE" \
-            "$VIRTIOFSD_PACKAGE"
-        /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" \
-            "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
-            "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
-    )"
+    focused_inputs_before="$(flutter_model_input_inventory)" \
+        || fail 'cannot inventory sealed focused Flutter inputs'
 elif [ "$MODE" = android-owner-tests ]; then
     focused_inputs_before="$(android_owner_input_inventory)" \
         || fail 'cannot inventory the sealed Android owner-state inputs'
@@ -3457,6 +3485,9 @@ elif [ "$MODE" = apple-conform ]; then
     guest_invocation+=" --apple-conform /mnt/rustdesk-verifier-inputs/source.tar $APPLE_SOURCE_COMMIT $APPLE_SOURCE_TREE $APPLE_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = flutter-model-tests ]; then
     guest_invocation+=" --flutter-model-tests /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_SOURCE_COMMIT $FLUTTER_SOURCE_TREE $FLUTTER_SOURCE_ARCHIVE_SHA256"
+    if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+        guest_invocation+=" --frame-queue"
+    fi
 elif [ "$MODE" = android-owner-tests ]; then
     guest_invocation+=" --android-owner-tests /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_OWNER_SOURCE_COMMIT $ANDROID_OWNER_SOURCE_TREE $ANDROID_OWNER_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-peer-build ]; then
@@ -4769,8 +4800,19 @@ else
         "FLUTTER_TOOLS_OFFLINE_FRESHNESS=pass version=$FLUTTER_VERSION lock=$SHA256_FLUTTER_TOOLS_LOCK implicit_pub=prevented" \
         'focused Flutter-tools offline freshness receipt'
     require_exact_fixed_receipt \
-        "FLUTTER_MODEL_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=21 tests=175 flutter=$FLUTTER_VERSION rust=1.75.0 llvm=$LLVM_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined" \
-        'focused Flutter model-test receipt'
+        'FLUTTER_TEST_RESULT_PARSER=pass tests=3' \
+        'Flutter result parser regression receipt'
+    if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+        queue_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/models/latest_frame_queue.dart" | /usr/bin/awk '{print $1}')"
+        queue_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/latest_frame_queue_test.dart" | /usr/bin/awk '{print $1}')"
+        require_exact_fixed_receipt \
+            "FLUTTER_FRAME_QUEUE_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=24 flutter=$FLUTTER_VERSION queue=$queue_sha256 tests_source=$queue_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-queue-tests cleanup=joined" \
+            'focused Flutter frame-queue receipt'
+    else
+        require_exact_fixed_receipt \
+            "FLUTTER_MODEL_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=21 tests=175 flutter=$FLUTTER_VERSION rust=1.75.0 llvm=$LLVM_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined" \
+            'focused Flutter model-test receipt'
+    fi
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Flutter-test cloud-init completion marker'
@@ -4878,17 +4920,8 @@ elif [ "$MODE" = android-rust-target-check ]; then
              "$RUST_TEST_SOURCE_ARCHIVE_SHA256" ] \
         || fail 'Android Rust target-check source archive changed during execution'
 elif [ "$MODE" = flutter-model-tests ]; then
-    focused_inputs_after="$(
-        /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
-            "$ONLINE_INPUTS" "$PUB_CACHE_ROOT" "$CARGO_VENDOR_ROOT"
-        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-            "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" \
-            "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" "$DEB_BUILDER_ARCHIVE" \
-            "$VIRTIOFSD_PACKAGE"
-        /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" \
-            "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
-            "$DEB_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE"
-    )"
+    focused_inputs_after="$(flutter_model_input_inventory)" \
+        || fail 'cannot re-inventory sealed focused Flutter inputs'
     [ "$focused_inputs_after" = "$focused_inputs_before" ] \
         || fail 'sealed focused-test inputs changed during execution'
     [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$FLUTTER_SOURCE_ARCHIVE")" = \
@@ -5184,6 +5217,11 @@ elif [ "$MODE" = rust-audit ]; then
         "$HOST_UID" "$RUST_AUDIT_SOURCE_COMMIT" "$RUST_AUDIT_SOURCE_TREE" \
         "$RUST_AUDIT_IMAGE_ID" "$RUST_AUDIT_IMAGE_CONFIG_ID" "$vm_elapsed_seconds"
 else
-    printf 'FLUTTER_MODEL_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=generated-bridge-model-tests cleanup=joined elapsed_seconds=%s\n' \
-        "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
+    if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+        printf 'FLUTTER_FRAME_QUEUE_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-queue-tests cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
+    else
+        printf 'FLUTTER_MODEL_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=generated-bridge-model-tests cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
+    fi
 fi

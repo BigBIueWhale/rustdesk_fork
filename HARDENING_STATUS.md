@@ -6052,11 +6052,13 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   container run proving effective-user ownership, exact 0600 mode, one local attachment, `SHM_DEST`,
   and final disappearance. The focused source checker remains a supplement; its documentation coupling,
   mutation catalog, and stale workspace reimplementation are deleted. A current isolated real-X run must
-  still exercise acceptance/rejection/cleanup, actual capture-to-render, unauthorized-principal attempts,
-  installed cross-user service behavior, current artifacts, cold reproduction, and independent review.
+  still exercise attach rejection/connection failure, unauthorized-principal attempts, actual capture-to-render,
+  installed cross-user service behavior, current artifacts, cold reproduction, and independent review. The native
+  GetImage component below covers normal accepted capture and exact segment retirement only; its liveness probe
+  does not establish ownership/mode/attachment-count or unauthorized-principal refusal.
 
 - **R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality — SOURCE IMPLEMENTED;
-  RETAINED PURE-BRANCH TEST EVIDENCE; REAL X SERVER, FRESHNESS, AND RELEASE EVIDENCE OPEN.**
+  NATIVE REJECTION/RECOVERY COMPONENT PASSED; FULL FLOW, FRESHNESS, AND RELEASE EVIDENCE OPEN.**
   `get_image` uses the checked request and non-null protocol-error output, snapshots diagnostics before
   freeing both allocations, and rejects protocol errors, connection failure, missing replies, and any
   reply byte count other than the exact capture buffer. `frame()` propagates failure before reading or
@@ -6065,17 +6067,28 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Commit `e314d2b2` records the implementation and a clean Rust 1.75 numeric-nonroot, networkless
   container run covering exact success, size mismatch, preserved protocol diagnostics, connection
   failure, and missing reply. The focused source checker is supplemental and no longer treats prose or
-  checker mutation strings as product evidence. A current isolated real-X run must still exercise the
-  request/reply ABI, rejection and no-reply behavior, actual capture-to-codec-to-render, focus/background
-  freshness and latency, reconnect, cross-version behavior, current artifacts, cold reproduction, and
-  independent review.
+  checker mutation strings as product evidence.
 
-  Current verification cleanup removed 468 checker lines: prose assertions and mutations from the focused checker,
-  its self-mutation catalog, and the complete duplicate workspace implementation/load/dispatch path. The
-  focused source check, workspace normal check, Python AST parse, Bash parse, HTML parse, requirements
-  identity check, and diff hygiene are green. The workspace check now passes instead of failing on its stale
-  blank-line parser assumption. No current Rust or X-server behavior was executed in this source-only cleanup;
-  the retained confined runs above are historical, and every real-X/native obligation remains open.
+  Exact fixture source `7b144d31754f5ab2ed6b36a54ea9fca4996be457` (tree
+  `d92b4a800556ca350b87628ae53bacde79e29d3e`) passed the focused zero-NIC
+  `--x11-display-tests` transaction in 55 VM seconds. Production capture and public wrapper source were
+  unchanged. For each of 16 direct and 16 public-caller cycles, the real Xvfb server returned BadDrawable
+  for one request whose drawable was deliberately replaced with zero; no reply or shared bytes were fabricated.
+  The test retained exact diagnostics, observed immediate reply/error frees and no comparison on rejection,
+  required unchanged-frame behavior only on the subsequent valid request, then observed freshly drawn blue
+  pixels through the same capture object/connection. Each cycle observed three replies, one error, and exact
+  segment liveness before use followed by absence after drop. The historical iterator A/B, reply/setup bounds,
+  and real 24/16-bit padded captures also passed; this is not an old-versus-new GetImage causation comparison.
+  Raw serial `.harness-state/verifier-vm/x11-display-tests-run.4MwU3lCdLC.serial.log` is 78,528 bytes,
+  SHA-256 `7c8baeef93c6dd06c5582afc739123abc53bb85bf1d25d39cfb444bb32d3b2b0`.
+  Its retained outer record reports numeric-nonroot guest-only execution, read-only unchanged inputs,
+  no added host listener, joined Docker/QEMU cleanup, and no retained run root or overlay.
+
+  This is instrumented native XCB/capture-component evidence, not full-product presentation or a latency
+  measurement. Actual connection loss, a missing reply without protocol error, received size/layout faults,
+  attach rejection, unauthorized principals, capture-to-codec-to-render, focus/background freshness and latency,
+  broader reconnect, cross-version/installed behavior, current release artifacts, cold reproduction and
+  independent review remain OPEN. It does not explain the Android/Windows reports or close an LPE boundary.
 
 - **R-S11fy/R-S11e-211 — stale canonical Pub-cache replacement authority — SOURCE
   CORRECTED; CURRENT NUMERIC-NONROOT FILESYSTEM CRASH/ROLLBACK TESTS AND 72-MUTATION FOCUSED

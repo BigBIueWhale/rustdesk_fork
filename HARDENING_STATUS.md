@@ -6051,12 +6051,23 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Commit `b068ffcf` records the implementation and a clean Rust 1.75 numeric-nonroot, networkless
   container run proving effective-user ownership, exact 0600 mode, one local attachment, `SHM_DEST`,
   and final disappearance. The focused source checker remains a supplement; its documentation coupling,
-  mutation catalog, and stale workspace reimplementation are deleted. A current isolated real-X run must
-  still exercise attach rejection/construction-time connection failure, unauthorized-principal attempts,
-  actual capture-to-render, installed cross-user service behavior, current artifacts, cold reproduction,
-  and independent review. The native GetImage component below covers accepted capture, real server loss
-  while captures remain live, and independent exact segment retirement; its liveness probe
-  does not establish ownership/mode/attachment-count or unauthorized-principal refusal.
+  mutation catalog, and stale workspace reimplementation are deleted.
+
+  The latest native transaction below additionally exercises 16 rejected constructors through each of
+  the direct and public APIs while a valid direct capture remains live. Only the selected attach request's
+  segment ID becomes invalid; real Xvfb returns protocol error 10 for MIT-SHM Attach. The checker observes
+  the exact connection/cookie and actual error allocation, then requires the constructor's explicit error,
+  immediate error free, and absence of its actual local segment. The surviving capture must remain mapped
+  and receive freshly drawn blue pixels. Later valid construction through the selected API must capture
+  those pixels and retire its own segment, without retiring the survivor until its explicit drop. Per case,
+  three attach calls, one attach error, three GetImage replies/comparisons, and all three exact segment
+  retirements are checked. Neither protocol responses nor pixels are fabricated.
+
+  This tests a deliberately invalid request ID, not unauthorized-principal refusal. The native component
+  also covers real server loss with live captures and independent segment retirement; its liveness probe
+  does not establish ownership/mode/attachment-count. Construction-time connection failure, local-attach
+  and deletion-pending-transition failures, unauthorized principals, actual capture-to-render, installed
+  cross-user service behavior, current artifacts, cold reproduction, and independent review remain OPEN.
 
 - **R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality — SOURCE IMPLEMENTED;
   NATIVE REJECTION/RECOVERY AND LIVE CONNECTION-LOSS COMPONENTS PASSED;
@@ -6071,9 +6082,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   failure, and missing reply. The focused source checker is supplemental and no longer treats prose or
   checker mutation strings as product evidence.
 
-  Exact fixture source `af46639ea75eb3da0e4f9c1fb1153c6e9cfa13d1` (tree
-  `4f4cd8b6bd842fb4a09c882fa9a417458765f214`) passed the focused zero-NIC
-  `--x11-display-tests` transaction in 55 VM seconds. Production capture and public wrapper source were
+  Exact fixture source `a2c2614be6f3ec7e86b137fdf59405e54da11de3` (tree
+  `97e8b6b03a8657c07043300a60a96f50237df335`) passed the focused zero-NIC
+  `--x11-display-tests` transaction in 56 VM seconds. Production capture and public wrapper source were
   unchanged. For each of 16 direct and 16 public-caller cycles, the real Xvfb server returned BadDrawable
   for one request whose drawable was deliberately replaced with zero; no reply or shared bytes were fabricated.
   The test retained exact diagnostics, observed immediate reply/error frees and no comparison on rejection,
@@ -6091,14 +6102,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   its segment. Both expected dead-connection detach diagnostics are explicitly checked, not ignored.
   The driver bounds output and waiting and joins the native child. The historical iterator A/B, reply/setup
   bounds, and real 24/16-bit padded captures also passed; this is not an old-versus-new GetImage causation comparison.
-  Raw serial `.harness-state/verifier-vm/x11-display-tests-run.RyZfDUvVAq.serial.log` is 77,030 bytes,
-  SHA-256 `925a60f773548f6971e31615ae45e02327282a4a558037e219f711ffc78eea63`.
+  Raw serial `.harness-state/verifier-vm/x11-display-tests-run.mnP1FqxTVH.serial.log` is 76,431 bytes,
+  SHA-256 `0f874b029f722b5db25b12f22b5b45312f0c99037e3db1699a7fbb68c129ae97`.
   The terminal outer result reports numeric-nonroot guest-only execution, read-only unchanged inputs,
   no added host listener, joined Docker/QEMU cleanup, and no retained run root or overlay.
 
   This is instrumented native XCB/capture-component evidence, not full-product presentation or a latency
   measurement. A missing reply on a healthy connection, received size/layout faults, construction-time
-  connection/attach rejection, unauthorized principals, capture-to-codec-to-render, focus/background freshness and latency,
+  connection/other cleanup failures, unauthorized principals, capture-to-codec-to-render, focus/background freshness and latency,
   broader reconnect, cross-version/installed behavior, current release artifacts, cold reproduction and
   independent review remain OPEN. It does not explain the Android/Windows reports or close an LPE boundary.
 

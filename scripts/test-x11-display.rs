@@ -231,8 +231,10 @@ struct State {
     capture_reply_injections: usize,
     capture_reply_original: Option<(u32, u8, xcb_visualid_t)>,
     attach_queries: usize,
+    attach_checks: usize,
+    attach_connection_errors: usize,
     reject_attach_query: usize,
-    rejected_attach_cookie: Option<(*mut xcb_connection_t, u32)>,
+    attach_cookie: Option<(*mut xcb_connection_t, u32, bool)>,
     attach_errors: usize,
     attach_error: Option<(u8, u8, u16, u32)>,
     construction_fault: Option<ConstructionFault>,
@@ -485,11 +487,10 @@ unsafe extern "C" fn __wrap_xcb_shm_attach_checked(c: *mut xcb_connection_t,
     });
     // Alter only the selected request's ID; XCB and Xvfb produce the actual error.
     let cookie = real_attach(c, shmseg, if reject { u32::MAX } else { shmid }, read_only);
-    if reject {
-        STATE.with(|state| {
-            assert!(state.borrow_mut().rejected_attach_cookie.replace((c, cookie.sequence)).is_none());
-        });
-    }
+    STATE.with(|state| {
+        assert!(state.borrow_mut().attach_cookie.replace((c, cookie.sequence, reject)).is_none(),
+                "previous capture attach was not checked");
+    });
     cookie
 }
 
@@ -521,15 +522,23 @@ unsafe extern "C" fn __wrap_xcb_request_check(c: *mut xcb_connection_t,
                 state.detach_errors += 1;
             }
         }
-        if state.rejected_attach_cookie == Some((c, cookie.sequence)) {
-            state.rejected_attach_cookie = None;
-            assert!(!error.is_null(), "invalid attach ID did not receive a server error");
-            let actual = &*error;
-            state.attach_errors += 1;
-            state.attach_error = Some((actual.error_code, actual.major_code,
-                                      actual.minor_code, actual.resource_id));
-            state.allocations.push(Allocation { pointer: error.cast(),
-                bytes: 36, monitor: false, retired: false });
+        if let Some((connection, sequence, reject)) = state.attach_cookie {
+            if (connection, sequence) == (c, cookie.sequence) {
+                state.attach_cookie = None;
+                state.attach_checks += 1;
+                if xcb_connection_has_error(c) != 0 { state.attach_connection_errors += 1; }
+                if reject {
+                    assert!(!error.is_null(), "invalid attach ID did not receive a server error");
+                    let actual = &*error;
+                    state.attach_errors += 1;
+                    state.attach_error = Some((actual.error_code, actual.major_code,
+                                              actual.minor_code, actual.resource_id));
+                    state.allocations.push(Allocation { pointer: error.cast(),
+                        bytes: 36, monitor: false, retired: false });
+                } else {
+                    assert!(error.is_null(), "unmodified attach received a protocol error");
+                }
+            }
         }
     });
     error
@@ -905,8 +914,10 @@ fn finish_case(reject: usize) {
         state.capture_reply_injections = 0;
         state.capture_reply_original = None;
         state.attach_queries = 0;
+        state.attach_checks = 0;
+        state.attach_connection_errors = 0;
         state.reject_attach_query = 0;
-        assert!(state.rejected_attach_cookie.is_none(), "rejected attach was never checked");
+        assert!(state.attach_cookie.is_none(), "capture attach was never checked");
         state.attach_errors = 0;
         state.attach_error = None;
         assert!(state.construction_fault.is_none(), "construction fault was not exercised");
@@ -1094,6 +1105,15 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
     assert_eq!(display.pixfmt(), Pixfmt::BGRA);
     let root = display.root();
     let public_display = common::Display::primary()?;
+    // Enumerate while healthy so later failure reaches capture construction,
+    // not a fresh connection or display lookup after the server has disappeared.
+    let mut pending_displays = Vec::new();
+    for _ in 0..3 {
+        let direct = x11::Server::displays(Rc::clone(server))
+            .next().expect("pending constructor X screen")?;
+        let public = common::Display::primary()?;
+        pending_displays.push((direct, public));
+    }
     finish_case(0);
     draw_red(server, root, 0x00ff0000)?;
     let mut direct = x11::Capturer::new(display)?;
@@ -1148,6 +1168,38 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
                     state.frame_comparisons), (8, 2, 0, 2));
         assert!(state.allocations.iter().all(|entry| entry.retired), "capture reply/error leaked");
     });
+    let mut rejected = 0;
+    let mut check_constructor = |result: io::Result<()>| -> io::Result<()> {
+        let error = result.expect_err("constructor accepted a dead X connection");
+        assert_eq!(error.kind(), io::ErrorKind::ConnectionAborted);
+        assert_eq!(error.to_string(),
+                   format!("X connection failed during MIT-SHM attach: {connection_error}"));
+        rejected += 1;
+        let segment = STATE.with(|state| {
+            let state = state.borrow();
+            assert_eq!(state.segments.len(), 2 + rejected,
+                       "failed constructor did not allocate exactly one local segment");
+            assert_eq!((state.attach_queries, state.attach_checks, state.attach_connection_errors,
+                        state.attach_errors), (2 + rejected, 2 + rejected, rejected, 0));
+            assert!(state.attach_cookie.is_none(), "failed constructor did not check its attach");
+            assert_eq!((state.detach_queries, state.detach_checks, state.detach_errors), (0, 0, 0),
+                       "failed constructor attempted detach of an unaccepted XCB segment");
+            assert_eq!((state.capture_queries, state.capture_replies, state.capture_errors,
+                        state.frame_comparisons), (8, 2, 0, 2),
+                       "failed constructor captured or compared pixels");
+            assert!(state.allocations.iter().all(|entry| entry.retired), "constructor allocation leaked");
+            state.segments[1 + rejected]
+        });
+        let absent = probe_segment(segment).expect_err("dead-connection constructor leaked its segment");
+        assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
+        for segment in segments { probe_segment(segment)?; }
+        Ok(())
+    };
+    for (direct_display, public_display) in pending_displays {
+        check_constructor(x11::Capturer::new(direct_display).map(drop))?;
+        check_constructor(common::Capturer::new(public_display).map(drop))?;
+    }
+    assert_eq!(rejected, 6);
     drop(direct);
     let absent = probe_segment(segments[0]).expect_err("direct capture segment survived drop");
     assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
@@ -1155,9 +1207,14 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
     drop(public);
     let absent = probe_segment(segments[1]).expect_err("public capture segment survived drop");
     assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
+    STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!((state.detach_queries, state.detach_checks, state.detach_errors), (2, 2, 2));
+    });
     finish_case(0);
     println!("X11_CAPTURE_CONNECTION_NATIVE=pass callers=direct,public repeats=3 connection_error={connection_error} requests=8 replies=2 errors=0 comparisons=2 segments=retired");
     println!("X11_SHM_STATUS_CONNECTION_NATIVE=pass connection_error={connection_error} queries=1 replies=0 protocol_errors=0 allocations=retired");
+    println!("X11_CONSTRUCTOR_CONNECTION_NATIVE=pass callers=direct,public repeats=3 cases=6 connection_error={connection_error} attach_requests=8 attach_checks=8 connection_failures=6 rejected_segments=retired survivor_retirement=independent comparison_on_error=none");
     Ok(())
 }
 

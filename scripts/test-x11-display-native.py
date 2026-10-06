@@ -48,9 +48,9 @@ def capture_connection_loss(binary, environment, xserver):
                         retired = True
             native.wait(timeout=max(0, deadline - time.monotonic()))
         lines = output.decode("utf-8").splitlines()
-        require(retired and native.returncode == 0 and len(lines) == 4
+        require(retired and native.returncode == 0 and len(lines) == 5
                 and lines[0] == ready.decode("ascii").strip()
-                and lines[3] == "X11_DISPLAY_COMPONENT=pass scenario=capture-connection-loss replies=exact errors=explicit cleanup=joined",
+                and lines[4] == "X11_DISPLAY_COMPONENT=pass scenario=capture-connection-loss replies=exact errors=explicit cleanup=joined",
                 "connection-loss capture completion differs")
         receipt = re.fullmatch(
             r"X11_CAPTURE_CONNECTION_NATIVE=pass callers=direct,public repeats=3 connection_error=([1-9][0-9]*) "
@@ -59,12 +59,18 @@ def capture_connection_loss(binary, environment, xserver):
         probe_receipt = (f"X11_SHM_STATUS_CONNECTION_NATIVE=pass connection_error={receipt.group(1)} "
                          "queries=1 replies=0 protocol_errors=0 allocations=retired")
         require(lines[2] == probe_receipt, "exact dead-connection probe result absent")
+        constructor_receipt = ("X11_CONSTRUCTOR_CONNECTION_NATIVE=pass callers=direct,public repeats=3 cases=6 "
+                               f"connection_error={receipt.group(1)} attach_requests=8 attach_checks=8 "
+                               "connection_failures=6 rejected_segments=retired survivor_retirement=independent "
+                               "comparison_on_error=none")
+        require(lines[3] == constructor_receipt, "exact dead-connection constructor result absent")
         diagnostic = ("failed to detach X11 capture shared memory from XCB: "
                       "X connection failed during MIT-SHM drop detach: " + receipt.group(1))
         require(errors.decode("utf-8").splitlines() == [diagnostic, diagnostic],
                 "dead-server cleanup diagnostics differ")
         print(lines[1], flush=True)
         print(probe_receipt, flush=True)
+        print(constructor_receipt, flush=True)
         print("X11_CAPTURE_CONNECTION_FINALITY=pass server=terminated-and-joined "
               "detach_errors=2 segment_retirement=independent output=bounded child=joined", flush=True)
     except BaseException:

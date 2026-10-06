@@ -49,8 +49,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "fs": (repo / "src/ipc/fs.rs").read_text(encoding="utf-8"),
         "auth": (repo / "src/ipc/auth.rs").read_text(encoding="utf-8"),
         "ipc": (repo / "src/ipc.rs").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "apple": (repo / "scripts/apple-conform-check.sh").read_text(encoding="utf-8"),
     }
@@ -177,13 +175,6 @@ def validate(sources: Dict[str, str]) -> None:
         require(sources["fs"], negative, f"incumbent identity negative {negative}")
 
     for key, needle, label in (
-        ("requirements", '<span class="id">R-S11bs</span>', "R-S11bs requirement"),
-        ("requirements", "<tr><td>212</td>", "Appendix C #212"),
-        (
-            "hardening",
-            "R-S11bs/R-S11e-85 — Unix incumbent-listener identity is explicit",
-            "incumbent-listener hardening ledger",
-        ),
         (
             "verify",
             "python3 scripts/verify-unix-listener-incumbent.py --repo . --self-test",
@@ -284,24 +275,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "fn r_s11e85_existing_listener_requires_current_principal_and_executable()",
         "fn incumbent_listener_accepts_any_connected_peer()",
         "focused identity regression",
-    ),
-    (
-        "requirements",
-        '<span class="id">R-S11bs</span>',
-        '<span class="id">R-S11bs-disabled</span>',
-        "R-S11bs requirement",
-    ),
-    (
-        "requirements",
-        "<tr><td>212</td>",
-        "<tr><td>212-disabled</td>",
-        "Appendix C #212",
-    ),
-    (
-        "hardening",
-        "R-S11bs/R-S11e-85 — Unix incumbent-listener identity is explicit",
-        "R-S11bs/R-S11e-85 — Unix incumbent-listener identity is ambient",
-        "hardening ledger",
     ),
     (
         "verify",

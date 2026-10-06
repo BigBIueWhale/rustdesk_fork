@@ -54,8 +54,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
     return {
         "linux": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),
         "macos": (repo / "src/platform/macos.rs").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "apple": (repo / "scripts/apple-conform-check.sh").read_text(encoding="utf-8"),
     }
@@ -182,17 +180,6 @@ def validate(sources: Dict[str, str]) -> None:
 
     for key, needle, label in (
         (
-            "requirements",
-            '<span class="id">R-S11bn</span>',
-            "R-S11bn requirement",
-        ),
-        ("requirements", "<tr><td>207</td>", "Appendix C #207"),
-        (
-            "hardening",
-            "R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities",
-            "installed-service classifier hardening ledger",
-        ),
-        (
             "verify",
             "python3 scripts/verify-installed-service-classifier.py --repo . --self-test",
             "shared focused-verifier wiring",
@@ -274,24 +261,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
         'format!("/Applications/{app_name}.app-copy/Contents/MacOS/{app_name}")',
         'format!("/Applications/{app_name}.copy/Contents/MacOS/{app_name}")',
         "macOS bundle-prefix negative",
-    ),
-    (
-        "requirements",
-        '<span class="id">R-S11bn</span>',
-        '<span class="id">R-S11bn-disabled</span>',
-        "R-S11bn requirement",
-    ),
-    (
-        "requirements",
-        "<tr><td>207</td>",
-        "<tr><td>207-disabled</td>",
-        "Appendix C #207",
-    ),
-    (
-        "hardening",
-        "R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities",
-        "R-S11bn/R-S11e-80 — installed-service ownership uses path prefixes",
-        "hardening ledger",
     ),
     (
         "verify",

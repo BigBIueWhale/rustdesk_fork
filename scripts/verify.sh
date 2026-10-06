@@ -6931,20 +6931,10 @@ grep -qF 'desktop local-IPC readiness and retained native-worker ownership (R-S1
 if [ -n "$r_s11e59" ]; then echo "  FAIL R-S11e-59 desktop IPC lifecycle ownership:$r_s11e59"; rc=1; else
   echo "  ok  R-S11e-59 all desktop IPC is ready before public admission and returns through one retained, exactly joined native worker before the sole finalizer"; fi
 
-# (3b-iii-d9cj) R-S11at/R-S11e-60: both world-connectable Linux protected
-# sockets own a fixed transaction slot before root active-session/identity work.
-echo "== (3b-iii-d9cj) Linux protected-service bounded identity admission (R-S11at/R-S11e-60) =="
+# (3b-iii-d9cj) R-S11at/R-S11e-60: executable cached-UID policy regression.
+# This pure policy test does not prove receiver wiring or installed IPC behavior.
+echo "== (3b-iii-d9cj) Linux service cached-UID negative-prefilter policy (R-S11at/R-S11e-60) =="
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e60_ --color never
-r_s11e60=
-python3 scripts/verify-linux-service-admission.py --repo . \
-  || r_s11e60="$r_s11e60 linux-service-admission-semantic-invalid"
-python3 scripts/verify-linux-service-admission.py --repo . --self-test \
-  || r_s11e60="$r_s11e60 linux-service-admission-mutations-invalid"
-python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
-  scripts/verify-linux-service-admission.py \
-  || r_s11e60="$r_s11e60 validator-python-syntax-invalid"
-if [ -n "$r_s11e60" ]; then echo "  FAIL R-S11e-60 Linux protected-service admission:$r_s11e60"; rc=1; else
-  echo "  ok  R-S11e-60 transaction permits own both Linux authorization paths and cached active UID only prefilters the fresh final-authority lookup"; fi
 
 # (3b-iii-d9ck) R-S11au/R-S11e-61: a macOS LaunchDaemon helper is
 # current only when it is the exact nested helper of the signed installed app.

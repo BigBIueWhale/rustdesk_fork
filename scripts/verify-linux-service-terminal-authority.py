@@ -72,8 +72,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "lock": "Cargo.lock",
         "verify": "scripts/verify.sh",
         "lifecycle": "scripts/smoke-service-lifecycle.sh",
-        "requirements": "requirements.html",
-        "hardening": "HARDENING_STATUS.md",
     }
     return {
         key: (repo / relative).read_text(encoding="utf-8")
@@ -233,17 +231,6 @@ def validate(sources: Dict[str, str]) -> None:
             'parsed_environment[b"TERM"] not in {b"xterm", b"xterm-256color"}',
             "active-user actual-child terminal allowlist",
         ),
-        (
-            "requirements",
-            '<span class="id">R-S11fq</span>',
-            "service terminal authority requirement",
-        ),
-        ("requirements", "<tr><td>325</td>", "Appendix C #325"),
-        (
-            "hardening",
-            "R-S11fq/R-S11e-204 Linux service-child terminal authority",
-            "service terminal authority hardening ledger",
-        ),
     ):
         require(sources[source_key], needle, label)
 
@@ -312,24 +299,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "python3 scripts/verify-linux-service-terminal-authority.py --repo . --self-test",
         "true # Linux service terminal authority verifier removed",
         "shared focused-verifier wiring",
-    ),
-    (
-        "requirements",
-        '<span class="id">R-S11fq</span>',
-        '<span class="id">R-S11fq-disabled</span>',
-        "service terminal authority requirement",
-    ),
-    (
-        "requirements",
-        "<tr><td>325</td>",
-        "<tr><td>325-disabled</td>",
-        "Appendix C #325",
-    ),
-    (
-        "hardening",
-        "R-S11fq/R-S11e-204 Linux service-child terminal authority",
-        "R-S11fq-disabled/R-S11e-204 Linux service-child terminal authority",
-        "service terminal authority hardening ledger",
     ),
 )
 

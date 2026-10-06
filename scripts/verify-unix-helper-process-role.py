@@ -54,8 +54,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
     return {
         "auth": (repo / "src/ipc/auth.rs").read_text(encoding="utf-8"),
         "platform": (repo / "src/platform/mod.rs").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "apple": (repo / "scripts/apple-conform-check.sh").read_text(encoding="utf-8"),
     }
@@ -176,17 +174,6 @@ def validate(sources: Dict[str, str]) -> None:
 
     for key, needle, label in (
         (
-            "requirements",
-            '<span class="id">R-S11bo</span>',
-            "R-S11bo requirement",
-        ),
-        ("requirements", "<tr><td>208</td>", "Appendix C #208"),
-        (
-            "hardening",
-            "R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts only exact process roles",
-            "Unix process-role hardening ledger",
-        ),
-        (
             "verify",
             "python3 scripts/verify-unix-helper-process-role.py --repo . --self-test",
             "shared focused-verifier wiring",
@@ -292,24 +279,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
         'vec!["rustdesk".to_owned(), "--SERVER".to_owned()]',
         'vec!["rustdesk".to_owned(), "--server".to_owned()]',
         "server case-confusion negative",
-    ),
-    (
-        "requirements",
-        '<span class="id">R-S11bo</span>',
-        '<span class="id">R-S11bo-disabled</span>',
-        "R-S11bo requirement",
-    ),
-    (
-        "requirements",
-        "<tr><td>208</td>",
-        "<tr><td>208-disabled</td>",
-        "Appendix C #208",
-    ),
-    (
-        "hardening",
-        "R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts only exact process roles",
-        "R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts process-role prefixes",
-        "hardening ledger",
     ),
     (
         "verify",

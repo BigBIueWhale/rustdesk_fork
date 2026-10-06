@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-7fb50cb56f809a5fd06251a5c0e1802ccec75e7fb2f78779f212dd88f9ae0851  requirements.html
+53eec144389e4bafa187bc65169696c0976ab3591927253ad2d61a1119d216d8  requirements.html
 ```
 
 ## Current Verdict
@@ -78,9 +78,9 @@ by their requirements and the STOP-SHIP matrices below.
 | Current documentation-sensitive item | Current disposition |
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
-| Broad source-conformance documentary coupling | Direct prose/document-mutation dependencies are absent from the main/Apple source gates, main/Dart authority helpers, the Cargo-vendor, fixed-archive, Android-SDK, libyuv, local-libvpx, Windows-engine, and Flutter-Pub-cache acquisition/output helpers, and all three whiteboard lifecycle helpers. Their documentary closure checks and literal deployment/README/codec-watch/release/signing-recovery prose assertions are removed; whiteboard source checks also carry no document-hash dependency. Source predicates and mutations, executable test commands, artifact/metadata and provenance checks, image/input/source identity, caller wiring, tracked-document presence, and VM isolation remain. Apple's three-target compilation matrix is unchanged. This is supplementary source/compile coverage, not native, signed-artifact, privilege, performance, or release acceptance. Other documentary-dependent verifiers and broader documentation/test-quality cleanup remain OPEN. |
+| Broad source-conformance documentary coupling | Direct prose/document-mutation dependencies are absent from the main/Apple source gates, main/Dart authority helpers, the Cargo-vendor, fixed-archive, Android-SDK, libyuv, local-libvpx, Windows-engine, and Flutter-Pub-cache acquisition/output helpers, all three whiteboard lifecycle helpers, and the Unix/Linux installed-path, process-role, incumbent-listener, and terminal-authority helpers. Their documentary closure checks and literal deployment/README/codec-watch/release/signing-recovery prose assertions are removed; whiteboard source checks also carry no document-hash dependency. The stale Linux admission checker and its callers are deleted; the executable cached-UID policy test remains but cannot prove receiver wiring. Retained source predicates/mutations, executable test commands, artifact/metadata and provenance checks, image/input/source identity, caller wiring, tracked-document presence, and VM isolation remain. Apple's three-target compilation matrix is unchanged. This is supplementary source/compile coverage, not native, signed-artifact, privilege, performance, or release acceptance. Other documentary-dependent verifiers and broader documentation/test-quality cleanup remain OPEN. |
 | Build pins and target profiles (§3.1–3.2, R-B5a) | The normative table now matches the three software-codec release feature sets selected by the build entry points; its former `hwcodec`/`vram` rows and the header/footer's historical package-count/whole-tree-review claims are gone. `scripts/pins.env`, lockfiles, manifests, and toolchain files remain separate concrete authorities that must agree. This documentation correction is not a current release build, authenticated complete input closure, cold equality, or native platform proof; those remain OPEN. |
-| Appendix C #90–95, #97, #99, #101–105, #109–110, #112, #119, #122, #180–181, #185–206, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; this row does not promote source checks to native evidence. Current evidence limits remain in the relevant requirement entries and platform/open matrices. |
+| Appendix C #90–95, #97, #99, #101–105, #109–110, #112, #119, #122, #168, #180–181, #185–206, #212, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; this row does not promote source checks to native evidence. Current evidence limits remain in the relevant requirement entries and platform/open matrices. |
 | Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub and RustSec snapshots have real no-NIC VM verdicts recorded in R-S11df and R-S11dg below; future snapshot refresh, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. Documentation or mutation counts are not scanner evidence. |
 | Git-fork review and mirroring (R-B5b) | Exact lockfile revisions provide reproducibility, not a safety verdict. The prior assertion that security-relevant forks were found benign or security-positive was removed from the normative specification; no exact-current all-fork review or completed mirror migration is established here. This remains OPEN independently of advisory-snapshot checks. |
 | Repository/dependency structure (§16, R-R1) | The normative section now distinguishes security-modified in-tree source from exact-pinned external dependencies and the authenticated offline input closure. Its old tree snapshot, package counts, lockfile-only reproducibility assurance, upstream CI-job table, and claimed net-negative dependency delta were removed. Complete exact-current fork/provenance review, release builds, and independent reproduction remain OPEN. |
@@ -972,7 +972,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `7fb50cb56f809a5fd06251a5c0e1802ccec75e7fb2f78779f212dd88f9ae0851  requirements.html`.
+Current normative specification SHA-256: `53eec144389e4bafa187bc65169696c0976ab3591927253ad2d61a1119d216d8  requirements.html`.
 
 ### Current authority and source closure
 
@@ -999,6 +999,30 @@ a new key is not a valid substitute. Consequently, an exact-current cold product
 installed lifecycle evidence cannot presently be completed from the retained local inputs. Restoring or reacquiring
 those inputs must preserve R-B2 and R-B10's single complete canonical closure and must not introduce a partial-cache
 fallback.
+
+### R-S11at/R-S11e-60 — raw-password admission UID lookup remains OPEN
+
+**Source contract mismatch.** Generic Linux `_service` authorization uses
+`service_scoped_ipc_authorization_snapshot_from_stream`: root skips the active-user lookup,
+and a non-root cached-UID match only permits the fresh final lookup. Raw `_service_password`
+instead calls `authenticate_linux_service_owned_password_requester` →
+`linux_service_owned_password_requester_is_live` → `peer_process_identity_is_live`.
+The latter evaluates `active_uid_fresh()` without that prefilter, including for UID 0.
+This does not satisfy R-S11at’s both-endpoint cached-negative/root-short-circuit contract.
+
+Both listener branches still acquire their fixed transaction permit before identity work.
+The raw password path still requires the exact live requester generation and finite role,
+with fixed-action polkit authorization and another identity replay before credential admission.
+This source finding is not evidence of an unauthorized credential write or privilege escalation.
+
+The old admission checker required obsolete inline raw-password identity calls and a retired
+handler signature; it and its callers are deleted. The executable `r_s11e60_` regression
+still tests the cached-UID policy, while the current password-authority source guard follows
+the real requester call chain. Neither establishes the missing raw-path contract or native
+resource behavior. Correct the receiver-owned lookup topology without weakening exact identity,
+fresh final authority, or action authorization, then run both installed endpoints in an isolated
+Linux VM with root/cache/session-change, contention, cancellation, drain, and lookup/resource
+observations. Until then this source discrepancy and native acceptance remain OPEN.
 
 ### Android runtime — intermittent presentation remains OPEN
 
@@ -3432,7 +3456,7 @@ exists only to make the current source disposition discoverable.
 - R-S11e-57 — non-returning graceful-shutdown finalizer ownership
 - R-S11e-58 — protected Unix service IPC foreground lifecycle ownership
 - R-S11e-59 — desktop local-IPC readiness and retained native-worker ownership
-- R-S11e-60 — Linux protected-service admission owns active-session identity work
+- R-S11e-60 — permit-owned Linux service admission; raw-password UID lookup contract OPEN (R-S11at above)
 - R-S11e-61 — macOS privileged helper current-build binding
 - R-S11e-62 — macOS variadic file-creation ABI
 - R-S11e-63 — complete Windows production-listener DACL coverage
@@ -4064,85 +4088,53 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   inner source, mode, scratch, preference, signing, and artifact checks, but predates current master and the
   guest-only outer authority. It is not a current no-NIC VM build, independent-snapshot R-B2/R-B10 result, package
   installation, peer/presentation, lifecycle, resource-soak, or device result.
-- **R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities — SOURCE
-  IMPLEMENTED/GATED 2026-07-22; NATIVE MACOS AND EXACT PACKAGED-ARTIFACT EVIDENCE REMAIN
-  R-R2/R-B2.** Platforms: Linux and macOS installed desktop entry processes; Windows retains its
-  separately proved exact current-MSI-package executable classifier. Endpoint/action:
-  `platform::is_installed()`, consumed before unattended-password and machine-policy routing,
-  root CLI user-main-IPC selection, installed UI state, and other service-aware behavior. Boundary:
-  the running executable identity ↔ the decision that machine credentials/policy belong to the
-  root/LaunchDaemon service and therefore may never fall back to user-owned storage after service
-  denial or unavailability. Linux previously accepted every lossy current-executable string beginning
-  with `/usr` or `/nix/store`; macOS accepted every string beginning with
-  `/Applications/<app>.app`. Those prefixes also describe sibling names, helper executables, copied
-  bundles, and future files beneath the tree rather than one supported app entry. This was a
-  source-proven caller-side authority-classification defect and possible fail-closed availability
-  error. It is not evidence of an unprivileged local-to-root write: the privileged receivers retain
-  independent polkit/Authorization Services, peer-process, and installed-helper proofs, and no real
-  machine, service, credential, listener, firewall, or package was exercised or changed.
+- **R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities —
+  SOURCE IMPLEMENTED; current native/package evidence OPEN.** Linux admits only
+  `/usr/share/rustdesk/rustdesk` and `/usr/bin/rustdesk`; macOS admits only
+  `/Applications/<app>.app/Contents/MacOS/<app>`. The classifier compares filesystem
+  paths, not lossy strings or prefixes. Lookup failure and every directory, sibling,
+  helper, copied-bundle, Nix-store or other path classify non-installed. Exact installed
+  classification selects service credential/policy ownership before readiness or
+  authorization; denial/unavailability never falls back to user storage. This caller-side
+  classification is not privileged receiver authority. Windows remains governed
+  separately by its exact current-MSI-package executable contract.
 
-  The classifier now compares `Path` values without lossy conversion or prefix matching. Linux has
-  one closed two-entry inventory: the packaged `/usr/share/rustdesk/rustdesk` runner and exact
-  `/usr/bin/rustdesk` entry, covering the documented platform-dependent `current_exe` symlink result
-  without admitting their directories. macOS derives and admits only
-  `/Applications/<app>.app/Contents/MacOS/<app>`. Current-executable lookup failure and `/usr` or app
-  bundle prefixes, sibling/helper names, copied bundles, Nix-store paths, and every unlisted path
-  classify non-installed. That false result preserves portable user ownership; an exact installed
-  path still selects service ownership before service readiness and therefore retains R-S11b's
-  no-fallback rule. Receiver authorization remains independent and unchanged.
+  The historical Rust-1.75 locked/offline Linux classifier regression recorded with
+  `9da6251b` passed 1/1 in confinement. It exercises path classification, not an installed
+  service, OS authorization, live credential transaction, native macOS, or current release
+  artifact. The focused Python checker retains source inventories, equality/error paths,
+  test negatives and shared/Apple wiring, without document-text inputs or mutations.
+  Original analysis, diagnostic setup failures, operational incidents, and detailed
+  receipts remain in that commit and the installed-service-classifier audit entry.
 
-  Focused Rust regressions accept only the supported Linux entries and exact macOS app executable and
-  reject directory, prefix-confusion, helper, copied-bundle, and Nix-store examples. The standalone
-  `scripts/verify-installed-service-classifier.py` parses both platform implementations, binds the
-  closed inventories, exact equality, fail-closed lookup result, tests, R-S11bn, Appendix C #207,
-  this row, and shared/Apple gate wiring, and rejects 16 deliberate mutations. Linux compilation and
-  test execution use the existing pinned Rust 1.75 offline container. The Apple checker proves source
-  shape only; no native Mac, signed app, installed service, or exact release artifact is claimed, and
-  those evidence obligations remain R-R2/R-B2.
-- **R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts only exact process roles — SOURCE
-  IMPLEMENTED/GATED 2026-07-22; NATIVE MACOS AND EXACT PACKAGED-ARTIFACT EVIDENCE REMAIN
-  R-R2/R-B2.** Platforms: Linux and macOS desktop connection-manager and helper-listener IPC.
-  Endpoint/action: the server authenticates the selected `_cm` endpoint's `--cm` or `--cm-no-ui`
-  role before the mutual launch-token proof and any helper authority disclosure; CM and whiteboard
-  listeners authenticate the connected main server's `--server` role before answering an endpoint
-  challenge or accepting typed traffic. Boundary: the already-connected local peer PID ↔ receiver-owned
-  classification of that process's complete launch role. The inherited shared predicate enumerated all
-  processes with the current executable name, lowercased only `argv[1]`, accepted any command line with
-  at least two elements, and then searched the result for the connected PID. A same-image process with
-  `--CM`, `--SERVER`, or any arbitrary suffix therefore satisfied a claimed first-argument role. Git
-  history traces the global first-argument helper to imported baseline `c2abd3b3` and the macOS endpoint
-  wrapper's reuse of it to `806fce15`. This is a source-proven receiver role-confusion/assurance defect,
-  not a demonstrated local-to-root write or evidence of host compromise: exact connected-peer PID,
-  current executable, UID/session where applicable, server-parent ancestry, launch-token HMAC, endpoint
-  challenge, typed connection authority, and privileged service authorization remain separate proofs.
+  **Still required:** exact-current compiled regressions and native packaged execution of
+  all supported identities and lookup/prefix/sibling/helper/copied-bundle/Nix-store refusal
+  cases, service ownership before availability, and independent receiver authorization.
+  Installed artifacts, cold R-B2/R-B10 equality and the global platform/review matrix remain OPEN.
+- **R-S11bo/R-S11e-81 — Unix desktop helper IPC accepts only exact process roles —
+  SOURCE IMPLEMENTED; current native/package evidence OPEN.** Linux/macOS CM and helper
+  receivers classify the complete argv of the exact connected peer PID, case-sensitively
+  after arbitrary argv[0]. Selected CM mode accepts only `--cm` or `--cm-no-ui`;
+  a helper's server peer accepts only `--server` or `--server --service-owned-server`.
+  Missing, duplicate, case-varied, reordered, wrong-role, prefixed, suffixed or unreadable
+  vectors deny. Global same-name process-scan helpers are absent. Executable, UID/session,
+  launch-parent, token/HMAC, endpoint-challenge, connection-capability and privileged
+  action proofs remain independent; argv shape cannot replace them.
 
-  Receiver authority is now explicit and closed. After arbitrary `argv[0]`, the CM classifier accepts
-  exactly one case-sensitive argument matching the selected `--cm` or `--cm-no-ui` mode. The helper
-  server classifier accepts only exact `--server` or exact
-  `--server --service-owned-server`, preserving both the user-supervised and installed-service-owned
-  server contracts without admitting a prefix, suffix, duplicate, case variant, reordered marker, or
-  wrong role. Linux reads `/proc/<connected-pid>/cmdline`; macOS reads that connected PID's process argv.
-  Acquisition failure denies the connection. The unused global same-name process scan helpers are
-  deleted. No executable, UID/session, parent, token, HMAC, endpoint-challenge, capability, or service
-  authorization check is weakened or merged into argv classification.
+  The historical Rust-1.75 locked/offline Linux exact-role regression recorded with
+  `22d1f62f` passed 1/1 in confinement. It exercises pure argument-vector decisions,
+  not a native connected-peer acquisition, end-to-end helper connection, installed service,
+  macOS signature/authorization path, or current release artifact. The Python source
+  checker retains exact-length/case predicates, closed inventories, direct peer readers,
+  fail-closed branches, retired-scan absence, regression and shared/Apple wiring; it carries
+  no requirement/ledger wording or document mutations. Original review, setup and verifier
+  failures, diagnostic limitations and detailed receipts remain in that commit and audit entry.
 
-  The focused Rust regression accepts all four legitimate vectors and rejects missing, case-varied,
-  suffixed, wrong-role, and service-marker-plus-suffix forms. The standalone
-  `scripts/verify-unix-helper-process-role.py` parses the exact-length and case-sensitive predicate,
-  the closed CM/server inventories, direct peer-PID readers, fail-closed branches, removal of ambient
-  scan helpers, test negatives, R-S11bo, Appendix C #208, this row, and shared/Apple gate wiring, and
-  rejects 18 deliberate semantic mutations. The independent workspace verifier passes its complete
-  current-tree source-mutation matrix with the new focused verifier sealed as an input. The shared and
-  Apple gates also replace their former greps
-  for the weak first-argument helper with direct-argv and exact-role assertions. Linux compilation and
-  tests use the exact installed Rust 1.75 toolchain and reviewed offline Cargo/vcpkg inputs in a bounded
-  non-root, network-disabled, read-only-source container: the focused regression passes 1/1 with 339
-  unrelated tests filtered. Rustfmt reports no slice-owned difference; two pre-existing unrelated
-  `auth.rs` hunks remain outside this change. The repository-pinned main-verifier image is absent locally,
-  so the already-present content-addressed dev-check image supplies diagnostic evidence only and is not
-  substituted for release provenance. The Apple result is source shape only: no native Mac, signed app,
-  installed service, exact release artifact, or end-to-end helper connection is claimed, and those
-  evidence obligations remain R-R2/R-B2.
+  **Still required:** exact-current regressions and native Linux/macOS connected-peer runs
+  covering every admitted/refused vector, acquisition failure, process/identity replacement,
+  and all independent principal, ancestry, token and action checks. Exact installed/signed
+  artifacts, cold release equality, bounded lifecycle/resources, independent reproduction
+  and external review remain OPEN under the global matrices.
 - **R-S11bp/R-S11e-82 — outgoing voice-call capture is event-driven and exact-subscription-owned —
   SOURCE IMPLEMENTED; NATIVE/APK/DEVICE/ARTIFACT EVIDENCE OPEN.** On non-iOS targets, one
   `VoiceCallAudio` owns the synthetic audio-service subscription, non-cloneable input lease, and R-S11eh
@@ -4197,58 +4189,32 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   installation must still exercise concurrent controlled calls, controlled/outgoing overlap, Activity replacement,
   task swipe/reopen with the persistent service retained, Force Stop, projection replacement/revocation, injected
   permission/buffer/start/read failures, peer reconnect/presentation, and exact thread/audio/projection cleanup.
-- **R-S11bs/R-S11e-85 — Unix incumbent-listener identity is explicit — SOURCE IMPLEMENTED AND CONFINED
-  FOCUSED/WORKSPACE VERIFIED 2026-07-22; EXACT INSTALLED ARTIFACTS PENDING.** Platform: Linux and macOS pathname
-  Unix-domain listeners.
-  Endpoint/action: the singleton check performed before binding main, user/service password, `_service`, `_pa`,
-  `_cm`, `_url`, and launch-token-derived whiteboard endpoints. Boundary: a namespace entry accepting `connect(2)`
-  ↔ authority to keep the legitimate RustDesk image from reclaiming its local listener pathname.
+- **R-S11bs/R-S11e-85 — Unix incumbent-listener identity is explicit —
+  SOURCE IMPLEMENTED; current installed/native endpoint evidence OPEN.** Linux/macOS
+  incumbent probing is fallible and separate from message admission. Generic incumbents
+  must prove kernel peer UID/PID, current effective UID equality and current-executable
+  identity. A positive UID/executable mismatch is a foreign stale candidate; missing
+  credentials or unavailable executable proof propagates an error through `check_pid`
+  and `new_listener`, preserving the ambiguous live pathname. Linux `_cm`/`_pa`
+  retain their stronger exact process/launch proofs. Protected `_service` also requires
+  its bounded typed liveness round trip; failed or malformed response is an error, not
+  cleanup authority. Stale removal stays descriptor-relative; probing grants no request authority.
 
-  The inherited default returned true immediately after any successful connection. Except for the stronger Linux
-  `_cm`/`_pa` checks and `_service` liveness exchange, no peer UID, PID, executable, role, or launch proof entered
-  the incumbent decision. An unrelated same-UID executable could therefore bind a user-owned endpoint first and
-  hold local availability without ever passing that endpoint's later receiver authentication. This was not message
-  authorization: accept-time UID/executable/role/token/capability checks still rejected its traffic. It was a
-  deterministic local singleton-availability and lifecycle-authority ambiguity, not credential disclosure, LPE,
-  remote reachability, exploitation evidence, host mutation, or compromise.
+  The historical confined Rust-1.75 locked/offline `r_s11e85_` policy regression recorded
+  with `100ae3e5` passed 1/1. This checks the UID/executable conjunction, not live kernel
+  credentials, process replacement, native endpoint cleanup or installed artifacts.
+  The Python source checker retains fallible identity/probe/constructor flow, special
+  endpoint proofs, liveness handling, regression and shared/Apple wiring, without
+  document-text inputs/mutations. Original receipts and limitations remain in that commit
+  and audit entry. Design references remain [Unix peer credentials](https://man7.org/linux/man-pages/man7/unix.7.html)
+  and [executable-reference permissions](https://man7.org/linux/man-pages/man5/proc_pid_exe.5.html).
 
-  `probe_existing_listener` now returns `ResultType<bool>` and treats connected peer identity as fallible evidence.
-  For every endpoint not already covered by the stronger Linux `_cm`/`_pa` proofs, it requires the connected
-  socket's kernel-reported peer UID and PID, exact equality with the current effective UID, and a positive match
-  between the peer and current executable. A positive UID or executable mismatch is a foreign stale candidate;
-  missing peer credentials or an unavailable executable proof propagates an error through `check_pid` and
-  `new_listener`, preserving the ambiguous live namespace entry instead of unlinking it and creating split-brain
-  listener state. The protected `_service` path additionally retains its bounded typed
-  `ServiceIpcRequest::LivenessProbe` / `ServiceIpcResponse::Liveness` round trip;
-  once current identity is proven, a failed or malformed liveness response is now an error rather than cleanup
-  authority. Incumbent probing remains separate from and weaker than normal message admission; no new request is
-  admitted by this change.
-
-  Linux documents `SO_PEERCRED` as the read-only credentials of the peer process connected to the Unix socket,
-  captured at `connect`, `listen`, or `socketpair` time (<https://man7.org/linux/man-pages/man7/unix.7.html>), and
-  documents `/proc/<pid>/exe` as the executed-program reference with ptrace-governed read/dereference permission
-  (<https://man7.org/linux/man-pages/man5/proc_pid_exe.5.html>). The implementation deliberately propagates the
-  latter permission/identity failure instead of treating absence of proof as proof of staleness. macOS continues to
-  use the existing connected-socket peer UID/PID and same-file executable implementation.
-
-  Confined verification used development image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` with a read-only root filesystem and
-  source mount, UID/GID 1000, no network, all capabilities dropped, `no-new-privileges`, and tmpfs-only build/cache
-  state. Locked/offline `cargo test --lib --features linux-pkg-config r_s11e85_` compiled the library-test graph and
-  passed the focused policy regression (`1 passed`, `0 failed`, `344 filtered`). The standalone semantic verifier
-  passed all 18 deliberate mutations; the independent workspace verifier passed both its normal validation and full
-  source-mutation matrix. Python byte-compilation, edited Bash syntax, `git diff --check`, native-codec normal and
-  self-test gates, and requirements-hash synchronization
-  (`19765e32030adbbb3c25b2f98ec28a09ba6f6bd8da2b95287911023b8797e120`) passed. Pinned Rustfmt 1.75 parsed all
-  three touched Rust files and reported no changed hunk; its whole-file check remains nonzero solely for pre-existing
-  drift in `src/ipc/auth.rs` around lines 1759/2268 and `src/ipc/fs.rs` around lines 1003/1142, which this narrow slice
-  does not rewrite. `Cargo.lock` remained unchanged. No published port, Docker socket, host PID/network namespace,
-  host service/config mount, host networking, added capability, or root process was used.
-
-  The residual same-account denial of service is explicit: code already running under the same UID can mutate its
-  own mode-0700 socket directory repeatedly, so this slice does not claim a stronger OS-principal isolation boundary
-  than the platform provides. Exact installed Apple/Linux artifacts and the cold R-B2 release transaction remain
-  separately open.
+  **Still required:** exact-current installed Linux/macOS endpoint tests with genuine,
+  wrong-principal and unrelated-image incumbents, missing/unavailable proof, process
+  replacement, malformed/failed service liveness, stale cleanup/namespace races, restart
+  and bounded resources. Cold release artifacts and independent/external review remain OPEN.
+  Code already running as the same UID can repeatedly mutate its own mode-0700 socket
+  directory; this source correction is not a stronger OS-principal denial-of-service boundary.
 - **R-S11bt/R-S11e-86 — Windows Installer never launches the remote-control application — SOURCE IMPLEMENTED
   AND CONFINED SOURCE/MUTATION VERIFIED 2026-07-22; NATIVE MSI AND EXACT ARTIFACT EVIDENCE REMAIN
   R-B2/R-B10.** Platform: the per-machine WiX Windows Installer package. Endpoint/action: completion of an

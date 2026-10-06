@@ -1523,6 +1523,12 @@ run_apple_conform() {
     [ -z "$(find "$source_root" -mindepth 1 \
         \( -uid 4000 -o -gid 4000 -o -perm /022 \) -print -quit)" ] \
         || fail 'Apple-conformance source is writable by the verifier principal'
+    if ! /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \
+        diff-files --quiet --ignore-submodules --; then
+        /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \
+            diff-files --name-status --ignore-submodules -- | sed -n '1,30p' >&2
+        fail 'Apple-conformance source differs from its index after sealing'
+    fi
 
     mkdir "$inputs"
     mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
@@ -1696,14 +1702,22 @@ run_apple_conform() {
         || { tail -n 240 "$output" >&2; fail 'Apple-conformance workspace-anchor receipts differ'; }
     [ "$(grep -Fxc "$expected_entry" "$output")" -eq 1 ] \
         || fail 'Apple-conformance VM authority receipt is absent or duplicated'
+    sed -n '/^== (3) cross-compile coherence matrix/,/^== Apple desktop port-forward mapping conformance/p' \
+        "$output" | sed -n '1,80p' >&2
+    grep -F '== apple-conform-check PASS ==' "$output" >&2
 
     source_tree_after="$(/usr/bin/git -c "safe.directory=$source_root" \
         -C "$source_root" write-tree)" \
         || fail 'cannot re-evaluate the Apple-conformance source tree'
-    [ "$source_tree_after" = "$APPLE_SOURCE_TREE" ] \
-        && /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \
-             diff-files --quiet --ignore-submodules -- \
-        || fail 'Apple-conformance source changed during execution'
+    if [ "$source_tree_after" != "$APPLE_SOURCE_TREE" ] \
+        || ! /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \
+             diff-files --quiet --ignore-submodules --; then
+        printf 'Apple-conformance source trees: expected=%s after=%s\n' \
+            "$APPLE_SOURCE_TREE" "$source_tree_after" >&2
+        /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \
+            diff-files --name-status --ignore-submodules -- | sed -n '1,30p' >&2
+        fail 'Apple-conformance source changed during execution'
+    fi
     [ "$image_before" = \
       "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$image_archive"):$(sha256sum "$image_archive")" ] \
         || fail 'sealed Apple image archive changed during execution'

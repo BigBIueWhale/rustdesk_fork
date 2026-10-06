@@ -1041,8 +1041,8 @@ recipient-revalidation and late-subscriber-dispatch tests were absent from that 
 The guest therefore failed its count gate. Separately, the outer endpoint-only audit
 observed new `tcp 127.0.0.1:8100` and rejected the transaction; its owner was not inspected,
 attributed, signalled, or changed. The inventory now explicitly requires those two tests
-and the outer count is 75, with all safety checks retained; this correction has not been
-re-executed. The guest powered off at 808 seconds. The owned VM/capture/virtiofsd exited
+and the outer count is 75, with all safety checks retained; accepted execution of that
+corrected inventory is still missing. The guest powered off at 808 seconds. The owned VM/capture/virtiofsd exited
 and the disposable disks were retired. The remaining 34 MiB of diagnostics were reconciled
 and exact owned root `run.mhr2BrPPea` (`66306:106074337`) removed through the inode-bound
 cleanup helper. The raw serial and a 1,468-byte mode-0400 failure receipt remain;
@@ -1051,12 +1051,28 @@ SHA-256 `89fc246c7e2d0708787f1edabf3cd50e4de3ef1aabb98135bf0dbd7ceafd4ac2`.
 No listener ownership was inspected or changed during reconciliation.
 These named unit results do not constitute an accepted integration transaction.
 
+The one corrected-inventory attempt at `bc4360c591325cc1877ea23e0276a27032d16dbc`
+(tree `e98aeff87887895da5fc24b4d82987f940ea3fac`) ended with VM-owner status 137
+before test results. The termination cause is unproven; no guest pass or whole-run host
+listener invariance is claimed. Raw serial `android-rust-lifecycle-tests-run.DFCvHZm7EW.serial.log`
+is 55,258 bytes, SHA-256 `aa73c6315bc37197b1aeaab3b17c91c047cefb7189efd6e2241765ed7165ff22`.
+Owned children joined, disks were retired, and exact failed root `run.DFCvHZm7EW`
+(`66306:106074341`) was reconciled and removed. Its 1,258-byte mode-0400 failure receipt
+is retained beside the serial, SHA-256 `2717ee5bcbdd625b72ba5ec86fd7a65347bdee2f04674b91b9361f1466d374ab`.
+No second heavy retry was started, and no owned run root remains.
+
 **Still OPEN:** exact-artifact installed Linux receiver runs on both endpoints with
 root/cache/session-change, capacity contention, authorized/unauthorized principals,
 cancellation and drain, and lookup/transaction resource observations. Provider-call unit
 tests and source wiring cannot close those native obligations. A fast standalone inner
 loop also remains needed; the existing whole Rust-app Linux-target transaction is an
 integration check, not the seconds-to-minutes default promised by the instructions.
+Source review identifies a concrete dependency cut: the UID predicate, lazy selector and
+four policy tests use only Rust's standard library. Move that one production implementation
+and its tests into a small module and compile the actual module with the pinned Rust 1.75 /
+edition-2021 toolchain in the isolated non-root lane, not a copied or extracted model.
+That fast lane is not implemented or executed yet; source wiring, whole-app integration
+and installed receiver tests remain independently required.
 
 ### Android runtime — intermittent presentation remains OPEN
 

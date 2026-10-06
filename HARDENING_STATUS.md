@@ -1027,8 +1027,25 @@ authority while changed/missing fresh state refuses. The password source guard p
 both caller wirings and the cached-only accessor; its existing stale-authority mutation
 is retargeted, not expanded into a new catalog. The existing zero-NIC Linux-target
 `--android-rust-lifecycle-tests` integration lane now selects all three tests, checks exact
-names and counts, and retains their output. **Execution remains OPEN until a source-bound
-transaction passes.** This is not an installed Android race or installed Linux receiver test.
+names and counts, and retains their output. At source `7f61dc6f8de498493c71d6274c4cae9858dc3a6e`
+(tree `cb9f8db329df4ea0ac8937d1f132f1d27fb0ca48`), all three production-selector
+tests and the source guard passed in the non-root, networkless guest container. The UID
+suite reported 3 passed / 0 failed in 0.00 seconds. Raw serial
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.mhr2BrPPea.serial.log`
+is 68,517 bytes, SHA-256 `0d097674579f2885b3e11a637ea909840084fb0855f5f9d6b5616f30ab993b98`.
+This is not an installed Android race or installed Linux receiver test.
+
+**Whole transaction INCOMPLETE / not accepted:** thirteen guest summaries reported
+75 passing tests, but the required-name inventory expected 73: existing audio
+recipient-revalidation and late-subscriber-dispatch tests were absent from that inventory.
+The guest therefore failed its count gate. Separately, the outer endpoint-only audit
+observed new `tcp 127.0.0.1:8100` and rejected the transaction; its owner was not inspected,
+attributed, signalled, or changed. The inventory now explicitly requires those two tests
+and the outer count is 75, with all safety checks retained; this correction has not been
+re-executed. The guest powered off at 808 seconds. The owned VM/capture/virtiofsd exited
+and the disposable disks were retired; roughly 34 MiB of failed-run diagnostics remain
+in the one exact `run.mhr2BrPPea` root, blocking another run until reconciliation.
+These named unit results do not constitute an accepted integration transaction.
 
 **Still OPEN:** exact-artifact installed Linux receiver runs on both endpoints with
 root/cache/session-change, capacity contention, authorized/unauthorized principals,

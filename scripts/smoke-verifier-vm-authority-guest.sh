@@ -2187,6 +2187,8 @@ run_focused_rust_tests() {
             server::audio_service::test::r_s11iu_pa_capture_authority_rejects_missing_wrong_and_stale_tokens
             server::audio_service::test::r_s11iu_pa_capture_authority_rejects_a_stopped_service
             server::audio_service::test::r_s11iu_pa_capture_authority_requires_a_positive_subscriber_id
+            server::audio_service::test::r_s11iu_pa_capture_rechecks_exact_current_recipients
+            server::service::pa_dispatch_tests::r_s11iu_pa_audio_dispatch_excludes_later_subscribers
             server::display_service::tests::r_s11iu_r_t4_resolution_restore_retains_failure_and_concurrent_replacement
             ui_cm_interface::tests::r_s11iu_android_cm_future_terminally_retires_its_registry_owner
             ui_cm_interface::tests::r_s11iu_android_terminal_preempts_queued_file_work

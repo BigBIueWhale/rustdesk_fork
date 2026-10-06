@@ -12863,15 +12863,16 @@ and joined cleanup passed. Raw serial:
 Both are sequential test-signed emulator schedules, not a concurrent
 admission/Stop or same-ID replacement proof.
 
-There is no matching retained Android instrumentation package for that APK.
-The emulator-test builder publishes only the app APK; the project has no
-`androidTest` source set or runner, and the release builder invokes no test
-assembly task. Its test signing key is
-not retained, so a separately built test package cannot instrument the exact
-retained APK. A concurrent Service/JNI admission test needs a source-bound
-app/test pair built and signed together, then installed-process execution with
-a verified overlap; neither packaging intent nor the sequential replay above
-establishes that result.
+There is no matching retained instrumentation package for the earlier APK.
+The current emulator-test source now defines an `androidTest` runner and
+assembles a same-build app/test APK pair with one test signing identity; the
+normal release builder still assembles no test APK. A no-NIC VM completed both
+APKs, but its static runner-badging assertion stopped before installation.
+The static checker now claims only package, matching signer, and executable
+DEX; the exact installed `am instrument` component and main-process observation
+must establish runner/target behavior. That native smoke and the concurrent
+Service/JNI overlap have not passed. The artifact publisher still retains
+only the app APK, so an exact reusable test pair is also not yet available.
 
 **Still OPEN / release-blocking:** installed APK concurrent Stop/admission,
 same-ID replacement and stale JNI callbacks across input, voice, capture,

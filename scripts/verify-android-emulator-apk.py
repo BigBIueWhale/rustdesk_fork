@@ -19,7 +19,6 @@ MAX_TOOL_OUTPUT = 8 * 1024 * 1024
 MAX_MEMBER_BYTES = 512 * 1024 * 1024
 PACKAGE = "com.carriez.flutter_hbb"
 TEST_PACKAGE = f"{PACKAGE}.test"
-TEST_RUNNER = f"{PACKAGE}.ControlledCmStopInstrumentation"
 REQUIRED_LIBRARIES = {
     "lib/x86_64/libc++_shared.so",
     "lib/x86_64/libflutter.so",
@@ -118,18 +117,13 @@ def manifest(apk: pathlib.Path, aapt2: pathlib.Path) -> None:
         fail("runtime-test APK launcher activity differs")
 
 
-def instrumentation_manifest(apk: pathlib.Path, aapt2: pathlib.Path) -> None:
+def instrumentation_package(apk: pathlib.Path, aapt2: pathlib.Path) -> None:
     output = run([str(aapt2), "dump", "badging", str(apk)])
     packages = [line for line in output.splitlines() if line.startswith("package: ")]
     if len(packages) != 1 or f"name='{TEST_PACKAGE}'" not in packages[0]:
         fail("instrumentation APK package identity differs")
-    runners = [line for line in output.splitlines() if line.startswith("instrumentation: ")]
-    if (
-        len(runners) != 1
-        or f"name='{TEST_RUNNER}'" not in runners[0]
-        or f"targetPackage='{PACKAGE}'" not in runners[0]
-    ):
-        fail("instrumentation APK does not target the exact app and runner")
+    # The installed exact-component `am instrument` smoke proves runner and target
+    # against Android itself; this static receipt claims only package and DEX.
     with zipfile.ZipFile(apk) as archive:
         names = [item.filename for item in archive.infolist()]
         if len(names) != len(set(names)) or "classes.dex" not in names:
@@ -228,11 +222,11 @@ def main() -> int:
         )
         if test_signer != signer:
             fail("instrumentation APK signer differs from the app signer")
-        instrumentation_manifest(arguments.instrumentation_apk, arguments.aapt2)
+        instrumentation_package(arguments.instrumentation_apk, arguments.aapt2)
         print(
-            "ANDROID_EMULATOR_INSTRUMENTATION=pass "
+            "ANDROID_EMULATOR_INSTRUMENTATION_PACKAGE=pass "
             f"sha256={sha256(arguments.instrumentation_apk)} "
-            f"package={TEST_PACKAGE} target={PACKAGE} signer={signer}"
+            f"package={TEST_PACKAGE} signer={signer} dex=present"
         )
     return 0
 

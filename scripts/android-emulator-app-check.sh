@@ -515,7 +515,7 @@ case "${apk_receipts[0]}" in
     *) die 'runtime-test APK verifier reported a different digest' ;;
 esac
 mapfile -t test_receipts < <(grep -E \
-    '^ANDROID_EMULATOR_INSTRUMENTATION=pass sha256=[0-9a-f]{64} package=com\.carriez\.flutter_hbb\.test target=com\.carriez\.flutter_hbb signer=[0-9A-F]{64}$' \
+    '^ANDROID_EMULATOR_INSTRUMENTATION_PACKAGE=pass sha256=[0-9a-f]{64} package=com\.carriez\.flutter_hbb\.test signer=[0-9A-F]{64} dex=present$' \
     "$VERIFY_LOG" || true)
 [ "${#test_receipts[@]}" -eq 1 ] \
     && [[ "${test_receipts[0]}" == *"sha256=$TEST_APK_SHA256"* ]] \

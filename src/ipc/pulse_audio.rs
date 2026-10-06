@@ -398,4 +398,125 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.to_string().contains("authority"), "{err}");
     }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires a private native Unix _pa endpoint and a separate same-UID client"]
+    async fn real_kernel_pa_admission_refuses_same_uid_child_with_token() {
+        assert_eq!(std::env::var("RUSTDESK_PA_NATIVE_TEST").unwrap(), "1");
+        if std::env::var("RUSTDESK_PA_NATIVE_ATTACKER").as_deref() == Ok("1") {
+            let path = std::env::var("RUSTDESK_PA_NATIVE_ATTACKER_SOCKET").unwrap();
+            let token = std::env::var("RUSTDESK_PA_NATIVE_ATTACKER_TOKEN").unwrap();
+            let mut stream = connect_with_path(1_000, &path, "_pa").await.unwrap();
+            stream
+                .send_pulse_audio_request_timeout(
+                    &LinuxPulseAudioIpcRequest::StartCapture {
+                        token,
+                        source: String::new(),
+                    },
+                    PULSE_AUDIO_IPC_IO_TIMEOUT_MS,
+                )
+                .await
+                .unwrap();
+            assert!(tokio::time::timeout(
+                Duration::from_secs(3),
+                stream.next_pulse_audio_frame_timeout(3_000)
+            )
+            .await
+            .unwrap()
+            .is_err());
+            return;
+        }
+        let authority = crate::audio_service::PaCaptureNativeFixture::new().unwrap();
+        let mut incoming = new_listener("_pa").await.unwrap();
+        let path = Config::ipc_path("_pa");
+
+        let mut local = connect(1_000, "_pa").await.unwrap();
+        local
+            .send_pulse_audio_request_timeout(
+                &LinuxPulseAudioIpcRequest::StartCapture {
+                    token: authority.token().to_owned(),
+                    source: String::new(),
+                },
+                PULSE_AUDIO_IPC_IO_TIMEOUT_MS,
+            )
+            .await
+            .unwrap();
+        let accepted = tokio::time::timeout(Duration::from_secs(3), incoming.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let mut accepted = Connection::new_pulse_audio(accepted);
+        let request = accepted
+            .next_pulse_audio_request_timeout(PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+            .await
+            .unwrap()
+            .unwrap();
+        let LinuxPulseAudioIpcRequest::StartCapture { token, .. } = request;
+        assert_eq!(token, authority.token());
+        let local_peer = validate_pulse_audio_capture_request(&accepted, &token)
+            .await
+            .unwrap();
+        assert_eq!(local_peer.pid(), std::process::id());
+        drop(accepted);
+        drop(local);
+
+        let parent_pid = unsafe { hbb_common::libc::getppid() };
+        assert!(parent_pid > 0);
+        std::env::set_var(crate::common::CM_LAUNCH_PARENT_ENV, parent_pid.to_string());
+        assert_eq!(ipc_auth::linux_cm_owner_identity().unwrap().pid(), parent_pid as u32);
+
+        let mut child = tokio::process::Command::new(std::env::current_exe().unwrap());
+        child
+            .args([
+                "--exact",
+                "ipc::pulse_audio::tests::real_kernel_pa_admission_refuses_same_uid_child_with_token",
+                "--ignored",
+                "--test-threads=1",
+            ])
+            .env("RUSTDESK_PA_NATIVE_ATTACKER", "1")
+            .env("RUSTDESK_PA_NATIVE_ATTACKER_SOCKET", &path)
+            .env("RUSTDESK_PA_NATIVE_ATTACKER_TOKEN", authority.token())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
+        let child = child.spawn().unwrap();
+        let child_pid = child.id().unwrap();
+        let accepted = tokio::time::timeout(Duration::from_secs(3), incoming.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let mut accepted = Connection::new_pulse_audio(accepted);
+        let request = accepted
+            .next_pulse_audio_request_timeout(PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+            .await
+            .unwrap()
+            .unwrap();
+        let LinuxPulseAudioIpcRequest::StartCapture { token, .. } = request;
+        assert_eq!(token, authority.token());
+        let peer = ipc_auth::linux_kernel_peer_process_identity(&accepted, "_pa").unwrap();
+        assert_eq!(peer.pid(), child_pid);
+        assert_eq!(peer.uid(), local_peer.uid());
+        let refused = validate_pulse_audio_capture_request(&accepted, &token)
+            .await
+            .unwrap_err();
+        assert!(
+            refused
+                .to_string()
+                .contains("not the connection-manager launch parent"),
+            "{refused}"
+        );
+        drop(accepted);
+        let output = tokio::time::timeout(Duration::from_secs(5), child.wait_with_output())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "attacker client failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        drop(incoming);
+    }
 }

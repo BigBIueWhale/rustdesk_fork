@@ -4145,7 +4145,7 @@ elif [ "$MODE" = cpace-recovery-tests ]; then
         'focused CPace recovery cloud-init completion marker'
 elif [ "$MODE" = linux-pa-authority-tests ]; then
     require_exact_fixed_receipt \
-        "LINUX_PA_AUTHORITY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=10 rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID pa_candidate=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256 pa_native=monitor-capture-revocation uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "LINUX_PA_AUTHORITY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=11 rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID pa_candidate=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256 pa_native=monitor-capture-revocation-and-same-uid-peer-refusal uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused Linux PulseAudio authority receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \

@@ -128,14 +128,15 @@ cargo test --offline --locked --lib --features linux-pkg-config \
     server::service::pa_dispatch_tests:: --color never -- --test-threads=1
 cargo test --offline --locked --lib --features linux-pkg-config \
     ipc::pulse_audio::tests:: --color never -- \
-    --skip real_monitor_capture_revokes_after_audio_stops --test-threads=1
+    --skip real_monitor_capture_revokes_after_audio_stops \
+    --skip real_kernel_pa_admission_refuses_same_uid_child_with_token --test-threads=1
 cargo test --offline --locked --lib --features linux-pkg-config \
-    ipc::pulse_audio::tests::real_monitor_capture_revokes_after_audio_stops \
-    --color never -- --ignored --exact --test-threads=1
+    ipc::pulse_audio::tests::real_ \
+    --color never -- --ignored --test-threads=1
 
 kill -TERM "$daemon_pid"
 wait "$daemon_pid"
 daemon_pid=
 [ ! -S "$PULSE_RUNTIME_PATH/native" ] \
     || { echo 'private PulseAudio socket survived daemon shutdown' >&2; exit 1; }
-printf 'PA_RUNTIME_NATIVE=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 revocation=after-unload network=none uid=1000 cleanup=joined\n'
+printf 'PA_RUNTIME_NATIVE=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 revocation=after-unload same_uid_stolen_token=refused network=none uid=1000 cleanup=joined\n'

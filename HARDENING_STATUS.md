@@ -12613,12 +12613,13 @@ it directly records the main-process instrumentation receipt and both hashes.
 Neither Recents replay ran the concurrent Stop/admission or same-ID stale
 generation schedule, so those remain release-blocking.
 
-**Deferred at the user's direction; INCOMPLETE:** the installed concurrent
+**Deferred at the user's direction; INCOMPLETE / NOT VALIDATED:** the installed concurrent
 Stop/admission investigation is not the current work slice. The runner's
 `cm-stop-race` scenario has not executed in an accepted native transaction;
 its presence and the process smoke provide no race-coverage claim. Concurrent
 admission/Stop and same-ID stale-generation obligations remain OPEN while
-other outstanding hardening work proceeds.
+other outstanding hardening work proceeds. Do not resume this deferred work
+or pursue a workaround for the restriction; leave it incomplete as requested.
 
 **Still OPEN / release-blocking:** installed APK concurrent Stop/admission,
 same-ID replacement and stale JNI callbacks across input, voice, capture,

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-c9399e890b378bca022b9e0f6c6859cb5e7e2b40830f31a57f49ef1c1921a9b3  requirements.html
+0f6cb16244ef58cf895108e549a05f1d29abe5d6a3dd45d96d085298cc77e4fe  requirements.html
 ```
 
 ## Current Verdict
@@ -977,7 +977,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `c9399e890b378bca022b9e0f6c6859cb5e7e2b40830f31a57f49ef1c1921a9b3  requirements.html`.
+Current normative specification SHA-256: `0f6cb16244ef58cf895108e549a05f1d29abe5d6a3dd45d96d085298cc77e4fe  requirements.html`.
 
 ### Current authority and source closure
 
@@ -9994,8 +9994,9 @@ recovery are absent. Local admission and ordered transport are not peer-operatio
 **Shared evidence boundary for R-S11go–R-S11gr.** Named source
 `7c5a1b1da791f501619427bd70367e0f7b960acd` passed 20 focused Flutter suites/166 tests in a
 293-second zero-NIC transaction, including `display_selection_queue_test.dart`,
-`session_event_queue_test.dart`, and `latest_frame_queue_test.dart`. Their three production queue
-modules and three test files are byte-identical to current source. Raw serial
+`session_event_queue_test.dart`, and `latest_frame_queue_test.dart`. The selection and topology queue
+modules/tests are unchanged; the frame queue and its tests now have the web lifetime correction below,
+which this historical transaction does not validate. Raw serial
 `.harness-state/verifier-vm/flutter-model-tests-run.kJzOp1z49w.serial.log` is 68,319 bytes,
 SHA-256 `afa8bb041749ddb58949f6416cebe4eee3273119b4f5a9bfb4c7cc19dc30dfc2`.
 The journal records the terminal outer success, read-only sealed inputs, no added host listener,
@@ -10061,7 +10062,7 @@ caller/renderer path.
 
 ### R-S11gr/R-S11e-230 — bounded exact-session web frame ownership (2026-08-14)
 
-**PER-QUEUE SOURCE IMPLEMENTED; NAMED FRAME-QUEUE TESTS PASSED; CROSS-SESSION RESOURCE,
+**CROSS-SESSION DRAIN ACCOUNTING SOURCE CORRECTED; CURRENT EXECUTION,
 BROWSER/END-TO-END/RELEASE EVIDENCE OPEN.**
 
 The live web RGBA callback copies its caller-owned `Uint8List` synchronously before any await.
@@ -10076,18 +10077,27 @@ The growable backlog and alternate web helper are absent. This path neither dupl
 software-RGBA mailbox nor adds cross-display decode serialization, a service restart, timer,
 poller, retry, reconnect, worker, isolate, runtime or native transport queue. Named frame-queue
 tests cover latest-wins, independent displays, capacity/failure, exact retirement and replacement;
-they execute the unchanged production queue class, not JS/Wasm callback detachment or browser
+they execute the prior production queue class, not the new nonwaiting pool policy,
+JS/Wasm callback detachment or browser
 presentation. Browser and concurrent-feature behavior plus every shared OPEN obligation above
 remain required.
 
-**Cross-session web drain accounting is OPEN.** `FFI._installSessionOwner` constructs
-`_webRgbaFrames` without the shared drain pool used by software RGBA. `LatestFrameQueue.retire`
-detaches but cannot cancel an already-entered presentation future; its active-drain accounting
-stays on that old queue, while a replacement gets independent accounting. The current per-queue
-limits/tests therefore do not establish an isolate-wide bound across session replacement with
-unfinished browser work. Derive one lifetime/resource budget for those unfinished and replacement
-operations, then verify replacement/failure and actual browser presentation under that budget.
-This is a source-visible accounting gap, not a measured browser leak or Android/Windows causation.
+**Cross-session drain accounting is source-corrected, not yet execution-validated.** Every web queue
+uses one isolate-shared pool with at most 64 unfinished presentations: enough for a full 32-display
+generation and unfinished predecessor. Retirement revokes commit authority but does not release a
+permit until the actual presentation future finishes. The pool has zero shared-capacity waiters;
+exhaustion terminates the exact queue visibly instead of putting a display behind unrelated work.
+The existing per-display current/latest lane remains unchanged, and software RGBA retains its distinct
+three-slot engine budget. No retirement, replacement, failure or queue construction mints capacity.
+
+Two new executable queue regressions hold 32 retired operations open while all 32 replacement displays
+enter independently, refuse operation 65 without invocation or waiting, recover only after an actual
+old completion, preserve the replacement across a retired late error, and retire all permits. They also
+exercise same-display latest-only succession with no shared waiting capacity. These tests are pending;
+their source presence is not a pass. Current generated-bridge/Dart execution, actual web compilation,
+browser/engine completion and caller wiring, aggregate frame/image byte bounds, overload/failure,
+memory/latency/wake measurements and sustained replacement remain OPEN. The source-visible gap did not
+establish a measured browser leak or causation for the Android/Windows reports.
 
 ### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority
 

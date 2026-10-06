@@ -22,12 +22,14 @@ class LatestFrameDrainPool {
     if (maxConcurrentDrains < 1) {
       throw ArgumentError.value(maxConcurrentDrains, 'maxConcurrentDrains');
     }
-    if (maxWaitingDrains < 1) {
+    if (maxWaitingDrains < 0) {
       throw ArgumentError.value(maxWaitingDrains, 'maxWaitingDrains');
     }
   }
 
   final int maxConcurrentDrains;
+  // Zero refuses shared-capacity exhaustion instead of queuing a display
+  // behind unrelated work. Its own running lane may still retain a successor.
   final int maxWaitingDrains;
   final Queue<_LatestFrameDrainWaiter> _waiters =
       Queue<_LatestFrameDrainWaiter>();

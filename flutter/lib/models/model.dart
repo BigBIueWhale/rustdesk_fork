@@ -68,6 +68,14 @@ final _softwareRgbaDrainPool = LatestFrameDrainPool(
   maxWaitingDrains: 64,
 );
 
+// Web lanes remain independent: one full 32-display generation and its
+// unfinished predecessor fit concurrently. Retirement cannot mint capacity,
+// and exhaustion refuses visibly instead of waiting behind another display.
+final _webRgbaDrainPool = LatestFrameDrainPool(
+  maxConcurrentDrains: 64,
+  maxWaitingDrains: 0,
+);
+
 bool _traceSoftwareRgbaPublication(int publication) =>
     publication <= 4 || publication % 64 == 0;
 
@@ -4411,7 +4419,7 @@ class FFI {
         maxConcurrentDrainsPerKey: 3,
         maxCurrentDrainsPerKey: 2,
         drainPool: _softwareRgbaDrainPool);
-    _webRgbaFrames = LatestFrameQueue(nextOwner);
+    _webRgbaFrames = LatestFrameQueue(nextOwner, drainPool: _webRgbaDrainPool);
     _webCursorPositions = LatestFrameQueue(nextOwner, maxKeys: 1);
     _webCursorShapes = LatestFrameQueue(nextOwner, maxKeys: 1);
     _firstImageInitialization = null;

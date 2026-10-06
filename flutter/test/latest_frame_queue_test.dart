@@ -54,6 +54,130 @@ void main() {
     expect(await first, LatestFrameDisposition.presented);
   });
 
+  test('nonwaiting pool bounds independent displays across replacement',
+      () async {
+    final pool =
+        LatestFrameDrainPool(maxConcurrentDrains: 64, maxWaitingDrains: 0);
+    final old = LatestFrameQueue<String, int, String>('old', drainPool: pool);
+    final replacement =
+        LatestFrameQueue<String, int, String>('replacement', drainPool: pool);
+    final overflow =
+        LatestFrameQueue<String, int, String>('overflow', drainPool: pool);
+    final newest =
+        LatestFrameQueue<String, int, String>('newest', drainPool: pool);
+    final releases = <Completer<void>>[];
+    final oldFrames = <Future<LatestFrameDisposition>>[];
+    final replacementFrames = <Future<LatestFrameDisposition>>[];
+    final failures = <Object>[];
+    var invoked = 0;
+
+    Future<void> hold() async {
+      invoked += 1;
+      final release = Completer<void>();
+      releases.add(release);
+      await release.future;
+    }
+
+    try {
+      for (var display = 0; display < 32; display += 1) {
+        oldFrames.add(old.submit('old', display, 'old', (_) => hold()));
+      }
+      expect(invoked, 32);
+      expect(pool.activeDrains, 32);
+      expect(old.retire('old'), isTrue);
+      expect(await Future.wait(oldFrames),
+          List.filled(32, LatestFrameDisposition.retired));
+      expect(pool.activeDrains, 32);
+
+      for (var display = 0; display < 32; display += 1) {
+        replacementFrames.add(replacement.submit(
+            'replacement', display, 'current', (_) => hold()));
+      }
+      // Every current display entered without waiting for any old display.
+      expect(invoked, 64);
+      expect(pool.activeDrains, 64);
+      expect(pool.waitingDrains, 0);
+      expect(
+          overflow.submitObserved('overflow', 0, 'refused', (_) => hold(),
+              onError: (error, stackTrace) => failures.add(error)),
+          isFalse);
+      expect(failures, [isA<StateError>()]);
+      expect(invoked, 64);
+      expect(pool.activeDrains, 64);
+      expect(pool.waitingDrains, 0);
+      expect(await overflow.submit('overflow', 0, 'retired', (_) => hold()),
+          LatestFrameDisposition.retired);
+
+      // A retired operation's late error returns its permit, but cannot fail
+      // the current queue. A fresh owner can then use exactly that one slot.
+      releases.first.completeError(StateError('retired presentation failed'));
+      await Future<void>.delayed(Duration.zero);
+      expect(pool.activeDrains, 63);
+      expect(failures, [isA<StateError>()]);
+      expect(
+          replacement.submitObserved(
+              'replacement', 0, 'successor', (_) => hold(),
+              onError: (error, stackTrace) => failures.add(error)),
+          isTrue);
+      expect(invoked, 64);
+      final newestFrame = newest.submit('newest', 0, 'newest', (_) => hold());
+      expect(invoked, 65);
+      expect(pool.activeDrains, 64);
+      expect(pool.peakActiveDrains, 64);
+      expect(newest.retire('newest'), isTrue);
+      expect(await newestFrame, LatestFrameDisposition.retired);
+      expect(pool.activeDrains, 64);
+      expect(replacement.retire('replacement'), isTrue);
+      expect(await Future.wait(replacementFrames),
+          List.filled(32, LatestFrameDisposition.retired));
+    } finally {
+      old.retire('old');
+      replacement.retire('replacement');
+      overflow.retire('overflow');
+      newest.retire('newest');
+      for (final release in releases) {
+        if (!release.isCompleted) release.complete();
+      }
+      await Future<void>.delayed(Duration.zero);
+      expect(pool.activeDrains, 0);
+      expect(pool.waitingDrains, 0);
+    }
+  });
+
+  test('nonwaiting pool retains the same-display latest successor', () async {
+    final pool =
+        LatestFrameDrainPool(maxConcurrentDrains: 1, maxWaitingDrains: 0);
+    final queue =
+        LatestFrameQueue<String, int, String>('owner', drainPool: pool);
+    final releaseFirst = Completer<void>();
+    final presented = <String>[];
+    Future<void> present(String frame) async {
+      presented.add(frame);
+      if (frame == 'first') await releaseFirst.future;
+    }
+
+    final first = queue.submit('owner', 0, 'first', present);
+    try {
+      final pending = queue.submit('owner', 0, 'pending', present);
+      final latest = queue.submit('owner', 0, 'latest', present);
+      expect(await pending, LatestFrameDisposition.superseded);
+      expect(presented, ['first']);
+      expect(pool.activeDrains, 1);
+      expect(pool.waitingDrains, 0);
+      releaseFirst.complete();
+      expect(await first, LatestFrameDisposition.presented);
+      expect(await latest, LatestFrameDisposition.presented);
+      expect(presented, ['first', 'latest']);
+      expect(pool.peakActiveDrains, 1);
+    } finally {
+      queue.retire('owner');
+      if (!releaseFirst.isCompleted) releaseFirst.complete();
+      await Future<void>.delayed(Duration.zero);
+      expect(pool.activeDrains, 0);
+      expect(pool.waitingDrains, 0);
+    }
+  });
+
   test('bounded parallel lane overtakes one stalled presentation', () async {
     final firstEntered = Completer<void>();
     final secondEntered = Completer<void>();

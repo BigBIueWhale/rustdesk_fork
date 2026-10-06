@@ -863,7 +863,7 @@ def validate(sources: Dict[str, str]) -> None:
             "maxConcurrentDrainsPerKey: 3,",
             "maxCurrentDrainsPerKey: 2,",
             "drainPool: _softwareRgbaDrainPool);",
-            "_webRgbaFrames = LatestFrameQueue(nextOwner);",
+            "_webRgbaFrames = LatestFrameQueue(nextOwner, drainPool: _webRgbaDrainPool);",
         ),
         "fresh exact-pair queue installation",
     )
@@ -875,6 +875,15 @@ def validate(sources: Dict[str, str]) -> None:
             "maxWaitingDrains: 64,",
         ),
         "isolate-wide bounded software-frame conversion authority",
+    )
+    require_order(
+        sources["model_dart"],
+        (
+            "final _webRgbaDrainPool = LatestFrameDrainPool(",
+            "maxConcurrentDrains: 64,",
+            "maxWaitingDrains: 0,",
+        ),
+        "isolate-wide nonwaiting web-frame presentation authority",
     )
     retire_owner = extract_braced_item(
         sources["model_dart"],
@@ -1880,7 +1889,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("model_dart", "maxWaitingDrains: 64,", "maxWaitingDrains: 65,", "isolate-wide software-frame waiting bound"),
     ("model_dart", "maxCurrentDrainsPerKey: 2,", "maxCurrentDrainsPerKey: 3,", "bounded current software-frame conversions"),
     ("model_dart", "drainPool: _softwareRgbaDrainPool);", "drainPool: LatestFrameDrainPool(maxConcurrentDrains: 3));", "shared isolate software-frame authority"),
-    ("model_dart", "_webRgbaFrames = LatestFrameQueue(nextOwner);", "_webRgbaFrames = LatestFrameQueue(_SessionOwner(Uuid().v4obj(), clientOwnerId));", "fresh exact-owner web-frame queue"),
+    ("model_dart", "_webRgbaFrames = LatestFrameQueue(nextOwner, drainPool: _webRgbaDrainPool);", "_webRgbaFrames = LatestFrameQueue(_SessionOwner(Uuid().v4obj(), clientOwnerId), drainPool: _webRgbaDrainPool);", "fresh exact-owner web-frame queue"),
     ("model_dart", "final webRgbaFramesRetired = _webRgbaFrames.retire(retiringOwner);", "final webRgbaFramesRetired = true;", "exact web-frame queue retirement"),
     ("model_dart", "_orderedSessionTopologyEvents.contains(name)", "false", "ordered topology event admission"),
     ("model_dart", "await ffi.submitSessionEvent(\n          sessionId, expectedClientOwnerId, operation);", "await operation();", "session topology callback serialization"),

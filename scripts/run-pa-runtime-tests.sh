@@ -15,6 +15,11 @@ readonly MODULES=$IMAGE_ROOT/usr/lib/pulse-16.1+dfsg1/modules
 readonly DAEMON=$IMAGE_ROOT/usr/bin/pulseaudio
 readonly PACTL=$IMAGE_ROOT/usr/bin/pactl
 readonly PACAT=$IMAGE_ROOT/usr/bin/pacat
+if [ "$#" -eq 2 ]; then
+    [ "${HOME:-}" = /tmp/home ] \
+        || { echo 'PulseAudio product-pair HOME authority differs' >&2; exit 1; }
+    mkdir -m 0700 -- "$HOME"
+fi
 mkdir -m 0700 -- "$WORK" "$PACKAGE_ROOT" "$IMAGE_ROOT" "$RUNTIME"
 python3 -I -S /source/scripts/verify-pa-runtime-candidate.py \
     --archive "$1" --output "$PACKAGE_ROOT" \

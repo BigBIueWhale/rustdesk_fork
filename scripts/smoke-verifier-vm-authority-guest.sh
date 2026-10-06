@@ -3318,6 +3318,7 @@ LAYOUT
         --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
         --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g \
         --tmpfs /tmp/.X11-unix:rw,nosuid,nodev,noexec,mode=1777,size=1m \
+        --env HOME=/tmp/home \
         --env "PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE=$PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE" \
         --env "PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256" \
         --env "PA_RUNTIME_CANDIDATE_MANIFEST_SHA256=$PA_RUNTIME_CANDIDATE_MANIFEST_SHA256" \

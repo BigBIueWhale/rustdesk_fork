@@ -561,7 +561,12 @@ EOS
       xvfb_file_count=$((xvfb_file_count + 1))
     done < "$XVFB_FILE_MANIFEST"
     [ "$xvfb_file_count" -eq 5 ]
-    export HOME=/tmp/rd-video-pipeline
+    if [ "$pa_product_pair" = 1 ]; then
+      [ "${HOME:-}" = /tmp/home ] && [ -d "$HOME" ] \
+        || { echo 'PulseAudio product-pair HOME changed before server launch' >&2; exit 1; }
+    else
+      export HOME=/tmp/rd-video-pipeline
+    fi
     export DISPLAY=:99
     mkdir -p "$HOME"
     LD_LIBRARY_PATH=/xvfb-root/usr/lib/x86_64-linux-gnu \

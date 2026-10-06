@@ -12778,221 +12778,105 @@ capture-to-present latency. Earlier incremental fixtures and superseded run
 receipts remain in Git history and the deep-audit journal, not in this
 current-state subsection.
 
-**Process-wide connection IDs — source corrected, native lifecycle OPEN.**
-The former per-`Server` counters could allocate the same ID in overlapping
-controlled generations or outgoing voice audio, and their wrap scan checked
-only that server's Remote/ViewCamera connection map. Pushed `8b09b9c2`
-replaces them with one process-wide atomic sequence; neither session type nor
-server generation can reset it. Exhaustion fails closed instead of recycling
-an ID or returning zero. Two executed allocator tests cover concurrent
-uniqueness and the exact maximum boundary. Exact pushed source passed 66
-Linux-target tests in the zero-NIC VM; the outer listener audit and joined
-cleanup passed in 731 seconds.
-The retained 68,638-byte serial is
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.3DvVGzvbvl.serial.log`
-(SHA-256 `6c29d822aa53723d26b68e79a91242cf8b30351fd6085787058b317991fcc6e5`).
-No run directory or overlay remains. These guest tests do not exercise
-installed same-ID service-generation transitions, native `_pa`, or cross-process
-identity and do not close those release/security obligations.
+**Current connection and CM owner model — source implemented; installed races OPEN.**
+One process-wide checked atomic sequence allocates controlled/outgoing connection IDs;
+it cannot reset with a `Server` generation or recycle on exhaustion. The
+`CmClientRegistry` separately allocates a checked process-lifetime registry
+generation and retains private `(connection_id, registry_generation)` owners.
+Admission rejects invalid IDs/tokens, stale source generations, active
+same-source collisions, pending admission, in-flight file work, and overflow.
+A disconnected owner may be replaced; only a strictly newer Android Service
+generation may supersede an active owner. Desktop source generation zero
+cannot. Displaced egress closes before successor UI publication. Terminal
+cleanup, CM file logs, chat, voice, and native/UI add/remove effects check the
+exact current owner; stale work is refused rather than applied to a successor.
 
-Dart receives generation-bearing events and validates exact live `ServerModel`
-ownership and connection ID before changing client, tab, file-job, or speed state.
-Desktop and mobile use one non-overlapping 500-ms full-snapshot repair turn. It
-validates positive unique IDs/generations, orders entries by generation, and refuses
-to overwrite a newer local event revision; a no-change snapshot does not rebuild
-tables or notify listeners. Replacement discards predecessor-owned UI state, and
-`closeAll` removes only captured generations. The old count-only refresh gate and
-desktop click-time request/response surface are absent. Windows file-clipboard route
-ownership remains occupied through registry retirement and native emptying, so a
-same-ID successor cannot reuse it early (R-S11iu).
+Dart carries that generation through events and validates the live
+`ServerModel` owner before mutating tabs, clients, file jobs, or speed state.
+Desktop and mobile use one non-overlapping 500-ms full-snapshot repair turn
+that refuses to overwrite a newer event revision; an unchanged snapshot does
+not rebuild tables or notify listeners. Replacement discards
+predecessor UI state; `closeAll` removes only captured generations. Windows
+file-clipboard routes remain occupied through registry retirement and native
+emptying, so a same-ID successor cannot reuse one early.
 
-Windows privacy source retains the exact positive connection ID and CM token as its
-physical resource owner. Activation uses one bounded, retained blocking transaction
-with a two-phase commit/cancel gate; delayed or failed activation rolls back before
-publication. Disconnect submits only the exact active or activating owner to a bounded,
-retained retirement worker, while explicit peer-off remains result-bearing. The
-Windows machine-local Ctrl+P escape uses an exactly owned
-`RegisterHotKey`/queue-thread/worker lifecycle; no low-level input-suppression hook
-is installed. Its queued action carries the registration's ID/token and the CM accepts
-only the matching live Remote owner through `AuthorizedPrivacyModeState`. Unsupported
-implementation names and ambiguous teardown fail closed; no old bare-ID broadcast or
-inline-disconnect fallback remains (R-S19a).
+Desktop Remote final cleanup has one exact lease and retained off-runtime
+restoration after privacy activation joins. A successor invalidates unclaimed
+cleanup or waits for claimed cleanup; uncertain retirement poisons further
+admission. Windows privacy and Ctrl+P hotkey actions carry the exact CM owner,
+use retained activation/retirement workers, and fail closed on unsupported
+implementations or ambiguous teardown. Amyuni display cleanup removes only
+process-counted displays and retains failed restoration for retry. These are
+source dispositions, not current installed Windows results; native hotkey,
+same-ID replacement, driver churn, partial restore, cancellation, shutdown,
+and sustained resources remain OPEN.
 
-Virtual-display/window rollback retains failed native cleanup for retry. Amyuni exposes
-a count, not stable monitor identities: source removes only process-counted displays,
-decrements after each success, and treats contradictory enumeration as failure rather
-than global unplug authority. Exact installed Windows testing must still exercise
-hotkey registration/unregistration, same-ID replacement, activation cancellation,
-driver churn, partial restoration, queue/worker refusal, shutdown, and resource/latency
-bounds. The Windows-only hotkey regression exists but has not run against this source;
-portable source/model tests do not establish native behavior.
+On Android, the CM/file bridge is one retained child future of the exact
+network `Connection` on its existing Tokio runtime; terminal closure awaits
+it, and `CmClientTaskOwner` retires only its admitted generation. The
+persistent foreground Service is intentional. The Rust listener reserves an
+owner, requests a Boolean JNI acknowledgment from the exact Service
+generation, commits once only on acceptance, then publishes UI state.
+Service deactivation waits for an in-flight acknowledgment to commit/publish
+or abort before clearing controlled resources. A same-ID replacement first
+retires predecessor input, voice demand/activity, and notification under the
+Service monitor, then publishes the successor; uncertain retirement refuses
+admission. Recorder readiness is separate from owner-map admission. After
+Login, the CM listener checks its current owner before every observed command;
+superseded work is terminal before another filesystem or voice effect, while
+already admitted work may finish without invented rollback. Voice-state
+publication requires the current Remote or ViewCamera owner.
 
-Each desktop Remote holds an exact final-cleanup lease; its last retirement dispatches
-one retained off-runtime restoration transaction after admitted privacy activation
-joins. A new Remote invalidates unclaimed cleanup or waits for claimed cleanup; failure
-is visible and only one admission-bound retry revision may recover it. The authenticated
-registry reserves a checked generation before awaiting, publishes only after current
-credential validation, and makes retiring entries unavailable before ID-keyed teardown.
-Unprovable exact retirement poisons the cleanup lease and fails further admission and
-graceful drain closed. Restoration aggregates wallpaper, resolution, privacy, virtual
-display, and cursor outcomes, retaining failed or concurrently replaced resolution work
-for retry (R-T4). Installed desktop cancellation, concurrent successor, native
-restore failure, and sustained resources remain OPEN.
+**Executed evidence and exact limits.** Source `74a26780` passed 60
+Linux-target Rust lifecycle tests covering registry collision/replacement,
+file-log ownership, listener refusal/retry, selected file-work cancellation,
+voice type refusal, privacy, and final-Remote retirement; `0ed76a4f`
+passed 15 focused Kotlin owner-state scenarios/305 assertions. The
+aarch64 Android Rust target check passed at `8df0b752`. These are
+source/model or compilation evidence, not Android framework/JNI execution or
+installed Windows behavior.
 
-The Android CM/file bridge now runs as one retained child future of the exact network
-`Connection` on its existing Tokio runtime. The former unretained OS thread and hidden
-current-thread runtime are absent. Unexpected child completion closes that connection;
-ordinary connection close publishes the existing one-shot terminal and awaits the child.
-`CmClientTaskOwner` owns the admitted registry generation, so dropping the child at any
-await synchronously attempts exact-generation registry/UI retirement. Android-visible
-imports used by this path are no longer incorrectly excluded by target configuration.
-
-Android source carries service, connection, and registry generations through its resource
-mirror, input, delayed pointer work, voice, capture reconciliation, notifications, native
-events, and Dart state. A newer same-ID owner retires predecessor resources before
-publication; stale callbacks are intended to be inert. The persistent foreground service
-remains intentional, and cleanup correctness must not depend on task swipe or Force Stop.
-The retained Android CM listener checks its exact registry owner before it processes each
-event after Login. Once a newer service generation replaces it, the next observed command
-is terminal before filesystem dispatch or any other command effect. Work admitted while
-the owner was current may finish; supersession does not invent rollback or report an
-already completed filesystem effect as unperformed.
-
-CM voice-state reception checks the exact current owner and authenticated
-`CmAuthConnType`: only Remote and ViewCamera may publish state. Desktop and Android
-listeners terminate stale or non-voice owners. The pushed `74a26780` source passed
-60 focused Linux-target Rust tests in the zero-NIC VM, including registry
-collision/replacement, listener callback refusal/retry, CM file-log ownership,
-selected file-work cancellation, voice type refusal, privacy and final-Remote
-retirement. This is in-process Linux-target behavior, not Android JNI or Windows
-native execution. Earlier Flutter model and Kotlin owner-state transactions
-exercised exact Dart reconciliation and seven production Kotlin state classes,
-respectively; their source-bound receipts remain in Git history and the audit.
-Neither model lane executes a rendered Flutter event, Android framework Service,
-native voice device, or installed Windows privacy API.
-
-**OPEN / source-corrected:** Pushed `74a26780` makes Android controlled add a
-Boolean JNI acknowledgment bound to the exact Service generation. Rust reserves its
-registry owner, asks the Service, commits only on acceptance, then publishes the UI
-add event; refusal drops the reservation and terminates that incoming listener.
-The Service rejects stopped/stale generations and invalid or stale owners before
-changing its owner map. The acknowledgment proves owner-map admission only, not
-capture/audio/notification readiness. Pending admission suppresses predecessor
-registry actions; a retained row on refusal does not prove that an overlapping
-predecessor remained operational.
-Pushed `c4908727` serializes Android native listener deactivation with that
-admission transaction: `MainService` closes admission and calls native deactivation
-before clearing controlled resources on destruction, incomplete-generation retry,
-or listener-worker convergence; the native deactivation waits for an in-flight
-Service acknowledgment to commit and publish or abort. The normative R-S11iu
-contract now describes this two-stage transaction rather than requiring one
-registry write lock across JNI. An installed Service/JNI race test is still missing.
-
-Pushed `0ed76a4f` corrects a second Service-side ordering gap: a replacement
-previously published the successor owner before retiring same-ID predecessor
-input, voice, and notification resources, then acknowledged despite retirement
-errors. `MainService.rustAdmitControlledConnection` now preflights without
-publication, retires predecessor resources and confirms voice-owner absence,
-then publishes the successor under its Service monitor; an uncertain retirement
-refuses admission. Recorder readiness remains separate from owner retirement.
-The focused zero-NIC Kotlin owner-state VM passed 15 scenarios/305 assertions
-in 28 seconds. Its first installed-APK attempt was outer-invalid due unrelated
-after-snapshot loopback-listener drift; exact receipts are in the audit. A later
-source-bound APK and outer-valid sequential lifecycle replay are recorded below.
-Same-ID replacement and stale-callback finality remain OPEN.
-
-The exact-source 60-test VM receipt is
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.4G3rcGsn0s.serial.log`
-(SHA-256 `4eb81a195bd8df872d5668315019422a1179bd665010206568ce67bae627b9d9`);
-it records no harness-added host listener and joined cleanup. Focused aarch64
-Android Rust compilation then passed on pushed `8df0b752` (tree `935bcea7`):
-the real Android build flow generated the Flutter bridge and completed
-`cargo ndk --platform 21 --target aarch64-linux-android check --locked --release
---features flutter --lib` in a zero-NIC VM with guest-only networkless Docker.
-The Android input checks ran before and after compilation, the offline canary
-passed, no harness-added host listener or external-process drift was observed,
-and the run root and overlay were retired after 892 seconds. Its retained serial
-is `.harness-state/verifier-vm/android-rust-target-check-run.lc2Uq8TRln.serial.log`
-(SHA-256 `0b2e2d6d4d0e8319b0df0a18b9f0af84e4f7a4ddbbb7d642d509d4b0f822f411`).
-The serial retains the checked guest verdict, not the full transient Cargo stdout.
-Pushed `c4908727` passed 61 Linux-target Rust lifecycle tests, including
-a paused callback-versus-stop admission barrier case, in 918 seconds. The retained
-serial is `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.Uol9QzE4h1.serial.log`
-(SHA-256 `df55c8eb577bcfecf1aeb8dc2ad70e1481f5f297ed2b3c7b912bb25fba9083ba`);
-the outer host-listener audit passed and cleanup retired the run root and overlay.
-Pushed product `100746a7` repairs a separate UI-status edge exposed by the
-installed replay: `ServerPage` read the Rust listener-bound flag only while
-Flutter rebuilt, but a native bind did not notify Flutter. In one retained
-Android 14 run, generation 2 logged a successful bind while the visible card
-remained "Not reachable"; the new post-restart peer probe was not reached. The
-existing 500-ms `ServerStatusRefreshLoop` now samples that native flag, notifies
-only when it changes, and both mobile cards render the sampled model value. No
-new polling owner or alternate listener authority was added.
-
-Exact pushed `100746a7` built, installed, launched, and rendered test-only
-Android 14 x86_64 APK SHA-256
-`2a46cc2d4bec5c94bb4356f63076f2c765b9a63b5a8157311f5b60333392678e`;
-the outer-clean build serial is
-`.harness-state/verifier-vm/android-emulator-app-run.OUBfayyjzL.serial.log`
-(SHA-256 `9a1bdb554228ebe59fdc00f77b6f384a78c950d39e53886860c3fd65543f21ca`).
-Pushed harness `fc8b2c8f` reused those exact APK bytes and the pinned production
-Linux peer capsule in a 546-second zero-NIC replay. A real Recents task removal
-preserved the foreground Service and app process; CPace-keyed CM FileTransfer
-Login and a directory request succeeded. Production Stop then removed the
-Service without Force Stop and a fresh keyed CM request was refused. Fresh
-MediaProjection consent started generation 2 in the same process, the UI
-observed listener reachability, and a **new** CPace-keyed FileTransfer session
-received another CM directory reply. Raw serial
+Test-only Android 14 x86_64 APK built from `100746a7` (SHA-256
+`2a46cc2d4bec5c94bb4356f63076f2c765b9a63b5a8157311f5b60333392678e`)
+passed build/install/render. Its existing 500-ms status refresh now samples
+native listener reachability after restart; it does not control that listener.
+Harness `fc8b2c8f` reused the same APK and source-bound Linux peer: actual
+Recents removal preserved the Service/process; a CPace-keyed CM FileTransfer
+directory request succeeded; production Stop removed the Service and refused
+a new keyed CM request; fresh MediaProjection consent started generation 2
+in the same process and a new keyed request received another directory reply.
+The 546-second zero-NIC run had no host-listener addition or pre-existing-process drift,
+joined owners, and retired its run/overlay. Raw serial:
 `.harness-state/verifier-vm/android-emulator-runtime-run.CQjd3FCItv.serial.log`
-is 75,250 bytes, SHA-256
-`bd8a0600496a1831b662c71bcd09e6fdfccadd035986ea6137ad98cb11010190`.
-The outer before/during/after host-listener audit found no harness addition or
-pre-existing-process drift, all owned processes joined, and the run/overlay
-were retired. The initial UI-disagreement run and one subsequent harness
-receipt-forwarding failure remain classified in the audit, not as outer passes.
-This is one sequential installed test-signed emulator schedule, not a paused
-in-flight admission/Stop race, same-ID replacement, stale JNI callback, or
-input/voice/capture/notification retirement test. Physical Android, stable
-release artifacts, and sustained resource/latency evidence remain OPEN; the
-focused scenario still takes minutes rather than serving as a fast edit loop.
-Pushed test-only `ab9e9090` added a live keyed CM FileTransfer Stop probe.
-Its first replay **failed**: the probe idled past the server's 30-second
-timeout before UI Stop and mistook a queued second directory reply for a
-post-Stop effect. That run is not product validation. Pushed `1c8aece6`
-uses only the login's directory reply, keeps the same connection responsive
-through real keyed TestDelay round trips, and requires a fresh reply just
-before final production Stop confirmation. Pushed `f6170c1b` corrects an
-independent verifier virtiofsd launch race. The exact retained `100746a7`
-test APK and `f6170c1b` peer then passed one 574-second Android 14/API-34
-zero-NIC replay: the already-open keyed CM session closed after Stop, fresh
-keyed CM was refused while `MainService` was absent, and restart served a
-new directory request in the same app process without Force Stop. Outer
-before/during/after host-listener checks passed with no harness addition or
-pre-existing-process drift; all owned VM/guest-Docker processes joined and
-the run/overlay were retired. Retained serial
-`.harness-state/verifier-vm/android-emulator-runtime-run.70AwqB5iRM.serial.log`
-is 76,280 bytes, SHA-256
-`e138c0fad895eb6e0f71464f18c70ab1fb82db06d87772dc41841f75541c9311`.
-No product source changed in this slice. This covers one sequential live
-FileTransfer session, not a paused admission/Stop race, same-ID replacement,
-stale callbacks, input/voice/capture/notification retirement, outgoing-viewer
-hang, Windows display delay, physical Android, or release artifacts.
-The default full-closure release check still cannot start because the canonical
-inputs lack `flutter-windows-3.24.5.zip`; its earlier failed serial remains
-`.harness-state/verifier-vm/android-rust-target-check-run.LaL1NJflmp.serial.log`
-(SHA-256 `b2a952ce2116e6935788e717e9799677fef9d49ccb8ff76406c9ca6644c867f8`).
-An installed-APK concurrent stop/admission and same-ID replacement/stale-generation
-callback test spanning input, voice, capture, notification, and task lifecycle
-remains required. Neither this controlled-side status correction nor these CM
-transactions explain the outgoing-viewer hang or Windows display-only delay.
+(75,250 bytes; SHA-256
+`bd8a0600496a1831b662c71bcd09e6fdfccadd035986ea6137ad98cb11010190`).
 
-The native-to-rendered Flutter event path, full-closure Android release check and installed
-APK replacement/callback/input/voice/capture/notification/task lifecycle, different-ID
-same-peer CM replacement, native Windows same-ID collision and privacy behavior,
-file transactions, sustained resource/latency bounds, final signed artifacts,
-cold R-B2/R-B10 equality, independent reproduction, and external review remain
-OPEN. None of the model or historical source runs proves causation or resolution of
-the reported Android outgoing-screen hang or Windows focus-loss display delay.
+The same retained APK with test-only peer `f6170c1b` passed a separate
+574-second Android 14/API-34 zero-NIC live-session replay: an already-open
+keyed CM FileTransfer session closed after Stop, fresh keyed CM was refused
+while `MainService` was absent, and restart served a new directory request
+in the same app process without Force Stop. The outer listener/process audit
+and joined cleanup passed. Raw serial:
+`.harness-state/verifier-vm/android-emulator-runtime-run.70AwqB5iRM.serial.log`
+(76,280 bytes; SHA-256
+`e138c0fad895eb6e0f71464f18c70ab1fb82db06d87772dc41841f75541c9311`).
+Both are sequential test-signed emulator schedules, not a concurrent
+admission/Stop or same-ID replacement proof.
+
+**Still OPEN / release-blocking:** installed APK concurrent Stop/admission,
+same-ID replacement and stale JNI callbacks across input, voice, capture,
+notification, file, and task lifecycle; the native-to-rendered Flutter event
+path and actual presentation; different-ID same-peer replacement;
+native Windows privacy/hotkey and CM collision behavior; installed desktop
+cleanup/failure and broader file finality; sustained CPU/memory/thread/handle,
+queue and latency bounds; physical Android; signed final artifacts, cold
+R-B2/R-B10 equality, independent reproduction, and external review. The
+canonical input closure still lacks `flutter-windows-3.24.5.zip`, so the
+full-closure release check cannot presently establish a final artifact.
+Neither these controlled-side CM schedules nor portable model checks explain
+or close the reported Android outgoing-viewer hang or Windows display-only
+focus delay. Earlier incremental and invalid runs remain in the deep-audit
+journal and Git history, not this current-state ledger.
 
 ### R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit
 

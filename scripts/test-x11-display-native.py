@@ -127,6 +127,7 @@ def main():
     print("FRAME_COMPARISON_UNIT=pass source=production tests=3 scope=byte-cache "
           f"source_sha256={hashlib.sha256(comparator.read_bytes()).hexdigest()} "
           f"binary_sha256={hashlib.sha256(comparator_test.read_bytes()).hexdigest()}", flush=True)
+    comparator_test.unlink()
     binaries = {}
     for variant in ("historical", "corrected"):
         work = Path("/build") / variant

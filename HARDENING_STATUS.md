@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-e7730c0ccfbf388fe4e065b4889dff16ccb5038fafb033b6d33cc832d953f042  requirements.html
+1bc9a81c16a8b71cf3069f83256cd470597317aaa8a2609155e520830afabd6c  requirements.html
 ```
 
 ## Current Verdict
@@ -78,6 +78,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Current documentation-sensitive item | Current disposition |
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
+| Gradle acquisition/output contract (R-S11ck/R-S11cl/R-S11cr/R-S11fv/R-S11fz, Appendix C #231) | The specification has one guest-local writable Gradle output, read-only canonical/projected SDK inputs, and post-exit trusted import into an unmounted durable candidate. Writable SDK cloning, SDK exchange and two-output commit/recovery clauses are absent from the current Gradle contract. The appendix retains the original threat finding but has a timeless required disposition. Superseded transaction history and gate-count claims are absent from R-S11cl's current-state entry; retained producer/reuse evidence and all unproved negatives, replacement, native/artifact/performance/reproduction/review obligations remain explicit there and under R-S11fv/R-S11fz. This is documentation reconciliation, not a new runtime result. |
 | Broad source-conformance documentary coupling | Literal requirement/ledger wording and document mutations are absent from the reviewed main/Apple/Dart gates and authority, acquisition/output, native-loader, whiteboard, Unix/Linux ownership, macOS helper-build/variadic-ABI, Windows build-harness, DACL/URL and libvirt-storage, GitHub automation, audio-mailbox, display-selection, and session-stream source helpers. Audio, display and whiteboard helpers carry no normative-document digest dependency. Workflow protection rests on closed inventory and inert schema, not explanatory prose or comment markers. Functional source predicates/mutations, pins/manifests, artifact/provenance checks, executable test commands, behavioral fixtures, caller wiring, tracked-document presence, and isolation checks remain; Apple's compilation matrix is unchanged. The stale Linux admission checker is absent, while its retained cached-UID policy test cannot establish receiver wiring. These are supplementary guards, not native, signed-artifact, privilege, performance or release acceptance. The crypto-audit wording checker and its caller are absent; the external-audit handoff and real PAKE/wire tests remain. Broader documentation/test-quality and all unproved runtime/release obligations remain OPEN. |
 | Windows build-harness checks | The production source predicates and seven bounded behavioral suites remain. The redundant 263-case source-string mutation catalog is absent; four focused regressions retain the default-feature and diagnostic-capture rejection branches, which raise the defined `VerificationError`. Each case requires its exact intended error, with no optional error-match bypass. Source loading, validation, behavioral commands/timeouts, CLI and caller wiring are unchanged. The retained cases and suites have not executed on this source in isolation; checker runtime acceptance remains OPEN. Syntax and structural preservation checks do not establish Windows native, installed-service, artifact, focus/display, resource or release behavior. |
 | VM host-observation boundary (R-S11dh/R-S11cj) | Both outer launchers retain protocol/numeric-endpoint listener snapshots and refuse every added endpoint. Broad current-user process scans, listener PID/executable metadata, and external-process drift exceptions are removed; exact tracking and joined cleanup of owned harness children are unchanged. Snapshots omit traffic-dependent queue counts. Exact source `227c3c63` passed the zero-NIC authority smoke in 79 seconds, including the acquisition source checker (`authority-smoke-run.BUz8VEr8tW.serial.log`), and the outbound-only acquisition self-test in 23 seconds (`online-fetch-receipts/run.Ivut9euxxT.receipt`). Both reported no added host endpoint, joined cleanup and unchanged inputs; their private run roots/overlays are absent. The acquisition's published v4 receipt records protocol-endpoint-v1 and no additions without attributed-drift fields; only private fixture exports were shared. These are positive launcher transactions and supplementary source checks: added-listener refusal/failure-injection coverage remains OPEN, as do product, installed/native, performance and release acceptance. |
@@ -975,7 +976,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `e7730c0ccfbf388fe4e065b4889dff16ccb5038fafb033b6d33cc832d953f042  requirements.html`.
+Current normative specification SHA-256: `1bc9a81c16a8b71cf3069f83256cd470597317aaa8a2609155e520830afabd6c  requirements.html`.
 
 ### Current authority and source closure
 
@@ -5390,120 +5391,30 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   publication-refusal runtime negatives; retained release-artifact identity, resource bounds/soak, cold
   R-B2/R-B10 equality, independent reproduction, and external review. R-S11cl and R-S11fv own the distinct
   cache-input/output transaction.
-- **R-S11cl/R-S11e-104 — networked Gradle acquisition-output authority — CURRENT REAL PRODUCER AND
-  PUBLICATION EXECUTED; CLEAN REUSE/FINALITY GREEN; FAILURE NEGATIVES AND EXACT COLD RELEASE OPEN.**
-  Platform: the unprivileged Linux acquisition host and Android cache-warming container. Endpoint/action:
-  `scripts/online-fetch.sh::stage_gradle` populating Gradle User Home while the complete Android SDK remains
-  immutable. Boundary: network/dependency-controlled build execution ↔ the complete pinned offline-input
-  closure and durable cache publication.
+- **R-S11cl/R-S11e-104 — networked Gradle acquisition-output authority — CURRENT SOURCE IMPLEMENTED;
+  PRODUCER/PUBLICATION OBSERVED; FAILURE NEGATIVES AND COLD RELEASE EVIDENCE OPEN.**
+  Platform: the isolated numeric-nonroot Linux acquisition VM and Android cache-warming container.
+  `scripts/online-fetch.sh::stage_gradle` serializes and reconciles the private online namespace, verifies the
+  exact SDK and source authority, and reuses only a completely validated cache. A new producer receives
+  read-only canonical inputs and validated read-only guest-local SDK/Maven projections, plus one distinct
+  guest-local writable Gradle home. It never mounts the durable candidate or a writable SDK clone.
 
-  Current source at `a73040d8dda104f1493e1e3cb97c2a3855f379b1` further narrows the historical topology below:
-  dependency-controlled Gradle writes only one guest-local private producer tree, never the durable candidate;
-  trusted transaction code validates and imports the quiescent tree after exit. JVM archive inputs that failed
-  memory mapping over virtiofs are exact guest-local projections of the Android SDK and
-  `rustls-platform-verifier-android` Maven repository, shadow-mounted read-only at their canonical paths and
-  revalidated with the canonical sealed sources after the producer. R-S11fv records the current execution.
+  After producer exit, source and canonical/projected input postconditions precede trusted import into the
+  still-private durable candidate. Exact producer-before/producer-after/imported-output digests must agree.
+  Producer, source, JVM-input, import, output, and publication failures remain separately reported. The wrapper
+  and output semantics use one publisher pin. `online-gradle-output.py` owns bounded identity/type/link/mount
+  validation, immutable sealing, synchronized journal selection, absent-name no-clobber publication and exact
+  postcheck/recovery/rollback. R-S11fv carries the current seed profile and retained execution evidence;
+  R-S11fz owns stale occupied-cache replacement and displaced-state preservation. The old writable-SDK
+  clone, SDK exchange, SDK-only recovery, and two-output commit are not current behavior.
 
-  Before this slice the producer still received `$ONLINE_DIR` read-write at `/online`. Its two
-  legitimate outputs were `/online/gradle-home` and additions to `/online/android-sdk`, but the same
-  mount gave it write/delete authority over every unrelated Cargo/Pub cache, NDK, vcpkg/native tree,
-  toolchain archive, builder image archive, and Windows input. R-S11cj's numeric non-root container
-  reduced that authority to the invoking user; it did not make the 25+ GB input closure an admissible
-  output mount. This is source-proven build-input/output-publication authority, not evidence that a
-  cached input changed, a container escaped, host root was acquired, a listener was exposed, host
-  RustDesk/service/firewall/network state changed, exploitation occurred, or the host was compromised.
-
-  `online-fetch.sh` now creates or normalizes the canonical online root to current-user-owned mode
-  0700 and holds a nonblocking exclusive lock on that exact directory for the complete Gradle
-  transaction. It reconciles every reserved stale transaction before treating an existing cache as
-  complete. A cold run creates an unpredictable mode-0700 staging root on the online filesystem,
-  stable-reads and privately clones the current-user-owned staged Android SDK, creates a distinct
-  empty Gradle home, and records the exact online/staging/original-SDK/staged-SDK/staged-Gradle
-  identities plus the SDK content digest in a bounded mode-0600 fsynced state record outside both
-  container mounts. Historical complete root-owned SDK output is accepted only by the non-mutating
-  legacy completeness check; a new transaction never adopts foreign-owned output that it could not
-  later retire without privilege.
-
-  The producer now receives the complete online root only as
-  `readonly,bind-recursive=disabled`. Its only writable host mounts are the two exact private children
-  at `/outputs/gradle-home` and `/outputs/android-sdk`. The shared Android build program accepts those
-  exact paths only for `APK_MODE=warm`, rejects either internal environment variable in offline and
-  rust-check modes, and directs `GRADLE_USER_HOME`, `ANDROID_HOME`, and `ANDROID_SDK_ROOT` to those
-  mounts while all Pub, Cargo, NDK, vcpkg, toolchain, and other inputs remain under read-only
-  `/online`. The wrapper now carries Gradle's publisher-listed SHA-256
-  `fe696c020f241a5f69c30f763c5a7f38eec54b490db19cd2b0962dda420d7d12` for the complete
-  7.6.4 distribution, and `pins.env` supplies the same independent validator input.
-
-  `scripts/online-gradle-output.py` rehashes the live SDK after the producer stops and rejects a
-  mismatch. It rejects a noncanonical or descendant-mounted tree, symlink, special file, multiply
-  linked regular file, foreign owner, group/world-writable published state, excess depth/count/bytes,
-  unstable read, or changed root identity. It normalizes only private output modes. Semantic
-  postconditions require the Gradle dependency module cache, exactly one pinned wrapper ZIP with the
-  publisher checksum and one extracted executable, plus the pinned Android build-tools revision,
-  `aapt2`, `apksigner`, `zipalign`, compile-SDK `android.jar`, and `adb`. Producer, source,
-  output, and publication verdicts remain independent; no candidate is published unless the first
-  three are all green.
-
-  Before publication every staged file and directory is fsynced. Descriptor-relative Linux
-  `renameat2` first uses `RENAME_EXCHANGE` to atomically replace the nonempty SDK, then
-  `RENAME_NOREPLACE` to install the absent Gradle home without clobbering a race; both namespace
-  directories are fsynced after each step. A second-step or final identity/semantic failure moves the
-  Gradle tree back and exchanges the SDK back. Restart recovery classifies only exact recorded/live
-  inode arrangements: unpublished staging is retired, SDK-only publication is rolled back, and a
-  complete two-name commit is retained. Unknown state is preserved and fails closed. Exact
-  owner/mount-bound directory traversal restoration and the established external-inode-closure
-  remover retire the reconciled private staging.
-
-  The design follows the primary contracts rather than inferring publication behavior from a
-  successful build. Docker documents that bind mounts are writable by default, that `readonly`
-  removes write authority, and that recursive bind behavior is independently configurable:
-  https://docs.docker.com/engine/storage/bind-mounts/. Gradle documents Gradle User Home as the
-  location of caches and downloaded distributions, and separately documents the constraints on a
-  shared read-only dependency cache:
-  https://docs.gradle.org/current/userguide/directory_layout.html and
-  https://docs.gradle.org/current/userguide/dependency_caching.html. Android documents both
-  `sdkmanager` package installation and Android Gradle plugin auto-download of missing SDK
-  packages:
-  https://developer.android.com/tools/sdkmanager and
-  https://developer.android.com/studio/intro/update.html. Gradle's publisher checksum page supplies
-  the 7.6.4 all-distribution identity:
-  https://gradle.org/release-checksums/. Linux documents `RENAME_EXCHANGE` and
-  `RENAME_NOREPLACE` as atomic same-filesystem rename operations, while `fsync(2)` requires an
-  explicit directory fsync for durable directory entries:
-  https://man7.org/linux/man-pages/man2/renameat2.2.html and
-  https://man7.org/linux/man-pages/man2/fsync.2.html.
-
-  The executable transaction self-test in the immutable verifier image covers normal two-tree
-  publication, completed-transaction recovery, SDK-only rollback, no-clobber destination racing,
-  publisher-checksum rejection, and symlink rejection. The focused Gradle-output gate passes and
-  rejects all 30 deliberate mutations; the adjacent exact-source gate rejects all 34; and the
-  existing acquisition-container gate rejects all 29. The independent workspace verifier passes
-  normally and with its complete in-memory source-mutation catalog after that catalog exposed and
-  closed missing exact-operation and exact-mount-source bindings. Dependency inventory normal/self-test passes.
-  Offline image
-  provenance and the Android source comparator self-tests, native-codec normal/mutation checks,
-  Bash/Python syntax, requirements-hash equality at
-  `6a7246105673a29b1ce698fd7c6de607c0dd83ae9d0faacc68481d77466c1819`, and diff hygiene pass.
-  A disposable exact-mount-topology negative probe also proved that the non-root producer cannot
-  hardlink a read-only input into either separately mounted writable output: `link(2)` failed with
-  `EXDEV`, the input link count remained one, and no output edge appeared.
-
-  Executable checks used immutable image
-  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
-  as UID/GID 1000:1000 with no pull or network, read-only root/source, all capabilities dropped,
-  no-new-privileges, bounded resources, no Docker socket, no port, and no host namespace. The full
-  shared verifier was not run because it includes out-of-scope privileged/runtime fixtures; a real
-  networked Gradle acquisition was also not run, so this is source, transaction, negative-fixture,
-  and authority-boundary evidence rather than cold acquisition-output reproduction. No networked
-  acquisition, image pull/build/tag, release build, or host
-  RustDesk/service/listener/firewall/network operation was executed for this source slice. R-S11cm/
-  R-S11e-105 immediately following closes the two Cargo-installed tool outputs. The Pub output is
-  closed by R-S11cn/R-S11e-106 below, and the libyuv single-file archive is closed by
-  R-S11co/R-S11e-107 below, and both x64-linux/arm64-android vcpkg native outputs are closed by
-  R-S11cp/R-S11e-108 below. The SDK producer and the Gradle SDK-write/publication path are
-  superseded and closed by R-S11cr/R-S11e-110 below; other archive producers and host-side acquisition
-  and maintenance candidate-image publication, exact cold R-B2 artifacts, native/device evidence,
-  and external R-V3 review remain open.
+  R-S11fv records exact source `a73040d8` and `run.52py3CWymM` observing real Gradle compilation and first
+  cache publication, with an invalid overall outer verdict after a pre-existing listener disappeared.
+  It separately records `run.hutLn5juYg` passing verified reuse and joined finality with an unchanged listener inventory.
+  Neither establishes signed release artifacts or cold equality. Still OPEN: producer/input/source-tampering
+  and publication-refusal runtime negatives, current replacement-path execution, broader crash/failure/resource
+  bounds, installed/native/device behavior, cold R-B2/R-B10 artifacts, independent reproduction and external
+  review. Source/mutation checks and historical transaction fixtures do not close those obligations.
 - **R-S11cm/R-S11e-105 — networked Cargo-tool acquisition-output authority — CURRENT
   NUMERIC-NONROOT FILESYSTEM TRANSACTION GREEN 2026-09-12; COLD ACQUISITION AND RELEASE EVIDENCE
   OPEN.** The closed FRB/cargo-ndk producer funnel still gives each pinned builder read-only access to

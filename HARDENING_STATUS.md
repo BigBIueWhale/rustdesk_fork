@@ -5999,10 +5999,17 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   failure, and missing reply. The focused source checker is supplemental and no longer treats prose or
   checker mutation strings as product evidence.
 
-  Exact fixture source `cdc7aea6313ea31ecf995a87a1ce731d92950ccb` (tree
-  `7718e759b32ac70d86778363920d09370d78fcde`) passed the focused zero-NIC
-  `--x11-display-tests` transaction in 47 VM seconds. Production capture and public wrapper source were
-  unchanged. For each of 16 direct and 16 public-caller cycles, the real Xvfb server returned BadDrawable
+  Exact source `b0457248444d089dac5a6597d2cde1eef258566b` (tree
+  `bb1902d3f6b92fc6a643d5e9fb5204ed4cf78aee`) passed the focused zero-NIC
+  `--x11-display-tests` transaction in 50 VM seconds. The unchanged production frame-comparison body
+  now lives in `libs/scrap/src/common/frame_compare.rs`, with the existing public API reexported;
+  the native fixture counts calls and delegates to that body instead of duplicating its equal/copy logic.
+  Three executable unit tests passed for complete same-length/growing/shrinking cache replacement,
+  unchanged-frame allocation preservation, and existing empty-frame semantics. The test process is joined
+  and its binary digest recorded before that exact executable is retired to preserve the 16 MiB build
+  scratch limit. This is byte-cache and native component evidence, not a full scrap-crate/platform build.
+  Production capture and public wrapper source were unchanged. For each of 16 direct and 16 public-caller cycles,
+  the real Xvfb server returned BadDrawable
   for one request whose drawable was deliberately replaced with zero; no reply or shared bytes were fabricated.
   The test retained exact diagnostics, observed immediate reply/error frees and no comparison on rejection,
   required unchanged-frame behavior only on the subsequent valid request, then observed freshly drawn blue
@@ -6024,18 +6031,23 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   visual is changed by one bit, in the actual second reply allocation after a real successful request on a
   healthy XCB connection. Each field runs 16 cycles per direct/public API (96 cases). Initial real red pixels
   are followed by real blue pixels before the rejected request. Rejection must return exact `InvalidData`,
-  free the actual reply, make no fixture frame-comparison call on rejection, and preserve prior-frame state.
+  free the actual reply, make no comparison-hook call on rejection, and preserve prior-frame state.
   The next valid request through the same capture must publish fresh blue; only the following unchanged
   request may return `WouldBlock`. Per case, four real requests/replies, zero protocol errors, three comparison
   calls, one header injection, immediate allocation retirement and exact segment absence after drop are checked.
   The shared pixels and request arguments are not injected. This tests received-header validation through
-  instrumented production capture/public-wrapper code, not malformed replies emitted by Xvfb or the full
-  product comparator/codec/renderer.
+  instrumented production capture/public-wrapper code and the actual production comparator, not malformed
+  replies emitted by Xvfb or the full product/codec/renderer.
 
-  Raw serial `.harness-state/verifier-vm/x11-display-tests-run.JV786tWKnt.serial.log` is 76,313 bytes,
-  SHA-256 `f89f0a6391c68930bba64c40c4a84518794fbba239a326d2086cd833f31b2531`.
+  Raw serial `.harness-state/verifier-vm/x11-display-tests-run.lXgDlfeteL.serial.log` is 78,415 bytes,
+  SHA-256 `ffc23bb6e92186706f57882113a3edac0b04e2654ab8c00582a3d7da307b22d9`.
   The terminal outer result reports numeric-nonroot guest-only execution, read-only unchanged inputs,
   no added host listener, joined Docker/QEMU cleanup, and no retained run root or overlay.
+
+  Candidate `28a943d5` / `run.lyzx5hmtFQ` failed before native execution when the retained unit-test binary
+  exhausted the fixed build scratch during linking; it is not accepted native evidence. Its bounded raw
+  log and failure receipt remain retained. The exact private run root was reconciled after terminal cleanup;
+  `b0457248` adds the executable retirement above, without increasing the scratch bound.
 
   The earlier `17c33849` attempt `run.vEY6OwXSAn` remains INCOMPLETE/not accepted: its outer terminal
   result was never recovered. Its raw identity and observation gap remain in Git/audit history. The distinct

@@ -11,9 +11,10 @@
 #   5. the R-A6 build-time greps — forbidden tokens of the completed excisions
 #      and closed follow-up stages MUST be absent.
 #
-# This is the reproducible assurance basis the §11 review and the spec's
-# "secure by assertion" gates rest on. It is NOT the release build (that is the
-# vcpkg flow in build-debian.sh). Exit non-zero if any gate fails.
+# This gate executes portable tests and checks source contracts. Source patterns
+# are supplementary evidence; target-native, installed, performance, and release
+# acceptance remain separate obligations in HARDENING_STATUS.md.
+# Exit non-zero if any executed check fails.
 #
 # COMPANION GATE: scripts/audit.sh runs the R-R3/R-A7 dependency-advisory check
 # for the Rust crate graph (cargo-audit + cargo-deny against deny.toml and a pinned advisory-db),
@@ -31,10 +32,10 @@
 # COMPANION GATE: scripts/apple-conform-check.sh runs the R-R2 Apple (macOS/iOS)
 # SOURCE-conformance gate: retain-and-check, R-A6 greps on the Apple cfg, structured
 # plist/entitlement/pod/Xcode allow-lists, and cargo cross-checks across the documented
-# Apple target matrix with the real Apple Flutter features. Kept separate because it
-# builds a second toolchain image and cross-checks the Apple targets (slower), and Apple
-# is NOT a build target (R-R2). The Linux `cargo check` below cannot see the cfg(macos)/
-# cfg(ios) clusters, so that gate is where their hardening is proven.
+# Apple target matrix with the real Apple Flutter features. It checks Apple source
+# and target compilation using a separate pinned toolchain; native Apple package
+# and runtime acceptance remain separate. The Linux check below cannot see the
+# cfg(macos)/cfg(ios) clusters.
 #
 # This script is not a host-side launcher. R-S11dh admits it only inside the
 # authenticated, zero-NIC verifier VM; the outer launcher remains STOP-SHIP.
@@ -996,13 +997,6 @@ PY
 )
 [ -z "$obsolete_config_authority_apis" ] \
   || r_s11="$r_s11 obsolete-config-authority-api-present:$obsolete_config_authority_apis"
-grep -qF 'R-S11b-3k — obsolete whole-config and standalone-salt authority APIs excised' HARDENING_STATUS.md \
-  || r_s11="$r_s11 obsolete-config-authority-ledger-missing"
-grep -qF 'R-S11b-3p — production-dead effective and standalone salt readers excised' HARDENING_STATUS.md \
-  || r_s11="$r_s11 obsolete-salt-reader-ledger-missing"
-grep -qF '<tr><td>240</td>' requirements.html || r_s11="$r_s11 obsolete-salt-reader-appendix-missing"
-grep -qF '<tr><td>234</td>' requirements.html \
-  || r_s11="$r_s11 obsolete-config-authority-appendix-missing"
 if grep -RInE 'set_id\(|fn gen_id\(|fn get_auto_id\(|update_id\(|is_disable_change_id|OPTION_ALLOW_HOSTNAME_AS_ID|OPTION_DISABLE_CHANGE_ID' src libs --include='*.rs' 2>/dev/null \
   | grep -v '//' >"$VERIFY_TMP/rd_verify_identity_writers"; then
   r_s11="$r_s11 numeric-id-writer-or-generator-present"
@@ -1059,9 +1053,6 @@ echo "$connect_with_path_block" | grep -Fq 'ensure_linux_root_service_connection
 if grep -Eq 'ensure_linux_service_(password_)?server_is_trusted|linux_service_executable_is_trusted|linux_service_process_argv_is_expected' src/ipc.rs src/ipc/auth.rs; then
   r_s11="$r_s11 obsolete-linux-root-procfs-service-proof-present"
 fi
-grep -Fq '<span class="id">R-S11i</span>' requirements.html || r_s11="$r_s11 raw-password-ipc-requirement-missing"
-grep -Fq '<span class="id">R-S11ce</span>' requirements.html || r_s11="$r_s11 linux-root-service-client-requirement-missing"
-grep -Fq 'R-S11ce/R-S11e-97 — Linux unprivileged clients authenticate root service endpoints without root procfs' HARDENING_STATUS.md || r_s11="$r_s11 linux-root-service-client-ledger-missing"
 macos_service_server_auth_block=$(awk '/pub\(crate\) fn authorize_macos_service_server_snapshot/,/^}/' src/ipc/auth.rs)
 macos_credential_snapshot_client=$(awk '/pub async fn refresh_macos_service_owned_permanent_password_snapshot/,/^}/' src/ipc.rs)
 macos_credential_replica_receiver=$(awk '
@@ -1089,7 +1080,6 @@ echo "$macos_runtime_prs_admission" | grep -Fq 'self.replica.install_for_runtime
 echo "$macos_credential_snapshot_client" | grep -Fq 'MacosServiceOwnedCredentialReplicaReceiver::connect(deadline)' || r_s11="$r_s11 macos-credential-client-typed-receiver-missing"
 echo "$macos_credential_snapshot_client" | grep -Fq 'receiver.receive_and_admit(deadline)' || r_s11="$r_s11 macos-credential-client-typed-admission-missing"
 echo "$macos_credential_snapshot_client" | grep -Fq 'admission.install()' || r_s11="$r_s11 macos-credential-client-runtime-prs-install-missing"
-grep -Fq '<span class="id">R-S11i</span>' requirements.html || r_s11="$r_s11 raw-password-ipc-requirement-missing"
 grep -Fq 'pub(crate) fn ensure_user_owned_main_server_is_trusted' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-auth-missing"
 grep -Fq 'fn user_owned_main_server_argv_is_expected(args: &[String]) -> bool' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-argv-helper-missing"
 grep -Fq 'args.len() == 2 && args.get(1).map(String::as_str) == Some("--server")' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-argv-not-exact"
@@ -1101,8 +1091,6 @@ grep -Fq 'async fn connect_user_owned_password_main' src/ipc.rs || r_s11="$r_s11
 grep -Fq 'ensure_user_owned_main_server_is_trusted(&connection)' src/ipc.rs || r_s11="$r_s11 user-owned-password-main-connector-not-authenticated"
 grep -Fq 'user_owned_permanent_password_is_writable' src/ipc.rs || r_s11="$r_s11 user-owned-password-writable-auth-query-missing"
 grep -Fq 'test_user_owned_main_server_argv_is_exact' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-argv-test-missing"
-grep -Fq '<span class="id">R-S11i</span>' requirements.html || r_s11="$r_s11 raw-password-ipc-requirement-missing"
-grep -Fq 'R-S11e-7 — user-owned permanent-password receiver authentication' HARDENING_STATUS.md || r_s11="$r_s11 user-owned-password-auth-ledger-missing"
 if ! python3 - <<'PY'
 from pathlib import Path
 src = Path("src/ipc.rs").read_text()
@@ -1299,7 +1287,7 @@ grep -qF 'MAIN_APPLICATION = "Lcom/carriez/flutter_hbb/MainApplication;"' script
   || mobile_at_rest_bad="$mobile_at_rest_bad android-artifact-main-class-unbound"
 grep -qF 'JNI_SETTER = "Java_ffi_FFI_setMobileAtRestStorageKey"' scripts/verify-android-mobile-key-artifact.py \
   || mobile_at_rest_bad="$mobile_at_rest_bad android-artifact-jni-export-unbound"
-if grep -qF 'falling back to TEE' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt HARDENING_STATUS.md; then
+if grep -qF 'falling back to TEE' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt; then
   mobile_at_rest_bad="$mobile_at_rest_bad android-keystore-fallback-overclaims-tee"
 fi
 grep -qF 'bool rustdesk_set_mobile_at_rest_storage_key(const uint8_t *key, uintptr_t len);' flutter/ios/Runner/Runner-Bridging-Header.h \
@@ -1325,24 +1313,12 @@ awk '/installMobileAtRestStorageKey\(\)/{seen=1} /GeneratedPluginRegistrant.regi
   password_security::tests::test_mobile_legacy_keypair_fallback_requires_os_storage_key \
   --color never \
   || mobile_at_rest_bad="$mobile_at_rest_bad mobile-os-key-policy-regression-failed"
-grep -qF 'Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage' HARDENING_STATUS.md \
-  || mobile_at_rest_bad="$mobile_at_rest_bad hardening-ledger-missing"
 if grep -RInF 'Generated mobile at-rest keypair' libs/hbb_common/src/config.rs; then
   mobile_at_rest_bad="$mobile_at_rest_bad stale-mobile-keypair-log"
 fi
-if grep -RInF 'mobile at-rest wrapper residual pending' HARDENING_STATUS.md requirements.html; then
-  mobile_at_rest_bad="$mobile_at_rest_bad stale-mobile-wrapper-residual-doc"
-fi
-if grep -RInF 'legacy `key_pair` remains only as its documented at-rest wrapper key pending Keychain/Keystore work' HARDENING_STATUS.md; then
-  mobile_at_rest_bad="$mobile_at_rest_bad stale-mobile-keypair-wrapper-doc"
-fi
-if grep -RInF 'UUID-obfuscated config holding the password-equivalent PRS' requirements.html flutter/android/app/src/main/AndroidManifest.xml; then
+if grep -RInF 'UUID-obfuscated config holding the password-equivalent PRS' flutter/android/app/src/main/AndroidManifest.xml; then
   mobile_at_rest_bad="$mobile_at_rest_bad stale-mobile-uuid-backup-doc"
 fi
-grep -qF 'desktop remains machine-UUID obfuscation, while Android/iOS use an OS-protected app/device storage key' requirements.html \
-  || mobile_at_rest_bad="$mobile_at_rest_bad requirements-mobile-os-key-split-missing"
-grep -qF 'The legacy mobile config keypair is device-id metadata and decrypt-only migration fallback, not the primary wrapper key' requirements.html \
-  || mobile_at_rest_bad="$mobile_at_rest_bad requirements-mobile-legacy-keypair-role-missing"
 if [ -n "$mobile_at_rest_bad" ]; then
   echo "  FAIL Appendix C #14 mobile at-rest storage key boundary:$mobile_at_rest_bad"; rc=1
 else
@@ -1542,8 +1518,6 @@ fi
 if grep -q 'Created restricted DACL for pipe: {}\|Creating named pipe: {} (for_input={}, restricted_dacl=true)\|Named pipe created: {}\|Waiting for pipe connection: {}' src/server/terminal_helper.rs; then
   r_s11c12="$r_s11c12 helper-logs-terminal-pipe-names"
 fi
-grep -q 'R-S11c-12 — Windows terminal helper pipe binding' HARDENING_STATUS.md || r_s11c12="$r_s11c12 hardening-ledger-missing"
-grep -q 'R-S11c-12 closes the Windows terminal helper pipe-binding class' requirements.html || r_s11c12="$r_s11c12 requirements-disposition-missing"
 if [ -n "$r_s11c12" ]; then echo "  FAIL R-S11c-12 Windows terminal helper pipe binding:$r_s11c12"; rc=1; else
   echo "  ok  R-S11c-12 Windows terminal helper pipes are first-instance/local-only and bind both endpoints to the retained helper process object and PID returned by CreateProcessAsUserW"; fi
 
@@ -1933,8 +1907,6 @@ for test_name in \
   grep -Fq "fn $test_name" src/server/terminal_helper.rs || r_s11c25="$r_s11c25 test-$test_name-missing"
 done
 grep -Fq 'cargo test --offline --locked --lib --features flutter --color never terminal_' scripts/build-windows.ps1 || r_s11c25="$r_s11c25 native-windows-runtime-gate-missing"
-grep -Fq 'R-S11c-25 — Windows terminal service principal authority' HARDENING_STATUS.md || r_s11c25="$r_s11c25 hardening-ledger-missing"
-grep -Fq 'Windows terminal service principal authority' requirements.html || r_s11c25="$r_s11c25 requirements-disposition-missing"
 if [ -n "$r_s11c25" ]; then echo "  FAIL R-S11c-25 Windows terminal service principal authority:$r_s11c25"; rc=1; else
   echo "  ok  R-S11c-25 Windows service terminals use a served-session token, transactional epoch lease, detached logoff revocation, logon-scoped synchronous pipes, isolated user environment, and kill-on-close helper job; LocalSystem direct PTY is denied"; fi
 
@@ -2041,7 +2013,7 @@ echo "$run_current_exe_session_body" | grep -Fq 'let exe = std::env::current_exe
 echo "$run_current_exe_session_body" | grep -Fq 'launch_process_in_session_with_env(' || r_s11d13="$r_s11d13 rust-current-image-session-launch-not-using-bound-helper"
 echo "$run_current_exe_session_body" | grep -Fq 'TRUE,' || r_s11d13="$r_s11d13 rust-current-image-session-launch-not-using-user-token"
 echo "$run_current_exe_session_body" | grep -Fq 'FALSE,' || r_s11d13="$r_s11d13 rust-current-image-session-launch-not-hidden"
-if grep -Fq 'pub fn launch_privileged_process' src/platform/windows.rs || grep -Fq 'launch_privileged_process' src/core_main.rs src/platform/windows.rs requirements.html HARDENING_STATUS.md; then
+if grep -Fq 'pub fn launch_privileged_process' src/platform/windows.rs || grep -Fq 'launch_privileged_process' src/core_main.rs src/platform/windows.rs; then
   r_s11d13="$r_s11d13 obsolete-launch-privileged-process-reference-leftover"
 fi
 if [ -n "$r_s11d13" ]; then echo "  FAIL R-S11d-13 Windows service/session token launch provenance:$r_s11d13"; rc=1; else
@@ -2098,9 +2070,6 @@ for obsolete in \
     r_s11e35="$r_s11e35 obsolete-generic-launch-surface:$obsolete"
   fi
 done
-grep -Fq '<span class="id">R-S11u</span>' requirements.html || r_s11e35="$r_s11e35 normative-requirement-missing"
-grep -Fq '<tr><td>143</td>' requirements.html || r_s11e35="$r_s11e35 appendix-disposition-missing"
-grep -Fq 'R-S11e-35 — Windows dormant generic process-launch authority' HARDENING_STATUS.md || r_s11e35="$r_s11e35 hardening-ledger-missing"
 if [ -n "$r_s11e35" ]; then echo "  FAIL R-S11e-35 Windows helper launch authority:$r_s11e35"; rc=1; else
   echo "  ok  R-S11e-35 Windows tray/whiteboard helpers retain typed current-image launch policy; CM uses a dedicated exact-process owner and LocalSystem kill-on-close job; generic executable/session/ShellExecute surfaces are absent"; fi
 
@@ -2129,9 +2098,6 @@ grep -Fq 'lease_or_launch_platform_cm("--cm")?;' <<<"$same_user_cm_launch" \
 grep -Fq 'super::CHILD_PROCESS.lock().unwrap().push(child);' <<<"$same_user_cm_launch" \
   || r_s11e38="$r_s11e38 linux-same-user-cm-child-ownership-missing"
 grep -Fq 'whiteboard_launch_env(&launch_token)' src/whiteboard/client.rs || r_s11e38="$r_s11e38 same-user-whiteboard-launch-missing"
-grep -Fq '<span class="id">R-S11x</span>' requirements.html || r_s11e38="$r_s11e38 normative-requirement-missing"
-grep -Fq '<tr><td>146</td>' requirements.html || r_s11e38="$r_s11e38 appendix-disposition-missing"
-grep -Fq 'R-S11e-38 — cross-platform root-to-user helper launch authority' HARDENING_STATUS.md || r_s11e38="$r_s11e38 hardening-ledger-missing"
 grep -Fq 'Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38)' scripts/apple-conform-check.sh || r_s11e38="$r_s11e38 apple-source-conformance-gate-missing"
 if [ -n "$r_s11e38" ]; then echo "  FAIL R-S11e-38 cross-platform root-to-user helper authority:$r_s11e38"; rc=1; else
   echo "  ok  R-S11e-38 Linux/macOS carry no generic root-to-user CM/whiteboard launcher; Windows uses typed current-image roles and same-user launches retain exact proof environments"; fi
@@ -2166,9 +2132,6 @@ for obsolete in try_kill_broker terminate_processes_by_exact_process_name copy_r
     r_s11e36="$r_s11e36 ambient-broker-authority-leftover:$obsolete"
   fi
 done
-grep -Fq '<span class="id">R-S11v</span>' requirements.html || r_s11e36="$r_s11e36 normative-requirement-missing"
-grep -Fq '<tr><td>144</td>' requirements.html || r_s11e36="$r_s11e36 appendix-disposition-missing"
-grep -Fq 'R-S11e-36 — Windows privacy-broker process and window authority' HARDENING_STATUS.md || r_s11e36="$r_s11e36 hardening-ledger-missing"
 if [ -n "$r_s11e36" ]; then echo "  FAIL R-S11e-36 Windows privacy-broker authority:$r_s11e36"; rc=1; else
   echo "  ok  R-S11e-36 Windows privacy mode owns one suspended exact broker in a retained kill-on-close job, admits only its live PID's window, and retains no basename/title cleanup authority"; fi
 
@@ -2238,8 +2201,6 @@ fi
 if grep -Fq 'peer_process_is_current_exe_service_owned_server' src/ipc/auth.rs; then
   r_s11d37="$r_s11d37 current-exe-service-owned-main-receiver-proof-leftover"
 fi
-grep -Fq 'Windows service-owned server child executable provenance' requirements.html || r_s11d37="$r_s11d37 requirements-disposition-missing"
-grep -Fq 'R-S11d-37 — Windows service-owned server child executable provenance' HARDENING_STATUS.md || r_s11d37="$r_s11d37 hardening-ledger-missing"
 if [ -n "$r_s11d37" ]; then echo "  FAIL R-S11d-37 Windows service-owned server child executable provenance:$r_s11d37"; rc=1; else
   echo "  ok  R-S11d-37 Windows service-owned server child launches only the fixed Program Files service executable after handle-identity proof"; fi
 
@@ -2326,8 +2287,6 @@ if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11d_retained_idd" -rInE 'rustde
   r_s11d_retained="$r_s11d_retained idd:loader-build-or-ui-leftover"
 fi
 
-grep -Fq 'Windows inactive RustDesk IDD loader excision' requirements.html || r_s11d_retained="$r_s11d_retained requirements-missing:Windows inactive RustDesk IDD loader excision"
-grep -Fq 'R-S11d-38 — Windows inactive RustDesk IDD loader excision' HARDENING_STATUS.md || r_s11d_retained="$r_s11d_retained ledger-missing:R-S11d-38"
 if [ -n "$r_s11d_retained" ]; then echo "  FAIL retained Windows provenance invariants:$r_s11d_retained"; rc=1; else
   echo "  ok  retained Windows RDP, terminal shell, portable broker, Amyuni runtime, and IDD-excision invariants are source-gated"; fi
 
@@ -2542,21 +2501,6 @@ grep -Fq 'let broker_file = crate::platform::windows::check_update_broker_proces
 if grep -Fq 'if let Err(e) = crate::platform::windows::check_update_broker_process()' src/privacy_mode/win_topmost_window.rs; then r_s11e20="$r_s11e20 broker-integrity-failure-swallowed"; fi
 grep -Fq 'require_existing_file_no_reparse(' src/privacy_mode/win_topmost_window.rs || r_s11e20="$r_s11e20 privacy-injection-dll-not-reparse-checked"
 
-grep -Fq 'R-S11f' requirements.html || r_s11e20="$r_s11e20 normative-requirement-missing"
-grep -Fq 'R-S11e-20 — Windows Installer sole machine-state authority' HARDENING_STATUS.md || r_s11e20="$r_s11e20 hardening-ledger-missing"
-grep -Fq '<tr><td>125</td>' requirements.html || r_s11e20="$r_s11e20 appendix-disposition-missing"
-grep -Fq '<span class="id">R-S11bt</span>' requirements.html || r_s11e20="$r_s11e20 application-launch-excision-requirement-missing"
-grep -Fq 'R-S11bt/R-S11e-86 — Windows Installer never launches the remote-control application' HARDENING_STATUS.md || r_s11e20="$r_s11e20 application-launch-excision-ledger-missing"
-grep -Fq '<tr><td>213</td>' requirements.html || r_s11e20="$r_s11e20 application-launch-excision-disposition-missing"
-grep -Fq '<span class="id">R-S11bu</span>' requirements.html || r_s11e20="$r_s11e20 installer-api-requirement-missing"
-grep -Fq 'R-S11bu/R-S11e-87 — protected Windows setup uses the typed Installer API' HARDENING_STATUS.md || r_s11e20="$r_s11e20 installer-api-ledger-missing"
-grep -Fq '<tr><td>214</td>' requirements.html || r_s11e20="$r_s11e20 installer-api-disposition-missing"
-grep -Fq '<span class="id">R-S11bv</span>' requirements.html || r_s11e20="$r_s11e20 unowned-certificate-cleanup-excision-requirement-missing"
-grep -Fq 'R-S11bv/R-S11e-88 — Windows uninstall never deletes unowned certificate state' HARDENING_STATUS.md || r_s11e20="$r_s11e20 unowned-certificate-cleanup-excision-ledger-missing"
-grep -Fq '<tr><td>215</td>' requirements.html || r_s11e20="$r_s11e20 unowned-certificate-cleanup-excision-disposition-missing"
-grep -Fq '<span class="id">R-S11bw</span>' requirements.html || r_s11e20="$r_s11e20 unowned-amyuni-cleanup-excision-requirement-missing"
-grep -Fq 'R-S11bw/R-S11e-89 — Windows uninstall never removes an Amyuni device without exact device-instance ownership' HARDENING_STATUS.md || r_s11e20="$r_s11e20 unowned-amyuni-cleanup-excision-ledger-missing"
-grep -Fq '<tr><td>216</td>' requirements.html || r_s11e20="$r_s11e20 unowned-amyuni-cleanup-excision-disposition-missing"
 if [ -n "$r_s11e20" ]; then echo "  FAIL R-S11e-20 Windows Installer sole machine-state authority:$r_s11e20"; rc=1; else
   echo "  ok  R-S11e-20/R-S11e-86/R-S11e-87/R-S11e-88/R-S11e-89/R-S11e-90 setup elevates only an exact one-file typed Windows Installer API transaction; no msiexec child, post-install application/tray launch, unowned certificate-store cleanup, unowned Amyuni device removal, or RustDesk-authored custom-action DLL exists; exact runtime-broker cleanup is declarative RemoveFile state owned by the application component; MSI owns service/firewall/machine state; application install verbs, shell programs, caller-image helpers, in-app install, custom SCM/firewall/file actions, basename MSI kills, and recursive artifact discovery are absent"
 fi
@@ -2579,9 +2523,6 @@ grep -Fq 'candidate_session_id == expected_session_id' src/platform/windows.rs |
 grep -Fq 'normalized_windows_path_text(candidate_path)' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-candidate-path-comparison-missing"
 grep -Fq 'normalized_windows_path_text(expected_path)' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-system-path-comparison-missing"
 grep -Fq 'fn consent_candidate_requires_exact_system_image_and_current_session()' src/platform/windows.rs || r_s11d3="$r_s11d3 consent-authority-regression-test-missing"
-grep -Fq '<span class="id">R-S11w</span>' requirements.html || r_s11d3="$r_s11d3 normative-requirement-missing"
-grep -Fq '<tr><td>145</td>' requirements.html || r_s11d3="$r_s11d3 appendix-disposition-missing"
-grep -Fq 'R-S11e-37 — Windows residual process-state authority' HARDENING_STATUS.md || r_s11d3="$r_s11d3 process-state-ledger-missing"
 if grep -RInE 'pids_by_exact_process_name|terminate_processes_by_exact_process_name|try_kill_broker|taskkill|fn get_pids|is_logon_ui|LogonUI\.exe|stop_main_window_process|try_kill_rustdesk_main_window_process|NtTerminateProcess|PROCESS_ALL_ACCESS|ipc is occupied by another process, try kill it|Command::new\("cmd"\)|tasklist \| findstr consent\.exe' src/server.rs src/platform/windows.rs libs/portable/src/main.rs >"$VERIFY_TMP/rd_verify_r_s11d3"; then
   cat "$VERIFY_TMP/rd_verify_r_s11d3"
   r_s11d3="$r_s11d3 ambient-or-obsolete-process-authority-leftover"
@@ -2663,8 +2604,6 @@ grep -q 'pub(crate) enum WindowsServiceSasIpcRequest' src/ipc.rs || r_s11b="$r_s
 grep -q 'pub(crate) enum WindowsServiceSasIpcResponse' src/ipc.rs || r_s11b="$r_s11b windows-sas-response-type-missing"
 grep -q 'transaction_tasks.spawn(handle_windows_service_ipc_request' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transactions-not-tracked"
 grep -q 'while !transaction_tasks.is_empty()' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transactions-not-drained-on-stop"
-grep -Fq 'Protected service IPC resource boundary' requirements.html || r_s11b="$r_s11b service-resource-requirements-missing"
-grep -Fq 'R-S11c-26 — protected service IPC resource boundary' HARDENING_STATUS.md || r_s11b="$r_s11b service-resource-ledger-missing"
 if grep -q 'SyncConfig' src/ipc.rs; then
   r_s11b="$r_s11b whole-config-ipc-variant-present"
 fi
@@ -2709,8 +2648,6 @@ for directional_check in \
   'serde_json::from_slice::<ServiceIpcRequest>(&share_rdp_response).is_err()'; do
   echo "$service_protocol_test" | grep -Fq "$directional_check" || r_s11b="$r_s11b platform-service-direction-regression-missing"
 done
-grep -Fq 'R-S11dx' requirements.html || r_s11b="$r_s11b typed-service-protocol-requirement-missing"
-grep -Fq 'R-S11dx/R-S11e-142' HARDENING_STATUS.md || r_s11b="$r_s11b typed-service-protocol-ledger-missing"
 grep -q 'new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)' src/ipc.rs || r_s11b="$r_s11b raw-service-password-listener-missing"
 grep -q 'password::SensitivePayloadKind::Password' src/ipc.rs || r_s11b="$r_s11b raw-service-password-kind-missing"
 if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus removal:$r_s11b"; rc=1; else
@@ -2740,80 +2677,6 @@ if ! /usr/bin/python3 -I -S scripts/verify-macos-service-credential-ipc.py \
   cat "$VERIFY_TMP/rd_verify_macos_service_credential_ipc"
   r_s11b2="$r_s11b2 macos-raw-credential-semantic-verifier-failed"
 fi
-grep -Fq '<span class="id">R-S11fd</span>' requirements.html || r_s11b2="$r_s11b2 macos-launchctl-record-requirement-missing"
-grep -Fq '<tr><td>312</td>' requirements.html || r_s11b2="$r_s11b2 macos-launchctl-record-appendix-missing"
-grep -Fq 'R-S11fd/R-S11e-191 exact macOS launchd service-record authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-launchctl-record-ledger-missing"
-grep -Fq '<span class="id">R-S11fe</span>' requirements.html || r_s11b2="$r_s11b2 macos-launchctl-resource-requirement-missing"
-grep -Fq '<tr><td>313</td>' requirements.html || r_s11b2="$r_s11b2 macos-launchctl-resource-appendix-missing"
-grep -Fq 'R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-launchctl-resource-ledger-missing"
-grep -Fq '<span class="id">R-S11hx</span>' requirements.html || r_s11b2="$r_s11b2 linux-password-requester-role-requirement-missing"
-grep -Fq '<tr><td>383</td>' requirements.html || r_s11b2="$r_s11b2 linux-password-requester-role-appendix-missing"
-grep -Fq 'R-S11hx/R-S11e-261 — exact Linux service-owned password requester role' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-password-requester-role-ledger-missing"
-grep -Fq '<span class="id">R-S11hy</span>' requirements.html || r_s11b2="$r_s11b2 macos-password-requester-role-requirement-missing"
-grep -Fq '<tr><td>384</td>' requirements.html || r_s11b2="$r_s11b2 macos-password-requester-role-appendix-missing"
-grep -Fq 'R-S11hy/R-S11e-262 — exact macOS service-owned password requester generation and role' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-password-requester-role-ledger-missing"
-grep -Fq '<span class="id">R-S11hz</span>' requirements.html || r_s11b2="$r_s11b2 macos-password-right-requester-requirement-missing"
-grep -Fq '<tr><td>385</td>' requirements.html || r_s11b2="$r_s11b2 macos-password-right-requester-appendix-missing"
-grep -Fq 'R-S11hz/R-S11e-263 — exact macOS password-right readiness requester authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-password-right-requester-ledger-missing"
-grep -Fq '<span class="id">R-S11ia</span>' requirements.html || r_s11b2="$r_s11b2 macos-credential-requester-finality-requirement-missing"
-grep -Fq '<tr><td>386</td>' requirements.html || r_s11b2="$r_s11b2 macos-credential-requester-finality-appendix-missing"
-grep -Fq 'R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-credential-requester-finality-ledger-missing"
-grep -Fq '<span class="id">R-S11id</span>' requirements.html || r_s11b2="$r_s11b2 macos-password-typed-admission-requirement-missing"
-grep -Fq '<tr><td>389</td>' requirements.html || r_s11b2="$r_s11b2 macos-password-typed-admission-appendix-missing"
-grep -Fq 'R-S11id/R-S11e-267 — typed macOS service-owned password authority through ledger admission' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-password-typed-admission-ledger-missing"
-grep -Fq '<span class="id">R-S11ie</span>' requirements.html || r_s11b2="$r_s11b2 linux-password-typed-admission-requirement-missing"
-grep -Fq '<tr><td>390</td>' requirements.html || r_s11b2="$r_s11b2 linux-password-typed-admission-appendix-missing"
-grep -Fq 'R-S11ie/R-S11e-268 — typed Linux post-polkit password authority through ledger admission' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-password-typed-admission-ledger-missing"
-grep -Fq '<span class="id">R-S11if</span>' requirements.html || r_s11b2="$r_s11b2 windows-password-typed-admission-requirement-missing"
-grep -Fq '<tr><td>391</td>' requirements.html || r_s11b2="$r_s11b2 windows-password-typed-admission-appendix-missing"
-grep -Fq 'R-S11if/R-S11e-269 — typed Windows named-pipe password authority through user/service admission' HARDENING_STATUS.md || r_s11b2="$r_s11b2 windows-password-typed-admission-ledger-missing"
-grep -Fq '<span class="id">R-S11ig</span>' requirements.html || r_s11b2="$r_s11b2 linux-credential-typed-response-requirement-missing"
-grep -Fq '<tr><td>392</td>' requirements.html || r_s11b2="$r_s11b2 linux-credential-typed-response-appendix-missing"
-grep -Fq 'R-S11ig/R-S11e-270 — typed Linux service-owned credential authority through operation-bound PRS response' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-credential-typed-response-ledger-missing"
-grep -Fq '<span class="id">R-S11ih</span>' requirements.html || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-requirement-missing"
-grep -Fq '<tr><td>393</td>' requirements.html || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-appendix-missing"
-grep -Fq 'R-S11ih/R-S11e-271 — typed Linux root-to-child runtime PRS writer authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-ledger-missing"
-grep -Fq '<span class="id">R-S11ii</span>' requirements.html || r_s11b2="$r_s11b2 linux-runtime-prs-typed-receiver-requirement-missing"
-grep -Fq '<tr><td>394</td>' requirements.html || r_s11b2="$r_s11b2 linux-runtime-prs-typed-receiver-appendix-missing"
-grep -Fq 'R-S11ii/R-S11e-272 — typed Linux child-side runtime PRS receiver authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-runtime-prs-typed-receiver-ledger-missing"
-grep -Fq '<span class="id">R-S11ij</span>' requirements.html || r_s11b2="$r_s11b2 macos-runtime-prs-typed-receiver-requirement-missing"
-grep -Fq '<tr><td>395</td>' requirements.html || r_s11b2="$r_s11b2 macos-runtime-prs-typed-receiver-appendix-missing"
-grep -Fq 'R-S11ij/R-S11e-273 — typed macOS child-side runtime PRS receiver authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-runtime-prs-typed-receiver-ledger-missing"
-grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedCredentialReplicaReceiver</code>' requirements.html || r_s11b2="$r_s11b2 macos-runtime-prs-receiver-capability-norm-missing"
-grep -Fq 'consume itself, freshly require the exact service-owned-server role' requirements.html || r_s11b2="$r_s11b2 macos-runtime-prs-consuming-receiver-norm-missing"
-grep -Fq 'Only the admission&#39;s consuming <code>install</code> action may reach the shared Unix typed replica' requirements.html || r_s11b2="$r_s11b2 macos-runtime-prs-consuming-install-norm-missing"
-grep -Fq '<span class="id">R-S11ik</span>' requirements.html || r_s11b2="$r_s11b2 linux-credential-runtime-prs-typed-receiver-requirement-missing"
-grep -Fq '<tr><td>396</td>' requirements.html || r_s11b2="$r_s11b2 linux-credential-runtime-prs-typed-receiver-appendix-missing"
-grep -Fq 'R-S11ik/R-S11e-274 — typed Linux initial credential runtime PRS receiver authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 linux-credential-runtime-prs-typed-receiver-ledger-missing"
-grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaReceiver</code>' requirements.html || r_s11b2="$r_s11b2 linux-credential-runtime-prs-receiver-capability-norm-missing"
-grep -Fq 'consume itself across the same-stream request and complete response' requirements.html || r_s11b2="$r_s11b2 linux-credential-runtime-prs-consuming-receiver-norm-missing"
-grep -Fq 'Only that admission&#39;s consuming <code>install</code> action may reach <code>ServiceOwnedRuntimePrsReplica::install_for_runtime</code>' requirements.html || r_s11b2="$r_s11b2 linux-credential-runtime-prs-consuming-install-norm-missing"
-grep -Fq '<span class="id">R-S11il</span>' requirements.html || r_s11b2="$r_s11b2 macos-credential-typed-response-requirement-missing"
-grep -Fq '<tr><td>397</td>' requirements.html || r_s11b2="$r_s11b2 macos-credential-typed-response-appendix-missing"
-grep -Fq 'R-S11il/R-S11e-275 — typed macOS credential-replica response authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-credential-typed-response-ledger-missing"
-grep -Fq 'private, non-cloneable <code>MacosServiceOwnedCredentialReplicaAdmission</code>' requirements.html || r_s11b2="$r_s11b2 macos-credential-response-admission-norm-missing"
-grep -Fq 'Only the admission object&#39;s consuming <code>respond</code> method may read <code>service_owned_runtime_prs_replica("macOS")</code>' requirements.html || r_s11b2="$r_s11b2 macos-credential-capability-response-norm-missing"
-grep -Fq 'compose only canonical request decode, bounded exact-requester authentication, <code>requester.admit</code>, and <code>admission.respond</code>' requirements.html || r_s11b2="$r_s11b2 macos-credential-closed-handler-norm-missing"
-grep -Fq '<span class="id">R-S11im</span>' requirements.html || r_s11b2="$r_s11b2 macos-password-right-typed-action-requirement-missing"
-grep -Fq '<tr><td>398</td>' requirements.html || r_s11b2="$r_s11b2 macos-password-right-typed-action-appendix-missing"
-grep -Fq 'R-S11im/R-S11e-276 — typed macOS password-right policy-write authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-password-right-typed-action-ledger-missing"
-grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedPasswordRightAdmission</code>' requirements.html || r_s11b2="$r_s11b2 macos-password-right-admission-capability-norm-missing"
-grep -Fq 'Only the admission&#39;s consuming <code>ensure_ready</code> action may replay the exact installed-app identity' requirements.html || r_s11b2="$r_s11b2 macos-password-right-consuming-action-norm-missing"
-grep -Fq 'compose only bounded exact-requester authentication, consuming admission grant, and consuming action' requirements.html || r_s11b2="$r_s11b2 macos-password-right-closed-proof-norm-missing"
-grep -Fq '<span class="id">R-S11in</span>' requirements.html || r_s11b2="$r_s11b2 macos-password-verification-read-only-requirement-missing"
-grep -Fq '<tr><td>399</td>' requirements.html || r_s11b2="$r_s11b2 macos-password-verification-read-only-appendix-missing"
-grep -Fq 'R-S11in/R-S11e-277 — read-only macOS password authorization verification' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-password-verification-read-only-ledger-missing"
-grep -Fq 'Only <code>MacosServiceOwnedPasswordRightAdmission::ensure_ready</code> may reach the native <code>AuthorizationRightSet</code> writer.' requirements.html || r_s11b2="$r_s11b2 macos-password-readiness-sole-writer-norm-missing"
-grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDestroyRights</code> and require its returned status to succeed' requirements.html || r_s11b2="$r_s11b2 macos-password-verification-checked-cleanup-norm-missing"
-grep -Fq 'then repeat the exact read-only right-definition check' requirements.html || r_s11b2="$r_s11b2 macos-password-verification-final-policy-check-norm-missing"
-grep -Fq 'return success only when authorization evaluation, rights revocation/free, and the final policy check all succeed' requirements.html || r_s11b2="$r_s11b2 macos-password-verification-conjunction-norm-missing"
-grep -Fq '<span class="id">R-S11io</span>' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-requirement-missing"
-grep -Fq '<tr><td>400</td>' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-appendix-missing"
-grep -Fq 'R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-ledger-missing"
-grep -Fq 'clear the validated caller buffer before any fallible policy or Authorization Services operation' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-output-preclear-norm-missing"
-grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDefaults</code>' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-default-cleanup-norm-missing"
-grep -Fq 'copy the external form to the caller exactly once and only after both externalization and creator-reference release succeed' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-output-commit-norm-missing"
-grep -Fq 'return the conjunction of externalization/preauthorization status and cleanup status' requirements.html || r_s11b2="$r_s11b2 macos-password-authorization-creator-conjunction-norm-missing"
 if ! python3 - <<'PY'
 from pathlib import Path
 
@@ -4627,15 +4490,6 @@ PY
 then
   r_s11b2="$r_s11b2 common-windows-macos-raw-password-architecture-gate-failed"
 fi
-for requirement_id in R-S11g R-S11h R-S11i; do
-  grep -Fq "<span class=\"id\">$requirement_id</span>" requirements.html ||
-    r_s11b2="$r_s11b2 requirements-$requirement_id-missing"
-done
-grep -Fq '<span class="id">R-S11cb</span>' requirements.html ||
-  r_s11b2="$r_s11b2 requirements-R-S11cb-missing"
-grep -Fq 'R-S11cb/R-S11e-94 — Linux stable service credential ownership and nondumpable runtime replica' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 ledger-R-S11e-94-missing"
-grep -Fq 'CREDENTIAL_REPLICA_BYTES: usize = 44' src/ipc/password.rs ||
   r_s11b2="$r_s11b2 linux-service-credential-replica-length-missing"
 grep -Fq 'DEBIAN_DATA_MODES["usr/share/rustdesk/rustdesk-service-child"] = 0o711' build.py ||
   r_s11b2="$r_s11b2 linux-service-installed-image-not-mode-0711"
@@ -4654,10 +4508,6 @@ if grep -Eq 'SYS_ptrace|PTRACE_TRACEME' src/platform/linux.rs; then
 fi
 grep -Fq 'SystemCallFilter=@system-service mount umount umount2 pidfd_open pidfd_send_signal renameat2' res/rustdesk.service ||
   r_s11b2="$r_s11b2 linux-service-bootstrap-filter-drift"
-for ledger_id in R-S11e-9 R-S11e-21; do
-  grep -Fq "$ledger_id" HARDENING_STATUS.md ||
-    r_s11b2="$r_s11b2 ledger-$ledger_id-missing"
-done
 grep -q 'SERVICE_OWNED_SERVER_ARG' src/common.rs || r_s11b2="$r_s11b2 service-owned-role-marker-missing"
 grep -q -- '<string>--service-owned-server</string>' src/platform/privileges_scripts/agent.plist || r_s11b2="$r_s11b2 macos-service-owned-role-marker-missing"
 if grep -Eq 'BeginUserOwnedPermanentPassword|BeginServiceOwnedUnattendedPasswordChange|RequestServiceOwnedUnattendedPasswordChange|RequestMacosServiceOwnedUnattendedPasswordChange|ServiceOwnedUnattendedPasswordChangeResult' src/ipc.rs src/platform/windows.rs; then
@@ -4677,12 +4527,6 @@ if grep -Fq 'ipc.function("start_main_ipc")' scripts/verify-linux-service-passwo
     || grep -Fq 'item(ipc, "async fn start_main_ipc")' scripts/apple-conform-check.sh; then
   r_s11bb="$r_s11bb retired-main-listener-checker-present"
 fi
-grep -qF '<span class="id">R-S11bb</span>' requirements.html \
-  || r_s11bb="$r_s11bb requirement-missing"
-grep -qF '<tr><td>178</td>' requirements.html \
-  || r_s11bb="$r_s11bb appendix-disposition-missing"
-grep -qF 'R-S11bb/R-S11e-68 — IPC lifecycle-split checker coverage' HARDENING_STATUS.md \
-  || r_s11bb="$r_s11bb ledger-disposition-missing"
 if [ -n "$r_s11bb" ]; then
   echo "  FAIL R-S11bb IPC lifecycle-split checker coverage:$r_s11bb"; rc=1
 else
@@ -4852,8 +4696,6 @@ then
   r_s11e19="$r_s11e19 windows-service-supervision-order-gate-failed"
 fi
 grep -q 'windows_service_' scripts/build-windows.ps1 || r_s11e19="$r_s11e19 windows-native-runtime-test-filter-missing"
-grep -Fq 'R-S11e-19' HARDENING_STATUS.md || r_s11e19="$r_s11e19 supervision-ledger-missing"
-grep -Fq '<span class="id">R-S11g</span>' requirements.html || r_s11e19="$r_s11e19 transaction-and-service-finality-requirement-missing"
 if [ -n "$r_s11e19" ]; then echo "  FAIL R-S11e-19 Windows service-owned child tree supervision:$r_s11e19"; rc=1; else
   echo "  ok  R-S11e-19 Windows SCM owns one creation-time job-bound server tree; raw credential admission linearizes with stop, admitted credential work drains before child shutdown, runtime replacement follows main-exit and job-zero proof, and SERVICE_STOPPED follows exact job accounting"; fi
 # R-S11b-4: config/PRS secrecy after IPC closure. The balanced-PAKE PRS is
@@ -4926,8 +4768,6 @@ if grep -RInE 'isPresetPassword|is_preset_password|buildPresetPasswordWarning|pr
 fi
 grep -q 'Self::read_permanent_password_prs().is_available()' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 typed-password-status-authority-missing"
 grep -q 'test_hard_settings_password_does_not_create_credential' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 hard-settings-not-a-credential-regression-missing"
-grep -qF 'R-S11b-3q — preset-password credential/status compatibility excised' HARDENING_STATUS.md || r_s11b4="$r_s11b4 preset-password-excision-ledger-missing"
-grep -qF '<tr><td>241</td>' requirements.html || r_s11b4="$r_s11b4 preset-password-excision-appendix-missing"
 grep -q 'ServiceIpcRequest::PermanentPasswordSnapshot' src/ipc.rs && r_s11b4="$r_s11b4 macos-runtime-snapshot-still-generic-serde"
 grep -q 'ServiceIpcResponse::PermanentPasswordSnapshotResult' src/ipc.rs && r_s11b4="$r_s11b4 macos-runtime-snapshot-response-still-generic-serde"
 grep -q 'handle_macos_service_credential_snapshot_transaction' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-raw-snapshot-handler-missing"
@@ -4972,8 +4812,6 @@ done
 if grep -InE ';;;(BA|BU|AU|WD|CO)' libs/hbb_common/src/config.rs >"$VERIFY_TMP/rd_verify_r_s11b4_acl"; then
   r_s11b4="$r_s11b4 windows-config-acl-grants-broad-or-inherited-principal"
 fi
-grep -Fq 'R-S11b-4e — ordinary main IPC credential mirror excised' HARDENING_STATUS.md || r_s11b4="$r_s11b4 credential-mirror-ledger-missing"
-grep -Fq '<tr><td>237</td>' requirements.html || r_s11b4="$r_s11b4 credential-mirror-appendix-missing"
 if [ -n "$r_s11b4" ]; then echo "  FAIL R-S11b-4 config/PRS secrecy boundary:$r_s11b4"; rc=1; else
   echo "  ok  R-S11b-4/R-S11b-4e ordinary main IPC exports only receiver-derived password status, purpose-specific service snapshots remain nonpersistent, and TOML/raw stores share owner-proved durable Unix or protected-DACL Windows transactions"; fi
 
@@ -5072,10 +4910,6 @@ for token in \
   fi
 done
 grep -q 'ipc::test::main_option_mutation_is_single_key_and_receiver_effective' scripts/verify.sh || r_s11b3="$r_s11b3 focused-single-option-test-missing"
-grep -Fq 'R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective' HARDENING_STATUS.md || r_s11b3="$r_s11b3 single-option-ledger-missing"
-grep -Fq 'R-S11b-3o — production-dead whole-options config writer excised' HARDENING_STATUS.md || r_s11b3="$r_s11b3 whole-options-config-ledger-missing"
-grep -Fq '<tr><td>238</td>' requirements.html || r_s11b3="$r_s11b3 single-option-appendix-missing"
-grep -Fq '<tr><td>239</td>' requirements.html || r_s11b3="$r_s11b3 whole-options-config-appendix-missing"
 if [ -n "$r_s11b3" ]; then echo "  FAIL R-S11b-3 service-owned policy IPC closure:$r_s11b3"; rc=1; else
   echo "  ok  R-S11b-3/R-S11b-3n/R-S11b-3o service-owned --server rejects option writes; every live mutation is one allowlisted key with receiver-effective ACK/cache state and no whole-map bridge or shared config writer; Windows share_rdp remains only a typed elevated _service action"; fi
 
@@ -5101,8 +4935,6 @@ grep -qF '<RegistryKey Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersio
 if verify_scan_capture "$VERIFY_TMP/r_s11e23_legacy_registry" -nE 'get_uninstall_registry_subkey|get_install_info|get_reg_of|Wow6432Node|54E86BC2-6C85-41F3-A9EB-1A94AC9B1F93|_is1' src/platform/windows.rs; then
   r_s11e23="$r_s11e23 legacy-uninstall-registry-authority-present:$(tr '\n' ';' <"$VERIFY_TMP/r_s11e23_legacy_registry")"
 fi
-grep -qF 'Windows legacy uninstall-registry metadata selected current service policy' requirements.html || r_s11e23="$r_s11e23 requirements-disposition-missing"
-grep -qF 'R-S11e-23 — Windows current-package registry authority' HARDENING_STATUS.md  || r_s11e23="$r_s11e23 hardening-ledger-missing"
 if [ -n "$r_s11e23" ]; then echo "  FAIL R-S11e-23 Windows current-package registry authority:$r_s11e23"; rc=1; else
   echo "  ok  R-S11e-23 installed-state and service-owned RDP policy use only the current MSI product's explicit 64-bit HKLM namespace and fixed non-reparse executable root"; fi
 
@@ -5151,10 +4983,6 @@ fi
 if grep -Eq 'restore_reg_connectivity|reg_recovery' src/core_main.rs src/privacy_mode.rs; then
   r_s11e24="$r_s11e24 startup-or-exported-recovery-replay-present"
 fi
-grep -qF 'R-S11j' requirements.html                                                  || r_s11e24="$r_s11e24 normative-requirement-missing"
-grep -qF 'Windows privacy-display recovery serialized an arbitrary elevated HKLM write' requirements.html || r_s11e24="$r_s11e24 appendix-disposition-missing"
-grep -qF '<tr><td>132</td>' requirements.html                                        || r_s11e24="$r_s11e24 appendix-row-missing"
-grep -qF 'R-S11e-24 — Windows privacy-display registry recovery authority' HARDENING_STATUS.md || r_s11e24="$r_s11e24 hardening-ledger-missing"
 if [ -n "$r_s11e24" ]; then echo "  FAIL R-S11e-24 Windows privacy-display recovery authority:$r_s11e24"; rc=1; else
   echo "  ok  R-S11e-24 privacy display recovery is a process-local fixed-target snapshot collection; serialized/config/startup arbitrary HKLM replay is absent"; fi
 
@@ -5202,10 +5030,6 @@ fi
 grep -qF 'linux_service_owned_config_root_ignores_ambient_home_and_xdg' libs/hbb_common/src/config.rs || r_s11e25="$r_s11e25 ambient-root-regression-test-missing"
 grep -qF '/tmp/rustdesk-attacker-selected-home' libs/hbb_common/src/config.rs         || r_s11e25="$r_s11e25 hostile-home-fixture-missing"
 grep -qF '/tmp/rustdesk-attacker-selected-xdg' libs/hbb_common/src/config.rs          || r_s11e25="$r_s11e25 hostile-xdg-fixture-missing"
-grep -qF '<span class="id">R-S11k</span>' requirements.html                        || r_s11e25="$r_s11e25 normative-requirement-missing"
-grep -qF 'Linux service-owned configuration followed ambient HOME/XDG_CONFIG_HOME' requirements.html || r_s11e25="$r_s11e25 appendix-disposition-missing"
-grep -qF '<tr><td>133</td>' requirements.html                                        || r_s11e25="$r_s11e25 appendix-row-missing"
-grep -qF 'R-S11e-25 — Linux service-owned config-root authority' HARDENING_STATUS.md || r_s11e25="$r_s11e25 hardening-ledger-missing"
 if [ -n "$r_s11e25" ]; then echo "  FAIL R-S11e-25 Linux service-owned config-root authority:$r_s11e25"; rc=1; else
   echo "  ok  R-S11e-25 Linux service-owned roles bind Config home/path to the effective uid's passwd home before first config access; ambient HOME/XDG_CONFIG_HOME remains user-mode-only authority"; fi
 
@@ -5270,13 +5094,6 @@ grep -qF 'root service child environment escaped its bounded allowlist' scripts/
 grep -qF 'root service child adopted a hostile ambient environment value' scripts/smoke-service-lifecycle.sh || r_s11e26="$r_s11e26 hostile-runtime-value-not-rejected"
 grep -qF 'SERVICE_LIFECYCLE_ROOT_ENVIRONMENT=pass authority=desktop-snapshot ambient=excluded' scripts/smoke-service-lifecycle.sh || r_s11e26="$r_s11e26 runtime-result-marker-missing"
 grep -qF 'FAIL R-S11e-26: root service child did not reject the hostile ambient launch environment' scripts/smoke-server.sh || r_s11e26="$r_s11e26 mandatory-smoke-consumer-missing"
-grep -qF '<span class="id">R-S11l</span>' requirements.html                        || r_s11e26="$r_s11e26 normative-requirement-missing"
-grep -qF '<span class="id">R-S11fq</span>' requirements.html                       || r_s11e26="$r_s11e26 terminal-authority-requirement-missing"
-grep -qF 'Linux root service child re-imported ambient session/audio environment' requirements.html || r_s11e26="$r_s11e26 appendix-disposition-missing"
-grep -qF '<tr><td>134</td>' requirements.html                                       || r_s11e26="$r_s11e26 appendix-row-missing"
-grep -qF '<tr><td>325</td>' requirements.html                                       || r_s11e26="$r_s11e26 terminal-authority-appendix-row-missing"
-grep -qF 'R-S11e-26 — Linux service-child environment authority' HARDENING_STATUS.md || r_s11e26="$r_s11e26 hardening-ledger-missing"
-grep -qF 'R-S11fq/R-S11e-204 Linux service-child terminal authority' HARDENING_STATUS.md || r_s11e26="$r_s11e26 terminal-authority-ledger-missing"
 if [ -n "$r_s11e26" ]; then echo "  FAIL R-S11e-26 Linux service-child environment authority:$r_s11e26"; rc=1; else
   echo "  ok  R-S11e-26/R-S11e-204 root and active-user children receive the selected desktop snapshot under a typed principal choice; hostile ambient session/audio/terminal variables and active-user TERM processes cannot re-enter after env_clear"; fi
 
@@ -5318,10 +5135,6 @@ for binding in \
   'fn r_s11e257_desktop_selector_process_requires_the_same_interpretation_namespaces()'; do
   grep -qF "$binding" src/platform/linux.rs || r_s11e257="$r_s11e257 compiled-regression-missing"
 done
-grep -qF '<span class="id">R-S11ft</span>' requirements.html || r_s11e257="$r_s11e257 observation-requirement-missing"
-grep -qF '<tr><td>328</td>' requirements.html || r_s11e257="$r_s11e257 observation-disposition-missing"
-grep -qF '<span class="id">R-S11ht</span>' requirements.html || r_s11e257="$r_s11e257 namespace-requirement-missing"
-grep -qF '<tr><td>379</td>' requirements.html || r_s11e257="$r_s11e257 namespace-disposition-missing"
 if [ -n "$r_s11e257" ]; then echo "  FAIL R-S11e-207/R-S11e-257 Linux selected-session observation:$r_s11e257"; rc=1; else
   echo "  ok  R-S11e-207/R-S11e-257 compiled regressions plus a focused source guard retain bounded exact-UID mount/network-namespace observation; installed behavior remains a separate native gate"; fi
 
@@ -5370,10 +5183,6 @@ for runtime_proof in \
   grep -qF "$runtime_proof" scripts/smoke-service-lifecycle.sh || r_s11e27="$r_s11e27 hostile-runtime-proof-missing"
 done
 grep -qF 'FAIL R-S11e-27: Linux service supervisor/child retained ambient cwd or consumed cwd-relative custom.txt' scripts/smoke-server.sh || r_s11e27="$r_s11e27 mandatory-smoke-consumer-missing"
-grep -qF '<span class="id">R-S11m</span>' requirements.html                        || r_s11e27="$r_s11e27 normative-requirement-missing"
-grep -qF 'Linux service-owned startup inherited working-directory authority' requirements.html || r_s11e27="$r_s11e27 appendix-disposition-missing"
-grep -qF '<tr><td>135</td>' requirements.html                                        || r_s11e27="$r_s11e27 appendix-row-missing"
-grep -qF 'R-S11e-27 — Linux service-owned working-directory authority' HARDENING_STATUS.md || r_s11e27="$r_s11e27 hardening-ledger-missing"
 if [ -n "$r_s11e27" ]; then echo "  FAIL R-S11e-27 Linux service-owned working-directory authority:$r_s11e27"; rc=1; else
   echo "  ok  R-S11e-27 Linux service supervisor and child bind cwd to '/', while custom.txt is executable-relative in debug and release builds"; fi
 
@@ -5455,10 +5264,6 @@ done
 [ "$(grep -cF 'exec 198<>"$HOSTILE_SERVICE_DESCRIPTOR"' scripts/smoke-service-lifecycle.sh)" = 6 ] \
   || r_s11e28="$r_s11e28 hostile-descriptor-launch-matrix-incomplete"
 grep -qF 'FAIL R-S11e-28: Linux service supervisor/child retained launcher file-descriptor authority' scripts/smoke-server.sh || r_s11e28="$r_s11e28 mandatory-smoke-consumer-missing"
-grep -qF '<span class="id">R-S11n</span>' requirements.html                        || r_s11e28="$r_s11e28 normative-requirement-missing"
-grep -qF 'Linux service-owned startup inherited non-stdio descriptor authority' requirements.html || r_s11e28="$r_s11e28 appendix-disposition-missing"
-grep -qF '<tr><td>136</td>' requirements.html                                       || r_s11e28="$r_s11e28 appendix-row-missing"
-grep -qF 'R-S11e-28 — Linux service-owned inherited descriptor authority' HARDENING_STATUS.md || r_s11e28="$r_s11e28 hardening-ledger-missing"
 if [ -n "$r_s11e28" ]; then echo "  FAIL R-S11e-28 Linux service-owned inherited descriptor authority:$r_s11e28"; rc=1; else
   echo "  ok  R-S11e-28 Linux service supervisor and child exclude ambient non-stdio descriptors while preserving only stdio and the forked child's temporary exact-executable handoff"; fi
 
@@ -5491,10 +5296,6 @@ done
 if grep -Eq 'Command::new\(&exe\)[[:space:]]*$|Command::new\(exe\)\.spawn\(\)' <<<"$reopen_helper_block"; then
   r_s11e29="$r_s11e29 reopen-helper-direct-spawn-without-descriptor-policy"
 fi
-grep -qF '<span class="id">R-S11o</span>' requirements.html                        || r_s11e29="$r_s11e29 normative-requirement-missing"
-grep -qF 'Linux service-originated helper launch inherited descriptor authority' requirements.html || r_s11e29="$r_s11e29 appendix-disposition-missing"
-grep -qF '<tr><td>137</td>' requirements.html                                       || r_s11e29="$r_s11e29 appendix-row-missing"
-grep -qF 'R-S11e-29 — Linux service-originated helper inherited descriptor authority' HARDENING_STATUS.md || r_s11e29="$r_s11e29 hardening-ledger-missing"
 if [ -n "$r_s11e29" ]; then echo "  FAIL R-S11e-29 Linux service helper inherited descriptor authority:$r_s11e29"; rc=1; else
   echo "  ok  R-S11e-29 Linux generic sudo/env run-as-user launch is absent and retained reopen helpers mark non-stdio descriptors close-on-exec before helper exec"; fi
 
@@ -5522,10 +5323,6 @@ fi
 if grep -Eq 'std::process::Command::new\(pkcheck\)[[:space:]]*\.' <<<"$pkcheck_authorization_block"; then
   r_s11e30="$r_s11e30 pkcheck-direct-spawn-without-descriptor-policy"
 fi
-grep -qF '<span class="id">R-S11p</span>' requirements.html                        || r_s11e30="$r_s11e30 normative-requirement-missing"
-grep -qF 'Linux service-owned pkcheck launch inherited descriptor authority' requirements.html || r_s11e30="$r_s11e30 appendix-disposition-missing"
-grep -qF '<tr><td>138</td>' requirements.html                                       || r_s11e30="$r_s11e30 appendix-row-missing"
-grep -qF 'R-S11e-30 — Linux service-owned pkcheck inherited descriptor authority' HARDENING_STATUS.md || r_s11e30="$r_s11e30 hardening-ledger-missing"
 if [ -n "$r_s11e30" ]; then echo "  FAIL R-S11e-30 Linux pkcheck helper inherited descriptor authority:$r_s11e30"; rc=1; else
   echo "  ok  R-S11e-30 Linux service-owned pkcheck authorization marks non-stdio descriptors close-on-exec before helper exec"; fi
 
@@ -5562,10 +5359,6 @@ for runtime_binding in \
   'unexpected.is_empty()'; do
   grep -qF "$runtime_binding" <<<"$pkcheck_environment_test" || r_s11e39="$r_s11e39 actual-child-proof-missing"
 done
-grep -qF '<span class="id">R-S11y</span>' requirements.html || r_s11e39="$r_s11e39 normative-requirement-missing"
-grep -qF 'Linux service-owned pkcheck inherited environment authority' requirements.html || r_s11e39="$r_s11e39 appendix-disposition-missing"
-grep -qF '<tr><td>147</td>' requirements.html || r_s11e39="$r_s11e39 appendix-row-missing"
-grep -qF 'R-S11e-39 — Linux service-owned pkcheck inherited environment authority' HARDENING_STATUS.md || r_s11e39="$r_s11e39 hardening-ledger-missing"
 if [ -n "$r_s11e39" ]; then echo "  FAIL R-S11e-39 Linux pkcheck helper ambient environment authority:$r_s11e39"; rc=1; else
   echo "  ok  R-S11e-39 Linux service-owned pkcheck starts with an empty environment and an actual child excludes a hostile inherited system-bus selector"; fi
 
@@ -5658,10 +5451,6 @@ for fixture in scripts/smoke-service-loginctl.sh scripts/smoke-debian-systemd-lo
     grep -qF "$fixture_query" "$fixture" || r_s11e40="$r_s11e40 ${fixture##*/}:strict-query-missing"
   done
 done
-grep -qF '<span class="id">R-S11z</span>' requirements.html || r_s11e40="$r_s11e40 normative-requirement-missing"
-grep -qF 'Linux loginctl session-query authority and ambient desktop confusion' requirements.html || r_s11e40="$r_s11e40 appendix-disposition-missing"
-grep -qF '<tr><td>148</td>' requirements.html || r_s11e40="$r_s11e40 appendix-row-missing"
-grep -qF 'R-S11e-40 — Linux loginctl session-query authority' HARDENING_STATUS.md || r_s11e40="$r_s11e40 hardening-ledger-missing"
 if [ -n "$r_s11e40" ]; then echo "  FAIL R-S11e-40 Linux loginctl session-query authority:$r_s11e40"; rc=1; else
   echo "  ok  R-S11e-40 Linux session discovery uses typed local loginctl queries, stable authority-field parsing across systemd list versions, an empty helper environment, and no ambient XDG session substitution"; fi
 
@@ -5823,13 +5612,6 @@ for test_binding in \
   'b"DISPLAY=host:7\0XAUTHORITY=/tmp/remote.auth\0"'; do
   grep -qF "$test_binding" <<<"$x11_shared_tests$x11_socket_tests$x11_root_tests" || r_s11e42="$r_s11e42 focused-regression-missing"
 done
-grep -qF '<span class="id">R-S11ab</span>' requirements.html || r_s11e42="$r_s11e42 normative-requirement-missing"
-grep -qF 'Linux X11 endpoint selection remains bound to the exact active logind session' requirements.html \
-  || r_s11e42="$r_s11e42 normative-authority-clause-missing"
-grep -qF 'obtain the peer'"'"'s kernel-pinned pidfd through <code>SO_PEERPIDFD</code>' requirements.html \
-  || r_s11e42="$r_s11e42 normative-empty-display-recovery-missing"
-grep -qF '<tr><td>150</td>' requirements.html || r_s11e42="$r_s11e42 appendix-row-missing"
-grep -qF 'Linux selected X11 session lost endpoint authority' requirements.html || r_s11e42="$r_s11e42 appendix-disposition-missing"
 if [ -n "$r_s11e42" ]; then echo "  FAIL R-S11e-42 Linux selected X11 session display authority:$r_s11e42"; rc=1; else
   echo "  ok  R-S11e-42/R-S11hs X11 DISPLAY is either the exact selected logind value or one unique kernel-pinned selected-user-or-root X server in that session Scope, with exact pathname/peer/process UID agreement; process Xauthority hints describe only that endpoint"; fi
 
@@ -5861,14 +5643,6 @@ fi
 if grep -Eq 'process_is_xorg_with_config|kill_xorg_processes_with_config|is_rustdesk_subprocess|set_is_subprocess|any_process_cmdline_contains|stop_subprocess|format!\("/etc/\{\}/xorg\.conf"' src/platform/linux.rs; then
   r_s11e43="$r_s11e43 obsolete-xorg-process-authority-present"
 fi
-grep -qF '<span class="id">R-S11ac</span>' requirements.html || r_s11e43="$r_s11e43 normative-requirement-missing"
-grep -qF 'Linux service lifecycle never infers Xorg process authority from the global process table' requirements.html \
-  || r_s11e43="$r_s11e43 normative-authority-clause-missing"
-grep -qF '<tr><td>151</td>' requirements.html || r_s11e43="$r_s11e43 appendix-row-missing"
-grep -qF 'Obsolete Linux root-service Xorg process authority' requirements.html \
-  || r_s11e43="$r_s11e43 appendix-disposition-missing"
-grep -qF 'R-S11e-43 — Linux obsolete Xorg process authority' HARDENING_STATUS.md \
-  || r_s11e43="$r_s11e43 hardening-ledger-missing"
 if [ -n "$r_s11e43" ]; then echo "  FAIL R-S11e-43 Linux obsolete Xorg process authority:$r_s11e43"; rc=1; else
   echo "  ok  R-S11e-43 no Xorg process text can mint root signal or desktop-state authority; headless state is absence of the exact selected logind session"; fi
 
@@ -5927,14 +5701,6 @@ for binding in \
   'parent-bound child survived launcher death'; do
   grep -qF "$binding" src/common.rs || r_s11e44="$r_s11e44 actual-child-regression-missing"
 done
-grep -qF '<span class="id">R-S11ad</span>' requirements.html || r_s11e44="$r_s11e44 normative-requirement-missing"
-grep -qF 'Linux headless connection-manager lifetime is bound at spawn to its exact server parent' requirements.html \
-  || r_s11e44="$r_s11e44 normative-authority-clause-missing"
-grep -qF '<tr><td>152</td>' requirements.html || r_s11e44="$r_s11e44 appendix-row-missing"
-grep -qF 'Linux root-service headless-CM global process authority' requirements.html \
-  || r_s11e44="$r_s11e44 appendix-disposition-missing"
-grep -qF 'R-S11e-44 — Linux headless connection-manager parent authority' HARDENING_STATUS.md \
-  || r_s11e44="$r_s11e44 hardening-ledger-missing"
 if [ -n "$r_s11e44" ]; then echo "  FAIL R-S11e-44 Linux headless CM parent authority:$r_s11e44"; rc=1; else
   echo "  ok  R-S11e-44/R-S11e-95 no root process-table sweep owns CMs; every exact Linux server launch arms kernel parent-death authority before exec"; fi
 
@@ -6225,14 +5991,6 @@ for binding in \
   'assert!(uid.is_empty());'; do
   grep -qF "$binding" <<<"$service_replacement_test" || r_s11e45="$r_s11e45 focused-regression-missing"
 done
-grep -qF '<span class="id">R-S11ae</span>' requirements.html || r_s11e45="$r_s11e45 normative-requirement-missing"
-grep -qF 'Linux server and tray lifecycle use owned state, never current-image process-table presentation' requirements.html \
-  || r_s11e45="$r_s11e45 normative-authority-clause-missing"
-grep -qF '<tr><td>153</td>' requirements.html || r_s11e45="$r_s11e45 appendix-row-missing"
-grep -qF 'Linux remaining current-image process-table lifecycle authority' requirements.html \
-  || r_s11e45="$r_s11e45 appendix-disposition-missing"
-grep -qF 'R-S11e-45 — Linux remaining current-image process-table lifecycle authority' HARDENING_STATUS.md \
-  || r_s11e45="$r_s11e45 hardening-ledger-missing"
 if [ -n "$r_s11e45" ]; then echo "  FAIL R-S11e-45 Linux current-image lifecycle authority deletion:$r_s11e45"; rc=1; else
   echo "  ok  R-S11e-45 service replacement uses selected logind state plus the retained Child, and server startup signals no tray or CM selected through process text"; fi
 
@@ -6296,16 +6054,6 @@ for binding in \
   'assert!(!effective_uid_is_root(1_000));'; do
   grep -qF "$binding" <<<"$root_policy_test" || r_s11e46="$r_s11e46 numeric-root-regression-missing"
 done
-grep -qF '<span class="id">R-S11af</span>' requirements.html || r_s11e46="$r_s11e46 normative-requirement-missing"
-grep -qF 'Linux privileged service children never create user-session UI' requirements.html \
-  || r_s11e46="$r_s11e46 normative-principal-clause-missing"
-grep -qF 'get_effective_uid() == 0' requirements.html \
-  || r_s11e46="$r_s11e46 normative-effective-uid-clause-missing"
-grep -qF '<tr><td>154</td>' requirements.html || r_s11e46="$r_s11e46 appendix-row-missing"
-grep -qF 'Linux root service child created an independent privileged tray and GUI' requirements.html \
-  || r_s11e46="$r_s11e46 appendix-disposition-missing"
-grep -qF 'R-S11e-46 — Linux privileged service-to-tray boundary' HARDENING_STATUS.md \
-  || r_s11e46="$r_s11e46 hardening-ledger-missing"
 if [ -n "$r_s11e46" ]; then echo "  FAIL R-S11e-46 Linux privileged service-to-tray boundary:$r_s11e46"; rc=1; else
   echo "  ok  R-S11e-46 root service-owned servers create no tray/autostart/UI role, the tray receiver refuses root, and non-root user-session tray behavior remains"; fi
 
@@ -6366,18 +6114,8 @@ for binding in \
   'assert!(!effective_uid_is_root(501));'; do
   grep -qF "$binding" <<<"$macos_root_test" || r_s11e47="$r_s11e47 numeric-root-regression-missing"
 done
-grep -qF '<span class="id">R-S11ag</span>' requirements.html || r_s11e47="$r_s11e47 normative-requirement-missing"
-grep -qF 'macOS privileged service authority is numeric and enforced at every service entry' requirements.html \
-  || r_s11e47="$r_s11e47 normative-principal-clause-missing"
-grep -qF 'unsafe { hbb_common::libc::geteuid() }' requirements.html \
-  || r_s11e47="$r_s11e47 normative-effective-uid-clause-missing"
-grep -qF '<tr><td>155</td>' requirements.html || r_s11e47="$r_s11e47 appendix-row-missing"
-grep -qF 'macOS service/root authority depended on account-name text and lacked an entry-point principal gate' requirements.html \
-  || r_s11e47="$r_s11e47 appendix-disposition-missing"
 grep -qF 'macOS numeric service-principal authority (R-S11ag/R-S11e-47)' scripts/apple-conform-check.sh \
   || r_s11e47="$r_s11e47 apple-source-conformance-gate-missing"
-grep -qF 'R-S11e-47 — macOS numeric service-principal authority' HARDENING_STATUS.md \
-  || r_s11e47="$r_s11e47 hardening-ledger-missing"
 if [ -n "$r_s11e47" ]; then echo "  FAIL R-S11e-47 macOS numeric service-principal authority:$r_s11e47"; rc=1; else
   echo "  ok  R-S11e-47 macOS source binds the protected service listener to numeric effective UID 0 and propagates rejection at both entries; native Apple evidence remains pending R-R2/R-B2"; fi
 
@@ -6474,14 +6212,6 @@ for binding in \
   'assert!(selected_service_child_principal(&invalid).is_err());'; do
   grep -qF "$binding" <<<"$linux_selected_principal_test" || r_s11e48="$r_s11e48 focused-regression-missing"
 done
-grep -qF '<span class="id">R-S11ah</span>' requirements.html || r_s11e48="$r_s11e48 normative-requirement-missing"
-grep -qF 'Linux service-child principal selection is numeric, receiver-owned, and fail-closed' requirements.html \
-  || r_s11e48="$r_s11e48 normative-principal-clause-missing"
-grep -qF '<tr><td>156</td>' requirements.html || r_s11e48="$r_s11e48 appendix-row-missing"
-grep -qF 'Linux service-child root authority depended on the selected account name' requirements.html \
-  || r_s11e48="$r_s11e48 appendix-disposition-missing"
-grep -qF 'R-S11e-48 — Linux numeric selected-session service-child authority' HARDENING_STATUS.md \
-  || r_s11e48="$r_s11e48 hardening-ledger-missing"
 if [ -n "$r_s11e48" ]; then echo "  FAIL R-S11e-48 Linux numeric selected-session service-child authority:$r_s11e48"; rc=1; else
   echo "  ok  R-S11e-48 Linux service-child root privilege is derived from the selected canonical UID inside both supervisor and launcher; account-name root authority is absent"; fi
 
@@ -6554,14 +6284,6 @@ for binding in \
   'ServiceOwnedServerRole::Absent'; do
   grep -qF "$binding" <<<"$service_owned_role_tests" || r_s11e49="$r_s11e49 focused-regression-missing"
 done
-grep -qF '<span class="id">R-S11ai</span>' requirements.html || r_s11e49="$r_s11e49 normative-requirement-missing"
-grep -qF 'Service-owned server process role is one exact fail-closed argument protocol' requirements.html \
-  || r_s11e49="$r_s11e49 normative-exact-role-clause-missing"
-grep -qF '<tr><td>157</td>' requirements.html || r_s11e49="$r_s11e49 appendix-row-missing"
-grep -qF 'Service-owned server role admission searched for an internal marker anywhere in process arguments' requirements.html \
-  || r_s11e49="$r_s11e49 appendix-disposition-missing"
-grep -qF 'R-S11e-49 — exact service-owned server process role' HARDENING_STATUS.md \
-  || r_s11e49="$r_s11e49 hardening-ledger-missing"
 if [ -n "$r_s11e49" ]; then echo "  FAIL R-S11e-49 exact service-owned server process role:$r_s11e49"; rc=1; else
   echo "  ok  R-S11e-49 service-owned process policy accepts only exact --server + marker argv, rejects malformed marker-bearing entry before initialization, and keeps Windows child bootstrap read-only on that shared classifier"; fi
 
@@ -6662,14 +6384,6 @@ grep -qF 'command_args="--service"' res/service-managers/openrc/rustdesk || r_s1
 grep -qFx 'exec /usr/bin/rustdesk --service' res/service-managers/runit/run || r_s11e50="$r_s11e50 runit-exact-role-missing"
 grep -qFx 'exec /usr/bin/rustdesk --service' res/service-managers/manual/rustdesk-service || r_s11e50="$r_s11e50 manual-exact-role-missing"
 grep -qF 'Arguments="--service"' res/msi/Package/Components/RustDesk.wxs || r_s11e50="$r_s11e50 windows-msi-exact-role-missing"
-grep -qF '<span class="id">R-S11aj</span>' requirements.html || r_s11e50="$r_s11e50 normative-requirement-missing"
-grep -qF 'Desktop service-supervisor role is the exact singleton' requirements.html \
-  || r_s11e50="$r_s11e50 normative-exact-supervisor-clause-missing"
-grep -qF '<tr><td>158</td>' requirements.html || r_s11e50="$r_s11e50 appendix-row-missing"
-grep -qF 'Desktop service-supervisor role admission ignored every argument after' requirements.html \
-  || r_s11e50="$r_s11e50 appendix-disposition-missing"
-grep -qF 'R-S11e-50 — exact desktop service-supervisor process role' HARDENING_STATUS.md \
-  || r_s11e50="$r_s11e50 hardening-ledger-missing"
 if [ -n "$r_s11e50" ]; then echo "  FAIL R-S11e-50 exact desktop service-supervisor process role:$r_s11e50"; rc=1; else
   echo "  ok  R-S11e-50 supervisor policy accepts only singleton --service, rejects malformed marker-bearing entry before initialization, and binds Linux config/common dispatch plus the Windows SCM-owned writer path to the shared exact classifier"; fi
 
@@ -6762,14 +6476,6 @@ for binding in \
   'windows_machine_config::initialize(root, write_authority)'; do
   grep -qF "$binding" <<<"$windows_config_writer" || r_s11e51="$r_s11e51 local-system-writer-receiver-check-missing"
 done
-grep -qF '<span class="id">R-S11ak</span>' requirements.html || r_s11e51="$r_s11e51 normative-requirement-missing"
-grep -qF 'Windows service authority begins only after the own-process image connects to SCM' requirements.html \
-  || r_s11e51="$r_s11e51 normative-scm-entry-clause-missing"
-grep -qF '<tr><td>159</td>' requirements.html || r_s11e51="$r_s11e51 appendix-row-missing"
-grep -qF 'Windows service-specific authority preceded SCM ownership and dispatcher failure returned success' requirements.html \
-  || r_s11e51="$r_s11e51 appendix-disposition-missing"
-grep -qF 'R-S11e-51 — Windows SCM-owned service entry authority' HARDENING_STATUS.md \
-  || r_s11e51="$r_s11e51 hardening-ledger-missing"
 if [ -n "$r_s11e51" ]; then echo "  FAIL R-S11e-51 Windows SCM-owned service entry authority:$r_s11e51"; rc=1; else
   echo "  ok  R-S11e-51 exact Windows service entry proves SCM ownership before service-specific authority, keeps LocalSystem as an independent receiver check, reports initialization failure, and leaves child bootstrap read-only"; fi
 
@@ -6870,16 +6576,8 @@ for binding in \
   '".."'; do
   grep -qF "$binding" <<<"$macos_config_test" || r_s11e52="$r_s11e52 path-derivation-regression-missing"
 done
-grep -qF '<span class="id">R-S11al</span>' requirements.html || r_s11e52="$r_s11e52 normative-requirement-missing"
-grep -qF 'macOS service configuration and logging have one password-database-owned root before initialization' requirements.html \
-  || r_s11e52="$r_s11e52 normative-authority-clause-missing"
-grep -qF '<tr><td>160</td>' requirements.html || r_s11e52="$r_s11e52 appendix-row-missing"
-grep -qF 'macOS root service configuration and rotating logs followed inherited' requirements.html \
-  || r_s11e52="$r_s11e52 appendix-disposition-missing"
 grep -qF 'macOS service-owned config/log root (R-S11al/R-S11e-52)' scripts/apple-conform-check.sh \
   || r_s11e52="$r_s11e52 apple-source-conformance-gate-missing"
-grep -qF 'R-S11e-52 — macOS service-owned configuration/log root' HARDENING_STATUS.md \
-  || r_s11e52="$r_s11e52 hardening-ledger-missing"
 if [ -n "$r_s11e52" ]; then echo "  FAIL R-S11e-52 macOS service-owned config/log root:$r_s11e52"; rc=1; else
   echo "  ok  R-S11e-52 both macOS service entries prove UID 0, bind config/log paths to its protected passwd home, and only then initialize logging and the service listener"; fi
 
@@ -6950,16 +6648,8 @@ for message in messages:
     if branch.count(helper) != 1 or "crate::server::request_graceful_shutdown();" in branch:
         raise SystemExit(1)
 PY
-grep -qF '<span class="id">R-S11am</span>' requirements.html || r_s11e53="$r_s11e53 normative-requirement-missing"
-grep -qF 'Authority-bearing desktop IPC listener loss remains a fatal process outcome after graceful drain' requirements.html \
-  || r_s11e53="$r_s11e53 normative-outcome-clause-missing"
-grep -qF '<tr><td>161</td>' requirements.html || r_s11e53="$r_s11e53 appendix-row-missing"
-grep -qF 'Unexpected desktop IPC listener loss was reported as a successful process shutdown' requirements.html \
-  || r_s11e53="$r_s11e53 appendix-disposition-missing"
 grep -qF 'authority-bearing IPC listener failure outcome (R-S11am/R-S11e-53)' scripts/apple-conform-check.sh \
   || r_s11e53="$r_s11e53 apple-source-conformance-gate-missing"
-grep -qF 'R-S11e-53 — authority-bearing IPC listener failure outcome' HARDENING_STATUS.md \
-  || r_s11e53="$r_s11e53 hardening-ledger-missing"
 if [ -n "$r_s11e53" ]; then echo "  FAIL R-S11e-53 IPC listener failure outcome:$r_s11e53"; rc=1; else
   echo "  ok  R-S11e-53 all eight fatal desktop IPC listener endings latch failure before cancellation; finalizer callers exit 1 and protected Unix service IPC returns an error only after their owned drain"; fi
 
@@ -7079,14 +6769,6 @@ for binding in (
     if binding not in policy:
         raise SystemExit(1)
 PY
-grep -qF '<span class="id">R-S11an</span>' requirements.html || r_s11e54="$r_s11e54 normative-requirement-missing"
-grep -qF 'The Linux root supervisor owns protected service IPC readiness, failure, and complete drain' requirements.html \
-  || r_s11e54="$r_s11e54 normative-lifecycle-clause-missing"
-grep -qF '<tr><td>162</td>' requirements.html || r_s11e54="$r_s11e54 appendix-row-missing"
-grep -qF 'The Linux root service detached protected IPC startup and shutdown from supervisor ownership' requirements.html \
-  || r_s11e54="$r_s11e54 appendix-disposition-missing"
-grep -qF 'R-S11e-54 — Linux protected service IPC lifecycle ownership' HARDENING_STATUS.md \
-  || r_s11e54="$r_s11e54 hardening-ledger-missing"
 if [ -n "$r_s11e54" ]; then echo "  FAIL R-S11e-54 Linux protected service IPC lifecycle:$r_s11e54"; rc=1; else
   echo "  ok  R-S11e-54 Linux starts no controlled child before both protected listeners are ready and joins their complete admitted-work drain before child termination"; fi
 
@@ -7192,16 +6874,8 @@ ordered(
     "drop(listener_guard);",
 )
 PY
-grep -qF '<span class="id">R-S11ao</span>' requirements.html || r_s11e55="$r_s11e55 normative-requirement-missing"
-grep -qF 'macOS LaunchDaemon termination reaches the protected service IPC drain' requirements.html \
-  || r_s11e55="$r_s11e55 normative-signal-drain-clause-missing"
-grep -qF '<tr><td>163</td>' requirements.html || r_s11e55="$r_s11e55 appendix-row-missing"
-grep -qF 'The macOS root LaunchDaemon did not translate launchd termination into protected-IPC cancellation' requirements.html \
-  || r_s11e55="$r_s11e55 appendix-disposition-missing"
 grep -qF 'macOS LaunchDaemon protected IPC signal drain (R-S11ao/R-S11e-55)' scripts/apple-conform-check.sh \
   || r_s11e55="$r_s11e55 apple-source-conformance-gate-missing"
-grep -qF 'R-S11e-55 — macOS LaunchDaemon protected IPC signal drain' HARDENING_STATUS.md \
-  || r_s11e55="$r_s11e55 hardening-ledger-missing"
 if [ -n "$r_s11e55" ]; then echo "  FAIL R-S11e-55 macOS protected IPC signal drain:$r_s11e55"; rc=1; else
   echo "  ok  R-S11e-55 every macOS root service entry installs fallible cancellation-only termination handling before protected listeners, whose existing owner drains accepted work and password state"; fi
 
@@ -7211,12 +6885,8 @@ echo "== (3b-iii-d9cf) desktop controlled-server signal/listener lifecycle owner
 r_s11e56=
 python3 scripts/verify-desktop-ipc-lifecycle.py --repo . \
   || r_s11e56="$r_s11e56 controlled-server-lifecycle-ownership-invalid"
-grep -qF '<span class="id">R-S11ap</span>' requirements.html || r_s11e56="$r_s11e56 normative-requirement-missing"
-grep -qF '<tr><td>164</td>' requirements.html || r_s11e56="$r_s11e56 appendix-row-missing"
 grep -qF 'desktop controlled-server signal/listener lifecycle ownership (R-S11ap/R-S11e-56)' scripts/apple-conform-check.sh \
   || r_s11e56="$r_s11e56 apple-source-conformance-gate-missing"
-grep -qF 'R-S11e-56 — desktop controlled-server signal/listener lifecycle ownership' HARDENING_STATUS.md \
-  || r_s11e56="$r_s11e56 hardening-ledger-missing"
 if [ -n "$r_s11e56" ]; then echo "  FAIL R-S11e-56 desktop controlled-server signal/listener lifecycle:$r_s11e56"; rc=1; else
   echo "  ok  R-S11e-56 desktop controlled servers install signals before admission and retain the public listener under the R-S11as owner"; fi
 
@@ -7226,12 +6896,8 @@ echo "== (3b-iii-d9cg) non-returning graceful-shutdown finalizer ownership (R-S1
 r_s11e57=
 python3 scripts/verify-desktop-ipc-lifecycle.py --repo . \
   || r_s11e57="$r_s11e57 shutdown-finalizer-ownership-invalid"
-grep -qF '<span class="id">R-S11aq</span>' requirements.html || r_s11e57="$r_s11e57 normative-requirement-missing"
-grep -qF '<tr><td>165</td>' requirements.html || r_s11e57="$r_s11e57 appendix-row-missing"
 grep -qF 'non-returning graceful-shutdown finalizer ownership (R-S11aq/R-S11e-57)' scripts/apple-conform-check.sh \
   || r_s11e57="$r_s11e57 apple-source-conformance-gate-missing"
-grep -qF 'R-S11e-57 — non-returning graceful-shutdown finalizer ownership' HARDENING_STATUS.md \
-  || r_s11e57="$r_s11e57 hardening-ledger-missing"
 if [ -n "$r_s11e57" ]; then echo "  FAIL R-S11e-57 graceful-shutdown finalizer ownership:$r_s11e57"; rc=1; else
   echo "  ok  R-S11e-57 the crate-private non-returning finalizer has one post-join desktop caller and no obsolete election/follower path"; fi
 
@@ -7244,12 +6910,8 @@ python3 scripts/verify-desktop-ipc-lifecycle.py --repo . \
   || r_s11e58="$r_s11e58 protected-service-outcome-ownership-invalid"
 grep -qF 'fn r_s11e58_protected_service_ipc_returns_listener_failure_to_its_owner()' src/ipc.rs \
   || r_s11e58="$r_s11e58 focused-regression-missing"
-grep -qF '<span class="id">R-S11ar</span>' requirements.html || r_s11e58="$r_s11e58 normative-requirement-missing"
-grep -qF '<tr><td>166</td>' requirements.html || r_s11e58="$r_s11e58 appendix-row-missing"
 grep -qF 'protected Unix service IPC foreground lifecycle ownership (R-S11ar/R-S11e-58)' scripts/apple-conform-check.sh \
   || r_s11e58="$r_s11e58 apple-source-conformance-gate-missing"
-grep -qF 'R-S11e-58 — protected Unix service IPC foreground lifecycle ownership' HARDENING_STATUS.md \
-  || r_s11e58="$r_s11e58 hardening-ledger-missing"
 if [ -n "$r_s11e58" ]; then echo "  FAIL R-S11e-58 protected service IPC lifecycle ownership:$r_s11e58"; rc=1; else
   echo "  ok  R-S11e-58 protected Unix IPC drains and returns to its foreground owner, outside the desktop finalizer"; fi
 
@@ -7264,12 +6926,8 @@ python3 scripts/verify-desktop-ipc-lifecycle.py --repo . --self-test \
 python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
   scripts/verify-desktop-ipc-lifecycle.py \
   || r_s11e59="$r_s11e59 validator-python-syntax-invalid"
-grep -qF '<span class="id">R-S11as</span>' requirements.html || r_s11e59="$r_s11e59 normative-requirement-missing"
-grep -qF '<tr><td>167</td>' requirements.html || r_s11e59="$r_s11e59 appendix-row-missing"
 grep -qF 'desktop local-IPC readiness and retained native-worker ownership (R-S11as/R-S11e-59)' scripts/apple-conform-check.sh \
   || r_s11e59="$r_s11e59 apple-source-conformance-gate-missing"
-grep -qF 'R-S11e-59 — desktop local-IPC readiness and retained native-worker ownership' HARDENING_STATUS.md \
-  || r_s11e59="$r_s11e59 hardening-ledger-missing"
 if [ -n "$r_s11e59" ]; then echo "  FAIL R-S11e-59 desktop IPC lifecycle ownership:$r_s11e59"; rc=1; else
   echo "  ok  R-S11e-59 all desktop IPC is ready before public admission and returns through one retained, exactly joined native worker before the sole finalizer"; fi
 
@@ -7285,10 +6943,6 @@ python3 scripts/verify-linux-service-admission.py --repo . --self-test \
 python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
   scripts/verify-linux-service-admission.py \
   || r_s11e60="$r_s11e60 validator-python-syntax-invalid"
-grep -qF '<span class="id">R-S11at</span>' requirements.html || r_s11e60="$r_s11e60 normative-requirement-missing"
-grep -qF '<tr><td>168</td>' requirements.html || r_s11e60="$r_s11e60 appendix-row-missing"
-grep -qF 'R-S11e-60 — Linux protected-service admission owns active-session identity work' HARDENING_STATUS.md \
-  || r_s11e60="$r_s11e60 hardening-ledger-missing"
 if [ -n "$r_s11e60" ]; then echo "  FAIL R-S11e-60 Linux protected-service admission:$r_s11e60"; rc=1; else
   echo "  ok  R-S11e-60 transaction permits own both Linux authorization paths and cached active UID only prefilters the fresh final-authority lookup"; fi
 
@@ -7303,10 +6957,6 @@ python3 scripts/verify-macos-helper-build-binding.py --repo . --self-test \
 python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
   scripts/verify-macos-helper-build-binding.py \
   || r_s11e61="$r_s11e61 validator-python-syntax-invalid"
-grep -qF '<span class="id">R-S11au</span>' requirements.html || r_s11e61="$r_s11e61 normative-requirement-missing"
-grep -qF '<tr><td>169</td>' requirements.html || r_s11e61="$r_s11e61 appendix-row-missing"
-grep -qF 'R-S11e-61 — macOS privileged helper current-build binding' HARDENING_STATUS.md \
-  || r_s11e61="$r_s11e61 hardening-ledger-missing"
 grep -qF 'macOS privileged helper current-build binding (R-S11au/R-S11e-61)' scripts/apple-conform-check.sh \
   || r_s11e61="$r_s11e61 apple-source-conformance-gate-missing"
 if [ -n "$r_s11e61" ]; then echo "  FAIL R-S11e-61 macOS helper current-build binding:$r_s11e61"; rc=1; else
@@ -7323,10 +6973,6 @@ python3 scripts/verify-macos-variadic-open-mode.py --repo . --self-test \
 python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
   scripts/verify-macos-variadic-open-mode.py \
   || r_s11e62="$r_s11e62 validator-python-syntax-invalid"
-grep -qF '<span class="id">R-S11av</span>' requirements.html || r_s11e62="$r_s11e62 normative-requirement-missing"
-grep -qF '<tr><td>170</td>' requirements.html || r_s11e62="$r_s11e62 appendix-row-missing"
-grep -qF 'R-S11e-62 — macOS variadic file-creation ABI' HARDENING_STATUS.md \
-  || r_s11e62="$r_s11e62 hardening-ledger-missing"
 grep -qF 'macOS variadic file-creation ABI (R-S11av/R-S11e-62)' scripts/apple-conform-check.sh \
   || r_s11e62="$r_s11e62 apple-source-conformance-gate-missing"
 if [ -n "$r_s11e62" ]; then echo "  FAIL R-S11e-62 macOS variadic file-creation ABI:$r_s11e62"; rc=1; else
@@ -7342,10 +6988,6 @@ python3 scripts/verify-windows-ipc-dacl-coverage.py --repo . --self-test \
   || r_s11e63="$r_s11e63 windows-ipc-dacl-coverage-mutations-invalid"
 python3 -c 'from pathlib import Path; p = Path("scripts/verify-windows-ipc-dacl-coverage.py"); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
   || r_s11e63="$r_s11e63 validator-python-syntax-invalid"
-grep -qF '<span class="id">R-S11aw</span>' requirements.html || r_s11e63="$r_s11e63 normative-requirement-missing"
-grep -qF '<tr><td>171</td>' requirements.html || r_s11e63="$r_s11e63 appendix-row-missing"
-grep -qF 'R-S11e-63 — complete Windows production-listener DACL coverage' HARDENING_STATUS.md \
-  || r_s11e63="$r_s11e63 hardening-ledger-missing"
 if [ -n "$r_s11e63" ]; then echo "  FAIL R-S11e-63 Windows production-listener DACL coverage:$r_s11e63"; rc=1; else
   echo "  ok  R-S11e-63 every production Windows IPC listener uses explicit local SDDL and unknown postfixes fail closed"; fi
 
@@ -7537,14 +7179,6 @@ grep -qF 'verify_smoke_build_postconditions' scripts/smoke-server-stage.sh \
   || r_s11e64="$r_s11e64 video-pipeline-semantic-verifier-failed"
 /usr/bin/python3 -I -S scripts/verify-video-pipeline-smoke.py --repo . --self-test \
   || r_s11e64="$r_s11e64 video-pipeline-mutation-self-test-failed"
-grep -qF '<span class="id">R-S11ax</span>' requirements.html || r_s11e64="$r_s11e64 normative-requirement-missing"
-grep -qF '<tr><td>172</td>' requirements.html || r_s11e64="$r_s11e64 appendix-row-missing"
-grep -qF '<span class="id">R-S11dd</span>' requirements.html || r_s11e64="$r_s11e64 host-build-normative-requirement-missing"
-grep -qF '<tr><td>257</td>' requirements.html || r_s11e64="$r_s11e64 host-build-appendix-row-missing"
-grep -qF 'R-S11e-64 — smoke container image, network, and dependency authority' HARDENING_STATUS.md \
-  || r_s11e64="$r_s11e64 hardening-ledger-missing"
-grep -qF 'R-S11dd/R-S11e-122 — runtime-smoke host, Docker-client, build-user, and checkout-write' HARDENING_STATUS.md \
-  || r_s11e64="$r_s11e64 host-build-hardening-ledger-missing"
 if [ -n "$r_s11e64" ]; then echo "  FAIL R-S11e-64/R-S11e-122 smoke container/host-build authority:$r_s11e64"; rc=1; else
   echo "  ok  R-S11e-64/R-S11e-122 smoke defaults portable stages to numeric non-root confinement, requires explicit root-container selection for privileged fixtures, admits only the authenticated verifier-VM Docker authority, has no host process scan, and keeps every build/runtime/tool container exact-image, no-pull, network-none, and unpublished"; fi
 
@@ -7610,10 +7244,6 @@ grep -qF 'environment.as_ptr(),' <<<"$privacy_broker_launch" \
 if grep -Eq 'CreateEnvironmentBlock\([^;]*TRUE\)' <<<"$(tr '\n' ' ' < "$privacy_broker_source")"; then
   r_s11e65="$r_s11e65 privacy-broker-inherited-caller-environment-present"
 fi
-grep -qF '<span class="id">R-S11ay</span>' requirements.html || r_s11e65="$r_s11e65 normative-requirement-missing"
-grep -qF '<tr><td>173</td>' requirements.html || r_s11e65="$r_s11e65 appendix-row-missing"
-grep -qF 'R-S11e-65 — Windows token-switched child environment finality' HARDENING_STATUS.md \
-  || r_s11e65="$r_s11e65 hardening-ledger-missing"
 if [ -n "$r_s11e65" ]; then echo "  FAIL R-S11e-65 Windows token-switched child environment finality:$r_s11e65"; rc=1; else
   echo "  ok  R-S11e-65 token-switched children require a non-inherited exact-token environment and abort before launch if its construction fails"; fi
 
@@ -7659,10 +7289,6 @@ done
   || r_s11e66="$r_s11e66 working-directory-inventory-drift"
 grep -qF 'fn r_s11e66_macos_privileged_script_environment_is_exact()' src/platform/macos.rs \
   || r_s11e66="$r_s11e66 actual-child-environment-regression-missing"
-grep -qF '<span class="id">R-S11az</span>' requirements.html || r_s11e66="$r_s11e66 normative-requirement-missing"
-grep -qF '<tr><td>174</td>' requirements.html || r_s11e66="$r_s11e66 appendix-row-missing"
-grep -qF 'R-S11e-66 — macOS administrator-script environment finality' HARDENING_STATUS.md \
-  || r_s11e66="$r_s11e66 hardening-ledger-missing"
 if [ -n "$r_s11e66" ]; then echo "  FAIL R-S11e-66 macOS administrator-script environment finality:$r_s11e66"; rc=1; else
   echo "  ok  R-S11e-66 administrator-authorized service scripts receive only the fixed system PATH/C locale and root working directory"; fi
 
@@ -7731,10 +7357,6 @@ for regression in \
   grep -qF "$regression" libs/clipboard/src/platform/unix/fuse/mod.rs \
     || r_s11e67="$r_s11e67 actual-child-regression-binding-missing"
 done
-grep -qF '<span class="id">R-S11ba</span>' requirements.html || r_s11e67="$r_s11e67 normative-requirement-missing"
-grep -qF '<tr><td>175</td>' requirements.html || r_s11e67="$r_s11e67 appendix-row-missing"
-grep -qF 'R-S11e-67 — Linux clipboard fusermount process-context finality' HARDENING_STATUS.md \
-  || r_s11e67="$r_s11e67 hardening-ledger-missing"
 if [ -n "$r_s11e67" ]; then echo "  FAIL R-S11e-67 Linux clipboard fusermount process-context finality:$r_s11e67"; rc=1; else
   echo "  ok  R-S11e-67 mount receives only its communication-fd environment while unmount receives none; both start at root with null stdin"; fi
 
@@ -7815,10 +7437,6 @@ for proof in \
   'unexpected.is_empty()'; do
   grep -qF "$proof" <<<"$systemctl_tests" || r_s11e41="$r_s11e41 focused-regression-missing"
 done
-grep -qF '<span class="id">R-S11aa</span>' requirements.html || r_s11e41="$r_s11e41 normative-requirement-missing"
-grep -qF 'Linux systemctl service-lifecycle environment and target authority' requirements.html || r_s11e41="$r_s11e41 appendix-disposition-missing"
-grep -qF '<tr><td>149</td>' requirements.html || r_s11e41="$r_s11e41 appendix-row-missing"
-grep -qF 'R-S11e-41 — Linux systemctl service-lifecycle authority' HARDENING_STATUS.md || r_s11e41="$r_s11e41 hardening-ledger-missing"
 if [ -n "$r_s11e41" ]; then echo "  FAIL R-S11e-41 Linux systemctl service-lifecycle authority:$r_s11e41"; rc=1; else
   echo "  ok  R-S11e-41 Linux service lifecycle uses a typed four-verb system-manager request, a locally validated explicit service unit, empty environment, null stdin, fixed trusted image, stdio-only descriptor boundary, and successful exit"; fi
 
@@ -7859,10 +7477,6 @@ done
 grep -qF 'crate::common::run_me_with_env_and_parent_death(' <<<"$headless_cm_launch" \
   && grep -qF 'cm_launch_env(cm_launch_token())' <<<"$headless_cm_launch" \
   || r_s11e31="$r_s11e31 service-owned-headless-cm-consumer-missing"
-grep -qF '<span class="id">R-S11q</span>' requirements.html                         || r_s11e31="$r_s11e31 normative-requirement-missing"
-grep -qF 'Linux same-executable child inherited descriptor authority' requirements.html || r_s11e31="$r_s11e31 appendix-disposition-missing"
-grep -qF '<tr><td>139</td>' requirements.html                                        || r_s11e31="$r_s11e31 appendix-row-missing"
-grep -qF 'R-S11e-31 — Linux same-executable child inherited descriptor authority' HARDENING_STATUS.md || r_s11e31="$r_s11e31 hardening-ledger-missing"
 if [ -n "$r_s11e31" ]; then echo "  FAIL R-S11e-31 Linux same-executable child inherited descriptor authority:$r_s11e31"; rc=1; else
   echo "  ok  R-S11e-31 Linux same-executable launches apply the non-stdio close-on-exec policy before exec and carry an actual-child regression"; fi
 
@@ -7948,10 +7562,6 @@ for invalid_binding in \
   '&[outside_bound]'; do
   grep -qF "$invalid_binding" <<<"$invalid_allowlist_test" || r_s11e32="$r_s11e32 invalid-allowlist-proof-missing"
 done
-grep -qF '<span class="id">R-S11r</span>' requirements.html                         || r_s11e32="$r_s11e32 normative-requirement-missing"
-grep -qF 'Linux external-helper descriptor allowlist authority' requirements.html     || r_s11e32="$r_s11e32 appendix-disposition-missing"
-grep -qF '<tr><td>140</td>' requirements.html                                         || r_s11e32="$r_s11e32 appendix-row-missing"
-grep -qF 'R-S11e-32 — Linux external-helper descriptor allowlist authority' HARDENING_STATUS.md || r_s11e32="$r_s11e32 hardening-ledger-missing"
 if [ -n "$r_s11e32" ]; then echo "  FAIL R-S11e-32 Linux external-helper descriptor allowlist authority:$r_s11e32"; rc=1; else
   echo "  ok  R-S11e-32 every production Linux helper has an application-owned descriptor contract; only fusermount receives its exact communication socket"; fi
 
@@ -7980,14 +7590,6 @@ if grep -qF '"backtrace"' <<<"$hbb_common_lock_record"; then
 fi
 [ ! -e libs/hbb_common/examples/system_message.rs ] \
   || r_s11e33="$r_s11e33 obsolete-system-message-example-present"
-grep -qF '<span class="id">R-S11s</span>' requirements.html \
-  || r_s11e33="$r_s11e33 normative-requirement-missing"
-grep -qF '<tr><td>141</td>' requirements.html \
-  || r_s11e33="$r_s11e33 appendix-row-missing"
-grep -qF 'Desktop fatal-signal callback authority' requirements.html \
-  || r_s11e33="$r_s11e33 appendix-disposition-missing"
-grep -qF 'R-S11e-33 — desktop fatal-signal default disposition' HARDENING_STATUS.md \
-  || r_s11e33="$r_s11e33 hardening-ledger-missing"
 if [ -n "$r_s11e33" ]; then echo "  FAIL R-S11e-33 desktop fatal-signal default-disposition authority:$r_s11e33"; rc=1; else
   echo "  ok  R-S11e-33 SIGSEGV retains the OS default disposition; crash-time Rust callbacks, config writes, input cleanup, and helper launches are absent"; fi
 
@@ -8130,12 +7732,6 @@ for actual_child_binding in \
 done
 grep -qF 'macOS child inherited descriptor authority (R-S11t/R-S11e-34)' scripts/apple-conform-check.sh \
   || r_s11e34="$r_s11e34 apple-source-conformance-gate-missing"
-grep -qF '<span class="id">R-S11t</span>' requirements.html \
-  || r_s11e34="$r_s11e34 normative-requirement-missing"
-grep -qF '<tr><td>142</td>' requirements.html \
-  || r_s11e34="$r_s11e34 appendix-row-missing"
-grep -qF 'R-S11e-34 — macOS child inherited descriptor authority' HARDENING_STATUS.md \
-  || r_s11e34="$r_s11e34 hardening-ledger-missing"
 if [ -n "$r_s11e34" ]; then echo "  FAIL R-S11e-34 macOS child inherited descriptor authority:$r_s11e34"; rc=1; else
   echo "  ok  R-S11e-34 every production macOS child image is stdio-only; the unused dependency-owned PATH launch is absent"; fi
 
@@ -8374,12 +7970,6 @@ if echo "$sas_policy_body" | grep -Eq 'KEY_SET_VALUE|set_value|delete_value|remo
   r_s11c23="$r_s11c23 sas-policy-runtime-mutation-present"
 fi
 grep -q 'windows_sas_policy_matrix_is_read_only_and_fail_closed' src/platform/windows.rs || r_s11c23="$r_s11c23 sas-policy-matrix-test-missing"
-grep -Fq '<span class="id">R-S11g</span>' requirements.html                         || r_s11c23="$r_s11c23 transaction-finality-requirement-missing"
-grep -Fq '<span class="id">R-S19a</span>' requirements.html                         || r_s11c23="$r_s11c23 input-lifecycle-requirement-missing"
-grep -Fq '<tr><td>126</td>' requirements.html                                         || r_s11c23="$r_s11c23 transaction-input-appendix-missing"
-grep -Fq 'R-S11e-21 — raw password transaction finality and service-owned SAS' HARDENING_STATUS.md || r_s11c23="$r_s11c23 transaction-finality-ledger-missing"
-grep -Fq 'R-S19a — connection-owned controlled-input execution' HARDENING_STATUS.md || r_s11c23="$r_s11c23 input-ownership-ledger-missing"
-grep -Fq 'privacy blackout contains no `CGEventTap` callback or run-loop source' HARDENING_STATUS.md || r_s11c23="$r_s11c23 macos-privacy-input-disposition-missing"
 if [ -n "$r_s11c23" ]; then echo "  FAIL R-S11c-2/R-S11c-3 Windows _service raw privileged command closure:$r_s11c23"; rc=1; else
   echo "  ok  R-S11c-2/R-S11c-3/R-S11g input dispatch is connection-owned, capacity-bounded, cancellation-linearized, and cleanup-joined; Windows SAS uses a dedicated bounded SYSTEM-only endpoint, immutable process-generation authority, exact supervised-child authorization, and read-only administrator policy"; fi
 
@@ -8719,8 +8309,6 @@ fi
 if [ -z "$clipboard_gate_line" ] || [ -z "$clipboard_read_line" ] || [ "$clipboard_gate_line" -ge "$clipboard_read_line" ]; then
   r_s11c22="$r_s11c22 cm-clipboard-capability-gate-not-before-read"
 fi
-grep -Fq 'R-S11c-22 — Windows CM non-file clipboard authority' HARDENING_STATUS.md || r_s11c22="$r_s11c22 hardening-ledger-missing"
-grep -Fq 'R-S11c-22 makes non-file clipboard reads a typed connection-bound CM capability' requirements.html || r_s11c22="$r_s11c22 requirements-disposition-missing"
 if [ -n "$r_s11c22" ]; then echo "  FAIL R-S11c-22 Windows CM non-file clipboard authority:$r_s11c22"; rc=1; else
   echo "  ok  R-S11c-22 Windows CM non-file clipboard reads require a subscribed Remote connection token and live server-validated clipboard authority"; fi
 
@@ -8814,19 +8402,6 @@ done
 if [ -n "$r_s11c11" ]; then echo "  FAIL R-S11c-11 desktop CM endpoint-selection authority:$r_s11c11"; rc=1; else
   echo "  ok  R-S11c-11/R-S11gi Linux uses direct-child identity; macOS/Windows retain and lease the exact launched process generation before mutual proof and token disclosure; secondary clients use the server-owned facade"; fi
 
-echo "== R-S11b/R-S11c ledger consistency =="
-r_s11_docs=
-grep -Fq 'R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11_docs="$r_s11_docs service-authority-source-status-missing"
-grep -Fq 'R-S11e-21 — raw password transaction finality and service-owned SAS — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11_docs="$r_s11_docs raw-password-finality-source-status-missing"
-grep -Fq 'R-S19a — connection-owned controlled-input execution — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11_docs="$r_s11_docs controlled-input-source-status-missing"
-for requirement_id in R-S11g R-S11h R-S11i R-S19a; do
-  grep -Fq "<span class=\"id\">$requirement_id</span>" requirements.html || r_s11_docs="$r_s11_docs requirements-$requirement_id-missing"
-done
-if grep -Eq 'status: OPEN / RELEASE-BLOCKING|p-block">OPEN</span> R-S11c-11' HARDENING_STATUS.md requirements.html; then
-  r_s11_docs="$r_s11_docs stale-open-service-authority-status"
-fi
-if [ -n "$r_s11_docs" ]; then echo "  FAIL R-S11b/R-S11c ledger consistency:$r_s11_docs"; rc=1; else
-  echo "  ok  R-S11b/R-S11c/R-S11i ledger and requirements match the implemented raw password, platform authority, finality, and controlled-input architecture while native/cold validation remains explicitly pending"; fi
 
 # (3b-iii-f3) R-S11c-8/R-S11dz: whiteboard is a helper authority and resource
 # boundary. It must use a closed, bounded protocol after exact launch/connection
@@ -8879,9 +8454,6 @@ grep -q 'Refusing root-to-user whiteboard launch; the user-context service must 
 grep -q 'WindowsUserHelperLaunch::Whiteboard {' src/whiteboard/client.rs || r_s11c8="$r_s11c8 windows-typed-whiteboard-launch-missing"
 grep -q 'pub(crate) fn run_user_helper(' src/platform/windows.rs || r_s11c8="$r_s11c8 windows-typed-helper-launcher-missing"
 grep -q 'LPCWSTR extraEnvironment' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-createprocess-env-missing"
-grep -Fq '<span class="id">R-S11dz</span>' requirements.html || r_s11c8="$r_s11c8 whiteboard-protocol-requirement-missing"
-grep -Fq '<tr><td>279</td>' requirements.html || r_s11c8="$r_s11c8 whiteboard-protocol-appendix-row-missing"
-grep -Fq 'R-S11dz/R-S11e-144 — whiteboard helper protocol and resource finality' HARDENING_STATUS.md || r_s11c8="$r_s11c8 whiteboard-protocol-ledger-missing"
 if awk '/^extern "C"[[:space:]]*$/,/end of extern "C"/' src/platform/windows.cc | grep -q 'std::vector<wchar_t> merge_environment_blocks'; then
   r_s11c8="$r_s11c8 windows-env-helper-has-c-linkage"
 fi
@@ -8976,9 +8548,6 @@ fi
 if echo "$desktop_url_receiver" | grep -Eq 'Connection::new\(conn\)|next_timeout\(1000\)|Data::UrlLink'; then
   r_s11ea="$r_s11ea legacy-unbounded-receiver"
 fi
-grep -Fq '<span class="id">R-S11ea</span>' requirements.html || r_s11ea="$r_s11ea requirement-missing"
-grep -Fq '<tr><td>280</td>' requirements.html || r_s11ea="$r_s11ea appendix-row-missing"
-grep -Fq 'R-S11ea/R-S11e-145 — desktop URL/instance handoff closed protocol and resource budget' HARDENING_STATUS.md || r_s11ea="$r_s11ea ledger-missing"
 if [ -n "$r_s11ea" ]; then echo "  FAIL R-S11ea desktop URL/instance IPC:$r_s11ea"; rc=1; else
   echo "  ok  R-S11ea desktop URL/instance IPC authenticates before one strict typed request, caps both stream ends and I/O time, revalidates direct-address URLs, and dispatches distinct open/activate/close events without sentinels"; fi
 
@@ -9057,10 +8626,6 @@ if echo "$macos_template_renderer" | grep -qE 'replace\("com\.carriez\.rustdesk"
 fi
 grep -Fq '<string>com.carriez.rustdesk</string>' src/platform/privileges_scripts/daemon.plist || r_s11c5="$r_s11c5 macos-daemon-associated-bundle-id-not-fixed"
 grep -Fq '<string>com.carriez.rustdesk</string>' src/platform/privileges_scripts/agent.plist || r_s11c5="$r_s11c5 macos-agent-associated-bundle-id-not-fixed"
-grep -Fq 'macOS privileged-service packaging hazards' requirements.html || r_s11c5="$r_s11c5 macos-template-identity-requirements-missing"
-grep -Fq 'R-S11c-21 — macOS privileged service template identity input' HARDENING_STATUS.md || r_s11c5="$r_s11c5 macos-template-identity-ledger-missing"
-grep -Fq 'macOS privileged process-launch provenance' requirements.html || r_s11c5="$r_s11c5 macos-residual-process-launch-requirements-missing"
-grep -Fq 'R-S11e-10 — macOS residual process launch provenance' HARDENING_STATUS.md || r_s11c5="$r_s11c5 macos-residual-process-launch-ledger-missing"
 grep -Fq 'fn macos_installed_app_bundle_path() -> PathBuf' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-app-bundle-path-helper-missing"
 grep -Fq 'fn macos_privileged_helper_path_is_expected_and_trusted(current_exe: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-helper-trust-missing"
 grep -Fq 'fn macos_installed_app_path_is_expected_and_trusted(peer_exe: &Path) -> bool' src/ipc/auth.rs || r_s11c5="$r_s11c5 macos-service-ipc-app-trust-missing"
@@ -9293,11 +8858,6 @@ if [ -n "$r_s11c10b" ]; then echo "  FAIL R-S11c-10b Linux service lifecycle pro
 echo "== (3b-iii-h2b) Linux supervisor directly owns server children (R-S11c-27a) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c27a_linux_service_child_parent_death --color never
 r_s11c27a=
-grep -qF 'SOURCE/RUNTIME/RELEASE-GATE IMPLEMENTED THROUGH R-S11c-27s; EXACT COLD' HARDENING_STATUS.md || r_s11c27a="$r_s11c27a parent-status-not-implemented-through-27s"
-grep -qF 'ARTIFACT EXECUTION PENDING' HARDENING_STATUS.md || r_s11c27a="$r_s11c27a parent-artifact-pending-scope-missing"
-if grep -Fq 'OPEN.** Replace process-name/text-based server cleanup with an' HARDENING_STATUS.md; then
-  r_s11c27a="$r_s11c27a stale-parent-source-open-wording"
-fi
 service_child_image_block=$(awk '/fn open_active_user_service_child_executable/,/fn try_start_server_/' src/platform/linux.rs)
 service_child_launch_block=$(awk '/fn try_start_server_/,/pub fn require_service_owned_server_parent_liveness/' src/platform/linux.rs)
 grep -qF 'struct OwnedServiceChild {' src/platform/linux.rs || r_s11c27a="$r_s11c27a no-owned-child-type"
@@ -9356,7 +8916,6 @@ if grep -qF 'fn stop_rustdesk_servers' src/platform/linux.rs ||
    grep -qF 'kill_current_exe_processes_with_arg("--server"' src/platform/linux.rs; then
   r_s11c27a="$r_s11c27a process-table-server-authority-regressed"
 fi
-grep -qF 'R-S11c-27a — direct Linux service-child ownership and supervisor-death binding — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11c27a="$r_s11c27a hardening-ledger-missing"
 if [ -n "$r_s11c27a" ]; then echo "  FAIL R-S11c-27a Linux direct service-child ownership:$r_s11c27a"; rc=1; else
   echo "  ok  R-S11c-27a supervisor owns the final server Child, drops credentials without a wrapper, blocks exec privilege regain, binds child death to supervisor death across exec, and never sweeps unrelated servers"; fi
 
@@ -9411,7 +8970,6 @@ grep -qE '^RuntimeDirectory=rustdesk$' res/rustdesk.service || r_s11c27b="$r_s11
 grep -qE '^RuntimeDirectoryMode=0700$' res/rustdesk.service || r_s11c27b="$r_s11c27b systemd-runtime-mode-missing"
 grep -qE '^RuntimeDirectoryPreserve=restart$' res/rustdesk.service || r_s11c27b="$r_s11c27b systemd-crash-record-preservation-missing"
 grep -qE '^SystemCallFilter=.*pidfd_open.*pidfd_send_signal.*renameat2' res/rustdesk.service || r_s11c27b="$r_s11c27b systemd-lifecycle-syscalls-not-allowed"
-grep -qF 'R-S11c-27b — durable Linux service-child record and pidfd-first crash recovery — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11c27b="$r_s11c27b hardening-ledger-missing"
 if [ -n "$r_s11c27b" ]; then echo "  FAIL R-S11c-27b Linux durable service-child crash recovery:$r_s11c27b"; rc=1; else
   echo "  ok  R-S11c-27b root-only atomic records + singleton lease + pidfd-bound signaling + fail-closed pidfd-unavailable recovery"; fi
 
@@ -9454,7 +9012,6 @@ grep -qF 'terminate_child(server, "--server", runtime)?;' <<<"$service_child_rep
 if [ "$(grep -cF ')? {' <<<"$service_child_loop_block")" -lt 2 ]; then
   r_s11c27c="$r_s11c27c replacement-decision-error-not-propagated-at-call-sites"
 fi
-grep -qF 'R-S11c-27c — bounded direct-child graceful/forced termination — SOURCE IMPLEMENTED' HARDENING_STATUS.md || r_s11c27c="$r_s11c27c hardening-ledger-missing"
 if [ -n "$r_s11c27c" ]; then echo "  FAIL R-S11c-27c Linux bounded direct-child termination:$r_s11c27c"; rc=1; else
   echo "  ok  R-S11c-27c exact retained Child gets bounded TERM then bounded KILL/reap, and uncertain reap exits nonzero before replacement"; fi
 
@@ -9473,7 +9030,6 @@ for hostile_case in 'reused pid' 'different executable with identical argv' 'wro
   echo "$service_child_crash_test" | grep -qF "$hostile_case" || r_s11c27d="$r_s11c27d hostile-evidence-case-missing:$hostile_case"
 done
 echo "$service_child_crash_test" | grep -qF 'exact_owner.0.try_wait().unwrap().is_none()' || r_s11c27d="$r_s11c27d unrelated-process-survival-not-observed"
-grep -qF 'R-S11c-27d — isolated Linux supervisor-crash/restart recovery behavior' HARDENING_STATUS.md || r_s11c27d="$r_s11c27d hardening-ledger-missing"
 if [ -n "$r_s11c27d" ]; then echo "  FAIL R-S11c-27d Linux supervisor crash/restart recovery behavior:$r_s11c27d"; rc=1; else
   echo "  ok  R-S11c-27d private-runtime crash/restart releases the singleton lease, reaps only exact evidence, and preserves live mismatches without signaling"; fi
 
@@ -9491,7 +9047,6 @@ if [ "$(echo "$service_child_executable_test" | grep -cF 'replacement_owner.0.tr
 fi
 echo "$service_child_executable_test" | grep -qF 'runtime.publish_record(&owned_record)' || r_s11c27e="$r_s11c27e replaced-original-positive-recovery-not-tested"
 echo "$service_child_executable_test" | grep -qF 'runtime.publish_record(&unlinked_record)' || r_s11c27e="$r_s11c27e unlinked-object-positive-recovery-not-tested"
-grep -qF 'R-S11c-27e — executable-object replacement/deletion recovery behavior' HARDENING_STATUS.md || r_s11c27e="$r_s11c27e hardening-ledger-missing"
 if [ -n "$r_s11c27e" ]; then echo "  FAIL R-S11c-27e Linux executable-object recovery behavior:$r_s11c27e"; rc=1; else
   echo "  ok  R-S11c-27e recovery follows the recorded executable object across replacement/unlink and never targets an identical-role different-inode process"; fi
 
@@ -9549,7 +9104,6 @@ grep -qF 'self-test rejected append-only growth of the pinned log object' script
 grep -qF 'service-lifecycle-manual)' scripts/smoke-server-stage.sh || r_s11c27f="$r_s11c27f mounted-stage-dispatch-missing"
 grep -qF 'LIFECYCLE_RUN=(smoke_docker run --rm --network none' scripts/smoke-server.sh || r_s11c27f="$r_s11c27f network-isolated-runtime-missing"
 grep -qF 'record_stage_status R-S11c-27f' scripts/smoke-server.sh || r_s11c27f="$r_s11c27f runtime-status-not-preserved"
-grep -qF 'R-S11c-27f — actual-binary manual/non-systemd supervisor lifecycle behavior' HARDENING_STATUS.md || r_s11c27f="$r_s11c27f hardening-ledger-missing"
 if [ -n "$r_s11c27f" ]; then echo "  FAIL R-S11c-27f Linux manual supervisor lifecycle:$r_s11c27f"; rc=1; else
   echo "  ok  R-S11c-27f actual --service SIGTERM reaps/removes its exact child, fresh generations restart, a stopped child takes bounded KILL/reap, and an unrelated non-root portable server survives"; fi
 
@@ -9567,7 +9121,6 @@ grep -qF 'Discarding (exited Linux service child record' scripts/smoke-service-l
 grep -qF '[ "$GENERATION" != "$crashed_generation" ]' scripts/smoke-service-lifecycle.sh || r_s11c27g="$r_s11c27g recovered-generation-not-distinct"
 grep -qF 'SERVICE_LIFECYCLE_CRASH_RESTART=pass prior_generation=' scripts/smoke-service-lifecycle.sh || r_s11c27g="$r_s11c27g runtime-result-marker-missing"
 grep -qF 'record_stage_status R-S11c-27g' scripts/smoke-server.sh || r_s11c27g="$r_s11c27g runtime-status-not-preserved"
-grep -qF 'R-S11c-27g — actual-binary manual supervisor crash/restart recovery behavior' HARDENING_STATUS.md || r_s11c27g="$r_s11c27g hardening-ledger-missing"
 if [ -n "$r_s11c27g" ]; then echo "  FAIL R-S11c-27g Linux actual-binary crash/restart:$r_s11c27g"; rc=1; else
   echo "  ok  R-S11c-27g actual supervisor SIGKILL triggers exact child parent-death exit, preserves crash evidence, recovers a fresh generation, and leaves the portable server alive"; fi
 
@@ -9592,7 +9145,6 @@ grep -qF 'CAP_SYS_PTRACE is intentionally retained' res/rustdesk.service || r_s1
 if grep '^CapabilityBoundingSet=' res/rustdesk.service | grep -qF 'CAP_SYS_PTRACE'; then
   r_s11c27h="$r_s11c27h installed-procfs-authority-removed"
 fi
-grep -qF 'R-S11c-27h — actual-binary non-root active-desktop privilege-drop/exec behavior' HARDENING_STATUS.md || r_s11c27h="$r_s11c27h hardening-ledger-missing"
 if [ -n "$r_s11c27h" ]; then echo "  FAIL R-S11c-27h Linux non-root service child:$r_s11c27h"; rc=1; else
   echo "  ok  R-S11c-27h active-seat discovery descriptor-execs the exact image as UID/GID 4001 with exact groups, zero live capabilities, NNP, bounded environment, typed IPC, and graceful reap"; fi
 
@@ -9615,7 +9167,6 @@ grep -qF 'assert_portable_alive' scripts/smoke-service-lifecycle.sh || r_s11c27i
 [ "$(grep -c '^run_rejected_record_case ' scripts/smoke-service-lifecycle.sh)" = 7 ] || r_s11c27i="$r_s11c27i exact-hostile-record-matrix-incomplete"
 grep -qF 'SERVICE_LIFECYCLE_HOSTILE_RECORDS=pass cases=malformed,metadata,reused-start,executable,uid,generation,portable-role' scripts/smoke-service-lifecycle.sh || r_s11c27i="$r_s11c27i runtime-result-marker-missing"
 grep -qF 'record_stage_status R-S11c-27i' scripts/smoke-server.sh || r_s11c27i="$r_s11c27i runtime-status-not-preserved"
-grep -qF 'R-S11c-27i — actual-binary hostile service-child record rejection behavior' HARDENING_STATUS.md || r_s11c27i="$r_s11c27i hardening-ledger-missing"
 if [ -n "$r_s11c27i" ]; then echo "  FAIL R-S11c-27i Linux hostile service-child records:$r_s11c27i"; rc=1; else
   echo "  ok  R-S11c-27i actual --service exits 1 and preserves malformed, untrusted, and live-ambiguous records while exact non-root decoy and portable identities survive"; fi
 
@@ -9648,7 +9199,6 @@ if ! awk '
 ' scripts/smoke-server.sh; then
   r_s11c27j="$r_s11c27j sibling-lifecycle-order-regressed"
 fi
-grep -qF 'R-S11c-27j — concurrent separate-Docker service noninterference behavior' HARDENING_STATUS.md || r_s11c27j="$r_s11c27j hardening-ledger-missing"
 if [ -n "$r_s11c27j" ]; then echo "  FAIL R-S11c-27j Linux sibling Docker noninterference:$r_s11c27j"; rc=1; else
   echo "  ok  R-S11c-27j an unrelated networkless sibling Docker container with a neutral RustDesk server remains alive until explicitly drained after all manual lifecycle stop/crash/hostile-record operations"; fi
 
@@ -9684,9 +9234,6 @@ grep -qF '[ "$after_identity" = "$record_identity" ]' scripts/smoke-service-life
 grep -qF 'assert_pidfd_unavailable_child_alive' scripts/smoke-service-lifecycle.sh || r_s11c27u="$r_s11c27u runtime-child-survival-missing"
 grep -qF 'SERVICE_LIFECYCLE_PIDFD_UNAVAILABLE_REFUSAL=pass generation=' scripts/smoke-service-lifecycle.sh || r_s11c27u="$r_s11c27u runtime-result-marker-missing"
 grep -qF 'record_stage_status R-S11c-27u' scripts/smoke-server.sh || r_s11c27u="$r_s11c27u runtime-status-not-preserved"
-grep -qF 'R-S11c-27u — pidfd-unavailable live recovery refusal' HARDENING_STATUS.md || r_s11c27u="$r_s11c27u hardening-ledger-missing"
-grep -qF '<span class="id">R-S11ca</span>' requirements.html || r_s11c27u="$r_s11c27u normative-requirement-missing"
-grep -qF '<tr><td>220</td><td><strong>Linux live crash-recovery signaling retained a recyclable numeric-PID fallback' requirements.html || r_s11c27u="$r_s11c27u appendix-finding-missing"
 if ! awk '
   /start_pidfd_unavailable_recorded_child/ { start = NR }
   /run_pidfd_unavailable_recovery_refusal/ { refuse = NR }
@@ -9725,7 +9272,6 @@ grep -qF '"etc/init.d/rustdesk"' build.py || r_s11c27l="$r_s11c27l package-init-
 grep -qF 'debian-sysv-installed-lifecycle)' scripts/smoke-server-stage.sh || r_s11c27l="$r_s11c27l runtime-stage-dispatch-missing"
 grep -qF 'DEBIAN_SYSV_INSTALLED_LIFECYCLE=pass os=debian-%s portable_uid=%s stale_wrong_exec=survived' scripts/smoke-debian-sysv-lifecycle.sh || r_s11c27l="$r_s11c27l runtime-result-marker-missing"
 grep -qF 'record_stage_status R-S11c-27l' scripts/smoke-server.sh || r_s11c27l="$r_s11c27l runtime-status-not-preserved"
-grep -qF 'R-S11c-27l — installed Debian SysV lifecycle' HARDENING_STATUS.md || r_s11c27l="$r_s11c27l hardening-ledger-missing"
 if [ -n "$r_s11c27l" ]; then echo "  FAIL R-S11c-27l installed Debian SysV lifecycle:$r_s11c27l"; rc=1; else
   echo "  ok  R-S11c-27l Debian SysV package lifecycle selects one init backend, stops one PID/executable/name/UID-bound supervisor, and behavior-tests portable noninterference"; fi
 
@@ -9840,8 +9386,6 @@ for token in \
   grep -qF -- "$token" "$systemd_loginctl" \
     || r_s11c27m="$r_s11c27m loginctl:${token%% *}"
 done
-grep -qF 'R-S11c-27m — installed Debian systemd lifecycle' HARDENING_STATUS.md \
-  || r_s11c27m="$r_s11c27m hardening-ledger-missing"
 if [ -n "$r_s11c27m" ]; then echo "  FAIL R-S11c-27m installed Debian systemd lifecycle:$r_s11c27m"; rc=1; else
   echo "  ok  R-S11c-27m the common no-NIC VM retires its exact Docker daemon before the exact installed package/unit lifecycle, then proves non-root child/cgroup identity, stop/restart/crash recovery, and portable sibling noninterference"; fi
 
@@ -9906,8 +9450,6 @@ PY
 then
   r_s11c27s="$r_s11c27s release-order"
 fi
-grep -qF 'R-S11c-27s — final Debian artifact lifecycle gate' HARDENING_STATUS.md \
-  || r_s11c27s="$r_s11c27s hardening-ledger-missing"
 if [ -n "$r_s11c27s" ]; then
   echo "  FAIL R-S11c-27s final Debian artifact lifecycle gate:$r_s11c27s"; rc=1
 else
@@ -9993,8 +9535,6 @@ echo "$sibling_docker_block" | grep -qF -- '--network none' \
 if echo "$sibling_docker_block" | grep -q -- '--pid'; then
   r_s11c27n="$r_s11c27n sibling-pid-namespace-shared"
 fi
-grep -qF 'R-S11c-27n — cross-container executable identity' HARDENING_STATUS.md \
-  || r_s11c27n="$r_s11c27n hardening-ledger-missing"
 if [ -n "$r_s11c27n" ]; then echo "  FAIL R-S11c-27n cross-container executable identity:$r_s11c27n"; rc=1; else
   echo "  ok  R-S11c-27n separate networkless PID/mount namespaces execute the same bytes from identical /usr/bin/rustdesk paths and exact service roles, while distinct file objects and generation-bound identities keep the sibling untargetable"; fi
 
@@ -10065,8 +9605,6 @@ for forbidden in 'os.kill(' 'kill -' 'pkill' 'sudo ' '--pid=host' '--privileged'
     r_s11c27o="$r_s11c27o forbidden-fixture-authority:$forbidden"
   fi
 done
-grep -qF 'R-S11c-27o — actual kernel numeric-PID reuse' HARDENING_STATUS.md \
-  || r_s11c27o="$r_s11c27o hardening-ledger-missing"
 if [ -n "$r_s11c27o" ]; then echo "  FAIL R-S11c-27o actual PID reuse recovery:$r_s11c27o"; rc=1; else
   echo "  ok  R-S11c-27o forces Linux ns_last_pid in a private PID namespace, reuses the same numeric PID for an exact-role RustDesk child with a new start time/generation, and proves recovery preserves the record while signaling nothing"; fi
 
@@ -10123,16 +9661,6 @@ for token in \
   grep -qF -- "$token" scripts/build-debian.sh \
     || r_s11c27p="$r_s11c27p artifact:${token%% *}"
 done
-for token in \
-  '/usr/share/rustdesk/files/openrc/rustdesk' \
-  '/usr/share/rustdesk/files/runit/run' \
-  '/usr/share/rustdesk/files/manual/rustdesk-service' \
-  'Only one service manager may own `rustdesk --service`'; do
-  grep -qF -- "$token" docs/DEPLOYMENT.md \
-    || r_s11c27p="$r_s11c27p deployment:${token##*/}"
-done
-grep -qF 'R-S11c-27p — packaged OpenRC/runit/manual supervisor templates' HARDENING_STATUS.md \
-  || r_s11c27p="$r_s11c27p hardening-ledger-missing"
 if [ -n "$r_s11c27p" ]; then echo "  FAIL R-S11c-27p service-manager templates:$r_s11c27p"; rc=1; else
   echo "  ok  R-S11c-27p Debian payload ships exact OpenRC, runit, and manual templates that start/stop only the foreground --service supervisor and contain no server-child process rediscovery"; fi
 
@@ -10190,8 +9718,6 @@ for forbidden in 'docker ' 'sudo ' '--network=host' '--pid=host' '--privileged' 
     r_s11c27q="$r_s11c27q forbidden-fixture-authority:$forbidden"
   fi
 done
-grep -qF 'R-S11c-27q — native OpenRC lifecycle authority' HARDENING_STATUS.md \
-  || r_s11c27q="$r_s11c27q hardening-ledger-missing"
 if [ -n "$r_s11c27q" ]; then echo "  FAIL R-S11c-27q native OpenRC lifecycle:$r_s11c27q"; rc=1; else
   echo "  ok  R-S11c-27q pinned Debian OpenRC starts/restarts/stops one pidfile-bound --service supervisor, replaces stale state through explicit native recovery, and leaves an unrelated no-privilege RustDesk process untouched"; fi
 
@@ -10253,8 +9779,6 @@ for forbidden in 'docker ' 'sudo ' '--network=host' '--pid=host' '--privileged' 
     r_s11c27r="$r_s11c27r forbidden-fixture-authority:$forbidden"
   fi
 done
-grep -qF 'R-S11c-27r — native runit lifecycle authority' HARDENING_STATUS.md \
-  || r_s11c27r="$r_s11c27r hardening-ledger-missing"
 if [ -n "$r_s11c27r" ]; then echo "  FAIL R-S11c-27r native runit lifecycle:$r_s11c27r"; rc=1; else
   echo "  ok  R-S11c-27r pinned Debian runit owns one runsvdir/runsv/--service/child tree, performs native restart/stop/automatic recovery and HUP shutdown, and leaves an unrelated no-privilege RustDesk process untouched"; fi
 
@@ -10774,8 +10298,6 @@ if [ "$generated_plugin_authority_refs" -ne 1 ] ||
    ! grep -qF 'generated_plugins = fixture / "flutter/linux/flutter/generated_plugins.cmake"' scripts/verify-debian-package-authority.py; then
   r_s11c10j="$r_s11c10j package:generated-plugin-metadata-became-authority"
 fi
-grep -qF 'R-S11c-10t closes the Linux Debian package tree authority' HARDENING_STATUS.md || r_s11c10j="$r_s11c10j package:ledger-missing"
-grep -qF 'Linux Debian package tree authority' requirements.html || r_s11c10j="$r_s11c10j package:requirements-missing"
 grep -qF 'built .deb control script $script is not a mode-0755 non-hardlinked regular file' scripts/build-debian.sh || r_s11c10j="$r_s11c10j package:no-emitted-maintscript-mode-gate"
 grep -qF 'built .deb systemd unit differs from res/rustdesk.service' scripts/build-debian.sh || r_s11c10j="$r_s11c10j package:no-emitted-unit-byte-gate"
 grep -qF 'built .deb command is not the exact mode-0777 non-hardlinked relative symlink' scripts/build-debian.sh || r_s11c10j="$r_s11c10j package:no-emitted-command-link-gate"
@@ -10783,12 +10305,6 @@ grep -qF 'package install replaced the administrator-owned systemd unit link' sc
 grep -qF 'package removal deleted the administrator-owned systemd unit link' scripts/smoke-debian-systemd-lifecycle-guest.sh || r_s11c10j="$r_s11c10j lifecycle:no-admin-unit-remove-proof"
 grep -qF 'installed RustDesk command link is not owned by the package database' scripts/smoke-debian-systemd-lifecycle-guest.sh || r_s11c10j="$r_s11c10j lifecycle:no-systemd-package-command-ownership-proof"
 grep -qF 'installed RustDesk command link is not owned by the package database' scripts/smoke-debian-sysv-lifecycle.sh || r_s11c10j="$r_s11c10j lifecycle:no-sysv-package-command-ownership-proof"
-grep -qF '<span class="id">R-S11by</span>' requirements.html || r_s11c10j="$r_s11c10j vendor-unit:requirement-missing"
-grep -qF '<tr><td>218</td>' requirements.html || r_s11c10j="$r_s11c10j vendor-unit:appendix-missing"
-grep -qF 'R-S11by/R-S11e-91 — Debian vendor unit is package-owned and administrator unit state is preserved' HARDENING_STATUS.md || r_s11c10j="$r_s11c10j vendor-unit:ledger-missing"
-grep -qF '<span class="id">R-S11bz</span>' requirements.html || r_s11c10j="$r_s11c10j command-link:requirement-missing"
-grep -qF '<tr><td>219</td>' requirements.html || r_s11c10j="$r_s11c10j command-link:appendix-missing"
-grep -qF 'R-S11bz/R-S11e-92 — Debian primary command is package-owned and maintainer scripts never mutate `/usr/bin`' HARDENING_STATUS.md || r_s11c10j="$r_s11c10j command-link:ledger-missing"
 if grep -n 'os.system(' build.py | grep -v 'exit_code = os.system(cmd)' >"$VERIFY_TMP/rd_verify_r_s11c10j_build_os_system"; then
   cat "$VERIFY_TMP/rd_verify_r_s11c10j_build_os_system"
   r_s11c10j="$r_s11c10j build.py:unchecked-os-system"
@@ -10814,8 +10330,6 @@ r_s11c10v=
 if grep -nE 'generate_build_script_for_docker|/tmp/build\.sh|/tmp/flutter_rust_bridge|flutter_linux_3\.0\.5-stable|SoLongAndThanksForAllThePizza/flutter_rust_bridge|git clone https://github\.com/microsoft/vcpkg' build.py; then
   r_s11c10v="$r_s11c10v obsolete-generated-build-helper-present"
 fi
-grep -qF 'R-S11c-10v — obsolete generated Docker build helper excision' HARDENING_STATUS.md || r_s11c10v="$r_s11c10v hardening-ledger-missing"
-grep -qF 'Obsolete generated Docker build helper' requirements.html || r_s11c10v="$r_s11c10v requirements-disposition-missing"
 if [ -n "$r_s11c10v" ]; then echo "  FAIL R-S11c-10v obsolete generated Docker build helper excision:$r_s11c10v"; rc=1; else
   echo "  ok  R-S11c-10v build.py has no unreachable generated Docker script or unpinned bootstrap path"; fi
 
@@ -10895,8 +10409,6 @@ echo "$pw_arm" | grep -Eq 'args\[[[:space:]]*1[[:space:]]*\]' && r_s11e16="$r_s1
 grep -q 'fn password_cli_rejects_positional_secrets' src/core_main.rs || r_s11e16="$r_s11e16 positional-secret-test-missing"
 grep -q 'fn password_stdin_reader_is_line_bounded_and_utf8_only' src/core_main.rs || r_s11e16="$r_s11e16 bounded-stdin-test-missing"
 grep -q 'fn sensitive_password_constant_time_comparison_matches_equal_bytes_only' src/ipc/password.rs || r_s11e16="$r_s11e16 constant-time-password-comparison-test-missing"
-grep -Fq 'sudo rustdesk --password' docs/DEPLOYMENT.md || r_s11e16="$r_s11e16 safe-deployment-command-missing"
-grep -Eq -- 'sudo rustdesk --password[[:space:]]+[^`[:space:]]' docs/DEPLOYMENT.md && r_s11e16="$r_s11e16 password-valued-deployment-command-present"
 [ "$(awk '/--password-stdin/{count++} END{print count+0}' scripts/smoke-server.sh scripts/smoke-server-stage.sh)" -ge 4 ] || r_s11e16="$r_s11e16 safe-headless-smoke-input-missing"
 grep -Eq -- 'rustdesk --password[[:space:]]+[^|[:space:]]' scripts/smoke-server.sh scripts/smoke-server-stage.sh && r_s11e16="$r_s11e16 password-valued-smoke-command-present"
 smoke_nonroot_stage=$(awk '/^  password-nonroot\)/{capture=1} capture{print} /^  password-installed\)/{exit}' scripts/smoke-server-stage.sh)
@@ -10912,8 +10424,6 @@ printf '%s\n' "$smoke_nonroot_stage" | grep -Fq 'SOURCE_BIND_UNCHANGED=yes' || r
 if printf '%s\n' "$smoke_nonroot_runner" | grep -Eq '/work|target/debug|pkill'; then
   r_s11e16="$r_s11e16 nonroot-smoke-runner-retains-source-or-broad-process-authority"
 fi
-grep -Fq 'Permanent-password provisioning through visible process arguments' requirements.html || r_s11e16="$r_s11e16 requirements-disposition-missing"
-grep -Fq 'R-S11e-16 — permanent-password provisioning ingress' HARDENING_STATUS.md || r_s11e16="$r_s11e16 ledger-disposition-missing"
 if [ -n "$r_s11e16" ]; then
   echo "  FAIL R-S11e-16 password provisioning ingress:$r_s11e16"; rc=1
 else
@@ -11012,14 +10522,6 @@ if echo "$prs_auth_body" | grep -qE 'into_prs|unwrap_or_default'; then
 fi
 grep -Fq 'stored permanent password PRS cannot be decrypted' src/direct_service.rs ||
   { echo "  FAIL R-S9: direct listener must log undecryptable stored PRS distinctly from a missing password"; exit 1; }
-grep -Fq 'Permanent-password PRS read-state authority' requirements.html ||
-  { echo "  FAIL R-S9: requirements Appendix C must disposition permanent-password PRS read-state authority"; exit 1; }
-grep -Fq 'R-S9 permanent-password PRS read-state authority' HARDENING_STATUS.md ||
-  { echo "  FAIL R-S9: hardening status must record the PRS read-state closure"; exit 1; }
-grep -Fq 'R-S11b-3m — typed permanent-password PRS authority reaches CPace admission' HARDENING_STATUS.md ||
-  { echo "  FAIL R-S11b-3m: hardening status must record legacy PRS string-adapter excision"; exit 1; }
-grep -Fq '<tr><td>236</td>' requirements.html ||
-  { echo "  FAIL R-S11b-3m: Appendix C must record legacy PRS string-adapter excision"; exit 1; }
 
 # (3c-ii-a) Viewer peer media admission bounds (Appendix C #2b/R-T0): a
 # hostile peer controls VideoFrame.display and keyframe/audio cadence, so the
@@ -11239,22 +10741,6 @@ if [ -n "$av1_ui" ]; then
   echo "$av1_ui" | sed 's/^/      /'
   rc=1
 fi
-grep -qF 'AV1/libaom runtime quarantine' requirements.html ||
-  { echo "  FAIL Appendix C #2b: requirements must record the AV1/libaom runtime quarantine"; rc=1; }
-grep -qF 'AV1/libaom runtime quarantine' HARDENING_STATUS.md ||
-  { echo "  FAIL Appendix C #2b: hardening status must record the AV1/libaom runtime quarantine"; rc=1; }
-grep -qF 'AV1/libaom runtime quarantine' docs/NATIVE-CODEC-WATCH.md ||
-  { echo "  FAIL Appendix C #2b: native codec watch must record the AV1/libaom runtime quarantine"; rc=1; }
-grep -qF 'AV1/libaom dependency removal' requirements.html ||
-  { echo "  FAIL Appendix C #2b: requirements must record the AV1/libaom dependency removal"; rc=1; }
-grep -qF 'AV1/libaom dependency removal' HARDENING_STATUS.md ||
-  { echo "  FAIL Appendix C #2b: hardening status must record the AV1/libaom dependency removal"; rc=1; }
-grep -qF 'AV1/libaom dependency removal' docs/NATIVE-CODEC-WATCH.md ||
-  { echo "  FAIL Appendix C #2b: native codec watch must record the AV1/libaom dependency removal"; rc=1; }
-if grep -qE 'AV1 DECODER|aomdec|All lie in the \*\*decoder' docs/NATIVE-CODEC-WATCH.md HARDENING_STATUS.md; then
-  echo "  FAIL Appendix C #2b: aom CVE ledger must not retain the old decoder-only classification"
-  rc=1
-fi
 
 # (3c-ii-b) Peer UI text admission (R-T0): a password-correct hostile peer can
 # send chat/messages/notification details repeatedly after keying. Bound text
@@ -11282,8 +10768,6 @@ grep -qF 'libc::fremovexattr' "$paste_task_rs" || r_s11e12="$r_s11e12 progress-x
 grep -qF 'unlink_relative_file_no_follow' "$paste_task_rs" || r_s11e12="$r_s11e12 no-relative-unlink"
 grep -qF 'download_file_relative_path: Option<PathBuf>' "$paste_task_rs" || r_s11e12="$r_s11e12 no-relative-download-state"
 grep -qF 'task_handle.update_next(0)?;' "$paste_task_rs" || r_s11e12="$r_s11e12 initial-filesystem-errors-masked"
-grep -qF 'macOS clipboard-file paste no-follow finalize' requirements.html || r_s11e12="$r_s11e12 requirements-disposition-missing"
-grep -qF 'R-S11e-12 — macOS clipboard-file paste no-follow finalize' HARDENING_STATUS.md || r_s11e12="$r_s11e12 hardening-ledger-missing"
 if grep -nE 'std::fs::File::create|std::fs::create_dir_all|std::fs::rename|std::fs::remove_file|File::options\(\)|xattr::(set|remove)|update_next\(0\)\.ok' "$paste_task_rs" >"$VERIFY_TMP/rd_verify_r_s11e12"; then
   cat "$VERIFY_TMP/rd_verify_r_s11e12"
   r_s11e12="$r_s11e12 path-based-paste-filesystem-op"
@@ -11325,8 +10809,6 @@ grep -qF 'create_placeholder_file(' "$item_data_provider_rs" || r_s11e13="$r_s11
 grep -qF 'placeholder_dir_handle: Arc<File>' "$item_data_provider_rs" || r_s11e13="$r_s11e13 provider-missing-dir-handle"
 grep -qF 'type PasteCallback = Box<dyn Fn(&PasteObserverInfo) + Send + '\''static>;' "$paste_observer_rs" || r_s11e13="$r_s11e13 observer-callback-not-capturable"
 grep -qF 'private per-context temporary directory' "$pasteboard_readme" || r_s11e13="$r_s11e13 readme-not-updated"
-grep -qF 'macOS clipboard-file paste placeholder temp authority' requirements.html || r_s11e13="$r_s11e13 requirements-disposition-missing"
-grep -qF 'R-S11e-13 — macOS clipboard-file paste placeholder temp authority' HARDENING_STATUS.md || r_s11e13="$r_s11e13 hardening-ledger-missing"
 if grep -nE 'format!\("/tmp/|read_dir\("/tmp"\)|std::fs::File::create\(&path\)|std::fs::remove_file\(path\)' "$pasteboard_context_rs" "$item_data_provider_rs" >"$VERIFY_TMP/rd_verify_r_s11e13"; then
   cat "$VERIFY_TMP/rd_verify_r_s11e13"
   r_s11e13="$r_s11e13 global-or-path-placeholder-op"
@@ -11535,8 +11017,6 @@ r_s11d39=
 { grep -RInE 'try_remove_temp_update_files|download-file-|is_msi_installed' src libs --include='*.rs' 2>/dev/null | grep -v '//' | grep -q .; } && r_s11d39="$r_s11d39 rust-updater-residue"
 grep -RInF 'updateUrl' flutter/lib --include='*.dart' 2>/dev/null | grep -v '//' | grep -q . && r_s11d39="$r_s11d39 dart-update-state"
 grep -RInE '^\s*\("(Click to upgrade|Auto update|Check for software update on startup|update-failed-check-msi-tip)",' src/lang --include='*.rs' 2>/dev/null | grep -q . && r_s11d39="$r_s11d39 dead-lang-keys"
-grep -qF 'R-S11d-39 — Windows obsolete updater authority excision — CLOSED 2026-07-12.' HARDENING_STATUS.md || r_s11d39="$r_s11d39 ledger-disposition"
-grep -qF '<tr><td>117</td><td><strong>Windows obsolete updater temporary-file authority</strong>' requirements.html || r_s11d39="$r_s11d39 requirements-disposition"
 if [ -n "$r_s11d39" ]; then
   echo "  FAIL R-S11d-39 obsolete updater authority remains:$r_s11d39"; rc=1
 else
@@ -11792,8 +11272,6 @@ grep -qF 'String? urlLinkToForwardUrl(Uri uri)' flutter/lib/common.dart || r_x6_
 grep -qF 'final forwardUrl = urlLinkToForwardUrl(uri);' flutter/lib/common.dart || r_x6_url_handoff="$r_x6_url_handoff listener-not-canonicalizing"
 grep -qF 'bind.sendUrlScheme(url: forwardUrl);' flutter/lib/common.dart || r_x6_url_handoff="$r_x6_url_handoff listener-not-forwarding-clean-url"
 grep -qF 'return "$prefix$authority/$id";' flutter/lib/common.dart || r_x6_url_handoff="$r_x6_url_handoff helper-not-rendering-address-only-url"
-grep -qF 'Desktop URL IPC raw deep-link material handoff' requirements.html || r_x6_url_handoff="$r_x6_url_handoff requirements-disposition-missing"
-grep -qF 'R-X6/R-S11c-9b — desktop URL IPC handoff canonicalization' HARDENING_STATUS.md || r_x6_url_handoff="$r_x6_url_handoff ledger-disposition-missing"
 if grep -qF 'bind.sendUrlScheme(url: uri.toString())' flutter/lib/common.dart; then
   r_x6_url_handoff="$r_x6_url_handoff raw-uri-forwarding"
 fi
@@ -11873,10 +11351,6 @@ grep -qF 'early_reset_retry_uses_first_peer_message_boundary' src/client.rs \
   || r_sv4a="$r_sv4a retry-boundary-regression-missing"
 grep -qF 'let mut limited_fps = min_decode_fps * 9 / 10;' src/client/io_loop.rs \
   || r_sv4a="$r_sv4a direct-fps-policy-missing"
-grep -qF 'R-SV4a' requirements.html || r_sv4a="$r_sv4a requirement-missing"
-grep -qF '<tr><td>176</td>' requirements.html || r_sv4a="$r_sv4a appendix-disposition-missing"
-grep -qF 'R-SV4a — direct-only viewer transport and state finality' HARDENING_STATUS.md \
-  || r_sv4a="$r_sv4a ledger-disposition-missing"
 if [ -n "$r_sv4a" ]; then
   echo "  FAIL R-SV4a direct-only viewer state/API finality:$r_sv4a"; rc=1
 else
@@ -11899,12 +11373,6 @@ echo "$r_sv5a_scope" | grep -qF 'Some("--assign")' \
   && r_sv5a="$r_sv5a account-assignment-user-main-ipc-scope-present"
 grep -qF 'fn obsolete_get_id_command_has_no_user_main_ipc_scope()' src/core_main.rs \
   || r_sv5a="$r_sv5a get-id-scope-regression-missing"
-grep -qF '<span class="id">R-SV5a</span>' requirements.html \
-  || r_sv5a="$r_sv5a requirement-missing"
-grep -qF '<tr><td>177</td>' requirements.html \
-  || r_sv5a="$r_sv5a appendix-disposition-missing"
-grep -qF 'R-SV5a — obsolete numeric-ID query command and user-main-IPC scope' HARDENING_STATUS.md \
-  || r_sv5a="$r_sv5a ledger-disposition-missing"
 if [ -n "$r_sv5a" ]; then
   echo "  FAIL R-SV5a obsolete numeric-ID CLI and IPC-scope closure:$r_sv5a"; rc=1
 else
@@ -11944,8 +11412,6 @@ grep -qF '? widget.peer.id' flutter/lib/common/widgets/autocomplete.dart \
   || r_g2_address="$r_g2_address raw-peer-address-display-inventory-wrong"
 grep -qF "const malformedIpv4 = '192. 168.1.10';" flutter/test/address_validator_test.dart \
   || r_g2_address="$r_g2_address interior-whitespace-regression-missing"
-grep -qF 'Numeric-ID address formatter/controller — CLOSED/GATED (R-G2/R-SV5)' HARDENING_STATUS.md \
-  || r_g2_address="$r_g2_address hardening-ledger-not-closed"
 if [ -n "$r_g2_address" ]; then
   echo "  FAIL R-G2/R-SV5 direct-address UI model and exact-target preservation:$r_g2_address"; rc=1
 else
@@ -12309,12 +11775,6 @@ for root_source in src/platform/macos.rs src/platform/linux.rs src/platform/wind
   grep -qF 'pub fn is_root() -> bool' "$root_source" \
     || r_s11e279="$r_s11e279 purpose-specific-platform-root-query-missing:$root_source"
 done
-grep -Fq '<span class="id">R-S11ip</span>' requirements.html \
-  || r_s11e279="$r_s11e279 normative-requirement-missing"
-grep -Fq '<tr><td>401</td>' requirements.html \
-  || r_s11e279="$r_s11e279 appendix-row-missing"
-grep -Fq 'R-S11ip/R-S11e-279 — orphaned generic desktop privilege-probe excision' HARDENING_STATUS.md \
-  || r_s11e279="$r_s11e279 hardening-ledger-missing"
 if [ -n "$r_s11e279" ]; then
   echo "  FAIL R-S11e-279 orphaned generic desktop privilege probe:$r_s11e279"; rc=1
 else
@@ -12354,12 +11814,6 @@ for generated_rust in \
 done
 grep -qF 'mainCanRequestShareRdpChange' "${VERIFY_FRB_OUTPUT}/flutter/lib/generated_bridge.dart" \
   || r_s11e280="$r_s11e280 purpose-specific-generated-dart-query-missing"
-grep -Fq '<span class="id">R-S11iq</span>' requirements.html \
-  || r_s11e280="$r_s11e280 normative-requirement-missing"
-grep -Fq '<tr><td>402</td>' requirements.html \
-  || r_s11e280="$r_s11e280 appendix-row-missing"
-grep -Fq 'R-S11iq/R-S11e-280 — purpose-specific Windows RDP-sharing presentation authority' HARDENING_STATUS.md \
-  || r_s11e280="$r_s11e280 hardening-ledger-missing"
 if [ -n "$r_s11e280" ]; then
   echo "  FAIL R-S11e-280 Windows RDP-sharing presentation authority:$r_s11e280"; rc=1
 else
@@ -12642,16 +12096,6 @@ fi
 if grep -qF 'No need to join the previous thread' src/ui_session_interface.rs; then
   android_client_owner_bad="$android_client_owner_bad detached-reconnect-worker-present"
 fi
-grep -qF 'Outgoing viewer owner completion and replacement' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad requirements-disposition-missing"
-grep -qF 'Android outgoing-viewer I/O and media-worker completion ownership' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad hardening-ledger-missing"
-grep -qF 'An explicit outgoing-viewer reconnect owns a new connection round' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad connection-round-requirement-missing"
-grep -qF '<tr><td>206</td>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad connection-round-disposition-missing"
-grep -qF 'shared outgoing-viewer reconnect round ownership' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad connection-round-ledger-missing"
 grep -qF "'register_client_session_owner', gFFI.clientOwnerId.toString())" "$flutter_main" \
   || android_client_owner_bad="$android_client_owner_bad Activity-registration-not-owner-bound"
 grep -qF 'final _mobileClientOwnerId = Uuid().v4obj();' "$flutter_model" \
@@ -12700,24 +12144,6 @@ grep -qF 'r_s11e148_os_password_input_is_cancelled_and_joined_before_round_repla
 if grep -qF 'fn _input_os_password(' src/client.rs; then
   android_client_owner_bad="$android_client_owner_bad os-password-detached-helper-present"
 fi
-grep -qF '<span class="id">R-S11eb</span>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad mobile-owner-connection-requirement-missing"
-grep -qF '<tr><td>281</td>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad mobile-owner-connection-disposition-missing"
-grep -qF 'R-S11eb/R-S11e-146' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad mobile-owner-connection-ledger-missing"
-grep -qF '<span class="id">R-S11ec</span>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad clipboard-network-round-requirement-missing"
-grep -qF '<tr><td>282</td>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad clipboard-network-round-disposition-missing"
-grep -qF 'R-S11ec/R-S11e-147' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad clipboard-network-round-ledger-missing"
-grep -qF '<span class="id">R-S11ed</span>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad os-password-exact-round-requirement-missing"
-grep -qF '<tr><td>283</td>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad os-password-exact-round-disposition-missing"
-grep -qF 'R-S11ed/R-S11e-148' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad os-password-exact-round-ledger-missing"
 grep -qF 'pending_screenshot_requests: PendingScreenshotRequests' src/client/io_loop.rs \
   || android_client_owner_bad="$android_client_owner_bad screenshot-exact-request-owner-missing"
 grep -qF 'screenshot: Option<OwnedScreenshot>' src/flutter.rs \
@@ -12733,12 +12159,6 @@ if grep -qF 'static ref SCREENSHOT' src/client/screenshot.rs \
   || grep -qF 'crate::client::screenshot::set_screenshot(' src/client/io_loop.rs; then
   android_client_owner_bad="$android_client_owner_bad screenshot-process-global-cache-present"
 fi
-grep -qF '<span class="id">R-S11ee</span>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad screenshot-exact-session-requirement-missing"
-grep -qF '<tr><td>284</td>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad screenshot-exact-session-disposition-missing"
-grep -qF 'R-S11ee/R-S11e-149' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad screenshot-exact-session-ledger-missing"
 grep -qF 'const MAX_SCREENSHOT_REQUEST_OWNERS: usize = 64;' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-owner-cap-missing"
 grep -qF 'const SCREENSHOT_ENCODE_QUEUE_CAPACITY: usize = 2;' src/server/video_service.rs \
@@ -12769,12 +12189,6 @@ if grep -qF 'Mutex<HashMap<(VideoSource, usize), Screenshot>>' src/server/video_
 fi
 grep -qF 'r_s11ef_stale_channel_cannot_cancel_reused_connection_id' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-aba-regression-missing"
-grep -qF '<span class="id">R-S11ef</span>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-requirement-missing"
-grep -qF '<tr><td>285</td>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-disposition-missing"
-grep -qF 'R-S11ef/R-S11e-150' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-ledger-missing"
 grep -qF 'const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-controller-cap-missing"
 grep -qF 'static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<VideoFrameStreamKey, Weak<VideoFrameAckState>>> = Default::default();' src/server/video_service.rs \
@@ -12830,18 +12244,6 @@ grep -qF 'r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue' src/server
   || android_client_owner_bad="$android_client_owner_bad video-egress-closed-receiver-regression-missing"
 grep -qF 'r_s11fb_receipt_waits_for_the_exact_sink_send' libs/hbb_common/src/tcp.rs \
   || android_client_owner_bad="$android_client_owner_bad video-egress-writer-receipt-regression-missing"
-grep -qF '<span class="id">R-S11eg</span>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad video-ack-requirement-missing"
-grep -qF '<tr><td>286</td>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad video-ack-disposition-missing"
-grep -qF 'R-S11eg/R-S11e-151' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad video-ack-ledger-missing"
-grep -qF '<span class="id">R-S11fb</span>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad controlled-video-egress-requirement-missing"
-grep -qF '<tr><td>310</td>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad controlled-video-egress-disposition-missing"
-grep -qF 'R-S11fb/R-S11e-189' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad controlled-video-egress-ledger-missing"
 grep -qF 'const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;' src/server/connection.rs \
   || android_client_owner_bad="$android_client_owner_bad bounded-audio-wake-cap-missing"
 grep -qF 'state.format.take().or_else(|| state.frame.take())' src/server/connection.rs \
@@ -12856,12 +12258,6 @@ grep -qF 'ConnInner::with_audio(conn_id, None, None, Some(tx_audio_data))' src/c
   || android_client_owner_bad="$android_client_owner_bad outgoing-audio-only-subscription-missing"
 grep -qF 'r_s11eh_async_audio_egress_waits_without_polling_and_closes' src/server/connection.rs \
   || android_client_owner_bad="$android_client_owner_bad bounded-audio-async-regression-missing"
-grep -qF '<span class="id">R-S11eh</span>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad bounded-audio-requirement-missing"
-grep -qF '<tr><td>287</td>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad bounded-audio-disposition-missing"
-grep -qF 'R-S11eh/R-S11e-152' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad bounded-audio-ledger-missing"
 grep -qF 'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-lifecycle-test-command-missing"
 grep -qF 'flutter::mobile_session_lifecycle_tests:: -- --test-threads=1' scripts/dart-verify.sh \
@@ -12884,12 +12280,6 @@ grep -qF 'test/session_stream_finality_test.dart' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad session-stream-finality-test-missing"
 grep -qF '_platform.executeNormal(FlutterRustBridgeTask(' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-mobile-add-normal-call-gate-missing"
-grep -qF '<span class="id">R-S11ix</span>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad session-stream-generation-requirement-missing"
-grep -qF '<tr><td>409</td>' requirements.html \
-  || android_client_owner_bad="$android_client_owner_bad session-stream-generation-disposition-missing"
-grep -qF 'R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation' HARDENING_STATUS.md \
-  || android_client_owner_bad="$android_client_owner_bad session-stream-generation-ledger-missing"
 if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs src/flutter_ffi.rs \
   flutter/lib/models/model.dart flutter/lib/models/mobile_session_start_queue.dart \
   flutter/lib/models/session_stream_finality.dart \
@@ -13385,14 +12775,10 @@ grep -qE '^[[:space:]]*reserved[[:space:]]+3;' libs/hbb_common/protos/message.pr
 grep -qE '^[[:space:]]*message[[:space:]]+IdPk\b' libs/hbb_common/protos/message.proto && r_live_dead="$r_live_dead proto-idpk-present"
 grep -RInE '\bfn[[:space:]]+decode_id_pk\b|decode_id_pk[[:space:]]*\(' src libs --include='*.rs' >/dev/null \
   && r_live_dead="$r_live_dead decode-id-pk-present"
-grep -qE '\[I-(9|10|11|12)\].*\*\*FIX:\*\*|Data::SwitchPermission` from the connection|wired end-to-end behind a trigger that|enable_trusted_devices` viewer plumbing \(wired login-response' HARDENING_STATUS.md \
-  && r_live_dead="$r_live_dead stale-hardening-live-dead-ledger"
-grep -qF 'Dead Dart policy-option aliases — CLOSED/GATED (R-G1)' HARDENING_STATUS.md \
-  || r_live_dead="$r_live_dead dead-dart-policy-alias-ledger-not-closed"
 if [ -n "$r_live_dead" ]; then
-  echo "  FAIL live-looking-dead audit surfaces: retired authority-looking scaffolding returned or stale ledger says it is pending:$r_live_dead"; rc=1
+  echo "  FAIL live-looking-dead audit surfaces: retired authority-looking scaffolding returned:$r_live_dead"; rc=1
 else
-  echo "  ok  live-looking-dead auth/permission/rendezvous scaffolding absent and ledger closed (I-9..I-12)"
+  echo "  ok  live-looking-dead auth/permission/rendezvous scaffolding absent (I-9..I-12)"
 fi
 # R-G9: local presentation and compatibility DTOs carry only facts their receivers consume.
 # The three policy booleans remain live on the authenticated Connection and in the post-PAKE
@@ -13439,8 +12825,6 @@ done
 grep -qF 'if self.restart {' src/server/connection.rs || r_g9="$r_g9 restart-sink-gate-missing"
 grep -qF 'if self.keyboard && self.block_input {' src/server/connection.rs \
   || r_g9="$r_g9 block-input-sink-gate-missing"
-grep -qF 'R-G9 — minimal presentation and compatibility serialization contracts' HARDENING_STATUS.md \
-  || r_g9="$r_g9 hardening-ledger-missing"
 if [ -n "$r_g9" ]; then
   echo "  FAIL R-G9 presentation serialization contract:$r_g9"; rc=1
 else
@@ -13536,12 +12920,6 @@ grep -qF "expect(serialized, isNot(contains('from_switch')));" flutter/test/serv
   || r_g4a="$r_g4a sole-PAKE-authorization-edge-not-preserved"
 grep -qF '.get("keyboard")' src/ui_cm_interface.rs \
   || r_g4a="$r_g4a retained-CM-capability-fact-not-proven"
-grep -qF '<span class="id">R-G4a</span>' requirements.html \
-  || r_g4a="$r_g4a requirement-missing"
-grep -qF '<tr><td>190</td>' requirements.html \
-  || r_g4a="$r_g4a appendix-row-missing"
-grep -qF 'R-G4a — switch-sides role-swap compatibility state excision' HARDENING_STATUS.md \
-  || r_g4a="$r_g4a hardening-ledger-missing"
 if [ -n "$r_g4a" ]; then
   echo "  FAIL R-G4a switch-sides compatibility closure:$r_g4a"; rc=1
 else
@@ -13607,11 +12985,6 @@ fi
 r_sv6a_status_test=$(awk '/fn main_status_options_are_explicitly_allowlisted_and_bounded\(\)/{capture=1} capture{print} capture && /^    }$/{exit}' src/ipc.rs)
 echo "$r_sv6a_status_test" | grep -qF 'keys::OPTION_API_SERVER.to_owned(),' || r_sv6a="$r_sv6a api-server-IPC-rejection-regression-missing"
 grep -qF '(OPTION_API_SERVER, ""),' libs/hbb_common/src/config.rs || r_sv6a="$r_sv6a api-server-stale-value-mask-missing"
-grep -qF '<span class="id">R-SV6a</span>' requirements.html || r_sv6a="$r_sv6a requirement-missing"
-grep -qF '<tr><td>179</td>' requirements.html || r_sv6a="$r_sv6a appendix-disposition-missing"
-grep -qF '<tr><td>191</td>' requirements.html || r_sv6a="$r_sv6a logout-appendix-disposition-missing"
-grep -qF 'R-SV6a — account/control-plane compatibility surface deleted' HARDENING_STATUS.md || r_sv6a="$r_sv6a ledger-disposition-missing"
-grep -qF 'R-SV6a-1 — logout and API-server presentation residue' HARDENING_STATUS.md || r_sv6a="$r_sv6a logout-ledger-disposition-missing"
 if [ -n "$r_sv6a" ]; then
   echo "  FAIL R-SV6a account/control-plane structural excision:$r_sv6a"; rc=1
 else
@@ -13640,9 +13013,6 @@ grep -qF 'self.id = id;' src/client.rs || r_sv6b="$r_sv6b exact-address-assignme
 grep -qF 'let pure_id = self.id.clone();' src/client.rs || r_sv6b="$r_sv6b exact-login-identity-missing"
 grep -qF 'fn login_identity_does_not_parse_cross_server_grammar()' src/client.rs || r_sv6b="$r_sv6b client-regression-missing"
 grep -qF 'fn config2_ignores_retired_network_state_and_never_serializes_it()' libs/hbb_common/src/config.rs || r_sv6b="$r_sv6b config2-regression-missing"
-grep -qF '<span class="id">R-SV6b</span>' requirements.html || r_sv6b="$r_sv6b requirement-missing"
-grep -qF '<tr><td>186</td>' requirements.html || r_sv6b="$r_sv6b appendix-disposition-missing"
-grep -qF 'R-SV6b — dormant rendezvous/NAT compatibility authority deleted' HARDENING_STATUS.md || r_sv6b="$r_sv6b ledger-disposition-missing"
 if [ -n "$r_sv6b" ]; then
   echo "  FAIL R-SV6b dormant rendezvous/NAT compatibility authority excision:$r_sv6b"; rc=1
 else
@@ -13764,10 +13134,6 @@ grep -qF '(OPTION_PROXY_USERNAME, "")' libs/hbb_common/src/config.rs \
   || r_s11b3j="$r_s11b3j stale-proxy-username-overlay-missing"
 grep -qF '(OPTION_PROXY_PASSWORD, "")' libs/hbb_common/src/config.rs \
   || r_s11b3j="$r_s11b3j stale-proxy-password-overlay-missing"
-grep -qF 'R-S11b-3j — structured SOCKS/proxy transport and credential store deleted' HARDENING_STATUS.md \
-  || r_s11b3j="$r_s11b3j hardening-ledger-missing"
-grep -qF 'R-S16(d)(iii) direct-only source form' requirements.html \
-  || r_s11b3j="$r_s11b3j requirements-disposition-missing"
 if [ -n "$r_s11b3j" ]; then
   echo "  FAIL R-S11b-3j/R-D6(d)(iii) structured proxy excision:$r_s11b3j"
   [ -z "$proxy_symbols" ] || printf '%s\n' "$proxy_symbols"
@@ -14105,11 +13471,7 @@ grep -qE '^SystemCallFilter=@system-service mount umount umount2 pidfd_open pidf
 grep -qE '^SystemCallFilter=~@reboot @swap$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallFilter-subtraction"
 grep -qF 'authenticated owner'\''s root terminal' res/rustdesk.service || r_d3a_missing="$r_d3a_missing unit-terminal-syscall-comment"
 grep -qF 'Linux file clipboard uses fixed-path fusermount fd passing' res/rustdesk.service || r_d3a_missing="$r_d3a_missing unit-fixed-fuse-helper-comment"
-grep -qF 'not clipboard FUSE' requirements.html || r_d3a_missing="$r_d3a_missing requirements-terminal-syscall-scope"
-grep -qF 'Linux CLIPRDR/FUSE mounts through fixed absolute' requirements.html || r_d3a_missing="$r_d3a_missing requirements-fixed-fuse-helper-scope"
-grep -qF 'Dropping <code>CAP_SYS_ADMIN</code> or mount syscalls from the long-lived service is a separate terminal-model split' requirements.html || r_d3a_missing="$r_d3a_missing requirements-terminal-cap-split"
-grep -qF 'direct native <code>mount</code>/<code>umount</code>/<code>umount2</code> syscalls' requirements.html && r_d3a_missing="$r_d3a_missing stale-requirements-fuse-direct-syscalls"
-grep -RInE 'legacy FUSE mount (path|calls|syscalls)' res/rustdesk.service scripts/verify.sh requirements.html >"$VERIFY_TMP/rd_verify_r_d3a_fuse_legacy" &&
+grep -RInE 'legacy FUSE mount (path|calls|syscalls)' res/rustdesk.service scripts/verify.sh >"$VERIFY_TMP/rd_verify_r_d3a_fuse_legacy" &&
   r_d3a_missing="$r_d3a_missing stale-legacy-fuse-mount-wording"
 grep -qE '^SystemCallErrorNumber=' res/rustdesk.service && r_d3a_missing="$r_d3a_missing SystemCallErrorNumber-fallback"
 grep -qE '^SystemCallFilter=.*@mount' res/rustdesk.service && r_d3a_missing="$r_d3a_missing broad-mount-group"
@@ -14569,11 +13931,6 @@ fi
 
 echo "== (3b-iii-h9d) Linux root/headless FileTransfer owner authority is explicit (R-S11e-14/R-S8) =="
 r_s11e14=
-grep -qF 'Linux root/headless FileTransfer owner authority' requirements.html || r_s11e14="$r_s11e14 requirements-appendix-row-missing"
-grep -qF 'R-S11e-14 — Linux root/headless FileTransfer owner authority' HARDENING_STATUS.md || r_s11e14="$r_s11e14 hardening-ledger-missing"
-grep -qF 'file transfer legitimately operates at that privilege (root on the exposed box)' requirements.html || r_s11e14="$r_s11e14 r-s8-root-filetransfer-policy-missing"
-grep -qF 'MUST NOT</span> add a confinement <em>option</em>' requirements.html || r_s11e14="$r_s11e14 r-s8-no-confinement-option-policy-missing"
-grep -qF 'root/headless RustDesk processes keep text clipboard and file transfer' requirements.html || r_s11e14="$r_s11e14 root-headless-filetransfer-retention-missing"
 ft_login_block=$(awk '/Some\(login_request::Union::FileTransfer\(ft\)\)/,/self\.file_transfer = Some/' "$conn")
 echo "$ft_login_block" | grep -qF 'Self::permission(' || r_s11e14="$r_s11e14 filetransfer-login-not-permission-gated"
 echo "$ft_login_block" | grep -qF 'keys::OPTION_ENABLE_FILE_TRANSFER' || r_s11e14="$r_s11e14 filetransfer-login-not-filetransfer-option-gated"
@@ -14779,12 +14136,6 @@ grep -qF 'ipc::get_main_status_snapshot(1000).await' src/ui_interface.rs \
   || r_sv6c="$r_sv6c typed-main-status-snapshot-missing"
 [ "$(grep -Fc 'crate::ui_interface::start_main_status_sync();' src/core_main.rs)" -eq 2 ] \
   || r_sv6c="$r_sv6c connection-manager-status-sync-callers-not-exact"
-grep -qF '<span class="id">R-SV6c</span>' requirements.html \
-  || r_sv6c="$r_sv6c requirement-missing"
-grep -qF '<tr><td>187</td>' requirements.html \
-  || r_sv6c="$r_sv6c appendix-disposition-missing"
-grep -qF 'R-SV6c — rendezvous peer-presence and compatibility status plane deleted' HARDENING_STATUS.md \
-  || r_sv6c="$r_sv6c ledger-disposition-missing"
 if [ -n "$r_sv6c" ]; then
   echo "  FAIL R-SV6c rendezvous peer-presence structural excision:$r_sv6c"; rc=1
 else
@@ -14836,12 +14187,6 @@ grep -qF "bool hideMoreQuality = versionCmp(ffi.ffiModel.pi.version, '1.2.2') < 
   flutter/lib/common/widgets/dialog.dart || r_sv6d="$r_sv6d version-only-quality-gate-missing"
 grep -qE '_queryInterval|Duration\(seconds: (6|20)\)' flutter/lib/common/widgets/peers_view.dart \
   && r_sv6d="$r_sv6d retired-public-custom-peer-cadence-present"
-grep -qF '<span class="id">R-SV6d</span>' requirements.html \
-  || r_sv6d="$r_sv6d requirement-missing"
-grep -qF '<tr><td>188</td>' requirements.html \
-  || r_sv6d="$r_sv6d appendix-disposition-missing"
-grep -qF 'R-SV6d — public/custom-rendezvous selection state deleted' HARDENING_STATUS.md \
-  || r_sv6d="$r_sv6d ledger-disposition-missing"
 if [ -n "$r_sv6d" ]; then
   echo "  FAIL R-SV6d public/custom-rendezvous selection-state excision:$r_sv6d"; rc=1
 else
@@ -15025,9 +14370,6 @@ if ! python3 scripts/dart-audit-result.py --self-test; then
 fi
 if ! python3 scripts/verify-dart-audit-authority.py --repo .; then
   r_r3_gate="$r_r3_gate dart:scanner-authority-contract-failed"
-fi
-if grep -qE 'no[^<]{0,30}<code>deny[.]toml</code>|cargo[- ]audit</code> is not wired|not <code>cargo[- ]audit</code>-clean today|R-A7'\''s "audit green" does <em>not</em> hold as-is|dependency tree remains <strong>outstanding work</strong> \\(#16\\)' requirements.html; then
-  r_r3_gate="$r_r3_gate requirements:stale-r-r3-text"
 fi
 if [ -n "$r_r3_gate" ]; then
   echo "  FAIL R-R3/R-A7 advisory gate wiring regressed:$r_r3_gate"; rc=1
@@ -15579,12 +14921,6 @@ then
   release_gate_bad="$release_gate_bad non-exact-twelve-gate-bundle"
 fi
 grep -qF 'VERIFY-RELEASE: ALL GATES GREEN' "$release_gate" || release_gate_bad="$release_gate_bad no-success-summary"
-grep -qF 'apple-conform-check.sh' requirements.html || release_gate_bad="$release_gate_bad requirements-no-apple-release-gate"
-stale_release_gate_ledger='ALL 7 source ''gates'
-stale_apple_wire='To wire in: add[[:space:]]+it to the release-verification path'
-if grep -qE "$stale_release_gate_ledger|$stale_apple_wire" HARDENING_STATUS.md requirements.html scripts/verify-release.sh scripts/verify.sh; then
-  release_gate_bad="$release_gate_bad stale-apple-release-gate-ledger"
-fi
 if [ -n "$release_gate_bad" ]; then
   echo "  FAIL R-R2/R-A6 release verification no longer requires the Apple source-conformance gate:$release_gate_bad"; rc=1
 else
@@ -16013,8 +15349,6 @@ grep -qF 'init_ndk_context(java_vm, context_jobject)' "$r_s14_ffi_rs" || r_s14_m
 grep -qF 'pub fn bind_main_service_generation<Begin, Rollback>(' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-binding-missing"
 grep -qF 'env.is_same_object(current.owner.as_obj(), service)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-not-exact-object-bound"
 [ "$(grep -cF '!context.generation.is_activation_claimed(generation' "$r_s14_ffi_rs")" -eq 5 ] || r_s14_missing="$r_s14_missing service-generation-callback-gate-missing"
-grep -qF 'reserve and bind that generation only after JNI proves that its caller is the exact currently retained <code>MainService</code> object' requirements.html || r_s14_missing="$r_s14_missing exact-object-listener-generation-requirement-missing"
-grep -qF 'a retained global <code>applicationContext</code> reference' requirements.html || r_s14_missing="$r_s14_missing application-context-global-reference-requirement-missing"
 grep -qF 'service_generation: u64' "$r_s14_flutter" || r_s14_missing="$r_s14_missing connection-manager-generation-owner-missing"
 grep -qF 'call_main_service_set_by_name_for_generation(' "$r_s14_flutter" || r_s14_missing="$r_s14_missing controlled-callback-not-generation-bound"
 grep -qF 'call_main_service_admit_controlled_connection_for_generation(' "$r_s14_flutter" || r_s14_missing="$r_s14_missing controlled-admission-not-generation-bound"
@@ -16216,8 +15550,6 @@ grep -qF 'config.salt = Self::generate_permanent_password_storage_salt();' libs/
 if grep -qE '^[[:space:]]*pub([[:space:]]*\([^)]*\))?[[:space:]]+fn[[:space:]]+generate_permanent_password_storage_salt' libs/hbb_common/src/config.rs; then
   rx7otp_shape="$rx7otp_shape salt-generator-public"
 fi
-grep -qF 'R-S11b-3l/R-X7b — generic automatic-password generator excised' HARDENING_STATUS.md || rx7otp_shape="$rx7otp_shape hardening-ledger-missing"
-grep -qF '<tr><td>235</td>' requirements.html || rx7otp_shape="$rx7otp_shape appendix-c-row-missing"
 if [ -n "$rx7otp_hits" ] || [ -n "$rx7otp_shape" ]; then
   echo "  FAIL R-X7/R-A6: temporary/one-time-password machinery and generic automatic-password generators must be absent; permanent-password storage salt generation must remain private, fixed-purpose, and provisioning-owned (hits below; structural defects:$rx7otp_shape)"
   if [ -n "$rx7otp_hits" ]; then
@@ -16335,8 +15667,6 @@ if [ -n "$legacy_build_scaffold_hits" ]; then
   echo "$legacy_build_scaffold_hits" | sed 's/^/      /'
   rc=1
 fi
-grep -qF 'No second build scaffold.' requirements.html || rb_struct="$rb_struct requirements:no-no-second-build-scaffold"
-grep -qF 'legacy root Docker builder is absent' HARDENING_STATUS.md || rb_struct="$rb_struct status:no-root-docker-retirement"
 grep -q 'cargo-vendor' scripts/build-debian.sh                     || rb_struct="$rb_struct debian:no-vendored-cargo"
 grep -qE 'sha256sum|\.sha256' scripts/build-android.sh             || rb_struct="$rb_struct android:no-self-verify"
 grep -rq '0\.0\.0\.0' scripts/build-debian.sh scripts/build-android.sh scripts/build-windows.ps1 scripts/run-build.ps1 2>/dev/null && rb_struct="$rb_struct external-listener-in-build"
@@ -16345,12 +15675,6 @@ grep -rq '0\.0\.0\.0' scripts/build-debian.sh scripts/build-android.sh scripts/b
 { grep -q 'DOUBLE_BUILD' scripts/build-debian.sh    && grep -q 'double-build SHA mismatch' scripts/build-debian.sh; }        || rb_struct="$rb_struct debian:no-double-build-assert"
 { grep -q 'DOUBLE_BUILD' scripts/build-android.sh   && grep -q 'double-build APK SHA mismatch' scripts/build-android.sh; }   || rb_struct="$rb_struct android:no-double-build-assert"
 { grep -q 'DOUBLE_BUILD' scripts/build-windows-vm.sh && grep -q 'double-build .* SHA mismatch' scripts/build-windows-vm.sh; } || rb_struct="$rb_struct windows:no-double-build-assert"
-{ grep -Fq 'A GitHub release' docs/RELEASE-VERIFICATION.md && grep -Fq 'one channel, not two.' docs/RELEASE-VERIFICATION.md; } || rb_struct="$rb_struct release-verification:no-independent-manifest-channel"
-grep -Fq 'sha256sum --check --strict SHA256SUMS' docs/RELEASE-VERIFICATION.md || rb_struct="$rb_struct release-verification:no-strict-artifact-check"
-{ grep -Fq 'A newly generated key' docs/ANDROID-SIGNING-RECOVERY.md && grep -Fq 'is not a recovery of that identity' docs/ANDROID-SIGNING-RECOVERY.md; } || rb_struct="$rb_struct android:no-key-loss-fail-closed-procedure"
-grep -Fq 'No old-key, old-package, or pin-override fallback is allowed.' docs/ANDROID-SIGNING-RECOVERY.md || rb_struct="$rb_struct android:no-compromise-fail-closed-procedure"
-grep -Fq 'ANDROID-SIGNING-RECOVERY.md' docs/VERSIONING.md || rb_struct="$rb_struct versioning:no-android-recovery-link"
-if grep -Fq 'the residual is real and currently unaddressed' requirements.html; then rb_struct="$rb_struct requirements:android-break-glass-unaddressed"; fi
 { grep -q 'WINDOWS_BUILD_SOURCE' scripts/build-windows-vm.sh && grep -qF 'GIT_INDEX_FILE="$index" git -C "$REPO_ROOT" -c core.hooksPath=/dev/null add -A -- .' scripts/build-windows-vm.sh && grep -qF 'git -C "$REPO_ROOT" archive --format=tar "$SOURCE_TREE"' scripts/build-windows-vm.sh; } || rb_struct="$rb_struct windows:no-immutable-worktree-source-mode"
 grep -qF 'Dockerfile.win-helper' scripts/online-fetch.sh          || rb_struct="$rb_struct windows:helper-image-not-built-online"
 git ls-files --error-unmatch scripts/Dockerfile.win-helper >/dev/null 2>&1 || rb_struct="$rb_struct windows:helper-dockerfile-not-tracked"

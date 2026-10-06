@@ -12740,151 +12740,43 @@ its fixed `id`, `registry_generation`, `action`, and `log` fields prevent action
 text from selecting an authority field. No blanket assertion for every possible
 CM side effect is made.
 
-**Linux `_pa` authority and capture lifetime — native monitor capture and
-production-pair wrong-peer refusal passed; authorized production-pair capture
-and installed-service proof OPEN.**
-The CM peer registry refuses ID overlap and retires only an exact token; audio
-identity resolves only a live published authenticated connection. `StartCapture`
-has no caller-supplied owner: the receiver derives PID/UID/start identity from
-the accepted Unix socket and validates the current positive audio subscribers
-before source discovery. Pushed `baf2ba5c` replaces blocking `Simple::read` and
-blocking source discovery in the accepted helper with one event-driven
-PulseAudio context, introspection, and record stream. It observes owner EOF and
-revalidates the exact live authority during silence, bounds setup and queued
-audio, and does not autospawn a daemon. The sender rechecks live subscribers
-for every frame and dispatches only to that check's IDs, so a later subscriber
-cannot receive a frame from an earlier authority snapshot. The old blocking
-read and broadcast path is absent.
+**Linux `_pa` authority and capture lifetime — authorized ordinary-user
+production pair passed; installed-service and churn evidence OPEN.**
+`src/ipc/pulse_audio.rs` derives PID/UID/start identity from the accepted Unix
+socket before reading a `StartCapture` request, then validates the exact current
+subscriber token. Its event-driven PulseAudio context, source lookup, and bounded
+record stream recheck authority during silence and stop on owner EOF; no daemon is
+autospawned. `src/server/audio_service.rs` rechecks live subscribers for each
+frame and sends only to those IDs, so a later subscriber cannot receive audio
+from an earlier authority snapshot. Same-UID status or a copied token alone
+does not authorize capture.
 
-The prior nine-test closed-wire/kernel-peer/current-subscriber/recipient-isolation/
-fragment-bound/silent-owner-closure VM result remains recorded in retained
-`.harness-state/verifier-vm/linux-pa-authority-tests-run.ahXaLdSMdT.serial.log`
-(SHA-256 `dc309b6e3b4323547bdda002e3fc20a7e22bfb410f71ae8304d66c19be7a319a`).
-The outbound acquisition VM subsequently staged a **candidate-only** 40-package
-PulseAudio runtime from publisher-signed 2026-09-01 Debian bookworm/security
-snapshots against exact devcheck image
-`sha256:1e6f1bde1aa3e2154a2970f8a75bfdb58899b9e44d742ab15b62c29d8b76145f`.
-Its 33,561,135-byte archive SHA-256 is
-`50f18b087a3ecfb69f8221546136101733cc1415cdb42778af70261bf2376115`;
-manifest SHA-256 is
-`e09cd86e2c54ef0df9348fad5343ce051b2ee28fecc7808e50228474fd32da34`.
-The 54-second acquisition receipt is
-`.harness-state/verifier-vm/online-fetch-receipts/run.7HjSQwuA18.receipt`.
-This fixture is not a canonical build or release input.
-
-Pushed `a7f8e70ef880a5493e80c174e44461ab1b3c826d` (tree
-`8c0b5bbcafe03671a3b1292d5fd64d8f32fd6cbb`) passed ten focused tests in
-440 seconds inside the zero-NIC VM's unprivileged, networkless guest Docker
-container. The candidate archive and each package were checked before private
-extraction. A real PulseAudio 16.1 daemon exposed only a private Unix socket;
-`module-null-sink`/`module-sine` supplied a monitor independently proved to
-emit nonzero audio with `pacat`. The production `capture()` path received that
-audio over its bounded IPC stream and stopped after its exact subscriber was
-revoked, including after sine output stopped. Five test summaries, the private
-daemon/socket teardown, host no-new-listener audit, and joined VM cleanup passed;
-no `run.*` directory or overlay remained. Retained 67,378-byte serial:
-`.harness-state/verifier-vm/linux-pa-authority-tests-run.Rt59znDJmN.serial.log`
-(SHA-256 `eebdc3699db176cfebe464270a0ff254fcdf53d6d048cead6099479cef2660d3`).
-This proves a real native PA source and in-process capture authority, **not**
-the production CM/server process pair using its `_pa` listener, an installed service/real device,
-subscriber churn, sustained latency, or full cross-platform release behavior.
-
-Pushed `231f9e89db937f27be8f8f9b942a652210840304` (tree
-`be6827edd4f812c3f63a2ba7193f71193c70c2d3`) passed eleven focused tests
-in 335 seconds in the same zero-NIC/unprivileged guest lane. An actual
-`new_listener("_pa")` Unix endpoint accepted a typed request from its own
-authorized process, then received the same valid subscriber token from a
-separate live same-UID child process. The receiver derived the child's PID,
-UID, and start identity from the accepted kernel socket and refused it at the
-exact CM-launch-parent check before source discovery; the child observed
-terminal closure. The host listener audit found no harness addition, joined
-cleanup left no `run.*` directory or overlay, and the retained 67,749-byte
-serial is `.harness-state/verifier-vm/linux-pa-authority-tests-run.BKmLrlmd44.serial.log`
-(SHA-256 `43a25979b298cd6fe9576c2c8e4dfa3aef00b4b0f6a7f689e5c737075e4868e6`).
-This is native socket-origin refusal with a test-process listener and
-test-only subscriber fixture, **not** a production CM/server process pair
-or a proof of its main-IPC callback, wrong-UID principal, PID-reuse race,
-full process shutdown, real-device churn, or sustained resources. The later
-production-pair negative case below narrows only pre-request refusal; its
-authorized capture and main-IPC proof remain OPEN.
-
-Pushed `2ff52d4b143739718035d93861512a29f8befc3b` (tree
-`559afc57307116a909d219c0b60ecd6df4a3c24e`) moves kernel-derived
-PID/UID/start/direct-parent requester proof ahead of the one-second typed
-`_pa` request read. A non-owner can no longer hold this serial listener for
-that read deadline merely by connecting and staying silent; the full token,
-current-subscriber, and main-IPC proof still runs after the request. The
-source-bound native-socket test held a separate same-UID child open without
-sending a frame and required the production accepted-stream handler and child
-to terminate within 750 ms; it also retained the valid local request and
-copied-token refusal cases. The zero-NIC guest passed eleven focused tests in
-320 seconds with no harness-added host listener and joined cleanup. Raw serial
-`.harness-state/verifier-vm/linux-pa-authority-tests-run.ECAEwAphus.serial.log`
-is 67,130 bytes, SHA-256
-`517c1b0723221f3f4c69fbe2457359182b850e6637f920c5f1f740a6c921c352`.
-This closes only the pre-request wrong-peer head-of-line wait in the test-owned
-fixture, not backlog flooding, a production CM/server pair, installed service
-authority, or the other OPEN native and resource cases above. The 320-second
-run is integration evidence, not a fast inner-loop timing claim.
-
-Pushed `7c9fd289ec3005ee6f4fd21507ed9a628e10cc78` (tree
-`4369d4df709e075946f82f7fdad45c8345dd9f65`) adds a test-only probe to
-the existing `--cm-file-replay` lane. With the production server and its direct
-`--cm` child live during an authenticated FileTransfer replay, the probe bound
-both processes to their executable/PID/start identity, checked the CM-owned
-`_pa` socket, and connected as an unrelated same-UID process without sending a
-request. The real CM closed that socket before the 750-ms deadline; the probe
-recorded `server_pid=18`, `cm_pid=135`, `cm_start=48136`, and integer
-`refusal_ms=0`. The source-bound zero-NIC VM passed in 494 seconds with no
-harness-added host listener or pre-existing-process drift and joined cleanup.
-Retained 399,833-byte serial:
-`.harness-state/verifier-vm/cm-file-replay-run.I1zRzY63eu.serial.log`
-(SHA-256 `930c13d047a5dce78087dc7dea3ebf5fc6f418a361addb39f0823752a3248616`).
-No `run.*` directory or overlay remains. This proves only production-pair
-pre-request wrong-peer refusal. FileTransfer kept the CM alive, but provided
-no audio subscriber or capture token: authorized capture, main-IPC callback,
-wrong-UID/PID-reuse cases, installed service, backlog flooding, and sustained
-resource/device behavior remain OPEN. No production code changed in this slice.
-
-Pushed `780bbfe23936fca115cb75803bf2007681f86405` (tree
-`30af690d31be0951eda71596fc0bf8bfd460ccdd`) retires the stale 1,522-line
-CM/PA/whiteboard source-wording checker. It demanded a caller-supplied PA owner,
-the removed blocking `Simple::read`, and the old CM registry, so it could not
-evaluate the current implementation. The shared verifier retains its focused
-Rust authority/closed-wire tests and two narrow old-path absence checks, but
-does not print a synthetic native pass. R-S11cc/R-S11cd and Appendix C
-#222/#223 now require source review and source-bound native allowed/forbidden
-process evidence rather than that obsolete mutation count. The exact pushed
-source passed the existing isolated native PA lane: eleven Rust tests, the
-private sine-driven PulseAudio monitor, capture revocation after sine unload,
-and copied-token same-UID refusal. The zero-NIC outer transaction took 681
-seconds, reported no harness-added host listener or pre-existing-process drift,
-and joined cleanup. Retained 67,783-byte serial:
-`.harness-state/verifier-vm/linux-pa-authority-tests-run.hGCGDZJ1gd.serial.log`
-(SHA-256 `ca3af5c31b3c6088d4567406c907f44360053fe96d052d1d9f6b349f1fcdadeb`);
-no `run.*` directory or overlay remains. This is native PA with a test-owned
-listener, not authorized capture through the production CM/server pair or an
-installed service. The full shared verifier and affected whiteboard checker
-were not executed in this slice; only their Bash/Python syntax and focused
-source absences were checked. No product code changed.
-
-Current ordinary-user production-pair positive evidence is pushed source
-`3e1466625710ad75069344c4384710b0ba730491` (tree
-`828b07d340ae4bd4aa75e8aed700f455c6234edf`). The zero-NIC `--cm-file-replay`
-VM built the real server and a bounded keyed Remote viewer probe from that tree,
-then ran a private PulseAudio 16.1 null-sink/sine monitor and Unix-only Xvfb
-inside guest-only networkless Docker. The live server/CM `_pa` path, including
-main-IPC token validation, delivered four decoded Opus frames with peak 512/1000
-alongside 34 decoded VP9 frames; the same run retained wrong-peer pre-request
-refusal and CM/file finality. The 401-second outer transaction reported no
-host-listener addition or pre-existing-process drift, joined cleanup, and no
-retained `run.*` or overlay. Raw serial:
+The strongest current native evidence is source `3e1466625710ad75069344c4384710b0ba730491`
+(tree `828b07d340ae4bd4aa75e8aed700f455c6234edf`). In a zero-NIC VM,
+`--cm-file-replay` built the real server and keyed Remote viewer probe, then
+ran a private PulseAudio 16.1 null-sink/sine monitor and Unix-only Xvfb inside
+guest-only networkless Docker. The live server/CM `_pa` path, including
+main-IPC token validation, delivered four decoded Opus frames (peak 512/1000)
+alongside 34 decoded VP9 frames. The same run exercised production-pair
+pre-request wrong-peer refusal and CM/file finality. The 401-second outer run
+reported no host-listener addition or pre-existing-process drift, joined
+cleanup, and no retained `run.*` or overlay. Raw serial:
 `.harness-state/verifier-vm/cm-file-replay-run.aawFGYsTlw.serial.log`
 (820,862 bytes; SHA-256
 `5daea31442810edb50a1f582c8dc0be6d3e3688187a8212bd2142d84a5dc7e8b`).
-This establishes authorized ordinary-user production process-pair audio, not
-installed-service/root principals, wrong-UID or PID-reuse behavior, subscriber
-churn, sustained resource/latency/device behavior, or other platforms.
+Its private 40-package PulseAudio fixture is candidate-only, not a canonical
+release input (archive SHA-256
+`50f18b087a3ecfb69f8221546136101733cc1415cdb42778af70261bf2376115`;
+manifest SHA-256
+`e09cd86e2c54ef0df9348fad5343ce051b2ee28fecc7808e50228474fd32da34`).
+
+**Still OPEN:** installed-service/root principals, wrong-UID and PID-reuse
+races, real subscriber churn and capture restart, sustained latency,
+CPU/memory/handle bounds, real-device changes, and other platforms. The
+ordinary-user process-pair run proves neither installed service authority nor
+capture-to-present latency. Earlier incremental fixtures and superseded run
+receipts remain in Git history and the deep-audit journal, not in this
+current-state subsection.
 
 **Process-wide connection IDs — source corrected, native lifecycle OPEN.**
 The former per-`Server` counters could allocate the same ID in overlapping

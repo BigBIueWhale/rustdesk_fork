@@ -12751,7 +12751,8 @@ its fixed `id`, `registry_generation`, `action`, and `log` fields prevent action
 text from selecting an authority field. No blanket assertion for every possible
 CM side effect is made.
 
-**Linux `_pa` authority and capture lifetime — source corrected; native capture OPEN.**
+**Linux `_pa` authority and capture lifetime — native monitor capture passed;
+standalone helper and installed-service proof OPEN.**
 The CM peer registry refuses ID overlap and retires only an exact token; audio
 identity resolves only a live published authenticated connection. `StartCapture`
 has no caller-supplied owner: the receiver derives PID/UID/start identity from
@@ -12765,30 +12766,41 @@ for every frame and dispatches only to that check's IDs, so a later subscriber
 cannot receive a frame from an earlier authority snapshot. The old blocking
 read and broadcast path is absent.
 
-The exact pushed source `baf2ba5cb55befc7a86e9f433ff856e9d6da1a07`
-(tree `4db85ab9a2102018f158fcdf73f588ecb77f1e1b`) passed nine focused
-Linux-target closed-wire, kernel-peer, current-subscriber, recipient-isolation,
-fragment-bound, and silent-owner-closure tests in the zero-NIC VM/networkless
-guest Docker lane in 293 seconds. The outer listener audit had no harness
-addition or pre-existing-process drift; joined cleanup left no `run.*` directory
-or overlay. Retained 66,698-byte serial:
+The prior nine-test closed-wire/kernel-peer/current-subscriber/recipient-isolation/
+fragment-bound/silent-owner-closure VM result remains recorded in retained
 `.harness-state/verifier-vm/linux-pa-authority-tests-run.ahXaLdSMdT.serial.log`
 (SHA-256 `dc309b6e3b4323547bdda002e3fc20a7e22bfb410f71ae8304d66c19be7a319a`).
-These tests did **not** run a real PulseAudio server/source or an installed
-service. Authorized capture, unauthorized same-machine principals, revocation
-under native silence, subscriber churn, latency, and cleanup on a real PA
-device/service remain OPEN and are not inferred from Linux-target unit tests.
+The outbound acquisition VM subsequently staged a **candidate-only** 40-package
+PulseAudio runtime from publisher-signed 2026-09-01 Debian bookworm/security
+snapshots against exact devcheck image
+`sha256:1e6f1bde1aa3e2154a2970f8a75bfdb58899b9e44d742ab15b62c29d8b76145f`.
+Its 33,561,135-byte archive SHA-256 is
+`50f18b087a3ecfb69f8221546136101733cc1415cdb42778af70261bf2376115`;
+manifest SHA-256 is
+`e09cd86e2c54ef0df9348fad5343ce051b2ee28fecc7808e50228474fd32da34`.
+The 54-second acquisition receipt is
+`.harness-state/verifier-vm/online-fetch-receipts/run.7HjSQwuA18.receipt`.
+This fixture is not a canonical build or release input.
 
-The outbound-only acquisition VM at source `9f122dc8` successfully read the
-publisher-signed 2026-09-01 Debian bookworm/security snapshots in 30 seconds.
-It selected `pulseaudio` `16.1+dfsg1-2+b1` (amd64 package SHA-256
-`9937623ed1b9e8c663f0d1be510821e2d18306c5c05658a4c717847ce36f8aa2`)
-and simulated its dependencies against the acquisition-VM base. The bounded
-receipt is `.harness-state/verifier-vm/online-fetch-receipts/run.RM5j5M8R7F.receipt`;
-the outer listener audit and joined cleanup passed. This did not stage a
-package, establish the devcheck image's exact dependency delta, or run `_pa`.
-Next: pin and stage the exact test-runtime closure, then execute positive capture,
-silent revocation, wrong-principal refusal, and cleanup in the zero-NIC VM.
+Pushed `a7f8e70ef880a5493e80c174e44461ab1b3c826d` (tree
+`8c0b5bbcafe03671a3b1292d5fd64d8f32fd6cbb`) passed ten focused tests in
+440 seconds inside the zero-NIC VM's unprivileged, networkless guest Docker
+container. The candidate archive and each package were checked before private
+extraction. A real PulseAudio 16.1 daemon exposed only a private Unix socket;
+`module-null-sink`/`module-sine` supplied a monitor independently proved to
+emit nonzero audio with `pacat`. The production `capture()` path received that
+audio over its bounded IPC stream and stopped after its exact subscriber was
+revoked, including after sine output stopped. Five test summaries, the private
+daemon/socket teardown, host no-new-listener audit, and joined VM cleanup passed;
+no `run.*` directory or overlay remained. Retained 67,378-byte serial:
+`.harness-state/verifier-vm/linux-pa-authority-tests-run.Rt59znDJmN.serial.log`
+(SHA-256 `eebdc3699db176cfebe464270a0ff254fcdf53d6d048cead6099479cef2660d3`).
+This proves a real native PA source and in-process capture authority, **not**
+the standalone `_pa` listener/process, a wrong-principal native refusal, an
+installed service/real device, subscriber churn, sustained latency, or full
+cross-platform release behavior. Those remain OPEN; next is a bounded
+cross-process `_pa` admission/revocation and cleanup transaction in the same
+isolated lane.
 
 **Process-wide connection IDs — source corrected, native lifecycle OPEN.**
 The former per-`Server` counters could allocate the same ID in overlapping

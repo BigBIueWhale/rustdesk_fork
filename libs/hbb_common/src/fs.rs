@@ -5468,12 +5468,28 @@ mod tests {
         })
         .await
         .expect("write the declared bytes");
+        let Some(DataStream::FileStream(stream)) = job.data_stream.as_mut() else {
+            panic!("receive job must retain its admitted file stream");
+        };
+        stream
+            .flush()
+            .await
+            .expect("settle the admitted write before changing staged length");
+        let staged_path = tmp.join("incoming.bin.download");
+        assert_eq!(
+            std::fs::read(&staged_path).expect("read settled bytes"),
+            b"four"
+        );
         std::fs::OpenOptions::new()
             .append(true)
-            .open(tmp.join("incoming.bin.download"))
+            .open(&staged_path)
             .expect("open staged file through its existing name")
             .write_all(b"X")
             .expect("change staged inode length");
+        assert_eq!(
+            std::fs::read(&staged_path).expect("read changed bytes"),
+            b"fourX"
+        );
 
         let error = job
             .finalize_write(1)

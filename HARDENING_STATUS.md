@@ -1043,8 +1043,12 @@ observed new `tcp 127.0.0.1:8100` and rejected the transaction; its owner was no
 attributed, signalled, or changed. The inventory now explicitly requires those two tests
 and the outer count is 75, with all safety checks retained; this correction has not been
 re-executed. The guest powered off at 808 seconds. The owned VM/capture/virtiofsd exited
-and the disposable disks were retired; roughly 34 MiB of failed-run diagnostics remain
-in the one exact `run.mhr2BrPPea` root, blocking another run until reconciliation.
+and the disposable disks were retired. The remaining 34 MiB of diagnostics were reconciled
+and exact owned root `run.mhr2BrPPea` (`66306:106074337`) removed through the inode-bound
+cleanup helper. The raw serial and a 1,468-byte mode-0400 failure receipt remain;
+the latter is `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.mhr2BrPPea.failure.receipt`,
+SHA-256 `89fc246c7e2d0708787f1edabf3cd50e4de3ef1aabb98135bf0dbd7ceafd4ac2`.
+No listener ownership was inspected or changed during reconciliation.
 These named unit results do not constitute an accepted integration transaction.
 
 **Still OPEN:** exact-artifact installed Linux receiver runs on both endpoints with

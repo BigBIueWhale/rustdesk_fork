@@ -1366,7 +1366,8 @@ fn unix_rename_admitted_entry(
     use std::os::unix::io::AsRawFd;
 
     if source_name == target_name {
-        return Ok(());
+        let current = unix_fstatat_no_follow(parent.as_raw_fd(), source_name)?;
+        return unix_require_same_object(admitted, &current, "rename source");
     }
     let destination_was_same_object =
         unix_optional_fstatat_no_follow(parent.as_raw_fd(), target_name)?

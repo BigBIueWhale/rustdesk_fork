@@ -3313,10 +3313,11 @@ LAYOUT
         || fail 'CM file replay left a container'
     CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
         --name rustdesk-cm-pa-product-pair --pull=never --network=none --read-only \
-        --user 1000:1000 --pids-limit=256 --memory=2g --memory-swap=2g --cpus=2 \
+        --user 1000:1000 --pids-limit=1024 --memory=4g --memory-swap=4g --cpus=2 \
         --ulimit nofile=4096:4096 --ulimit core=0:0 \
         --cap-drop=ALL --security-opt=no-new-privileges --security-opt=apparmor=docker-default \
-        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=512m \
+        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g \
+        --tmpfs /tmp/.X11-unix:rw,nosuid,nodev,noexec,mode=1777,size=1m \
         --env "PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE=$PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE" \
         --env "PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256" \
         --env "PA_RUNTIME_CANDIDATE_MANIFEST_SHA256=$PA_RUNTIME_CANDIDATE_MANIFEST_SHA256" \
@@ -3339,10 +3340,10 @@ LAYOUT
     [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'CM PulseAudio product-pair container identity differs'
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
         '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Memory}}|{{.HostConfig.MemorySwap}}|{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.Devices}}' "$CONTAINER_ID")"
-    [ "$inspect" = 'none|true|1000:1000|2147483648|2147483648|2000000000|256|["ALL"]|["no-new-privileges","apparmor=docker-default"]|{}|[]' ] \
+    [ "$inspect" = 'none|true|1000:1000|4294967296|4294967296|2000000000|1024|["ALL"]|["no-new-privileges","apparmor=docker-default"]|{}|[]' ] \
         || fail 'CM PulseAudio product-pair confinement differs'
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
-        '{{range .Mounts}}{{printf "%s|%s|%s|%t\n" .Type .Source .Destination .RW}}{{end}}' \
+        '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' \
         "$CONTAINER_ID" | LC_ALL=C sort)"
     local expected_mounts
     expected_mounts="$(printf '%s\n' \

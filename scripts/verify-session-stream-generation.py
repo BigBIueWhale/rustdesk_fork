@@ -323,7 +323,7 @@ MUTATIONS = (
     ("model", "if (!_isCurrentSessionStream(streamBinding)) {\n      return;\n    }\n    final sessionEvents", "final sessionEvents", "listener installation refusal"),
     ("model", "if (!_isCurrentSessionStream(streamBinding)) return;\n        // JS/Wasm", "// JS/Wasm", "web callback refusal"),
     ("model", "      });\n      return;\n    }\n\n    final cb = ffiModel.startEventListener(activeSessionId, peerId);", "      });\n    }\n\n    final cb = ffiModel.startEventListener(activeSessionId, peerId);", "web branch final return"),
-    ("model", "if (!_isCurrentSessionStream(streamBinding)) return;\n      if (tabWindowId", "if (closed || sessionId != activeSessionId) return;\n      if (tabWindowId", "native message generation refusal"),
+    ("model", "stream.listen((message) {\n      if (!_isCurrentSessionStream(streamBinding)) return;", "stream.listen((message) {\n      if (closed || sessionId != activeSessionId) return;", "native message generation refusal"),
     ("model", "}, onError: (Object error, StackTrace stackTrace) {\n      if (!_isCurrentSessionStream(streamBinding)) return;", "}, onError: (Object error, StackTrace stackTrace) {", "predecessor error refusal"),
     ("model", "onDone: () {\n      if (!_isCurrentSessionStream(streamBinding)) return;", "onDone: () {", "predecessor completion refusal"),
     ("test", "replacement invalidates the predecessor with the same owner", "replacement preserves the predecessor with the same owner", "replacement behavior test"),

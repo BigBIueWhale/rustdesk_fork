@@ -372,7 +372,7 @@ def validate(sources: Dict[str, str]) -> None:
     init_jobs = extract_rust_item(fs, "async fn init_jobs", "common file job init")
     require(
         init_jobs,
-        "jobs.iter_mut().find(|job| !job.is_last_job)",
+        "jobs.iter().position(|job| !job.is_last_job)",
         "one active initialization job",
     )
     forbid(init_jobs, "for job in jobs.iter_mut()", "multi-job initialization burst")
@@ -597,7 +597,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("io_loop", "Some(message::Union::FileAction(_))", "Some(message::Union::FileActionDisabled(_))", "generic path refusal"),
     ("io_loop", "completion = self.file_writes.next(), if !self.file_writes.is_empty()", "completion = self.file_writes.next()", "receipt select guard"),
     ("io_loop", "_ = self.timer.tick(), if !self.file_writes.has_transfer_data()", "_ = self.timer.tick()", "transfer pacing"),
-    ("fs", "jobs.iter_mut().find(|job| !job.is_last_job)", "jobs.iter_mut().last()", "one active init job"),
+    ("fs", "jobs.iter().position(|job| !job.is_last_job)", "jobs.iter().rposition(|job| !job.is_last_job)", "one active init job"),
     ("fs", "ResultType<(String, Option<crate::tcp::WriterReceipt>)>", "ResultType<String>", "common producer receipt"),
     ("fs", "send_with_receipt(&new_block(block))", "send(&new_block(block))", "exact block receipt"),
     ("fs", "fn r_s11fg_read_step_returns_the_exact_file_frame_receipt()", "fn read_step_returns_the_exact_file_frame_receipt()", "exact frame regression"),

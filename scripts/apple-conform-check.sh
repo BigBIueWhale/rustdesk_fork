@@ -3427,7 +3427,7 @@ grep -Fq '<string>com.carriez.rustdesk</string>' "$REPO/src/platform/privileges_
 grep -Fq '<string>com.carriez.rustdesk</string>' "$REPO/src/platform/privileges_scripts/agent.plist" || r_s11c5="$r_s11c5 macos-agent-associated-bundle-id-not-fixed"
 grep -Fq 'macOS privileged-service packaging hazards' "$REPO/requirements.html" || r_s11c5="$r_s11c5 macos-template-identity-requirements-missing"
 grep -Fq 'R-S11c-21 — macOS privileged service template identity input' "$REPO/HARDENING_STATUS.md" || r_s11c5="$r_s11c5 macos-template-identity-ledger-missing"
-grep -Fq 'macOS residual process launch provenance' "$REPO/requirements.html" || r_s11c5="$r_s11c5 macos-residual-process-launch-requirements-missing"
+grep -Fq 'macOS privileged process-launch provenance' "$REPO/requirements.html" || r_s11c5="$r_s11c5 macos-residual-process-launch-requirements-missing"
 grep -Fq 'R-S11e-10 — macOS residual process launch provenance' "$REPO/HARDENING_STATUS.md" || r_s11c5="$r_s11c5 macos-residual-process-launch-ledger-missing"
 grep -Fq 'fn macos_installed_app_bundle_path() -> PathBuf' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-app-bundle-path-helper-missing"
 grep -Fq 'fn macos_privileged_helper_path_is_expected_and_trusted(current_exe: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-service-ipc-helper-trust-missing"

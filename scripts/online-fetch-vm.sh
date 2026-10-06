@@ -292,65 +292,10 @@ terminate_virtiofsd_generation() {
 }
 
 capture_listeners() {
-    /usr/bin/ss -H -lntu | LC_ALL=C /usr/bin/sort -u
-}
-
-capture_listener_details() {
-    /usr/bin/ss -H -lntup 2>/dev/null | LC_ALL=C /usr/bin/sort -u
-}
-
-capture_process_generations() {
-    local proc pid owner start executable
-    for proc in /proc/[0-9]*; do
-        [ -d "$proc" ] || continue
-        pid=${proc#/proc/}
-        owner="$(/usr/bin/stat -c '%u' -- "$proc" 2>/dev/null)" || continue
-        [ "$owner" = "$HOST_UID" ] || continue
-        start="$(process_start_time "$pid" 2>/dev/null)" || continue
-        executable="$(/usr/bin/readlink -f "$proc/exe" 2>/dev/null)" || continue
-        /usr/bin/printf '%s\t%s\t%s\n' "$pid" "$start" "$executable"
-    done | LC_ALL=C /usr/bin/sort -n
-}
-
-admit_preexisting_external_listener_drift() {
-    local additions=$1 details=$2 stage=$3 listener
-    local protocol state receive_queue send_queue local_endpoint peer_endpoint remainder
-    local matching_details pids pid owner start executable generation
-    while IFS= read -r listener; do
-        [ -n "$listener" ] || continue
-        read -r protocol state receive_queue send_queue local_endpoint peer_endpoint remainder \
-            <<<"$listener"
-        matching_details="$(
-            /usr/bin/awk \
-                -v protocol="$protocol" -v state="$state" \
-                -v local_endpoint="$local_endpoint" -v peer_endpoint="$peer_endpoint" \
-                '$1 == protocol && $2 == state && $5 == local_endpoint && $6 == peer_endpoint' \
-                "$details"
-        )"
-        [ -n "$matching_details" ] || return 1
-        pids="$(
-            /usr/bin/printf '%s\n' "$matching_details" \
-                | /usr/bin/grep -oE 'pid=[1-9][0-9]*' \
-                | /usr/bin/cut -d= -f2 \
-                | LC_ALL=C /usr/bin/sort -nu
-        )" || pids=
-        [ -n "$pids" ] || return 1
-        while IFS= read -r pid; do
-            [ -n "$pid" ] || continue
-            owner="$(/usr/bin/stat -c '%u' -- "/proc/$pid" 2>/dev/null)" || return 1
-            [ "$owner" = "$HOST_UID" ] || return 1
-            start="$(process_start_time "$pid" 2>/dev/null)" || return 1
-            executable="$(/usr/bin/readlink -f "/proc/$pid/exe" 2>/dev/null)" \
-                || return 1
-            generation="${pid}"$'\t'"${start}"$'\t'"${executable}"
-            /usr/bin/grep -Fqx -- "$generation" "$LISTENER_PROCESSES_BEFORE" \
-                || return 1
-        done <<<"$pids"
-        /usr/bin/printf 'stage=%s %s owners=%s\n' \
-            "$stage" "$listener" \
-            "$(/usr/bin/tr '\n' ',' <<<"$pids" | /usr/bin/sed 's/,$//')" \
-            >>"$EXTERNAL_LISTENER_DRIFT"
-    done <"$additions"
+    LC_ALL=C /usr/bin/ss -H -lntu \
+        | LC_ALL=C /usr/bin/awk \
+            'NF != 6 || ($1 != "tcp" && $1 != "udp") { exit 1 } { print $1, $5 }' \
+        | LC_ALL=C /usr/bin/sort -u
 }
 
 verify_private_socket() {
@@ -443,7 +388,6 @@ remove_success_receipt_temporary() {
 prepare_success_receipt() {
     [ "$#" -eq 1 ] || return 1
     local elapsed_seconds=$1 run_name listener_sha listener_bytes
-    local drift_sha drift_bytes
     local serial_sha serial_bytes capture_sha capture_bytes
     local stdout_sha stdout_bytes stderr_sha stderr_bytes capture_line
     local guest_line entry_line buildx_line runtime_line outer_line
@@ -464,10 +408,6 @@ prepare_success_receipt() {
     listener_sha="$(/usr/bin/sha256sum "$LISTENERS_BEFORE" | /usr/bin/awk '{print $1}')" \
         || return 1
     listener_bytes="$(/usr/bin/stat -c '%s' -- "$LISTENERS_BEFORE")" || return 1
-    /usr/bin/chmod 0400 -- "$EXTERNAL_LISTENER_DRIFT" || return 1
-    drift_sha="$(/usr/bin/sha256sum "$EXTERNAL_LISTENER_DRIFT" | /usr/bin/awk '{print $1}')" \
-        || return 1
-    drift_bytes="$(/usr/bin/stat -c '%s' -- "$EXTERNAL_LISTENER_DRIFT")" || return 1
     serial_sha="$(/usr/bin/sha256sum "$SERIAL_LOG" | /usr/bin/awk '{print $1}')" \
         || return 1
     serial_bytes="$(/usr/bin/stat -c '%s' -- "$SERIAL_LOG")" || return 1
@@ -490,10 +430,10 @@ prepare_success_receipt() {
     if [ "$MODE" = authority-smoke ]; then
         runtime_line="ONLINE_FETCH_VM_RUNTIME=pass network=qemu-user-only hostfwd=absent udp=denied docker=guest-bridge git=pinned-deb inner_uid=$HOST_UID https=sha256 cache=virtiofs-atomic cleanup=joined"
     fi
-    outer_line="ONLINE_FETCH_VM_OUTER=pass host_uid=$HOST_UID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied listeners=causal docker=guest-only buildkit=guest-only git=pinned-deb cache=virtiofs-atomic cleanup=joined elapsed_seconds=$elapsed_seconds receipt=$SUCCESS_RECEIPT_FINAL"
+    outer_line="ONLINE_FETCH_VM_OUTER=pass host_uid=$HOST_UID source=$SOURCE_COMMIT network=qemu-user-only hostfwd=absent udp=denied listeners=none-added docker=guest-only buildkit=guest-only git=pinned-deb cache=virtiofs-atomic cleanup=joined elapsed_seconds=$elapsed_seconds receipt=$SUCCESS_RECEIPT_FINAL"
     {
         /usr/bin/printf '%s\n' \
-            'format=rustdesk-online-fetch-success-v3' \
+            'format=rustdesk-online-fetch-success-v4' \
             "run=$run_name" \
             "run_identity=$RUN_ID" \
             "request=$REQUEST" \
@@ -506,8 +446,8 @@ prepare_success_receipt() {
             "elapsed_seconds=$elapsed_seconds" \
             "listener_inventory_sha256=$listener_sha" \
             "listener_inventory_bytes=$listener_bytes" \
-            "external_listener_drift_sha256=$drift_sha" \
-            "external_listener_drift_bytes=$drift_bytes" \
+            'listener_inventory_format=protocol-endpoint-v1' \
+            'listener_additions=none' \
             "serial_sha256=$serial_sha" \
             "serial_bytes=$serial_bytes" \
             "capture_receipt_sha256=$capture_sha" \
@@ -624,7 +564,7 @@ cleanup() {
         remove_success_receipt_temporary || cleanup_failed=1
     fi
     if [ "$RUN_COMPLETE" -eq 1 ] && [ "$status" -eq 0 ] && [ "$cleanup_failed" -eq 0 ]; then
-        /usr/bin/printf 'ONLINE_FETCH_VM_OUTER=pass host_uid=%s source=%s network=qemu-user-only hostfwd=absent udp=denied listeners=causal docker=guest-only buildkit=guest-only git=pinned-deb cache=virtiofs-atomic cleanup=joined elapsed_seconds=%s receipt=%s\n' \
+        /usr/bin/printf 'ONLINE_FETCH_VM_OUTER=pass host_uid=%s source=%s network=qemu-user-only hostfwd=absent udp=denied listeners=none-added docker=guest-only buildkit=guest-only git=pinned-deb cache=virtiofs-atomic cleanup=joined elapsed_seconds=%s receipt=%s\n' \
             "$HOST_UID" "$SOURCE_COMMIT" "$VM_ELAPSED_SECONDS" "$SUCCESS_RECEIPT_FINAL"
     fi
     if [ -n "$RUN_ADMISSION_FD" ]; then
@@ -806,15 +746,10 @@ readonly SERIAL_LOG=$RUN/serial.log
 readonly CAPTURE_RECEIPT=$RUN/capture.receipt
 readonly QEMU_PIDFILE=$RUN/qemu.pid
 readonly LISTENERS_BEFORE=$RUN/listeners.before
-readonly LISTENERS_BEFORE_DETAIL=$RUN/listeners.before.detail
 readonly LISTENERS_DURING=$RUN/listeners.during
-readonly LISTENERS_DURING_DETAIL=$RUN/listeners.during.detail
 readonly LISTENERS_AFTER=$RUN/listeners.after
-readonly LISTENERS_AFTER_DETAIL=$RUN/listeners.after.detail
 readonly NEW_DURING=$RUN/listeners.new-during
 readonly NEW_AFTER=$RUN/listeners.new-after
-readonly LISTENER_PROCESSES_BEFORE=$RUN/listener-processes.before
-readonly EXTERNAL_LISTENER_DRIFT=$RUN/listeners.preexisting-external-drift
 readonly RESULT_EXPORT=$RUN/result
 
 if [ "$MODE" = authority-smoke ]; then
@@ -946,10 +881,7 @@ virtiofsd_package_before="$(/usr/bin/sha512sum "$VIRTIOFSD_PACKAGE")"
 kernel_before="$(/usr/bin/sha256sum "$KERNEL")"
 initrd_before="$(/usr/bin/sha256sum "$INITRD")"
 source_before="$SOURCE_COMMIT:$SOURCE_TREE:$(/usr/bin/sha256sum "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$SCRIPT_DIR/online-fetch.sh" "$SCRIPT_DIR/online-fetch-vm.sh" "$VIRTIOFSD_LAUNCHER" "$SCRIPT_DIR/discover-android-emulator-inputs.py" "$SCRIPT_DIR/discover-rust-android-x86-input.py" "$SCRIPT_DIR/discover-flutter-android-maven.py" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.sh" "$SCRIPT_DIR/discover-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-bootstrap.py" "$SCRIPT_DIR/stage-flutter-linux-engine-graph.py" "$SCRIPT_DIR/stage-flutter-linux-engine-sysroots.py" "$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py")"
-capture_process_generations >"$LISTENER_PROCESSES_BEFORE"
 capture_listeners >"$LISTENERS_BEFORE"
-capture_listener_details >"$LISTENERS_BEFORE_DETAIL"
-: >"$EXTERNAL_LISTENER_DRIFT"
 
 /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_ONLINE_FETCH \
     -joliet -rock -graft-points -output "$PAYLOAD" \
@@ -1017,10 +949,8 @@ start_virtiofsd bounded-result "$RESULT_EXPORT" "$RESULT_EXPORT_ID" \
 capture_listeners >"$LISTENERS_DURING"
 /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_DURING" >"$NEW_DURING"
 if [ -s "$NEW_DURING" ]; then
-    capture_listener_details >"$LISTENERS_DURING_DETAIL"
-    admit_preexisting_external_listener_drift \
-        "$NEW_DURING" "$LISTENERS_DURING_DETAIL" virtiofsd-start \
-        || { /usr/bin/cat "$LISTENERS_DURING_DETAIL" >&2; fail 'virtiofsd created or coincided with an unattributable host INET listener'; }
+    /usr/bin/cat "$NEW_DURING" >&2
+    fail 'host listener endpoint added during VM startup'
 fi
 
 vm_started_seconds=$SECONDS
@@ -1097,10 +1027,8 @@ done
 capture_listeners >"$LISTENERS_DURING"
 /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_DURING" >"$NEW_DURING"
 if [ -s "$NEW_DURING" ]; then
-    capture_listener_details >"$LISTENERS_DURING_DETAIL"
-    admit_preexisting_external_listener_drift \
-        "$NEW_DURING" "$LISTENERS_DURING_DETAIL" qemu-start \
-        || { /usr/bin/cat "$LISTENERS_DURING_DETAIL" >&2; fail 'acquisition QEMU created or coincided with an unattributable host INET listener'; }
+    /usr/bin/cat "$NEW_DURING" >&2
+    fail 'host listener endpoint added during VM startup'
 fi
 
 vm_status=0
@@ -1141,10 +1069,8 @@ fi
 capture_listeners >"$LISTENERS_AFTER"
 /usr/bin/comm -13 "$LISTENERS_BEFORE" "$LISTENERS_AFTER" >"$NEW_AFTER"
 if [ -s "$NEW_AFTER" ]; then
-    capture_listener_details >"$LISTENERS_AFTER_DETAIL"
-    admit_preexisting_external_listener_drift \
-        "$NEW_AFTER" "$LISTENERS_AFTER_DETAIL" after-cleanup \
-        || { /usr/bin/cat "$LISTENERS_AFTER_DETAIL" >&2; fail 'acquisition VM left or coincided with an unattributable host INET listener'; }
+    /usr/bin/cat "$NEW_AFTER" >&2
+    fail 'host listener endpoint added after VM completion'
 fi
 retire_private_socket_path "$SERIAL_SOCKET" \
     || fail 'serial channel cleanup is ambiguous'

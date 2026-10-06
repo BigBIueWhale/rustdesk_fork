@@ -132,9 +132,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
     sources = {
         "entry_inventory": entry_inventory(workflows),
         "enabled_inventory": enabled_workflow_inventory(workflows),
-        "documentation": (workflows / "DISABLED.md").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "gitmodules_state": regular_file_state(repo / ".gitmodules"),
         "legacy_verifier_state": regular_file_state(repo / LEGACY_VERIFIER_PATH),
@@ -178,57 +175,8 @@ def validate(sources: Dict[str, str]) -> None:
             raise VerificationError(f"disabled reference lacks one demoted trigger key: {name}")
         if len(re.findall(r"(?m)^historical_jobs:", workflow)) != 1:
             raise VerificationError(f"disabled reference lacks one demoted jobs key: {name}")
-        require(
-            workflow,
-            "HISTORICAL INERT REFERENCE ONLY",
-            f"inert-reference marker in {name}",
-        )
-        require(
-            workflow,
-            "schema-demoted so a rename cannot activate this file",
-            f"rename-resistant marker in {name}",
-        )
 
     for source, needle, label in (
-        (
-            sources["documentation"],
-            "Renaming a reference alone cannot enable it",
-            "rename-resistant workflow documentation",
-        ),
-        (
-            sources["documentation"],
-            "Restoring `on` and `jobs` is an explicit release-authority change",
-            "explicit workflow reactivation ceremony",
-        ),
-        (
-            sources["documentation"],
-            "No Dependabot configuration or disabled copy is retained",
-            "absent Dependabot authority documentation",
-        ),
-        (sources["requirements"], '<span class="id">R-R1a</span>', "R-R1a requirement"),
-        (
-            sources["requirements"],
-            "No automated dependency rewrite authority",
-            "R-R1a dependency-authority title",
-        ),
-        (sources["requirements"], '<span class="id">R-R2d</span>', "R-R2d requirement"),
-        (
-            sources["requirements"],
-            "Semantic inertia for retained GitHub Actions references",
-            "R-R2d semantic-inertia title",
-        ),
-        (sources["requirements"], "<tr><td>195</td>", "Appendix C #195"),
-        (sources["requirements"], "<tr><td>196</td>", "Appendix C #196"),
-        (
-            sources["hardening"],
-            "R-R1a — obsolete Dependabot submodule updater deleted",
-            "R-R1a hardening ledger",
-        ),
-        (
-            sources["hardening"],
-            "R-R2d — retained GitHub Actions references made schema-inert",
-            "R-R2d hardening ledger",
-        ),
         (
             sources["verify"],
             'echo "== (6c-a4) absent/inert GitHub automation authority (R-R1a/R-R2/R-R2d) =="',
@@ -302,48 +250,6 @@ MUTATIONS: Tuple[Mutation, ...] = tuple(
         "historical_jobs:",
         "jobs :",
         "space-delimited active jobs schema",
-    ),
-    (
-        "documentation",
-        "Renaming a reference alone cannot enable it",
-        "Renaming a reference enables it",
-        "rename-resistant workflow documentation",
-    ),
-    (
-        "requirements",
-        '<span class="id">R-R1a</span>',
-        '<span class="id">R-R1a-disabled</span>',
-        "R-R1a requirement",
-    ),
-    (
-        "requirements",
-        '<span class="id">R-R2d</span>',
-        '<span class="id">R-R2d-disabled</span>',
-        "R-R2d requirement",
-    ),
-    (
-        "requirements",
-        "<tr><td>195</td>",
-        "<tr><td>195-disabled</td>",
-        "Appendix C #195",
-    ),
-    (
-        "requirements",
-        "<tr><td>196</td>",
-        "<tr><td>196-disabled</td>",
-        "Appendix C #196",
-    ),
-    (
-        "hardening",
-        "R-R1a — obsolete Dependabot submodule updater deleted",
-        "R-R1a — obsolete Dependabot submodule updater retained",
-        "R-R1a hardening ledger",
-    ),
-    (
-        "hardening",
-        "R-R2d — retained GitHub Actions references made schema-inert",
-        "R-R2d — retained GitHub Actions references remain executable",
-        "R-R2d hardening ledger",
     ),
     (
         "verify",

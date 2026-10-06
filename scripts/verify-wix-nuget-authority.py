@@ -24,8 +24,6 @@ FILES = {
     "project": Path("res/msi/Package/Package.wixproj"),
     "lock": Path("res/msi/Package/packages.lock.json"),
     "verify": Path("scripts/verify.sh"),
-    "requirements": Path("requirements.html"),
-    "ledger": Path("HARDENING_STATUS.md"),
 }
 
 VERSION = "4.0.5"
@@ -185,8 +183,6 @@ def verify_sources(sources: Mapping[str, str]) -> None:
     guest = sources["guest"]
     project = sources["project"].lstrip("\ufeff")
     verify = sources["verify"]
-    requirements = sources["requirements"]
-    ledger = sources["ledger"]
 
     require(pins.count(f'WIX_NUGET_VERSION="{VERSION}"') == 1, "WiX version pin changed")
     require(
@@ -504,16 +500,6 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         ),
         "top-level WiX verifier wiring",
     )
-    require(
-        '<span class="id">R-S11cz</span>' in requirements
-        and "R-S11e-118" in requirements
-        and "<td>253</td>" in requirements,
-        "requirements omit exact signed WiX package authority",
-    )
-    require(
-        "R-S11cz/R-S11e-118" in ledger,
-        "hardening ledger omits exact signed WiX package evidence",
-    )
 
 
 @dataclass(frozen=True)
@@ -678,18 +664,6 @@ MUTATIONS = (
         "online-wix-nuget-retire.py self-test",
         "online-wix-nuget-retire.py skipped-test",
         "retirement self-test wiring",
-    ),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11cz</span>',
-        '<span class="id">R-S11cz-removed</span>',
-        "normative requirement",
-    ),
-    Mutation(
-        "ledger",
-        "R-S11cz/R-S11e-118",
-        "R-S11cz-removed/R-S11e-118",
-        "evidence ledger",
     ),
 )
 

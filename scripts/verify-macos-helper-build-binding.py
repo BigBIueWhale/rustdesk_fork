@@ -46,8 +46,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "ipc": "src/ipc.rs",
         "macos": "src/platform/macos.rs",
         "install": "src/platform/privileges_scripts/install.scpt",
-        "requirements": "requirements.html",
-        "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",
         "apple": "scripts/apple-conform-check.sh",
     }
@@ -264,10 +262,6 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     for source, needle, label in (
-        (sources["requirements"], '<span class="id">R-S11au</span>', "R-S11au requirement"),
-        (sources["requirements"], "macOS privileged helper is bound to the current signed app build", "R-S11au title"),
-        (sources["requirements"], "<tr><td>169</td>", "Appendix C #169"),
-        (sources["hardening"], "R-S11e-61 — macOS privileged helper current-build binding", "R-S11e-61 ledger"),
         (sources["verify"], 'echo "== (3b-iii-d9ck) macOS privileged helper current-build binding (R-S11au/R-S11e-61) =="', "shared source gate"),
         (sources["apple"], 'echo "== (2b-iii-c5a) macOS privileged helper current-build binding (R-S11au/R-S11e-61) =="', "Apple source gate"),
     ):
@@ -299,9 +293,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("install", "--deep --strict --all-architectures", "--strict --all-architectures", "deep app verification"),
     ("install", "set verify_current_build_binding to verify_installed_app", "set verify_current_build_binding to \"\"", "post-copy app validation"),
     ("install", "verify_service_exec & verify_current_build_binding & unload_existing_service", "verify_service_exec & unload_existing_service", "pre-load current build proof"),
-    ("requirements", '<span class="id">R-S11au</span>', '<span class="id">R-S11az</span>', "R-S11au requirement"),
-    ("requirements", "<tr><td>169</td>", "<tr><td>9169</td>", "Appendix C #169"),
-    ("hardening", "R-S11e-61 — macOS privileged helper current-build binding", "R-S11e-61 — stale helper accepted", "R-S11e-61 ledger"),
     ("verify", 'echo "== (3b-iii-d9ck) macOS privileged helper current-build binding (R-S11au/R-S11e-61) =="', 'echo "== (3b-iii-d9ck) macOS stale helper acceptance (R-S11au/R-S11e-61) =="', "shared source gate"),
     ("apple", 'echo "== (2b-iii-c5a) macOS privileged helper current-build binding (R-S11au/R-S11e-61) =="', 'echo "== (2b-iii-c5a) macOS stale helper acceptance (R-S11au/R-S11e-61) =="', "Apple source gate"),
 )

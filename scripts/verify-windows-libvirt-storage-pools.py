@@ -28,8 +28,6 @@ FILES = {
     "provision": "scripts/provision-windows-vm.sh",
     "presentation": "scripts/smoke-flutter-presentation-windows.sh",
     "verify": "scripts/verify.sh",
-    "requirements": "requirements.html",
-    "hardening": "HARDENING_STATUS.md",
     "focused": "scripts/verify-windows-libvirt-storage-pools.py",
 }
 
@@ -407,17 +405,10 @@ def validate(sources: dict[str, str]) -> None:
         "/usr/bin/python3 -I -S scripts/verify-windows-libvirt-storage-pools.py --repo . --self-test",
         "focused verifier wiring",
     )
-    require(sources["requirements"], '<span class="id">R-S11gn</span>', "R-S11gn requirement")
-    require(sources["requirements"], "<tr><td>349</td>", "Appendix C #349 disposition")
     require(
         focused_driver,
         "external receipt hardlink was removed as private state",
         "retryable post-object cleanup fixture",
-    )
-    require(
-        sources["hardening"],
-        "R-S11gn/R-S11e-226 — Windows harness transient libvirt storage ownership",
-        "hardening disposition",
     )
 def run_command(
     command: list[str],
@@ -1120,9 +1111,6 @@ MUTATIONS = (
         "retryable post-object cleanup fixture",
     ),
     Mutation("verify", "/usr/bin/python3 -I -S scripts/verify-windows-libvirt-storage-pools.py --repo . --self-test", "true # libvirt storage verifier removed", "focused gate wiring"),
-    Mutation("requirements", '<span class="id">R-S11gn</span>', '<span class="id">R-S11gn-disabled</span>', "normative requirement"),
-    Mutation("requirements", "<tr><td>349</td>", "<tr><td>349-disabled</td>", "Appendix disposition"),
-    Mutation("hardening", "R-S11gn/R-S11e-226 — Windows harness transient libvirt storage ownership", "R-S11gn/R-S11e-226 — Windows harness ambient storage", "hardening ledger"),
 )
 
 

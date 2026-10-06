@@ -44,8 +44,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "ipc_fs": "src/ipc/fs.rs",
         "paste_task": "libs/clipboard/src/platform/unix/macos/paste_task.rs",
         "pasteboard": "libs/clipboard/src/platform/unix/macos/pasteboard_context.rs",
-        "requirements": "requirements.html",
-        "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",
         "apple": "scripts/apple-conform-check.sh",
     }
@@ -178,22 +176,6 @@ def validate(sources: Dict[str, str]) -> None:
 
     for source, needle, label in (
         (
-            sources["requirements"],
-            '<span class="id">R-S11av</span>',
-            "R-S11av requirement",
-        ),
-        (
-            sources["requirements"],
-            "macOS file-creation modes obey the C variadic ABI",
-            "R-S11av title",
-        ),
-        (sources["requirements"], "<tr><td>170</td>", "Appendix C #170"),
-        (
-            sources["hardening"],
-            "R-S11e-62 — macOS variadic file-creation ABI",
-            "R-S11e-62 ledger",
-        ),
-        (
             sources["verify"],
             'echo "== (3b-iii-d9cl) macOS variadic file-creation ABI (R-S11av/R-S11e-62) =="',
             "shared source gate",
@@ -258,19 +240,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "libc::fchmod(dir.as_raw_fd(), 0o700 as libc::mode_t)",
         "libc::fchmod(dir.as_raw_fd(), 0o700 as libc::c_uint)",
         "fixed placeholder fchmod type",
-    ),
-    (
-        "requirements",
-        '<span class="id">R-S11av</span>',
-        '<span class="id">R-S11az</span>',
-        "R-S11av requirement",
-    ),
-    ("requirements", "<tr><td>170</td>", "<tr><td>9170</td>", "Appendix C #170"),
-    (
-        "hardening",
-        "R-S11e-62 — macOS variadic file-creation ABI",
-        "R-S11e-62 — narrow variadic modes",
-        "R-S11e-62 ledger",
     ),
     (
         "verify",

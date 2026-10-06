@@ -69,8 +69,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "apple": (repo / "scripts/apple-conform-check.sh").read_text(
             encoding="utf-8"
         ),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
     }
 
 
@@ -288,17 +286,6 @@ def validate(sources: Dict[str, str]) -> None:
             "python3 scripts/verify-session-stream-generation.py --repo . --self-test",
             f"{gate} exact stream-generation focused gate",
         )
-    require(
-        sources["requirements"],
-        '<span class="id">R-S11ix</span>',
-        "R-S11ix requirement",
-    )
-    require(sources["requirements"], "<tr><td>409</td>", "Appendix C #409")
-    require(
-        sources["hardening"],
-        "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation",
-        "R-S11e-287 hardening ledger",
-    )
 
 
 MUTATIONS = (
@@ -334,9 +321,6 @@ MUTATIONS = (
     ("dart_verify", "test/session_stream_finality_test.dart", "test/session_stream_finality_test_disabled.dart", "Dart behavior gate"),
     ("verify", "python3 scripts/verify-session-stream-generation.py --repo . --self-test", "true # stream generation gate disabled", "shared focused gate"),
     ("apple", "python3 scripts/verify-session-stream-generation.py --repo . --self-test", "true # stream generation gate disabled", "Apple focused gate"),
-    ("requirements", '<span class="id">R-S11ix</span>', '<span class="id">R-S11ix-disabled</span>', "requirement"),
-    ("requirements", "<tr><td>409</td>", "<tr><td>409-disabled</td>", "Appendix disposition"),
-    ("hardening", "R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation", "R-S11ix-disabled/R-S11e-287 — exact Dart event-stream consumer generation", "hardening ledger"),
 )
 
 

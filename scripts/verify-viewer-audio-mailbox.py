@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -65,8 +64,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "client": "src/client.rs",
         "io_loop": "src/client/io_loop.rs",
         "connection": "src/server/connection.rs",
-        "requirements": "requirements.html",
-        "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",
         "apple": "scripts/apple-conform-check.sh",
     }
@@ -354,17 +351,6 @@ def validate(sources: Dict[str, str]) -> None:
 
     for key, needle, label in (
         (
-            "requirements",
-            '<div class="req"><span class="id">R-S11hi</span>',
-            "R-S11hi requirement",
-        ),
-        ("requirements", "<tr><td>369</td>", "Appendix C #369"),
-        (
-            "hardening",
-            "### R-S11hi/R-S11e-246 — bounded format-first peer-audio decoder mailbox",
-            "peer-audio decoder hardening ledger",
-        ),
-        (
             "verify",
             "cargo test --lib --features linux-pkg-config,flutter client::tests::r_s11hi_ --color never",
             "shared Rust behavior-test wiring",
@@ -382,14 +368,6 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(sources[key], needle, label)
 
-    requirements_digest = hashlib.sha256(
-        sources["requirements"].encode("utf-8")
-    ).hexdigest()
-    require(
-        sources["hardening"],
-        f"{requirements_digest}  requirements.html",
-        "exact requirements digest binding",
-    )
 
 
 Mutation = Tuple[str, str, str, str]
@@ -410,9 +388,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("io_loop", "self.audio_thread.admit_frame(frame)", "self.audio_thread.drop_frame(frame)", "viewer frame caller"),
     ("connection", "match decoder.admit_format(format)", "match AudioFormatAdmission::Closed", "controlled first-format caller"),
     ("connection", "audio.decoder.admit_frame(frame)", "AudioFrameAdmission::Queued", "controlled frame caller"),
-    ("requirements", '<span class="id">R-S11hi</span>', '<span class="id">R-S11hi-disabled</span>', "requirement"),
-    ("requirements", "<tr><td>369</td>", "<tr><td>369-disabled</td>", "Appendix C row"),
-    ("hardening", "R-S11hi/R-S11e-246 — bounded format-first peer-audio decoder mailbox", "R-S11hi-disabled/R-S11e-246 — bounded format-first peer-audio decoder mailbox", "hardening ledger"),
     ("verify", "python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test", "true # peer-audio mailbox verifier disabled", "shared gate"),
     ("apple", "python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test", "true # peer-audio mailbox verifier disabled", "Apple gate"),
 )

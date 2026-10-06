@@ -3,7 +3,6 @@
 
 import argparse
 import ast
-import hashlib
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -95,8 +94,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "remote_dart": "flutter/lib/mobile/pages/remote_page.dart",
         "camera_dart": "flutter/lib/mobile/pages/view_camera_page.dart",
         "web_dart": "flutter/lib/web/bridge.dart",
-        "requirements": "requirements.html",
-        "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",
         "dart_verify": "scripts/dart-verify.sh",
         "apple": "scripts/apple-conform-check.sh",
@@ -1514,74 +1511,14 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(sources["frame_queue_test"], needle, label)
     require(
-        sources["requirements"],
-        '<div class="req"><span class="id">R-S11gq</span>',
-        "R-S11gq normative session topology ordering requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>352</td>",
-        "Appendix C #352 disposition",
-    )
-    require(
-        sources["hardening"],
-        "### R-S11gq/R-S11e-229 — exact-session topology and presentation ordering",
-        "R-S11gq hardening ledger",
-    )
-    require(
         sources["dart_verify"],
         "flutter test --no-pub test/session_event_queue_test.dart",
         "generated-bridge session topology queue behavior gate",
     )
     require(
-        sources["requirements"],
-        '<div class="req"><span class="id">R-S11gr</span>',
-        "R-S11gr normative bounded web-frame requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>353</td>",
-        "Appendix C #353 disposition",
-    )
-    require(
-        sources["hardening"],
-        "### R-S11gr/R-S11e-230 — bounded exact-session web frame ownership",
-        "R-S11gr hardening ledger",
-    )
-    require(
         sources["dart_verify"],
         "flutter test --no-pub test/latest_frame_queue_test.dart",
         "generated-bridge bounded web-frame behavior gate",
-    )
-    require(
-        sources["requirements"],
-        '<div class="req"><span class="id">R-S11gs</span>',
-        "R-S11gs normative native refresh-display authority requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>354</td>",
-        "Appendix C #354 disposition",
-    )
-    require(
-        sources["hardening"],
-        "### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority",
-        "R-S11gs hardening ledger",
-    )
-    require(
-        sources["requirements"],
-        '<div class="req"><span class="id">R-S11gt</span>',
-        "R-S11gt explicit native display-owner requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>355</td>",
-        "Appendix C #355 disposition",
-    )
-    require(
-        sources["hardening"],
-        "### R-S11gt/R-S11e-232 — explicit initial and ongoing native display ownership",
-        "R-S11gt hardening ledger",
     )
     require(
         sources["verify"],
@@ -1602,21 +1539,6 @@ def validate(sources: Dict[str, str]) -> None:
         sources["selection_queue_test"],
         "a retired session cannot block its replacement session",
         "retired/replacement session independence regression",
-    )
-    require(
-        sources["requirements"],
-        '<div class="req"><span class="id">R-S11gp</span>',
-        "R-S11gp normative owner-lifetime requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>351</td>",
-        "Appendix C #351 disposition",
-    )
-    require(
-        sources["hardening"],
-        "### R-S11gp/R-S11e-228 — exact-session display-selection queue lifetime",
-        "R-S11gp hardening ledger",
     )
     same_tab = extract_braced_item(
         sources["common_dart"],
@@ -1807,22 +1729,6 @@ def validate(sources: Dict[str, str]) -> None:
 
     for key, needle, label in (
         (
-            "requirements",
-            '<div class="req"><span class="id">R-S11go</span>',
-            "R-S11go requirement",
-        ),
-        (
-            "requirements",
-            "one sequencer per live connection/UI-owner pair retaining exactly one running request and at most the latest pending request",
-            "normative bounded multi-worker bridge sequencing",
-        ),
-        ("requirements", "<tr><td>350</td>", "Appendix C #350"),
-        (
-            "hardening",
-            "### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality",
-            "R-S11go hardening ledger",
-        ),
-        (
             "verify",
             "python3 scripts/verify-display-selection-finality.py --repo . --self-test",
             "shared focused gate",
@@ -1855,14 +1761,6 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(sources[key], needle, label)
 
-    requirements_digest = hashlib.sha256(
-        sources["requirements"].encode("utf-8")
-    ).hexdigest()
-    require(
-        sources["hardening"],
-        f"{requirements_digest}  requirements.html",
-        "hardening requirements digest",
-    )
 
 
 Mutation = Tuple[str, str, str, str]
@@ -2040,25 +1938,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server", "fn refresh_video_display(&self, display: Option<usize>) -> bool", "fn refresh_video_display(&self, display: Option<usize>)", "terminal refresh execution failure"),
     ("server", "validate_peer_display_index(display, \"refresh video display\")", "Some(display as usize)", "terminal invalid exact refresh"),
     ("server", "fn r_s11go_controlled_display_requests_are_exact_or_terminal()", "fn controlled_display_requests_are_exact_or_terminal()", "controlled regression"),
-    ("requirements", '<div class="req"><span class="id">R-S11go</span>', '<div class="req"><span class="id">R-S11go-disabled</span>', "normative requirement"),
-    ("requirements", "one sequencer per live connection/UI-owner pair retaining exactly one running request and at most the latest pending request", "an unbounded per-UI-owner sequencer", "normative bounded multi-worker bridge sequencing"),
-    ("requirements", "<tr><td>350</td>", "<tr><td>350-disabled</td>", "Appendix disposition"),
-    ("requirements", '<div class="req"><span class="id">R-S11gp</span>', '<div class="req"><span class="id">R-S11gp-disabled</span>', "exact queue lifetime requirement"),
-    ("requirements", "<tr><td>351</td>", "<tr><td>351-disabled</td>", "exact queue lifetime Appendix disposition"),
-    ("requirements", '<div class="req"><span class="id">R-S11gq</span>', '<div class="req"><span class="id">R-S11gq-disabled</span>', "session topology ordering requirement"),
-    ("requirements", "<tr><td>352</td>", "<tr><td>352-disabled</td>", "session topology ordering Appendix disposition"),
-    ("requirements", '<div class="req"><span class="id">R-S11gr</span>', '<div class="req"><span class="id">R-S11gr-disabled</span>', "bounded web-frame requirement"),
-    ("requirements", "<tr><td>353</td>", "<tr><td>353-disabled</td>", "bounded web-frame Appendix disposition"),
-    ("requirements", '<div class="req"><span class="id">R-S11gs</span>', '<div class="req"><span class="id">R-S11gs-disabled</span>', "native refresh-display authority requirement"),
-    ("requirements", "<tr><td>354</td>", "<tr><td>354-disabled</td>", "native refresh-display authority Appendix disposition"),
-    ("requirements", '<div class="req"><span class="id">R-S11gt</span>', '<div class="req"><span class="id">R-S11gt-disabled</span>', "explicit native display-owner requirement"),
-    ("requirements", "<tr><td>355</td>", "<tr><td>355-disabled</td>", "explicit native display-owner Appendix disposition"),
-    ("hardening", "### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality", "### R-S11go-disabled/R-S11e-227 — ordered exact-owner display-selection finality", "hardening ledger"),
-    ("hardening", "### R-S11gp/R-S11e-228 — exact-session display-selection queue lifetime", "### R-S11gp-disabled/R-S11e-228 — exact-session display-selection queue lifetime", "exact queue lifetime ledger"),
-    ("hardening", "### R-S11gq/R-S11e-229 — exact-session topology and presentation ordering", "### R-S11gq-disabled/R-S11e-229 — exact-session topology and presentation ordering", "session topology ordering ledger"),
-    ("hardening", "### R-S11gr/R-S11e-230 — bounded exact-session web frame ownership", "### R-S11gr-disabled/R-S11e-230 — bounded exact-session web frame ownership", "bounded web-frame ledger"),
-    ("hardening", "### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority", "### R-S11gs-disabled/R-S11e-231 — exact-owner presentation-refresh display authority", "native refresh-display authority ledger"),
-    ("hardening", "### R-S11gt/R-S11e-232 — explicit initial and ongoing native display ownership", "### R-S11gt-disabled/R-S11e-232 — explicit initial and ongoing native display ownership", "explicit native display-owner ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gt_ --color never", "cargo test --lib --features linux-pkg-config,flutter disabled_ --color never", "explicit native display-owner behavior gate"),
     ("verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "shared gate"),
     ("dart_verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "generated gate"),

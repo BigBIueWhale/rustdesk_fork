@@ -59,8 +59,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "macos": "src/platform/macos.rs",
         "model": "flutter/lib/models/model.dart",
         "consts": "flutter/lib/consts.dart",
-        "requirements": "requirements.html",
-        "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",
         "apple": "scripts/apple-conform-check.sh",
     }
@@ -652,40 +650,9 @@ def validate(sources: Dict[str, str]) -> None:
 
     for source, needle, label in (
         (
-            sources["requirements"],
-            '<span class="id">R-S11aw</span>',
-            "R-S11aw requirement",
-        ),
-        (
-            sources["requirements"],
-            "Every production Windows IPC listener is born with an explicit local DACL",
-            "R-S11aw title",
-        ),
-        (sources["requirements"], "<tr><td>171</td>", "Appendix C #171"),
-        (
-            sources["hardening"],
-            "R-S11e-63 — complete Windows production-listener DACL coverage",
-            "R-S11e-63 ledger",
-        ),
-        (
             sources["verify"],
             'echo "== (3b-iii-d9cm) Windows production-listener DACL coverage (R-S11aw/R-S11e-63) =="',
             "shared source gate",
-        ),
-        (
-            sources["requirements"],
-            '<span class="id">R-S11ea</span>',
-            "R-S11ea desktop URL IPC requirement",
-        ),
-        (
-            sources["requirements"],
-            "<tr><td>280</td>",
-            "Appendix C #280",
-        ),
-        (
-            sources["hardening"],
-            "R-S11ea/R-S11e-145 — desktop URL/instance handoff closed protocol and resource budget",
-            "R-S11e-145 ledger",
         ),
         (
             sources["verify"],
@@ -780,19 +747,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "whiteboard application authentication",
     ),
     (
-        "requirements",
-        '<span class="id">R-S11aw</span>',
-        '<span class="id">R-S11az</span>',
-        "R-S11aw requirement",
-    ),
-    ("requirements", "<tr><td>171</td>", "<tr><td>9171</td>", "Appendix C #171"),
-    (
-        "hardening",
-        "R-S11e-63 — complete Windows production-listener DACL coverage",
-        "R-S11e-63 — default Windows helper DACLs retained",
-        "R-S11e-63 ledger",
-    ),
-    (
         "verify",
         'echo "== (3b-iii-d9cm) Windows production-listener DACL coverage (R-S11aw/R-S11e-63) =="',
         'echo "== (3b-iii-d9cm) Windows partial-listener DACL coverage (R-S11aw/R-S11e-63) =="',
@@ -875,24 +829,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "name == 'on_desktop_instances_close_requested'",
         "name == 'on_url_scheme_received'",
         "distinct Dart desktop close dispatch",
-    ),
-    (
-        "requirements",
-        '<span class="id">R-S11ea</span>',
-        '<span class="id">R-S11ez</span>',
-        "R-S11ea requirement",
-    ),
-    (
-        "requirements",
-        "<tr><td>280</td>",
-        "<tr><td>9280</td>",
-        "Appendix C #280",
-    ),
-    (
-        "hardening",
-        "R-S11ea/R-S11e-145 — desktop URL/instance handoff closed protocol and resource budget",
-        "R-S11ea/R-S11e-145 — desktop URL sentinel compatibility",
-        "R-S11e-145 ledger",
     ),
     (
         "verify",

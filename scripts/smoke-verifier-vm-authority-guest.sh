@@ -1523,6 +1523,8 @@ run_apple_conform() {
         || fail 'cannot index the sealed Apple-conformance source'
     [ "$(/usr/bin/git -C "$source_root" write-tree)" = "$APPLE_SOURCE_TREE" ] \
         || fail 'Apple-conformance source archive tree differs from pushed master'
+    chmod -R u=rwX,go=rX "$source_root/.git" \
+        || fail 'cannot expose read-only Apple-conformance Git metadata'
     if ! /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \
         diff-files --quiet --ignore-submodules --; then
         /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \

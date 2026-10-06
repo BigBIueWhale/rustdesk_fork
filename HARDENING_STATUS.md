@@ -5964,8 +5964,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   and final disappearance. `verify-x11-capture-shm.py` remains a source supplement; its documentation coupling,
   mutation catalog, and stale workspace reimplementation are deleted.
 
-  Candidate `d79cb4c4b73d1bd8bc9c420bf3f2b95790295078` (tree
-  `fb930fcbbfc0fe35059785b160ddf1416585e439`) passed `--x11-display-tests` in 53 VM seconds.
+  Candidate `63944d30cd033e7d1932abd85583728eee8b50c5` (tree
+  `6ef679a0141607dc8527a912444c3440ee8c9adb`) passed `--x11-display-tests` in 57 VM seconds.
   Numeric UID/GID 4000 executed the production capture/public-wrapper/comparator components against real
   Xvfb in the zero-NIC VM's networkless unprivileged container. Production capture source was unchanged.
   The existing 16 direct and 16 public constructor cases still observe actual MIT-SHM Attach error 10,
@@ -5979,12 +5979,35 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   survivor's explicit drop retires that last segment. Exact attach/detach/check/reply/comparison counts,
   error strings and returned-allocation retirement are asserted; no pixel or successful reply is fabricated.
 
-  Raw serial `x11-display-tests-run.ujXTx9149W.serial.log` is 77,995 bytes, SHA-256
-  `bb21849d4b5febb62e3877fb84802bd9e552c291ea4ea6ed5324a42e09303d12`, under
+  The adjacent MIT-SHM availability probe in `libs/scrap/src/x11/server.rs` now computes its result,
+  frees both XCB reply/error allocations on every outcome, then returns; a failed connection is classified
+  from XCB's actual connection error rather than automatically reported as extension absence. The old
+  null-reply return leaked a real protocol-error allocation. The unchanged native regression first failed
+  at `ebaa453b` with `leaked_errors=1` and `UnsupportedExtension`, then passed after this correction.
+  Each of 16 direct and 16 public probe cycles receives a real QueryVersion reply, submits exactly one
+  oversized QueryVersion whose real Xvfb response is BadLength, requires immediate error retirement,
+  then gets a valid reply on that same connection while a live capture receives fresh pixels and retires.
+  All three request results and exact allocation/segment finality are checked. The existing real server-loss
+  scenario also requires the direct availability probe to return the observed connection failure with
+  no reply/error allocation. No response is fabricated. This tests selected malformed-request behavior,
+  not a claim that the normal generated QueryVersion request naturally emits BadLength.
+  [XCB's API](https://xcb.freedesktop.org/manual/group__XCB__Shm__API.html),
+  [its reply ownership implementation](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/libxcb-1.15/src/xcb_in.c),
+  and [X server request-size validation](https://gitlab.freedesktop.org/xorg/xserver/-/blob/xorg-server-21.1.13/Xext/shm.c)
+  ground the result/ownership and native fault design. The fixture's low-level request uses
+  [XCB's documented request/iovec ABI](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/libxcb-1.15/src/xcbext.h);
+  production retains its generated request API. Obsolete commented-out connection-cache code is deleted.
+
+  Raw serial `x11-display-tests-run.6pnAyPDXoZ.serial.log` is 78,260 bytes, SHA-256
+  `b99b16c0d9c811a54b57f2ec16eee10660a751004c926d95665f957f9a8b7e90`, under
   `.harness-state/verifier-vm`; the same-prefix `.outer.receipt` records assistant-observed terminal
   exit 0, unchanged inputs, no added host endpoint, joined cleanup and the retired run root/overlay.
   Existing rejection/recovery, missing/layout reply, actual server-loss and 24/16-bit capture cases also
-  passed. This is deliberate invalid-argument component coverage, not naturally occurring failure,
+  passed. Baseline raw `x11-display-tests-run.rCudinILTU.serial.log` is 72,224 bytes, SHA-256
+  `a2f106eca9462fd55aa59454a760a1e590f483e8989e109303033385a3952464`, with a same-prefix
+  assistant-recorded `.outer.failure`; that transaction is failed, not positive acceptance. Its exact
+  retained private diagnostics root was reconciled only after terminal joined cleanup and evidence retention.
+  This is deliberate invalid-argument component coverage, not naturally occurring failure,
   unauthorized-principal refusal, or a full product build. Segment liveness probes do not establish
   ownership/mode/attachment-count. Construction-time connection failure, destruction-failure injection,
   unauthorized principals, actual capture-to-render, installed cross-user service behavior, current

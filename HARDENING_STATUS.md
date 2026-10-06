@@ -1901,26 +1901,26 @@ The focused capsule profile executed 20 real filesystem/CLI/ELF cases plus root/
 16-caller/one-winner run test. Fixture ELF execution establishes capsule authority, not RustDesk
 behavior. Raw evidence is `evidence/linux-app-consumer-admission-c3f17011.serial.log`.
 
-Current capsule fixtures require the exact manifest-digest, non-ELF, and occupied-workspace
-errors rather than accepting any filesystem exception. They inspect the test process's
-descriptor inventory after success, refusal, and an injected write failure following one
-actual copied ELF byte; repeated retries must preserve the completed or partial workspace
-identity and bytes without allocating another copy. Failed preparation likewise retains
-one pending artifact and refuses another producer. The first execution at `2d9c2092`
-failed an invalid fixture assumption about copy order, not the materializer. Its complete
-77,353-byte raw serial and failure receipt remain under
-`.harness-state/verifier-vm/linux-flutter-artifact-tests-run.Nuk9M5oJiE.*`; joined cleanup
-retired the disks and exact inactive run root. The corrected fixture targets the named
-`bundle/rustdesk` ELF and inventories all retained metadata/bytes. The next attempt at
-`d5b5f4ac` failed the shared-run cross-root winner-count check before capsule execution;
-its 68,550-byte raw serial/failure receipt are retained as `run.Y9OtJuxfuM` evidence.
-The exact contender failure was not preserved. Source review found a fixture race:
-immediate lock reacquisition after release can collide with another live contender.
-The fixture now proves each caller's descriptor closure and checks global lock release
-after all contenders join; it retains exact one-winner acceptance and bounded failure
-diagnostics. Production reservation functions and launcher topology are unchanged.
-Current runtime acceptance is OPEN; these cases do not establish RustDesk lifecycle,
-installed-service, presentation, sustained resource, or release behavior.
+Current capsule fixtures require exact manifest-digest, non-ELF, and occupied-workspace
+errors. Real success, early refusal, and a failure after writing one named `bundle/rustdesk`
+ELF byte leave the test process's descriptor inventory unchanged. Three retries each
+preserve completed or partial workspace identity/bytes; partial metadata and all other
+copied bytes are checked. Failed preparation retains one pending artifact and refuses
+another producer. Exact pushed `cc71947aa8ffed6f2f980db5aad7c22e05eefb45` passed all 23
+capsule, six SDK-role and nine toolkit groups in the 78-second zero-NIC transaction.
+The same run passed one-winner admission, root/foreign refusal, final input checks,
+no added host listener and joined self-retirement. Complete 76,546-byte raw serial is
+`.harness-state/verifier-vm/linux-flutter-artifact-tests-run.I2KqUmVnrh.serial.log`, SHA-256
+`cfbcbf50c658670895b8b07517e74dc2ab41efd2dabc2e50be4fda412623e3b3`; the outer receipt
+is retained alongside it. Production materialization/reservation and topology are unchanged.
+The admission fixture now proves caller descriptor closure and tests global lock release
+after all contenders join, not during another contender's legitimate ownership; exact
+one-winner acceptance and bounded failure diagnostics remain. Earlier unaccepted attempts
+`run.Nuk9M5oJiE` (invalid copy-order fixture) and `run.Y9OtJuxfuM` (pre-capsule winner-count
+failure, exact contender cause unavailable) retain raw serial/failure receipts under the
+same prefix; only their exact inactive run roots were reconciled after joined teardown.
+This is Linux artifact-tool/fixture and launcher evidence, not RustDesk lifecycle,
+installed-service, presentation, sustained resource, or release acceptance; those remain OPEN.
 
 The archived negative-baseline app is source `a4a6b2d0f381118e8d018c3e7fb0b3e1f02f8e0c`, tree
 `eb842fa98c8cfac05169c18b29d09f15091c858b`. Its separate producer completed compilation and

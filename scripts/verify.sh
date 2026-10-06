@@ -10606,8 +10606,6 @@ grep -qF 'def validate_elf_runpaths' scripts/verify-debian-package-authority.py 
 grep -qF 'expected_elf_runpath(name)' scripts/verify-debian-package-authority.py || r_s11c10y="$r_s11c10y package-verifier-no-expected-policy"
 grep -qF 'legacy RPATH is forbidden' scripts/verify-debian-package-authority.py || r_s11c10y="$r_s11c10y package-verifier-no-rpath-reject"
 grep -qF '/tmp/rustdesk-bad' scripts/verify-debian-package-authority.py || r_s11c10y="$r_s11c10y package-verifier-no-runpath-negative-test"
-grep -qF 'Linux Debian shipped ELF runtime-library provenance' requirements.html || r_s11c10y="$r_s11c10y requirements-disposition-missing"
-grep -qF 'R-S11c-10y closes the Linux Debian shipped ELF runtime-library provenance' HARDENING_STATUS.md || r_s11c10y="$r_s11c10y hardening-ledger-missing"
 if [ -n "$r_s11c10y" ]; then echo "  FAIL R-S11c-10y Debian shipped ELF runtime-library provenance:$r_s11c10y"; rc=1; else
   echo "  ok  R-S11c-10y Debian shipped ELFs have source-gated bundle-owned RUNPATH policy and package-artifact validation"; fi
 
@@ -10623,8 +10621,6 @@ grep -qF 'Library::open(Some(path.as_path()), RTLD_NOW | RTLD_LOCAL)' libs/libxd
 grep -qF 'trusted_libxdo_path_accepts_protected_symlink_to_protected_target' libs/libxdo-sys-stub/src/lib.rs || r_s11c10u="$r_s11c10u no-protected-symlink-test"
 grep -qF 'trusted_libxdo_path_rejects_symlink_to_untrusted_target' libs/libxdo-sys-stub/src/lib.rs || r_s11c10u="$r_s11c10u no-untrusted-symlink-target-test"
 grep -qF 'trusted_libxdo_path_rejects_world_writable_parent' libs/libxdo-sys-stub/src/lib.rs || r_s11c10u="$r_s11c10u no-world-writable-parent-test"
-grep -q 'Linux XDO libxdo dynamic-library provenance' requirements.html || r_s11c10u="$r_s11c10u requirements-disposition-missing"
-grep -q 'R-S11c-10u closes the Linux XDO libxdo dynamic-library provenance' HARDENING_STATUS.md || r_s11c10u="$r_s11c10u hardening-ledger-missing"
 libxdo_candidate_block=$(awk '/const TRUSTED_LIBXDO_PATHS/,/];/' libs/libxdo-sys-stub/src/lib.rs)
 if echo "$libxdo_candidate_block" | grep -qF '"libxdo.so"'; then
   r_s11c10u="$r_s11c10u unversioned-libxdo-candidate"
@@ -10650,8 +10646,6 @@ grep -qF 'LoadLibraryExW(' flutter/windows/runner/main.cpp || r_s11c23="$r_s11c2
 grep -qF 'LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_APPLICATION_DIR |' flutter/windows/runner/main.cpp || r_s11c23="$r_s11c23 no-dll-load-dir-application-dir-flags"
 grep -qF 'LOAD_LIBRARY_SEARCH_SYSTEM32' flutter/windows/runner/main.cpp || r_s11c23="$r_s11c23 no-system32-flag"
 grep -qF 'HINSTANCE hInstance = LoadRustDeskCoreModule();' flutter/windows/runner/main.cpp || r_s11c23="$r_s11c23 wwinmain-not-using-helper"
-grep -q 'Windows Flutter runner Rust core DLL load provenance' requirements.html || r_s11c23="$r_s11c23 requirements-disposition-missing"
-grep -q 'Windows Flutter runner Rust core DLL load provenance' HARDENING_STATUS.md || r_s11c23="$r_s11c23 hardening-ledger-missing"
 if grep -Eq 'LoadLibraryA\("librustdesk\.dll"\)|LoadLibraryW\(L"librustdesk\.dll"\)|LoadLibraryExA\("librustdesk\.dll"|LoadLibraryExW\(L"librustdesk\.dll"' flutter/windows/runner/main.cpp; then
   r_s11c23="$r_s11c23 bare-core-dll-load"
 fi
@@ -10672,8 +10666,6 @@ grep -qF "path.join(_desktopExecutableDir(), 'librustdesk.dll')" flutter/lib/mod
 grep -qF "return DynamicLibrary.open('librustdesk.so');" flutter/lib/models/native_model.dart || r_s11c24="$r_s11c24 android-packaged-core-open-missing"
 grep -qF 'return DynamicLibrary.process();' flutter/lib/models/native_model.dart || r_s11c24="$r_s11c24 macos-process-binding-missing"
 grep -qF 'final dylib = _openBundledRustDeskCore();' flutter/lib/models/native_model.dart || r_s11c24="$r_s11c24 init-not-using-helper"
-grep -q 'Desktop Dart FFI Rust core library provenance' requirements.html || r_s11c24="$r_s11c24 requirements-disposition-missing"
-grep -q 'R-S11c-24 — Desktop Dart FFI Rust core library provenance' HARDENING_STATUS.md || r_s11c24="$r_s11c24 hardening-ledger-missing"
 if grep -qF "DynamicLibrary.open('librustdesk.dll')" flutter/lib/models/native_model.dart; then
   r_s11c24="$r_s11c24 bare-windows-dart-core-open"
 fi

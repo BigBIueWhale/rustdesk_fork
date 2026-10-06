@@ -41,10 +41,14 @@ class ArtifactContract(NamedTuple):
     pending_prefix: str
     pending_pattern: re.Pattern[str]
     checksum_line_pattern: re.Pattern[bytes]
+    companion_artifact: str | None = None
 
     @property
-    def expected_inventory(self) -> tuple[str, str]:
-        return tuple(sorted((self.artifact, self.checksum)))
+    def expected_inventory(self) -> tuple[str, ...]:
+        names = [self.artifact, self.checksum]
+        if self.companion_artifact is not None:
+            names.extend((self.companion_artifact, f"{self.companion_artifact}.sha256"))
+        return tuple(sorted(names))
 
 
 DEBIAN_X86_64 = ArtifactContract(
@@ -76,6 +80,7 @@ ANDROID_X86_64_TEST = ArtifactContract(
     checksum_line_pattern=re.compile(
         rb"^([0-9a-f]{64})  rustdesk-x86_64-runtime-test\.apk\n$"
     ),
+    companion_artifact="rustdesk-x86_64-instrumentation-test.apk",
 )
 FLUTTER_LINUX_ENGINE = ArtifactContract(
     kind="flutter-linux-engine",
@@ -333,11 +338,11 @@ def read_exact_file(
 def hash_result_artifact(
     parent: int,
     label: str,
-    contract: ArtifactContract,
+    artifact: str,
 ) -> str:
     descriptor, before = open_result_file(
         parent,
-        contract.artifact,
+        artifact,
         maximum=MAX_ARTIFACT_BYTES,
         label=f"{label} artifact",
     )
@@ -375,9 +380,25 @@ def verify_result(
     if match is None:
         fail(f"{label} checksum is not canonical")
     expected = match.group(1).decode("ascii")
-    actual = hash_result_artifact(descriptor, label, contract)
+    actual = hash_result_artifact(descriptor, label, contract.artifact)
     if actual != expected:
         fail(f"{label} artifact does not match its checksum")
+    if contract.companion_artifact is not None:
+        companion = contract.companion_artifact
+        checksum = read_exact_file(
+            descriptor,
+            f"{companion}.sha256",
+            maximum=MAX_CHECKSUM_BYTES,
+            label=f"{label} companion checksum",
+        )
+        match = re.fullmatch(
+            rb"([0-9a-f]{64})  " + re.escape(companion.encode("ascii")) + rb"\n",
+            checksum,
+        )
+        if match is None:
+            fail(f"{label} companion checksum is not canonical")
+        if hash_result_artifact(descriptor, label, companion) != match.group(1).decode("ascii"):
+            fail(f"{label} companion artifact does not match its checksum")
     return actual
 
 
@@ -403,9 +424,9 @@ def copy_source(
     source_info: os.stat_result,
     destination: int,
     expected_sha256: str,
-    contract: ArtifactContract,
+    artifact: str,
 ) -> None:
-    output = create_output_file(destination, contract.artifact)
+    output = create_output_file(destination, artifact)
     digest = hashlib.sha256()
     try:
         remaining = source_info.st_size
@@ -413,7 +434,7 @@ def copy_source(
             chunk = os.read(source, min(1024 * 1024, remaining))
             if not chunk:
                 fail("build artifact source ended before its recorded size")
-            write_all(output, chunk, f"pending {contract.artifact}")
+            write_all(output, chunk, f"pending {artifact}")
             digest.update(chunk)
             remaining -= len(chunk)
         if os.read(source, 1):
@@ -442,12 +463,13 @@ def copy_source(
 def create_checksum(
     destination: int,
     digest: str,
-    contract: ArtifactContract,
+    artifact: str,
 ) -> None:
-    data = f"{digest}  {contract.artifact}\n".encode("ascii")
-    output = create_output_file(destination, contract.checksum)
+    checksum = f"{artifact}.sha256"
+    data = f"{digest}  {artifact}\n".encode("ascii")
+    output = create_output_file(destination, checksum)
     try:
-        write_all(output, data, f"pending {contract.checksum}")
+        write_all(output, data, f"pending {checksum}")
         os.fchmod(output, 0o400)
         os.fsync(output)
         created = os.fstat(output)
@@ -513,16 +535,39 @@ def prepare(
     output_parent_path: str,
     output_parent_identity: str,
     destination: str,
+    companion_path: str | None = None,
+    companion_identity: str | None = None,
+    companion_sha256: str | None = None,
 ) -> tuple[str, tuple[int, int]]:
     validate_destination(destination, contract)
     if SHA256_RE.fullmatch(source_sha256) is None:
         fail("validated build artifact SHA-256 is malformed")
+    companion_provided = (
+        companion_path is not None,
+        companion_identity is not None,
+        companion_sha256 is not None,
+    )
+    if any(companion_provided) != all(companion_provided) or all(companion_provided) != (
+        contract.companion_artifact is not None
+    ):
+        fail("build artifact companion authority is incomplete or unexpected")
+    if companion_sha256 is not None and SHA256_RE.fullmatch(companion_sha256) is None:
+        fail("validated companion SHA-256 is malformed")
     expected_source = parse_identity(source_identity, "build artifact source")
     expected_parent = parse_identity(output_parent_identity, "output parent")
     source, source_info = open_source(source_path, expected_source)
-    output_parent = open_bound_output_parent(output_parent_path, expected_parent)
+    companion_source = None
+    output_parent = None
     pending_descriptor = None
     try:
+        if companion_path is not None and companion_identity is not None:
+            companion_source, companion_info = open_source(
+                companion_path,
+                parse_identity(companion_identity, "companion source"),
+            )
+            if identity(source_info) == identity(companion_info):
+                fail("build artifact and companion are the same source")
+        output_parent = open_bound_output_parent(output_parent_path, expected_parent)
         require_absent(output_parent, destination, "build output destination")
         pending = f"{contract.pending_prefix}{os.urandom(32).hex()}"
         require_absent(output_parent, pending, "pending build output")
@@ -537,9 +582,25 @@ def prepare(
             source_info,
             pending_descriptor,
             source_sha256,
-            contract,
+            contract.artifact,
         )
-        create_checksum(pending_descriptor, source_sha256, contract)
+        create_checksum(pending_descriptor, source_sha256, contract.artifact)
+        if companion_source is not None and companion_sha256 is not None:
+            companion_name = contract.companion_artifact
+            if companion_name is None:
+                fail("build artifact companion contract is absent")
+            copy_source(
+                companion_source,
+                companion_info,
+                pending_descriptor,
+                companion_sha256,
+                companion_name,
+            )
+            create_checksum(
+                pending_descriptor,
+                companion_sha256,
+                companion_name,
+            )
         if (
             verify_result(pending_descriptor, "pending build output", contract)
             != source_sha256
@@ -553,6 +614,10 @@ def prepare(
             not stat.S_ISDIR(edge.st_mode)
             or identity(edge) != identity(pending_info)
             or stable_file(source_info) != stable_file(os.fstat(source))
+            or (
+                companion_source is not None
+                and stable_file(companion_info) != stable_file(os.fstat(companion_source))
+            )
         ):
             fail("pending build output or its validated source changed")
         reprove_output_parent(output_parent_path, expected_parent)
@@ -560,7 +625,10 @@ def prepare(
     finally:
         if pending_descriptor is not None:
             os.close(pending_descriptor)
-        os.close(output_parent)
+        if output_parent is not None:
+            os.close(output_parent)
+        if companion_source is not None:
+            os.close(companion_source)
         os.close(source)
 
 
@@ -650,6 +718,25 @@ def self_test_contract(contract: ArtifactContract) -> None:
             f"source-{contract.kind}",
             b"synthetic build artifact\n",
         )
+        companion_inputs: tuple[str, str, str] | tuple[()] = ()
+        if contract.companion_artifact is not None:
+            companion_inputs = make_source(
+                temporary,
+                f"companion-{contract.kind}",
+                b"synthetic instrumentation artifact\n",
+            )
+            assert_rejected(
+                lambda: prepare(
+                    contract,
+                    source,
+                    source_identity,
+                    source_sha256,
+                    output_parent,
+                    parent_identity,
+                    "missing-companion",
+                ),
+                "a missing companion source",
+            )
         pending, pending_info = prepare(
             contract,
             source,
@@ -658,6 +745,7 @@ def self_test_contract(contract: ArtifactContract) -> None:
             output_parent,
             parent_identity,
             "published",
+            *companion_inputs,
         )
         commit(
             contract,
@@ -687,6 +775,7 @@ def self_test_contract(contract: ArtifactContract) -> None:
             output_parent,
             parent_identity,
             "collision",
+            *companion_inputs,
         )
         collision = os.path.join(output_parent, "collision")
         os.mkdir(collision, 0o700)
@@ -728,6 +817,7 @@ def self_test_contract(contract: ArtifactContract) -> None:
                 output_parent,
                 parent_identity,
                 "hardlink",
+                *companion_inputs,
             ),
             "a multiply linked source",
         )
@@ -750,6 +840,7 @@ def self_test_contract(contract: ArtifactContract) -> None:
                 output_parent,
                 parent_identity,
                 "replaced-source",
+                *companion_inputs,
             ),
             "a substituted source",
         )
@@ -767,6 +858,7 @@ def self_test_contract(contract: ArtifactContract) -> None:
             output_parent,
             parent_identity,
             "replaced-pending",
+            *companion_inputs,
         )
         displaced = f"{replaced_pending}.displaced"
         os.rename(
@@ -801,6 +893,7 @@ def self_test_contract(contract: ArtifactContract) -> None:
             output_parent,
             parent_identity,
             "extra",
+            *companion_inputs,
         )
         with open(os.path.join(output_parent, extra_pending, "unexpected"), "xb") as handle:
             handle.write(b"unexpected\n")
@@ -836,9 +929,39 @@ def self_test_contract(contract: ArtifactContract) -> None:
                 output_parent,
                 parent_identity,
                 "parent-substitution",
+                *companion_inputs,
             ),
             "a substituted output parent",
         )
+        if contract.companion_artifact is not None:
+            companion_pending, companion_pending_info = prepare(
+                contract,
+                source,
+                source_identity,
+                source_sha256,
+                retained_parent,
+                parent_identity,
+                "tampered-companion",
+                *companion_inputs,
+            )
+            companion_file = os.path.join(
+                retained_parent, companion_pending, contract.companion_artifact
+            )
+            os.chmod(companion_file, 0o600)
+            with open(companion_file, "ab") as handle:
+                handle.write(b"tampered\n")
+            os.chmod(companion_file, 0o400)
+            assert_rejected(
+                lambda: commit(
+                    contract,
+                    retained_parent,
+                    parent_identity,
+                    companion_pending,
+                    f"{companion_pending_info[0]}:{companion_pending_info[1]}",
+                    "tampered-companion",
+                ),
+                "a changed companion artifact",
+            )
 
 
 def self_test() -> None:
@@ -857,6 +980,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--source")
     parser.add_argument("--source-identity")
     parser.add_argument("--source-sha256")
+    parser.add_argument("--companion-source")
+    parser.add_argument("--companion-identity")
+    parser.add_argument("--companion-sha256")
     parser.add_argument("--output-parent")
     parser.add_argument("--output-parent-identity")
     parser.add_argument("--pending")
@@ -871,6 +997,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                 args.artifact_kind,
                 args.source_identity,
                 args.source_sha256,
+                args.companion_source,
+                args.companion_identity,
+                args.companion_sha256,
                 args.output_parent,
                 args.output_parent_identity,
                 args.pending,
@@ -912,6 +1041,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         or args.source is not None
         or args.source_identity is not None
         or args.source_sha256 is not None
+        or args.companion_source is not None
+        or args.companion_identity is not None
+        or args.companion_sha256 is not None
     ):
         parser.error("commit requires one artifact profile and five authority arguments")
     return args
@@ -931,6 +1063,9 @@ def main(argv: list[str]) -> int:
             args.output_parent,
             args.output_parent_identity,
             args.destination,
+            args.companion_source,
+            args.companion_identity,
+            args.companion_sha256,
         )
         print(f"{pending} {pending_identity[0]}:{pending_identity[1]}")
     else:

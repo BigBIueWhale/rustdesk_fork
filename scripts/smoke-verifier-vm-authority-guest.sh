@@ -3893,8 +3893,8 @@ run_android_emulator_app() {
     local runtime_archive=$inputs/inputs/verifier-images/devcheck.docker.tar.gz
     local source_archive_sha input_mount_options online_mount_options artifact_mount_options
     local builder_load runtime_load workload_status=0 source_before
-    local apk_receipt renderer_receipt runtime_receipt prepared_receipt
-    local check_receipt apk_sha256
+    local apk_receipt test_receipt renderer_receipt smoke_receipt runtime_receipt prepared_receipt
+    local check_receipt apk_sha256 test_sha256
     local -a git_builder=(
         setpriv --reuid=1000 --regid=1000 --clear-groups
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C
@@ -4102,12 +4102,24 @@ run_android_emulator_app() {
         || { tail -n 320 "$output" >&2; fail 'Android emulator APK receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_APK=' "$output")" -eq 1 ] \
         || fail 'Android emulator APK receipt is duplicated'
+    test_receipt="$(grep -E \
+        '^ANDROID_EMULATOR_INSTRUMENTATION_PACKAGE=pass sha256=[0-9a-f]{64} package=com\.carriez\.flutter_hbb\.test signer=[0-9A-F]{64} dex=present$' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android instrumentation package receipt is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_INSTRUMENTATION_PACKAGE=' "$output")" -eq 1 ] \
+        || fail 'Android instrumentation package receipt is duplicated'
     renderer_receipt="$(grep -E \
         '^ANDROID_EMULATOR_RENDERER=pass requested=swiftshader observed=swiftshader angle=(present|absent) gles_sha256=[0-9a-f]{64}$' \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android renderer receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_RENDERER=' "$output")" -eq 1 ] \
         || fail 'Android renderer receipt is duplicated'
+    smoke_receipt="$(grep -Fx \
+        'ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=pass target=com.carriez.flutter_hbb runner=ControlledCmStopInstrumentation process=main result=ok' \
+        "$output")" \
+        || { tail -n 320 "$output" >&2; fail 'Android instrumentation process smoke is absent'; }
+    [ "$(grep -c '^ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=' "$output")" -eq 1 ] \
+        || fail 'Android instrumentation process smoke is duplicated'
     runtime_receipt="$(grep -E \
         '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=kvm-nested gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
         "$output")" \
@@ -4115,7 +4127,7 @@ run_android_emulator_app() {
     [ "$(grep -c '^ANDROID_EMULATOR_APP=' "$output")" -eq 1 ] \
         || fail 'Android emulator app runtime receipt is duplicated'
     prepared_receipt="$(grep -E \
-        '^ANDROID_EMULATOR_ARTIFACT_PREPARED=pass pending=\.android-x86_64-test-output-pending-[0-9a-f]{64} destination=android-x86_64-test apk_sha256=[0-9a-f]{64} signing=test-only publication=atomic-no-clobber$' \
+        '^ANDROID_EMULATOR_ARTIFACT_PREPARED=pass pending=\.android-x86_64-test-output-pending-[0-9a-f]{64} destination=android-x86_64-test apk_sha256=[0-9a-f]{64} test_sha256=[0-9a-f]{64} signing=test-only publication=atomic-no-clobber$' \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android emulator artifact preparation receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_ARTIFACT_PREPARED=' "$output")" -eq 1 ] \
@@ -4129,9 +4141,16 @@ run_android_emulator_app() {
     [[ "$apk_receipt" =~ sha256=([0-9a-f]{64}) ]] \
         || fail 'Android emulator APK receipt digest is malformed'
     apk_sha256=${BASH_REMATCH[1]}
+    [[ "$test_receipt" =~ sha256=([0-9a-f]{64}) ]] \
+        || fail 'Android instrumentation package receipt digest is malformed'
+    test_sha256=${BASH_REMATCH[1]}
     case "$runtime_receipt|$prepared_receipt|$check_receipt" in
         *"apk_sha256=$apk_sha256"*"apk_sha256=$apk_sha256"*"apk_sha256=$apk_sha256"*) ;;
         *) fail 'Android emulator app receipts do not identify one APK digest' ;;
+    esac
+    case "$prepared_receipt" in
+        *"test_sha256=$test_sha256"*) ;;
+        *) fail 'Android artifact preparation does not identify the installed test APK' ;;
     esac
 
     "$CLIENT" --host "unix://$SOCK" image rm "$ANDROID_BUILDER_CONFIG_ID" >/dev/null \
@@ -4166,7 +4185,8 @@ run_android_emulator_app() {
     umount "$artifact_output" \
         || fail 'cannot retire the Android artifact output mount'
     ANDROID_ARTIFACT_OUTPUT_MOUNTED=0
-    printf '%s\n' "$apk_receipt" "$renderer_receipt" "$runtime_receipt" \
+    printf '%s\n' "$apk_receipt" "$test_receipt" "$renderer_receipt" \
+        "$smoke_receipt" "$runtime_receipt" \
         "$prepared_receipt" "$check_receipt"
     printf 'ANDROID_EMULATOR_APP_VM=pass commit=%s tree=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s apk_sha256=%s signing=test-only artifact=prepared-test-only output=writable-landlocked uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked source=exact-pushed cleanup=joined\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
@@ -4201,6 +4221,8 @@ run_android_emulator_runtime() {
     local artifact_destination=$artifact_input/android-x86_64-test
     local apk=$artifact_destination/rustdesk-x86_64-runtime-test.apk
     local checksum=$apk.sha256
+    local test_apk=$artifact_destination/rustdesk-x86_64-instrumentation-test.apk
+    local test_checksum=$test_apk.sha256
     local staged_apk=$ROOT/android-emulator-runtime-artifact.apk
     local source_root=$ROOT/android-emulator-runtime-source
     local online_mount=$source_root/online
@@ -4395,9 +4417,9 @@ run_android_emulator_runtime() {
              1000:1000:700 ] \
         && [ "$(find "$artifact_destination" -mindepth 1 -maxdepth 1 \
             -printf '%f\n' | LC_ALL=C sort)" = \
-             $'rustdesk-x86_64-runtime-test.apk\nrustdesk-x86_64-runtime-test.apk.sha256' ] \
+             $'rustdesk-x86_64-instrumentation-test.apk\nrustdesk-x86_64-instrumentation-test.apk.sha256\nrustdesk-x86_64-runtime-test.apk\nrustdesk-x86_64-runtime-test.apk.sha256' ] \
         || fail 'commit-bound Android runtime artifact inventory differs'
-    for artifact_file in "$apk" "$checksum"; do
+    for artifact_file in "$apk" "$checksum" "$test_apk" "$test_checksum"; do
         [ -f "$artifact_file" ] && [ ! -L "$artifact_file" ] \
             && [ "$(stat -c '%u:%g:%a:%h' -- "$artifact_file")" = \
                  1000:1000:400:1 ] \
@@ -4409,10 +4431,13 @@ run_android_emulator_runtime() {
         && [ "$(sha256sum "$apk" | awk '{ print $1 }')" = \
              "$ANDROID_RUNTIME_APK_SHA256" ] \
         || fail 'commit-bound Android runtime artifact digest differs'
+    [[ "$(<"$test_checksum")" =~ ^([0-9a-f]{64})\ \ rustdesk-x86_64-instrumentation-test\.apk$ ]] \
+        && [ "$(sha256sum "$test_apk" | awk '{ print $1 }')" = "${BASH_REMATCH[1]}" ] \
+        || fail 'commit-bound Android instrumentation APK digest differs'
     artifact_before="$(stat -c '%d:%i:%u:%g:%a' -- \
         "$artifact_input" "$artifact_destination"):$(stat -c \
-        '%d:%i:%u:%g:%a:%h:%s' -- "$apk" "$checksum"):$(sha256sum \
-        "$apk" "$checksum")"
+        '%d:%i:%u:%g:%a:%h:%s' -- "$apk" "$checksum" "$test_apk" "$test_checksum"):$(sha256sum \
+        "$apk" "$checksum" "$test_apk" "$test_checksum")"
     runtime_arguments=("$staged_apk" "$ANDROID_RUNTIME_APK_SHA256" \
         "$ANDROID_RUNTIME_ARTIFACT_COMMIT" "$ANDROID_RUNTIME_SCENARIO")
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
@@ -4975,8 +5000,8 @@ run_android_emulator_runtime() {
     [ "$artifact_before" = \
       "$(stat -c '%d:%i:%u:%g:%a' -- \
           "$artifact_input" "$artifact_destination"):$(stat -c \
-          '%d:%i:%u:%g:%a:%h:%s' -- "$apk" "$checksum"):$(sha256sum \
-          "$apk" "$checksum")" ] \
+          '%d:%i:%u:%g:%a:%h:%s' -- "$apk" "$checksum" "$test_apk" "$test_checksum"):$(sha256sum \
+          "$apk" "$checksum" "$test_apk" "$test_checksum")" ] \
         || fail 'commit-bound Android runtime artifact changed during execution'
     [ "$staged_apk_before" = \
       "$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
@@ -6423,6 +6448,15 @@ if [ "$MODE" = flutter-peer-presentation ]; then
 fi
 
 if [ "$MODE" = authority-smoke ]; then
+    publication_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            /usr/bin/python3 -I -S \
+                "$VERIFY_REPO/scripts/publish-artifact-result.py" --self-test
+    )" || fail 'numeric-nonroot artifact publication self-test failed'
+    [ "$publication_output" = 'publish-artifact-result self-test: ok' ] \
+        || fail "artifact publication result differs: $publication_output"
+    printf 'VERIFIER_VM_ARTIFACT_PUBLICATION=pass android_pair=atomic checksums=both tamper=refused cleanup=joined\n'
     cleanup_source_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
             /usr/bin/python3 -I -S \

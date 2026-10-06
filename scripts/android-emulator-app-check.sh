@@ -607,6 +607,7 @@ python3 -I -S "$SCRIPT_DIR/online-input-provenance.py" verify-subtree \
     --expected "$SHA256_ANDROID_EMULATOR_VCPKG_X64_ANDROID_CLOSURE_V1"
 readonly OUTPUT_PARENT_ID="$(stat -c '%d:%i' -- "$OUTPUT_PARENT")"
 readonly APK_ID="$(stat -c '%d:%i' -- "$APK")"
+readonly TEST_APK_ID="$(stat -c '%d:%i' -- "$TEST_APK")"
 publication_authority="$(
     env -i PATH=/usr/bin:/bin LC_ALL=C \
         python3 -I -S "$SOURCE_AUTHORITY/scripts/publish-artifact-result.py" \
@@ -615,6 +616,9 @@ publication_authority="$(
             --source "$APK" \
             --source-identity "$APK_ID" \
             --source-sha256 "$APK_SHA256" \
+            --companion-source "$TEST_APK" \
+            --companion-identity "$TEST_APK_ID" \
+            --companion-sha256 "$TEST_APK_SHA256" \
             --output-parent "$OUTPUT_PARENT" \
             --output-parent-identity "$OUTPUT_PARENT_ID" \
             --destination "$OUTPUT_DESTINATION"
@@ -627,7 +631,7 @@ read -r pending_result pending_identity publication_extra <<<"$publication_autho
 printf '%s\n' "${apk_receipts[0]}" "${test_receipts[0]}" \
     "${renderer_receipts[0]}" "${instrumentation_smoke_receipts[0]}" \
     "${runtime_receipts[0]}"
-printf 'ANDROID_EMULATOR_ARTIFACT_PREPARED=pass pending=%s destination=%s apk_sha256=%s signing=test-only publication=atomic-no-clobber\n' \
-    "$pending_result" "$OUTPUT_DESTINATION" "$APK_SHA256"
+printf 'ANDROID_EMULATOR_ARTIFACT_PREPARED=pass pending=%s destination=%s apk_sha256=%s test_sha256=%s signing=test-only publication=atomic-no-clobber\n' \
+    "$pending_result" "$OUTPUT_DESTINATION" "$APK_SHA256" "$TEST_APK_SHA256"
 printf 'ANDROID_EMULATOR_APP_CHECK=pass apk_sha256=%s artifact=prepared-test-only source=exact-archive target=x86_64-linux-android builder=%s runtime=%s vm_network=none container_network=none inputs=readonly cleanup=joined\n' \
     "$APK_SHA256" "$ANDROID_BUILDER_CONFIG_ID" "$DEV_CHECK_IMAGE_CONFIG_ID"

@@ -145,4 +145,5 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib") { version { strictly("2.0.21") } }
     implementation 'com.caverock:androidsvg-aar:1.4'
     implementation "rustls:rustls-platform-verifier:0.1.1"
+    androidTestImplementation 'androidx.core:core-ktx:1.13.1'
 }

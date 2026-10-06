@@ -48,9 +48,9 @@ def capture_connection_loss(binary, environment, xserver):
                         retired = True
             native.wait(timeout=max(0, deadline - time.monotonic()))
         lines = output.decode("utf-8").splitlines()
-        require(retired and native.returncode == 0 and len(lines) == 5
+        require(retired and native.returncode == 0 and len(lines) == 6
                 and lines[0] == ready.decode("ascii").strip()
-                and lines[4] == "X11_DISPLAY_COMPONENT=pass scenario=capture-connection-loss replies=exact errors=explicit cleanup=joined",
+                and lines[5] == "X11_DISPLAY_COMPONENT=pass scenario=capture-connection-loss replies=exact errors=explicit cleanup=joined",
                 "connection-loss capture completion differs")
         receipt = re.fullmatch(
             r"X11_CAPTURE_CONNECTION_NATIVE=pass callers=direct,public repeats=3 connection_error=([1-9][0-9]*) "
@@ -67,6 +67,10 @@ def capture_connection_loss(binary, environment, xserver):
         require(construction is not None, "exact dead-connection constructor result absent")
         require(construction.group(1).split(",")[::2] == [receipt.group(1)] * 3,
                 "retained direct connection's constructor status differs")
+        lifetime = ("X11_SHM_LIFETIME_NATIVE=pass callers=direct,public segments=2 checks=17 "
+                    "owner=4000:4000 creator=exact-child mode=0600 deletion_pending=true size=exact-buffer "
+                    "attachment_transition=2-to-1 retirement=independent")
+        require(lines[4] == lifetime, "exact kernel capture-lifetime observation absent")
         diagnostic = ("failed to detach X11 capture shared memory from XCB: "
                       "X connection failed during MIT-SHM drop detach: " + receipt.group(1))
         require(errors.decode("utf-8").splitlines() == [diagnostic, diagnostic],
@@ -74,6 +78,7 @@ def capture_connection_loss(binary, environment, xserver):
         print(lines[1], flush=True)
         print(probe_receipt, flush=True)
         print(lines[3], flush=True)
+        print(lifetime, flush=True)
         print("X11_CAPTURE_CONNECTION_FINALITY=pass server=terminated-and-joined "
               "detach_errors=2 segment_retirement=independent output=bounded child=joined", flush=True)
     except BaseException:

@@ -247,6 +247,7 @@ struct State {
     detach_cookie: Option<(*mut xcb_connection_t, u32)>,
     frame_comparisons: usize,
     segments: Vec<i32>,
+    segment_state_checks: usize,
 }
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
@@ -932,6 +933,7 @@ fn finish_case(reject: usize) {
         assert!(state.detach_cookie.is_none(), "capture detach was never checked");
         state.frame_comparisons = 0;
         state.segments.clear();
+        state.segment_state_checks = 0;
     });
 }
 
@@ -943,6 +945,43 @@ fn configure_bounds(atom: u8, monitor: u8, query: usize) {
         state.malformed_monitors = monitor;
         state.malformed_query = query;
     });
+}
+
+#[cfg(corrected)]
+fn check_capture_segment_state(id: i32, size: usize, attachments: usize) -> io::Result<()> {
+    use std::io::Read;
+
+    let mut table = String::new();
+    std::fs::File::open("/proc/sysvipc/shm")?
+        .take(65_537).read_to_string(&mut table)?;
+    assert!(table.len() <= 65_536, "private IPC inventory exceeded its bound");
+    let mut rows = table.lines();
+    let header: Vec<_> = rows.next().expect("kernel IPC header absent")
+        .split_whitespace().collect();
+    assert_eq!(header, ["key", "shmid", "perms", "size", "cpid", "lpid", "nattch",
+                        "uid", "gid", "cuid", "cgid", "atime", "dtime", "ctime", "rss", "swap"]);
+    let mut entry = None;
+    for row in rows {
+        let fields: Vec<_> = row.split_whitespace().collect();
+        assert_eq!(fields.len(), header.len(), "kernel IPC record shape differs");
+        if fields[1].parse::<i32>().expect("kernel segment ID invalid") == id {
+            assert!(entry.replace(fields).is_none(), "duplicate exact segment record");
+        }
+    }
+    let fields = entry.expect("exact capture segment absent from kernel inventory");
+    assert_eq!(fields[0], "0", "capture segment did not use IPC_PRIVATE");
+    // Linux reports permission bits and SHM_DEST together in the octal mode.
+    assert_eq!(u32::from_str_radix(fields[2], 8).expect("kernel mode invalid"), 0o1600,
+               "capture is not owner-only and deletion-pending");
+    assert_eq!(fields[3].parse::<usize>().expect("kernel segment size invalid"), size);
+    assert_eq!(fields[4].parse::<u32>().expect("kernel creator PID invalid"),
+               std::process::id(), "capture segment belongs to another creator");
+    assert_eq!(fields[6].parse::<usize>().expect("kernel attachment count invalid"), attachments);
+    for field in &fields[7..11] {
+        assert_eq!(*field, "4000", "capture owner or creator principal differs");
+    }
+    STATE.with(|state| state.borrow_mut().segment_state_checks += 1);
+    Ok(())
 }
 
 #[cfg(corrected)]
@@ -1108,6 +1147,9 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
     assert_eq!(display.pixfmt(), Pixfmt::BGRA);
     let root = display.root();
     let public_display = common::Display::primary()?;
+    assert_eq!((public_display.width(), public_display.height()), (display.w(), display.h()));
+    let capture_size = display.row_stride()?.checked_mul(display.h())
+        .expect("real capture dimensions overflow");
     // Enumerate while healthy so later failure reaches capture construction,
     // not a fresh connection or display lookup after the server has disappeared.
     let mut pending_displays = Vec::new();
@@ -1127,7 +1169,10 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
         [state.segments[0], state.segments[1]]
     });
     assert_ne!(segments[0], segments[1]);
-    for segment in segments { probe_segment(segment)?; }
+    for segment in segments {
+        probe_segment(segment)?;
+        check_capture_segment_state(segment, capture_size, 2)?;
+    }
     assert_eq!(&direct.frame()?[..3], &[0x00, 0x00, 0xff]);
     let Frame::PixelBuffer(buffer) = public.frame(std::time::Duration::from_millis(100))?;
     assert_eq!(&buffer.data()[..3], &[0x00, 0x00, 0xff]);
@@ -1145,6 +1190,7 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
     let mut token = [0];
     io::stdin().read_exact(&mut token)?;
     assert_eq!(token, *b"X", "server retirement token differs");
+    for segment in segments { check_capture_segment_state(segment, capture_size, 1)?; }
 
     let mut connection_error = 0;
     for _ in 0..3 {
@@ -1198,7 +1244,10 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
         construction_errors.push(actual_error);
         let absent = probe_segment(segment).expect_err("dead-connection constructor leaked its segment");
         assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
-        for segment in segments { probe_segment(segment)?; }
+        for segment in segments {
+            probe_segment(segment)?;
+            check_capture_segment_state(segment, capture_size, 1)?;
+        }
         Ok(())
     };
     for (direct_display, public_display) in pending_displays {
@@ -1214,17 +1263,20 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
     let absent = probe_segment(segments[0]).expect_err("direct capture segment survived drop");
     assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
     probe_segment(segments[1])?;
+    check_capture_segment_state(segments[1], capture_size, 1)?;
     drop(public);
     let absent = probe_segment(segments[1]).expect_err("public capture segment survived drop");
     assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
     STATE.with(|state| {
         let state = state.borrow();
         assert_eq!((state.detach_queries, state.detach_checks, state.detach_errors), (2, 2, 2));
+        assert_eq!(state.segment_state_checks, 17, "exact capture metadata checks were skipped");
     });
     finish_case(0);
     println!("X11_CAPTURE_CONNECTION_NATIVE=pass callers=direct,public repeats=3 connection_error={connection_error} requests=8 replies=2 errors=0 comparisons=2 segments=retired");
     println!("X11_SHM_STATUS_CONNECTION_NATIVE=pass connection_error={connection_error} queries=1 replies=0 protocol_errors=0 allocations=retired");
     println!("X11_CONSTRUCTOR_CONNECTION_NATIVE=pass callers=direct,public repeats=3 cases=6 connection_errors={construction_errors} attach_requests=8 attach_checks=8 connection_failures=6 rejected_segments=retired survivor_retirement=independent comparison_on_error=none");
+    println!("X11_SHM_LIFETIME_NATIVE=pass callers=direct,public segments=2 checks=17 owner=4000:4000 creator=exact-child mode=0600 deletion_pending=true size=exact-buffer attachment_transition=2-to-1 retirement=independent");
     Ok(())
 }
 

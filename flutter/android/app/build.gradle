@@ -84,6 +84,7 @@ protobuf {
 android {
     namespace "com.carriez.flutter_hbb"
     compileSdkVersion 34
+    testBuildType "release"
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
 
@@ -107,6 +108,7 @@ android {
         targetSdkVersion 33
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
+        testInstrumentationRunner "com.carriez.flutter_hbb.ControlledCmStopInstrumentation"
     }
 
     signingConfigs {

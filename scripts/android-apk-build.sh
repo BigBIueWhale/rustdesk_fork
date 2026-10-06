@@ -268,3 +268,12 @@ fi
 unset LIBCLANG_PATH BINDGEN_EXTRA_CLANG_ARGS
 prepare_offline_gradle_cache
 cd flutter && flutter build apk --release --target-platform "$FLUTTER_TARGET_PLATFORM" --split-per-abi
+if [ "$APK_MODE" = emulator-test ]; then
+    mapfile -t gradle_binaries < <(find \
+        "$GRADLE_USER_HOME/wrapper/dists/gradle-8.7-all" \
+        -type f -path '*/gradle-8.7/bin/gradle' -print)
+    [ "${#gradle_binaries[@]}" -eq 1 ] \
+        || { echo '[FATAL] the exact offline Gradle executable is ambiguous' >&2; exit 1; }
+    ( cd android && "${gradle_binaries[0]}" --offline --no-daemon \
+        :app:assembleReleaseAndroidTest )
+fi

@@ -18,6 +18,7 @@ readonly WORK_ROOT=$4
 readonly RUNTIME_TEST_APK=${5:-}
 readonly APP_SCENARIO=${6:-launch}
 readonly RECENTS_GESTURE_JAR=${7:-}
+readonly INSTRUMENTATION_APK=${RUSTDESK_ANDROID_INSTRUMENTATION_APK:-}
 if [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = controlled-cm ]; then
     readonly WORKLOAD=app-controlled-cm
 elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = peer-lifecycle ]; then
@@ -120,7 +121,21 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
     APK_SHA256="$(sha256sum "$RUNTIME_TEST_APK" | awk '{ print $1 }')"
     [[ "$APK_SHA256" =~ ^[0-9a-f]{64}$ ]] \
         || fail 'runtime-test APK digest is malformed'
-    readonly APK_SHA256 apk_size
+readonly APK_SHA256 apk_size
+fi
+if [ -n "$INSTRUMENTATION_APK" ]; then
+    [ "$WORKLOAD" = app ] \
+        || fail 'the test instrumentation package is only for the focused app-build smoke'
+    [ -f "$INSTRUMENTATION_APK" ] && [ ! -L "$INSTRUMENTATION_APK" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$INSTRUMENTATION_APK")" = \
+             1000:1000:400:1 ] \
+        || fail 'the instrumentation APK input authority differs'
+    instrumentation_size="$(stat -c '%s' -- "$INSTRUMENTATION_APK")"
+    [ "$instrumentation_size" -gt 0 ] \
+        && [ "$instrumentation_size" -le 67108864 ] \
+        || fail 'the instrumentation APK input size differs'
+elif [ "$WORKLOAD" = app ]; then
+    fail 'the focused app-build smoke lacks its matching instrumentation package'
 fi
 RECENTS_GESTURE_SHA256=
 if [ "$WORKLOAD" = app-recents ] || [ "$WORKLOAD" = app-lifecycle ] \
@@ -4039,6 +4054,28 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
         Success|$'Performing Push Install\nSuccess') ;;
         *) fail "runtime-test APK install receipt differs: $install_output" ;;
     esac
+    if [ "$WORKLOAD" = app ]; then
+        test_install_output="$(timeout --signal=TERM --kill-after=2s 180s \
+            "$ADB" -s "$SERIAL" install --no-streaming --no-incremental \
+            "$INSTRUMENTATION_APK")" \
+            || fail 'matching instrumentation APK installation failed'
+        case "$test_install_output" in
+            Success|$'Performing Push Install\nSuccess') ;;
+            *) fail "instrumentation APK install receipt differs: $test_install_output" ;;
+        esac
+        instrumentation_output="$(timeout --signal=TERM --kill-after=2s 45s \
+            "$ADB" -s "$SERIAL" shell am instrument -w \
+            -e scenario process-smoke \
+            com.carriez.flutter_hbb.test/com.carriez.flutter_hbb.ControlledCmStopInstrumentation \
+            | tr -d '\r')" \
+            || fail 'matching instrumentation did not execute in the installed app'
+        grep -Fxq 'INSTRUMENTATION_RESULT: result=pass' \
+            <<<"$instrumentation_output" \
+            && grep -Fxq 'INSTRUMENTATION_CODE: -1' \
+                <<<"$instrumentation_output" \
+            || fail "installed app instrumentation did not prove main-process execution: $instrumentation_output"
+        printf 'ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=pass target=com.carriez.flutter_hbb runner=ControlledCmStopInstrumentation process=main result=ok\n'
+    fi
     resolved_activity="$(adb_shell_value cmd package resolve-activity --components \
         com.carriez.flutter_hbb)"
     [ "$resolved_activity" = com.carriez.flutter_hbb/.MainActivity ] \

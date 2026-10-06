@@ -327,6 +327,7 @@ readonly BUILD_LOG=$WORKSPACE/build.log
 readonly VERIFY_LOG=$WORKSPACE/verify.log
 readonly RUNTIME_LOG=$WORKSPACE/runtime.log
 readonly APK=$WORKSPACE/rustdesk-x86_64-runtime-test.apk
+readonly TEST_APK=$WORKSPACE/rustdesk-x86_64-instrumentation-test.apk
 readonly GRADLE_SDK_PROJECTION_ROOT=$WORKSPACE/gradle-sdk-projection
 readonly GRADLE_SDK_PROJECTION=$GRADLE_SDK_PROJECTION_ROOT/android-sdk
 readonly GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE=$GRADLE_SDK_PROJECTION_ROOT/android-cmdline-tools.zip
@@ -463,6 +464,15 @@ install -m 0400 -- "${built_apks[0]}" "$APK"
 [ "$(stat -c '%u:%g:%a:%h' -- "$APK")" = 1000:1000:400:1 ] \
     || die 'private runtime-test APK metadata differs'
 readonly APK_SHA256="$(sha256sum "$APK" | awk '{ print $1 }')"
+mapfile -t built_test_apks < <(find \
+    "$BUILD_SOURCE/flutter/build/app/outputs" \
+    -type f -name '*androidTest*.apk' -print | LC_ALL=C sort)
+[ "${#built_test_apks[@]}" -eq 1 ] \
+    || die "expected exactly one matching instrumentation APK, found ${#built_test_apks[@]}"
+install -m 0400 -- "${built_test_apks[0]}" "$TEST_APK"
+[ "$(stat -c '%u:%g:%a:%h' -- "$TEST_APK")" = 1000:1000:400:1 ] \
+    || die 'private instrumentation APK metadata differs'
+readonly TEST_APK_SHA256="$(sha256sum "$TEST_APK" | awk '{ print $1 }')"
 
 VERIFY_CONTAINER="$(vm_docker create \
     --name rustdesk-android-emulator-app-verify \
@@ -474,12 +484,14 @@ VERIFY_CONTAINER="$(vm_docker create \
     --security-opt=apparmor=docker-default \
     --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g \
     --mount "type=bind,source=$APK,target=/verify/app.apk,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$TEST_APK,target=/verify/test.apk,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$SOURCE_AUTHORITY,target=/source,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
     "$ANDROID_BUILDER_CONFIG_ID" \
     /bin/bash --noprofile --norc -euo pipefail -c '
         python3 -I -S /source/scripts/verify-android-emulator-apk.py \
             --apk /verify/app.apk \
+            --instrumentation-apk /verify/test.apk \
             --apksigner /online/android-sdk/build-tools/'"$ANDROID_BUILD_TOOLS"'/apksigner \
             --aapt2 /online/android-sdk/build-tools/'"$ANDROID_BUILD_TOOLS"'/aapt2 \
             --stable-cert-sha256 '"$ANDROID_SIGNING_CERT_SHA256"'
@@ -502,6 +514,12 @@ case "${apk_receipts[0]}" in
     *"sha256=$APK_SHA256"*) ;;
     *) die 'runtime-test APK verifier reported a different digest' ;;
 esac
+mapfile -t test_receipts < <(grep -E \
+    '^ANDROID_EMULATOR_INSTRUMENTATION=pass sha256=[0-9a-f]{64} package=com\.carriez\.flutter_hbb\.test target=com\.carriez\.flutter_hbb signer=[0-9A-F]{64}$' \
+    "$VERIFY_LOG" || true)
+[ "${#test_receipts[@]}" -eq 1 ] \
+    && [[ "${test_receipts[0]}" == *"sha256=$TEST_APK_SHA256"* ]] \
+    || { tail -n 200 "$VERIFY_LOG" >&2; die 'matching instrumentation APK receipt differs'; }
 vm_docker rm "$VERIFY_CONTAINER" >/dev/null
 VERIFY_CONTAINER=
 
@@ -519,6 +537,8 @@ RUNTIME_CONTAINER="$(vm_docker create \
     --mount "type=bind,source=$SYSTEM_IMAGE_ZIP,target=/inputs/system-image.zip,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$ADB,target=/inputs/adb,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$APK,target=/inputs/app.apk,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$TEST_APK,target=/inputs/test.apk,readonly,bind-recursive=disabled" \
+    --env RUSTDESK_ANDROID_INSTRUMENTATION_APK=/inputs/test.apk \
     --tmpfs /tmp:rw,exec,nosuid,nodev,size=10g,mode=700,uid=1000,gid=1000 \
     --workdir /source \
     "$DEV_CHECK_IMAGE_CONFIG_ID" \
@@ -554,6 +574,11 @@ mapfile -t renderer_receipts < <(grep -E \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android renderer receipt is absent or duplicated'; }
 [ "$(grep -c '^ANDROID_EMULATOR_RENDERER=' "$RUNTIME_LOG")" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android renderer receipt is malformed or duplicated'; }
+mapfile -t instrumentation_smoke_receipts < <(grep -Fx \
+    'ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=pass target=com.carriez.flutter_hbb runner=ControlledCmStopInstrumentation process=main result=ok' \
+    "$RUNTIME_LOG" || true)
+[ "${#instrumentation_smoke_receipts[@]}" -eq 1 ] \
+    || { tail -n 240 "$RUNTIME_LOG" >&2; die 'installed instrumentation process smoke is absent or duplicated'; }
 mapfile -t runtime_receipts < <(grep -E \
     '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=kvm-nested gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
     "$RUNTIME_LOG" || true)
@@ -573,6 +598,8 @@ python3 -I -S "$SOURCE_AUTHORITY/scripts/verify-android-build-source.py" \
     || die 'source archive changed during app execution'
 [ "$(sha256sum "$APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
     || die 'private runtime-test APK changed after execution'
+[ "$(sha256sum "$TEST_APK" | awk '{ print $1 }')" = "$TEST_APK_SHA256" ] \
+    || die 'private instrumentation APK changed after execution'
 verify_android_online_inputs
 verify_sha256 "$X86_STD" "$SHA256_RUST_STD_ANDROID_X86_64_1_75"
 python3 -I -S "$SCRIPT_DIR/online-input-provenance.py" verify-subtree \
@@ -597,7 +624,8 @@ read -r pending_result pending_identity publication_extra <<<"$publication_autho
     && [[ "$pending_identity" =~ ^(0|[1-9][0-9]*):[1-9][0-9]*$ ]] \
     && [ -z "$publication_extra" ] \
     || die 'runtime-test APK pending publication authority is malformed'
-printf '%s\n' "${apk_receipts[0]}" "${renderer_receipts[0]}" \
+printf '%s\n' "${apk_receipts[0]}" "${test_receipts[0]}" \
+    "${renderer_receipts[0]}" "${instrumentation_smoke_receipts[0]}" \
     "${runtime_receipts[0]}"
 printf 'ANDROID_EMULATOR_ARTIFACT_PREPARED=pass pending=%s destination=%s apk_sha256=%s signing=test-only publication=atomic-no-clobber\n' \
     "$pending_result" "$OUTPUT_DESTINATION" "$APK_SHA256"

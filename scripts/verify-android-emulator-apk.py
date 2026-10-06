@@ -18,6 +18,8 @@ MAX_APK_BYTES = 2 * 1024 * 1024 * 1024
 MAX_TOOL_OUTPUT = 8 * 1024 * 1024
 MAX_MEMBER_BYTES = 512 * 1024 * 1024
 PACKAGE = "com.carriez.flutter_hbb"
+TEST_PACKAGE = f"{PACKAGE}.test"
+TEST_RUNNER = f"{PACKAGE}.ControlledCmStopInstrumentation"
 REQUIRED_LIBRARIES = {
     "lib/x86_64/libc++_shared.so",
     "lib/x86_64/libflutter.so",
@@ -116,6 +118,24 @@ def manifest(apk: pathlib.Path, aapt2: pathlib.Path) -> None:
         fail("runtime-test APK launcher activity differs")
 
 
+def instrumentation_manifest(apk: pathlib.Path, aapt2: pathlib.Path) -> None:
+    output = run([str(aapt2), "dump", "badging", str(apk)])
+    packages = [line for line in output.splitlines() if line.startswith("package: ")]
+    if len(packages) != 1 or f"name='{TEST_PACKAGE}'" not in packages[0]:
+        fail("instrumentation APK package identity differs")
+    runners = [line for line in output.splitlines() if line.startswith("instrumentation: ")]
+    if (
+        len(runners) != 1
+        or f"name='{TEST_RUNNER}'" not in runners[0]
+        or f"targetPackage='{PACKAGE}'" not in runners[0]
+    ):
+        fail("instrumentation APK does not target the exact app and runner")
+    with zipfile.ZipFile(apk) as archive:
+        names = [item.filename for item in archive.infolist()]
+        if len(names) != len(set(names)) or "classes.dex" not in names:
+            fail("instrumentation APK has duplicate entries or no executable DEX")
+
+
 def elf_machine_x86_64(data: bytes, name: str) -> None:
     if len(data) < 20 or data[:4] != b"\x7fELF":
         fail(f"native APK member is not an ELF file: {name}")
@@ -178,6 +198,7 @@ def main() -> int:
     parser.add_argument("--apksigner", type=pathlib.Path, required=True)
     parser.add_argument("--aapt2", type=pathlib.Path, required=True)
     parser.add_argument("--stable-cert-sha256", required=True)
+    parser.add_argument("--instrumentation-apk", type=pathlib.Path)
     arguments = parser.parse_args()
     if re.fullmatch(r"[0-9A-F]{64}", arguments.stable_cert_sha256) is None:
         fail("stable release certificate digest is malformed")
@@ -196,6 +217,23 @@ def main() -> int:
         f"sha256={sha256(arguments.apk)} package={PACKAGE} abi=x86_64 "
         f"native_libraries={library_count} signer={signer} signing=test-only"
     )
+    if arguments.instrumentation_apk is not None:
+        test_metadata = regular_file(arguments.instrumentation_apk, "instrumentation APK")
+        if test_metadata.st_size <= 0 or test_metadata.st_size > 64 * 1024 * 1024:
+            fail("instrumentation APK size is outside the admitted range")
+        test_signer = certificate(
+            arguments.instrumentation_apk,
+            arguments.apksigner,
+            arguments.stable_cert_sha256,
+        )
+        if test_signer != signer:
+            fail("instrumentation APK signer differs from the app signer")
+        instrumentation_manifest(arguments.instrumentation_apk, arguments.aapt2)
+        print(
+            "ANDROID_EMULATOR_INSTRUMENTATION=pass "
+            f"sha256={sha256(arguments.instrumentation_apk)} "
+            f"package={TEST_PACKAGE} target={PACKAGE} signer={signer}"
+        )
     return 0
 
 

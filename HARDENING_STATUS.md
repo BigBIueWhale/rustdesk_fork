@@ -12751,8 +12751,9 @@ its fixed `id`, `registry_generation`, `action`, and `log` fields prevent action
 text from selecting an authority field. No blanket assertion for every possible
 CM side effect is made.
 
-**Linux `_pa` authority and capture lifetime — native monitor capture passed;
-CM/server process-pair and installed-service proof OPEN.**
+**Linux `_pa` authority and capture lifetime — native monitor capture and
+production-pair wrong-peer refusal passed; authorized production-pair capture
+and installed-service proof OPEN.**
 The CM peer registry refuses ID overlap and retires only an exact token; audio
 identity resolves only a live published authenticated connection. `StartCapture`
 has no caller-supplied owner: the receiver derives PID/UID/start identity from
@@ -12814,9 +12815,9 @@ serial is `.harness-state/verifier-vm/linux-pa-authority-tests-run.BKmLrlmd44.se
 This is native socket-origin refusal with a test-process listener and
 test-only subscriber fixture, **not** a production CM/server process pair
 or a proof of its main-IPC callback, wrong-UID principal, PID-reuse race,
-full process shutdown, real-device churn, or sustained resources. Those remain
-OPEN; the next native transaction must run the actual CM/server process pair
-and exercise both authorized capture and forbidden callers through that pair.
+full process shutdown, real-device churn, or sustained resources. The later
+production-pair negative case below narrows only pre-request refusal; its
+authorized capture and main-IPC proof remain OPEN.
 
 Pushed `2ff52d4b143739718035d93861512a29f8befc3b` (tree
 `559afc57307116a909d219c0b60ecd6df4a3c24e`) moves kernel-derived
@@ -12832,10 +12833,29 @@ copied-token refusal cases. The zero-NIC guest passed eleven focused tests in
 `.harness-state/verifier-vm/linux-pa-authority-tests-run.ECAEwAphus.serial.log`
 is 67,130 bytes, SHA-256
 `517c1b0723221f3f4c69fbe2457359182b850e6637f920c5f1f740a6c921c352`.
-This closes only the pre-request wrong-peer head-of-line wait, not backlog
-flooding, a production CM/server pair, installed service authority, or the
-other OPEN native and resource cases above. The 320-second run is integration
-evidence, not a fast inner-loop timing claim.
+This closes only the pre-request wrong-peer head-of-line wait in the test-owned
+fixture, not backlog flooding, a production CM/server pair, installed service
+authority, or the other OPEN native and resource cases above. The 320-second
+run is integration evidence, not a fast inner-loop timing claim.
+
+Pushed `7c9fd289ec3005ee6f4fd21507ed9a628e10cc78` (tree
+`4369d4df709e075946f82f7fdad45c8345dd9f65`) adds a test-only probe to
+the existing `--cm-file-replay` lane. With the production server and its direct
+`--cm` child live during an authenticated FileTransfer replay, the probe bound
+both processes to their executable/PID/start identity, checked the CM-owned
+`_pa` socket, and connected as an unrelated same-UID process without sending a
+request. The real CM closed that socket before the 750-ms deadline; the probe
+recorded `server_pid=18`, `cm_pid=135`, `cm_start=48136`, and integer
+`refusal_ms=0`. The source-bound zero-NIC VM passed in 494 seconds with no
+harness-added host listener or pre-existing-process drift and joined cleanup.
+Retained 399,833-byte serial:
+`.harness-state/verifier-vm/cm-file-replay-run.I1zRzY63eu.serial.log`
+(SHA-256 `930c13d047a5dce78087dc7dea3ebf5fc6f418a361addb39f0823752a3248616`).
+No `run.*` directory or overlay remains. This proves only production-pair
+pre-request wrong-peer refusal. FileTransfer kept the CM alive, but provided
+no audio subscriber or capture token: authorized capture, main-IPC callback,
+wrong-UID/PID-reuse cases, installed service, backlog flooding, and sustained
+resource/device behavior remain OPEN. No production code changed in this slice.
 
 **Process-wide connection IDs — source corrected, native lifecycle OPEN.**
 The former per-`Server` counters could allocate the same ID in overlapping

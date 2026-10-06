@@ -6007,9 +6007,33 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `a2f106eca9462fd55aa59454a760a1e590f483e8989e109303033385a3952464`, with a same-prefix
   assistant-recorded `.outer.failure`; that transaction is failed, not positive acceptance. Its exact
   retained private diagnostics root was reconciled only after terminal joined cleanup and evidence retention.
-  This is deliberate invalid-argument component coverage, not naturally occurring failure,
-  unauthorized-principal refusal, or a full product build. Segment liveness probes do not establish
-  ownership/mode/attachment-count. Construction-time connection failure, destruction-failure injection,
+
+  Candidate `1c7f9796caa1507d258c24192cfa0f0e2ad28142` (tree
+  `38a7c9614e7a3e157c7ef7c8907f06a3071a8a3d`) separately passed the same lane in 58 VM seconds.
+  The real server-loss handshake now also prepares three display handles per API while Xvfb is healthy,
+  then attempts construction only after the driver terminates and joins that exact server. All six failed
+  constructors check their actual XCB attach, return `ConnectionAborted` with the exact observed connection
+  status, and immediately retire their own real local segment without capture or comparison. Both earlier
+  captures retain independently live local segments until their respective explicit drops; both final XCB
+  detach failures are checked and visibly diagnosed. Total attach calls/checks are eight: two accepted
+  captures plus six failed constructors. Production capture/public-wrapper source is unchanged.
+  Actual constructor codes are `1,2,1,2,1,2`, not one presumed status shared across independent connections.
+  [XCB request checking](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/libxcb-1.15/src/xcb_in.c)
+  can return no protocol-error allocation on a failed connection; the constructor must still read connection
+  status. The differing codes are consistent with uncached extension lookup followed by XCB's
+  connection shutdown in [request/extension handling](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/libxcb-1.15/src/xcb_out.c)
+  (source-based inference, not a separate native cache trace).
+  The first fixture incorrectly assumed equality and failed at `64a6bb44`; its retained raw
+  `x11-display-tests-run.1oHEKhu22p.serial.log`/`.outer.failure` are failed evidence, not product-defect proof.
+  Accepted raw `x11-display-tests-run.k386P8uYor.serial.log` is 80,805 bytes, SHA-256
+  `fe17d13f89f41c86f4a09b2372cf4cf0f5c4976e024a4315c09be24943b4f66d`; same-prefix `.outer.receipt`
+  records assistant-observed exit 0, no added host endpoint, unchanged inputs, joined cleanup and absent run
+  root/overlay. This extends the existing bounded native child and driver, not the VM topology or gate catalog.
+  The syscall cases deliberately use invalid arguments; connection-loss coverage terminates a real owned
+  server. Neither establishes natural failure frequency, unauthorized-principal refusal, or a full
+  product build. Segment liveness probes do not establish
+  ownership/mode/attachment-count. Construction after joined X-server exit is covered; server loss during
+  an in-flight attach, destruction-failure injection,
   unauthorized principals, actual capture-to-render, installed cross-user service behavior, current
   artifacts, cold reproduction and independent review remain OPEN.
 

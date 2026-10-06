@@ -12863,6 +12863,16 @@ and joined cleanup passed. Raw serial:
 Both are sequential test-signed emulator schedules, not a concurrent
 admission/Stop or same-ID replacement proof.
 
+There is no matching retained Android instrumentation package for that APK.
+The emulator-test builder publishes only the app APK; the project has no
+`androidTest` source set or runner, and the release builder invokes no test
+assembly task. Its test signing key is
+not retained, so a separately built test package cannot instrument the exact
+retained APK. A concurrent Service/JNI admission test needs a source-bound
+app/test pair built and signed together, then installed-process execution with
+a verified overlap; neither packaging intent nor the sequential replay above
+establishes that result.
+
 **Still OPEN / release-blocking:** installed APK concurrent Stop/admission,
 same-ID replacement and stale JNI callbacks across input, voice, capture,
 notification, file, and task lifecycle; the native-to-rendered Flutter event

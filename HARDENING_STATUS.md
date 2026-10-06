@@ -5990,18 +5990,18 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   NATIVE REJECTION/RECOVERY AND LIVE CONNECTION-LOSS COMPONENTS PASSED;
   FULL FLOW, FRESHNESS, AND RELEASE EVIDENCE OPEN.**
   `get_image` uses the checked request and non-null protocol-error output, snapshots diagnostics before
-  freeing both allocations, and rejects protocol errors, connection failure, missing replies, and any
-  reply byte count other than the exact capture buffer. `frame()` propagates failure before reading or
-  comparing shared bytes. The two pure result tests remain in the shared gate.
+  freeing both allocations, and rejects protocol errors, connection failure, missing replies, and reply
+  size/depth/visual mismatches against the capture buffer and root setup. `frame()` propagates failure
+  before reading or comparing shared bytes. The two pure result tests remain in the shared gate.
 
   Commit `e314d2b2` records the implementation and a clean Rust 1.75 numeric-nonroot, networkless
   container run covering exact success, size mismatch, preserved protocol diagnostics, connection
   failure, and missing reply. The focused source checker is supplemental and no longer treats prose or
   checker mutation strings as product evidence.
 
-  Exact fixture source `a2c2614be6f3ec7e86b137fdf59405e54da11de3` (tree
-  `97e8b6b03a8657c07043300a60a96f50237df335`) passed the focused zero-NIC
-  `--x11-display-tests` transaction in 56 VM seconds. Production capture and public wrapper source were
+  Exact fixture source `cdc7aea6313ea31ecf995a87a1ce731d92950ccb` (tree
+  `7718e759b32ac70d86778363920d09370d78fcde`) passed the focused zero-NIC
+  `--x11-display-tests` transaction in 47 VM seconds. Production capture and public wrapper source were
   unchanged. For each of 16 direct and 16 public-caller cycles, the real Xvfb server returned BadDrawable
   for one request whose drawable was deliberately replaced with zero; no reply or shared bytes were fabricated.
   The test retained exact diagnostics, observed immediate reply/error frees and no comparison on rejection,
@@ -6019,23 +6019,31 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   its segment. Both expected dead-connection detach diagnostics are explicitly checked, not ignored.
   The driver bounds output and waiting and joins the native child. The historical iterator A/B, reply/setup
   bounds, and real 24/16-bit padded captures also passed; this is not an old-versus-new GetImage causation comparison.
-  Raw serial `.harness-state/verifier-vm/x11-display-tests-run.mnP1FqxTVH.serial.log` is 76,431 bytes,
-  SHA-256 `0f874b029f722b5db25b12f22b5b45312f0c99037e3db1699a7fbb68c129ae97`.
+
+  Received GetImage metadata now has native injected-fault coverage: size is increased by one, or depth or
+  visual is changed by one bit, in the actual second reply allocation after a real successful request on a
+  healthy XCB connection. Each field runs 16 cycles per direct/public API (96 cases). Initial real red pixels
+  are followed by real blue pixels before the rejected request. Rejection must return exact `InvalidData`,
+  free the actual reply, make no fixture frame-comparison call on rejection, and preserve prior-frame state.
+  The next valid request through the same capture must publish fresh blue; only the following unchanged
+  request may return `WouldBlock`. Per case, four real requests/replies, zero protocol errors, three comparison
+  calls, one header injection, immediate allocation retirement and exact segment absence after drop are checked.
+  The shared pixels and request arguments are not injected. This tests received-header validation through
+  instrumented production capture/public-wrapper code, not malformed replies emitted by Xvfb or the full
+  product comparator/codec/renderer.
+
+  Raw serial `.harness-state/verifier-vm/x11-display-tests-run.JV786tWKnt.serial.log` is 76,313 bytes,
+  SHA-256 `f89f0a6391c68930bba64c40c4a84518794fbba239a326d2086cd833f31b2531`.
   The terminal outer result reports numeric-nonroot guest-only execution, read-only unchanged inputs,
   no added host listener, joined Docker/QEMU cleanup, and no retained run root or overlay.
 
-  **Current checker-revision transaction INCOMPLETE / not accepted:** the attempt at `17c33849`
-  retains `.harness-state/verifier-vm/x11-display-tests-run.vEY6OwXSAn.serial.log` (75,985 bytes,
-  SHA-256 `96c75a6b733f8e60e746170c992371aa40ea33834811b557d6be8d94b4139a76`). It records
-  acceptance of current source, refusal of the private permissive-mode source fixture, existing native
-  component successes, and guest Docker/container finality. The outer tool observation was truncated;
-  its session handle, terminal exit status, and source/input/listener postgate result were not recovered.
-  No run root remains, but that absence is not a substitute for the missing terminal result. This attempt
-  therefore does not supersede the accepted transaction above. No duplicate run was started to conceal
-  the observation gap; production code is unchanged and whole shared-gate acceptance remains unclaimed.
+  The earlier `17c33849` attempt `run.vEY6OwXSAn` remains INCOMPLETE/not accepted: its outer terminal
+  result was never recovered. Its raw identity and observation gap remain in Git/audit history. The distinct
+  current transaction above includes both actual checker-CLI outcomes and has an observed terminal outer
+  success; this does not retroactively accept the earlier attempt or establish whole shared-gate acceptance.
 
   This is instrumented native XCB/capture-component evidence, not full-product presentation or a latency
-  measurement. A missing reply on a healthy connection, received size/layout faults, construction-time
+  measurement. A missing reply on a healthy connection, other received/transport faults, construction-time
   connection/other cleanup failures, unauthorized principals, capture-to-codec-to-render, focus/background freshness and latency,
   broader reconnect, cross-version/installed behavior, current release artifacts, cold reproduction and
   independent review remain OPEN. It does not explain the Android/Windows reports or close an LPE boundary.

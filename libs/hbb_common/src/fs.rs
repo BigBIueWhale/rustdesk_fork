@@ -3437,7 +3437,10 @@ impl TransferJob {
             .take()
             .ok_or_else(|| anyhow!("write file {} has no admitted data stream", self.file_num))?;
         match stream {
-            DataStream::FileStream(file) => file.sync_all().await?,
+            DataStream::FileStream(mut file) => {
+                file.flush().await?;
+                file.sync_all().await?;
+            }
             DataStream::BufStream(_) => {
                 bail!("file-backed write job owns an in-memory data stream")
             }

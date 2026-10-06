@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-280d73e13faa74e8b6fcf2b5b937ea565b8c0d4d1641773f8d98562a833d2041  requirements.html
+f1766cf3cfcb822c0e54a996f4bfadd61514d6899389e5f91476f28a7ab34ee6  requirements.html
 ```
 
 ## Current Verdict
@@ -79,7 +79,7 @@ by their requirements and the STOP-SHIP matrices below.
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
 | Build pins and target profiles (§3.1–3.2, R-B5a) | The normative table now matches the three software-codec release feature sets selected by the build entry points; its former `hwcodec`/`vram` rows and the header/footer's historical package-count/whole-tree-review claims are gone. `scripts/pins.env`, lockfiles, manifests, and toolchain files remain separate concrete authorities that must agree. This documentation correction is not a current release build, authenticated complete input closure, cold equality, or native platform proof; those remain OPEN. |
-| Appendix C #90–95, #97, #99, #104–105, #122, #185–206, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; this row does not promote source checks to native evidence. Current evidence limits remain in the relevant requirement entries and platform/open matrices. |
+| Appendix C #90–95, #97, #99, #101–105, #122, #185–206, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The vulnerability findings and their timeless disposition-to-requirement mappings remain normative. Implementation, gate, historical-causation, and artifact-status narration is absent; this row does not promote source checks to native evidence. Current evidence limits remain in the relevant requirement entries and platform/open matrices. |
 | Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub and RustSec snapshots have real no-NIC VM verdicts recorded in R-S11df and R-S11dg below; future snapshot refresh, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. Documentation or mutation counts are not scanner evidence. |
 | Git-fork review and mirroring (R-B5b) | Exact lockfile revisions provide reproducibility, not a safety verdict. The prior assertion that security-relevant forks were found benign or security-positive was removed from the normative specification; no exact-current all-fork review or completed mirror migration is established here. This remains OPEN independently of advisory-snapshot checks. |
 | Repository/dependency structure (§16, R-R1) | The normative section now distinguishes security-modified in-tree source from exact-pinned external dependencies and the authenticated offline input closure. Its old tree snapshot, package counts, lockfile-only reproducibility assurance, upstream CI-job table, and claimed net-negative dependency delta were removed. Complete exact-current fork/provenance review, release builds, and independent reproduction remain OPEN. |
@@ -216,7 +216,8 @@ source/model disposition only. The global OPEN tables remain authoritative for e
 cross-platform peer behavior, focus/background freshness, latency, reconnect, concurrency, soak, resource
 bounds, cleanup, cold artifacts, independent reproduction, and external review.
 
-**R-S14 macOS hardened-runtime JIT entitlement minimization — CLOSED / GATED (2026-07-11).**
+**R-S14 macOS hardened-runtime JIT entitlement minimization — SOURCE IMPLEMENTED / GATED;
+SIGNED NATIVE ARTIFACT EVIDENCE OPEN.**
 Platform: retained macOS source-conformance path. Endpoint/action: Xcode entitlement selection for
 Debug, Profile, and Release hardened-runtime builds. Boundary: future macOS app process executable-memory
 rights ↔ the minimum entitlement set required by that build configuration. Attack surface closed:
@@ -228,6 +229,8 @@ entitlement file, and `scripts/apple-conform-check.sh` exact-matches the three m
 plus the empty iOS entitlement map. This is not a root/LPE path; it removes an unnecessary
 hardening-runtime executable-memory exception from Profile/Release while preserving the Debug-only
 JIT case.
+The source maps and Xcode selections do not establish the effective entitlements or behavior of a signed
+installed artifact; that native evidence remains required by the release matrix.
 
 **R-S14/R-T4 Android MediaProjection owner and capture-demand finality — SOURCE IMPLEMENTED;
 EXACT-CURRENT CONTROLLED-PEER AND PHYSICAL-DEVICE EVIDENCE OPEN.** The persistent foreground
@@ -967,7 +970,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `280d73e13faa74e8b6fcf2b5b937ea565b8c0d4d1641773f8d98562a833d2041  requirements.html`.
+Current normative specification SHA-256: `f1766cf3cfcb822c0e54a996f4bfadd61514d6899389e5f91476f28a7ab34ee6  requirements.html`.
 
 ### Current authority and source closure
 
@@ -12923,6 +12926,13 @@ is 86,124 bytes/SHA-256
 it directly records the main-process instrumentation receipt and both hashes.
 Neither Recents replay ran the concurrent Stop/admission or same-ID stale
 generation schedule, so those remain release-blocking.
+
+**Deferred at the user's direction; INCOMPLETE:** the installed concurrent
+Stop/admission investigation is not the current work slice. The runner's
+`cm-stop-race` scenario has not executed in an accepted native transaction;
+its presence and the process smoke provide no race-coverage claim. Concurrent
+admission/Stop and same-ID stale-generation obligations remain OPEN while
+other outstanding hardening work proceeds.
 
 **Still OPEN / release-blocking:** installed APK concurrent Stop/admission,
 same-ID replacement and stale JNI callbacks across input, voice, capture,

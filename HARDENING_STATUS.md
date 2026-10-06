@@ -967,6 +967,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
+Current normative specification SHA-256: `2122671016ca279cde53f2692efe80abea055f870d8f3837601ef490ea455b33  requirements.html`.
 
 ### Current authority and source closure
 
@@ -4841,12 +4842,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   minimal identity. No same-UID-only fallback, executable-procfs fallback, body-before-proof path, or generic config
   authority was added.
 
-  `scripts/verify-linux-nondumpable-cm.py` independently binds the three-field identity closure, kernel socket
-  credential and start-time derivation, direct-parent proofs in both directions, role-domain-separated mutual HMAC,
-  parent-death launch path, retained-CM liveness, incumbent probes, main validation ordering, PA ownership, focused
-  Rust regressions, R-S11cc, Appendix C #222, this ledger identity, and shared-gate wiring. Its self-test rejects 17
-  deliberate weakenings. The workspace meta-verifier separately binds the focused checker semantics, invocation,
-  requirement, Appendix row, and ledger.
+  The former source-wording checker for this boundary was retired after it became
+  incapable of recognizing the current PA request and CM registry. Its historical
+  mutation receipts remain in Git history, not as current native evidence.
+  Focused Rust tests and the production CM wrong-peer refusal are retained;
+  authorized production-pair capture and installed-service principals remain OPEN.
 
   Confined validation used immutable image
   `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID/GID 1000 with
@@ -4896,13 +4896,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `PR_SET_PDEATHSIG(SIGKILL)` and parent recheck before the descriptor policy and exec. The overlay and inherited
   launch secret therefore cannot remain after loss of the exact creating server thread.
 
-  `scripts/verify-linux-nondumpable-cm.py` now covers CM, PA, and whiteboard. It binds the Linux exact-parent
-  identity, socket PID/UID/start-time proof, absence of ptrace-gated whiteboard proof, non-Linux proof retention,
-  fixed-role HMAC and complete helper argv, parent-death launch, receiver proof-before-traffic order, focused tests,
-  R-S11cd, Appendix C #223, this ledger identity, and shared-gate wiring. Its self-test rejects 25 deliberate
-  CM/PA/whiteboard weakenings. The independent workspace meta-verifier binds the focused runtime-validation region,
-  wrong-role regression, shared compiled-test invocation, shared heading, all three Apple source assertions,
-  requirement, Appendix row, and ledger identity; its normal and complete source-mutation modes pass.
+  The former combined CM/PA/whiteboard source-wording checker was retired after
+  it required superseded PA and CM shapes. Its historical mutation receipts are
+  not native overlay evidence. Focused Rust and Apple source checks remain;
+  source-bound installed whiteboard admission, forbidden peers, and cleanup are OPEN.
 
   Confined validation used immutable image
   `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID/GID 1000 with
@@ -9083,9 +9080,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   device/reproduction evidence where separately required, and R-V3 external
   review remain open. The broader Ralph-loop goal remains active.
 - **R-S11dy/R-S11e-143 — Linux PulseAudio helper protocol and resource finality
-  — SOURCE CLOSED/GATED 2026-07-27; CONFINED LINUX
-  RUST/SOURCE/MUTATION VERIFIED; COLD INSTALLED/NATIVE/DEVICE/EXTERNAL
-  EVIDENCE PENDING.** A fresh endpoint-to-action trace covered `_pa` listener
+  — SOURCE CORRECTED; FOCUSED RUST/NATIVE MONITOR VERIFIED;
+  AUTHORIZED PRODUCTION-PAIR AND INSTALLED EVIDENCE PENDING.** The earlier endpoint-to-action trace covered `_pa` listener
   admission, the audio service's client, subscriber-bound token creation,
   owner-main-IPC validation, source selection, PulseAudio capture, raw-frame
   transport, cancellation, and the surrounding `GenericService` retry path.
@@ -9112,7 +9108,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   evidence of host/service/firewall/network mutation.
 
   The source correction moves the exact
-  `StartCapture { owner, token, source }` request into the one-variant,
+  `StartCapture { token, source }` request into the one-variant,
   unknown-field-denying `LinuxPulseAudioIpcRequest` protocol and removes
   `PulseAudioStart` from `Data`. Accepted and connecting `_pa` streams install
   a purpose-specific 8-KiB codec cap before request processing; the typed
@@ -9120,7 +9116,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   terminates the audio-service run. After authority validation, the helper
   emits only an empty zero-audio sentinel or one exact 3,840-byte frame, checks
   outbound shape and codec size, and gives each write a one-second deadline.
-  A PulseAudio read error or transport/write failure terminates that capture
+  A PulseAudio stream error or transport/write failure terminates that capture
   transaction. The audio-service reader wakes once per second to re-evaluate
   `sp.ok()` and `RESTARTING`; timeout alone is a wake, while peer reset, codec
   failure, or invalid nonempty frame shape propagates to the existing bounded
@@ -9130,12 +9126,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   behavior normative. The focused regression covers the exact wire bytes,
   unknown-field and `Data::Close` rejection, typed duplex exchange, codec
   ceiling, exact frame shape, oversize rejection, periodic timeout wake, and
-  terminal peer reset. The focused Linux nondumpable CM/PA/whiteboard checker,
-  shared R-S11c-7 source gate, and independent workspace mutation catalog bind
-  the enum inventory, old-union absence, accepted/client cap, authority-before-
-  source order, typed request flow, capture-read termination, bounded write,
-  cancellable read, transport error propagation, requirement, Appendix row,
-  and this ledger.
+  terminal peer reset. The former source-wording checker and exhaustive mutation
+  catalog are historical receipts only; they were retired or narrowed after
+  becoming stale. Current native PA monitor/cancellation and production-pair
+  wrong-peer results are recorded in the Linux `_pa` section below; authorized
+  capture through that production pair remains OPEN.
 
   Confined Linux compilation and focused execution used immutable image
   `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
@@ -9144,17 +9139,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   no-new-privileges, finite PID/memory/CPU/descriptor/core/file-size limits,
   and no Docker/libvirt/service-manager socket, host namespace, device, port,
   or host-configuration mount. Rust 1.75 compiled against the exact committed
-  read-only Cargo vendor closure. The closed `_pa` protocol test passes, and
-  both pre-existing subscriber/token authority tests pass. The focused Linux
-  nondumpable CM/PA/whiteboard checker rejects all 44 deliberate mutations.
-  The shared R-S11c-7/R-S11dy source-only block, Bash syntax, in-memory Python
-  parsing, requirements HTML/hash synchronization, and native-codec normal/
-  negative gate pass. The independent workspace semantic baseline passes,
-  and one uninterrupted complete run rejects all 2,556 in-memory source
-  mutations from mutation one. The range-coupled Debian lifecycle and
-  release-parent checkers reject all 44 and 27 mutations. Requirements
-  SHA-256 is
-  `51ea30a8cc8fa9a10599d82ffa881e6aafcb0fd5c6f092de549bc1aab415f7fe`.
+  read-only Cargo vendor closure. The closed `_pa` protocol and subscriber/token
+  authority tests passed at that source identity. Historical source-mutation
+  counts and the old requirements digest are not current runtime evidence;
+  Git retains those receipts.
 
   Preliminary non-passes remain explicit. The first focused-checker run found
   that its `pub enum Data` prefix selected `DataKeyboard`; the exact
@@ -9233,8 +9221,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   cross-purpose/unknown-field rejection, codec/oversize/deadline/reset
   behavior, endpoint token/role proof, exact Linux parent authority,
   per-connection command authority, malformed/token-count rejection, and
-  queue capacity. The focused Linux CM/PA/whiteboard checker rejects all 71
-  deliberate mutations, and the updated Windows production-listener checker
+  queue capacity. The former combined Linux source-wording checker reported 71
+  historical deliberate mutations before it became stale and was retired;
+  that count is not a current gate or native proof. The updated Windows production-listener checker
   rejects all 17 while proving that the DACL path delegates to the same exact
   token-derived postfix classifier used for codec selection. The shared and
   extracted Apple R-S11c-8/R-S11dz source blocks pass. The independent

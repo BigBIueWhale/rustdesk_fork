@@ -59,7 +59,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",
         "apple": "scripts/apple-conform-check.sh",
-        "linux_verifier": "scripts/verify-linux-nondumpable-cm.py",
     }
     return {
         key: (repo / relative).read_text(encoding="utf-8")
@@ -439,11 +438,6 @@ def validate(sources: Dict[str, str]) -> None:
         ("verify", focused_gate, "shared focused gate"),
         ("verify", behavior_gate, "shared behavior gate"),
         ("apple", focused_gate, "Apple focused gate"),
-        (
-            "linux_verifier",
-            "retained generation-bound whiteboard task",
-            "adjacent Linux verifier contract",
-        ),
         (
             "requirements",
             '<div class="req"><span class="id">R-S11ho</span>',

@@ -1004,7 +1004,8 @@ fallback.
 
 ### R-S11at/R-S11e-60 — shared Linux UID selection implemented; native acceptance OPEN
 
-Both Linux endpoints now use `linux_service_peer_active_uid` in `src/ipc/auth.rs`:
+Both Linux endpoints now use `linux_service_peer_active_uid` from the one
+standard-library-only `src/ipc/uid_policy.rs` module, imported by `src/ipc/auth.rs`:
 generic `_service` through `service_scoped_ipc_authorization_snapshot_from_stream`,
 and raw `_service_password` through `peer_process_identity_is_live`. The selector takes
 lazy cached/fresh lookup providers. UID 0 invokes neither; missing/nonmatching cache
@@ -1064,15 +1065,22 @@ No second heavy retry was started, and no owned run root remains.
 **Still OPEN:** exact-artifact installed Linux receiver runs on both endpoints with
 root/cache/session-change, capacity contention, authorized/unauthorized principals,
 cancellation and drain, and lookup/transaction resource observations. Provider-call unit
-tests and source wiring cannot close those native obligations. A fast standalone inner
-loop also remains needed; the existing whole Rust-app Linux-target transaction is an
-integration check, not the seconds-to-minutes default promised by the instructions.
-Source review identifies a concrete dependency cut: the UID predicate, lazy selector and
-four policy tests use only Rust's standard library. Move that one production implementation
-and its tests into a small module and compile the actual module with the pinned Rust 1.75 /
-edition-2021 toolchain in the isolated non-root lane, not a copied or extracted model.
-That fast lane is not implemented or executed yet; source wiring, whole-app integration
-and installed receiver tests remain independently required.
+tests and source wiring cannot close those native obligations. The whole Rust-app
+Linux-target transaction remains an integration check, not the default inner loop.
+
+The fast lane is now implemented as `scripts/smoke-verifier-vm-authority.sh
+--linux-service-uid-tests`, with a 300-second VM budget, 2 GiB guest memory and a
+512 MiB numeric-nonroot container. The checked-in Rust wrapper imports the actual
+production module; its two function bodies and four test bodies are unchanged by
+the move. Pinned Rust 1.75 / edition 2021 compiles it directly without Cargo,
+vendor/Pub closure walks, Flutter bridge generation, or native app dependencies.
+The lane runs the password source guard without its mutation catalog, requires the
+four exact policy tests and count, binds the compiled artifact digest to the exact
+pushed source/tree and verifier image, and retains the existing zero-NIC, read-only
+source/input, listener-audit and joined-cleanup authority. The whole-app test selectors
+now name the moved production module. Host syntax parsing and diff review passed;
+execution of this new lane is **pending**, and whole-app integration and installed
+receiver evidence remain independently OPEN.
 
 ### Android runtime — intermittent presentation remains OPEN
 

@@ -369,6 +369,7 @@ REQUIRED_SOURCES = (
     "src/ipc.rs",
     "src/ipc/password.rs",
     "src/ipc/auth.rs",
+    "src/ipc/uid_policy.rs",
     "src/ipc/fs.rs",
     "src/core_main.rs",
     "src/ui_interface.rs",
@@ -969,6 +970,19 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
 
 def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     auth = rust["src/ipc/auth.rs"]
+    policy = rust["src/ipc/uid_policy.rs"]
+    rust["src/ipc.rs"].all().require(
+        ("#", "[", "path", "=", '"ipc/uid_policy.rs"', "]", "mod", "uid_policy", ";"),
+        "one production UID-policy module",
+        unique=True,
+    )
+    for name in ("is_allowed_service_peer_uid", "linux_service_peer_active_uid"):
+        auth.all().require(
+            ("use", "super", "::", "uid_policy", "::", name, ";"),
+            "production UID-policy import",
+            unique=True,
+        )
+        auth.all().forbid(("fn", name), "duplicate inline UID policy")
     peer_identity_record = auth.item("struct", "PeerProcessIdentity")
     peer_identity_record.require(
         ("argv", ":", "Vec", "<", "String", ">"),
@@ -990,7 +1004,7 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
         ("field", "(", '"argv"'),
         "untrusted complete argv disclosure in Debug",
     )
-    allowed_uid = auth.function("is_allowed_service_peer_uid")
+    allowed_uid = policy.function("is_allowed_service_peer_uid")
     allowed_uid.require(
         ("peer_uid", "==", "0", "||", "active_uid", ".", "is_some_and", "(", "|", "uid", "|", "uid", "==", "peer_uid", ")"),
         "root-or-current-active-user UID policy",
@@ -1016,7 +1030,7 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     )
     for alternate_lookup in ("get_active_userid", "get_active_userid_fresh", "active_uid_fresh"):
         cached_uid.forbid((alternate_lookup,), "live lookup from the cached-only accessor")
-    selected_uid = auth.function("linux_service_peer_active_uid")
+    selected_uid = policy.function("linux_service_peer_active_uid")
     selected_uid.require_order(
         (
             (("if", "peer_uid", "==", "Some", "(", "0", ")", "{", "return", "None", ";", "}"), "root skips both lookup providers"),

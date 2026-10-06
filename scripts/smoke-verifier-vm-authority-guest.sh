@@ -43,6 +43,9 @@ case "$#:${8:-}" in
     12:--linux-pa-authority-tests)
         MODE=linux-pa-authority-tests
         ;;
+    12:--linux-service-uid-tests)
+        MODE=linux-service-uid-tests
+        ;;
     12:--android-rust-lifecycle-tests)
         MODE=android-rust-lifecycle-tests
         ;;
@@ -1992,8 +1995,9 @@ run_focused_rust_tests() {
     local container_name memory memory_bytes tmpfs_size source_fingerprints
     local source_archive_sha source_before input_mount_options pub_receipt post_pub_receipt
     local path remainder size digest
+    local uid_test_artifact_sha
     local -a required_tests result_lines toolchain_mount bridge_mounts bridge_inputs
-    local -a pa_mounts=() pa_env=()
+    local -a pa_mounts=() pa_env=() dependency_mounts=()
 
     if [ "$MODE" = hbb-common-fs ]; then
         container_name=rustdesk-hbb-common-fs
@@ -2105,6 +2109,30 @@ run_focused_rust_tests() {
             ipc::pulse_audio::tests::real_monitor_capture_revokes_after_audio_stops
             ipc::pulse_audio::tests::real_kernel_pa_admission_refuses_same_uid_child_with_token
         )
+    elif [ "$MODE" = linux-service-uid-tests ]; then
+        container_name=rustdesk-linux-service-uid-tests
+        memory=512m
+        memory_bytes=536870912
+        tmpfs_size=64m
+        image_archive=$inputs/verifier-images/devcheck.docker.tar.gz
+        image_config=$DEV_CHECK_IMAGE_CONFIG_ID
+        image_index=$DEV_CHECK_IMAGE_ID
+        toolchain_mode=devcheck-image
+        toolchain_mount=()
+        bridge_mounts=()
+        source_fingerprints=(
+            src/ipc.rs
+            src/ipc/auth.rs
+            src/ipc/uid_policy.rs
+            scripts/test-linux-service-uid-policy.rs
+            scripts/verify-linux-service-password-ipc.py
+        )
+        required_tests=(
+            uid_policy::tests::test_service_peer_uid_policy
+            uid_policy::tests::r_s11e60_linux_service_root_skips_both_uid_lookups
+            uid_policy::tests::r_s11e60_linux_service_cached_negative_skips_fresh_uid_lookup
+            uid_policy::tests::r_s11e60_linux_service_cache_match_requires_fresh_uid_authority
+        )
     else
         [ "$MODE" = android-rust-lifecycle-tests ] \
             || fail "unknown focused Rust-test mode: $MODE"
@@ -2133,6 +2161,7 @@ run_focused_rust_tests() {
             src/flutter_ffi.rs
             src/ipc.rs
             src/ipc/auth.rs
+            src/ipc/uid_policy.rs
             scripts/verify-linux-service-password-ipc.py
             src/port_forward.rs
             src/privacy_mode.rs
@@ -2144,9 +2173,9 @@ run_focused_rust_tests() {
             src/ui_session_interface.rs
         )
         required_tests=(
-            ipc::ipc_auth::tests::r_s11e60_linux_service_root_skips_both_uid_lookups
-            ipc::ipc_auth::tests::r_s11e60_linux_service_cached_negative_skips_fresh_uid_lookup
-            ipc::ipc_auth::tests::r_s11e60_linux_service_cache_match_requires_fresh_uid_authority
+            ipc::uid_policy::tests::r_s11e60_linux_service_root_skips_both_uid_lookups
+            ipc::uid_policy::tests::r_s11e60_linux_service_cached_negative_skips_fresh_uid_lookup
+            ipc::uid_policy::tests::r_s11e60_linux_service_cache_match_requires_fresh_uid_authority
             android_listener_lifecycle::tests::stale_network_callback_cannot_advance_replacement_generation_epoch
             android_listener_lifecycle::tests::worker_must_be_registered_and_converged_before_replacement
             android_listener_lifecycle::tests::invalid_exhausted_and_thread_creation_failure_edges_fail_closed
@@ -2304,20 +2333,26 @@ run_focused_rust_tests() {
         )
     fi
 
-    [ "$(stat -c '%u:%g:%a:%h:%s' -- "$vendor_config")" = \
-      "1000:1000:400:1:$SIZE_CARGO_VENDOR_CONFIG" ] \
-        && [ "$(sha256sum "$vendor_config" | awk '{ print $1 }')" = \
-             "$SHA256_CARGO_VENDOR_CONFIG" ] \
-        || fail 'sealed Cargo source map differs'
-    [ -d "$vendor" ] && [ ! -L "$vendor" ] \
-        && [ "$(stat -c '%u:%g:%a' -- "$vendor")" = 1000:1000:500 ] \
-        || fail 'sealed Cargo vendor root metadata differs'
-    setpriv --reuid=1000 --regid=1000 --clear-groups \
-        env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-        python3 -I -S "$source_root/scripts/online-input-provenance.py" \
-            verify-subtree --tree "$vendor" \
-            --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-        || fail 'sealed Cargo vendor closure differs'
+    if [ "$MODE" != linux-service-uid-tests ]; then
+        dependency_mounts=(
+            --mount "type=bind,source=$vendor,target=/vendor,readonly"
+            --mount "type=bind,source=$vendor_config,target=/inputs/config.toml,readonly"
+        )
+        [ "$(stat -c '%u:%g:%a:%h:%s' -- "$vendor_config")" = \
+          "1000:1000:400:1:$SIZE_CARGO_VENDOR_CONFIG" ] \
+            && [ "$(sha256sum "$vendor_config" | awk '{ print $1 }')" = \
+                 "$SHA256_CARGO_VENDOR_CONFIG" ] \
+            || fail 'sealed Cargo source map differs'
+        [ -d "$vendor" ] && [ ! -L "$vendor" ] \
+            && [ "$(stat -c '%u:%g:%a' -- "$vendor")" = 1000:1000:500 ] \
+            || fail 'sealed Cargo vendor root metadata differs'
+        setpriv --reuid=1000 --regid=1000 --clear-groups \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            python3 -I -S "$source_root/scripts/online-input-provenance.py" \
+                verify-subtree --tree "$vendor" \
+                --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+            || fail 'sealed Cargo vendor closure differs'
+    fi
     if [ "$MODE" = hbb-common-fs ] || [ "$MODE" = cpace-recovery-tests ]; then
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$rust_archive")" = \
           "1000:1000:400:1:$SIZE_RUST_1_75" ] \
@@ -2447,8 +2482,7 @@ run_focused_rust_tests() {
             --env RUSTDESK_CANARY_OFFLINE=1 \
             --mount "type=bind,source=$source_root,target=/source,readonly" \
             --mount "type=bind,source=$target_root,target=/cargo-target" \
-            --mount "type=bind,source=$vendor,target=/vendor,readonly" \
-            --mount "type=bind,source=$vendor_config,target=/inputs/config.toml,readonly" \
+            "${dependency_mounts[@]}" \
             "${toolchain_mount[@]}" \
             "${bridge_mounts[@]}" \
             "${pa_mounts[@]}" \
@@ -2477,9 +2511,11 @@ run_focused_rust_tests() {
                 IFS= read -r apparmor </proc/self/attr/current
                 case "$apparmor" in docker-default\ *) ;; *) exit 92 ;; esac
                 mkdir /tmp/home /tmp/cargo-home
-                sed "s#^directory = \"/online/cargo-vendor\"#directory = \"/vendor\"#" \
-                    /inputs/config.toml >/tmp/cargo-home/config.toml
-                [ "$(grep -Fc '\''directory = "/vendor"'\'' /tmp/cargo-home/config.toml)" -eq 1 ]
+                if [ "$RUST_TEST_MODE" != linux-service-uid-tests ]; then
+                    sed "s#^directory = \"/online/cargo-vendor\"#directory = \"/vendor\"#" \
+                        /inputs/config.toml >/tmp/cargo-home/config.toml
+                    [ "$(grep -Fc '\''directory = "/vendor"'\'' /tmp/cargo-home/config.toml)" -eq 1 ]
+                fi
                 case "$RUST_TOOLCHAIN_MODE" in
                     archive)
                         mkdir /tmp/toolchain /tmp/rust
@@ -2516,10 +2552,16 @@ run_focused_rust_tests() {
                     linux-pa-authority-tests)
                         /bin/bash /source/scripts/run-pa-runtime-tests.sh /inputs/pa-runtime.tar.gz
                         ;;
+                    linux-service-uid-tests)
+                        python3 -I -S /source/scripts/verify-linux-service-password-ipc.py --repo /source
+                        rustc --edition=2021 --test /source/scripts/test-linux-service-uid-policy.rs \
+                            -o /cargo-target/uid-policy-tests
+                        /cargo-target/uid-policy-tests --test-threads=1 --color never
+                        ;;
                     android-rust-lifecycle-tests)
                         python3 -I -S /source/scripts/verify-linux-service-password-ipc.py --repo /source
                         cargo test --offline --locked --lib --features linux-pkg-config \
-                            ipc::ipc_auth::tests::r_s11e60_ --color never -- --test-threads=1
+                            ipc::uid_policy::tests::r_s11e60_ --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             android_listener_lifecycle::tests:: --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config \
@@ -2600,6 +2642,19 @@ run_focused_rust_tests() {
             || { tail -n 200 "$output" >&2; fail 'native PulseAudio monitor probe receipt is absent'; }
         grep -Fxq 'PA_RUNTIME_NATIVE=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 revocation=after-unload same_uid_stolen_token=refused network=none uid=1000 cleanup=joined' "$output" \
             || { tail -n 200 "$output" >&2; fail 'native PulseAudio capture receipt is absent'; }
+    elif [ "$MODE" = linux-service-uid-tests ]; then
+        [ "${#result_lines[@]}" -eq 1 ] \
+            || { tail -n 200 "$output" >&2; fail 'Linux UID-policy summary count differs'; }
+        [ "$(grep -Ec '^test uid_policy::tests::.* \.\.\. ok$' "$output")" -eq "${#required_tests[@]}" ] \
+            || fail 'Linux UID-policy named test count differs'
+        grep -Fxq 'verify-linux-service-password-ipc: ok' "$output" \
+            || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }
+        [ -f "$target_root/uid-policy-tests" ] && [ ! -L "$target_root/uid-policy-tests" ] \
+            && [ "$(stat -c '%u:%g:%h' -- "$target_root/uid-policy-tests")" = 1000:1000:1 ] \
+            || fail 'compiled UID-policy test artifact metadata differs'
+        uid_test_artifact_sha="$(sha256sum "$target_root/uid-policy-tests" | awk '{ print $1 }')"
+        [[ "$uid_test_artifact_sha" =~ ^[0-9a-f]{64}$ ]] \
+            || fail 'compiled UID-policy test artifact digest is malformed'
     else
         [ "${#result_lines[@]}" -eq 13 ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
@@ -2641,7 +2696,9 @@ run_focused_rust_tests() {
     umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
     SEALED_INPUTS_MOUNTED=0
     if [ "$MODE" = android-rust-lifecycle-tests ]; then
-        grep -E '^test ipc::ipc_auth::tests::r_s11e60_.* \.\.\. ok$|^verify-linux-service-password-ipc: ok$' "$output"
+        grep -E '^test ipc::uid_policy::tests::r_s11e60_.* \.\.\. ok$|^verify-linux-service-password-ipc: ok$' "$output"
+    elif [ "$MODE" = linux-service-uid-tests ]; then
+        grep -E '^test uid_policy::tests::.* \.\.\. ok$|^verify-linux-service-password-ipc: ok$' "$output"
     fi
     printf '%s\n' "${result_lines[@]}"
     if [ "$MODE" = hbb-common-fs ]; then
@@ -2663,6 +2720,12 @@ run_focused_rust_tests() {
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config" \
             "$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+    elif [ "$MODE" = linux-service-uid-tests ]; then
+        [ "$tests_passed" -eq "${#required_tests[@]}" ] \
+            || fail "Linux UID-policy test count differs: $tests_passed"
+        printf 'LINUX_SERVICE_UID_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s target=linux-x86_64 scope=production-uid-policy-and-source-wiring rust=1.75.0 edition=2021 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+            "$uid_test_artifact_sha" "$image_index" "$image_config"
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
@@ -6427,6 +6490,11 @@ if [ "$MODE" = cpace-recovery-tests ]; then
 fi
 
 if [ "$MODE" = linux-pa-authority-tests ]; then
+    run_focused_rust_tests
+    exit 0
+fi
+
+if [ "$MODE" = linux-service-uid-tests ]; then
     run_focused_rust_tests
     exit 0
 fi

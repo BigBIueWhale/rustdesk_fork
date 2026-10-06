@@ -1,6 +1,9 @@
 #[path = "ipc/auth.rs"]
 mod ipc_auth;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
+#[path = "ipc/uid_policy.rs"]
+mod uid_policy;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[path = "ipc/fs.rs"]
 mod ipc_fs;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

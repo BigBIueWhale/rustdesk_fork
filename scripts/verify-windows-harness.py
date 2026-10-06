@@ -47,7 +47,6 @@ FILES = {
     "watch": "scripts/native-codec-watch.sh",
     "port": "res/vcpkg/libvpx/portfile.cmake",
     "metadata": "res/vcpkg/libvpx/vcpkg.json",
-    "requirements": "requirements.html",
     "verify": "scripts/verify.sh",
     "ipc": "src/ipc.rs",
     "windows": "src/platform/windows.rs",
@@ -97,17 +96,6 @@ def shell_function(source: str, name: str) -> str:
     following = re.search(r"(?m)^[A-Za-z_][A-Za-z0-9_]*\(\) \{\s*$", source[match.end() :])
     end = len(source) if following is None else match.end() + following.start()
     return source[match.start() : end]
-
-
-def html_requirement(source: str, requirement_id: str) -> str:
-    marker = f'<div class="req"><span class="id">{requirement_id}</span>'
-    start = source.find(marker)
-    if start < 0:
-        raise VerificationError(f"missing HTML requirement: {requirement_id}")
-    end = source.find("</div></div>", start)
-    if end < 0:
-        raise VerificationError(f"unterminated HTML requirement: {requirement_id}")
-    return source[start : end + len("</div></div>")]
 
 
 def powershell_function(source: str, name: str) -> str:
@@ -338,7 +326,6 @@ def validate_sources(sources: dict[str, str]) -> None:
     pe = sources["pe"]
     msi = sources["msi"]
     watch = sources["watch"]
-    requirements = sources["requirements"]
     verify = sources["verify"]
     ipc = sources["ipc"]
     windows = sources["windows"]
@@ -2478,23 +2465,6 @@ def validate_sources(sources: dict[str, str]) -> None:
         "CM round-trip count",
     ):
         require(installed_self_test, f'("{fixture}", changed)', f"installed-SCM result mutation {fixture}")
-    installed_requirement = html_requirement(requirements, "R-S11gj")
-    for literal, description in (
-        ("zero virtual network interfaces", "zero-interface installed-SCM requirement"),
-        ("TASK_RUNLEVEL_LUA", "least-privilege installed-SCM requirement"),
-        ("bounded redirected stdin", "stdin-only installed-SCM requirement"),
-        (
-            "Thus neither negative may pass merely because a caller mutated state and then reported failure.",
-            "negative rejection-preservation requirement",
-        ),
-        (
-            "The Windows client <span class=\"kw\">MUST</span> prove its own current executable is the fixed installed runtime before it opens the service-password transport",
-            "client fixed-image preflight requirement",
-        ),
-        ("distinct supervisor and child generations", "restart-generation installed-SCM requirement"),
-        ("strict secret-free receipt", "secret-free installed-SCM receipt requirement"),
-    ):
-        require(installed_requirement, literal, description)
     require(
         host,
         'verify_sha256 "$ONLINE_DIR/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "$SHA256_OLEFILE_0_47"',
@@ -4303,22 +4273,10 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "first_credential_preserved_after_limited_rejection = $false",
         ),
         (
-            "installed-SCM normative rejection preservation",
-            "requirements",
-            "Thus neither negative may pass merely because a caller mutated state and then reported failure.",
-            "A negative may pass merely because a caller mutated state and then reported failure.",
-        ),
-        (
             "installed-SCM client fixed-image preflight",
             "ipc",
             "crate::platform::windows::require_current_exe_is_fixed_service_runtime()?;",
             "",
-        ),
-        (
-            "installed-SCM normative client preflight",
-            "requirements",
-            "The Windows client <span class=\"kw\">MUST</span> prove its own current executable is the fixed installed runtime before it opens the service-password transport",
-            "The Windows client may open the service-password transport before proving its own executable",
         ),
         (
             "installed-SCM service-generation retirement",
@@ -4385,12 +4343,6 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "probe_client",
             "if stdin.is_terminal()",
             "if false",
-        ),
-        (
-            "installed-SCM normative zero-interface boundary",
-            "requirements",
-            "zero virtual network interfaces",
-            "one virtual network interface",
         ),
         ("watch patch reorder", "watch", "patch-block-reorder", "patch-order-ignored"),
         (

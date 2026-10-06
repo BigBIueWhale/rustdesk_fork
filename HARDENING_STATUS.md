@@ -10062,7 +10062,7 @@ caller/renderer path.
 
 ### R-S11gr/R-S11e-230 — bounded exact-session web frame ownership (2026-08-14)
 
-**CROSS-SESSION DRAIN ACCOUNTING SOURCE CORRECTED; CURRENT EXECUTION,
+**CROSS-SESSION DRAIN ACCOUNTING SOURCE CORRECTED; CURRENT DART QUEUE/MODEL CHECKPOINT PASSED;
 BROWSER/END-TO-END/RELEASE EVIDENCE OPEN.**
 
 The live web RGBA callback copies its caller-owned `Uint8List` synchronously before any await.
@@ -10082,7 +10082,7 @@ JS/Wasm callback detachment or browser
 presentation. Browser and concurrent-feature behavior plus every shared OPEN obligation above
 remain required.
 
-**Cross-session drain accounting is source-corrected, not yet execution-validated.** Every web queue
+**Cross-session drain accounting has executable Dart queue evidence.** Every web queue
 uses one isolate-shared pool with at most 64 unfinished presentations: enough for a full 32-display
 generation and unfinished predecessor. Retirement revokes commit authority but does not release a
 permit until the actual presentation future finishes. The pool has zero shared-capacity waiters;
@@ -10093,11 +10093,22 @@ three-slot engine budget. No retirement, replacement, failure or queue construct
 Two new executable queue regressions hold 32 retired operations open while all 32 replacement displays
 enter independently, refuse operation 65 without invocation or waiting, recover only after an actual
 old completion, preserve the replacement across a retired late error, and retire all permits. They also
-exercise same-display latest-only succession with no shared waiting capacity. These tests are pending;
-their source presence is not a pass. Current generated-bridge/Dart execution, actual web compilation,
-browser/engine completion and caller wiring, aggregate frame/image byte bounds, overload/failure,
-memory/latency/wake measurements and sustained replacement remain OPEN. The source-visible gap did not
-establish a measured browser leak or causation for the Android/Windows reports.
+exercise same-display latest-only succession with no shared waiting capacity. Exact source
+`b67f7d461c6d573dfed6d2040bff11b7c5f26b19` (tree
+`7e8b40d643a3c6c074f809ce005b34336092372b`) passed the zero-NIC generated-bridge/Flutter checkpoint:
+21 suites/175 tests, observed outer terminal success, 317 VM seconds, read-only sealed inputs,
+no added host endpoint and joined Docker/QEMU/virtiofsd cleanup. Its normal source guard also had to
+succeed before generation/tests; no mutation catalog ran. Raw serial
+`.harness-state/verifier-vm/flutter-model-tests-run.fYnqshVdOb.serial.log` is 68,759 bytes,
+SHA-256 `54cd63838efa5a4048ddad331618451805f5a902dd9a580f8a7084935314dba1`.
+No run root or disposable disk remains. This is actual execution of the queue class with held futures,
+not a browser, real blocked image conversion, complete web caller wiring or a measured memory leak.
+
+Actual web compilation, browser/engine completion and caller wiring, aggregate frame/image byte bounds,
+native overload/failure, memory/latency/wake measurements and sustained replacement remain OPEN.
+The 317-second generated-bridge checkpoint is not the desired fast inner loop; a narrowly selected queue
+runtime check without unrelated toolchain/generation work remains verification-engineering work.
+The source-visible gap did not establish causation for the Android/Windows reports.
 
 ### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority
 

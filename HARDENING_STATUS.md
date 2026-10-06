@@ -6000,10 +6000,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   failure, and missing reply. The focused source checker is supplemental and no longer treats prose or
   checker mutation strings as product evidence.
 
-  Exact source `b0457248444d089dac5a6597d2cde1eef258566b` (tree
-  `bb1902d3f6b92fc6a643d5e9fb5204ed4cf78aee`) passed the focused zero-NIC
-  `--x11-display-tests` transaction in 50 VM seconds. The unchanged production frame-comparison body
-  now lives in `libs/scrap/src/common/frame_compare.rs`, with the existing public API reexported;
+  Exact source `e35c2579ffeea4426292c08933d07ee4a8b68261` (tree
+  `cc265dfd755ea0936b0d9d1839a6d7d63fdc652b`) passed the focused zero-NIC
+  `--x11-display-tests` transaction in 54 VM seconds. The unchanged production frame-comparison body
+  lives in `libs/scrap/src/common/frame_compare.rs`, with the existing public API reexported;
   the native fixture counts calls and delegates to that body instead of duplicating its equal/copy logic.
   Three executable unit tests passed for complete same-length/growing/shrinking cache replacement,
   unchanged-frame allocation preservation, and existing empty-frame semantics. The test process is joined
@@ -6040,10 +6040,28 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   instrumented production capture/public-wrapper code and the actual production comparator, not malformed
   replies emitted by Xvfb or the full product/codec/renderer.
 
-  Raw serial `.harness-state/verifier-vm/x11-display-tests-run.lXgDlfeteL.serial.log` is 78,415 bytes,
-  SHA-256 `ffc23bb6e92186706f57882113a3edac0b04e2654ab8c00582a3d7da307b22d9`.
+  A healthy-connection missing-reply case now passes 16 cycles per direct/public API (32 cases).
+  The fixture discards only the second real GetImage cookie with `xcb_discard_reply`, then completes
+  one read-only `GetInputFocus` round trip on that same connection before calling the real reply API.
+  XCB itself must return null reply/null error with connection status zero; the wrapper does not fabricate
+  the returned pointers, requests, or shared pixels. The production caller must return the exact missing-reply
+  error without comparing or publishing bytes. The same capture must next publish freshly drawn blue and
+  only then report unchanged blue as `WouldBlock`. Each case requires four GetImage requests, three returned
+  capture replies, one missing reply, zero protocol errors, three comparator calls, returned-allocation
+  retirement and exact segment disappearance. The completion reply/error are freed separately; XCB owns
+  retirement of its discarded result. This is deliberate XCB discard coverage, not a naturally missing
+  server response, a general transport-fault proof, or an Android/Windows causation claim.
+
+  Raw serial `.harness-state/verifier-vm/x11-display-tests-run.SiJcCSvJxQ.serial.log` is 78,832 bytes,
+  SHA-256 `067d51ec28f842c72b4de8f92d83379344b78c8bd6c2632b8cfec575f0961016`.
   The terminal outer result reports numeric-nonroot guest-only execution, read-only unchanged inputs,
   no added host listener, joined Docker/QEMU cleanup, and no retained run root or overlay.
+
+  Initial missing-reply candidate `b960dd37` / `run.TTFmTIdBVl` failed at the new scenario's 15-second
+  timeout; it is not accepted evidence. The fixture had discarded a reply without first advancing XCB's
+  completion sequence. The corrected transaction adds the real round trip above without extending any
+  timeout or changing product code. The failed raw serial and assistant-recorded failure receipt remain
+  retained; only its identity-bound private diagnostics root was retired after terminal cleanup.
 
   Candidate `28a943d5` / `run.lyzx5hmtFQ` failed before native execution when the retained unit-test binary
   exhausted the fixed build scratch during linking; it is not accepted native evidence. Its bounded raw
@@ -6056,7 +6074,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   success; this does not retroactively accept the earlier attempt or establish whole shared-gate acceptance.
 
   This is instrumented native XCB/capture-component evidence, not full-product presentation or a latency
-  measurement. A missing reply on a healthy connection, other received/transport faults, construction-time
+  measurement. Other missing-reply and received/transport faults, construction-time
   connection/other cleanup failures, unauthorized principals, capture-to-codec-to-render, focus/background freshness and latency,
   broader reconnect, cross-version/installed behavior, current release artifacts, cold reproduction and
   independent review remain OPEN. It does not explain the Android/Windows reports or close an LPE boundary.

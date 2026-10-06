@@ -177,7 +177,7 @@ struct Allocation {
 }
 
 #[derive(Clone, Copy)]
-enum CaptureReplyFault { Size, Depth, Visual }
+enum CaptureReplyFault { Size, Depth, Visual, Missing }
 
 #[derive(Default)]
 struct State {
@@ -304,6 +304,8 @@ extern "C" {
     fn real_capture_reply(c: *mut xcb_connection_t, cookie: xcb_shm_get_image_cookie_t,
         error: *mut *mut xcb_generic_error_t) -> *mut xcb_shm_get_image_reply_t;
     #[cfg(corrected)]
+    fn xcb_discard_reply(c: *mut xcb_connection_t, sequence: u32);
+    #[cfg(corrected)]
     #[link_name = "__real_xcb_shm_attach_checked"]
     fn real_attach(c: *mut xcb_connection_t, shmseg: xcb_shm_seg_t,
         shmid: u32, read_only: u8) -> xcb_void_cookie_t;
@@ -375,7 +377,24 @@ unsafe extern "C" fn __wrap_xcb_shm_get_image_reply(c: *mut xcb_connection_t,
     cookie: xcb_shm_get_image_cookie_t, error: *mut *mut xcb_generic_error_t)
     -> *mut xcb_shm_get_image_reply_t {
     assert!(!error.is_null(), "capture omitted its protocol-error result pointer");
+    let discard = STATE.with(|state| {
+        let state = state.borrow();
+        matches!(state.capture_reply_fault, Some(CaptureReplyFault::Missing))
+            && state.capture_queries == state.fault_capture_reply
+    });
+    if discard {
+        assert_ne!(cookie.sequence, 0, "cannot discard a failed request");
+        assert_eq!(xcb_connection_has_error(c), 0, "discard used a failed connection");
+        // Exercise XCB's own missing-reply result, not a fabricated null return.
+        // Request arguments and server-written shared pixels remain unchanged.
+        xcb_discard_reply(c, cookie.sequence);
+        STATE.with(|state| state.borrow_mut().capture_reply_injections += 1);
+    }
     let reply = real_capture_reply(c, cookie, error);
+    if discard {
+        assert!(reply.is_null() && (*error).is_null(), "discard did not remove the real reply");
+        assert_eq!(xcb_connection_has_error(c), 0, "discard failed the X connection");
+    }
     STATE.with(|state| {
         let mut state = state.borrow_mut();
         if !reply.is_null() {
@@ -395,6 +414,7 @@ unsafe extern "C" fn __wrap_xcb_shm_get_image_reply(c: *mut xcb_connection_t,
                         .expect("real capture size cannot be incremented"),
                     CaptureReplyFault::Depth => (*reply).depth ^= 1,
                     CaptureReplyFault::Visual => (*reply).visual ^= 1,
+                    CaptureReplyFault::Missing => unreachable!("discarded reply returned metadata"),
                 }
                 state.capture_reply_injections += 1;
             }
@@ -773,21 +793,26 @@ fn exercise_capture_reply_fault(
         state.fault_capture_reply = 2;
     });
     let error = pixel().expect_err("invalid received reply returned a frame");
-    assert_eq!(error.kind(), io::ErrorKind::InvalidData,
-               "invalid metadata became unchanged-frame behavior");
+    let missing = matches!(fault, CaptureReplyFault::Missing);
+    assert_eq!(error.kind(), if missing { io::ErrorKind::Other } else { io::ErrorKind::InvalidData },
+               "failed received reply became unchanged-frame behavior");
     STATE.with(|state| {
         let state = state.borrow();
-        let (size, _, _) = state.capture_reply_original.expect("actual reply metadata absent");
+        assert_eq!(state.capture_reply_original.is_none(), missing,
+                   "received-metadata ownership differs from the selected fault");
         let expected = match fault {
-            CaptureReplyFault::Size => format!(
-                "X server MIT-SHM GetImage size {} does not match capture buffer size {}", size + 1, size),
+            CaptureReplyFault::Size => {
+                let (size, _, _) = state.capture_reply_original.expect("actual reply metadata absent");
+                format!("X server MIT-SHM GetImage size {} does not match capture buffer size {}", size + 1, size)
+            }
             CaptureReplyFault::Depth | CaptureReplyFault::Visual =>
                 "X server MIT-SHM GetImage layout differs from root setup".to_owned(),
+            CaptureReplyFault::Missing => "X server returned no MIT-SHM GetImage reply".to_owned(),
         };
         assert_eq!(error.to_string(), expected);
         assert_eq!(state.capture_reply_injections, 1);
         assert_eq!((state.capture_queries, state.capture_replies, state.capture_errors,
-                    state.frame_comparisons), (2, 2, 0, 1));
+                    state.frame_comparisons), (2, if missing { 1 } else { 2 }, 0, 1));
         assert!(state.allocations.iter().all(|entry| entry.retired), "rejected reply leaked");
     });
     probe_segment(segment)?;
@@ -800,7 +825,8 @@ fn exercise_capture_reply_fault(
     STATE.with(|state| {
         let state = state.borrow();
         assert_eq!((state.capture_queries, state.capture_replies, state.capture_errors,
-                    state.frame_comparisons, state.capture_reply_injections), (4, 4, 0, 3, 1));
+                    state.frame_comparisons, state.capture_reply_injections),
+                   (4, if missing { 3 } else { 4 }, 0, 3, 1));
         assert!(state.allocations.iter().all(|entry| entry.retired), "capture reply/error leaked");
     });
     Ok(segment)
@@ -1047,9 +1073,14 @@ fn main() -> io::Result<()> {
                 }
             }
             println!("X11_CAPTURE_REJECTION_NATIVE=pass server_error=BadDrawable repeats=16 callers=direct,public requests=4 replies=3 errors=1 comparison_on_error=none same_capture=recovered pixels=red,blue segment=retired");
-        } else if scenario == "capture-reply-layout" {
+        } else if scenario == "capture-reply-layout" || scenario == "capture-missing-reply" {
             use crate::common::TraitCapturer;
-            for fault in [CaptureReplyFault::Size, CaptureReplyFault::Depth, CaptureReplyFault::Visual] {
+            let faults: &[CaptureReplyFault] = if scenario == "capture-missing-reply" {
+                &[CaptureReplyFault::Missing]
+            } else {
+                &[CaptureReplyFault::Size, CaptureReplyFault::Depth, CaptureReplyFault::Visual]
+            };
+            for &fault in faults {
                 for public in [false, true] {
                     for _ in 0..16 {
                         let display = x11::Server::displays(Rc::clone(&server))
@@ -1085,7 +1116,11 @@ fn main() -> io::Result<()> {
                     }
                 }
             }
-            println!("X11_CAPTURE_REPLY_NATIVE=pass received_header=injected fields=size,depth,visual callers=direct,public repeats=16 cases=96 requests=4 replies=4 protocol_errors=0 comparison_on_rejection=none same_capture=recovered pixels=red,blue allocations=retired segments=retired");
+            if scenario == "capture-missing-reply" {
+                println!("X11_CAPTURE_MISSING_NATIVE=pass cause=xcb-discard connection=healthy callers=direct,public repeats=16 cases=32 requests=4 replies=3 missing=1 protocol_errors=0 comparison_on_rejection=none same_capture=recovered pixels=red,blue allocations=retired segments=retired");
+            } else {
+                println!("X11_CAPTURE_REPLY_NATIVE=pass received_header=injected fields=size,depth,visual callers=direct,public repeats=16 cases=96 requests=4 replies=4 protocol_errors=0 comparison_on_rejection=none same_capture=recovered pixels=red,blue allocations=retired segments=retired");
+            }
         } else if scenario == "capture-24" || scenario == "capture-16" {
             use crate::{TraitPixelBuffer, common::TraitCapturer};
             x11::reject_unsupported_layouts();

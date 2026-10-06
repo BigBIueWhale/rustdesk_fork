@@ -246,6 +246,17 @@ def main():
                         "X11_DISPLAY_COMPONENT=pass scenario=capture-reply-layout replies=exact errors=explicit cleanup=joined"],
                     f"native received-reply rejection/recovery differs: {layout}")
             print(layout_receipt, flush=True)
+            missing = subprocess.run([str(binaries["corrected"]), "capture-missing-reply"], env=environment,
+                                     capture_output=True, text=True, timeout=15)
+            missing_receipt = ("X11_CAPTURE_MISSING_NATIVE=pass cause=xcb-discard connection=healthy "
+                               "callers=direct,public repeats=16 cases=32 requests=4 replies=3 missing=1 "
+                               "protocol_errors=0 comparison_on_rejection=none same_capture=recovered "
+                               "pixels=red,blue allocations=retired segments=retired")
+            require(missing.returncode == 0 and not missing.stderr and len(missing.stdout) <= 4096
+                    and missing.stdout.splitlines() == [missing_receipt,
+                        "X11_DISPLAY_COMPONENT=pass scenario=capture-missing-reply replies=exact errors=explicit cleanup=joined"],
+                    f"native missing-reply rejection/recovery differs: {missing}")
+            print(missing_receipt, flush=True)
             print("X11_BOUNDS_NATIVE=pass received_header=injected rejected_shapes=7 repeats=32 "
                   "enumeration=fused public_callers=explicit valid_outputless=injected screens=server-real replies=exact", flush=True)
             print("X11_SETUP_NATIVE=pass received_header=injected rejected_shapes=7 repeats=16 "

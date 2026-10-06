@@ -10094,7 +10094,7 @@ Two new executable queue regressions hold 32 retired operations open while all 3
 enter independently, refuse operation 65 without invocation or waiting, recover only after an actual
 old completion, preserve the replacement across a retired late error, and retire all permits. They also
 exercise same-display latest-only succession with no shared waiting capacity. Correction `b67f7d46`'s
-production queue, model wiring and test bytes are unchanged at the current accepted source
+production queue, model wiring and test bytes are unchanged at the named accepted source
 `d0a13c7a22c1a45f780ad081e4c8606a6091f5d7` (tree
 `6beb3f602b5990e6e185f422b9d85180bb20e0e9`), which passed the zero-NIC generated-bridge/Flutter checkpoint:
 21 suites/175 tests, observed outer terminal success, 317 VM seconds, read-only sealed inputs,
@@ -10114,8 +10114,9 @@ validation in 110 VM seconds. This is one focused measurement, not a universal v
 The same zero-NIC execution authority retains pinned Flutter, the complete read-only Pub closure,
 offline lockfile enforcement, listener invariance and joined cleanup. Queue source is read-only;
 only a private guest copy receives Pub/test output. It omits unused Rust/LLVM/Cargo/bridge generation,
-uses a 300-second VM budget with 4 GiB guest/2 GiB container memory, and leaves the 21-suite/175-test
-generated-bridge checkpoint intact. Three parser tests passed in each transaction; they cover both
+uses a 300-second VM budget with 4 GiB guest/2 GiB container memory, and retains the generated-bridge
+integration checkpoint. Its expanded current 23-suite/196-test result is recorded under R-S11hl.
+Three parser tests passed in each named transaction; they cover both
 result profiles and refusal of wrong/duplicate/missing queue inventory, failure, skip, unfinished work
 and post-final events.
 Both observed outer exits were zero, with no added host endpoint and joined cleanup; neither run root
@@ -10785,73 +10786,81 @@ resource, background/focus, reconnect, and cleanup acceptance also remains OPEN.
 
 ### R-S11hk/R-S11e-248 — bounded exact-session file-confirm ownership
 
-**Status: SOURCE IMPLEMENTED; CURRENT EXECUTABLE DART/FLUTTER/NATIVE AND
-TARGET-PLATFORM EVIDENCE OPEN.**
+**SOURCE IMPLEMENTED; EIGHT DART MODEL REGRESSIONS PASS; TARGET-NATIVE EVIDENCE OPEN.**
+The confirmation parser owns one immutable canonical payload: positive signed-32-bit job ID,
+nonnegative signed-32-bit file number, exact lowercase booleans, and a nonempty NUL-free path
+bounded to 32,768 UTF-16 code units. The exact event-loop generation owns a FIFO of at most
+64 running-plus-pending confirmations. Close retires pending work and remembered policy before
+replacement. Malformed/refused admission, missing job, and callback failure use the visible
+exact-session terminal path. Required decisions are not silently dropped, coalesced, or overwritten;
+the idle owner has no timer or polling wakeup.
 
-Current source admits each required overwrite/skip decision as one immutable canonical
-payload: positive signed-32-bit job ID, nonnegative signed-32-bit file number, exact
-lowercase booleans, and a nonempty NUL-free read path capped at 32,768 UTF-16 code
-units. One exact session generation owns an event-driven FIFO capped at 64
-running-plus-pending confirmations. Close retires the generation, pending work, and
-remembered policy before replacement. Malformed or refused admission, missing job,
-and callback failure use the visible exact-session terminal path; stale failures
-cannot close a replacement. Required work is never silently dropped, coalesced, or
-overwritten, and the idle owner has no timer or polling wakeup.
+`flutter/test/file_dialog_event_loop_test.dart` executes the production event loop and typed parser:
+FIFO, running-plus-pending capacity, closed admission, replacement serialization, callback failure,
+canonical scalar parsing, and path refusal. Its eight tests passed in the accepted checkpoint under
+R-S11hl and remain wired in `scripts/dart-verify.sh`. This is not the complete native digest/job/dialog
+handoff, missing-job/stream-failure execution, or installed transfer/lifecycle behavior.
 
-The executable `flutter/test/file_dialog_event_loop_test.dart` regression suite is
-authored for FIFO, capacity, closed admission, replacement serialization, callback
-failure, typed parsing, and path bounds, and remains wired into `scripts/dart-verify.sh`.
-The former 610-line Python source recognizer, its second workspace implementation,
-and shared/Apple invocations were deleted: those programs only parsed current source,
-test names, gate wiring, and documentation, so their passing result was not behavioral
-or independent evidence. No Dart, Flutter, native, package, or target runtime executed
-in this cleanup slice. Exact-current Dart execution and installed target-native
-file-transfer, replacement, Android task-swipe/reopen/Force-Stop, cross-version,
-latency/resource, and cleanup evidence remain open under the global STOP-SHIP matrix.
-Historical implementation and run details remain in Git at
-11402b7ba925a283b8284a14a194c59af9d98e3f.
+STOP-SHIP: exact-artifact native overwrite/skip/cancel jobs, malformed/saturated/missing/callback-failed
+admission, close/replacement and exact cleanup; Android task-swipe/reopen/Force-Stop; other-platform/
+cross-version operation; latency/resource soak; installed artifacts; cold equality; independent
+reproduction; external review; and the global connection-flow correctness/performance obligations.
 
 ### R-S11hl/R-S11e-249 — reserve-before-dispatch file-response ownership
 
-**Status: SOURCE CORRECTED; CURRENT EXECUTABLE DART/FLUTTER/NATIVE AND
-TARGET-PLATFORM EVIDENCE OPEN.**
+**SOURCE CORRECTED; THIRTEEN DART MODEL REGRESSIONS PASS; TARGET-NATIVE EVIDENCE OPEN.**
+`FileFetcher` in `flutter/lib/models/file_model.dart` reserves the exact session/operation/key/side
+owner before normal, empty, or recursive-directory dispatch. Active, dispatch-draining, and timed-out
+owners share a capacity of 64. The response deadline remains live during dispatch; every correlation
+dimension must match. Recursive requests require positive canonical signed-32-bit action IDs, and
+recursive error fields must be correctly typed. Wrong, malformed, negative-ID, unsolicited, stale,
+or already-consumed responses confer no authority.
 
-Current source reserves one exact session/operation/key/side response owner before
-each normal-directory, empty-directory, or recursive-directory native dispatch.
-Active, dispatch-draining, and timed-out owners share a capacity of 64. The response
-deadline remains live while dispatch is suspended; completion requires every
-correlation dimension; recursive errors select only their exact positive action
-owner. Wrong, malformed, negative-ID, unsolicited, and stale responses consume no
-authority. Because path-only wire responses have no request nonce, timeout retains
-a bounded tombstone and refuses same-key retry until an owned late response is
-discarded or the session retires. Exact close/replacement clears ownership before
-settling waiters, and the native producer preserves the actual local/remote side.
-Recursive admission now rejects zero, negative, and out-of-signed-32-bit action IDs
-before reserving capacity, starting a timer, or dispatching. Recursive error events
-consume an owner only when their ID is a canonical positive signed-32-bit string and
-their error is a string; the former event-handler coercion of arbitrary values through
-`toString()` is absent.
+No-nonce timeout retains the exact bounded tombstone. A late normal/empty/recursive reply or
+recursive error is consumed without completing later work, but cannot release the slot or same-key
+refusal while its original dispatch is still live. The existing dispatch continuation removes that
+owner only after both response consumption and dispatch settlement. Exact close/replacement clears
+ownership before settling waiters. The native producer's local/remote-side source contract is retained;
+this model result does not execute that producer.
 
-The executable `flutter/test/mobile_file_session_lifecycle_test.dart` suite now covers
-all three response maps before blocked dispatch settlement, shared retained capacity,
-strict recursive action/error identity, correlation refusal, retirement/replacement,
-dispatch failure, tombstones, late-response consumption, and timer cancellation. It
-remains wired into `scripts/dart-verify.sh`. The former 834-line Python recognizer,
-its duplicated workspace implementation, and shared/Apple invocations were deleted:
-their 36 mutations altered source, test names, gate wiring, and documentation strings
-without running Dart, Flutter, a native bridge, or a target. No Dart, Flutter, native,
-product, package, or target executable ran in this slice because no user-owned
-container/VM runtime or host-independent Dart toolchain was available; no rootful
-fallback was used. Exact Dart/native execution, installed cross-
-platform bridge behavior, fast/late responses, timeouts, reconnect, cross-version
-operation, latency/resource soak, and cleanup remain open under the global STOP-SHIP
-matrix. Historical implementation details remain in Git at
-7595f363961c3a15b718e99848c63e440ac73718.
+Four added held-dispatch regressions in `flutter/test/mobile_file_session_lifecycle_test.dart`
+cover normal, empty, recursive-success, and recursive-error paths: timeout and duplicate late replies,
+same-key and cross-map capacity refusal without dispatch, actual old completion, and fresh replacement.
+Against unchanged product source at `6cf7b0a8`, all four failed because a same-key operation was admitted
+and timed out rather than refused; the other 192 tests passed. That attempt is not an accepted full
+transaction: its outer audit detected a new host loopback endpoint `127.0.0.1:18090`, without ownership
+attribution or action against it. Failed raw serial and the explicitly assistant-recorded outer failure
+remain under `.harness-state/verifier-vm/flutter-model-tests-run.cz7osyjaT0.*`; its exact joined private
+root/disks are retired. The tests and harness bytes are unchanged in the corrected run.
+
+Accepted source `b3840c99fad13d70e9f799f30b4057e07b9e03a1` (tree
+`22aec7bd0bbe8a885028e5e9668244839133cdcd`) passed
+`scripts/smoke-verifier-vm-authority.sh --flutter-model-tests`: 23 suites/196 successful non-skipped
+tests, including all 13 directory-owner, eight confirmation, and 16 file-command tests, fresh bridge
+generation, and three result-parser tests. The observed outer exit was zero, in 359 VM seconds,
+with zero NIC/container network, numerical nonroot guest-only execution, sealed read-only inputs,
+no added host endpoint, and joined cleanup. Raw serial
+`.harness-state/verifier-vm/flutter-model-tests-run.9c1skKaNHx.serial.log` is 66,731 bytes,
+SHA-256 `6775932cbdbb3464a6d5f2007251a31c771549d358c67b840ac9ad8767bdb287`.
+Its same-prefix outer receipt is assistant-recorded, not independent attestation. No run root or
+disposable disk remains. This is production Dart-owner execution with injected dispatch futures,
+not a live native bridge/peer, file-transfer artifact, device, display-latency result, or LPE closure.
+
+The checkpoint now retains all original 21 suites/175 tests and adds the two previously omitted
+file suites plus the four regressions. Closed suite/count, non-skip, error, completion, JSON bounds,
+and terminal acceptance remain mandatory; the fixed fast frame-queue shard is unchanged.
+Both file suites also retain their real `flutter test --no-pub` calls in `scripts/dart-verify.sh`.
+
+STOP-SHIP: installed cross-platform bridge/transfer fast/late/error/timeout/saturation behavior;
+actual dispatch settlement across disconnect/close/reconnect/replacement; local/remote serialization;
+Android task-swipe/reopen/Force-Stop; cross-version operation; latency/resource soak; exact cleanup;
+current artifacts; cold equality; independent reproduction; external review; and complete
+connection-flow correctness/performance.
 
 ### R-S11hm/R-S11e-250 — exact-session file-command and job-result ownership
 
-**Status: SOURCE IMPLEMENTED; DART MODEL REGRESSIONS PASS IN A NO-NIC LINUX VM;
-FRESH GENERATED-BRIDGE, NATIVE, AND TARGET-PLATFORM EVIDENCE OPEN.**
+**SOURCE IMPLEMENTED; SIXTEEN DART MODEL REGRESSIONS AND FRESH BRIDGE GENERATION PASS;
+NATIVE FILESYSTEM, INSTALLED, AND TARGET-PLATFORM EVIDENCE OPEN.**
 
 Current source captures exact sessions and immutable command inputs before asynchronous
 boundaries. Delete-file events settle only their bounded exact session/action/file owner;
@@ -10914,28 +10923,18 @@ and idempotent nested creation, complete validation before creation, symlink/jun
 refusal, exact/same-name rename, destination-symlink replacement without target mutation, Unix
 source-generation mismatch and retained-parent path swap, and Windows exact-source-handle rename
 after its original name is replaced.
-The Dart suite remains wired into `scripts/dart-verify.sh`. The 859-line source-wording recognizer,
-its 572-line workspace duplicate, and shared/Apple invocations were deleted because they ran no
-Dart, bridge, filesystem command, target, or application behavior. The inherited
-`flutter/test/cm_test.dart` manual GUI launcher was also deleted: it contained no `test` or
-`testWidgets` case and no assertion, had no live caller, no longer compiled against `Client`, and
-made the real Flutter test inventory fail before behavioral execution.
+`flutter/test/file_command_session_ownership_test.dart` retains its real invocation in
+`scripts/dart-verify.sh`; all 16 current cases passed in R-S11hl's accepted 23-suite/196-test
+checkpoint with fresh bridge generation. `FileController` takes an explicit translation dependency,
+so dialog-label model tests need not initialize native FFI. This checkpoint executes the Dart
+command/result owners, not a Rust filesystem mutation, live native bridge, or installed product.
 
-The exact tracked candidate source subsequently ran under the retained Flutter 3.24.5 toolchain in
-an ordinary-user, snapshot-on QEMU guest with `-nic none`, no route, and only guest loopback enabled
-for Flutter's private test-runner socket. Offline package resolution left `pubspec.lock` unchanged.
-The ownership file passed all 15 visible cases in 4 seconds; the complete remaining 22-file Flutter
-inventory passed all 165 visible cases with zero runner errors in 17 seconds at concurrency one.
-The `FileController` translation dependency is now explicit at every construction site, so these
-model tests do not initialize native FFI merely to label a dialog. The empty-directory case uses
-`tester.pump()` instead of awaiting a fake-async zero-duration timer that can never advance itself.
-This was an exact-source Dart/Flutter model run, not fresh FRB generation: it reused the retained
-generated Dart bridge (`33db9d840bdfe2081f187b61f88436515d58c8482a6c49626901702d259ef813` /
-`07607702bac08dd620102cda04ef86759902ba04f256e469e2f567b9f5b5a686`). It ran no Rust native
-deletion implementation or RustDesk product process. Fresh bridge generation and exact isolated
-execution on Android, iOS, Windows, Linux, macOS, and applicable web targets—including task
-swipe/reopen/Force Stop, desktop replacement, reordered results, cross-version transfer,
-performance/resource soak, and cleanup—remain OPEN under the global STOP-SHIP matrix.
+Exact Android/iOS/Windows/Linux/macOS and applicable web artifacts must still exercise native
+create/rename/delete, hostile namespace replacement, reordered results, dispatch failure,
+close/reconnect/persistence, job/dialog/wakelock finality, task-swipe/reopen/Force-Stop, desktop
+replacement, cross-version transfer, latency/resource soak, and cleanup. The native regressions
+listed above, current installed artifacts, cold R-B2/R-B10 equality, independent reproduction,
+external review, and the global connection-flow correctness/performance obligations remain OPEN.
 
 ### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership
 

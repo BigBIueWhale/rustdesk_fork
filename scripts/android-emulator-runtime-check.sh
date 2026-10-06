@@ -8,20 +8,22 @@ die() {
     exit 1
 }
 
-[ "$#" -eq 4 ] || [ "$#" -eq 8 ] \
-    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 ARTIFACT_SOURCE_COMMIT recents | APK APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256'
+[ "$#" -eq 6 ] || [ "$#" -eq 10 ] \
+    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT recents | APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256'
 readonly APK=$1
 readonly APK_SHA256=$2
-readonly ARTIFACT_SOURCE_COMMIT=$3
-readonly RUNTIME_SCENARIO=$4
-readonly PEER_ROOT=${5:-}
-readonly PEER_COMMIT=${6:-}
-readonly PEER_TREE=${7:-}
-readonly PEER_MANIFEST_SHA256=${8:-}
+readonly TEST_APK=$3
+readonly TEST_APK_SHA256=$4
+readonly ARTIFACT_SOURCE_COMMIT=$5
+readonly RUNTIME_SCENARIO=$6
+readonly PEER_ROOT=${7:-}
+readonly PEER_COMMIT=${8:-}
+readonly PEER_TREE=${9:-}
+readonly PEER_MANIFEST_SHA256=${10:-}
 case "$RUNTIME_SCENARIO" in
-    recents) [ "$#" -eq 4 ] || die 'Recents-only replay accepts no peer authority' ;;
+    recents) [ "$#" -eq 6 ] || die 'Recents-only replay accepts no peer authority' ;;
     peer-lifecycle|controlled-cm)
-        [ "$#" -eq 8 ] && [[ "$PEER_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+        [ "$#" -eq 10 ] && [[ "$PEER_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$PEER_TREE" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$PEER_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
             || die 'peer replay requires exact source and manifest authority'
@@ -34,6 +36,8 @@ readonly RUN_GID="$(id -g)"
     || die 'the Android emulator runtime check requires numeric uid/gid 1000:1000'
 [[ "$APK_SHA256" =~ ^[0-9a-f]{64}$ ]] \
     || die 'APK digest is malformed'
+[[ "$TEST_APK_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+    || die 'instrumentation APK digest is malformed'
 [[ "$ARTIFACT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
     || die 'artifact source commit is malformed'
 [ "$APK" = "$(readlink -f -- "$APK")" ] \
@@ -43,6 +47,12 @@ readonly RUN_GID="$(id -g)"
     || die 'guest-staged APK metadata differs'
 [ "$(sha256sum "$APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
     || die 'APK digest differs'
+[ "$TEST_APK" = "$(readlink -f -- "$TEST_APK")" ] \
+    || die 'instrumentation APK path is not absolute and canonical'
+[ -f "$TEST_APK" ] && [ ! -L "$TEST_APK" ] \
+    && [ "$(stat -c '%u:%g:%a:%h' -- "$TEST_APK")" = 1000:1000:400:1 ] \
+    && [ "$(sha256sum "$TEST_APK" | awk '{ print $1 }')" = "$TEST_APK_SHA256" ] \
+    || die 'instrumentation APK authority differs'
 
 readonly SCRIPT_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh
@@ -463,6 +473,7 @@ verify_image android-builder "$ANDROID_BUILDER_CONFIG_ID"
 verify_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"
 
 readonly APK_ID="$(stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$APK")"
+readonly TEST_APK_ID="$(stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$TEST_APK")"
 WORKSPACE="$(mktemp -d /var/tmp/rustdesk-android-emulator-runtime.XXXXXXXXXX)" \
     || die 'cannot create the private runtime-check workspace'
 WORKSPACE_ID="$(stat -c '%d:%i' -- "$WORKSPACE")"
@@ -704,16 +715,17 @@ runtime_mounts=(
     --mount "type=bind,source=$SYSTEM_IMAGE_ZIP,target=/inputs/system-image.zip,readonly,bind-recursive=disabled"
     --mount "type=bind,source=$ADB,target=/inputs/adb,readonly,bind-recursive=disabled"
     --mount "type=bind,source=$APK,target=/inputs/app.apk,readonly,bind-recursive=disabled"
+    --mount "type=bind,source=$TEST_APK,target=/inputs/test.apk,readonly,bind-recursive=disabled"
     --mount "type=bind,source=$RECENTS_DRIVER_JAR,target=/inputs/recents-dismiss.jar,readonly,bind-recursive=disabled"
 )
-runtime_environment=()
+runtime_environment=(--env RUSTDESK_ANDROID_INSTRUMENTATION_APK=/inputs/test.apk)
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
    || [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
     runtime_mounts+=(
         --mount "type=bind,source=$SERVER_TARGET,target=/smoke-target,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$PEER_ROOT/peer-manifest.json,target=/inputs/peer-manifest.json,readonly,bind-recursive=disabled"
     )
-    runtime_environment=(
+    runtime_environment+=(
         --env "ANDROID_PEER_MANIFEST_SHA256=$PEER_MANIFEST_SHA256"
         --env "ANDROID_PEER_SOURCE_COMMIT=$PEER_COMMIT"
         --env "ANDROID_PEER_SOURCE_TREE=$PEER_TREE"
@@ -1281,6 +1293,10 @@ case "${runtime_receipts[0]}" in
     *"apk_sha256=$APK_SHA256"*) ;;
     *) die 'Android app runtime reported a different APK digest' ;;
 esac
+instrumentation_receipt='ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=pass target=com.carriez.flutter_hbb runner=ControlledCmStopInstrumentation process=main result=ok'
+[ "$(grep -Fxc "$instrumentation_receipt" "$RUNTIME_LOG" || true)" -eq 1 ] \
+    && [ "$(grep -c '^ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=' "$RUNTIME_LOG" || true)" -eq 1 ] \
+    || die 'the matching instrumentation package did not execute in the app main process'
 mapfile -t recents_driver_stage_receipts < <(grep -E \
     "^ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$RECENTS_DRIVER_SHA256 framework=android14-ui-automation-direct open=ui-automation-app-switch-key-display-0 events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=[0-9a-f]{64} device_path=/data/local/tmp/rustdesk-recents-dismiss\.jar$" \
     "$RUNTIME_LOG" || true)
@@ -1479,6 +1495,9 @@ fi
 [ "$(stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$APK")" = "$APK_ID" ] \
     && [ "$(sha256sum "$APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
     || die 'runtime-test APK identity or bytes changed during execution'
+[ "$(stat -c '%d:%i:%s:%u:%g:%a:%h' -- "$TEST_APK")" = "$TEST_APK_ID" ] \
+    && [ "$(sha256sum "$TEST_APK" | awk '{ print $1 }')" = "$TEST_APK_SHA256" ] \
+    || die 'runtime-test instrumentation APK identity or bytes changed during execution'
 verify_android_sdk_root
 verify_gradle_root
 verify_sha256 "$EMULATOR_ZIP" "$SHA256_ANDROID_EMULATOR_LINUX_X64"
@@ -1499,7 +1518,8 @@ verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
     || die 'Recents gesture-driver artifact changed during execution'
 verify_image android-builder "$ANDROID_BUILDER_CONFIG_ID"
 verify_image devcheck "$DEV_CHECK_IMAGE_CONFIG_ID"
-printf '%s\n' "${apk_receipts[0]}" "${recents_driver_build_receipts[0]}" \
+printf '%s\n' "${apk_receipts[0]}" "$instrumentation_receipt" \
+    "${recents_driver_build_receipts[0]}" \
     "${recents_driver_stage_receipts[0]}" \
     "${renderer_receipts[0]}" "${runtime_receipts[0]}" \
     "${recents_open_action_receipts[@]}" \
@@ -1526,7 +1546,7 @@ else
     printf '%s\n' "${focused_recents_receipts[0]}"
     runtime_peer=absent
 fi
-printf 'ANDROID_EMULATOR_RUNTIME_CHECK=pass scenario=%s artifact_commit=%s apk_sha256=%s signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=%s runtime=%s peer=%s vm_network=none container_network=none inputs=readonly cleanup=joined\n' \
+printf 'ANDROID_EMULATOR_RUNTIME_CHECK=pass scenario=%s artifact_commit=%s apk_sha256=%s test_sha256=%s signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=%s runtime=%s peer=%s vm_network=none container_network=none inputs=readonly cleanup=joined\n' \
     "$RUNTIME_SCENARIO" \
-    "$ARTIFACT_SOURCE_COMMIT" "$APK_SHA256" \
+    "$ARTIFACT_SOURCE_COMMIT" "$APK_SHA256" "$TEST_APK_SHA256" \
     "$ANDROID_BUILDER_CONFIG_ID" "$DEV_CHECK_IMAGE_CONFIG_ID" "$runtime_peer"

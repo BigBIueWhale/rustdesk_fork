@@ -135,11 +135,11 @@ case "$#:${1:-}" in
             || { echo 'Android emulator app input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-emulator-app
         ;;
-    7:--android-emulator-runtime)
+    9:--android-emulator-runtime)
         [ "$2" = --artifact-commit ] && [ "$4" = --apk-sha256 ] \
-            && [ "$6" = --scenario ] \
+            && [ "$6" = --test-apk-sha256 ] && [ "$8" = --scenario ] \
             || { echo 'invalid Android emulator runtime argument order' >&2; exit 2; }
-        [ "$7" = recents ] \
+        [ "$9" = recents ] \
             || { echo 'peer-lifecycle requires an exact peer commit and manifest digest' >&2; exit 2; }
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -147,13 +147,14 @@ case "$#:${1:-}" in
         MODE=android-emulator-runtime
         ANDROID_RUNTIME_ARTIFACT_COMMIT=$3
         ANDROID_RUNTIME_APK_SHA256=$5
-        ANDROID_RUNTIME_SCENARIO=$7
+        ANDROID_TEST_APK_SHA256=$7
+        ANDROID_RUNTIME_SCENARIO=$9
         ;;
-    11:--android-emulator-runtime)
+    13:--android-emulator-runtime)
         [ "$2" = --artifact-commit ] && [ "$4" = --apk-sha256 ] \
-            && [ "$6" = --scenario ] \
-            && { [ "$7" = peer-lifecycle ] || [ "$7" = controlled-cm ]; } \
-            && [ "$8" = --peer-commit ] && [ "${10}" = --peer-manifest-sha256 ] \
+            && [ "$6" = --test-apk-sha256 ] && [ "$8" = --scenario ] \
+            && { [ "$9" = peer-lifecycle ] || [ "$9" = controlled-cm ]; } \
+            && [ "${10}" = --peer-commit ] && [ "${12}" = --peer-manifest-sha256 ] \
             || { echo 'invalid Android peer replay argument order' >&2; exit 2; }
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -161,9 +162,10 @@ case "$#:${1:-}" in
         MODE=android-emulator-runtime
         ANDROID_RUNTIME_ARTIFACT_COMMIT=$3
         ANDROID_RUNTIME_APK_SHA256=$5
-        ANDROID_RUNTIME_SCENARIO=$7
-        ANDROID_RUNTIME_PEER_COMMIT=$9
-        ANDROID_RUNTIME_PEER_MANIFEST_SHA256=${11}
+        ANDROID_TEST_APK_SHA256=$7
+        ANDROID_RUNTIME_SCENARIO=$9
+        ANDROID_RUNTIME_PEER_COMMIT=${11}
+        ANDROID_RUNTIME_PEER_MANIFEST_SHA256=${13}
         ;;
     1:--apple-conform)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -235,7 +237,7 @@ case "$#:${1:-}" in
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
         printf 'Focused production X11 enumeration/capture check: %s --x11-display-tests\n' "${0##*/}" >&2
         printf 'Current-source CM file replay: %s --cm-file-replay\n' "${0##*/}" >&2
-        printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --linux-pa-authority-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --scenario {peer-lifecycle|controlled-cm} --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --linux-flutter-app-build | --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCHIVE]\n' "${0##*/}" >&2
+        printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --linux-pa-authority-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario {peer-lifecycle|controlled-cm} --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --linux-flutter-app-build | --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCH]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
@@ -2739,6 +2741,8 @@ if [ "$MODE" = android-emulator-runtime ]; then
         || fail 'Android runtime artifact source commit is malformed'
     [[ "$ANDROID_RUNTIME_APK_SHA256" =~ ^[0-9a-f]{64}$ ]] \
         || fail 'Android runtime APK digest is malformed'
+    [[ "$ANDROID_TEST_APK_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+        || fail 'Android runtime instrumentation APK digest is malformed'
     [ "$(git_closed -C "$REPO_ROOT" rev-parse --verify \
         "${ANDROID_RUNTIME_ARTIFACT_COMMIT}^{commit}" 2>/dev/null)" = \
       "$ANDROID_RUNTIME_ARTIFACT_COMMIT" ] \
@@ -2793,9 +2797,9 @@ if [ "$MODE" = android-emulator-runtime ]; then
         && [ "$(/usr/bin/sha256sum "$artifact_apk" | /usr/bin/awk '{ print $1 }')" = \
              "$ANDROID_RUNTIME_APK_SHA256" ] \
         || fail 'Android runtime artifact digest differs'
-    [[ "$(<"$artifact_test_checksum")" =~ ^([0-9a-f]{64})\ \ rustdesk-x86_64-instrumentation-test\.apk$ ]] \
+    [ "$(<"$artifact_test_checksum")" = \
+      "$ANDROID_TEST_APK_SHA256  rustdesk-x86_64-instrumentation-test.apk" ] \
         || fail 'Android runtime instrumentation checksum differs'
-    ANDROID_TEST_APK_SHA256=${BASH_REMATCH[1]}
     [ "$(/usr/bin/sha256sum "$artifact_test_apk" | /usr/bin/awk '{ print $1 }')" = \
       "$ANDROID_TEST_APK_SHA256" ] \
         || fail 'Android runtime instrumentation APK digest differs'
@@ -3491,7 +3495,7 @@ elif [ "$MODE" = android-emulator-boot ]; then
 elif [ "$MODE" = android-emulator-app ]; then
     guest_invocation+=" --android-emulator-app /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-emulator-runtime ]; then
-    guest_invocation+=" --android-emulator-runtime /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256 $ANDROID_RUNTIME_ARTIFACT_COMMIT $ANDROID_RUNTIME_ARTIFACT_TREE $ANDROID_RUNTIME_APK_SHA256 $ANDROID_RUNTIME_SCENARIO"
+    guest_invocation+=" --android-emulator-runtime /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256 $ANDROID_RUNTIME_ARTIFACT_COMMIT $ANDROID_RUNTIME_ARTIFACT_TREE $ANDROID_RUNTIME_APK_SHA256 $ANDROID_TEST_APK_SHA256 $ANDROID_RUNTIME_SCENARIO"
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
        || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         guest_invocation+=" $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256"
@@ -4439,6 +4443,9 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     )
     [ "${#android_runtime_apk_receipts[@]}" -eq 1 ] \
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android runtime APK receipt is absent or duplicated'; }
+    require_exact_fixed_receipt \
+        'ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=pass target=com.carriez.flutter_hbb runner=ControlledCmStopInstrumentation process=main result=ok' \
+        'Android runtime instrumentation execution receipt'
     mapfile -t android_recents_build_receipts < <(
         /usr/bin/grep -Eo \
             'ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} android_jar_sha256=[0-9a-f]{64} d8_sha256=[0-9a-f]{64} copies=2 equality=byte-identical network=none output=private-bind' \
@@ -4708,10 +4715,10 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         android_runtime_peer=absent
     fi
     require_exact_fixed_receipt \
-        "ANDROID_EMULATOR_RUNTIME_CHECK=pass scenario=$ANDROID_RUNTIME_SCENARIO artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT apk_sha256=$ANDROID_RUNTIME_APK_SHA256 signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=$ANDROID_BUILDER_CONFIG_ID runtime=$DEV_CHECK_IMAGE_CONFIG_ID peer=$android_runtime_peer vm_network=none container_network=none inputs=readonly cleanup=joined" \
+        "ANDROID_EMULATOR_RUNTIME_CHECK=pass scenario=$ANDROID_RUNTIME_SCENARIO artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT apk_sha256=$ANDROID_RUNTIME_APK_SHA256 test_sha256=$ANDROID_TEST_APK_SHA256 signing=test-only package=com.carriez.flutter_hbb abi=x86_64 source=commit-bound-retained-artifact builder=$ANDROID_BUILDER_CONFIG_ID runtime=$DEV_CHECK_IMAGE_CONFIG_ID peer=$android_runtime_peer vm_network=none container_network=none inputs=readonly cleanup=joined" \
         'Android emulator runtime-check receipt'
     require_exact_fixed_receipt \
-        "ANDROID_EMULATOR_RUNTIME_VM=pass scenario=$ANDROID_RUNTIME_SCENARIO harness_commit=$ANDROID_EMULATOR_SOURCE_COMMIT harness_tree=$ANDROID_EMULATOR_SOURCE_TREE artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT artifact_tree=$ANDROID_RUNTIME_ARTIFACT_TREE apk_sha256=$ANDROID_RUNTIME_APK_SHA256 target=x86_64-linux-android emulator=$ANDROID_EMULATOR_VERSION api=$ANDROID_EMULATOR_SYSTEM_IMAGE_API builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID runtime_index=$DEV_CHECK_IMAGE_ID runtime_config=$DEV_CHECK_IMAGE_CONFIG_ID signing=test-only peer=$android_runtime_peer uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked artifact=readonly-landlocked source=exact-pushed cleanup=joined" \
+        "ANDROID_EMULATOR_RUNTIME_VM=pass scenario=$ANDROID_RUNTIME_SCENARIO harness_commit=$ANDROID_EMULATOR_SOURCE_COMMIT harness_tree=$ANDROID_EMULATOR_SOURCE_TREE artifact_commit=$ANDROID_RUNTIME_ARTIFACT_COMMIT artifact_tree=$ANDROID_RUNTIME_ARTIFACT_TREE apk_sha256=$ANDROID_RUNTIME_APK_SHA256 test_sha256=$ANDROID_TEST_APK_SHA256 target=x86_64-linux-android emulator=$ANDROID_EMULATOR_VERSION api=$ANDROID_EMULATOR_SYSTEM_IMAGE_API builder_index=$ANDROID_BUILDER_IMAGE_ID builder_runtime=$ANDROID_BUILDER_CONFIG_ID runtime_index=$DEV_CHECK_IMAGE_ID runtime_config=$DEV_CHECK_IMAGE_CONFIG_ID signing=test-only peer=$android_runtime_peer uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked artifact=readonly-landlocked source=exact-pushed cleanup=joined" \
         'Android emulator runtime VM receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
@@ -5155,10 +5162,11 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     else
         android_runtime_product=real-retained-apk-production-peer-cpace-changing-display-background-task-remove-relaunch-force-stop
     fi
-    printf 'ANDROID_EMULATOR_RUNTIME_VM_OUTER=pass scenario=%s host_uid=%s harness_commit=%s harness_tree=%s artifact_commit=%s artifact_tree=%s apk_sha256=%s signing=test-only emulator=%s api=%s abi=x86_64 builder=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked artifact=readonly-landlocked docker=guest-only product=%s cleanup=joined elapsed_seconds=%s\n' \
+    printf 'ANDROID_EMULATOR_RUNTIME_VM_OUTER=pass scenario=%s host_uid=%s harness_commit=%s harness_tree=%s artifact_commit=%s artifact_tree=%s apk_sha256=%s test_sha256=%s signing=test-only emulator=%s api=%s abi=x86_64 builder=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked artifact=readonly-landlocked docker=guest-only product=%s cleanup=joined elapsed_seconds=%s\n' \
         "$ANDROID_RUNTIME_SCENARIO" "$HOST_UID" "$ANDROID_EMULATOR_SOURCE_COMMIT" \
         "$ANDROID_EMULATOR_SOURCE_TREE" "$ANDROID_RUNTIME_ARTIFACT_COMMIT" \
         "$ANDROID_RUNTIME_ARTIFACT_TREE" "$ANDROID_RUNTIME_APK_SHA256" \
+        "$ANDROID_TEST_APK_SHA256" \
         "$ANDROID_EMULATOR_VERSION" "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" \
         "$ANDROID_BUILDER_CONFIG_ID" "$DEV_CHECK_IMAGE_CONFIG_ID" \
         "$android_runtime_product" "$vm_elapsed_seconds"

@@ -124,8 +124,11 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
 readonly APK_SHA256 apk_size
 fi
 if [ -n "$INSTRUMENTATION_APK" ]; then
-    [ "$WORKLOAD" = app ] \
-        || fail 'the test instrumentation package is only for the focused app-build smoke'
+    [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
+        || [ "$WORKLOAD" = app-lifecycle ] \
+        || [ "$WORKLOAD" = app-peer-lifecycle ] \
+        || [ "$WORKLOAD" = app-controlled-cm ] \
+        || fail 'the test instrumentation package requires an app workload'
     [ -f "$INSTRUMENTATION_APK" ] && [ ! -L "$INSTRUMENTATION_APK" ] \
         && [ "$(stat -c '%u:%g:%a:%h' -- "$INSTRUMENTATION_APK")" = \
              1000:1000:400:1 ] \
@@ -134,8 +137,11 @@ if [ -n "$INSTRUMENTATION_APK" ]; then
     [ "$instrumentation_size" -gt 0 ] \
         && [ "$instrumentation_size" -le 67108864 ] \
         || fail 'the instrumentation APK input size differs'
-elif [ "$WORKLOAD" = app ]; then
-    fail 'the focused app-build smoke lacks its matching instrumentation package'
+elif [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
+     || [ "$WORKLOAD" = app-lifecycle ] \
+     || [ "$WORKLOAD" = app-peer-lifecycle ] \
+     || [ "$WORKLOAD" = app-controlled-cm ]; then
+    fail 'the app workload lacks its matching instrumentation package'
 fi
 RECENTS_GESTURE_SHA256=
 if [ "$WORKLOAD" = app-recents ] || [ "$WORKLOAD" = app-lifecycle ] \
@@ -4054,7 +4060,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
         Success|$'Performing Push Install\nSuccess') ;;
         *) fail "runtime-test APK install receipt differs: $install_output" ;;
     esac
-    if [ "$WORKLOAD" = app ]; then
+    if [ -n "$INSTRUMENTATION_APK" ]; then
         test_install_output="$(timeout --signal=TERM --kill-after=2s 180s \
             "$ADB" -s "$SERIAL" install --no-streaming --no-incremental \
             "$INSTRUMENTATION_APK")" \

@@ -346,7 +346,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(cargo, "windows-full-peer-presentation-probe = []", "non-default Windows full-peer probe feature")
     default_feature_line = re.search(r'(?m)^default\s*=\s*\[(.*)\]$', cargo)
     if default_feature_line is None or "windows-full-peer-presentation-probe" in default_feature_line.group(1):
-        fail("Windows full-peer presentation probe feature is absent from or present in the default feature line")
+        raise VerificationError("Windows full-peer presentation probe feature is absent from or present in the default feature line")
     for source, description in (
         (direct_service, "direct listener"),
         (build, "Windows build"),
@@ -2178,9 +2178,9 @@ def validate_sources(sources: dict[str, str]) -> None:
         "guest build, installed-SCM transaction, and artifact-copy order",
     )
     if guest.count("$savedErrorActionPreference = $ErrorActionPreference") != 2:
-        fail("guest must isolate both native PowerShell diagnostic-capture boundaries")
+        raise VerificationError("guest must isolate both native PowerShell diagnostic-capture boundaries")
     if guest.count("$ErrorActionPreference = $savedErrorActionPreference") != 2:
-        fail("guest must restore fail-loud behavior after both diagnostic-capture boundaries")
+        raise VerificationError("guest must restore fail-loud behavior after both diagnostic-capture boundaries")
     for literal, description in (
         ("Assert-BoundedOrdinaryDiagnostic $buildStdout (64 * 1024 * 1024)", "bounded Windows build stdout"),
         ("Assert-BoundedOrdinaryDiagnostic $buildStderr (64 * 1024 * 1024)", "bounded Windows build stderr"),
@@ -2901,6 +2901,32 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "cargo",
             "windows-full-peer-presentation-probe = []",
             "windows-full-peer-presentation-probe-retired = []",
+        ),
+        (
+            "Windows missing default feature declaration",
+            "cargo",
+            'default = ["use_dasp"]',
+            'default-retired = ["use_dasp"]',
+        ),
+        (
+            "Windows full-peer probe enabled by default",
+            "cargo",
+            'default = ["use_dasp"]',
+            'default = ["use_dasp", "windows-full-peer-presentation-probe"]',
+        ),
+        (
+            "Windows extra diagnostic preference save",
+            "guest",
+            "$savedErrorActionPreference = $ErrorActionPreference",
+            "$savedErrorActionPreference = $ErrorActionPreference\n"
+            "    $savedErrorActionPreference = $ErrorActionPreference",
+        ),
+        (
+            "Windows extra diagnostic preference restore",
+            "guest",
+            "$ErrorActionPreference = $savedErrorActionPreference",
+            "$ErrorActionPreference = $savedErrorActionPreference\n"
+            "        $ErrorActionPreference = $savedErrorActionPreference",
         ),
         (
             "Windows full-peer exact loopback bind",
@@ -4353,6 +4379,16 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         ),
         ("port-version", "metadata", '"port-version": 1', '"port-version": 2'),
     ]
+    expected_rejection_errors = {
+        "Windows missing default feature declaration":
+            "Windows full-peer presentation probe feature is absent from or present in the default feature line",
+        "Windows full-peer probe enabled by default":
+            "Windows full-peer presentation probe feature is absent from or present in the default feature line",
+        "Windows extra diagnostic preference save":
+            "guest must isolate both native PowerShell diagnostic-capture boundaries",
+        "Windows extra diagnostic preference restore":
+            "guest must restore fail-loud behavior after both diagnostic-capture boundaries",
+    }
     for description, name, old, new in mutations:
         mutated = dict(sources)
         if old not in mutated[name]:
@@ -4360,7 +4396,12 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         mutated[name] = mutated[name].replace(old, new, 1)
         try:
             validate_sources(mutated)
-        except VerificationError:
+        except VerificationError as error:
+            expected = expected_rejection_errors.get(description)
+            if expected is not None and str(error) != expected:
+                raise VerificationError(
+                    f"self-test {description} failed for the wrong reason: {error}"
+                ) from error
             continue
         raise VerificationError(f"self-test mutation was accepted: {description}")
     run_behavioral_self_tests(repo)

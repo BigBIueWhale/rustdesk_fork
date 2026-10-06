@@ -48,19 +48,23 @@ def capture_connection_loss(binary, environment, xserver):
                         retired = True
             native.wait(timeout=max(0, deadline - time.monotonic()))
         lines = output.decode("utf-8").splitlines()
-        require(retired and native.returncode == 0 and len(lines) == 3
+        require(retired and native.returncode == 0 and len(lines) == 4
                 and lines[0] == ready.decode("ascii").strip()
-                and lines[2] == "X11_DISPLAY_COMPONENT=pass scenario=capture-connection-loss replies=exact errors=explicit cleanup=joined",
+                and lines[3] == "X11_DISPLAY_COMPONENT=pass scenario=capture-connection-loss replies=exact errors=explicit cleanup=joined",
                 "connection-loss capture completion differs")
         receipt = re.fullmatch(
             r"X11_CAPTURE_CONNECTION_NATIVE=pass callers=direct,public repeats=3 connection_error=([1-9][0-9]*) "
             r"requests=8 replies=2 errors=0 comparisons=2 segments=retired", lines[1])
         require(receipt is not None, "exact connection-loss result absent")
+        probe_receipt = (f"X11_SHM_STATUS_CONNECTION_NATIVE=pass connection_error={receipt.group(1)} "
+                         "queries=1 replies=0 protocol_errors=0 allocations=retired")
+        require(lines[2] == probe_receipt, "exact dead-connection probe result absent")
         diagnostic = ("failed to detach X11 capture shared memory from XCB: "
                       "X connection failed during MIT-SHM drop detach: " + receipt.group(1))
         require(errors.decode("utf-8").splitlines() == [diagnostic, diagnostic],
                 "dead-server cleanup diagnostics differ")
         print(lines[1], flush=True)
+        print(probe_receipt, flush=True)
         print("X11_CAPTURE_CONNECTION_FINALITY=pass server=terminated-and-joined "
               "detach_errors=2 segment_retirement=independent output=bounded child=joined", flush=True)
     except BaseException:
@@ -151,7 +155,8 @@ def main():
             command += ["-C", f"link-arg=-Wl,--wrap=xcb_randr_{symbol}"]
         for symbol in ("xcb_get_setup", "xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_atom_name_name", "xcb_get_geometry_reply",
                        "xcb_shm_get_image", "xcb_shm_get_image_reply", "xcb_shm_attach_checked",
-                       "xcb_shm_detach_checked", "xcb_request_check"):
+                       "xcb_shm_detach_checked", "xcb_request_check",
+                       "xcb_shm_query_version", "xcb_shm_query_version_reply"):
             command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
         subprocess.run(command, env=environment, check=True, timeout=30)
         binaries[variant] = binary
@@ -166,6 +171,17 @@ def main():
             while not Path("/tmp/.X11-unix/X98").is_socket():
                 require(child.poll() is None and time.monotonic() < deadline, "Xvfb not ready")
                 time.sleep(0.05)
+            probe = subprocess.run([str(binaries["corrected"]), "shm-status"], env=environment,
+                                   capture_output=True, text=True, timeout=15)
+            probe_receipt = ("X11_SHM_STATUS_NATIVE=pass request_fault=oversized-query-version "
+                             "server_error=BadLength callers=direct,public repeats=16 cases=32 "
+                             "queries=3 replies=2 protocol_errors=1 recovery=same-connection "
+                             "capture=fresh allocations=retired segments=retired")
+            require(probe.returncode == 0 and not probe.stderr and len(probe.stdout) <= 4096
+                    and probe.stdout.splitlines() == [probe_receipt,
+                        "X11_DISPLAY_COMPONENT=pass scenario=shm-status replies=exact errors=explicit cleanup=joined"],
+                    f"native MIT-SHM availability probe finality differs: {probe}")
+            print(probe_receipt, flush=True)
             for scenario, status, marker in (
                     ("enumerate", 42, "monitor-used-after-reply-retirement"),
                     ("reject", 43, "null-reply-passed-to-iterator")):

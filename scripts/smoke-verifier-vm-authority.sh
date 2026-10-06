@@ -3993,6 +3993,9 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
+        'X11_SHM_STATUS_NATIVE=pass request_fault=oversized-query-version server_error=BadLength callers=direct,public repeats=16 cases=32 queries=3 replies=2 protocol_errors=1 recovery=same-connection capture=fresh allocations=retired segments=retired' \
+        'production X11 availability probe allocation cleanup and same-connection recovery'
+    require_exact_fixed_receipt \
         'X11_CAPTURE_CONSTRUCTION_NATIVE=pass faults=local-attach,removal-pending cause=kernel-invalid-argument callers=direct,public repeats=16 cases=64 rejected_segments=retired xcb_detach=checked survivor=fresh retry=valid pixels=red,blue allocations=retired' \
         'production X11 constructor failure cleanup and independent live capture'
     require_exact_fixed_receipt \

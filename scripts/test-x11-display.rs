@@ -156,6 +156,20 @@ struct GetInputFocusCookie {
     sequence: u32,
 }
 
+#[cfg(corrected)]
+#[repr(C)]
+struct XcbExtension { name: *const i8, global_id: i32 }
+#[cfg(corrected)]
+#[repr(C)]
+struct XcbProtocolRequest { count: usize, ext: *mut XcbExtension, opcode: u8, isvoid: u8 }
+#[cfg(corrected)]
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Iovec { base: *mut libc::c_void, len: usize }
+#[cfg(corrected)]
+#[repr(C)]
+struct OversizedShmQuery { major: u8, minor: u8, length: u16, extra: u32 }
+
 #[repr(C)]
 struct InternAtomReply {
     response_type: u8,
@@ -202,6 +216,11 @@ struct State {
     bad_atom_reply: usize,
     bad_monitor_reply: usize,
     malformed_setup: u8,
+    shm_queries: usize,
+    reject_shm_query: usize,
+    shm_replies: usize,
+    shm_errors: usize,
+    shm_error: Option<(u8, u8, u16, u32)>,
     capture_queries: usize,
     reject_capture_query: usize,
     capture_replies: usize,
@@ -332,6 +351,18 @@ pub mod log { pub use crate::warn; }
 extern "C" {
     #[link_name = "__real_xcb_get_setup"]
     fn real_setup(c: *mut xcb_connection_t) -> *const xcb_setup_t;
+    #[cfg(corrected)]
+    #[link_name = "__real_xcb_shm_query_version"]
+    fn real_shm_query(c: *mut xcb_connection_t) -> xcb_shm_query_version_cookie_t;
+    #[cfg(corrected)]
+    #[link_name = "__real_xcb_shm_query_version_reply"]
+    fn real_shm_reply(c: *mut xcb_connection_t, cookie: xcb_shm_query_version_cookie_t,
+        error: *mut *mut xcb_generic_error_t) -> *const xcb_shm_query_version_reply_t;
+    #[cfg(corrected)]
+    static mut xcb_shm_id: XcbExtension;
+    #[cfg(corrected)]
+    fn xcb_send_request(c: *mut xcb_connection_t, flags: i32, vector: *mut Iovec,
+        request: *const XcbProtocolRequest) -> u32;
     fn xcb_intern_atom(c: *mut xcb_connection_t, only_if_exists: u8,
                        name_len: u16, name: *const u8) -> InternAtomCookie;
     fn xcb_intern_atom_reply(c: *mut xcb_connection_t, cookie: InternAtomCookie,
@@ -389,6 +420,58 @@ extern "C" {
     #[link_name = "__real_xcb_request_check"]
     fn real_request_check(c: *mut xcb_connection_t, cookie: xcb_void_cookie_t)
         -> *mut xcb_generic_error_t;
+}
+
+#[cfg(corrected)]
+#[no_mangle]
+unsafe extern "C" fn __wrap_xcb_shm_query_version(c: *mut xcb_connection_t)
+    -> xcb_shm_query_version_cookie_t {
+    let reject = STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        state.shm_queries += 1;
+        state.shm_queries == state.reject_shm_query
+    });
+    if !reject { return real_shm_query(c); }
+    // Real QueryVersion, with one extra word. Xvfb's request-size check emits
+    // BadLength; the normal reply API must deliver its actual error allocation.
+    let mut bytes = OversizedShmQuery { major: 0, minor: 0, length: 0, extra: 0 };
+    let request = XcbProtocolRequest {
+        count: 2, ext: std::ptr::addr_of_mut!(xcb_shm_id), opcode: 0, isvoid: 0,
+    };
+    let mut parts = [Iovec { base: std::ptr::null_mut(), len: 0 }; 4];
+    // xcb_send_request requires two valid preceding iovecs for its own use.
+    parts[2] = Iovec { base: (&mut bytes as *mut OversizedShmQuery).cast(),
+                       len: std::mem::size_of::<OversizedShmQuery>() };
+    let sequence = xcb_send_request(c, 1, parts.as_mut_ptr().add(2), &request);
+    assert_ne!(sequence, 0, "malformed version query was not sent");
+    xcb_shm_query_version_cookie_t { sequence }
+}
+
+#[cfg(corrected)]
+#[no_mangle]
+unsafe extern "C" fn __wrap_xcb_shm_query_version_reply(c: *mut xcb_connection_t,
+    cookie: xcb_shm_query_version_cookie_t, error: *mut *mut xcb_generic_error_t)
+    -> *const xcb_shm_query_version_reply_t {
+    assert!(!error.is_null(), "availability probe omitted its error output");
+    let reply = real_shm_reply(c, cookie, error);
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        if !reply.is_null() {
+            state.shm_replies += 1;
+            state.allocations.push(Allocation { pointer: reply.cast_mut().cast(),
+                bytes: 0, monitor: false, retired: false });
+        }
+        if !(*error).is_null() {
+            assert!(reply.is_null(), "failed probe returned a reply");
+            let actual = &**error;
+            state.shm_errors += 1;
+            state.shm_error = Some((actual.error_code, actual.major_code,
+                                   actual.minor_code, actual.resource_id));
+            state.allocations.push(Allocation { pointer: (*error).cast(),
+                bytes: 36, monitor: false, retired: false });
+        }
+    });
+    reply
 }
 
 #[cfg(corrected)]
@@ -807,6 +890,11 @@ fn finish_case(reject: usize) {
         state.bad_atom_reply = 0;
         state.bad_monitor_reply = 0;
         state.malformed_setup = 0;
+        state.shm_queries = 0;
+        state.reject_shm_query = 0;
+        state.shm_replies = 0;
+        state.shm_errors = 0;
+        state.shm_error = None;
         state.capture_queries = 0;
         state.reject_capture_query = 0;
         state.capture_replies = 0;
@@ -848,6 +936,54 @@ fn probe_segment(id: i32) -> io::Result<()> {
     let mapping = unsafe { libc::shmat(id, std::ptr::null(), libc::SHM_RDONLY) };
     if mapping as isize == -1 { return Err(io::Error::last_os_error()); }
     if unsafe { libc::shmdt(mapping) } == -1 { return Err(io::Error::last_os_error()); }
+    Ok(())
+}
+
+#[cfg(corrected)]
+fn exercise_shm_probe(server: &Rc<x11::Server>,
+    mut probe: impl FnMut() -> Result<(), x11::Error>) -> io::Result<()> {
+    let display = x11::Server::displays(Rc::clone(server))
+        .next().expect("first real X screen")?;
+    let root = display.root();
+    finish_case(0);
+    draw_red(server, root, 0x00ff0000)?;
+    let mut capture = x11::Capturer::new(display)?;
+    assert_eq!(&capture.frame()?[..3], &[0x00, 0x00, 0xff]);
+    probe().expect("real MIT-SHM extension available");
+    STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!((state.shm_queries, state.shm_replies, state.shm_errors), (1, 1, 0));
+        assert!(state.allocations.iter().all(|entry| entry.retired), "successful probe reply leaked");
+    });
+    STATE.with(|state| state.borrow_mut().reject_shm_query = 2);
+    let result = probe();
+    let leaked = STATE.with(|state| {
+        let state = state.borrow();
+        let (code, major, minor, _) = state.shm_error.expect("real probe error absent");
+        assert_eq!((code, minor), (16, 0), "not a real QueryVersion BadLength response");
+        assert!(major > 0);
+        assert_eq!((state.shm_queries, state.shm_replies, state.shm_errors), (2, 1, 1));
+        state.allocations.iter().filter(|entry| !entry.retired).count()
+    });
+    if leaked != 0 || !matches!(result, Err(x11::Error::Generic)) {
+        eprintln!("X11_SHM_PROBE_OLD_FAILURE leaked_errors={leaked} result={result:?}");
+        return Err(io::Error::new(io::ErrorKind::Other, "MIT-SHM probe error finality differs"));
+    }
+    probe().expect("same connection probe did not recover");
+    draw_red(server, root, 0x000000ff)?;
+    assert_eq!(&capture.frame()?[..3], &[0xff, 0x00, 0x00]);
+    let segment = STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!((state.shm_queries, state.shm_replies, state.shm_errors), (3, 2, 1));
+        assert_eq!((state.capture_queries, state.capture_replies, state.frame_comparisons), (2, 2, 2));
+        assert!(state.allocations.iter().all(|entry| entry.retired), "probe/capture allocation leaked");
+        assert_eq!(state.segments.len(), 1);
+        state.segments[0]
+    });
+    drop(capture);
+    let absent = probe_segment(segment).expect_err("capture segment survived probe/drop");
+    assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
+    finish_case(0);
     Ok(())
 }
 
@@ -1003,8 +1139,11 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
         assert_eq!(error.kind(), io::ErrorKind::ConnectionAborted);
         assert_eq!(error.to_string(), expected);
     }
+    let probe_error = server.get_shm_status().expect_err("dead connection probe succeeded");
+    assert!(matches!(probe_error, x11::Error::Generic), "dead connection became extension absence");
     STATE.with(|state| {
         let state = state.borrow();
+        assert_eq!((state.shm_queries, state.shm_replies, state.shm_errors), (1, 0, 0));
         assert_eq!((state.capture_queries, state.capture_replies, state.capture_errors,
                     state.frame_comparisons), (8, 2, 0, 2));
         assert!(state.allocations.iter().all(|entry| entry.retired), "capture reply/error leaked");
@@ -1018,6 +1157,7 @@ fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> 
     assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
     finish_case(0);
     println!("X11_CAPTURE_CONNECTION_NATIVE=pass callers=direct,public repeats=3 connection_error={connection_error} requests=8 replies=2 errors=0 comparisons=2 segments=retired");
+    println!("X11_SHM_STATUS_CONNECTION_NATIVE=pass connection_error={connection_error} queries=1 replies=0 protocol_errors=0 allocations=retired");
     Ok(())
 }
 
@@ -1162,7 +1302,19 @@ fn main() -> io::Result<()> {
             "bounds-mon-sum" => Some((0, 5)),
             _ => None,
         };
-        if scenario == "capture-attach-reject" || scenario == "capture-construction-failure" {
+        if scenario == "shm-status" {
+            for public in [false, true] {
+                for _ in 0..16 {
+                    if public {
+                        let display = common::Display::primary()?;
+                        exercise_shm_probe(&server, || display.get_shm_status())?;
+                    } else {
+                        exercise_shm_probe(&server, || server.get_shm_status())?;
+                    }
+                }
+            }
+            println!("X11_SHM_STATUS_NATIVE=pass request_fault=oversized-query-version server_error=BadLength callers=direct,public repeats=16 cases=32 queries=3 replies=2 protocol_errors=1 recovery=same-connection capture=fresh allocations=retired segments=retired");
+        } else if scenario == "capture-attach-reject" || scenario == "capture-construction-failure" {
             use crate::common::TraitCapturer;
             let mut error_code = None;
             let faults: &[ConstructionFault] = if scenario == "capture-attach-reject" {

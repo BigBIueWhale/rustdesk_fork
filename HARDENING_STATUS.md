@@ -12866,13 +12866,24 @@ admission/Stop or same-ID replacement proof.
 There is no matching retained instrumentation package for the earlier APK.
 The current emulator-test source now defines an `androidTest` runner and
 assembles a same-build app/test APK pair with one test signing identity; the
-normal release builder still assembles no test APK. A no-NIC VM completed both
-APKs, but its static runner-badging assertion stopped before installation.
-The static checker now claims only package, matching signer, and executable
-DEX; the exact installed `am instrument` component and main-process observation
-must establish runner/target behavior. That native smoke and the concurrent
-Service/JNI overlap have not passed. The artifact publisher still retains
-only the app APK, so an exact reusable test pair is also not yet available.
+normal release builder still assembles no test APK. Pushed source `f3b7693f`
+built and installed both APKs in the Android 14/API-34 zero-NIC VM. Its static
+checker established test-package identity, matching signer, and executable
+DEX; the installed `am instrument -w -e scenario process-smoke` component
+returned `result=pass` and code `-1`, with the runner checking the app's main
+process. The guest app-check required those exact results before reporting
+success, although the guest forwarded only the aggregate app-check receipt
+to the retained serial, not the individual instrumentation receipts. The
+1,206-second outer run had no harness-added host listener or pre-existing
+process drift and joined cleanup. Raw serial:
+`.harness-state/verifier-vm/android-emulator-app-run.y5RlTL3Nq1.serial.log`
+(68,908 bytes; SHA-256
+`c8d74e304d938cedc7df08fea584539ba3e12d28ac04bcf2602476083f110148`).
+The test-signed app APK SHA-256 is
+`0949eff0b36e9345ae44816b445d26b5e236e13869c413a6c29884b99d3485a4`.
+This is only a process/runner smoke: the concurrent Service/JNI overlap and
+same-ID stale-generation cases have not passed. The artifact publisher still
+retains only the app APK, so an exact reusable test pair is not yet available.
 
 **Still OPEN / release-blocking:** installed APK concurrent Stop/admission,
 same-ID replacement and stale JNI callbacks across input, voice, capture,

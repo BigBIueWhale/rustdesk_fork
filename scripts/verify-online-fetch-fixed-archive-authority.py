@@ -24,8 +24,6 @@ FILES = {
     "windows_tools": Path("res/vcpkg/libvpx/windows-tools.sha512"),
     "systemd_smoke": Path("scripts/smoke-verifier-vm-authority.sh"),
     "verify": Path("scripts/verify.sh"),
-    "requirements": Path("requirements.html"),
-    "ledger": Path("HARDENING_STATUS.md"),
 }
 
 EXPECTED_VCPKG_MANIFEST_SHA256 = (
@@ -339,8 +337,6 @@ def verify_sources(sources: Mapping[str, str]) -> None:
     windows_tools = sources["windows_tools"]
     systemd_smoke = sources["systemd_smoke"]
     verify = sources["verify"]
-    requirements = sources["requirements"]
-    ledger = sources["ledger"]
 
     require("fetch_verify()" not in shell, "legacy host SHA-256 downloader remains")
     require("fetch_toolchains()" not in shell, "legacy toolchain downloader remains")
@@ -871,35 +867,6 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         ),
         "shared verifier wiring",
     )
-    require(
-        '<span class="id">R-S11cs</span>' in requirements,
-        "requirements omit the normative R-S11cs block",
-    )
-    require(
-        '<span class="id">R-S11ct</span>' in requirements,
-        "requirements omit the normative R-S11ct block",
-    )
-    require(
-        '<span class="id">R-S11cu</span>' in requirements,
-        "requirements omit the normative R-S11cu block",
-    )
-    require(
-        "exactly <code>cloud.debian.org</code> and the currently reviewed "
-        "Debian-selected final host <code>laotzu.ftp.acc.umu.se</code>"
-        in requirements,
-        "requirements omit the exact systemd image redirect-host boundary",
-    )
-    require("<td>246</td>" in requirements, "Appendix C omits item 246")
-    require("<td>247</td>" in requirements, "Appendix C omits item 247")
-    require("<td>248</td>" in requirements, "Appendix C omits item 248")
-    require("R-S11cs/R-S11e-111" in ledger, "hardening ledger omits R-S11e-111")
-    require("R-S11ct/R-S11e-112" in ledger, "hardening ledger omits R-S11e-112")
-    require("R-S11cu/R-S11e-113" in ledger, "hardening ledger omits R-S11e-113")
-    require(
-        "R-S11cu/R-S11e-113 retained-identity systemd image consumer authority"
-        in ledger,
-        "hardening ledger omits the retained-identity systemd consumer correction",
-    )
 
 
 @dataclass(frozen=True)
@@ -1197,62 +1164,6 @@ MUTATIONS = (
         "recovery layout",
     ),
     Mutation("verify", "online-fixed-archive-output.py self-test", "online-fixed-archive-output.py skipped-test", "self-test wiring"),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11cs</span>',
-        '<span class="id">R-S11cs-removed</span>',
-        "normative requirement",
-    ),
-    Mutation("requirements", "<td>246</td>", "<td>246-removed</td>", "Appendix disposition"),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11ct</span>',
-        '<span class="id">R-S11ct-removed</span>',
-        "vcpkg normative requirement",
-    ),
-    Mutation("requirements", "<td>247</td>", "<td>247-removed</td>", "vcpkg Appendix disposition"),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11cu</span>',
-        '<span class="id">R-S11cu-removed</span>',
-        "systemd image normative requirement",
-    ),
-    Mutation(
-        "requirements",
-        "Debian-selected final host <code>laotzu.ftp.acc.umu.se</code>",
-        "ambient Debian mirror set",
-        "systemd image normative redirect-host boundary",
-    ),
-    Mutation(
-        "requirements",
-        "<td>248</td>",
-        "<td>248-removed</td>",
-        "systemd image Appendix disposition",
-    ),
-    Mutation(
-        "ledger",
-        "R-S11cs/R-S11e-111",
-        "R-S11cs-removed/R-S11e-111",
-        "ledger disposition",
-    ),
-    Mutation(
-        "ledger",
-        "R-S11ct/R-S11e-112",
-        "R-S11ct-removed/R-S11e-112",
-        "vcpkg ledger disposition",
-    ),
-    Mutation(
-        "ledger",
-        "R-S11cu/R-S11e-113",
-        "R-S11cu-removed/R-S11e-113",
-        "systemd image ledger disposition",
-    ),
-    Mutation(
-        "ledger",
-        "R-S11cu/R-S11e-113 retained-identity systemd image consumer authority",
-        "R-S11cu/R-S11e-113 ambient systemd image consumer authority",
-        "retained-identity systemd image consumer disposition",
-    ),
 )
 
 

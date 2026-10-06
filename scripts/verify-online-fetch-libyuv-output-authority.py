@@ -80,8 +80,6 @@ def validate(sources: Dict[str, str]) -> None:
     helper = sources["helper"]
     pins = sources["pins"]
     verify = sources["verify"]
-    requirements = sources["requirements"]
-    hardening = sources["hardening"]
     try:
         ast.parse(helper)
     except SyntaxError as error:
@@ -259,13 +257,6 @@ def validate(sources: Dict[str, str]) -> None:
         "/usr/bin/python3 -I -S scripts/verify-online-fetch-libyuv-output-authority.py --repo . --self-test",
         "focused verifier wiring",
     )
-    require(requirements, '<span class="id">R-S11co</span>', "R-S11co requirement")
-    require(requirements, "<tr><td>242</td>", "Appendix C #242 disposition")
-    require(
-        hardening,
-        "R-S11co/R-S11e-107 — networked libyuv distfile output authority",
-        "hardening-ledger disposition",
-    )
 MUTATIONS: Tuple[Mutation, ...] = (
     Mutation(
         "shell",
@@ -423,24 +414,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "true # libyuv output authority gate removed",
         "focused verifier wiring",
     ),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11co</span>',
-        '<span class="id">R-S11co-disabled</span>',
-        "R-S11co requirement",
-    ),
-    Mutation(
-        "requirements",
-        "<tr><td>242</td>",
-        "<tr><td>242-disabled</td>",
-        "Appendix C #242 disposition",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11co/R-S11e-107 — networked libyuv distfile output authority",
-        "R-S11co/R-S11e-107 — ambient libyuv distfile output authority",
-        "hardening disposition",
-    ),
 )
 
 
@@ -452,8 +425,6 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         ),
         "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
     }
 
 

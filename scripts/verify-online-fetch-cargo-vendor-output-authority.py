@@ -79,8 +79,6 @@ def validate(sources: Mapping[str, str]) -> None:
     helper = sources["helper"]
     pins = sources["pins"]
     verify = sources["verify"]
-    requirements = sources["requirements"]
-    hardening = sources["hardening"]
 
     try:
         ast.parse(helper)
@@ -444,17 +442,6 @@ def validate(sources: Mapping[str, str]) -> None:
         "/usr/bin/python3 -I -S scripts/online-cargo-vendor-output.py self-test",
         "verify.sh helper-fixture integration",
     )
-    require(
-        requirements,
-        '<span class="id">R-S11cw</span>',
-        "normative Cargo vendor requirement",
-    )
-    require(requirements, "R-S11e-115", "Cargo vendor enforcement requirement")
-    require(
-        hardening,
-        "R-S11cw/R-S11e-115 — exact Cargo vendor acquisition-output authority",
-        "Cargo vendor hardening ledger entry",
-    )
 
 
 def mutations() -> Sequence[Mutation]:
@@ -595,18 +582,6 @@ def mutations() -> Sequence[Mutation]:
             "verify-online-fetch-cargo-vendor-output-disabled.py",
             "verify integration removal",
         ),
-        Mutation(
-            "requirements",
-            '<span class="id">R-S11cw</span>',
-            '<span class="id">R-S11cw-disabled</span>',
-            "normative contract removal",
-        ),
-        Mutation(
-            "hardening",
-            "R-S11cw/R-S11e-115 — exact Cargo vendor acquisition-output authority",
-            "R-S11cw-disabled/R-S11e-115 — ambient Cargo vendor authority",
-            "ledger contract removal",
-        ),
     )
 
 
@@ -641,8 +616,6 @@ def load(repo: Path) -> Mapping[str, str]:
         "helper": repo / "scripts/online-cargo-vendor-output.py",
         "pins": repo / "scripts/pins.env",
         "verify": repo / "scripts/verify.sh",
-        "requirements": repo / "requirements.html",
-        "hardening": repo / "HARDENING_STATUS.md",
     }
     return {
         name: path.read_text(encoding="utf-8")

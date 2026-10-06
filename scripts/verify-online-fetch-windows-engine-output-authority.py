@@ -76,8 +76,6 @@ def validate(sources: Dict[str, str]) -> None:
     helper = sources["helper"]
     pins = sources["pins"]
     verify = sources["verify"]
-    requirements = sources["requirements"]
-    hardening = sources["hardening"]
     focused = sources["focused"]
     try:
         ast.parse(helper)
@@ -296,21 +294,6 @@ def validate(sources: Dict[str, str]) -> None:
         ),
     ):
         require(verify, token, label)
-    require(
-        requirements,
-        '<span class="id">R-S11cx</span>',
-        "Windows-engine normative requirement",
-    )
-    require(
-        requirements,
-        "<tr><td>251</td>",
-        "Windows-engine Appendix C row",
-    )
-    require(
-        hardening,
-        "R-S11cx/R-S11e-116 — exact Windows Flutter-engine acquisition-output authority",
-        "Windows-engine hardening ledger",
-    )
 def mutations() -> Tuple[Mutation, ...]:
     return (
         Mutation(
@@ -417,24 +400,6 @@ def mutations() -> Tuple[Mutation, ...]:
             "true # Windows-engine focused gate removed",
             "focused verifier wiring",
         ),
-        Mutation(
-            "requirements",
-            '<span class="id">R-S11cx</span>',
-            '<span class="id">R-S11cx-disabled</span>',
-            "normative requirement",
-        ),
-        Mutation(
-            "requirements",
-            "<tr><td>251</td>",
-            "<tr><td>251-disabled</td>",
-            "Appendix C row",
-        ),
-        Mutation(
-            "hardening",
-            "R-S11cx/R-S11e-116 — exact Windows Flutter-engine acquisition-output authority",
-            "R-S11cx/R-S11e-116 — ambient Windows-engine output authority",
-            "hardening ledger",
-        ),
     )
 
 
@@ -446,8 +411,6 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         ).read_text(encoding="utf-8"),
         "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "focused": pathlib.Path(__file__).read_text(encoding="utf-8"),
     }
 

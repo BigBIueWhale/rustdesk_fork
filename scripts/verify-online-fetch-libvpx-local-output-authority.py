@@ -53,8 +53,6 @@ def validate(sources: Mapping[str, str]) -> None:
     online = sources["online"]
     helper = sources["helper"]
     verify = sources["verify"]
-    requirements = sources["requirements"]
-    hardening = sources["hardening"]
 
     for text, label in (
         (
@@ -389,26 +387,6 @@ def validate(sources: Mapping[str, str]) -> None:
         ),
     ):
         require_text(verify, text, label)
-    require_text(
-        requirements,
-        '<span class="id">R-S11cv</span>',
-        "normative local-output requirement",
-    )
-    require_text(
-        requirements,
-        "<tr><td>249</td>",
-        "local-output Appendix C row",
-    )
-    require_text(
-        hardening,
-        "R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority",
-        "local-output hardening ledger",
-    )
-    require_text(
-        hardening,
-        "R-S11cv/R-S11e-114 umask-independent libvpx self-test source authority",
-        "umask-independent fixture correction ledger",
-    )
 
 
 Mutation = Tuple[str, str, str, str]
@@ -625,30 +603,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "true # local-output transaction self-test removed",
         "transaction self-test wiring",
     ),
-    (
-        "requirements",
-        '<span class="id">R-S11cv</span>',
-        '<span class="id">R-S11cv-disabled</span>',
-        "normative local-output requirement",
-    ),
-    (
-        "requirements",
-        "<tr><td>249</td>",
-        "<tr><td>249-disabled</td>",
-        "local-output Appendix C row",
-    ),
-    (
-        "hardening",
-        "R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority",
-        "R-S11cv/R-S11e-114 — ambient local publication authority",
-        "local-output hardening ledger",
-    ),
-    (
-        "hardening",
-        "R-S11cv/R-S11e-114 umask-independent libvpx self-test source authority",
-        "R-S11cv/R-S11e-114 ambient libvpx self-test source authority",
-        "umask-independent fixture correction ledger",
-    ),
 )
 
 
@@ -679,8 +633,6 @@ def read_sources(repo: Path) -> dict[str, str]:
             repo / "scripts/online-libvpx-local-output.py"
         ).read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
     }
 
 

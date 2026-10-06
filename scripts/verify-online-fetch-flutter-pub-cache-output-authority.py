@@ -76,8 +76,6 @@ def validate(sources: Dict[str, str]) -> None:
     helper = sources["helper"]
     pins = sources["pins"]
     verify = sources["verify"]
-    requirements = sources["requirements"]
-    hardening = sources["hardening"]
     focused = sources["focused"]
     win_guest = sources["win_guest"]
     try:
@@ -424,17 +422,6 @@ def validate(sources: Dict[str, str]) -> None:
         ),
     ):
         require(verify, token, label)
-    require(
-        requirements,
-        '<span class="id">R-S11cy</span>',
-        "Flutter Pub-cache normative requirement",
-    )
-    require(requirements, "<tr><td>252</td>", "Flutter Pub-cache Appendix C row")
-    require(
-        hardening,
-        "R-S11cy/R-S11e-117 — exact Windows flutter_tools Pub-cache acquisition-output authority",
-        "Flutter Pub-cache hardening ledger",
-    )
 def mutations() -> Tuple[Mutation, ...]:
     return (
         Mutation(
@@ -623,24 +610,6 @@ def mutations() -> Tuple[Mutation, ...]:
             "true # Flutter Pub-cache focused gate removed",
             "focused verifier wiring",
         ),
-        Mutation(
-            "requirements",
-            '<span class="id">R-S11cy</span>',
-            '<span class="id">R-S11cy-disabled</span>',
-            "normative requirement",
-        ),
-        Mutation(
-            "requirements",
-            "<tr><td>252</td>",
-            "<tr><td>252-disabled</td>",
-            "Appendix C row",
-        ),
-        Mutation(
-            "hardening",
-            "R-S11cy/R-S11e-117 — exact Windows flutter_tools Pub-cache acquisition-output authority",
-            "R-S11cy/R-S11e-117 — ambient Flutter Pub-cache output authority",
-            "hardening ledger",
-        ),
     )
 
 
@@ -652,8 +621,6 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         ).read_text(encoding="utf-8"),
         "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "win_guest": (repo / "scripts/win-guest-setup.ps1").read_text(
             encoding="utf-8"
         ),

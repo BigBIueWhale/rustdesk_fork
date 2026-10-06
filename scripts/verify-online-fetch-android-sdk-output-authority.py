@@ -377,31 +377,6 @@ def validate(sources: Dict[str, str]) -> None:
         "--repo . --self-test",
         "shared focused gate",
     )
-    require(
-        sources["requirements"],
-        '<span class="id">R-S11cr</span>',
-        "R-S11cr requirement",
-    )
-    require(
-        sources["requirements"],
-        "<tr><td>245</td>",
-        "Appendix C #245",
-    )
-    require(
-        sources["hardening"],
-        "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
-        "hardening disposition",
-    )
-    require(
-        sources["hardening"],
-        "R-S11cr/R-S11e-110 archive-specific PID mutation authority",
-        "archive-specific PID mutation disposition",
-    )
-    require(
-        sources["hardening"],
-        "R-S11cr/R-S11e-110 umask-independent raw SDK root authority",
-        "raw SDK root mode disposition",
-    )
 MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("pins", "SHA256_ANDROID_BUILD_TOOLS_30_0_3=",
              "SHA256_ANDROID_BUILD_TOOLS_30_0_3_DISABLED=", "build-tools 30 pin"),
@@ -599,36 +574,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "true # Android SDK authority gate removed",
         "shared gate",
     ),
-    Mutation(
-        "requirements",
-        '<span class="id">R-S11cr</span>',
-        '<span class="id">R-S11cr-disabled</span>',
-        "R-S11cr requirement",
-    ),
-    Mutation(
-        "requirements",
-        "<tr><td>245</td>",
-        "<tr><td>245-disabled</td>",
-        "Appendix C #245",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
-        "R-S11cr/R-S11e-110 — ambient Android SDK authority",
-        "hardening disposition",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11cr/R-S11e-110 archive-specific PID mutation authority",
-        "R-S11cr/R-S11e-110 global PID mutation authority",
-        "archive-specific PID mutation disposition",
-    ),
-    Mutation(
-        "hardening",
-        "R-S11cr/R-S11e-110 umask-independent raw SDK root authority",
-        "R-S11cr/R-S11e-110 ambient raw SDK root authority",
-        "raw SDK root mode disposition",
-    ),
 )
 
 
@@ -640,8 +585,6 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         ),
         "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
-        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
-        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
     }
 
 

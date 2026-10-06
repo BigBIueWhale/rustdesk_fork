@@ -6893,12 +6893,14 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn rename_admitted_entry_refuses_a_replaced_source_name() {
+        use std::os::unix::fs::symlink;
         use std::os::unix::io::AsRawFd;
 
         let tmp_root = TestTempDir::new("rustdesk_rename_replaced_source");
         let source = tmp_root.join("source.txt");
         let displaced = tmp_root.join("displaced.txt");
         let target = tmp_root.join("renamed.txt");
+        let outside = tmp_root.join("outside.txt");
         std::fs::create_dir_all(&tmp_root.path).expect("create rename directory");
         std::fs::write(&source, b"admitted").expect("create admitted source");
         let parent = open_parent_dir_no_follow(&tmp_root.path, false)
@@ -6910,8 +6912,16 @@ mod tests {
         std::fs::rename(&source, &displaced).expect("displace admitted source");
         std::fs::write(&source, b"replacement").expect("install replacement source");
 
-        unix_rename_admitted_entry(&parent, &source_name, &target_name, &admitted)
-            .expect_err("a replacement source generation must be refused");
+        let require_refusal = |expected_kind| {
+            for destination in [&source_name, &target_name] {
+                let error = unix_rename_admitted_entry(
+                    &parent, &source_name, destination, &admitted,
+                )
+                .expect_err("an unowned source must be refused even for a same-name no-op");
+                assert_eq!(error.kind(), expected_kind);
+            }
+        };
+        require_refusal(std::io::ErrorKind::PermissionDenied);
 
         assert_eq!(
             std::fs::read(&source).expect("read replacement source"),
@@ -6921,6 +6931,19 @@ mod tests {
             std::fs::read(&displaced).expect("read displaced admitted source"),
             b"admitted"
         );
+        assert!(!target.exists());
+
+        std::fs::remove_file(&source).expect("remove replacement source");
+        require_refusal(std::io::ErrorKind::NotFound);
+        std::fs::write(&outside, b"DO-NOT-TOUCH").expect("create external sentinel");
+        symlink(&outside, &source).expect("install replacement source symlink");
+        require_refusal(std::io::ErrorKind::PermissionDenied);
+        assert!(std::fs::symlink_metadata(&source)
+            .expect("inspect retained replacement link")
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read(&outside).expect("read external sentinel"), b"DO-NOT-TOUCH");
+        assert_eq!(std::fs::read(&displaced).expect("read admitted source"), b"admitted");
         assert!(!target.exists());
     }
 

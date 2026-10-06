@@ -176,6 +176,9 @@ struct Allocation {
     retired: bool,
 }
 
+#[derive(Clone, Copy)]
+enum CaptureReplyFault { Size, Depth, Visual }
+
 #[derive(Default)]
 struct State {
     allocations: Vec<Allocation>,
@@ -195,6 +198,10 @@ struct State {
     capture_replies: usize,
     capture_errors: usize,
     capture_error: Option<(u8, u8, u16, u32)>,
+    capture_reply_fault: Option<CaptureReplyFault>,
+    fault_capture_reply: usize,
+    capture_reply_injections: usize,
+    capture_reply_original: Option<(u32, u8, xcb_visualid_t)>,
     attach_queries: usize,
     reject_attach_query: usize,
     rejected_attach_cookie: Option<(*mut xcb_connection_t, u32)>,
@@ -375,6 +382,22 @@ unsafe extern "C" fn __wrap_xcb_shm_get_image_reply(c: *mut xcb_connection_t,
             state.capture_replies += 1;
             state.allocations.push(Allocation { pointer: reply.cast(),
                 bytes: 0, monitor: false, retired: false });
+            if state.capture_queries == state.fault_capture_reply {
+                let fault = state.capture_reply_fault.expect("capture reply fault absent");
+                assert!((*error).is_null(), "valid capture received a protocol error");
+                assert_eq!(xcb_connection_has_error(c), 0, "reply fault used a failed connection");
+                assert!(state.capture_reply_original.replace(
+                    ((*reply).size, (*reply).depth, (*reply).visual)).is_none());
+                // Inject one field in the actual reply allocation. Request arguments,
+                // server completion and captured shared-memory pixels remain real.
+                match fault {
+                    CaptureReplyFault::Size => (*reply).size = (*reply).size.checked_add(1)
+                        .expect("real capture size cannot be incremented"),
+                    CaptureReplyFault::Depth => (*reply).depth ^= 1,
+                    CaptureReplyFault::Visual => (*reply).visual ^= 1,
+                }
+                state.capture_reply_injections += 1;
+            }
         }
         if !(*error).is_null() {
             assert!(reply.is_null(), "rejected GetImage unexpectedly returned pixels");
@@ -660,6 +683,10 @@ fn finish_case(reject: usize) {
         state.capture_replies = 0;
         state.capture_errors = 0;
         state.capture_error = None;
+        state.capture_reply_fault = None;
+        state.fault_capture_reply = 0;
+        state.capture_reply_injections = 0;
+        state.capture_reply_original = None;
         state.attach_queries = 0;
         state.reject_attach_query = 0;
         assert!(state.rejected_attach_cookie.is_none(), "rejected attach was never checked");
@@ -722,6 +749,58 @@ fn exercise_capture_rejection(
         let state = state.borrow();
         assert_eq!((state.capture_queries, state.capture_replies, state.capture_errors,
                     state.frame_comparisons), (4, 3, 1, 3));
+        assert!(state.allocations.iter().all(|entry| entry.retired), "capture reply/error leaked");
+    });
+    Ok(segment)
+}
+
+#[cfg(corrected)]
+fn exercise_capture_reply_fault(
+    server: &x11::Server, root: u32, fault: CaptureReplyFault,
+    mut pixel: impl FnMut() -> io::Result<[u8; 3]>,
+) -> io::Result<i32> {
+    let segment = STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!(state.segments.len(), 1, "capture did not own exactly one segment");
+        state.segments[0]
+    });
+    probe_segment(segment)?;
+    assert_eq!(pixel()?, [0x00, 0x00, 0xff], "initial real red pixel differs");
+    draw_red(server, root, 0x000000ff)?;
+    STATE.with(|state| {
+        let mut state = state.borrow_mut();
+        state.capture_reply_fault = Some(fault);
+        state.fault_capture_reply = 2;
+    });
+    let error = pixel().expect_err("invalid received reply returned a frame");
+    assert_eq!(error.kind(), io::ErrorKind::InvalidData,
+               "invalid metadata became unchanged-frame behavior");
+    STATE.with(|state| {
+        let state = state.borrow();
+        let (size, _, _) = state.capture_reply_original.expect("actual reply metadata absent");
+        let expected = match fault {
+            CaptureReplyFault::Size => format!(
+                "X server MIT-SHM GetImage size {} does not match capture buffer size {}", size + 1, size),
+            CaptureReplyFault::Depth | CaptureReplyFault::Visual =>
+                "X server MIT-SHM GetImage layout differs from root setup".to_owned(),
+        };
+        assert_eq!(error.to_string(), expected);
+        assert_eq!(state.capture_reply_injections, 1);
+        assert_eq!((state.capture_queries, state.capture_replies, state.capture_errors,
+                    state.frame_comparisons), (2, 2, 0, 1));
+        assert!(state.allocations.iter().all(|entry| entry.retired), "rejected reply leaked");
+    });
+    probe_segment(segment)?;
+    // Blue was already written by the real server during the rejected request.
+    // It must remain fresh relative to the last published red frame, rather than
+    // being lost because rejection compared or committed those shared bytes.
+    assert_eq!(pixel()?, [0xff, 0x00, 0x00], "valid blue frame did not recover");
+    assert_eq!(pixel().expect_err("unchanged blue pixels unexpectedly changed").kind(),
+               io::ErrorKind::WouldBlock);
+    STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!((state.capture_queries, state.capture_replies, state.capture_errors,
+                    state.frame_comparisons, state.capture_reply_injections), (4, 4, 0, 3, 1));
         assert!(state.allocations.iter().all(|entry| entry.retired), "capture reply/error leaked");
     });
     Ok(segment)
@@ -968,6 +1047,45 @@ fn main() -> io::Result<()> {
                 }
             }
             println!("X11_CAPTURE_REJECTION_NATIVE=pass server_error=BadDrawable repeats=16 callers=direct,public requests=4 replies=3 errors=1 comparison_on_error=none same_capture=recovered pixels=red,blue segment=retired");
+        } else if scenario == "capture-reply-layout" {
+            use crate::common::TraitCapturer;
+            for fault in [CaptureReplyFault::Size, CaptureReplyFault::Depth, CaptureReplyFault::Visual] {
+                for public in [false, true] {
+                    for _ in 0..16 {
+                        let display = x11::Server::displays(Rc::clone(&server))
+                            .next().expect("first real X screen")?;
+                        assert_eq!(display.pixfmt(), Pixfmt::BGRA);
+                        let root = display.root();
+                        finish_case(0);
+                        draw_red(&server, root, 0x00ff0000)?;
+                        let segment = if public {
+                            let display = common::Display::primary()?;
+                            finish_case(0);
+                            let mut capture = common::Capturer::new(display)?;
+                            let id = exercise_capture_reply_fault(&server, root, fault, || {
+                                let Frame::PixelBuffer(buffer) = capture.frame(
+                                    std::time::Duration::from_millis(100))?;
+                                Ok([buffer.data()[0], buffer.data()[1], buffer.data()[2]])
+                            })?;
+                            drop(capture);
+                            id
+                        } else {
+                            let mut capture = x11::Capturer::new(display)?;
+                            let id = exercise_capture_reply_fault(&server, root, fault, || {
+                                let bytes = capture.frame()?;
+                                Ok([bytes[0], bytes[1], bytes[2]])
+                            })?;
+                            drop(capture);
+                            id
+                        };
+                        let absent = probe_segment(segment).expect_err("capture segment survived drop");
+                        assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)),
+                                "unexpected exact-segment retirement error: {}", absent);
+                        finish_case(0);
+                    }
+                }
+            }
+            println!("X11_CAPTURE_REPLY_NATIVE=pass received_header=injected fields=size,depth,visual callers=direct,public repeats=16 cases=96 requests=4 replies=4 protocol_errors=0 comparison_on_rejection=none same_capture=recovered pixels=red,blue allocations=retired segments=retired");
         } else if scenario == "capture-24" || scenario == "capture-16" {
             use crate::{TraitPixelBuffer, common::TraitCapturer};
             x11::reject_unsupported_layouts();

@@ -217,6 +217,17 @@ def main():
                 r"attach_requests=3 capture_requests=3 capture_replies=3 attach_errors=1 survivor=fresh retry=valid segments=retired",
                 attach_lines[0]) is not None, "exact attach rejection/retry result absent")
             print(attach_lines[0], flush=True)
+            layout = subprocess.run([str(binaries["corrected"]), "capture-reply-layout"], env=environment,
+                                    capture_output=True, text=True, timeout=15)
+            layout_receipt = ("X11_CAPTURE_REPLY_NATIVE=pass received_header=injected fields=size,depth,visual "
+                              "callers=direct,public repeats=16 cases=96 requests=4 replies=4 protocol_errors=0 "
+                              "comparison_on_rejection=none same_capture=recovered pixels=red,blue "
+                              "allocations=retired segments=retired")
+            require(layout.returncode == 0 and not layout.stderr and len(layout.stdout) <= 4096
+                    and layout.stdout.splitlines() == [layout_receipt,
+                        "X11_DISPLAY_COMPONENT=pass scenario=capture-reply-layout replies=exact errors=explicit cleanup=joined"],
+                    f"native received-reply rejection/recovery differs: {layout}")
+            print(layout_receipt, flush=True)
             print("X11_BOUNDS_NATIVE=pass received_header=injected rejected_shapes=7 repeats=32 "
                   "enumeration=fused public_callers=explicit valid_outputless=injected screens=server-real replies=exact", flush=True)
             print("X11_SETUP_NATIVE=pass received_header=injected rejected_shapes=7 repeats=16 "

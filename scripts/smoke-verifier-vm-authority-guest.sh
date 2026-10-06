@@ -1507,10 +1507,6 @@ run_apple_conform() {
         || fail 'Apple-conformance source archive contains a special entry'
     /usr/bin/git -c init.defaultBranch=master -C "$source_root" init -q \
         || fail 'cannot create the sealed Apple-conformance source index'
-    /usr/bin/git -C "$source_root" add -f -- . \
-        || fail 'cannot index the exact Apple-conformance source'
-    [ "$(/usr/bin/git -C "$source_root" write-tree)" = "$APPLE_SOURCE_TREE" ] \
-        || fail 'Apple-conformance source archive tree differs from pushed master'
     mkdir -p "$projected_vendor"
     install -o 0 -g 0 -m 0444 -- "$vendor_config" "$projected_config" 2>/dev/null \
         && fail 'sealed Apple inputs became reachable before their authority mount'
@@ -1523,6 +1519,10 @@ run_apple_conform() {
     [ -z "$(find "$source_root" -mindepth 1 \
         \( -uid 4000 -o -gid 4000 -o -perm /022 \) -print -quit)" ] \
         || fail 'Apple-conformance source is writable by the verifier principal'
+    /usr/bin/git -C "$source_root" add -f -- . \
+        || fail 'cannot index the sealed Apple-conformance source'
+    [ "$(/usr/bin/git -C "$source_root" write-tree)" = "$APPLE_SOURCE_TREE" ] \
+        || fail 'Apple-conformance source archive tree differs from pushed master'
     if ! /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \
         diff-files --quiet --ignore-submodules --; then
         /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \

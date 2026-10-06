@@ -5953,39 +5953,42 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   independent reproduction, or external review; all of those remain STOP-SHIP.
 
 - **R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority — SOURCE IMPLEMENTED;
-  CONFINED KERNEL AND NATIVE CAPTURE/RETIREMENT EVIDENCE; BROADER AUTHORITY AND RELEASE EVIDENCE OPEN.** The current
-  `SharedMemory` owner rejects empty/overflowing sizes, creates an exact 0600 `IPC_PRIVATE` segment,
-  establishes cleanup before its read-only local mapping, checks XCB attach acceptance, and marks the
-  segment deletion-pending only after acceptance. Construction and drop retain exact detach/removal
-  ownership and make failures visible. The checked bindings and the two serialized SysV behavior tests
-  remain in the shared gate.
+  CONFINED KERNEL AND NATIVE CONSTRUCTION/CAPTURE/RETIREMENT EVIDENCE;
+  BROADER AUTHORITY AND RELEASE EVIDENCE OPEN.** `libs/scrap/src/x11/capturer.rs` retains one
+  `SharedMemory` owner before local attachment and checked XCB construction/destruction. The owner-only,
+  read-only-mapping, checked-attach-before-deletion-pending and visible-cleanup contracts remain normative
+  under R-S11fw. The checked bindings and two serialized SysV behavior tests remain in the shared gate.
 
   Commit `b068ffcf` records the implementation and a clean Rust 1.75 numeric-nonroot, networkless
   container run proving effective-user ownership, exact 0600 mode, one local attachment, `SHM_DEST`,
-  and final disappearance. The focused source checker remains a supplement; its documentation coupling,
+  and final disappearance. `verify-x11-capture-shm.py` remains a source supplement; its documentation coupling,
   mutation catalog, and stale workspace reimplementation are deleted.
 
-  Checker revision `17c33849589b6c1264cc0d58d5d48173db1a8dfe` removes test-name/assertion counting
-  and shared-verifier inspection, and follows the current checked row-stride, reply depth/visual,
-  and exact-size contract instead of obsolete production spellings. The focused VM payload now includes
-  this checker and the native driver invokes its actual CLI on current source and one private permissive-mode
-  source fixture. These are supplementary source checks, not kernel permission-denial evidence.
+  Candidate `d79cb4c4b73d1bd8bc9c420bf3f2b95790295078` (tree
+  `fb930fcbbfc0fe35059785b160ddf1416585e439`) passed `--x11-display-tests` in 53 VM seconds.
+  Numeric UID/GID 4000 executed the production capture/public-wrapper/comparator components against real
+  Xvfb in the zero-NIC VM's networkless unprivileged container. Production capture source was unchanged.
+  The existing 16 direct and 16 public constructor cases still observe actual MIT-SHM Attach error 10,
+  exact error allocation retirement and failed-segment absence after injecting an invalid request ID.
+  Another 16 cycles per API for each of two local construction faults passed (64 cases): an unaligned
+  selected `shmat` address makes the kernel reject local attachment; an invalid selected `IPC_RMID` ID
+  makes the kernel reject deletion-pending without removing the real segment. Both return actual EINVAL
+  with preserved errno. Failure must retire the exact segment; deletion-pending failure must additionally
+  complete its real checked XCB detach before returning. The same valid survivor remains mapped and
+  captures fresh blue, a later valid constructor captures blue and retires its own segment, and only the
+  survivor's explicit drop retires that last segment. Exact attach/detach/check/reply/comparison counts,
+  error strings and returned-allocation retirement are asserted; no pixel or successful reply is fabricated.
 
-  The latest native transaction below additionally exercises 16 rejected constructors through each of
-  the direct and public APIs while a valid direct capture remains live. Only the selected attach request's
-  segment ID becomes invalid; real Xvfb returns protocol error 10 for MIT-SHM Attach. The checker observes
-  the exact connection/cookie and actual error allocation, then requires the constructor's explicit error,
-  immediate error free, and absence of its actual local segment. The surviving capture must remain mapped
-  and receive freshly drawn blue pixels. Later valid construction through the selected API must capture
-  those pixels and retire its own segment, without retiring the survivor until its explicit drop. Per case,
-  three attach calls, one attach error, three GetImage replies/comparisons, and all three exact segment
-  retirements are checked. Neither protocol responses nor pixels are fabricated.
-
-  This tests a deliberately invalid request ID, not unauthorized-principal refusal. The native component
-  also covers real server loss with live captures and independent segment retirement; its liveness probe
-  does not establish ownership/mode/attachment-count. Construction-time connection failure, local-attach
-  and deletion-pending-transition failures, unauthorized principals, actual capture-to-render, installed
-  cross-user service behavior, current artifacts, cold reproduction, and independent review remain OPEN.
+  Raw serial `x11-display-tests-run.ujXTx9149W.serial.log` is 77,995 bytes, SHA-256
+  `bb21849d4b5febb62e3877fb84802bd9e552c291ea4ea6ed5324a42e09303d12`, under
+  `.harness-state/verifier-vm`; the same-prefix `.outer.receipt` records assistant-observed terminal
+  exit 0, unchanged inputs, no added host endpoint, joined cleanup and the retired run root/overlay.
+  Existing rejection/recovery, missing/layout reply, actual server-loss and 24/16-bit capture cases also
+  passed. This is deliberate invalid-argument component coverage, not naturally occurring failure,
+  unauthorized-principal refusal, or a full product build. Segment liveness probes do not establish
+  ownership/mode/attachment-count. Construction-time connection failure, destruction-failure injection,
+  unauthorized principals, actual capture-to-render, installed cross-user service behavior, current
+  artifacts, cold reproduction and independent review remain OPEN.
 
 - **R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality — SOURCE IMPLEMENTED;
   NATIVE REJECTION/RECOVERY AND LIVE CONNECTION-LOSS COMPONENTS PASSED;

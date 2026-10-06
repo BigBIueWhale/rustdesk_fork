@@ -364,6 +364,9 @@ class LinuxFlutterArtifactTests(unittest.TestCase):
 
         def interrupt_copy(descriptor, data, label):
             self.assertEqual(label, "Linux app file")
+            if os.readlink(f"/proc/self/fd/{descriptor}") != str(
+                    failed_parent / app.MATERIALIZED / "bundle/rustdesk"):
+                return original(descriptor, data, label)
             original(descriptor, data[:1], label)
             writes.append(descriptor)
             raise OSError("injected materialization write failure")
@@ -379,8 +382,18 @@ class LinuxFlutterArtifactTests(unittest.TestCase):
         self.assertEqual(set(os.listdir("/proc/self/fd")), descriptors)
         partial = failed_parent / app.MATERIALIZED
         partial_identity = identity(partial)
-        copied, = [path for path in partial.rglob("*") if path.is_file()]
+        copied = partial / "bundle/rustdesk"
         self.assertEqual(copied.read_bytes(), ELF[:1])
+
+        def snapshot():
+            return {str(path.relative_to(partial)): (app.publication.stable_file(path.lstat()),
+                    path.read_bytes() if path.is_file() else None)
+                    for path in [partial, *partial.rglob("*")]}
+
+        retained = snapshot()
+        for relative, (_, payload) in retained.items():
+            if payload is not None and relative != "bundle/rustdesk":
+                self.assertEqual(payload, (root / relative).read_bytes())
         for _ in range(3):
             with self.assertRaisesRegex(app.publication.PublicationError,
                                         "^Linux app execution workspace is occupied$"):
@@ -389,8 +402,7 @@ class LinuxFlutterArtifactTests(unittest.TestCase):
             self.assertEqual(set(os.listdir("/proc/self/fd")), descriptors)
             self.assertEqual(list(failed_parent.iterdir()), [partial])
             self.assertEqual(identity(partial), partial_identity)
-            self.assertEqual([path for path in partial.rglob("*") if path.is_file()], [copied])
-            self.assertEqual(copied.read_bytes(), ELF[:1])
+            self.assertEqual(snapshot(), retained)
         print("LINUX_FLUTTER_MATERIALIZATION_FINALITY=pass success=closed early-refusal=closed "
               "partial-write=observed failure=closed retry=refused retained=unchanged", file=sys.stderr)
 

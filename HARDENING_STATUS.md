@@ -1904,11 +1904,16 @@ behavior. Raw evidence is `evidence/linux-app-consumer-admission-c3f17011.serial
 Current capsule fixtures require the exact manifest-digest, non-ELF, and occupied-workspace
 errors rather than accepting any filesystem exception. They inspect the test process's
 descriptor inventory after success, refusal, and an injected write failure following one
-actual copied byte; repeated retries must preserve the completed or partial workspace
+actual copied ELF byte; repeated retries must preserve the completed or partial workspace
 identity and bytes without allocating another copy. Failed preparation likewise retains
-one pending artifact and refuses another producer. Execution of these expanded cases on
-the current source is OPEN; they do not establish RustDesk lifecycle, installed-service,
-presentation, sustained resource, or release behavior.
+one pending artifact and refuses another producer. The first execution at `2d9c2092`
+failed an invalid fixture assumption about copy order, not the materializer. Its complete
+77,353-byte raw serial and failure receipt remain under
+`.harness-state/verifier-vm/linux-flutter-artifact-tests-run.Nuk9M5oJiE.*`; joined cleanup
+retired the disks and exact inactive run root. The corrected fixture targets the named
+`bundle/rustdesk` ELF and inventories all retained metadata/bytes. Its execution is OPEN;
+these cases do not establish RustDesk lifecycle, installed-service, presentation,
+sustained resource, or release behavior.
 
 The archived negative-baseline app is source `a4a6b2d0f381118e8d018c3e7fb0b3e1f02f8e0c`, tree
 `eb842fa98c8cfac05169c18b29d09f15091c858b`. Its separate producer completed compilation and

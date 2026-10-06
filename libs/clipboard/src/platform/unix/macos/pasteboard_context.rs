@@ -235,20 +235,70 @@ fn remove_placeholder_file(
     }
 }
 
-fn count_placeholder_files(placeholder_dir: &Path) -> io::Result<usize> {
-    let mut count = 0;
-    for entry in std::fs::read_dir(placeholder_dir)? {
-        let entry = entry?;
-        if !entry.file_type()?.is_file() {
-            continue;
+fn count_placeholder_files(placeholder_dir_handle: &File) -> io::Result<usize> {
+    // Open a fresh stream from the retained directory, not from its replaceable URL path.
+    // A distinct open description also gives each count an independent directory position.
+    let fd = unsafe {
+        libc::openat(
+            placeholder_dir_handle.as_raw_fd(),
+            b".\0".as_ptr().cast(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let directory = unsafe { libc::fdopendir(fd) };
+    if directory.is_null() {
+        let error = io::Error::last_os_error();
+        if unsafe { libc::close(fd) } != 0 {
+            log::warn!("Failed to close macOS clipboard directory after fdopendir failure");
         }
-        if let Some(file_name) = entry.file_name().to_str() {
-            if file_name.starts_with(TEMP_FILE_PREFIX) {
-                count += 1;
+        return Err(error);
+    }
+    let mut count = 0;
+    let result = loop {
+        unsafe { *libc::__error() = 0 };
+        let entry = unsafe { libc::readdir(directory) };
+        if entry.is_null() {
+            let error = io::Error::last_os_error();
+            break if error.raw_os_error() == Some(0) {
+                Ok(count)
+            } else {
+                Err(error)
+            };
+        }
+        let name_len = unsafe { (*entry).d_namlen as usize };
+        if name_len == 0 || name_len > unsafe { (*entry).d_name.len() } {
+            break Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "invalid macOS clipboard directory entry length",
+            ));
+        }
+        let name = unsafe {
+            std::slice::from_raw_parts((*entry).d_name.as_ptr().cast::<u8>(), name_len)
+        };
+        if name.starts_with(TEMP_FILE_PREFIX.as_bytes()) {
+            match count.checked_add(1) {
+                Some(next) => count = next,
+                None => {
+                    break Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "clipboard placeholder count overflow",
+                    ));
+                }
             }
         }
+    };
+    let close_result = unsafe { libc::closedir(directory) };
+    if close_result != 0 {
+        let error = io::Error::last_os_error();
+        if result.is_ok() {
+            return Err(error);
+        }
+        log::warn!("Failed to close macOS clipboard directory after count error: {error}");
     }
-    Ok(count)
+    result
 }
 
 fn remove_placeholder_file_logged(
@@ -426,7 +476,7 @@ impl PasteboardContext {
     }
 
     fn temp_files_count(&self) -> io::Result<usize> {
-        count_placeholder_files(&self.placeholder_dir)
+        count_placeholder_files(&self.placeholder_dir_handle)
     }
 
     fn server_clip_file_(&mut self, conn_id: i32, msg: ClipboardFile) -> Result<(), CliprdrError> {
@@ -710,18 +760,50 @@ mod tests {
     fn test_private_placeholder_dir_file_count_and_cleanup() {
         let (placeholder_dir, placeholder_dir_handle) =
             super::create_placeholder_dir().expect("create placeholder dir");
-        assert_eq!(0, super::count_placeholder_files(&placeholder_dir).unwrap());
+        assert_eq!(0, super::count_placeholder_files(&placeholder_dir_handle).unwrap());
 
         let path = super::create_placeholder_file(&placeholder_dir_handle, &placeholder_dir)
             .expect("create placeholder file");
-        assert_eq!(1, super::count_placeholder_files(&placeholder_dir).unwrap());
+        assert_eq!(1, super::count_placeholder_files(&placeholder_dir_handle).unwrap());
         assert!(super::placeholder_file_name(&placeholder_dir, &path).is_some());
         assert!(
             super::remove_placeholder_file(&placeholder_dir_handle, &placeholder_dir, &path)
                 .expect("remove placeholder file")
         );
-        assert_eq!(0, super::count_placeholder_files(&placeholder_dir).unwrap());
+        assert_eq!(0, super::count_placeholder_files(&placeholder_dir_handle).unwrap());
 
         std::fs::remove_dir(placeholder_dir).expect("remove placeholder dir");
+    }
+
+    #[test]
+    fn test_placeholder_count_stays_with_retained_directory_after_path_replacement() {
+        let (placeholder_dir, placeholder_dir_handle) =
+            super::create_placeholder_dir().expect("create placeholder dir");
+        let placeholder = super::create_placeholder_file(&placeholder_dir_handle, &placeholder_dir)
+            .expect("create placeholder file");
+        let displaced = placeholder_dir.with_extension("displaced");
+        assert!(!displaced.exists());
+        std::fs::rename(&placeholder_dir, &displaced).expect("move placeholder directory");
+        std::fs::create_dir(&placeholder_dir).expect("replace placeholder path");
+        for name in [".rustdesk_decoy1", ".rustdesk_decoy2"] {
+            std::fs::write(placeholder_dir.join(name), b"").expect("create decoy");
+        }
+
+        assert_eq!(1, super::count_placeholder_files(&placeholder_dir_handle).unwrap());
+        let unexpected = displaced.join(".rustdesk_unexpected");
+        std::os::unix::fs::symlink("missing", &unexpected).expect("create unexpected entry");
+        assert_eq!(2, super::count_placeholder_files(&placeholder_dir_handle).unwrap());
+        std::fs::remove_file(unexpected).expect("remove unexpected entry");
+        assert!(
+            super::remove_placeholder_file(&placeholder_dir_handle, &placeholder_dir, &placeholder)
+                .expect("remove through retained directory")
+        );
+        assert_eq!(0, super::count_placeholder_files(&placeholder_dir_handle).unwrap());
+
+        for name in [".rustdesk_decoy1", ".rustdesk_decoy2"] {
+            std::fs::remove_file(placeholder_dir.join(name)).expect("remove decoy");
+        }
+        std::fs::remove_dir(placeholder_dir).expect("remove replacement directory");
+        std::fs::remove_dir(displaced).expect("remove retained directory");
     }
 }

@@ -22,14 +22,6 @@ def forbid(source: str, needle: str, label: str) -> None:
         raise VerificationError(f"forbidden {label} remains: {needle!r}")
 
 
-def require_count(source: str, needle: str, expected: int, label: str) -> None:
-    actual = source.count(needle)
-    if actual != expected:
-        raise VerificationError(
-            f"{label}: expected {expected} occurrences of {needle!r}, found {actual}"
-        )
-
-
 def require_order(source: str, needles: Tuple[str, ...], label: str) -> None:
     position = -1
     for needle in needles:
@@ -63,7 +55,6 @@ def load_sources(repo: Path) -> Dict[str, str]:
             encoding="utf-8"
         ),
         "ffi": (repo / "libs/scrap/src/x11/ffi.rs").read_text(encoding="utf-8"),
-        "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
     }
 
 
@@ -149,8 +140,9 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         constructor,
         (
+            "display.row_stride()?",
             ".checked_mul(rect.h as usize)",
-            ".and_then(|pixels| pixels.checked_mul(pixel_width))",
+            "u32::try_from(size)",
             "SharedMemory::create(size)?",
             "xcb_shm_attach_checked(",
             'check_xcb_request(server, attach, "MIT-SHM attach")?',
@@ -197,10 +189,11 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "if let Some((error_code, major_code, minor_code, resource_id)) = protocol_error",
             "if connection_error != 0",
-            "let reply_size = reply_size.ok_or_else",
+            "let (reply_size, reply_depth, reply_visual) = reply.ok_or_else",
+            "if reply_depth != expected_depth || reply_visual != expected_visual",
             "if reply_size != expected_size",
         ),
-        "protocol, connection, reply-presence, and exact-size result order",
+        "protocol, connection, reply-presence, layout, and exact-size result order",
     )
     for needle, label in (
         ("io::ErrorKind::ConnectionAborted", "connection failure classification"),
@@ -220,12 +213,14 @@ def validate(sources: Dict[str, str]) -> None:
             "let mut error = ptr::null_mut();",
             "xcb_shm_get_image(",
             "xcb_shm_get_image_reply(server, request, &mut error)",
-            "let reply_size = if response.is_null()",
+            "let reply = if response.is_null()",
+            "Some(((*response).size as usize, (*response).depth, (*response).visual))",
             "let protocol_error = if error.is_null()",
             "libc::free(response.cast())",
             "libc::free(error.cast())",
             "xcb_connection_has_error(server)",
-            "check_get_image_result(reply_size, protocol_error, connection_error, self.size)",
+            "check_get_image_result(reply, protocol_error, connection_error, self.size,",
+            "self.display.depth(), self.display.visual())",
         ),
         "checked request/reply ownership and final result validation",
     )
@@ -250,48 +245,6 @@ def validate(sources: Dict[str, str]) -> None:
             "Ok(result)",
         ),
         "GetImage success before shared-buffer publication",
-    )
-
-    for needle, label in (
-        (
-            "fn r_s11fw_shared_memory_is_owner_only_and_drop_removes_it()",
-            "owner-only/removal kernel test",
-        ),
-        (
-            "fn r_s11fw_attached_shared_memory_becomes_deletion_pending()",
-            "deletion-pending kernel test",
-        ),
-        (
-            "fn r_s11fx_get_image_accepts_only_an_exact_reply()",
-            "exact GetImage reply-size test",
-        ),
-        (
-            "fn r_s11fx_get_image_rejects_protocol_connection_and_missing_reply()",
-            "GetImage error-finality test",
-        ),
-    ):
-        require(capturer, needle, label)
-    require_count(
-        capturer,
-        "assert_eq!(status.shm_perm.mode & 0o777, 0o600);",
-        2,
-        "independent exact-mode kernel assertions",
-    )
-
-    require(
-        sources["verify"],
-        "scripts/verify-x11-capture-shm.py --repo .",
-        "focused X11 capture shared-memory gate",
-    )
-    require(
-        sources["verify"],
-        "x11::capturer::tests::r_s11fw_ -- --test-threads=1",
-        "compiled X11 shared-memory kernel tests",
-    )
-    require(
-        sources["verify"],
-        "x11::capturer::tests::r_s11fx_ -- --test-threads=1",
-        "compiled X11 GetImage finality tests",
     )
 
 

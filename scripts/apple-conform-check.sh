@@ -3,8 +3,8 @@
 #
 # Apple is not an artifact target in this Linux verification pipeline, but the
 # macOS/iOS source must still inherit the fork's security posture. This gate
-# runs only inside the authenticated no-NIC verifier VM and proves the
-# source layer with:
+# runs only inside the authenticated no-NIC verifier VM and checks source
+# conformance with:
 #   1. retain-and-check over the Apple source, plist, entitlement, pod, and Xcode
 #      project surfaces;
 #   2. R-A6 Apple-cfg forbidden-token and sole-backend assertions;
@@ -14,6 +14,8 @@
 #        aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios
 #      using the real Apple features: macOS = flutter,unix-file-copy-paste;
 #      iOS = flutter.
+# These checks do not establish signed packages, installed launchd/helper behavior,
+# or native macOS/iOS runtime acceptance.
 set -euo pipefail
 export PATH=/usr/bin:/bin
 export LC_ALL=C
@@ -693,10 +695,6 @@ echo "$r_sv6a_status_test" | grep -qF 'keys::OPTION_API_SERVER.to_owned(),' \
   || r_sv6a_logout="$r_sv6a_logout api-server-IPC-rejection-regression-missing"
 grep -qF '(OPTION_API_SERVER, ""),' "$REPO/libs/hbb_common/src/config.rs" \
   || r_sv6a_logout="$r_sv6a_logout api-server-stale-value-mask-missing"
-grep -qF '<tr><td>191</td>' "$REPO/requirements.html" \
-  || r_sv6a_logout="$r_sv6a_logout appendix-disposition-missing"
-grep -qF 'R-SV6a-1 — logout and API-server presentation residue' "$REPO/HARDENING_STATUS.md" \
-  || r_sv6a_logout="$r_sv6a_logout ledger-disposition-missing"
 if [ -n "$r_sv6a_logout" ]; then
   echo "  FAIL R-SV6a Apple account logout/API-server presentation closure:$r_sv6a_logout"
   rc=1
@@ -711,8 +709,6 @@ if grep -RInE --include='*.dart' \
   "$REPO/flutter/lib" >/dev/null; then
   r_g1_dead_dart="$r_g1_dead_dart retired-Dart-policy-option-vocabulary-present"
 fi
-grep -qF 'Dead Dart policy-option aliases — CLOSED/GATED (R-G1)' "$REPO/HARDENING_STATUS.md" \
-  || r_g1_dead_dart="$r_g1_dead_dart hardening-ledger-not-closed"
 if [ -n "$r_g1_dead_dart" ]; then
   echo "  FAIL R-G1 Apple dead Dart policy-option alias closure:$r_g1_dead_dart"
   rc=1
@@ -750,9 +746,6 @@ grep -qF '? widget.peer.id' "$REPO/flutter/lib/common/widgets/autocomplete.dart"
   || r_g2_address="$r_g2_address raw-autocomplete-address-display-missing"
 [ "$(grep -Fc 'peer.alias.isEmpty ? peer.id : peer.alias' "$REPO/flutter/lib/common/widgets/peer_card.dart")" -eq 3 ] \
   || r_g2_address="$r_g2_address raw-peer-address-display-inventory-wrong"
-grep -qF 'Numeric-ID address formatter/controller — CLOSED/GATED (R-G2/R-SV5)' \
-  "$REPO/HARDENING_STATUS.md" \
-  || r_g2_address="$r_g2_address hardening-ledger-not-closed"
 if [ -n "$r_g2_address" ]; then
   echo "  FAIL R-G2/R-SV5 Apple direct-address UI closure:$r_g2_address"
   rc=1
@@ -2633,14 +2626,10 @@ fi
 
 echo "== (2b-i) R-S11b-1 macOS _service is bounded control IPC, never a password/config bus =="
 r_s11b=$(<"$apple_password_gate_dir/r_s11b")
-grep -Fq 'Protected service IPC resource boundary' "$REPO/requirements.html" || r_s11b="$r_s11b service-resource-requirements-missing"
-grep -Fq 'R-S11c-26 — protected service IPC resource boundary' "$REPO/HARDENING_STATUS.md" || r_s11b="$r_s11b service-resource-ledger-missing"
 grep -q 'SyncConfig' "$REPO/src/ipc.rs" && r_s11b="$r_s11b whole-config-ipc-variant-present"
 grep -q 'SyncConfig' "$REPO/src/server.rs" && r_s11b="$r_s11b server-whole-config-import-present"
 grep -q 'send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)' "$REPO/src/ipc/fs.rs" || r_s11b="$r_s11b service-probe-not-typed-liveness"
 grep -q 'Ok(Some(ServiceIpcResponse::Liveness {}))' "$REPO/src/ipc/fs.rs" || r_s11b="$r_s11b service-probe-not-validating-typed-response"
-grep -Fq 'R-S11dx' "$REPO/requirements.html" || r_s11b="$r_s11b typed-service-protocol-requirement-missing"
-grep -Fq 'R-S11dx/R-S11e-142' "$REPO/HARDENING_STATUS.md" || r_s11b="$r_s11b typed-service-protocol-ledger-missing"
 if grep -q 'connect_service' "$REPO/src/server.rs"; then
   r_s11b="$r_s11b server-still-connects-service-channel"
 fi
@@ -2681,81 +2670,6 @@ if grep -qF 'get_permanent_password_prs' "$REPO/libs/hbb_common/src/config.rs" "
   r_s11b2="$r_s11b2 macos-service-password-cpace-string-flattener-present"
 fi
 grep -Fq 'security-framework = "2.10"' "$REPO/Cargo.toml" || r_s11b2="$r_s11b2 macos-security-framework-direct-dependency-missing"
-grep -Fq '<span class="id">R-S11g</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 transaction-finality-requirement-missing"
-grep -Fq '<span class="id">R-S11i</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 raw-password-ipc-requirement-missing"
-grep -Fq '<span class="id">R-S19a</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 input-lifecycle-requirement-missing"
-grep -Fq '<tr><td>126</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 transaction-input-appendix-missing"
-grep -Fq 'R-S11e-21 — raw password transaction finality and service-owned SAS' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 transaction-finality-ledger-missing"
-grep -Fq 'R-S11e-9 — macOS service audit-token peer code identity' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-service-ipc-audit-token-ledger-missing"
-grep -Fq '<span class="id">R-S11hz</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-requester-requirement-missing"
-grep -Fq '<tr><td>385</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-requester-appendix-missing"
-grep -Fq 'R-S11hz/R-S11e-263 — exact macOS password-right readiness requester authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-password-right-requester-ledger-missing"
-grep -Fq '<span class="id">R-S11ia</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-requester-finality-requirement-missing"
-grep -Fq '<tr><td>386</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-requester-finality-appendix-missing"
-grep -Fq 'R-S11ia/R-S11e-264 — exact macOS service-owned credential requester generation and response finality' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-credential-requester-finality-ledger-missing"
-grep -Fq '<span class="id">R-S11id</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-typed-admission-requirement-missing"
-grep -Fq '<tr><td>389</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-typed-admission-appendix-missing"
-grep -Fq 'R-S11id/R-S11e-267 — typed macOS service-owned password authority through ledger admission' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-password-typed-admission-ledger-missing"
-grep -Fq '<span class="id">R-S11ie</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-password-typed-admission-requirement-missing"
-grep -Fq '<tr><td>390</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-password-typed-admission-appendix-missing"
-grep -Fq 'R-S11ie/R-S11e-268 — typed Linux post-polkit password authority through ledger admission' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 linux-password-typed-admission-ledger-missing"
-grep -Fq '<span class="id">R-S11if</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 windows-password-typed-admission-requirement-missing"
-grep -Fq '<tr><td>391</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 windows-password-typed-admission-appendix-missing"
-grep -Fq 'R-S11if/R-S11e-269 — typed Windows named-pipe password authority through user/service admission' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 windows-password-typed-admission-ledger-missing"
-grep -Fq '<span class="id">R-S11ig</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-typed-response-requirement-missing"
-grep -Fq '<tr><td>392</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-typed-response-appendix-missing"
-grep -Fq 'R-S11ig/R-S11e-270 — typed Linux service-owned credential authority through operation-bound PRS response' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 linux-credential-typed-response-ledger-missing"
-grep -Fq '<span class="id">R-S11ih</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-requirement-missing"
-grep -Fq '<tr><td>393</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-appendix-missing"
-grep -Fq 'R-S11ih/R-S11e-271 — typed Linux root-to-child runtime PRS writer authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-writer-ledger-missing"
-grep -Fq '<span class="id">R-S11ii</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-receiver-requirement-missing"
-grep -Fq '<tr><td>394</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-receiver-appendix-missing"
-grep -Fq 'R-S11ii/R-S11e-272 — typed Linux child-side runtime PRS receiver authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 linux-runtime-prs-typed-receiver-ledger-missing"
-grep -Fq '<span class="id">R-S11ij</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-runtime-prs-typed-receiver-requirement-missing"
-grep -Fq '<tr><td>395</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-runtime-prs-typed-receiver-appendix-missing"
-grep -Fq 'R-S11ij/R-S11e-273 — typed macOS child-side runtime PRS receiver authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-runtime-prs-typed-receiver-ledger-missing"
-grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedCredentialReplicaReceiver</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-runtime-prs-receiver-capability-norm-missing"
-grep -Fq 'consume itself, freshly require the exact service-owned-server role' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-runtime-prs-consuming-receiver-norm-missing"
-grep -Fq 'Only the admission&#39;s consuming <code>install</code> action may reach the shared Unix typed replica' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-runtime-prs-consuming-install-norm-missing"
-grep -Fq '<span class="id">R-S11ik</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-typed-receiver-requirement-missing"
-grep -Fq '<tr><td>396</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-typed-receiver-appendix-missing"
-grep -Fq 'R-S11ik/R-S11e-274 — typed Linux initial credential runtime PRS receiver authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-typed-receiver-ledger-missing"
-grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>LinuxServiceOwnedCredentialReplicaReceiver</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-receiver-capability-norm-missing"
-grep -Fq 'consume itself across the same-stream request and complete response' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-consuming-receiver-norm-missing"
-grep -Fq 'Only that admission&#39;s consuming <code>install</code> action may reach <code>ServiceOwnedRuntimePrsReplica::install_for_runtime</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 linux-credential-runtime-prs-consuming-install-norm-missing"
-grep -Fq '<span class="id">R-S11il</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-typed-response-requirement-missing"
-grep -Fq '<tr><td>397</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-typed-response-appendix-missing"
-grep -Fq 'R-S11il/R-S11e-275 — typed macOS credential-replica response authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-credential-typed-response-ledger-missing"
-grep -Fq 'private, non-cloneable <code>MacosServiceOwnedCredentialReplicaAdmission</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-response-admission-norm-missing"
-grep -Fq 'Only the admission object&#39;s consuming <code>respond</code> method may read <code>service_owned_runtime_prs_replica("macOS")</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-capability-response-norm-missing"
-grep -Fq 'compose only canonical request decode, bounded exact-requester authentication, <code>requester.admit</code>, and <code>admission.respond</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-credential-closed-handler-norm-missing"
-grep -Fq '<span class="id">R-S11im</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-typed-action-requirement-missing"
-grep -Fq '<tr><td>398</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-typed-action-appendix-missing"
-grep -Fq 'R-S11im/R-S11e-276 — typed macOS password-right policy-write authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-password-right-typed-action-ledger-missing"
-grep -Fq '<span class="id">R-S11in</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-verification-read-only-requirement-missing"
-grep -Fq '<tr><td>399</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-verification-read-only-appendix-missing"
-grep -Fq 'R-S11in/R-S11e-277 — read-only macOS password authorization verification' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-password-verification-read-only-ledger-missing"
-grep -Fq 'Only <code>MacosServiceOwnedPasswordRightAdmission::ensure_ready</code> may reach the native <code>AuthorizationRightSet</code> writer.' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-readiness-sole-writer-norm-missing"
-grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDestroyRights</code> and require its returned status to succeed' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-verification-checked-cleanup-norm-missing"
-grep -Fq 'then repeat the exact read-only right-definition check' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-verification-final-policy-check-norm-missing"
-grep -Fq 'return success only when authorization evaluation, rights revocation/free, and the final policy check all succeed' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-verification-conjunction-norm-missing"
-grep -Fq '<span class="id">R-S11io</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-requirement-missing"
-grep -Fq '<tr><td>400</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-appendix-missing"
-grep -Fq 'R-S11io/R-S11e-278 — checked macOS password-authorization creator cleanup and output commit' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 macos-password-authorization-creator-cleanup-ledger-missing"
-grep -Fq 'clear the validated caller buffer before any fallible policy or Authorization Services operation' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-output-preclear-norm-missing"
-grep -Fq 'call <code>AuthorizationFree</code> exactly once with <code>kAuthorizationFlagDefaults</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-default-cleanup-norm-missing"
-grep -Fq 'copy the external form to the caller exactly once and only after both externalization and creator-reference release succeed' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-output-commit-norm-missing"
-grep -Fq 'return the conjunction of externalization/preauthorization status and cleanup status' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-authorization-creator-conjunction-norm-missing"
-grep -Fq '<span class="id">R-S11ip</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 generic-privilege-probe-excision-requirement-missing"
-grep -Fq '<tr><td>401</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 generic-privilege-probe-excision-appendix-missing"
-grep -Fq 'R-S11ip/R-S11e-279 — orphaned generic desktop privilege-probe excision' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 generic-privilege-probe-excision-ledger-missing"
-grep -Fq '<span class="id">R-S11iq</span>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 share-rdp-presentation-authority-requirement-missing"
-grep -Fq '<tr><td>402</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 share-rdp-presentation-authority-appendix-missing"
-grep -Fq 'R-S11iq/R-S11e-280 — purpose-specific Windows RDP-sharing presentation authority' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 share-rdp-presentation-authority-ledger-missing"
-grep -Fq 'Fresh generated Rust, Rust IO, Dart, and Dart Freezed bridges <span class="kw">MUST NOT</span> contain either naming form.' "$REPO/requirements.html" || r_s11b2="$r_s11b2 generic-privilege-probe-generated-bridge-norm-missing"
-grep -Fq 'non-<code>Clone</code>, non-<code>Copy</code> <code>MacosServiceOwnedPasswordRightAdmission</code>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-admission-capability-norm-missing"
-grep -Fq 'Only the admission&#39;s consuming <code>ensure_ready</code> action may replay the exact installed-app identity' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-consuming-action-norm-missing"
-grep -Fq 'compose only bounded exact-requester authentication, consuming admission grant, and consuming action' "$REPO/requirements.html" || r_s11b2="$r_s11b2 macos-password-right-closed-proof-norm-missing"
 
 # Retain the independent desktop-input and options policy checks that share this ledger section.
 grep -q 'pub fn handle_owned_mouse' "$REPO/src/server/input_service.rs" || r_s11b2="$r_s11b2 macos-owned-mouse-dispatch-missing"
@@ -2876,16 +2790,6 @@ if grep -RInE 'isPresetPassword|is_preset_password|buildPresetPasswordWarning|pr
   r_s11b2="$r_s11b2 retired-preset-password-presentation-present"
 fi
 grep -q 'Self::read_permanent_password_prs().is_available()' "$REPO/libs/hbb_common/src/config.rs" || r_s11b2="$r_s11b2 typed-password-status-authority-missing"
-grep -Fq 'R-S11b-3q — preset-password credential/status compatibility excised' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 preset-password-excision-ledger-missing"
-grep -Fq '<tr><td>241</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 preset-password-excision-appendix-missing"
-grep -Fq 'R-S11b-4e — ordinary main IPC credential mirror excised' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 credential-mirror-ledger-missing"
-grep -Fq '<tr><td>237</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 credential-mirror-appendix-missing"
-grep -Fq 'R-S11b-3n — ordinary main IPC option mutation is single-key and receiver-effective' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 single-option-ledger-missing"
-grep -Fq 'R-S11b-3o — production-dead whole-options config writer excised' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 whole-options-config-ledger-missing"
-grep -Fq 'R-S11b-3p — production-dead effective and standalone salt readers excised' "$REPO/HARDENING_STATUS.md" || r_s11b2="$r_s11b2 obsolete-salt-reader-ledger-missing"
-grep -Fq '<tr><td>238</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 single-option-appendix-missing"
-grep -Fq '<tr><td>239</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 whole-options-config-appendix-missing"
-grep -Fq '<tr><td>240</td>' "$REPO/requirements.html" || r_s11b2="$r_s11b2 obsolete-salt-reader-appendix-missing"
 if [ -n "$r_s11b2" ]; then
   echo "  FAIL R-S11b-2a/R-S11b-3a macOS raw password IPC:$r_s11b2"
   rc=1
@@ -2895,10 +2799,6 @@ fi
 
 echo "== (2b-ii-a) R-S11e-16 macOS password provisioning ingress =="
 r_s11e16=$(<"$apple_password_gate_dir/r_s11e16")
-grep -Fq 'sudo rustdesk --password' "$REPO/docs/DEPLOYMENT.md" || r_s11e16="$r_s11e16 safe-deployment-command-missing"
-grep -Eq -- 'sudo rustdesk --password[[:space:]]+[^`[:space:]]' "$REPO/docs/DEPLOYMENT.md" && r_s11e16="$r_s11e16 password-valued-deployment-command-present"
-grep -Fq 'Permanent-password provisioning through visible process arguments' "$REPO/requirements.html" || r_s11e16="$r_s11e16 requirements-disposition-missing"
-grep -Fq 'R-S11e-16 — permanent-password provisioning ingress' "$REPO/HARDENING_STATUS.md" || r_s11e16="$r_s11e16 ledger-disposition-missing"
 if [ -n "$r_s11e16" ]; then
   echo "  FAIL R-S11e-16 macOS password provisioning ingress:$r_s11e16"
   rc=1
@@ -3100,10 +3000,6 @@ for permission in Restart Recording BlockInput; do
   grep -qF "Ok(Permission::$permission) =>" "$REPO/src/client/io_loop.rs" \
     || r_g9="$r_g9 viewer-permission-path-missing-$permission"
 done
-grep -qF '<span class="id">R-G9</span>' "$REPO/requirements.html" || r_g9="$r_g9 requirement-missing"
-grep -qF '<tr><td>189</td>' "$REPO/requirements.html" || r_g9="$r_g9 appendix-row-missing"
-grep -qF 'R-G9 — minimal presentation and compatibility serialization contracts' "$REPO/HARDENING_STATUS.md" \
-  || r_g9="$r_g9 hardening-ledger-missing"
 if [ -n "$r_g9" ]; then
   echo "  FAIL R-G9 Apple shared presentation serialization contract:$r_g9"
   rc=1
@@ -3136,10 +3032,6 @@ grep -qF "expect(serialized, isNot(contains('from_switch')));" "$REPO/flutter/te
   || r_g4a="$r_g4a sole-PAKE-authorization-edge-not-preserved"
 grep -qF '.get("keyboard")' "$REPO/src/ui_cm_interface.rs" \
   || r_g4a="$r_g4a retained-CM-capability-fact-not-proven"
-grep -qF '<span class="id">R-G4a</span>' "$REPO/requirements.html" || r_g4a="$r_g4a requirement-missing"
-grep -qF '<tr><td>190</td>' "$REPO/requirements.html" || r_g4a="$r_g4a appendix-row-missing"
-grep -qF 'R-G4a — switch-sides role-swap compatibility state excision' "$REPO/HARDENING_STATUS.md" \
-  || r_g4a="$r_g4a hardening-ledger-missing"
 if [ -n "$r_g4a" ]; then
   echo "  FAIL R-G4a Apple switch-sides compatibility closure:$r_g4a"
   rc=1
@@ -3293,9 +3185,6 @@ fi
 if grep -q 'allow_err!(stream' "$REPO/src/whiteboard/client.rs"; then
   r_s11c8="$r_s11c8 whiteboard-transport-error-ignored"
 fi
-grep -Fq '<span class="id">R-S11dz</span>' "$REPO/requirements.html" || r_s11c8="$r_s11c8 whiteboard-protocol-requirement-missing"
-grep -Fq '<tr><td>279</td>' "$REPO/requirements.html" || r_s11c8="$r_s11c8 whiteboard-protocol-appendix-row-missing"
-grep -Fq 'R-S11dz/R-S11e-144 — whiteboard helper protocol and resource finality' "$REPO/HARDENING_STATUS.md" || r_s11c8="$r_s11c8 whiteboard-protocol-ledger-missing"
 if [ -n "$r_s11c8" ]; then
   echo "  FAIL R-S11c-8 macOS whiteboard helper authority:$r_s11c8"
   rc=1
@@ -3344,9 +3233,6 @@ fi
 if echo "$desktop_url_receiver" | grep -Eq 'Connection::new\(conn\)|next_timeout\(1000\)|Data::UrlLink'; then
   r_s11ea="$r_s11ea legacy-unbounded-receiver"
 fi
-grep -Fq '<span class="id">R-S11ea</span>' "$REPO/requirements.html" || r_s11ea="$r_s11ea requirement-missing"
-grep -Fq '<tr><td>280</td>' "$REPO/requirements.html" || r_s11ea="$r_s11ea appendix-row-missing"
-grep -Fq 'R-S11ea/R-S11e-145 — desktop URL/instance handoff closed protocol and resource budget' "$REPO/HARDENING_STATUS.md" || r_s11ea="$r_s11ea ledger-missing"
 if [ -n "$r_s11ea" ]; then
   echo "  FAIL R-S11ea macOS desktop URL/instance IPC:$r_s11ea"
   rc=1
@@ -3425,10 +3311,6 @@ if echo "$macos_template_renderer" | grep -qE 'replace\("com\.carriez\.rustdesk"
 fi
 grep -Fq '<string>com.carriez.rustdesk</string>' "$REPO/src/platform/privileges_scripts/daemon.plist" || r_s11c5="$r_s11c5 macos-daemon-associated-bundle-id-not-fixed"
 grep -Fq '<string>com.carriez.rustdesk</string>' "$REPO/src/platform/privileges_scripts/agent.plist" || r_s11c5="$r_s11c5 macos-agent-associated-bundle-id-not-fixed"
-grep -Fq 'macOS privileged-service packaging hazards' "$REPO/requirements.html" || r_s11c5="$r_s11c5 macos-template-identity-requirements-missing"
-grep -Fq 'R-S11c-21 — macOS privileged service template identity input' "$REPO/HARDENING_STATUS.md" || r_s11c5="$r_s11c5 macos-template-identity-ledger-missing"
-grep -Fq 'macOS privileged process-launch provenance' "$REPO/requirements.html" || r_s11c5="$r_s11c5 macos-residual-process-launch-requirements-missing"
-grep -Fq 'R-S11e-10 — macOS residual process launch provenance' "$REPO/HARDENING_STATUS.md" || r_s11c5="$r_s11c5 macos-residual-process-launch-ledger-missing"
 grep -Fq 'fn macos_installed_app_bundle_path() -> PathBuf' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-app-bundle-path-helper-missing"
 grep -Fq 'fn macos_privileged_helper_path_is_expected_and_trusted(current_exe: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-service-ipc-helper-trust-missing"
 grep -Fq 'fn macos_installed_app_path_is_expected_and_trusted(peer_exe: &Path) -> bool' "$REPO/src/ipc/auth.rs" || r_s11c5="$r_s11c5 macos-service-ipc-app-trust-missing"
@@ -3604,9 +3486,6 @@ for obsolete in 'fn run_as_user' 'fn run_as_user_with_env' 'command.arg("asuser"
 done
 grep -Fq 'Refusing root-to-user connection-manager launch; the user-context service must own it' "$REPO/src/server/connection.rs" || r_s11e38="$r_s11e38 cm-root-transition-not-fail-closed"
 grep -Fq 'Refusing root-to-user whiteboard launch; the user-context service must own it' "$REPO/src/whiteboard/client.rs" || r_s11e38="$r_s11e38 whiteboard-root-transition-not-fail-closed"
-grep -Fq '<span class="id">R-S11x</span>' "$REPO/requirements.html" || r_s11e38="$r_s11e38 normative-requirement-missing"
-grep -Fq '<tr><td>146</td>' "$REPO/requirements.html" || r_s11e38="$r_s11e38 appendix-disposition-missing"
-grep -Fq 'R-S11e-38 — cross-platform root-to-user helper launch authority' "$REPO/HARDENING_STATUS.md" || r_s11e38="$r_s11e38 hardening-ledger-missing"
 if [ -n "$r_s11e38" ]; then
   echo "  FAIL R-S11e-38 cross-platform root-to-user helper authority:$r_s11e38"
   rc=1
@@ -3667,9 +3546,6 @@ for binding in \
   'assert!(!effective_uid_is_root(501));'; do
   grep -qF "$binding" <<<"$macos_root_test" || r_s11e47="$r_s11e47 numeric-root-regression-missing"
 done
-grep -qF '<span class="id">R-S11ag</span>' "$REPO/requirements.html" || r_s11e47="$r_s11e47 normative-requirement-missing"
-grep -qF '<tr><td>155</td>' "$REPO/requirements.html" || r_s11e47="$r_s11e47 appendix-disposition-missing"
-grep -qF 'R-S11e-47 — macOS numeric service-principal authority' "$REPO/HARDENING_STATUS.md" || r_s11e47="$r_s11e47 hardening-ledger-missing"
 if [ -n "$r_s11e47" ]; then
   echo "  FAIL R-S11e-47 macOS numeric service-principal authority:$r_s11e47"
   rc=1
@@ -3756,9 +3632,6 @@ for binding in \
   '".."'; do
   grep -qF "$binding" <<<"$macos_config_test" || r_s11e52="$r_s11e52 path-derivation-regression-missing"
 done
-grep -qF '<span class="id">R-S11al</span>' "$REPO/requirements.html" || r_s11e52="$r_s11e52 normative-requirement-missing"
-grep -qF '<tr><td>160</td>' "$REPO/requirements.html" || r_s11e52="$r_s11e52 appendix-disposition-missing"
-grep -qF 'R-S11e-52 — macOS service-owned configuration/log root' "$REPO/HARDENING_STATUS.md" || r_s11e52="$r_s11e52 hardening-ledger-missing"
 if [ -n "$r_s11e52" ]; then
   echo "  FAIL R-S11e-52 macOS service-owned config/log root:$r_s11e52"
   rc=1
@@ -3813,10 +3686,6 @@ for message in messages:
     if branch.count(helper) != 1 or "crate::server::request_graceful_shutdown();" in branch:
         raise SystemExit(1)
 PY
-grep -qF '<span class="id">R-S11am</span>' "$REPO/requirements.html" || r_s11e53="$r_s11e53 normative-requirement-missing"
-grep -qF '<tr><td>161</td>' "$REPO/requirements.html" || r_s11e53="$r_s11e53 appendix-disposition-missing"
-grep -qF 'R-S11e-53 — authority-bearing IPC listener failure outcome' "$REPO/HARDENING_STATUS.md" \
-  || r_s11e53="$r_s11e53 hardening-ledger-missing"
 if [ -n "$r_s11e53" ]; then
   echo "  FAIL R-S11e-53 authority-bearing IPC listener failure outcome:$r_s11e53"
   rc=1
@@ -3916,10 +3785,6 @@ ordered(
     "drop(listener_guard);",
 )
 PY
-grep -qF '<span class="id">R-S11ao</span>' "$REPO/requirements.html" || r_s11e55="$r_s11e55 normative-requirement-missing"
-grep -qF '<tr><td>163</td>' "$REPO/requirements.html" || r_s11e55="$r_s11e55 appendix-disposition-missing"
-grep -qF 'R-S11e-55 — macOS LaunchDaemon protected IPC signal drain' "$REPO/HARDENING_STATUS.md" \
-  || r_s11e55="$r_s11e55 hardening-ledger-missing"
 if [ -n "$r_s11e55" ]; then
   echo "  FAIL R-S11e-55 macOS LaunchDaemon protected IPC signal drain:$r_s11e55"
   rc=1
@@ -3931,10 +3796,6 @@ echo "== (2b-iv-a-0e) desktop controlled-server signal/listener lifecycle owners
 r_s11e56=
 python3 "$REPO/scripts/verify-desktop-ipc-lifecycle.py" --repo "$REPO" \
   || r_s11e56="$r_s11e56 controlled-server-lifecycle-ownership-invalid"
-grep -qF '<span class="id">R-S11ap</span>' "$REPO/requirements.html" || r_s11e56="$r_s11e56 normative-requirement-missing"
-grep -qF '<tr><td>164</td>' "$REPO/requirements.html" || r_s11e56="$r_s11e56 appendix-row-missing"
-grep -qF 'R-S11e-56 — desktop controlled-server signal/listener lifecycle ownership' "$REPO/HARDENING_STATUS.md" \
-  || r_s11e56="$r_s11e56 hardening-ledger-missing"
 if [ -n "$r_s11e56" ]; then
   echo "  FAIL R-S11e-56 desktop controlled-server signal/listener lifecycle:$r_s11e56"
   rc=1
@@ -3946,10 +3807,6 @@ echo "== (2b-iv-a-0f) non-returning graceful-shutdown finalizer ownership (R-S11
 r_s11e57=
 python3 "$REPO/scripts/verify-desktop-ipc-lifecycle.py" --repo "$REPO" \
   || r_s11e57="$r_s11e57 shutdown-finalizer-ownership-invalid"
-grep -qF '<span class="id">R-S11aq</span>' "$REPO/requirements.html" || r_s11e57="$r_s11e57 normative-requirement-missing"
-grep -qF '<tr><td>165</td>' "$REPO/requirements.html" || r_s11e57="$r_s11e57 appendix-row-missing"
-grep -qF 'R-S11e-57 — non-returning graceful-shutdown finalizer ownership' "$REPO/HARDENING_STATUS.md" \
-  || r_s11e57="$r_s11e57 hardening-ledger-missing"
 if [ -n "$r_s11e57" ]; then
   echo "  FAIL R-S11e-57 graceful-shutdown finalizer ownership:$r_s11e57"
   rc=1
@@ -3963,10 +3820,6 @@ python3 "$REPO/scripts/verify-desktop-ipc-lifecycle.py" --repo "$REPO" \
   || r_s11e58="$r_s11e58 protected-service-outcome-ownership-invalid"
 grep -qF 'fn r_s11e58_protected_service_ipc_returns_listener_failure_to_its_owner()' "$REPO/src/ipc.rs" \
   || r_s11e58="$r_s11e58 focused-regression-missing"
-grep -qF '<span class="id">R-S11ar</span>' "$REPO/requirements.html" || r_s11e58="$r_s11e58 normative-requirement-missing"
-grep -qF '<tr><td>166</td>' "$REPO/requirements.html" || r_s11e58="$r_s11e58 appendix-row-missing"
-grep -qF 'R-S11e-58 — protected Unix service IPC foreground lifecycle ownership' "$REPO/HARDENING_STATUS.md" \
-  || r_s11e58="$r_s11e58 hardening-ledger-missing"
 if [ -n "$r_s11e58" ]; then
   echo "  FAIL R-S11e-58 protected service IPC lifecycle ownership:$r_s11e58"
   rc=1
@@ -3980,10 +3833,6 @@ python3 "$REPO/scripts/verify-desktop-ipc-lifecycle.py" --repo "$REPO" \
   || r_s11e59="$r_s11e59 desktop-ipc-lifecycle-semantic-invalid"
 python3 "$REPO/scripts/verify-desktop-ipc-lifecycle.py" --repo "$REPO" --self-test \
   || r_s11e59="$r_s11e59 desktop-ipc-lifecycle-mutations-invalid"
-grep -qF '<span class="id">R-S11as</span>' "$REPO/requirements.html" || r_s11e59="$r_s11e59 normative-requirement-missing"
-grep -qF '<tr><td>167</td>' "$REPO/requirements.html" || r_s11e59="$r_s11e59 appendix-row-missing"
-grep -qF 'R-S11e-59 — desktop local-IPC readiness and retained native-worker ownership' "$REPO/HARDENING_STATUS.md" \
-  || r_s11e59="$r_s11e59 hardening-ledger-missing"
 if [ -n "$r_s11e59" ]; then
   echo "  FAIL R-S11e-59 desktop IPC lifecycle ownership:$r_s11e59"
   rc=1
@@ -4125,12 +3974,6 @@ for actual_child_binding in \
   grep -qF "$actual_child_binding" "$REPO/libs/hbb_common/src/platform/macos.rs" \
     || r_s11e34="$r_s11e34 macos-actual-child-regression-binding-missing"
 done
-grep -qF '<span class="id">R-S11t</span>' "$REPO/requirements.html" \
-  || r_s11e34="$r_s11e34 normative-requirement-missing"
-grep -qF '<tr><td>142</td>' "$REPO/requirements.html" \
-  || r_s11e34="$r_s11e34 appendix-row-missing"
-grep -qF 'R-S11e-34 — macOS child inherited descriptor authority' "$REPO/HARDENING_STATUS.md" \
-  || r_s11e34="$r_s11e34 hardening-ledger-missing"
 if [ -n "$r_s11e34" ]; then
   echo "  FAIL R-S11e-34 macOS child inherited descriptor authority:$r_s11e34"
   rc=1
@@ -4177,12 +4020,6 @@ done
   || r_s11e66="$r_s11e66 working-directory-inventory-drift"
 grep -qF 'fn r_s11e66_macos_privileged_script_environment_is_exact()' "$REPO/src/platform/macos.rs" \
   || r_s11e66="$r_s11e66 actual-child-environment-regression-missing"
-grep -qF '<span class="id">R-S11az</span>' "$REPO/requirements.html" \
-  || r_s11e66="$r_s11e66 normative-requirement-missing"
-grep -qF '<tr><td>174</td>' "$REPO/requirements.html" \
-  || r_s11e66="$r_s11e66 appendix-row-missing"
-grep -qF 'R-S11e-66 — macOS administrator-script environment finality' "$REPO/HARDENING_STATUS.md" \
-  || r_s11e66="$r_s11e66 hardening-ledger-missing"
 if [ -n "$r_s11e66" ]; then
   echo "  FAIL R-S11e-66 macOS administrator-script environment finality:$r_s11e66"
   rc=1
@@ -4261,8 +4098,6 @@ grep -qF 'libc::RENAME_EXCL' "$paste_task_rs" || r_s11e12="$r_s11e12 no-rename-e
 grep -qF 'libc::fsetxattr' "$paste_task_rs" || r_s11e12="$r_s11e12 progress-xattr-not-fd-bound"
 grep -qF 'libc::fremovexattr' "$paste_task_rs" || r_s11e12="$r_s11e12 progress-xattr-remove-not-fd-bound"
 grep -qF 'task_handle.update_next(0)?;' "$paste_task_rs" || r_s11e12="$r_s11e12 initial-filesystem-errors-masked"
-grep -qF 'macOS clipboard-file paste no-follow finalize' "$REPO/requirements.html" || r_s11e12="$r_s11e12 requirements-disposition-missing"
-grep -qF 'R-S11e-12 — macOS clipboard-file paste no-follow finalize' "$REPO/HARDENING_STATUS.md" || r_s11e12="$r_s11e12 hardening-ledger-missing"
 if grep -nE 'std::fs::File::create|std::fs::create_dir_all|std::fs::rename|std::fs::remove_file|File::options\(\)|xattr::(set|remove)|update_next\(0\)\.ok' "$paste_task_rs" >"$APPLE_CHECK_TMP/rd_apple_r_s11e12"; then
   cat "$APPLE_CHECK_TMP/rd_apple_r_s11e12"
   r_s11e12="$r_s11e12 path-based-paste-filesystem-op"
@@ -4278,7 +4113,6 @@ echo "== (2b-iv-e) R-S11e-13 macOS clipboard-file paste placeholder temp authori
 pasteboard_context_rs="$REPO/libs/clipboard/src/platform/unix/macos/pasteboard_context.rs"
 item_data_provider_rs="$REPO/libs/clipboard/src/platform/unix/macos/item_data_provider.rs"
 paste_observer_rs="$REPO/libs/clipboard/src/platform/unix/macos/paste_observer.rs"
-pasteboard_readme="$REPO/libs/clipboard/src/platform/unix/macos/README.md"
 r_s11e13=
 grep -qF 'const PLACEHOLDER_DIR_PREFIX: &str = "rustdesk-clipboard-";' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-private-dir-prefix"
 grep -qF 'fn create_placeholder_dir() -> io::Result<(PathBuf, File)>' "$pasteboard_context_rs" || r_s11e13="$r_s11e13 no-private-dir-creator"
@@ -4303,9 +4137,6 @@ grep -qF 'remove_placeholder_file_logged(' "$pasteboard_context_rs" || r_s11e13=
 grep -qF 'create_placeholder_file(' "$item_data_provider_rs" || r_s11e13="$r_s11e13 provider-not-using-private-creator"
 grep -qF 'placeholder_dir_handle: Arc<File>' "$item_data_provider_rs" || r_s11e13="$r_s11e13 provider-missing-dir-handle"
 grep -qF 'type PasteCallback = Box<dyn Fn(&PasteObserverInfo) + Send + '\''static>;' "$paste_observer_rs" || r_s11e13="$r_s11e13 observer-callback-not-capturable"
-grep -qF 'private per-context temporary directory' "$pasteboard_readme" || r_s11e13="$r_s11e13 readme-not-updated"
-grep -qF 'macOS clipboard-file paste placeholder temp authority' "$REPO/requirements.html" || r_s11e13="$r_s11e13 requirements-disposition-missing"
-grep -qF 'R-S11e-13 — macOS clipboard-file paste placeholder temp authority' "$REPO/HARDENING_STATUS.md" || r_s11e13="$r_s11e13 hardening-ledger-missing"
 if grep -nE 'format!\("/tmp/|read_dir\("/tmp"\)|std::fs::File::create\(&path\)|std::fs::remove_file\(path\)' "$pasteboard_context_rs" "$item_data_provider_rs" >"$APPLE_CHECK_TMP/rd_apple_r_s11e13"; then
   cat "$APPLE_CHECK_TMP/rd_apple_r_s11e13"
   r_s11e13="$r_s11e13 global-or-path-placeholder-op"

@@ -250,7 +250,7 @@ def main():
                                      capture_output=True, text=True, timeout=15)
             missing_receipt = ("X11_CAPTURE_MISSING_NATIVE=pass cause=xcb-discard connection=healthy "
                                "callers=direct,public repeats=16 cases=32 requests=4 replies=3 missing=1 "
-                               "protocol_errors=0 comparison_on_rejection=none same_capture=recovered "
+                               "completion=get-input-focus protocol_errors=0 comparison_on_rejection=none same_capture=recovered "
                                "pixels=red,blue allocations=retired segments=retired")
             require(missing.returncode == 0 and not missing.stderr and len(missing.stdout) <= 4096
                     and missing.stdout.splitlines() == [missing_receipt,

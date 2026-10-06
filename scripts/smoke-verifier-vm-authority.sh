@@ -3962,7 +3962,7 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
-        'X11_CAPTURE_MISSING_NATIVE=pass cause=xcb-discard connection=healthy callers=direct,public repeats=16 cases=32 requests=4 replies=3 missing=1 protocol_errors=0 comparison_on_rejection=none same_capture=recovered pixels=red,blue allocations=retired segments=retired' \
+        'X11_CAPTURE_MISSING_NATIVE=pass cause=xcb-discard connection=healthy callers=direct,public repeats=16 cases=32 requests=4 replies=3 missing=1 completion=get-input-focus protocol_errors=0 comparison_on_rejection=none same_capture=recovered pixels=red,blue allocations=retired segments=retired' \
         'production X11 missing-reply failure and same-capture recovery'
     require_exact_fixed_receipt \
         'X11_SETUP_NATIVE=pass received_header=injected rejected_shapes=7 repeats=16 old_cursor=admitted monitor_queries=0 screens=server-real network=none' \

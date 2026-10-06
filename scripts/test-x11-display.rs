@@ -150,6 +150,12 @@ struct InternAtomCookie {
     sequence: u32,
 }
 
+#[cfg(corrected)]
+#[repr(C)]
+struct GetInputFocusCookie {
+    sequence: u32,
+}
+
 #[repr(C)]
 struct InternAtomReply {
     response_type: u8,
@@ -306,6 +312,11 @@ extern "C" {
     #[cfg(corrected)]
     fn xcb_discard_reply(c: *mut xcb_connection_t, sequence: u32);
     #[cfg(corrected)]
+    fn xcb_get_input_focus(c: *mut xcb_connection_t) -> GetInputFocusCookie;
+    #[cfg(corrected)]
+    fn xcb_get_input_focus_reply(c: *mut xcb_connection_t, cookie: GetInputFocusCookie,
+        error: *mut *mut xcb_generic_error_t) -> *mut libc::c_void;
+    #[cfg(corrected)]
     #[link_name = "__real_xcb_shm_attach_checked"]
     fn real_attach(c: *mut xcb_connection_t, shmseg: xcb_shm_seg_t,
         shmid: u32, read_only: u8) -> xcb_void_cookie_t;
@@ -388,6 +399,18 @@ unsafe extern "C" fn __wrap_xcb_shm_get_image_reply(c: *mut xcb_connection_t,
         // Exercise XCB's own missing-reply result, not a fabricated null return.
         // Request arguments and server-written shared pixels remain unchanged.
         xcb_discard_reply(c, cookie.sequence);
+        // Discard is nonblocking. A later real reply must advance XCB's completed
+        // sequence before waiting for the discarded cookie can return no reply.
+        let completion = xcb_get_input_focus(c);
+        assert!(completion.sequence != 0 && completion.sequence != cookie.sequence,
+                "discard completion request did not receive a distinct cookie");
+        let mut completion_error = std::ptr::null_mut();
+        let completion_reply = xcb_get_input_focus_reply(c, completion, &mut completion_error);
+        let completed = !completion_reply.is_null() && completion_error.is_null()
+            && xcb_connection_has_error(c) == 0;
+        libc::system_free(completion_reply);
+        libc::system_free(completion_error.cast());
+        assert!(completed, "real discard completion round trip failed");
         STATE.with(|state| state.borrow_mut().capture_reply_injections += 1);
     }
     let reply = real_capture_reply(c, cookie, error);
@@ -1117,7 +1140,7 @@ fn main() -> io::Result<()> {
                 }
             }
             if scenario == "capture-missing-reply" {
-                println!("X11_CAPTURE_MISSING_NATIVE=pass cause=xcb-discard connection=healthy callers=direct,public repeats=16 cases=32 requests=4 replies=3 missing=1 protocol_errors=0 comparison_on_rejection=none same_capture=recovered pixels=red,blue allocations=retired segments=retired");
+                println!("X11_CAPTURE_MISSING_NATIVE=pass cause=xcb-discard connection=healthy callers=direct,public repeats=16 cases=32 requests=4 replies=3 missing=1 completion=get-input-focus protocol_errors=0 comparison_on_rejection=none same_capture=recovered pixels=red,blue allocations=retired segments=retired");
             } else {
                 println!("X11_CAPTURE_REPLY_NATIVE=pass received_header=injected fields=size,depth,visual callers=direct,public repeats=16 cases=96 requests=4 replies=4 protocol_errors=0 comparison_on_rejection=none same_capture=recovered pixels=red,blue allocations=retired segments=retired");
             }

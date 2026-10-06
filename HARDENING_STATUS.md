@@ -12752,7 +12752,7 @@ text from selecting an authority field. No blanket assertion for every possible
 CM side effect is made.
 
 **Linux `_pa` authority and capture lifetime — native monitor capture passed;
-standalone helper and installed-service proof OPEN.**
+CM/server process-pair and installed-service proof OPEN.**
 The CM peer registry refuses ID overlap and retires only an exact token; audio
 identity resolves only a live published authenticated connection. `StartCapture`
 has no caller-supplied owner: the receiver derives PID/UID/start identity from
@@ -12796,11 +12796,27 @@ no `run.*` directory or overlay remained. Retained 67,378-byte serial:
 `.harness-state/verifier-vm/linux-pa-authority-tests-run.Rt59znDJmN.serial.log`
 (SHA-256 `eebdc3699db176cfebe464270a0ff254fcdf53d6d048cead6099479cef2660d3`).
 This proves a real native PA source and in-process capture authority, **not**
-the standalone `_pa` listener/process, a wrong-principal native refusal, an
-installed service/real device, subscriber churn, sustained latency, or full
-cross-platform release behavior. Those remain OPEN; next is a bounded
-cross-process `_pa` admission/revocation and cleanup transaction in the same
-isolated lane.
+the production CM/server process pair using its `_pa` listener, an installed service/real device,
+subscriber churn, sustained latency, or full cross-platform release behavior.
+
+Pushed `231f9e89db937f27be8f8f9b942a652210840304` (tree
+`be6827edd4f812c3f63a2ba7193f71193c70c2d3`) passed eleven focused tests
+in 335 seconds in the same zero-NIC/unprivileged guest lane. An actual
+`new_listener("_pa")` Unix endpoint accepted a typed request from its own
+authorized process, then received the same valid subscriber token from a
+separate live same-UID child process. The receiver derived the child's PID,
+UID, and start identity from the accepted kernel socket and refused it at the
+exact CM-launch-parent check before source discovery; the child observed
+terminal closure. The host listener audit found no harness addition, joined
+cleanup left no `run.*` directory or overlay, and the retained 67,749-byte
+serial is `.harness-state/verifier-vm/linux-pa-authority-tests-run.BKmLrlmd44.serial.log`
+(SHA-256 `43a25979b298cd6fe9576c2c8e4dfa3aef00b4b0f6a7f689e5c737075e4868e6`).
+This is native socket-origin refusal with a test-process listener and
+test-only subscriber fixture, **not** a production CM/server process pair
+or a proof of its main-IPC callback, wrong-UID principal, PID-reuse race,
+full process shutdown, real-device churn, or sustained resources. Those remain
+OPEN; the next native transaction must run the actual CM/server process pair
+and exercise both authorized capture and forbidden callers through that pair.
 
 **Process-wide connection IDs — source corrected, native lifecycle OPEN.**
 The former per-`Server` counters could allocate the same ID in overlapping

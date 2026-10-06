@@ -16,8 +16,10 @@ EXPECTED_SUITES = {
     "desktop_texture_lifecycle_test.dart",
     "display_selection_queue_test.dart",
     "file_command_session_ownership_test.dart",
+    "file_dialog_event_loop_test.dart",
     "global_event_dispatcher_test.dart",
     "latest_frame_queue_test.dart",
+    "mobile_file_session_lifecycle_test.dart",
     "mobile_session_start_queue_test.dart",
     "owned_image_paint_test.dart",
     "permanent_password_dialog_lifecycle_test.dart",
@@ -31,7 +33,7 @@ EXPECTED_SUITES = {
     "session_stream_finality_test.dart",
     "start_ellipsis_text_test.dart",
 }
-EXPECTED_TESTS = 175
+EXPECTED_TESTS = 196
 FRAME_QUEUE_TESTS = {
     "retains one running frame and only the latest successor per display",
     "different displays drain independently",

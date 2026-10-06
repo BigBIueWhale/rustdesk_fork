@@ -421,4 +421,96 @@ void main() {
         isTrue);
     expect((await later).path, '/timeout');
   });
+
+  for (final operation in <String>[
+    'directory',
+    'empty-directory',
+    'recursive-response',
+    'recursive-error',
+  ]) {
+    test('timed-out $operation retains capacity until dispatch settles',
+        () async {
+      final session = const Uuid().v4obj();
+      final dispatchEntered = Completer<void>();
+      final releaseDispatch = Completer<void>();
+      var dispatches = 0;
+      Future<void> dispatch() async {
+        dispatches++;
+        if (!dispatchEntered.isCompleted) dispatchEntered.complete();
+        await releaseDispatch.future;
+      }
+
+      final fetcher = FileFetcher(
+        () => session,
+        maxPending: 1,
+        requestTimeout: const Duration(milliseconds: 100),
+        requests: requests(
+          readDirectory: (_, __, ___) => dispatch(),
+          readEmptyDirectories: (_, __, ___) => dispatch(),
+          readDirectoryTree: (_, __, ___, ____, _____) => dispatch(),
+        ),
+      );
+      Future<dynamic> request() {
+        if (operation == 'directory') {
+          return fetcher.fetchDirectory('/draining', false, false,
+              expectedSessionId: session);
+        }
+        if (operation == 'empty-directory') {
+          return fetcher.readEmptyDirs('/draining', false, false,
+              expectedSessionId: session);
+        }
+        return fetcher.fetchDirectoryRecursiveToRemove(
+            7, '/draining', false, false,
+            expectedSessionId: session);
+      }
+
+      bool reply() {
+        if (operation == 'empty-directory') {
+          return fetcher.tryCompleteEmptyDirsTask(
+              session,
+              jsonEncode({'path': '/draining', 'empty_dirs': <Object>[]}),
+              'false');
+        }
+        if (operation == 'recursive-error') {
+          return fetcher.tryCompleteRecursiveTaskWithError(
+              session, {'id': '7', 'err': 'late recursive failure'});
+        }
+        return fetcher.tryCompleteTask(
+            session,
+            directoryResponse('/draining',
+                id: operation == 'directory' ? 0 : 7),
+            'false');
+      }
+
+      try {
+        final timedOut = request();
+        await dispatchEntered.future;
+        await expectLater(timedOut, throwsA(isA<TimeoutException>()));
+        expect(reply(), isFalse);
+        expect(reply(), isFalse);
+
+        await expectLater(request(), throwsA(isA<StateError>()));
+        await expectLater(
+            fetcher.fetchDirectory('/other-operation', false, false,
+                expectedSessionId: session),
+            throwsA(isA<StateError>().having((error) => error.message,
+                'message', 'File request capacity exhausted')));
+        expect(dispatches, 1);
+
+        releaseDispatch.complete();
+        await Future<void>.delayed(Duration.zero);
+        final replacement = request();
+        final replacementResult = operation == 'recursive-error'
+            ? expectLater(replacement, throwsA(isA<StateError>()))
+            : expectLater(replacement, completes);
+        expect(reply(), isTrue);
+        await replacementResult;
+        expect(dispatches, 2);
+      } finally {
+        if (!releaseDispatch.isCompleted) releaseDispatch.complete();
+        fetcher.cancelPending();
+        await Future<void>.delayed(Duration.zero);
+      }
+    });
+  }
 }

@@ -5196,7 +5196,7 @@ run_flutter_model_tests() {
     local source_archive_sha input_mount_options cargo_receipt pub_receipt post_pub_receipt
     local tools_freshness_line source_authority source_writable=true
     local memory=8g memory_bytes=8589934592 result_prefix=FLUTTER_MODEL_TEST_JSON
-    local expected_result='suites=21 tests=175' queue_sha256 tests_sha256
+    local expected_result='suites=23 tests=196' queue_sha256 tests_sha256
     local -a toolchain_mounts=()
     local source_mount="type=bind,source=$source_root,target=/source"
     if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
@@ -5562,6 +5562,8 @@ run_flutter_model_tests() {
                         test/server_model_test.dart
                         test/display_selection_queue_test.dart
                         test/file_command_session_ownership_test.dart
+                        test/file_dialog_event_loop_test.dart
+                        test/mobile_file_session_lifecycle_test.dart
                         test/session_event_queue_test.dart
                         test/latest_frame_queue_test.dart
                         test/session_stream_finality_test.dart
@@ -5579,7 +5581,7 @@ run_flutter_model_tests() {
                         test/android_permission_request_coordinator_test.dart
                         test/remote_key_routing_test.dart
                     )
-                    [ "${#tests[@]}" -eq 21 ]
+                    [ "${#tests[@]}" -eq 23 ]
                     test_budget=900s
                 fi
                 for test_path in "${tests[@]}"; do
@@ -5680,7 +5682,7 @@ run_flutter_model_tests() {
             "$queue_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     else
-        printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=21 tests=175 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
+        printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=23 tests=196 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" \

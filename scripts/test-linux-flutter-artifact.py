@@ -156,7 +156,11 @@ class LinuxFlutterArtifactTests(unittest.TestCase):
 
     def test_wrong_manifest_digest(self):
         root, _ = self.published()
-        self.rejected(lambda: self.materialize(root, "0" * 64))
+        descriptors = set(os.listdir("/proc/self/fd"))
+        with self.assertRaisesRegex(app.publication.PublicationError,
+                                    "^Linux app manifest digest differs$"):
+            self.materialize(root, "0" * 64)
+        self.assertEqual(set(os.listdir("/proc/self/fd")), descriptors)
         self.assertEqual(list(self.execution.iterdir()), [])
 
     def test_closed_context_and_input_roles(self):
@@ -266,8 +270,21 @@ class LinuxFlutterArtifactTests(unittest.TestCase):
         path.chmod(0o600)
         path.write_bytes(b"not an ELF image")
         path.chmod(0o400)
-        self.rejected(self.prepare)
+        descriptors = set(os.listdir("/proc/self/fd"))
+        with self.assertRaisesRegex(app.publication.PublicationError,
+                                    "^Linux app executable is not an x86_64 ELF image$"):
+            self.prepare()
+        self.assertEqual(set(os.listdir("/proc/self/fd")), descriptors)
         self.assertFalse((self.parent / app.DESTINATION).exists())
+        pending, = self.parent.iterdir()
+        self.assertIsNotNone(app.PENDING_RE.fullmatch(pending.name))
+        expected = identity(pending)
+        with self.assertRaisesRegex(app.publication.PublicationError,
+                                    "^an earlier Linux app artifact remains; reuse or explicitly reconcile it$"):
+            self.prepare()
+        self.assertEqual(set(os.listdir("/proc/self/fd")), descriptors)
+        self.assertEqual(list(self.parent.iterdir()), [pending])
+        self.assertEqual(identity(pending), expected)
 
     def test_duplicate_manifest_key(self):
         root, _ = self.published()
@@ -326,13 +343,56 @@ class LinuxFlutterArtifactTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o400)
         self.rejected(lambda: self.admit(root, digest))
 
-    def test_second_materialization_preserves_first(self):
+    def test_materialization_success_failure_and_retry_descriptor_finality(self):
         root, digest = self.published()
+        descriptors = set(os.listdir("/proc/self/fd"))
         target = self.materialize(root, digest)
+        self.assertEqual(set(os.listdir("/proc/self/fd")), descriptors)
         expected = identity(target)
-        self.rejected(lambda: self.materialize(root, digest))
-        self.assertEqual(identity(target), expected)
-        self.assertEqual((target / "bundle/rustdesk").read_bytes(), ELF)
+        for _ in range(3):
+            with self.assertRaisesRegex(app.publication.PublicationError,
+                                        "^Linux app execution workspace is occupied$"):
+                self.materialize(root, digest)
+            self.assertEqual(set(os.listdir("/proc/self/fd")), descriptors)
+            self.assertEqual(list(self.execution.iterdir()), [target])
+            self.assertEqual(identity(target), expected)
+            self.assertEqual((target / "bundle/rustdesk").read_bytes(), ELF)
+
+        failed_parent = directory(self.case / "failed-execution")
+        original = app.publication.write_all
+        writes = []
+
+        def interrupt_copy(descriptor, data, label):
+            self.assertEqual(label, "Linux app file")
+            original(descriptor, data[:1], label)
+            writes.append(descriptor)
+            raise OSError("injected materialization write failure")
+
+        app.publication.write_all = interrupt_copy
+        try:
+            with self.assertRaisesRegex(OSError, "^injected materialization write failure$"):
+                app.materialize(str(root), identity(root), str(failed_parent),
+                                identity(failed_parent), CONTEXT, digest)
+        finally:
+            app.publication.write_all = original
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(set(os.listdir("/proc/self/fd")), descriptors)
+        partial = failed_parent / app.MATERIALIZED
+        partial_identity = identity(partial)
+        copied, = [path for path in partial.rglob("*") if path.is_file()]
+        self.assertEqual(copied.read_bytes(), ELF[:1])
+        for _ in range(3):
+            with self.assertRaisesRegex(app.publication.PublicationError,
+                                        "^Linux app execution workspace is occupied$"):
+                app.materialize(str(root), identity(root), str(failed_parent),
+                                identity(failed_parent), CONTEXT, digest)
+            self.assertEqual(set(os.listdir("/proc/self/fd")), descriptors)
+            self.assertEqual(list(failed_parent.iterdir()), [partial])
+            self.assertEqual(identity(partial), partial_identity)
+            self.assertEqual([path for path in partial.rglob("*") if path.is_file()], [copied])
+            self.assertEqual(copied.read_bytes(), ELF[:1])
+        print("LINUX_FLUTTER_MATERIALIZATION_FINALITY=pass success=closed early-refusal=closed "
+              "partial-write=observed failure=closed retry=refused retained=unchanged", file=sys.stderr)
 
 
 class EngineSdkRoleTests(unittest.TestCase):

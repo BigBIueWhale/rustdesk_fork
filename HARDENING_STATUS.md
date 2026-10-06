@@ -1901,6 +1901,15 @@ The focused capsule profile executed 20 real filesystem/CLI/ELF cases plus root/
 16-caller/one-winner run test. Fixture ELF execution establishes capsule authority, not RustDesk
 behavior. Raw evidence is `evidence/linux-app-consumer-admission-c3f17011.serial.log`.
 
+Current capsule fixtures require the exact manifest-digest, non-ELF, and occupied-workspace
+errors rather than accepting any filesystem exception. They inspect the test process's
+descriptor inventory after success, refusal, and an injected write failure following one
+actual copied byte; repeated retries must preserve the completed or partial workspace
+identity and bytes without allocating another copy. Failed preparation likewise retains
+one pending artifact and refuses another producer. Execution of these expanded cases on
+the current source is OPEN; they do not establish RustDesk lifecycle, installed-service,
+presentation, sustained resource, or release behavior.
+
 The archived negative-baseline app is source `a4a6b2d0f381118e8d018c3e7fb0b3e1f02f8e0c`, tree
 `eb842fa98c8cfac05169c18b29d09f15091c858b`. Its separate producer completed compilation and
 joined inert publication in 1,150,890 host BOOTTIME ms. The 74-file app/readiness manifest SHA-256 is

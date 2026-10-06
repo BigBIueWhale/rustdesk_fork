@@ -197,8 +197,6 @@ invoke() {
             fail "shared run-admission lock was released before the run"
         fi
         exec {RUN_ADMISSION_FD}<&-
-        /usr/bin/flock --exclusive --nonblock "$probe_descriptor" \
-            || fail "shared run-admission lock remained after release"
         exec {probe_descriptor}<&-
         for descriptor in /proc/$$/fd/*; do
             if [ "$descriptor" -ef "$RUN_ROOT" ] \
@@ -241,6 +239,10 @@ run_admission_cases() {
     result=$(invoke "$root")
     run=${result% *}
     run_id=${result##* }
+    /usr/bin/flock --exclusive --nonblock "$root" /usr/bin/true
+    if [ "$entry" = online-fetch-vm ]; then
+        /usr/bin/flock --exclusive --nonblock "$scope" /usr/bin/true
+    fi
     /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
         --remove-private-root "$run" --expected-identity "$run_id"
 
@@ -303,7 +305,17 @@ run_admission_cases() {
     for pid in "${pids[@]}"; do
         if wait "$pid"; then winners=$((winners + 1)); fi
     done
-    [ "$winners" -eq 1 ]
+    [ "$winners" -eq 1 ] || {
+        printf 'VERIFIER_VM_RUN_ADMISSION_FAILURE entry=%s winners=%s expected=1\n' "$entry" "$winners" >&2
+        /usr/bin/head -c 512 -- "$scope"/concurrent.*.err >&2
+        exit 1
+    }
+    # Each caller proves its descriptors closed. Global availability is only
+    # observable after every contender has joined, not immediately after release.
+    /usr/bin/flock --exclusive --nonblock "$root" /usr/bin/true
+    if [ "$entry" = online-fetch-vm ]; then
+        /usr/bin/flock --exclusive --nonblock "$scope" /usr/bin/true
+    fi
     [ "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -name 'run.*' | /usr/bin/wc -l)" -eq 1 ]
     for index in $(/usr/bin/seq 1 16); do
         if [ -s "$scope/concurrent.$index.out" ]; then
@@ -353,7 +365,13 @@ winners=0
 for pid in "${pids[@]}"; do
     if wait "$pid"; then winners=$((winners + 1)); fi
 done
-[ "$winners" -eq 1 ]
+[ "$winners" -eq 1 ] || {
+    printf 'VERIFIER_VM_CROSS_ROOT_ADMISSION_FAILURE winners=%s expected=1\n' "$winners" >&2
+    /usr/bin/head -c 512 -- "$shared"/concurrent.*.err >&2
+    exit 1
+}
+/usr/bin/flock --exclusive --nonblock "$shared" /usr/bin/true
+/usr/bin/flock --exclusive --nonblock "$shared/online-fetch-runs" /usr/bin/true
 for index in $(/usr/bin/seq 1 16); do
     if [ -s "$shared/concurrent.$index.out" ]; then
         [ ! -s "$shared/concurrent.$index.err" ]

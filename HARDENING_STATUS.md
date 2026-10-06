@@ -1911,9 +1911,16 @@ failed an invalid fixture assumption about copy order, not the materializer. Its
 77,353-byte raw serial and failure receipt remain under
 `.harness-state/verifier-vm/linux-flutter-artifact-tests-run.Nuk9M5oJiE.*`; joined cleanup
 retired the disks and exact inactive run root. The corrected fixture targets the named
-`bundle/rustdesk` ELF and inventories all retained metadata/bytes. Its execution is OPEN;
-these cases do not establish RustDesk lifecycle, installed-service, presentation,
-sustained resource, or release behavior.
+`bundle/rustdesk` ELF and inventories all retained metadata/bytes. The next attempt at
+`d5b5f4ac` failed the shared-run cross-root winner-count check before capsule execution;
+its 68,550-byte raw serial/failure receipt are retained as `run.Y9OtJuxfuM` evidence.
+The exact contender failure was not preserved. Source review found a fixture race:
+immediate lock reacquisition after release can collide with another live contender.
+The fixture now proves each caller's descriptor closure and checks global lock release
+after all contenders join; it retains exact one-winner acceptance and bounded failure
+diagnostics. Production reservation functions and launcher topology are unchanged.
+Current runtime acceptance is OPEN; these cases do not establish RustDesk lifecycle,
+installed-service, presentation, sustained resource, or release behavior.
 
 The archived negative-baseline app is source `a4a6b2d0f381118e8d018c3e7fb0b3e1f02f8e0c`, tree
 `eb842fa98c8cfac05169c18b29d09f15091c858b`. Its separate producer completed compilation and

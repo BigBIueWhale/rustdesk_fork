@@ -5975,89 +5975,58 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   independent reproduction, or external review; all of those remain STOP-SHIP.
 
 - **R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority — SOURCE IMPLEMENTED;
-  CONFINED KERNEL AND NATIVE CONSTRUCTION/CAPTURE/RETIREMENT EVIDENCE;
-  BROADER AUTHORITY AND RELEASE EVIDENCE OPEN.** `libs/scrap/src/x11/capturer.rs` retains one
-  `SharedMemory` owner before local attachment and checked XCB construction/destruction. The owner-only,
-  read-only-mapping, checked-attach-before-deletion-pending and visible-cleanup contracts remain normative
-  under R-S11fw. The checked bindings and two serialized SysV behavior tests remain in the shared gate.
+  NATIVE COMPONENT OWNERSHIP/LIFETIME EVIDENCE; BROADER AUTHORITY AND RELEASE EVIDENCE OPEN.**
+  `libs/scrap/src/x11/capturer.rs` has one `SharedMemory` owner before read-only local attachment,
+  owner-only creation, checked XCB attach before deletion-pending, and visibly checked cleanup.
+  `libs/scrap/src/x11/server.rs` frees both MIT-SHM availability reply/error allocations before returning
+  and classifies actual connection failure. The former null-reply allocation leak was reproduced at
+  `ebaa453b` and corrected by `63944d30`: an oversized QueryVersion receives real BadLength, retires
+  the error allocation, and permits a later valid reply on the same connection. This deliberately
+  malformed-request test does not imply normal generated requests naturally fail that way. The
+  [XCB reply ownership implementation](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/libxcb-1.15/src/xcb_in.c)
+  and [X server request validation](https://gitlab.freedesktop.org/xorg/xserver/-/blob/xorg-server-21.1.13/Xext/shm.c)
+  ground that correction. Two serialized SysV tests and `verify-x11-capture-shm.py` remain supplements;
+  the latter's documentation coupling, mutation catalog and stale workspace reimplementation are deleted.
 
-  Commit `b068ffcf` records the implementation and a clean Rust 1.75 numeric-nonroot, networkless
-  container run proving effective-user ownership, exact 0600 mode, one local attachment, `SHM_DEST`,
-  and final disappearance. `verify-x11-capture-shm.py` remains a source supplement; its documentation coupling,
-  mutation catalog, and stale workspace reimplementation are deleted.
+  **Current native receipt.** Candidate `71243d9f653dc0f0ca9377eefdcc45cdf32631d0`, tree
+  `8e6d23cabcf6759448a048002c7220aa730a17ac`, passed
+  `/usr/bin/bash scripts/smoke-verifier-vm-authority.sh --x11-display-tests` in 61 VM seconds.
+  Numeric UID/GID 4000 executed the unchanged production capture/public-wrapper components against real
+  Xvfb in the zero-NIC VM's networkless unprivileged container. The complete transaction accepted
+  unchanged inputs, no added host endpoint, joined guest/container/VM cleanup, and absent run root/disks.
+  The executed corrected component SHA-256 is
+  `aaa4da3e94ddf252d8277fb18e8dd8f8fced2051c49ca945c308bfd1aabda116`.
+  Retained `.harness-state/verifier-vm/x11-display-tests-run.X4zuPCqjR8.serial.log` is 78,645 bytes,
+  SHA-256 `7e2d17f8c71b7b6c9e4e5a356592e3c931687c8a3d52f1d3e617a66e92e7b934`.
+  Its same-prefix `.outer.receipt` records assistant-observed terminal exit 0, not independent attestation.
 
-  Candidate `63944d30cd033e7d1932abd85583728eee8b50c5` (tree
-  `6ef679a0141607dc8527a912444c3440ee8c9adb`) passed `--x11-display-tests` in 57 VM seconds.
-  Numeric UID/GID 4000 executed the production capture/public-wrapper/comparator components against real
-  Xvfb in the zero-NIC VM's networkless unprivileged container. Production capture source was unchanged.
-  The existing 16 direct and 16 public constructor cases still observe actual MIT-SHM Attach error 10,
-  exact error allocation retirement and failed-segment absence after injecting an invalid request ID.
-  Another 16 cycles per API for each of two local construction faults passed (64 cases): an unaligned
-  selected `shmat` address makes the kernel reject local attachment; an invalid selected `IPC_RMID` ID
-  makes the kernel reject deletion-pending without removing the real segment. Both return actual EINVAL
-  with preserved errno. Failure must retire the exact segment; deletion-pending failure must additionally
-  complete its real checked XCB detach before returning. The same valid survivor remains mapped and
-  captures fresh blue, a later valid constructor captures blue and retires its own segment, and only the
-  survivor's explicit drop retires that last segment. Exact attach/detach/check/reply/comparison counts,
-  error strings and returned-allocation retirement are asserted; no pixel or successful reply is fabricated.
+  Both direct and public actual captures underwent 17 bounded kernel metadata checks: exact owner and
+  creator UID/GID 4000, exact native-child creator PID, exact buffer size, `IPC_PRIVATE`, mode `0600`
+  and deletion-pending `SHM_DEST`. Each had two attachments while Xvfb lived and exactly one after
+  the driver terminated and joined that owned server. Six failed later constructors left those earlier
+  segments unchanged. Dropping the direct capture retired only its segment; the public mapping retained
+  its metadata until its own drop. Same-segment `shmat` probes independently checked final absence.
+  The [pinned kernel field producer](https://github.com/torvalds/linux/blob/v6.1/ipc/shm.c) supplies the
+  [IPC-namespace-specific table](https://man7.org/linux/man-pages/man7/ipc_namespaces.7.html); observation
+  requires its exact header, one exact segment ID and at most 64 KiB, not fabricated/source-argument values.
 
-  The adjacent MIT-SHM availability probe in `libs/scrap/src/x11/server.rs` now computes its result,
-  frees both XCB reply/error allocations on every outcome, then returns; a failed connection is classified
-  from XCB's actual connection error rather than automatically reported as extension absence. The old
-  null-reply return leaked a real protocol-error allocation. The unchanged native regression first failed
-  at `ebaa453b` with `leaked_errors=1` and `UnsupportedExtension`, then passed after this correction.
-  Each of 16 direct and 16 public probe cycles receives a real QueryVersion reply, submits exactly one
-  oversized QueryVersion whose real Xvfb response is BadLength, requires immediate error retirement,
-  then gets a valid reply on that same connection while a live capture receives fresh pixels and retires.
-  All three request results and exact allocation/segment finality are checked. The existing real server-loss
-  scenario also requires the direct availability probe to return the observed connection failure with
-  no reply/error allocation. No response is fabricated. This tests selected malformed-request behavior,
-  not a claim that the normal generated QueryVersion request naturally emits BadLength.
-  [XCB's API](https://xcb.freedesktop.org/manual/group__XCB__Shm__API.html),
-  [its reply ownership implementation](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/libxcb-1.15/src/xcb_in.c),
-  and [X server request-size validation](https://gitlab.freedesktop.org/xorg/xserver/-/blob/xorg-server-21.1.13/Xext/shm.c)
-  ground the result/ownership and native fault design. The fixture's low-level request uses
-  [XCB's documented request/iovec ABI](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/libxcb-1.15/src/xcbext.h);
-  production retains its generated request API. Obsolete commented-out connection-cache code is deleted.
+  Existing native construction/recovery cases also passed: actual Attach error 10 after invalid-ID
+  injection; 64 real EINVAL cases from selected invalid `shmat`/`IPC_RMID` arguments; exact checked
+  detach, rejected-segment retirement, retained-survivor fresh pixels and valid retry. Joined server loss
+  made all six later constructors fail closed with actual codes `1,2,1,2,1,2`, retire their own segments
+  without frame publication, and preserve the two earlier mappings until independent drop. Both final
+  detach failures were visibly diagnosed. Enumeration/bounds, capture rejection, missing/layout reply,
+  24/16-bit capture and three production byte-comparator cases passed in that same named transaction.
+  Capture pixels come from real Xvfb; selected reply-header and request-argument faults are instrumented.
+  Superseded per-run receipts and intermediate
+  fixture failures remain in Git history through `71243d9f` and the audit, not additional acceptance claims.
 
-  Raw serial `x11-display-tests-run.6pnAyPDXoZ.serial.log` is 78,260 bytes, SHA-256
-  `b99b16c0d9c811a54b57f2ec16eee10660a751004c926d95665f957f9a8b7e90`, under
-  `.harness-state/verifier-vm`; the same-prefix `.outer.receipt` records assistant-observed terminal
-  exit 0, unchanged inputs, no added host endpoint, joined cleanup and the retired run root/overlay.
-  Existing rejection/recovery, missing/layout reply, actual server-loss and 24/16-bit capture cases also
-  passed. Baseline raw `x11-display-tests-run.rCudinILTU.serial.log` is 72,224 bytes, SHA-256
-  `a2f106eca9462fd55aa59454a760a1e590f483e8989e109303033385a3952464`, with a same-prefix
-  assistant-recorded `.outer.failure`; that transaction is failed, not positive acceptance. Its exact
-  retained private diagnostics root was reconciled only after terminal joined cleanup and evidence retention.
-
-  Candidate `1c7f9796caa1507d258c24192cfa0f0e2ad28142` (tree
-  `38a7c9614e7a3e157c7ef7c8907f06a3071a8a3d`) separately passed the same lane in 58 VM seconds.
-  The real server-loss handshake now also prepares three display handles per API while Xvfb is healthy,
-  then attempts construction only after the driver terminates and joins that exact server. All six failed
-  constructors check their actual XCB attach, return `ConnectionAborted` with the exact observed connection
-  status, and immediately retire their own real local segment without capture or comparison. Both earlier
-  captures retain independently live local segments until their respective explicit drops; both final XCB
-  detach failures are checked and visibly diagnosed. Total attach calls/checks are eight: two accepted
-  captures plus six failed constructors. Production capture/public-wrapper source is unchanged.
-  Actual constructor codes are `1,2,1,2,1,2`, not one presumed status shared across independent connections.
-  [XCB request checking](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/libxcb-1.15/src/xcb_in.c)
-  can return no protocol-error allocation on a failed connection; the constructor must still read connection
-  status. The differing codes are consistent with uncached extension lookup followed by XCB's
-  connection shutdown in [request/extension handling](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/libxcb-1.15/src/xcb_out.c)
-  (source-based inference, not a separate native cache trace).
-  The first fixture incorrectly assumed equality and failed at `64a6bb44`; its retained raw
-  `x11-display-tests-run.1oHEKhu22p.serial.log`/`.outer.failure` are failed evidence, not product-defect proof.
-  Accepted raw `x11-display-tests-run.k386P8uYor.serial.log` is 80,805 bytes, SHA-256
-  `fe17d13f89f41c86f4a09b2372cf4cf0f5c4976e024a4315c09be24943b4f66d`; same-prefix `.outer.receipt`
-  records assistant-observed exit 0, no added host endpoint, unchanged inputs, joined cleanup and absent run
-  root/overlay. This extends the existing bounded native child and driver, not the VM topology or gate catalog.
-  The syscall cases deliberately use invalid arguments; connection-loss coverage terminates a real owned
-  server. Neither establishes natural failure frequency, unauthorized-principal refusal, or a full
-  product build. Segment liveness probes do not establish
-  ownership/mode/attachment-count. Construction after joined X-server exit is covered; server loss during
-  an in-flight attach, destruction-failure injection,
-  unauthorized principals, actual capture-to-render, installed cross-user service behavior, current
-  artifacts, cold reproduction and independent review remain OPEN.
+  **Still OPEN.** Unauthorized-principal read/write/removal refusal, installed cross-user service behavior,
+  server loss during in-flight attach, destruction-failure injection, actual capture-to-codec-to-render,
+  focus/background freshness and latency, sustained resource/performance bounds, other platforms,
+  current release artifacts, cold reproduction and independent review. These tests establish selected
+  instrumented native Linux component behavior, not natural failure frequency, a full product build,
+  a closed privilege boundary, or the Android/Windows reported display-hang cause.
 
 - **R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality — SOURCE IMPLEMENTED;
   NATIVE REJECTION/RECOVERY AND LIVE CONNECTION-LOSS COMPONENTS PASSED;

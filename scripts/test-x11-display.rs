@@ -669,6 +669,79 @@ fn exercise_capture_rejection(
     Ok(segment)
 }
 
+#[cfg(corrected)]
+fn exercise_capture_connection_loss(server: &Rc<x11::Server>) -> io::Result<()> {
+    use crate::common::TraitCapturer;
+    use std::io::{Read, Write};
+
+    let display = x11::Server::displays(Rc::clone(server))
+        .next().expect("first real X screen")?;
+    assert_eq!(display.pixfmt(), Pixfmt::BGRA);
+    let root = display.root();
+    let public_display = common::Display::primary()?;
+    finish_case(0);
+    draw_red(server, root, 0x00ff0000)?;
+    let mut direct = x11::Capturer::new(display)?;
+    let mut public = common::Capturer::new(public_display)?;
+    let segments = STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!(state.segments.len(), 2, "live captures did not own two segments");
+        [state.segments[0], state.segments[1]]
+    });
+    assert_ne!(segments[0], segments[1]);
+    for segment in segments { probe_segment(segment)?; }
+    assert_eq!(&direct.frame()?[..3], &[0x00, 0x00, 0xff]);
+    let Frame::PixelBuffer(buffer) = public.frame(std::time::Duration::from_millis(100))?;
+    assert_eq!(&buffer.data()[..3], &[0x00, 0x00, 0xff]);
+    STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!((state.capture_queries, state.capture_replies, state.capture_errors,
+                    state.frame_comparisons), (2, 2, 0, 2));
+        assert!(state.allocations.iter().all(|entry| entry.retired), "initial capture reply leaked");
+    });
+
+    // The driver joins the exact real Xvfb process before granting this token.
+    // Both captures and their last valid frame state remain alive across server exit.
+    println!("X11_CAPTURE_CONNECTION_READY callers=direct,public segments=2 pixels=red");
+    io::stdout().flush()?;
+    let mut token = [0];
+    io::stdin().read_exact(&mut token)?;
+    assert_eq!(token, *b"X", "server retirement token differs");
+
+    let mut connection_error = 0;
+    for _ in 0..3 {
+        let error = direct.frame().expect_err("dead X connection returned cached pixels");
+        connection_error = unsafe { xcb_connection_has_error(server.raw()) };
+        assert!(connection_error > 0, "real XCB connection remained healthy");
+        let expected = format!("X connection failed during MIT-SHM GetImage: {connection_error}");
+        assert_eq!(error.kind(), io::ErrorKind::ConnectionAborted,
+                   "connection loss became unchanged-frame behavior");
+        assert_eq!(error.to_string(), expected);
+        let error = match public.frame(std::time::Duration::from_millis(100)) {
+            Err(error) => error,
+            Ok(_) => panic!("public capture returned cached pixels after server exit"),
+        };
+        assert_eq!(error.kind(), io::ErrorKind::ConnectionAborted);
+        assert_eq!(error.to_string(), expected);
+    }
+    STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!((state.capture_queries, state.capture_replies, state.capture_errors,
+                    state.frame_comparisons), (8, 2, 0, 2));
+        assert!(state.allocations.iter().all(|entry| entry.retired), "capture reply/error leaked");
+    });
+    drop(direct);
+    let absent = probe_segment(segments[0]).expect_err("direct capture segment survived drop");
+    assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
+    probe_segment(segments[1])?;
+    drop(public);
+    let absent = probe_segment(segments[1]).expect_err("public capture segment survived drop");
+    assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)), "retirement error: {}", absent);
+    finish_case(0);
+    println!("X11_CAPTURE_CONNECTION_NATIVE=pass callers=direct,public repeats=3 connection_error={connection_error} requests=8 replies=2 errors=0 comparisons=2 segments=retired");
+    Ok(())
+}
+
 fn main() -> io::Result<()> {
     let scenario = std::env::args().nth(1).expect("scenario");
     finish_case(if scenario == "reject" { 1 } else { 0 });
@@ -724,7 +797,9 @@ fn main() -> io::Result<()> {
             "bounds-mon-sum" => Some((0, 5)),
             _ => None,
         };
-        if scenario == "capture-reject" {
+        if scenario == "capture-connection-loss" {
+            exercise_capture_connection_loss(&server)?;
+        } else if scenario == "capture-reject" {
             use crate::{TraitPixelBuffer, common::TraitCapturer};
             for public in [false, true] {
                 for _ in 0..16 {

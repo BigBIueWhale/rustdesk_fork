@@ -3,6 +3,8 @@
 import hashlib
 import os
 from pathlib import Path
+import re
+import selectors
 import shutil
 import subprocess
 import time
@@ -11,6 +13,65 @@ import time
 def require(value, message):
     if not value:
         raise RuntimeError(message)
+
+
+def capture_connection_loss(binary, environment, xserver):
+    ready = b"X11_CAPTURE_CONNECTION_READY callers=direct,public segments=2 pixels=red\n"
+    output, errors = bytearray(), bytearray()
+    native = subprocess.Popen([str(binary), "capture-connection-loss"], env=environment,
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, bufsize=0)
+    deadline = time.monotonic() + 15
+    retired = False
+    try:
+        with selectors.DefaultSelector() as streams:
+            streams.register(native.stdout, selectors.EVENT_READ, output)
+            streams.register(native.stderr, selectors.EVENT_READ, errors)
+            while streams.get_map():
+                remaining = deadline - time.monotonic()
+                require(remaining > 0, "capture connection-loss handshake timed out")
+                for key, _ in streams.select(remaining):
+                    chunk = os.read(key.fd, 4097 - len(output) - len(errors))
+                    if not chunk:
+                        streams.unregister(key.fileobj)
+                        continue
+                    key.data.extend(chunk)
+                    require(len(output) + len(errors) <= 4096, "connection-loss output exceeded its limit")
+                    if not retired and b"\n" in output:
+                        require(output == ready and not errors and native.poll() is None
+                                and xserver.poll() is None, "live-capture readiness differs")
+                        xserver.terminate()
+                        xserver.wait(timeout=5)
+                        require(xserver.returncode == 0, "owned Xvfb did not retire cleanly")
+                        require(native.stdin.write(b"X") == 1, "server retirement token was not delivered")
+                        native.stdin.close()
+                        retired = True
+            native.wait(timeout=max(0, deadline - time.monotonic()))
+        lines = output.decode("utf-8").splitlines()
+        require(retired and native.returncode == 0 and len(lines) == 3
+                and lines[0] == ready.decode("ascii").strip()
+                and lines[2] == "X11_DISPLAY_COMPONENT=pass scenario=capture-connection-loss replies=exact errors=explicit cleanup=joined",
+                "connection-loss capture completion differs")
+        receipt = re.fullmatch(
+            r"X11_CAPTURE_CONNECTION_NATIVE=pass callers=direct,public repeats=3 connection_error=([1-9][0-9]*) "
+            r"requests=8 replies=2 errors=0 comparisons=2 segments=retired", lines[1])
+        require(receipt is not None, "exact connection-loss result absent")
+        diagnostic = ("failed to detach X11 capture shared memory from XCB: "
+                      "X connection failed during MIT-SHM drop detach: " + receipt.group(1))
+        require(errors.decode("utf-8").splitlines() == [diagnostic, diagnostic],
+                "dead-server cleanup diagnostics differ")
+        print(lines[1], flush=True)
+        print("X11_CAPTURE_CONNECTION_FINALITY=pass server=terminated-and-joined "
+              "detach_errors=2 segment_retirement=independent output=bounded child=joined", flush=True)
+    except BaseException:
+        print(f"X11_CAPTURE_CONNECTION_FAILURE stdout={bytes(output)!r} stderr={bytes(errors)!r}", flush=True)
+        raise
+    finally:
+        if native.poll() is None:
+            native.kill()
+        native.wait(timeout=5)
+        for stream in (native.stdin, native.stdout, native.stderr):
+            stream.close()
 
 
 def main():
@@ -126,6 +187,7 @@ def main():
             print("X11_SETUP_NATIVE=pass received_header=injected rejected_shapes=7 repeats=16 "
                   "old_cursor=admitted monitor_queries=0 screens=server-real network=none", flush=True)
             require(child.poll() is None, "Xvfb exited during native cases")
+            capture_connection_loss(binaries["corrected"], environment, child)
         except BaseException:
             log.flush()
             print(f"X11_DISPLAY_XVFB_FAILURE_STATUS={child.poll()}", flush=True)

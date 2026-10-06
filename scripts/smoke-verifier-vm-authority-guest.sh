@@ -1527,6 +1527,12 @@ run_apple_conform() {
         diff-files --quiet --ignore-submodules --; then
         /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \
             diff-files --name-status --ignore-submodules -- | sed -n '1,30p' >&2
+        /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \
+            diff-files --raw --no-abbrev -- .cargo/config.toml >&2
+        /usr/bin/git -c "safe.directory=$source_root" -C "$source_root" \
+            diff-files -- .cargo/config.toml | sed -n '1,40p' >&2
+        stat -c 'Apple source file metadata: %a %s %n' \
+            "$source_root/.cargo/config.toml" >&2
         fail 'Apple-conformance source differs from its index after sealing'
     fi
 

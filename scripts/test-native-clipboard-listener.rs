@@ -276,6 +276,92 @@ fn d_native_busy_retirement() {
 }
 
 #[test]
+fn e_native_startup_deadline() {
+    use std::io::Read;
+    use std::os::unix::net::UnixListener;
+    use x11rb::x11_utils::Serialize;
+
+    let display = std::env::var("DISPLAY").unwrap();
+    let (connection, selection, windows) = native_selection_driver();
+    let setup = connection.setup().serialize();
+    let baseline = resources();
+    let children = root_children(&connection);
+    for case in ["silent", "fragmented", "first-reply"] {
+        let path = "/tmp/.X11-unix/X95";
+        assert!(!std::path::Path::new(path).exists());
+        let listener = UnixListener::bind(path).unwrap();
+        let setup = setup.clone();
+        let peer = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.set_read_timeout(Some(Duration::from_secs(8))).unwrap();
+            socket.set_write_timeout(Some(Duration::from_secs(1))).unwrap();
+            let mut header = [0u8; 12];
+            socket.read_exact(&mut header).unwrap();
+            assert_eq!(header[0], b'l');
+            assert_eq!(u16::from_le_bytes([header[2], header[3]]), 11);
+            let auth_name = u16::from_le_bytes([header[6], header[7]]) as usize;
+            let auth_data = u16::from_le_bytes([header[8], header[9]]) as usize;
+            let auth_size = ((auth_name + 3) & !3) + ((auth_data + 3) & !3);
+            assert!(auth_size <= 512);
+            socket.read_exact(&mut vec![0u8; auth_size]).unwrap();
+            if case == "fragmented" {
+                // Never complete the eight-byte setup header. Drip progress must not
+                // restart the production connection's one startup budget.
+                for byte in &setup[..7] {
+                    socket.write_all(&[*byte]).unwrap();
+                    std::thread::sleep(Duration::from_millis(400));
+                }
+            } else if case == "first-reply" {
+                socket.write_all(&setup).unwrap();
+                let mut request = [0u8; 4];
+                socket.read_exact(&mut request).unwrap();
+                assert_eq!(request[0], 98, "production did not request native extension metadata");
+                let length = u16::from_le_bytes([request[2], request[3]]) as usize * 4;
+                assert!((4..=512).contains(&length));
+                socket.read_exact(&mut vec![0u8; length - 4]).unwrap();
+            }
+            println!("CLIPBOARD_NATIVE_STALL_READY case={case} transport=unix setup_request=actual");
+            std::io::stdout().flush().unwrap();
+            let mut byte = [0u8; 1];
+            match socket.read(&mut byte) {
+                Ok(0) => true,
+                Err(error) if matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => false,
+                result => panic!("unexpected stalled peer outcome: {result:?}"),
+            }
+        });
+        std::env::set_var("DISPLAY", ":95.0");
+        let started = Instant::now();
+        let result = subscribe("startup-budget".to_owned());
+        let elapsed = started.elapsed();
+        std::env::set_var("DISPLAY", &display);
+        let closed = peer.join().unwrap();
+        std::fs::remove_file(path).unwrap();
+        println!("CLIPBOARD_NATIVE_STALL_RESULT case={case} startup_ms={} peer_closed={closed}", elapsed.as_millis());
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("stalled native startup was admitted"),
+        };
+        assert!(error.to_string().contains("X11 clipboard startup deadline expired"),
+                "stalled startup was not classified by its own deadline: {error}");
+        assert!(closed && elapsed < Duration::from_secs(4), "native startup did not cancel its exact socket in time");
+        {
+            let listener = CLIPBOARD_LISTENER.lock().unwrap();
+            assert!(listener.handle.is_none());
+            let registry = listener.subscribers.lock().unwrap();
+            assert!(registry.subscribers.is_empty() && registry.terminal.is_none());
+        }
+        assert_eq!(resources(), baseline);
+        let (owner, receiver) = subscribe("startup-budget".to_owned()).unwrap();
+        change_and_observe(&connection, selection, windows, &[&receiver]);
+        drop(receiver);
+        drop(owner);
+        assert_native_window_retired(&connection, &children);
+        assert_eq!(resources(), baseline);
+    }
+    println!("CLIPBOARD_NATIVE_DEADLINE=pass cases=3 source=production transport=unix budget=one peer=closed startup_worker=joined next_start=working resources=baseline");
+}
+
+#[test]
 fn y_native_x11_warm_restart() {
     let (connection, selection, windows) = native_selection_driver();
     let baseline = resources();

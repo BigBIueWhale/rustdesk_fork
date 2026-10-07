@@ -167,7 +167,7 @@ directory = "/work/clipboard-vendor"
 
 
 def scenario(binary, variant, environment):
-    require(variant in ("historical", "historical-warm", "current", "startup", "startup-failure", "thread-start-failure", "busy-retirement", "warm-restart"),
+    require(variant in ("historical", "historical-warm", "current", "startup", "startup-failure", "thread-start-failure", "busy-retirement", "startup-deadline", "warm-restart"),
             "unknown native scenario")
     log_path = BUILD / f"{variant}.xvfb.log"
     output = bytearray()
@@ -192,6 +192,8 @@ def scenario(binary, variant, environment):
                 arguments.append("native_tests::c_native_thread_creation_failure_retires_exact_state")
             elif variant == "busy-retirement":
                 arguments.append("native_tests::d_native_busy_retirement")
+            elif variant == "startup-deadline":
+                arguments.append("native_tests::e_native_startup_deadline")
             else:
                 arguments.append("native_tests::y_native_x11_warm_restart")
             child = subprocess.Popen(arguments, env=environment, stdin=subprocess.DEVNULL,
@@ -216,7 +218,7 @@ def scenario(binary, variant, environment):
             status = child.wait(timeout=2)
             print(output.decode("utf-8"), end="", flush=True)
             single_pass = status == 0 and re.search(
-                rb"test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out;", output)
+                rb"test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out;", output)
             if variant in ("historical", "current"):
                 require(retired, "fixture did not reach real clipboard callbacks before server retirement")
             if variant == "historical":
@@ -236,7 +238,7 @@ def scenario(binary, variant, environment):
                     "native startup failure did not retire exactly or allow a new working subscription")
             elif variant == "historical-warm":
                 require(not retired and status == 101 and re.search(
-                    rb"test result: FAILED\. 0 passed; 1 failed; 0 ignored; 0 measured; 11 filtered out;", output)
+                    rb"test result: FAILED\. 0 passed; 1 failed; 0 ignored; 0 measured; 12 filtered out;", output)
                     and b"CLIPBOARD_NATIVE_CYCLE cycle=1 stage=subscribe\n" in output
                     and b"actual XFixes callback did not arrive" in output,
                     "historical warm restart did not reproduce the actual callback failure")
@@ -248,6 +250,10 @@ def scenario(binary, variant, environment):
                 require(single_pass and not retired and output.count(
                     b"CLIPBOARD_NATIVE_BUSY=pass cycles=4 source=live first_retirement=preserved last_retirement=joined native_window=retired resources=baseline\n") == 1,
                     "busy native retirement did not preserve the other subscriber or join exact last retirement")
+            elif variant == "startup-deadline":
+                require(single_pass and not retired and output.count(
+                    b"CLIPBOARD_NATIVE_DEADLINE=pass cases=3 source=production transport=unix budget=one peer=closed startup_worker=joined next_start=working resources=baseline\n") == 1,
+                    "native startup deadline did not cancel, join and permit a healthy new generation")
             else:
                 require(single_pass and not retired and output.count(
                     b"CLIPBOARD_NATIVE_WARM=pass callbacks=4 normal_cycles=4 workers=joined\n") == 1,
@@ -284,13 +290,14 @@ def main():
     state_output = command([str(binaries["current"]), "--test-threads=1", "--nocapture", "--color", "never",
                             "clipboard_listener::tests::"], environment, 5)
     print(state_output.decode("utf-8"), end="", flush=True)
-    require(re.search(rb"test result: ok\. 6 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out;", state_output),
+    require(re.search(rb"test result: ok\. 6 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out;", state_output),
             "production clipboard state tests did not all execute")
     print("CLIPBOARD_NATIVE_STATE=pass tests=6", flush=True)
     scenario(binaries["current"], "startup", environment)
     scenario(binaries["current"], "startup-failure", environment)
     scenario(binaries["current"], "thread-start-failure", environment)
     scenario(binaries["current"], "busy-retirement", environment)
+    scenario(binaries["current"], "startup-deadline", environment)
     scenario(binaries["historical"], "historical-warm", environment)
     scenario(binaries["historical"], "historical", environment)
     scenario(binaries["current"], "current", environment)
@@ -299,7 +306,7 @@ def main():
     scenario(binaries["current"], "warm-restart", environment)
     inputs()
     print("CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=owned-x11 callbacks=actual "
-          "old=retained current=joined late_admission=refused startup_observer=retired tests=12 network=none cleanup=joined", flush=True)
+          "old=retained current=joined late_admission=refused startup_observer=retired tests=13 network=none cleanup=joined", flush=True)
 
 
 if __name__ == "__main__":

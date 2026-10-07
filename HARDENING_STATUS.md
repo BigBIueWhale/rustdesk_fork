@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-5bb7aa2d71427167ace20c47453f4a2af894176276abbd2556f35fbc0a00f0e1  requirements.html
+0933568b32595c92ee146d297185a5dc620c43add7d867c66ae7914de5290f20  requirements.html
 ```
 
 ## Current Verdict
@@ -387,8 +387,9 @@ Retained `.harness-state/verifier-vm/x11-display-tests-run.8DvSvLxeRW.serial.log
 (96,325 bytes; SHA-256 `04517d26fd94a9029664f5f30cfcca0aa6fd5a38b37dc5ec8234b34a6e618571`)
 and `evidence/x11-enigo-route-run.8DvSvLxeRW.outer.receipt` bind sources, artifacts,
 scope, isolation and finality; these are assistant observations, not independent
-attestation. Remote publication is **pending**: GitHub rejected three push attempts
-with Internal Server Error; a subsequent read still found master at `a1c03eb3`.
+attestation. Source and evidence status are published through `9a935bc0`; the
+ordinary retry succeeded after GitHub's earlier Internal Server Errors. Publication
+does not enlarge the native test's component scope.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); protected loader, parent/rdev, full Cargo/app and current
@@ -1396,7 +1397,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `5bb7aa2d71427167ace20c47453f4a2af894176276abbd2556f35fbc0a00f0e1  requirements.html`.
+Current normative specification SHA-256: `0933568b32595c92ee146d297185a5dc620c43add7d867c66ae7914de5290f20  requirements.html`.
 
 ### Current authority and source closure
 
@@ -10094,64 +10095,35 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   the builder correctly replaced `local_docker` with guest-only `verifier_vm_docker` and established no product or
   artifact behavior. A clean cold exact-commit double build, signed current APK, installation, device lifecycle,
   peer, presentation, and resource evidence remain required by R-B2/R-B10 and are not inferred from source checks.
-- **R-R2d — retained GitHub Actions references made schema-inert — SOURCE CLOSED/GATED 2026-07-21; EXACT
-  CURRENT-COMMIT ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Commit `16252a9` disabled GitHub-hosted CI/CD by
-  suffix-renaming seven upstream definitions under `.github/workflows/` to `*.disabled`. Current history and
-  source inspection found that only the later `flutter-build` reference had also lost executable workflow schema.
-  The other six still carried top-level `on` and `jobs`: `ci`, `flutter-ci`, `flutter-tag`, and `wf-cliprdr-ci`
-  retained manual plus push/PR/tag triggers, while `bridge` and `third-party-RustDeskTempTopMostWindow` retained
-  reusable `workflow_call` entry. Their historical bodies include package installation, build/test execution,
-  artifact upload, and a tag caller that inherits secrets into the release matrix. GitHub did not recognize these
-  non-`.yml`/`.yaml` files in their current names, so this was accidental rename/copy reactivation authority and
-  misleading re-enable documentation, not evidence that any job ran, a secret was disclosed, an artifact shipped,
-  the host was modified, a listener existed, privilege escalation occurred, or a system was compromised.
+- **R-R2d — retained GitHub Actions references are schema-inert — source guards implemented;
+  current artifact/release acceptance OPEN.** `.github/workflows/` has exactly seven regular
+  suffix-disabled references plus `DISABLED.md`, with zero enabled workflow definitions. Each
+  reference has one `historical_on` and one `historical_jobs`, no executable trigger/jobs keys,
+  and the exact closed top-level key inventory. Extra/missing/nonregular entries and alternate
+  top-level forms refuse. Renaming alone cannot restore a trigger or executable job graph;
+  restoration is an explicit requirements/gate and reusable-dependency review, never a convenience
+  enable operation. Local repository scripts remain the build/verification/release authority.
 
-  All seven retained references now carry exactly one schema-demoted `historical_on` and `historical_jobs`, no
-  top-level `on` or `jobs`, and an explicit inert/rename-resistant marker. Historical bodies remain available for
-  review, but renaming any one file cannot create a trigger, callable workflow, or executable job graph. The exact
-  directory inventory remains zero enabled definitions, seven regular disabled references, and `DISABLED.md`;
-  symlinks, extra entries, missing references, active extensions, and wrong types fail closed. The documentation no
-  longer presents rename as an enable ceremony: restoring both schema keys and reviewing reusable dependencies is
-  an explicit R-R2/R-R2d release-authority change. Local repository scripts remain the only build, verification,
-  and release transaction authority.
+  `scripts/verify-github-automation-authority.py --repo . --self-test`, called by `scripts/verify.sh`
+  section 6c-a4, checks actual inventory/type and finite schema predicates and mutates each retained
+  reference's trigger/jobs keys. It does not read normative/ledger prose or explanatory comment
+  markers; those checks were removed in `d6177985`. Marker comments describe the inert role but
+  do not establish it. Superseded rename history, wording/meta-gate claims and mutation scoreboards
+  are not current evidence. This documentation reconciliation ran no workflow, build, cloud job
+  or product test and changed no automation configuration. Source inspection/guards are not
+  current-commit artifacts, cold equality, release execution or independent acceptance (R-B2/R-B10).
+- **R-R1a — automated dependency-rewrite configuration absent — source guards implemented;
+  external setting/advisory/artifact evidence OPEN.** Neither recognized Dependabot spelling
+  (`.github/dependabot.yml`/`.yaml`) nor either suffix-hidden copy is retained. `.gitmodules`,
+  gitlinks and the obsolete narrow workflow-verifier alias are absent. The same focused guard
+  rejects restored paths/manifest/alias, including nonregular entries. Dependency changes remain
+  reviewed lockfile/manifest, authenticated-pin, provenance, advisory and reproducibility transactions.
 
-  `scripts/verify-github-automation-authority.py` checks that complete inventory and every file's regular type,
-  marker, top-level-key absence, and demoted-key cardinality, then binds R-R2d, Appendix C #195, documentation, the
-  shared verifier, and this ledger. Its self-test applies separate trigger and jobs reactivation mutations to every
-  retained reference, quoted/space-delimited YAML key variants, and inventory, enabled-definition, documentation,
-  requirement, disposition, ledger, and gate mutations. The independent workspace verifier statically binds the
-  focused validator's rejection semantics and wiring and mutation-tests the validator, documentation, normative
-  records, and shared invocation. This is a
-  source-authority closure only; cold exact-commit artifacts and release execution remain R-B2/R-B10.
-- **R-R1a — obsolete Dependabot submodule updater deleted — SOURCE CLOSED/GATED 2026-07-21; REPOSITORY-SETTING
-  STATE REMAINS SEPARATE EXTERNAL EVIDENCE.** Commit `16252a9` suffix-renamed the imported
-  `.github/dependabot.yml` while disabling GitHub-hosted CI/CD. Unlike the seven workflow bodies retained for build
-  provenance, this file configured only the supported `gitsubmodule` ecosystem: daily version checks and update
-  pull requests targeting `master`. R-R1 had already absorbed the sole `hbb_common` submodule in-tree; current
-  source and index inspection found no `.gitmodules` and no gitlink. GitHub ignored the `.disabled` filename, so
-  no version-update configuration was active and there was no current dependency for it to update. This was
-  obsolete supply-chain automation plus rename/copy reactivation debt, not evidence that Dependabot ran, changed a
-  pin, opened or merged a pull request, executed a workflow, modified the host, exposed a listener, crossed a
-  privilege boundary, or compromised a system.
-
-  The obsolete file is deleted rather than schema-wrapped. R-R1a makes the recognized `.github/dependabot.yml` and
-  `.yaml` names plus both suffix-hidden variants source-forbidden. Dependency changes remain deliberate reviewed
-  transactions that update the applicable lockfile/manifest, authenticated acquisition pins, provenance, advisory
-  policy, and reproducibility evidence together. `DISABLED.md` no longer claims that a Dependabot reference is
-  retained and distinguishes source configuration from GitHub's repository-level vulnerability-alert and security-
-  update settings. A read-only live API check during this audit reported Dependabot security updates
-  `enabled=false, paused=false` and vulnerability alerts disabled; that observation is time-bound external evidence,
-  not a source invariant. The repository Actions setting remained enabled while the R-R2d source inventory had zero
-  recognized workflow definitions; no repository setting was changed in this source slice.
-
-  The R-R2d checker is renamed to `scripts/verify-github-automation-authority.py` because its authority contract now
-  covers both workflow execution and dependency-rewrite automation. It rejects all four Dependabot path spellings,
-  a restored `.gitmodules`, the retired narrow-verifier path, enabled/extra/nonregular workflows, every active or
-  alternate trigger/job spelling, and normative/gate drift. Its full self-test applies 32 deliberate mutations.
-  The shared verifier and independent workspace meta-gate bind the generalized name, absence semantics, R-R1a,
-  Appendix C #196, the existing R-R2d contract, documentation, and both hardening ledgers. This closes tracked
-  source automation only; it does not claim external settings immutability, current dependency-advisory evidence,
-  or exact artifact/release proof.
+  File absence does not prove repository-level vulnerability-alert or security-update settings.
+  Relevant external-setting claims need fresh read-only evidence; the old audit's setting snapshot
+  is historical only, and no current setting was queried or changed in this documentation slice.
+  Current advisory evidence, exact artifacts, cold equality and release/independent acceptance
+  remain OPEN; neither source validation nor a historical API response closes them (R-R1a/R-B2/R-B10).
 - **File-transfer receive write-path no-follow (R-S8/R-A5) — POSIX handle walk confirmed
   correct-by-design.** The Unix receive-write path (`libs/hbb_common/src/fs.rs`:
   `open_parent_dir_no_follow` ~828, `open_recv_write_no_follow_std` ~979) opens **every** parent

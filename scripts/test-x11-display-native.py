@@ -9,6 +9,7 @@ import selectors
 import signal
 import shutil
 import socket
+import struct
 import subprocess
 import threading
 import time
@@ -186,6 +187,7 @@ def thread_contexts(root, environment, checksum, library):
           "callers=xlib,xdo old_accepts=2 current_accepts=0 listener=container-loopback-only "
           "peer=closed children=joined scope=platform-constructors", flush=True)
     startup_retry(root, binary, environment)
+    authenticated_contexts(binary, environment)
     binary.unlink()
     cursor.unlink()
 
@@ -260,6 +262,77 @@ def startup_retry(root, binary, environment):
           "cooldown_ms=1000 cooldown_calls=32 healthy_reuses=32 reentrant=refused "
           "queries=server-real callbacks=paired descriptors=retired threads=retired "
           "server=owned-and-joined scope=thread-context-startup", flush=True)
+
+
+def authenticated_contexts(binary, environment):
+    directory = Path("/tmp/x11-native-auth")
+    directory.mkdir(mode=0o700)
+    server = None
+    try:
+        # XauReadAuth's big-endian family and four counted fields. These known
+        # fixture cookies belong only to this disposable, networkless display.
+        # FamilyLocal/hostname/display matching is left to the native library.
+        fields = (socket.gethostname().encode("ascii"), b"93", b"MIT-MAGIC-COOKIE-1")
+        prefix = struct.pack(">H", 256) + b"".join(struct.pack(">H", len(field)) + field for field in fields)
+        for credential, cookie in (("valid", bytes(range(16))), ("wrong", bytes(reversed(range(16))))):
+            path = directory / credential
+            with path.open("xb") as output:
+                os.fchmod(output.fileno(), 0o600)
+                output.write(prefix + struct.pack(">H", len(cookie)) + cookie)
+        require(not (directory / "missing").exists(), "missing Xauthority fixture unexpectedly exists")
+        require(not Path("/tmp/.X11-unix/X93").exists(), "authenticated display is already present")
+        with (directory / "server.log").open("xb") as log:
+            server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":93", "-screen", "0", "640x480x24",
+                                       "-nolisten", "tcp", "-auth", str(directory / "valid"), "-noreset"],
+                                      env=environment, stdout=log, stderr=subprocess.STDOUT)
+            try:
+                deadline = time.monotonic() + 5
+                while not Path("/tmp/.X11-unix/X93").is_socket():
+                    require(server.poll() is None and time.monotonic() < deadline, "authenticated Xvfb not ready")
+                    time.sleep(0.01)
+                # A second valid connection after both negatives distinguishes
+                # credential refusal from a dead server or broken constructor.
+                for credential in ("valid", "wrong", "missing", "valid"):
+                    env = dict(environment, DISPLAY=":93", XAUTHORITY=str(directory / credential))
+                    result = subprocess.run([str(binary), f"auth-{credential}"], env=env,
+                                            capture_output=True, text=True, timeout=5)
+                    admitted = credential == "valid"
+                    reason = ("Invalid MIT-MAGIC-COOKIE-1 key" if credential == "wrong" else
+                              "Authorization required, but no authorization protocol specified")
+                    expected_errors = [] if admitted else [reason, reason, "Error: Can't open display: unix/:93.0"]
+                    receipt = (f"X11_AUTH_CHILD credential={credential} result={'admitted' if admitted else 'refused'} "
+                               f"components=xlib,xdo native_opens=2 contexts={2 if admitted else 0} "
+                               f"queries={'server-real' if admitted else 'unavailable'} callbacks=paired "
+                               "descriptors=retired threads=retired")
+                    require(result.returncode == 0 and [line for line in result.stderr.splitlines() if line] == expected_errors
+                            and len(result.stdout) + len(result.stderr) <= 4096
+                            and result.stdout.splitlines() == [receipt] and server.poll() is None,
+                            f"native authenticated-context result differs: {result}")
+                    print(receipt, flush=True)
+            except BaseException:
+                log.flush()
+                print((directory / "server.log").read_text()[:4096], flush=True)
+                raise
+            finally:
+                if server.poll() is None:
+                    server.terminate()
+                try:
+                    server.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait(timeout=5)
+        require(server.returncode == 0 and not Path("/tmp/.X11-unix/X93").exists(),
+                "authenticated Xvfb/socket retirement differs")
+    finally:
+        for name in ("valid", "wrong", "server.log"):
+            path = directory / name
+            if path.exists():
+                path.unlink()
+        directory.rmdir()
+    print("X11_AUTH_NATIVE=pass source=complete-context-module components=xlib,xdo cases=4 "
+          "valid=2 wrong=1 missing=1 contexts=4 refusals=4 queries=server-real "
+          "callbacks=paired descriptors=retired threads=retired server=owned-and-joined "
+          "credentials=private-fixture network=none scope=native-cookie-authentication", flush=True)
 
 
 def build_focus(root, environment, binary, fixture, historical=False):

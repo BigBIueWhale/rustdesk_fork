@@ -4121,6 +4121,9 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
+        'X11_AUTH_NATIVE=pass source=complete-context-module components=xlib,xdo cases=4 valid=2 wrong=1 missing=1 contexts=4 refusals=4 queries=server-real callbacks=paired descriptors=retired threads=retired server=owned-and-joined credentials=private-fixture network=none scope=native-cookie-authentication' \
+        'production X11/XDO constructors admit native cookie authentication and refuse wrong or missing credentials'
+    require_exact_fixed_receipt \
         'X11_STARTUP_RETRY_NATIVE=pass source=complete-context-module old=exact-tls-initializers components=xlib,xdo cases=4 old=cached-failure current=same-worker-recovery cooldown_ms=1000 cooldown_calls=32 healthy_reuses=32 reentrant=refused queries=server-real callbacks=paired descriptors=retired threads=retired server=owned-and-joined scope=thread-context-startup' \
         'production thread-owned X11/XDO startup retry, cooldown, reuse and joined retirement'
     require_exact_fixed_receipt \

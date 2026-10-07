@@ -174,9 +174,58 @@ fn retirements() -> (usize, usize) {
     (DISPLAY_RETIREMENTS.load(Ordering::SeqCst), XDO_RETIREMENTS.load(Ordering::SeqCst))
 }
 
+fn authentication(credential: &str) {
+    assert!(matches!(credential, "valid" | "wrong" | "missing"));
+    assert_eq!(std::env::var("DISPLAY").unwrap(), ":93");
+    let admitted = credential == "valid";
+    let baseline = descriptors();
+    let tasks = std::fs::read_dir("/proc/self/task").unwrap().count();
+    thread::spawn(move || {
+        if admitted {
+            let display = pointer(false).unwrap().unwrap();
+            let xdo = pointer(true).unwrap().unwrap();
+            assert_eq!(descriptors(), baseline + 2);
+            x11_context::with_display(|context| unsafe {
+                assert_eq!(XDefaultScreen(context.as_ptr()), 0);
+                assert_eq!((XDisplayWidth(context.as_ptr(), 0),
+                            XDisplayHeight(context.as_ptr(), 0)), (640, 480));
+            }).unwrap().unwrap();
+            assert!(cursor::set_cursor_pos(123, 87));
+            for _ in 0..32 {
+                assert_eq!(pointer(false).unwrap(), Some(display));
+                assert_eq!(pointer(true).unwrap(), Some(xdo));
+                assert_eq!(cursor::get_cursor_pos(), Some((123, 87)));
+            }
+        } else {
+            let start = Instant::now();
+            assert_eq!(pointer(false).unwrap_err().kind(), std::io::ErrorKind::ConnectionRefused);
+            assert_eq!(pointer(true).unwrap_err().kind(), std::io::ErrorKind::ConnectionRefused);
+            for _ in 0..32 {
+                assert_eq!(pointer(false).unwrap(), None);
+                assert_eq!(pointer(true).unwrap(), None);
+            }
+            assert_eq!(cursor::get_cursor_pos(), None);
+            assert!(!cursor::set_cursor_pos(123, 87));
+            assert!(start.elapsed() < Duration::from_millis(900), "authentication cooldown observation expired");
+            assert_eq!(descriptors(), baseline);
+        }
+        assert_eq!((DISPLAY_OPENS.load(Ordering::SeqCst), XDO_OPENS.load(Ordering::SeqCst)), (1, 1));
+    }).join().unwrap();
+    assert_eq!(descriptors(), baseline);
+    assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), tasks);
+    assert_eq!(retirements(), if admitted { (1, 1) } else { (0, 0) });
+    println!("X11_AUTH_CHILD credential={credential} result={} components=xlib,xdo native_opens=2 contexts={} queries={} callbacks=paired descriptors=retired threads=retired",
+             if admitted { "admitted" } else { "refused" }, if admitted { 2 } else { 0 },
+             if admitted { "server-real" } else { "unavailable" });
+}
+
 fn main() {
     assert_ne!(unsafe { XInitThreads() }, 0);
     if let Some(scenario) = std::env::args().nth(1) {
+        if let Some(credential) = scenario.strip_prefix("auth-") {
+            authentication(credential);
+            return;
+        }
         if matches!(scenario.as_str(), "retry-xlib-historical" | "retry-xlib-corrected"
                    | "retry-xdo-historical" | "retry-xdo-corrected") {
             retry(&scenario);

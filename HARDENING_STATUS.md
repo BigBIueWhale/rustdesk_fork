@@ -239,6 +239,24 @@ Android/Windows display-delay cause or new closed privilege boundary is establis
 Deferred Android concurrent Stop/admission and stale-generation work remains
 **INCOMPLETE / NOT VALIDATED**, not resumed by this retirement.
 
+### Linux capture constructor — explicit local Unix route; native acceptance PENDING
+
+`libs/scrap/src/x11/server.rs::Server::default` now validates the process's
+local decimal display/screen selector and supplies explicit `unix/` transport
+to native libxcb. Missing/non-UTF8/remote/path/protocol/malformed/oversized
+selectors refuse; native authentication handling is preserved. The unused
+public raw-pointer constructor is removed, not kept as an alternative route.
+All production callers use the one default constructor. The previous plain
+local selector could implicitly retry localhost TCP after Unix refusal.
+
+The exact previous server module is retained for an actual native A/B route
+observation inside the existing zero-NIC/guest-only container lane. Eighteen
+selector refusals through direct/primary/all callers, normalized real screen
+selection and the retained capture regression cases are PENDING execution.
+This does not prove constructor deadlines, connected peer/session binding,
+authenticated Xauthority, separate Xlib/XDO paths, installed/whole-app behavior,
+resources/performance/soak, or the Android/Windows delay cause; those remain OPEN.
+
 ### Linux cursor/focus — native thread-owned X11/XDO retirement; integration OPEN
 
 `src/platform/linux.rs` previously stored cursor X11 and XDO contexts as raw

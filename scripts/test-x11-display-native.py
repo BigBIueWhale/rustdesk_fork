@@ -221,10 +221,13 @@ class FragmentedReply:
         require(self.failure is None, f"focus relay failed: {self.failure}")
 
 
-def focus_route(binary, variant, environment, listener):
+def local_route(binary, variant, environment, listener, component):
     # This listener exists only on the network-none container's private loopback.
     # Acceptance observes the actual native connector's route, not a mock login.
-    native = subprocess.Popen([str(binary), "route"], env=environment,
+    require(component in ("focus", "capture"), "unknown route-fixture component")
+    prefix = f"X11_{component.upper()}_ROUTE"
+    scenario = "route" if component == "focus" else "server-route"
+    native = subprocess.Popen([str(binary), scenario], env=environment,
                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
         if variant == "historical":
@@ -237,7 +240,7 @@ def focus_route(binary, variant, environment, listener):
         output, errors = native.communicate(timeout=5)
         require(native.returncode == 0 and not errors and len(output) <= 4096
                 and output.decode("ascii").splitlines() == [
-                    f"X11_FOCUS_ROUTE_CHILD variant={variant} result=refused descriptors=retired threads=retired"],
+                    f"{prefix}_CHILD variant={variant} result=refused descriptors=retired threads=retired"],
                 f"native route completion differs: stdout={output!r} stderr={errors!r}")
         if variant == "corrected":
             listener.settimeout(0.1)
@@ -248,7 +251,7 @@ def focus_route(binary, variant, environment, listener):
             else:
                 peer.close()
                 raise RuntimeError("corrected local display attempted a TCP fallback")
-        print(f"X11_FOCUS_ROUTE_OBSERVED variant={variant} tcp_accepts={int(variant == 'historical')} "
+        print(f"{prefix}_OBSERVED variant={variant} tcp_accepts={int(variant == 'historical')} "
               "native=complete-module connection=retired", flush=True)
     finally:
         if native.poll() is None:
@@ -434,7 +437,7 @@ def focus_lifecycle(root, environment):
                         ("source", source), ("fixture", fixture), ("c_fixture", root / "scripts/test-x11-window-focus.c"),
                         ("deadline", root / "src/platform/linux/window_focus_deadline.rs"),
                         ("binary", binary))) + " scope=complete-focus-module whole_app=unexecuted", flush=True)
-                focus_route(binary, variant, environment, route_listener)
+                local_route(binary, variant, environment, route_listener, "focus")
                 if variant == "historical":
                     case(binary, variant, "fragmented")
                     case(binary, variant, "backpressure")
@@ -537,6 +540,10 @@ def main():
     require(hashlib.sha256(baseline.read_bytes()).hexdigest() ==
             "1a38147b260c75c2171e3949f9dbb9341ca9986579b6af1fd84ad7848d34e6af",
             "historical e8898566 iterator with constructor-only test adaptation differs")
+    old_server = root / "scripts/fixtures/x11-server-before-local-route.rs"
+    require(hashlib.sha256(old_server.read_bytes()).hexdigest() ==
+            "eddbaf3bec50bf8f37488bb8c080ab9a5e7fa45ba7737a588649fa1216595583",
+            "exact historical 0ecef962 capture constructor differs")
     environment = {"PATH": "/usr/local/cargo/bin:/usr/bin:/bin", "LC_ALL": "C",
                    "HOME": "/tmp", "DISPLAY": ":98", "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
                    "RUSTUP_HOME": "/usr/local/rustup", "CARGO_HOME": "/usr/local/cargo",
@@ -581,7 +588,12 @@ def main():
                 for name in ("display", "ffi", "iter", "server", "capturer"):
                     if name == "capturer" and variant == "historical":
                         continue
-                    source = baseline if name == "iter" and variant == "historical" else root / f"libs/scrap/src/x11/{name}.rs"
+                    if name == "iter" and variant == "historical":
+                        source = baseline
+                    elif name == "server" and variant == "historical":
+                        source = old_server
+                    else:
+                        source = root / f"libs/scrap/src/x11/{name}.rs"
                     shutil.copyfile(source, work / f"x11/{name}.rs")
                 shutil.copyfile(root / "libs/scrap/src/common/x11.rs", work / "common/x11.rs")
                 shutil.copyfile(comparator, work / "common/frame_compare.rs")
@@ -601,7 +613,26 @@ def main():
                 subprocess.run(command, env=environment, check=True, timeout=30)
                 binaries[variant] = binary
                 print(f"X11_DISPLAY_NATIVE_BUILD variant={variant} sha256="
-                      f"{hashlib.sha256(binary.read_bytes()).hexdigest()}", flush=True)
+                      f"{hashlib.sha256(binary.read_bytes()).hexdigest()} "
+                      f"server_sha256={hashlib.sha256((work / 'x11/server.rs').read_bytes()).hexdigest()}", flush=True)
+            require(not Path("/tmp/.X11-unix/X96").exists(), "capture route's Unix display is present")
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as route_listener:
+                route_listener.bind(("127.0.0.1", 6096))
+                route_listener.listen(1)
+                for variant in ("historical", "corrected"):
+                    local_route(binaries[variant], variant, environment, route_listener, "capture")
+            print("X11_CAPTURE_ROUTE_NATIVE=pass old=tcp-fallback current=unix-only old_accepts=1 current_accepts=0 "
+                  "listener=container-loopback-only peer=closed children=joined scope=capture-constructor", flush=True)
+            selectors_result = subprocess.run([str(binaries["corrected"]), "server-selectors"], env=environment,
+                                              capture_output=True, text=True, timeout=15)
+            selectors_receipt = ("X11_CAPTURE_SELECTORS_NATIVE=pass selectors_refused=18 callers=direct,primary,all "
+                                 "canonical=normalized screens=server-real descriptors=retired threads=retired "
+                                 "scope=capture-constructor")
+            require(selectors_result.returncode == 0 and not selectors_result.stderr
+                    and len(selectors_result.stdout) <= 4096
+                    and selectors_result.stdout.splitlines() == [selectors_receipt],
+                    f"native capture selectors differ: {selectors_result}")
+            print(selectors_receipt, flush=True)
             probe = subprocess.run([str(binaries["corrected"]), "shm-status"], env=environment,
                                    capture_output=True, text=True, timeout=15)
             probe_receipt = ("X11_SHM_STATUS_NATIVE=pass request_fault=oversized-query-version "

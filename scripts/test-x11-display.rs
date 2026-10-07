@@ -1368,7 +1368,62 @@ fn exercise_constructor_failure(server: &Rc<x11::Server>, fault: ConstructionFau
 
 fn main() -> io::Result<()> {
     let scenario = std::env::args().nth(1).expect("scenario");
+    if scenario == "server-route" {
+        let descriptors = std::fs::read_dir("/proc/self/fd")?.count();
+        let threads = std::fs::read_dir("/proc/self/task")?.count();
+        std::env::set_var("DISPLAY", ":96");
+        assert!(matches!(x11::Server::default(), Err(x11::Error::Generic)));
+        assert_eq!(std::fs::read_dir("/proc/self/fd")?.count(), descriptors);
+        assert_eq!(std::fs::read_dir("/proc/self/task")?.count(), threads);
+        println!("X11_CAPTURE_ROUTE_CHILD variant={} result=refused descriptors=retired threads=retired",
+                 if cfg!(corrected) { "corrected" } else { "historical" });
+        return Ok(());
+    }
     finish_case(if scenario == "reject" { 1 } else { 0 });
+    #[cfg(corrected)]
+    if scenario == "server-selectors" {
+        let descriptors = std::fs::read_dir("/proc/self/fd")?.count();
+        let threads = std::fs::read_dir("/proc/self/task")?.count();
+        let refuse = || {
+            assert!(matches!(x11::Server::default(), Err(x11::Error::InvalidDisplay)));
+            assert_eq!(common::Display::primary().err().expect("public primary accepted").kind(),
+                       io::ErrorKind::ConnectionRefused);
+            assert_eq!(common::Display::all().err().expect("public enumeration accepted").kind(),
+                       io::ErrorKind::ConnectionRefused);
+            assert_eq!(std::fs::read_dir("/proc/self/fd").unwrap().count(), descriptors);
+            assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), threads);
+        };
+        for display in ["", ":", ":1.", ":.0", ":1.0.0", ":+1", ":-1", ":1.-1",
+                        "localhost:98", "unix/:98", "/tmp/.X11-unix/X98", "tcp/:98",
+                        ":2147483648", ":98.2147483648", ":98\n", " :98"] {
+            std::env::set_var("DISPLAY", display);
+            refuse();
+        }
+        std::env::remove_var("DISPLAY");
+        refuse();
+        use std::os::unix::ffi::OsStringExt;
+        std::env::set_var("DISPLAY", std::ffi::OsString::from_vec(vec![0xff]));
+        refuse();
+        for (display, screen, width, height) in [(":00098", 0, 640, 480),
+                (":00098.0000", 0, 640, 480), (":00098.0001", 1, 800, 600)] {
+            std::env::set_var("DISPLAY", display);
+            {
+                let server = x11::Server::default().expect("valid local selector refused");
+                assert_eq!(server.screenp(), screen);
+                unsafe {
+                    let mut roots = xcb_setup_roots_iterator(server.setup());
+                    for _ in 0..screen { xcb_screen_next(&mut roots); }
+                    assert!(roots.rem > 0 && !roots.data.is_null());
+                    assert_eq!(((*roots.data).width_in_pixels, (*roots.data).height_in_pixels), (width, height));
+                }
+            }
+            assert_eq!(std::fs::read_dir("/proc/self/fd")?.count(), descriptors);
+            assert_eq!(std::fs::read_dir("/proc/self/task")?.count(), threads);
+        }
+        finish_case(0);
+        println!("X11_CAPTURE_SELECTORS_NATIVE=pass selectors_refused=18 callers=direct,primary,all canonical=normalized screens=server-real descriptors=retired threads=retired scope=capture-constructor");
+        return Ok(());
+    }
     #[cfg(corrected)]
     if let Some(fault) = match scenario.as_str() {
         "setup-short" => Some(1),

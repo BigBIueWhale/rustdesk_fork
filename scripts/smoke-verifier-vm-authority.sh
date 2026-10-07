@@ -1122,6 +1122,7 @@ android_frame_input_inventory() {
             "$REPO_ROOT/src/platform/linux/window_focus.rs"
             "$REPO_ROOT/src/platform/linux/window_focus_deadline.rs"
             "$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
+            "$SCRIPT_DIR/fixtures/x11-server-before-local-route.rs"
             "$REPO_ROOT/libs/scrap/src/x11/iter.rs" "$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
             "$REPO_ROOT/libs/scrap/src/x11/server.rs" "$REPO_ROOT/libs/scrap/src/x11/display.rs"
             "$REPO_ROOT/libs/scrap/src/x11/capturer.rs"
@@ -3396,6 +3397,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/src/platform/linux/window_focus.rs=$REPO_ROOT/src/platform/linux/window_focus.rs"
             "repo/src/platform/linux/window_focus_deadline.rs=$REPO_ROOT/src/platform/linux/window_focus_deadline.rs"
             "repo/scripts/fixtures/x11-display-iter-before.rs=$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
+            "repo/scripts/fixtures/x11-server-before-local-route.rs=$SCRIPT_DIR/fixtures/x11-server-before-local-route.rs"
             "repo/libs/scrap/src/x11/iter.rs=$REPO_ROOT/libs/scrap/src/x11/iter.rs"
             "repo/libs/scrap/src/x11/ffi.rs=$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
             "repo/libs/scrap/src/x11/server.rs=$REPO_ROOT/libs/scrap/src/x11/server.rs"
@@ -4089,6 +4091,12 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux app-capsule cloud-init completion'
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
+    require_exact_fixed_receipt \
+        'X11_CAPTURE_ROUTE_NATIVE=pass old=tcp-fallback current=unix-only old_accepts=1 current_accepts=0 listener=container-loopback-only peer=closed children=joined scope=capture-constructor' \
+        'production local capture constructor cannot silently select localhost TCP'
+    require_exact_fixed_receipt \
+        'X11_CAPTURE_SELECTORS_NATIVE=pass selectors_refused=18 callers=direct,primary,all canonical=normalized screens=server-real descriptors=retired threads=retired scope=capture-constructor' \
+        'production capture constructor selector refusal and native screen selection'
     require_exact_fixed_receipt \
         'X11_FOCUS_ROUTE_NATIVE=pass old=tcp-fallback current=unix-only old_accepts=1 current_accepts=0 listener=container-loopback-only peer=closed children=joined scope=focus-component' \
         'production local focus constructor cannot silently select localhost TCP'

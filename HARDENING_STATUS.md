@@ -6595,13 +6595,29 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   fourteen-download proof. Historical adversarial/interrupted-publication fixtures and
   disposable all-fourteen HTTPS evidence remain in Git/audit; they are not current-VM acceptance.
 
-  **OPEN:** the full source-only authority verifier currently refuses its separate
-  systemd-consumer literal metadata-profile count; it did not pass. Two pre-transaction
-  failures (caller working directory, then that unrelated source assertion) downloaded nothing;
+  The separate source-checker failure is corrected in `32ec8bf0`: its base-consumer
+  region now ends immediately after the actual input-admission/hash/qcow2 checks rather
+  than spanning unrelated workload branches. The obsolete global literal-count assertion
+  is deleted, and its metadata mutation targets that real admission loop rather than an
+  earlier helper. The metadata and independent publisher SHA-512 checks remain mandatory.
+  `/usr/bin/bash scripts/smoke-verifier-vm-authority.sh --fixed-archive-tests` passed as
+  session 10910/exit 0 in 23 VM seconds at that pushed commit. UID:GID 4000:4000 ran the
+  unchanged helper's real-filesystem adversarial fixtures (including interrupted/no-clobber
+  publication and unsafe output refusal) and the 61-mutation source supplement. HTTP
+  responses are injected, not live TLS/network traffic. Source/pinned inputs remained
+  unchanged; before/during/after host endpoint checks found no additions; the guest-only
+  Docker daemon, scratch, VM and disposable disk retired. This shard loads no test image,
+  builds no product, and does not rerun unrelated integration partitions.
+  Retained raw `fixed-archive-tests-run.ZtZJ8ldQQz.serial.log` under the verifier-VM root
+  is 67,543 bytes / SHA-256 `ce92c0dc93386511269258cc845a6c314f8123b6fc67fddf80f608908a018473`.
+  It binds helper SHA-256 `c3cf1022b61a9074a2e5ff77a9e71b9ab06304593bdbf497a20bb973f82fdaa9`
+  and checker SHA-256 `1b55f599b0fabb2f6bb14f580ed902d66fbb07b1827ff60896f8dcd6889885ea`.
+  Two earlier pre-transaction failures (caller working directory, then that unrelated
+  source assertion) downloaded nothing;
   their bounded `evidence/fixed-archives-run.{nDzmr1aAB0,aDDGR2dDAl}.*` logs are retained.
   The source supplement now scopes one-stage/order protection to full no-argument dispatch
   and protects the closed phase; no broad catalog is an acquisition prerequisite.
-  Current cold all-fourteen response/redirect coverage, the complete canonical input closure,
+  **OPEN:** current cold all-fourteen response/redirect coverage, the complete canonical input closure,
   moving operator-captured rustup-init, Cargo/dependency producers, Windows Flutter engine/Pub/WiX,
   maintenance publication, signing/golden/operator assets, exact cold R-B2/R-B10 artifacts,
   native/device/product behavior, independent reproduction and R-V3 review remain open.
@@ -6689,8 +6705,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   release build, host RustDesk process/service/configuration/listener/firewall/network operation, or live
   online-cache mutation was performed.
 - **R-S11cu/R-S11e-113 — Debian systemd VM image acquisition authority —
-  SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE
-  DISPOSABLE COLD ACQUISITION EVIDENCE RECORDED.**
+  ACQUISITION SOURCE IMPLEMENTED; HISTORICAL DISPOSABLE COLD EVIDENCE RECORDED;
+  CURRENT CONSUMER PROFILE ACCEPTANCE OPEN.**
   Platform: the unprivileged Linux acquisition host and immutable Android-builder container.
   Endpoint/action: `scripts/online-fetch.sh --debian-systemd-smoke-image`, which stages the dated Debian 12
   genericcloud QCOW2 consumed by the networkless installed-systemd lifecycle gate. Boundary: remote HTTPS
@@ -6736,20 +6752,17 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   synchronization, restart reconciliation, and exact-identity retirement. The producer receives the helper and
   state read-only plus only the private output writable. It receives no harness/publication root, final name,
   canonical online cache, repository, Docker socket, device, port, host namespace, or other writable host path.
-  The networkless consumer independently accepts only the 0400/0444 current-owner profile and retains the
-  publisher SHA-512, `qemu-img check`, standalone-QCOW2/no-backing-file, no-network, and throwaway-CoW-overlay
-  checks.
+  The current networkless consumer requires current-owner mode 0400 and retains publisher SHA-512,
+  `qemu-img check`, standalone-QCOW2/no-backing-file, no-network, and throwaway-CoW-overlay checks.
+  R-S11cu's historical mode-0444 consumer profile is not admitted by this launcher's current guard;
+  it remains OPEN rather than being inferred from the acquisition helper's mode-0444 reuse fixture.
 
-  Verification recorded: Bash parsing and Python in-memory compilation pass. The shared executable transaction
-  self-test exercises exact one-entry prepare/acquire/independent-verify/no-clobber-publish, historical-mode reuse,
-  and writable-output rejection. The focused authority verifier binds the exact size, SHA-256, publisher
-  SHA-512, two-host origin/redirect set, ordinary-versus-large-image I/O timeouts, closed manifest shape,
-  publication-root separation, narrow producer, consumer metadata/SHA-512 checks, R-S11cu, Appendix C #248,
-  and this ledger through 59 deliberate mutations. The adjacent online-fetch container-authority gate rejects
-  36 mutations. The independent workspace validator is green normally and across its complete semantic
-  source-mutation matrix after the systemd-image metadata, timeout, and redirect-host checks were made
-  unambiguous. The native-codec ledger normal and mutation gates remain green against the updated requirements
-  hash.
+  Current focused evidence is the accepted 23-second zero-NIC archive shard recorded under R-S11cs:
+  real one-entry prepare/acquire/independent-verify/no-clobber-publish fixtures, historical-mode reuse,
+  writable-output rejection, and the 61-mutation source supplement. The supplement protects the actual
+  consumer metadata/SHA-512 region; its former global-count assertion and wrong-occurrence mutation
+  are removed/retargeted, not treated as consumer behavior. Historical workspace, container-authority,
+  and codec gate receipts remain in Git/audit; they are not current native or release acceptance.
 
   Complete live acquisition proof: one disposable transaction used a current-user-owned mode-0700 private
   `/dev/shm` tree and the immutable Android-builder image. Preparation, independent verification, publication,

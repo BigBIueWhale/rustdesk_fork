@@ -1026,7 +1026,8 @@ certificate remains pinned to SHA-256 `1091322BA0425AFA1EB50DEEAE439A5FFFE2B1DD8
 a new key is not a valid substitute. Consequently, an exact-current cold product/release build and its native or
 installed lifecycle evidence cannot presently be completed from the retained local inputs. Restoring or reacquiring
 those inputs must preserve R-B2 and R-B10's single complete canonical closure and must not introduce a partial-cache
-fallback.
+fallback. R-S11cs now records complete presence of its fourteen fixed archives after an accepted isolated-VM
+publication; that subset does not establish the whole closure or any final release artifact.
 
 ### R-S11at/R-S11e-60 — shared Linux UID selection implemented; native acceptance OPEN
 
@@ -3338,7 +3339,7 @@ guest-only Docker/QEMU/virtiofsd, and no retained `run.*` root or overlay. The p
 attempt failed only because a test registry initializer lacked the new field; its disposable disk
 was removed after joined teardown and its raw serial remains retained. An Android-target compile
 attempt at earlier source `913e774e` stopped *before compilation* because the full pinned online closure
-lacks `flutter-windows-3.24.5.zip`; its raw serial is
+then lacked `flutter-windows-3.24.5.zip`; its raw serial is
 `.harness-state/verifier-vm/android-rust-target-check-run.2nhx1Esi14.serial.log`, SHA-256
 `82a62ac7a89a038177bab1a1c5b3ed82df4fba050c8dd29bece22ceb6d4a4787`.
 No partial-cache or Android-only fallback was introduced. This is one Linux execution of the
@@ -6542,102 +6543,70 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   coexistence, repeated reconnect/resource soak, cross-version behavior, cold double-build byte
   equality, independent reproduction, and external review remain stop-ship gaps.
 
-- **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
-  SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE
-  FOURTEEN-ARCHIVE ACQUISITION EVIDENCE RECORDED; BROADER RELEASE EVIDENCE OPEN.** Platform: the unprivileged Linux
-  acquisition host and immutable Android-builder container. Endpoint/action: the former generic
-  `fetch_verify` family used by Rust, Flutter, Android, LLVM, Python, FRB, vcpkg, and Windows archive
-  acquisition. Boundary: remote HTTPS response/redirect behavior and network-client execution ↔ the durable
-  exact offline-input namespace and every later offline release consumer.
+- **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archives —
+  CURRENT FOURTEEN-ARCHIVE CANONICAL BUNDLE PRESENT; COMPLETE RELEASE INPUTS OPEN.**
+  Boundary: remote HTTPS and the acquisition producer ↔ durable offline-input publication.
+  `scripts/online-fetch.sh` has one sorted fourteen-entry manifest for Android tools/NDK,
+  Linux/Windows Flutter, FRB, Linux/Windows LLVM, olefile, Windows Python, Linux Rust,
+  Android Rust std, vcpkg, Git for Windows, and Windows Rust MSI. Each entry binds a fixed
+  credential-free HTTPS URL, exact length/digest and reviewed redirect hosts; the old
+  `fetch_verify`/toolchain/Windows/vcpkg wrapper families are absent.
 
-  Before this slice, host `curl -L` wrote predictable `<final>.part` names directly under `online` and
-  an overwrite-capable `mv` installed the final name. A final SHA-256 caught a completed wrong response,
-  but the host network client had no reviewed final-host set, response-length ceiling, content-encoding
-  contract, private output namespace, durable state, independent output verdict, or no-clobber publication.
-  The generic helper served fourteen release inputs and three wrapper families. This was build-host
-  network-execution, acquisition-output/publication, stale-state, and denial-of-service authority debt—not
-  evidence that a cached archive was malicious or changed, host root was acquired, a container escaped, a
-  port/listener was exposed, host RustDesk/service/configuration/firewall/network state changed,
-  exploitation occurred, or the host was compromised.
+  The existing transaction/helper authenticates the immutable builder, complete manifest,
+  helper bytes, principal and exact staging identities throughout preparation, acquisition,
+  independent verification, publication and recovery. Present files require stable no-follow
+  type/owner/mode/single-link/xattr/filesystem/length/digest checks; wrong occupied finals
+  fail without alteration or download. New files are numeric-owner mode 0400. The producer
+  has only helper/state read-only and private output writable mounts, no final cache or live
+  source mount, no Docker socket/device/published port/host namespace, and fixed nonroot/read-only-root/caps-none/
+  NNP/resource bounds. It disables ambient proxy lookup, permits only reviewed HTTPS redirects,
+  requires status 200, identity encoding and exact Content-Length or explicit chunked framing,
+  enforces the byte ceiling/digest, and syncs without extracting or executing the archives.
+  Independent output checks precede descriptor-relative RENAME_NOREPLACE publication and
+  per-file journal/namespace synchronization. Exact interrupted recovery and identity-bound
+  staging retirement remain fail-closed; historical legacy file profiles are reuse-only.
 
-  Source closure: `scripts/pins.env` now binds the exact byte length next to the established digest for
-  every fixed archive. One sorted fourteen-entry manifest names Android command-line tools and NDK;
-  Linux and Windows Flutter; FRB; Linux and Windows LLVM; olefile and Windows Python; Linux Rust and the Android
-  standard library; vcpkg; Git for Windows; and the Windows Rust MSI. Each entry carries one exact
-  credential-free HTTPS URL, length, SHA-256, and a bounded reviewed initial/final redirect-host set.
-  `fetch_verify`, `fetch_toolchains`, `fetch_windows_toolchains`, and `fetch_vcpkg` are deleted; the main
-  path calls the fixed transaction once, so the inherited redundant vcpkg fetch cannot recur. The moving,
-  operator-captured `rustup-init.exe` remains outside this manifest and is still digest-verified before
-  Windows use.
+  The closed `--fixed-archives` phase invokes that same complete transaction, accepts no
+  additional arguments/URLs/paths, and uses R-S11cj's ordinary-user outbound-only acquisition
+  VM with 4096 MiB memory, an 8 GiB disposable overlay and 1800-second ceiling. The full no-argument
+  path still invokes the stage once and retains `require_online_complete`; this phase neither
+  produces dependencies nor substitutes a partial canonical release closure.
 
-  `scripts/online-fixed-archive-output.py` rejects root UID/GID, mutable image identity, malformed or
-  pending pins, noncanonical destinations/URLs/hosts, duplicates, and any manifest count/order other than
-  the exact fourteen. The host exclusively locks the current-user-private mode-0700 online root,
-  reconciles every reserved same-filesystem transaction, and fully validates present output by stable
-  no-follow descriptor reads. Reuse requires exact type, same filesystem/mount, closed ownership/mode
-  profile, single link, no xattrs, length, and SHA-256. Historical current-user 0644/0664 and root
-  0444/0644 files are accepted only below that private root after the same byte check; new output is
-  current-owner mode 0400. A wrong occupied final fails without deletion, replacement, chmod, or download.
+  At source `c84ac69b5dc339254a5afa8534cc441456833c0a`
+  (tree `b67a1896fbd7a8b06eef26d5d1ed422408dfffa3`), the actual phase passed as
+  session 40715/exit 0 in 152 VM seconds. It reused seven validated files and acquired seven:
+  Windows Flutter/LLVM/Python/Rust MSI, FRB, olefile and Git for Windows
+  (1,642,593,362 new bytes). All fourteen final files (4,233,346,963 bytes) were revalidated;
+  an additional inert host digest/metadata inspection found exact pinned bytes, regular
+  single-link files owned 1000:1000, mode 0400. Builder runtime ID is
+  `sha256:420530ff412c240c70ed510d019c27cfb9cce99c9dc9e669beb9fda818999b43`;
+  unchanged helper SHA256 is `c3cf1022b61a9074a2e5ff77a9e71b9ab06304593bdbf497a20bb973f82fdaa9`.
+  Before/during/after host endpoint checks found no additions; guest Docker/BuildKit, QEMU,
+  private backends and capture joined, and owned run/staging/overlay retired.
 
-  A cold transaction creates unpredictable mode-0700 staging with one private output and a bounded
-  single-link mode-0600 fsynced state record. That record binds the online/staging/output identities,
-  UID/GID, complete manifest digest and records, immutable Android-builder content ID, exact helper digest,
-  missing set, phase, and per-file publication progress. The producer runs through the established archive
-  funnel by exact image ID with `--pull=never`, isolated bridge egress, a read-only root, numeric non-root
-  identity, all capabilities dropped, no-new-privileges, fixed PID/memory/no-swap/CPU ceilings, and bounded
-  non-executable scratch. Its only mounts are the exact helper and state read-only and the private output
-  writable. It receives no online root, final path, live repository, Docker socket, device, published port,
-  other writable host path, or host network/PID/IPC/UTS namespace.
+  The bounded success-v4 receipt is
+  `.harness-state/verifier-vm/online-fetch-receipts/run.uw9YdeSh7H.receipt`
+  (2,414 bytes / SHA-256 `232e278c7ae449dcd0839984818cdbcb7934e27e8e82bbf2191e64a2ee4b2e1f`).
+  It binds source/tree/bundle, request, endpoint inventory, guest finality and raw stream hashes.
+  Raw success streams self-retired; the assistant-captured, nonindependent outer output is
+  `evidence/fixed-archives-run.uw9YdeSh7H.outer.log` under the verifier-VM root
+  (3,888 bytes / SHA-256 `00c37588be412bf5a11984aa5e2010d482f3e5fd51c799f05e1b6936f3245759`).
+  This is seven live downloads plus complete-bundle reuse/publication, not a current all-cold
+  fourteen-download proof. Historical adversarial/interrupted-publication fixtures and
+  disposable all-fourteen HTTPS evidence remain in Git/audit; they are not current-VM acceptance.
 
-  Python proxy discovery is disabled. Every request begins at the exact HTTPS URL; at most five redirects
-  may remain credential-free HTTPS within that entry's host set. Status must be 200, the final host remains
-  allowed, and content encoding is absent or identity. A present decimal `Content-Length` must equal the
-  pin before streaming; an absent length is admitted only with explicit chunked transfer framing.
-  The producer creates each candidate exclusively with no-follow semantics and, under either framing, stops at the exact byte
-  ceiling, requires final length and SHA-256, synchronizes it, and seals it 0400 without executing or
-  extracting it. After producer exit, the host independently checks exact inventory, recorded inode,
-  ownership/modes, filesystem/mount, type/link/xattr closure, and stable complete bytes. Producer and host
-  verdicts remain independent.
-
-  Only a verified transaction may publish. Each archive uses descriptor-relative
-  `renameat2(RENAME_NOREPLACE)` and synchronizes both namespaces. An exact destination race is independently
-  revalidated before the identical staged duplicate is removed; a different destination is fatal. State is
-  synchronized after each archive, and all fourteen finals are rechecked before completion. Recovery
-  accepts prepared discard, verified-unpublished, exact interrupted per-file publication, and complete
-  arrangements; incoherent state is preserved. Coherent staging is removed only through the shared
-  identity-bound, same-filesystem, no-follow private-tree closure.
-
-  Verification recorded so far: the helper adversarial self-test passes as numeric UID/GID 1000 in the
-  immutable Android builder with no pull/network, read-only root/source, all capabilities dropped,
-  no-new-privileges, bounded resources, no port/socket/device/host namespace, and disposable tmpfs. It
-  proves exact fourteen-file and nested `win/` publication, idempotent completion, an interruption after
-  no-clobber rename but before state advancement, wrong length/digest cleanup, redirect-host refusal,
-  bounded chunked delivery, unframed-response refusal, symlink rejection, unsafe nested-parent refusal,
-  and wrong occupied-destination refusal. The focused source verifier binds the exact
-  manifest/pins, three-mount producer, root/network/redirect/response/file/output/recovery/publication
-  contracts, shared-gate wiring, R-S11cs, Appendix C #246, and this ledger through 36 deliberate
-  mutations.
-
-  Complete live acquisition proof: one disposable immutable Android-builder container ran as numeric
-  UID:GID 1000:1000 with `--pull=never`, isolated bridge egress, read-only root, all capabilities dropped,
-  no-new-privileges, fixed PID/8-GiB-memory/no-swap/two-CPU ceilings, and bounded non-executable `/tmp` and
-  `/proof` tmpfs. The exact helper was its only read-only host bind; it received no writable host path,
-  source tree, online cache, final host name, Docker socket, device, port, or host namespace. It downloaded
-  all 14 exact responses (4,233,346,963 bytes), exercised Google/Python/static-Rust/GitHub redirect and
-  fixed-length/chunked delivery, checked every streaming ceiling and SHA-256, independently verified the
-  complete candidate, and passed durable no-clobber publication plus reconciliation entirely inside
-  `/proof`. The container exited green with `fixed archive complete live network lifecycle: PASS
-  (14 archives)`; its tmpfs and every downloaded byte then vanished. Two preceding fail-closed attempts
-  exposed and corrected the source manifest's `frb`/`flutter` ordering and GitHub codeload's explicit
-  chunked/no-`Content-Length` response contract; neither attempt published persistent output.
-
-  Evidence boundary: this is complete disposable cold acquisition evidence for the fixed fourteen-archive
-  transaction, not a run against or mutation of the live online cache and not a release build. R-S11cu
-  subsequently closes the separate Debian systemd-image path. Host Cargo vendoring and Windows Flutter
-  engine and Pub-cache archive producers, WiX capture, maintenance-image acquisition/publication, exact
-  cold R-B2/R-B10 artifacts, native/device behavior, and R-V3 external review remain open. No root command
-  or root container, image pull/build/tag, release build, host RustDesk process/service/configuration/
-  listener/firewall/network operation, or live online archive mutation was performed.
+  **OPEN:** the full source-only authority verifier currently refuses its separate
+  systemd-consumer literal metadata-profile count; it did not pass. Two pre-transaction
+  failures (caller working directory, then that unrelated source assertion) downloaded nothing;
+  their bounded `evidence/fixed-archives-run.{nDzmr1aAB0,aDDGR2dDAl}.*` logs are retained.
+  The source supplement now scopes one-stage/order protection to full no-argument dispatch
+  and protects the closed phase; no broad catalog is an acquisition prerequisite.
+  Current cold all-fourteen response/redirect coverage, the complete canonical input closure,
+  moving operator-captured rustup-init, Cargo/dependency producers, Windows Flutter engine/Pub/WiX,
+  maintenance publication, signing/golden/operator assets, exact cold R-B2/R-B10 artifacts,
+  native/device/product behavior, independent reproduction and R-V3 review remain open.
+  This acquisition is not a product correction, display-delay fix, installed-service proof
+  or release build.
 - **R-S11ct/R-S11e-112 — fixed libvpx source and Windows-tool archive acquisition authority —
   SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE DISPOSABLE
   33-ARCHIVE LIVE ACQUISITION EVIDENCE RECORDED.** Platform: the unprivileged Linux acquisition host and
@@ -12643,8 +12612,8 @@ native Windows privacy/hotkey and CM collision behavior; installed desktop
 cleanup/failure and broader file finality; sustained CPU/memory/thread/handle,
 queue and latency bounds; physical Android; signed final artifacts, cold
 R-B2/R-B10 equality, independent reproduction, and external review. The
-canonical input closure still lacks `flutter-windows-3.24.5.zip`, so the
-full-closure release check cannot presently establish a final artifact.
+fourteen fixed archives, including `flutter-windows-3.24.5.zip`, are now present under R-S11cs;
+the full canonical input closure and signed final-artifact acceptance remain OPEN.
 Neither these controlled-side CM schedules nor portable model checks explain
 or close the reported Android outgoing-viewer hang or Windows display-only
 focus delay. Earlier incremental and invalid runs remain in the deep-audit

@@ -423,28 +423,29 @@ checks are locked/offline. Successful compiler completion and nonempty component
 metadata are required; there is no C/Objective-C shim or SDK-error pass. This is
 an extracted-component check, not complete parent/root-Cargo, linking, AppKit
 runtime, installed service, signed artifact or native macOS acceptance.
-Attempts at `9283ec422aa9aa6fded35077a7ae26b00477fc89` and
-`d93edcf0e7eaad0718c45797105590f1d09e41d0` each reached the 300-second VM
-limit (owner status 124, outer exit 1) without a compiler verdict. The latter's
-live guest stages observed source admission at 7.89 seconds, vendor copying
-at 12.88, image loading at 52.92 and workload entry at 73.41. The stall is
-inside the leaf workload; its exact phase is still unobserved, not proved to
-be the compiler or vendor-copy durability work. This is not an accepted fast
-inner loop. The leaf now names its preflight, image/source/vendor/toolchain,
-compiler and postcondition stages. Its output is streamed while captured;
-the capture process has a 6 MiB file limit and both pipeline exits are checked.
-There is no second successful-output replay. This correction is unexecuted.
-The two raw serials and nonindependent failed-only outer receipts for
-`run.rRgDNm59Fb` and `run.kc7siJbvdY` are retained under
-`.harness-state/verifier-vm/` and its `evidence/` directory. The latter raw
-serial is 55,559 bytes/SHA-256
-`fe98bc3824cb8979def6d0bae0eda05d4bc82ad6a8a4fa80cd82aaec87fe15d5`;
-its outer receipt SHA-256 is
-`34df7b6a19cf44ddfc00d47fd640cb25525e449fcb6914f654cd8d264af03e31`.
+At `35d57b8cdd053952654e88ccbab96178106b3c66`, live output reached vendor
+snapshot creation at 72.83 seconds and stayed there until the 300-second VM
+limit (owner status 124, outer exit 1), before toolchain preflight or compilation.
+This locates the stalled operation, not the precise digest/copy/fsync subphase.
+`online-input-provenance.py` copies the whole vendor subtree, synchronizes every
+copied regular file and performs four complete digest walks. That temporary-copy
+path needs focused performance correction without weakening closure/identity,
+read-only isolation, source-race or post-use validation. No unchanged replay or
+longer timeout is accepted as the fix. This is not an accepted fast inner loop.
+The leaf's stage output is now actually retained before timeout through live
+capture. The capture has a 6 MiB file limit, checks both pipeline exits and
+does not replay successful output; normal-return exit accounting and overflow
+injection remain unexecuted. Raw `apple-conform-run.xVaZ0MTCSq.serial.log`
+(56,194 bytes; SHA-256
+`dad6d6c20ae23d3b779fc3c170df974dd8fc051dd14e0162936e3ba0f78ddea3`)
+and nonindependent `evidence/macos-cursor-compile-run.xVaZ0MTCSq.outer.receipt`
+(SHA-256 `93b5d7460bdbe8c8f6d2586534e56061de67a57860397c7f1d1d09ba725dd15a`)
+are retained under `.harness-state/verifier-vm/`, alongside the two earlier
+failed attempts' raw serials and receipts. All three were compiler-unvalidated.
 Endpoint-only before/during and supplementary post inventories agree, but
-guest/input postconditions did not complete. Both disks/media and exact
-34 MiB terminal run roots are retired after evidence retention. No unchanged
-replay or longer timeout is accepted as the fix for this verification gap.
+guest/input postconditions did not complete. Disks/media and each exact 34 MiB
+terminal run root are retired after evidence retention. No product/native or
+release acceptance follows from the logging correction or these failed runs.
 
 **OPEN:** exact parent/Cargo/generated-protobuf/Apple-target compilation;
 AppKit current-system cursor API compatibility, thread/object lifetime and real

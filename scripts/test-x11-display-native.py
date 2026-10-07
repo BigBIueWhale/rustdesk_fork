@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run production X11 enumeration and capture against real isolated Xvfb."""
+"""Run X11 capture checks and a diagnostic TFC ABI probe against isolated Xvfb."""
 import hashlib
 import os
 from pathlib import Path
@@ -8,11 +8,53 @@ import selectors
 import shutil
 import subprocess
 import time
+import tomllib
 
 
 def require(value, message):
     if not value:
         raise RuntimeError(message)
+
+
+def build_input_abi(root, environment):
+    packages = tomllib.loads((root / "Cargo.lock").read_text())["package"]
+    tfc = [package for package in packages if package["name"] == "tfc"]
+    require(len(tfc) == 1 and tfc[0]["version"] == "0.7.0"
+            and tfc[0]["source"] == "git+https://github.com/rustdesk-org/The-Fat-Controller?"
+            "branch=history/rebase_upstream_20240722#78bb80a8e596e4c14ae57c8448f5fca75f91f2b0"
+            and "x11 2.19.0" in tfc[0]["dependencies"], "TFC lockfile authority differs")
+    dependency = tomllib.loads((root / "libs/enigo/Cargo.toml").read_text())["dependencies"]["tfc"]
+    require(dependency == {"git": "https://github.com/rustdesk-org/The-Fat-Controller",
+                           "branch": "history/rebase_upstream_20240722"}, "Enigo TFC selection differs")
+    x11 = [package for package in packages if package["name"] == "x11" and package["version"] == "2.19.0"]
+    require(len(x11) == 1 and x11[0]["source"] ==
+            "git+https://github.com/bjornsnoen/x11-rs#c2e9bfaa7b196938f8700245564d8ac5d447786a",
+            "TFC X11 source selection differs")
+    work = Path("/build/input-abi")
+    (work / "ffi").mkdir(mode=0o700, parents=True)
+    for name, digest in (("xkb", "128afcecd57843f7855289ecaf445a2ce8383383b143656a67c2d4acd3c4cffc"),
+                         ("xlib", "74eb55c515efddf93c404e9ddb4f96cb1bc6977e68b8c3fbae96e5c60e4202f2")):
+        source = root / f"vendor/tfc/ffi/{name}.rs"
+        require(hashlib.sha256(source.read_bytes()).hexdigest() == digest, "pinned TFC FFI bytes differ")
+        shutil.copyfile(source, work / f"ffi/{name}.rs")
+    shutil.copyfile(root / "scripts/test-x11-input-abi.rs", work / "test.rs")
+    oracle = root / "scripts/test-x11-input-abi.c"
+    subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic",
+                    "-c", str(oracle), "-o", str(work / "oracle.o")],
+                   env=environment, check=True, timeout=15)
+    binary = work / "native"
+    subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2021", str(work / "test.rs"),
+                    "-C", f"link-arg={work / 'oracle.o'}", "-o", str(binary)],
+                   env=environment, check=True, timeout=30)
+    header = Path("/usr/include/X11/extensions/XKBstr.h")
+    library = Path("/usr/lib/x86_64-linux-gnu/libX11.so.6").resolve(strict=True)
+    print("X11_INPUT_ABI_BUILD "
+          f"rust_sha256={hashlib.sha256((work / 'test.rs').read_bytes()).hexdigest()} "
+          f"oracle_sha256={hashlib.sha256(oracle.read_bytes()).hexdigest()} "
+          f"header_sha256={hashlib.sha256(header.read_bytes()).hexdigest()} "
+          f"library_sha256={hashlib.sha256(library.read_bytes()).hexdigest()} "
+          f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()}", flush=True)
+    return binary, library
 
 
 def capture_connection_loss(binary, environment, xserver):
@@ -106,6 +148,7 @@ def main():
     version = subprocess.run(["/usr/local/cargo/bin/rustc", "--version"], env=environment,
                              check=True, capture_output=True, text=True, timeout=5)
     require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
+    input_abi, input_library = build_input_abi(root, environment)
     comparator = root / "libs/scrap/src/common/frame_compare.rs"
     comparator_test = Path("/build/frame-compare-tests")
     subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2018", "--test",
@@ -162,6 +205,22 @@ def main():
             while not Path("/tmp/.X11-unix/X98").is_socket():
                 require(child.poll() is None and time.monotonic() < deadline, "Xvfb not ready")
                 time.sleep(0.05)
+            abi = subprocess.run([str(input_abi)], env=environment, capture_output=True,
+                                 text=True, timeout=10)
+            abi_lines = abi.stdout.splitlines()
+            require(abi.returncode == 0 and not abi.stderr and len(abi.stdout) <= 4096
+                    and abi_lines == [
+                        "X11_INPUT_ABI_OFFSETS rust=[16, 2, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14] "
+                        "native=[18, 2, 0, 2, 4, 1, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16]",
+                        "X11_INPUT_ABI_FINDING=confirmed supplier=tfc rust_size=16 native_size=18 align=2 "
+                        "fields=14 offset_mismatches=13 oracle=client-header product_acceptance=false",
+                        f"X11_INPUT_ABI_LOADED library={input_library}",
+                        "X11_INPUT_ABI_NATIVE=confirmed supplier=tfc queries=32 controls=33 rejected=16 "
+                        "rejection=BadKeyboard:BadDevice recovery=same-connection write_beyond_rust_type=2 allocation_overrun=false "
+                        "guards=intact descriptors=retired product_acceptance=false"],
+                    f"native TFC ABI diagnostic differs: {abi}")
+            print(abi.stdout.strip(), flush=True)
+            input_abi.unlink()
             probe = subprocess.run([str(binaries["corrected"]), "shm-status"], env=environment,
                                    capture_output=True, text=True, timeout=15)
             probe_receipt = ("X11_SHM_STATUS_NATIVE=pass request_fault=oversized-query-version "

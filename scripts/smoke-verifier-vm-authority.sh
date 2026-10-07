@@ -1114,12 +1114,20 @@ android_frame_input_inventory() {
     )
     if [ "$MODE" = x11-display-tests ]; then
         files+=("$SCRIPT_DIR/test-x11-display-native.py" "$SCRIPT_DIR/test-x11-display.rs"
+            "$SCRIPT_DIR/test-x11-input-abi.c" "$SCRIPT_DIR/test-x11-input-abi.rs"
+            "$REPO_ROOT/Cargo.lock" "$REPO_ROOT/libs/enigo/Cargo.toml"
+            "$ONLINE_INPUTS/cargo-vendor/tfc-0.7.0/src/linux_x11/ffi/xkb.rs"
+            "$ONLINE_INPUTS/cargo-vendor/tfc-0.7.0/src/linux_x11/ffi/xlib.rs"
             "$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
             "$REPO_ROOT/libs/scrap/src/x11/iter.rs" "$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
             "$REPO_ROOT/libs/scrap/src/x11/server.rs" "$REPO_ROOT/libs/scrap/src/x11/display.rs"
             "$REPO_ROOT/libs/scrap/src/x11/capturer.rs"
             "$REPO_ROOT/libs/scrap/src/common/x11.rs"
             "$REPO_ROOT/libs/scrap/src/common/frame_compare.rs")
+        verify_sha256 "$ONLINE_INPUTS/cargo-vendor/tfc-0.7.0/src/linux_x11/ffi/xkb.rs" \
+            128afcecd57843f7855289ecaf445a2ce8383383b143656a67c2d4acd3c4cffc
+        verify_sha256 "$ONLINE_INPUTS/cargo-vendor/tfc-0.7.0/src/linux_x11/ffi/xlib.rs" \
+            74eb55c515efddf93c404e9ddb4f96cb1bc6977e68b8c3fbae96e5c60e4202f2
     fi
     while IFS=$'\t' read -r name size digest url extra; do
         [ -n "$name" ] || continue
@@ -3379,6 +3387,12 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
         lifecycle_payload_grafts+=(
             "repo/scripts/test-x11-display-native.py=$SCRIPT_DIR/test-x11-display-native.py"
             "repo/scripts/test-x11-display.rs=$SCRIPT_DIR/test-x11-display.rs"
+            "repo/scripts/test-x11-input-abi.c=$SCRIPT_DIR/test-x11-input-abi.c"
+            "repo/scripts/test-x11-input-abi.rs=$SCRIPT_DIR/test-x11-input-abi.rs"
+            "repo/Cargo.lock=$REPO_ROOT/Cargo.lock"
+            "repo/libs/enigo/Cargo.toml=$REPO_ROOT/libs/enigo/Cargo.toml"
+            "repo/vendor/tfc/ffi/xkb.rs=$ONLINE_INPUTS/cargo-vendor/tfc-0.7.0/src/linux_x11/ffi/xkb.rs"
+            "repo/vendor/tfc/ffi/xlib.rs=$ONLINE_INPUTS/cargo-vendor/tfc-0.7.0/src/linux_x11/ffi/xlib.rs"
             "repo/scripts/fixtures/x11-display-iter-before.rs=$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
             "repo/libs/scrap/src/x11/iter.rs=$REPO_ROOT/libs/scrap/src/x11/iter.rs"
             "repo/libs/scrap/src/x11/ffi.rs=$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
@@ -4073,6 +4087,12 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux app-capsule cloud-init completion'
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
+    require_exact_fixed_receipt \
+        'X11_INPUT_ABI_FINDING=confirmed supplier=tfc rust_size=16 native_size=18 align=2 fields=14 offset_mismatches=13 oracle=client-header product_acceptance=false' \
+        'native client-header comparison of exact TFC state declarations'
+    require_exact_fixed_receipt \
+        'X11_INPUT_ABI_NATIVE=confirmed supplier=tfc queries=32 controls=33 rejected=16 rejection=BadKeyboard:BadDevice recovery=same-connection write_beyond_rust_type=2 allocation_overrun=false guards=intact descriptors=retired product_acceptance=false' \
+        'real TFC XKB writes and native rejection/recovery diagnostic, not product acceptance'
     require_exact_fixed_receipt \
         'X11_SHM_STATUS_NATIVE=pass request_fault=oversized-query-version server_error=BadLength callers=direct,public repeats=16 cases=32 queries=3 replies=2 protocol_errors=1 recovery=same-connection capture=fresh allocations=retired segments=retired' \
         'production X11 availability probe allocation cleanup and same-connection recovery'
@@ -5234,7 +5254,7 @@ elif [ "$MODE" = fixed-archive-tests ]; then
     printf 'FIXED_ARCHIVE_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = x11-display-tests ]; then
-    printf 'X11_DISPLAY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-enumeration-capture-component cleanup=joined elapsed_seconds=%s\n' \
+    printf 'X11_DISPLAY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-enumeration-capture-component input_abi=diagnostic-confirmed input_abi_product_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-frame-tests ]; then
     printf 'ANDROID_FRAME_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=unexecuted cleanup=joined elapsed_seconds=%s\n' \

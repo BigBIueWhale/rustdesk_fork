@@ -369,8 +369,9 @@ whole-app or privilege-boundary closure.
 
 ### macOS cursor — one owned seed/image cache; native acceptance OPEN
 
-**Source corrected; five portable production-cache tests pass. AppKit/TLS/protobuf
-adapter, complete service/app, native macOS and release acceptance remain OPEN.**
+**Source corrected; five portable production-cache tests and the real-types
+adapter component compile pass. Complete parent/service/app integration,
+native macOS and release acceptance remain OPEN.**
 
 The former `macos.rs` marked its global mutable seed before fallible image reads,
 so a failed read could suppress the same seed on later polls. It then queried
@@ -410,7 +411,7 @@ under `.harness-state/verifier-vm/` bind source/module/binary and scope. They ar
 assistant observations, not independent attestation. Inputs and host endpoints
 were unchanged; guest owners joined and disk/media/run root self-retired.
 
-**Focused compiler path; INCOMPLETE / NOT VALIDATED:**
+**Focused component compiler path passed; native/whole-app acceptance OPEN:**
 `scripts/smoke-verifier-vm-authority.sh --apple-conform --cursor-compile`
 uses the existing zero-NIC Apple VM profile, bounded to 300 seconds, 4 GiB RAM
 and a 12 GiB disposable overlay. Its networkless nonroot container has 2 GiB RAM,
@@ -423,36 +424,38 @@ checks are locked/offline. Successful compiler completion and nonempty component
 metadata are required; there is no C/Objective-C shim or SDK-error pass. This is
 an extracted-component check, not complete parent/root-Cargo, linking, AppKit
 runtime, installed service, signed artifact or native macOS acceptance.
-At `35d57b8cdd053952654e88ccbab96178106b3c66`, live output reached vendor
-snapshot creation at 72.83 seconds and stayed there until the 300-second VM
-limit (owner status 124, outer exit 1), before toolchain preflight or compilation.
-This locates the stalled operation, not the precise digest/copy/fsync subphase.
-`online-input-provenance.py` copies the whole vendor subtree and performs four
-complete digest walks. Its execution-only snapshot copy no longer requires disk
-durability for every regular file; canonical record synchronization is unchanged.
-Exclusive creation, checked copy/close, complete bytes/topology, source-race
-replay, read-only sealing and post-use verification remain. The focused lane
-runs the real filesystem provenance self-test first, now including independent
-source/destination inodes, preserved internal hardlinks, source mutation after
-copy and subtree preflight/copy races. This performance correction and its
-expanded tests are not yet executed; no speedup is claimed. No unchanged replay
-or longer timeout is accepted as the fix. This is not an accepted fast inner loop.
-The leaf's stage output is now actually retained before timeout through live
-capture. The capture has a 6 MiB file limit, checks both pipeline exits and
-does not replay successful output; normal-return exit accounting and overflow
-injection remain unexecuted. Raw `apple-conform-run.xVaZ0MTCSq.serial.log`
-(56,194 bytes; SHA-256
-`dad6d6c20ae23d3b779fc3c170df974dd8fc051dd14e0162936e3ba0f78ddea3`)
-and nonindependent `evidence/macos-cursor-compile-run.xVaZ0MTCSq.outer.receipt`
-(SHA-256 `93b5d7460bdbe8c8f6d2586534e56061de67a57860397c7f1d1d09ba725dd15a`)
-are retained under `.harness-state/verifier-vm/`, alongside the two earlier
-failed attempts' raw serials and receipts. All three were compiler-unvalidated.
-Endpoint-only before/during and supplementary post inventories agree, but
-guest/input postconditions did not complete. Disks/media and each exact 34 MiB
-terminal run root are retired after evidence retention. No product/native or
-release acceptance follows from the logging correction or these failed runs.
+Source `b22e597d641c8fc98b9a5672eb22aace9b31fcca`, tree
+`0ffde76c9578eb491377156c22d393971c9d236c`, passed the complete focused
+transaction in **145 VM seconds**. Both targets produced successful compiler
+completion and nonempty metadata; 57 selected dependency records matched the
+root lock. The fixture used the actual generated protobuf and real bindings,
+not substituted cursor/binding types. The complete root app/feature graph,
+linking and native Apple runtime remain unproved.
 
-**OPEN:** exact parent/Cargo/generated-protobuf/Apple-target compilation;
+The expanded real-filesystem provenance self-test passed: independent snapshot
+inodes, preserved internal hardlinks, source mutation after copy, subtree
+preflight/copy races and all retained byte/path/topology/post-use negatives.
+The complete vendor snapshot took **37.54 seconds**; the prior source
+`35d57b8c` had not completed it in the remaining 227 seconds before timeout.
+Execution-only copies no longer synchronize every regular file to disk;
+canonical-record synchronization is unchanged. All four complete digest walks,
+exclusive creation, checked copy/close, race replay, read-only sealing and
+post-use validation remain. This is one named timing result, not a sustained
+performance claim or integration of every shared release/build consumer.
+
+Live bounded output, normal producer/capture exits, source/input/image/VM
+postconditions and endpoint-only host before/during/after audit passed.
+Guest owners joined; disk/media/run root self-retired. Raw
+`apple-conform-run.19jzqdvuBv.serial.log` (161,817 bytes; SHA-256
+`71fb47b0a91a0e25fcc4f118d09853fa03d1619894fbe7352ca1ed3a193e78cd`)
+and nonindependent `evidence/macos-cursor-compile-run.19jzqdvuBv.outer.receipt`
+(SHA-256 `2772fb3f862f18941062308aaeff07b46a9d48d790771e81ac587fbdeb7c1236`)
+are retained under `.harness-state/verifier-vm/`. Earlier failed attempts remain
+there and in the audit/Git history, not as accepted compiler results. Capture
+failure/overflow injection and the deliberate full three-target Apple matrix
+after this shared snapshot change remain OPEN.
+
+**OPEN:** complete parent/root-Cargo/generated-protobuf feature integration;
 AppKit current-system cursor API compatibility, thread/object lifetime and real
 nil/bitmap/geometry/color/alpha failure cases; native seed reuse/full freshness;
 real service processing-failure/reset/replacement; capture-to-presentation,

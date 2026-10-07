@@ -394,6 +394,10 @@ fn e_native_startup_deadline() {
 #[test]
 fn f_native_cookie_authentication() {
     let correct = std::env::var("XAUTHORITY").unwrap();
+    // Keep one FIFO writer live; another FIFO has no writer at all. The
+    // production loader must refuse both without waiting for stream input.
+    let _writer = std::fs::OpenOptions::new().read(true).write(true)
+        .open(std::env::var("CLIPBOARD_TEST_WRITER_AUTHORITY").unwrap()).unwrap();
     let (connection, selection, windows) = native_selection_driver();
     let baseline = resources();
     let children = root_children(&connection);
@@ -406,11 +410,34 @@ fn f_native_cookie_authentication() {
     drop(owner);
     assert_native_window_retired(&connection, &children);
     assert_resources_retired(baseline);
-    for variable in ["CLIPBOARD_TEST_BAD_AUTHORITY", "CLIPBOARD_TEST_EMPTY_AUTHORITY", "CLIPBOARD_TEST_ABSENT_AUTHORITY"] {
+    for (variable, expected) in [
+        ("CLIPBOARD_TEST_BAD_AUTHORITY", "X11 setup failed"),
+        ("CLIPBOARD_TEST_EMPTY_AUTHORITY", "X11 setup failed"),
+        ("CLIPBOARD_TEST_ABSENT_AUTHORITY", "X11 setup failed"),
+        ("CLIPBOARD_TEST_FIFO_AUTHORITY", "X11 clipboard authority is not a regular file"),
+        ("CLIPBOARD_TEST_WRITER_AUTHORITY", "X11 clipboard authority is not a regular file"),
+        ("CLIPBOARD_TEST_FIFO_LINK_AUTHORITY", "X11 clipboard authority is not a regular file"),
+        ("CLIPBOARD_TEST_DIRECTORY_AUTHORITY", "X11 clipboard authority is not a regular file"),
+        ("CLIPBOARD_TEST_LARGE_AUTHORITY", "X11 clipboard authority exceeds 1 MiB"),
+        ("CLIPBOARD_TEST_TRUNCATED_AUTHORITY", "Malformed X11 clipboard authority"),
+        ("CLIPBOARD_TEST_TRAILING_AUTHORITY", "Malformed X11 clipboard authority"),
+        ("CLIPBOARD_TEST_UNREADABLE_AUTHORITY", "Permission denied"),
+        ("CLIPBOARD_TEST_FIRST_AUTHORITY", "X11 setup failed"),
+    ] {
         std::env::set_var("XAUTHORITY", std::env::var(variable).unwrap());
-        let refused = subscribe("cookie-authority".to_owned()).is_err();
+        println!("CLIPBOARD_NATIVE_AUTH_FILE_READY case={variable}");
+        std::io::stdout().flush().unwrap();
+        let started = Instant::now();
+        let result = subscribe("cookie-authority".to_owned());
+        let elapsed = started.elapsed();
         std::env::set_var("XAUTHORITY", &correct);
-        assert!(refused, "native cookie-authenticated server admitted {variable}");
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("native cookie-authenticated server admitted {variable}"),
+        };
+        assert!(error.to_string().contains(expected), "wrong refusal for {variable}: {error}");
+        assert!(elapsed < Duration::from_secs(1), "authority-file refusal was not prompt: {variable}");
+        println!("CLIPBOARD_NATIVE_AUTH_FILE_RESULT case={variable} refused_ms={}", elapsed.as_millis());
         {
             let listener = CLIPBOARD_LISTENER.lock().unwrap();
             assert!(listener.handle.is_none());
@@ -425,7 +452,20 @@ fn f_native_cookie_authentication() {
         assert_native_window_retired(&connection, &children);
         assert_resources_retired(baseline);
     }
-    println!("CLIPBOARD_NATIVE_AUTH=pass server=cookie-required valid=4 wrong=refused missing=refused absent_file=refused startup_budget=disarmed next_start=working resources=baseline");
+    for variable in ["CLIPBOARD_TEST_LINK_AUTHORITY", "CLIPBOARD_TEST_BOUNDARY_AUTHORITY",
+                     "CLIPBOARD_TEST_LOCAL_AUTHORITY", "CLIPBOARD_TEST_WILDCARD_AUTHORITY"] {
+        std::env::set_var("XAUTHORITY", std::env::var(variable).unwrap());
+        let result = subscribe("cookie-authority".to_owned());
+        std::env::set_var("XAUTHORITY", &correct);
+        let (owner, receiver) = result.unwrap();
+        change_and_observe(&connection, selection, windows, &[&receiver]);
+        drop(receiver);
+        drop(owner);
+        assert_native_window_retired(&connection, &children);
+        assert_resources_retired(baseline);
+        println!("CLIPBOARD_NATIVE_AUTH_FILE_VALID case={variable}");
+    }
+    println!("CLIPBOARD_NATIVE_AUTH=pass server=cookie-required valid=17 refusals=12 nonregular=4 malformed=2 oversized=1 unreadable=1 first_match=preserved selectors=local-wildcard-filtered-boundary symlink=regular-only startup_budget=disarmed next_start=working resources=baseline");
 }
 
 #[test]

@@ -174,20 +174,58 @@ def scenario(binary, variant, environment):
     output = bytearray()
     server_authority = ["-ac"]
     if variant == "authentication":
-        def cookie_file(cookie):
-            fields = (b"", b"94", b"MIT-MAGIC-COOKIE-1", cookie)
-            return struct.pack(">H", 65535) + b"".join(struct.pack(">H", len(field)) + field for field in fields)
+        def cookie_file(cookie, family=65535, address=b"", number=b"94", name=b"MIT-MAGIC-COOKIE-1"):
+            fields = (address, number, name, cookie)
+            return struct.pack(">H", family) + b"".join(struct.pack(">H", len(field)) + field for field in fields)
         environment = dict(environment)
+        cookie = bytes.fromhex("0123456789abcdef0123456789abcdef")
+        wrong = bytes.fromhex("fedcba9876543210fedcba9876543210")
+        hostname = os.fsencode(os.uname().nodename)
+        good = cookie_file(cookie)
+        padding = struct.pack(">HHHHH", 253, 0, 0, 0, 0)
+        repeats, remainder = divmod(1024 * 1024 - len(good), len(padding))
+        require(remainder == 0, "authority boundary fixture size differs")
+        filtered = (cookie_file(cookie, family=256, address=hostname, name=b"XDM-AUTHORIZATION-1")
+                    + cookie_file(cookie, family=0, address=hostname)
+                    + cookie_file(cookie, family=256, address=b"not-this-host")
+                    + cookie_file(cookie, family=256, address=hostname, number=b"95")
+                    + cookie_file(cookie, family=256, address=hostname))
         for variable, name, data in (
-            ("XAUTHORITY", "native-good.xauth", cookie_file(bytes.fromhex("0123456789abcdef0123456789abcdef"))),
-            ("CLIPBOARD_TEST_BAD_AUTHORITY", "native-bad.xauth", cookie_file(bytes.fromhex("fedcba9876543210fedcba9876543210"))),
+            ("XAUTHORITY", "native-good.xauth", good),
+            ("CLIPBOARD_TEST_BAD_AUTHORITY", "native-bad.xauth", cookie_file(wrong)),
             ("CLIPBOARD_TEST_EMPTY_AUTHORITY", "native-empty.xauth", b""),
+            ("CLIPBOARD_TEST_LARGE_AUTHORITY", "native-large.xauth", padding * repeats + good + b"\0"),
+            ("CLIPBOARD_TEST_TRUNCATED_AUTHORITY", "native-truncated.xauth", b"\0"),
+            ("CLIPBOARD_TEST_TRAILING_AUTHORITY", "native-trailing.xauth", good + b"\0"),
+            ("CLIPBOARD_TEST_UNREADABLE_AUTHORITY", "native-unreadable.xauth", good),
+            ("CLIPBOARD_TEST_FIRST_AUTHORITY", "native-first.xauth", cookie_file(wrong) + good),
+            ("CLIPBOARD_TEST_BOUNDARY_AUTHORITY", "native-boundary.xauth", padding * repeats + good),
+            ("CLIPBOARD_TEST_LOCAL_AUTHORITY", "native-local.xauth", filtered),
+            ("CLIPBOARD_TEST_WILDCARD_AUTHORITY", "native-wildcard.xauth", cookie_file(cookie, family=256, address=hostname, number=b"")),
         ):
             authority = BUILD / name
             with authority.open("xb") as file:
                 file.write(data)
             authority.chmod(0o600)
             environment[variable] = str(authority)
+        Path(environment["CLIPBOARD_TEST_UNREADABLE_AUTHORITY"]).chmod(0)
+        for variable, name in (
+            ("CLIPBOARD_TEST_FIFO_AUTHORITY", "native-no-writer.fifo"),
+            ("CLIPBOARD_TEST_WRITER_AUTHORITY", "native-live-writer.fifo"),
+        ):
+            authority = BUILD / name
+            os.mkfifo(authority, 0o600)
+            environment[variable] = str(authority)
+        for variable, name, target in (
+            ("CLIPBOARD_TEST_FIFO_LINK_AUTHORITY", "native-fifo-link.xauth", environment["CLIPBOARD_TEST_FIFO_AUTHORITY"]),
+            ("CLIPBOARD_TEST_LINK_AUTHORITY", "native-good-link.xauth", environment["XAUTHORITY"]),
+        ):
+            authority = BUILD / name
+            authority.symlink_to(target)
+            environment[variable] = str(authority)
+        directory = BUILD / "native-directory.xauth"
+        directory.mkdir(mode=0o700)
+        environment["CLIPBOARD_TEST_DIRECTORY_AUTHORITY"] = str(directory)
         absent = BUILD / "native-absent.xauth"
         require(not absent.exists(), "absent authority fixture is present")
         environment["CLIPBOARD_TEST_ABSENT_AUTHORITY"] = str(absent)
@@ -279,7 +317,7 @@ def scenario(binary, variant, environment):
                     "native startup deadline did not cancel, join and permit a healthy new generation")
             elif variant == "authentication":
                 require(single_pass and not retired and output.count(
-                    b"CLIPBOARD_NATIVE_AUTH=pass server=cookie-required valid=4 wrong=refused missing=refused absent_file=refused startup_budget=disarmed next_start=working resources=baseline\n") == 1,
+                    b"CLIPBOARD_NATIVE_AUTH=pass server=cookie-required valid=17 refusals=12 nonregular=4 malformed=2 oversized=1 unreadable=1 first_match=preserved selectors=local-wildcard-filtered-boundary symlink=regular-only startup_budget=disarmed next_start=working resources=baseline\n") == 1,
                     "native authentication, healthy lifetime and exact recovery did not pass")
             else:
                 require(single_pass and not retired and output.count(

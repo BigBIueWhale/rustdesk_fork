@@ -368,13 +368,46 @@ authentication only, not a real user's principal/session, an installed service,
 another backend, or the whole app. No product authentication change or new
 authentication defect is established by this scenario.
 
+**Accepted unprimed/concurrent native runtime scenario:** harness source
+`6f3c20c6bd463f257acdcbb74a0ad7460bcf70c7`, tree
+`f71c69f0907f1d69a4f7515075fc3d60659202e3`, passed the same command with
+outer exit 0 in **71 VM seconds**. The thread-context fixture no longer calls
+`XInitThreads`. Before its first Xlib call it observes the exact retained
+library's non-null global-lock and display-lock-initializer symbols. This is a
+test-only private-ABI observation, not a production dependency. Upstream
+[libX11 1.8 enables automatic thread initialization by default](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/README.md);
+missing application-level initialization alone is not proof of a product defect.
+No product initialization change was made.
+
+Eight workers begin native construction together and keep sixteen unique
+production-owned Xlib/XDO contexts alive. Each owner is reused 64 times;
+512 focus-query calls and 512 mouse-query calls return real Xvfb values.
+Parent snapshots before queries and before retirement observe exactly sixteen
+additional descriptors and eight additional tasks, with no early destructor.
+All workers join, all sixteen native retirements pair, and own descriptors/tasks
+return to baseline. Owner, route, same-worker startup and cookie-authentication
+cases also pass without explicit initialization in this fixture; Enigo/focus
+fixtures' setup is unchanged. This bounded case does not share one Display
+between threads, execute the full app, detect every data race, measure native
+internal heap, or validate different library builds or initialization failure.
+
+Raw `x11-display-tests-run.qaZdNsmRY7.serial.log` (100,049 bytes; SHA-256
+`d377f11967fff2ac310fc12e42d2a0cec4b29ae2bd3c0012a153f786d79c9f12`) and
+`evidence/x11-concurrent-contexts-run.qaZdNsmRY7.outer.receipt` (SHA-256
+`1428f32b74b296842274dec0237cadb95e83a5e393dc22857f02280d32193604`)
+retain source/binary/library identities and assistant-observed, nonindependent
+finality. All earlier focused cases passed; host endpoints had no additions,
+inputs stayed read-only, exact guest owners joined and disk/media/run root
+self-retired. This does not establish Android/Windows display-delay causation.
+
 **OPEN:** constructor/request bounds; fresh connected peer/session and
 installed-session/principal binding; authenticated capture/focus/Enigo/rdev and
 service scenarios (their existing fixtures still use `-ac`); protected-loader, complete
 parent/Cargo/app and current installed/platform artifacts; cursor-image execution
 and native position-query status-error negatives; service shutdown and Enigo/rdev
-parent integration; established Xlib connection-failure/destruction and global
-initialization/concurrency; native allocations/internal heap, broader races,
+parent integration; established Xlib connection-failure/destruction, global
+initialization failure/different library builds, shared-display and whole-app
+concurrency/error-handler behavior; native allocations/internal heap, broader races,
 resources/performance/soak/cross-version; cold equality, independent reproduction,
 external review and reported Android/Windows delay causation. Component startup
 recovery is not a whole-app or privilege-boundary closure.

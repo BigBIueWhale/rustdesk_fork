@@ -4215,8 +4215,8 @@ elif [ "$MODE" = x11-display-tests ]; then
         'X11_STARTUP_RETRY_NATIVE=pass source=complete-context-module old=exact-tls-initializers components=xlib,xdo cases=4 old=cached-failure current=same-worker-recovery cooldown_ms=1000 cooldown_calls=32 healthy_reuses=32 reentrant=refused queries=server-real callbacks=paired descriptors=retired threads=retired server=owned-and-joined scope=thread-context-startup' \
         'production thread-owned X11/XDO startup retry, cooldown, reuse and joined retirement'
     require_exact_fixed_receipt \
-        'X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 pointer=server-real callbacks=paired descriptors=retired threads=retired scope=xdo-backend' \
-        'complete production Enigo XDO backend selector, pointer and retirement behavior'
+        'X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 context_refusals=32 constructor_unwinds=16 display_connections=one pointer=selected-root callbacks=paired descriptors=retired threads=retired scope=xdo-backend' \
+        'complete production Enigo XDO backend selected-root pointer delivery and sole-display ownership across native refusal, constructor unwind and retirement'
     require_exact_fixed_receipt \
         'X11_ENIGO_ROUTE_NATIVE=pass source=complete-backends old_accepts=2 current_accepts=0 scenarios=constructor,diagnostic-display-change listener=container-loopback-only peer=closed children=joined scope=xdo-backend' \
         'complete Enigo XDO backend retains one local-only display for input and diagnostic'

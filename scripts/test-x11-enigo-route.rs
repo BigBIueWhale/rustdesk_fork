@@ -19,13 +19,14 @@ pub mod x11 {
         extern "C" {
             pub fn XOpenDisplay(name: *const c_char) -> *mut Display;
             pub fn XCloseDisplay(display: *mut Display) -> c_int;
+            pub fn XDefaultScreen(display: *mut Display) -> c_int;
             pub fn XGetPointerMapping(display: *mut Display, map: *mut u8, size: c_int) -> c_int;
         }
     }
 }
 use std::{ffi::{c_char, c_int, c_uint, c_ulong, CStr, CString},
           sync::{Mutex, atomic::{AtomicBool, AtomicUsize, Ordering}}};
-use x11::xlib::Display;
+use x11::xlib::{Display, XDefaultScreen};
 #[repr(C)]
 #[allow(non_camel_case_types)]
 pub struct xdo_t { _private: [u8; 0] }
@@ -35,6 +36,7 @@ pub const CURRENTWINDOW: c_ulong = 0;
 #[link(name = "xdo")]
 extern "C" {
     pub fn xdo_new(name: *const c_char) -> *mut xdo_t;
+    pub fn xdo_new_with_opened_display(display: *mut Display, name: *const c_char, close: c_int) -> *mut xdo_t;
     pub fn xdo_free(context: *mut xdo_t);
     pub fn xdo_move_mouse(context: *const xdo_t, x: c_int, y: c_int, screen: c_int) -> c_int;
     pub fn xdo_move_mouse_relative(context: *const xdo_t, x: c_int, y: c_int) -> c_int;
@@ -46,6 +48,7 @@ extern "C" {
     pub fn xdo_send_keysequence_window_down(context: *const xdo_t, window: c_ulong, sequence: *const c_char, delay: useconds_t) -> c_int;
     pub fn xdo_send_keysequence_window_up(context: *const xdo_t, window: c_ulong, sequence: *const c_char, delay: useconds_t) -> c_int;
     fn __real_xdo_new(name: *const c_char) -> *mut xdo_t;
+    fn __real_xdo_new_with_opened_display(display: *mut Display, name: *const c_char, close: c_int) -> *mut xdo_t;
     fn __real_xdo_free(context: *mut xdo_t);
 }
 #[link(name = "X11")]
@@ -53,7 +56,6 @@ extern "C" {
     fn XInitThreads() -> c_int;
     fn __real_XOpenDisplay(name: *const c_char) -> *mut Display;
     fn __real_XCloseDisplay(display: *mut Display) -> c_int;
-    fn XDefaultScreen(display: *mut Display) -> c_int;
     fn XDisplayWidth(display: *mut Display, screen: c_int) -> c_int;
     fn XDisplayHeight(display: *mut Display, screen: c_int) -> c_int;
     fn XDefaultRootWindow(display: *mut Display) -> c_ulong;
@@ -69,8 +71,22 @@ mod backend;
 
 static NAMES: Mutex<Vec<(bool, Option<String>)>> = Mutex::new(Vec::new());
 static RETIREMENTS: AtomicUsize = AtomicUsize::new(0);
-static DIAGNOSTIC_RETIREMENTS: AtomicUsize = AtomicUsize::new(0);
+static DISPLAY_RETIREMENTS: AtomicUsize = AtomicUsize::new(0);
 static SHIFT_AFTER_OPEN: AtomicBool = AtomicBool::new(false);
+static REFUSE_NEXT_CONSTRUCT: AtomicBool = AtomicBool::new(false);
+static PANIC_AFTER_CONSTRUCT: AtomicBool = AtomicBool::new(false);
+static PANIC_NEXT_LOG: AtomicBool = AtomicBool::new(false);
+
+struct NativeLogger;
+impl log::Log for NativeLogger {
+    fn enabled(&self, _: &log::Metadata<'_>) -> bool { PANIC_NEXT_LOG.load(Ordering::SeqCst) }
+    fn log(&self, _: &log::Record<'_>) {
+        if PANIC_NEXT_LOG.swap(false, Ordering::SeqCst) {
+            panic!("injected constructor log unwind after native context creation");
+        }
+    }
+    fn flush(&self) {}
+}
 unsafe fn record(xdo: bool, name: *const c_char) {
     NAMES.lock().unwrap().push((xdo, if name.is_null() { None }
                               else { Some(CStr::from_ptr(name).to_str().unwrap().to_owned()) }));
@@ -84,6 +100,19 @@ unsafe extern "C" fn __wrap_xdo_new(name: *const c_char) -> *mut xdo_t {
         // A controlled environment change between the two real native constructors.
         std::env::set_var("DISPLAY", ":95");
     }
+    context
+}
+#[no_mangle]
+unsafe extern "C" fn __wrap_xdo_new_with_opened_display(display: *mut Display, name: *const c_char,
+                                                       close: c_int) -> *mut xdo_t {
+    record(true, name);
+    assert!(!display.is_null());
+    assert_eq!(close, 1);
+    if REFUSE_NEXT_CONSTRUCT.swap(false, Ordering::SeqCst) { return std::ptr::null_mut(); }
+    let context = __real_xdo_new_with_opened_display(display, name, close);
+    assert!(!context.is_null());
+    if SHIFT_AFTER_OPEN.swap(false, Ordering::SeqCst) { std::env::set_var("DISPLAY", ":95"); }
+    if PANIC_AFTER_CONSTRUCT.swap(false, Ordering::SeqCst) { PANIC_NEXT_LOG.store(true, Ordering::SeqCst); }
     context
 }
 #[no_mangle]
@@ -107,7 +136,7 @@ unsafe extern "C" fn __wrap_XOpenDisplay(name: *const c_char) -> *mut Display {
 unsafe extern "C" fn __wrap_XCloseDisplay(display: *mut Display) -> c_int {
     let status = __real_XCloseDisplay(display);
     assert_eq!(status, 0);
-    DIAGNOSTIC_RETIREMENTS.fetch_add(1, Ordering::SeqCst);
+    DISPLAY_RETIREMENTS.fetch_add(1, Ordering::SeqCst);
     status
 }
 fn descriptors() -> usize { std::fs::read_dir("/proc/self/fd").unwrap().count() }
@@ -115,6 +144,8 @@ fn tasks() -> usize { std::fs::read_dir("/proc/self/task").unwrap().count() }
 fn retired(baseline: usize) { assert_eq!(descriptors(), baseline); assert_eq!(tasks(), 1); }
 fn main() {
     assert_ne!(unsafe { XInitThreads() }, 0);
+    log::set_logger(&NativeLogger).unwrap();
+    log::set_max_level(log::LevelFilter::Info);
     let baseline = descriptors();
     if let Some(scenario) = std::env::args().nth(1) {
         assert!(matches!(scenario.as_str(), "route" | "diagnostic"));
@@ -133,9 +164,11 @@ fn main() {
         let names = NAMES.lock().unwrap();
         let canonical = |name: &str| if cfg!(historical) { None } else { Some(name.to_owned()) };
         assert_eq!(*names, if diagnostic {
-            vec![(true, canonical("unix/:98.0")), (false, canonical("unix/:98.0"))]
-        } else { vec![(true, canonical("unix/:95.0"))] });
-        assert_eq!(DIAGNOSTIC_RETIREMENTS.load(Ordering::SeqCst), usize::from(diagnostic && !cfg!(historical)));
+            if cfg!(historical) {
+                vec![(true, None), (false, None)]
+            } else { vec![(false, canonical("unix/:98.0")), (true, canonical("unix/:98.0"))] }
+        } else { vec![(cfg!(historical), canonical("unix/:95.0"))] });
+        assert_eq!(DISPLAY_RETIREMENTS.load(Ordering::SeqCst), 0);
         retired(baseline);
         println!("X11_ENIGO_{}_CHILD variant={} result={} descriptors=retired threads=retired",
                  if diagnostic { "DIAGNOSTIC" } else { "ROUTE" },
@@ -161,13 +194,40 @@ fn main() {
     std::env::remove_var("DISPLAY"); refuse();
     use std::os::unix::ffi::OsStringExt;
     std::env::set_var("DISPLAY", std::ffi::OsString::from_vec(vec![0xff])); refuse();
+    std::env::set_var("DISPLAY", ":98.1");
+    for _ in 0..32 {
+        REFUSE_NEXT_CONSTRUCT.store(true, Ordering::SeqCst);
+        let mut injector = backend::EnigoXdo::default();
+        assert!(!REFUSE_NEXT_CONSTRUCT.load(Ordering::SeqCst));
+        assert!(injector.mouse_move_to(131, 79).is_err());
+        assert!(injector.key_sequence_result("a").is_err());
+        drop(injector);
+        assert_eq!(*NAMES.lock().unwrap(), vec![(false, Some("unix/:98.1".into())),
+                                             (true, Some("unix/:98.1".into()))]);
+        NAMES.lock().unwrap().clear();
+        retired(baseline);
+    }
+    for _ in 0..16 {
+        PANIC_AFTER_CONSTRUCT.store(true, Ordering::SeqCst);
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let result = std::panic::catch_unwind(backend::EnigoXdo::default);
+        std::panic::set_hook(hook);
+        assert!(result.is_err());
+        assert!(!PANIC_AFTER_CONSTRUCT.load(Ordering::SeqCst));
+        assert!(!PANIC_NEXT_LOG.load(Ordering::SeqCst));
+        assert_eq!(*NAMES.lock().unwrap(), vec![(false, Some("unix/:98.1".into())),
+                                             (true, Some("unix/:98.1".into()))]);
+        NAMES.lock().unwrap().clear();
+        retired(baseline);
+    }
     for (selector, canonical) in [(":00098", "unix/:98.0"), (":00098.0000", "unix/:98.0"),
                                   (":00098.0001", "unix/:98.1")] {
         for iteration in 0..8 {
             std::env::set_var("DISPLAY", selector);
             let mut injector = backend::EnigoXdo::default();
             assert_eq!(descriptors(), baseline + 1);
-            assert_eq!(*NAMES.lock().unwrap(), vec![(true, Some(canonical.into())), (false, Some(canonical.into()))]);
+            assert_eq!(*NAMES.lock().unwrap(), vec![(false, Some(canonical.into())), (true, Some(canonical.into()))]);
             injector.mouse_move_to(131 + iteration, 79 + iteration).unwrap();
             // Observe native pointer coordinates using an independent real X11 connection.
             unsafe {
@@ -193,7 +253,7 @@ fn main() {
             retired(baseline);
         }
     }
-    assert_eq!(RETIREMENTS.load(Ordering::SeqCst), 24);
-    assert_eq!(DIAGNOSTIC_RETIREMENTS.load(Ordering::SeqCst), 24);
-    println!("X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 pointer=server-real callbacks=paired descriptors=retired threads=retired scope=xdo-backend");
+    assert_eq!(RETIREMENTS.load(Ordering::SeqCst), 40);
+    assert_eq!(DISPLAY_RETIREMENTS.load(Ordering::SeqCst), 32);
+    println!("X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 context_refusals=32 constructor_unwinds=16 display_connections=one pointer=selected-root callbacks=paired descriptors=retired threads=retired scope=xdo-backend");
 }

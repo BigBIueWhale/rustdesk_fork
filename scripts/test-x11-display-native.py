@@ -88,7 +88,7 @@ def enigo_route(root, environment, checksum, library):
                    "--extern", f"log={library}"]
         if variant == "historical":
             command += ["--cfg", "historical"]
-        for symbol in ("xdo_new", "xdo_free", "XOpenDisplay", "XCloseDisplay"):
+        for symbol in ("xdo_new", "xdo_new_with_opened_display", "xdo_free", "XOpenDisplay", "XCloseDisplay"):
             command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
         subprocess.run(command, env=environment, check=True, timeout=30)
         binaries[variant] = binary
@@ -104,7 +104,8 @@ def enigo_route(root, environment, checksum, library):
     result = subprocess.run([str(binaries["corrected"])], env=environment, capture_output=True,
                             text=True, timeout=15)
     receipt = ("X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations "
-               "selectors_refused=18 canonical_screens=3 contexts=24 pointer=server-real "
+               "selectors_refused=18 canonical_screens=3 contexts=24 context_refusals=32 "
+               "constructor_unwinds=16 display_connections=one pointer=selected-root "
                "callbacks=paired descriptors=retired threads=retired scope=xdo-backend")
     require(result.returncode == 0 and not result.stderr and result.stdout.splitlines() == [receipt],
             f"native Enigo backend result differs: {result}")
@@ -123,8 +124,8 @@ def enigo_route(root, environment, checksum, library):
                         with peer:
                             require(address[0] == "127.0.0.1", "unexpected Enigo route peer")
                     output, errors = native.communicate(timeout=5)
-                    expected_errors = (f"Error: Can't open display: {'(null)' if variant == 'historical' else 'unix/:95.0'}\n".encode()
-                                       if scenario == "route" else b"")
+                    expected_errors = (b"Error: Can't open display: (null)\n"
+                                       if scenario == "route" and variant == "historical" else b"")
                     receipt = (f"X11_ENIGO_{scenario.upper()}_CHILD variant={variant} "
                                f"result={'refused' if scenario == 'route' else 'environment-reread' if variant == 'historical' else 'selected-once'} "
                                "descriptors=retired threads=retired")

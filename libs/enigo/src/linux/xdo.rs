@@ -9,9 +9,9 @@ use crate::{checked_scroll_magnitude, Key, KeyboardControllable, MouseButton, Mo
 
 use hbb_common::libc::c_int;
 use hbb_common::platform::x11_display::unix_display_name;
-use hbb_common::x11::xlib::{Display, XCloseDisplay, XGetPointerMapping, XOpenDisplay};
+use hbb_common::x11::xlib::{Display, XCloseDisplay, XDefaultScreen, XGetPointerMapping, XOpenDisplay};
 use libxdo_sys::{self, xdo_t, CURRENTWINDOW};
-use std::{borrow::Cow, ffi::{CStr, CString}};
+use std::{borrow::Cow, ffi::CString};
 
 /// Default delay per keypress in microseconds.
 /// This value is passed to libxdo functions and must fit in `useconds_t` (u32).
@@ -54,17 +54,10 @@ const MIN_POINTER_BUTTONS: usize = 9;
 ///
 /// `XSetPointerMapping` cannot extend the button count, so this only diagnoses
 /// configurations where side-button injection cannot work.
-fn check_x11_button_map(display_name: &CStr) {
-    let display: *mut Display = unsafe { XOpenDisplay(display_name.as_ptr()) };
-    if display.is_null() {
-        log::warn!("XOpenDisplay failed, cannot check button map");
-        return;
-    }
-
+fn check_x11_button_map(display: *mut Display) {
     let mut current_map = [0u8; 32];
     let nbuttons =
         unsafe { XGetPointerMapping(display, current_map.as_mut_ptr(), current_map.len() as i32) };
-    unsafe { XCloseDisplay(display) };
 
     if nbuttons < 0 {
         log::warn!("XGetPointerMapping failed (returned {nbuttons})");
@@ -82,9 +75,18 @@ fn check_x11_button_map(display_name: &CStr) {
     }
 }
 
+struct OpenedDisplay(*mut Display);
+
+impl Drop for OpenedDisplay {
+    fn drop(&mut self) {
+        unsafe { XCloseDisplay(self.0) };
+    }
+}
+
 /// The main struct for handling the event emitting
 pub(super) struct EnigoXdo {
     xdo: *mut xdo_t,
+    screen: c_int,
     delay: u64,
 }
 // This is safe, we have a unique pointer.
@@ -96,26 +98,34 @@ impl Default for EnigoXdo {
     ///
     /// If libxdo is unavailable, input operations return errors.
     fn default() -> Self {
-        let xdo = match unix_display_name() {
-            Ok(display_name) => {
-                let xdo = unsafe { libxdo_sys::xdo_new(display_name.as_ptr()) };
-                if xdo.is_null() {
-                    log::warn!("Failed to create xdo context, xdo functions will be disabled");
-                } else {
-                    log::info!("xdo context created successfully");
-                    check_x11_button_map(&display_name);
-                }
-                xdo
-            }
+        let mut owner = Self { xdo: std::ptr::null_mut(), screen: 0, delay: DEFAULT_DELAY };
+        let display_name = match unix_display_name() {
+            Ok(display_name) => display_name,
             Err(err) => {
                 log::warn!("Cannot select a local X11 display for xdo: {err}");
-                std::ptr::null_mut()
+                return owner;
             }
         };
-        Self {
-            xdo,
-            delay: DEFAULT_DELAY,
+        let display = unsafe { XOpenDisplay(display_name.as_ptr()) };
+        if display.is_null() {
+            log::warn!("Failed to open the selected X11 display, xdo functions will be disabled");
+            return owner;
         }
+        let opened = OpenedDisplay(display);
+        let screen = unsafe { XDefaultScreen(display) };
+        let xdo = unsafe { libxdo_sys::xdo_new_with_opened_display(display, display_name.as_ptr(), 1) };
+        if xdo.is_null() {
+            log::warn!("Failed to create xdo context, xdo functions will be disabled");
+            return owner;
+        }
+        // Transfer the sole display to the native context, then retain that
+        // context before diagnostics or logging can unwind.
+        owner.xdo = xdo;
+        owner.screen = screen;
+        std::mem::forget(opened);
+        log::info!("xdo context created successfully");
+        check_x11_button_map(display);
+        owner
     }
 }
 
@@ -187,7 +197,7 @@ impl MouseControllable for EnigoXdo {
         if self.xdo.is_null() {
             return Err("libxdo is unavailable".into());
         }
-        let status = unsafe { libxdo_sys::xdo_move_mouse(self.xdo as *const _, x, y, 0) };
+        let status = unsafe { libxdo_sys::xdo_move_mouse(self.xdo as *const _, x, y, self.screen) };
         xdo_result("mouse move", status)
     }
 

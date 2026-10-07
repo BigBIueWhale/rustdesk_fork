@@ -10990,7 +10990,7 @@ as do current artifacts, performance/soak, independent reproduction, and externa
 ### R-S11hb/R-S11e-240 — exact bounded native clipboard-listener ownership (2026-08-20)
 
 **SOURCE IMPLEMENTED; SIX PRODUCTION STATE TESTS AND EIGHT LINUX NATIVE LIFETIME
-TESTS PASSED IN A 106-SECOND FOCUSED TRANSACTION; WHOLE-APP, OTHER NATIVE PLATFORMS,
+TESTS PASSED IN A 104-SECOND FOCUSED TRANSACTION; WHOLE-APP, OTHER NATIVE PLATFORMS,
 DEVICE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** The mailbox/registry
 is shared by Windows, Linux, and macOS; Linux X11 now has its own native master.
 Android does not compile it; Android's
@@ -11076,26 +11076,54 @@ The existing shutdown owner also publishes exact-generation cancellation, checke
 native reads/writes and on each blocked native poll with at most a 50ms requested timeout.
 No extra worker or
 detached timeout path was added; exact worker join and connection/window retirement remain
-required. The Unix-only selector and native local-family cookie lookup remain authoritative:
-an absent authority file means no cookie, while other lookup errors are returned; the X11
-server still accepts or rejects setup. Authority-file filesystem I/O itself is **not**
-interrupted by this transport budget. Allocation/parser work, scheduling, delegated
-EINTR loops and exhaustive native I/O/cancellation bounds remain OPEN.
+required. The Unix-only selector remains authoritative; cookie selection preserves the
+root-pinned native family/address/display and first-MIT-MAGIC-COOKIE rules. An absent
+authority file means no cookie; other lookup errors are returned, and the X11 server
+still accepts or rejects setup. No cookie retry or alternate credential path exists.
+
+The opaque native `xauth::get_auth` loader used blocking `File::open` on an arbitrary
+credential pathname. With unchanged production in `run.vPtisYj9R9`, the real cookie-required
+scenario passed its initial valid callback and wrong/empty/absent refusal-recoveries, then
+entered the no-writer FIFO case without returning before the **whole 20-second scenario
+bound**. The driver killed and waited for that exact isolated child. This is not a precise
+FIFO-only duration or an indefinite wall-time measurement; the source open path corroborates
+the blocking cause. Its retained before-state receipt records explicit outer failure and
+the exact terminal scratch cleanup after evidence retention.
+
+`linux::native_authority` now pins the object with `O_PATH`, verifies a regular file no
+larger than **1 MiB**, opens that retained object through `/proc/self/fd`, and verifies the
+owned read handle's regular type/device/inode before releasing the pin. The original
+pathname is never reopened, regular symlink targets remain supported, and nonregular
+objects are refused before I/O open. These are two short-lived owned handles for one object,
+not a single descriptor. A cap-plus-one sentinel bounds reads even if the file grows;
+strict whole-file parsing refuses incomplete headers/fields or trailing garbage. Cookie
+matching still selects only the first native-compatible MIT cookie. The same startup
+budget is checked between acquisition operations, reads/EINTR retries and records.
+**A kernel filesystem call already in progress is not interruptible by this budget.**
+Native pathname-replacement/file-growth races, slow filesystem cancellation, failed
+allocation/total heap, scheduling, delegated EINTR and exhaustive native I/O/cancellation
+bounds remain OPEN; this is not universal deadline or snapshot-coherence proof.
 
 Three real Unix peers now withhold setup, drip an incomplete setup header, or accept setup
 and withhold the first extension reply. Production startup refuses them in
 **3,001/3,001/3,000ms**; each peer observes EOF, the exact worker joins, state and sampled
 resources retire, and the same subscription name delivers a healthy native callback
-afterward. A separate cookie-required Xvfb scenario rejects wrong, empty and absent
-credentials and requires correct-cookie recovery after each refusal. Four valid callbacks
-pass, including one after a 3,200ms healthy lifetime, so the startup budget is not a
-connection lifetime limit. The retired-observer regression now requires the successfully
+afterward. A separate cookie-required Xvfb scenario requires **12 classified refusals**:
+wrong/empty/absent/wrong-first cookie, FIFO without writer/FIFO with live writer/FIFO symlink/
+directory, oversized file, truncated header/trailing garbage, and unreadable mode-000 file.
+Every refusal meets a strict less-than-one-second assertion and reports 0ms at truncated
+millisecond resolution, not zero work/time. The same name then delivers a real correct-cookie
+callback with empty failure state, joined retirement, native-window absence and sampled
+task/descriptor baselines. **17 valid callbacks** include those 12 recoveries, a healthy
+callback after 3,200ms, and regular symlink/exact-1-MiB/filtered LOCAL/empty-display wildcard
+cases. The startup budget is not a connection lifetime limit. The retired-observer regression
+requires the successfully
 constructed-master branch exactly once, rather than passing on constructor failure.
 These are real component observations, not a whole-app startup or installed-service proof.
 
 Four native cycles now retire subscribers while an independent, checked X11 selection-change
 producer remains live. Both subscribers receive actual callbacks; retiring the first preserves
-the remaining callback/worker, and exact last retirement joins in **272/245/206/639µs**.
+the remaining callback/worker, and exact last retirement joins in **142/240/107/178µs**.
 The producer's acknowledged count advances after each join, before it is stopped and joined.
 Server QueryTree returns to the exact window baseline, and sampled task/descriptor counts
 return first to the live-producer baseline and then to the original baseline. Join and
@@ -11111,9 +11139,9 @@ memory limits, exhaustive scheduling/races, or sustained performance.
 
 **Focused Linux component acceptance:**
 `scripts/smoke-verifier-vm-authority.sh --x11-display-tests --clipboard-listener` passed
-with explicit outer status 0 in **106 seconds** on source
-`82c75286ed5879f91c9adfe8950be4cc569cf960`, tree
-`30fe13934438ee9562a15474860052ee15f9fd19`. It compiles the complete production listener
+with explicit outer status 0 in **104 seconds** on source
+`7ae043d9c28d57a1d5ddfa31179dbad9535dcb49`, tree
+`7e806670ac720ec92eb76cbc0c0c5729eed91e89`. It compiles the complete production listener
 and actual local-display selector with pinned Rust 1.75 and real root-lock dependencies,
 then executes six production state tests and eight native cases in source-bound processes:
 retired startup observer, failed startup/clean retry, actual worker-creation refusal/recovery,
@@ -11125,19 +11153,19 @@ under the unchanged three-second bound and retains a live worker after native se
 the current component passes both properties. Warm restarts include 1,000 real idle changes
 after every retirement, one private native window per active master, server QueryTree
 proof of window absence after each join, and thread/descriptor counts equal to baseline.
-Measured current callbacks were 500/499/500/500ms; error retirement refused 64 late
-subscriptions and restored threads 2→2 and descriptors 5→5, with a 500ms terminal interval.
+Measured current callbacks were 500/500/500/499ms; error retirement refused 64 late
+subscriptions and restored threads 2→2 and descriptors 5→5, with a 510ms terminal interval.
 These are component samples, not exact descriptor-identity, whole-app latency or soak proof.
 
-Retained raw `.harness-state/verifier-vm/x11-display-tests-run.bssfM12Svq.serial.log` is
-81,230 bytes, SHA-256 `347714984532f7512db8579183970cc89df1d8de9ba256dac3cb3c229d6beaa4`;
+Retained raw `.harness-state/verifier-vm/x11-display-tests-run.UI2F3WOiHA.serial.log` is
+86,642 bytes, SHA-256 `e4162df0c320ebdb06c85947f4013e09745f1b8a3a56222f2355c8006050572c`;
 exact artifacts, cycle counts and scope are in
-`evidence/clipboard-startup-run.bssfM12Svq.outer.receipt`, including the startup before-state,
-rejected candidate and an earlier same-source run whose outer handle was lost to output
-truncation. That earlier guest pass is not assigned a directly observed outer status; the
-named 106-second repeat has explicit finality. Prior busy-retirement and thread-creation
-acceptance remain in `evidence/clipboard-busy-retirement-run.XkhqfPojD8.outer.receipt` and
-`evidence/clipboard-thread-start-run.Da1KAijNYJ.outer.receipt`.
+`evidence/clipboard-authority-run.UI2F3WOiHA.outer.receipt`, including the FIFO before-state,
+first passing candidate and final deadline-checkpoint refinement. These are assistant-observed
+receipts, not independent reproduction. Earlier protocol-startup, busy-retirement and
+thread-creation evidence remain in `evidence/clipboard-startup-run.bssfM12Svq.outer.receipt`,
+`evidence/clipboard-busy-retirement-run.XkhqfPojD8.outer.receipt` and
+`evidence/clipboard-thread-start-run.Da1KAijNYJ.outer.receipt` rather than a duplicate diary here.
 All 77 selected dependency records matched the root lock; 86 pinned package byte closures
 passed before and after execution. Source/input/image and outer postconditions passed,
 with no endpoint addition in before/during/after host snapshots and no owner inventory.

@@ -1487,10 +1487,13 @@ pub fn get_clipboards_msg(client: bool) -> Option<Message> {
 
 // We need this mod to notify multiple subscribers when the clipboard changes.
 // Because only one clipboard master(listener) can trigger the clipboard change event multiple listeners are created on Linux(x11).
-// https://github.com/rustdesk-org/clipboard-master/blob/4fb62e5b62fb6350d82b571ec7ba94b3cd466695/src/master/x11.rs#L226
 #[cfg(not(target_os = "android"))]
 pub mod clipboard_listener {
-    use clipboard_master::{CallbackResult, ClipboardHandler, Master, Shutdown};
+    use clipboard_master::{CallbackResult, ClipboardHandler};
+    #[cfg(not(target_os = "linux"))]
+    use clipboard_master::{Master, Shutdown};
+    #[cfg(target_os = "linux")]
+    use self::linux::{Master, Shutdown};
     use hbb_common::{bail, log, ResultType};
     use std::{
         collections::HashMap,
@@ -1503,6 +1506,145 @@ pub mod clipboard_listener {
 
     lazy_static::lazy_static! {
         pub static ref CLIPBOARD_LISTENER: Arc<Mutex<ClipboardListener>> = Default::default();
+    }
+
+    #[cfg(target_os = "linux")]
+    mod linux {
+        use super::{CallbackResult, ClipboardHandler};
+        use hbb_common::platform::x11_display::unix_display_name;
+        use std::{
+            io,
+            sync::mpsc::{self, Receiver, SyncSender},
+        };
+        use x11rb_listener::{
+            connection::Connection,
+            protocol::{
+                xfixes,
+                xproto::{ConnectionExt, CreateWindowAux, WindowClass},
+                Event,
+            },
+            rust_connection::RustConnection,
+        };
+
+        pub enum Master<H> {
+            X11(X11Master<H>),
+            Wayland(clipboard_master::Master<H>),
+        }
+
+        pub enum Shutdown {
+            X11(SyncSender<()>),
+            Wayland(clipboard_master::Shutdown),
+        }
+
+        impl Drop for Shutdown {
+            fn drop(&mut self) {
+                if let Self::X11(sender) = self {
+                    // A disconnected receiver means the owned worker already retired.
+                    match sender.send(()) {
+                        Ok(()) | Err(_) => {}
+                    }
+                }
+            }
+        }
+
+        impl Shutdown {
+            pub fn signal(self) {
+                drop(self);
+            }
+        }
+
+        pub struct X11Master<H> {
+            connection: RustConnection,
+            window: u32,
+            selection: u32,
+            handler: H,
+            sender: SyncSender<()>,
+            receiver: Receiver<()>,
+        }
+
+        fn native_error(error: impl std::error::Error + Send + Sync + 'static) -> io::Error {
+            io::Error::new(io::ErrorKind::Other, error)
+        }
+
+        impl<H: ClipboardHandler> Master<H> {
+            pub fn new(handler: H) -> io::Result<Self> {
+                if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+                    return clipboard_master::Master::new(handler).map(Self::Wayland);
+                }
+                let display = unix_display_name()?;
+                let display = display.to_str().map_err(native_error)?;
+                let (connection, screen) = x11rb_listener::connect(Some(display)).map_err(native_error)?;
+                let root = connection.setup().roots.get(screen).ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "X11 clipboard screen is absent")
+                })?.root;
+                let version = xfixes::query_version(&connection, 5, 0)
+                    .map_err(native_error)?.reply().map_err(native_error)?;
+                if version.major_version == 0 {
+                    return Err(io::Error::new(io::ErrorKind::Unsupported, "XFixes clipboard events are unavailable"));
+                }
+                let window = connection.generate_id().map_err(native_error)?;
+                connection.create_window(0, window, root, 0, 0, 1, 1, 0,
+                    WindowClass::INPUT_ONLY, 0, &CreateWindowAux::new())
+                    .map_err(native_error)?.check().map_err(native_error)?;
+                let selection = connection.intern_atom(false, b"CLIPBOARD")
+                    .map_err(native_error)?.reply().map_err(native_error)?.atom;
+                xfixes::select_selection_input(&connection, window, selection,
+                    xfixes::SelectionEventMask::SET_SELECTION_OWNER
+                        | xfixes::SelectionEventMask::SELECTION_CLIENT_CLOSE
+                        | xfixes::SelectionEventMask::SELECTION_WINDOW_DESTROY)
+                    .map_err(native_error)?.check().map_err(native_error)?;
+                let (sender, receiver) = mpsc::sync_channel(0);
+                Ok(Self::X11(X11Master { connection, window, selection, handler, sender, receiver }))
+            }
+
+            pub fn shutdown_channel(&self) -> Shutdown {
+                match self {
+                    Self::X11(master) => Shutdown::X11(master.sender.clone()),
+                    Self::Wayland(master) => Shutdown::Wayland(master.shutdown_channel()),
+                }
+            }
+
+            pub fn run(&mut self) -> io::Result<()> {
+                match self {
+                    Self::X11(master) => master.run(),
+                    Self::Wayland(master) => master.run(),
+                }
+            }
+        }
+
+        impl<H: ClipboardHandler> X11Master<H> {
+            fn run(&mut self) -> io::Result<()> {
+                loop {
+                    // Continuous native traffic must not starve exact shutdown.
+                    match self.receiver.try_recv() {
+                        Ok(()) | Err(mpsc::TryRecvError::Disconnected) => return Ok(()),
+                        Err(mpsc::TryRecvError::Empty) => {}
+                    }
+                    match self.connection.poll_for_event().map_err(native_error)? {
+                        Some(Event::XfixesSelectionNotify(event))
+                            if event.window == self.window && event.selection == self.selection =>
+                        {
+                            match self.handler.on_clipboard_change() {
+                                CallbackResult::Next => {},
+                                CallbackResult::Stop => return Ok(()),
+                                CallbackResult::StopWithError(error) => return Err(error),
+                            }
+                        }
+                        Some(Event::Error(error)) => {
+                            return Err(io::Error::new(io::ErrorKind::Other,
+                                format!("X11 clipboard protocol error: {error:?}")));
+                        }
+                        Some(_) => {},
+                        None => {
+                            match self.receiver.recv_timeout(self.handler.sleep_interval()) {
+                                Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
+                                Err(mpsc::RecvTimeoutError::Timeout) => {},
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[derive(Clone, Debug, Eq, PartialEq)]

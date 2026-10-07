@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Run the exact desktop listener and pinned clipboard-master against private Xvfb.
+"""Run the exact desktop listener against private Xvfb.
 
-Only the error callback is historical in the controlled A/B. This is a Linux
+The historical variant uses the pinned former native master/error callback. This is a Linux
 component lifecycle test, not whole-app, Windows/macOS, or display-delay evidence.
 """
 import hashlib
@@ -83,7 +83,7 @@ anyhow = "=1.0.103"
 log = {{ version = "=0.4.22", features = ["std"] }}
 lazy_static = "=1.5.0"
 clipboard-master = {{ git = "https://github.com/rustdesk-org/clipboard-master" }}
-x11rb = {{ version = "=0.13.1", features = ["xfixes"] }}
+x11rb-listener = {{ package = "x11rb", version = "=0.13.1", features = ["xfixes"] }}
 [profile.dev]
 debug = 0
 incremental = false
@@ -111,9 +111,17 @@ directory = "/work/clipboard-vendor"
     require(digest(historical) == "3abd72ef62ed4da2c0a545748fba1feed86b1e013222c152637f1c502ab9f6d6",
             "exact 1fb8e076 error callback differs")
     binaries = {}
+    native_import = b"    use self::linux::{Master, Shutdown};"
+    require(module.count(native_import) == 1, "production native master selection differs")
+    declaration = tomllib.loads((ROOT / "Cargo.toml").read_text())["target"]["cfg(target_os = \"linux\")"]["dependencies"]
+    require(declaration["x11rb-listener"] == {"package": "x11rb", "version": "0.13", "features": ["xfixes"]},
+            "production native listener dependency differs")
     for variant in ("historical", "current"):
         selected = module if variant == "current" else module[:begin] + historical + module[finish:]
-        scaffold = b"extern crate self as hbb_common;\npub use anyhow::{bail, Result as ResultType};\npub use log;\n" + selected
+        if variant == "historical":
+            selected = selected.replace(native_import, b"    use clipboard_master::{Master, Shutdown};")
+        scaffold = (b"extern crate self as hbb_common;\npub use anyhow::{bail, Result as ResultType};\npub use log;\n"
+                    b'pub mod platform { pub mod x11_display { include!("/work/libs/hbb_common/src/platform/x11_display.rs"); } }\n') + selected
         scaffold += (f'\n#[cfg(test)] mod native_tests {{\nconst HISTORICAL_CLIPBOARD_ERROR: bool = {str(variant == "historical").lower()};\n'
                      'include!("/work/scripts/test-native-clipboard-listener.rs");\n}\n}\n').encode()
         (BUILD / "src/lib.rs").write_bytes(scaffold)
@@ -158,7 +166,8 @@ directory = "/work/clipboard-vendor"
 
 
 def scenario(binary, variant, environment):
-    require(variant in ("historical", "current", "startup", "warm-restart"), "unknown native scenario")
+    require(variant in ("historical", "historical-warm", "current", "startup", "startup-failure", "warm-restart"),
+            "unknown native scenario")
     log_path = BUILD / f"{variant}.xvfb.log"
     output = bytearray()
     with log_path.open("xb") as log:
@@ -176,6 +185,8 @@ def scenario(binary, variant, environment):
                 arguments.append("native_tests::z_native_x11_peer_retirement")
             elif variant == "startup":
                 arguments.append("native_tests::a_retired_startup_observer")
+            elif variant == "startup-failure":
+                arguments.append("native_tests::b_native_startup_failure_retires_exact_state")
             else:
                 arguments.append("native_tests::y_native_x11_warm_restart")
             child = subprocess.Popen(arguments, env=environment, stdin=subprocess.DEVNULL,
@@ -200,7 +211,7 @@ def scenario(binary, variant, environment):
             status = child.wait(timeout=2)
             print(output.decode("utf-8"), end="", flush=True)
             single_pass = status == 0 and re.search(
-                rb"test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out;", output)
+                rb"test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out;", output)
             if variant in ("historical", "current"):
                 require(retired, "fixture did not reach real clipboard callbacks before server retirement")
             if variant == "historical":
@@ -214,6 +225,16 @@ def scenario(binary, variant, environment):
                 require(single_pass and not retired and output.count(
                     b"CLIPBOARD_NATIVE_STARTUP=pass observer=retired worker=joined\n") == 1,
                     "retired startup observer did not join its worker")
+            elif variant == "startup-failure":
+                require(single_pass and not retired and output.count(
+                    b"CLIPBOARD_NATIVE_STARTUP_FAILURE=pass selector=refused subscription=removed worker=joined next_start=working resources=retired\n") == 1,
+                    "native startup failure did not retire exactly or allow a new working subscription")
+            elif variant == "historical-warm":
+                require(not retired and status == 101 and re.search(
+                    rb"test result: FAILED\. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out;", output)
+                    and b"CLIPBOARD_NATIVE_CYCLE cycle=1 stage=subscribe\n" in output
+                    and b"actual XFixes callback did not arrive" in output,
+                    "historical warm restart did not reproduce the actual callback failure")
             else:
                 require(single_pass and not retired and output.count(
                     b"CLIPBOARD_NATIVE_WARM=pass callbacks=4 normal_cycles=4 workers=joined\n") == 1,
@@ -228,12 +249,14 @@ def scenario(binary, variant, environment):
                 server.terminate()
             server.wait(timeout=3)
     require(not Path("/tmp/.X11-unix/X94").exists(), "private Xvfb socket survived owner retirement")
+    if variant == "historical-warm":
+        print("CLIPBOARD_NATIVE_OLD_WARM=refused callbacks=first-only native_deadline=3s cleanup=joined", flush=True)
 
 
 def main():
     require((os.getuid(), os.getgid()) == (4000, 4000), "native fixture principal differs")
     environment = {"PATH": "/usr/local/cargo/bin:/usr/bin:/bin", "LC_ALL": "C", "HOME": "/tmp",
-                   "DISPLAY": "unix/:94.0", "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
+                   "DISPLAY": ":94.0", "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
                    "RUSTUP_HOME": "/usr/local/rustup", "CARGO_HOME": "/tmp/clipboard-cargo",
                    "CARGO_TARGET_DIR": "/build/clipboard-target", "CARGO_INCREMENTAL": "0", "CARGO_NET_OFFLINE": "true",
                    "LD_LIBRARY_PATH": "/xvfb-root/usr/lib/x86_64-linux-gnu"}
@@ -245,18 +268,20 @@ def main():
     state_output = command([str(binaries["current"]), "--test-threads=1", "--nocapture", "--color", "never",
                             "clipboard_listener::tests::"], environment, 5)
     print(state_output.decode("utf-8"), end="", flush=True)
-    require(re.search(rb"test result: ok\. 6 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out;", state_output),
+    require(re.search(rb"test result: ok\. 6 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out;", state_output),
             "production clipboard state tests did not all execute")
     print("CLIPBOARD_NATIVE_STATE=pass tests=6", flush=True)
     scenario(binaries["current"], "startup", environment)
+    scenario(binaries["current"], "startup-failure", environment)
+    scenario(binaries["historical"], "historical-warm", environment)
     scenario(binaries["historical"], "historical", environment)
     scenario(binaries["current"], "current", environment)
     # Keep the original four restart cycles and three-second callback bound.
     # Failure here must still fail the aggregate, independently of terminal results.
     scenario(binaries["current"], "warm-restart", environment)
     inputs()
-    print("CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=pinned callbacks=actual "
-          "old=retained current=joined late_admission=refused startup_observer=retired tests=9 network=none cleanup=joined", flush=True)
+    print("CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=owned-x11 callbacks=actual "
+          "old=retained current=joined late_admission=refused startup_observer=retired tests=10 network=none cleanup=joined", flush=True)
 
 
 if __name__ == "__main__":

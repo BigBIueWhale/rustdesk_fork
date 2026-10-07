@@ -1178,7 +1178,7 @@ android_frame_input_inventory() {
     if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
         files+=("$SCRIPT_DIR/test-native-clipboard-listener.py" "$SCRIPT_DIR/test-native-clipboard-listener.rs"
             "$SCRIPT_DIR/fixtures/clipboard-error-before-stop.rs" "$SCRIPT_DIR/clipboard-listener-inputs.txt"
-            "$REPO_ROOT/src/clipboard.rs" "$REPO_ROOT/Cargo.lock")
+            "$REPO_ROOT/src/clipboard.rs" "$REPO_ROOT/Cargo.lock" "$REPO_ROOT/Cargo.toml")
         local package expected extra_field
         while read -r package expected extra_field; do
             [[ "$package" == \#* ]] && continue
@@ -3494,6 +3494,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/scripts/clipboard-listener-inputs.txt=$SCRIPT_DIR/clipboard-listener-inputs.txt"
             "repo/src/clipboard.rs=$REPO_ROOT/src/clipboard.rs"
             "repo/Cargo.lock=$REPO_ROOT/Cargo.lock"
+            "repo/Cargo.toml=$REPO_ROOT/Cargo.toml"
         )
         while read -r package expected extra_field; do
             [[ "$package" == \#* ]] && continue
@@ -4191,7 +4192,7 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
-        'CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=pinned callbacks=actual old=retained current=joined late_admission=refused startup_observer=retired tests=9 network=none cleanup=joined' \
+        'CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=owned-x11 callbacks=actual old=retained current=joined late_admission=refused startup_observer=retired tests=10 network=none cleanup=joined' \
         'native clipboard component old/current worker retirement, terminal admission and startup observer regression'
     require_exact_fixed_receipt \
         'CLIPBOARD_LISTENER_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \

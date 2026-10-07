@@ -2,6 +2,7 @@
 use super::*;
 use std::io::Write;
 use std::time::Instant;
+use x11rb_listener as x11rb;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConnectionExt, CreateWindowAux, WindowClass};
 use x11rb::protocol::{xfixes, Event};
@@ -79,7 +80,6 @@ fn change_and_observe(
 }
 
 fn native_selection_driver() -> (x11rb::rust_connection::RustConnection, u32, [u32; 2]) {
-    assert!(Master::<Handler>::x11_clipboard().is_ok());
     let (connection, screen) = x11rb::connect(None).unwrap();
     let root = connection.setup().roots[screen].root;
     let windows = [connection.generate_id().unwrap(), connection.generate_id().unwrap()];
@@ -95,19 +95,80 @@ fn native_selection_driver() -> (x11rb::rust_connection::RustConnection, u32, [u
     (connection, selection, windows)
 }
 
+fn root_children(connection: &x11rb::rust_connection::RustConnection) -> Vec<u32> {
+    let root = connection.setup().roots[0].root;
+    let mut children = connection.query_tree(root).unwrap().reply().unwrap().children;
+    children.sort_unstable();
+    children
+}
+
+fn assert_native_window_retired(connection: &x11rb::rust_connection::RustConnection, baseline: &[u32]) {
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while root_children(connection) != baseline {
+        assert!(Instant::now() < deadline, "owned native clipboard window survived joined retirement");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn b_native_startup_failure_retires_exact_state() {
+    let display = std::env::var("DISPLAY").unwrap();
+    let baseline = resources();
+    std::env::set_var("DISPLAY", "127.0.0.1:94.0");
+    assert!(subscribe("invalid-native-display".to_owned()).is_err());
+    std::env::set_var("DISPLAY", display);
+    {
+        let listener = CLIPBOARD_LISTENER.lock().unwrap();
+        assert!(listener.handle.is_none());
+        let registry = listener.subscribers.lock().unwrap();
+        assert!(registry.subscribers.is_empty() && registry.terminal.is_none());
+    }
+    assert_eq!(resources(), baseline);
+    let (connection, selection, windows) = native_selection_driver();
+    let native_baseline = resources();
+    let children = root_children(&connection);
+    let (owner, receiver) = subscribe("after-native-startup-failure".to_owned()).unwrap();
+    change_and_observe(&connection, selection, windows, &[&receiver]);
+    drop(receiver);
+    drop(owner);
+    assert_native_window_retired(&connection, &children);
+    assert_eq!(resources(), native_baseline);
+    println!("CLIPBOARD_NATIVE_STARTUP_FAILURE=pass selector=refused subscription=removed worker=joined next_start=working resources=retired");
+}
+
 #[test]
 fn y_native_x11_warm_restart() {
     let (connection, selection, windows) = native_selection_driver();
+    let baseline = resources();
+    let children = root_children(&connection);
     for cycle in 0..4 {
         println!("CLIPBOARD_NATIVE_CYCLE cycle={cycle} stage=subscribe");
         let (owner, receiver) = subscribe(format!("native-cycle-{cycle}")).unwrap();
+        if !HISTORICAL_CLIPBOARD_ERROR {
+            assert_eq!(root_children(&connection).len(), children.len() + 1,
+                       "a native subscription did not own exactly one window");
+        }
+        let started = Instant::now();
         change_and_observe(&connection, selection, windows, &[&receiver]);
+        println!("CLIPBOARD_NATIVE_WARM_TIMING cycle={cycle} callback_ms={}", started.elapsed().as_millis());
         drop(receiver);
         drop(owner);
         let listener = CLIPBOARD_LISTENER.lock().unwrap();
         assert!(listener.handle.is_none());
         let registry = listener.subscribers.lock().unwrap();
         assert!(registry.subscribers.is_empty() && registry.terminal.is_none());
+        drop(registry);
+        drop(listener);
+        if !HISTORICAL_CLIPBOARD_ERROR {
+            assert_native_window_retired(&connection, &children);
+            assert_eq!(resources(), baseline);
+        }
+        for change in 0..1000 {
+            connection.set_selection_owner(windows[change % 2], selection, x11rb::CURRENT_TIME)
+                .unwrap();
+        }
+        connection.flush().unwrap();
+        assert_eq!(connection.get_selection_owner(selection).unwrap().reply().unwrap().owner, windows[1]);
     }
     println!("CLIPBOARD_NATIVE_WARM=pass callbacks=4 normal_cycles=4 workers=joined");
 }
@@ -153,7 +214,7 @@ fn z_native_x11_peer_retirement() {
     drop(registry);
     drop(listener);
     let final_resources = resources();
-    assert!(final_resources.0 <= baseline.0 && final_resources.1 <= baseline.1,
+    assert_eq!(final_resources, baseline,
             "listener retirement retained resources: {baseline:?} -> {final_resources:?}");
     println!("CLIPBOARD_NATIVE_FINAL threads_before={} threads_after={} fds_before={} fds_after={} terminal_ms={}",
              baseline.0, final_resources.0, baseline.1, final_resources.1, termination_ms);

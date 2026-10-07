@@ -166,36 +166,6 @@ def main():
           f"source_sha256={hashlib.sha256(comparator.read_bytes()).hexdigest()} "
           f"binary_sha256={hashlib.sha256(comparator_test.read_bytes()).hexdigest()}", flush=True)
     comparator_test.unlink()
-    binaries = {}
-    for variant in ("historical", "corrected"):
-        work = Path("/build") / variant
-        (work / "x11").mkdir(mode=0o700, parents=True)
-        (work / "common").mkdir(mode=0o700)
-        shutil.copyfile(root / "scripts/test-x11-display.rs", work / "test.rs")
-        for name in ("display", "ffi", "iter", "server", "capturer"):
-            if name == "capturer" and variant == "historical":
-                continue
-            source = baseline if name == "iter" and variant == "historical" else root / f"libs/scrap/src/x11/{name}.rs"
-            shutil.copyfile(source, work / f"x11/{name}.rs")
-        shutil.copyfile(root / "libs/scrap/src/common/x11.rs", work / "common/x11.rs")
-        shutil.copyfile(comparator, work / "common/frame_compare.rs")
-        binary = work / "native"
-        command = ["/usr/local/cargo/bin/rustc", "--edition=2018", "-C", "debuginfo=1",
-                   "-o", str(binary), str(work / "test.rs")]
-        if variant == "corrected":
-            command += ["--cfg", "corrected"]
-        for symbol in ("get_monitors", "get_monitors_unchecked", "get_monitors_reply",
-                       "get_monitors_monitors_iterator", "monitor_info_next"):
-            command += ["-C", f"link-arg=-Wl,--wrap=xcb_randr_{symbol}"]
-        for symbol in ("xcb_get_setup", "xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_atom_name_name", "xcb_get_geometry_reply",
-                       "xcb_shm_get_image", "xcb_shm_get_image_reply", "xcb_shm_attach_checked",
-                       "xcb_shm_detach_checked", "xcb_request_check",
-                       "xcb_shm_query_version", "xcb_shm_query_version_reply"):
-            command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
-        subprocess.run(command, env=environment, check=True, timeout=30)
-        binaries[variant] = binary
-        print(f"X11_DISPLAY_NATIVE_BUILD variant={variant} sha256="
-              f"{hashlib.sha256(binary.read_bytes()).hexdigest()}", flush=True)
     with open("/tmp/x11-display-xvfb.log", "xb") as log:
         child = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "640x480x24",
                                   "-screen", "1", "800x600x24", "-nolisten", "tcp", "-ac", "-noreset"],
@@ -221,6 +191,36 @@ def main():
                     f"native TFC ABI diagnostic differs: {abi}")
             print(abi.stdout.strip(), flush=True)
             input_abi.unlink()
+            binaries = {}
+            for variant in ("historical", "corrected"):
+                work = Path("/build") / variant
+                (work / "x11").mkdir(mode=0o700, parents=True)
+                (work / "common").mkdir(mode=0o700)
+                shutil.copyfile(root / "scripts/test-x11-display.rs", work / "test.rs")
+                for name in ("display", "ffi", "iter", "server", "capturer"):
+                    if name == "capturer" and variant == "historical":
+                        continue
+                    source = baseline if name == "iter" and variant == "historical" else root / f"libs/scrap/src/x11/{name}.rs"
+                    shutil.copyfile(source, work / f"x11/{name}.rs")
+                shutil.copyfile(root / "libs/scrap/src/common/x11.rs", work / "common/x11.rs")
+                shutil.copyfile(comparator, work / "common/frame_compare.rs")
+                binary = work / "native"
+                command = ["/usr/local/cargo/bin/rustc", "--edition=2018", "-C", "debuginfo=1",
+                           "-o", str(binary), str(work / "test.rs")]
+                if variant == "corrected":
+                    command += ["--cfg", "corrected"]
+                for symbol in ("get_monitors", "get_monitors_unchecked", "get_monitors_reply",
+                               "get_monitors_monitors_iterator", "monitor_info_next"):
+                    command += ["-C", f"link-arg=-Wl,--wrap=xcb_randr_{symbol}"]
+                for symbol in ("xcb_get_setup", "xcb_get_atom_name", "xcb_get_atom_name_reply", "xcb_get_atom_name_name", "xcb_get_geometry_reply",
+                               "xcb_shm_get_image", "xcb_shm_get_image_reply", "xcb_shm_attach_checked",
+                               "xcb_shm_detach_checked", "xcb_request_check",
+                               "xcb_shm_query_version", "xcb_shm_query_version_reply"):
+                    command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
+                subprocess.run(command, env=environment, check=True, timeout=30)
+                binaries[variant] = binary
+                print(f"X11_DISPLAY_NATIVE_BUILD variant={variant} sha256="
+                      f"{hashlib.sha256(binary.read_bytes()).hexdigest()}", flush=True)
             probe = subprocess.run([str(binaries["corrected"]), "shm-status"], env=environment,
                                    capture_output=True, text=True, timeout=15)
             probe_receipt = ("X11_SHM_STATUS_NATIVE=pass request_fault=oversized-query-version "

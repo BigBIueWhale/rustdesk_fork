@@ -15,6 +15,7 @@ source "$SCRIPT_DIR/lib.sh"
 load_pins
 
 MODE=authority-smoke
+BASE_READONLY_TEST=0
 FLUTTER_TEST_PROFILE=models
 LIFECYCLE_ARTIFACT=
 LIFECYCLE_ARTIFACT_SHA256=
@@ -35,6 +36,11 @@ ANDROID_RUNTIME_SCENARIO=
 ANDROID_RUNTIME_PEER_COMMIT=
 ANDROID_RUNTIME_PEER_MANIFEST_SHA256=
 case "$#:${1:-}" in
+    1:--base-readonly-test)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'base read-only test input/run overrides are forbidden' >&2; exit 2; }
+        BASE_READONLY_TEST=1
+        ;;
     0:)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -254,6 +260,7 @@ case "$#:${1:-}" in
         printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
+        printf 'Real VM boot from a private read-only base copy: %s --base-readonly-test\n' "${0##*/}" >&2
         printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
         printf 'Focused production X11 enumeration/capture check: %s --x11-display-tests\n' "${0##*/}" >&2
@@ -276,10 +283,10 @@ readonly MODE LIFECYCLE_ARTIFACT LIFECYCLE_ARTIFACT_SHA256 LIFECYCLE_COMMIT \
     DEV_CHECK_ARCHIVE FLUTTER_PEER_CANDIDATE FLUTTER_APP_BUILD_ONLY ANDROID_RUNTIME_ARTIFACT_COMMIT \
     ANDROID_RUNTIME_APK_SHA256 ANDROID_RUNTIME_SCENARIO \
     ANDROID_RUNTIME_PEER_COMMIT ANDROID_RUNTIME_PEER_MANIFEST_SHA256
+readonly BASE_READONLY_TEST
 readonly INPUT_ROOT="${VERIFIER_VM_INPUT_ROOT:-$REPO_ROOT/.harness-state/verifier-vm}"
 readonly RUN_ROOT="${VERIFIER_VM_RUN_ROOT:-$INPUT_ROOT}"
 readonly IMAGE_NAME="debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2"
-readonly BASE="$INPUT_ROOT/$IMAGE_NAME"
 readonly DOCKER_BUNDLE="$INPUT_ROOT/docker-${VERIFIER_VM_DOCKER_VERSION}.tgz"
 readonly GIT_PACKAGE="$INPUT_ROOT/git_${VERIFIER_VM_GIT_PACKAGE_FILENAME_VERSION}_amd64.deb"
 readonly BOOT_ROOT="$INPUT_ROOT/direct-boot-${VERIFIER_VM_KERNEL_RELEASE}"
@@ -573,6 +580,7 @@ fi
 
 RUN=
 RUN_ID=
+BASE_READONLY_INPUT_ID=
 RUN_MARKER=
 RUN_MARKER_ID=
 RUN_ADMISSION_FD=
@@ -1643,6 +1651,11 @@ cleanup() {
                 for disposable in "$RUN/overlay.qcow2" "$RUN/payload.iso" "$RUN/seed.iso"; do
                     retire_disposable_vm_file "$disposable" || cleanup_failed=1
                 done
+                if [ -n "$BASE_READONLY_INPUT_ID" ]; then
+                    /usr/bin/python3 -I -S "$CLEANUP_HELPER" --remove-private-root \
+                        "$RUN/base-inputs" --expected-identity "$BASE_READONLY_INPUT_ID" \
+                        || cleanup_failed=1
+                fi
             fi
             printf 'verifier-VM authority smoke: retaining failed private diagnostics at %s; shared run marker: %s; disposable VM disks are retired only after joined cleanup, and new runs are blocked until retained state is explicitly reconciled\n' \
                 "$RUN" "${RUN_MARKER:-none}" >&2
@@ -1698,7 +1711,7 @@ trap 'exit 143' TERM
 
 [ "$(/usr/bin/uname -s):$(/usr/bin/uname -m)" = Linux:x86_64 ] \
     || fail 'verifier VM requires a Linux x86_64 orchestration host'
-for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/cmp /usr/bin/comm /usr/bin/env \
+for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/cmp /usr/bin/comm /usr/bin/cp /usr/bin/env \
     /usr/bin/find /usr/bin/findmnt /usr/bin/flock /usr/bin/install \
     /usr/bin/dpkg-deb /usr/bin/git /usr/bin/grep /usr/bin/id /usr/bin/mkdir /usr/bin/mktemp /usr/bin/python3 \
     /usr/bin/qemu-img /usr/bin/qemu-system-x86_64 /usr/bin/readlink /usr/bin/rm \
@@ -1751,7 +1764,7 @@ frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
 if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-   || [ "$MODE" = fixed-archive-tests ] \
+   || [ "$MODE" = fixed-archive-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
@@ -1777,6 +1790,22 @@ if [ "$MODE" = fixed-archive-tests ]; then
         "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST" "$BASE_METADATA_SOURCE")"
 fi
 reserve_verifier_run
+base_derivation_root=$INPUT_ROOT
+canonical_base_before=
+if [ "$BASE_READONLY_TEST" -eq 1 ]; then
+    verify_debian_vm_base_metadata "$INPUT_ROOT/$IMAGE_NAME" "$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"
+    verify_sha512 "$INPUT_ROOT/$IMAGE_NAME" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"
+    canonical_base_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INPUT_ROOT/$IMAGE_NAME"):$(/usr/bin/sha512sum "$INPUT_ROOT/$IMAGE_NAME")"
+    base_derivation_root=$RUN/base-inputs
+    /usr/bin/mkdir -m 0700 -- "$base_derivation_root"
+    BASE_READONLY_INPUT_ID="$(/usr/bin/stat -c '%d:%i' -- "$base_derivation_root")"
+    /usr/bin/cp --reflink=auto --sparse=always -- "$INPUT_ROOT/$IMAGE_NAME" "$base_derivation_root/$IMAGE_NAME"
+    /usr/bin/cp -R --reflink=auto --sparse=always -- "$BOOT_ROOT" "$base_derivation_root/"
+    /usr/bin/chmod 0444 -- "$base_derivation_root/$IMAGE_NAME"
+    readonly BASE="$base_derivation_root/$IMAGE_NAME"
+else
+    readonly BASE="$INPUT_ROOT/$IMAGE_NAME"
+fi
 engine_prepare_inputs_before=
 engine_prepare_source_before=
 if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
@@ -2412,7 +2441,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
     if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
-       || [ "$MODE" = fixed-archive-tests ] \
+       || [ "$MODE" = fixed-archive-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
        || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
     fi
@@ -2457,7 +2486,7 @@ readonly ANDROID_EMULATOR_OBSERVER_DEPENDENCIES_SHA256
 [ "$MODE" = authority-smoke ] || [ "$MODE" = debian-systemd-lifecycle ] \
     || [ -x "$VIRTIOFSD_LAUNCHER" ] \
     || fail 'sealed-input virtiofsd launcher must be executable'
-VERIFIER_VM_INPUT_ROOT="$INPUT_ROOT" "$BOOT_DERIVER"
+VERIFIER_VM_INPUT_ROOT="$base_derivation_root" "$BOOT_DERIVER"
 [ -d "$BOOT_ROOT" ] && [ ! -L "$BOOT_ROOT" ] \
     || fail 'direct-boot cache is absent or ambiguous'
 [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$BOOT_ROOT")" = "$HOST_UID:$HOST_GID:500" ] \
@@ -4880,6 +4909,13 @@ fi
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'lifecycle cloud-init completion marker is absent'; }
 [ "$(/usr/bin/sha512sum "$BASE")" = "$base_before" ] \
     || fail 'read-only Debian base changed'
+if [ "$BASE_READONLY_TEST" -eq 1 ]; then
+    [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$INPUT_ROOT/$IMAGE_NAME"):$(/usr/bin/sha512sum "$INPUT_ROOT/$IMAGE_NAME")" = "$canonical_base_before" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
+        && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'read-only base test changed canonical input or admitted source'
+fi
 [ "$(/usr/bin/sha256sum "$BASE_METADATA_SOURCE")" = "$base_metadata_source_before" ] \
     || fail 'Debian verifier-VM base admission source changed'
 [ "$(/usr/bin/sha256sum "$DOCKER_BUNDLE")" = "$docker_before" ] \
@@ -5168,6 +5204,10 @@ if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engin
     fi
 fi
 RUN_COMPLETE=1
+if [ "$BASE_READONLY_TEST" -eq 1 ]; then
+    printf 'VERIFIER_VM_BASE_READONLY=pass host_uid=%s commit=%s tree=%s profile=444 source=private-copy boot=actual canonical=unchanged overrides=forbidden network=none cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+fi
 if [ "$MODE" = authority-smoke ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"

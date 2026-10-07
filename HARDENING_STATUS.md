@@ -308,7 +308,7 @@ Consumption, wrong-serial refusal, replacement, explicit reset and thread exit
 retire the native allocation. The existing `StateCursor::reset` hook now
 discards the pending Linux snapshot. There is no second-query fallback,
 retry, worker, timer, dependency, protocol or service-authority change.
-The similar macOS cursor-change error shape remains unchanged and unvalidated.
+The macOS source correction and its separate evidence limits are recorded below.
 
 **Current accepted run:** source
 `4393f754733cf110c5bbc649bc9c249050fe4091`, tree
@@ -362,10 +362,61 @@ negatives and color/alpha varieties; native serial reuse and full content
 freshness; established Xlib connection failure, global initialization failure,
 other library builds, shared-display/whole-app concurrency and error handlers;
 native internal heap, broader races, resource/performance/soak/cross-version;
-macOS cursor-change handling and other current installed/platform artifacts;
+native macOS cursor handling and other current installed/platform artifacts;
 cold equality, independent reproduction, external review and reported
 Android/Windows display-delay causation. This component correction is not a
 whole-app or privilege-boundary closure.
+
+### macOS cursor — one owned seed/image cache; native acceptance OPEN
+
+**Source corrected; five portable production-cache tests pass. AppKit/TLS/protobuf
+adapter, complete service/app, native macOS and release acceptance remain OPEN.**
+
+The former `macos.rs` marked its global mutable seed before fallible image reads,
+so a failed read could suppress the same seed on later polls. It then queried
+the system cursor again for pixels and refused a changed lossy two-pixel hint.
+`src/platform/macos/cursor_snapshot.rs` now owns the seed and complete copied
+image together. A changed seed clears its predecessor before capture; failure
+or unwind leaves no published seed/image, and the same seed can be read again.
+Unchanged seed reuses that image; wrong-ID lookup returns none; reset and owner
+drop retire it. Initial zero is not an empty-state sentinel.
+
+`macos.rs` uses one private thread-local cache, copies bounded RGBA from one
+selected NSCursor/bitmap inside its autorelease pool, and returns only an owned
+Rust image. It has no global mutable seed, second cursor query, raw Cocoa object
+escaping that pool, lossy two-pixel ID, or separate native-read completion flag.
+`run_cursor` uses its existing accepted-image state for the macOS generation
+guard, so failed processing can request the captured image again; unchanged
+successful processing does not re-copy/hash every tick. Windows retains its
+per-tick bitmap rule; Linux's guard is unchanged. Seed remains a capture hint,
+not protocol/content identity; the shared digest and protocol-ID rules remain.
+The parent keeps its checked 4 MiB RGBA copy bound. This is one extra bounded
+image pin, not a native-heap or complete process-memory claim.
+
+Source `f892ce4ea0ec8c154b10b78df08883339046a83b`, tree
+`963c9f01f50d24aa62a4da3c3bd1addaf223e6eb`, passed the existing
+`--x11-display-tests` transaction in **74 VM seconds**. The complete cache module
+compiled on pinned Rust 1.75 and passed five tests for zero/unchanged seed,
+capture failure and same-seed recovery, captured-byte reuse, unwind, signed-seed
+matching, replacement, idempotent clear and a joined worker's counted owner drop.
+The vectors and injected closure results are portable cache tests, not native
+AppKit images/failures or the protobuf adapter. All retained Linux native cases,
+including 170 paired cursor-image frees, passed separately. The raw
+`x11-display-tests-run.Bv1qG6T5Oq.serial.log` (104,832 bytes; SHA-256
+`4a44f0dc27a4eff9489b8efeb645ec951079dd32e99f9eb5e3c0af9a0da34882`)
+and `evidence/macos-cursor-snapshot-run.Bv1qG6T5Oq.outer.receipt` (SHA-256
+`d4ab09a48b2eeb490abf6e2664ba70d581eabe22b867b3392bc8f2019aea132d`)
+under `.harness-state/verifier-vm/` bind source/module/binary and scope. They are
+assistant observations, not independent attestation. Inputs and host endpoints
+were unchanged; guest owners joined and disk/media/run root self-retired.
+
+**OPEN:** exact parent/Cargo/generated-protobuf/Apple-target compilation;
+AppKit current-system cursor API compatibility, thread/object lifetime and real
+nil/bitmap/geometry/color/alpha failure cases; native seed reuse/full freshness;
+real service processing-failure/reset/replacement; capture-to-presentation,
+installed/native principal, resource/latency/performance/soak/cross-version and
+artifact/reproduction/review evidence. No legitimate isolated macOS runtime is
+locally available. No Android/Windows delay causation or platform closure is claimed.
 
 ### Linux Enigo XDO — one local display for input and diagnostics; integration OPEN
 

@@ -465,50 +465,72 @@ locally available. No Android/Windows delay causation or platform closure is cla
 
 ### Linux Enigo XDO — one local display for input and diagnostics; integration OPEN
 
-`libs/enigo/src/linux/xdo.rs::EnigoXdo::default` now selects the shared validated
-Unix display once and passes that owned name to both native `xdo_new` and the
-pointer-map diagnostic's `XOpenDisplay`. The old null arguments implicitly
-re-read `DISPLAY` and allowed native localhost TCP fallback after Unix refusal.
-Missing/non-UTF8/malformed/remote selectors create no native context; existing
+`libs/enigo/src/linux/xdo.rs::EnigoXdo::default` opens the shared validated Unix
+display once, retains its native `XDefaultScreen`, and transfers the sole display
+to `xdo_new_with_opened_display` with close-on-free ownership. Absolute mouse moves
+use that retained screen rather than hardcoded screen 0. The pointer-map diagnostic
+borrows the same display; it neither reopens a connection nor rereads `DISPLAY`.
+An `OpenedDisplay` RAII guard owns the connection until handoff and closes it on
+native refusal or Rust-side unwind. The Enigo owner retains the successful context
+before logging/diagnostics, so their unwind also destroys the context/display.
+Missing/non-UTF8/malformed/remote selectors create no native connection; existing
 result-bearing mouse/text operations report unavailable input. Native authentication,
-protected loader, paired destruction, parent dispatch, mouse screen semantics and
-service authority are unchanged. No compatibility fallback or new dependency exists.
+protected-loader policy, parent dispatch and service authority are unchanged; no
+constructor fallback, new dependency, worker or runtime exists.
 
-Source `3bc880696a440ce45bccd21a28a270edb1e89294`, tree
-`675d8f1515b87b9a942428d979ad82c59a83e637`, passed
-`--x11-display-tests` with outer exit 0 in **68 VM seconds**:
+The old production mouse API always targeted screen 0, and its native fixture also
+queried root 0 even for a screen-1 context. Correcting the observer to require the
+selected root exposed the actual mismatch: unchanged production in `run.ByLx6SUQmb`
+exited 101 with `native pointer did not arrive on selected screen unix/:98.1` under
+the unchanged 100ms observation bound. The outer transaction explicitly failed;
+later scenarios and aggregate acceptance did not execute. The frozen before-state
+receipt retains that failure and exact terminal scratch cleanup, not an old-app or
+deployed symptom-causation claim.
+
+Source `607b2cb12f4adabe1d4cf84fd0f3f2a1b09611e9`, tree
+`7c2ddaac4e2582f749526386bce036b9585ce55b`, passed
+`--x11-display-tests` with explicit outer exit 0 in **95 seconds**:
 
 - Complete historical/current backend modules ran against real X11/XDO libraries,
   with byte-extracted production API declarations and the actual pinned log crate.
   This is not parent Enigo, protected-loader, full Cargo or whole-app execution.
 - The historical missing-display constructor made one private guest loopback TCP
   connection. A deterministic child-only `DISPLAY` change after successful XDO
-  construction made its historical diagnostic connect once as well. Corrected
-  code made zero connections and kept the original display for its diagnostic.
+  construction made its historical diagnostic connect once as well. Current
+  code made zero connections and kept the sole original display for its diagnostic.
   Old accepted peers closed without an X11 reply/session grant; all children,
   descriptors/tasks and the exact guest-only listener retired.
 - Eighteen invalid/missing/non-UTF8 selectors refused before native construction.
   Three normalized selectors each passed eight construction/drop cases (24 total),
-  with real diagnostic default screens/root dimensions 0=640x480 and 1=800x600,
-  actual pointer coordinates observed through an independent X11 connection,
-  paired native destruction and own descriptor/task baselines restored.
-  The existing mouse API still targets screen 0; this does not validate selected-
-  screen input confinement or successful text delivery.
+  with real default screens/root dimensions 0=640x480 and 1=800x600. An independent
+  X11 connection observed the requested pointer coordinates on the selected root
+  within the unchanged 100ms bound: sixteen deliveries on screen 0 and eight on
+  screen 1. One native descriptor is live during each context, and paired native
+  destruction restores sampled descriptor/task baselines after each retirement.
+- Thirty-two injected context-entry refusals follow a successful real X11 open;
+  each closes that owned display and refuses mouse/text availability. Sixteen real
+  successful contexts then undergo an injected Rust constructor-log unwind; each
+  destroys the native context/display. All sampled task/fd baselines return, with
+  forty native-context free callbacks and thirty-two direct failed-handoff closes.
+  These are controlled interface/log faults, not actual native allocator or protected-
+  loader failures; unwind executes in the test's non-aborting build, not a release artifact.
 - The existing native platform-owner, capture/focus selector/route, cancellation,
   recovery, pixel/SHM and three byte-cache regressions also passed. No host endpoint
   addition; readonly inputs unchanged; VM/container owners joined and run root retired.
 
-Retained `.harness-state/verifier-vm/x11-display-tests-run.8DvSvLxeRW.serial.log`
-(96,325 bytes; SHA-256 `04517d26fd94a9029664f5f30cfcca0aa6fd5a38b37dc5ec8234b34a6e618571`)
-and `evidence/x11-enigo-route-run.8DvSvLxeRW.outer.receipt` bind sources, artifacts,
-scope, isolation and finality; these are assistant observations, not independent
-attestation. Source and evidence status are published through `9a935bc0`; the
-ordinary retry succeeded after GitHub's earlier Internal Server Errors. Publication
-does not enlarge the native test's component scope.
+Retained `.harness-state/verifier-vm/x11-display-tests-run.cUh1bgpWpP.serial.log`
+(103,681 bytes; SHA-256 `2c9ad4a24b25025289fdc7df3fa7549034a7ec9ca51b92180ef86fa06703a01b`)
+and `evidence/x11-enigo-screen-run.cUh1bgpWpP.outer.receipt` bind sources, artifacts,
+before-state, scope, isolation and explicit finality; these are assistant observations,
+not independent attestation. The selected-root oracle, pinned VM/library and screen
+geometry are held constant, but candidate fixtures add construction-fault/unwind cases
+and call wrapping; the whole A/B fixtures are not byte-identical. Earlier local-route
+evidence remains in `evidence/x11-enigo-route-run.8DvSvLxeRW.outer.receipt`.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); protected loader, parent/rdev, full Cargo/app and current
-installed/native artifacts; successful input delivery/screen semantics; persistent
+installed/native artifacts; capture-to-input mapping across all native roots, text/
+modifier/key delivery and cleanup; persistent
 startup/retry, Send/Xlib concurrency and failed-connection/native-allocation behavior;
 internal heap, races, resources/performance/soak/cross-version; cold equality,
 independent reproduction, external review and Android/Windows display-delay causation.

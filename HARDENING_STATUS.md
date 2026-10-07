@@ -281,6 +281,30 @@ artifact. Those integration/installed, Xlib initialization/concurrency, native
 failed-connection destruction, race/heap/soak/performance and platform claims remain
 OPEN. No per-reconnect growth or Android/Windows display-delay cause is established.
 
+### Linux window focus — request-scoped native errors; acceptance pending
+
+The live `get_focused_display` path installed a process-global Xlib handler and
+shared error flags around XDO geometry reads. Errors from another Xlib connection
+could therefore be swallowed and contaminate the focus result. The primary
+[Xlib implementation](https://github.com/mirror/libX11/blob/master/src/ErrHndlr.c)
+binds that handler to `_XErrorFunction`, not the queried display.
+
+`src/platform/linux/window_focus.rs` replaces that path with one thread-owned XCB
+connection and request-specific reply/error ownership. Active-window support and
+property type/format/count are checked; malformed setup layout is rejected before
+any native iterator walk. Window disappearance is no result, other errors are
+explicit, and a failed transport is retired before a later retry. Screen-relative
+coordinates include nesting/borders and display matching uses non-overflowing sums.
+There is no Xlib handler swap, shared error flag or XDO geometry fallback.
+
+Native acceptance is pending in `--x11-display-tests`: the entire production module,
+actual C-header ABI checks, real root/nested/destroyed windows, controlled destruction
+between geometry/translation, unrelated Xlib error delivery, malformed properties,
+seven injected setup layouts, constructor refusal and thread-exit allocation/descriptor
+retirement. Whole-app/service integration, native stalled/dead/restarted server and
+constructor/request deadlines, full platform/performance/soak and reported-delay
+causation remain OPEN; source ownership alone does not close them.
+
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
 PF-1 through PF-5 are closed for desktop port-forward and RDP mappings while the

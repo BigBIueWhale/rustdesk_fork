@@ -48,6 +48,44 @@ def thread_contexts(root, environment):
     binary.unlink()
 
 
+def window_focus(root, environment):
+    helper = Path("/build/window-focus.o")
+    binary = Path("/build/window-focus")
+    subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-c",
+                    str(root / "scripts/test-x11-window-focus.c"), "-o", str(helper)],
+                   env=environment, check=True, timeout=15)
+    command = ["/usr/local/cargo/bin/rustc", "--edition=2021",
+               str(root / "scripts/test-x11-window-focus.rs"), "-o", str(binary),
+               "-C", f"link-arg={helper}", "-C", "link-arg=-lX11"]
+    for name in ("intern_atom_reply", "get_property_reply", "get_geometry_reply",
+                 "translate_coordinates_reply", "get_setup"):
+        command += ["-C", f"link-arg=-Wl,--wrap=xcb_{name}"]
+    command += ["-C", "link-arg=-Wl,--wrap=free"]
+    subprocess.run(command, env=environment, check=True, timeout=30)
+    print("X11_FOCUS_BUILD " + " ".join(
+        f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
+            ("source", root / "src/platform/linux/window_focus.rs"),
+            ("rust_fixture", root / "scripts/test-x11-window-focus.rs"),
+            ("c_fixture", root / "scripts/test-x11-window-focus.c"),
+            ("binary", binary))) + " whole_app=unexecuted", flush=True)
+    result = subprocess.run([str(binary)], env=environment, capture_output=True,
+                            text=True, timeout=15)
+    receipt = ("X11_FOCUS_NATIVE=pass source=production-module old=unrelated-error-swallowed "
+               "cases=12 repeats=16 geometry=server-real destroy_after_geometry=16 unrelated_errors=16 "
+               "setup_faults=7 constructors_refused=16 thread_exits=16 allocations=paired "
+               "descriptors=retired handler=unchanged scope=focus-component")
+    lines = result.stdout.splitlines()
+    require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 4096
+            and len(lines) == 2 and lines[-1] == receipt, f"native focus result differs: {result}")
+    library = lines[0].removeprefix("X11_FOCUS_LOADED library=")
+    require(re.fullmatch(r"/usr/lib/x86_64-linux-gnu/libxcb\.so\.[0-9.]+", library),
+            "native focus library identity differs")
+    print(f"{lines[0]} sha256={hashlib.sha256(Path(library).read_bytes()).hexdigest()}", flush=True)
+    print(receipt, flush=True)
+    binary.unlink()
+    helper.unlink()
+
+
 def capture_connection_loss(binary, environment, xserver):
     ready = b"X11_CAPTURE_CONNECTION_READY callers=direct,public segments=2 pixels=red\n"
     output, errors = bytearray(), bytearray()
@@ -166,6 +204,7 @@ def main():
                 require(child.poll() is None and time.monotonic() < deadline, "Xvfb not ready")
                 time.sleep(0.05)
             thread_contexts(root, environment)
+            window_focus(root, environment)
             binaries = {}
             for variant in ("historical", "corrected"):
                 work = Path("/build") / variant

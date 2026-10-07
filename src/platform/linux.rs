@@ -1,5 +1,6 @@
 use super::{CursorData, ResultType};
 mod native_context;
+mod window_focus;
 use native_context::NativeContext;
 use desktop::Desktop;
 pub use hbb_common::platform::linux::*;
@@ -8,13 +9,13 @@ use hbb_common::{
     anyhow::anyhow,
     bail,
     config::{keys::OPTION_ALLOW_LINUX_HEADLESS, Config},
-    libc::{c_char, c_int, c_long, c_uint, c_ulong, c_void},
+    libc::{c_char, c_int, c_long, c_uint, c_void},
     log,
     message_proto::{DisplayInfo, Resolution},
     regex::{Captures, Regex},
     users::{get_user_by_name, os::unix::UserExt},
 };
-use libxdo_sys::{self, xdo_t, Window};
+use libxdo_sys::{self, xdo_t};
 use std::{
     cell::RefCell,
     ffi::OsStr,
@@ -123,6 +124,7 @@ fn get_active_user_id_name_from_cache() -> Option<(String, String)> {
 }
 
 thread_local! {
+    static WINDOW_FOCUS: RefCell<window_focus::WindowFocus> = RefCell::new(Default::default());
     static XDO: RefCell<Option<NativeContext<xdo_t>>> = RefCell::new(unsafe {
         let xdo = libxdo_sys::xdo_new(std::ptr::null());
         if xdo.is_null() {
@@ -141,55 +143,10 @@ thread_local! {
     });
 }
 
-// X11 error event structure for the custom error handler.
-// See: https://www.x.org/releases/current/doc/libX11/libX11/libX11.html#Using-the-Default-Error-Handlers
-#[repr(C)]
-struct XErrorEvent {
-    type_: c_int,
-    display: *mut c_void, // Display*
-    resourceid: c_ulong,  // XID
-    serial: c_ulong,
-    error_code: u8,
-    request_code: u8,
-    minor_code: u8,
-}
-
-type XErrorHandler = unsafe extern "C" fn(*mut c_void, *mut XErrorEvent) -> c_int;
-
-const X11_BAD_WINDOW: u8 = 3;
-const XDO_SUCCESS: c_int = 0;
-const XDO_ERROR: c_int = 1;
-
-/// Atomic flag set by the custom X error handler when a BadWindow error occurs.
-static X_BAD_WINDOW_DETECTED: AtomicBool = AtomicBool::new(false);
-static X_UNEXPECTED_ERROR_DETECTED: AtomicBool = AtomicBool::new(false);
-
-/// Custom X error handler that catches BadWindow errors (error_code == 3) instead of
-/// letting the default handler terminate the process.
-/// See issue: https://github.com/rustdesk/rustdesk/issues/9003
-unsafe extern "C" fn handle_x_error(_display: *mut c_void, event: *mut XErrorEvent) -> c_int {
-    if !event.is_null() && (*event).error_code == X11_BAD_WINDOW {
-        X_BAD_WINDOW_DETECTED.store(true, Ordering::SeqCst);
-        log::debug!("Caught X11 BadWindow error (suppressed), window was likely destroyed");
-        return 0;
-    }
-    X_UNEXPECTED_ERROR_DETECTED.store(true, Ordering::SeqCst);
-    if !event.is_null() {
-        log::warn!(
-            "X11 error: error_code={}, request_code={}, minor_code={}",
-            (*event).error_code,
-            (*event).request_code,
-            (*event).minor_code,
-        );
-    }
-    0
-}
-
 #[link(name = "X11")]
 extern "C" {
     fn XOpenDisplay(display_name: *const c_char) -> *mut c_void;
     fn XCloseDisplay(d: *mut c_void) -> c_int;
-    fn XSetErrorHandler(handler: Option<XErrorHandler>) -> Option<XErrorHandler>;
 }
 
 #[link(name = "Xfixes")]
@@ -304,75 +261,28 @@ pub fn clip_cursor(_rect: Option<(i32, i32, i32, i32)>) -> bool {
 pub fn reset_input_cache() {}
 
 pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
-    let mut res = None;
-    XDO.with(|xdo| {
-        if let Ok(xdo) = xdo.try_borrow() {
-            let Some(xdo) = xdo.as_ref() else {
-                return;
-            };
-            let mut x: c_int = 0;
-            let mut y: c_int = 0;
-            let mut width: c_uint = 0;
-            let mut height: c_uint = 0;
-            let mut window: Window = 0;
-
-            unsafe {
-                if libxdo_sys::xdo_get_active_window(xdo.as_ptr() as *const _, &mut window) != 0 {
-                    return;
-                }
-
-                // XSetErrorHandler is process-global, not scoped to this Display/thread.
-                // This path is currently called by the single window_focus service thread.
-                // While installed, this handler can still observe unrelated X11 errors from
-                // other threads; unexpected errors make this geometry query fail.
-                X_BAD_WINDOW_DETECTED.store(false, Ordering::SeqCst);
-                X_UNEXPECTED_ERROR_DETECTED.store(false, Ordering::SeqCst);
-                let prev_handler = XSetErrorHandler(Some(handle_x_error));
-
-                let loc_ret = libxdo_sys::xdo_get_window_location(
-                    xdo.as_ptr() as *const _,
-                    window,
-                    &mut x as _,
-                    &mut y as _,
-                    std::ptr::null_mut(),
-                );
-                let size_ret = if loc_ret == XDO_SUCCESS {
-                    libxdo_sys::xdo_get_window_size(
-                        xdo.as_ptr() as *const _,
-                        window,
-                        &mut width,
-                        &mut height,
-                    )
-                } else {
-                    XDO_ERROR
-                };
-
-                // Do not call XSync(DISPLAY) here: DISPLAY is a separate
-                // XOpenDisplay() connection, while libxdo owns the Display*
-                // used by these geometry queries. These libxdo calls are
-                // synchronous XGetWindowAttributes-based queries, so the target
-                // BadWindow is expected to be delivered before the calls return.
-                XSetErrorHandler(prev_handler);
-                if X_BAD_WINDOW_DETECTED.load(Ordering::SeqCst)
-                    || X_UNEXPECTED_ERROR_DETECTED.load(Ordering::SeqCst)
-                    || loc_ret != XDO_SUCCESS
-                    || size_ret != XDO_SUCCESS
-                {
-                    return;
-                }
-
-                let center_x = x + (width / 2) as c_int;
-                let center_y = y + (height / 2) as c_int;
-                res = displays.iter().position(|d| {
-                    center_x >= d.x
-                        && center_x < d.x + d.width
-                        && center_y >= d.y
-                        && center_y < d.y + d.height
-                });
+    WINDOW_FOCUS.with(|focus| {
+        let mut focus = match focus.try_borrow_mut() {
+            Ok(focus) => focus,
+            Err(error) => {
+                log::debug!("failed to borrow X11 focus context: {error}");
+                return None;
             }
-        }
-    });
-    res
+        };
+        let center = match focus.center() {
+            Ok(center) => center?,
+            Err(error) => {
+                log::debug!("failed to query focused X11 window: {error:?}");
+                return None;
+            }
+        };
+        let (x, y) = (i64::from(center.0), i64::from(center.1));
+        displays.iter().position(|display| {
+            let (left, top) = (i64::from(display.x), i64::from(display.y));
+            x >= left && x < left + i64::from(display.width)
+                && y >= top && y < top + i64::from(display.height)
+        })
+    })
 }
 
 pub fn get_cursor() -> ResultType<Option<u64>> {

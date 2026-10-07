@@ -10989,8 +10989,8 @@ as do current artifacts, performance/soak, independent reproduction, and externa
 
 ### R-S11hb/R-S11e-240 — exact bounded native clipboard-listener ownership (2026-08-20)
 
-**SOURCE IMPLEMENTED; SIX PRODUCTION STATE TESTS AND SIX LINUX NATIVE LIFETIME
-TESTS PASSED IN A 68-SECOND FOCUSED TRANSACTION; WHOLE-APP, OTHER NATIVE PLATFORMS,
+**SOURCE IMPLEMENTED; SIX PRODUCTION STATE TESTS AND EIGHT LINUX NATIVE LIFETIME
+TESTS PASSED IN A 106-SECOND FOCUSED TRANSACTION; WHOLE-APP, OTHER NATIVE PLATFORMS,
 DEVICE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** The mailbox/registry
 is shared by Windows, Linux, and macOS; Linux X11 now has its own native master.
 Android does not compile it; Android's
@@ -11011,7 +11011,7 @@ checked monotonic generation; duplicate live names are refused. The retained
 cleanup, startup failures remove the exact insertion and join the startup thread,
 post-start master exit publishes a terminal result, and exact last retirement signals and
 joins the sole listener thread. Viewer and controlled scopes retain the exact owner. No
-retry, reconnect, timer, additional worker/thread/runtime, payload queue,
+retry, reconnect, additional worker/thread/runtime, payload queue,
 privilege transition, service restart, port, or
 Android service change was introduced.
 
@@ -11038,7 +11038,8 @@ the release profile's `panic='abort'` instead predicts process termination, not 
 release-artifact outcome. Its raw log and
 `evidence/clipboard-thread-start-run.WNt388Ub74.outer.receipt` remain retained. This
 corrects the shared desktop creation-error path; it does not establish
-other-platform native behavior, other resource failures, or bounded native startup.
+other-platform native behavior or other resource failures. Native protocol startup is
+covered separately below; that worker-creation test alone does not establish its bounds.
 
 The former Linux X11 master reused a process-global getter, left its native subscription
 active after worker retirement, re-registered it after each callback, and slept 500ms for
@@ -11059,47 +11060,84 @@ direct `x11rb-listener` binding uses already-root-locked x11rb 0.13.1; the optio
 API keeps its distinct 0.12 types, with no new external package/version or cache mutation.
 Windows/macOS and the existing Wayland implementation are unchanged by this X11 correction.
 **Wayland's inherited fallback/lifetime limitations remain OPEN; X11 evidence does not
-close them.** Native I/O/startup deadlines, arbitrary-traffic shutdown bounds,
+close them.** Arbitrary native backpressure/readiness and traffic-rate shutdown bounds,
 concurrent admission/error/replacement, and sustained resource/latency evidence
-also remain OPEN. This clipboard correction is not Android/Windows display-delay causation.
+remain OPEN. This clipboard correction is not Android/Windows display-delay causation.
+
+The prior X11 setup/reply waits could block indefinitely while `subscribe` retained the
+listener lock and inserted subscriber. Unchanged production source in `run.nNtlyQW8tt`
+returned only after **8,161ms**, when the silent fixture peer's own eight-second
+observation expired and closed; it did not close the peer itself or classify a product
+deadline. The corrected private `NativeStream` applies **one absolute three-second
+protocol-startup budget** through setup, extension negotiation and checked registration,
+then disarms it for the healthy connection's lifetime. Nonblocking Unix admission owns
+its descriptor immediately; a full backlog is refused rather than waited or retried.
+The existing shutdown owner also publishes exact-generation cancellation, checked at
+native reads/writes and on each blocked native poll with at most a 50ms requested timeout.
+No extra worker or
+detached timeout path was added; exact worker join and connection/window retirement remain
+required. The Unix-only selector and native local-family cookie lookup remain authoritative:
+an absent authority file means no cookie, while other lookup errors are returned; the X11
+server still accepts or rejects setup. Authority-file filesystem I/O itself is **not**
+interrupted by this transport budget. Allocation/parser work, scheduling, delegated
+EINTR loops and exhaustive native I/O/cancellation bounds remain OPEN.
+
+Three real Unix peers now withhold setup, drip an incomplete setup header, or accept setup
+and withhold the first extension reply. Production startup refuses them in
+**3,001/3,001/3,000ms**; each peer observes EOF, the exact worker joins, state and sampled
+resources retire, and the same subscription name delivers a healthy native callback
+afterward. A separate cookie-required Xvfb scenario rejects wrong, empty and absent
+credentials and requires correct-cookie recovery after each refusal. Four valid callbacks
+pass, including one after a 3,200ms healthy lifetime, so the startup budget is not a
+connection lifetime limit. The retired-observer regression now requires the successfully
+constructed-master branch exactly once, rather than passing on constructor failure.
+These are real component observations, not a whole-app startup or installed-service proof.
 
 Four native cycles now retire subscribers while an independent, checked X11 selection-change
 producer remains live. Both subscribers receive actual callbacks; retiring the first preserves
-the remaining callback/worker, and exact last retirement joins in **160/146/31/139µs**.
+the remaining callback/worker, and exact last retirement joins in **272/245/206/639µs**.
 The producer's acknowledged count advances after each join, before it is stopped and joined.
 Server QueryTree returns to the exact window baseline, and sampled task/descriptor counts
-return first to the live-producer baseline and then to the original baseline. Each producer
+return first to the live-producer baseline and then to the original baseline. Join and
+kernel task absence are separate required observations: descriptors must match immediately,
+and task counts must reach the exact baseline within one second because Linux task unlink
+can follow the clear-child-TID event observed by `pthread_join`. This does not skip join,
+ignore a retained task or change the busy-retirement bound. Each producer
 has a 1,048,576-request cap and a 64-request batch; it does not sleep. Only the fixture's
 redundant observer is disabled, not the production subscription; the production queue is
 not drained by the fixture. This establishes the four measured busy-retirement scenarios,
 not a nonempty queue at every instant, a universal traffic-rate bound, heap/native-queue
-memory limits, exhaustive scheduling/races, or sustained performance. No production code
-changed for this additional evidence.
+memory limits, exhaustive scheduling/races, or sustained performance.
 
 **Focused Linux component acceptance:**
 `scripts/smoke-verifier-vm-authority.sh --x11-display-tests --clipboard-listener` passed
-with explicit outer status 0 in **68 seconds** on source
-`289dbc3a59f1dad784ed1a5905a7c015b68ced32`, tree
-`a93b0c9daa3e5d295143866e0324cda2b90c253e`. It compiles the complete production listener
+with explicit outer status 0 in **106 seconds** on source
+`82c75286ed5879f91c9adfe8950be4cc569cf960`, tree
+`30fe13934438ee9562a15474860052ee15f9fd19`. It compiles the complete production listener
 and actual local-display selector with pinned Rust 1.75 and real root-lock dependencies,
-then executes six production state tests and six native cases in source-bound processes:
+then executes six production state tests and eight native cases in source-bound processes:
 retired startup observer, failed startup/clean retry, actual worker-creation refusal/recovery,
-four busy-retirement cycles, joined native error retirement, and four warm restarts. The historical fixture uses the
+four busy-retirement cycles, three protocol-startup stalls/recovery, cookie authentication,
+joined native error retirement, and four warm restarts. The historical fixture uses the
 exact pinned former native master and error callback, not a historical whole app. It
 reproduces the second-start callback timeout
 under the unchanged three-second bound and retains a live worker after native server loss;
 the current component passes both properties. Warm restarts include 1,000 real idle changes
 after every retirement, one private native window per active master, server QueryTree
 proof of window absence after each join, and thread/descriptor counts equal to baseline.
-Measured current callbacks were 500ms on all four cycles; error retirement refused 64 late
+Measured current callbacks were 500/499/500/500ms; error retirement refused 64 late
 subscriptions and restored threads 2→2 and descriptors 5→5, with a 500ms terminal interval.
 These are component samples, not exact descriptor-identity, whole-app latency or soak proof.
 
-Retained raw `.harness-state/verifier-vm/x11-display-tests-run.XkhqfPojD8.serial.log` is
-78,019 bytes, SHA-256 `d9d497f3d1dd5a3a29eb94ae6f2b2d73b3cd2c97f4980210819d5147ab745735`;
+Retained raw `.harness-state/verifier-vm/x11-display-tests-run.bssfM12Svq.serial.log` is
+81,230 bytes, SHA-256 `347714984532f7512db8579183970cc89df1d8de9ba256dac3cb3c229d6beaa4`;
 exact artifacts, cycle counts and scope are in
-`evidence/clipboard-busy-retirement-run.XkhqfPojD8.outer.receipt`. Prior thread-creation
-acceptance remains retained in `evidence/clipboard-thread-start-run.Da1KAijNYJ.outer.receipt`.
+`evidence/clipboard-startup-run.bssfM12Svq.outer.receipt`, including the startup before-state,
+rejected candidate and an earlier same-source run whose outer handle was lost to output
+truncation. That earlier guest pass is not assigned a directly observed outer status; the
+named 106-second repeat has explicit finality. Prior busy-retirement and thread-creation
+acceptance remain in `evidence/clipboard-busy-retirement-run.XkhqfPojD8.outer.receipt` and
+`evidence/clipboard-thread-start-run.Da1KAijNYJ.outer.receipt`.
 All 77 selected dependency records matched the root lock; 86 pinned package byte closures
 passed before and after execution. Source/input/image and outer postconditions passed,
 with no endpoint addition in before/during/after host snapshots and no owner inventory.

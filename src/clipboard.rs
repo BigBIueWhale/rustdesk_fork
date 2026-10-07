@@ -1713,15 +1713,18 @@ pub mod clipboard_listener {
                     return Ok((Vec::new(), Vec::new())),
                 Err(error) => return Err(error),
             };
+            check_startup_deadline(deadline)?;
             let metadata = pinned.metadata()?;
             if !metadata.is_file() {
                 return Err(io::Error::new(io::ErrorKind::InvalidData,
                     "X11 clipboard authority is not a regular file"));
             }
             if metadata.len() > MAX_BYTES as u64 { return Err(too_large()); }
+            check_startup_deadline(deadline)?;
             let file = OpenOptions::new().read(true)
                 .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY | libc::O_CLOEXEC)
                 .open(format!("/proc/self/fd/{}", pinned.as_raw_fd()))?;
+            check_startup_deadline(deadline)?;
             let actual = file.metadata()?;
             if !actual.is_file() || actual.dev() != metadata.dev() || actual.ino() != metadata.ino() {
                 return Err(io::Error::new(io::ErrorKind::InvalidData,

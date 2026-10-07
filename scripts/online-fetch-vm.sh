@@ -23,6 +23,7 @@ case "$#:${1:-}" in
         MODE=authority-smoke
         REQUEST=__authority_smoke__
         ;;
+    1:--fixed-archives|\
     1:--rust-test-inputs|1:--flutter-test-inputs|1:--flutter-peer-inputs|1:--android-build-inputs|1:--libvpx-distfiles|1:--wix-nuget-packages|1:--dart-audit-inputs|1:--maintenance-discover-osv-pub-database|1:--maintenance-discover-android-emulator-inputs|1:--maintenance-discover-rust-android-x86-input|1:--maintenance-discover-flutter-android-maven|1:--maintenance-stage-android-emulator-inputs|1:--maintenance-stage-rust-android-x86-input|1:--maintenance-stage-vcpkg-x64-android|1:--maintenance-stage-flutter-presentation-candidate|1:--maintenance-discover-flutter-presentation-pub|\
     1:--maintenance-build-deb-builder-bootstrap-candidate|\
     1:--maintenance-discover-flutter-linux-engine-bootstrap|\
@@ -60,7 +61,7 @@ case "$#:${1:-}" in
         REQUEST=$1
         ;;
     *)
-        printf 'usage: scripts/online-fetch.sh [--verifier-vm-inputs|--self-test-vm-authority|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-discover-rust-android-x86-input|--maintenance-stage-android-emulator-inputs|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-promote-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]\n' >&2
+        printf 'usage: scripts/online-fetch.sh [--verifier-vm-inputs|--fixed-archives|--self-test-vm-authority|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-discover-rust-android-x86-input|--maintenance-stage-android-emulator-inputs|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|--maintenance-build-deb-builder-bootstrap-candidate|--maintenance-build-android-builder-bootstrap-candidate|--maintenance-build-win-helper-bootstrap-candidate|--maintenance-promote-deb-builder-bootstrap-candidate|--maintenance-promote-win-helper-bootstrap-candidate|--maintenance-build-deb-builder-certified-candidate|--maintenance-promote-deb-builder-certified-candidate|--maintenance-build-android-builder-certified-candidate|--maintenance-promote-android-builder-certified-candidate|--maintenance-build-win-helper-certified-candidate|--maintenance-promote-win-helper-certified-candidate|--maintenance-discover-devcheck-image|--maintenance-build-devcheck-image-candidate|--maintenance-promote-devcheck-image-candidate|--maintenance-build-apple-check-image-candidate|--maintenance-promote-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-promote-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-promote-rust-audit-image-candidate|--maintenance-reproduce-vcpkg-x64|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-print-cargo-vendor-candidate|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]\n' >&2
         exit 2
         ;;
 esac
@@ -91,6 +92,10 @@ if [ "$MODE" = authority-smoke ]; then
     readonly VM_TIMEOUT_SECONDS=180
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
+elif [ "$REQUEST" = --fixed-archives ]; then
+    readonly VM_TIMEOUT_SECONDS=1800
+    readonly OVERLAY_SIZE=8G
+    readonly VM_MEMORY=4096
 elif [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
      || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-bootstrap ] \
      || [ "$REQUEST" = --maintenance-probe-flutter-linux-engine-bootstrap ]; then

@@ -685,9 +685,24 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         ),
         "systemd image online-root separation",
     )
-    require(main.count("stage_fixed_archives") == 1, "main does not invoke one fixed archive stage")
+    require_all(
+        main,
+        (
+            '--fixed-archives)\n'
+            '            [ "$#" -eq 1 ] || die "--fixed-archives takes no arguments"\n'
+            '            /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-online-fetch-fixed-archive-authority.py" --self-test\n'
+            '            stage_fixed_archives\n'
+            '            return 0\n'
+            '            ;;',
+        ),
+        "closed fixed archive phase",
+    )
+    dispatch_end = main.rfind("\n    esac\n")
+    require(dispatch_end >= 0, "main phase dispatch terminator is missing")
+    full_main = main[dispatch_end + len("\n    esac\n") :]
+    require(full_main.count("stage_fixed_archives") == 1, "full main does not invoke one fixed archive stage")
     require(
-        main.index("load_builder_images") < main.index("stage_fixed_archives") < main.index("build_frb_codegen"),
+        full_main.index("load_builder_images") < full_main.index("stage_fixed_archives") < full_main.index("build_frb_codegen"),
         "fixed archive stage ordering changed",
     )
     libvpx_stage = function_block(shell, "stage_libvpx_distfiles")
@@ -914,8 +929,8 @@ MUTATIONS = (
     ),
     Mutation(
         "shell",
-        "    stage_fixed_archives\n",
-        "    stage_archives_removed\n",
+        "\n    stage_fixed_archives\n",
+        "\n    stage_archives_removed\n",
         "stage wiring",
     ),
     Mutation("shell", "target=/online-fixed-archive-output.py,readonly", "target=/online-fixed-archive-output.py", "helper read-only mount"),

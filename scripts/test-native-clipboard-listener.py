@@ -171,9 +171,12 @@ def scenario(binary, variant, environment):
                 require(server.poll() is None and time.monotonic() < deadline, "private Xvfb not ready")
                 time.sleep(0.02)
             arguments = [str(binary), "--test-threads=1", "--nocapture"]
-            if variant == "historical":
+            if variant in ("historical", "warm-diagnostic"):
                 arguments.append("native_tests::z_native_x11_peer_retirement")
-            child = subprocess.Popen(arguments, env=environment, stdin=subprocess.DEVNULL,
+            child_environment = dict(environment)
+            if variant == "warm-diagnostic":
+                child_environment["CLIPBOARD_WARM_DIAGNOSTIC"] = "1"
+            child = subprocess.Popen(arguments, env=child_environment, stdin=subprocess.DEVNULL,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             retired = False
             deadline = time.monotonic() + 20
@@ -194,11 +197,17 @@ def scenario(binary, variant, environment):
                         retired = True
             status = child.wait(timeout=2)
             print(output.decode("utf-8"), end="", flush=True)
-            require(retired, "fixture did not reach real clipboard callbacks before server retirement")
+            if variant == "warm-diagnostic":
+                require(not retired and status == 0
+                        and re.search(rb"test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out;", output)
+                        and output.count(b"workers=joined acceptance=false\n") == 1,
+                        "warm-restart diagnostic did not complete with exact joined ownership")
+            else:
+                require(retired, "fixture did not reach real clipboard callbacks before server retirement")
             if variant == "historical":
                 require(status == 86 and output.count(b"CLIPBOARD_NATIVE_OLD=retained terminal=delivered worker=live process_reset=required\n") == 1,
                         "historical callback did not demonstrate a retained live worker")
-            else:
+            elif variant == "current":
                 require(status == 0 and re.search(rb"test result: ok\. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;", output)
                         and output.count(b"CLIPBOARD_NATIVE_CURRENT=pass callbacks=6 normal_cycles=4 subscribers=2 late_refusals=64 workers=joined\n") == 1
                         and output.count(b"CLIPBOARD_NATIVE_STARTUP=pass observer=retired worker=joined\n") == 1,
@@ -227,6 +236,7 @@ def main():
     require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
     locked = inputs()
     binaries = build(environment, locked)
+    scenario(binaries["current"], "warm-diagnostic", environment)
     for variant, binary in binaries.items():
         scenario(binary, variant, environment)
     inputs()

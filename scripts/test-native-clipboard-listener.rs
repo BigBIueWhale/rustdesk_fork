@@ -137,6 +137,58 @@ fn b_native_startup_failure_retires_exact_state() {
 }
 
 #[test]
+fn c_native_thread_creation_failure_retires_exact_state() {
+    assert_eq!(unsafe { libc::getuid() }, 4000);
+    struct ThreadLimit(libc::rlimit);
+    impl Drop for ThreadLimit {
+        fn drop(&mut self) {
+            // Only this isolated process's soft limit was changed; the hard limit is retained.
+            assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NPROC, &self.0) }, 0);
+        }
+    }
+    let mut original = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_NPROC, &mut original) }, 0);
+    let limited = libc::rlimit { rlim_cur: 0, rlim_max: original.rlim_max };
+    assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NPROC, &limited) }, 0);
+    let limit = ThreadLimit(original);
+    match std::thread::Builder::new().spawn(|| {}) {
+        Err(error) => assert_eq!(error.raw_os_error(), Some(libc::EAGAIN)),
+        Ok(thread) => {
+            thread.join().unwrap();
+            panic!("isolated thread limit did not cause a real kernel denial");
+        }
+    }
+    let baseline = resources();
+    println!("CLIPBOARD_NATIVE_THREAD_LIMIT=ready kernel=EAGAIN soft=0 hard=unchanged");
+    std::io::stdout().flush().unwrap();
+    for _ in 0..4 {
+        let error = match subscribe("thread-budget".to_owned()) {
+            Err(error) => error,
+            Ok(_) => panic!("native clipboard worker ignored the thread limit"),
+        };
+        assert_eq!(error.downcast_ref::<io::Error>().unwrap().raw_os_error(), Some(libc::EAGAIN));
+        {
+            let listener = CLIPBOARD_LISTENER.lock().unwrap();
+            assert!(listener.handle.is_none());
+            let registry = listener.subscribers.lock().unwrap();
+            assert!(registry.subscribers.is_empty() && registry.terminal.is_none());
+        }
+        assert_eq!(resources(), baseline);
+    }
+    drop(limit);
+    let (connection, selection, windows) = native_selection_driver();
+    let native_baseline = resources();
+    let children = root_children(&connection);
+    let (owner, receiver) = subscribe("thread-budget".to_owned()).unwrap();
+    change_and_observe(&connection, selection, windows, &[&receiver]);
+    drop(receiver);
+    drop(owner);
+    assert_native_window_retired(&connection, &children);
+    assert_eq!(resources(), native_baseline);
+    println!("CLIPBOARD_NATIVE_THREAD_FAILURE=pass kernel=EAGAIN refusals=4 subscription=removed lock=usable next_start=working resources=retired");
+}
+
+#[test]
 fn y_native_x11_warm_restart() {
     let (connection, selection, windows) = native_selection_driver();
     let baseline = resources();

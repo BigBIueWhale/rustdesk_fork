@@ -82,6 +82,7 @@ name = "rustdesk_clipboard_listener_native"
 anyhow = "=1.0.103"
 log = {{ version = "=0.4.22", features = ["std"] }}
 lazy_static = "=1.5.0"
+libc = "=0.2.171"
 clipboard-master = {{ git = "https://github.com/rustdesk-org/clipboard-master" }}
 x11rb-listener = {{ package = "x11rb", version = "=0.13.1", features = ["xfixes"] }}
 [profile.dev]
@@ -166,7 +167,7 @@ directory = "/work/clipboard-vendor"
 
 
 def scenario(binary, variant, environment):
-    require(variant in ("historical", "historical-warm", "current", "startup", "startup-failure", "warm-restart"),
+    require(variant in ("historical", "historical-warm", "current", "startup", "startup-failure", "thread-start-failure", "warm-restart"),
             "unknown native scenario")
     log_path = BUILD / f"{variant}.xvfb.log"
     output = bytearray()
@@ -187,6 +188,8 @@ def scenario(binary, variant, environment):
                 arguments.append("native_tests::a_retired_startup_observer")
             elif variant == "startup-failure":
                 arguments.append("native_tests::b_native_startup_failure_retires_exact_state")
+            elif variant == "thread-start-failure":
+                arguments.append("native_tests::c_native_thread_creation_failure_retires_exact_state")
             else:
                 arguments.append("native_tests::y_native_x11_warm_restart")
             child = subprocess.Popen(arguments, env=environment, stdin=subprocess.DEVNULL,
@@ -211,7 +214,7 @@ def scenario(binary, variant, environment):
             status = child.wait(timeout=2)
             print(output.decode("utf-8"), end="", flush=True)
             single_pass = status == 0 and re.search(
-                rb"test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out;", output)
+                rb"test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out;", output)
             if variant in ("historical", "current"):
                 require(retired, "fixture did not reach real clipboard callbacks before server retirement")
             if variant == "historical":
@@ -231,14 +234,21 @@ def scenario(binary, variant, environment):
                     "native startup failure did not retire exactly or allow a new working subscription")
             elif variant == "historical-warm":
                 require(not retired and status == 101 and re.search(
-                    rb"test result: FAILED\. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out;", output)
+                    rb"test result: FAILED\. 0 passed; 1 failed; 0 ignored; 0 measured; 10 filtered out;", output)
                     and b"CLIPBOARD_NATIVE_CYCLE cycle=1 stage=subscribe\n" in output
                     and b"actual XFixes callback did not arrive" in output,
                     "historical warm restart did not reproduce the actual callback failure")
+            elif variant == "thread-start-failure":
+                require(single_pass and not retired and output.count(
+                    b"CLIPBOARD_NATIVE_THREAD_FAILURE=pass kernel=EAGAIN refusals=4 subscription=removed lock=usable next_start=working resources=retired\n") == 1,
+                    "kernel thread-creation failure did not retire exactly or allow a new working subscription")
             else:
                 require(single_pass and not retired and output.count(
                     b"CLIPBOARD_NATIVE_WARM=pass callbacks=4 normal_cycles=4 workers=joined\n") == 1,
                     "native warm-restart regression remains open")
+        except (OSError, RuntimeError, subprocess.TimeoutExpired):
+            print(output[:65536].decode("utf-8", errors="replace"), end="", flush=True)
+            raise
         finally:
             if child is not None:
                 if child.poll() is None:
@@ -268,11 +278,12 @@ def main():
     state_output = command([str(binaries["current"]), "--test-threads=1", "--nocapture", "--color", "never",
                             "clipboard_listener::tests::"], environment, 5)
     print(state_output.decode("utf-8"), end="", flush=True)
-    require(re.search(rb"test result: ok\. 6 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out;", state_output),
+    require(re.search(rb"test result: ok\. 6 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out;", state_output),
             "production clipboard state tests did not all execute")
     print("CLIPBOARD_NATIVE_STATE=pass tests=6", flush=True)
     scenario(binaries["current"], "startup", environment)
     scenario(binaries["current"], "startup-failure", environment)
+    scenario(binaries["current"], "thread-start-failure", environment)
     scenario(binaries["historical"], "historical-warm", environment)
     scenario(binaries["historical"], "historical", environment)
     scenario(binaries["current"], "current", environment)
@@ -281,7 +292,7 @@ def main():
     scenario(binaries["current"], "warm-restart", environment)
     inputs()
     print("CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=owned-x11 callbacks=actual "
-          "old=retained current=joined late_admission=refused startup_observer=retired tests=10 network=none cleanup=joined", flush=True)
+          "old=retained current=joined late_admission=refused startup_observer=retired tests=11 network=none cleanup=joined", flush=True)
 
 
 if __name__ == "__main__":

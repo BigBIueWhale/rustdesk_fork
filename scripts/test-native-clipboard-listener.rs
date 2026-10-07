@@ -4,6 +4,7 @@ use std::io::Write;
 use std::time::Instant;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConnectionExt, CreateWindowAux, WindowClass};
+use x11rb::protocol::{xfixes, Event};
 
 fn wait_finished(thread: &JoinHandle<()>, deadline: Instant) -> bool {
     while !thread.is_finished() && Instant::now() < deadline {
@@ -44,10 +45,13 @@ fn change_and_observe(
     let deadline = Instant::now() + Duration::from_secs(3);
     let mut observed = vec![false; receivers.len()];
     let mut sequence = 0;
+    let mut native_events = 0;
     while observed.iter().any(|received| !received) {
         assert!(Instant::now() < deadline, "actual XFixes callback did not arrive");
         connection.set_selection_owner(windows[sequence % 2], selection, x11rb::CURRENT_TIME)
             .unwrap().check().unwrap();
+        assert_eq!(connection.get_selection_owner(selection).unwrap().reply().unwrap().owner,
+                   windows[sequence % 2]);
         connection.flush().unwrap();
         sequence += 1;
         for (receiver, received) in receivers.iter().zip(&mut observed) {
@@ -58,6 +62,18 @@ fn change_and_observe(
                     _ => panic!("healthy native listener returned a terminal result"),
                 }
             }
+        }
+        while let Some(event) = connection.poll_for_event().unwrap() {
+            if matches!(event, Event::XfixesSelectionNotify(_)) {
+                native_events += 1;
+            }
+        }
+        if sequence == 1 || sequence % 25 == 0 {
+            let listener = CLIPBOARD_LISTENER.lock().unwrap();
+            let registry = listener.subscribers.lock().unwrap();
+            println!("CLIPBOARD_NATIVE_CHANGE requests={} server_events={} observed={:?} members={} terminal={:?} master_finished={}",
+                     sequence, native_events, observed, registry.subscribers.len(), registry.terminal,
+                     listener.handle.as_ref().unwrap().1.is_finished());
         }
     }
 }
@@ -74,9 +90,13 @@ fn z_native_x11_peer_retirement() {
                                  &CreateWindowAux::new()).unwrap().check().unwrap();
     }
     let selection = connection.intern_atom(false, b"CLIPBOARD").unwrap().reply().unwrap().atom;
+    xfixes::query_version(&connection, 5, 0).unwrap().reply().unwrap();
+    xfixes::select_selection_input(&connection, root, selection,
+                                  xfixes::SelectionEventMask::SET_SELECTION_OWNER).unwrap().check().unwrap();
     let baseline = resources();
 
     for cycle in 0..4 {
+        println!("CLIPBOARD_NATIVE_CYCLE cycle={cycle} stage=subscribe");
         let (owner, receiver) = subscribe(format!("native-cycle-{cycle}")).unwrap();
         change_and_observe(&connection, selection, windows, &[&receiver]);
         drop(receiver);

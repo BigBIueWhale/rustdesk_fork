@@ -289,11 +289,9 @@ the validated local Unix selector from the shared standard-library-only
 `libs/hbb_common/src/platform/x11_display.rs`; focus and capture use that same
 parser instead of duplicate copies. Native authentication and paired destruction
 remain intact. The former null-argument Xlib/XDO calls could reach libxcb's
-implicit localhost TCP fallback. Actual constructor/selector/native-screen and
-old-call-shape route tests in the existing isolated lane are PENDING.
-This does not close native constructor bounds, protected-loader/full-app or
-session/principal proof, the separate Enigo/rdev routes, startup/retry behavior,
-heap/resources/soak/performance or reported Android/Windows causation.
+implicit localhost TCP fallback through
+[Xlib's XCB connector](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/src/xcb_disp.c)
+and [XDO's XOpenDisplay call](https://github.com/jordansissel/xdotool/blob/v3.20160805.1/xdo.c).
 
 `src/platform/linux.rs` previously stored cursor X11 and XDO contexts as raw
 thread-local pointers without native destruction. Its cursor/position/focus consumers
@@ -310,30 +308,45 @@ The native [XCloseDisplay implementation](https://github.com/mirror/libX11/blob/
 retires connection/storage and returns zero; native fatal-error disposition is not
 changed. XDO retirement uses the existing wrapper's `xdo_free` operation.
 
-At `83ea43a4` the existing `--x11-display-tests` lane returned its exact outer pass
-in 59 seconds. The complete production owner, not a rewritten model, compiled with
-real X11/XDO constructors/destructors in private Xvfb: eight historical raw-TLS exits
-retained connections, while 32 corrected exits (16 normal/16 identified unwind)
-retired 64 contexts with paired callbacks and descriptor counts back at baseline.
-All 32 constructor refusals and retained-context reuse passed; the oracle requires
-exactly 16 expected libxdo diagnostics and rejects any other stderr. Existing capture
-cases and three byte-cache tests passed too. The earlier wrapper failure at
-`2466e70a` is not accepted; both its failed serial and bounded receipt are preserved.
+At `f9090397`, `--x11-display-tests` passed with outer exit 0 in **68 VM seconds**:
 
-Retained evidence under `.harness-state/verifier-vm`: raw
-`x11-display-tests-run.2J2Xn1ytHY.serial.log` (80,889 bytes; SHA-256
-`f60c2ffcd4ac21baf21042a0d31471dcf682f91d8688cecda2f8e136754fa359`) and
-`evidence/x11-thread-context-run.2J2Xn1ytHY.outer.receipt`. The tool did not deliver a
-final numeric outer exit code; the exact pass receipt, native acceptance and joined
-cleanup are observed. Zero-NIC/private-Unix VM and unprivileged network-none container
-profiles are unchanged; complete endpoint audits show no added host listener, readonly
-inputs are unchanged, and all owned runtime/disk/run-root state is retired.
+- The real old null-argument Xlib and XDO call shapes each connected once to
+  `127.0.0.1:6095` inside the network-none guest container. The corrected
+  production constructors refused with zero observer connections. Accepted old
+  peers closed without an X11 reply/session grant; all four children and the
+  retained loopback listener retired. This compares actual native call shapes,
+  not an old whole application or a complete historical platform module.
+- Complete production owner/constructor/parser modules executed with native
+  libraries. Eight historical raw-TLS exits retained their connections until
+  exact parent cleanup. Thirty-two corrected thread exits (16 normal/16 unwind)
+  plus three normalized native screen cases retired 70 contexts with paired
+  native destructor callbacks and own descriptors back at baseline. Healthy
+  thread-local accesses reused the same contexts.
+- Eighteen invalid/missing/non-UTF8 selectors refused through both constructors
+  before native calls. Three valid normalized selectors opened actual Xvfb
+  screen 0/1, observed as 640x480/800x600. Thirty-two actual missing-display
+  refusals created no owner; exactly 16 expected XDO diagnostics were required.
+- Capture and focus selector/route/cancellation/recovery, native enumeration,
+  pixel/SHM retirement and three production byte-cache regressions passed
+  after parser consolidation. This is component, not whole-app, execution.
 
-The fixture links native libraries directly; it does not execute the protected
-dynamic loader, changed root application module, real service shutdown or full Cargo
-artifact. Those integration/installed, Xlib initialization/concurrency, native
-failed-connection destruction, race/heap/soak/performance and platform claims remain
-OPEN. No per-reconnect growth or Android/Windows display-delay cause is established.
+Retained `.harness-state/verifier-vm/x11-display-tests-run.7f4ckvTyAq.serial.log`
+(92,220 bytes; SHA-256 `93a9db8f2833b77eeb638abd192b911b9609eb16ac6ea3ceb2da458a2301bc0f`)
+and `evidence/x11-platform-context-route-run.7f4ckvTyAq.outer.receipt` bind exact
+sources/artifacts/libraries, scope and finality. These are assistant observations,
+not independent attestation. No host endpoint addition; readonly inputs unchanged;
+runtime owners joined; disk/media/run root retired. Historical thread-owner
+evidence remains in `2J2Xn1ytHY` and Git history; that outer tool response omitted
+a numeric exit code, and its earlier wrapper failure remains unaccepted.
+
+**OPEN:** constructor bounds; fresh connected peer/session and authenticated-
+Xauthority cases (Xvfb uses `-ac`); protected-loader, parent-module, full Cargo/app,
+service shutdown and current installed/platform artifacts; separate Enigo/rdev
+routes; eager failed-TLS startup/retry; Xlib initialization/concurrency and failed-
+connection destruction; native allocation failures, internal heap, broader races,
+resource/performance/soak/cross-version; cold equality, independent reproduction,
+external review and reported Android/Windows delay causation. No global handler,
+authentication mechanism, signal policy, authority or service lifetime changed.
 
 ### Linux window focus — request ownership and native cancellation; integration OPEN
 

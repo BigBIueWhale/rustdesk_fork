@@ -305,15 +305,22 @@ completion retire the connection and pending requests after the call drains; the
 worker joins before native disconnect. Healthy queries reuse the same worker.
 There is no polling fallback, detached retry, new dependency or authority change.
 
-`--x11-display-tests` passed at that exact source (outer exit 0, 48 VM seconds):
+`--x11-display-tests` passed at `1a52f94a` (unchanged production focus source;
+outer exit 0, 62 VM seconds):
 
 - A guest Unix-only relay forwarded a real Xvfb property-reply header and held
   its last four bytes. The exact previous `1f4a01b3` polling module stayed blocked
   throughout a 300 ms hold and returned only after release, at 301 ms. This
   demonstrates a native partial-packet wait, not a model or old whole-app run.
+- The exact old module also stayed blocked throughout a 300 ms full-send-buffer
+  hold, returning at 301 ms after Xvfb resumed. A bounded private fixture observed
+  kernel `EAGAIN` and absent write readiness before the production atom request.
+  Four current full-send-buffer cases returned Deadline at observed 100 ms,
+  retired, and recovered on fresh connections. The private child kept default
+  SIGPIPE throughout; no ignored-signal policy hid a native termination.
 - Four corrected incomplete-reply cases and four actual paused-server cases
   returned Deadline at observed 100 ms; four dead-server cases returned explicit
-  connection errors at observed 0 ms. All 12 retired the exact connection and
+  connection errors at observed 0 ms. All 16 retired the exact connection and
   worker, then recovered through the same owner with a fresh connection and real
   center `164,92`. Relay/server owners joined and their private sockets retired.
 - Twelve native window/property cases repeated 16 times retained one identical
@@ -326,32 +333,30 @@ There is no polling fallback, detached retry, new dependency or authority change
   three production byte-cache tests passed. Complete focus components compiled
   and ran, not the parent Cargo application or installed service.
 
-Retained `.harness-state/verifier-vm/x11-display-tests-run.TQnOjS8dmj.serial.log`
-(87,363 bytes; SHA-256 `e2ce3efc9466cbdbc9cc596708c2825913bc42cb43785d6dac4e11ee6a7b08da`)
-and `evidence/x11-focus-cancellation-run.TQnOjS8dmj.outer.receipt` bind exact
+Retained `.harness-state/verifier-vm/x11-display-tests-run.aymDWEYgCi.serial.log`
+(87,888 bytes; SHA-256 `d01f8a9ff7970e099d16872874b60add7af057d9d9704d85ce3ba12a5c0adf1b`)
+and `evidence/x11-focus-backpressure-run.aymDWEYgCi.outer.receipt` bind exact
 source/artifacts/libraries, scope and finality. These are assistant-observed,
 not independent attestation. No added host endpoint; readonly inputs unchanged;
 exact runtime owners joined and owned disk/media/run root retired. Existing
 zero-NIC VM/guest-only unprivileged-container limits and isolation are unchanged.
 Earlier request-error and idle-wait evidence remains in the `iTMfrCqrEQ` and
 `Rdx1CAaq9i` serials/receipts and Git history; the latter never proved a partial-
-packet deadline and is superseded for current cancellation behavior.
+packet deadline and is superseded for current cancellation behavior. The prior
+`TQnOjS8dmj` cancellation receipt lacked the now-executed write-pressure case.
 
 **OPEN:** whole-app/service integration, native constructor/timer-startup bounds,
-native write-backpressure cancellation, shutdown/worker-creation failure, query
-unwind and saturation/late-completion/cancellation races, heap/resource/performance/
+shutdown/worker-creation failure, query unwind, broader write-pressure/late-
+completion/cancellation races, heap/resource/performance/
 soak, current platform artifacts and reported Android/Windows delay causation.
 The deadline initiates cancellation; OS scheduling and exact owned drain can exceed
 it. The observed 100 ms returns are not a universal wall-clock guarantee or proof
 that all connection deadlines, local privilege boundaries or release evidence close.
 
-The next focused native acceptance adds actual send-buffer backpressure before
-the production atom request: an owned paused Xvfb, bounded no-reply traffic only
-on the connection to retire, kernel `EAGAIN`/nonwritable observation, and default
-SIGPIPE in the private test child. Both the exact previous polling module and
-current module run; current cancellation must retire and permit same-owner fresh
-recovery without changing that signal policy. This expanded acceptance is PENDING;
-it does not yet close write-backpressure or any broader OPEN item above.
+The write-pressure fixture changes only a private connection's send-buffer limit
+and adds bounded no-reply traffic to that connection before retiring it. It is
+controlled native fault injection, not a production traffic/throughput schedule
+or evidence for capture's separate XCB connection and native constructor paths.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

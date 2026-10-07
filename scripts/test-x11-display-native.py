@@ -20,6 +20,31 @@ def require(value, message):
         raise RuntimeError(message)
 
 
+def macos_cursor_snapshot_state(root, environment):
+    source = root / "src/platform/macos/cursor_snapshot.rs"
+    binary = Path("/build/macos-cursor-snapshot-state")
+    subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2021", "--test", str(source),
+                    "-o", str(binary)], env=environment, check=True, timeout=30)
+    print("MACOS_CURSOR_SNAPSHOT_BUILD "
+          f"source_sha256={hashlib.sha256(source.read_bytes()).hexdigest()} "
+          f"macos_parent_sha256={hashlib.sha256((root / 'src/platform/macos.rs').read_bytes()).hexdigest()} "
+          f"service_parent_sha256={hashlib.sha256((root / 'src/server/input_service.rs').read_bytes()).hexdigest()} "
+          f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()} "
+          "macos_parent=uncompiled whole_service=unexecuted", flush=True)
+    result = subprocess.run([str(binary), "--test-threads=1"], env=environment,
+                            capture_output=True, text=True, timeout=5)
+    require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 4096
+            and re.search(r"^test result: ok\. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;",
+                          result.stdout, re.MULTILINE),
+            f"production macOS snapshot cache state tests differ: {result}")
+    print(result.stdout, end="", flush=True)
+    binary.unlink()
+    print("MACOS_CURSOR_SNAPSHOT_STATE=pass source=complete-module tests=5 "
+          "zero_seed=accepted failed_capture=not-memoized stale_image=absent "
+          "same_seed=reused publication_retry=captured-image unwind=empty "
+          "reset=idempotent worker=joined scope=portable-cache-state macOS_native=false", flush=True)
+
+
 def logging_library(root, environment):
     logging = root / "test-inputs/log-0.4.22"
     checksum = logging / ".cargo-checksum.json"
@@ -882,6 +907,7 @@ def main():
     version = subprocess.run(["/usr/local/cargo/bin/rustc", "--version"], env=environment,
                              check=True, capture_output=True, text=True, timeout=5)
     require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
+    macos_cursor_snapshot_state(root, environment)
     checksum, logging = logging_library(root, environment)
     comparator = root / "libs/scrap/src/common/frame_compare.rs"
     comparator_test = Path("/build/frame-compare-tests")

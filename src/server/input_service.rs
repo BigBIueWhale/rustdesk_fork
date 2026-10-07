@@ -791,13 +791,10 @@ fn run_pos(sp: EmptyExtraFieldService, state: &mut StatePos) -> ResultType<()> {
 fn run_cursor(sp: MouseCursorService, state: &mut StateCursor) -> ResultType<()> {
     if let Some(hcursor) = crate::get_cursor()? {
         // Windows cursor handles are reusable identities and animated cursors may keep one
-        // handle while their pixels change, so sample their bounded bitmap every tick. macOS
-        // reaches this branch only after its cursor seed changes; do not suppress that change just
-        // because the platform's lossy cursor hint collides. XFixes supplies a real cursor serial
-        // and can retain the cheaper generation guard.
-        if cfg!(any(target_os = "windows", target_os = "macos"))
-            || state.hcursor != Some(hcursor)
-        {
+        // handle while their pixels change, so sample their bounded bitmap every tick.
+        // XFixes supplies a cursor serial; macOS supplies the seed of its complete owned
+        // snapshot. Only this service's accepted state suppresses their unchanged image.
+        if cfg!(target_os = "windows") || state.hcursor != Some(hcursor) {
             let mut data = crate::get_cursor_data(hcursor)?;
             let rgba_bytes = cursor_rgba_bytes(data.width, data.height)
                 .filter(|expected| *expected == data.colors.len())

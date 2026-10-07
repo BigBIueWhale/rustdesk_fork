@@ -1131,6 +1131,8 @@ android_frame_input_inventory() {
             "$REPO_ROOT/src/platform/linux.rs" "$REPO_ROOT/src/platform/linux/native_context.rs"
             "$REPO_ROOT/src/platform/linux/x11_context.rs"
             "$REPO_ROOT/src/platform/linux/x11_cursor.rs" "$REPO_ROOT/src/platform/mod.rs"
+            "$REPO_ROOT/src/platform/macos/cursor_snapshot.rs" "$REPO_ROOT/src/platform/macos.rs"
+            "$REPO_ROOT/src/server/input_service.rs"
             "$REPO_ROOT/libs/hbb_common/src/platform/mod.rs"
             "$REPO_ROOT/libs/hbb_common/src/platform/x11_display.rs"
             "$REPO_ROOT/src/platform/linux/window_focus.rs"
@@ -3424,6 +3426,9 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/src/platform/linux/x11_context.rs=$REPO_ROOT/src/platform/linux/x11_context.rs"
             "repo/src/platform/linux/x11_cursor.rs=$REPO_ROOT/src/platform/linux/x11_cursor.rs"
             "repo/src/platform/mod.rs=$REPO_ROOT/src/platform/mod.rs"
+            "repo/src/platform/macos/cursor_snapshot.rs=$REPO_ROOT/src/platform/macos/cursor_snapshot.rs"
+            "repo/src/platform/macos.rs=$REPO_ROOT/src/platform/macos.rs"
+            "repo/src/server/input_service.rs=$REPO_ROOT/src/server/input_service.rs"
             "repo/libs/hbb_common/src/platform/mod.rs=$REPO_ROOT/libs/hbb_common/src/platform/mod.rs"
             "repo/libs/hbb_common/src/platform/x11_display.rs=$REPO_ROOT/libs/hbb_common/src/platform/x11_display.rs"
             "repo/src/platform/linux/window_focus.rs=$REPO_ROOT/src/platform/linux/window_focus.rs"
@@ -4123,6 +4128,9 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux app-capsule cloud-init completion'
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
+    require_exact_fixed_receipt \
+        'MACOS_CURSOR_SNAPSHOT_STATE=pass source=complete-module tests=5 zero_seed=accepted failed_capture=not-memoized stale_image=absent same_seed=reused publication_retry=captured-image unwind=empty reset=idempotent worker=joined scope=portable-cache-state macOS_native=false' \
+        'portable production macOS cursor cache commits only complete images and retires exact state; not native macOS acceptance'
     require_exact_fixed_receipt \
         'X11_CURSOR_SNAPSHOT_NATIVE=pass source=complete-module old=two-query-call-shape serial_mismatches=32 current_snapshots=64 changes_between_phases=32 pixels=server-real second_query=absent query_calls=170 images=170 frees=170 live_image_peak=1 replacements=16 wrong_serial=refused repeated_consume=refused reset=discarded-and-idempotent retained_thread_exits=8 display_owners=9 descriptors=retired threads=joined scope=native-cursor-snapshot' \
         'one native cursor snapshot supplies paired serial and pixels across actual cursor changes, with bounded ownership and joined retirement'

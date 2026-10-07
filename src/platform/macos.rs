@@ -3,6 +3,7 @@
 // https://github.com/rust-windowing/winit
 
 use super::{CursorData, ResultType};
+mod cursor_snapshot;
 use cocoa::{
     appkit::{NSApp, NSApplication, NSApplicationActivationPolicy::*},
     base::{id, nil, BOOL, NO, YES},
@@ -28,6 +29,7 @@ use objc::rc::autoreleasepool;
 use objc::{class, msg_send, sel, sel_impl};
 use scrap::{libc::c_void, quartz::ffi::*};
 use std::{
+    cell::RefCell,
     collections::HashMap,
     ffi::{CStr, OsString},
     os::unix::{ffi::OsStringExt, fs::MetadataExt, process::CommandExt},
@@ -51,7 +53,10 @@ const MACOS_PRIVILEGED_HELPER_TEMP: &str =
 
 static PRIVILEGES_SCRIPTS_DIR: Dir =
     include_dir!("$CARGO_MANIFEST_DIR/src/platform/privileges_scripts");
-static mut LATEST_SEED: i32 = 0;
+thread_local! {
+    static CURSOR_SNAPSHOT: RefCell<cursor_snapshot::CursorSnapshot<CursorData>> =
+        RefCell::new(Default::default());
+}
 
 /// Global mutex to serialize CoreGraphics cursor operations.
 /// This prevents race conditions between cursor visibility (hide depth tracking)
@@ -752,25 +757,21 @@ fn unsafe_get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
 }
 
 pub fn get_cursor() -> ResultType<Option<u64>> {
-    autoreleasepool(|| unsafe_get_cursor())
-}
-
-fn unsafe_get_cursor() -> ResultType<Option<u64>> {
-    unsafe {
-        let seed = CGSCurrentCursorSeed();
-        if seed == LATEST_SEED {
-            return Ok(None);
-        }
-        LATEST_SEED = seed;
-    }
-    let c = get_cursor_id()?;
-    Ok(Some(c.1))
+    autoreleasepool(|| {
+        let seed = unsafe { CGSCurrentCursorSeed() };
+        CURSOR_SNAPSHOT.with(|snapshot| {
+            let mut snapshot = snapshot.try_borrow_mut()
+                .map_err(|error| anyhow!("Cursor snapshot is already borrowed: {error}"))?;
+            Ok(Some(snapshot.refresh(seed, capture_cursor_data)?))
+        })
+    })
 }
 
 pub fn reset_input_cache() {
-    unsafe {
-        LATEST_SEED = 0;
-    }
+    CURSOR_SNAPSHOT.with(|snapshot| match snapshot.try_borrow_mut() {
+        Ok(mut snapshot) => snapshot.clear(),
+        Err(error) => log::debug!("Failed to retire cursor snapshot: {error}"),
+    });
 }
 
 fn cursor_image_geometry(
@@ -828,7 +829,16 @@ fn cursor_bitmap_rep(image: id) -> ResultType<id> {
     }
 }
 
-fn get_cursor_id() -> ResultType<(id, u64)> {
+pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
+    CURSOR_SNAPSHOT.with(|snapshot| {
+        let snapshot = snapshot.try_borrow()
+            .map_err(|error| anyhow!("Cursor snapshot is already borrowed: {error}"))?;
+        snapshot.get(hcursor).cloned()
+            .ok_or_else(|| anyhow!("Cursor snapshot was not captured for {hcursor}"))
+    })
+}
+
+fn capture_cursor_data(hcursor: u64) -> ResultType<CursorData> {
     unsafe {
         let c: id = msg_send![class!(NSCursor), currentSystemCursor];
         if c == nil {
@@ -843,62 +853,12 @@ fn get_cursor_id() -> ResultType<(id, u64)> {
         let rep = cursor_bitmap_rep(img)?;
         let pixels_wide: cocoa::foundation::NSInteger = msg_send![rep, pixelsWide];
         let pixels_high: cocoa::foundation::NSInteger = msg_send![rep, pixelsHigh];
-        let (width, height, hotx, hoty, _) =
-            cursor_image_geometry(size, hotspot, pixels_wide, pixels_high)?;
-        let mut hcursor = size.width
-            + size.height
-            + f64::from(hotx)
-            + f64::from(hoty)
-            + f64::from(width)
-            + f64::from(height);
-        for offset in 0..2 {
-            let x = (hotx + offset).min(width - 1) as cocoa::foundation::NSInteger;
-            let y = (hoty + offset).min(height - 1) as cocoa::foundation::NSInteger;
-            let color: id = msg_send![rep, colorAtX:x y:y];
-            if color != nil {
-                let r: f64 = msg_send![color, redComponent];
-                let g: f64 = msg_send![color, greenComponent];
-                let b: f64 = msg_send![color, blueComponent];
-                let a: f64 = msg_send![color, alphaComponent];
-                hcursor += (r + g + b + a) * (255 << offset) as f64;
-            }
-        }
-        Ok((c, hcursor as _))
-    }
-}
-
-pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
-    autoreleasepool(|| unsafe_get_cursor_data(hcursor))
-}
-
-// https://github.com/stweil/OSXvnc/blob/master/OSXvnc-server/mousecursor.c
-fn unsafe_get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
-    unsafe {
-        let (c, hcursor2) = get_cursor_id()?;
-        if hcursor != hcursor2 {
-            bail!("cursor changed");
-        }
-        let hotspot: NSPoint = msg_send![c, hotSpot];
-        let img: id = msg_send![c, image];
-        let size: NSSize = msg_send![img, size];
-        let rep = cursor_bitmap_rep(img)?;
-        /*
-        let n: id = msg_send![class!(NSNumber), numberWithFloat:1.0];
-        let props: id = msg_send![class!(NSDictionary), dictionaryWithObject:n forKey:NSString::alloc(nil).init_str("NSImageCompressionFactor")];
-        let image_data: id = msg_send![rep, representationUsingType:2 properties:props];
-        let () = msg_send![image_data, writeToFile:NSString::alloc(nil).init_str("cursor.jpg") atomically:0];
-        */
-        let pixels_wide: cocoa::foundation::NSInteger = msg_send![rep, pixelsWide];
-        let pixels_high: cocoa::foundation::NSInteger = msg_send![rep, pixelsHigh];
         let (width, height, hotx, hoty, rgba_len) =
             cursor_image_geometry(size, hotspot, pixels_wide, pixels_high)?;
         let mut colors = Vec::with_capacity(rgba_len);
-        // TIFF is rgb colorspace, no need to convert
-        // let cs: id = msg_send![class!(NSColorSpace), sRGBColorSpace];
         for y in 0..height {
             for x in 0..width {
                 let color: id = msg_send![rep, colorAtX:x as cocoa::foundation::NSInteger y:y as cocoa::foundation::NSInteger];
-                // let color: id = msg_send![color, colorUsingColorSpace: cs];
                 if color == nil {
                     colors.extend_from_slice(&[0, 0, 0, 0]);
                     continue;

@@ -239,7 +239,7 @@ Android/Windows display-delay cause or new closed privilege boundary is establis
 Deferred Android concurrent Stop/admission and stale-generation work remains
 **INCOMPLETE / NOT VALIDATED**, not resumed by this retirement.
 
-### Linux capture constructor — explicit local Unix route; native acceptance PENDING
+### Linux capture constructor — explicit local Unix route; integration OPEN
 
 `libs/scrap/src/x11/server.rs::Server::default` now validates the process's
 local decimal display/screen selector and supplies explicit `unix/` transport
@@ -249,13 +249,37 @@ public raw-pointer constructor is removed, not kept as an alternative route.
 All production callers use the one default constructor. The previous plain
 local selector could implicitly retry localhost TCP after Unix refusal.
 
-The exact previous server module is retained for an actual native A/B route
-observation inside the existing zero-NIC/guest-only container lane. Eighteen
-selector refusals through direct/primary/all callers, normalized real screen
-selection and the retained capture regression cases are PENDING execution.
-This does not prove constructor deadlines, connected peer/session binding,
-authenticated Xauthority, separate Xlib/XDO paths, installed/whole-app behavior,
-resources/performance/soak, or the Android/Windows delay cause; those remain OPEN.
+At `d6c14435`, `--x11-display-tests` passed with outer exit 0 in **71 VM seconds**:
+
+- The exact previous `0ecef962` server module made one actual TCP connection
+  after its local Unix display was absent. The current module refused with no
+  connection to the observer. Its retained `127.0.0.1:6096` listener existed only
+  inside the network-none guest container; the old accepted peer closed without
+  an X11 reply or session grant. Both children and the listener retired.
+- Eighteen invalid/missing/non-UTF8 selectors refused through direct, primary,
+  and all-displays callers (54 calls). Three normalized valid selectors chose
+  native screen 0/1 and actual Xvfb roots of 640x480/800x600. Own task/fd counts
+  returned to baseline after refusal and successful connection retirement.
+- Existing native enumeration/layout, MIT-SHM pixel capture/recovery/error and
+  exact kernel-SHM retirement, native context/focus cancellation/reconnect,
+  16/24-bit capture and three production byte-cache tests passed.
+
+Retained `.harness-state/verifier-vm/x11-display-tests-run.Kwfjc2q2iT.serial.log`
+(91,499 bytes; SHA-256 `f4a5575c80ec7595669d5508a0c10e1cc7d4f63d953f526dc57f9666b14333d1`)
+and `evidence/x11-capture-local-route-run.Kwfjc2q2iT.outer.receipt` bind exact
+source/artifacts/library, scope and finality. Assistant-observed evidence is not
+independent attestation. No host endpoint was added; readonly inputs unchanged;
+exact runtime owners joined; disk/media/run root self-retired. The prior capture
+and focus evidence remains in its retained receipts and Git history.
+
+**OPEN:** constructor deadlines, connected Unix peer/session binding, native
+authenticated-Xauthority cases (this Xvfb uses `-ac`), separate Xlib/XDO routes,
+whole-app/installed/platform/current release artifacts, internal heap,
+resources/performance/soak/cross-version, Android/Windows delay causation, cold
+equality, independent reproduction and external review. The historical route
+artifact executes the exact old server module, not an old whole app; other old
+capture-fixture layers remain separately scoped in the receipt. A native local
+route refusal is not installed-session/principal or universal-deadline proof.
 
 ### Linux cursor/focus — native thread-owned X11/XDO retirement; integration OPEN
 
@@ -393,8 +417,9 @@ and adds bounded no-reply traffic to that connection before retiring it. It is
 controlled native fault injection, not a production traffic/throughput schedule
 or evidence for capture's separate XCB connection and native constructor paths.
 
-Constructor deadlines and the separate capture/Xlib/XDO connector paths remain
-OPEN; a focus-component route refusal is not installed-session/principal proof.
+Constructor deadlines and separate Xlib/XDO routes remain OPEN; capture's local
+route correction is tracked above. A component route refusal is not installed-
+session/principal proof.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

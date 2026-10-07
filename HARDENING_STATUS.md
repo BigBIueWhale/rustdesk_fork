@@ -281,136 +281,91 @@ artifact executes the exact old server module, not an old whole app; other old
 capture-fixture layers remain separately scoped in the receipt. A native local
 route refusal is not installed-session/principal or universal-deadline proof.
 
-### Linux cursor/focus — native thread-owned X11/XDO retirement; integration OPEN
+### Linux cursor/focus — native ownership, startup and snapshot consistency; integration OPEN
 
-`src/platform/linux/x11_context.rs` owns both lazy thread-local cells and lends
-contexts through `with_display`/`with_xdo`. Construction uses the shared validated
-local Unix selector in `libs/hbb_common/src/platform/x11_display.rs`; successful
-contexts are reused until thread exit. A failed open returns its error and
-permits a new attempt after a fixed one-second cooldown, not every cursor tick
-and not only after replacing the worker. Reentrant access refuses with
-`WouldBlock`. All four platform cursor consumers use these accessors; position
-query failure returns no coordinates rather than initialized zeroes, and image
-callers propagate context errors.
+**Linux source corrected; focused native component scenarios pass. Whole-app,
+installed/platform, presentation, performance and release acceptance remain OPEN.**
 
-Each successful context has one non-clonable `NativeContext` and its matching
-native destructor, with no Send/Sync override. Drop, unwind and thread exit retire
-the owner. The selected-display authority, native authentication, protected XDO
-loader, service/worker ownership and global Xlib initialization/error handlers
-are unchanged. Explicit selection avoids the former null-argument implicit
-localhost route described by
-[Xlib's XCB connector](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/src/xcb_disp.c)
-and [XDO's constructor](https://github.com/jordansissel/xdotool/blob/v3.20160805.1/xdo.c).
-The cooldown bounds retry frequency after a returned failure, not native
-constructor/request/destructor duration or established-connection recovery.
+`src/platform/linux/x11_context.rs` owns lazy thread-local Xlib/XDO contexts
+through `with_display`/`with_xdo`. The shared Unix selector refuses invalid,
+missing, non-UTF8 or remote display names. Returned constructor failure permits
+a same-worker retry after a fixed one-second cooldown; healthy contexts are
+reused and reentrant access refuses with `WouldBlock`. Each non-clonable
+`NativeContext` has its matching destructor and no Send/Sync override. Both
+position consumers use those loans and the getter honors native status.
 
-**Accepted native component execution:** source
-`8398995077d880a75dd7308d1f24adca33bbf201`, tree
-`9e5304c9d919561265c48d826d27d0bc207198ed`;
+`src/platform/linux/x11_cursor.rs` now owns one native image between
+`get_cursor`'s serial capture and `get_cursor_data`'s pixel consumption.
+The former second `XFixesGetCursorImage` query could observe a changed serial,
+turning ordinary cursor change into an error. Source review of
+`run_cursor` and `GenericService::repeat` shows that error reaches the
+one-second service error sleep; this is not a measured whole-service stall.
+Serial, geometry, hotspot and pixels now come from the same owned image.
+Positive dimensions, in-image hotspot, non-null pixels and the shared 4 MiB
+RGBA bound are checked before the owned RGBA copy. Native client ABI fields
+use unsigned long as in [Xfixes.h](https://github.com/freedesktop-unofficial-mirror/xorg__lib__libXfixes/blob/master/include/X11/extensions/Xfixes.h).
+Consumption, wrong-serial refusal, replacement, explicit reset and thread exit
+retire the native allocation. The existing `StateCursor::reset` hook now
+discards the pending Linux snapshot. There is no second-query fallback,
+retry, worker, timer, dependency, protocol or service-authority change.
+The similar macOS cursor-change error shape remains unchanged and unvalidated.
+
+**Current accepted run:** source
+`4393f754733cf110c5bbc649bc9c249050fe4091`, tree
+`ff8b7b1f969d32653417eb561ac4ebe26251e2cf`;
 `scripts/smoke-verifier-vm-authority.sh --x11-display-tests` exited 0 in
-**53 VM seconds** on pinned Rust 1.75 and real Xlib/XDO/Xvfb.
+**74 VM seconds** on pinned Rust 1.75 and real Xlib/XDO/XFixes/Xvfb.
 
-- Four old/current Xlib/XDO startup cases begin with display 97 absent, observe
-  one real refused constructor and 32 accesses without another open, then start
-  the exact owned Xvfb. The exact old `7519afaf` TLS declarations retain failure
-  on the same worker after availability; the complete current context module
-  recovers on that worker after its cooldown, opens once more, reuses the same
-  pointer through 32 accesses, and refuses recursive access.
-- The exact production `get_cursor_pos`/`set_cursor_pos` functions refuse during
-  cooldown, then move/read the real server pointer at (91, 71). Xlib reports the
-  actual 640x480 root. Each recovered context retires once; own descriptors/tasks
-  return to baseline after join. All four children and Xvfb/socket owners retire.
-- The current fixture also executes actual production TLS accessors through
-  32 normal/unwind thread exits, paired retirement of 70 contexts including
-  three native screen cases, 18 invalid/missing/non-UTF8 selectors, and 32
-  missing-display refusals. Eight historical raw-TLS exits retain connections
-  until exact parent cleanup. Old null native call shapes make two private
-  guest loopback connections; current constructors make none. The old route
-  comparison is call-shape evidence, not a complete historical parent/app.
-- Existing Enigo, capture/focus route, native errors/replies/layout/pixels/SHM,
-  focus cancellation/recovery and three production byte-cache regressions pass.
+- Thirty-two actual cursor changes make the old two-query native call shape
+  observe different serials. The complete current snapshot module delivers
+  64 images' exact captured pixels, serials, dimensions and hotspots despite
+  a real cursor change between capture and consumption. Consumption performs
+  no additional native query. This is not a full historical parent/app A/B.
+- All 170 native image allocations retire once; the sequential fixture workers
+  retain at most one image each. Sixteen unconsumed replacements, wrong-serial
+  refusal, repeated-consume refusal, byte-extracted production reset/idempotence,
+  and eight unconsumed thread exits pass. Nine Xlib owners retire and own
+  descriptors/tasks return to baseline. The 4 MiB RGBA limit is not a native
+  heap or total-process memory claim.
+- Existing complete owner/context/selector, 32 normal/unwind exits, three
+  screens, 18 invalid selectors, 32 absent-display refusals, and eight bounded
+  historical raw-TLS leaks pass. Four old/current Xlib/XDO startup cases show
+  historical failure caching versus same-worker recovery, cooldown, reuse,
+  reentrant refusal and real cursor-position operations.
+- Four native cookie cases (valid → wrong → missing → valid) against private
+  Unix-only Xvfb `-auth` pass. Eight concurrent workers keep sixteen unique
+  Xlib/XDO owners live through 1,024 real query calls and joined retirement.
+  This fixture does not call `XInitThreads`: the exact loaded library's
+  global lock and display-lock initializer are ready at main entry. Test-only
+  private-ABI observation is not a product dependency or proof for other builds.
+- Retained Enigo, capture/focus route, native error/reply/layout/pixel/SHM,
+  focus cancellation/recovery and three byte-cache regressions also pass.
+  These separately scoped scenarios do not execute the whole application.
 
-Retained under `.harness-state/verifier-vm/`:
-`x11-display-tests-run.mU8w1jS1Vf.serial.log` (101,945 bytes; SHA-256
-`ccc393c0e6a614233a316c984dfeb6a2d366000a00000262d7e67fff9afe2fb5`)
-and `evidence/x11-startup-retry-run.mU8w1jS1Vf.outer.receipt` (SHA-256
-`ba695b0200d93c9307593c252f24b5eacca03b6116fa9bad6293d5b1d7216966`)
-bind exact source, extracted cursor declarations, baseline, binary, libraries,
-topology and finality. These are assistant observations, not independent
-attestation. Host endpoints had no additions; inputs stayed read-only; owned
-containers/VM/orchestration joined and disk/media/run root self-retired.
-Earlier route/owner receipts remain retained and traceable in Git history.
+Retained raw `x11-display-tests-run.TocKfTox3f.serial.log` (106,064 bytes;
+SHA-256 `8fac32da8dc3431ea63de27f8729e62b4cec6535c50a274691246f450f7b2f5f`)
+and `evidence/x11-cursor-snapshot-run.TocKfTox3f.outer.receipt` (SHA-256
+`88659b50a3296318f23c0c9d84fa395268b8bc16727615be888b69085fe4e2e1`)
+under `.harness-state/verifier-vm/` bind source, extracted bounds/reset,
+binary, libraries, topology and finality. These are assistant observations,
+not independent attestation. Host endpoints had no additions; inputs remained
+read-only; guest owners joined and disk/media/run root self-retired.
+Earlier named owner/startup/authentication/concurrency receipts remain retained
+and traceable in Git history; the current run executes their retained cases.
 
-**Accepted native cookie-authentication scenario:** harness source
-`b46a032a9be63bc8c61081ade0dc441f9279f0f3`, tree
-`e38679ecb38ad8c47fb67d1f74a71745407ae835`, passed the same command with
-outer exit 0 in **55 VM seconds**. The production owner/context/selector modules
-and byte-extracted cursor-position functions are unchanged from the above source.
-One private Unix-only Xvfb uses `-auth`, not `-ac`; four fresh children try
-valid → wrong → missing → valid Xauthority credentials. Both valid children
-open Xlib/XDO contexts, query the real 640x480 root, move/read the pointer at
-(123, 87), and reuse their contexts through 32 polls. Both negative children
-receive native authentication refusal, create no owner, and do not reopen during
-32 cooldown polls. Four successful contexts retire exactly once; every child's
-own descriptors/tasks return to baseline after worker join. The second valid
-case proves the negatives did not pass because the display had died.
-
-Raw `x11-display-tests-run.DGEtVgseJm.serial.log` (100,041 bytes; SHA-256
-`dbead54dfba7f75ff21a2d28e934ee09e07e2761feae5a99632eee4d4888a874`) and
-`evidence/x11-native-auth-run.DGEtVgseJm.outer.receipt` (SHA-256
-`cfc975992537129ad4e3664d10c62d577f04e8008fedf70a677ec6332b4db728`)
-retain source/binary/library identities and assistant-observed, nonindependent
-finality. All earlier focused cases also passed. There were no host endpoint
-additions or input changes; exact guest owners joined and the disk/media/run root
-self-retired. The fixture initializes Xlib threading explicitly; this is not
-product-global-initialization proof. Known disposable cookies test native library
-authentication only, not a real user's principal/session, an installed service,
-another backend, or the whole app. No product authentication change or new
-authentication defect is established by this scenario.
-
-**Accepted unprimed/concurrent native runtime scenario:** harness source
-`6f3c20c6bd463f257acdcbb74a0ad7460bcf70c7`, tree
-`f71c69f0907f1d69a4f7515075fc3d60659202e3`, passed the same command with
-outer exit 0 in **71 VM seconds**. The thread-context fixture no longer calls
-`XInitThreads`. Before its first Xlib call it observes the exact retained
-library's non-null global-lock and display-lock-initializer symbols. This is a
-test-only private-ABI observation, not a production dependency. Upstream
-[libX11 1.8 enables automatic thread initialization by default](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/README.md);
-missing application-level initialization alone is not proof of a product defect.
-No product initialization change was made.
-
-Eight workers begin native construction together and keep sixteen unique
-production-owned Xlib/XDO contexts alive. Each owner is reused 64 times;
-512 focus-query calls and 512 mouse-query calls return real Xvfb values.
-Parent snapshots before queries and before retirement observe exactly sixteen
-additional descriptors and eight additional tasks, with no early destructor.
-All workers join, all sixteen native retirements pair, and own descriptors/tasks
-return to baseline. Owner, route, same-worker startup and cookie-authentication
-cases also pass without explicit initialization in this fixture; Enigo/focus
-fixtures' setup is unchanged. This bounded case does not share one Display
-between threads, execute the full app, detect every data race, measure native
-internal heap, or validate different library builds or initialization failure.
-
-Raw `x11-display-tests-run.qaZdNsmRY7.serial.log` (100,049 bytes; SHA-256
-`d377f11967fff2ac310fc12e42d2a0cec4b29ae2bd3c0012a153f786d79c9f12`) and
-`evidence/x11-concurrent-contexts-run.qaZdNsmRY7.outer.receipt` (SHA-256
-`1428f32b74b296842274dec0237cadb95e83a5e393dc22857f02280d32193604`)
-retain source/binary/library identities and assistant-observed, nonindependent
-finality. All earlier focused cases passed; host endpoints had no additions,
-inputs stayed read-only, exact guest owners joined and disk/media/run root
-self-retired. This does not establish Android/Windows display-delay causation.
-
-**OPEN:** constructor/request bounds; fresh connected peer/session and
-installed-session/principal binding; authenticated capture/focus/Enigo/rdev and
-service scenarios (their existing fixtures still use `-ac`); protected-loader, complete
-parent/Cargo/app and current installed/platform artifacts; cursor-image execution
-and native position-query status-error negatives; service shutdown and Enigo/rdev
-parent integration; established Xlib connection-failure/destruction, global
-initialization failure/different library builds, shared-display and whole-app
-concurrency/error-handler behavior; native allocations/internal heap, broader races,
-resources/performance/soak/cross-version; cold equality, independent reproduction,
-external review and reported Android/Windows delay causation. Component startup
-recovery is not a whole-app or privilege-boundary closure.
+**OPEN:** constructor/request/destructor bounds; fresh connected peer/session
+and installed-principal binding; authenticated cursor/capture/focus/Enigo/rdev
+and service scenarios (the current cursor fixture uses `-ac`); protected
+loader and complete parent/Cargo/app/protobuf cursor adapter; whole-service
+reset/publication/presentation; invalid-geometry/null-query/status-error
+negatives and color/alpha varieties; native serial reuse and full content
+freshness; established Xlib connection failure, global initialization failure,
+other library builds, shared-display/whole-app concurrency and error handlers;
+native internal heap, broader races, resource/performance/soak/cross-version;
+macOS cursor-change handling and other current installed/platform artifacts;
+cold equality, independent reproduction, external review and reported
+Android/Windows display-delay causation. This component correction is not a
+whole-app or privilege-boundary closure.
 
 ### Linux Enigo XDO — one local display for input and diagnostics; integration OPEN
 

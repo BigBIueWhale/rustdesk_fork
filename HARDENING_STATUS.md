@@ -87,7 +87,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Controlled-side policy and network authentication (R-S2/R-S16/R-S18; R-S11b-3j/3q) | R-S16 requires one direct-only route and receiver-owned policy funnels; retired proxy strings stay pinned empty, old `socks` tables cannot be serialized, and proxy types/stores/APIs/transports/TLS/parser/validator/dependencies and NAT/STUN actuators are absent. Restriction-only peer overlays, R-S19 confinement, empty builtin/hard-setting startup namespaces, and no preset-credential fallback remain required. R-S2/R-S18 require one CPace network authentication and grant topology, symmetric absence of peer OS-credential/schema/storage/UI paths and alternative CM/recent-session/switch-side/trusted-device grants. Session-type confinement precedes publication; malformed metadata, credential-generation change, owner retirement or resource failure cannot demand admission merely because a stream keyed. Local OS-admin provisioning and exact IPC/helper proof are separate action authority, not another peer credential. Explicit fresh remote-input typing cannot become per-peer storage or reconnect auto-input. These are normative/source dispositions, not a completed audit or native/artifact acceptance; the platform/release matrices remain OPEN. |
 | Appendix C #90–95, #97, #99, #101–105, #109–110, #112, #119, #122, #161–163, #168–183, #185–206, #212, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The findings retain threat rationale and timeless disposition-to-requirement mappings. Dispositions do not report implemented fixes, gate counts, or artifact results. The process-context, checker-ownership, and scanner rationales R-S11az/R-S11ba/R-S11bb/R-S11be likewise state binding contracts without implementation chronology. Original #173–184 threat findings, operative keywords, source links, identities, input/provenance bounds, and native/artifact acceptance remain intact. This row does not promote source checks to native evidence; current evidence limits remain in the relevant requirement entries and platform/open matrices. |
 | Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub and RustSec snapshots have real no-NIC VM verdicts recorded in R-S11df and R-S11dg below; future snapshot refresh, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. Documentation or mutation counts are not scanner evidence. |
-| Git-fork review and mirroring (R-B5b) | Exact lockfile revisions provide reproducibility, not a safety verdict. The selected IPC and X11 suppliers' local byte/Git-tree matches and net-fork deltas are established below. X11's reachable TFC consumer has unresolved allocation/lifetime and client-ABI findings; these require native tests, not a blind mirror or registry substitution. Other exact-current fork reviews, independent supplier authentication, native acceptance and mirror migration remain OPEN independently of advisory-snapshot checks. |
+| Git-fork review and mirroring (R-B5b) | Exact lockfile revisions provide reproducibility, not a safety verdict. The selected IPC and X11 suppliers' local byte/Git-tree matches and net-fork deltas are established below. A 55-second isolated native transaction confirmed TFC's 16-byte Rust / 18-byte client-C state mismatch and exercised bounded real writes and rejection/recovery. Product correction and its allocation/lifetime finding remain OPEN; do not blindly substitute another binding or registry release. Other exact-current fork reviews, independent supplier authentication, native acceptance and mirror migration remain OPEN independently of advisory-snapshot checks. |
 | Repository/dependency structure (§16, R-R1) | The normative section now distinguishes security-modified in-tree source from exact-pinned external dependencies and the authenticated offline input closure. Its old tree snapshot, package counts, lockfile-only reproducibility assurance, upstream CI-job table, and claimed net-negative dependency delta were removed. Complete exact-current fork/provenance review, release builds, and independent reproduction remain OPEN. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Service/helper/process bootstrap authority (R-S11y–R-S11al; Appendix C #147–160) | The normative contracts retain empty helper environments, typed OS queries, selected-session X11 authority and bounded empty-Display recovery, kernel-parent-bound graphical/headless CM lifetime, no global process-table signal/restart authority, non-root-only UI, numeric principal selection, exact child/supervisor argument protocols, SCM-owned initialization, and fixed macOS principal/home/config/log ordering. Appendix findings map to required dispositions without implementation/gate/artifact-status narration; #154–160's original threat findings are retained. All operative MUST/MUST NOT markers, primary-source links, IDs, test mappings, and installed/native acceptance obligations remain. Appendix #152 agrees with R-S11cc's graphical-and-headless scope. No product, verifier, or executable test changed. Installed/native principals, failure/restart/resource behavior and release acceptance remain OPEN in the platform matrices. |
@@ -226,29 +226,60 @@ Git package. The following selected TFC files match their exact primary GitHub b
   [XkbAllocKeyboard](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/man/xkb/XkbAllocKeyboard.man)
   and [XkbFreeKeyboard](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/man/xkb/XkbFreeKeyboard.man).
   The app's main Enigo is process-global, so this is not proof of per-reconnect unbounded growth.
-- **Potential memory-safety defect — OPEN / NOT NATIVE VALIDATED:** TFC's separate
+- **Native-confirmed client-ABI defect; product correction OPEN:** TFC's separate
   `ffi::XkbStateRec` declares `base_group` and `latched_group` as `u8`; `char_event` passes
   its zeroed state to native `XkbGetState` and ignores the status. The reviewed client-header
   [kbproto snapshot](https://github.com/freedesktop-unofficial-mirror/xorg__proto__kbproto/blob/fe38312ff65b87a03d21ac5d10618080da296145/XKBstr.h#L50)
   has two `unsigned short` fields and places `locked_group` earlier, unlike the
   [server-internal header](https://github.com/mirror/xserver/blob/fc625fe172d9f6a149a594b5214364bedf680239/include/xkbstr.h#L47)
   copied by the Git binding. LibX11's [actual writer](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/src/xkb/XKB.c#L481)
-  writes all state fields including `ptr_buttons`. These declarations imply a 16-byte TFC
-  buffer versus 18-byte header layouts on the intended Linux ABI, but exact builder-header
-  size/offsets and an actual bounded native write have not been measured. The library's
-  manual itself shows byte fields, so neither that prose nor another Rust binding may be
-  treated as the ABI oracle. No observed crash, exploitation, or LPE is claimed.
+  writes all state fields including `ptr_buttons`. The named native transaction below
+  measured TFC size 16 versus client-C size 18, alignment 2, and 13 of 14 field offsets
+  differing. Actual calls through the unchanged production FFI declaration wrote the
+  final two bytes beyond the Rust type, contained within a larger aligned test allocation.
+  The library's manual itself shows byte fields; neither that prose nor another Rust
+  binding is the ABI oracle. The test did not run `char_event`, corrupt an allocation,
+  demonstrate an exploit/LPE, or validate a corrected product.
 
-**Next acceptance:** use the exact authenticated guest's client header/library to compare
-C/Rust size, alignment and every offset, then exercise real XKB state calls with a bounded
-guarded buffer and success/error checks. Execute repeated context construction/retirement
-and allocation/query failures, observing owned connections and allocations. Derive one
-display/keyboard owner and per-key group semantics from those results before correcting
-the dependency as repository-owned source or a reviewed mirror transaction. Do not edit
-canonical vendor bytes, suppress the finding, or assume upstream's "fix" is the client ABI.
-**OPEN:** these native tests and consumer correction, complete TFC/fork review, authenticated
-mirror/closure rebinding, installed principal/resource behavior, current artifacts, cold
-equality, independent reproduction and external review. This Linux source review neither
+**Accepted diagnostic, not product acceptance:**
+`scripts/smoke-verifier-vm-authority.sh --x11-display-tests` at
+`c78755eb0c5ad5e2042a508ad6075e31e8a7cd19`, tree
+`7a0fb48b0d9468baf33a5d8cbead2509049d6b9d`, completed with outer status 0 in **55 VM seconds**.
+The C fixture compares the exact guest client headers with all Rust fields. The Rust fixture
+uses unchanged, hash-bound TFC `ffi/{xkb,xlib}.rs` and a 96-byte aligned byte allocation,
+not a reference to an undersized Rust state. It passed 32 real state calls, 33 C control
+calls, 16 invalid-device rejections, same-connection recovery, native-size guards and
+descriptor retirement. Rejection checks derive XInput's error base from the real server
+and separately require the XKB BadDevice reason/device; a guessed BadKeyboard error was
+wrong. `/proc/self/maps` confirms the actual loaded `libX11.so.6.4.0`. Existing capture
+cases and three production frame-cache tests also passed, not full application input.
+ABI binary SHA-256: `76d0f450ff7baed0f85a5ae9ba80817f9e7dd05047d1c7253eb4c33ca6af3c00`.
+
+Retained under `.harness-state/verifier-vm/`: raw
+`x11-display-tests-run.xrLMBAFXor.serial.log` (80,381 bytes, SHA-256
+`1957e9631a5a020c3af4cd53f157c1ad990e3d93baec3ebbff6b2090ff8f7d35`) and
+`evidence/x11-input-abi-run.xrLMBAFXor.outer.receipt` (SHA-256
+`a34f2e683f06789d6756d08197d0e779f341cc41858a739425bea6ff81597e32`). The latter is
+assistant-observed, not independent attestation; it binds source, binary, actual C/protocol
+headers and loaded-library digests, command, scope, finality and limits. Input hashes and
+before/during/after host endpoint audits passed. The no-NIC VM, networkless UID/GID 4000
+containers and Unix-only Xvfb joined; run root, overlay and media retired. Two earlier
+unaccepted attempts retain their raw logs and bounded failure receipts: `run.zQLUNw7Pgi`
+exhausted the 16 MiB build tmpfs; `run.ZsAzIiMHqL` exposed the wrong error-code expectation.
+Executing/retiring the ABI binary before capture compilation fixed peak storage without
+raising the limit; exact failed scratch roots were retired after terminal cleanup.
+
+**Next correction:** move the reviewed dependency into repository-owned source or a
+reviewed mirror transaction; correct the client-state layout, Status declaration and
+checked query semantics, then run the historical/corrected native comparison and actual
+Unicode input path. Execute repeated context construction/retirement and allocation/query
+failures, observing owned connections and allocations; derive one display/keyboard owner
+and per-key group semantics. Do not edit canonical vendor bytes, suppress the finding,
+or copy upstream's server-internal layout as a client fix.
+**OPEN:** consumer correction and its native acceptance, context lifetime/failure tests,
+complete TFC/fork review, authenticated mirror/closure rebinding, installed principal/resource
+behavior, current artifacts, cold equality, independent reproduction and external review.
+This Linux component work neither
 resumes the deferred Android work nor explains the Android/Windows display reports.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)

@@ -26,7 +26,7 @@ source "$work/base-metadata.function.sh"
 readonly subject=$work/base
 readonly output=$work/base-metadata.result
 printf 'base-metadata-fixture\n' >"$subject"
-readonly size="$(/usr/bin/stat -c '%s' -- "$subject")"
+readonly fixture_size="$(/usr/bin/stat -c '%s' -- "$subject")"
 cases=0
 accept() {
     local path=$1 length=$2 label=$3 status=0
@@ -46,29 +46,29 @@ refuse() {
 }
 for mode in 0400 0444; do
     /usr/bin/chmod "$mode" "$subject"
-    accept "$subject" "$size" "$mode"
+    accept "$subject" "$fixture_size" "$mode"
 done
 for mode in 0000 0200 0404 0440 0500 0600 0644 0664 0777 1400 2400 4400; do
     /usr/bin/chmod "$mode" "$subject"
-    refuse "$subject" "$size" "$mode" 'Debian verifier-VM base metadata differs'
+    refuse "$subject" "$fixture_size" "$mode" 'Debian verifier-VM base metadata differs'
 done
 /usr/bin/chmod 0400 "$subject"
-refuse "$subject" "$((size + 1))" length 'Debian verifier-VM base metadata differs'
+refuse "$subject" "$((fixture_size + 1))" length 'Debian verifier-VM base metadata differs'
 /usr/bin/ln "$subject" "$work/hardlink"
-refuse "$subject" "$size" hardlink 'Debian verifier-VM base metadata differs'
+refuse "$subject" "$fixture_size" hardlink 'Debian verifier-VM base metadata differs'
 /usr/bin/rm -- "$work/hardlink"
 /usr/bin/ln -s base "$work/symlink"
-refuse "$work/symlink" "$size" symlink 'Debian verifier-VM base is absent or symlinked'
-refuse "$work/missing" "$size" missing 'Debian verifier-VM base is absent or symlinked'
+refuse "$work/symlink" "$fixture_size" symlink 'Debian verifier-VM base is absent or symlinked'
+refuse "$work/missing" "$fixture_size" missing 'Debian verifier-VM base is absent or symlinked'
 /usr/bin/mkdir "$work/directory"
-refuse "$work/directory" "$size" directory 'Debian verifier-VM base is absent or symlinked'
+refuse "$work/directory" "$fixture_size" directory 'Debian verifier-VM base is absent or symlinked'
 /usr/bin/mkfifo "$work/fifo"
-refuse "$work/fifo" "$size" fifo 'Debian verifier-VM base is absent or symlinked'
-[ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$work/foreign-uid")" = "4001:$HOST_GID:400:1:$size" ] \
-    && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$work/foreign-gid")" = "$HOST_UID:4001:400:1:$size" ] \
+refuse "$work/fifo" "$fixture_size" fifo 'Debian verifier-VM base is absent or symlinked'
+[ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$work/foreign-uid")" = "4001:$HOST_GID:400:1:$fixture_size" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$work/foreign-gid")" = "$HOST_UID:4001:400:1:$fixture_size" ] \
     || fail 'base metadata foreign fixtures differ'
-refuse "$work/foreign-uid" "$size" foreign-uid 'Debian verifier-VM base metadata differs'
-refuse "$work/foreign-gid" "$size" foreign-gid 'Debian verifier-VM base metadata differs'
+refuse "$work/foreign-uid" "$fixture_size" foreign-uid 'Debian verifier-VM base metadata differs'
+refuse "$work/foreign-gid" "$fixture_size" foreign-gid 'Debian verifier-VM base metadata differs'
 [ "$cases" -eq 22 ] || fail 'base metadata case inventory differs'
 [ "$(/usr/bin/sha256sum "$source_file")" = "$source_sha" ] || fail 'base metadata source changed'
 /usr/bin/rm -- "$subject" "$output" "$work/base-metadata.function.sh" \

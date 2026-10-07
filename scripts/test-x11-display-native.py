@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run X11 capture checks and a diagnostic TFC ABI probe against isolated Xvfb."""
+"""Run production TFC input and capture checks against isolated Xvfb."""
 import hashlib
 import os
 from pathlib import Path
@@ -19,17 +19,21 @@ def require(value, message):
 def build_input_abi(root, environment):
     packages = tomllib.loads((root / "Cargo.lock").read_text())["package"]
     tfc = [package for package in packages if package["name"] == "tfc"]
-    require(len(tfc) == 1 and tfc[0]["version"] == "0.7.0"
-            and tfc[0]["source"] == "git+https://github.com/rustdesk-org/The-Fat-Controller?"
-            "branch=history/rebase_upstream_20240722#78bb80a8e596e4c14ae57c8448f5fca75f91f2b0"
-            and "x11 2.19.0" in tfc[0]["dependencies"], "TFC lockfile authority differs")
+    require(len(tfc) == 1 and tfc[0]["version"] == "0.7.0" and "source" not in tfc[0]
+            and tfc[0]["dependencies"] == ["core-graphics 0.23.2", "unicode-segmentation", "winapi 0.3.9"],
+            "repository-owned TFC lockfile selection differs")
     dependency = tomllib.loads((root / "libs/enigo/Cargo.toml").read_text())["dependencies"]["tfc"]
-    require(dependency == {"git": "https://github.com/rustdesk-org/The-Fat-Controller",
-                           "branch": "history/rebase_upstream_20240722"}, "Enigo TFC selection differs")
-    x11 = [package for package in packages if package["name"] == "x11" and package["version"] == "2.19.0"]
-    require(len(x11) == 1 and x11[0]["source"] ==
-            "git+https://github.com/bjornsnoen/x11-rs#c2e9bfaa7b196938f8700245564d8ac5d447786a",
-            "TFC X11 source selection differs")
+    require(dependency == {"path": "../tfc"}, "Enigo TFC selection differs")
+    x11 = [package for package in packages if package["name"] == "x11"]
+    require(len(x11) == 1 and x11[0]["version"] == "2.21.0"
+            and x11[0]["source"] == "registry+https://github.com/rust-lang/crates.io-index",
+            "retired Git X11 package remains selected")
+    manifest = tomllib.loads((root / "libs/tfc/Cargo.toml").read_text())
+    require(manifest["package"]["name"] == "tfc" and manifest["package"]["version"] == "0.7.0"
+            and manifest["package"]["edition"] == "2021" and "dependencies" not in manifest
+            and set(manifest["target"]) == {'cfg(target_os = "macos")', 'cfg(target_os = "windows")'}
+            and "libs/tfc" in tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["members"],
+            "owned TFC manifest/workspace differs")
     work = Path("/build/input-abi")
     (work / "ffi").mkdir(mode=0o700, parents=True)
     for name, digest in (("xkb", "128afcecd57843f7855289ecaf445a2ce8383383b143656a67c2d4acd3c4cffc"),
@@ -56,6 +60,54 @@ def build_input_abi(root, environment):
           f"xi_header_sha256={hashlib.sha256(Path('/usr/include/X11/extensions/XI.h').read_bytes()).hexdigest()} "
           f"library_sha256={hashlib.sha256(library.read_bytes()).hexdigest()} "
           f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()}", flush=True)
+    return binary, library
+
+
+def build_input_native(root, environment):
+    work = Path("/build/input-native")
+    work.mkdir(mode=0o700)
+    source_digest = hashlib.sha256()
+    records = (root / "libs/tfc/UPSTREAM_BLOBS.tsv").read_text().splitlines()[1:]
+    require(len(records) == 67, "TFC retained source inventory differs")
+    paths = []
+    for record in records:
+        name, original_blob = record.split("\t")
+        require(re.fullmatch(r"(?:src/[a-z_0-9/]+\.rs|LICENSE-(?:MIT|APACHE))", name)
+                and re.fullmatch(r"[0-9a-f]{40}", original_blob) and name not in paths,
+                "TFC source record differs")
+        paths.append(name)
+        source_digest.update(name.encode() + b"\0" + (root / "libs/tfc" / name).read_bytes() + b"\0")
+    require(set(paths) == {str(p.relative_to(root / "libs/tfc"))
+                           for p in (root / "libs/tfc/src").rglob("*.rs")} | {"LICENSE-MIT", "LICENSE-APACHE"},
+            "TFC source closure differs")
+    library = work / "libtfc.rlib"
+    subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2021", "--crate-name", "tfc",
+                    "--crate-type", "rlib", str(root / "libs/tfc/src/lib.rs"), "-o", str(library)],
+                   env=environment, check=True, timeout=30)
+    objects = []
+    for name in ("test-x11-input-abi", "test-x11-input-native"):
+        obj = work / f"{name}.o"
+        subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic",
+                        "-c", str(root / f"scripts/{name}.c"), "-o", str(obj)],
+                       env=environment, check=True, timeout=15)
+        objects.append(obj)
+    binary = work / "native"
+    command = ["/usr/local/cargo/bin/rustc", "--edition=2021",
+               str(root / "scripts/test-x11-input-native.rs"), "--extern", f"tfc={library}", "-o", str(binary)]
+    for obj in objects:
+        command += ["-C", f"link-arg={obj}"]
+    for symbol in ("XOpenDisplay", "XCloseDisplay", "XkbGetMap", "XkbFreeKeyboard",
+                   "XGetKeyboardMapping", "XFree", "XGetModifierMapping", "XFreeModifiermap",
+                   "XkbGetState", "XTestFakeKeyEvent"):
+        command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
+    subprocess.run(command, env=environment, check=True, timeout=30)
+    print("X11_INPUT_BUILD "
+          f"source_set_sha256={source_digest.hexdigest()} "
+          f"manifest_sha256={hashlib.sha256((root / 'libs/tfc/Cargo.toml').read_bytes()).hexdigest()} "
+          f"fixture_rust_sha256={hashlib.sha256((root / 'scripts/test-x11-input-native.rs').read_bytes()).hexdigest()} "
+          f"fixture_c_sha256={hashlib.sha256((root / 'scripts/test-x11-input-native.c').read_bytes()).hexdigest()} "
+          f"rlib_sha256={hashlib.sha256(library.read_bytes()).hexdigest()} "
+          f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()} scope=whole-linux-tfc cargo_graph=unvalidated", flush=True)
     return binary, library
 
 
@@ -184,15 +236,28 @@ def main():
                     and abi_lines == [
                         "X11_INPUT_ABI_OFFSETS rust=[16, 2, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14] "
                         "native=[18, 2, 0, 2, 4, 1, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16]",
-                        "X11_INPUT_ABI_FINDING=confirmed supplier=tfc rust_size=16 native_size=18 align=2 "
+                        "X11_INPUT_ABI_FINDING=confirmed supplier=historical-tfc rust_size=16 native_size=18 align=2 "
                         "fields=14 offset_mismatches=13 oracle=client-header product_acceptance=false",
                         f"X11_INPUT_ABI_LOADED library={input_library}",
-                        "X11_INPUT_ABI_NATIVE=confirmed supplier=tfc queries=32 controls=33 rejected=16 "
+                        "X11_INPUT_ABI_NATIVE=confirmed supplier=historical-tfc queries=32 controls=33 rejected=16 "
                         "rejection=XI-BadDevice:XKB-BadDevice recovery=same-connection write_beyond_rust_type=2 allocation_overrun=false "
                         "guards=intact descriptors=retired product_acceptance=false"],
                     f"native TFC ABI diagnostic differs: {abi}")
             print(abi.stdout.strip(), flush=True)
             input_abi.unlink()
+            native_input, input_rlib = build_input_native(root, environment)
+            native = subprocess.run([str(native_input)], env=environment, capture_output=True,
+                                    text=True, timeout=15)
+            require(native.returncode == 0 and not native.stderr and len(native.stdout) <= 4096
+                    and native.stdout.splitlines() == [
+                        "X11_INPUT_LAYOUT=pass source=production fields=14 size=18 align=2 oracle=client-header",
+                        f"X11_INPUT_LOADED library={input_library}",
+                        "X11_INPUT_EVENTS=pass source=whole-production-tfc repeats=16 characters=a,b,c events=96 observer=real-window query_rejections=16 rejected_emissions=0 recovery=same-context",
+                        "X11_INPUT_LIFETIME=pass source=whole-production-tfc successful_contexts=16 connection=one failures=64 cause=injected-null,invalid-count symbols=paired keyboard=full-free modifiers=paired descriptors=retired scope=direct-owned-calls"],
+                    f"production TFC native input differs: {native}")
+            print(native.stdout.strip(), flush=True)
+            native_input.unlink()
+            input_rlib.unlink()
             binaries = {}
             for variant in ("historical", "corrected"):
                 work = Path("/build") / variant

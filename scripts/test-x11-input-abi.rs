@@ -71,7 +71,7 @@ fn main() {
     assert_eq!(native, [18, 2, 0, 2, 4, 1, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16]);
     assert_eq!(rust[2..].iter().zip(&native[2..]).filter(|(a, b)| a != b).count(), 13);
     println!("X11_INPUT_ABI_OFFSETS rust={rust:?} native={native:?}");
-    println!("X11_INPUT_ABI_FINDING=confirmed supplier=tfc rust_size=16 native_size=18 align=2 fields=14 offset_mismatches=13 oracle=client-header product_acceptance=false");
+    println!("X11_INPUT_ABI_FINDING=confirmed supplier=historical-tfc rust_size=16 native_size=18 align=2 fields=14 offset_mismatches=13 oracle=client-header product_acceptance=false");
 
     let before = fd_count();
     {
@@ -118,5 +118,5 @@ fn main() {
         final_state.assert_native_bounds(native[0]);
     }
     assert_eq!(fd_count(), before);
-    println!("X11_INPUT_ABI_NATIVE=confirmed supplier=tfc queries=32 controls=33 rejected=16 rejection=XI-BadDevice:XKB-BadDevice recovery=same-connection write_beyond_rust_type=2 allocation_overrun=false guards=intact descriptors=retired product_acceptance=false");
+    println!("X11_INPUT_ABI_NATIVE=confirmed supplier=historical-tfc queries=32 controls=33 rejected=16 rejection=XI-BadDevice:XKB-BadDevice recovery=same-connection write_beyond_rust_type=2 allocation_overrun=false guards=intact descriptors=retired product_acceptance=false");
 }

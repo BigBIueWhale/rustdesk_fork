@@ -87,7 +87,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Controlled-side policy and network authentication (R-S2/R-S16/R-S18; R-S11b-3j/3q) | R-S16 requires one direct-only route and receiver-owned policy funnels; retired proxy strings stay pinned empty, old `socks` tables cannot be serialized, and proxy types/stores/APIs/transports/TLS/parser/validator/dependencies and NAT/STUN actuators are absent. Restriction-only peer overlays, R-S19 confinement, empty builtin/hard-setting startup namespaces, and no preset-credential fallback remain required. R-S2/R-S18 require one CPace network authentication and grant topology, symmetric absence of peer OS-credential/schema/storage/UI paths and alternative CM/recent-session/switch-side/trusted-device grants. Session-type confinement precedes publication; malformed metadata, credential-generation change, owner retirement or resource failure cannot demand admission merely because a stream keyed. Local OS-admin provisioning and exact IPC/helper proof are separate action authority, not another peer credential. Explicit fresh remote-input typing cannot become per-peer storage or reconnect auto-input. These are normative/source dispositions, not a completed audit or native/artifact acceptance; the platform/release matrices remain OPEN. |
 | Appendix C #90–95, #97, #99, #101–105, #109–110, #112, #119, #122, #161–163, #168–183, #185–206, #212, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The findings retain threat rationale and timeless disposition-to-requirement mappings. Dispositions do not report implemented fixes, gate counts, or artifact results. The process-context, checker-ownership, and scanner rationales R-S11az/R-S11ba/R-S11bb/R-S11be likewise state binding contracts without implementation chronology. Original #173–184 threat findings, operative keywords, source links, identities, input/provenance bounds, and native/artifact acceptance remain intact. This row does not promote source checks to native evidence; current evidence limits remain in the relevant requirement entries and platform/open matrices. |
 | Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub and RustSec snapshots have real no-NIC VM verdicts recorded in R-S11df and R-S11dg below; future snapshot refresh, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. Documentation or mutation counts are not scanner evidence. |
-| Git-fork review and mirroring (R-B5b) | Exact lockfile revisions provide reproducibility, not a safety verdict. The prior assertion that security-relevant forks were found benign or security-positive was removed from the normative specification; no exact-current all-fork review or completed mirror migration is established here. This remains OPEN independently of advisory-snapshot checks. |
+| Git-fork review and mirroring (R-B5b) | Exact lockfile revisions provide reproducibility, not a safety verdict. The IPC transport snapshot review below records concrete supplier findings and caller reachability, not native acceptance or a completed upstream diff. No exact-current all-fork review or completed mirror migration is established; both remain OPEN independently of advisory-snapshot checks. |
 | Repository/dependency structure (§16, R-R1) | The normative section now distinguishes security-modified in-tree source from exact-pinned external dependencies and the authenticated offline input closure. Its old tree snapshot, package counts, lockfile-only reproducibility assurance, upstream CI-job table, and claimed net-negative dependency delta were removed. Complete exact-current fork/provenance review, release builds, and independent reproduction remain OPEN. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Service/helper/process bootstrap authority (R-S11y–R-S11al; Appendix C #147–160) | The normative contracts retain empty helper environments, typed OS queries, selected-session X11 authority and bounded empty-Display recovery, kernel-parent-bound graphical/headless CM lifetime, no global process-table signal/restart authority, non-root-only UI, numeric principal selection, exact child/supervisor argument protocols, SCM-owned initialization, and fixed macOS principal/home/config/log ordering. Appendix findings map to required dispositions without implementation/gate/artifact-status narration; #154–160's original threat findings are retained. All operative MUST/MUST NOT markers, primary-source links, IDs, test mappings, and installed/native acceptance obligations remain. Appendix #152 agrees with R-S11cc's graphical-and-headless scope. No product, verifier, or executable test changed. Installed/native principals, failure/restart/resource behavior and release acceptance remain OPEN in the platform matrices. |
@@ -100,6 +100,52 @@ missing evidence.
 
 Further cleanup must classify remaining prose and purported tests by the current requirement or real behavior they
 protect, preserve load-bearing contracts and executable coverage, and delete obsolete history or make-believe proof.
+
+### R-B5b/R-R1 — IPC transport fork snapshot review; acceptance OPEN
+
+`Cargo.lock` selects `parity-tokio-ipc` 0.7.3-6 at
+`d0ae39bffe5d5a3e8d82a1b6bcb1ca5a9b2f1c01`. The reviewed local source is the sealed
+`online/inputs/cargo-vendor/parity-tokio-ipc-0.7.3-6` directory, not an ambient Git cache.
+All three runtime modules (775 lines), manifest, examples and smoke-test code were read;
+runtime file SHA-256 values match that directory's `.cargo-checksum.json` records:
+`src/lib.rs` = `f651c44dfb056d441d453f9aac9c62aaf29d2adfff7ba2a2c7f224755186c7ce`,
+`src/unix.rs` = `4aa593cdf0f1895b09abb5bbc832de45743b0249c8f90c1a33f53d9621161f52`,
+`src/win.rs` = `be5470748cf96bad0c6b044f1087ea37ebc09de88fcef46798db98a278b9afe1`.
+Those local checksum matches are not independent authentication of the whole vendor closure
+or a byte-equality proof against the upstream Git tree. The primary
+[pinned commit](https://github.com/rustdesk-org/parity-tokio-ipc/commit/d0ae39bffe5d5a3e8d82a1b6bcb1ca5a9b2f1c01)
+and pinned Unix/Windows source were inspected; full upstream-delta review remains open.
+
+- **Unix supplier API defect, inactive in current production:** `Endpoint::incoming`
+  calls pathname `apply_permissions` before `UnixListener::bind`. Selecting `set_mode`
+  therefore chmods an occupied path before bind or fails on an absent path. Current
+  `src/ipc.rs::new_listener` selects `allow_everyone_create` (mode `None`) and applies
+  the endpoint's 0600/0666 policy after binding beneath the proved parent; it does not call
+  this supplier mode-setting API. This is source reachability, not an executed fault case.
+- **Supplier tests do not establish ownership or authorization:** the Unix smoke test
+  selects that broken pre-bind mode API, then expects listener close to unlink its path;
+  the Unix implementation has no unlink owner. Windows attribute tests mostly construct
+  descriptors, not authorized/unauthorized connections. These are not native acceptance
+  for this fork. No supplier test was run or relabeled green and no sealed input was edited.
+- **Transport is not the authority:** Unix IO/raw-FD exposure delegates to pinned Tokio;
+  kernel UID/PID and process/generation proof remain in `src/ipc/auth.rs`. Windows incoming
+  pipes retain their descriptor owner, create the first instance before later instances,
+  and inherit remote-client rejection from pinned Tokio 1.44.2. The app's exhaustive SDDL
+  constructor has no null/default fallback; its ordinary client uses the narrowed access
+  mask plus identification-only SQOS, deadline and server proof. Raw password/credential
+  channels retain their separate purpose-specific transport. Framing/capacity/action and
+  cancellation ownership remain app responsibilities, not library guarantees.
+
+Mirror/replacement review must preserve explicit SDDL construction and descriptor lifetime,
+error-return rather than allocation panic (the pinned parent's `995480da` change), first-instance
+and local-only behavior, client SQOS/access restriction and exact IO/handle ownership. Do not
+blindly replace it with a pristine registry crate or modify the canonical vendor bytes in place.
+**OPEN:** authenticated Git-tree byte comparison and complete upstream delta; real Unix
+permission/occupied-path/drop/cancellation cases; native Windows descriptor, first-instance,
+remote/refusal, reconnect/error and lifetime cases; installed privileged receiver/principal
+coverage; chosen mirror or repository-owned replacement, canonical closure and artifact
+rebinding; other Cargo/Dart forks, cold equality, independent reproduction and external review.
+No new reachable LPE or closed security boundary is claimed by this source-only snapshot review.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

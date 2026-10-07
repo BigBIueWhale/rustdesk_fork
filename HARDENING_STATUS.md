@@ -341,8 +341,36 @@ attestation. Host endpoints had no additions; inputs stayed read-only; owned
 containers/VM/orchestration joined and disk/media/run root self-retired.
 Earlier route/owner receipts remain retained and traceable in Git history.
 
+**Accepted native cookie-authentication scenario:** harness source
+`b46a032a9be63bc8c61081ade0dc441f9279f0f3`, tree
+`e38679ecb38ad8c47fb67d1f74a71745407ae835`, passed the same command with
+outer exit 0 in **55 VM seconds**. The production owner/context/selector modules
+and byte-extracted cursor-position functions are unchanged from the above source.
+One private Unix-only Xvfb uses `-auth`, not `-ac`; four fresh children try
+valid → wrong → missing → valid Xauthority credentials. Both valid children
+open Xlib/XDO contexts, query the real 640x480 root, move/read the pointer at
+(123, 87), and reuse their contexts through 32 polls. Both negative children
+receive native authentication refusal, create no owner, and do not reopen during
+32 cooldown polls. Four successful contexts retire exactly once; every child's
+own descriptors/tasks return to baseline after worker join. The second valid
+case proves the negatives did not pass because the display had died.
+
+Raw `x11-display-tests-run.DGEtVgseJm.serial.log` (100,041 bytes; SHA-256
+`dbead54dfba7f75ff21a2d28e934ee09e07e2761feae5a99632eee4d4888a874`) and
+`evidence/x11-native-auth-run.DGEtVgseJm.outer.receipt` (SHA-256
+`cfc975992537129ad4e3664d10c62d577f04e8008fedf70a677ec6332b4db728`)
+retain source/binary/library identities and assistant-observed, nonindependent
+finality. All earlier focused cases also passed. There were no host endpoint
+additions or input changes; exact guest owners joined and the disk/media/run root
+self-retired. The fixture initializes Xlib threading explicitly; this is not
+product-global-initialization proof. Known disposable cookies test native library
+authentication only, not a real user's principal/session, an installed service,
+another backend, or the whole app. No product authentication change or new
+authentication defect is established by this scenario.
+
 **OPEN:** constructor/request bounds; fresh connected peer/session and
-authenticated-Xauthority cases (Xvfb uses `-ac`); protected-loader, complete
+installed-session/principal binding; authenticated capture/focus/Enigo/rdev and
+service scenarios (their existing fixtures still use `-ac`); protected-loader, complete
 parent/Cargo/app and current installed/platform artifacts; cursor-image execution
 and native position-query status-error negatives; service shutdown and Enigo/rdev
 parent integration; established Xlib connection-failure/destruction and global

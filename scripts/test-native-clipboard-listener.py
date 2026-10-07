@@ -76,6 +76,8 @@ def build(environment, locked):
 name = "{PACKAGE}"
 version = "0.0.0"
 edition = "2021"
+[lib]
+name = "rustdesk_clipboard_listener_native"
 [dependencies]
 anyhow = "=1.0.103"
 log = {{ version = "=0.4.22", features = ["std"] }}
@@ -138,6 +140,9 @@ directory = "/work/clipboard-vendor"
                 print("CLIPBOARD_NATIVE_ARTIFACT " + json.dumps(item, sort_keys=True), flush=True)
         artifacts = [Path(item["executable"]) for item in messages if item.get("reason") == "compiler-artifact"
                      and item.get("target", {}).get("name") == PACKAGE.replace("-", "_")
+                     and item.get("manifest_path") == str(BUILD / "Cargo.toml")
+                     and item.get("target", {}).get("src_path") == str(BUILD / "src/lib.rs")
+                     and item.get("target", {}).get("kind") == ["lib"]
                      and item.get("profile", {}).get("test") is True and item.get("executable")]
         require(len(artifacts) == 1 and any(item.get("reason") == "build-finished" and item.get("success") is True
                 for item in messages), "exact native fixture executable is missing")

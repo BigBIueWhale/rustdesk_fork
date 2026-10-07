@@ -1,0 +1,195 @@
+//! Complete production XDO backend with source-extracted production API declarations.
+//! ABI bindings call the real libraries; this does not exercise the protected loader or parent Enigo.
+extern crate self as hbb_common;
+extern crate self as libxdo_sys;
+include!("/build/enigo-api.rs");
+#[path = "/work/libs/enigo/src/dsl.rs"]
+pub mod dsl;
+mod platform {
+    #[path = "/work/libs/hbb_common/src/platform/x11_display.rs"]
+    pub mod x11_display;
+}
+pub mod libc { pub use std::ffi::c_int; }
+pub mod x11 {
+    pub mod xlib {
+        use std::ffi::{c_char, c_int};
+        #[repr(C)]
+        pub struct Display { _private: [u8; 0] }
+        #[link(name = "X11")]
+        extern "C" {
+            pub fn XOpenDisplay(name: *const c_char) -> *mut Display;
+            pub fn XCloseDisplay(display: *mut Display) -> c_int;
+            pub fn XGetPointerMapping(display: *mut Display, map: *mut u8, size: c_int) -> c_int;
+        }
+    }
+}
+use std::{ffi::{c_char, c_int, c_uint, c_ulong, CStr},
+          sync::{Mutex, atomic::{AtomicBool, AtomicUsize, Ordering}}};
+use x11::xlib::Display;
+#[repr(C)]
+#[allow(non_camel_case_types)]
+pub struct xdo_t { _private: [u8; 0] }
+#[allow(non_camel_case_types)]
+pub type useconds_t = c_uint;
+pub const CURRENTWINDOW: c_ulong = 0;
+#[link(name = "xdo")]
+extern "C" {
+    pub fn xdo_new(name: *const c_char) -> *mut xdo_t;
+    pub fn xdo_free(context: *mut xdo_t);
+    pub fn xdo_move_mouse(context: *const xdo_t, x: c_int, y: c_int, screen: c_int) -> c_int;
+    pub fn xdo_move_mouse_relative(context: *const xdo_t, x: c_int, y: c_int) -> c_int;
+    pub fn xdo_mouse_down(context: *const xdo_t, window: c_ulong, button: c_int) -> c_int;
+    pub fn xdo_mouse_up(context: *const xdo_t, window: c_ulong, button: c_int) -> c_int;
+    pub fn xdo_get_input_state(context: *const xdo_t) -> c_uint;
+    pub fn xdo_enter_text_window(context: *const xdo_t, window: c_ulong, text: *const c_char, delay: useconds_t) -> c_int;
+    pub fn xdo_send_keysequence_window(context: *const xdo_t, window: c_ulong, sequence: *const c_char, delay: useconds_t) -> c_int;
+    pub fn xdo_send_keysequence_window_down(context: *const xdo_t, window: c_ulong, sequence: *const c_char, delay: useconds_t) -> c_int;
+    pub fn xdo_send_keysequence_window_up(context: *const xdo_t, window: c_ulong, sequence: *const c_char, delay: useconds_t) -> c_int;
+    fn __real_xdo_new(name: *const c_char) -> *mut xdo_t;
+    fn __real_xdo_free(context: *mut xdo_t);
+}
+#[link(name = "X11")]
+extern "C" {
+    fn XInitThreads() -> c_int;
+    fn __real_XOpenDisplay(name: *const c_char) -> *mut Display;
+    fn __real_XCloseDisplay(display: *mut Display) -> c_int;
+    fn XDefaultScreen(display: *mut Display) -> c_int;
+    fn XDisplayWidth(display: *mut Display, screen: c_int) -> c_int;
+    fn XDisplayHeight(display: *mut Display, screen: c_int) -> c_int;
+    fn XDefaultRootWindow(display: *mut Display) -> c_ulong;
+    fn XQueryPointer(display: *mut Display, window: c_ulong, root: *mut c_ulong, child: *mut c_ulong,
+                     root_x: *mut c_int, root_y: *mut c_int, x: *mut c_int, y: *mut c_int, mask: *mut c_uint) -> c_int;
+}
+#[cfg(not(historical))]
+#[path = "/work/libs/enigo/src/linux/xdo.rs"]
+mod backend;
+#[cfg(historical)]
+#[path = "/work/scripts/fixtures/x11-enigo-xdo-before-local-route.rs"]
+mod backend;
+
+static NAMES: Mutex<Vec<(bool, Option<String>)>> = Mutex::new(Vec::new());
+static RETIREMENTS: AtomicUsize = AtomicUsize::new(0);
+static DIAGNOSTIC_RETIREMENTS: AtomicUsize = AtomicUsize::new(0);
+static SHIFT_AFTER_OPEN: AtomicBool = AtomicBool::new(false);
+unsafe fn record(xdo: bool, name: *const c_char) {
+    NAMES.lock().unwrap().push((xdo, if name.is_null() { None }
+                              else { Some(CStr::from_ptr(name).to_str().unwrap().to_owned()) }));
+}
+#[no_mangle]
+unsafe extern "C" fn __wrap_xdo_new(name: *const c_char) -> *mut xdo_t {
+    record(true, name);
+    let context = __real_xdo_new(name);
+    if SHIFT_AFTER_OPEN.swap(false, Ordering::SeqCst) {
+        assert!(!context.is_null());
+        // A controlled environment change between the two real native constructors.
+        std::env::set_var("DISPLAY", ":95");
+    }
+    context
+}
+#[no_mangle]
+unsafe extern "C" fn __wrap_xdo_free(context: *mut xdo_t) {
+    __real_xdo_free(context);
+    RETIREMENTS.fetch_add(1, Ordering::SeqCst);
+}
+#[no_mangle]
+unsafe extern "C" fn __wrap_XOpenDisplay(name: *const c_char) -> *mut Display {
+    record(false, name);
+    let display = __real_XOpenDisplay(name);
+    if !display.is_null() && !name.is_null() {
+        let screen = if CStr::from_ptr(name).to_bytes().ends_with(b".1") { 1 } else { 0 };
+        assert_eq!(XDefaultScreen(display), screen);
+        assert_eq!((XDisplayWidth(display, screen), XDisplayHeight(display, screen)),
+                   if screen == 0 { (640, 480) } else { (800, 600) });
+    }
+    display
+}
+#[no_mangle]
+unsafe extern "C" fn __wrap_XCloseDisplay(display: *mut Display) -> c_int {
+    let status = __real_XCloseDisplay(display);
+    assert_eq!(status, 0);
+    DIAGNOSTIC_RETIREMENTS.fetch_add(1, Ordering::SeqCst);
+    status
+}
+fn descriptors() -> usize { std::fs::read_dir("/proc/self/fd").unwrap().count() }
+fn tasks() -> usize { std::fs::read_dir("/proc/self/task").unwrap().count() }
+fn retired(baseline: usize) { assert_eq!(descriptors(), baseline); assert_eq!(tasks(), 1); }
+fn main() {
+    assert_ne!(unsafe { XInitThreads() }, 0);
+    let baseline = descriptors();
+    if let Some(scenario) = std::env::args().nth(1) {
+        assert!(matches!(scenario.as_str(), "route" | "diagnostic"));
+        let diagnostic = scenario == "diagnostic";
+        std::env::set_var("DISPLAY", if diagnostic { ":98" } else { ":95" });
+        SHIFT_AFTER_OPEN.store(diagnostic, Ordering::SeqCst);
+        let mut injector = backend::EnigoXdo::default();
+        if diagnostic {
+            injector.mouse_move_to(131, 79).unwrap();
+        } else {
+            assert!(injector.mouse_move_to(131, 79).is_err());
+            assert!(injector.key_sequence_result("a").is_err());
+        }
+        drop(injector);
+        assert_eq!(RETIREMENTS.load(Ordering::SeqCst), usize::from(diagnostic));
+        let names = NAMES.lock().unwrap();
+        let canonical = |name: &str| if cfg!(historical) { None } else { Some(name.to_owned()) };
+        assert_eq!(*names, if diagnostic {
+            vec![(true, canonical("unix/:98.0")), (false, canonical("unix/:98.0"))]
+        } else { vec![(true, canonical("unix/:95.0"))] });
+        assert_eq!(DIAGNOSTIC_RETIREMENTS.load(Ordering::SeqCst), usize::from(diagnostic && !cfg!(historical)));
+        retired(baseline);
+        println!("X11_ENIGO_{}_CHILD variant={} result={} descriptors=retired threads=retired",
+                 if diagnostic { "DIAGNOSTIC" } else { "ROUTE" },
+                 if cfg!(historical) { "historical" } else { "corrected" },
+                 if !diagnostic { "refused" } else if cfg!(historical) { "environment-reread" } else { "selected-once" });
+        return;
+    }
+    assert!(!cfg!(historical));
+    let refuse = || {
+        let mut injector = backend::EnigoXdo::default();
+        assert!(injector.mouse_move_to(131, 79).is_err());
+        assert!(injector.key_sequence_result("a").is_err());
+        drop(injector);
+        assert!(NAMES.lock().unwrap().is_empty());
+        retired(baseline);
+    };
+    for name in ["", ":", ":1.", ":.0", ":1.0.0", ":+1", ":-1", ":1.-1",
+                 "localhost:98", "unix/:98", "/tmp/.X11-unix/X98", "tcp/:98",
+                 ":2147483648", ":98.2147483648", ":98\n", " :98"] {
+        std::env::set_var("DISPLAY", name);
+        refuse();
+    }
+    std::env::remove_var("DISPLAY"); refuse();
+    use std::os::unix::ffi::OsStringExt;
+    std::env::set_var("DISPLAY", std::ffi::OsString::from_vec(vec![0xff])); refuse();
+    for (selector, canonical) in [(":00098", "unix/:98.0"), (":00098.0000", "unix/:98.0"),
+                                  (":00098.0001", "unix/:98.1")] {
+        for iteration in 0..8 {
+            std::env::set_var("DISPLAY", selector);
+            let mut injector = backend::EnigoXdo::default();
+            assert_eq!(descriptors(), baseline + 1);
+            assert_eq!(*NAMES.lock().unwrap(), vec![(true, Some(canonical.into())), (false, Some(canonical.into()))]);
+            injector.mouse_move_to(131 + iteration, 79 + iteration).unwrap();
+            // Observe native pointer coordinates using an independent real X11 connection.
+            unsafe {
+                let observer = __real_XOpenDisplay(b"unix/:98.0\0".as_ptr().cast());
+                assert!(!observer.is_null());
+                let (mut root, mut child, mut x, mut y, mut wx, mut wy, mut mask) = (0, 0, 0, 0, 0, 0, 0);
+                let deadline = std::time::Instant::now() + std::time::Duration::from_millis(100);
+                loop {
+                    assert_ne!(XQueryPointer(observer, XDefaultRootWindow(observer), &mut root, &mut child,
+                                            &mut x, &mut y, &mut wx, &mut wy, &mut mask), 0);
+                    if (x, y) == (131 + iteration, 79 + iteration) { break; }
+                    assert!(std::time::Instant::now() < deadline, "native pointer did not arrive");
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                assert_eq!(__real_XCloseDisplay(observer), 0);
+            }
+            drop(injector);
+            NAMES.lock().unwrap().clear();
+            retired(baseline);
+        }
+    }
+    assert_eq!(RETIREMENTS.load(Ordering::SeqCst), 24);
+    assert_eq!(DIAGNOSTIC_RETIREMENTS.load(Ordering::SeqCst), 24);
+    println!("X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 pointer=server-real callbacks=paired descriptors=retired threads=retired scope=xdo-backend");
+}

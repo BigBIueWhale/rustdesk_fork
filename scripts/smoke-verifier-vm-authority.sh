@@ -1115,6 +1115,15 @@ android_frame_input_inventory() {
     if [ "$MODE" = x11-display-tests ]; then
         files+=("$SCRIPT_DIR/test-x11-display-native.py" "$SCRIPT_DIR/test-x11-display.rs"
             "$SCRIPT_DIR/test-x11-thread-context.rs"
+            "$SCRIPT_DIR/test-x11-enigo-route.rs"
+            "$SCRIPT_DIR/fixtures/x11-enigo-xdo-before-local-route.rs"
+            "$REPO_ROOT/libs/enigo/src/lib.rs" "$REPO_ROOT/libs/enigo/src/dsl.rs"
+            "$REPO_ROOT/libs/enigo/src/linux/xdo.rs"
+            "$CARGO_VENDOR_ROOT/log-0.4.22/.cargo-checksum.json"
+            "$CARGO_VENDOR_ROOT/log-0.4.22/src/lib.rs"
+            "$CARGO_VENDOR_ROOT/log-0.4.22/src/macros.rs"
+            "$CARGO_VENDOR_ROOT/log-0.4.22/src/__private_api.rs"
+            "$CARGO_VENDOR_ROOT/log-0.4.22/src/serde.rs"
             "$SCRIPT_DIR/test-x11-window-focus.rs" "$SCRIPT_DIR/test-x11-window-focus.c"
             "$SCRIPT_DIR/test-x11-focus-lifecycle.rs"
             "$SCRIPT_DIR/fixtures/x11-window-focus-before-deadline.rs"
@@ -1131,6 +1140,8 @@ android_frame_input_inventory() {
             "$REPO_ROOT/libs/scrap/src/x11/capturer.rs"
             "$REPO_ROOT/libs/scrap/src/common/x11.rs"
             "$REPO_ROOT/libs/scrap/src/common/frame_compare.rs")
+        verify_sha256 "$CARGO_VENDOR_ROOT/log-0.4.22/.cargo-checksum.json" \
+            eface4bae11ea2b6ba81ed2b07f0705d076456e4a61e2ca7409bb5649ce0c894
     fi
     while IFS=$'\t' read -r name size digest url extra; do
         [ -n "$name" ] || continue
@@ -3391,6 +3402,16 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/scripts/test-x11-display-native.py=$SCRIPT_DIR/test-x11-display-native.py"
             "repo/scripts/test-x11-display.rs=$SCRIPT_DIR/test-x11-display.rs"
             "repo/scripts/test-x11-thread-context.rs=$SCRIPT_DIR/test-x11-thread-context.rs"
+            "repo/scripts/test-x11-enigo-route.rs=$SCRIPT_DIR/test-x11-enigo-route.rs"
+            "repo/scripts/fixtures/x11-enigo-xdo-before-local-route.rs=$SCRIPT_DIR/fixtures/x11-enigo-xdo-before-local-route.rs"
+            "repo/libs/enigo/src/lib.rs=$REPO_ROOT/libs/enigo/src/lib.rs"
+            "repo/libs/enigo/src/dsl.rs=$REPO_ROOT/libs/enigo/src/dsl.rs"
+            "repo/libs/enigo/src/linux/xdo.rs=$REPO_ROOT/libs/enigo/src/linux/xdo.rs"
+            "repo/test-inputs/log-0.4.22/.cargo-checksum.json=$CARGO_VENDOR_ROOT/log-0.4.22/.cargo-checksum.json"
+            "repo/test-inputs/log-0.4.22/src/lib.rs=$CARGO_VENDOR_ROOT/log-0.4.22/src/lib.rs"
+            "repo/test-inputs/log-0.4.22/src/macros.rs=$CARGO_VENDOR_ROOT/log-0.4.22/src/macros.rs"
+            "repo/test-inputs/log-0.4.22/src/__private_api.rs=$CARGO_VENDOR_ROOT/log-0.4.22/src/__private_api.rs"
+            "repo/test-inputs/log-0.4.22/src/serde.rs=$CARGO_VENDOR_ROOT/log-0.4.22/src/serde.rs"
             "repo/scripts/test-x11-window-focus.rs=$SCRIPT_DIR/test-x11-window-focus.rs"
             "repo/scripts/test-x11-window-focus.c=$SCRIPT_DIR/test-x11-window-focus.c"
             "repo/scripts/test-x11-focus-lifecycle.rs=$SCRIPT_DIR/test-x11-focus-lifecycle.rs"
@@ -4097,6 +4118,12 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux app-capsule cloud-init completion'
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
+    require_exact_fixed_receipt \
+        'X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 pointer=server-real callbacks=paired descriptors=retired threads=retired scope=xdo-backend' \
+        'complete production Enigo XDO backend selector, pointer and retirement behavior'
+    require_exact_fixed_receipt \
+        'X11_ENIGO_ROUTE_NATIVE=pass source=complete-backends old_accepts=2 current_accepts=0 scenarios=constructor,diagnostic-display-change listener=container-loopback-only peer=closed children=joined scope=xdo-backend' \
+        'complete Enigo XDO backend retains one local-only display for input and diagnostic'
     require_exact_fixed_receipt \
         'X11_PLATFORM_ROUTE_NATIVE=pass source=production-constructors old=null-call-shape callers=xlib,xdo old_accepts=2 current_accepts=0 listener=container-loopback-only peer=closed children=joined scope=platform-constructors' \
         'production platform X11/XDO constructors cannot silently select localhost TCP'

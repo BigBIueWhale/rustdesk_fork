@@ -8,10 +8,9 @@
 use crate::{checked_scroll_magnitude, Key, KeyboardControllable, MouseButton, MouseControllable};
 
 use hbb_common::libc::c_int;
-use hbb_common::platform::x11_display::unix_display_name;
 use hbb_common::x11::xlib::{Display, XCloseDisplay, XGetPointerMapping, XOpenDisplay};
 use libxdo_sys::{self, xdo_t, CURRENTWINDOW};
-use std::{borrow::Cow, ffi::{CStr, CString}};
+use std::{borrow::Cow, ffi::CString};
 
 /// Default delay per keypress in microseconds.
 /// This value is passed to libxdo functions and must fit in `useconds_t` (u32).
@@ -54,8 +53,14 @@ const MIN_POINTER_BUTTONS: usize = 9;
 ///
 /// `XSetPointerMapping` cannot extend the button count, so this only diagnoses
 /// configurations where side-button injection cannot work.
-fn check_x11_button_map(display_name: &CStr) {
-    let display: *mut Display = unsafe { XOpenDisplay(display_name.as_ptr()) };
+fn check_x11_button_map() {
+    // Skip on non-X11 sessions to avoid noisy "XOpenDisplay failed" warnings
+    // on pure Wayland or headless environments without $DISPLAY.
+    if std::env::var_os("DISPLAY").is_none() {
+        return;
+    }
+
+    let display: *mut Display = unsafe { XOpenDisplay(std::ptr::null()) };
     if display.is_null() {
         log::warn!("XOpenDisplay failed, cannot check button map");
         return;
@@ -96,22 +101,13 @@ impl Default for EnigoXdo {
     ///
     /// If libxdo is unavailable, input operations return errors.
     fn default() -> Self {
-        let xdo = match unix_display_name() {
-            Ok(display_name) => {
-                let xdo = unsafe { libxdo_sys::xdo_new(display_name.as_ptr()) };
-                if xdo.is_null() {
-                    log::warn!("Failed to create xdo context, xdo functions will be disabled");
-                } else {
-                    log::info!("xdo context created successfully");
-                    check_x11_button_map(&display_name);
-                }
-                xdo
-            }
-            Err(err) => {
-                log::warn!("Cannot select a local X11 display for xdo: {err}");
-                std::ptr::null_mut()
-            }
-        };
+        let xdo = unsafe { libxdo_sys::xdo_new(std::ptr::null()) };
+        if xdo.is_null() {
+            log::warn!("Failed to create xdo context, xdo functions will be disabled");
+        } else {
+            log::info!("xdo context created successfully");
+            check_x11_button_map();
+        }
         Self {
             xdo,
             delay: DEFAULT_DELAY,

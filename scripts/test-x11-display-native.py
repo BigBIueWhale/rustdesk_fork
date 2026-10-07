@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run production X11 owner and capture checks against isolated Xvfb."""
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -16,6 +17,112 @@ import time
 def require(value, message):
     if not value:
         raise RuntimeError(message)
+
+
+def enigo_route(root, environment):
+    historical = root / "scripts/fixtures/x11-enigo-xdo-before-local-route.rs"
+    require(hashlib.sha256(historical.read_bytes()).hexdigest() ==
+            "47afa6ff695fa877979f22b934cbebee081d24a9855e7f85b90a3d87c81e201d",
+            "historical a1c03eb3 complete Enigo XDO backend differs")
+    # Extract the real public types, scroll check and traits; never substitute a test API.
+    source = (root / "libs/enigo/src/lib.rs").read_text()
+    start = "///\npub type ResultType ="
+    end = '#[cfg(any(target_os = "android", target_os = "ios"))]\nstruct Enigo;'
+    require(source.count(start) == 1 and source.count(end) == 1,
+            "production Enigo API extraction boundary differs")
+    declarations = source[source.index(start):source.index(end)]
+    api = Path("/build/enigo-api.rs")
+    with api.open("x") as output:
+        output.write(declarations)
+    logging = root / "test-inputs/log-0.4.22"
+    checksum = logging / ".cargo-checksum.json"
+    require(hashlib.sha256(checksum.read_bytes()).hexdigest() ==
+            "eface4bae11ea2b6ba81ed2b07f0705d076456e4a61e2ca7409bb5649ce0c894",
+            "native backend logging input manifest differs")
+    manifest = json.loads(checksum.read_text())
+    require(manifest["package"] == "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24",
+            "logging crate package identity differs")
+    for name in ("lib.rs", "macros.rs", "__private_api.rs", "serde.rs"):
+        path = logging / "src" / name
+        require(hashlib.sha256(path.read_bytes()).hexdigest() == manifest["files"][f"src/{name}"],
+                "native logging source differs")
+    library = Path("/build/liblog.rlib")
+    subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2021", "--crate-name", "log",
+                    "--crate-type=rlib", "--cfg", 'feature="std"', str(logging / "src/lib.rs"),
+                    "-o", str(library)], env=environment, check=True, timeout=30)
+    binaries = {}
+    for variant in ("historical", "corrected"):
+        binary = Path("/build") / f"enigo-{variant}"
+        command = ["/usr/local/cargo/bin/rustc", "--edition=2021",
+                   str(root / "scripts/test-x11-enigo-route.rs"), "-o", str(binary),
+                   "--extern", f"log={library}"]
+        if variant == "historical":
+            command += ["--cfg", "historical"]
+        for symbol in ("xdo_new", "xdo_free", "XOpenDisplay", "XCloseDisplay"):
+            command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
+        subprocess.run(command, env=environment, check=True, timeout=30)
+        binaries[variant] = binary
+        print("X11_ENIGO_BUILD " + " ".join(
+            f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
+                ("backend", historical if variant == "historical" else root / "libs/enigo/src/linux/xdo.rs"),
+                ("api_source", root / "libs/enigo/src/lib.rs"), ("api_declarations", api),
+                ("dsl", root / "libs/enigo/src/dsl.rs"),
+                ("selector", root / "libs/hbb_common/src/platform/x11_display.rs"),
+                ("fixture", root / "scripts/test-x11-enigo-route.rs"),
+                ("log_manifest", checksum), ("log_library", library), ("binary", binary)))
+              + f" variant={variant} parent_enigo=unexecuted loader=direct-native-test whole_app=unexecuted", flush=True)
+    result = subprocess.run([str(binaries["corrected"])], env=environment, capture_output=True,
+                            text=True, timeout=15)
+    receipt = ("X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations "
+               "selectors_refused=18 canonical_screens=3 contexts=24 pointer=server-real "
+               "callbacks=paired descriptors=retired threads=retired scope=xdo-backend")
+    require(result.returncode == 0 and not result.stderr and result.stdout.splitlines() == [receipt],
+            f"native Enigo backend result differs: {result}")
+    print(receipt, flush=True)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 6095))
+        listener.listen(1)
+        for scenario in ("route", "diagnostic"):
+            for variant, binary in binaries.items():
+                native = subprocess.Popen([str(binary), scenario], env=environment,
+                                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                try:
+                    if variant == "historical":
+                        listener.settimeout(2)
+                        peer, address = listener.accept()
+                        with peer:
+                            require(address[0] == "127.0.0.1", "unexpected Enigo route peer")
+                    output, errors = native.communicate(timeout=5)
+                    expected_errors = (f"Error: Can't open display: {'(null)' if variant == 'historical' else 'unix/:95.0'}\n".encode()
+                                       if scenario == "route" else b"")
+                    receipt = (f"X11_ENIGO_{scenario.upper()}_CHILD variant={variant} "
+                               f"result={'refused' if scenario == 'route' else 'environment-reread' if variant == 'historical' else 'selected-once'} "
+                               "descriptors=retired threads=retired")
+                    require(native.returncode == 0 and errors == expected_errors
+                            and output.decode("ascii").splitlines() == [receipt],
+                            f"native Enigo route differs: stdout={output!r} stderr={errors!r}")
+                    if variant == "corrected":
+                        listener.settimeout(0.1)
+                        try:
+                            peer, _ = listener.accept()
+                        except socket.timeout:
+                            pass
+                        else:
+                            peer.close()
+                            raise RuntimeError("corrected Enigo constructor attempted TCP")
+                    print(f"X11_ENIGO_ROUTE_OBSERVED variant={variant} scenario={scenario} "
+                          f"tcp_accepts={int(variant == 'historical')} native=complete-backend", flush=True)
+                finally:
+                    if native.poll() is None:
+                        native.kill()
+                    native.wait(timeout=5)
+                    for stream in (native.stdout, native.stderr):
+                        stream.close()
+    print("X11_ENIGO_ROUTE_NATIVE=pass source=complete-backends old_accepts=2 current_accepts=0 "
+          "scenarios=constructor,diagnostic-display-change listener=container-loopback-only "
+          "peer=closed children=joined scope=xdo-backend", flush=True)
+    for path in (*binaries.values(), library, api):
+        path.unlink()
 
 
 def thread_contexts(root, environment):
@@ -597,6 +704,7 @@ def main():
                 require(child.poll() is None and time.monotonic() < deadline, "Xvfb not ready")
                 time.sleep(0.05)
             thread_contexts(root, environment)
+            enigo_route(root, environment)
             window_focus(root, environment)
             binaries = {}
             for variant in ("historical", "corrected"):

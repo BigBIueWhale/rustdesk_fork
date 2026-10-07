@@ -10989,8 +10989,8 @@ as do current artifacts, performance/soak, independent reproduction, and externa
 
 ### R-S11hb/R-S11e-240 — exact bounded native clipboard-listener ownership (2026-08-20)
 
-**SOURCE IMPLEMENTED; SIX PRODUCTION STATE TESTS AND FIVE LINUX NATIVE LIFETIME
-TESTS PASSED IN A 65-SECOND FOCUSED TRANSACTION; WHOLE-APP, OTHER NATIVE PLATFORMS,
+**SOURCE IMPLEMENTED; SIX PRODUCTION STATE TESTS AND SIX LINUX NATIVE LIFETIME
+TESTS PASSED IN A 68-SECOND FOCUSED TRANSACTION; WHOLE-APP, OTHER NATIVE PLATFORMS,
 DEVICE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** The mailbox/registry
 is shared by Windows, Linux, and macOS; Linux X11 now has its own native master.
 Android does not compile it; Android's
@@ -11051,7 +11051,7 @@ Unix-only X11 connection and private notification window per worker generation. 
 checks XFixes negotiation and the registered CLIPBOARD subscription before reporting
 success. The event loop handles only its exact selection/window, keeps the subscription
 registered once, does not sleep after queued events, and checks shutdown before every
-event so traffic cannot structurally starve cancellation. Native failures return to the
+event, giving shutdown priority at that boundary. Native failures return to the
 owner for terminal publication. Joined worker retirement closes the connection and its
 server-owned window/subscription; no idle process-global getter or detached setter is
 created by this X11 path. The existing 500ms empty-queue wait is unchanged. The necessary
@@ -11059,19 +11059,32 @@ direct `x11rb-listener` binding uses already-root-locked x11rb 0.13.1; the optio
 API keeps its distinct 0.12 types, with no new external package/version or cache mutation.
 Windows/macOS and the existing Wayland implementation are unchanged by this X11 correction.
 **Wayland's inherited fallback/lifetime limitations remain OPEN; X11 evidence does not
-close them.** Native I/O/startup deadlines, constant-traffic
-shutdown, concurrent admission/error/replacement, and sustained resource/latency evidence
+close them.** Native I/O/startup deadlines, arbitrary-traffic shutdown bounds,
+concurrent admission/error/replacement, and sustained resource/latency evidence
 also remain OPEN. This clipboard correction is not Android/Windows display-delay causation.
+
+Four native cycles now retire subscribers while an independent, checked X11 selection-change
+producer remains live. Both subscribers receive actual callbacks; retiring the first preserves
+the remaining callback/worker, and exact last retirement joins in **160/146/31/139µs**.
+The producer's acknowledged count advances after each join, before it is stopped and joined.
+Server QueryTree returns to the exact window baseline, and sampled task/descriptor counts
+return first to the live-producer baseline and then to the original baseline. Each producer
+has a 1,048,576-request cap and a 64-request batch; it does not sleep. Only the fixture's
+redundant observer is disabled, not the production subscription; the production queue is
+not drained by the fixture. This establishes the four measured busy-retirement scenarios,
+not a nonempty queue at every instant, a universal traffic-rate bound, heap/native-queue
+memory limits, exhaustive scheduling/races, or sustained performance. No production code
+changed for this additional evidence.
 
 **Focused Linux component acceptance:**
 `scripts/smoke-verifier-vm-authority.sh --x11-display-tests --clipboard-listener` passed
-with explicit outer status 0 in **65 seconds** on source
-`1d2c71e5bc2ee3c375a3b9007c8288e1feecb98f`, tree
-`f6f903a401354a84db340a2c978bcf877b8244b0`. It compiles the complete production listener
+with explicit outer status 0 in **68 seconds** on source
+`289dbc3a59f1dad784ed1a5905a7c015b68ced32`, tree
+`a93b0c9daa3e5d295143866e0324cda2b90c253e`. It compiles the complete production listener
 and actual local-display selector with pinned Rust 1.75 and real root-lock dependencies,
-then executes six production state tests and five native cases in source-bound processes:
+then executes six production state tests and six native cases in source-bound processes:
 retired startup observer, failed startup/clean retry, actual worker-creation refusal/recovery,
-joined native error retirement, and four warm restarts. The historical fixture uses the
+four busy-retirement cycles, joined native error retirement, and four warm restarts. The historical fixture uses the
 exact pinned former native master and error callback, not a historical whole app. It
 reproduces the second-start callback timeout
 under the unchanged three-second bound and retains a live worker after native server loss;
@@ -11082,9 +11095,11 @@ Measured current callbacks were 500ms on all four cycles; error retirement refus
 subscriptions and restored threads 2→2 and descriptors 5→5, with a 500ms terminal interval.
 These are component samples, not exact descriptor-identity, whole-app latency or soak proof.
 
-Retained raw `.harness-state/verifier-vm/x11-display-tests-run.Da1KAijNYJ.serial.log` is
-79,701 bytes, SHA-256 `f90c339fb831f6d821c21d98073f3b87e2e840f167480205aec6ab7c9e33e3ee`;
-exact artifacts and scope are in `evidence/clipboard-thread-start-run.Da1KAijNYJ.outer.receipt`.
+Retained raw `.harness-state/verifier-vm/x11-display-tests-run.XkhqfPojD8.serial.log` is
+78,019 bytes, SHA-256 `d9d497f3d1dd5a3a29eb94ae6f2b2d73b3cd2c97f4980210819d5147ab745735`;
+exact artifacts, cycle counts and scope are in
+`evidence/clipboard-busy-retirement-run.XkhqfPojD8.outer.receipt`. Prior thread-creation
+acceptance remains retained in `evidence/clipboard-thread-start-run.Da1KAijNYJ.outer.receipt`.
 All 77 selected dependency records matched the root lock; 86 pinned package byte closures
 passed before and after execution. Source/input/image and outer postconditions passed,
 with no endpoint addition in before/during/after host snapshots and no owner inventory.

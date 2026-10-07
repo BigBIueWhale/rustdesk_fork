@@ -1,5 +1,5 @@
 use hbb_common::libc;
-use std::ffi::{c_int, CString};
+use hbb_common::platform::x11_display::unix_display_name;
 use std::rc::Rc;
 
 use super::ffi::*;
@@ -18,7 +18,7 @@ impl Server {
     }
 
     pub fn default() -> Result<Rc<Server>, Error> {
-        let display = unix_display_name()?;
+        let display = unix_display_name().map_err(|_| Error::InvalidDisplay)?;
         unsafe {
             let mut screenp = 0;
             let raw = xcb_connect(display.as_ptr(), &mut screenp);
@@ -54,28 +54,6 @@ impl Server {
     pub fn get_shm_status(&self) -> Result<(), Error> {
         unsafe { check_x11_shm_available(self.raw) }
     }
-}
-
-fn unix_display_name() -> Result<CString, Error> {
-    fn number(field: &str) -> Result<c_int, Error> {
-        if field.is_empty() || !field.bytes().all(|byte| byte.is_ascii_digit()) {
-            return Err(Error::InvalidDisplay);
-        }
-        field.parse().map_err(|_| Error::InvalidDisplay)
-    }
-    let value = std::env::var("DISPLAY").map_err(|_| Error::InvalidDisplay)?;
-    let value = value.strip_prefix(':').ok_or(Error::InvalidDisplay)?;
-    let mut fields = value.split('.');
-    let display = number(fields.next().ok_or(Error::InvalidDisplay)?)?;
-    let screen = match (fields.next(), fields.next()) {
-        (None, None) => 0,
-        (Some(screen), None) => number(screen)?,
-        _ => return Err(Error::InvalidDisplay),
-    };
-    // Preserve native authentication, but never retry localhost TCP after a
-    // missing/refused Unix socket or accept a caller-selected transport.
-    CString::new(format!("unix/:{display}.{screen}"))
-        .map_err(|_| Error::InvalidDisplay)
 }
 
 unsafe fn check_x11_shm_available(c: *mut xcb_connection_t) -> Result<(), Error> {

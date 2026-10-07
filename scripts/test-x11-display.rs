@@ -3,6 +3,10 @@
 #![allow(dead_code)]
 
 extern crate self as hbb_common;
+mod platform {
+    #[path = "/work/libs/hbb_common/src/platform/x11_display.rs"]
+    pub mod x11_display;
+}
 
 use std::{cell::RefCell, io};
 #[cfg(corrected)]

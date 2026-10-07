@@ -283,6 +283,18 @@ route refusal is not installed-session/principal or universal-deadline proof.
 
 ### Linux cursor/focus — native thread-owned X11/XDO retirement; integration OPEN
 
+The platform cursor/position constructors now live in
+`src/platform/linux/x11_context.rs` and return explicit errors. They open only
+the validated local Unix selector from the shared standard-library-only
+`libs/hbb_common/src/platform/x11_display.rs`; focus and capture use that same
+parser instead of duplicate copies. Native authentication and paired destruction
+remain intact. The former null-argument Xlib/XDO calls could reach libxcb's
+implicit localhost TCP fallback. Actual constructor/selector/native-screen and
+old-call-shape route tests in the existing isolated lane are PENDING.
+This does not close native constructor bounds, protected-loader/full-app or
+session/principal proof, the separate Enigo/rdev routes, startup/retry behavior,
+heap/resources/soak/performance or reported Android/Windows causation.
+
 `src/platform/linux.rs` previously stored cursor X11 and XDO contexts as raw
 thread-local pointers without native destruction. Its cursor/position/focus consumers
 run on real service/input threads; this is a thread-exit ownership defect, not proof

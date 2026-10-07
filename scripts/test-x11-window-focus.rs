@@ -1,4 +1,9 @@
 //! Complete production focus module, real XCB replies and independent Xlib errors.
+extern crate self as hbb_common;
+mod platform {
+    #[path = "/work/libs/hbb_common/src/platform/x11_display.rs"]
+    pub mod x11_display;
+}
 #[path = "/work/src/platform/linux/native_context.rs"]
 mod native_context;
 #[path = "/work/src/platform/linux/window_focus.rs"]

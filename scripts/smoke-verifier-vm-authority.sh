@@ -1119,6 +1119,9 @@ android_frame_input_inventory() {
             "$SCRIPT_DIR/test-x11-focus-lifecycle.rs"
             "$SCRIPT_DIR/fixtures/x11-window-focus-before-deadline.rs"
             "$REPO_ROOT/src/platform/linux.rs" "$REPO_ROOT/src/platform/linux/native_context.rs"
+            "$REPO_ROOT/src/platform/linux/x11_context.rs"
+            "$REPO_ROOT/libs/hbb_common/src/platform/mod.rs"
+            "$REPO_ROOT/libs/hbb_common/src/platform/x11_display.rs"
             "$REPO_ROOT/src/platform/linux/window_focus.rs"
             "$REPO_ROOT/src/platform/linux/window_focus_deadline.rs"
             "$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
@@ -3394,6 +3397,9 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/scripts/fixtures/x11-window-focus-before-deadline.rs=$SCRIPT_DIR/fixtures/x11-window-focus-before-deadline.rs"
             "repo/src/platform/linux.rs=$REPO_ROOT/src/platform/linux.rs"
             "repo/src/platform/linux/native_context.rs=$REPO_ROOT/src/platform/linux/native_context.rs"
+            "repo/src/platform/linux/x11_context.rs=$REPO_ROOT/src/platform/linux/x11_context.rs"
+            "repo/libs/hbb_common/src/platform/mod.rs=$REPO_ROOT/libs/hbb_common/src/platform/mod.rs"
+            "repo/libs/hbb_common/src/platform/x11_display.rs=$REPO_ROOT/libs/hbb_common/src/platform/x11_display.rs"
             "repo/src/platform/linux/window_focus.rs=$REPO_ROOT/src/platform/linux/window_focus.rs"
             "repo/src/platform/linux/window_focus_deadline.rs=$REPO_ROOT/src/platform/linux/window_focus_deadline.rs"
             "repo/scripts/fixtures/x11-display-iter-before.rs=$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
@@ -4092,6 +4098,9 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
+        'X11_PLATFORM_ROUTE_NATIVE=pass source=production-constructors old=null-call-shape callers=xlib,xdo old_accepts=2 current_accepts=0 listener=container-loopback-only peer=closed children=joined scope=platform-constructors' \
+        'production platform X11/XDO constructors cannot silently select localhost TCP'
+    require_exact_fixed_receipt \
         'X11_CAPTURE_ROUTE_NATIVE=pass old=tcp-fallback current=unix-only old_accepts=1 current_accepts=0 listener=container-loopback-only peer=closed children=joined scope=capture-constructor' \
         'production local capture constructor cannot silently select localhost TCP'
     require_exact_fixed_receipt \
@@ -4107,7 +4116,7 @@ elif [ "$MODE" = x11-display-tests ]; then
         'X11_FOCUS_NATIVE=pass source=production-module old=unrelated-error-swallowed cases=12 repeats=16 geometry=server-real destroy_after_geometry=16 unrelated_errors=16 setup_faults=7 selectors_refused=18 canonical=normalized screen=selected constructors_refused=16 thread_exits=16 allocations=paired descriptors=retired deadline_workers=constant-and-joined handler=unchanged scope=focus-component' \
         'production request-scoped XCB focus with real window lifetime and unrelated Xlib error delivery'
     require_exact_fixed_receipt \
-        'X11_THREAD_CONTEXT_NATIVE=pass source=production-owner old=retained-after-thread-exit old_threads=8 corrected_threads=32 unwind_threads=16 contexts=64 constructor_refusals=32 callbacks=paired descriptors=retired scope=native-owner' \
+        'X11_THREAD_CONTEXT_NATIVE=pass source=production-owner-and-constructors old=retained-after-thread-exit old_threads=8 corrected_threads=32 unwind_threads=16 contexts=70 constructor_refusals=32 selectors_refused=18 canonical_screens=3 callbacks=paired descriptors=retired scope=native-owner' \
         'production native owner thread-exit/unwind retirement with real X11/XDO contexts'
     require_exact_fixed_receipt \
         'X11_SHM_STATUS_NATIVE=pass request_fault=oversized-query-version server_error=BadLength callers=direct,public repeats=16 cases=32 queries=3 replies=2 protocol_errors=1 recovery=same-connection capture=fresh allocations=retired segments=retired' \

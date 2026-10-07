@@ -1,5 +1,6 @@
 use super::native_context::NativeContext;
-use std::{ffi::{c_char, c_int, c_void, CString}, io, os::fd::BorrowedFd,
+use hbb_common::platform::x11_display::unix_display_name;
+use std::{ffi::{c_char, c_int, c_void}, io, os::fd::BorrowedFd,
           ptr::{self, NonNull}, time::Duration};
 #[path = "window_focus_deadline.rs"]
 mod deadline;
@@ -52,7 +53,7 @@ struct FocusConnection {
 
 impl FocusConnection {
     fn connect() -> Result<Self, FocusError> {
-        let display = unix_display_name()?;
+        let display = unix_display_name().map_err(|_| FocusError::InvalidDisplay)?;
         unsafe {
             let mut screen = 0;
             let connection = NativeContext::from_raw(xcb_connect(display.as_ptr(), &mut screen),
@@ -180,28 +181,6 @@ impl FocusConnection {
         }
         reply.ok_or(FocusError::MissingReply)
     }
-}
-
-fn unix_display_name() -> Result<CString, FocusError> {
-    fn number(field: &str) -> Result<c_int, FocusError> {
-        if field.is_empty() || !field.bytes().all(|byte| byte.is_ascii_digit()) {
-            return Err(FocusError::InvalidDisplay);
-        }
-        field.parse().map_err(|_| FocusError::InvalidDisplay)
-    }
-    let value = std::env::var("DISPLAY").map_err(|_| FocusError::InvalidDisplay)?;
-    let value = value.strip_prefix(':').ok_or(FocusError::InvalidDisplay)?;
-    let mut fields = value.split('.');
-    let display = number(fields.next().ok_or(FocusError::InvalidDisplay)?)?;
-    let screen = match (fields.next(), fields.next()) {
-        (None, None) => 0,
-        (Some(screen), None) => number(screen)?,
-        _ => return Err(FocusError::InvalidDisplay),
-    };
-    // Explicit Unix transport prevents libxcb's implicit localhost TCP retry
-    // after a missing/refused local socket. Native Xauthority handling is retained.
-    CString::new(format!("unix/:{display}.{screen}"))
-        .map_err(|_| FocusError::InvalidDisplay)
 }
 
 struct Reply<T>(NonNull<T>);

@@ -1,6 +1,7 @@
 use super::{CursorData, ResultType};
 mod native_context;
 mod window_focus;
+mod x11_context;
 use native_context::NativeContext;
 use desktop::Desktop;
 pub use hbb_common::platform::linux::*;
@@ -125,28 +126,20 @@ fn get_active_user_id_name_from_cache() -> Option<(String, String)> {
 
 thread_local! {
     static WINDOW_FOCUS: RefCell<window_focus::WindowFocus> = RefCell::new(Default::default());
-    static XDO: RefCell<Option<NativeContext<xdo_t>>> = RefCell::new(unsafe {
-        let xdo = libxdo_sys::xdo_new(std::ptr::null());
-        if xdo.is_null() {
-            log::warn!("Failed to create xdo context, xdo functions will be disabled");
-        } else {
-            log::info!("xdo context created successfully");
+    static XDO: RefCell<Option<NativeContext<xdo_t>>> = RefCell::new(match x11_context::open_xdo() {
+        Ok(context) => Some(context),
+        Err(error) => {
+            log::warn!("Failed to create local xdo context: {error}");
+            None
         }
-        NativeContext::from_raw(xdo, |context| libxdo_sys::xdo_free(context))
     });
-    static DISPLAY: RefCell<Option<NativeContext<c_void>>> = RefCell::new(unsafe {
-        NativeContext::from_raw(XOpenDisplay(std::ptr::null()), |display| {
-            // XCloseDisplay retires the connection/storage and returns zero,
-            // not an operation status. Native fatal errors keep their disposition.
-            XCloseDisplay(display);
-        })
+    static DISPLAY: RefCell<Option<NativeContext<c_void>>> = RefCell::new(match x11_context::open_display() {
+        Ok(context) => Some(context),
+        Err(error) => {
+            log::warn!("Failed to open local X11 display: {error}");
+            None
+        }
     });
-}
-
-#[link(name = "X11")]
-extern "C" {
-    fn XOpenDisplay(display_name: *const c_char) -> *mut c_void;
-    fn XCloseDisplay(d: *mut c_void) -> c_int;
 }
 
 #[link(name = "Xfixes")]

@@ -23,21 +23,25 @@ def thread_contexts(root, environment):
     fixture = root / "scripts/test-x11-thread-context.rs"
     binary = Path("/build/thread-contexts")
     subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2021", str(fixture),
-                    "-o", str(binary)], env=environment, check=True, timeout=30)
+                    "-o", str(binary), "-C", "link-arg=-Wl,--wrap=XCloseDisplay",
+                    "-C", "link-arg=-Wl,--wrap=xdo_free"], env=environment, check=True, timeout=30)
     print("X11_THREAD_CONTEXT_BUILD "
           f"owner_sha256={hashlib.sha256(owner.read_bytes()).hexdigest()} "
           f"fixture_sha256={hashlib.sha256(fixture.read_bytes()).hexdigest()} "
+          f"constructors_sha256={hashlib.sha256((root / 'src/platform/linux/x11_context.rs').read_bytes()).hexdigest()} "
+          f"selector_sha256={hashlib.sha256((root / 'libs/hbb_common/src/platform/x11_display.rs').read_bytes()).hexdigest()} "
           f"consumer_sha256={hashlib.sha256((root / 'src/platform/linux.rs').read_bytes()).hexdigest()} "
           f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()} "
           "scope=production-owner whole_app=unexecuted loader=direct-native-test", flush=True)
     result = subprocess.run([str(binary)], env=environment, capture_output=True,
                             text=True, timeout=15)
-    receipt = ("X11_THREAD_CONTEXT_NATIVE=pass source=production-owner old=retained-after-thread-exit "
-               "old_threads=8 corrected_threads=32 unwind_threads=16 contexts=64 "
-               "constructor_refusals=32 callbacks=paired descriptors=retired scope=native-owner")
+    receipt = ("X11_THREAD_CONTEXT_NATIVE=pass source=production-owner-and-constructors old=retained-after-thread-exit "
+               "old_threads=8 corrected_threads=32 unwind_threads=16 contexts=70 "
+               "constructor_refusals=32 selectors_refused=18 canonical_screens=3 "
+               "callbacks=paired descriptors=retired scope=native-owner")
     lines = result.stdout.splitlines()
     # The pinned libxdo reports each deliberate failed constructor on stderr.
-    refusals = "Error: Can't open display: :97\n" * 16
+    refusals = "Error: Can't open display: unix/:97.0\n" * 16
     require(result.returncode == 0 and result.stderr == refusals
             and len(result.stdout) + len(result.stderr) <= 4096
             and len(lines) == 3 and lines[-1] == receipt,
@@ -48,6 +52,16 @@ def thread_contexts(root, environment):
                 "native context library identity differs")
         print(f"{line} sha256={hashlib.sha256(Path(library).read_bytes()).hexdigest()}", flush=True)
     print(receipt, flush=True)
+    require(not Path("/tmp/.X11-unix/X95").exists(), "platform route's Unix display is present")
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as route_listener:
+        route_listener.bind(("127.0.0.1", 6095))
+        route_listener.listen(1)
+        for component in ("xlib", "xdo"):
+            for variant in ("historical", "corrected"):
+                local_route(binary, variant, environment, route_listener, component)
+    print("X11_PLATFORM_ROUTE_NATIVE=pass source=production-constructors old=null-call-shape "
+          "callers=xlib,xdo old_accepts=2 current_accepts=0 listener=container-loopback-only "
+          "peer=closed children=joined scope=platform-constructors", flush=True)
     binary.unlink()
 
 
@@ -224,9 +238,10 @@ class FragmentedReply:
 def local_route(binary, variant, environment, listener, component):
     # This listener exists only on the network-none container's private loopback.
     # Acceptance observes the actual native connector's route, not a mock login.
-    require(component in ("focus", "capture"), "unknown route-fixture component")
+    require(component in ("focus", "capture", "xlib", "xdo"), "unknown route-fixture component")
     prefix = f"X11_{component.upper()}_ROUTE"
-    scenario = "route" if component == "focus" else "server-route"
+    scenario = ("route" if component == "focus" else "server-route" if component == "capture"
+                else f"route-{component}-{variant}")
     native = subprocess.Popen([str(binary), scenario], env=environment,
                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
@@ -238,7 +253,11 @@ def local_route(binary, variant, environment, listener, component):
             # Closing the exact accepted peer releases native setup without
             # sending an X11 reply or accepting application/session authority.
         output, errors = native.communicate(timeout=5)
-        require(native.returncode == 0 and not errors and len(output) <= 4096
+        expected_errors = b""
+        if component == "xdo":
+            name = "(null)" if variant == "historical" else "unix/:95.0"
+            expected_errors = f"Error: Can't open display: {name}\n".encode("ascii")
+        require(native.returncode == 0 and errors == expected_errors and len(output) <= 4096
                 and output.decode("ascii").splitlines() == [
                     f"{prefix}_CHILD variant={variant} result=refused descriptors=retired threads=retired"],
                 f"native route completion differs: stdout={output!r} stderr={errors!r}")

@@ -297,7 +297,7 @@ explicit, and a failed transport is retired before a later retry. Screen-relativ
 coordinates include nesting/borders and display matching uses non-overflowing sums.
 There is no Xlib handler swap, shared error flag or XDO geometry fallback.
 
-At `93ff3efd`, each established focus connection owns one retained deadline worker
+Each established focus connection owns one retained deadline worker
 and an owned duplicate of its socket. A single 100 ms monotonic observation budget
 initiates read-side socket shutdown, waking the native reader/read-write wait
 without changing process signal policy. Deadline, transport failure and missing
@@ -305,9 +305,24 @@ completion retire the connection and pending requests after the call drains; the
 worker joins before native disconnect. Healthy queries reuse the same worker.
 There is no polling fallback, detached retry, new dependency or authority change.
 
-`--x11-display-tests` passed at `1a52f94a` (unchanged production focus source;
-outer exit 0, 62 VM seconds):
+The constructor accepts only local `:<display>[.<screen>]` values within the
+native signed-integer range and explicitly selects `unix/` transport. Native
+[libxcb 1.15's connector](https://github.com/gitlab-freedesktop-mirrors/libxcb/blob/libxcb-1.15/src/xcb_util.c)
+otherwise retries localhost TCP after a missing/refused Unix socket for a plain
+local display. The focus path no longer permits that route or a hostname/path/
+protocol override. Native Xauthority handling remains intact; no display is
+invented after refusal. This does not alter the separate capture/Xlib/XDO paths.
 
+`--x11-display-tests` passed at `7f5e80ee` (outer exit 0, 59 VM seconds):
+
+- The exact historical complete module made one actual TCP connection when
+  its local Unix display was absent. The current module refused with no TCP
+  connection. A retained `127.0.0.1:6097` listener existed only inside the
+  network-none guest container; the accepted old peer was closed without an
+  X11 response or session grant. Both children and the listener retired.
+- Eighteen malformed/remote/oversized/missing/non-UTF8 display selectors were
+  refused with no descriptor/thread growth. Leading-zero display/screen names
+  normalized correctly; actual Xvfb screen 1 was selected instead of screen 0.
 - A guest Unix-only relay forwarded a real Xvfb property-reply header and held
   its last four bytes. The exact previous `1f4a01b3` polling module stayed blocked
   throughout a 300 ms hold and returned only after release, at 301 ms. This
@@ -333,9 +348,9 @@ outer exit 0, 62 VM seconds):
   three production byte-cache tests passed. Complete focus components compiled
   and ran, not the parent Cargo application or installed service.
 
-Retained `.harness-state/verifier-vm/x11-display-tests-run.aymDWEYgCi.serial.log`
-(87,888 bytes; SHA-256 `d01f8a9ff7970e099d16872874b60add7af057d9d9704d85ce3ba12a5c0adf1b`)
-and `evidence/x11-focus-backpressure-run.aymDWEYgCi.outer.receipt` bind exact
+Retained `.harness-state/verifier-vm/x11-display-tests-run.vjvfQZWqod.serial.log`
+(90,553 bytes; SHA-256 `0a3b211a397285407e901091398a76cc66792e58c50456a38d808c280cda524a`)
+and `evidence/x11-focus-local-route-run.vjvfQZWqod.outer.receipt` bind exact
 source/artifacts/libraries, scope and finality. These are assistant-observed,
 not independent attestation. No added host endpoint; readonly inputs unchanged;
 exact runtime owners joined and owned disk/media/run root retired. Existing
@@ -343,9 +358,11 @@ zero-NIC VM/guest-only unprivileged-container limits and isolation are unchanged
 Earlier request-error and idle-wait evidence remains in the `iTMfrCqrEQ` and
 `Rdx1CAaq9i` serials/receipts and Git history; the latter never proved a partial-
 packet deadline and is superseded for current cancellation behavior. The prior
-`TQnOjS8dmj` cancellation receipt lacked the now-executed write-pressure case.
+`TQnOjS8dmj` cancellation receipt lacked the write-pressure case, and the
+`aymDWEYgCi` receipt predates the local-route correction.
 
 **OPEN:** whole-app/service integration, native constructor/timer-startup bounds,
+fresh connected Unix peer/session binding, native authenticated-Xauthority cases,
 shutdown/worker-creation failure, query unwind, broader write-pressure/late-
 completion/cancellation races, heap/resource/performance/
 soak, current platform artifacts and reported Android/Windows delay causation.
@@ -358,15 +375,8 @@ and adds bounded no-reply traffic to that connection before retiring it. It is
 controlled native fault injection, not a production traffic/throughput schedule
 or evidence for capture's separate XCB connection and native constructor paths.
 
-Constructor review also found that native libxcb can retry localhost TCP after
-a missing/refused Unix socket for a plain local display. The focus constructor
-now validates only local `:<display>[.<screen>]` values, normalizes them within
-the native signed-integer range and explicitly selects `unix/` transport. It
-preserves native Xauthority handling; it does not invent a display or switch
-transport after refusal. Source/missing/non-UTF8 selector tests and a real
-guest-container-loopback old/current route-observation fixture are PENDING.
-No host port is published or bound by that fixture. Constructor deadlines and
-the separate capture/Xlib/XDO connector paths remain OPEN.
+Constructor deadlines and the separate capture/Xlib/XDO connector paths remain
+OPEN; a focus-component route refusal is not installed-session/principal proof.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

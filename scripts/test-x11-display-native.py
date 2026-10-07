@@ -141,10 +141,19 @@ def thread_contexts(root, environment, checksum, library):
     cursor = Path("/build/x11-cursor-position.rs")
     with cursor.open("x") as output:
         output.write(source[source.index(start):source.index(end)])
+    bounds_source = root / "src/platform/mod.rs"
+    bounds_text = bounds_source.read_text()
+    start, end = "pub(crate) const MAX_CURSOR_RGBA_BYTES:", "#[cfg(all(test, not(any(target_os"
+    require(bounds_text.count(start) == 1 and bounds_text.count(end) == 1,
+            "production cursor bound extraction boundaries differ")
+    bounds = Path("/build/x11-cursor-bounds.rs")
+    with bounds.open("x") as output:
+        output.write(bounds_text[bounds_text.index(start):bounds_text.index(end)])
     subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2021", str(fixture),
                     "-o", str(binary), "--extern", f"log={library}",
                     "-C", "link-arg=-Wl,--wrap=XCloseDisplay", "-C", "link-arg=-Wl,--wrap=XOpenDisplay",
-                    "-C", "link-arg=-Wl,--wrap=xdo_free", "-C", "link-arg=-Wl,--wrap=xdo_new"],
+                    "-C", "link-arg=-Wl,--wrap=xdo_free", "-C", "link-arg=-Wl,--wrap=xdo_new",
+                    "-C", "link-arg=-Wl,--wrap=XFixesGetCursorImage", "-C", "link-arg=-Wl,--wrap=XFree"],
                    env=environment, check=True, timeout=30)
     print("X11_THREAD_CONTEXT_BUILD "
           f"owner_sha256={hashlib.sha256(owner.read_bytes()).hexdigest()} "
@@ -153,6 +162,9 @@ def thread_contexts(root, environment, checksum, library):
           f"selector_sha256={hashlib.sha256((root / 'libs/hbb_common/src/platform/x11_display.rs').read_bytes()).hexdigest()} "
           f"consumer_sha256={hashlib.sha256((root / 'src/platform/linux.rs').read_bytes()).hexdigest()} "
           f"cursor_declarations_sha256={hashlib.sha256(cursor.read_bytes()).hexdigest()} "
+          f"cursor_snapshot_sha256={hashlib.sha256((root / 'src/platform/linux/x11_cursor.rs').read_bytes()).hexdigest()} "
+          f"cursor_bounds_source_sha256={hashlib.sha256(bounds_source.read_bytes()).hexdigest()} "
+          f"cursor_bounds_declarations_sha256={hashlib.sha256(bounds.read_bytes()).hexdigest()} "
           f"log_manifest_sha256={hashlib.sha256(checksum.read_bytes()).hexdigest()} "
           f"log_library_sha256={hashlib.sha256(library.read_bytes()).hexdigest()} "
           f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()} "
@@ -198,8 +210,25 @@ def thread_contexts(root, environment, checksum, library):
             and result.stdout.splitlines() == [receipt],
             f"native concurrent thread-context result differs: {result}")
     print(receipt, flush=True)
+    result = subprocess.run([str(binary), "cursor-snapshots"], env=environment,
+                            capture_output=True, text=True, timeout=5)
+    receipt = ("X11_CURSOR_SNAPSHOT_NATIVE=pass source=complete-module old=two-query-call-shape "
+               "serial_mismatches=32 current_snapshots=64 changes_between_phases=32 pixels=server-real "
+               "second_query=absent query_calls=169 images=169 frees=169 live_image_peak=1 "
+               "replacements=16 wrong_serial=refused repeated_consume=refused retained_thread_exits=8 "
+               "display_owners=9 descriptors=retired threads=joined scope=native-cursor-snapshot")
+    lines = result.stdout.splitlines()
+    require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 4096
+            and len(lines) == 2 and lines[1] == receipt,
+            f"native cursor snapshot result differs: {result}")
+    path = lines[0].removeprefix("X11_CURSOR_LOADED library=")
+    require(re.fullmatch(r"/usr/lib/x86_64-linux-gnu/libXfixes\.so\.[0-9.]+", path),
+            "native cursor library identity differs")
+    print(f"{lines[0]} sha256={hashlib.sha256(Path(path).read_bytes()).hexdigest()}", flush=True)
+    print(receipt, flush=True)
     binary.unlink()
     cursor.unlink()
+    bounds.unlink()
 
 
 def startup_retry(root, binary, environment):
@@ -207,11 +236,6 @@ def startup_retry(root, binary, environment):
     require(hashlib.sha256(snapshot.read_bytes()).hexdigest() ==
             "3b58902c6ee90116375b77b461b642937e1f7a78dbf7ee6778fb64d4b771749c",
             "exact historical 7519afaf platform X11/XDO initializers differ")
-    consumer = (root / "src/platform/linux.rs").read_text()
-    require(consumer.count("x11_context::with_xdo(") == 2
-            and consumer.count("x11_context::with_display(") == 2
-            and not re.search(r"\bstatic\s+(?:DISPLAY|XDO)\b|x11_context::open_(?:display|xdo)\(", consumer),
-            "platform cursor consumers bypass thread-owned startup retry")
     print(f"X11_STARTUP_BASELINE source=7519afaf initializers_sha256="
           f"{hashlib.sha256(snapshot.read_bytes()).hexdigest()} scope=exact-tls-declarations", flush=True)
     with open("/tmp/x11-startup-retry-xvfb.log", "xb") as log:

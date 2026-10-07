@@ -4,15 +4,18 @@ extern crate self as libxdo_sys;
 mod platform {
     #[path = "/work/libs/hbb_common/src/platform/x11_display.rs"]
     pub mod x11_display;
+    include!("/build/x11-cursor-bounds.rs");
 }
 use std::{cell::RefCell, collections::BTreeSet, ffi::{c_char, c_int, c_ulong, c_void}, io::Read, ptr,
-          sync::{Arc, Barrier, atomic::{AtomicUsize, Ordering}}, thread, time::{Duration, Instant}};
+          sync::{Arc, Barrier, Mutex, atomic::{AtomicUsize, Ordering}}, thread, time::{Duration, Instant}};
 
 #[path = "/work/src/platform/linux/native_context.rs"]
 mod native_context;
 use native_context::NativeContext;
 #[path = "/work/src/platform/linux/x11_context.rs"]
 mod x11_context;
+#[path = "/work/src/platform/linux/x11_cursor.rs"]
+mod x11_cursor;
 
 #[repr(C)]
 #[allow(non_camel_case_types)]
@@ -285,12 +288,178 @@ fn concurrent_contexts() {
     println!("X11_CONCURRENT_CONTEXTS_NATIVE=pass source=complete-context-module native_init=ready-at-main fixture_init=none workers=8 simultaneous_contexts=16 unique_owners=16 reuses_per_owner=64 queries=1024 server=real callbacks=paired live_resources=observed descriptors=retired threads=joined scope=pinned-native-runtime");
 }
 
+#[repr(C)]
+struct XColor { pixel: c_ulong, red: u16, green: u16, blue: u16, flags: c_char, pad: c_char }
+#[repr(C)]
+struct CursorImagePrefix { position: [i16; 2], size: [u16; 2], hotspot: [u16; 2], serial: c_ulong }
+#[link(name = "X11")]
+extern "C" {
+    fn XDefaultRootWindow(display: *mut c_void) -> c_ulong;
+    fn XCreateBitmapFromData(display: *mut c_void, drawable: c_ulong, data: *const c_char,
+                             width: u32, height: u32) -> c_ulong;
+    fn XCreatePixmapCursor(display: *mut c_void, source: c_ulong, mask: c_ulong,
+                          foreground: *mut XColor, background: *mut XColor, x: u32, y: u32) -> c_ulong;
+    fn XDefineCursor(display: *mut c_void, window: c_ulong, cursor: c_ulong) -> c_int;
+    fn XUndefineCursor(display: *mut c_void, window: c_ulong) -> c_int;
+    fn XFreePixmap(display: *mut c_void, pixmap: c_ulong) -> c_int;
+    fn XFreeCursor(display: *mut c_void, cursor: c_ulong) -> c_int;
+    fn XWarpPointer(display: *mut c_void, source: c_ulong, destination: c_ulong,
+                    source_x: c_int, source_y: c_int, width: u32, height: u32, x: c_int, y: c_int) -> c_int;
+    fn XSync(display: *mut c_void, discard: c_int) -> c_int;
+    fn XFree(pointer: *mut c_void) -> c_int;
+    fn __real_XFree(pointer: *mut c_void) -> c_int;
+}
+#[link(name = "Xfixes")]
+extern "C" {
+    fn XFixesGetCursorImage(display: *mut c_void) -> *mut c_void;
+    fn __real_XFixesGetCursorImage(display: *mut c_void) -> *mut c_void;
+}
+static CURSOR_QUERIES: AtomicUsize = AtomicUsize::new(0);
+static CURSOR_FREES: AtomicUsize = AtomicUsize::new(0);
+static CURSOR_IMAGES: Mutex<BTreeSet<usize>> = Mutex::new(BTreeSet::new());
+#[no_mangle]
+unsafe extern "C" fn __wrap_XFixesGetCursorImage(display: *mut c_void) -> *mut c_void {
+    CURSOR_QUERIES.fetch_add(1, Ordering::SeqCst);
+    let image = __real_XFixesGetCursorImage(display);
+    assert!(!image.is_null());
+    let mut live = CURSOR_IMAGES.lock().unwrap();
+    assert!(live.is_empty(), "more than one native image retained by the fixture worker");
+    assert!(live.insert(image as usize));
+    image
+}
+#[no_mangle]
+unsafe extern "C" fn __wrap_XFree(pointer: *mut c_void) -> c_int {
+    assert!(CURSOR_IMAGES.lock().unwrap().remove(&(pointer as usize)), "image retired twice or unowned");
+    let status = __real_XFree(pointer);
+    CURSOR_FREES.fetch_add(1, Ordering::SeqCst);
+    status
+}
+
+struct FixtureCursors { display: *mut c_void, root: c_ulong, cursors: [c_ulong; 2] }
+impl FixtureCursors {
+    fn new() -> Self {
+        x11_context::with_display(|context| unsafe {
+            let display = context.as_ptr();
+            let root = XDefaultRootWindow(display);
+            let source = XCreateBitmapFromData(display, root, [1_u8, 2].as_ptr().cast(), 2, 2);
+            let mask = XCreateBitmapFromData(display, root, [3_u8, 3].as_ptr().cast(), 2, 2);
+            assert!(source != 0 && mask != 0);
+            let color = |red, green, blue| XColor { pixel: 0, red, green, blue, flags: 0, pad: 0 };
+            let a = XCreatePixmapCursor(display, source, mask, &mut color(65535, 0, 0),
+                                        &mut color(0, 0, 65535), 0, 0);
+            let b = XCreatePixmapCursor(display, source, mask, &mut color(0, 65535, 0),
+                                        &mut color(65535, 65535, 65535), 1, 1);
+            assert!(a != 0 && b != 0 && a != b);
+            XFreePixmap(display, source);
+            XFreePixmap(display, mask);
+            XWarpPointer(display, 0, root, 0, 0, 0, 0, 10, 10);
+            XSync(display, 0);
+            Self { display, root, cursors: [a, b] }
+        }).unwrap().unwrap()
+    }
+    fn select(&self, index: usize) {
+        unsafe { XDefineCursor(self.display, self.root, self.cursors[index]); XSync(self.display, 0); }
+    }
+    // Observe the historical two-query native call shape, not a full old app.
+    fn queried_serial(&self) -> u64 {
+        unsafe {
+            let image = XFixesGetCursorImage(self.display);
+            let serial = (*(image.cast::<CursorImagePrefix>())).serial as u64;
+            XFree(image);
+            serial
+        }
+    }
+}
+impl Drop for FixtureCursors {
+    fn drop(&mut self) {
+        unsafe {
+            XUndefineCursor(self.display, self.root);
+            for cursor in self.cursors { XFreeCursor(self.display, cursor); }
+            XSync(self.display, 0);
+        }
+    }
+}
+
+fn cursor_snapshots() {
+    let baseline = descriptors();
+    let tasks = std::fs::read_dir("/proc/self/task").unwrap().count();
+    thread::spawn(move || {
+        let cursors = FixtureCursors::new();
+        let check = |data: x11_cursor::CursorSnapshot, index| {
+            assert_eq!((data.width, data.height), (2, 2));
+            assert_eq!((data.hotx, data.hoty), if index == 0 { (0, 0) } else { (1, 1) });
+            let foreground = if index == 0 { [255, 0, 0, 255] } else { [0, 255, 0, 255] };
+            let background = if index == 0 { [0, 0, 255, 255] } else { [255, 255, 255, 255] };
+            assert_eq!(data.colors, [foreground, background, background, foreground].concat());
+        };
+        for _ in 0..32 {
+            cursors.select(0);
+            let old = cursors.queried_serial();
+            cursors.select(1);
+            assert_ne!(cursors.queried_serial(), old, "two real queries did not observe a changed serial");
+            cursors.select(0);
+            let serial = x11_cursor::capture_serial().unwrap().unwrap();
+            assert_eq!(CURSOR_IMAGES.lock().unwrap().len(), 1);
+            let queries = CURSOR_QUERIES.load(Ordering::SeqCst);
+            cursors.select(1);
+            let image = x11_cursor::take_data(serial).unwrap();
+            assert_eq!(image.id, serial);
+            check(image, 0); // Pixels belong to the captured old serial, not the new cursor.
+            assert_eq!(CURSOR_QUERIES.load(Ordering::SeqCst), queries, "pixel read made a second native query");
+            let next = x11_cursor::capture_serial().unwrap().unwrap();
+            assert_ne!(next, serial);
+            check(x11_cursor::take_data(next).unwrap(), 1);
+            assert_eq!(x11_cursor::take_data(next).err().unwrap().kind(), std::io::ErrorKind::NotFound);
+            assert!(CURSOR_IMAGES.lock().unwrap().is_empty());
+            assert_eq!(descriptors(), baseline + 1);
+        }
+        for _ in 0..16 {
+            let first = x11_cursor::capture_serial().unwrap().unwrap();
+            let next = x11_cursor::capture_serial().unwrap().unwrap();
+            assert_eq!(first, next);
+            assert_eq!(CURSOR_IMAGES.lock().unwrap().len(), 1);
+            check(x11_cursor::take_data(next).unwrap(), 1);
+        }
+        let serial = x11_cursor::capture_serial().unwrap().unwrap();
+        assert_eq!(x11_cursor::take_data(serial.checked_add(1).unwrap()).err().unwrap().kind(),
+                   std::io::ErrorKind::InvalidInput);
+        assert!(CURSOR_IMAGES.lock().unwrap().is_empty());
+    }).join().unwrap();
+    assert_eq!(descriptors(), baseline);
+    for _ in 0..8 {
+        thread::spawn(|| {
+            let cursors = FixtureCursors::new();
+            cursors.select(0);
+            assert!(x11_cursor::capture_serial().unwrap().is_some());
+            assert_eq!(CURSOR_IMAGES.lock().unwrap().len(), 1);
+            // Leave this captured image unconsumed until exact TLS retirement.
+        }).join().unwrap();
+        assert!(CURSOR_IMAGES.lock().unwrap().is_empty());
+        assert_eq!(descriptors(), baseline);
+    }
+    assert_eq!(CURSOR_QUERIES.load(Ordering::SeqCst), 169);
+    assert_eq!(CURSOR_FREES.load(Ordering::SeqCst), 169);
+    assert_eq!((DISPLAY_OPENS.load(Ordering::SeqCst), XDO_OPENS.load(Ordering::SeqCst)), (9, 0));
+    assert_eq!(retirements(), (9, 0));
+    assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), tasks);
+    let libraries: BTreeSet<_> = std::fs::read_to_string("/proc/self/maps").unwrap().lines()
+        .filter_map(|line| line.split_whitespace().last()).filter(|name| name.contains("/libXfixes.so."))
+        .map(str::to_owned).collect();
+    assert_eq!(libraries.len(), 1);
+    println!("X11_CURSOR_LOADED library={}", libraries.iter().next().unwrap());
+    println!("X11_CURSOR_SNAPSHOT_NATIVE=pass source=complete-module old=two-query-call-shape serial_mismatches=32 current_snapshots=64 changes_between_phases=32 pixels=server-real second_query=absent query_calls=169 images=169 frees=169 live_image_peak=1 replacements=16 wrong_serial=refused repeated_consume=refused retained_thread_exits=8 display_owners=9 descriptors=retired threads=joined scope=native-cursor-snapshot");
+}
+
 fn main() {
     // libX11 1.8+ normally initializes threading in its ELF constructor.
     // Fail instead of hiding a missing initialization behind a fixture call.
     assert!(unsafe { !_Xglobal_lock.is_null() && _XInitDisplayLock_fn.is_some() },
             "pinned Xlib threading is not initialized at fixture main entry");
     if let Some(scenario) = std::env::args().nth(1) {
+        if scenario == "cursor-snapshots" {
+            cursor_snapshots();
+            return;
+        }
         if scenario == "concurrent-contexts" {
             concurrent_contexts();
             return;

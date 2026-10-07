@@ -2,6 +2,7 @@ use super::{CursorData, ResultType};
 mod native_context;
 mod window_focus;
 mod x11_context;
+mod x11_cursor;
 use desktop::Desktop;
 pub use hbb_common::platform::linux::*;
 use hbb_common::{
@@ -127,26 +128,6 @@ thread_local! {
     static WINDOW_FOCUS: RefCell<window_focus::WindowFocus> = RefCell::new(Default::default());
 }
 
-#[link(name = "Xfixes")]
-extern "C" {
-    // fn XFixesQueryExtension(dpy: *mut c_void, event: *mut c_int, error: *mut c_int) -> c_int;
-    fn XFixesGetCursorImage(dpy: *mut c_void) -> *const xcb_xfixes_get_cursor_image;
-    fn XFree(data: *mut c_void);
-}
-
-// /usr/include/X11/extensions/Xfixes.h
-#[repr(C)]
-pub struct xcb_xfixes_get_cursor_image {
-    pub x: i16,
-    pub y: i16,
-    pub width: u16,
-    pub height: u16,
-    pub xhot: u16,
-    pub yhot: u16,
-    pub cursor_serial: c_long,
-    pub pixels: *const c_long,
-}
-
 #[inline]
 pub fn is_headless_allowed() -> bool {
     Config::get_option(OPTION_ALLOW_LINUX_HEADLESS) == "Y"
@@ -258,70 +239,20 @@ pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
 }
 
 pub fn get_cursor() -> ResultType<Option<u64>> {
-    Ok(x11_context::with_display(|display| unsafe {
-        let img = XFixesGetCursorImage(display.as_ptr());
-        if img.is_null() {
-            None
-        } else {
-            let serial = (*img).cursor_serial as u64;
-            XFree(img as _);
-            Some(serial)
-        }
-    })?.flatten())
+    Ok(x11_cursor::capture_serial()?)
 }
 
 pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
-    let mut res = None;
-    let _ = x11_context::with_display(|d| {
-        unsafe {
-            let img = XFixesGetCursorImage(d.as_ptr());
-            if !img.is_null() && hcursor == (*img).cursor_serial as u64 {
-                let mut cd: CursorData = Default::default();
-                cd.hotx = (*img).xhot as _;
-                cd.hoty = (*img).yhot as _;
-                cd.width = (*img).width as _;
-                cd.height = (*img).height as _;
-                let Some(rgba_len) = super::cursor_rgba_len(cd.width, cd.height) else {
-                    XFree(img as _);
-                    return;
-                };
-                if (*img).pixels.is_null() {
-                    XFree(img as _);
-                    return;
-                }
-                cd.id = (*img).cursor_serial as _;
-                let pixels = std::slice::from_raw_parts((*img).pixels, rgba_len / 4);
-                let mut cd_colors = vec![0_u8; rgba_len];
-                for y in 0..cd.height {
-                    for x in 0..cd.width {
-                        let pos = (y * cd.width + x) as usize;
-                        let p = pixels[pos];
-                        let a = (p >> 24) & 0xff;
-                        let r = (p >> 16) & 0xff;
-                        let g = (p >> 8) & 0xff;
-                        let b = (p >> 0) & 0xff;
-                        if a == 0 {
-                            continue;
-                        }
-                        let pos = pos * 4;
-                        cd_colors[pos] = r as _;
-                        cd_colors[pos + 1] = g as _;
-                        cd_colors[pos + 2] = b as _;
-                        cd_colors[pos + 3] = a as _;
-                    }
-                }
-                cd.colors = cd_colors.into();
-                res = Some(cd);
-            }
-            if !img.is_null() {
-                XFree(img as _);
-            }
-        }
-    })?;
-    match res {
-        Some(x) => Ok(x),
-        _ => bail!("Failed to get cursor image of {}", hcursor),
-    }
+    let image = x11_cursor::take_data(hcursor)?;
+    Ok(CursorData {
+        id: image.id,
+        hotx: image.hotx,
+        hoty: image.hoty,
+        width: image.width,
+        height: image.height,
+        colors: image.colors.into(),
+        ..Default::default()
+    })
 }
 
 fn select_service_child_terminal_type(has_xterm_256color: bool) -> &'static str {

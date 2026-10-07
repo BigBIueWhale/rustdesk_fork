@@ -32,6 +32,11 @@ case "$#:${8:-}" in
     8:--android-frame-tests|8:--x11-display-tests)
         MODE=${8#--}
         ;;
+    9:--x11-display-tests)
+        [ "${9}" = --clipboard-listener ] || exit 2
+        MODE=x11-display-tests
+        X11_CLIPBOARD_ONLY=1
+        ;;
     10:--linux-flutter-engine-prepare|10:--linux-flutter-engine-build)
         MODE=${8#--}
         ENGINE_PREPARE_COMMIT=${9}
@@ -936,6 +941,10 @@ run_android_frame_tests() {
         native_script=test-x11-display-native.py
         native_receipt='X11_DISPLAY_NATIVE=pass source=production-component xcb=real old=refused screens=2 repeat=32 drop=exact query_error=explicit public_callers=executed allocator_reuse=unclaimed network=none uid=4000 cleanup=joined'
     fi
+    if [ "${X11_CLIPBOARD_ONLY:-0}" -eq 1 ]; then
+        native_script=test-native-clipboard-listener.py
+        native_receipt='CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=pinned callbacks=actual old=retained current=joined late_admission=refused startup_observer=retired tests=8 network=none cleanup=joined'
+    fi
     local -a mounts command
     load_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -968,10 +977,14 @@ run_android_frame_tests() {
             )
             command=(/bin/bash /work/scripts/smoke-xvfb-prepare.sh)
         else
+            local build_size=16m
+            if [ "${X11_CLIPBOARD_ONLY:-0}" -eq 1 ]; then
+                build_size=512m
+            fi
             mounts+=(
                 --mount "type=bind,src=$work/xvfb-root,dst=/xvfb-root,readonly,bind-recursive=disabled"
                 --mount "type=bind,src=$work/xvfb-root/usr/bin/xkbcomp,dst=/usr/bin/xkbcomp,readonly"
-                --tmpfs /build:rw,exec,nosuid,nodev,size=16m,mode=700,uid=4000,gid=4000
+                --tmpfs "/build:rw,exec,nosuid,nodev,size=$build_size,mode=700,uid=4000,gid=4000"
             )
             command=(/usr/bin/python3 -B -I -S "/work/scripts/$native_script")
         fi
@@ -998,7 +1011,7 @@ run_android_frame_tests() {
         if [ "$phase" = native ]; then
             [ "$(grep -Fxc "$native_receipt" "$output")" -eq 1 ] \
                 || fail 'Android native frame-test result is absent or duplicated'
-            if [ "$MODE" = x11-display-tests ]; then
+            if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ]; then
                 [ "$(grep -Fxc 'X11_LAYOUT_NATIVE=pass xvfb_depths=24,16 stride_16_odd=1284 pixels=actual capture=production-shm public=production-buffer network=none uid=4000 cleanup=joined' "$output")" -eq 1 ] \
                     || fail 'X11 capture-layout native result is absent or duplicated'
             fi
@@ -1007,7 +1020,9 @@ run_android_frame_tests() {
         CONTAINER_ID=
     done
     stop_docker_authority
-    if [ "$MODE" = x11-display-tests ]; then
+    if [ "${X11_CLIPBOARD_ONLY:-0}" -eq 1 ]; then
+        printf 'CLIPBOARD_LISTENER_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
+    elif [ "$MODE" = x11-display-tests ]; then
         printf 'X11_DISPLAY_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
     else
         printf 'ANDROID_FRAME_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'

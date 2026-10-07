@@ -10989,7 +10989,7 @@ as do current artifacts, performance/soak, independent reproduction, and externa
 
 ### R-S11hb/R-S11e-240 — exact bounded native clipboard-listener ownership (2026-08-20)
 
-**SOURCE IMPLEMENTED; FOUR EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED;
+**SOURCE IMPLEMENTED; SIX EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED;
 SOURCE/MUTATION THEATER DELETED; EXACT CURRENT NATIVE, DEVICE, PERFORMANCE,
 ARTIFACT, AND RELEASE EVIDENCE OPEN.** This is the shared native clipboard-master
 path compiled on Windows, Linux, and macOS. Android does not compile it; Android's
@@ -11013,6 +11013,26 @@ joins the sole listener thread. Viewer and controlled scopes retain the exact ow
 retry, reconnect, timer, poller, additional worker/thread/runtime/listener, payload queue,
 dependency, privilege transition, service restart, port, alternate clipboard path, or
 Android service change was introduced.
+
+Native failure is terminal for the master as well as its consumers: the callback
+returns `StopWithError` rather than continuing into a broken native loop. Terminal
+publication and new subscriber admission share the registry lock; a stopped master
+cannot admit a silent new subscriber. The registry remains closed until exact last
+retirement joins the master. A worker-exit guard also publishes terminal state on
+unwind. A retired startup observer releases the master before its returned shutdown
+handle, avoiding a zero-capacity shutdown send to a receiver that has not begun
+running. Two additional production regressions cover terminal native errors and
+worker-exit publication. These are source/state corrections, not display-symptom
+causation.
+
+The focused command `scripts/smoke-verifier-vm-authority.sh --x11-display-tests
+--clipboard-listener` is authored but **not yet accepted**. It builds the complete
+production listener module against the exact pinned `clipboard-master`, runs actual
+XFixes changes and private Unix-only Xvfb retirement, compares the inherited error
+callback against the correction, and checks startup-observer retirement, terminal
+admission refusal and joined resources. Its 300-second zero-NIC VM budget and
+nonroot/capability-free/networkless container leave host and Haggai services outside
+the test. Native Windows/macOS and whole-app evidence remain OPEN.
 
 Four deterministic Rust tests exercise 1,024 changes collapsing to one delivery, terminal
 error superseding pending readiness, receiver retirement refusing later admission, and a

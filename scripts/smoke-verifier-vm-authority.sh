@@ -18,6 +18,7 @@ MODE=authority-smoke
 BASE_READONLY_TEST=0
 FLUTTER_TEST_PROFILE=models
 APPLE_CURSOR_ONLY=0
+X11_CLIPBOARD_ONLY=0
 LIFECYCLE_ARTIFACT=
 LIFECYCLE_ARTIFACT_SHA256=
 LIFECYCLE_COMMIT=
@@ -138,6 +139,13 @@ case "$#:${1:-}" in
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Android frame-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=${1#--}
+        ;;
+    2:--x11-display-tests)
+        [ "$2" = --clipboard-listener ] \
+            && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'clipboard-listener shard or input/run authority differs' >&2; exit 2; }
+        MODE=x11-display-tests
+        X11_CLIPBOARD_ONLY=1
         ;;
     1:--android-peer-build)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -535,7 +543,11 @@ elif [ "$MODE" = fixed-archive-tests ]; then
     readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
 elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
-    readonly VM_TIMEOUT_SECONDS=240
+    if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
+        readonly VM_TIMEOUT_SECONDS=300
+    else
+        readonly VM_TIMEOUT_SECONDS=240
+    fi
     readonly OVERLAY_SIZE=12G
     readonly VM_MEMORY=4096
 elif [ "$MODE" = linux-flutter-engine-prepare ]; then
@@ -1162,6 +1174,20 @@ android_frame_input_inventory() {
             "$REPO_ROOT/libs/scrap/src/common/frame_compare.rs")
         verify_sha256 "$CARGO_VENDOR_ROOT/log-0.4.22/.cargo-checksum.json" \
             eface4bae11ea2b6ba81ed2b07f0705d076456e4a61e2ca7409bb5649ce0c894
+    fi
+    if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
+        files+=("$SCRIPT_DIR/test-native-clipboard-listener.py" "$SCRIPT_DIR/test-native-clipboard-listener.rs"
+            "$SCRIPT_DIR/fixtures/clipboard-error-before-stop.rs" "$SCRIPT_DIR/clipboard-listener-inputs.txt"
+            "$REPO_ROOT/src/clipboard.rs" "$REPO_ROOT/Cargo.lock")
+        local package expected extra_field
+        while read -r package expected extra_field; do
+            [[ "$package" == \#* ]] && continue
+            [[ "$package" =~ ^[A-Za-z0-9._-]+$ ]] && [[ "$expected" =~ ^[0-9a-f]{64}$ ]] \
+                && [ -z "$extra_field" ] || fail 'clipboard dependency record differs'
+            file="$CARGO_VENDOR_ROOT/$package/.cargo-checksum.json"
+            verify_sha256 "$file" "$expected"
+            files+=("$file")
+        done <"$SCRIPT_DIR/clipboard-listener-inputs.txt"
     fi
     while IFS=$'\t' read -r name size digest url extra; do
         [ -n "$name" ] || continue
@@ -3460,6 +3486,20 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/libs/scrap/src/common/frame_compare.rs=$REPO_ROOT/libs/scrap/src/common/frame_compare.rs"
         )
     fi
+    if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
+        lifecycle_payload_grafts+=(
+            "repo/scripts/test-native-clipboard-listener.py=$SCRIPT_DIR/test-native-clipboard-listener.py"
+            "repo/scripts/test-native-clipboard-listener.rs=$SCRIPT_DIR/test-native-clipboard-listener.rs"
+            "repo/scripts/fixtures/clipboard-error-before-stop.rs=$SCRIPT_DIR/fixtures/clipboard-error-before-stop.rs"
+            "repo/scripts/clipboard-listener-inputs.txt=$SCRIPT_DIR/clipboard-listener-inputs.txt"
+            "repo/src/clipboard.rs=$REPO_ROOT/src/clipboard.rs"
+            "repo/Cargo.lock=$REPO_ROOT/Cargo.lock"
+        )
+        while read -r package expected extra_field; do
+            [[ "$package" == \#* ]] && continue
+            lifecycle_payload_grafts+=("repo/clipboard-vendor/$package=$CARGO_VENDOR_ROOT/$package")
+        done <"$SCRIPT_DIR/clipboard-listener-inputs.txt"
+    fi
 elif [ "$MODE" = cm-file-replay ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=(
@@ -3613,6 +3653,9 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     guest_invocation+=' --linux-flutter-artifact-tests'
 elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     guest_invocation+=" --$MODE"
+    if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
+        guest_invocation+=' --clipboard-listener'
+    fi
 elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = cpace-recovery-tests ]; then
@@ -4146,6 +4189,14 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     require_exact_fixed_receipt "$linux_flutter_vm_receipt" 'Linux app-capsule source/finality result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux app-capsule cloud-init completion'
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
+elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
+    require_exact_fixed_receipt \
+        'CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=pinned callbacks=actual old=retained current=joined late_admission=refused startup_observer=retired tests=8 network=none cleanup=joined' \
+        'native clipboard component old/current worker retirement, terminal admission and startup observer regression'
+    require_exact_fixed_receipt \
+        'CLIPBOARD_LISTENER_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
+        'clipboard listener guest finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'clipboard listener completion'
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
         'MACOS_CURSOR_SNAPSHOT_STATE=pass source=complete-module tests=5 zero_seed=accepted failed_capture=not-memoized stale_image=absent same_seed=reused publication_retry=captured-image unwind=empty reset=idempotent worker=joined scope=portable-cache-state macOS_native=false' \
@@ -5361,8 +5412,13 @@ elif [ "$MODE" = fixed-archive-tests ]; then
     printf 'FIXED_ARCHIVE_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = x11-display-tests ]; then
-    printf 'X11_DISPLAY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-native-owner-and-capture-components full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
-        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+    if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
+        printf 'CLIPBOARD_LISTENER_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=linux-clipboard-component full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+    else
+        printf 'X11_DISPLAY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-native-owner-and-capture-components full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+    fi
 elif [ "$MODE" = android-frame-tests ]; then
     printf 'ANDROID_FRAME_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"

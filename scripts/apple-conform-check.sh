@@ -117,6 +117,11 @@ if [ "$APPLE_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
   exit 0
 fi
 
+apple_check_stage() {
+  printf 'APPLE_CHECK_LEAF_STAGE=%s cursor_only=%s\n' "$1" "$APPLE_CURSOR_ONLY"
+}
+
+apple_check_stage preflight
 # shellcheck source=scripts/verify-scan.sh
 source "$SCRIPT_DIR/verify-scan.sh"
 verify_scan_preflight
@@ -325,6 +330,7 @@ done
 [ "$(sha256sum online/cargo-vendor-config.toml | awk '{print $1}')" = "$SHA256_CARGO_VENDOR_CONFIG" ] \
   || die "Cargo vendor source map differs from its reviewed pin"
 
+apple_check_stage image-provenance
 IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$APPLE_RUNTIME_IMAGE_ID")" \
   || die "immutable Apple-check image is not present locally"
 [ "$IMAGE_ID" = "$APPLE_RUNTIME_IMAGE_ID" ] \
@@ -378,11 +384,13 @@ readonly APPLE_VENDOR="$APPLE_VENDOR_PARENT/subtree"
 readonly APPLE_TARGET="$APPLE_CHECK_TMP/target"
 readonly APPLE_CARGO_CONFIG="$APPLE_CHECK_TMP/cargo-config.toml"
 install -d -m 0700 "$APPLE_SOURCE" "$APPLE_TARGET"
+apple_check_stage source-snapshot
 archive_current_source >"$APPLE_SOURCE_ARCHIVE"
 SOURCE_DIGEST="$(sha256sum "$APPLE_SOURCE_ARCHIVE" | awk '{print $1}')"
 readonly SOURCE_DIGEST
 tar --extract --file="$APPLE_SOURCE_ARCHIVE" --directory="$APPLE_SOURCE" --no-same-owner
 chmod -R a-w "$APPLE_SOURCE"
+apple_check_stage vendor-snapshot
 /usr/bin/python3 scripts/online-input-provenance.py snapshot-subtree-create \
   --source online/cargo-vendor \
   --destination "$APPLE_VENDOR_PARENT" \
@@ -401,6 +409,7 @@ chmod 0400 "$APPLE_CARGO_CONFIG"
 
 readonly IMAGE_PREFLIGHT_OUT="$APPLE_CHECK_TMP/image-preflight.out"
 readonly IMAGE_PREFLIGHT_ERR="$APPLE_CHECK_TMP/image-preflight.err"
+apple_check_stage toolchain-preflight
 set +e
 verifier_vm_docker run --rm --pull=never --network=none --read-only \
   --user "$BUILD_UID:$BUILD_GID" \
@@ -527,10 +536,12 @@ if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
     --env PATH="$APPLE_CHECK_PATH" --env SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"
     --workdir /tmp)
   echo '== focused macOS cursor component compilation =='
+  apple_check_stage cursor-compiler
   "${CURSOR_CHECK[@]}" "$IMAGE_ID" /bin/bash --noprofile --norc -euo pipefail -c '
     mkdir -p "$HOME" "$CARGO_HOME"
     python3 -I -S /work/scripts/check-macos-cursor-component.py
   '
+  apple_check_stage postconditions
   verify_apple_postconditions
   echo '== apple-cursor-compile PASS =='
   exit 0

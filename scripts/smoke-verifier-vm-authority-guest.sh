@@ -1591,6 +1591,7 @@ run_apple_conform() {
     local image_before load_output entry_output architecture_output conform_status=0
     local expected_entry="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root"
     local -a image_spec
+    local -a conform_statuses
     local -a conform_arguments=()
     if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
         conform_arguments=(--cursor-compile)
@@ -1812,9 +1813,16 @@ run_apple_conform() {
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
         /bin/bash "$source_root/scripts/apple-conform-check.sh" "${conform_arguments[@]}" \
-        >"$output" 2>&1
-    conform_status=$?
+        2>&1 | (
+            set +o posix
+            ulimit -f 6144 || exit 1
+            exec /usr/bin/tee -- "$output"
+        )
+    conform_statuses=("${PIPESTATUS[@]}")
     set -e
+    [ "${#conform_statuses[@]}" -eq 2 ] && [ "${conform_statuses[1]}" -eq 0 ] \
+        || fail 'Apple-conformance live output capture failed'
+    conform_status=${conform_statuses[0]}
     printf 'APPLE_CHECK_STAGE=workload-finished cursor_only=%s status=%s\n' \
         "$APPLE_CURSOR_ONLY" "$conform_status"
     [ "$(stat -c '%s' -- "$output")" -le 6291456 ] \
@@ -1874,7 +1882,6 @@ run_apple_conform() {
     SEALED_INPUTS_MOUNTED=0
     printf '%s\n' "$load_output"
     printf '%s\n' "$architecture_output"
-    cat "$output"
     if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
         printf 'APPLE_CURSOR_COMPILE_VM=pass commit=%s tree=%s targets=2 image=%s runtime=%s vendor=%s uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=component-compile-not-native cleanup=joined\n' \
             "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \

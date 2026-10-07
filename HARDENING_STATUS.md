@@ -423,20 +423,28 @@ checks are locked/offline. Successful compiler completion and nonempty component
 metadata are required; there is no C/Objective-C shim or SDK-error pass. This is
 an extracted-component check, not complete parent/root-Cargo, linking, AppKit
 runtime, installed service, signed artifact or native macOS acceptance.
-The attempt at `9283ec422aa9aa6fded35077a7ae26b00477fc89` reached its
-300-second VM limit (owner status 124, outer exit 1) without a compiler verdict;
-the post-startup workload phase is unobserved. This path is not yet an accepted
-fast inner loop. Current guest stage output names actual admission, input-copy,
-image-load and workload boundaries; that observability correction is unexecuted.
-Raw `apple-conform-run.rRgDNm59Fb.serial.log` (55,365 bytes; SHA-256
-`2966d51af18c408a860537e3201a732b82943f585faf52fb21f7cb378383518b`)
-and nonindependent `evidence/macos-cursor-compile-run.rRgDNm59Fb.outer.receipt`
-(SHA-256 `be92128163edeb2ccefc9ac3c95224761d0c57b967e23a6d3f0401769a9cb37f`)
-under `.harness-state/verifier-vm/` retain the failed attempt only. Endpoint-only
-before/during and supplementary post inventories agree, but guest/input
-postconditions did not complete. Disk/media and the exact 34 MiB terminal run
-root are retired after evidence retention. No unchanged replay or longer timeout
-is accepted as the fix for this verification gap.
+Attempts at `9283ec422aa9aa6fded35077a7ae26b00477fc89` and
+`d93edcf0e7eaad0718c45797105590f1d09e41d0` each reached the 300-second VM
+limit (owner status 124, outer exit 1) without a compiler verdict. The latter's
+live guest stages observed source admission at 7.89 seconds, vendor copying
+at 12.88, image loading at 52.92 and workload entry at 73.41. The stall is
+inside the leaf workload; its exact phase is still unobserved, not proved to
+be the compiler or vendor-copy durability work. This is not an accepted fast
+inner loop. The leaf now names its preflight, image/source/vendor/toolchain,
+compiler and postcondition stages. Its output is streamed while captured;
+the capture process has a 6 MiB file limit and both pipeline exits are checked.
+There is no second successful-output replay. This correction is unexecuted.
+The two raw serials and nonindependent failed-only outer receipts for
+`run.rRgDNm59Fb` and `run.kc7siJbvdY` are retained under
+`.harness-state/verifier-vm/` and its `evidence/` directory. The latter raw
+serial is 55,559 bytes/SHA-256
+`fe98bc3824cb8979def6d0bae0eda05d4bc82ad6a8a4fa80cd82aaec87fe15d5`;
+its outer receipt SHA-256 is
+`34df7b6a19cf44ddfc00d47fd640cb25525e449fcb6914f654cd8d264af03e31`.
+Endpoint-only before/during and supplementary post inventories agree, but
+guest/input postconditions did not complete. Both disks/media and exact
+34 MiB terminal run roots are retired after evidence retention. No unchanged
+replay or longer timeout is accepted as the fix for this verification gap.
 
 **OPEN:** exact parent/Cargo/generated-protobuf/Apple-target compilation;
 AppKit current-system cursor API compatibility, thread/object lifetime and real

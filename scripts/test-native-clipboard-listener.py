@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import selectors
 import shutil
+import struct
 import subprocess
 import time
 import tomllib
@@ -121,7 +122,7 @@ directory = "/work/clipboard-vendor"
         selected = module if variant == "current" else module[:begin] + historical + module[finish:]
         if variant == "historical":
             selected = selected.replace(native_import, b"    use clipboard_master::{Master, Shutdown};")
-        scaffold = (b"extern crate self as hbb_common;\npub use anyhow::{bail, Result as ResultType};\npub use log;\n"
+        scaffold = (b"extern crate self as hbb_common;\npub use anyhow::{bail, Result as ResultType};\npub use log;\npub use libc;\n"
                     b'pub mod platform { pub mod x11_display { include!("/work/libs/hbb_common/src/platform/x11_display.rs"); } }\n') + selected
         scaffold += (f'\n#[cfg(test)] mod native_tests {{\nconst HISTORICAL_CLIPBOARD_ERROR: bool = {str(variant == "historical").lower()};\n'
                      'include!("/work/scripts/test-native-clipboard-listener.rs");\n}\n}\n').encode()
@@ -167,13 +168,30 @@ directory = "/work/clipboard-vendor"
 
 
 def scenario(binary, variant, environment):
-    require(variant in ("historical", "historical-warm", "current", "startup", "startup-failure", "thread-start-failure", "busy-retirement", "startup-deadline", "warm-restart"),
+    require(variant in ("historical", "historical-warm", "current", "startup", "startup-failure", "thread-start-failure", "busy-retirement", "startup-deadline", "authentication", "warm-restart"),
             "unknown native scenario")
     log_path = BUILD / f"{variant}.xvfb.log"
     output = bytearray()
+    server_authority = ["-ac"]
+    if variant == "authentication":
+        def cookie_file(cookie):
+            fields = (b"", b"94", b"MIT-MAGIC-COOKIE-1", cookie)
+            return struct.pack(">H", 65535) + b"".join(struct.pack(">H", len(field)) + field for field in fields)
+        environment = dict(environment)
+        for variable, name, data in (
+            ("XAUTHORITY", "native-good.xauth", cookie_file(bytes.fromhex("0123456789abcdef0123456789abcdef"))),
+            ("CLIPBOARD_TEST_BAD_AUTHORITY", "native-bad.xauth", cookie_file(bytes.fromhex("fedcba9876543210fedcba9876543210"))),
+            ("CLIPBOARD_TEST_EMPTY_AUTHORITY", "native-empty.xauth", b""),
+        ):
+            authority = BUILD / name
+            with authority.open("xb") as file:
+                file.write(data)
+            authority.chmod(0o600)
+            environment[variable] = str(authority)
+        server_authority = ["-auth", environment["XAUTHORITY"]]
     with log_path.open("xb") as log:
         server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":94", "-screen", "0", "640x480x24",
-                                   "-nolisten", "tcp", "-ac", "-noreset"], env=environment,
+                                   "-nolisten", "tcp", "-noreset", *server_authority], env=environment,
                                   stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
         child = None
         try:
@@ -194,6 +212,8 @@ def scenario(binary, variant, environment):
                 arguments.append("native_tests::d_native_busy_retirement")
             elif variant == "startup-deadline":
                 arguments.append("native_tests::e_native_startup_deadline")
+            elif variant == "authentication":
+                arguments.append("native_tests::f_native_cookie_authentication")
             else:
                 arguments.append("native_tests::y_native_x11_warm_restart")
             child = subprocess.Popen(arguments, env=environment, stdin=subprocess.DEVNULL,
@@ -218,7 +238,7 @@ def scenario(binary, variant, environment):
             status = child.wait(timeout=2)
             print(output.decode("utf-8"), end="", flush=True)
             single_pass = status == 0 and re.search(
-                rb"test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out;", output)
+                rb"test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out;", output)
             if variant in ("historical", "current"):
                 require(retired, "fixture did not reach real clipboard callbacks before server retirement")
             if variant == "historical":
@@ -238,7 +258,7 @@ def scenario(binary, variant, environment):
                     "native startup failure did not retire exactly or allow a new working subscription")
             elif variant == "historical-warm":
                 require(not retired and status == 101 and re.search(
-                    rb"test result: FAILED\. 0 passed; 1 failed; 0 ignored; 0 measured; 12 filtered out;", output)
+                    rb"test result: FAILED\. 0 passed; 1 failed; 0 ignored; 0 measured; 13 filtered out;", output)
                     and b"CLIPBOARD_NATIVE_CYCLE cycle=1 stage=subscribe\n" in output
                     and b"actual XFixes callback did not arrive" in output,
                     "historical warm restart did not reproduce the actual callback failure")
@@ -254,6 +274,10 @@ def scenario(binary, variant, environment):
                 require(single_pass and not retired and output.count(
                     b"CLIPBOARD_NATIVE_DEADLINE=pass cases=3 source=production transport=unix budget=one peer=closed startup_worker=joined next_start=working resources=baseline\n") == 1,
                     "native startup deadline did not cancel, join and permit a healthy new generation")
+            elif variant == "authentication":
+                require(single_pass and not retired and output.count(
+                    b"CLIPBOARD_NATIVE_AUTH=pass server=cookie-required valid=3 wrong=refused missing=refused startup_budget=disarmed next_start=working resources=baseline\n") == 1,
+                    "native authentication, healthy lifetime and exact recovery did not pass")
             else:
                 require(single_pass and not retired and output.count(
                     b"CLIPBOARD_NATIVE_WARM=pass callbacks=4 normal_cycles=4 workers=joined\n") == 1,
@@ -290,7 +314,7 @@ def main():
     state_output = command([str(binaries["current"]), "--test-threads=1", "--nocapture", "--color", "never",
                             "clipboard_listener::tests::"], environment, 5)
     print(state_output.decode("utf-8"), end="", flush=True)
-    require(re.search(rb"test result: ok\. 6 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out;", state_output),
+    require(re.search(rb"test result: ok\. 6 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out;", state_output),
             "production clipboard state tests did not all execute")
     print("CLIPBOARD_NATIVE_STATE=pass tests=6", flush=True)
     scenario(binaries["current"], "startup", environment)
@@ -298,6 +322,7 @@ def main():
     scenario(binaries["current"], "thread-start-failure", environment)
     scenario(binaries["current"], "busy-retirement", environment)
     scenario(binaries["current"], "startup-deadline", environment)
+    scenario(binaries["current"], "authentication", environment)
     scenario(binaries["historical"], "historical-warm", environment)
     scenario(binaries["historical"], "historical", environment)
     scenario(binaries["current"], "current", environment)
@@ -306,7 +331,7 @@ def main():
     scenario(binaries["current"], "warm-restart", environment)
     inputs()
     print("CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=owned-x11 callbacks=actual "
-          "old=retained current=joined late_admission=refused startup_observer=retired tests=13 network=none cleanup=joined", flush=True)
+          "old=retained current=joined late_admission=refused startup_observer=retired tests=14 network=none cleanup=joined", flush=True)
 
 
 if __name__ == "__main__":

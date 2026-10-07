@@ -1511,10 +1511,13 @@ pub mod clipboard_listener {
     #[cfg(target_os = "linux")]
     mod linux {
         use super::{CallbackResult, ClipboardHandler};
-        use hbb_common::platform::x11_display::unix_display_name;
+        use hbb_common::{libc, platform::x11_display::unix_display_name};
         use std::{
-            io,
-            sync::mpsc::{self, Receiver, SyncSender},
+            cell::Cell,
+            io::{self, IoSlice},
+            os::{fd::{AsRawFd, FromRawFd}, unix::net::UnixStream},
+            sync::{atomic::{AtomicBool, Ordering}, mpsc::{self, Receiver, SyncSender}, Arc},
+            time::{Duration, Instant},
         };
         use x11rb_listener::{
             connection::Connection,
@@ -1523,7 +1526,9 @@ pub mod clipboard_listener {
                 xproto::{ConnectionExt, CreateWindowAux, WindowClass},
                 Event,
             },
-            rust_connection::RustConnection,
+            reexports::x11rb_protocol::{parse_display::{self, ConnectAddress}, xauth},
+            rust_connection::{DefaultStream, PollMode, RustConnection, Stream},
+            utils::RawFdContainer,
         };
 
         pub enum Master<H> {
@@ -1532,13 +1537,15 @@ pub mod clipboard_listener {
         }
 
         pub enum Shutdown {
-            X11(SyncSender<()>),
+            X11(SyncSender<()>, Arc<AtomicBool>),
             Wayland(clipboard_master::Shutdown),
         }
 
         impl Drop for Shutdown {
             fn drop(&mut self) {
-                if let Self::X11(sender) = self {
+                if let Self::X11(sender, stopped) = self {
+                    // Also cancel native I/O, which may not return to the event loop.
+                    stopped.store(true, Ordering::Release);
                     // A disconnected receiver means the owned worker already retired.
                     match sender.send(()) {
                         Ok(()) | Err(_) => {}
@@ -1554,7 +1561,7 @@ pub mod clipboard_listener {
         }
 
         pub struct X11Master<H> {
-            connection: RustConnection,
+            connection: RustConnection<NativeStream>,
             window: u32,
             selection: u32,
             handler: H,
@@ -1566,6 +1573,125 @@ pub mod clipboard_listener {
             io::Error::new(io::ErrorKind::Other, error)
         }
 
+        struct NativeStream {
+            stream: DefaultStream,
+            startup_deadline: Cell<Option<Instant>>,
+            stopped: Arc<AtomicBool>,
+        }
+
+        impl NativeStream {
+            fn check_live(&self) -> io::Result<()> {
+                if self.stopped.load(Ordering::Acquire) {
+                    return Err(io::Error::new(io::ErrorKind::ConnectionAborted,
+                        "X11 clipboard connection retired"));
+                }
+                if self.startup_deadline.get().is_some_and(|deadline| Instant::now() >= deadline) {
+                    return Err(io::Error::new(io::ErrorKind::TimedOut,
+                        "X11 clipboard startup deadline expired"));
+                }
+                Ok(())
+            }
+        }
+
+        impl Stream for NativeStream {
+            fn poll(&self, mode: PollMode) -> io::Result<()> {
+                let mut events = 0;
+                if mode.readable() { events |= libc::POLLIN; }
+                if mode.writable() { events |= libc::POLLOUT; }
+                let mut socket = libc::pollfd { fd: self.stream.as_raw_fd(), events, revents: 0 };
+                loop {
+                    self.check_live()?;
+                    // Only a blocked native wait polls cancellation. The existing
+                    // event-loop sleep and its immediate shutdown wake are unchanged.
+                    let timeout = self.startup_deadline.get().map(|deadline| {
+                        deadline.saturating_duration_since(Instant::now()).as_millis().clamp(1, 50)
+                    }).unwrap_or(50) as libc::c_int;
+                    let result = unsafe { libc::poll(&mut socket, 1, timeout) };
+                    if result > 0 {
+                        self.check_live()?;
+                        if socket.revents & libc::POLLNVAL != 0 {
+                            return Err(io::Error::new(io::ErrorKind::BrokenPipe,
+                                "X11 clipboard socket is unavailable"));
+                        }
+                        return Ok(());
+                    }
+                    if result < 0 {
+                        let error = io::Error::last_os_error();
+                        if error.kind() != io::ErrorKind::Interrupted { return Err(error); }
+                    }
+                }
+            }
+
+            fn read(&self, buffer: &mut [u8], fds: &mut Vec<RawFdContainer>) -> io::Result<usize> {
+                self.check_live()?;
+                self.stream.read(buffer, fds)
+            }
+
+            fn write(&self, buffer: &[u8], fds: &mut Vec<RawFdContainer>) -> io::Result<usize> {
+                self.check_live()?;
+                self.stream.write(buffer, fds)
+            }
+
+            fn write_vectored(&self, buffers: &[IoSlice<'_>], fds: &mut Vec<RawFdContainer>) -> io::Result<usize> {
+                self.check_live()?;
+                self.stream.write_vectored(buffers, fds)
+            }
+        }
+
+        fn connect_unix(path: &str, abstract_socket: bool) -> io::Result<UnixStream> {
+            let mut address: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+            let start = usize::from(abstract_socket);
+            if path.is_empty() || path.as_bytes().contains(&0) || path.len() + start >= address.sun_path.len() {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid X11 Unix socket path"));
+            }
+            let descriptor = unsafe {
+                libc::socket(libc::AF_UNIX, libc::SOCK_STREAM | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK, 0)
+            };
+            if descriptor < 0 { return Err(io::Error::last_os_error()); }
+            // Own the descriptor before any fallible operation, including connect.
+            let socket = unsafe { UnixStream::from_raw_fd(descriptor) };
+            address.sun_family = libc::AF_UNIX as libc::sa_family_t;
+            unsafe {
+                std::ptr::copy_nonoverlapping(path.as_ptr(),
+                    address.sun_path.as_mut_ptr().add(start).cast::<u8>(), path.len());
+            }
+            let length = (std::mem::size_of::<libc::sa_family_t>() + path.len() + 1) as libc::socklen_t;
+            if unsafe { libc::connect(socket.as_raw_fd(), (&address as *const libc::sockaddr_un).cast(), length) } != 0 {
+                // AF_UNIX nonblocking admission returns EAGAIN if the peer's
+                // backlog is full. Do not wait, retry, or leave a pending socket.
+                return Err(io::Error::last_os_error());
+            }
+            Ok(socket)
+        }
+
+        fn native_connection(display: &str) -> io::Result<(RustConnection<NativeStream>, usize)> {
+            let deadline = Instant::now() + Duration::from_secs(3);
+            let parsed = parse_display::parse_display(Some(display)).map_err(native_error)?;
+            let mut addresses = parsed.connect_instruction();
+            let path = match (addresses.next(), addresses.next()) {
+                (Some(ConnectAddress::Socket(path)), None) => path,
+                _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "X11 clipboard requires one Unix address")),
+            };
+            let socket = match connect_unix(&path, true) {
+                Ok(socket) => socket,
+                Err(error) if matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused) =>
+                    connect_unix(&path, false)?,
+                Err(error) => return Err(error),
+            };
+            let (stream, (family, address)) = DefaultStream::from_unix_stream(socket)?;
+            // Use the native library's exact local-family cookie lookup. An
+            // unreadable/malformed authority file is not unauthenticated retry.
+            let (auth_name, auth_data) = xauth::get_auth(family, &address, parsed.display)
+                .map_err(native_error)?.unwrap_or_default();
+            let stream = NativeStream { stream, startup_deadline: Cell::new(Some(deadline)),
+                stopped: Arc::new(AtomicBool::new(false)) };
+            stream.check_live()?;
+            let screen = usize::from(parsed.screen);
+            let connection = RustConnection::connect_to_stream_with_auth_info(stream, screen, auth_name, auth_data)
+                .map_err(native_error)?;
+            Ok((connection, screen))
+        }
+
         impl<H: ClipboardHandler> Master<H> {
             pub fn new(handler: H) -> io::Result<Self> {
                 if std::env::var_os("WAYLAND_DISPLAY").is_some() {
@@ -1573,7 +1699,7 @@ pub mod clipboard_listener {
                 }
                 let display = unix_display_name()?;
                 let display = display.to_str().map_err(native_error)?;
-                let (connection, screen) = x11rb_listener::connect(Some(display)).map_err(native_error)?;
+                let (connection, screen) = native_connection(display)?;
                 let root = connection.setup().roots.get(screen).ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidData, "X11 clipboard screen is absent")
                 })?.root;
@@ -1593,13 +1719,15 @@ pub mod clipboard_listener {
                         | xfixes::SelectionEventMask::SELECTION_CLIENT_CLOSE
                         | xfixes::SelectionEventMask::SELECTION_WINDOW_DESTROY)
                     .map_err(native_error)?.check().map_err(native_error)?;
+                connection.stream().check_live()?;
+                connection.stream().startup_deadline.set(None);
                 let (sender, receiver) = mpsc::sync_channel(0);
                 Ok(Self::X11(X11Master { connection, window, selection, handler, sender, receiver }))
             }
 
             pub fn shutdown_channel(&self) -> Shutdown {
                 match self {
-                    Self::X11(master) => Shutdown::X11(master.sender.clone()),
+                    Self::X11(master) => Shutdown::X11(master.sender.clone(), Arc::clone(&master.connection.stream().stopped)),
                     Self::Wayland(master) => Shutdown::Wayland(master.shutdown_channel()),
                 }
             }
@@ -1620,7 +1748,9 @@ pub mod clipboard_listener {
                         Ok(()) | Err(mpsc::TryRecvError::Disconnected) => return Ok(()),
                         Err(mpsc::TryRecvError::Empty) => {}
                     }
-                    match self.connection.poll_for_event().map_err(native_error)? {
+                    let event = self.connection.poll_for_event();
+                    if self.connection.stream().stopped.load(Ordering::Acquire) { return Ok(()); }
+                    match event.map_err(native_error)? {
                         Some(Event::XfixesSelectionNotify(event))
                             if event.window == self.window && event.selection == self.selection =>
                         {

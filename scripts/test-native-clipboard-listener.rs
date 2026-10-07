@@ -377,6 +377,43 @@ fn e_native_startup_deadline() {
 }
 
 #[test]
+fn f_native_cookie_authentication() {
+    let correct = std::env::var("XAUTHORITY").unwrap();
+    let (connection, selection, windows) = native_selection_driver();
+    let baseline = resources();
+    let children = root_children(&connection);
+    let (owner, receiver) = subscribe("cookie-authority".to_owned()).unwrap();
+    // The startup budget must be disarmed once registration commits; it is not
+    // a lifetime limit on a healthy native clipboard connection.
+    std::thread::sleep(Duration::from_millis(3200));
+    change_and_observe(&connection, selection, windows, &[&receiver]);
+    drop(receiver);
+    drop(owner);
+    assert_native_window_retired(&connection, &children);
+    assert_resources_retired(baseline);
+    for variable in ["CLIPBOARD_TEST_BAD_AUTHORITY", "CLIPBOARD_TEST_EMPTY_AUTHORITY"] {
+        std::env::set_var("XAUTHORITY", std::env::var(variable).unwrap());
+        let refused = subscribe("cookie-authority".to_owned()).is_err();
+        std::env::set_var("XAUTHORITY", &correct);
+        assert!(refused, "native cookie-authenticated server admitted {variable}");
+        {
+            let listener = CLIPBOARD_LISTENER.lock().unwrap();
+            assert!(listener.handle.is_none());
+            let registry = listener.subscribers.lock().unwrap();
+            assert!(registry.subscribers.is_empty() && registry.terminal.is_none());
+        }
+        assert_resources_retired(baseline);
+        let (owner, receiver) = subscribe("cookie-authority".to_owned()).unwrap();
+        change_and_observe(&connection, selection, windows, &[&receiver]);
+        drop(receiver);
+        drop(owner);
+        assert_native_window_retired(&connection, &children);
+        assert_resources_retired(baseline);
+    }
+    println!("CLIPBOARD_NATIVE_AUTH=pass server=cookie-required valid=3 wrong=refused missing=refused startup_budget=disarmed next_start=working resources=baseline");
+}
+
+#[test]
 fn y_native_x11_warm_restart() {
     let (connection, selection, windows) = native_selection_driver();
     let baseline = resources();

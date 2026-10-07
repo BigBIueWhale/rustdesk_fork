@@ -10989,10 +10989,11 @@ as do current artifacts, performance/soak, independent reproduction, and externa
 
 ### R-S11hb/R-S11e-240 — exact bounded native clipboard-listener ownership (2026-08-20)
 
-**SOURCE IMPLEMENTED; SIX PRODUCTION STATE TESTS AND TWO LINUX LIFETIME SUBTESTS
-PASSED; NATIVE WARM-RESTART REGRESSION FAILS; AGGREGATE ACCEPTANCE, DEVICE,
-PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** This is the shared native clipboard-master
-path compiled on Windows, Linux, and macOS. Android does not compile it; Android's
+**SOURCE IMPLEMENTED; SIX PRODUCTION STATE TESTS AND FOUR LINUX NATIVE LIFETIME
+TESTS PASSED IN A 65-SECOND FOCUSED TRANSACTION; WHOLE-APP, OTHER NATIVE PLATFORMS,
+DEVICE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** The mailbox/registry
+is shared by Windows, Linux, and macOS; Linux X11 now has its own native master.
+Android does not compile it; Android's
 persistent `MainService` and separately owned outgoing clipboard poller are unchanged.
 
 The inherited callback sent one payloadless notification per native change into an
@@ -11010,12 +11011,13 @@ checked monotonic generation; duplicate live names are refused. The retained
 cleanup, startup failures remove the exact insertion and join the startup thread,
 post-start master exit publishes a terminal result, and exact last retirement signals and
 joins the sole listener thread. Viewer and controlled scopes retain the exact owner. No
-retry, reconnect, timer, poller, additional worker/thread/runtime/listener, payload queue,
-dependency, privilege transition, service restart, port, alternate clipboard path, or
+retry, reconnect, timer, additional worker/thread/runtime, payload queue,
+privilege transition, service restart, port, or
 Android service change was introduced.
 
-Native failure is terminal for the master as well as its consumers: the callback
-returns `StopWithError` rather than continuing into a broken native loop. Terminal
+Native failure is terminal for the master as well as its consumers. Backends that
+report errors through the handler receive `StopWithError`; the owned X11 loop returns
+its native error directly. Neither continues into a broken native loop. Terminal
 publication and new subscriber admission share the registry lock; a stopped master
 cannot admit a silent new subscriber. The registry remains closed until exact last
 retirement joins the master. A worker-exit guard also publishes terminal state on
@@ -11025,38 +11027,57 @@ running. Two additional production regressions cover terminal native errors and
 worker-exit publication. These are source/state corrections, not display-symptom
 causation.
 
-The focused command `scripts/smoke-verifier-vm-authority.sh --x11-display-tests
---clipboard-listener` builds the complete production listener module against the exact
-pinned `clipboard-master`. In the named source `7136810fc690bb7643c06153134fce15b84ccb3b`,
-all six production state tests passed, as did startup-observer retirement and the current
-native error-retirement subtest. Two real XFixes callbacks precede retirement of only the
-private Unix-only Xvfb. The inherited callback delivered terminal errors but retained a live
-worker; the correction delivered terminal errors, refused 64 late subscriptions, and joined
-the exact master. Sampled threads fell from 3 to 2 and descriptors from 9 to 8, with a 500ms
-terminal interval. These are Linux component observations, not whole-app or Windows/macOS
-evidence, exact descriptor-identity proof, or sustained resource qualification.
+The former Linux X11 master reused a process-global getter, left its native subscription
+active after worker retirement, re-registered it after each callback, and slept 500ms for
+each discarded old-sequence event. The prior aggregate failed on its second subscription;
+`run.WhiEumO1MM` diagnosed 15 queued old events after exact join. That diagnostic's queue
+drain was not a fix or acceptance scenario and was deleted after retaining its evidence.
 
-**The aggregate FAILED**, outer status 1, in a VM that powered off normally after about
-76 seconds. The separately retained four-cycle native warm-restart test still fails on its
-second subscription under the original three-second callback bound, despite 75 independently
-observed server events. Its failure is not skipped or relaxed. Raw evidence is
-`.harness-state/verifier-vm/x11-display-tests-run.Re6IpZLu6g.serial.log`, SHA-256
-`8a4b3e2c92e33833f7ab7e3af559a3dc702c71a208c0b544b28a78e783f66ae7`; the exact subtest,
-artifact and failed-transaction scope is in the corresponding retained
-`evidence/clipboard-listener-run.Re6IpZLu6g.outer.receipt`. Aggregate post-use checks did not
-complete; no aggregate acceptance receipt was emitted. Its 300-second zero-NIC VM budget
-and nonroot/capability-free/networkless container leave host and Haggai services outside
-the test; endpoint-only before/during/after snapshots recorded no addition.
+The Linux X11 master in `src/clipboard.rs::clipboard_listener::linux` now owns one fresh
+Unix-only X11 connection and private notification window per worker generation. Startup
+checks XFixes negotiation and the registered CLIPBOARD subscription before reporting
+success. The event loop handles only its exact selection/window, keeps the subscription
+registered once, does not sleep after queued events, and checks shutdown before every
+event so traffic cannot structurally starve cancellation. Native failures return to the
+owner for terminal publication. Joined worker retirement closes the connection and its
+server-owned window/subscription; no idle process-global getter or detached setter is
+created by this X11 path. The existing 500ms empty-queue wait is unchanged. The necessary
+direct `x11rb-listener` binding uses already-root-locked x11rb 0.13.1; the optional file-copy
+API keeps its distinct 0.12 types, with no new external package/version or cache mutation.
+Windows/macOS and the existing Wayland implementation are unchanged by this X11 correction.
+**Wayland's inherited fallback/lifetime limitations remain OPEN; X11 evidence does not
+close them.** Thread-creation error handling, native I/O/startup deadlines, constant-traffic
+shutdown, concurrent admission/error/replacement, and sustained resource/latency evidence
+also remain OPEN. This clipboard correction is not Android/Windows display-delay causation.
 
-The pinned Linux master reuses a process-global X11 getter connection and sleeps 500ms
-after each discarded old-sequence event. The separate `run.WhiEumO1MM` diagnostic observed
-15 old XFixes events after exact worker join; a test-only idle queue drain restored a fresh
-callback in 500ms. That intervention is diagnosis, not production acceptance, and was
-deleted from the live fixture after retaining its evidence. Correct event generation,
-subscription readiness, bounded stale-event handling and idle connection ownership remain
-OPEN; merely shortening the poll interval or resetting the process is not a core fix.
-Thread-creation error handling and bounded native startup also remain OPEN. This Linux
-clipboard backlog is not evidence of the reported Android/Windows display-delay cause.
+**Focused Linux component acceptance:**
+`scripts/smoke-verifier-vm-authority.sh --x11-display-tests --clipboard-listener` passed
+with explicit outer status 0 in **65 seconds** on source
+`7b227d4726eed42723e822080c7584b18fb9a2bf`, tree
+`adf3fd8030a11a8e86dbc20e6ae3cc2cc4a688d4`. It compiles the complete production listener
+and actual local-display selector with pinned Rust 1.75 and real root-lock dependencies,
+then executes six production state tests and four native cases in source-bound processes:
+retired startup observer, failed startup/clean retry, joined native error retirement, and
+four warm restarts. The historical fixture uses the exact pinned former native master and
+error callback, not a historical whole app. It reproduces the second-start callback timeout
+under the unchanged three-second bound and retains a live worker after native server loss;
+the current component passes both properties. Warm restarts include 1,000 real idle changes
+after every retirement, one private native window per active master, server QueryTree
+proof of window absence after each join, and thread/descriptor counts equal to baseline.
+Measured current callbacks were 500ms on all four cycles; error retirement refused 64 late
+subscriptions and restored threads 2→2 and descriptors 5→5, with a 510ms terminal interval.
+These are component samples, not exact descriptor-identity, whole-app latency or soak proof.
+
+Retained raw `.harness-state/verifier-vm/x11-display-tests-run.ryK92v7b3D.serial.log` is
+80,921 bytes, SHA-256 `2c61ee95432153e5116ab29305cf5f80e08f7223d3af7197c912c345879ddb58`;
+exact artifacts and scope are in `evidence/clipboard-listener-run.ryK92v7b3D.outer.receipt`.
+All 77 selected dependency records matched the root lock; 86 pinned package byte closures
+passed before and after execution. Source/input/image and outer postconditions passed,
+with no endpoint addition in before/during/after host snapshots and no owner inventory.
+The 300-second zero-NIC VM and nonroot/capability-free/networkless container preserve host
+and Haggai services; guest/container/VM orchestration joined and disk/media/run scratch
+automatically retired. Full parent/root-Cargo feature compilation/linking, installed app,
+Windows/macOS/Wayland behavior, and release acceptance remain OPEN.
 
 Four deterministic Rust tests exercise 1,024 changes collapsing to one delivery, terminal
 error superseding pending readiness, receiver retirement refusing later admission, and a

@@ -32,10 +32,12 @@ def digest(data):
 
 def command(arguments, environment, timeout=90):
     result = subprocess.run(arguments, cwd=BUILD, env=environment,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
-    require(len(result.stdout) <= 2 * 1024 * 1024, "compiler output exceeded its bound")
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+    require(len(result.stdout) + len(result.stderr) <= 2 * 1024 * 1024,
+            "compiler output exceeded its bound")
     if result.returncode != 0:
         print(result.stdout[:32768].decode("utf-8", errors="replace"), flush=True)
+        print(result.stderr[:32768].decode("utf-8", errors="replace"), flush=True)
     require(result.returncode == 0, f"compiler command failed: {arguments[:2]}")
     return result.stdout
 
@@ -131,6 +133,9 @@ directory = "/work/clipboard-vendor"
         print(f"CLIPBOARD_NATIVE_COMPILER variant={variant} bytes={len(output)} "
               f"sha256={digest(output)} dependencies={len(dependencies)}", flush=True)
         messages = [json.loads(line) for line in output.splitlines() if line.startswith(b"{")]
+        for item in messages:
+            if item.get("reason") == "compiler-artifact" and item.get("manifest_path") == str(BUILD / "Cargo.toml"):
+                print("CLIPBOARD_NATIVE_ARTIFACT " + json.dumps(item, sort_keys=True), flush=True)
         artifacts = [Path(item["executable"]) for item in messages if item.get("reason") == "compiler-artifact"
                      and item.get("target", {}).get("name") == PACKAGE.replace("-", "_")
                      and item.get("profile", {}).get("test") is True and item.get("executable")]

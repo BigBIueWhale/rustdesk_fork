@@ -690,7 +690,10 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         (
             '--fixed-archives)\n'
             '            [ "$#" -eq 1 ] || die "--fixed-archives takes no arguments"\n'
-            '            /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-online-fetch-fixed-archive-authority.py" --self-test\n'
+            '            (\n'
+            '                cd "$REPO_ROOT"\n'
+            '                /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-online-fetch-fixed-archive-authority.py" --self-test\n'
+            '            )\n'
             '            stage_fixed_archives\n'
             '            return 0\n'
             '            ;;',

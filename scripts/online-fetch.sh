@@ -8238,7 +8238,10 @@ main() {
     case "${1:-}" in
         --fixed-archives)
             [ "$#" -eq 1 ] || die "--fixed-archives takes no arguments"
-            /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-online-fetch-fixed-archive-authority.py" --self-test
+            (
+                cd "$REPO_ROOT"
+                /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-online-fetch-fixed-archive-authority.py" --self-test
+            )
             stage_fixed_archives
             return 0
             ;;

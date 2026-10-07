@@ -214,9 +214,20 @@ assistant-observed, nonindependent
 Prior diagnostic/failed-run bounded evidence is retained, not replayed as product proof.
 
 **Verification for retirement:** caller/dependency/reference review, `git diff --check`
-and inert Bash syntax checks pass. The pruned native capture transaction is pending;
-even a pass will validate the retained capture harness/component, not compile or
-exercise the changed Enigo/application integration.
+and inert Bash syntax checks pass. At source
+`b24939b1ff034f1a7d308c4cb3c88b3916420021`, tree
+`45d4b3d2c9b60c36d6a4c00181c9b680f591c8d1`, the pruned
+`--x11-display-tests` transaction passed with outer exit 0 in **56 VM seconds**:
+retained production capture/error/reply/layout/kernel-SHM cases and three byte-cache
+tests passed. Host before/during/after endpoint inventories had no additions;
+inputs stayed read-only, all exact runtime owners joined and scratch/media retired.
+Raw `x11-display-tests-run.7U0MoLyQZd.serial.log` is 78,932 bytes, SHA-256
+`1445e042287b74b30286eb493346a45993621c82540d3617a951a5de20b64849`;
+assistant-observed nonindependent `evidence/x11-capture-run.7U0MoLyQZd.outer.receipt`
+is 2,848 bytes, mode 0400, SHA-256
+`f8a1b6683733bd3615da5b68a0352dd6beadbd56a5f3055d00954f36aa7c6479`.
+Both are under `.harness-state/verifier-vm/`. This validates the retained capture
+harness/component, **not** the changed Enigo or whole-application integration.
 
 **OPEN:** whole Cargo-graph and complete canonical offline-closure regeneration;
 actual rdev/XDO input/text/remap/modifier and emission-failure cleanup review and

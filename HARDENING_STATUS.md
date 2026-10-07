@@ -337,6 +337,16 @@ test does not exercise that path. The polling budget is therefore not a complete
 transport bound, nor does it bound `xcb_connect`, native flushing, OS scheduling
 or the whole application. Do not call all request deadlines closed.
 
+The next source correction gives each established focus connection one retained
+deadline worker and an owned duplicate of its socket. One observation arms a
+single monotonic budget; expiration shuts down the exact socket's read side,
+waking the native reader/read-write wait without changing process signal policy.
+The connection and pending requests retire after the call drains, and the worker
+is joined before native disconnect. Healthy queries reuse the worker. A real
+Unix-only relay forwards an actual property-reply header and holds its final
+four bytes; the exact previous polling module is the A/B baseline. Current
+native acceptance, worker-identity reuse and partial-reply recovery are PENDING.
+
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
 PF-1 through PF-5 are closed for desktop port-forward and RDP mappings while the

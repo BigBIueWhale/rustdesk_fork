@@ -1120,6 +1120,7 @@ android_frame_input_inventory() {
             "$SCRIPT_DIR/fixtures/x11-window-focus-before-deadline.rs"
             "$REPO_ROOT/src/platform/linux.rs" "$REPO_ROOT/src/platform/linux/native_context.rs"
             "$REPO_ROOT/src/platform/linux/window_focus.rs"
+            "$REPO_ROOT/src/platform/linux/window_focus_deadline.rs"
             "$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
             "$REPO_ROOT/libs/scrap/src/x11/iter.rs" "$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
             "$REPO_ROOT/libs/scrap/src/x11/server.rs" "$REPO_ROOT/libs/scrap/src/x11/display.rs"
@@ -3393,6 +3394,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/src/platform/linux.rs=$REPO_ROOT/src/platform/linux.rs"
             "repo/src/platform/linux/native_context.rs=$REPO_ROOT/src/platform/linux/native_context.rs"
             "repo/src/platform/linux/window_focus.rs=$REPO_ROOT/src/platform/linux/window_focus.rs"
+            "repo/src/platform/linux/window_focus_deadline.rs=$REPO_ROOT/src/platform/linux/window_focus_deadline.rs"
             "repo/scripts/fixtures/x11-display-iter-before.rs=$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
             "repo/libs/scrap/src/x11/iter.rs=$REPO_ROOT/libs/scrap/src/x11/iter.rs"
             "repo/libs/scrap/src/x11/ffi.rs=$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
@@ -4088,10 +4090,10 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
-        'X11_FOCUS_LIFECYCLE_NATIVE=pass old=stalled-reply-wait source=complete-module deadline_ms=100 stalled=4 dead=4 recovery=same-owner-fresh-connection allocations=paired descriptors=retired server=owned-and-joined network=none scope=focus-component' \
-        'production established-focus reply deadline, transport retirement and same-owner server recovery'
+        'X11_FOCUS_LIFECYCLE_NATIVE=pass old=fragmented-reply-wait source=complete-module deadline_ms=100 stalled=4 dead=4 fragmented=4 recovery=same-owner-fresh-connection allocations=paired descriptors=retired deadline_workers=joined relay=owned-and-joined server=owned-and-joined network=none scope=focus-component' \
+        'production established-focus native I/O cancellation, retirement and same-owner server recovery'
     require_exact_fixed_receipt \
-        'X11_FOCUS_NATIVE=pass source=production-module old=unrelated-error-swallowed cases=12 repeats=16 geometry=server-real destroy_after_geometry=16 unrelated_errors=16 setup_faults=7 constructors_refused=16 thread_exits=16 allocations=paired descriptors=retired handler=unchanged scope=focus-component' \
+        'X11_FOCUS_NATIVE=pass source=production-module old=unrelated-error-swallowed cases=12 repeats=16 geometry=server-real destroy_after_geometry=16 unrelated_errors=16 setup_faults=7 constructors_refused=16 thread_exits=16 allocations=paired descriptors=retired deadline_workers=constant-and-joined handler=unchanged scope=focus-component' \
         'production request-scoped XCB focus with real window lifetime and unrelated Xlib error delivery'
     require_exact_fixed_receipt \
         'X11_THREAD_CONTEXT_NATIVE=pass source=production-owner old=retained-after-thread-exit old_threads=8 corrected_threads=32 unwind_threads=16 contexts=64 constructor_refusals=32 callbacks=paired descriptors=retired scope=native-owner' \

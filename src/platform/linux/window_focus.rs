@@ -1,6 +1,9 @@
 use super::native_context::NativeContext;
-use std::{ffi::{c_char, c_int, c_short, c_ulong, c_void}, io,
-          ptr::{self, NonNull}, time::{Duration, Instant}};
+use std::{ffi::{c_char, c_int, c_void}, io, os::fd::BorrowedFd,
+          ptr::{self, NonNull}, time::Duration};
+#[path = "window_focus_deadline.rs"]
+mod deadline;
+use deadline::SocketDeadline;
 
 const REPLY_BUDGET: Duration = Duration::from_millis(100);
 
@@ -40,6 +43,8 @@ impl WindowFocus {
 }
 
 struct FocusConnection {
+    // Join the deadline owner before disconnecting the native connection.
+    deadline: SocketDeadline,
     connection: NativeContext<c_void>,
     root: u32,
 }
@@ -56,15 +61,22 @@ impl FocusConnection {
                 return Err(FocusError::Connection(error));
             }
             let root = setup_root(xcb_get_setup(connection.as_ptr()), screen)?;
-            Ok(Self { connection, root })
+            let descriptor = xcb_get_file_descriptor(connection.as_ptr());
+            if descriptor < 0 {
+                return Err(FocusError::Transport(io::Error::new(io::ErrorKind::InvalidInput,
+                    "X11 focus connection has no socket")));
+            }
+            let deadline = SocketDeadline::new(BorrowedFd::borrow_raw(descriptor))
+                .map_err(FocusError::Transport)?;
+            Ok(Self { deadline, connection, root })
         }
     }
 
-    fn atom(&self, name: &[u8], deadline: Instant) -> Result<Option<u32>, FocusError> {
+    fn atom(&self, name: &[u8]) -> Result<Option<u32>, FocusError> {
         unsafe {
             let cookie = xcb_intern_atom(self.connection.as_ptr(), 1, name.len() as u16,
                                          name.as_ptr().cast());
-            let reply = self.reply::<Atom>(cookie, deadline)?;
+            let reply = self.reply::<Atom>(cookie)?;
             let atom = reply.get();
             if atom.response_type != 1 || atom.length != 0 {
                 return Err(FocusError::InvalidReply);
@@ -73,12 +85,12 @@ impl FocusConnection {
         }
     }
 
-    fn property(&self, atom: u32, expected_type: u32, limit: u32, deadline: Instant)
+    fn property(&self, atom: u32, expected_type: u32, limit: u32)
         -> Result<Option<Reply<Property>>, FocusError>
     {
         unsafe {
             let cookie = xcb_get_property(self.connection.as_ptr(), 0, self.root, atom, 0, 0, limit);
-            let reply = self.reply::<Property>(cookie, deadline)?;
+            let reply = self.reply::<Property>(cookie)?;
             let property = reply.get();
             if property.response_type != 1 || property.bytes_after != 0 {
                 return Err(FocusError::InvalidReply);
@@ -96,17 +108,23 @@ impl FocusConnection {
     }
 
     fn center(&self) -> Result<Option<(i32, i32)>, FocusError> {
-        // One budget for the complete observation, not a fresh budget per reply.
-        // Native connection construction and request flushing are separate operations.
-        let deadline = Instant::now() + REPLY_BUDGET;
-        let Some(active) = self.atom(b"_NET_ACTIVE_WINDOW", deadline)? else { return Ok(None); };
-        let Some(supported) = self.atom(b"_NET_SUPPORTED", deadline)? else { return Ok(None); };
-        let Some(supported) = self.property(supported, 4, 1024, deadline)? else { return Ok(None); };
+        // One owned cancellation budget covers all established-connection I/O.
+        // Native construction is separate; no worker is detached on expiration.
+        let observation = self.deadline.start(REPLY_BUDGET)?;
+        let result = self.query();
+        observation.finish()?;
+        result
+    }
+
+    fn query(&self) -> Result<Option<(i32, i32)>, FocusError> {
+        let Some(active) = self.atom(b"_NET_ACTIVE_WINDOW")? else { return Ok(None); };
+        let Some(supported) = self.atom(b"_NET_SUPPORTED")? else { return Ok(None); };
+        let Some(supported) = self.property(supported, 4, 1024)? else { return Ok(None); };
         if !supported.values().contains(&active) {
             return Ok(None);
         }
         drop(supported);
-        let Some(window) = self.property(active, 33, 1, deadline)? else { return Ok(None); };
+        let Some(window) = self.property(active, 33, 1)? else { return Ok(None); };
         let Some(&window_id) = window.values().first() else { return Ok(None); };
         if window_id == 0 {
             return Ok(None);
@@ -116,7 +134,7 @@ impl FocusConnection {
         // at either step; that is no result, not a change to another Xlib client's handler.
         unsafe {
             let cookie = xcb_get_geometry(self.connection.as_ptr(), window_id);
-            let geometry = match self.reply::<Geometry>(cookie, deadline) {
+            let geometry = match self.reply::<Geometry>(cookie) {
                 Err(FocusError::Protocol(3 | 9)) => return Ok(None), // BadWindow/BadDrawable
                 result => result?,
             };
@@ -128,7 +146,7 @@ impl FocusConnection {
                 return Ok(None);
             }
             let cookie = xcb_translate_coordinates(self.connection.as_ptr(), window_id, self.root, 0, 0);
-            let coordinates = match self.reply::<Coordinates>(cookie, deadline) {
+            let coordinates = match self.reply::<Coordinates>(cookie) {
                 Err(FocusError::Protocol(3)) => return Ok(None),
                 result => result?,
             };
@@ -144,49 +162,21 @@ impl FocusConnection {
         }
     }
 
-    unsafe fn reply<T>(&self, cookie: Cookie, deadline: Instant) -> Result<Reply<T>, FocusError> {
-        if Instant::now() >= deadline {
-            return Err(FocusError::Deadline);
-        }
+    unsafe fn reply<T>(&self, cookie: Cookie) -> Result<Reply<T>, FocusError> {
         let connection = self.connection.as_ptr();
-        if xcb_flush(connection) == 0 {
-            return Err(FocusError::Connection(xcb_connection_has_error(connection)));
+        let mut error = ptr::null_mut();
+        let pointer = xcb_wait_for_reply(connection, cookie.sequence, &mut error);
+        let reply = NonNull::new(pointer.cast::<T>()).map(Reply);
+        let error = NonNull::new(error).map(Reply);
+        let connection_error = xcb_connection_has_error(connection);
+        if connection_error != 0 {
+            return Err(FocusError::Connection(connection_error));
         }
-        let mut descriptor = PollFd { fd: xcb_get_file_descriptor(connection), events: 1, revents: 0 };
-        loop {
-            let mut pointer = ptr::null_mut();
-            let mut error = ptr::null_mut();
-            let ready = xcb_poll_for_reply(connection, cookie.sequence, &mut pointer, &mut error);
-            let reply = NonNull::new(pointer.cast::<T>()).map(Reply);
-            let error = NonNull::new(error).map(Reply);
-            let connection_error = xcb_connection_has_error(connection);
-            if connection_error != 0 {
-                return Err(FocusError::Connection(connection_error));
-            }
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                return Err(FocusError::Deadline);
-            }
-            if ready != 0 {
-                if let Some(error) = error {
-                    // xcb_generic_error_t's second byte is its protocol error code.
-                    return Err(FocusError::Protocol(error.0.as_ptr().cast::<u8>().add(1).read()));
-                }
-                return reply.ok_or(FocusError::MissingReply);
-            }
-            // The private connection has no competing reader. Polling its socket
-            // never transfers descriptor ownership or extends the absolute deadline.
-            let timeout = remaining.as_millis() as c_int
-                + c_int::from(remaining.subsec_nanos() % 1_000_000 != 0);
-            if poll(&mut descriptor, 1, timeout) < 0 {
-                let error = io::Error::last_os_error();
-                if error.kind() != io::ErrorKind::Interrupted {
-                    return Err(FocusError::Transport(error));
-                }
-            } else if descriptor.revents & 0x20 != 0 { // POLLNVAL
-                return Err(FocusError::Transport(io::Error::from_raw_os_error(9)));
-            }
+        if let Some(error) = error {
+            // xcb_generic_error_t's second byte is its protocol error code.
+            return Err(FocusError::Protocol(error.0.as_ptr().cast::<u8>().add(1).read()));
         }
+        reply.ok_or(FocusError::MissingReply)
     }
 }
 
@@ -258,8 +248,6 @@ impl<'a> SetupReader<'a> {
 #[repr(C)]
 struct Cookie { sequence: u32 }
 #[repr(C)]
-struct PollFd { fd: c_int, events: c_short, revents: c_short }
-#[repr(C)]
 struct Atom { response_type: u8, pad: u8, sequence: u16, length: u32, atom: u32 }
 #[repr(C)]
 struct Property {
@@ -281,7 +269,6 @@ const _: [(); 32] = [(); std::mem::size_of::<Property>()];
 const _: [(); 24] = [(); std::mem::size_of::<Geometry>()];
 const _: [(); 16] = [(); std::mem::size_of::<Coordinates>()];
 const _: [(); 4] = [(); std::mem::size_of::<Cookie>()];
-const _: [(); 8] = [(); std::mem::size_of::<PollFd>()];
 
 #[link(name = "xcb")]
 extern "C" {
@@ -294,10 +281,7 @@ extern "C" {
                         type_: u32, offset: u32, length: u32) -> Cookie;
     fn xcb_get_geometry(connection: *mut c_void, drawable: u32) -> Cookie;
     fn xcb_translate_coordinates(connection: *mut c_void, source: u32, target: u32, x: i16, y: i16) -> Cookie;
-    fn xcb_flush(connection: *mut c_void) -> c_int;
     fn xcb_get_file_descriptor(connection: *mut c_void) -> c_int;
-    fn xcb_poll_for_reply(connection: *mut c_void, sequence: u32,
-                          reply: *mut *mut c_void, error: *mut *mut c_void) -> c_int;
-    fn poll(descriptors: *mut PollFd, count: c_ulong, timeout: c_int) -> c_int;
+    fn xcb_wait_for_reply(connection: *mut c_void, sequence: u32, error: *mut *mut c_void) -> *mut c_void;
     fn free(pointer: *mut c_void);
 }

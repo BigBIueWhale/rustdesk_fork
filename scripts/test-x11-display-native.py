@@ -7,7 +7,9 @@ import re
 import selectors
 import signal
 import shutil
+import socket
 import subprocess
+import threading
 import time
 
 
@@ -62,8 +64,7 @@ def build_focus(root, environment, binary, fixture, historical=False):
                "-C", f"link-arg={helper}", "-C", "link-arg=-lX11"]
     if historical:
         command += ["--cfg", "historical"]
-    symbols = (("intern_atom_reply", "get_property_reply", "get_geometry_reply",
-                "translate_coordinates_reply") if historical else ("get_geometry", "poll_for_reply"))
+    symbols = ("get_geometry", "poll_for_reply" if historical else "wait_for_reply")
     for name in symbols + ("get_setup",):
         command += ["-C", f"link-arg=-Wl,--wrap=xcb_{name}"]
     command += ["-C", "link-arg=-Wl,--wrap=free"]
@@ -77,6 +78,7 @@ def window_focus(root, environment):
     print("X11_FOCUS_BUILD " + " ".join(
         f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
             ("source", root / "src/platform/linux/window_focus.rs"),
+            ("deadline", root / "src/platform/linux/window_focus_deadline.rs"),
             ("rust_fixture", root / "scripts/test-x11-window-focus.rs"),
             ("c_fixture", root / "scripts/test-x11-window-focus.c"),
             ("binary", binary))) + " whole_app=unexecuted", flush=True)
@@ -85,7 +87,7 @@ def window_focus(root, environment):
     receipt = ("X11_FOCUS_NATIVE=pass source=production-module old=unrelated-error-swallowed "
                "cases=12 repeats=16 geometry=server-real destroy_after_geometry=16 unrelated_errors=16 "
                "setup_faults=7 constructors_refused=16 thread_exits=16 allocations=paired "
-               "descriptors=retired handler=unchanged scope=focus-component")
+               "descriptors=retired deadline_workers=constant-and-joined handler=unchanged scope=focus-component")
     lines = result.stdout.splitlines()
     require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 4096
             and len(lines) == 2 and lines[-1] == receipt, f"native focus result differs: {result}")
@@ -97,11 +99,133 @@ def window_focus(root, environment):
     binary.unlink()
 
 
+class FragmentedReply:
+    """Private Unix relay: hold the last four bytes of a real property reply."""
+
+    def __init__(self):
+        self.path = Path("/tmp/.X11-unix/X99")
+        require(not self.path.exists(), "private focus relay socket already exists")
+        self.ready = threading.Event()
+        self.arm = threading.Event()
+        self.fragment = threading.Event()
+        self.release = threading.Event()
+        self.stop = threading.Event()
+        self.failure = None
+        self.identity = None
+        self.worker = threading.Thread(target=self.run, name="focus-reply-relay")
+        self.worker.start()
+        try:
+            require(self.ready.wait(5) and self.failure is None, "private focus relay did not start")
+        except BaseException:
+            self.close()
+            raise
+
+    def run(self):
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                listener.bind(str(self.path))
+                status = self.path.stat()
+                self.identity = status.st_dev, status.st_ino
+                listener.listen(1)
+                listener.settimeout(0.05)
+                self.ready.set()
+                while not self.stop.is_set():
+                    try:
+                        client, _ = listener.accept()
+                        break
+                    except socket.timeout:
+                        continue
+                else:
+                    return
+                with client, socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.settimeout(1)
+                    server.connect("/tmp/.X11-unix/X98")
+                    client.setblocking(False)
+                    server.setblocking(False)
+                    to_server, to_client, packets = bytearray(), bytearray(), bytearray()
+                    setup = True
+                    held = None
+                    header_pending = False
+                    with selectors.DefaultSelector() as streams:
+                        streams.register(client, selectors.EVENT_READ)
+                        streams.register(server, selectors.EVENT_READ)
+                        while not self.stop.is_set():
+                            if held is not None and self.release.is_set():
+                                to_client.extend(held)
+                                held = None
+                            streams.modify(client, selectors.EVENT_READ | (selectors.EVENT_WRITE if to_client else 0))
+                            streams.modify(server, selectors.EVENT_READ | (selectors.EVENT_WRITE if to_server else 0))
+                            for key, events in streams.select(0.05):
+                                peer = key.fileobj
+                                if events & selectors.EVENT_READ:
+                                    try:
+                                        data = peer.recv(32769)
+                                    except BlockingIOError:
+                                        data = None
+                                    if data == b"":
+                                        return
+                                    if data:
+                                        if peer is client:
+                                            to_server.extend(data)
+                                        else:
+                                            packets.extend(data)
+                                            while len(packets) >= (8 if setup else 32):
+                                                if setup:
+                                                    require(packets[0] == 1, "real X server refused relay setup")
+                                                    length = 8 + int.from_bytes(packets[6:8], "little") * 4
+                                                else:
+                                                    length = 32 + (int.from_bytes(packets[4:8], "little") * 4
+                                                                   if packets[0] in (1, 35) else 0)
+                                                require(length <= 32768, "focus relay packet exceeds budget")
+                                                if len(packets) < length:
+                                                    break
+                                                packet = bytes(packets[:length])
+                                                del packets[:length]
+                                                if not setup and self.arm.is_set() and not self.fragment.is_set() and length > 32:
+                                                    require(held is None and length == 36 and packet[0:2] == b"\x01\x20"
+                                                            and int.from_bytes(packet[8:12], "little") == 4
+                                                            and int.from_bytes(packet[16:20], "little") == 1,
+                                                            "fragment target is not the real one-ATOM property reply")
+                                                    to_client.extend(packet[:32])
+                                                    held = packet[32:]
+                                                    header_pending = True
+                                                else:
+                                                    to_client.extend(packet)
+                                                setup = False
+                                if events & selectors.EVENT_WRITE:
+                                    pending = to_client if peer is client else to_server
+                                    try:
+                                        count = peer.send(pending)
+                                    except BlockingIOError:
+                                        count = 0
+                                    del pending[:count]
+                                    if peer is client and header_pending and not pending:
+                                        header_pending = False
+                                        self.fragment.set()
+                            require(len(to_server) + len(to_client) + len(packets) <= 32768,
+                                    "focus relay buffered-byte budget exceeded")
+        except BaseException as error:
+            self.failure = error
+        finally:
+            self.ready.set()
+
+    def close(self):
+        self.stop.set()
+        self.worker.join(timeout=2)
+        require(not self.worker.is_alive(), "owned focus relay did not join")
+        if self.identity is not None:
+            status = self.path.stat()
+            require((status.st_dev, status.st_ino) == self.identity, "owned relay socket identity changed")
+            self.path.unlink()
+            self.identity = None
+        require(self.failure is None, f"focus relay failed: {self.failure}")
+
+
 def focus_lifecycle(root, environment):
     baseline = root / "scripts/fixtures/x11-window-focus-before-deadline.rs"
     require(hashlib.sha256(baseline.read_bytes()).hexdigest() ==
-            "b446f693bef4958fb438de4d3585c96bcb3e84ac81c01692cda75a4590865b88",
-            "exact historical a9a3478b focus module differs")
+            "11e9b4b577e28216f14eabd7eca3a210d00b987768d157e36c50ad852433ad2d",
+            "exact historical 1f4a01b3 focus module differs")
     fixture = root / "scripts/test-x11-focus-lifecycle.rs"
     with open("/tmp/x11-focus-lifecycle-xvfb.log", "xb") as log:
         def start_server():
@@ -124,9 +248,12 @@ def focus_lifecycle(root, environment):
         def case(binary, variant, scenario):
             server = start_server()
             native = None
+            relay = None
             output, errors = bytearray(), bytearray()
             stopped = False
             try:
+                if scenario == "fragmented":
+                    relay = FragmentedReply()
                 native = subprocess.Popen([str(binary), scenario], env=environment,
                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                           stderr=subprocess.PIPE, bufsize=0)
@@ -175,32 +302,39 @@ def focus_lifecycle(root, environment):
                             require(time.monotonic() < until, "owned Xvfb pause unobserved")
                             time.sleep(0.005)
                         token(b"T")
-                    else:
+                    elif scenario == "dead":
                         server.terminate()
                         server.wait(timeout=5)
                         require(server.returncode == 0, "owned Xvfb retirement differs")
                         token(b"D")
+                    else:
+                        relay.arm.set()
+                        token(b"F")
                     require(line() == "X11_FOCUS_LIFECYCLE_ENTERING source=complete-module", "focus wait entry differs")
+                    if relay is not None:
+                        require(relay.fragment.wait(2) and relay.failure is None,
+                                "real property reply header was not forwarded with tail held")
                     if variant == "historical":
                         until = time.monotonic() + 0.3
                         while time.monotonic() < until:
                             read_output(max(0, until - time.monotonic()))
                             require(len(output) == offset and not errors and native.poll() is None,
-                                    "historical wait completed while native server remained paused")
-                        server.send_signal(signal.SIGCONT)
-                        stopped = False
+                                    "historical wait completed while the native reply tail remained held")
+                        relay.release.set()
                     waited = line()
-                    expected = "late-reply" if variant == "historical" else "retired"
                     require(re.fullmatch(rf"X11_FOCUS_WAIT_NATIVE variant={variant} scenario={scenario} "
-                                         rf"elapsed_ms=[0-9]+ result={expected} descriptors=retired", waited),
+                                         r"elapsed_ms=[0-9]+ result=retired descriptors=retired", waited),
                             "focus wait outcome differs")
                     print(waited, flush=True)
                     if variant == "corrected":
                         if stopped:
                             server.send_signal(signal.SIGCONT)
                             stopped = False
-                        else:
+                        elif scenario == "dead":
                             server = start_server()
+                        else:
+                            relay.close()
+                            relay = FragmentedReply()
                         token(b"R")
                         recovered = line()
                         require(recovered == f"X11_FOCUS_RECOVERY_NATIVE scenario={scenario} owner=same connection=fresh "
@@ -220,17 +354,23 @@ def focus_lifecycle(root, environment):
                 print(f"X11_FOCUS_LIFECYCLE_FAILURE stdout={bytes(output)!r} stderr={bytes(errors)!r}", flush=True)
                 raise
             finally:
-                if native is not None:
-                    if native.poll() is None:
-                        native.kill()
-                    native.wait(timeout=5)
-                    for stream in (native.stdin, native.stdout, native.stderr):
-                        stream.close()
-                if server.poll() is None:
-                    if stopped:
-                        server.send_signal(signal.SIGCONT)
-                    server.terminate()
-                server.wait(timeout=5)
+                try:
+                    if native is not None:
+                        if native.poll() is None:
+                            native.kill()
+                        native.wait(timeout=5)
+                        for stream in (native.stdin, native.stdout, native.stderr):
+                            stream.close()
+                finally:
+                    try:
+                        if relay is not None:
+                            relay.close()
+                    finally:
+                        if server.poll() is None:
+                            if stopped:
+                                server.send_signal(signal.SIGCONT)
+                            server.terminate()
+                        server.wait(timeout=5)
             require(server.returncode == 0, "focus Xvfb terminal status differs")
 
         for variant in ("historical", "corrected"):
@@ -240,17 +380,19 @@ def focus_lifecycle(root, environment):
             print(f"X11_FOCUS_LIFECYCLE_BUILD variant={variant} " + " ".join(
                 f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
                     ("source", source), ("fixture", fixture), ("c_fixture", root / "scripts/test-x11-window-focus.c"),
+                    ("deadline", root / "src/platform/linux/window_focus_deadline.rs"),
                     ("binary", binary))) + " scope=complete-focus-module whole_app=unexecuted", flush=True)
             if variant == "historical":
-                case(binary, variant, "stalled")
+                case(binary, variant, "fragmented")
             else:
                 for _ in range(4):
-                    for scenario in ("stalled", "dead"):
+                    for scenario in ("stalled", "dead", "fragmented"):
                         case(binary, variant, scenario)
             binary.unlink()
-    print("X11_FOCUS_LIFECYCLE_NATIVE=pass old=stalled-reply-wait source=complete-module "
-          "deadline_ms=100 stalled=4 dead=4 recovery=same-owner-fresh-connection "
-          "allocations=paired descriptors=retired server=owned-and-joined network=none scope=focus-component", flush=True)
+    print("X11_FOCUS_LIFECYCLE_NATIVE=pass old=fragmented-reply-wait source=complete-module "
+          "deadline_ms=100 stalled=4 dead=4 fragmented=4 recovery=same-owner-fresh-connection "
+          "allocations=paired descriptors=retired deadline_workers=joined relay=owned-and-joined "
+          "server=owned-and-joined network=none scope=focus-component", flush=True)
 
 
 def capture_connection_loss(binary, environment, xserver):

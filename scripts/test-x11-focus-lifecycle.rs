@@ -17,6 +17,7 @@ extern "C" {
     fn focus_fixture_close();
 }
 fn descriptors() -> usize { std::fs::read_dir("/proc/self/fd").unwrap().count() }
+fn threads() -> usize { std::fs::read_dir("/proc/self/task").unwrap().count() }
 fn token(expected: u8) {
     let mut token = [0];
     std::io::stdin().read_exact(&mut token).unwrap();
@@ -28,30 +29,35 @@ fn marker(line: &str) {
 }
 fn main() {
     let scenario = std::env::args().nth(1).unwrap();
-    assert!(scenario == "stalled" || scenario == "dead");
+    assert!(scenario == "stalled" || scenario == "dead" || scenario == "fragmented");
     let baseline = descriptors();
+    let baseline_threads = threads();
+    std::env::set_var("DISPLAY", ":98");
     unsafe { focus_fixture_init(); focus_fixture_case(1); }
+    if scenario == "fragmented" { std::env::set_var("DISPLAY", ":99"); }
     let mut focus = WindowFocus::default();
     assert_eq!(focus.center().unwrap(), Some((164, 92)));
     unsafe { focus_fixture_close(); }
-    assert_eq!(descriptors(), baseline + 1);
+    assert_eq!(descriptors(), baseline + if cfg!(historical) { 1 } else { 2 });
+    assert_eq!(threads(), baseline_threads + usize::from(!cfg!(historical)));
     marker("X11_FOCUS_LIFECYCLE_READY established=true fixture=closed");
-    token(if scenario == "stalled" { b'T' } else { b'D' });
+    token(match scenario.as_str() { "stalled" => b'T', "dead" => b'D', _ => b'F' });
     marker("X11_FOCUS_LIFECYCLE_ENTERING source=complete-module");
     let began = Instant::now();
     let result = focus.center();
     let elapsed = began.elapsed();
     #[cfg(historical)] {
-        assert_eq!(scenario, "stalled");
-        assert_eq!(result.unwrap(), None);
+        assert_eq!(scenario, "fragmented");
+        assert!(matches!(result, Err(FocusError::Deadline)), "{result:?}");
         assert!(elapsed >= Duration::from_millis(250));
         drop(focus);
         assert_eq!(descriptors(), baseline);
         unsafe { focus_fixture_balanced(); }
-        marker(&format!("X11_FOCUS_WAIT_NATIVE variant=historical scenario=stalled elapsed_ms={} result=late-reply descriptors=retired", elapsed.as_millis()));
+        assert_eq!(threads(), baseline_threads);
+        marker(&format!("X11_FOCUS_WAIT_NATIVE variant=historical scenario={scenario} elapsed_ms={} result=retired descriptors=retired", elapsed.as_millis()));
     }
     #[cfg(not(historical))] {
-        if scenario == "stalled" {
+        if scenario != "dead" {
             assert!(matches!(result, Err(FocusError::Deadline)), "{result:?}");
             assert!(elapsed >= Duration::from_millis(90) && elapsed < Duration::from_secs(1), "{elapsed:?}");
         } else {
@@ -59,15 +65,20 @@ fn main() {
             assert!(elapsed < Duration::from_secs(1), "{elapsed:?}");
         }
         assert_eq!(descriptors(), baseline);
+        assert_eq!(threads(), baseline_threads);
         unsafe { focus_fixture_balanced(); }
         marker(&format!("X11_FOCUS_WAIT_NATIVE variant=corrected scenario={scenario} elapsed_ms={} result=retired descriptors=retired", elapsed.as_millis()));
         token(b'R');
+        std::env::set_var("DISPLAY", ":98");
         unsafe { focus_fixture_init(); focus_fixture_case(1); }
+        if scenario == "fragmented" { std::env::set_var("DISPLAY", ":99"); }
         assert_eq!(focus.center().unwrap(), Some((164, 92)));
-        assert_eq!(descriptors(), baseline + 2);
+        assert_eq!(descriptors(), baseline + 3);
+        assert_eq!(threads(), baseline_threads + 1);
         drop(focus);
         unsafe { focus_fixture_close(); focus_fixture_balanced(); }
         assert_eq!(descriptors(), baseline);
+        assert_eq!(threads(), baseline_threads);
         marker(&format!("X11_FOCUS_RECOVERY_NATIVE scenario={scenario} owner=same connection=fresh geometry=server-real center=164,92 allocations=paired descriptors=retired"));
     }
 }

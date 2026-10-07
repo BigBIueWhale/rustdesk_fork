@@ -4,6 +4,7 @@
 #include <xcb/xproto.h>
 #include <xcb/xcbext.h>
 #include <poll.h>
+#include <sys/socket.h>
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -30,6 +31,10 @@ _Static_assert(POLLIN == 1 && POLLNVAL == 0x20, "poll flags ABI");
 _Static_assert(_Generic(&xcb_poll_for_reply,
     int (*)(xcb_connection_t *, unsigned int, void **, xcb_generic_error_t **): 1,
     default: 0), "XCB poll reply ABI");
+_Static_assert(_Generic(&xcb_wait_for_reply,
+    void *(*)(xcb_connection_t *, unsigned int, xcb_generic_error_t **): 1,
+    default: 0), "XCB wait reply ABI");
+_Static_assert(SHUT_RD == 0, "socket shutdown ABI");
 
 static Display *display;
 static Window root, window, parent, dangling;
@@ -155,26 +160,6 @@ static void after_geometry(void *reply, xcb_generic_error_t *error) {
     }
 }
 
-#ifdef HISTORICAL
-#define REPLY_WRAPPER(name) \
-    xcb_##name##_reply_t *__real_xcb_##name##_reply(xcb_connection_t *, xcb_##name##_cookie_t, xcb_generic_error_t **); \
-    xcb_##name##_reply_t *__wrap_xcb_##name##_reply(xcb_connection_t *c, xcb_##name##_cookie_t cookie, xcb_generic_error_t **error) { \
-        xcb_##name##_reply_t *reply = __real_xcb_##name##_reply(c, cookie, error); \
-        track(reply); if (error) track(*error); return reply; \
-    }
-REPLY_WRAPPER(intern_atom)
-REPLY_WRAPPER(get_property)
-REPLY_WRAPPER(translate_coordinates)
-
-xcb_get_geometry_reply_t *__real_xcb_get_geometry_reply(xcb_connection_t *, xcb_get_geometry_cookie_t, xcb_generic_error_t **);
-xcb_get_geometry_reply_t *__wrap_xcb_get_geometry_reply(xcb_connection_t *c, xcb_get_geometry_cookie_t cookie, xcb_generic_error_t **error) {
-    if (hook == 1) { hook = 0; unrelated_error(); }
-    xcb_get_geometry_reply_t *reply = __real_xcb_get_geometry_reply(c, cookie, error);
-    track(reply); if (error) track(*error);
-    after_geometry(reply, error ? *error : NULL);
-    return reply;
-}
-#else
 static unsigned geometry_sequence;
 xcb_get_geometry_cookie_t __real_xcb_get_geometry(xcb_connection_t *, xcb_drawable_t);
 xcb_get_geometry_cookie_t __wrap_xcb_get_geometry(xcb_connection_t *c, xcb_drawable_t drawable) {
@@ -182,6 +167,7 @@ xcb_get_geometry_cookie_t __wrap_xcb_get_geometry(xcb_connection_t *c, xcb_drawa
     geometry_sequence = cookie.sequence;
     return cookie;
 }
+#ifdef HISTORICAL
 int __real_xcb_poll_for_reply(xcb_connection_t *, unsigned, void **, xcb_generic_error_t **);
 int __wrap_xcb_poll_for_reply(xcb_connection_t *c, unsigned sequence, void **reply, xcb_generic_error_t **error) {
     if (sequence == geometry_sequence && hook == 1) { hook = 0; unrelated_error(); }
@@ -189,6 +175,15 @@ int __wrap_xcb_poll_for_reply(xcb_connection_t *c, unsigned sequence, void **rep
     track(*reply); if (error) track(*error);
     if (ready && sequence == geometry_sequence) after_geometry(*reply, error ? *error : NULL);
     return ready;
+}
+#else
+void *__real_xcb_wait_for_reply(xcb_connection_t *, unsigned, xcb_generic_error_t **);
+void *__wrap_xcb_wait_for_reply(xcb_connection_t *c, unsigned sequence, xcb_generic_error_t **error) {
+    if (sequence == geometry_sequence && hook == 1) { hook = 0; unrelated_error(); }
+    void *reply = __real_xcb_wait_for_reply(c, sequence, error);
+    track(reply); if (error) track(*error);
+    if (sequence == geometry_sequence) after_geometry(reply, error ? *error : NULL);
+    return reply;
 }
 #endif
 

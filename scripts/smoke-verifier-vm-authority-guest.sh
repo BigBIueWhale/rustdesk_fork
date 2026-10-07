@@ -1595,6 +1595,7 @@ run_apple_conform() {
     if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
         conform_arguments=(--cursor-compile)
     fi
+    printf 'APPLE_CHECK_STAGE=source-admission cursor_only=%s\n' "$APPLE_CURSOR_ONLY"
 
     [[ "$APPLE_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         || fail 'Apple-conformance source commit is malformed'
@@ -1650,6 +1651,7 @@ run_apple_conform() {
         fail 'Apple-conformance source differs from its index after sealing'
     fi
 
+    printf 'APPLE_CHECK_STAGE=sealed-input-mount cursor_only=%s\n' "$APPLE_CURSOR_ONLY"
     mkdir "$inputs"
     mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
         || fail 'cannot mount the sealed Apple-conformance input authority'
@@ -1677,6 +1679,7 @@ run_apple_conform() {
         || fail 'sealed Apple verifier image archive differs'
     image_before="$(stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$image_archive"):$(sha256sum "$image_archive")"
 
+    printf 'APPLE_CHECK_STAGE=private-vendor-copy cursor_only=%s\n' "$APPLE_CURSOR_ONLY"
     mkdir -m 0700 "$private_vendor_parent"
     cp -a --reflink=never -- "$vendor" "$private_vendor" \
         || fail 'cannot stage the verifier-owned Apple Cargo vendor input'
@@ -1747,6 +1750,7 @@ run_apple_conform() {
         --config-id "$APPLE_CHECK_IMAGE_CONFIG_ID"
         --manifest-id "$APPLE_CHECK_IMAGE_MANIFEST_ID"
     )
+    printf 'APPLE_CHECK_STAGE=image-verification-load cursor_only=%s\n' "$APPLE_CURSOR_ONLY"
     load_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
             env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
@@ -1803,6 +1807,7 @@ run_apple_conform() {
       'FATAL: caller DOCKER_HOST authority is forbidden' ] \
         || fail 'caller-authority Apple-conformance refusal diagnostic differs'
 
+    printf 'APPLE_CHECK_STAGE=workload cursor_only=%s\n' "$APPLE_CURSOR_ONLY"
     set +e
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
@@ -1810,6 +1815,8 @@ run_apple_conform() {
         >"$output" 2>&1
     conform_status=$?
     set -e
+    printf 'APPLE_CHECK_STAGE=workload-finished cursor_only=%s status=%s\n' \
+        "$APPLE_CURSOR_ONLY" "$conform_status"
     [ "$(stat -c '%s' -- "$output")" -le 6291456 ] \
         || fail 'Apple-conformance output exceeds its bound'
     [ "$conform_status" -eq 0 ] \

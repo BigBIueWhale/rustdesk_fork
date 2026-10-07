@@ -410,7 +410,7 @@ under `.harness-state/verifier-vm/` bind source/module/binary and scope. They ar
 assistant observations, not independent attestation. Inputs and host endpoints
 were unchanged; guest owners joined and disk/media/run root self-retired.
 
-**Focused compiler path; execution pending:**
+**Focused compiler path; INCOMPLETE / NOT VALIDATED:**
 `scripts/smoke-verifier-vm-authority.sh --apple-conform --cursor-compile`
 uses the existing zero-NIC Apple VM profile, bounded to 300 seconds, 4 GiB RAM
 and a 12 GiB disposable overlay. Its networkless nonroot container has 2 GiB RAM,
@@ -423,6 +423,20 @@ checks are locked/offline. Successful compiler completion and nonempty component
 metadata are required; there is no C/Objective-C shim or SDK-error pass. This is
 an extracted-component check, not complete parent/root-Cargo, linking, AppKit
 runtime, installed service, signed artifact or native macOS acceptance.
+The attempt at `9283ec422aa9aa6fded35077a7ae26b00477fc89` reached its
+300-second VM limit (owner status 124, outer exit 1) without a compiler verdict;
+the post-startup workload phase is unobserved. This path is not yet an accepted
+fast inner loop. Current guest stage output names actual admission, input-copy,
+image-load and workload boundaries; that observability correction is unexecuted.
+Raw `apple-conform-run.rRgDNm59Fb.serial.log` (55,365 bytes; SHA-256
+`2966d51af18c408a860537e3201a732b82943f585faf52fb21f7cb378383518b`)
+and nonindependent `evidence/macos-cursor-compile-run.rRgDNm59Fb.outer.receipt`
+(SHA-256 `be92128163edeb2ccefc9ac3c95224761d0c57b967e23a6d3f0401769a9cb37f`)
+under `.harness-state/verifier-vm/` retain the failed attempt only. Endpoint-only
+before/during and supplementary post inventories agree, but guest/input
+postconditions did not complete. Disk/media and the exact 34 MiB terminal run
+root are retired after evidence retention. No unchanged replay or longer timeout
+is accepted as the fix for this verification gap.
 
 **OPEN:** exact parent/Cargo/generated-protobuf/Apple-target compilation;
 AppKit current-system cursor API compatibility, thread/object lifetime and real

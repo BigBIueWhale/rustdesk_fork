@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import selectors
+import signal
 import shutil
 import subprocess
 import time
@@ -48,20 +49,31 @@ def thread_contexts(root, environment):
     binary.unlink()
 
 
-def window_focus(root, environment):
-    helper = Path("/build/window-focus.o")
-    binary = Path("/build/window-focus")
-    subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-c",
+def build_focus(root, environment, binary, fixture, historical=False):
+    helper = binary.with_suffix(".o")
+    compiler = ["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-c"]
+    if historical:
+        compiler += ["-DHISTORICAL"]
+    subprocess.run(compiler + [
                     str(root / "scripts/test-x11-window-focus.c"), "-o", str(helper)],
                    env=environment, check=True, timeout=15)
     command = ["/usr/local/cargo/bin/rustc", "--edition=2021",
-               str(root / "scripts/test-x11-window-focus.rs"), "-o", str(binary),
+               str(fixture), "-o", str(binary),
                "-C", f"link-arg={helper}", "-C", "link-arg=-lX11"]
-    for name in ("intern_atom_reply", "get_property_reply", "get_geometry_reply",
-                 "translate_coordinates_reply", "get_setup"):
+    if historical:
+        command += ["--cfg", "historical"]
+    symbols = (("intern_atom_reply", "get_property_reply", "get_geometry_reply",
+                "translate_coordinates_reply") if historical else ("get_geometry", "poll_for_reply"))
+    for name in symbols + ("get_setup",):
         command += ["-C", f"link-arg=-Wl,--wrap=xcb_{name}"]
     command += ["-C", "link-arg=-Wl,--wrap=free"]
     subprocess.run(command, env=environment, check=True, timeout=30)
+    helper.unlink()
+
+
+def window_focus(root, environment):
+    binary = Path("/build/window-focus")
+    build_focus(root, environment, binary, root / "scripts/test-x11-window-focus.rs")
     print("X11_FOCUS_BUILD " + " ".join(
         f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
             ("source", root / "src/platform/linux/window_focus.rs"),
@@ -83,7 +95,162 @@ def window_focus(root, environment):
     print(f"{lines[0]} sha256={hashlib.sha256(Path(library).read_bytes()).hexdigest()}", flush=True)
     print(receipt, flush=True)
     binary.unlink()
-    helper.unlink()
+
+
+def focus_lifecycle(root, environment):
+    baseline = root / "scripts/fixtures/x11-window-focus-before-deadline.rs"
+    require(hashlib.sha256(baseline.read_bytes()).hexdigest() ==
+            "b446f693bef4958fb438de4d3585c96bcb3e84ac81c01692cda75a4590865b88",
+            "exact historical a9a3478b focus module differs")
+    fixture = root / "scripts/test-x11-focus-lifecycle.rs"
+    with open("/tmp/x11-focus-lifecycle-xvfb.log", "xb") as log:
+        def start_server():
+            require(not Path("/tmp/.X11-unix/X98").exists(), "previous private X socket remains")
+            server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "640x480x24",
+                                       "-nolisten", "tcp", "-ac", "-noreset"],
+                                      env=environment, stdout=log, stderr=subprocess.STDOUT)
+            try:
+                until = time.monotonic() + 5
+                while not Path("/tmp/.X11-unix/X98").is_socket():
+                    require(server.poll() is None and time.monotonic() < until, "focus Xvfb not ready")
+                    time.sleep(0.01)
+                return server
+            except BaseException:
+                if server.poll() is None:
+                    server.kill()
+                server.wait(timeout=5)
+                raise
+
+        def case(binary, variant, scenario):
+            server = start_server()
+            native = None
+            output, errors = bytearray(), bytearray()
+            stopped = False
+            try:
+                native = subprocess.Popen([str(binary), scenario], env=environment,
+                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE, bufsize=0)
+                deadline = time.monotonic() + 15
+                offset = 0
+                with selectors.DefaultSelector() as streams:
+                    streams.register(native.stdout, selectors.EVENT_READ, output)
+                    streams.register(native.stderr, selectors.EVENT_READ, errors)
+
+                    def read_output(timeout):
+                        for key, _ in streams.select(timeout):
+                            chunk = os.read(key.fd, 4097 - len(output) - len(errors))
+                            if not chunk:
+                                streams.unregister(key.fileobj)
+                            else:
+                                key.data.extend(chunk)
+                                require(len(output) + len(errors) <= 4096, "focus lifecycle output exceeded limit")
+
+                    def line():
+                        nonlocal offset
+                        while True:
+                            end = output.find(b"\n", offset)
+                            if end >= 0:
+                                value = output[offset:end].decode("ascii")
+                                offset = end + 1
+                                require(not errors, "focus lifecycle child reported an error")
+                                return value
+                            remaining = deadline - time.monotonic()
+                            require(remaining > 0 and streams.get_map(), "focus lifecycle handshake incomplete")
+                            read_output(remaining)
+
+                    def token(value):
+                        require(native.stdin.write(value) == 1, "focus lifecycle token not delivered")
+
+                    require(line() == "X11_FOCUS_LIFECYCLE_READY established=true fixture=closed"
+                            and native.poll() is None and server.poll() is None, "focus established readiness differs")
+                    if scenario == "stalled":
+                        server.send_signal(signal.SIGSTOP)
+                        stopped = True
+                        until = time.monotonic() + 2
+                        while True:
+                            require(server.poll() is None, "owned Xvfb exited before pause observation")
+                            state = Path(f"/proc/{server.pid}/stat").read_text().rsplit(") ", 1)[1].split()[0]
+                            if state == "T":
+                                break
+                            require(time.monotonic() < until, "owned Xvfb pause unobserved")
+                            time.sleep(0.005)
+                        token(b"T")
+                    else:
+                        server.terminate()
+                        server.wait(timeout=5)
+                        require(server.returncode == 0, "owned Xvfb retirement differs")
+                        token(b"D")
+                    require(line() == "X11_FOCUS_LIFECYCLE_ENTERING source=complete-module", "focus wait entry differs")
+                    if variant == "historical":
+                        until = time.monotonic() + 0.3
+                        while time.monotonic() < until:
+                            read_output(max(0, until - time.monotonic()))
+                            require(len(output) == offset and not errors and native.poll() is None,
+                                    "historical wait completed while native server remained paused")
+                        server.send_signal(signal.SIGCONT)
+                        stopped = False
+                    waited = line()
+                    expected = "late-reply" if variant == "historical" else "retired"
+                    require(re.fullmatch(rf"X11_FOCUS_WAIT_NATIVE variant={variant} scenario={scenario} "
+                                         rf"elapsed_ms=[0-9]+ result={expected} descriptors=retired", waited),
+                            "focus wait outcome differs")
+                    print(waited, flush=True)
+                    if variant == "corrected":
+                        if stopped:
+                            server.send_signal(signal.SIGCONT)
+                            stopped = False
+                        else:
+                            server = start_server()
+                        token(b"R")
+                        recovered = line()
+                        require(recovered == f"X11_FOCUS_RECOVERY_NATIVE scenario={scenario} owner=same connection=fresh "
+                                "geometry=server-real center=164,92 allocations=paired descriptors=retired",
+                                "same-owner focus recovery differs")
+                        print(recovered, flush=True)
+                    native.stdin.close()
+                    while streams.get_map():
+                        remaining = deadline - time.monotonic()
+                        require(remaining > 0, "focus lifecycle terminal output deadline")
+                        read_output(remaining)
+                    native.wait(timeout=max(0, deadline - time.monotonic()))
+                    require(native.returncode == 0 and not errors and len(output) == offset,
+                            "focus lifecycle finality differs")
+                require(server.poll() is None, "focus Xvfb exited unexpectedly")
+            except BaseException:
+                print(f"X11_FOCUS_LIFECYCLE_FAILURE stdout={bytes(output)!r} stderr={bytes(errors)!r}", flush=True)
+                raise
+            finally:
+                if native is not None:
+                    if native.poll() is None:
+                        native.kill()
+                    native.wait(timeout=5)
+                    for stream in (native.stdin, native.stdout, native.stderr):
+                        stream.close()
+                if server.poll() is None:
+                    if stopped:
+                        server.send_signal(signal.SIGCONT)
+                    server.terminate()
+                server.wait(timeout=5)
+            require(server.returncode == 0, "focus Xvfb terminal status differs")
+
+        for variant in ("historical", "corrected"):
+            binary = Path("/build/focus-lifecycle")
+            build_focus(root, environment, binary, fixture, historical=variant == "historical")
+            source = baseline if variant == "historical" else root / "src/platform/linux/window_focus.rs"
+            print(f"X11_FOCUS_LIFECYCLE_BUILD variant={variant} " + " ".join(
+                f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
+                    ("source", source), ("fixture", fixture), ("c_fixture", root / "scripts/test-x11-window-focus.c"),
+                    ("binary", binary))) + " scope=complete-focus-module whole_app=unexecuted", flush=True)
+            if variant == "historical":
+                case(binary, variant, "stalled")
+            else:
+                for _ in range(4):
+                    for scenario in ("stalled", "dead"):
+                        case(binary, variant, scenario)
+            binary.unlink()
+    print("X11_FOCUS_LIFECYCLE_NATIVE=pass old=stalled-reply-wait source=complete-module "
+          "deadline_ms=100 stalled=4 dead=4 recovery=same-owner-fresh-connection "
+          "allocations=paired descriptors=retired server=owned-and-joined network=none scope=focus-component", flush=True)
 
 
 def capture_connection_loss(binary, environment, xserver):
@@ -390,6 +557,9 @@ def main():
                 child.terminate()
             child.wait(timeout=5)
         require(child.returncode == 0, "16-bit Xvfb retirement failed")
+    for binary in binaries.values():
+        binary.unlink()
+    focus_lifecycle(root, environment)
     for name in ("tcp", "tcp6"):
         require(not any(row.split()[3] == "0A" for row in Path("/proc/net", name).read_text().splitlines()[1:]),
                 "native test opened a TCP listener")

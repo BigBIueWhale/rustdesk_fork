@@ -312,10 +312,16 @@ and `evidence/x11-focus-run.iTMfrCqrEQ.outer.receipt` bind source/artifacts/libr
 scope and finality. No added host endpoint; readonly inputs unchanged; all exact
 runtime owners joined and owned disk/media/run-root state retired. Isolation unchanged.
 
-Whole-app/service integration, native stalled/dead/restarted server and
-constructor/request deadlines, full platform/performance/soak and reported-delay
-causation remain OPEN. The synchronous native waits are not deadline validation,
-and constructor refusal/retry is not a live-server restart test.
+The next correction replaces blocking typed reply waits with native nonblocking
+reply polling and descriptor readiness under one 100 ms monotonic observation
+budget. Deadline, transport failure and missing completion retire the connection
+and pending requests before a later same-mode retry. Its real paused/dead/restarted
+Xvfb A/B fixture is implemented but native acceptance is PENDING.
+
+Whole-app/service integration, constructor and native request-flush deadlines,
+full platform/performance/soak and reported-delay causation remain OPEN. The reply
+budget does not bound `xcb_connect`, native flushing, OS scheduling or the whole
+application. Constructor refusal/retry is not a live-server restart test.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

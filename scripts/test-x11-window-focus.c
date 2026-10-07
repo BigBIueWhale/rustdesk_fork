@@ -2,6 +2,8 @@
 #include <X11/Xatom.h>
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
+#include <xcb/xcbext.h>
+#include <poll.h>
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -22,6 +24,12 @@ OFFSET(xcb_setup_t, pixmap_formats_len, 29);
 SIZE(xcb_screen_t, 40); OFFSET(xcb_screen_t, allowed_depths_len, 39);
 SIZE(xcb_depth_t, 8); OFFSET(xcb_depth_t, visuals_len, 2); SIZE(xcb_visualtype_t, 24);
 OFFSET(xcb_generic_error_t, error_code, 1);
+SIZE(struct pollfd, 8); OFFSET(struct pollfd, events, 4); OFFSET(struct pollfd, revents, 6);
+_Static_assert(sizeof(nfds_t) == sizeof(unsigned long), "poll count ABI");
+_Static_assert(POLLIN == 1 && POLLNVAL == 0x20, "poll flags ABI");
+_Static_assert(_Generic(&xcb_poll_for_reply,
+    int (*)(xcb_connection_t *, unsigned int, void **, xcb_generic_error_t **): 1,
+    default: 0), "XCB poll reply ABI");
 
 static Display *display;
 static Window root, window, parent, dangling;
@@ -120,6 +128,7 @@ void focus_fixture_close(void) {
     assert(XSetErrorHandler(previous) == external_error);
     assert(XCloseDisplay(display) == 0);
     display = NULL;
+    root = window = parent = dangling = 0;
 }
 
 static void track(void *pointer) {
@@ -137,6 +146,16 @@ void __wrap_free(void *pointer) {
     __real_free(pointer);
 }
 
+static void after_geometry(void *reply, xcb_generic_error_t *error) {
+    if (hook == 2) {
+        hook = 0;
+        assert(reply && !error);
+        XDestroyWindow(display, window); window = 0;
+        XSync(display, False);
+    }
+}
+
+#ifdef HISTORICAL
 #define REPLY_WRAPPER(name) \
     xcb_##name##_reply_t *__real_xcb_##name##_reply(xcb_connection_t *, xcb_##name##_cookie_t, xcb_generic_error_t **); \
     xcb_##name##_reply_t *__wrap_xcb_##name##_reply(xcb_connection_t *c, xcb_##name##_cookie_t cookie, xcb_generic_error_t **error) { \
@@ -152,14 +171,26 @@ xcb_get_geometry_reply_t *__wrap_xcb_get_geometry_reply(xcb_connection_t *c, xcb
     if (hook == 1) { hook = 0; unrelated_error(); }
     xcb_get_geometry_reply_t *reply = __real_xcb_get_geometry_reply(c, cookie, error);
     track(reply); if (error) track(*error);
-    if (hook == 2) {
-        hook = 0;
-        assert(reply && (!error || !*error));
-        XDestroyWindow(display, window); window = 0;
-        XSync(display, False);
-    }
+    after_geometry(reply, error ? *error : NULL);
     return reply;
 }
+#else
+static unsigned geometry_sequence;
+xcb_get_geometry_cookie_t __real_xcb_get_geometry(xcb_connection_t *, xcb_drawable_t);
+xcb_get_geometry_cookie_t __wrap_xcb_get_geometry(xcb_connection_t *c, xcb_drawable_t drawable) {
+    xcb_get_geometry_cookie_t cookie = __real_xcb_get_geometry(c, drawable);
+    geometry_sequence = cookie.sequence;
+    return cookie;
+}
+int __real_xcb_poll_for_reply(xcb_connection_t *, unsigned, void **, xcb_generic_error_t **);
+int __wrap_xcb_poll_for_reply(xcb_connection_t *c, unsigned sequence, void **reply, xcb_generic_error_t **error) {
+    if (sequence == geometry_sequence && hook == 1) { hook = 0; unrelated_error(); }
+    int ready = __real_xcb_poll_for_reply(c, sequence, reply, error);
+    track(*reply); if (error) track(*error);
+    if (ready && sequence == geometry_sequence) after_geometry(*reply, error ? *error : NULL);
+    return ready;
+}
+#endif
 
 const xcb_setup_t *__real_xcb_get_setup(xcb_connection_t *);
 const xcb_setup_t *__wrap_xcb_get_setup(xcb_connection_t *connection) {

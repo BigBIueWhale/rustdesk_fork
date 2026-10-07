@@ -33,7 +33,10 @@ def thread_contexts(root, environment):
                "old_threads=8 corrected_threads=32 unwind_threads=16 contexts=64 "
                "constructor_refusals=32 callbacks=paired descriptors=retired scope=native-owner")
     lines = result.stdout.splitlines()
-    require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 4096
+    # The pinned libxdo reports each deliberate failed constructor on stderr.
+    refusals = "Error: Can't open display: :97\n" * 16
+    require(result.returncode == 0 and result.stderr == refusals
+            and len(result.stdout) + len(result.stderr) <= 4096
             and len(lines) == 3 and lines[-1] == receipt,
             f"native thread-context result differs: {result}")
     for line, name in zip(lines[:2], ("libX11", "libxdo")):

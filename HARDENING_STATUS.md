@@ -257,6 +257,11 @@ retires connection/storage and returns zero; native fatal-error disposition is n
 changed. XDO retirement uses the existing wrapper's `xdo_free` operation.
 
 Focused native verification is pending in the existing `--x11-display-tests` lane.
+The first transaction at `2466e70a` failed because its wrapper rejected the exact
+16 diagnostics from deliberate libxdo constructor refusals, despite native child
+status zero. The corrected oracle requires that exact stderr, not generic error
+suppression; the failed serial and bounded receipt remain retained. No outer
+acceptance is claimed for that attempt.
 The entire production owner is compiled, not a rewritten model, with actual X11/XDO
 constructors/destructors in the private Xvfb container. The fixture distinguishes
 the historical raw-TLS ownership shape from corrected normal and unwinding thread

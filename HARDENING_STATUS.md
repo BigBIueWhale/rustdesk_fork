@@ -5985,19 +5985,22 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   malformed-request test does not imply normal generated requests naturally fail that way. The
   [XCB reply ownership implementation](https://gitlab.freedesktop.org/xorg/lib/libxcb/-/blob/libxcb-1.15/src/xcb_in.c)
   and [X server request validation](https://gitlab.freedesktop.org/xorg/xserver/-/blob/xorg-server-21.1.13/Xext/shm.c)
-  ground that correction. Two serialized SysV tests and `verify-x11-capture-shm.py` remain supplements;
-  the latter's documentation coupling, mutation catalog and stale workspace reimplementation are deleted.
+  ground that correction. Two serialized SysV tests and the full-integration
+  `verify-x11-capture-shm.py` remain supplements. The focused native profile no longer runs that wording
+  checker or copies source to mutate its mode constant; their input/staging dependencies are removed.
+  That deleted prelude tested string refusal, not kernel permission denial. The checker itself remains
+  because not every source-level invariant has direct native coverage; it is not native acceptance.
 
-  **Current native receipt.** Candidate `71243d9f653dc0f0ca9377eefdcc45cdf32631d0`, tree
-  `8e6d23cabcf6759448a048002c7220aa730a17ac`, passed
-  `/usr/bin/bash scripts/smoke-verifier-vm-authority.sh --x11-display-tests` in 61 VM seconds.
+  **Current native receipt.** Candidate `c33f70079dad32c8dcc6f3d93dd30b6991b0cffa`, tree
+  `55caf4a06d083258976073e7df1da63f43d5fef0`, passed
+  `/usr/bin/bash scripts/smoke-verifier-vm-authority.sh --x11-display-tests` in 56 VM seconds.
   Numeric UID/GID 4000 executed the unchanged production capture/public-wrapper components against real
   Xvfb in the zero-NIC VM's networkless unprivileged container. The complete transaction accepted
   unchanged inputs, no added host endpoint, joined guest/container/VM cleanup, and absent run root/disks.
   The executed corrected component SHA-256 is
   `aaa4da3e94ddf252d8277fb18e8dd8f8fced2051c49ca945c308bfd1aabda116`.
-  Retained `.harness-state/verifier-vm/x11-display-tests-run.X4zuPCqjR8.serial.log` is 78,645 bytes,
-  SHA-256 `7e2d17f8c71b7b6c9e4e5a356592e3c931687c8a3d52f1d3e617a66e92e7b934`.
+  Retained `.harness-state/verifier-vm/x11-display-tests-run.KjyTT9Bc1n.serial.log` is 79,791 bytes,
+  SHA-256 `c1d0c8a2feb5b7ef9da5d28a5e8216edc125b483833f04bef1fe0d419b66e268`.
   Its same-prefix `.outer.receipt` records assistant-observed terminal exit 0, not independent attestation.
 
   Both direct and public actual captures underwent 17 bounded kernel metadata checks: exact owner and
@@ -6019,9 +6022,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   24/16-bit capture and three production byte-comparator cases passed in that same named transaction.
   Capture pixels come from real Xvfb; selected reply-header and request-argument faults are instrumented.
   Superseded per-run receipts and intermediate
-  fixture failures remain in Git history through `71243d9f` and the audit, not additional acceptance claims.
+  fixture failures remain in Git history through `37852db7` and the audit, not additional acceptance claims.
 
-  **Still OPEN.** Unauthorized-principal read/write/removal refusal, installed cross-user service behavior,
+  **Still OPEN.** Direct native observation of local mapping protection and checked-attach/RMID ordering,
+  unauthorized-principal read/write/removal refusal, installed cross-user service behavior,
   server loss during in-flight attach, destruction-failure injection, actual capture-to-codec-to-render,
   focus/background freshness and latency, sustained resource/performance bounds, other platforms,
   current release artifacts, cold reproduction and independent review. These tests establish selected

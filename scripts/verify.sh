@@ -7901,7 +7901,6 @@ grep -q 'release_block_owner_with_retry(&INPUT_BLOCK_OWNERS, self.conn_id, apply
 grep -q 'desktop_block_input_is_released_only_by_the_final_owner' src/server/connection.rs || r_s11c23="$r_s11c23 block-input-owner-test-missing"
 grep -q 'desktop_block_input_failed_release_remains_retryable' src/server/connection.rs || r_s11c23="$r_s11c23 block-input-release-retry-test-missing"
 grep -q 'desktop_block_cleanup_failure_retains_applied_state_for_fail_stop' src/server/connection.rs || r_s11c23="$r_s11c23 block-input-cleanup-fail-stop-test-missing"
-grep -q 'clear_remapped_keycode' src/server/connection.rs                            || r_s11c23="$r_s11c23 linux-remap-cleanup-missing"
 grep -q 'drop(receiver);' src/server/connection.rs                                   || r_s11c23="$r_s11c23 input-backlog-not-drained"
 grep -q 'async fn stop_input_worker' src/server/connection.rs                        || r_s11c23="$r_s11c23 normal-input-worker-stop-missing"
 grep -q 'struct InputWorkerCompletion' src/server/connection.rs                       || r_s11c23="$r_s11c23 input-worker-completion-state-missing"

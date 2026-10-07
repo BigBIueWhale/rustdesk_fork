@@ -1102,7 +1102,7 @@ verify_committed_test_source() {
 }
 
 android_frame_input_inventory() {
-    local file name size digest url extra count=0 blob tfc_count=0
+    local file name size digest url extra count=0
     local -a files=(
         "$SCRIPT_DIR/android-emulator-frame.py" "$SCRIPT_DIR/flutter-peer-source-x11.c"
         "$SCRIPT_DIR/x11-frame-oracle.h" "$SCRIPT_DIR/test-x11-frame-oracle.c"
@@ -1114,32 +1114,12 @@ android_frame_input_inventory() {
     )
     if [ "$MODE" = x11-display-tests ]; then
         files+=("$SCRIPT_DIR/test-x11-display-native.py" "$SCRIPT_DIR/test-x11-display.rs"
-            "$SCRIPT_DIR/test-x11-input-abi.c" "$SCRIPT_DIR/test-x11-input-abi.rs"
-            "$SCRIPT_DIR/test-x11-input-native.c" "$SCRIPT_DIR/test-x11-input-native.rs"
-            "$REPO_ROOT/Cargo.lock" "$REPO_ROOT/Cargo.toml" "$REPO_ROOT/libs/enigo/Cargo.toml"
-            "$REPO_ROOT/libs/tfc/Cargo.toml" "$REPO_ROOT/libs/tfc/UPSTREAM_BLOBS.tsv"
-            "$REPO_ROOT/libs/tfc/RUSTDESK_PROVENANCE.md"
-            "$ONLINE_INPUTS/cargo-vendor/tfc-0.7.0/src/linux_x11/ffi/xkb.rs"
-            "$ONLINE_INPUTS/cargo-vendor/tfc-0.7.0/src/linux_x11/ffi/xlib.rs"
             "$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
             "$REPO_ROOT/libs/scrap/src/x11/iter.rs" "$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
             "$REPO_ROOT/libs/scrap/src/x11/server.rs" "$REPO_ROOT/libs/scrap/src/x11/display.rs"
             "$REPO_ROOT/libs/scrap/src/x11/capturer.rs"
             "$REPO_ROOT/libs/scrap/src/common/x11.rs"
             "$REPO_ROOT/libs/scrap/src/common/frame_compare.rs")
-        verify_sha256 "$ONLINE_INPUTS/cargo-vendor/tfc-0.7.0/src/linux_x11/ffi/xkb.rs" \
-            128afcecd57843f7855289ecaf445a2ce8383383b143656a67c2d4acd3c4cffc
-        verify_sha256 "$ONLINE_INPUTS/cargo-vendor/tfc-0.7.0/src/linux_x11/ffi/xlib.rs" \
-            74eb55c515efddf93c404e9ddb4f96cb1bc6977e68b8c3fbae96e5c60e4202f2
-        while IFS=$'\t' read -r name blob extra; do
-            [[ "$name" == \#* ]] && continue
-            [[ "$name" =~ ^(src/[a-z_0-9/]+\.rs|LICENSE-(MIT|APACHE))$ ]] \
-                && [[ "$blob" =~ ^[0-9a-f]{40}$ ]] && [ -z "$extra" ] \
-                || fail 'owned TFC source record differs'
-            files+=("$REPO_ROOT/libs/tfc/$name")
-            tfc_count=$((tfc_count + 1))
-        done <"$REPO_ROOT/libs/tfc/UPSTREAM_BLOBS.tsv"
-        [ "$tfc_count" -eq 67 ] || fail 'owned TFC source inventory count differs'
     fi
     while IFS=$'\t' read -r name size digest url extra; do
         [ -n "$name" ] || continue
@@ -3399,18 +3379,6 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
         lifecycle_payload_grafts+=(
             "repo/scripts/test-x11-display-native.py=$SCRIPT_DIR/test-x11-display-native.py"
             "repo/scripts/test-x11-display.rs=$SCRIPT_DIR/test-x11-display.rs"
-            "repo/scripts/test-x11-input-abi.c=$SCRIPT_DIR/test-x11-input-abi.c"
-            "repo/scripts/test-x11-input-abi.rs=$SCRIPT_DIR/test-x11-input-abi.rs"
-            "repo/scripts/test-x11-input-native.c=$SCRIPT_DIR/test-x11-input-native.c"
-            "repo/scripts/test-x11-input-native.rs=$SCRIPT_DIR/test-x11-input-native.rs"
-            "repo/Cargo.lock=$REPO_ROOT/Cargo.lock"
-            "repo/Cargo.toml=$REPO_ROOT/Cargo.toml"
-            "repo/libs/enigo/Cargo.toml=$REPO_ROOT/libs/enigo/Cargo.toml"
-            "repo/libs/tfc/Cargo.toml=$REPO_ROOT/libs/tfc/Cargo.toml"
-            "repo/libs/tfc/UPSTREAM_BLOBS.tsv=$REPO_ROOT/libs/tfc/UPSTREAM_BLOBS.tsv"
-            "repo/libs/tfc/RUSTDESK_PROVENANCE.md=$REPO_ROOT/libs/tfc/RUSTDESK_PROVENANCE.md"
-            "repo/vendor/tfc/ffi/xkb.rs=$ONLINE_INPUTS/cargo-vendor/tfc-0.7.0/src/linux_x11/ffi/xkb.rs"
-            "repo/vendor/tfc/ffi/xlib.rs=$ONLINE_INPUTS/cargo-vendor/tfc-0.7.0/src/linux_x11/ffi/xlib.rs"
             "repo/scripts/fixtures/x11-display-iter-before.rs=$SCRIPT_DIR/fixtures/x11-display-iter-before.rs"
             "repo/libs/scrap/src/x11/iter.rs=$REPO_ROOT/libs/scrap/src/x11/iter.rs"
             "repo/libs/scrap/src/x11/ffi.rs=$REPO_ROOT/libs/scrap/src/x11/ffi.rs"
@@ -3420,10 +3388,6 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/libs/scrap/src/common/x11.rs=$REPO_ROOT/libs/scrap/src/common/x11.rs"
             "repo/libs/scrap/src/common/frame_compare.rs=$REPO_ROOT/libs/scrap/src/common/frame_compare.rs"
         )
-        while IFS=$'\t' read -r name blob extra; do
-            [[ "$name" == \#* ]] && continue
-            lifecycle_payload_grafts+=("repo/libs/tfc/$name=$REPO_ROOT/libs/tfc/$name")
-        done <"$REPO_ROOT/libs/tfc/UPSTREAM_BLOBS.tsv"
     fi
 elif [ "$MODE" = cm-file-replay ]; then
     payload_identity=(-uid 4000 -gid 4000)
@@ -4109,21 +4073,6 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux app-capsule cloud-init completion'
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
-    require_exact_fixed_receipt \
-        'X11_INPUT_ABI_FINDING=confirmed supplier=historical-tfc rust_size=16 native_size=18 align=2 fields=14 offset_mismatches=13 oracle=client-header product_acceptance=false' \
-        'native client-header comparison of historical TFC state declarations'
-    require_exact_fixed_receipt \
-        'X11_INPUT_ABI_NATIVE=confirmed supplier=historical-tfc queries=32 controls=33 rejected=16 rejection=XI-BadDevice:XKB-BadDevice recovery=same-connection write_beyond_rust_type=2 allocation_overrun=false guards=intact descriptors=retired product_acceptance=false' \
-        'historical TFC XKB writes and native rejection/recovery diagnostic'
-    require_exact_fixed_receipt \
-        'X11_INPUT_LAYOUT=pass source=production fields=14 size=18 align=2 oracle=client-header' \
-        'corrected production TFC client layout'
-    require_exact_fixed_receipt \
-        'X11_INPUT_EVENTS=pass source=whole-production-tfc repeats=16 characters=a,b,c events=96 observer=real-window query_rejections=16 rejected_emissions=0 recovery=same-context' \
-        'whole TFC native character input, query refusal and same-context recovery'
-    require_exact_fixed_receipt \
-        'X11_INPUT_LIFETIME=pass source=whole-production-tfc successful_contexts=16 connection=one failures=64 cause=injected-null,invalid-count symbols=paired keyboard=full-free modifiers=paired descriptors=retired scope=direct-owned-calls' \
-        'whole TFC directly owned native allocations and display retirement'
     require_exact_fixed_receipt \
         'X11_SHM_STATUS_NATIVE=pass request_fault=oversized-query-version server_error=BadLength callers=direct,public repeats=16 cases=32 queries=3 replies=2 protocol_errors=1 recovery=same-connection capture=fresh allocations=retired segments=retired' \
         'production X11 availability probe allocation cleanup and same-connection recovery'
@@ -5285,7 +5234,7 @@ elif [ "$MODE" = fixed-archive-tests ]; then
     printf 'FIXED_ARCHIVE_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = x11-display-tests ]; then
-    printf 'X11_DISPLAY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-enumeration-capture-component input=whole-linux-tfc-component input_abi=historical-diagnostic-confirmed full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
+    printf 'X11_DISPLAY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-enumeration-capture-component full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-frame-tests ]; then
     printf 'ANDROID_FRAME_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=unexecuted cleanup=joined elapsed_seconds=%s\n' \

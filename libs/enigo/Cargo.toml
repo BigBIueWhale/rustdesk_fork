@@ -23,7 +23,6 @@ serde = { version = "1.0", optional = true }
 serde_derive = { version = "1.0", optional = true }
 log = "0.4"
 rdev = { git = "https://github.com/rustdesk-org/rdev" }
-tfc = { path = "../tfc" }
 hbb_common = { path = "../hbb_common" }
 
 [features]

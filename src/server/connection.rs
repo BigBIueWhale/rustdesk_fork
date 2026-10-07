@@ -3647,13 +3647,6 @@ impl Drop for InputWorkerCleanup {
         ) {
             std::process::abort();
         }
-        #[cfg(target_os = "linux")]
-        self.keys.finish_worker(|| {
-            if !run_input_cleanup_action("clearing remapped keycodes", clear_remapped_keycode) {
-                std::process::abort();
-            }
-        });
-        #[cfg(not(target_os = "linux"))]
         self.keys.finish_worker(|| {});
     }
 }

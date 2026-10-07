@@ -87,7 +87,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Controlled-side policy and network authentication (R-S2/R-S16/R-S18; R-S11b-3j/3q) | R-S16 requires one direct-only route and receiver-owned policy funnels; retired proxy strings stay pinned empty, old `socks` tables cannot be serialized, and proxy types/stores/APIs/transports/TLS/parser/validator/dependencies and NAT/STUN actuators are absent. Restriction-only peer overlays, R-S19 confinement, empty builtin/hard-setting startup namespaces, and no preset-credential fallback remain required. R-S2/R-S18 require one CPace network authentication and grant topology, symmetric absence of peer OS-credential/schema/storage/UI paths and alternative CM/recent-session/switch-side/trusted-device grants. Session-type confinement precedes publication; malformed metadata, credential-generation change, owner retirement or resource failure cannot demand admission merely because a stream keyed. Local OS-admin provisioning and exact IPC/helper proof are separate action authority, not another peer credential. Explicit fresh remote-input typing cannot become per-peer storage or reconnect auto-input. These are normative/source dispositions, not a completed audit or native/artifact acceptance; the platform/release matrices remain OPEN. |
 | Appendix C #90–95, #97, #99, #101–105, #109–110, #112, #119, #122, #161–163, #168–183, #185–206, #212, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The findings retain threat rationale and timeless disposition-to-requirement mappings. Dispositions do not report implemented fixes, gate counts, or artifact results. The process-context, checker-ownership, and scanner rationales R-S11az/R-S11ba/R-S11bb/R-S11be likewise state binding contracts without implementation chronology. Original #173–184 threat findings, operative keywords, source links, identities, input/provenance bounds, and native/artifact acceptance remain intact. This row does not promote source checks to native evidence; current evidence limits remain in the relevant requirement entries and platform/open matrices. |
 | Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub and RustSec snapshots have real no-NIC VM verdicts recorded in R-S11df and R-S11dg below; future snapshot refresh, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. Documentation or mutation counts are not scanner evidence. |
-| Git-fork review and mirroring (R-B5b) | Exact revisions and primary-tree byte binding are reproducibility/provenance evidence, not a supplier safety verdict. Enigo now selects repository-owned TFC; its corrected client state layout, checked native query and one-display/full-keyboard ownership passed a 53-second isolated native component transaction with real window input and bounded failure/lifetime cases. Git X11 2.19.0 is no longer selected. Complete TFC/fork review, independent authentication, canonical-closure/Cargo-graph regeneration, broader input/platform/whole-app acceptance and other supplier/mirror work remain OPEN. |
+| Git-fork review and mirroring (R-B5b) | Exact revisions and primary-tree byte binding are reproducibility/provenance evidence, not a supplier safety verdict. Caller review shows RustDesk uses rdev physical input and result-bearing XDO text rather than Enigo's generic TFC key path; the unused TFC dependency, eager context, fallback/remap hooks, owned crate and dedicated probes are retired. Its earlier 53-second corrected-component evidence remains historical, not whole-app acceptance. Git X11 2.19.0 is also no longer selected. Complete canonical-closure/Cargo-graph regeneration, actual input/native/platform/whole-app acceptance, independent authentication and remaining supplier/mirror work remain OPEN. |
 | Repository/dependency structure (§16, R-R1) | The normative section now distinguishes security-modified in-tree source from exact-pinned external dependencies and the authenticated offline input closure. Its old tree snapshot, package counts, lockfile-only reproducibility assurance, upstream CI-job table, and claimed net-negative dependency delta were removed. Complete exact-current fork/provenance review, release builds, and independent reproduction remain OPEN. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Service/helper/process bootstrap authority (R-S11y–R-S11al; Appendix C #147–160) | The normative contracts retain empty helper environments, typed OS queries, selected-session X11 authority and bounded empty-Display recovery, kernel-parent-bound graphical/headless CM lifetime, no global process-table signal/restart authority, non-root-only UI, numeric principal selection, exact child/supervisor argument protocols, SCM-owned initialization, and fixed macOS principal/home/config/log ordering. Appendix findings map to required dispositions without implementation/gate/artifact-status narration; #154–160's original threat findings are retained. All operative MUST/MUST NOT markers, primary-source links, IDs, test mappings, and installed/native acceptance obligations remain. Appendix #152 agrees with R-S11cc's graphical-and-headless scope. No product, verifier, or executable test changed. Installed/native principals, failure/restart/resource behavior and release acceptance remain OPEN in the platform matrices. |
@@ -175,86 +175,58 @@ coverage; chosen mirror or repository-owned replacement, canonical closure and a
 rebinding; other Cargo/Dart forks, cold equality, independent reproduction and external review.
 No new reachable LPE or closed security boundary is claimed by this source-only snapshot review.
 
-### R-B5b/R-R1 — Linux input corrected; component evidence accepted, broader acceptance OPEN
+### R-B5b/R-R1 — redundant Linux input backend retired; whole-app acceptance OPEN
 
-**Current source:** Enigo selects repository-owned `libs/tfc` 0.7.0 through a path
-dependency. The root workspace/lockfile no longer selects Git X11 2.19.0. Registry
-X11 2.21.0 used by hbb_common/XDO and in-tree scrap capture are separate consumers.
+**Current source:** TFC is no longer a dependency or workspace member. Its eager X11
+context, generic-key fallback chain, key conversion and final-worker remap hook are
+removed from Enigo and the application. The 70-file owned crate and four TFC-only
+native fixtures are deleted; the X11 capture lane no longer builds or requires that
+retired component. Immutable canonical vendor/cache inputs are not edited or deleted.
 
-The 67 retained TFC source/license files were byte-matched to the complete primary tree at
-[`78bb80a8e596e4c14ae57c8448f5fca75f91f2b0`](https://github.com/rustdesk-org/The-Fat-Controller/tree/78bb80a8e596e4c14ae57c8448f5fca75f91f2b0),
-root `369a0ac9e63bfff8d377c5605eb2c82aa5f566c1`, before local changes.
-`libs/tfc/UPSTREAM_BLOBS.tsv` retains original blobs. Six retained source files have
-local changes; 61 are unchanged imports. `RUSTDESK_PROVENANCE.md` describes the changes.
-Windows/macOS implementations and their native dependencies are preserved, not newly
-validated. Dead Wayland/session-probe/features and unused Linux Git X11/anyhow dependencies
-are absent. GitHub reports a valid signature, not independent supplier authentication.
+**Caller-bound rationale:** RustDesk does not call Enigo's generic `key_down`,
+`key_up` or `key_click` methods. Physical control/map/translate, temporary-modifier
+and held-key release paths in `src/server/input_service.rs` use rdev. Semantic
+`process_unicode`/`process_seq` uses Enigo's existing result-bearing XDO text path;
+mouse and state queries keep their existing XDO route. Wayland custom and native
+Windows/macOS Enigo implementations are unchanged. The generic Linux trait methods
+now select XDO directly, but their broader status/cleanup correctness is not newly
+validated. `InputWorkerCleanup` still releases owned keys/buttons and BlockInput,
+then unregisters the worker; shared ownership, cancellation, queue drain and join
+semantics are preserved. Removing a remap backend that has no application producer
+does not remove live held-input cleanup.
 
-**Correction:** `linux_x11/ffi/xkb.rs` now uses the client C state layout and integer
-Status return. `keyboard.rs::char_event` checks the query before mapping or emitting input.
-`mod.rs` builds per-key group mappings from the primary display's keyboard description,
-removes the unowned secondary display/description, and owns full keyboard/symbol retirement
-through scoped guards. Constructor range/count checks precede narrowing or slicing; the
-retained modifier map and sole display retire with the context. Full description retirement
-uses the native [XkbFreeKeyboard contract](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/man/xkb/XkbFreeKeyboard.man).
-This does not claim that all inherited input APIs or error paths are correct.
+**Historical evidence, not current whole-app acceptance:** source
+`91b8c27eb8eb32d1e3085dec0f769dd8088600a1` corrected TFC's client state ABI,
+checked query status and one-display/full-keyboard ownership. Its accepted isolated
+native transaction took 53 VM seconds, compiled the whole Linux TFC component,
+observed 96 real window events plus 16 query refusals/same-context recoveries,
+and paired directly owned resources through 64 constructor-failure cases.
+It did not exercise RustDesk's actual input route. The imported tree/provenance,
+supplier review, original digests and detailed findings remain in that source,
+`0c0b2db14d2500a72acf8046ff04bda0552eadb2`, and the audit.
 
-**Accepted focused native transaction:** source `91b8c27eb8eb32d1e3085dec0f769dd8088600a1`,
-tree `f3c33a232a97444c9f151df22bf9f981fcb6c632`; command
-`scripts/smoke-verifier-vm-authority.sh --x11-display-tests`; outer exit 0 in **53 VM seconds**.
-It compiles the entire production Linux TFC crate with pinned Rust 1.75, not a reduced
-module model, and links it to the actual native libraries in an isolated Xvfb container.
-
-- All 14 state-field offsets, size 18 and alignment 2 match the actual client C header.
-  The unchanged historical declaration still measures size 16 and 13 differing offsets,
-  using safely oversized guarded storage, not actual old `char_event` execution.
-- Sixteen real contexts produce 96 ordered press/release events for lowercase a/b/c at a
-  real receiving X11 window. Sixteen one-shot invalid-device substitutions produce actual
-  server rejections through production `char_event`; the typed status error occurs before
-  any key emission, and the same context then produces valid input.
-- Every successful context has one display connection. Sixty-four injected null/invalid-count
-  constructor failures and the successful contexts pair directly owned symbol, complete
-  keyboard-description and modifier allocations with their native retirement calls.
-  Own descriptor counts return to baseline after every case. This is direct-call ownership
-  evidence, not a universal heap, allocator, race, reconnect or soak proof.
-- Existing real capture cases and three production byte-cache tests also pass. Containers,
-  Docker, VM/capture join; overlay/media/run root retire. Before/during/after host endpoint
-  audits find no additions; source/canonical inputs remain read-only and identity-bound.
-  The zero-NIC VM, Unix-only Xvfb, nonroot networkless/capability-free containers and existing
-  resource/time ceilings are unchanged.
-
-Native consumer binary SHA-256:
-`0f18509c5fe5ccc71fecdc660468049dcc9c3a3cd1beb8b714285e13cda825ca`.
-Under `.harness-state/verifier-vm/`, raw
-`x11-display-tests-run.nPz9znRTQp.serial.log` is 85,776 bytes, SHA-256
+Retained raw evidence under `.harness-state/verifier-vm/`:
+`x11-display-tests-run.nPz9znRTQp.serial.log`, 85,776 bytes, SHA-256
 `38a15afca3e6e0db17427f5bdb06e279f50b7424a2dc5b03710ca32062ba6d1d`;
-`evidence/x11-input-run.nPz9znRTQp.outer.receipt` has SHA-256
+assistant-observed, nonindependent
+`evidence/x11-input-run.nPz9znRTQp.outer.receipt`, SHA-256
 `2fdc85445a86bddbc562d4a8550e1b02809f78c6144d596ee5650f1ac0c775db`.
-The latter is assistant-observed, not independent attestation, and retains source-set,
-fixture, rlib, header/protocol/loaded-library/binary identities, command, limits and finality.
-The prior 55-second diagnostic `run.xrLMBAFXor` and two bounded failed-run receipts remain
-retained; the earlier build-tmpfs lifetime correction is not repeated history in this ledger.
+Prior diagnostic/failed-run bounded evidence is retained, not replayed as product proof.
 
-**Historical supplier review retained:** the retired Git X11 package at
-[`c2e9bfaa7b196938f8700245564d8ac5d447786a`](https://github.com/bjornsnoen/x11-rs/commit/c2e9bfaa7b196938f8700245564d8ac5d447786a),
-root `a56f16d10d4a1f0bc7a760a27f88808c79180eac`, package tree
-`04c909248b1d1aefa74c0934dc744c0efdc89407`, matched all 28 unnormalized vendor
-files and all 22 symlink-target contents; normalized manifest matched separately.
-Its binding/build source is declarations plus pkg-config queries, not a runtime loader.
-The complete three-commit net fork from `7db549d53b92bf1be68224dbfa836c7bd5dba1f9`
-changes only changelog/Xlib structures. Frozen upstream `ff57a942e5a4d35d8660362a8ca2ac0c02fa4852`
-retains those changes; 25 later commits/23 direct differences were inventoried, not fully
-audited. GitHub reports `unknown_key`. The server-internal field-order change is not a client
-ABI oracle. Complete original digests/research and diagnostic receipts remain in Git history
-and the audit; no immutable vendor bytes were edited or deleted.
+**Verification for retirement:** caller/dependency/reference review, `git diff --check`
+and inert Bash syntax checks pass. The pruned native capture transaction is pending;
+even a pass will validate the retained capture harness/component, not compile or
+exercise the changed Enigo/application integration.
 
-**OPEN:** complete TFC/fork review and independent authentication; full Cargo-graph/canonical
-offline-closure regeneration; Unicode/group/remap/modifier and emission-failure cleanup;
-the inherited Linux `unicode_string` no-op and enclosing Enigo error routing; native
-Windows/macOS and whole-app/installed current artifacts; installed principal/resource
-behavior, performance/soak/cross-version, cold equality, independent reproduction and external
-review. The global Enigo context is not proof of per-reconnect growth. This component result
-neither resumes deferred Android work nor establishes the Android/Windows display-delay cause.
+**OPEN:** whole Cargo-graph and complete canonical offline-closure regeneration;
+actual rdev/XDO input/text/remap/modifier and emission-failure cleanup review and
+native validation; whole-app/current installed artifacts on Linux, Windows and
+macOS; installed principals/resources, performance/soak/cross-version, remaining
+supplier authentication/review, cold equality, independent reproduction and external
+review. Retired TFC APIs are not ongoing product work. No per-reconnect growth,
+Android/Windows display-delay cause or new closed privilege boundary is established.
+Deferred Android concurrent Stop/admission and stale-generation work remains
+**INCOMPLETE / NOT VALIDATED**, not resumed by this retirement.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

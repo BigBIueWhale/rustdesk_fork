@@ -1174,12 +1174,6 @@ fn lock_input_state<'a, T>(state: &'a Mutex<T>, context: &str) -> std::sync::Mut
     }
 }
 
-#[inline]
-#[cfg(target_os = "linux")]
-pub fn clear_remapped_keycode() {
-    lock_input_state(&ENIGO, "Enigo state while clearing remapped keycodes").tfc_clear_remapped();
-}
-
 fn release_device_modifiers_inner() -> ResultType<()> {
     let mut en = lock_input_state(&ENIGO, "Enigo state while releasing device modifiers");
     for (modifier, physical) in [

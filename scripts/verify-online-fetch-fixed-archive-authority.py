@@ -740,7 +740,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         'for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"'
     )
     systemd_consumer_end = systemd_smoke.find(
-        'if [ "$MODE" = hbb-common-fs ]; then',
+        '\nif [ "$MODE" = hbb-common-fs ] ||',
         systemd_consumer_start,
     )
     require(
@@ -765,10 +765,6 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             'readonly HOST_GID="$(/usr/bin/id -g)"',
         ),
         "systemd image independent consumer identity",
-    )
-    require(
-        systemd_consumer.count('"$HOST_UID:$HOST_GID:400:1:$size"') == 1,
-        "systemd image consumer metadata profile count changed",
     )
 
     require_all(
@@ -1091,8 +1087,10 @@ MUTATIONS = (
     ),
     Mutation(
         "systemd_smoke",
-        '"$HOST_UID:$HOST_GID:400:1:$size"',
-        '"$HOST_UID:$HOST_GID:600:1:$size"',
+        '"$HOST_UID:$HOST_GID:400:1:$size" ] \\\n'
+        '        || fail "verifier-VM input metadata differs: $path"',
+        '"$HOST_UID:$HOST_GID:600:1:$size" ] \\\n'
+        '        || fail "verifier-VM input metadata differs: $path"',
         "systemd image downstream metadata profiles",
     ),
     Mutation(

@@ -107,6 +107,11 @@ case "$#:${1:-}" in
             || { echo 'Android runtime-log test input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-runtime-log-tests
         ;;
+    1:--fixed-archive-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'fixed-archive test input/run overrides are forbidden' >&2; exit 2; }
+        MODE=fixed-archive-tests
+        ;;
     1:--linux-flutter-artifact-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Linux Flutter artifact-test input/run overrides are forbidden' >&2; exit 2; }
@@ -248,6 +253,7 @@ case "$#:${1:-}" in
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
+        printf 'Focused archive transaction fixtures: %s --fixed-archive-tests\n' "${0##*/}" >&2
         printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
         printf 'Focused production X11 enumeration/capture check: %s --x11-display-tests\n' "${0##*/}" >&2
@@ -429,6 +435,10 @@ readonly ONLINE_FETCH_VM_GUEST_SOURCE="$SCRIPT_DIR/online-fetch-vm-guest.sh"
 readonly ONLINE_FETCH_ENTRY_PREFLIGHT="$SCRIPT_DIR/verify-online-fetch-vm-entry.sh"
 readonly ONLINE_FETCH_AUTHORITY_CHECKER="$SCRIPT_DIR/verify-online-fetch-container-authority.py"
 readonly ONLINE_FETCH_RENAME_CHECKER="$SCRIPT_DIR/verify-online-fetch-virtiofs-rename.py"
+readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
+readonly FIXED_ARCHIVE_CHECKER="$SCRIPT_DIR/verify-online-fetch-fixed-archive-authority.py"
+readonly FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
+readonly FIXED_ARCHIVE_WINDOWS_TOOLS="$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512"
 readonly ONLINE_PUB_CACHE_OUTPUT_SOURCE="$SCRIPT_DIR/online-pub-cache-output.py"
 readonly ONLINE_GRADLE_OUTPUT_SOURCE="$SCRIPT_DIR/online-gradle-output.py"
 readonly ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER="$SCRIPT_DIR/verify-online-fetch-gradle-output-authority.py"
@@ -500,6 +510,10 @@ elif [ "$MODE" = flutter-model-tests ]; then
 elif [ "$MODE" = android-owner-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
+    readonly VM_MEMORY=2048
+elif [ "$MODE" = fixed-archive-tests ]; then
+    readonly VM_TIMEOUT_SECONDS=150
+    readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
 elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     readonly VM_TIMEOUT_SECONDS=240
@@ -1730,6 +1744,7 @@ frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
 if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+   || [ "$MODE" = fixed-archive-tests ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
@@ -1743,6 +1758,16 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$M
         [ "$FOCUSED_TEST_COMMIT" = "$(git_closed -C "$REPO_ROOT" rev-parse refs/remotes/origin/master)" ] \
             || fail 'focused native tests require pushed master'
     fi
+fi
+if [ "$MODE" = fixed-archive-tests ]; then
+    for source in "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
+        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS"; do
+        [ -f "$source" ] && [ ! -L "$source" ] || fail 'fixed-archive test source is absent or ambiguous'
+        verify_committed_test_source "$source"
+    done
+    fixed_archive_sources_before="$(/usr/bin/sha256sum \
+        "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
+        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS")"
 fi
 reserve_verifier_run
 engine_prepare_inputs_before=
@@ -2380,6 +2405,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
     if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+       || [ "$MODE" = fixed-archive-tests ] \
        || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
     fi
@@ -3287,6 +3313,14 @@ elif [ "$MODE" = flutter-model-tests ]; then
 elif [ "$MODE" = android-owner-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("source.tar=$ANDROID_OWNER_SOURCE_ARCHIVE")
+elif [ "$MODE" = fixed-archive-tests ]; then
+    payload_identity=(-uid 4000 -gid 4000)
+    lifecycle_payload_grafts=(
+        "repo/scripts/online-fixed-archive-output.py=$FIXED_ARCHIVE_HELPER"
+        "repo/scripts/verify-online-fetch-fixed-archive-authority.py=$FIXED_ARCHIVE_CHECKER"
+        "repo/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt=$FIXED_ARCHIVE_MANIFEST"
+        "repo/res/vcpkg/libvpx/windows-tools.sha512=$FIXED_ARCHIVE_WINDOWS_TOOLS"
+    )
 elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=(
@@ -3463,6 +3497,8 @@ elif [ "$MODE" = android-execution-probe ]; then
     guest_invocation+=' --android-execution-probe'
 elif [ "$MODE" = android-runtime-log-tests ]; then
     guest_invocation+=' --android-runtime-log-tests'
+elif [ "$MODE" = fixed-archive-tests ]; then
+    guest_invocation+=' --fixed-archive-tests'
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     guest_invocation+=' --linux-flutter-artifact-tests'
 elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
@@ -3979,6 +4015,12 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
         printf '%s\n' "${engine_artifacts[0]}"
     fi
     printf '%s\n' "$engine_prepare_receipt" "$engine_prepare_vm_receipt"
+elif [ "$MODE" = fixed-archive-tests ]; then
+    fixed_archive_vm_receipt="FIXED_ARCHIVE_TESTS_VM=pass uid=4000 gid=4000 helper_sha256=$(/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" | /usr/bin/awk '{print $1}') checker_sha256=$(/usr/bin/sha256sum "$FIXED_ARCHIVE_CHECKER" | /usr/bin/awk '{print $1}') source=readonly responses=injected filesystem=actual network=none docker=retired scratch=retired cleanup=joined"
+    require_exact_fixed_receipt 'fixed archive transaction self-test: PASS' 'adversarial archive transaction result'
+    require_exact_fixed_receipt "$fixed_archive_vm_receipt" 'fixed-archive source and finality result'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'fixed-archive guest completion'
+    printf '%s\n' 'fixed archive transaction self-test: PASS' "$fixed_archive_vm_receipt"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     linux_flutter_test_receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=23 publication=noclobber admission=exact execution=guest-only cleanup=joined'
     require_exact_fixed_receipt \
@@ -5063,6 +5105,14 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
 fi
 [ "$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" "$LINUX_FLUTTER_ARTIFACT_TEST")" = "$linux_flutter_sources_before" ] \
     || fail 'Linux app-capsule source changed during execution'
+if [ "$MODE" = fixed-archive-tests ]; then
+    [ "$(/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
+        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS")" = "$fixed_archive_sources_before" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
+        && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'fixed-archive admitted source changed during execution'
+fi
 if [ "$MODE" = linux-flutter-artifact-tests ]; then
     [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
@@ -5121,6 +5171,9 @@ elif [ "$MODE" = linux-flutter-engine-prepare ]; then
 elif [ "$MODE" = android-runtime-log-tests ]; then
     printf 'ANDROID_RUNTIME_LOG_TESTS_OUTER=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=guest-only product=unexecuted scope=real-log-lifetime cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$vm_elapsed_seconds"
+elif [ "$MODE" = fixed-archive-tests ]; then
+    printf 'FIXED_ARCHIVE_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly product=unexecuted cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = x11-display-tests ]; then
     printf 'X11_DISPLAY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-enumeration-capture-component cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"

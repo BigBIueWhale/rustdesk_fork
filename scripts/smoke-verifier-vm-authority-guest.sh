@@ -22,6 +22,9 @@ case "$#:${8:-}" in
     8:--android-runtime-log-tests)
         MODE=android-runtime-log-tests
         ;;
+    8:--fixed-archive-tests)
+        MODE=fixed-archive-tests
+        ;;
     8:--linux-flutter-artifact-tests)
         MODE=linux-flutter-artifact-tests
         ;;
@@ -121,7 +124,7 @@ case "$#:${8:-}" in
         ;;
     *)
         echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-pa-authority-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-service-uid-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 TEST_APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 TEST_APK_SHA256 {peer-lifecycle|controlled-cm} PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-flutter-app-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 CONTEXT | --linux-flutter-app-replay SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 APP_COMMIT APP_TREE APP_RECIPE_SHA256 APP_MANIFEST_SHA256 CONTEXT | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
-        echo 'The seven base arguments also accept --android-execution-probe, --android-runtime-log-tests, or --linux-flutter-artifact-tests.' >&2
+        echo 'The seven base arguments also accept --android-execution-probe, --android-runtime-log-tests, --fixed-archive-tests, or --linux-flutter-artifact-tests.' >&2
         echo 'CM file integration replay accepts --cm-file-replay SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused Flutter queue shard appends --frame-queue to --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         exit 2
@@ -574,6 +577,60 @@ run_linux_flutter_engine_prepare() {
     printf 'FLUTTER_ENGINE_PREPARE_VM=pass commit=%s tree=%s helper_sha256=%s runtime=%s uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined\n' \
         "$ENGINE_PREPARE_COMMIT" "$ENGINE_PREPARE_TREE" "$(sha256sum "$helper" | awk '{print $1}')" \
         "$DEV_CHECK_IMAGE_CONFIG_ID"
+}
+
+run_fixed_archive_tests() {
+    local work work_id helper_sha checker_sha source_before status=0
+    local helper=$VERIFY_REPO/scripts/online-fixed-archive-output.py
+    local checker=$VERIFY_REPO/scripts/verify-online-fetch-fixed-archive-authority.py
+    local output=$ROOT/fixed-archive-tests.out
+    local -a sources=("$helper" "$checker" "$VERIFY_REPO/scripts/online-fetch.sh"
+        "$VERIFY_REPO/scripts/pins.env" "$VERIFY_REPO/scripts/verify.sh"
+        "$VERIFY_REPO/scripts/smoke-verifier-vm-authority.sh"
+        "$VERIFY_REPO/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
+        "$VERIFY_REPO/res/vcpkg/libvpx/windows-tools.sha512")
+    source_before="$(sha256sum "${sources[@]}")"
+    helper_sha="$(sha256sum "$helper" | awk '{print $1}')"
+    checker_sha="$(sha256sum "$checker" | awk '{print $1}')"
+    setpriv --reuid=4000 --regid=4000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
+    work="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/mktemp -d /tmp/fixed-archive-tests.XXXXXXXXXX)" \
+        || fail 'cannot create fixed-archive test scratch'
+    [ "$(stat -c '%u:%g:%a' -- "$work")" = 4000:4000:700 ] \
+        || fail 'fixed-archive test scratch authority differs'
+    work_id="$(stat -c '%d:%i' -- "$work")"
+    (
+        cd "$VERIFY_REPO" &&
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
+            /usr/bin/python3 -B -I -S "$checker" --self-test &&
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
+            /usr/bin/python3 -B -I -S "$helper" self-test
+    ) >"$output" 2>&1 || status=$?
+    [ "$(stat -c '%s' -- "$output")" -le 65536 ] \
+        || fail 'fixed-archive test diagnostics exceeded their bound'
+    [ "$status" -eq 0 ] \
+        || { tail -n 80 "$output" >&2; fail "fixed-archive tests failed with status $status"; }
+    [ "$(grep -Fxc 'fixed archive transaction self-test: PASS' "$output")" -eq 1 ] \
+        && [ "$(grep -Ec '^fixed archive authority mutations: PASS \([1-9][0-9]*\)$' "$output")" -eq 1 ] \
+        && [ "$(wc -l <"$output")" -eq 2 ] \
+        || fail 'fixed-archive test results are missing, duplicated or unexpected'
+    [ "$(sha256sum "${sources[@]}")" = "$source_before" ] \
+        || fail 'fixed-archive test source changed during execution'
+    setpriv --reuid=4000 --regid=4000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
+    [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
+        && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
+        || fail 'fixed-archive tests left a container or image'
+    setpriv --reuid=4000 --regid=4000 --clear-groups \
+        /usr/bin/python3 -B -I -S "$VERIFY_REPO/scripts/verify-private-tree-closure.py" \
+        --remove-empty-private-root "$work" --expected-identity "$work_id" \
+        || fail 'fixed-archive test scratch could not be retired'
+    [ ! -e "$work" ] && [ ! -L "$work" ] || fail 'fixed-archive test scratch remains'
+    stop_docker_authority
+    cat "$output"
+    printf 'FIXED_ARCHIVE_TESTS_VM=pass uid=4000 gid=4000 helper_sha256=%s checker_sha256=%s source=readonly responses=injected filesystem=actual network=none docker=retired scratch=retired cleanup=joined\n' \
+        "$helper_sha" "$checker_sha"
 }
 
 run_linux_flutter_artifact_tests() {
@@ -6448,6 +6505,11 @@ fi
 
 if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     run_linux_flutter_engine_prepare
+    exit 0
+fi
+
+if [ "$MODE" = fixed-archive-tests ]; then
+    run_fixed_archive_tests
     exit 0
 fi
 

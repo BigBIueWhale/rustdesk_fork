@@ -78,55 +78,7 @@ fn change_and_observe(
     }
 }
 
-fn b_warm_restart_pending_events() {
-    let (connection, screen) = x11rb::connect(None).unwrap();
-    let root = connection.setup().roots[screen].root;
-    let windows = [connection.generate_id().unwrap(), connection.generate_id().unwrap()];
-    for window in windows {
-        connection.create_window(x11rb::COPY_DEPTH_FROM_PARENT, window, root,
-                                 0, 0, 1, 1, 0, WindowClass::INPUT_OUTPUT, 0,
-                                 &CreateWindowAux::new()).unwrap().check().unwrap();
-    }
-    let selection = connection.intern_atom(false, b"CLIPBOARD").unwrap().reply().unwrap().atom;
-    xfixes::query_version(&connection, 5, 0).unwrap().reply().unwrap();
-    xfixes::select_selection_input(&connection, root, selection,
-                                  xfixes::SelectionEventMask::SET_SELECTION_OWNER).unwrap().check().unwrap();
-    let (owner, receiver) = subscribe("diagnostic-initial".to_owned()).unwrap();
-    change_and_observe(&connection, selection, windows, &[&receiver]);
-    drop(receiver);
-    drop(owner);
-    assert!(CLIPBOARD_LISTENER.lock().unwrap().handle.is_none());
-
-    // Diagnostic intervention only: inspect the idle cached connection after its
-    // worker has joined. Production does not drain it this way. This is not an
-    // acceptance scenario and must not replace the untouched warm-restart test.
-    let clipboard = Master::<Handler>::x11_clipboard().as_ref().unwrap();
-    let mut pending = Vec::new();
-    while let Some((event, sequence)) = clipboard.getter.connection.poll_for_event_with_sequence().unwrap() {
-        if matches!(event, Event::XfixesSelectionNotify(_)) {
-            pending.push(sequence);
-        }
-        assert!(pending.len() < 1024, "diagnostic event inspection exceeded its bound");
-    }
-    println!("CLIPBOARD_NATIVE_DIAGNOSTIC pending_old_events={} sequences={:?} intervention=idle_queue_drain acceptance=false",
-             pending.len(), pending);
-    assert!(!pending.is_empty(), "no queued old native events were observed");
-    let (owner, receiver) = subscribe("diagnostic-after-drain".to_owned()).unwrap();
-    let started = Instant::now();
-    change_and_observe(&connection, selection, windows, &[&receiver]);
-    let elapsed = started.elapsed().as_millis();
-    drop(receiver);
-    drop(owner);
-    assert!(CLIPBOARD_LISTENER.lock().unwrap().handle.is_none());
-    println!("CLIPBOARD_NATIVE_DIAGNOSTIC=pass after_drain_callback_ms={elapsed} workers=joined acceptance=false");
-}
-
-#[test]
-fn z_native_x11_peer_retirement() {
-    if std::env::var("CLIPBOARD_WARM_DIAGNOSTIC").as_deref() == Ok("1") {
-        b_warm_restart_pending_events();
-        return;
-    }
+fn native_selection_driver() -> (x11rb::rust_connection::RustConnection, u32, [u32; 2]) {
     assert!(Master::<Handler>::x11_clipboard().is_ok());
     let (connection, screen) = x11rb::connect(None).unwrap();
     let root = connection.setup().roots[screen].root;
@@ -140,8 +92,12 @@ fn z_native_x11_peer_retirement() {
     xfixes::query_version(&connection, 5, 0).unwrap().reply().unwrap();
     xfixes::select_selection_input(&connection, root, selection,
                                   xfixes::SelectionEventMask::SET_SELECTION_OWNER).unwrap().check().unwrap();
-    let baseline = resources();
+    (connection, selection, windows)
+}
 
+#[test]
+fn y_native_x11_warm_restart() {
+    let (connection, selection, windows) = native_selection_driver();
     for cycle in 0..4 {
         println!("CLIPBOARD_NATIVE_CYCLE cycle={cycle} stage=subscribe");
         let (owner, receiver) = subscribe(format!("native-cycle-{cycle}")).unwrap();
@@ -153,10 +109,17 @@ fn z_native_x11_peer_retirement() {
         let registry = listener.subscribers.lock().unwrap();
         assert!(registry.subscribers.is_empty() && registry.terminal.is_none());
     }
+    println!("CLIPBOARD_NATIVE_WARM=pass callbacks=4 normal_cycles=4 workers=joined");
+}
+
+#[test]
+fn z_native_x11_peer_retirement() {
+    let (connection, selection, windows) = native_selection_driver();
+    let baseline = resources();
     let (first, first_receiver) = subscribe("native-first".to_owned()).unwrap();
     let (second, second_receiver) = subscribe("native-second".to_owned()).unwrap();
     change_and_observe(&connection, selection, windows, &[&first_receiver, &second_receiver]);
-    println!("CLIPBOARD_NATIVE_READY callbacks=6 normal_cycles=4 subscribers=2");
+    println!("CLIPBOARD_NATIVE_READY callbacks=2 subscribers=2");
     std::io::stdout().flush().unwrap();
     // The external driver retires and joins only this fixture's Unix-only Xvfb.
     let terminal_at = Instant::now();
@@ -194,5 +157,5 @@ fn z_native_x11_peer_retirement() {
             "listener retirement retained resources: {baseline:?} -> {final_resources:?}");
     println!("CLIPBOARD_NATIVE_FINAL threads_before={} threads_after={} fds_before={} fds_after={} terminal_ms={}",
              baseline.0, final_resources.0, baseline.1, final_resources.1, termination_ms);
-    println!("CLIPBOARD_NATIVE_CURRENT=pass callbacks=6 normal_cycles=4 subscribers=2 late_refusals=64 workers=joined");
+    println!("CLIPBOARD_NATIVE_CURRENT=pass callbacks=2 subscribers=2 late_refusals=64 workers=joined");
 }

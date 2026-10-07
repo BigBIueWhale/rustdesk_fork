@@ -943,7 +943,7 @@ run_android_frame_tests() {
     fi
     if [ "${X11_CLIPBOARD_ONLY:-0}" -eq 1 ]; then
         native_script=test-native-clipboard-listener.py
-        native_receipt='CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=pinned callbacks=actual old=retained current=joined late_admission=refused startup_observer=retired tests=8 network=none cleanup=joined'
+        native_receipt='CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=pinned callbacks=actual old=retained current=joined late_admission=refused startup_observer=retired tests=9 network=none cleanup=joined'
     fi
     local -a mounts command
     load_output="$(

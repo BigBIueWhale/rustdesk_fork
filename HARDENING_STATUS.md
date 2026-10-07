@@ -312,16 +312,30 @@ and `evidence/x11-focus-run.iTMfrCqrEQ.outer.receipt` bind source/artifacts/libr
 scope and finality. No added host endpoint; readonly inputs unchanged; all exact
 runtime owners joined and owned disk/media/run-root state retired. Isolation unchanged.
 
-The next correction replaces blocking typed reply waits with native nonblocking
-reply polling and descriptor readiness under one 100 ms monotonic observation
-budget. Deadline, transport failure and missing completion retire the connection
-and pending requests before a later same-mode retry. Its real paused/dead/restarted
-Xvfb A/B fixture is implemented but native acceptance is PENDING.
+At `1f4a01b3`, blocking typed reply waits are replaced with native reply polling
+and descriptor readiness under one 100 ms monotonic observation budget. Deadline,
+transport failure and missing completion retire the connection and pending
+requests before a later same-mode retry. The exact previous module remained
+blocked for 301 ms until the private Xvfb resumed. Four corrected paused-server
+cases returned at 100 ms and retired their descriptors; four dead-server cases
+returned an explicit connection error. All eight recovered through the same owner
+using a fresh connection and real server geometry. Native reply/error allocations
+were paired. The complete focus module, C-header ABI, prior focus/context/capture
+scenarios and three byte-cache tests passed; outer status zero, 47 VM seconds.
 
-Whole-app/service integration, constructor and native request-flush deadlines,
-full platform/performance/soak and reported-delay causation remain OPEN. The reply
-budget does not bound `xcb_connect`, native flushing, OS scheduling or the whole
-application. Constructor refusal/retry is not a live-server restart test.
+Retained `.harness-state/verifier-vm/x11-display-tests-run.Rdx1CAaq9i.serial.log`
+(86,110 bytes; SHA-256 `457efb8fe495a2b7c41ebe5b1c7afe4ab77e0337fd9e579e8745eaa83c32767e`)
+and `evidence/x11-focus-lifecycle-run.Rdx1CAaq9i.outer.receipt` bind artifacts,
+scope and finality. No added host endpoint, readonly inputs unchanged, exact
+runtime owners joined, and owned disk/media/run root retired. Isolation unchanged.
+
+Whole-app/service integration, constructor, native request-flush and fragmented
+native-reply deadlines, full platform/performance/soak and reported-delay
+causation remain OPEN. Upstream libxcb's native reader can internally wait for
+remaining packet bytes after receiving a reply header; the paused-before-reply
+test does not exercise that path. The polling budget is therefore not a complete
+transport bound, nor does it bound `xcb_connect`, native flushing, OS scheduling
+or the whole application. Do not call all request deadlines closed.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

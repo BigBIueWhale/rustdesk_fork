@@ -6595,23 +6595,27 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   fourteen-download proof. Historical adversarial/interrupted-publication fixtures and
   disposable all-fourteen HTTPS evidence remain in Git/audit; they are not current-VM acceptance.
 
-  The separate source-checker failure is corrected in `32ec8bf0`: its base-consumer
-  region now ends immediately after the actual input-admission/hash/qcow2 checks rather
-  than spanning unrelated workload branches. The obsolete global literal-count assertion
-  is deleted, and its metadata mutation targets that real admission loop rather than an
-  earlier helper. The metadata and independent publisher SHA-512 checks remain mandatory.
-  `/usr/bin/bash scripts/smoke-verifier-vm-authority.sh --fixed-archive-tests` passed as
-  session 10910/exit 0 in 23 VM seconds at that pushed commit. UID:GID 4000:4000 ran the
-  unchanged helper's real-filesystem adversarial fixtures (including interrupted/no-clobber
-  publication and unsafe output refusal) and the 61-mutation source supplement. HTTP
-  responses are injected, not live TLS/network traffic. Source/pinned inputs remained
-  unchanged; before/during/after host endpoint checks found no additions; the guest-only
-  Docker daemon, scratch, VM and disposable disk retired. This shard loads no test image,
-  builds no product, and does not rerun unrelated integration partitions.
-  Retained raw `fixed-archive-tests-run.ZtZJ8ldQQz.serial.log` under the verifier-VM root
-  is 67,543 bytes / SHA-256 `ce92c0dc93386511269258cc845a6c314f8123b6fc67fddf80f608908a018473`.
-  It binds helper SHA-256 `c3cf1022b61a9074a2e5ff77a9e71b9ab06304593bdbf497a20bb973f82fdaa9`
-  and checker SHA-256 `1b55f599b0fabb2f6bb14f580ed902d66fbb07b1827ff60896f8dcd6889885ea`.
+  The focused source supplement scopes its consumer check to actual admission/hash/qcow2
+  work; the obsolete global literal count and wrong-occurrence metadata mutation are gone
+  (`32ec8bf0`). The shared base-metadata production helper is now consumed by both the
+  networkless launcher and boot-asset deriver (`88fcbcef`; R-S11cu below). The unchanged
+  archive helper's real-filesystem adversarial fixtures, including interrupted/no-clobber
+  publication and unsafe output refusal, and 61 source mutations passed the latest
+  `/usr/bin/bash scripts/smoke-verifier-vm-authority.sh --fixed-archive-tests` as
+  session 47268/exit 0 in 18 VM seconds at `88fcbcef`, tree
+  `4146bedecba5617055926af0abd3a78f9c741e72`. This shard also passed 22 actual base-metadata
+  cases as UID:GID 4000:4000. HTTP responses are injected, not live TLS/network traffic;
+  source mutations are supplementary, not native privilege-boundary scenarios.
+  Sources/pinned inputs stayed unchanged; complete before/during/after host endpoint checks
+  found no additions; guest-only Docker, scratch, VM and disk retired. No test image or
+  RustDesk product was loaded/built/executed and no unrelated integration partition reran.
+  Current raw `fixed-archive-tests-run.1iFxxJYnlL.serial.log` under the verifier-VM root
+  is 66,200 bytes / SHA-256 `8cbd906a3d6428e78ada2b6db7dd83d935fbb119c4920f265d9d5fa17a2e408b`.
+  It binds unchanged helper SHA-256 `c3cf1022b61a9074a2e5ff77a9e71b9ab06304593bdbf497a20bb973f82fdaa9`
+  and checker SHA-256 `c54ec679f4337acdf40883dd90c677ac9a9a2e43be8dc26571a58c59d7d9a943`.
+  `evidence/base-metadata-run.1iFxxJYnlL.outer.receipt` retains the final-poll excerpt,
+  explicitly assistant-captured and nonindependent. The superseded 23-second shard remains
+  in its raw serial and Git/audit; it is not another current behavioral requirement.
   Two earlier pre-transaction failures (caller working directory, then that unrelated
   source assertion) downloaded nothing;
   their bounded `evidence/fixed-archives-run.{nDzmr1aAB0,aDDGR2dDAl}.*` logs are retained.
@@ -6706,95 +6710,77 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   online-cache mutation was performed.
 - **R-S11cu/R-S11e-113 — Debian systemd VM image acquisition authority —
   ACQUISITION SOURCE IMPLEMENTED; HISTORICAL DISPOSABLE COLD EVIDENCE RECORDED;
-  CURRENT CONSUMER PROFILE ACCEPTANCE OPEN.**
-  Platform: the unprivileged Linux acquisition host and immutable Android-builder container.
-  Endpoint/action: `scripts/online-fetch.sh --debian-systemd-smoke-image`, which stages the dated Debian 12
-  genericcloud QCOW2 consumed by the networkless installed-systemd lifecycle gate. Boundary: remote HTTPS
-  response/network-client execution ↔ the durable private
-  `.harness-state/debian-systemd-smoke/debian-12-genericcloud-amd64-20260712-2537.qcow2` base.
+  NETWORKLESS CONSUMER 0400/0444 ADMISSION AND PRIVATE-0444 BOOT VERIFIED.**
+  Boundary: the closed `scripts/online-fetch.sh --debian-systemd-smoke-image` acquisition
+  publishes one pinned dated QCOW2 below the private `.harness-state/debian-systemd-smoke`
+  root; the R-S11dh networkless launcher independently authenticates its own retained VM base.
+  Current acquisition executes only inside R-S11cj's outbound-only VM, not through host Docker.
+  The former predictable host `curl -L`/`.part`/chmod/overwrite-publication route is absent.
 
-  Before this slice, host `curl -L` streamed remote delivery into the predictable durable sibling
-  `<image>.part`; failure removed that pathname, and a successful final SHA-512 was followed by chmod and
-  overwrite-capable `mv`. The dated Debian URL and publisher hash constrained completed bytes but not response
-  length, redirect host, content transformation, direct durable-namespace write authority, interrupted state,
-  or no-clobber publication. This was build-host network-execution, acquisition-output/publication, stale-state,
-  and denial-of-service authority debt—not evidence that the cached image changed, host root was acquired,
-  Docker escaped, a public listener/port was created, host RustDesk/service/configuration/firewall/network state
-  changed, exploitation occurred, or the host was compromised.
+  Acquisition source fixes build `20260712-2537`, exact length 346,882,048 and SHA-256
+  `b49303d83f5f69ff55fdf8c16b883b5714bc5332d37a6f6b8a94da42ad5b0999` independently of
+  Debian's publisher SHA-512. The manifest admits only the fixed credential-free dated
+  `cloud.debian.org` URL and reviewed `laotzu.ftp.acc.umu.se` redirect host; no ambient mirror
+  allowlist exists. Only this large-image profile has a 300-second I/O wait (others: 120).
+  The shared archive engine admits exactly this one-entry shape, the fourteen-toolchain
+  shape, or one libvpx source plus 32 tools. Systemd-image publication does not prepare or
+  lock unrelated `online`. Current-owner/current-primary-GID private roots, exclusive lock,
+  same-filesystem durable state, exact immutable nonroot three-mount producer, bounded
+  HTTPS/framing/length/digest, independent stable no-follow metadata/byte verdict,
+  descriptor-relative no-clobber publication, synchronization, recovery and exact retirement
+  remain mandatory. Existing output accepts only 0400 or historical 0444, one link, no
+  xattrs, same mount and exact bytes; occupied wrong output is not normalized or replaced.
+  New output is 0400. The producer receives no final/publication root, live repository,
+  host Docker socket/device, published port, host namespace or other writable host path.
 
-  Source closure: the dated filename remains derived only from
-  `DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD=20260712-2537`. Debian's dated directory publishes one matching
-  `SHA512SUMS` record; the existing cache matches it exactly. The new acquisition pins bind the same
-  publisher-exact bytes to length 346,882,048 and SHA-256
-  `b49303d83f5f69ff55fdf8c16b883b5714bc5332d37a6f6b8a94da42ad5b0999`, while the established publisher
-  SHA-512 remains independent and mandatory at acquisition completion and again before QEMU consumption.
-  The one-entry source manifest fixes the credential-free dated HTTPS origin and admits exactly
-  `cloud.debian.org` plus the currently reviewed Debian-selected final host
-  `laotzu.ftp.acc.umu.se`. A different redirect target fails closed and requires an explicit manifest
-  review; there is no ambient Debian-mirror allowlist. A confined one-byte diagnostic observed that exact
-  final URL and the exact 346,882,048-byte object size. Because this Debian path has exceeded the shared
-  120-second I/O wait during failed-closed diagnostics, only the large systemd-image profile receives a
-  finite 300-second I/O timeout; the ordinary archive timeout remains 120 seconds.
+  **Consumer correction:** `scripts/verifier-vm-base-metadata.sh` is now the one production
+  metadata API shared by `smoke-verifier-vm-authority.sh` and
+  `derive-verifier-vm-boot-assets.sh`. It derives current UID/primary GID itself, refuses
+  either zero identity, and admits only a regular non-symlink exact-length single-link file
+  owned by that identity with exact mode 0400 or 0444. `88fcbcef` changes the shared allowlist,
+  not the publisher/format or VM-authority checks. Docker/Git inputs remain 0400-only;
+  the distinct outbound acquisition VM's base guard is not changed by this slice.
+  Both networkless consumers still require independent publisher SHA-512 and `qemu-img check`;
+  standalone QCOW2/no backing file, authenticated boot assets and throwaway zero-NIC overlay
+  remain required. This helper is metadata admission, not descriptor-pinned race proof.
 
-  The R-S11cs/R-S11ct transaction engine is reused rather than copied. Its third closed profile is exactly one
-  top-level `debian-12-genericcloud-amd64-YYYYMMDD-HHMM.qcow2`; every other one-entry name and every other
-  cardinality remains rejected. Generic transaction orchestration now takes an explicit publication root.
-  Toolchain/vcpkg calls retain the private canonical online root; the systemd call uses only its separately
-  proved current-UID/current-GID mode-0700 harness/state directories, so the explicit systemd mode no longer
-  prepares or locks unrelated `online`. Existing image reuse accepts only current-owner modes 0400 or
-  historical read-only 0444, one link, no xattrs, same mount, exact length, and SHA-256. It does not chmod,
-  delete, or replace an occupied image; new publication is mode 0400.
+  **Actual A/B:** at `4c6572ad`, unchanged fixtures directly sourcing the production helper
+  accepted 0400 then refused 0444 (session 84922/exit 1). Raw
+  `.harness-state/verifier-vm/fixed-archive-tests-run.CO1zQN00q0.serial.log` is 65,811 bytes /
+  SHA-256 `a94000cae9ba67a7fbc9b9763d292ab812e98669a5b23c5e8a7b4118527d672d`.
+  The corrected 18-second shard at `88fcbcef` passed 22 actual filesystem cases as 4000:4000:
+  both admitted modes; twelve wrong modes; wrong length, hardlink, symlink, missing file,
+  directory, FIFO, actual foreign UID and actual foreign GID. Read-only source, unchanged
+  test/guest bytes across A/B and finality are required; raw success is under R-S11cs above.
+  An earlier fixture's readonly-variable collision failed before the regression and is not
+  counted. The 61 source mutations and injected-response archive fixtures are supplementary.
 
-  Cold acquisition uses the same durable same-filesystem private state/output transaction, exact immutable
-  Android-builder/helper binding, numeric-nonroot three-mount producer, disabled proxy discovery, bounded HTTPS
-  redirect/status/encoding/framing/length processing, exclusive no-follow creation, exact SHA-256, fsync and
-  mode-0400 sealing, independent host metadata/byte verdict, descriptor-relative `RENAME_NOREPLACE`, namespace
-  synchronization, restart reconciliation, and exact-identity retirement. The producer receives the helper and
-  state read-only plus only the private output writable. It receives no harness/publication root, final name,
-  canonical online cache, repository, Docker socket, device, port, host namespace, or other writable host path.
-  The current networkless consumer requires current-owner mode 0400 and retains publisher SHA-512,
-  `qemu-img check`, standalone-QCOW2/no-backing-file, no-network, and throwaway-CoW-overlay checks.
-  R-S11cu's historical mode-0444 consumer profile is not admitted by this launcher's current guard;
-  it remains OPEN rather than being inferred from the acquisition helper's mode-0444 reuse fixture.
+  **Real consumption:** `a007baa0`, tree `ca7a324e1579e85c909571dccf1879e65a59c5d1`, passed
+  `/usr/bin/bash scripts/smoke-verifier-vm-authority.sh --base-readonly-test` as
+  session 24016/exit 0 in 85 VM seconds. The closed selector keeps normal authority-smoke
+  workload/receipts and refuses external input/run overrides. One publisher-authenticated
+  private copy inside the already reserved run is 0444; the canonical base is not chmodded
+  or replaced. Both consumers, existing authenticated boot-cache validation and actual QEMU
+  overlay boot ran. Canonical inode/metadata/digest and admitted source stayed unchanged;
+  complete host endpoint snapshots had no additions; QEMU/capture and guest Docker joined;
+  the owned clone, overlay, media and run root retired. Raw
+  `.harness-state/verifier-vm/authority-smoke-run.m4NKEp3O2H.serial.log` is 83,219 bytes /
+  SHA-256 `9f42872d460c0c99ab8e5c933e81953e5f2d0df939d9c6a6f564eba003519fc5`.
+  Its `evidence/base-readonly-run.m4NKEp3O2H.outer.receipt` is an assistant-captured final-poll
+  excerpt, not independent attestation. No RustDesk product, release or installed service ran.
 
-  Current focused evidence is the accepted 23-second zero-NIC archive shard recorded under R-S11cs:
-  real one-entry prepare/acquire/independent-verify/no-clobber-publish fixtures, historical-mode reuse,
-  writable-output rejection, and the 61-mutation source supplement. The supplement protects the actual
-  consumer metadata/SHA-512 region; its former global-count assertion and wrong-occurrence mutation
-  are removed/retargeted, not treated as consumer behavior. Historical workspace, container-authority,
-  and codec gate receipts remain in Git/audit; they are not current native or release acceptance.
-
-  Complete live acquisition proof: one disposable transaction used a current-user-owned mode-0700 private
-  `/dev/shm` tree and the immutable Android-builder image. Preparation, independent verification, publication,
-  reconciliation, reuse, and final digest inspection ran networkless. The sole networked producer ran as numeric
-  UID:GID 1000:1000 with `--pull=never`, read-only root, all capabilities dropped, no-new-privileges, fixed
-  PID/2-GiB-memory/no-swap/two-CPU ceilings, and bounded non-executable `/tmp`. It received exactly three mounts:
-  the helper and state read-only and the private output directory writable. It received no source tree, harness
-  publication root, online cache, Docker socket, device, port, or host namespace. The producer downloaded all
-  346,882,048 bytes, enforced the exact HTTPS host/response/length/SHA-256 contract, and sealed the candidate
-  mode 0400. A separate networkless invocation independently verified it, descriptor-relative no-clobber
-  publication and reconciliation completed, publisher SHA-512 matched, the final current-owner/current-group
-  mode-0400 single-link file was exact, and a second prepare returned `complete` with no missing output. The run
-  exited green with `Debian systemd image cold lifecycle: PASS
-  size=346882048 mode=0400 sha256+publisher-sha512=exact reuse=complete`; the identity-checked trap then removed
-  the complete RAM-backed tree.
-
-  Failed-closed diagnostics are part of the evidence: two earlier 120-second full-download attempts reached no
-  publication; a one-byte probe proved that the canonical Debian origin currently selects
-  `laotzu.ftp.acc.umu.se`, motivating the exact second host and systemd-only 300-second I/O timeout. The first
-  post-change full transaction completed download/verification/publication/reuse but its final read-only
-  validator was invoked with Docker environment flags after the image name and failed before digest assertions;
-  its trap removed the temporary tree, and only the corrected fully green rerun is counted. Attempts to run the
-  workspace verifier's broader executable self-test in the pinned Android and Debian builders failed before
-  applicable fixtures because the former lacks `systemd-run` and the latter lacks Python `tomllib`; neither is
-  claimed. The normal validator and complete semantic source-mutation matrix are the recorded workspace evidence.
-
-  Evidence boundary: this is a source and disposable acquisition closure, not a release build or a mutation of
-  the persistent image cache. It does not close the exact clean R-B2/R-B10 transaction, committed local
-  security-patch/native-key publication, host Cargo vendoring, Windows Flutter/Pub/WiX producers,
-  maintenance-image acquisition/distribution, native/device behavior, independent image distribution, or R-V3
-  external review. No root command/container, image pull/build/tag, release build, host RustDesk
-  process/service/configuration/listener/firewall/network operation, or persistent cache mutation was performed.
+  Historical cold acquisition downloaded all 346,882,048 bytes into a private disposable
+  tree, independently verified and no-clobber-published them, matched publisher SHA-512,
+  revalidated complete reuse and retired the tree. Earlier timeouts, a wrongly invoked final
+  validator and unsuitable broader fixture environments are not green evidence. Their
+  detailed provenance remains in Git/audit; that historical proof is not current R-S11cj
+  acquisition or current installed-systemd acceptance.
+  **OPEN:** cold boot-asset derivation from a 0444 base (this run reused the verified cache),
+  replacement/race and full stable-consumption schedules, current cold-acquisition acceptance,
+  the actual installed-systemd/RustDesk lifecycle, complete canonical inputs and exact clean
+  R-B2/R-B10 artifacts, committed patch/native-key and dependency producers, Windows
+  Flutter/Pub/WiX, maintenance-image distribution, stable signing/golden/operator assets,
+  native/device/performance/resource/soak evidence, independent reproduction and R-V3 review.
 - **R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority —
   SOURCE/GATES COMPLETE 2026-07-24; EXACT CLEAN RELEASE EVIDENCE REMAINS OPEN.** Platform: the unprivileged Linux
   acquisition host. Endpoint/action: `scripts/online-fetch.sh::stage_libvpx_distfiles`, which

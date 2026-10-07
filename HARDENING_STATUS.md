@@ -281,12 +281,12 @@ artifact. Those integration/installed, Xlib initialization/concurrency, native
 failed-connection destruction, race/heap/soak/performance and platform claims remain
 OPEN. No per-reconnect growth or Android/Windows display-delay cause is established.
 
-### Linux window focus — request-scoped native errors; acceptance pending
+### Linux window focus — native request-scoped errors; integration OPEN
 
 The live `get_focused_display` path installed a process-global Xlib handler and
 shared error flags around XDO geometry reads. Errors from another Xlib connection
 could therefore be swallowed and contaminate the focus result. The primary
-[Xlib implementation](https://github.com/mirror/libX11/blob/master/src/ErrHndlr.c)
+[Xlib implementation](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/src/ErrHndlr.c)
 binds that handler to `_XErrorFunction`, not the queried display.
 
 `src/platform/linux/window_focus.rs` replaces that path with one thread-owned XCB
@@ -297,13 +297,25 @@ explicit, and a failed transport is retired before a later retry. Screen-relativ
 coordinates include nesting/borders and display matching uses non-overflowing sums.
 There is no Xlib handler swap, shared error flag or XDO geometry fallback.
 
-Native acceptance is pending in `--x11-display-tests`: the entire production module,
-actual C-header ABI checks, real root/nested/destroyed windows, controlled destruction
-between geometry/translation, unrelated Xlib error delivery, malformed properties,
-seven injected setup layouts, constructor refusal and thread-exit allocation/descriptor
-retirement. Whole-app/service integration, native stalled/dead/restarted server and
+At `a9a3478b`, `--x11-display-tests` passed (outer status zero, 55 VM seconds): the
+complete production module and actual C-header ABI checks; 12 native window/property
+cases repeated 16 times; 16 real destructions between geometry/translation and
+16 unrelated Xlib errors delivered to their original handler; seven injected setup
+layouts refused; 16 constructor refusals followed by recovery, and 16 joined thread
+exits with native reply/error allocations paired and descriptor counts retired.
+The old distinction executes the historical handler shape, not an old whole app.
+Existing native context/capture cases and three byte-cache tests also passed.
+
+Retained `.harness-state/verifier-vm/x11-display-tests-run.iTMfrCqrEQ.serial.log`
+(81,787 bytes; SHA-256 `2fc2804fa5478ae474a4c88f019a262980c77a59c9d376459f469aea786fbe0b`)
+and `evidence/x11-focus-run.iTMfrCqrEQ.outer.receipt` bind source/artifacts/libraries,
+scope and finality. No added host endpoint; readonly inputs unchanged; all exact
+runtime owners joined and owned disk/media/run-root state retired. Isolation unchanged.
+
+Whole-app/service integration, native stalled/dead/restarted server and
 constructor/request deadlines, full platform/performance/soak and reported-delay
-causation remain OPEN; source ownership alone does not close them.
+causation remain OPEN. The synchronous native waits are not deadline validation,
+and constructor refusal/retry is not a live-server restart test.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

@@ -14,14 +14,9 @@ readonly HOST_GID="$(/usr/bin/id -g)"
     || fail 'base metadata test scratch authority differs'
 readonly SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 /bin/bash "$SCRIPT_DIR/verify-vm-entry-preflight.sh" >/dev/null
-readonly source_file=$SCRIPT_DIR/smoke-verifier-vm-authority.sh
+readonly source_file=$SCRIPT_DIR/verifier-vm-base-metadata.sh
 readonly source_sha="$(/usr/bin/sha256sum "$source_file")"
-/usr/bin/awk '
-    /^verify_debian_vm_base_metadata\(\) \{$/ { found++; copy = 1 }
-    copy { print; if ($0 == "}") copy = 0 }
-    END { if (found != 1 || copy) exit 1 }
-' "$source_file" >"$work/base-metadata.function.sh"
-source "$work/base-metadata.function.sh"
+source "$source_file"
 
 readonly subject=$work/base
 readonly output=$work/base-metadata.result
@@ -71,7 +66,7 @@ refuse "$work/foreign-uid" "$fixture_size" foreign-uid 'Debian verifier-VM base 
 refuse "$work/foreign-gid" "$fixture_size" foreign-gid 'Debian verifier-VM base metadata differs'
 [ "$cases" -eq 22 ] || fail 'base metadata case inventory differs'
 [ "$(/usr/bin/sha256sum "$source_file")" = "$source_sha" ] || fail 'base metadata source changed'
-/usr/bin/rm -- "$subject" "$output" "$work/base-metadata.function.sh" \
+/usr/bin/rm -- "$subject" "$output" \
     "$work/symlink" "$work/fifo" "$work/foreign-uid" "$work/foreign-gid"
 /usr/bin/rmdir -- "$work/directory"
 printf 'VERIFIER_VM_BASE_METADATA=pass cases=22 profiles=400,444 source=production metadata=actual cleanup=joined\n'

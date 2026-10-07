@@ -21,6 +21,7 @@ readonly DERIVER_SOURCE="${BASH_SOURCE[0]}"
 readonly LIB_SOURCE="$SCRIPT_DIR/lib.sh"
 readonly PIN_SOURCE="$SCRIPT_DIR/pins.env"
 readonly CLEANUP_HELPER="$SCRIPT_DIR/verify-private-tree-closure.py"
+readonly BASE_METADATA_SOURCE="$SCRIPT_DIR/verifier-vm-base-metadata.sh"
 readonly DISK_SIZE=$((3 * 1024 * 1024 * 1024))
 readonly SECTOR_SIZE=512
 readonly PARTITION_BYTES=$((VERIFIER_VM_ROOT_PARTITION_SECTORS * SECTOR_SIZE))
@@ -125,13 +126,14 @@ for tool in /usr/bin/awk /usr/bin/chmod /usr/bin/dd /usr/bin/dirname \
     [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$resolved")" = 0:0:755:1 ] \
         || fail "fixed derivation tool metadata changed: $tool"
 done
-for source in "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER"; do
+for source in "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER" "$BASE_METADATA_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "boot-derivation source is absent or ambiguous: $source"
 done
 [ -x "$DERIVER_SOURCE" ] && [ -x "$CLEANUP_HELPER" ] \
     || fail 'boot-derivation executable source is not executable'
-sources_before="$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER")"
+sources_before="$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER" "$BASE_METADATA_SOURCE")"
+source "$BASE_METADATA_SOURCE"
 
 [ -d "$STATE_ROOT" ] && [ ! -L "$STATE_ROOT" ] \
     || fail 'verifier-VM state root is absent or ambiguous'
@@ -139,11 +141,7 @@ sources_before="$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURC
     || fail 'verifier-VM state root is not absolute and canonical'
 [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$STATE_ROOT")" = "$UID_NOW:$GID_NOW:700" ] \
     || fail 'verifier-VM state root is not current-user/current-group mode 0700'
-[ -f "$BASE" ] && [ ! -L "$BASE" ] \
-    || fail 'authenticated Debian verifier-VM base is absent'
-[ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$BASE")" = \
-  "$UID_NOW:$GID_NOW:400:1:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE" ] \
-    || fail 'Debian verifier-VM base metadata differs'
+verify_debian_vm_base_metadata "$BASE" "$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"
 verify_digest sha512 "$BASE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"
 base_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$BASE"):$(/usr/bin/sha512sum "$BASE")"
 /usr/bin/qemu-img check -q "$BASE" || fail 'Debian verifier-VM base failed qcow2 validation'
@@ -168,7 +166,7 @@ if [ -e "$BOOT_ROOT" ] || [ -L "$BOOT_ROOT" ]; then
     verify_boot_cache
     [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$BASE"):$(/usr/bin/sha512sum "$BASE")" = \
       "$base_before" ] || fail 'authenticated base changed during cache validation'
-    [ "$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER")" = \
+    [ "$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER" "$BASE_METADATA_SOURCE")" = \
       "$sources_before" ] || fail 'boot-derivation source changed during cache validation'
     printf 'VERIFIER_VM_BOOT_ASSETS=pass source=authenticated-qcow2 cache=existing kernel=%s\n' \
         "$VERIFIER_VM_KERNEL_RELEASE"
@@ -289,7 +287,7 @@ fi
 
 [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$BASE"):$(/usr/bin/sha512sum "$BASE")" = \
   "$base_before" ] || fail 'authenticated base changed during boot-asset derivation'
-[ "$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER")" = \
+[ "$(/usr/bin/sha256sum "$DERIVER_SOURCE" "$LIB_SOURCE" "$PIN_SOURCE" "$CLEANUP_HELPER" "$BASE_METADATA_SOURCE")" = \
   "$sources_before" ] || fail 'boot-derivation source changed during execution'
 printf 'VERIFIER_VM_BOOT_ASSETS=pass source=authenticated-qcow2 cache=published kernel=%s\n' \
     "$VERIFIER_VM_KERNEL_RELEASE"

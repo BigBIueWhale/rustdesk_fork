@@ -440,6 +440,7 @@ readonly FIXED_ARCHIVE_CHECKER="$SCRIPT_DIR/verify-online-fetch-fixed-archive-au
 readonly FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly FIXED_ARCHIVE_WINDOWS_TOOLS="$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512"
 readonly BASE_METADATA_TEST="$SCRIPT_DIR/test-verifier-vm-base-metadata.sh"
+readonly BASE_METADATA_SOURCE="$SCRIPT_DIR/verifier-vm-base-metadata.sh"
 readonly ONLINE_PUB_CACHE_OUTPUT_SOURCE="$SCRIPT_DIR/online-pub-cache-output.py"
 readonly ONLINE_GRADLE_OUTPUT_SOURCE="$SCRIPT_DIR/online-gradle-output.py"
 readonly ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER="$SCRIPT_DIR/verify-online-fetch-gradle-output-authority.py"
@@ -1072,17 +1073,10 @@ android_owner_input_inventory() {
         "${ANDROID_OWNER_KOTLIN_JARS[@]}"
 }
 
-verify_debian_vm_base_metadata() {
-    local path=$1 size=$2 metadata
-    [ -f "$path" ] && [ ! -L "$path" ] \
-        || fail "Debian verifier-VM base is absent or symlinked: $path"
-    metadata="$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" \
-        || fail "cannot inspect Debian verifier-VM base metadata: $path"
-    case "$metadata" in
-        "$HOST_UID:$HOST_GID:400:1:$size") ;;
-        *) fail "Debian verifier-VM base metadata differs: $path" ;;
-    esac
-}
+[ -f "$BASE_METADATA_SOURCE" ] && [ ! -L "$BASE_METADATA_SOURCE" ] \
+    || fail 'Debian verifier-VM base admission source is absent or ambiguous'
+base_metadata_source_before="$(/usr/bin/sha256sum "$BASE_METADATA_SOURCE")"
+source "$BASE_METADATA_SOURCE"
 
 verify_committed_test_source() {
     local source=$1 relative expected actual
@@ -1774,13 +1768,13 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$M
 fi
 if [ "$MODE" = fixed-archive-tests ]; then
     for source in "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
-        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST"; do
+        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST" "$BASE_METADATA_SOURCE"; do
         [ -f "$source" ] && [ ! -L "$source" ] || fail 'fixed-archive test source is absent or ambiguous'
         verify_committed_test_source "$source"
     done
     fixed_archive_sources_before="$(/usr/bin/sha256sum \
         "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
-        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST")"
+        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST" "$BASE_METADATA_SOURCE")"
 fi
 reserve_verifier_run
 engine_prepare_inputs_before=
@@ -2413,7 +2407,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     "$DART_AUTHORITY_CHECKER" "$DART_AUDIT_CHECKER" \
     "$LINUX_FLUTTER_ARTIFACT_SOURCE" "$LINUX_FLUTTER_ARTIFACT_TEST" \
     "$REQUIREMENTS_SOURCE" "$HARDENING_SOURCE" \
-    "$BOOT_DERIVER" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" \
+    "$BOOT_DERIVER" "$BASE_METADATA_SOURCE" "$CAPTURE_HELPER" "$CLEANUP_HELPER" "$VIRTIOFSD_LAUNCHER" \
     "$LIB_SOURCE" "$PIN_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
@@ -3334,6 +3328,7 @@ elif [ "$MODE" = fixed-archive-tests ]; then
         "repo/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt=$FIXED_ARCHIVE_MANIFEST"
         "repo/res/vcpkg/libvpx/windows-tools.sha512=$FIXED_ARCHIVE_WINDOWS_TOOLS"
         "repo/scripts/test-verifier-vm-base-metadata.sh=$BASE_METADATA_TEST"
+        "repo/scripts/derive-verifier-vm-boot-assets.sh=$BOOT_DERIVER"
     )
 elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
@@ -3489,6 +3484,7 @@ fi
     "repo/scripts/test-linux-flutter-artifact.py=$LINUX_FLUTTER_ARTIFACT_TEST" \
     "repo/scripts/smoke-verifier-vm-authority-guest.sh=$GUEST_SCRIPT" \
     "repo/scripts/lib.sh=$LIB_SOURCE" "repo/scripts/pins.env=$PIN_SOURCE" \
+    "repo/scripts/verifier-vm-base-metadata.sh=$BASE_METADATA_SOURCE" \
     "repo/requirements.html=$REQUIREMENTS_SOURCE" \
     "repo/HARDENING_STATUS.md=$HARDENING_SOURCE" \
     "repo/res/rustdesk.service=$SYSTEMD_UNIT_SOURCE" \
@@ -4883,6 +4879,8 @@ fi
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'lifecycle cloud-init completion marker is absent'; }
 [ "$(/usr/bin/sha512sum "$BASE")" = "$base_before" ] \
     || fail 'read-only Debian base changed'
+[ "$(/usr/bin/sha256sum "$BASE_METADATA_SOURCE")" = "$base_metadata_source_before" ] \
+    || fail 'Debian verifier-VM base admission source changed'
 [ "$(/usr/bin/sha256sum "$DOCKER_BUNDLE")" = "$docker_before" ] \
     || fail 'read-only Docker bundle changed'
 [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$GIT_PACKAGE"):$(/usr/bin/sha256sum "$GIT_PACKAGE")" = \
@@ -5122,7 +5120,7 @@ fi
     || fail 'Linux app-capsule source changed during execution'
 if [ "$MODE" = fixed-archive-tests ]; then
     [ "$(/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
-        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST")" = "$fixed_archive_sources_before" ] \
+        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST" "$BASE_METADATA_SOURCE")" = "$fixed_archive_sources_before" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \

@@ -589,7 +589,9 @@ run_fixed_archive_tests() {
         "$VERIFY_REPO/scripts/pins.env" "$VERIFY_REPO/scripts/verify.sh"
         "$VERIFY_REPO/scripts/smoke-verifier-vm-authority.sh"
         "$VERIFY_REPO/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
-        "$VERIFY_REPO/res/vcpkg/libvpx/windows-tools.sha512" "$metadata_test")
+        "$VERIFY_REPO/res/vcpkg/libvpx/windows-tools.sha512" "$metadata_test"
+        "$VERIFY_REPO/scripts/verifier-vm-base-metadata.sh"
+        "$VERIFY_REPO/scripts/derive-verifier-vm-boot-assets.sh")
     source_before="$(sha256sum "${sources[@]}")"
     helper_sha="$(sha256sum "$helper" | awk '{print $1}')"
     checker_sha="$(sha256sum "$checker" | awk '{print $1}')"

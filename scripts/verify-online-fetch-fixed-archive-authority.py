@@ -23,6 +23,8 @@ FILES = {
     "vcpkg_manifest": Path("res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"),
     "windows_tools": Path("res/vcpkg/libvpx/windows-tools.sha512"),
     "systemd_smoke": Path("scripts/smoke-verifier-vm-authority.sh"),
+    "base_metadata": Path("scripts/verifier-vm-base-metadata.sh"),
+    "boot_deriver": Path("scripts/derive-verifier-vm-boot-assets.sh"),
     "verify": Path("scripts/verify.sh"),
 }
 
@@ -752,23 +754,38 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         systemd_consumer,
         (
             'verify_debian_vm_base_metadata "$BASE" "$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
+            'for input in "$DOCKER_BUNDLE:$SIZE_VERIFIER_VM_DOCKER_STATIC"',
+            '"$GIT_PACKAGE:$SIZE_VERIFIER_VM_GIT_PACKAGE"',
+            '"$HOST_UID:$HOST_GID:400:1:$size"',
             'verify_sha512 "$BASE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
             '/usr/bin/qemu-img check -q "$BASE"',
         ),
         "systemd image independent consumer",
     )
-    metadata_start = systemd_smoke.find('\nverify_debian_vm_base_metadata() {\n')
-    metadata_end = systemd_smoke.find('\n}\n', metadata_start)
-    require(metadata_start >= 0 and metadata_end > metadata_start,
-            "systemd image metadata admission is absent")
     require_all(
-        systemd_smoke[metadata_start:metadata_end],
+        sources["base_metadata"],
         ('[ -f "$path" ] && [ ! -L "$path" ]',
          "/usr/bin/stat -c '%u:%g:%a:%h:%s'",
-         '"$HOST_UID:$HOST_GID:400:1:$size"',
+         'uid="$(/usr/bin/id -u)"',
+         'gid="$(/usr/bin/id -g)"',
+         '[ "$uid" -ne 0 ] && [ "$gid" -ne 0 ]',
+         '"$uid:$gid:400:1:$size"',
          '*) fail "Debian verifier-VM base metadata differs: $path"'),
         "systemd image metadata admission",
     )
+    require_all(
+        sources["boot_deriver"],
+        ('readonly BASE_METADATA_SOURCE="$SCRIPT_DIR/verifier-vm-base-metadata.sh"',
+         'source "$BASE_METADATA_SOURCE"',
+         'verify_debian_vm_base_metadata "$BASE" "$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
+         'verify_digest sha512 "$BASE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
+         '/usr/bin/qemu-img check -q "$BASE"'),
+        "systemd image boot-derivation admission",
+    )
+    require_all(systemd_smoke,
+                ('readonly BASE_METADATA_SOURCE="$SCRIPT_DIR/verifier-vm-base-metadata.sh"',
+                 'source "$BASE_METADATA_SOURCE"'),
+                "systemd image launcher metadata admission")
     require_all(
         systemd_smoke,
         (
@@ -1097,9 +1114,9 @@ MUTATIONS = (
         "systemd image consumer absolute GID",
     ),
     Mutation(
-        "systemd_smoke",
-        'case "$metadata" in\n        "$HOST_UID:$HOST_GID:400:1:$size"',
-        'case "$metadata" in\n        "$HOST_UID:$HOST_GID:600:1:$size"',
+        "base_metadata",
+        '"$uid:$gid:400:1:$size"',
+        '"$uid:$gid:600:1:$size"',
         "systemd image downstream metadata profiles",
     ),
     Mutation(

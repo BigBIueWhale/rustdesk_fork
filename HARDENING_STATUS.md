@@ -10989,9 +10989,9 @@ as do current artifacts, performance/soak, independent reproduction, and externa
 
 ### R-S11hb/R-S11e-240 — exact bounded native clipboard-listener ownership (2026-08-20)
 
-**SOURCE IMPLEMENTED; SIX EXECUTABLE RUST REGRESSIONS RETAINED AND WIRED;
-SOURCE/MUTATION THEATER DELETED; EXACT CURRENT NATIVE, DEVICE, PERFORMANCE,
-ARTIFACT, AND RELEASE EVIDENCE OPEN.** This is the shared native clipboard-master
+**SOURCE IMPLEMENTED; SIX PRODUCTION STATE TESTS AND TWO LINUX LIFETIME SUBTESTS
+PASSED; NATIVE WARM-RESTART REGRESSION FAILS; AGGREGATE ACCEPTANCE, DEVICE,
+PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** This is the shared native clipboard-master
 path compiled on Windows, Linux, and macOS. Android does not compile it; Android's
 persistent `MainService` and separately owned outgoing clipboard poller are unchanged.
 
@@ -11026,13 +11026,37 @@ worker-exit publication. These are source/state corrections, not display-symptom
 causation.
 
 The focused command `scripts/smoke-verifier-vm-authority.sh --x11-display-tests
---clipboard-listener` is authored but **not yet accepted**. It builds the complete
-production listener module against the exact pinned `clipboard-master`, runs actual
-XFixes changes and private Unix-only Xvfb retirement, compares the inherited error
-callback against the correction, and checks startup-observer retirement, terminal
-admission refusal and joined resources. Its 300-second zero-NIC VM budget and
-nonroot/capability-free/networkless container leave host and Haggai services outside
-the test. Native Windows/macOS and whole-app evidence remain OPEN.
+--clipboard-listener` builds the complete production listener module against the exact
+pinned `clipboard-master`. In the named source `7136810fc690bb7643c06153134fce15b84ccb3b`,
+all six production state tests passed, as did startup-observer retirement and the current
+native error-retirement subtest. Two real XFixes callbacks precede retirement of only the
+private Unix-only Xvfb. The inherited callback delivered terminal errors but retained a live
+worker; the correction delivered terminal errors, refused 64 late subscriptions, and joined
+the exact master. Sampled threads fell from 3 to 2 and descriptors from 9 to 8, with a 500ms
+terminal interval. These are Linux component observations, not whole-app or Windows/macOS
+evidence, exact descriptor-identity proof, or sustained resource qualification.
+
+**The aggregate FAILED**, outer status 1, in a VM that powered off normally after about
+76 seconds. The separately retained four-cycle native warm-restart test still fails on its
+second subscription under the original three-second callback bound, despite 75 independently
+observed server events. Its failure is not skipped or relaxed. Raw evidence is
+`.harness-state/verifier-vm/x11-display-tests-run.Re6IpZLu6g.serial.log`, SHA-256
+`8a4b3e2c92e33833f7ab7e3af559a3dc702c71a208c0b544b28a78e783f66ae7`; the exact subtest,
+artifact and failed-transaction scope is in the corresponding retained
+`evidence/clipboard-listener-run.Re6IpZLu6g.outer.receipt`. Aggregate post-use checks did not
+complete; no aggregate acceptance receipt was emitted. Its 300-second zero-NIC VM budget
+and nonroot/capability-free/networkless container leave host and Haggai services outside
+the test; endpoint-only before/during/after snapshots recorded no addition.
+
+The pinned Linux master reuses a process-global X11 getter connection and sleeps 500ms
+after each discarded old-sequence event. The separate `run.WhiEumO1MM` diagnostic observed
+15 old XFixes events after exact worker join; a test-only idle queue drain restored a fresh
+callback in 500ms. That intervention is diagnosis, not production acceptance, and was
+deleted from the live fixture after retaining its evidence. Correct event generation,
+subscription readiness, bounded stale-event handling and idle connection ownership remain
+OPEN; merely shortening the poll interval or resetting the process is not a core fix.
+Thread-creation error handling and bounded native startup also remain OPEN. This Linux
+clipboard backlog is not evidence of the reported Android/Windows display-delay cause.
 
 Four deterministic Rust tests exercise 1,024 changes collapsing to one delivery, terminal
 error superseding pending readiness, receiver retirement refusing later admission, and a

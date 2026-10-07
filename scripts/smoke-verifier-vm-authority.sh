@@ -17,6 +17,7 @@ load_pins
 MODE=authority-smoke
 BASE_READONLY_TEST=0
 FLUTTER_TEST_PROFILE=models
+APPLE_CURSOR_ONLY=0
 LIFECYCLE_ARTIFACT=
 LIFECYCLE_ARTIFACT_SHA256=
 LIFECYCLE_COMMIT=
@@ -199,6 +200,14 @@ case "$#:${1:-}" in
             || { echo 'Apple conformance input/run overrides are forbidden' >&2; exit 2; }
         MODE=apple-conform
         ;;
+    2:--apple-conform)
+        [ "$2" = --cursor-compile ] \
+            && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'invalid focused Apple compile arguments or overrides' >&2; exit 2; }
+        MODE=apple-conform
+        APPLE_CURSOR_ONLY=1
+        ;;
     1:--dart-audit)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -264,6 +273,7 @@ case "$#:${1:-}" in
         printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
         printf 'Focused native framebuffer check: %s --android-frame-tests\n' "${0##*/}" >&2
         printf 'Focused production X11 enumeration/capture check: %s --x11-display-tests\n' "${0##*/}" >&2
+        printf 'Focused macOS cursor adapter compilation: %s --apple-conform --cursor-compile\n' "${0##*/}" >&2
         printf 'Current-source CM file replay: %s --cm-file-replay\n' "${0##*/}" >&2
         printf 'Focused production frame-queue runtime: %s --flutter-model-tests --frame-queue\n' "${0##*/}" >&2
         printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --linux-pa-authority-tests | --linux-service-uid-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario {peer-lifecycle|controlled-cm} --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --linux-flutter-app-build | --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCH]\n' "${0##*/}" >&2
@@ -557,9 +567,15 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     readonly OVERLAY_SIZE=48G
     readonly VM_MEMORY=24576
 elif [ "$MODE" = apple-conform ]; then
-    readonly VM_TIMEOUT_SECONDS=3600
-    readonly OVERLAY_SIZE=40G
-    readonly VM_MEMORY=16384
+    if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
+        readonly VM_TIMEOUT_SECONDS=300
+        readonly OVERLAY_SIZE=12G
+        readonly VM_MEMORY=4096
+    else
+        readonly VM_TIMEOUT_SECONDS=3600
+        readonly OVERLAY_SIZE=40G
+        readonly VM_MEMORY=16384
+    fi
 elif [ "$MODE" = flutter-peer-presentation ]; then
     readonly VM_TIMEOUT_SECONDS=7200
     readonly OVERLAY_SIZE=48G
@@ -3611,6 +3627,9 @@ elif [ "$MODE" = android-rust-target-check ]; then
     guest_invocation+=" --android-rust-target-check /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = apple-conform ]; then
     guest_invocation+=" --apple-conform /mnt/rustdesk-verifier-inputs/source.tar $APPLE_SOURCE_COMMIT $APPLE_SOURCE_TREE $APPLE_SOURCE_ARCHIVE_SHA256"
+    if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
+        guest_invocation+=" --cursor-compile"
+    fi
 elif [ "$MODE" = flutter-model-tests ]; then
     guest_invocation+=" --flutter-model-tests /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_SOURCE_COMMIT $FLUTTER_SOURCE_TREE $FLUTTER_SOURCE_ARCHIVE_SHA256"
     if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
@@ -4521,12 +4540,23 @@ elif [ "$MODE" = apple-conform ]; then
     require_exact_fixed_receipt \
         'Apple verifier authority architecture: PASS (VM-only Docker path; exact-image/three-target shape; full workload has an isolated mode)' \
         'Apple verifier authority architecture receipt'
-    require_exact_fixed_receipt \
-        '== apple-conform-check PASS ==' \
-        'Apple source-conformance verdict'
-    require_exact_fixed_receipt \
-        "APPLE_CONFORM_VM=pass commit=$APPLE_SOURCE_COMMIT tree=$APPLE_SOURCE_TREE targets=3 image=$APPLE_CHECK_IMAGE_ID runtime=$APPLE_CHECK_IMAGE_CONFIG_ID vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=source-conformance-not-native cleanup=joined" \
-        'Apple-conformance VM receipt'
+    if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
+        require_exact_fixed_receipt \
+            '== apple-cursor-compile PASS ==' 'macOS cursor compile verdict'
+        require_exact_fixed_receipt \
+            'MACOS_CURSOR_COMPONENT_COMPILE=pass targets=2 bindings=real protobuf=generated sdk_shim=none linking=not-run native=false cleanup=joined' \
+            'actual two-target cursor compiler receipt'
+        require_exact_fixed_receipt \
+            "APPLE_CURSOR_COMPILE_VM=pass commit=$APPLE_SOURCE_COMMIT tree=$APPLE_SOURCE_TREE targets=2 image=$APPLE_CHECK_IMAGE_ID runtime=$APPLE_CHECK_IMAGE_CONFIG_ID vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=component-compile-not-native cleanup=joined" \
+            'macOS cursor compile VM receipt'
+    else
+        require_exact_fixed_receipt \
+            '== apple-conform-check PASS ==' \
+            'Apple source-conformance verdict'
+        require_exact_fixed_receipt \
+            "APPLE_CONFORM_VM=pass commit=$APPLE_SOURCE_COMMIT tree=$APPLE_SOURCE_TREE targets=3 image=$APPLE_CHECK_IMAGE_ID runtime=$APPLE_CHECK_IMAGE_CONFIG_ID vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=source-conformance-not-native cleanup=joined" \
+            'Apple-conformance VM receipt'
+    fi
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'Apple-conformance cloud-init completion marker'
@@ -5364,10 +5394,16 @@ elif [ "$MODE" = android-rust-target-check ]; then
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$vm_elapsed_seconds"
 elif [ "$MODE" = apple-conform ]; then
-    printf 'APPLE_CONFORM_VM_OUTER=pass host_uid=%s commit=%s tree=%s targets=3 image=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=source-conformance-not-native cleanup=joined elapsed_seconds=%s\n' \
-        "$HOST_UID" "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
-        "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" \
-        "$vm_elapsed_seconds"
+    if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
+        printf 'APPLE_CURSOR_COMPILE_VM_OUTER=pass host_uid=%s commit=%s tree=%s targets=2 image=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=component-compile-not-native cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
+            "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" "$vm_elapsed_seconds"
+    else
+        printf 'APPLE_CONFORM_VM_OUTER=pass host_uid=%s commit=%s tree=%s targets=3 image=%s runtime=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=source-conformance-not-native cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
+            "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" \
+            "$vm_elapsed_seconds"
+    fi
 elif [ "$MODE" = android-owner-tests ]; then
     printf 'ANDROID_OWNER_STATE_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked compiler_inputs=verified-copy-readonly docker=guest-only evidence=compiled-production-state-machines cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$ANDROID_OWNER_SOURCE_COMMIT" "$ANDROID_OWNER_SOURCE_TREE" \

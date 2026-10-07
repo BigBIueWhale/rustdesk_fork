@@ -260,6 +260,21 @@ def validate(repo: Path) -> None:
         cpu="--cpus=4",
         tmpfs="--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g",
     )
+    cursor = section(apple, "  CURSOR_CHECK=(", "    --workdir /tmp)", "cursor compiler launch")
+    require_confined_launch(
+        cursor,
+        "macOS cursor compiler",
+        mounts=(
+            '--mount "type=bind,source=$APPLE_SOURCE,target=/work,readonly"',
+            '--mount "type=bind,source=$APPLE_VENDOR,target=/vendor,readonly"',
+            '--mount "type=bind,source=$APPLE_TARGET,target=/build"',
+            '--mount "type=bind,source=$APPLE_CARGO_CONFIG,target=/tmp/cargo-config.toml,readonly"',
+        ),
+        pid_limit="--pids-limit=128",
+        memory="--memory=2g --memory-swap=2g",
+        cpu="--cpus=2",
+        tmpfs="--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m",
+    )
     for value in (
         "--env CARGO_NET_OFFLINE=true",
         "cargo check --locked --offline --config /tmp/cargo-config.toml --jobs 1",

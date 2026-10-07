@@ -91,14 +91,19 @@ verifier_vm_image_provenance() {
 }
 
 APPLE_VM_AUTHORITY_SELF_TEST=0
+APPLE_CURSOR_ONLY=0
 case "$#" in
   0) ;;
   1)
-    [ "$1" = --self-test-vm-authority ] \
-      || die "unknown argument: $1"
-    APPLE_VM_AUTHORITY_SELF_TEST=1
+    if [ "$1" = --cursor-compile ]; then
+      APPLE_CURSOR_ONLY=1
+    else
+      [ "$1" = --self-test-vm-authority ] \
+        || die "unknown argument: $1"
+      APPLE_VM_AUTHORITY_SELF_TEST=1
+    fi
     ;;
-  *) die 'accepts no arguments except --self-test-vm-authority' ;;
+  *) die 'accepts only --self-test-vm-authority or --cursor-compile' ;;
 esac
 if [ "$APPLE_VM_AUTHORITY_SELF_TEST" -eq 1 ]; then
   authority_version="$(verifier_vm_docker version \
@@ -158,7 +163,9 @@ PY
 then
   exit 1
 fi
-verify_scan_self_test "$APPLE_CHECK_TMP"
+if [ "$APPLE_CURSOR_ONLY" -eq 0 ]; then
+  verify_scan_self_test "$APPLE_CHECK_TMP"
+fi
 
 archive_current_source() {
   /usr/bin/git -c "safe.directory=$REPO" -C "$REPO" \
@@ -255,7 +262,9 @@ apple_sdk_boundary_self_test() {
   rm -f -- "$fixture"
 }
 
-apple_sdk_boundary_self_test
+if [ "$APPLE_CURSOR_ONLY" -eq 0 ]; then
+  apple_sdk_boundary_self_test
+fi
 
 # ---- preflight ----
 [ -f "$REPO/scripts/apple-cc-shim.sh" ] || die "scripts/apple-cc-shim.sh missing"
@@ -485,6 +494,47 @@ COMMON_CHECK=(verifier_vm_docker run --rm --interactive --pull=never --network=n
   --env SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"
   --env PKG_CONFIG_ALLOW_CROSS=1
   --workdir /work)
+
+verify_apple_postconditions() {
+  [ ! -e "$REPO/src/version.rs" ] \
+    || die 'Apple verification created source-tree version output'
+  /usr/bin/python3 scripts/online-input-provenance.py verify-subtree \
+    --tree "$APPLE_VENDOR" --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+    || die 'private Cargo vendor snapshot changed during Apple verification'
+  SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum | awk '{print $1}')"
+  [ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ] \
+    || die 'Apple verification detected a change in the real source worktree'
+  FINAL_IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$IMAGE_ID")" \
+    || die 'immutable Apple-check image disappeared during verification'
+  [ "$FINAL_IMAGE_ID" = "$IMAGE_ID" ] \
+    || die 'immutable Apple-check image identity changed during verification'
+  /usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null \
+    || die 'Apple verifier-VM authority changed during verification'
+}
+
+if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
+  CURSOR_CHECK=(verifier_vm_docker run --rm --interactive --pull=never --network=none --read-only
+    --user "$BUILD_UID:$BUILD_GID"
+    --cap-drop=ALL --security-opt=no-new-privileges
+    --pids-limit=128 --memory=2g --memory-swap=2g --cpus=2
+    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=256m
+    --mount "type=bind,source=$APPLE_SOURCE,target=/work,readonly"
+    --mount "type=bind,source=$APPLE_VENDOR,target=/vendor,readonly"
+    --mount "type=bind,source=$APPLE_TARGET,target=/build"
+    --mount "type=bind,source=$APPLE_CARGO_CONFIG,target=/tmp/cargo-config.toml,readonly"
+    --env HOME=/tmp/apple-home --env CARGO_HOME=/tmp/cargo-home
+    --env CARGO_TARGET_DIR=/build --env CARGO_INCREMENTAL=0 --env CARGO_NET_OFFLINE=true
+    --env PATH="$APPLE_CHECK_PATH" --env SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"
+    --workdir /tmp)
+  echo '== focused macOS cursor component compilation =='
+  "${CURSOR_CHECK[@]}" "$IMAGE_ID" /bin/bash --noprofile --norc -euo pipefail -c '
+    mkdir -p "$HOME" "$CARGO_HOME"
+    python3 -I -S /work/scripts/check-macos-cursor-component.py
+  '
+  verify_apple_postconditions
+  echo '== apple-cursor-compile PASS =='
+  exit 0
+fi
 
 # ---- Apple source set (R-R2 retain-and-check) ----
 APPLE_RS=(
@@ -4718,19 +4768,7 @@ else
   note "ok  non-mutating source proof: read-only source tree has no generated src/version.rs"
 fi
 
-/usr/bin/python3 scripts/online-input-provenance.py verify-subtree \
-  --tree "$APPLE_VENDOR" \
-  --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-  || die "private Cargo vendor snapshot changed during Apple verification"
-SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum | awk '{print $1}')"
-[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ] \
-  || die "Apple verification detected a change in the real source worktree"
-FINAL_IMAGE_ID="$(verifier_vm_docker image inspect --format '{{.Id}}' "$IMAGE_ID")" \
-  || die "immutable Apple-check image disappeared during verification"
-[ "$FINAL_IMAGE_ID" = "$IMAGE_ID" ] \
-  || die "immutable Apple-check image identity changed during verification"
-/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT" >/dev/null \
-  || die "Apple verifier-VM authority changed during verification"
+verify_apple_postconditions
 
 echo
 if [ "$rc" = 0 ]; then

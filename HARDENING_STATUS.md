@@ -410,6 +410,20 @@ under `.harness-state/verifier-vm/` bind source/module/binary and scope. They ar
 assistant observations, not independent attestation. Inputs and host endpoints
 were unchanged; guest owners joined and disk/media/run root self-retired.
 
+**Focused compiler path; execution pending:**
+`scripts/smoke-verifier-vm-authority.sh --apple-conform --cursor-compile`
+uses the existing zero-NIC Apple VM profile, bounded to 300 seconds, 4 GiB RAM
+and a 12 GiB disposable overlay. Its networkless nonroot container has 2 GiB RAM,
+two CPUs, 128 PIDs and 256 MiB executable scratch. It compiles the byte-extracted
+production cursor functions/TLS/native declaration, complete snapshot module
+and shared bounds on both macOS targets against pinned real Cocoa/Objective-C
+bindings and the actual schemas/build script's generated protobuf types. Every
+selected dependency version/source/checksum must match the root lock; subsequent
+checks are locked/offline. Successful compiler completion and nonempty component
+metadata are required; there is no C/Objective-C shim or SDK-error pass. This is
+an extracted-component check, not complete parent/root-Cargo, linking, AppKit
+runtime, installed service, signed artifact or native macOS acceptance.
+
 **OPEN:** exact parent/Cargo/generated-protobuf/Apple-target compilation;
 AppKit current-system cursor API compatibility, thread/object lifetime and real
 nil/bitmap/geometry/color/alpha failure cases; native seed reuse/full freshness;

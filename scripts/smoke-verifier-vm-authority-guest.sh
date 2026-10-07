@@ -12,6 +12,7 @@ FLUTTER_APP_RECIPE_SHA256=
 FLUTTER_APP_MANIFEST_SHA256=
 FLUTTER_APP_ENGINE_CONTEXT=
 FLUTTER_TEST_PROFILE=models
+APPLE_CURSOR_ONLY=0
 case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
@@ -90,6 +91,11 @@ case "$#:${8:-}" in
     12:--apple-conform)
         MODE=apple-conform
         ;;
+    13:--apple-conform)
+        [ "${13}" = --cursor-compile ] || exit 2
+        MODE=apple-conform
+        APPLE_CURSOR_ONLY=1
+        ;;
     18:--linux-flutter-app-replay)
         MODE=flutter-peer-presentation
         FLUTTER_PEER_CANDIDATE=1
@@ -127,6 +133,7 @@ case "$#:${8:-}" in
         echo 'The seven base arguments also accept --android-execution-probe, --android-runtime-log-tests, --fixed-archive-tests, or --linux-flutter-artifact-tests.' >&2
         echo 'CM file integration replay accepts --cm-file-replay SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused Flutter queue shard appends --frame-queue to --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
+        echo 'The focused macOS cursor compiler appends --cursor-compile to --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         exit 2
         ;;
 esac
@@ -1584,6 +1591,10 @@ run_apple_conform() {
     local image_before load_output entry_output architecture_output conform_status=0
     local expected_entry="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root"
     local -a image_spec
+    local -a conform_arguments=()
+    if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
+        conform_arguments=(--cursor-compile)
+    fi
 
     [[ "$APPLE_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         || fail 'Apple-conformance source commit is malformed'
@@ -1759,7 +1770,7 @@ run_apple_conform() {
       'Apple verifier authority architecture: PASS (VM-only Docker path; exact-image/three-target shape; full workload has an isolated mode)' ] \
         || fail "Apple verifier authority architecture receipt differs: $architecture_output"
 
-    if /bin/bash "$source_root/scripts/apple-conform-check.sh" \
+    if /bin/bash "$source_root/scripts/apple-conform-check.sh" "${conform_arguments[@]}" \
         >"$ROOT/root-apple-conform.out" 2>"$ROOT/root-apple-conform.err"; then
         fail 'VM root passed the Apple-conformance entry'
     fi
@@ -1770,7 +1781,7 @@ run_apple_conform() {
         || fail 'root Apple-conformance refusal diagnostic differs'
     if setpriv --reuid=4001 --regid=4001 --clear-groups \
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-        /bin/bash "$source_root/scripts/apple-conform-check.sh" \
+        /bin/bash "$source_root/scripts/apple-conform-check.sh" "${conform_arguments[@]}" \
         >"$ROOT/foreign-apple-conform.out" 2>"$ROOT/foreign-apple-conform.err"; then
         fail 'foreign principal passed the Apple-conformance entry'
     fi
@@ -1782,7 +1793,7 @@ run_apple_conform() {
     if setpriv --reuid=4000 --regid=4000 --clear-groups \
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
         DOCKER_HOST=unix:///tmp/forbidden-docker.sock \
-        /bin/bash "$source_root/scripts/apple-conform-check.sh" \
+        /bin/bash "$source_root/scripts/apple-conform-check.sh" "${conform_arguments[@]}" \
         >"$ROOT/caller-apple-conform.out" 2>"$ROOT/caller-apple-conform.err"; then
         fail 'caller Docker authority passed the Apple-conformance entry'
     fi
@@ -1795,7 +1806,7 @@ run_apple_conform() {
     set +e
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
-        /bin/bash "$source_root/scripts/apple-conform-check.sh" \
+        /bin/bash "$source_root/scripts/apple-conform-check.sh" "${conform_arguments[@]}" \
         >"$output" 2>&1
     conform_status=$?
     set -e
@@ -1803,12 +1814,23 @@ run_apple_conform() {
         || fail 'Apple-conformance output exceeds its bound'
     [ "$conform_status" -eq 0 ] \
         || { tail -n 240 "$output" >&2; fail "Apple conformance exited with status $conform_status"; }
-    [ "$(grep -Fxc '== apple-conform-check PASS ==' "$output")" -eq 1 ] \
-        || { tail -n 240 "$output" >&2; fail 'Apple-conformance pass verdict is absent or duplicated'; }
-    [ "$(grep -Fxc '  targets: aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios' "$output")" -eq 1 ] \
-        || fail 'Apple-conformance target matrix receipt differs'
-    [ "$(grep -Fc 'hbb_common workspace anchor compiled cleanly' "$output")" -eq 3 ] \
-        || { tail -n 240 "$output" >&2; fail 'Apple-conformance workspace-anchor receipts differ'; }
+    if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
+        [ "$(grep -Fxc '== apple-cursor-compile PASS ==' "$output")" -eq 1 ] \
+            || fail 'macOS cursor compile pass verdict is absent or duplicated'
+        [ "$(grep -Fxc 'MACOS_CURSOR_COMPONENT_COMPILE=pass targets=2 bindings=real protobuf=generated sdk_shim=none linking=not-run native=false cleanup=joined' "$output")" -eq 1 ] \
+            || fail 'macOS cursor component compiler receipt differs'
+        for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            [ "$(grep -Ec "^MACOS_CURSOR_COMPILE_TARGET=pass target=$target metadata_bytes=[1-9][0-9]* metadata_sha256=[0-9a-f]{64} compiler_log_sha256=[0-9a-f]{64} fixture_sha256=[0-9a-f]{64} lock_sha256=[0-9a-f]{64} dependencies_sha256=[0-9a-f]{64} native=false$" "$output")" -eq 1 ] \
+                || fail "macOS cursor compiler metadata receipt differs: $target"
+        done
+    else
+        [ "$(grep -Fxc '== apple-conform-check PASS ==' "$output")" -eq 1 ] \
+            || { tail -n 240 "$output" >&2; fail 'Apple-conformance pass verdict is absent or duplicated'; }
+        [ "$(grep -Fxc '  targets: aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios' "$output")" -eq 1 ] \
+            || fail 'Apple-conformance target matrix receipt differs'
+        [ "$(grep -Fc 'hbb_common workspace anchor compiled cleanly' "$output")" -eq 3 ] \
+            || { tail -n 240 "$output" >&2; fail 'Apple-conformance workspace-anchor receipts differ'; }
+    fi
     [ "$(grep -Fxc "$expected_entry" "$output")" -eq 1 ] \
         || fail 'Apple-conformance VM authority receipt is absent or duplicated'
     source_tree_after="$(/usr/bin/git -c "safe.directory=$source_root" \
@@ -1846,10 +1868,16 @@ run_apple_conform() {
     printf '%s\n' "$load_output"
     printf '%s\n' "$architecture_output"
     cat "$output"
-    printf 'APPLE_CONFORM_VM=pass commit=%s tree=%s targets=3 image=%s runtime=%s vendor=%s uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=source-conformance-not-native cleanup=joined\n' \
-        "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
-        "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" \
-        "$SHA256_CARGO_VENDOR_CLOSURE_V1"
+    if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
+        printf 'APPLE_CURSOR_COMPILE_VM=pass commit=%s tree=%s targets=2 image=%s runtime=%s vendor=%s uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=component-compile-not-native cleanup=joined\n' \
+            "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
+            "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" "$SHA256_CARGO_VENDOR_CLOSURE_V1"
+    else
+        printf 'APPLE_CONFORM_VM=pass commit=%s tree=%s targets=3 image=%s runtime=%s vendor=%s uid=4000 gid=4000 nofile=524544 vm_network=none container_network=none root=refused foreign=refused caller=refused source=exact-pushed-readonly inputs=readonly-landlocked evidence=source-conformance-not-native cleanup=joined\n' \
+            "$APPLE_SOURCE_COMMIT" "$APPLE_SOURCE_TREE" \
+            "$APPLE_CHECK_IMAGE_ID" "$APPLE_CHECK_IMAGE_CONFIG_ID" \
+            "$SHA256_CARGO_VENDOR_CLOSURE_V1"
+    fi
 }
 
 generate_focused_rust_flutter_bridge() {

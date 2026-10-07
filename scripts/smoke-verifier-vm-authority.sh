@@ -4090,7 +4090,7 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
-        'X11_FOCUS_LIFECYCLE_NATIVE=pass old=fragmented-reply-wait source=complete-module deadline_ms=100 stalled=4 dead=4 fragmented=4 recovery=same-owner-fresh-connection allocations=paired descriptors=retired deadline_workers=joined relay=owned-and-joined server=owned-and-joined network=none scope=focus-component' \
+        'X11_FOCUS_LIFECYCLE_NATIVE=pass old=fragmented-and-send-wait source=complete-module deadline_ms=100 stalled=4 dead=4 fragmented=4 backpressure=4 recovery=same-owner-fresh-connection allocations=paired descriptors=retired deadline_workers=joined relay=owned-and-joined server=owned-and-joined network=none scope=focus-component' \
         'production established-focus native I/O cancellation, retirement and same-owner server recovery'
     require_exact_fixed_receipt \
         'X11_FOCUS_NATIVE=pass source=production-module old=unrelated-error-swallowed cases=12 repeats=16 geometry=server-real destroy_after_geometry=16 unrelated_errors=16 setup_faults=7 constructors_refused=16 thread_exits=16 allocations=paired descriptors=retired deadline_workers=constant-and-joined handler=unchanged scope=focus-component' \

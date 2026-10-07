@@ -15,6 +15,7 @@ extern "C" {
     fn focus_fixture_case(mode: u32);
     fn focus_fixture_balanced();
     fn focus_fixture_close();
+    fn focus_fixture_backpressure();
 }
 fn descriptors() -> usize { std::fs::read_dir("/proc/self/fd").unwrap().count() }
 fn threads() -> usize { std::fs::read_dir("/proc/self/task").unwrap().count() }
@@ -29,7 +30,7 @@ fn marker(line: &str) {
 }
 fn main() {
     let scenario = std::env::args().nth(1).unwrap();
-    assert!(scenario == "stalled" || scenario == "dead" || scenario == "fragmented");
+    assert!(matches!(scenario.as_str(), "stalled" | "dead" | "fragmented" | "backpressure"));
     let baseline = descriptors();
     let baseline_threads = threads();
     std::env::set_var("DISPLAY", ":98");
@@ -41,13 +42,14 @@ fn main() {
     assert_eq!(descriptors(), baseline + if cfg!(historical) { 1 } else { 2 });
     assert_eq!(threads(), baseline_threads + usize::from(!cfg!(historical)));
     marker("X11_FOCUS_LIFECYCLE_READY established=true fixture=closed");
-    token(match scenario.as_str() { "stalled" => b'T', "dead" => b'D', _ => b'F' });
+    token(match scenario.as_str() { "stalled" => b'T', "dead" => b'D', "backpressure" => b'B', _ => b'F' });
+    if scenario == "backpressure" { unsafe { focus_fixture_backpressure(); } }
     marker("X11_FOCUS_LIFECYCLE_ENTERING source=complete-module");
     let began = Instant::now();
     let result = focus.center();
     let elapsed = began.elapsed();
     #[cfg(historical)] {
-        assert_eq!(scenario, "fragmented");
+        assert!(scenario == "fragmented" || scenario == "backpressure");
         assert!(matches!(result, Err(FocusError::Deadline)), "{result:?}");
         assert!(elapsed >= Duration::from_millis(250));
         drop(focus);

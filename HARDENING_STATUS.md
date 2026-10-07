@@ -345,6 +345,14 @@ The deadline initiates cancellation; OS scheduling and exact owned drain can exc
 it. The observed 100 ms returns are not a universal wall-clock guarantee or proof
 that all connection deadlines, local privilege boundaries or release evidence close.
 
+The next focused native acceptance adds actual send-buffer backpressure before
+the production atom request: an owned paused Xvfb, bounded no-reply traffic only
+on the connection to retire, kernel `EAGAIN`/nonwritable observation, and default
+SIGPIPE in the private test child. Both the exact previous polling module and
+current module run; current cancellation must retire and permit same-owner fresh
+recovery without changing that signal policy. This expanded acceptance is PENDING;
+it does not yet close write-backpressure or any broader OPEN item above.
+
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
 PF-1 through PF-5 are closed for desktop port-forward and RDP mappings while the

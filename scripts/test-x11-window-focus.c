@@ -6,7 +6,10 @@
 #include <poll.h>
 #include <sys/socket.h>
 #include <assert.h>
+#include <errno.h>
+#include <signal.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +17,7 @@
 #define SIZE(type, n) _Static_assert(sizeof(type) == (n), #type " size")
 #define OFFSET(type, field, n) _Static_assert(offsetof(type, field) == (n), #type "." #field)
 SIZE(xcb_intern_atom_cookie_t, 4); SIZE(xcb_get_property_cookie_t, 4);
+SIZE(xcb_no_operation_request_t, 4);
 SIZE(xcb_get_geometry_cookie_t, 4); SIZE(xcb_translate_coordinates_cookie_t, 4);
 SIZE(xcb_intern_atom_reply_t, 12); OFFSET(xcb_intern_atom_reply_t, atom, 8);
 SIZE(xcb_get_property_reply_t, 32); OFFSET(xcb_get_property_reply_t, value_len, 16);
@@ -41,6 +45,7 @@ static Window root, window, parent, dangling;
 static Atom active, supported;
 static XErrorHandler previous;
 static unsigned errors, swallowed, hook, setup_fault, allocations, retirements;
+static unsigned backpressure, saturated_bytes;
 static void *pending[32];
 
 static int external_error(Display *dpy, XErrorEvent *event) {
@@ -120,6 +125,11 @@ void focus_fixture_case(unsigned mode) {
     XSync(display, False);
 }
 void focus_fixture_fault(unsigned fault) { setup_fault = fault; }
+void focus_fixture_backpressure(void) {
+    // This private test child must not inherit Rust's ignored-SIGPIPE policy.
+    assert(signal(SIGPIPE, SIG_DFL) != SIG_ERR);
+    backpressure = 1;
+}
 unsigned focus_fixture_errors(void) {
     assert(XSetErrorHandler(external_error) == external_error);
     return errors;
@@ -127,6 +137,7 @@ unsigned focus_fixture_errors(void) {
 void focus_fixture_balanced(void) {
     for (unsigned i = 0; i < 32; ++i) assert(pending[i] == NULL);
     assert(allocations == retirements);
+    if (saturated_bytes) assert(signal(SIGPIPE, SIG_DFL) == SIG_DFL);
 }
 void focus_fixture_close(void) {
     focus_fixture_balanced();
@@ -161,6 +172,35 @@ static void after_geometry(void *reply, xcb_generic_error_t *error) {
 }
 
 static unsigned geometry_sequence;
+xcb_intern_atom_cookie_t __real_xcb_intern_atom(xcb_connection_t *, uint8_t, uint16_t, const char *);
+xcb_intern_atom_cookie_t __wrap_xcb_intern_atom(xcb_connection_t *c, uint8_t exists,
+                                             uint16_t length, const char *name) {
+    if (backpressure) {
+        backpressure = 0;
+        int fd = xcb_get_file_descriptor(c), capacity = 1024;
+        assert(fd >= 0 && setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &capacity, sizeof(capacity)) == 0);
+        // The parent has paused only its retained Xvfb. Fill this exact socket
+        // before the production atom request, not a model or substitute transport.
+        // These harmless no-reply frames are used only on a connection to retire.
+        const xcb_no_operation_request_t noop = {.major_opcode = XCB_NO_OPERATION, .length = 1};
+        saturated_bytes = 0;
+        for (unsigned i = 0; i < 4096; ++i) {
+            ssize_t written = send(fd, &noop, sizeof(noop), MSG_DONTWAIT | MSG_NOSIGNAL);
+            if (written == -1) {
+                assert(errno == EAGAIN || errno == EWOULDBLOCK);
+                break;
+            }
+            assert(written == (ssize_t)sizeof(noop));
+            saturated_bytes += (unsigned)written;
+        }
+        assert(saturated_bytes > 0 && saturated_bytes < 16384);
+        struct pollfd descriptor = {.fd = fd, .events = POLLOUT};
+        assert(poll(&descriptor, 1, 0) == 0);
+        printf("X11_FOCUS_BACKPRESSURE_READY bytes=%u writable=false sigpipe=default\n", saturated_bytes);
+        assert(fflush(stdout) == 0);
+    }
+    return __real_xcb_intern_atom(c, exists, length, name);
+}
 xcb_get_geometry_cookie_t __real_xcb_get_geometry(xcb_connection_t *, xcb_drawable_t);
 xcb_get_geometry_cookie_t __wrap_xcb_get_geometry(xcb_connection_t *c, xcb_drawable_t drawable) {
     xcb_get_geometry_cookie_t cookie = __real_xcb_get_geometry(c, drawable);

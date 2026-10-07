@@ -64,7 +64,7 @@ def build_focus(root, environment, binary, fixture, historical=False):
                "-C", f"link-arg={helper}", "-C", "link-arg=-lX11"]
     if historical:
         command += ["--cfg", "historical"]
-    symbols = ("get_geometry", "poll_for_reply" if historical else "wait_for_reply")
+    symbols = ("intern_atom", "get_geometry", "poll_for_reply" if historical else "wait_for_reply")
     for name in symbols + ("get_setup",):
         command += ["-C", f"link-arg=-Wl,--wrap=xcb_{name}"]
     command += ["-C", "link-arg=-Wl,--wrap=free"]
@@ -290,7 +290,7 @@ def focus_lifecycle(root, environment):
 
                     require(line() == "X11_FOCUS_LIFECYCLE_READY established=true fixture=closed"
                             and native.poll() is None and server.poll() is None, "focus established readiness differs")
-                    if scenario == "stalled":
+                    if scenario in ("stalled", "backpressure"):
                         server.send_signal(signal.SIGSTOP)
                         stopped = True
                         until = time.monotonic() + 2
@@ -301,7 +301,7 @@ def focus_lifecycle(root, environment):
                                 break
                             require(time.monotonic() < until, "owned Xvfb pause unobserved")
                             time.sleep(0.005)
-                        token(b"T")
+                        token(b"B" if scenario == "backpressure" else b"T")
                     elif scenario == "dead":
                         server.terminate()
                         server.wait(timeout=5)
@@ -311,6 +311,13 @@ def focus_lifecycle(root, environment):
                         relay.arm.set()
                         token(b"F")
                     require(line() == "X11_FOCUS_LIFECYCLE_ENTERING source=complete-module", "focus wait entry differs")
+                    if scenario == "backpressure":
+                        pressure = line()
+                        receipt = re.fullmatch(r"X11_FOCUS_BACKPRESSURE_READY bytes=([0-9]+) "
+                                               r"writable=false sigpipe=default", pressure)
+                        require(receipt is not None and 0 < int(receipt.group(1)) < 16384,
+                                "actual bounded socket backpressure was not observed")
+                        print(pressure, flush=True)
                     if relay is not None:
                         require(relay.fragment.wait(2) and relay.failure is None,
                                 "real property reply header was not forwarded with tail held")
@@ -319,8 +326,12 @@ def focus_lifecycle(root, environment):
                         while time.monotonic() < until:
                             read_output(max(0, until - time.monotonic()))
                             require(len(output) == offset and not errors and native.poll() is None,
-                                    "historical wait completed while the native reply tail remained held")
-                        relay.release.set()
+                                    "historical native wait completed before its controlled release")
+                        if scenario == "backpressure":
+                            server.send_signal(signal.SIGCONT)
+                            stopped = False
+                        else:
+                            relay.release.set()
                     waited = line()
                     require(re.fullmatch(rf"X11_FOCUS_WAIT_NATIVE variant={variant} scenario={scenario} "
                                          r"elapsed_ms=[0-9]+ result=retired descriptors=retired", waited),
@@ -384,13 +395,14 @@ def focus_lifecycle(root, environment):
                     ("binary", binary))) + " scope=complete-focus-module whole_app=unexecuted", flush=True)
             if variant == "historical":
                 case(binary, variant, "fragmented")
+                case(binary, variant, "backpressure")
             else:
                 for _ in range(4):
-                    for scenario in ("stalled", "dead", "fragmented"):
+                    for scenario in ("stalled", "dead", "fragmented", "backpressure"):
                         case(binary, variant, scenario)
             binary.unlink()
-    print("X11_FOCUS_LIFECYCLE_NATIVE=pass old=fragmented-reply-wait source=complete-module "
-          "deadline_ms=100 stalled=4 dead=4 fragmented=4 recovery=same-owner-fresh-connection "
+    print("X11_FOCUS_LIFECYCLE_NATIVE=pass old=fragmented-and-send-wait source=complete-module "
+          "deadline_ms=100 stalled=4 dead=4 fragmented=4 backpressure=4 recovery=same-owner-fresh-connection "
           "allocations=paired descriptors=retired deadline_workers=joined relay=owned-and-joined "
           "server=owned-and-joined network=none scope=focus-component", flush=True)
 

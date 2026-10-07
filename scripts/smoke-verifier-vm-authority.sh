@@ -4121,6 +4121,9 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
+        'X11_CONCURRENT_CONTEXTS_NATIVE=pass source=complete-context-module native_init=ready-at-main fixture_init=none workers=8 simultaneous_contexts=16 unique_owners=16 reuses_per_owner=64 queries=1024 server=real callbacks=paired live_resources=observed descriptors=retired threads=joined scope=pinned-native-runtime' \
+        'production X11/XDO thread-owned contexts run concurrently without fixture thread initialization and retire after join'
+    require_exact_fixed_receipt \
         'X11_AUTH_NATIVE=pass source=complete-context-module components=xlib,xdo cases=4 valid=2 wrong=1 missing=1 contexts=4 refusals=4 queries=server-real callbacks=paired descriptors=retired threads=retired server=owned-and-joined credentials=private-fixture network=none scope=native-cookie-authentication' \
         'production X11/XDO constructors admit native cookie authentication and refuse wrong or missing credentials'
     require_exact_fixed_receipt \

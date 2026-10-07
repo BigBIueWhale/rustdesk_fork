@@ -5,8 +5,8 @@ mod platform {
     #[path = "/work/libs/hbb_common/src/platform/x11_display.rs"]
     pub mod x11_display;
 }
-use std::{cell::RefCell, collections::BTreeSet, ffi::{c_char, c_int, c_void}, io::Read, ptr,
-          sync::atomic::{AtomicUsize, Ordering}, thread, time::{Duration, Instant}};
+use std::{cell::RefCell, collections::BTreeSet, ffi::{c_char, c_int, c_ulong, c_void}, io::Read, ptr,
+          sync::{Arc, Barrier, atomic::{AtomicUsize, Ordering}}, thread, time::{Duration, Instant}};
 
 #[path = "/work/src/platform/linux/native_context.rs"]
 mod native_context;
@@ -20,7 +20,10 @@ pub struct xdo_t { _private: [u8; 0] }
 type Xdo = xdo_t;
 #[link(name = "X11")]
 extern "C" {
-    fn XInitThreads() -> c_int;
+    // Observe the pinned library's initialization, without initializing it for
+    // the test. These private ABI symbols are not production dependencies.
+    static _Xglobal_lock: *const c_void;
+    static _XInitDisplayLock_fn: Option<unsafe extern "C" fn(*mut c_void) -> c_int>;
     fn XOpenDisplay(name: *const c_char) -> *mut c_void;
     fn __real_XOpenDisplay(name: *const c_char) -> *mut c_void;
     fn XCloseDisplay(display: *mut c_void) -> c_int;
@@ -28,6 +31,7 @@ extern "C" {
     fn XDefaultScreen(display: *mut c_void) -> c_int;
     fn XDisplayWidth(display: *mut c_void, screen: c_int) -> c_int;
     fn XDisplayHeight(display: *mut c_void, screen: c_int) -> c_int;
+    fn XGetInputFocus(display: *mut c_void, focus: *mut c_ulong, revert: *mut c_int) -> c_int;
 }
 #[link(name = "xdo")]
 extern "C" {
@@ -219,9 +223,78 @@ fn authentication(credential: &str) {
              if admitted { "server-real" } else { "unavailable" });
 }
 
+fn concurrent_contexts() {
+    const WORKERS: usize = 8;
+    assert_eq!(std::env::var("DISPLAY").unwrap(), ":98");
+    let baseline = descriptors();
+    let tasks = std::fs::read_dir("/proc/self/task").unwrap().count();
+    let phase = Arc::new(Barrier::new(WORKERS + 1));
+    let workers: Vec<_> = (0..WORKERS).map(|_| {
+        let phase = Arc::clone(&phase);
+        thread::spawn(move || {
+            phase.wait(); // Begin native construction together.
+            let display = pointer(false).unwrap().unwrap();
+            let xdo = pointer(true).unwrap().unwrap();
+            phase.wait(); // All owners exist before the parent snapshots them.
+            phase.wait(); // Keep owners live until that snapshot completes.
+            for _ in 0..64 {
+                x11_context::with_display(|context| unsafe {
+                    assert_eq!(context.as_ptr() as usize, display);
+                    assert_eq!(XDefaultScreen(context.as_ptr()), 0);
+                    assert_eq!((XDisplayWidth(context.as_ptr(), 0),
+                                XDisplayHeight(context.as_ptr(), 0)), (640, 480));
+                    let (mut focus, mut revert) = (0, -1);
+                    assert_eq!(XGetInputFocus(context.as_ptr(), &mut focus, &mut revert), 1);
+                    assert_eq!((focus, revert), (1, 0)); // Fresh Xvfb: PointerRoot, RevertToNone.
+                }).unwrap().unwrap();
+                x11_context::with_xdo(|context| unsafe {
+                    assert_eq!(context.as_ptr() as usize, xdo);
+                    let (mut x, mut y, mut screen) = (-1, -1, -1);
+                    assert_eq!(xdo_get_mouse_location(context.as_ptr(), &mut x, &mut y, &mut screen), 0);
+                    assert_eq!(screen, 0);
+                    assert!((0..640).contains(&x) && (0..480).contains(&y));
+                }).unwrap().unwrap();
+            }
+            phase.wait(); // All real server requests have completed.
+            phase.wait(); // Parent observes resources before TLS retirement.
+            (display, xdo)
+        })
+    }).collect();
+    phase.wait();
+    phase.wait();
+    let live = || {
+        assert_eq!((DISPLAY_OPENS.load(Ordering::SeqCst), XDO_OPENS.load(Ordering::SeqCst)),
+                   (WORKERS, WORKERS));
+        assert_eq!(retirements(), (0, 0));
+        assert_eq!(descriptors(), baseline + 2 * WORKERS);
+        assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), tasks + WORKERS);
+    };
+    live();
+    phase.wait();
+    phase.wait();
+    live();
+    phase.wait();
+    let mut pointers = BTreeSet::new();
+    for worker in workers {
+        let (display, xdo) = worker.join().unwrap();
+        assert!(pointers.insert(display) && pointers.insert(xdo), "simultaneous owners alias");
+    }
+    assert_eq!(retirements(), (WORKERS, WORKERS));
+    assert_eq!(descriptors(), baseline);
+    assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), tasks);
+    println!("X11_CONCURRENT_CONTEXTS_NATIVE=pass source=complete-context-module native_init=ready-at-main fixture_init=none workers=8 simultaneous_contexts=16 unique_owners=16 reuses_per_owner=64 queries=1024 server=real callbacks=paired live_resources=observed descriptors=retired threads=joined scope=pinned-native-runtime");
+}
+
 fn main() {
-    assert_ne!(unsafe { XInitThreads() }, 0);
+    // libX11 1.8+ normally initializes threading in its ELF constructor.
+    // Fail instead of hiding a missing initialization behind a fixture call.
+    assert!(unsafe { !_Xglobal_lock.is_null() && _XInitDisplayLock_fn.is_some() },
+            "pinned Xlib threading is not initialized at fixture main entry");
     if let Some(scenario) = std::env::args().nth(1) {
+        if scenario == "concurrent-contexts" {
+            concurrent_contexts();
+            return;
+        }
         if let Some(credential) = scenario.strip_prefix("auth-") {
             authentication(credential);
             return;

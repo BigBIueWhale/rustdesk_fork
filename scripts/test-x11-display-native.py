@@ -188,6 +188,16 @@ def thread_contexts(root, environment, checksum, library):
           "peer=closed children=joined scope=platform-constructors", flush=True)
     startup_retry(root, binary, environment)
     authenticated_contexts(binary, environment)
+    result = subprocess.run([str(binary), "concurrent-contexts"], env=environment,
+                            capture_output=True, text=True, timeout=5)
+    receipt = ("X11_CONCURRENT_CONTEXTS_NATIVE=pass source=complete-context-module "
+               "native_init=ready-at-main fixture_init=none workers=8 simultaneous_contexts=16 "
+               "unique_owners=16 reuses_per_owner=64 queries=1024 server=real callbacks=paired "
+               "live_resources=observed descriptors=retired threads=joined scope=pinned-native-runtime")
+    require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 4096
+            and result.stdout.splitlines() == [receipt],
+            f"native concurrent thread-context result differs: {result}")
+    print(receipt, flush=True)
     binary.unlink()
     cursor.unlink()
 

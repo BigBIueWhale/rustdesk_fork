@@ -38,6 +38,21 @@ fn resources() -> (usize, usize) {
     )
 }
 
+fn assert_resources_retired(baseline: (usize, usize)) {
+    // pthread_join observes clear_child_tid before Linux unlinks the task from
+    // /proc. Keep join and kernel task absence as separate required observations.
+    let deadline = Instant::now() + Duration::from_secs(1);
+    loop {
+        let actual = resources();
+        assert_eq!(actual.1, baseline.1, "joined retirement retained descriptors");
+        if actual.0 == baseline.0 {
+            return;
+        }
+        assert!(Instant::now() < deadline, "joined retirement retained tasks: {baseline:?} -> {actual:?}");
+        std::thread::sleep(Duration::from_millis(1));
+    }
+}
+
 fn change_and_observe(
     connection: &x11rb::rust_connection::RustConnection,
     selection: u32,
@@ -264,11 +279,11 @@ fn d_native_busy_retirement() {
                 std::thread::sleep(Duration::from_millis(1));
             }
             assert_native_window_retired(&connection, &children);
-            assert_eq!(resources(), live_producer_baseline);
+            assert_resources_retired(live_producer_baseline);
             assert!(!producer.is_finished());
             drop(stop_on_exit);
             let changes = producer.join().unwrap();
-            assert_eq!(resources(), baseline);
+            assert_resources_retired(baseline);
             println!("CLIPBOARD_NATIVE_BUSY_TIMING cycle={cycle} before_retirement={before_retirement} after_join={after_join} changes={changes} retirement_us={}", retirement.as_micros());
         });
     }
@@ -350,13 +365,13 @@ fn e_native_startup_deadline() {
             let registry = listener.subscribers.lock().unwrap();
             assert!(registry.subscribers.is_empty() && registry.terminal.is_none());
         }
-        assert_eq!(resources(), baseline);
+        assert_resources_retired(baseline);
         let (owner, receiver) = subscribe("startup-budget".to_owned()).unwrap();
         change_and_observe(&connection, selection, windows, &[&receiver]);
         drop(receiver);
         drop(owner);
         assert_native_window_retired(&connection, &children);
-        assert_eq!(resources(), baseline);
+        assert_resources_retired(baseline);
     }
     println!("CLIPBOARD_NATIVE_DEADLINE=pass cases=3 source=production transport=unix budget=one peer=closed startup_worker=joined next_start=working resources=baseline");
 }

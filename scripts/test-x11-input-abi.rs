@@ -14,7 +14,7 @@ mod ffi {
 extern "C" {
     fn input_state_layout(index: u32) -> usize;
     fn input_native_state(display: *mut c_void, device: u32, buffer: *mut c_void) -> i32;
-    fn input_keyboard_error(display: *mut c_void) -> i32;
+    fn input_bad_device_error(display: *mut c_void) -> i32;
     fn input_install_error_handler();
     fn input_error_count() -> u32;
     fn input_last_error() -> u32;
@@ -83,7 +83,7 @@ fn main() {
         assert_eq!(libraries.len(), 1);
         println!("X11_INPUT_ABI_LOADED library={}", libraries.iter().next().unwrap());
         let raw_display = display.0.as_ptr().cast::<c_void>();
-        let expected_error = unsafe { input_keyboard_error(raw_display) };
+        let expected_error = unsafe { input_bad_device_error(raw_display) };
         assert!(expected_error > 0);
         unsafe { input_install_error_handler() };
         let _handler = ErrorHandlerOwner;
@@ -118,5 +118,5 @@ fn main() {
         final_state.assert_native_bounds(native[0]);
     }
     assert_eq!(fd_count(), before);
-    println!("X11_INPUT_ABI_NATIVE=confirmed supplier=tfc queries=32 controls=33 rejected=16 rejection=BadKeyboard:BadDevice recovery=same-connection write_beyond_rust_type=2 allocation_overrun=false guards=intact descriptors=retired product_acceptance=false");
+    println!("X11_INPUT_ABI_NATIVE=confirmed supplier=tfc queries=32 controls=33 rejected=16 rejection=XI-BadDevice:XKB-BadDevice recovery=same-connection write_beyond_rust_type=2 allocation_overrun=false guards=intact descriptors=retired product_acceptance=false");
 }

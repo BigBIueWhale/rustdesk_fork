@@ -52,6 +52,8 @@ def build_input_abi(root, environment):
           f"rust_sha256={hashlib.sha256((work / 'test.rs').read_bytes()).hexdigest()} "
           f"oracle_sha256={hashlib.sha256(oracle.read_bytes()).hexdigest()} "
           f"header_sha256={hashlib.sha256(header.read_bytes()).hexdigest()} "
+          f"xkb_protocol_sha256={hashlib.sha256(Path('/usr/include/X11/extensions/XKB.h').read_bytes()).hexdigest()} "
+          f"xi_header_sha256={hashlib.sha256(Path('/usr/include/X11/extensions/XI.h').read_bytes()).hexdigest()} "
           f"library_sha256={hashlib.sha256(library.read_bytes()).hexdigest()} "
           f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()}", flush=True)
     return binary, library
@@ -186,7 +188,7 @@ def main():
                         "fields=14 offset_mismatches=13 oracle=client-header product_acceptance=false",
                         f"X11_INPUT_ABI_LOADED library={input_library}",
                         "X11_INPUT_ABI_NATIVE=confirmed supplier=tfc queries=32 controls=33 rejected=16 "
-                        "rejection=BadKeyboard:BadDevice recovery=same-connection write_beyond_rust_type=2 allocation_overrun=false "
+                        "rejection=XI-BadDevice:XKB-BadDevice recovery=same-connection write_beyond_rust_type=2 allocation_overrun=false "
                         "guards=intact descriptors=retired product_acceptance=false"],
                     f"native TFC ABI diagnostic differs: {abi}")
             print(abi.stdout.strip(), flush=True)

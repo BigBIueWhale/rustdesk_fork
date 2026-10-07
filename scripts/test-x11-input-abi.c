@@ -1,6 +1,7 @@
 /* Native client-header oracle. This executes only in the disposable X11 fixture. */
 #include <X11/Xlib.h>
 #include <X11/XKBlib.h>
+#include <X11/extensions/XI.h>
 #include <stddef.h>
 
 static unsigned errors;
@@ -39,13 +40,16 @@ int input_native_state(void *display, unsigned device, void *buffer)
     return XkbGetState(display, device, buffer);
 }
 
-int input_keyboard_error(void *display)
+int input_bad_device_error(void *display)
 {
     int opcode, event, error;
     int major = XkbMajorVersion, minor = XkbMinorVersion;
     if (!XkbQueryExtension(display, &opcode, &event, &error, &major, &minor))
         return -1;
-    return error + XkbKeyboard;
+    /* XKB device lookup propagates the XInput error, with an XKB reason. */
+    if (!XQueryExtension(display, INAME, &opcode, &event, &error))
+        return -1;
+    return error + XI_BadDevice;
 }
 
 void input_install_error_handler(void)

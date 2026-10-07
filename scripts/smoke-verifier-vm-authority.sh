@@ -4091,7 +4091,7 @@ elif [ "$MODE" = x11-display-tests ]; then
         'X11_INPUT_ABI_FINDING=confirmed supplier=tfc rust_size=16 native_size=18 align=2 fields=14 offset_mismatches=13 oracle=client-header product_acceptance=false' \
         'native client-header comparison of exact TFC state declarations'
     require_exact_fixed_receipt \
-        'X11_INPUT_ABI_NATIVE=confirmed supplier=tfc queries=32 controls=33 rejected=16 rejection=BadKeyboard:BadDevice recovery=same-connection write_beyond_rust_type=2 allocation_overrun=false guards=intact descriptors=retired product_acceptance=false' \
+        'X11_INPUT_ABI_NATIVE=confirmed supplier=tfc queries=32 controls=33 rejected=16 rejection=XI-BadDevice:XKB-BadDevice recovery=same-connection write_beyond_rust_type=2 allocation_overrun=false guards=intact descriptors=retired product_acceptance=false' \
         'real TFC XKB writes and native rejection/recovery diagnostic, not product acceptance'
     require_exact_fixed_receipt \
         'X11_SHM_STATUS_NATIVE=pass request_fault=oversized-query-version server_error=BadLength callers=direct,public repeats=16 cases=32 queries=3 replies=2 protocol_errors=1 recovery=same-connection capture=fresh allocations=retired segments=retired' \

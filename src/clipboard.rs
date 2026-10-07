@@ -1514,8 +1514,10 @@ pub mod clipboard_listener {
         use hbb_common::{libc, platform::x11_display::unix_display_name};
         use std::{
             cell::Cell,
-            io::{self, IoSlice},
-            os::{fd::{AsRawFd, FromRawFd}, unix::net::UnixStream},
+            fs::OpenOptions,
+            io::{self, IoSlice, Read},
+            os::{fd::{AsRawFd, FromRawFd}, unix::{fs::{MetadataExt, OpenOptionsExt}, net::UnixStream}},
+            path::PathBuf,
             sync::{atomic::{AtomicBool, Ordering}, mpsc::{self, Receiver, SyncSender}, Arc},
             time::{Duration, Instant},
         };
@@ -1579,15 +1581,22 @@ pub mod clipboard_listener {
             stopped: Arc<AtomicBool>,
         }
 
+        fn check_startup_deadline(deadline: Instant) -> io::Result<()> {
+            if Instant::now() >= deadline {
+                return Err(io::Error::new(io::ErrorKind::TimedOut,
+                    "X11 clipboard startup deadline expired"));
+            }
+            Ok(())
+        }
+
         impl NativeStream {
             fn check_live(&self) -> io::Result<()> {
                 if self.stopped.load(Ordering::Acquire) {
                     return Err(io::Error::new(io::ErrorKind::ConnectionAborted,
                         "X11 clipboard connection retired"));
                 }
-                if self.startup_deadline.get().is_some_and(|deadline| Instant::now() >= deadline) {
-                    return Err(io::Error::new(io::ErrorKind::TimedOut,
-                        "X11 clipboard startup deadline expired"));
+                if let Some(deadline) = self.startup_deadline.get() {
+                    check_startup_deadline(deadline)?;
                 }
                 Ok(())
             }
@@ -1664,6 +1673,103 @@ pub mod clipboard_listener {
             Ok(socket)
         }
 
+        fn authority_bytes<'a>(input: &mut &'a [u8], count: usize) -> io::Result<&'a [u8]> {
+            let bytes = *input;
+            if bytes.len() < count {
+                return Err(io::Error::new(io::ErrorKind::InvalidData,
+                    "Malformed X11 clipboard authority"));
+            }
+            let (value, remaining) = bytes.split_at(count);
+            *input = remaining;
+            Ok(value)
+        }
+
+        fn authority_u16(input: &mut &[u8]) -> io::Result<u16> {
+            let bytes = authority_bytes(input, 2)?;
+            Ok(u16::from_be_bytes([bytes[0], bytes[1]]))
+        }
+
+        fn authority_field<'a>(input: &mut &'a [u8]) -> io::Result<&'a [u8]> {
+            let count = usize::from(authority_u16(input)?);
+            authority_bytes(input, count)
+        }
+
+        fn native_authority(family: xauth::Family, address: &[u8], display: u16,
+                            deadline: Instant) -> io::Result<(Vec<u8>, Vec<u8>)> {
+            const MAX_BYTES: usize = 1024 * 1024;
+            let too_large = || io::Error::new(io::ErrorKind::InvalidData,
+                "X11 clipboard authority exceeds 1 MiB");
+            let path = std::env::var_os("XAUTHORITY").map(PathBuf::from).or_else(|| {
+                std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".Xauthority"))
+            });
+            let Some(path) = path else { return Ok((Vec::new(), Vec::new())); };
+            check_startup_deadline(deadline)?;
+            // Pin the object without opening a FIFO/device for I/O. A regular
+            // symlink target is valid; the original pathname is never reopened.
+            let pinned = match OpenOptions::new().read(true)
+                .custom_flags(libc::O_PATH | libc::O_CLOEXEC).open(path) {
+                Ok(file) => file,
+                Err(error) if error.kind() == io::ErrorKind::NotFound =>
+                    return Ok((Vec::new(), Vec::new())),
+                Err(error) => return Err(error),
+            };
+            let metadata = pinned.metadata()?;
+            if !metadata.is_file() {
+                return Err(io::Error::new(io::ErrorKind::InvalidData,
+                    "X11 clipboard authority is not a regular file"));
+            }
+            if metadata.len() > MAX_BYTES as u64 { return Err(too_large()); }
+            let file = OpenOptions::new().read(true)
+                .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY | libc::O_CLOEXEC)
+                .open(format!("/proc/self/fd/{}", pinned.as_raw_fd()))?;
+            let actual = file.metadata()?;
+            if !actual.is_file() || actual.dev() != metadata.dev() || actual.ino() != metadata.ino() {
+                return Err(io::Error::new(io::ErrorKind::InvalidData,
+                    "X11 clipboard authority object changed"));
+            }
+            if actual.len() > MAX_BYTES as u64 { return Err(too_large()); }
+            drop(pinned);
+            // Bound consumption even if the regular file grows after metadata.
+            // Kernel filesystem calls themselves are not made deadline-safe by
+            // O_NONBLOCK; check the one startup budget between calls and records.
+            let mut reader = file.take((MAX_BYTES + 1) as u64);
+            let mut contents = Vec::new();
+            contents.try_reserve_exact(MAX_BYTES).map_err(native_error)?;
+            let mut buffer = [0u8; 8192];
+            loop {
+                check_startup_deadline(deadline)?;
+                let count = match reader.read(&mut buffer) {
+                    Ok(count) => count,
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(error) => return Err(error),
+                };
+                if count == 0 { break; }
+                if contents.len() + count > MAX_BYTES { return Err(too_large()); }
+                contents.extend_from_slice(&buffer[..count]);
+            }
+            drop(reader);
+            let display = display.to_string();
+            let mut input = contents.as_slice();
+            let mut selected = None;
+            while !input.is_empty() {
+                check_startup_deadline(deadline)?;
+                let entry_family = xauth::Family::from(authority_u16(&mut input)?);
+                let entry_address = authority_field(&mut input)?;
+                let number = authority_field(&mut input)?;
+                let name = authority_field(&mut input)?;
+                let data = authority_field(&mut input)?;
+                let address_matches = family == xauth::Family::WILD || entry_family == xauth::Family::WILD
+                    || (family == entry_family && address == entry_address);
+                if selected.is_none() && address_matches
+                    && (number.is_empty() || number == display.as_bytes())
+                    && name == b"MIT-MAGIC-COOKIE-1" {
+                    selected = Some((name, data));
+                }
+            }
+            check_startup_deadline(deadline)?;
+            Ok(selected.map(|(name, data)| (name.to_vec(), data.to_vec())).unwrap_or_default())
+        }
+
         fn native_connection(display: &str) -> io::Result<(RustConnection<NativeStream>, usize)> {
             let deadline = Instant::now() + Duration::from_secs(3);
             let parsed = parse_display::parse_display(Some(display)).map_err(native_error)?;
@@ -1679,14 +1785,7 @@ pub mod clipboard_listener {
                 Err(error) => return Err(error),
             };
             let (stream, (family, address)) = DefaultStream::from_unix_stream(socket)?;
-            // Use the native library's exact local-family cookie lookup. An
-            // unreadable/malformed authority file is not unauthenticated retry.
-            // An absent file means no cookie; the server still authorizes setup.
-            let (auth_name, auth_data) = match xauth::get_auth(family, &address, parsed.display) {
-                Ok(auth) => auth.unwrap_or_default(),
-                Err(error) if error.kind() == io::ErrorKind::NotFound => (Vec::new(), Vec::new()),
-                Err(error) => return Err(error),
-            };
+            let (auth_name, auth_data) = native_authority(family, &address, parsed.display, deadline)?;
             let stream = NativeStream { stream, startup_deadline: Cell::new(Some(deadline)),
                 stopped: Arc::new(AtomicBool::new(false)) };
             stream.check_live()?;

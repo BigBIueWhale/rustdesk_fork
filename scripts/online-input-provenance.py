@@ -340,6 +340,7 @@ def write_record(tree: Path) -> Result:
 
 
 def copy_regular(source: Path, destination: Path) -> None:
+    """Copy into a lifetime-owned execution snapshot, not a durable publication."""
     flags = os.O_RDONLY | os.O_CLOEXEC
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -360,9 +361,10 @@ def copy_regular(source: Path, destination: Path) -> None:
                     view = memoryview(block)
                     while view:
                         written = os.write(destination_fd, view)
+                        if written <= 0:
+                            fail("snapshot copy made no write progress")
                         view = view[written:]
             os.fchmod(destination_fd, 0o700 if before.st_mode & 0o111 else 0o600)
-            os.fsync(destination_fd)
         finally:
             os.close(destination_fd)
         stable_stat(before, os.fstat(source_fd), os.fsencode(source))
@@ -603,6 +605,13 @@ def self_test() -> None:
         snapshot = base / "snapshot"
         create_snapshot(tree, snapshot, original.root)
         snapshot_content = snapshot / "online" / "dir" / "content"
+        if os.path.samefile(content, snapshot_content):
+            fail("snapshot retained a source inode")
+        if not os.path.samefile(snapshot_content, snapshot / "online" / "hardlink"):
+            fail("snapshot lost internal hardlink topology")
+        content.write_bytes(b"source changed after copy")
+        verify(snapshot / "online", original.root)
+        content.write_bytes(b"alpha")
         snapshot_content.chmod(0o600)
         snapshot_content.write_bytes(b"after-use mutation")
         expect_failure(lambda: verify(snapshot / "online", original.root), "post-use snapshot mutation")
@@ -611,6 +620,14 @@ def self_test() -> None:
         subtree_source.mkdir()
         (subtree_source / "content").write_bytes(b"subtree\n")
         subtree_root = calculate(subtree_source).root
+        expect_failure(
+            lambda: create_subtree_snapshot(
+                subtree_source, base / "raced-subtree", subtree_root,
+                after_preflight=lambda: (subtree_source / "content").write_bytes(b"changed\n"),
+            ),
+            "subtree source TOCTOU",
+        )
+        (subtree_source / "content").write_bytes(b"subtree\n")
         subtree_snapshot = base / "subtree-snapshot"
         create_subtree_snapshot(subtree_source, subtree_snapshot, subtree_root)
         verify_subtree(subtree_snapshot / "subtree", subtree_root)

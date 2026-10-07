@@ -427,11 +427,16 @@ At `35d57b8cdd053952654e88ccbab96178106b3c66`, live output reached vendor
 snapshot creation at 72.83 seconds and stayed there until the 300-second VM
 limit (owner status 124, outer exit 1), before toolchain preflight or compilation.
 This locates the stalled operation, not the precise digest/copy/fsync subphase.
-`online-input-provenance.py` copies the whole vendor subtree, synchronizes every
-copied regular file and performs four complete digest walks. That temporary-copy
-path needs focused performance correction without weakening closure/identity,
-read-only isolation, source-race or post-use validation. No unchanged replay or
-longer timeout is accepted as the fix. This is not an accepted fast inner loop.
+`online-input-provenance.py` copies the whole vendor subtree and performs four
+complete digest walks. Its execution-only snapshot copy no longer requires disk
+durability for every regular file; canonical record synchronization is unchanged.
+Exclusive creation, checked copy/close, complete bytes/topology, source-race
+replay, read-only sealing and post-use verification remain. The focused lane
+runs the real filesystem provenance self-test first, now including independent
+source/destination inodes, preserved internal hardlinks, source mutation after
+copy and subtree preflight/copy races. This performance correction and its
+expanded tests are not yet executed; no speedup is claimed. No unchanged replay
+or longer timeout is accepted as the fix. This is not an accepted fast inner loop.
 The leaf's stage output is now actually retained before timeout through live
 capture. The capture has a 6 MiB file limit, checks both pipeline exits and
 does not replay successful output; normal-return exit accounting and overflow

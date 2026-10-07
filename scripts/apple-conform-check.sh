@@ -390,6 +390,10 @@ SOURCE_DIGEST="$(sha256sum "$APPLE_SOURCE_ARCHIVE" | awk '{print $1}')"
 readonly SOURCE_DIGEST
 tar --extract --file="$APPLE_SOURCE_ARCHIVE" --directory="$APPLE_SOURCE" --no-same-owner
 chmod -R a-w "$APPLE_SOURCE"
+if [ "$APPLE_CURSOR_ONLY" -eq 1 ]; then
+  apple_check_stage snapshot-self-test
+  /usr/bin/python3 -I -S scripts/online-input-provenance.py --self-test
+fi
 apple_check_stage vendor-snapshot
 /usr/bin/python3 scripts/online-input-provenance.py snapshot-subtree-create \
   --source online/cargo-vendor \

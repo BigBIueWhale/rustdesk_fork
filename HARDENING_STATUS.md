@@ -1103,112 +1103,66 @@ those inputs must preserve R-B2 and R-B10's single complete canonical closure an
 fallback. R-S11cs now records complete presence of its fourteen fixed archives after an accepted isolated-VM
 publication; that subset does not establish the whole closure or any final release artifact.
 
-### R-S11at/R-S11e-60 — shared Linux UID selection implemented; native acceptance OPEN
+### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
-Both Linux endpoints now use `linux_service_peer_active_uid` from the one
-standard-library-only `src/ipc/uid_policy.rs` module, imported by `src/ipc/auth.rs`:
-generic `_service` through `service_scoped_ipc_authorization_snapshot_from_stream`,
-and raw `_service_password` through `peer_process_identity_is_live`. The selector takes
-lazy cached/fresh lookup providers. UID 0 invokes neither; missing/nonmatching cache
-state cannot invoke the fresh lookup or authorize a peer; a cache match selects the
-fresh result, never cached authority. The duplicate inline selection and Boolean-only
-predicate are removed.
+**Source implemented; four production-policy tests passed in the named isolated transaction.
+Installed receiver, whole-app integration, and release acceptance remain OPEN.**
 
-Raw liveness still requires the exact finite requester role and full
-PID/UID/start/argv/executable and launch-ancestry replay. This shared selection applies
-at initial admission, after fixed-action polkit approval, and immediately before commit
-admission (`src/ipc.rs`: `run_service_ipc`, `grant_linux_service_owned_password_admission`,
-`LinuxServiceOwnedPasswordAdmission::admit_commit`). Both endpoint permits still precede
-identity work and remain in the tracked transaction; action authorization, credential
-ownership, and macOS behavior are unchanged. The previous eager lookup was a contract
-mismatch, not evidence of an unauthorized write or privilege escalation.
+Both Linux endpoints use the standard-library-only `src/ipc/uid_policy.rs` selector:
+generic `_service` through
+`src/ipc/auth.rs::service_scoped_ipc_authorization_snapshot_from_stream`, and raw
+`_service_password` through `peer_process_identity_is_live`. UID 0 skips both lazy
+providers. A missing/nonmatching cached UID rejects a non-root peer without a fresh
+lookup; a cache match selects fresh authority, never cached authority. The UID gate
+does not replace kernel peer proof, the finite requester role, PID/UID/start/argv/executable
+identity, launch ancestry, or live-generation replay.
 
-Three `r_s11e60_` tests invoke the production selector and observe provider calls:
-root skips both, cached negatives skip fresh, and a cache match requires fresh matching
-authority while changed/missing fresh state refuses. The password source guard protects
-both caller wirings and the cached-only accessor; its existing stale-authority mutation
-is retargeted, not expanded into a new catalog. The existing zero-NIC Linux-target
-`--android-rust-lifecycle-tests` integration lane now selects all three tests, checks exact
-names and counts, and retains their output. At source `7f61dc6f8de498493c71d6274c4cae9858dc3a6e`
-(tree `cb9f8db329df4ea0ac8937d1f132f1d27fb0ca48`), all three production-selector
-tests and the source guard passed in the non-root, networkless guest container. The UID
-suite reported 3 passed / 0 failed in 0.00 seconds. Raw serial
-`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.mhr2BrPPea.serial.log`
-is 68,517 bytes, SHA-256 `0d097674579f2885b3e11a637ea909840084fb0855f5f9d6b5616f30ab993b98`.
-This is not an installed Android race or installed Linux receiver test.
+Password revalidation still applies at initial admission, after fixed-action polkit
+approval, and immediately before commit admission in `run_service_ipc`,
+`grant_linux_service_owned_password_admission`, and
+`LinuxServiceOwnedPasswordAdmission::admit_commit`. Endpoint permits precede identity
+work and remain transaction-owned. No ordinary configuration, user-storage fallback,
+credential ownership, or macOS authority change follows from this selector.
 
-**Whole transaction INCOMPLETE / not accepted:** thirteen guest summaries reported
-75 passing tests, but the required-name inventory expected 73: existing audio
-recipient-revalidation and late-subscriber-dispatch tests were absent from that inventory.
-The guest therefore failed its count gate. Separately, the outer endpoint-only audit
-observed new `tcp 127.0.0.1:8100` and rejected the transaction; its owner was not inspected,
-attributed, signalled, or changed. The inventory now explicitly requires those two tests
-and the outer count is 75, with all safety checks retained; accepted execution of that
-corrected inventory is still missing. The guest powered off at 808 seconds. The owned VM/capture/virtiofsd exited
-and the disposable disks were retired. The remaining 34 MiB of diagnostics were reconciled
-and exact owned root `run.mhr2BrPPea` (`66306:106074337`) removed through the inode-bound
-cleanup helper. The raw serial and a 1,468-byte mode-0400 failure receipt remain;
-the latter is `.harness-state/verifier-vm/android-rust-lifecycle-tests-run.mhr2BrPPea.failure.receipt`,
-SHA-256 `89fc246c7e2d0708787f1edabf3cd50e4de3ef1aabb98135bf0dbd7ceafd4ac2`.
-No listener ownership was inspected or changed during reconciliation.
-These named unit results do not constitute an accepted integration transaction.
+**Focused execution.** `scripts/smoke-verifier-vm-authority.sh --linux-service-uid-tests`
+compiles the production module through the checked-in Rust wrapper with pinned Rust
+1.75 / edition 2021, without Cargo, vendor/Pub walks, bridge generation or native app
+dependencies. Its 300-second VM budget, 2 GiB guest, 512 MiB numeric-nonroot container,
+read-only source/inputs, zero-NIC VM, networkless/capability-free container, endpoint-only
+listener audit and joined cleanup remain mandatory. It runs the password source guard
+without its mutation catalog and requires all four exact policy tests: UID allow/deny,
+root lookup bypass, cached-negative fresh-lookup bypass, and fresh authority after a cache
+match. These tests observe the production selector/provider calls; they are not installed
+service or Android-framework tests.
 
-The one corrected-inventory attempt at `bc4360c591325cc1877ea23e0276a27032d16dbc`
-(tree `e98aeff87887895da5fc24b4d82987f940ea3fac`) ended with VM-owner status 137
-before test results. The termination cause is unproven; no guest pass or whole-run host
-listener invariance is claimed. Raw serial `android-rust-lifecycle-tests-run.DFCvHZm7EW.serial.log`
-is 55,258 bytes, SHA-256 `aa73c6315bc37197b1aeaab3b17c91c047cefb7189efd6e2241765ed7165ff22`.
-Owned children joined, disks were retired, and exact failed root `run.DFCvHZm7EW`
-(`66306:106074341`) was reconciled and removed. Its 1,258-byte mode-0400 failure receipt
-is retained beside the serial, SHA-256 `2717ee5bcbdd625b72ba5ec86fd7a65347bdee2f04674b91b9361f1466d374ab`.
-No second heavy retry was started, and no owned run root remains.
-
-**Still OPEN:** exact-artifact installed Linux receiver runs on both endpoints with
-root/cache/session-change, capacity contention, authorized/unauthorized principals,
-cancellation and drain, and lookup/transaction resource observations. Provider-call unit
-tests and source wiring cannot close those native obligations. The whole Rust-app
-Linux-target transaction remains an integration check, not the default inner loop.
-
-The fast lane is now implemented as `scripts/smoke-verifier-vm-authority.sh
---linux-service-uid-tests`, with a 300-second VM budget, 2 GiB guest memory and a
-512 MiB numeric-nonroot container. The checked-in Rust wrapper imports the actual
-production module; its two function bodies and four test bodies are unchanged by
-the move. Pinned Rust 1.75 / edition 2021 compiles it directly without Cargo,
-vendor/Pub closure walks, Flutter bridge generation, or native app dependencies.
-The lane runs the password source guard without its mutation catalog, requires the
-four exact policy tests and count, binds the compiled artifact digest to the exact
-pushed source/tree and verifier image, and retains the existing zero-NIC, read-only
-source/input, listener-audit and joined-cleanup authority. The whole-app test selectors
-now name the moved production module. Host syntax parsing and diff review passed.
-The corrected fast lane passed at source
-`aa437333945074d447150bbe8d9a4ca36c5f1490`, tree
-`b884b1a3863074b6a2507b29be300d919ba452b1`, with all four exact tests, one
-4-passed/0-failed/0-ignored/0-filtered summary and the password source guard.
-VM elapsed time was **38 seconds**; the compiled test artifact SHA-256 was
+The accepted source is `aa437333945074d447150bbe8d9a4ca36c5f1490`, tree
+`b884b1a3863074b6a2507b29be300d919ba452b1`. Four tests passed with zero failed,
+ignored or filtered tests, and the source guard passed. VM elapsed time was **38 seconds**;
+test-artifact SHA-256 was
 `b08af5cfeccb78db618225770cf93217b6839f6ee9a1b1ca805d3628e47ae202`.
-Raw serial `linux-service-uid-tests-run.FQjze4G9se.serial.log` is 65,958 bytes,
-SHA-256 `514d43c0aac294aee891a4afa05309dd5ab171c61ab0584325d41d55b83241ad`.
-Its 1,008-byte mode-0400 outer success receipt is retained beside it, SHA-256
-`25879b12597807c6867f0bf7382d6150099d5735ec082d769ea04721eccb1d32`.
-The complete endpoint-only
-before/during/after audit found no host listener additions, owned children joined,
-and successful scratch `run.FQjze4G9se` was automatically retired; no run root remains.
-This closes the focused production-policy execution gap only. Whole-app integration,
-installed receiver authority/resource behavior and native macOS evidence remain OPEN.
+Retained evidence under `.harness-state/verifier-vm/`:
 
-The first fast-lane transaction at `ad5efb09642c3c951e13b73b44014a003f8b836e`
-failed during image load before any test, with `BrokenPipeError`. Source review found
-the new mode omitted from the guest socket's numeric-GID-1000 selection; it retained
-GID 4000 while the loader ran as 1000. The selection is corrected and focused runs
-now check the exact socket metadata before loading. The raw serial is
-`linux-service-uid-tests-run.AbxcNGtMqP.serial.log`, 67,720 bytes/SHA-256
-`c77106c7bdbc352f921e76ffd3e0b2bab362f674e77c5c5efbde52b177e27267`;
-the 1,200-byte mode-0400 failure receipt SHA-256 is
-`043fe9adcbfb587f534df2772486291311e97a15a1dc2fc54588836b932549d9`.
-All three endpoint inventories match, owned children joined and disks retired.
-Exact owned root `run.AbxcNGtMqP` (`66306:106075775`) was reconciled and removed;
-only the bounded serial and failure receipt remain. This failed run provides no
-policy-test evidence; the corrected replay's accepted scope is recorded above.
+- `linux-service-uid-tests-run.FQjze4G9se.serial.log`: 65,958 bytes, SHA-256
+  `514d43c0aac294aee891a4afa05309dd5ab171c61ab0584325d41d55b83241ad`.
+- `linux-service-uid-tests-run.FQjze4G9se.success.receipt`: 1,008 bytes, mode 0400,
+  SHA-256 `25879b12597807c6867f0bf7382d6150099d5735ec082d769ea04721eccb1d32`;
+  outer status 0, no added host endpoint, joined children and retired scratch root.
+
+The current production module and wrapper are unchanged from that named source.
+This is not a fresh execution of the current whole app. The broad Rust-app integration
+remains **unaccepted**: earlier attempts failed the required-test inventory/host-listener
+checks or ended with VM-owner status 137 before results; that termination cause is
+unproven. The corrected 75-test inventory still lacks accepted execution and is a
+deliberate integration lane, not the default policy inner loop. Detailed failed runs,
+socket-group repair, cleanup identities and receipts remain in Git history, the audit
+journal and retained bounded evidence rather than this current-state ledger.
+
+**Still OPEN:** exact-artifact installed Linux receiver behavior on both endpoints with
+root/cache/session changes, capacity contention, authorized/unauthorized principals,
+cancellation/drain, and lookup/transaction resource observations; whole-app integration;
+native macOS authority; current installed/release artifacts, cold R-B2/R-B10 equality,
+independent reproduction and external review. Provider-call tests and source wiring
+cannot close those boundaries or explain the reported Android/Windows display symptoms.
 
 ### Android runtime — intermittent presentation remains OPEN
 

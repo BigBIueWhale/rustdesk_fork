@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-0933568b32595c92ee146d297185a5dc620c43add7d867c66ae7914de5290f20  requirements.html
+987de146f6b66c1afa11b88c14f7f9c67a12b77897ecb5490a2e3b7556951104  requirements.html
 ```
 
 ## Current Verdict
@@ -1400,7 +1400,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `0933568b32595c92ee146d297185a5dc620c43add7d867c66ae7914de5290f20  requirements.html`.
+Current normative specification SHA-256: `987de146f6b66c1afa11b88c14f7f9c67a12b77897ecb5490a2e3b7556951104  requirements.html`.
 
 ### Current authority and source closure
 
@@ -1428,6 +1428,16 @@ installed lifecycle evidence cannot presently be completed from the retained loc
 those inputs must preserve R-B2 and R-B10's single complete canonical closure and must not introduce a partial-cache
 fallback. R-S11cs now records complete presence of its fourteen fixed archives after an accepted isolated-VM
 publication; that subset does not establish the whole closure or any final release artifact.
+
+### R-S11bb/R-S11e-68 — IPC phase coverage; native acceptance OPEN
+
+Focused source checks in `scripts/verify.sh`, `scripts/apple-conform-check.sh`, and
+`scripts/verify-linux-service-password-ipc.py` inspect preparation and retained runners.
+The redundant shell gate that inferred their coverage from parser-call text was deleted;
+it inspected neither runner nor shutdown ordering. Those property checks are unchanged
+and were not rerun for this deletion. No product or native behavior is validated by this
+cleanup. Exact target-native readiness, authorization/admission, failure/shutdown drain,
+resource retirement, installed artifacts, and independent review remain OPEN.
 
 ### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
@@ -3951,7 +3961,7 @@ exists only to make the current source disposition discoverable.
 - R-S11e-65 — Windows token-switched child environment finality
 - R-S11e-66 — macOS administrator-script environment finality
 - R-S11e-67 — Linux clipboard fusermount process-context finality
-- R-S11bb/R-S11e-68 — IPC lifecycle-split checker coverage
+- R-S11bb/R-S11e-68 — IPC phase coverage; native acceptance OPEN (above)
 - R-S11bc/R-S11e-69 — Dart/FRB verifier container authority
 - R-S11bd/R-S11e-70 — one confined owner for Flutter-side Rust verification
 - R-S11be/R-S11e-71 — Dart advisory result and scanner authority

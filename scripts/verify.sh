@@ -4503,20 +4503,6 @@ if grep -Eq 'MacosServiceOwnedPasswordRequest|macos_store_service_owned_password
 fi
 if [ -n "$r_s11b2" ]; then echo "  FAIL R-S11b-2 raw password IPC closure:$r_s11b2"; rc=1; else
   echo "  ok  R-S11b/R-S11c/R-S11g/R-S11h/R-S11i/R-S11cb password bodies use only fixed raw _password/_service_password frames; Linux root-durable PRS replication uses raw _service_credential plus a nondumpable exact child, macOS exactly-owned native proof and wiping authorization, Windows retained first-instance pipe and SCM durability, keyed replay finality, and shutdown drain are source-gated"; fi
-# R-S11bb: the listener lifecycle is deliberately split into prepare/run ownership. The security
-# gates must follow that split rather than silently stopping at retired monolithic function names.
-r_s11bb=""
-grep -qF 'item(ipc, "async fn prepare_main_ipc")' scripts/apple-conform-check.sh || r_s11bb="$r_s11bb apple-prepare-main-checker-missing"
-grep -qF 'ipc.function("prepare_main_ipc")' scripts/verify-linux-service-password-ipc.py || r_s11bb="$r_s11bb linux-prepare-main-checker-missing"
-if grep -Fq 'ipc.function("start_main_ipc")' scripts/verify-linux-service-password-ipc.py \
-    || grep -Fq 'item(ipc, "async fn start_main_ipc")' scripts/apple-conform-check.sh; then
-  r_s11bb="$r_s11bb retired-main-listener-checker-present"
-fi
-if [ -n "$r_s11bb" ]; then
-  echo "  FAIL R-S11bb IPC lifecycle-split checker coverage:$r_s11bb"; rc=1
-else
-  echo "  ok  R-S11bb shared/Apple/Linux password-IPC gates cover prepared endpoints and retained runners"
-fi
 # R-S11bc/R-S11dh/R-S11e-69: Dart/FRB analysis may mutate only a disposable
 # invoking-user-owned snapshot. The real repository and private offline inputs
 # remain immutable evidence; both containers have one bounded, networkless,

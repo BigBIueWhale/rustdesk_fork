@@ -239,6 +239,33 @@ Android/Windows display-delay cause or new closed privilege boundary is establis
 Deferred Android concurrent Stop/admission and stale-generation work remains
 **INCOMPLETE / NOT VALIDATED**, not resumed by this retirement.
 
+### Linux cursor/focus — thread-owned X11/XDO retirement; native acceptance pending
+
+`src/platform/linux.rs` previously stored cursor X11 and XDO contexts as raw
+thread-local pointers without native destruction. Its cursor/position/focus consumers
+run on real service/input threads; this is a thread-exit ownership defect, not proof
+of per-reconnect growth or the reported display-delay cause.
+
+Both thread locals now hold one non-clonable `NativeContext` from
+`src/platform/linux/native_context.rs`. Null constructors create no owner; successful
+construction binds the native pointer to its matching destructor, borrowed only
+while the thread-local cell is retained. The owner has no Send/Sync override and
+retires on normal drop/unwind/thread exit. Existing XDO loader, selected-display
+authority, query/input behavior, service ownership and thread joins are unchanged.
+The native [XCloseDisplay implementation](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/src/ClDisplay.c)
+retires connection/storage and returns zero; native fatal-error disposition is not
+changed. XDO retirement uses the existing wrapper's `xdo_free` operation.
+
+Focused native verification is pending in the existing `--x11-display-tests` lane.
+The entire production owner is compiled, not a rewritten model, with actual X11/XDO
+constructors/destructors in the private Xvfb container. The fixture distinguishes
+the historical raw-TLS ownership shape from corrected normal and unwinding thread
+exit, checks constructor refusal and retained-context reuse, and observes callbacks
+plus real process descriptor counts. It links the test's native libraries directly:
+it does not execute the protected dynamic loader, changed root application module,
+real service shutdown or a full Cargo/native artifact. Those integration, installed,
+race/failed-connection/heap/soak/performance and platform acceptance claims remain OPEN.
+
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
 PF-1 through PF-5 are closed for desktop port-forward and RDP mappings while the

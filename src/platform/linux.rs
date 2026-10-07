@@ -1,4 +1,6 @@
 use super::{CursorData, ResultType};
+mod native_context;
+use native_context::NativeContext;
 use desktop::Desktop;
 pub use hbb_common::platform::linux::*;
 use hbb_common::{
@@ -121,18 +123,22 @@ fn get_active_user_id_name_from_cache() -> Option<(String, String)> {
 }
 
 thread_local! {
-    // XDO context - created via libxdo-sys (which uses dynamic loading stub).
-    // If libxdo is not available, xdo will be null and xdo-based functions become no-ops.
-    static XDO: RefCell<*mut xdo_t> = RefCell::new({
-        let xdo = unsafe { libxdo_sys::xdo_new(std::ptr::null()) };
+    static XDO: RefCell<Option<NativeContext<xdo_t>>> = RefCell::new(unsafe {
+        let xdo = libxdo_sys::xdo_new(std::ptr::null());
         if xdo.is_null() {
             log::warn!("Failed to create xdo context, xdo functions will be disabled");
         } else {
             log::info!("xdo context created successfully");
         }
-        xdo
+        NativeContext::from_raw(xdo, |context| libxdo_sys::xdo_free(context))
     });
-    static DISPLAY: RefCell<*mut c_void> = RefCell::new(unsafe { XOpenDisplay(std::ptr::null())});
+    static DISPLAY: RefCell<Option<NativeContext<c_void>>> = RefCell::new(unsafe {
+        NativeContext::from_raw(XOpenDisplay(std::ptr::null()), |display| {
+            // XCloseDisplay retires the connection/storage and returns zero,
+            // not an operation status. Native fatal errors keep their disposition.
+            XCloseDisplay(display);
+        })
+    });
 }
 
 // X11 error event structure for the custom error handler.
@@ -182,7 +188,7 @@ unsafe extern "C" fn handle_x_error(_display: *mut c_void, event: *mut XErrorEve
 #[link(name = "X11")]
 extern "C" {
     fn XOpenDisplay(display_name: *const c_char) -> *mut c_void;
-    // fn XCloseDisplay(d: *mut c_void) -> c_int;
+    fn XCloseDisplay(d: *mut c_void) -> c_int;
     fn XSetErrorHandler(handler: Option<XErrorHandler>) -> Option<XErrorHandler>;
 }
 
@@ -226,14 +232,14 @@ pub fn get_cursor_pos() -> Option<(i32, i32)> {
     let mut res = None;
     XDO.with(|xdo| {
         if let Ok(xdo) = xdo.try_borrow() {
-            if xdo.is_null() {
+            let Some(xdo) = xdo.as_ref() else {
                 return;
-            }
+            };
             let mut x: c_int = 0;
             let mut y: c_int = 0;
             unsafe {
                 libxdo_sys::xdo_get_mouse_location(
-                    *xdo as *const _,
+                    xdo.as_ptr() as *const _,
                     &mut x as _,
                     &mut y as _,
                     std::ptr::null_mut(),
@@ -250,12 +256,12 @@ pub fn set_cursor_pos(x: i32, y: i32) -> bool {
     XDO.with(|xdo| {
         match xdo.try_borrow() {
             Ok(xdo) => {
-                if xdo.is_null() {
-                    log::debug!("set_cursor_pos: xdo is null");
+                let Some(xdo) = xdo.as_ref() else {
+                    log::debug!("set_cursor_pos: libxdo context is unavailable");
                     return;
-                }
+                };
                 unsafe {
-                    let ret = libxdo_sys::xdo_move_mouse(*xdo as *const _, x, y, 0);
+                    let ret = libxdo_sys::xdo_move_mouse(xdo.as_ptr() as *const _, x, y, 0);
                     if ret != 0 {
                         log::debug!(
                             "set_cursor_pos: xdo_move_mouse failed with code {} for coordinates ({}, {})",
@@ -301,9 +307,9 @@ pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
     let mut res = None;
     XDO.with(|xdo| {
         if let Ok(xdo) = xdo.try_borrow() {
-            if xdo.is_null() {
+            let Some(xdo) = xdo.as_ref() else {
                 return;
-            }
+            };
             let mut x: c_int = 0;
             let mut y: c_int = 0;
             let mut width: c_uint = 0;
@@ -311,7 +317,7 @@ pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
             let mut window: Window = 0;
 
             unsafe {
-                if libxdo_sys::xdo_get_active_window(*xdo as *const _, &mut window) != 0 {
+                if libxdo_sys::xdo_get_active_window(xdo.as_ptr() as *const _, &mut window) != 0 {
                     return;
                 }
 
@@ -324,7 +330,7 @@ pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
                 let prev_handler = XSetErrorHandler(Some(handle_x_error));
 
                 let loc_ret = libxdo_sys::xdo_get_window_location(
-                    *xdo as *const _,
+                    xdo.as_ptr() as *const _,
                     window,
                     &mut x as _,
                     &mut y as _,
@@ -332,7 +338,7 @@ pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
                 );
                 let size_ret = if loc_ret == XDO_SUCCESS {
                     libxdo_sys::xdo_get_window_size(
-                        *xdo as *const _,
+                        xdo.as_ptr() as *const _,
                         window,
                         &mut width,
                         &mut height,
@@ -373,9 +379,9 @@ pub fn get_cursor() -> ResultType<Option<u64>> {
     let mut res = None;
     DISPLAY.with(|conn| {
         if let Ok(d) = conn.try_borrow_mut() {
-            if !d.is_null() {
+            if let Some(d) = d.as_ref() {
                 unsafe {
-                    let img = XFixesGetCursorImage(*d);
+                    let img = XFixesGetCursorImage(d.as_ptr());
                     if !img.is_null() {
                         res = Some((*img).cursor_serial as u64);
                         XFree(img as _);
@@ -390,10 +396,10 @@ pub fn get_cursor() -> ResultType<Option<u64>> {
 pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
     let mut res = None;
     DISPLAY.with(|conn| {
-        if let Ok(ref mut d) = conn.try_borrow_mut() {
-            if !d.is_null() {
+        if let Ok(d) = conn.try_borrow_mut() {
+            if let Some(d) = d.as_ref() {
                 unsafe {
-                    let img = XFixesGetCursorImage(**d);
+                    let img = XFixesGetCursorImage(d.as_ptr());
                     if !img.is_null() && hcursor == (*img).cursor_serial as u64 {
                         let mut cd: CursorData = Default::default();
                         cd.hotx = (*img).xhot as _;

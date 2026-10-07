@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run production X11 capture checks against isolated Xvfb."""
+"""Run production X11 owner and capture checks against isolated Xvfb."""
 import hashlib
 import os
 from pathlib import Path
@@ -13,6 +13,36 @@ import time
 def require(value, message):
     if not value:
         raise RuntimeError(message)
+
+
+def thread_contexts(root, environment):
+    owner = root / "src/platform/linux/native_context.rs"
+    fixture = root / "scripts/test-x11-thread-context.rs"
+    binary = Path("/build/thread-contexts")
+    subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2021", str(fixture),
+                    "-o", str(binary)], env=environment, check=True, timeout=30)
+    print("X11_THREAD_CONTEXT_BUILD "
+          f"owner_sha256={hashlib.sha256(owner.read_bytes()).hexdigest()} "
+          f"fixture_sha256={hashlib.sha256(fixture.read_bytes()).hexdigest()} "
+          f"consumer_sha256={hashlib.sha256((root / 'src/platform/linux.rs').read_bytes()).hexdigest()} "
+          f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()} "
+          "scope=production-owner whole_app=unexecuted loader=direct-native-test", flush=True)
+    result = subprocess.run([str(binary)], env=environment, capture_output=True,
+                            text=True, timeout=15)
+    receipt = ("X11_THREAD_CONTEXT_NATIVE=pass source=production-owner old=retained-after-thread-exit "
+               "old_threads=8 corrected_threads=32 unwind_threads=16 contexts=64 "
+               "constructor_refusals=32 callbacks=paired descriptors=retired scope=native-owner")
+    lines = result.stdout.splitlines()
+    require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 4096
+            and len(lines) == 3 and lines[-1] == receipt,
+            f"native thread-context result differs: {result}")
+    for line, name in zip(lines[:2], ("libX11", "libxdo")):
+        library = line.removeprefix("X11_THREAD_CONTEXT_LOADED library=")
+        require(re.fullmatch(rf"/usr/lib/x86_64-linux-gnu/{name}\.so\.[0-9.]+", library),
+                "native context library identity differs")
+        print(f"{line} sha256={hashlib.sha256(Path(library).read_bytes()).hexdigest()}", flush=True)
+    print(receipt, flush=True)
+    binary.unlink()
 
 
 def capture_connection_loss(binary, environment, xserver):
@@ -132,6 +162,7 @@ def main():
             while not Path("/tmp/.X11-unix/X98").is_socket():
                 require(child.poll() is None and time.monotonic() < deadline, "Xvfb not ready")
                 time.sleep(0.05)
+            thread_contexts(root, environment)
             binaries = {}
             for variant in ("historical", "corrected"):
                 work = Path("/build") / variant

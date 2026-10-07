@@ -283,82 +283,73 @@ route refusal is not installed-session/principal or universal-deadline proof.
 
 ### Linux cursor/focus — native thread-owned X11/XDO retirement; integration OPEN
 
-The platform cursor/position constructors now live in
-`src/platform/linux/x11_context.rs` and return explicit errors. They open only
-the validated local Unix selector from the shared standard-library-only
-`libs/hbb_common/src/platform/x11_display.rs`; focus and capture use that same
-parser instead of duplicate copies. Native authentication and paired destruction
-remain intact. The former null-argument Xlib/XDO calls could reach libxcb's
-implicit localhost TCP fallback through
+`src/platform/linux/x11_context.rs` owns both lazy thread-local cells and lends
+contexts through `with_display`/`with_xdo`. Construction uses the shared validated
+local Unix selector in `libs/hbb_common/src/platform/x11_display.rs`; successful
+contexts are reused until thread exit. A failed open returns its error and
+permits a new attempt after a fixed one-second cooldown, not every cursor tick
+and not only after replacing the worker. Reentrant access refuses with
+`WouldBlock`. All four platform cursor consumers use these accessors; position
+query failure returns no coordinates rather than initialized zeroes, and image
+callers propagate context errors.
+
+Each successful context has one non-clonable `NativeContext` and its matching
+native destructor, with no Send/Sync override. Drop, unwind and thread exit retire
+the owner. The selected-display authority, native authentication, protected XDO
+loader, service/worker ownership and global Xlib initialization/error handlers
+are unchanged. Explicit selection avoids the former null-argument implicit
+localhost route described by
 [Xlib's XCB connector](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/src/xcb_disp.c)
-and [XDO's XOpenDisplay call](https://github.com/jordansissel/xdotool/blob/v3.20160805.1/xdo.c).
+and [XDO's constructor](https://github.com/jordansissel/xdotool/blob/v3.20160805.1/xdo.c).
+The cooldown bounds retry frequency after a returned failure, not native
+constructor/request/destructor duration or established-connection recovery.
 
-`src/platform/linux.rs` previously stored cursor X11 and XDO contexts as raw
-thread-local pointers without native destruction. Its cursor/position/focus consumers
-run on real service/input threads; this is a thread-exit ownership defect, not proof
-of per-reconnect growth or the reported display-delay cause.
+**Accepted native component execution:** source
+`8398995077d880a75dd7308d1f24adca33bbf201`, tree
+`9e5304c9d919561265c48d826d27d0bc207198ed`;
+`scripts/smoke-verifier-vm-authority.sh --x11-display-tests` exited 0 in
+**53 VM seconds** on pinned Rust 1.75 and real Xlib/XDO/Xvfb.
 
-Both thread locals now hold one non-clonable `NativeContext` from
-`src/platform/linux/native_context.rs`. Null constructors create no owner; successful
-construction binds the native pointer to its matching destructor, borrowed only
-while the thread-local cell is retained. The owner has no Send/Sync override and
-retires on normal drop/unwind/thread exit. Existing XDO loader, selected-display
-authority, service ownership and thread joins are unchanged.
-The native [XCloseDisplay implementation](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/src/ClDisplay.c)
-retires connection/storage and returns zero; native fatal-error disposition is not
-changed. XDO retirement uses the existing wrapper's `xdo_free` operation.
+- Four old/current Xlib/XDO startup cases begin with display 97 absent, observe
+  one real refused constructor and 32 accesses without another open, then start
+  the exact owned Xvfb. The exact old `7519afaf` TLS declarations retain failure
+  on the same worker after availability; the complete current context module
+  recovers on that worker after its cooldown, opens once more, reuses the same
+  pointer through 32 accesses, and refuses recursive access.
+- The exact production `get_cursor_pos`/`set_cursor_pos` functions refuse during
+  cooldown, then move/read the real server pointer at (91, 71). Xlib reports the
+  actual 640x480 root. Each recovered context retires once; own descriptors/tasks
+  return to baseline after join. All four children and Xvfb/socket owners retire.
+- The current fixture also executes actual production TLS accessors through
+  32 normal/unwind thread exits, paired retirement of 70 contexts including
+  three native screen cases, 18 invalid/missing/non-UTF8 selectors, and 32
+  missing-display refusals. Eight historical raw-TLS exits retain connections
+  until exact parent cleanup. Old null native call shapes make two private
+  guest loopback connections; current constructors make none. The old route
+  comparison is call-shape evidence, not a complete historical parent/app.
+- Existing Enigo, capture/focus route, native errors/replies/layout/pixels/SHM,
+  focus cancellation/recovery and three production byte-cache regressions pass.
 
-`x11_context.rs` now owns the actual thread-local cells and lends a successful
-context only through `with_display`/`with_xdo`. Construction is lazy; a failed
-open returns its error and allows another attempt after a one-second cooldown,
-not once per cursor tick and not only after thread replacement. Healthy contexts
-remain reused until thread exit. Reentrant access refuses with `WouldBlock`.
-The two cursor-position functions and both cursor-image consumers use these
-accessors. Position-query failure returns no coordinates rather than initialized
-zeroes; image-query callers propagate context errors. **Current native startup
-retry and changed-consumer execution are pending**, not established by the earlier
-constructor/owner evidence below. Constructor duration and established Xlib
-connection-failure/fatal-error semantics are not bounded or changed by the cooldown.
+Retained under `.harness-state/verifier-vm/`:
+`x11-display-tests-run.mU8w1jS1Vf.serial.log` (101,945 bytes; SHA-256
+`ccc393c0e6a614233a316c984dfeb6a2d366000a00000262d7e67fff9afe2fb5`)
+and `evidence/x11-startup-retry-run.mU8w1jS1Vf.outer.receipt` (SHA-256
+`ba695b0200d93c9307593c252f24b5eacca03b6116fa9bad6293d5b1d7216966`)
+bind exact source, extracted cursor declarations, baseline, binary, libraries,
+topology and finality. These are assistant observations, not independent
+attestation. Host endpoints had no additions; inputs stayed read-only; owned
+containers/VM/orchestration joined and disk/media/run root self-retired.
+Earlier route/owner receipts remain retained and traceable in Git history.
 
-At `f9090397`, `--x11-display-tests` passed with outer exit 0 in **68 VM seconds**:
-
-- The real old null-argument Xlib and XDO call shapes each connected once to
-  `127.0.0.1:6095` inside the network-none guest container. The corrected
-  production constructors refused with zero observer connections. Accepted old
-  peers closed without an X11 reply/session grant; all four children and the
-  retained loopback listener retired. This compares actual native call shapes,
-  not an old whole application or a complete historical platform module.
-- Complete production owner/constructor/parser modules executed with native
-  libraries. Eight historical raw-TLS exits retained their connections until
-  exact parent cleanup. Thirty-two corrected thread exits (16 normal/16 unwind)
-  plus three normalized native screen cases retired 70 contexts with paired
-  native destructor callbacks and own descriptors back at baseline. Healthy
-  thread-local accesses reused the same contexts.
-- Eighteen invalid/missing/non-UTF8 selectors refused through both constructors
-  before native calls. Three valid normalized selectors opened actual Xvfb
-  screen 0/1, observed as 640x480/800x600. Thirty-two actual missing-display
-  refusals created no owner; exactly 16 expected XDO diagnostics were required.
-- Capture and focus selector/route/cancellation/recovery, native enumeration,
-  pixel/SHM retirement and three production byte-cache regressions passed
-  after parser consolidation. This is component, not whole-app, execution.
-
-Retained `.harness-state/verifier-vm/x11-display-tests-run.7f4ckvTyAq.serial.log`
-(92,220 bytes; SHA-256 `93a9db8f2833b77eeb638abd192b911b9609eb16ac6ea3ceb2da458a2301bc0f`)
-and `evidence/x11-platform-context-route-run.7f4ckvTyAq.outer.receipt` bind exact
-sources/artifacts/libraries, scope and finality. These are assistant observations,
-not independent attestation. No host endpoint addition; readonly inputs unchanged;
-runtime owners joined; disk/media/run root retired. Historical thread-owner
-evidence remains in `2J2Xn1ytHY` and Git history; that outer tool response omitted
-a numeric exit code, and its earlier wrapper failure remains unaccepted.
-
-**OPEN:** constructor bounds; fresh connected peer/session and authenticated-
-Xauthority cases (Xvfb uses `-ac`); protected-loader, parent-module, full Cargo/app,
-service shutdown and current installed/platform artifacts; Enigo/rdev parent
-integration; current native startup/retry and cursor-consumer acceptance; Xlib initialization/concurrency and failed-
-connection destruction; native allocation failures, internal heap, broader races,
-resource/performance/soak/cross-version; cold equality, independent reproduction,
-external review and reported Android/Windows delay causation. No global handler,
-authentication mechanism, signal policy, authority or service lifetime changed.
+**OPEN:** constructor/request bounds; fresh connected peer/session and
+authenticated-Xauthority cases (Xvfb uses `-ac`); protected-loader, complete
+parent/Cargo/app and current installed/platform artifacts; cursor-image execution
+and native position-query status-error negatives; service shutdown and Enigo/rdev
+parent integration; established Xlib connection-failure/destruction and global
+initialization/concurrency; native allocations/internal heap, broader races,
+resources/performance/soak/cross-version; cold equality, independent reproduction,
+external review and reported Android/Windows delay causation. Component startup
+recovery is not a whole-app or privilege-boundary closure.
 
 ### Linux Enigo XDO — one local display for input and diagnostics; integration OPEN
 

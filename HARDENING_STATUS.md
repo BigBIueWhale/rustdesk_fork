@@ -239,7 +239,7 @@ Android/Windows display-delay cause or new closed privilege boundary is establis
 Deferred Android concurrent Stop/admission and stale-generation work remains
 **INCOMPLETE / NOT VALIDATED**, not resumed by this retirement.
 
-### Linux cursor/focus — thread-owned X11/XDO retirement; native acceptance pending
+### Linux cursor/focus — native thread-owned X11/XDO retirement; integration OPEN
 
 `src/platform/linux.rs` previously stored cursor X11 and XDO contexts as raw
 thread-local pointers without native destruction. Its cursor/position/focus consumers
@@ -256,20 +256,30 @@ The native [XCloseDisplay implementation](https://github.com/mirror/libX11/blob/
 retires connection/storage and returns zero; native fatal-error disposition is not
 changed. XDO retirement uses the existing wrapper's `xdo_free` operation.
 
-Focused native verification is pending in the existing `--x11-display-tests` lane.
-The first transaction at `2466e70a` failed because its wrapper rejected the exact
-16 diagnostics from deliberate libxdo constructor refusals, despite native child
-status zero. The corrected oracle requires that exact stderr, not generic error
-suppression; the failed serial and bounded receipt remain retained. No outer
-acceptance is claimed for that attempt.
-The entire production owner is compiled, not a rewritten model, with actual X11/XDO
-constructors/destructors in the private Xvfb container. The fixture distinguishes
-the historical raw-TLS ownership shape from corrected normal and unwinding thread
-exit, checks constructor refusal and retained-context reuse, and observes callbacks
-plus real process descriptor counts. It links the test's native libraries directly:
-it does not execute the protected dynamic loader, changed root application module,
-real service shutdown or a full Cargo/native artifact. Those integration, installed,
-race/failed-connection/heap/soak/performance and platform acceptance claims remain OPEN.
+At `83ea43a4` the existing `--x11-display-tests` lane returned its exact outer pass
+in 59 seconds. The complete production owner, not a rewritten model, compiled with
+real X11/XDO constructors/destructors in private Xvfb: eight historical raw-TLS exits
+retained connections, while 32 corrected exits (16 normal/16 identified unwind)
+retired 64 contexts with paired callbacks and descriptor counts back at baseline.
+All 32 constructor refusals and retained-context reuse passed; the oracle requires
+exactly 16 expected libxdo diagnostics and rejects any other stderr. Existing capture
+cases and three byte-cache tests passed too. The earlier wrapper failure at
+`2466e70a` is not accepted; both its failed serial and bounded receipt are preserved.
+
+Retained evidence under `.harness-state/verifier-vm`: raw
+`x11-display-tests-run.2J2Xn1ytHY.serial.log` (80,889 bytes; SHA-256
+`f60c2ffcd4ac21baf21042a0d31471dcf682f91d8688cecda2f8e136754fa359`) and
+`evidence/x11-thread-context-run.2J2Xn1ytHY.outer.receipt`. The tool did not deliver a
+final numeric outer exit code; the exact pass receipt, native acceptance and joined
+cleanup are observed. Zero-NIC/private-Unix VM and unprivileged network-none container
+profiles are unchanged; complete endpoint audits show no added host listener, readonly
+inputs are unchanged, and all owned runtime/disk/run-root state is retired.
+
+The fixture links native libraries directly; it does not execute the protected
+dynamic loader, changed root application module, real service shutdown or full Cargo
+artifact. Those integration/installed, Xlib initialization/concurrency, native
+failed-connection destruction, race/heap/soak/performance and platform claims remain
+OPEN. No per-reconnect growth or Android/Windows display-delay cause is established.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

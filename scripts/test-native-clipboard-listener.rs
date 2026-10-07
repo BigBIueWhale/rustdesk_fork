@@ -1,6 +1,7 @@
 // Included inside the production listener module by the isolated component fixture.
 use super::*;
 use std::io::Write;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Instant;
 use x11rb_listener as x11rb;
 use x11rb::connection::Connection;
@@ -186,6 +187,92 @@ fn c_native_thread_creation_failure_retires_exact_state() {
     assert_native_window_retired(&connection, &children);
     assert_eq!(resources(), native_baseline);
     println!("CLIPBOARD_NATIVE_THREAD_FAILURE=pass kernel=EAGAIN refusals=4 subscription=removed lock=usable next_start=working resources=retired");
+}
+
+#[test]
+fn d_native_busy_retirement() {
+    let (connection, selection, windows) = native_selection_driver();
+    let root = connection.setup().roots[0].root;
+    // Remove only the fixture's redundant observer, not the production subscription.
+    xfixes::select_selection_input(&connection, root, selection,
+                                  xfixes::SelectionEventMask::default()).unwrap().check().unwrap();
+    let baseline = resources();
+    let children = root_children(&connection);
+    struct StopTraffic(Arc<AtomicBool>);
+    impl Drop for StopTraffic {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Release);
+        }
+    }
+    for cycle in 0..4 {
+        let stop = Arc::new(AtomicBool::new(false));
+        let acknowledged = Arc::new(AtomicUsize::new(0));
+        std::thread::scope(|scope| {
+            let stop_on_exit = StopTraffic(Arc::clone(&stop));
+            let writer_stop = Arc::clone(&stop);
+            let writer_acknowledged = Arc::clone(&acknowledged);
+            let (ready, started) = channel();
+            let producer = scope.spawn(move || {
+                let (writer, _) = x11rb::connect(None).unwrap();
+                ready.send(()).unwrap();
+                let mut changes = 0;
+                let mut writes = Vec::with_capacity(64);
+                while !writer_stop.load(Ordering::Acquire) {
+                    assert!(changes < 1_048_576, "busy fixture exceeded its request budget");
+                    for change in 0..64 {
+                        writes.push(writer.set_selection_owner(windows[change % 2], selection, x11rb::CURRENT_TIME)
+                            .unwrap());
+                    }
+                    writer.flush().unwrap();
+                    assert_eq!(writer.get_selection_owner(selection).unwrap().reply().unwrap().owner, windows[1]);
+                    for write in writes.drain(..) {
+                        write.check().unwrap();
+                    }
+                    changes += 64;
+                    writer_acknowledged.store(changes, Ordering::Release);
+                }
+                changes
+            });
+            started.recv_timeout(Duration::from_secs(1)).unwrap();
+            let live_producer_baseline = resources();
+            let (first, first_receiver) = subscribe(format!("busy-first-{cycle}")).unwrap();
+            let (last, last_receiver) = subscribe(format!("busy-last-{cycle}")).unwrap();
+            assert!(matches!(first_receiver.recv_timeout(Duration::from_secs(3)), Some(CallbackResult::Next)));
+            assert!(matches!(last_receiver.recv_timeout(Duration::from_secs(3)), Some(CallbackResult::Next)));
+            assert_eq!(root_children(&connection).len(), children.len() + 1);
+            drop(first_receiver);
+            drop(first);
+            assert!(CLIPBOARD_LISTENER.lock().unwrap().handle.is_some());
+            assert!(matches!(last_receiver.recv_timeout(Duration::from_secs(3)), Some(CallbackResult::Next)));
+            let before_retirement = acknowledged.load(Ordering::Acquire);
+            assert!(before_retirement >= 64 && !producer.is_finished());
+            let retiring = Instant::now();
+            drop(last_receiver);
+            drop(last);
+            let retirement = retiring.elapsed();
+            assert!(retirement < Duration::from_secs(1), "busy listener retirement exceeded one second");
+            {
+                let listener = CLIPBOARD_LISTENER.lock().unwrap();
+                assert!(listener.handle.is_none());
+                let registry = listener.subscribers.lock().unwrap();
+                assert!(registry.subscribers.is_empty() && registry.terminal.is_none());
+            }
+            let after_join = acknowledged.load(Ordering::Acquire);
+            let deadline = Instant::now() + Duration::from_secs(1);
+            while acknowledged.load(Ordering::Acquire) == after_join {
+                assert!(Instant::now() < deadline && !producer.is_finished(), "producer did not continue after listener join");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert_native_window_retired(&connection, &children);
+            assert_eq!(resources(), live_producer_baseline);
+            assert!(!producer.is_finished());
+            drop(stop_on_exit);
+            let changes = producer.join().unwrap();
+            assert_eq!(resources(), baseline);
+            println!("CLIPBOARD_NATIVE_BUSY_TIMING cycle={cycle} before_retirement={before_retirement} after_join={after_join} changes={changes} retirement_us={}", retirement.as_micros());
+        });
+    }
+    println!("CLIPBOARD_NATIVE_BUSY=pass cycles=4 source=live first_retirement=preserved last_retirement=joined native_window=retired resources=baseline");
 }
 
 #[test]

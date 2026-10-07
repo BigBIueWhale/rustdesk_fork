@@ -4192,7 +4192,7 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
-        'CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=owned-x11 callbacks=actual old=retained current=joined late_admission=refused startup_observer=retired tests=11 network=none cleanup=joined' \
+        'CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=owned-x11 callbacks=actual old=retained current=joined late_admission=refused startup_observer=retired tests=12 network=none cleanup=joined' \
         'native clipboard component old/current worker retirement, terminal admission and startup observer regression'
     require_exact_fixed_receipt \
         'CLIPBOARD_LISTENER_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \

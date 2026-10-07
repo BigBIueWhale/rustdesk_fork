@@ -10989,7 +10989,7 @@ as do current artifacts, performance/soak, independent reproduction, and externa
 
 ### R-S11hb/R-S11e-240 — exact bounded native clipboard-listener ownership (2026-08-20)
 
-**SOURCE IMPLEMENTED; SIX PRODUCTION STATE TESTS AND FOUR LINUX NATIVE LIFETIME
+**SOURCE IMPLEMENTED; SIX PRODUCTION STATE TESTS AND FIVE LINUX NATIVE LIFETIME
 TESTS PASSED IN A 65-SECOND FOCUSED TRANSACTION; WHOLE-APP, OTHER NATIVE PLATFORMS,
 DEVICE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** The mailbox/registry
 is shared by Windows, Linux, and macOS; Linux X11 now has its own native master.
@@ -11027,6 +11027,19 @@ running. Two additional production regressions cover terminal native errors and
 worker-exit publication. These are source/state corrections, not display-symptom
 causation.
 
+Worker creation now returns `io::Result<JoinHandle<()>>` rather than panicking on OS
+failure. `subscribe` removes its exact insertion and releases the listener lock before
+receiver cleanup, retaining the native `io::Error`. The new nonroot Linux test lowers
+only its own soft `RLIMIT_NPROC`, proves a real `EAGAIN`, checks four exact refusals with
+empty state/usable locks and baseline thread/descriptor counts, restores its limit, then
+uses the same name for a working native callback and joined retirement. Unchanged product
+source in `run.WNt388Ub74` panicked and hung through the 20-second observation bound;
+the release profile's `panic='abort'` instead predicts process termination, not a measured
+release-artifact outcome. Its raw log and
+`evidence/clipboard-thread-start-run.WNt388Ub74.outer.receipt` remain retained. This
+corrects the shared desktop creation-error path; it does not establish
+other-platform native behavior, other resource failures, or bounded native startup.
+
 The former Linux X11 master reused a process-global getter, left its native subscription
 active after worker retirement, re-registered it after each callback, and slept 500ms for
 each discarded old-sequence event. The prior aggregate failed on its second subscription;
@@ -11046,31 +11059,32 @@ direct `x11rb-listener` binding uses already-root-locked x11rb 0.13.1; the optio
 API keeps its distinct 0.12 types, with no new external package/version or cache mutation.
 Windows/macOS and the existing Wayland implementation are unchanged by this X11 correction.
 **Wayland's inherited fallback/lifetime limitations remain OPEN; X11 evidence does not
-close them.** Thread-creation error handling, native I/O/startup deadlines, constant-traffic
+close them.** Native I/O/startup deadlines, constant-traffic
 shutdown, concurrent admission/error/replacement, and sustained resource/latency evidence
 also remain OPEN. This clipboard correction is not Android/Windows display-delay causation.
 
 **Focused Linux component acceptance:**
 `scripts/smoke-verifier-vm-authority.sh --x11-display-tests --clipboard-listener` passed
 with explicit outer status 0 in **65 seconds** on source
-`7b227d4726eed42723e822080c7584b18fb9a2bf`, tree
-`adf3fd8030a11a8e86dbc20e6ae3cc2cc4a688d4`. It compiles the complete production listener
+`1d2c71e5bc2ee3c375a3b9007c8288e1feecb98f`, tree
+`f6f903a401354a84db340a2c978bcf877b8244b0`. It compiles the complete production listener
 and actual local-display selector with pinned Rust 1.75 and real root-lock dependencies,
-then executes six production state tests and four native cases in source-bound processes:
-retired startup observer, failed startup/clean retry, joined native error retirement, and
-four warm restarts. The historical fixture uses the exact pinned former native master and
-error callback, not a historical whole app. It reproduces the second-start callback timeout
+then executes six production state tests and five native cases in source-bound processes:
+retired startup observer, failed startup/clean retry, actual worker-creation refusal/recovery,
+joined native error retirement, and four warm restarts. The historical fixture uses the
+exact pinned former native master and error callback, not a historical whole app. It
+reproduces the second-start callback timeout
 under the unchanged three-second bound and retains a live worker after native server loss;
 the current component passes both properties. Warm restarts include 1,000 real idle changes
 after every retirement, one private native window per active master, server QueryTree
 proof of window absence after each join, and thread/descriptor counts equal to baseline.
 Measured current callbacks were 500ms on all four cycles; error retirement refused 64 late
-subscriptions and restored threads 2→2 and descriptors 5→5, with a 510ms terminal interval.
+subscriptions and restored threads 2→2 and descriptors 5→5, with a 500ms terminal interval.
 These are component samples, not exact descriptor-identity, whole-app latency or soak proof.
 
-Retained raw `.harness-state/verifier-vm/x11-display-tests-run.ryK92v7b3D.serial.log` is
-80,921 bytes, SHA-256 `2c61ee95432153e5116ab29305cf5f80e08f7223d3af7197c912c345879ddb58`;
-exact artifacts and scope are in `evidence/clipboard-listener-run.ryK92v7b3D.outer.receipt`.
+Retained raw `.harness-state/verifier-vm/x11-display-tests-run.Da1KAijNYJ.serial.log` is
+79,701 bytes, SHA-256 `f90c339fb831f6d821c21d98073f3b87e2e840f167480205aec6ab7c9e33e3ee`;
+exact artifacts and scope are in `evidence/clipboard-thread-start-run.Da1KAijNYJ.outer.receipt`.
 All 77 selected dependency records matched the root lock; 86 pinned package byte closures
 passed before and after execution. Source/input/image and outer postconditions passed,
 with no endpoint addition in before/during/after host snapshots and no owner inventory.

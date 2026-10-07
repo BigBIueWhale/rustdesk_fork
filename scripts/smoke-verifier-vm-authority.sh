@@ -1115,6 +1115,7 @@ android_frame_input_inventory() {
     if [ "$MODE" = x11-display-tests ]; then
         files+=("$SCRIPT_DIR/test-x11-display-native.py" "$SCRIPT_DIR/test-x11-display.rs"
             "$SCRIPT_DIR/test-x11-thread-context.rs"
+            "$SCRIPT_DIR/fixtures/x11-thread-context-before-retry.rs"
             "$SCRIPT_DIR/test-x11-enigo-route.rs"
             "$SCRIPT_DIR/fixtures/x11-enigo-xdo-before-local-route.rs"
             "$REPO_ROOT/libs/enigo/src/lib.rs" "$REPO_ROOT/libs/enigo/src/dsl.rs"
@@ -3402,6 +3403,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/scripts/test-x11-display-native.py=$SCRIPT_DIR/test-x11-display-native.py"
             "repo/scripts/test-x11-display.rs=$SCRIPT_DIR/test-x11-display.rs"
             "repo/scripts/test-x11-thread-context.rs=$SCRIPT_DIR/test-x11-thread-context.rs"
+            "repo/scripts/fixtures/x11-thread-context-before-retry.rs=$SCRIPT_DIR/fixtures/x11-thread-context-before-retry.rs"
             "repo/scripts/test-x11-enigo-route.rs=$SCRIPT_DIR/test-x11-enigo-route.rs"
             "repo/scripts/fixtures/x11-enigo-xdo-before-local-route.rs=$SCRIPT_DIR/fixtures/x11-enigo-xdo-before-local-route.rs"
             "repo/libs/enigo/src/lib.rs=$REPO_ROOT/libs/enigo/src/lib.rs"
@@ -4118,6 +4120,9 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux app-capsule cloud-init completion'
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
+    require_exact_fixed_receipt \
+        'X11_STARTUP_RETRY_NATIVE=pass source=complete-context-module old=exact-tls-initializers components=xlib,xdo cases=4 old=cached-failure current=same-worker-recovery cooldown_ms=1000 cooldown_calls=32 healthy_reuses=32 reentrant=refused queries=server-real callbacks=paired descriptors=retired threads=retired server=owned-and-joined scope=thread-context-startup' \
+        'production thread-owned X11/XDO startup retry, cooldown, reuse and joined retirement'
     require_exact_fixed_receipt \
         'X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 pointer=server-real callbacks=paired descriptors=retired threads=retired scope=xdo-backend' \
         'complete production Enigo XDO backend selector, pointer and retirement behavior'

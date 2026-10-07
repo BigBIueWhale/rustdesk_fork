@@ -19,21 +19,7 @@ def require(value, message):
         raise RuntimeError(message)
 
 
-def enigo_route(root, environment):
-    historical = root / "scripts/fixtures/x11-enigo-xdo-before-local-route.rs"
-    require(hashlib.sha256(historical.read_bytes()).hexdigest() ==
-            "47afa6ff695fa877979f22b934cbebee081d24a9855e7f85b90a3d87c81e201d",
-            "historical a1c03eb3 complete Enigo XDO backend differs")
-    # Extract the real public types, scroll check and traits; never substitute a test API.
-    source = (root / "libs/enigo/src/lib.rs").read_text()
-    start = "///\npub type ResultType ="
-    end = '#[cfg(any(target_os = "android", target_os = "ios"))]\nstruct Enigo;'
-    require(source.count(start) == 1 and source.count(end) == 1,
-            "production Enigo API extraction boundary differs")
-    declarations = source[source.index(start):source.index(end)]
-    api = Path("/build/enigo-api.rs")
-    with api.open("x") as output:
-        output.write(declarations)
+def logging_library(root, environment):
     logging = root / "test-inputs/log-0.4.22"
     checksum = logging / ".cargo-checksum.json"
     require(hashlib.sha256(checksum.read_bytes()).hexdigest() ==
@@ -50,6 +36,24 @@ def enigo_route(root, environment):
     subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2021", "--crate-name", "log",
                     "--crate-type=rlib", "--cfg", 'feature="std"', str(logging / "src/lib.rs"),
                     "-o", str(library)], env=environment, check=True, timeout=30)
+    return checksum, library
+
+
+def enigo_route(root, environment, checksum, library):
+    historical = root / "scripts/fixtures/x11-enigo-xdo-before-local-route.rs"
+    require(hashlib.sha256(historical.read_bytes()).hexdigest() ==
+            "47afa6ff695fa877979f22b934cbebee081d24a9855e7f85b90a3d87c81e201d",
+            "historical a1c03eb3 complete Enigo XDO backend differs")
+    # Extract the real public types, scroll check and traits; never substitute a test API.
+    source = (root / "libs/enigo/src/lib.rs").read_text()
+    start = "///\npub type ResultType ="
+    end = '#[cfg(any(target_os = "android", target_os = "ios"))]\nstruct Enigo;'
+    require(source.count(start) == 1 and source.count(end) == 1,
+            "production Enigo API extraction boundary differs")
+    declarations = source[source.index(start):source.index(end)]
+    api = Path("/build/enigo-api.rs")
+    with api.open("x") as output:
+        output.write(declarations)
     binaries = {}
     for variant in ("historical", "corrected"):
         binary = Path("/build") / f"enigo-{variant}"
@@ -121,23 +125,35 @@ def enigo_route(root, environment):
     print("X11_ENIGO_ROUTE_NATIVE=pass source=complete-backends old_accepts=2 current_accepts=0 "
           "scenarios=constructor,diagnostic-display-change listener=container-loopback-only "
           "peer=closed children=joined scope=xdo-backend", flush=True)
-    for path in (*binaries.values(), library, api):
+    for path in (*binaries.values(), api):
         path.unlink()
 
 
-def thread_contexts(root, environment):
+def thread_contexts(root, environment, checksum, library):
     owner = root / "src/platform/linux/native_context.rs"
     fixture = root / "scripts/test-x11-thread-context.rs"
     binary = Path("/build/thread-contexts")
+    source = (root / "src/platform/linux.rs").read_text()
+    start, end = "pub fn get_cursor_pos()", "/// Clip cursor - Linux implementation is a no-op."
+    require(source.count(start) == 1 and source.count(end) == 1,
+            "production cursor-position extraction boundaries differ")
+    cursor = Path("/build/x11-cursor-position.rs")
+    with cursor.open("x") as output:
+        output.write(source[source.index(start):source.index(end)])
     subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2021", str(fixture),
-                    "-o", str(binary), "-C", "link-arg=-Wl,--wrap=XCloseDisplay",
-                    "-C", "link-arg=-Wl,--wrap=xdo_free"], env=environment, check=True, timeout=30)
+                    "-o", str(binary), "--extern", f"log={library}",
+                    "-C", "link-arg=-Wl,--wrap=XCloseDisplay", "-C", "link-arg=-Wl,--wrap=XOpenDisplay",
+                    "-C", "link-arg=-Wl,--wrap=xdo_free", "-C", "link-arg=-Wl,--wrap=xdo_new"],
+                   env=environment, check=True, timeout=30)
     print("X11_THREAD_CONTEXT_BUILD "
           f"owner_sha256={hashlib.sha256(owner.read_bytes()).hexdigest()} "
           f"fixture_sha256={hashlib.sha256(fixture.read_bytes()).hexdigest()} "
           f"constructors_sha256={hashlib.sha256((root / 'src/platform/linux/x11_context.rs').read_bytes()).hexdigest()} "
           f"selector_sha256={hashlib.sha256((root / 'libs/hbb_common/src/platform/x11_display.rs').read_bytes()).hexdigest()} "
           f"consumer_sha256={hashlib.sha256((root / 'src/platform/linux.rs').read_bytes()).hexdigest()} "
+          f"cursor_declarations_sha256={hashlib.sha256(cursor.read_bytes()).hexdigest()} "
+          f"log_manifest_sha256={hashlib.sha256(checksum.read_bytes()).hexdigest()} "
+          f"log_library_sha256={hashlib.sha256(library.read_bytes()).hexdigest()} "
           f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()} "
           "scope=production-owner whole_app=unexecuted loader=direct-native-test", flush=True)
     result = subprocess.run([str(binary)], env=environment, capture_output=True,
@@ -169,7 +185,81 @@ def thread_contexts(root, environment):
     print("X11_PLATFORM_ROUTE_NATIVE=pass source=production-constructors old=null-call-shape "
           "callers=xlib,xdo old_accepts=2 current_accepts=0 listener=container-loopback-only "
           "peer=closed children=joined scope=platform-constructors", flush=True)
+    startup_retry(root, binary, environment)
     binary.unlink()
+    cursor.unlink()
+
+
+def startup_retry(root, binary, environment):
+    snapshot = root / "scripts/fixtures/x11-thread-context-before-retry.rs"
+    require(hashlib.sha256(snapshot.read_bytes()).hexdigest() ==
+            "3b58902c6ee90116375b77b461b642937e1f7a78dbf7ee6778fb64d4b771749c",
+            "exact historical 7519afaf platform X11/XDO initializers differ")
+    consumer = (root / "src/platform/linux.rs").read_text()
+    require(consumer.count("x11_context::with_xdo(") == 2
+            and consumer.count("x11_context::with_display(") == 2
+            and not re.search(r"\bstatic\s+(?:DISPLAY|XDO)\b|x11_context::open_(?:display|xdo)\(", consumer),
+            "platform cursor consumers bypass thread-owned startup retry")
+    print(f"X11_STARTUP_BASELINE source=7519afaf initializers_sha256="
+          f"{hashlib.sha256(snapshot.read_bytes()).hexdigest()} scope=exact-tls-declarations", flush=True)
+    with open("/tmp/x11-startup-retry-xvfb.log", "xb") as log:
+        for component in ("xlib", "xdo"):
+            for variant in ("historical", "corrected"):
+                require(not Path("/tmp/.X11-unix/X97").exists(), "startup display is not initially absent")
+                native = subprocess.Popen([str(binary), f"retry-{component}-{variant}"], env=environment,
+                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                server = None
+                try:
+                    # Read one bounded readiness line without leaving an unbounded pipe wait.
+                    ready = bytearray()
+                    deadline = time.monotonic() + 5
+                    with selectors.DefaultSelector() as streams:
+                        streams.register(native.stdout, selectors.EVENT_READ)
+                        while b"\n" not in ready:
+                            remaining = deadline - time.monotonic()
+                            require(remaining > 0 and streams.select(remaining), "startup refusal readiness timed out")
+                            data = os.read(native.stdout.fileno(), 257 - len(ready))
+                            require(data and len(ready) + len(data) <= 256, "startup readiness missing or oversized")
+                            ready.extend(data)
+                    require(ready.decode("ascii") == f"X11_STARTUP_READY variant={variant} component={component} "
+                            "failed=1 cooldown_calls=32 native_opens=1\n" and native.poll() is None,
+                            "startup cached-failure/cooldown observation differs")
+                    server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":97", "-screen", "0", "640x480x24",
+                                               "-nolisten", "tcp", "-ac", "-noreset"],
+                                              env=environment, stdout=log, stderr=subprocess.STDOUT)
+                    deadline = time.monotonic() + 5
+                    while not Path("/tmp/.X11-unix/X97").is_socket():
+                        require(server.poll() is None and time.monotonic() < deadline, "startup Xvfb not ready")
+                        time.sleep(0.01)
+                    output, errors = native.communicate(input=b"S", timeout=5)
+                    expected_errors = b"Error: Can't open display: unix/:97.0\n" if component == "xdo" else b""
+                    receipt = (f"X11_STARTUP_CHILD variant={variant} component={component} "
+                               f"result={'cached-failure' if variant == 'historical' else 'recovered'} "
+                               f"native_opens={1 if variant == 'historical' else 2} worker=same callbacks=paired "
+                               "descriptors=retired threads=retired")
+                    require(native.returncode == 0 and errors == expected_errors
+                            and output.decode("ascii").splitlines() == [receipt]
+                            and server.poll() is None, f"native same-worker startup result differs: {output!r} {errors!r}")
+                    print(receipt, flush=True)
+                finally:
+                    try:
+                        if native.poll() is None:
+                            native.kill()
+                        native.wait(timeout=5)
+                        for stream in (native.stdin, native.stdout, native.stderr):
+                            stream.close()
+                    finally:
+                        if server is not None:
+                            if server.poll() is None:
+                                server.terminate()
+                            server.wait(timeout=5)
+                require(server.returncode == 0 and not Path("/tmp/.X11-unix/X97").exists(),
+                        "startup Xvfb/socket retirement differs")
+    print("X11_STARTUP_RETRY_NATIVE=pass source=complete-context-module old=exact-tls-initializers "
+          "components=xlib,xdo cases=4 old=cached-failure current=same-worker-recovery "
+          "cooldown_ms=1000 cooldown_calls=32 healthy_reuses=32 reentrant=refused "
+          "queries=server-real callbacks=paired descriptors=retired threads=retired "
+          "server=owned-and-joined scope=thread-context-startup", flush=True)
 
 
 def build_focus(root, environment, binary, fixture, historical=False):
@@ -677,6 +767,7 @@ def main():
     version = subprocess.run(["/usr/local/cargo/bin/rustc", "--version"], env=environment,
                              check=True, capture_output=True, text=True, timeout=5)
     require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
+    checksum, logging = logging_library(root, environment)
     comparator = root / "libs/scrap/src/common/frame_compare.rs"
     comparator_test = Path("/build/frame-compare-tests")
     subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2018", "--test",
@@ -703,8 +794,8 @@ def main():
             while not Path("/tmp/.X11-unix/X98").is_socket():
                 require(child.poll() is None and time.monotonic() < deadline, "Xvfb not ready")
                 time.sleep(0.05)
-            thread_contexts(root, environment)
-            enigo_route(root, environment)
+            thread_contexts(root, environment, checksum, logging)
+            enigo_route(root, environment, checksum, logging)
             window_focus(root, environment)
             binaries = {}
             for variant in ("historical", "corrected"):
@@ -918,6 +1009,7 @@ def main():
     for binary in binaries.values():
         binary.unlink()
     focus_lifecycle(root, environment)
+    logging.unlink()
     for name in ("tcp", "tcp6"):
         require(not any(row.split()[3] == "0A" for row in Path("/proc/net", name).read_text().splitlines()[1:]),
                 "native test opened a TCP listener")

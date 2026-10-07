@@ -5,8 +5,8 @@ mod platform {
     #[path = "/work/libs/hbb_common/src/platform/x11_display.rs"]
     pub mod x11_display;
 }
-use std::{cell::RefCell, collections::BTreeSet, ffi::{c_char, c_int, c_void}, ptr,
-          sync::atomic::{AtomicUsize, Ordering}, thread};
+use std::{cell::RefCell, collections::BTreeSet, ffi::{c_char, c_int, c_void}, io::Read, ptr,
+          sync::atomic::{AtomicUsize, Ordering}, thread, time::{Duration, Instant}};
 
 #[path = "/work/src/platform/linux/native_context.rs"]
 mod native_context;
@@ -22,6 +22,7 @@ type Xdo = xdo_t;
 extern "C" {
     fn XInitThreads() -> c_int;
     fn XOpenDisplay(name: *const c_char) -> *mut c_void;
+    fn __real_XOpenDisplay(name: *const c_char) -> *mut c_void;
     fn XCloseDisplay(display: *mut c_void) -> c_int;
     fn __real_XCloseDisplay(display: *mut c_void) -> c_int;
     fn XDefaultScreen(display: *mut c_void) -> c_int;
@@ -31,12 +32,34 @@ extern "C" {
 #[link(name = "xdo")]
 extern "C" {
     pub fn xdo_new(name: *const c_char) -> *mut Xdo;
+    fn __real_xdo_new(name: *const c_char) -> *mut Xdo;
     pub fn xdo_free(context: *mut Xdo);
     fn __real_xdo_free(context: *mut Xdo);
+    pub fn xdo_get_mouse_location(context: *const Xdo, x: *mut c_int, y: *mut c_int,
+                                  screen: *mut c_int) -> c_int;
+    pub fn xdo_move_mouse(context: *const Xdo, x: c_int, y: c_int, screen: c_int) -> c_int;
 }
 
+mod cursor {
+    use super::x11_context;
+    use std::ffi::c_int;
+    include!("/build/x11-cursor-position.rs");
+}
+
+static DISPLAY_OPENS: AtomicUsize = AtomicUsize::new(0);
+static XDO_OPENS: AtomicUsize = AtomicUsize::new(0);
 static DISPLAY_RETIREMENTS: AtomicUsize = AtomicUsize::new(0);
 static XDO_RETIREMENTS: AtomicUsize = AtomicUsize::new(0);
+#[no_mangle]
+unsafe extern "C" fn __wrap_XOpenDisplay(name: *const c_char) -> *mut c_void {
+    DISPLAY_OPENS.fetch_add(1, Ordering::SeqCst);
+    __real_XOpenDisplay(name)
+}
+#[no_mangle]
+unsafe extern "C" fn __wrap_xdo_new(name: *const c_char) -> *mut Xdo {
+    XDO_OPENS.fetch_add(1, Ordering::SeqCst);
+    __real_xdo_new(name)
+}
 #[no_mangle]
 unsafe extern "C" fn __wrap_XCloseDisplay(display: *mut c_void) -> c_int {
     let status = __real_XCloseDisplay(display);
@@ -54,8 +77,96 @@ thread_local! {
     // Historical ownership shape: a RefCell containing a raw pointer has no native destructor.
     static OLD_DISPLAY: RefCell<*mut c_void> = RefCell::new(unsafe { XOpenDisplay(ptr::null()) });
     static OLD_XDO: RefCell<*mut Xdo> = RefCell::new(unsafe { xdo_new(ptr::null()) });
-    static DISPLAY: RefCell<Option<NativeContext<c_void>>> = RefCell::new(x11_context::open_display().ok());
-    static XDO: RefCell<Option<NativeContext<Xdo>>> = RefCell::new(x11_context::open_xdo().ok());
+}
+
+mod before_retry {
+    use super::{c_void, xdo_t, NativeContext, RefCell, x11_context};
+    include!("/work/scripts/fixtures/x11-thread-context-before-retry.rs");
+
+    pub fn pointer(xdo: bool) -> Option<usize> {
+        if xdo { XDO.with(|context| context.borrow().as_ref().map(|context| context.as_ptr() as usize)) }
+        else { DISPLAY.with(|context| context.borrow().as_ref().map(|context| context.as_ptr() as usize)) }
+    }
+}
+
+fn pointer(xdo: bool) -> std::io::Result<Option<usize>> {
+    if xdo { x11_context::with_xdo(|context| context.as_ptr() as usize) }
+    else { x11_context::with_display(|context| context.as_ptr() as usize) }
+}
+
+fn retry(scenario: &str) {
+    let historical = scenario.ends_with("historical");
+    let xdo = scenario.contains("-xdo-");
+    let baseline = descriptors();
+    let tasks = std::fs::read_dir("/proc/self/task").unwrap().count();
+    std::env::set_var("DISPLAY", ":97");
+    let counts = || (DISPLAY_OPENS.load(Ordering::SeqCst), XDO_OPENS.load(Ordering::SeqCst));
+    let expected = if xdo { (0, 1) } else { (1, 0) };
+    let worker = thread::spawn(move || {
+        let failed = Instant::now();
+        if historical { assert_eq!(before_retry::pointer(xdo), None); }
+        else {
+            assert_eq!(pointer(xdo).unwrap_err().kind(), std::io::ErrorKind::ConnectionRefused);
+            if xdo {
+                assert_eq!(cursor::get_cursor_pos(), None);
+                assert!(!cursor::set_cursor_pos(91, 71));
+            }
+        }
+        for _ in 0..32 {
+            if historical { assert_eq!(before_retry::pointer(xdo), None); }
+            else { assert_eq!(pointer(xdo).unwrap(), None); }
+        }
+        assert!(failed.elapsed() < Duration::from_millis(900), "initial cooldown was not observed");
+        assert_eq!(counts(), expected, "polling repeated a native constructor inside cooldown");
+        assert_eq!(descriptors(), baseline);
+        println!("X11_STARTUP_READY variant={} component={} failed=1 cooldown_calls=32 native_opens=1",
+                 if historical { "historical" } else { "corrected" }, if xdo { "xdo" } else { "xlib" });
+        let mut token = [0];
+        std::io::stdin().read_exact(&mut token).unwrap();
+        assert_eq!(token, [b'S']);
+        if historical {
+            thread::sleep(Duration::from_millis(1100));
+            assert_eq!(before_retry::pointer(xdo), None, "historical TLS unexpectedly retried");
+            assert_eq!(counts(), expected);
+        } else {
+            let until = Instant::now() + Duration::from_secs(3);
+            let context = loop {
+                if let Some(context) = pointer(xdo).unwrap() { break context; }
+                assert!(Instant::now() < until, "same-thread startup retry did not recover");
+                thread::sleep(Duration::from_millis(10));
+            };
+            assert!(failed.elapsed() >= Duration::from_secs(1));
+            assert_eq!(counts(), if xdo { (0, 2) } else { (2, 0) });
+            assert_eq!(descriptors(), baseline + 1);
+            for _ in 0..32 { assert_eq!(pointer(xdo).unwrap(), Some(context)); }
+            if xdo {
+                assert!(cursor::set_cursor_pos(91, 71));
+                assert_eq!(cursor::get_cursor_pos(), Some((91, 71)));
+                x11_context::with_xdo(|context| {
+                    let (mut x, mut y, mut screen) = (0, 0, -1);
+                    assert_eq!(unsafe { xdo_get_mouse_location(context.as_ptr(), &mut x, &mut y, &mut screen) }, 0);
+                    assert_eq!(screen, 0);
+                    assert_eq!((x, y), (91, 71));
+                    assert_eq!(pointer(true).unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
+                }).unwrap().unwrap();
+            } else {
+                x11_context::with_display(|context| unsafe {
+                    let display = context.as_ptr();
+                    assert_eq!(XDefaultScreen(display), 0);
+                    assert_eq!((XDisplayWidth(display, 0), XDisplayHeight(display, 0)), (640, 480));
+                    assert_eq!(pointer(false).unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
+                }).unwrap().unwrap();
+            }
+            assert_eq!(counts(), if xdo { (0, 2) } else { (2, 0) });
+        }
+    });
+    worker.join().unwrap();
+    assert_eq!(descriptors(), baseline);
+    assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), tasks);
+    assert_eq!(retirements(), if historical { (0, 0) } else if xdo { (0, 1) } else { (1, 0) });
+    println!("X11_STARTUP_CHILD variant={} component={} result={} native_opens={} worker=same callbacks=paired descriptors=retired threads=retired",
+             if historical { "historical" } else { "corrected" }, if xdo { "xdo" } else { "xlib" },
+             if historical { "cached-failure" } else { "recovered" }, if historical { 1 } else { 2 });
 }
 
 fn descriptors() -> usize { std::fs::read_dir("/proc/self/fd").unwrap().count() }
@@ -66,6 +177,11 @@ fn retirements() -> (usize, usize) {
 fn main() {
     assert_ne!(unsafe { XInitThreads() }, 0);
     if let Some(scenario) = std::env::args().nth(1) {
+        if matches!(scenario.as_str(), "retry-xlib-historical" | "retry-xlib-corrected"
+                   | "retry-xdo-historical" | "retry-xdo-corrected") {
+            retry(&scenario);
+            return;
+        }
         assert!(matches!(scenario.as_str(), "route-xlib-historical" | "route-xlib-corrected"
                         | "route-xdo-historical" | "route-xdo-corrected"));
         let baseline = descriptors();
@@ -117,12 +233,12 @@ fn main() {
 
     for iteration in 0..32 {
         let result = thread::spawn(move || {
-            let display = DISPLAY.with(|p| p.borrow().as_ref().unwrap().as_ptr());
-            let xdo = XDO.with(|p| p.borrow().as_ref().unwrap().as_ptr());
+            let display = pointer(false).unwrap().unwrap();
+            let xdo = pointer(true).unwrap().unwrap();
             assert_eq!(descriptors(), baseline + 2);
             for _ in 0..16 {
-                DISPLAY.with(|p| assert_eq!(p.borrow().as_ref().unwrap().as_ptr(), display));
-                XDO.with(|p| assert_eq!(p.borrow().as_ref().unwrap().as_ptr(), xdo));
+                assert_eq!(pointer(false).unwrap(), Some(display));
+                assert_eq!(pointer(true).unwrap(), Some(xdo));
             }
             if iteration == 0 {
                 let libraries: BTreeSet<_> = std::fs::read_to_string("/proc/self/maps").unwrap()

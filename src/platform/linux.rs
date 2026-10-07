@@ -2,7 +2,6 @@ use super::{CursorData, ResultType};
 mod native_context;
 mod window_focus;
 mod x11_context;
-use native_context::NativeContext;
 use desktop::Desktop;
 pub use hbb_common::platform::linux::*;
 use hbb_common::{
@@ -16,7 +15,7 @@ use hbb_common::{
     regex::{Captures, Regex},
     users::{get_user_by_name, os::unix::UserExt},
 };
-use libxdo_sys::{self, xdo_t};
+use libxdo_sys;
 use std::{
     cell::RefCell,
     ffi::OsStr,
@@ -126,20 +125,6 @@ fn get_active_user_id_name_from_cache() -> Option<(String, String)> {
 
 thread_local! {
     static WINDOW_FOCUS: RefCell<window_focus::WindowFocus> = RefCell::new(Default::default());
-    static XDO: RefCell<Option<NativeContext<xdo_t>>> = RefCell::new(match x11_context::open_xdo() {
-        Ok(context) => Some(context),
-        Err(error) => {
-            log::warn!("Failed to create local xdo context: {error}");
-            None
-        }
-    });
-    static DISPLAY: RefCell<Option<NativeContext<c_void>>> = RefCell::new(match x11_context::open_display() {
-        Ok(context) => Some(context),
-        Err(error) => {
-            log::warn!("Failed to open local X11 display: {error}");
-            None
-        }
-    });
 }
 
 #[link(name = "Xfixes")]
@@ -179,54 +164,48 @@ fn sleep_millis(millis: u64) {
 }
 
 pub fn get_cursor_pos() -> Option<(i32, i32)> {
-    let mut res = None;
-    XDO.with(|xdo| {
-        if let Ok(xdo) = xdo.try_borrow() {
-            let Some(xdo) = xdo.as_ref() else {
-                return;
-            };
-            let mut x: c_int = 0;
-            let mut y: c_int = 0;
-            unsafe {
-                libxdo_sys::xdo_get_mouse_location(
-                    xdo.as_ptr() as *const _,
-                    &mut x as _,
-                    &mut y as _,
-                    std::ptr::null_mut(),
-                );
-            }
-            res = Some((x, y));
+    match x11_context::with_xdo(|xdo| {
+        let mut x: c_int = 0;
+        let mut y: c_int = 0;
+        let status = unsafe {
+            libxdo_sys::xdo_get_mouse_location(
+                xdo.as_ptr() as *const _,
+                &mut x as _,
+                &mut y as _,
+                std::ptr::null_mut(),
+            )
+        };
+        if status != 0 {
+            log::debug!("Failed to query local cursor position: xdo status {status}");
+            return None;
         }
-    });
-    res
+        Some((x, y))
+    }) {
+        Ok(position) => position.flatten(),
+        Err(error) => {
+            log::debug!("Failed to query local cursor position: {error}");
+            None
+        }
+    }
 }
 
 pub fn set_cursor_pos(x: i32, y: i32) -> bool {
-    let mut res = false;
-    XDO.with(|xdo| {
-        match xdo.try_borrow() {
-            Ok(xdo) => {
-                let Some(xdo) = xdo.as_ref() else {
-                    log::debug!("set_cursor_pos: libxdo context is unavailable");
-                    return;
-                };
-                unsafe {
-                    let ret = libxdo_sys::xdo_move_mouse(xdo.as_ptr() as *const _, x, y, 0);
-                    if ret != 0 {
-                        log::debug!(
-                            "set_cursor_pos: xdo_move_mouse failed with code {} for coordinates ({}, {})",
-                            ret, x, y
-                        );
-                    }
-                    res = ret == 0;
-                }
-            }
-            Err(_) => {
-                log::debug!("set_cursor_pos: failed to borrow xdo");
-            }
+    match x11_context::with_xdo(|xdo| unsafe {
+        let ret = libxdo_sys::xdo_move_mouse(xdo.as_ptr() as *const _, x, y, 0);
+        if ret != 0 {
+            log::debug!(
+                "set_cursor_pos: xdo_move_mouse failed with code {} for coordinates ({}, {})",
+                ret, x, y
+            );
         }
-    });
-    res
+        ret == 0
+    }) {
+        Ok(moved) => moved.unwrap_or(false),
+        Err(error) => {
+            log::debug!("Failed to move local cursor: {error}");
+            false
+        }
+    }
 }
 
 /// Clip cursor - Linux implementation is a no-op.
@@ -279,77 +258,66 @@ pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
 }
 
 pub fn get_cursor() -> ResultType<Option<u64>> {
-    let mut res = None;
-    DISPLAY.with(|conn| {
-        if let Ok(d) = conn.try_borrow_mut() {
-            if let Some(d) = d.as_ref() {
-                unsafe {
-                    let img = XFixesGetCursorImage(d.as_ptr());
-                    if !img.is_null() {
-                        res = Some((*img).cursor_serial as u64);
-                        XFree(img as _);
-                    }
-                }
-            }
+    Ok(x11_context::with_display(|display| unsafe {
+        let img = XFixesGetCursorImage(display.as_ptr());
+        if img.is_null() {
+            None
+        } else {
+            let serial = (*img).cursor_serial as u64;
+            XFree(img as _);
+            Some(serial)
         }
-    });
-    Ok(res)
+    })?.flatten())
 }
 
 pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
     let mut res = None;
-    DISPLAY.with(|conn| {
-        if let Ok(d) = conn.try_borrow_mut() {
-            if let Some(d) = d.as_ref() {
-                unsafe {
-                    let img = XFixesGetCursorImage(d.as_ptr());
-                    if !img.is_null() && hcursor == (*img).cursor_serial as u64 {
-                        let mut cd: CursorData = Default::default();
-                        cd.hotx = (*img).xhot as _;
-                        cd.hoty = (*img).yhot as _;
-                        cd.width = (*img).width as _;
-                        cd.height = (*img).height as _;
-                        let Some(rgba_len) = super::cursor_rgba_len(cd.width, cd.height) else {
-                            XFree(img as _);
-                            return;
-                        };
-                        if (*img).pixels.is_null() {
-                            XFree(img as _);
-                            return;
+    let _ = x11_context::with_display(|d| {
+        unsafe {
+            let img = XFixesGetCursorImage(d.as_ptr());
+            if !img.is_null() && hcursor == (*img).cursor_serial as u64 {
+                let mut cd: CursorData = Default::default();
+                cd.hotx = (*img).xhot as _;
+                cd.hoty = (*img).yhot as _;
+                cd.width = (*img).width as _;
+                cd.height = (*img).height as _;
+                let Some(rgba_len) = super::cursor_rgba_len(cd.width, cd.height) else {
+                    XFree(img as _);
+                    return;
+                };
+                if (*img).pixels.is_null() {
+                    XFree(img as _);
+                    return;
+                }
+                cd.id = (*img).cursor_serial as _;
+                let pixels = std::slice::from_raw_parts((*img).pixels, rgba_len / 4);
+                let mut cd_colors = vec![0_u8; rgba_len];
+                for y in 0..cd.height {
+                    for x in 0..cd.width {
+                        let pos = (y * cd.width + x) as usize;
+                        let p = pixels[pos];
+                        let a = (p >> 24) & 0xff;
+                        let r = (p >> 16) & 0xff;
+                        let g = (p >> 8) & 0xff;
+                        let b = (p >> 0) & 0xff;
+                        if a == 0 {
+                            continue;
                         }
-                        // to-do: how about if it is 0
-                        cd.id = (*img).cursor_serial as _;
-                        let pixels = std::slice::from_raw_parts((*img).pixels, rgba_len / 4);
-                        // cd.colors.resize(pixels.len() * 4, 0);
-                        let mut cd_colors = vec![0_u8; rgba_len];
-                        for y in 0..cd.height {
-                            for x in 0..cd.width {
-                                let pos = (y * cd.width + x) as usize;
-                                let p = pixels[pos];
-                                let a = (p >> 24) & 0xff;
-                                let r = (p >> 16) & 0xff;
-                                let g = (p >> 8) & 0xff;
-                                let b = (p >> 0) & 0xff;
-                                if a == 0 {
-                                    continue;
-                                }
-                                let pos = pos * 4;
-                                cd_colors[pos] = r as _;
-                                cd_colors[pos + 1] = g as _;
-                                cd_colors[pos + 2] = b as _;
-                                cd_colors[pos + 3] = a as _;
-                            }
-                        }
-                        cd.colors = cd_colors.into();
-                        res = Some(cd);
-                    }
-                    if !img.is_null() {
-                        XFree(img as _);
+                        let pos = pos * 4;
+                        cd_colors[pos] = r as _;
+                        cd_colors[pos + 1] = g as _;
+                        cd_colors[pos + 2] = b as _;
+                        cd_colors[pos + 3] = a as _;
                     }
                 }
+                cd.colors = cd_colors.into();
+                res = Some(cd);
+            }
+            if !img.is_null() {
+                XFree(img as _);
             }
         }
-    });
+    })?;
     match res {
         Some(x) => Ok(x),
         _ => bail!("Failed to get cursor image of {}", hcursor),

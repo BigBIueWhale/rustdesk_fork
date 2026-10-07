@@ -303,10 +303,22 @@ Both thread locals now hold one non-clonable `NativeContext` from
 construction binds the native pointer to its matching destructor, borrowed only
 while the thread-local cell is retained. The owner has no Send/Sync override and
 retires on normal drop/unwind/thread exit. Existing XDO loader, selected-display
-authority, query/input behavior, service ownership and thread joins are unchanged.
+authority, service ownership and thread joins are unchanged.
 The native [XCloseDisplay implementation](https://github.com/mirror/libX11/blob/ff8706a5eae25b8bafce300527079f68a201d27f/src/ClDisplay.c)
 retires connection/storage and returns zero; native fatal-error disposition is not
 changed. XDO retirement uses the existing wrapper's `xdo_free` operation.
+
+`x11_context.rs` now owns the actual thread-local cells and lends a successful
+context only through `with_display`/`with_xdo`. Construction is lazy; a failed
+open returns its error and allows another attempt after a one-second cooldown,
+not once per cursor tick and not only after thread replacement. Healthy contexts
+remain reused until thread exit. Reentrant access refuses with `WouldBlock`.
+The two cursor-position functions and both cursor-image consumers use these
+accessors. Position-query failure returns no coordinates rather than initialized
+zeroes; image-query callers propagate context errors. **Current native startup
+retry and changed-consumer execution are pending**, not established by the earlier
+constructor/owner evidence below. Constructor duration and established Xlib
+connection-failure/fatal-error semantics are not bounded or changed by the cooldown.
 
 At `f9090397`, `--x11-display-tests` passed with outer exit 0 in **68 VM seconds**:
 
@@ -342,7 +354,7 @@ a numeric exit code, and its earlier wrapper failure remains unaccepted.
 **OPEN:** constructor bounds; fresh connected peer/session and authenticated-
 Xauthority cases (Xvfb uses `-ac`); protected-loader, parent-module, full Cargo/app,
 service shutdown and current installed/platform artifacts; Enigo/rdev parent
-integration; eager failed-TLS startup/retry; Xlib initialization/concurrency and failed-
+integration; current native startup/retry and cursor-consumer acceptance; Xlib initialization/concurrency and failed-
 connection destruction; native allocation failures, internal heap, broader races,
 resource/performance/soak/cross-version; cold equality, independent reproduction,
 external review and reported Android/Windows delay causation. No global handler,

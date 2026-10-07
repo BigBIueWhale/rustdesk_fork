@@ -1840,11 +1840,23 @@ pub mod clipboard_listener {
                 subscribers: listener_lock.subscribers.clone(),
             };
             let (tx_start_res, rx_start_res) = channel();
-            let h = start_clipboard_master_thread(
+            let h = match start_clipboard_master_thread(
                 handler,
                 listener_lock.subscribers.clone(),
                 tx_start_res,
-            );
+            ) {
+                Ok(handle) => handle,
+                Err(error) => {
+                    remove_exact_subscriber(
+                        &mut listener_lock.subscribers.lock().unwrap().subscribers,
+                        &identity,
+                    );
+                    // Receiver retirement reacquires the listener lock.
+                    drop(listener_lock);
+                    drop(receiver);
+                    return Err(error.into());
+                }
+            };
             let shutdown = match rx_start_res.recv() {
                 Ok((Some(s), _)) => s,
                 Ok((None, err)) => {
@@ -1978,9 +1990,9 @@ pub mod clipboard_listener {
         handler: impl ClipboardHandler + Send + 'static,
         subscribers: Subscribers,
         tx_start_res: Sender<(Option<Shutdown>, String)>,
-    ) -> JoinHandle<()> {
+    ) -> io::Result<JoinHandle<()>> {
         // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmessage#:~:text=The%20window%20must%20belong%20to%20the%20current%20thread.
-        let h = std::thread::spawn(move || {
+        std::thread::Builder::new().spawn(move || {
             let _exit = MasterExit(Arc::clone(&subscribers));
             match Master::new(handler) {
                 Ok(mut master) => {
@@ -2016,8 +2028,7 @@ pub mod clipboard_listener {
                     }
                 }
             }
-        });
-        h
+        })
     }
 
     #[cfg(test)]

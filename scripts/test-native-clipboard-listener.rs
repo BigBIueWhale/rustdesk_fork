@@ -23,7 +23,7 @@ fn a_retired_startup_observer() {
         Handler { subscribers: Arc::clone(&subscribers) },
         Arc::clone(&subscribers),
         sender,
-    );
+    ).unwrap();
     assert!(wait_finished(&thread, Instant::now() + Duration::from_secs(2)));
     thread.join().unwrap();
     assert!(subscribers.lock().unwrap().terminal.is_some());

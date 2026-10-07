@@ -4527,11 +4527,14 @@ printf '%s\n' "${dart_frb_source_gate_receipts[0]}"
 elif [ "$MODE" = hbb-common-fs ]; then
     mapfile -t hbb_common_fs_receipts < <(
         /usr/bin/grep -Eo \
-            "HBB_COMMON_FS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=[1-9][0-9]* rust=1\\.75\\.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+            "HBB_COMMON_FS_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=[1-9][0-9]* artifact_sha256=[0-9a-f]{64} rust=1\\.75\\.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
             "$SERIAL_LOG" || true
     )
     [ "${#hbb_common_fs_receipts[@]}" -eq 1 ] \
-        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'focused hbb_common filesystem test receipt is absent or duplicated'; }
+        && [ "$(/usr/bin/grep -Fo 'HBB_COMMON_FS_VM=' "$SERIAL_LOG" | /usr/bin/wc -l)" -eq 1 ] \
+        || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'focused hbb_common filesystem test receipt is absent, malformed or duplicated'; }
+    HBB_COMMON_FS_ARTIFACT_SHA256=${hbb_common_fs_receipts[0]#*artifact_sha256=}
+    HBB_COMMON_FS_ARTIFACT_SHA256=${HBB_COMMON_FS_ARTIFACT_SHA256%% *}
     printf '%s\n' "${hbb_common_fs_receipts[0]}"
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
@@ -5430,8 +5433,9 @@ elif [ "$MODE" = debian-systemd-lifecycle ]; then
     printf 'VERIFIER_VM_OUTER_AUTHORITY=pass host_uid=%s network=none boot=direct kernel=sha256 initrd=sha256 channels=unix listeners=no-harness-addition base=sha512 docker=sha256 mode=debian-systemd-lifecycle output_bound=%s cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$SERIAL_LIMIT" "$vm_elapsed_seconds"
 elif [ "$MODE" = hbb-common-fs ]; then
-    printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
-        "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    printf 'HBB_COMMON_FS_VM_OUTER=pass host_uid=%s commit=%s tree=%s artifact_sha256=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+        "$HBB_COMMON_FS_ARTIFACT_SHA256" "$vm_elapsed_seconds"
 elif [ "$MODE" = cpace-recovery-tests ]; then
     printf 'CPACE_RECOVERY_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"

@@ -2149,7 +2149,7 @@ run_focused_rust_tests() {
     local container_name memory memory_bytes tmpfs_size source_fingerprints
     local source_archive_sha source_before input_mount_options pub_receipt post_pub_receipt
     local path remainder size digest
-    local uid_test_artifact_sha
+    local uid_test_artifact_sha hbb_test_artifact_sha
     local -a required_tests result_lines toolchain_mount bridge_mounts bridge_inputs
     local -a pa_mounts=() pa_env=() dependency_mounts=()
 
@@ -2173,6 +2173,8 @@ run_focused_rust_tests() {
             Cargo.lock
             libs/hbb_common/src/config.rs
             libs/hbb_common/src/fs.rs
+            scripts/select-hbb-common-test-artifact.py
+            scripts/test-hbb-common-test-artifact.py
         )
         required_tests=(
             config::tests::config_transaction_faults_preserve_precommit_and_make_postcommit_fatal
@@ -2698,10 +2700,27 @@ run_focused_rust_tests() {
                 [ "$(cargo --version)" = "cargo 1.75.0 (1d8b05cdd 2023-11-20)" ]
                 case "$RUST_TEST_MODE" in
                     hbb-common-fs)
-                        cargo test --offline --locked -p hbb_common --lib \
-                            config::tests::config_transaction_ --color never -- --test-threads=1
-                        cargo test --offline --locked -p hbb_common --lib \
-                            fs::tests:: --color never -- --test-threads=1
+                        python3 -I -S /source/scripts/test-hbb-common-test-artifact.py
+                        cargo test --offline --locked -p hbb_common --lib --no-run \
+                            --message-format=json-render-diagnostics --color never \
+                            >/cargo-target/hbb-common-build.json
+                        test_executable="$(python3 -I -S \
+                            /source/scripts/select-hbb-common-test-artifact.py \
+                            /cargo-target/hbb-common-build.json)"
+                        [ -f "$test_executable" ] && [ ! -L "$test_executable" ] \
+                            && [ -x "$test_executable" ] \
+                            && [ "$(stat -c "%u:%g:%h" -- "$test_executable")" = 1000:1000:1 ] \
+                            || exit 95
+                        artifact_sha="$(sha256sum "$test_executable" | cut -d " " -f 1)"
+                        [[ "$artifact_sha" =~ ^[0-9a-f]{64}$ ]]
+                        cd /source/libs/hbb_common
+                        "$test_executable" config::tests::config_transaction_ \
+                            --color never --test-threads=1
+                        [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                        "$test_executable" fs::tests:: --color never --test-threads=1
+                        [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                        printf "HBB_COMMON_FS_ARTIFACT=pass sha256=%s executable=%s unchanged=before-between-after\n" \
+                            "$artifact_sha" "$test_executable"
                         ;;
                     cpace-recovery-tests)
                         cargo test --offline --locked -p cpace_it --test handshake \
@@ -2788,6 +2807,15 @@ run_focused_rust_tests() {
     if [ "$MODE" = hbb-common-fs ]; then
         [ "${#result_lines[@]}" -eq 2 ] \
             || { tail -n 200 "$output" >&2; fail 'focused filesystem test summary count differs'; }
+        local -a hbb_artifact_receipts
+        mapfile -t hbb_artifact_receipts < <(
+            grep -E '^HBB_COMMON_FS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/hbb_common-[0-9a-f]{16} unchanged=before-between-after$' "$output"
+        )
+        [ "${#hbb_artifact_receipts[@]}" -eq 1 ] \
+            && [ "$(grep -Fc 'HBB_COMMON_FS_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'filesystem test artifact receipt is absent, malformed or duplicated'
+        hbb_test_artifact_sha=${hbb_artifact_receipts[0]#*sha256=}
+        hbb_test_artifact_sha=${hbb_test_artifact_sha%% *}
     elif [ "$MODE" = cpace-recovery-tests ]; then
         [ "${#result_lines[@]}" -eq 1 ] \
             || { tail -n 200 "$output" >&2; fail 'focused CPace recovery summary count differs'; }
@@ -2860,8 +2888,10 @@ run_focused_rust_tests() {
     fi
     printf '%s\n' "${result_lines[@]}"
     if [ "$MODE" = hbb-common-fs ]; then
-        printf 'HBB_COMMON_FS_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        printf '%s\n' "${hbb_artifact_receipts[@]}"
+        printf 'HBB_COMMON_FS_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+            "$hbb_test_artifact_sha" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$DEB_BUILDER_IMAGE_ID" \
             "$DEB_BUILDER_CONFIG_ID"
     elif [ "$MODE" = cpace-recovery-tests ]; then

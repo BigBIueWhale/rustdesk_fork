@@ -4124,7 +4124,7 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
-        'X11_CURSOR_SNAPSHOT_NATIVE=pass source=complete-module old=two-query-call-shape serial_mismatches=32 current_snapshots=64 changes_between_phases=32 pixels=server-real second_query=absent query_calls=169 images=169 frees=169 live_image_peak=1 replacements=16 wrong_serial=refused repeated_consume=refused retained_thread_exits=8 display_owners=9 descriptors=retired threads=joined scope=native-cursor-snapshot' \
+        'X11_CURSOR_SNAPSHOT_NATIVE=pass source=complete-module old=two-query-call-shape serial_mismatches=32 current_snapshots=64 changes_between_phases=32 pixels=server-real second_query=absent query_calls=170 images=170 frees=170 live_image_peak=1 replacements=16 wrong_serial=refused repeated_consume=refused reset=discarded-and-idempotent retained_thread_exits=8 display_owners=9 descriptors=retired threads=joined scope=native-cursor-snapshot' \
         'one native cursor snapshot supplies paired serial and pixels across actual cursor changes, with bounded ownership and joined retirement'
     require_exact_fixed_receipt \
         'X11_CONCURRENT_CONTEXTS_NATIVE=pass source=complete-context-module native_init=ready-at-main fixture_init=none workers=8 simultaneous_contexts=16 unique_owners=16 reuses_per_owner=64 queries=1024 server=real callbacks=paired live_resources=observed descriptors=retired threads=joined scope=pinned-native-runtime' \

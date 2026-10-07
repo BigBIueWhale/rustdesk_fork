@@ -141,6 +141,12 @@ def thread_contexts(root, environment, checksum, library):
     cursor = Path("/build/x11-cursor-position.rs")
     with cursor.open("x") as output:
         output.write(source[source.index(start):source.index(end)])
+    start, end = "pub fn reset_input_cache()", "pub fn get_focused_display("
+    require(source.count(start) == 1 and source.count(end) == 1,
+            "production cursor reset extraction boundaries differ")
+    reset = Path("/build/x11-cursor-reset.rs")
+    with reset.open("x") as output:
+        output.write(source[source.index(start):source.index(end)])
     bounds_source = root / "src/platform/mod.rs"
     bounds_text = bounds_source.read_text()
     start, end = "pub(crate) const MAX_CURSOR_RGBA_BYTES:", "#[cfg(all(test, not(any(target_os"
@@ -162,6 +168,7 @@ def thread_contexts(root, environment, checksum, library):
           f"selector_sha256={hashlib.sha256((root / 'libs/hbb_common/src/platform/x11_display.rs').read_bytes()).hexdigest()} "
           f"consumer_sha256={hashlib.sha256((root / 'src/platform/linux.rs').read_bytes()).hexdigest()} "
           f"cursor_declarations_sha256={hashlib.sha256(cursor.read_bytes()).hexdigest()} "
+          f"cursor_reset_declarations_sha256={hashlib.sha256(reset.read_bytes()).hexdigest()} "
           f"cursor_snapshot_sha256={hashlib.sha256((root / 'src/platform/linux/x11_cursor.rs').read_bytes()).hexdigest()} "
           f"cursor_bounds_source_sha256={hashlib.sha256(bounds_source.read_bytes()).hexdigest()} "
           f"cursor_bounds_declarations_sha256={hashlib.sha256(bounds.read_bytes()).hexdigest()} "
@@ -214,8 +221,8 @@ def thread_contexts(root, environment, checksum, library):
                             capture_output=True, text=True, timeout=5)
     receipt = ("X11_CURSOR_SNAPSHOT_NATIVE=pass source=complete-module old=two-query-call-shape "
                "serial_mismatches=32 current_snapshots=64 changes_between_phases=32 pixels=server-real "
-               "second_query=absent query_calls=169 images=169 frees=169 live_image_peak=1 "
-               "replacements=16 wrong_serial=refused repeated_consume=refused retained_thread_exits=8 "
+               "second_query=absent query_calls=170 images=170 frees=170 live_image_peak=1 "
+               "replacements=16 wrong_serial=refused repeated_consume=refused reset=discarded-and-idempotent retained_thread_exits=8 "
                "display_owners=9 descriptors=retired threads=joined scope=native-cursor-snapshot")
     lines = result.stdout.splitlines()
     require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 4096
@@ -228,6 +235,7 @@ def thread_contexts(root, environment, checksum, library):
     print(receipt, flush=True)
     binary.unlink()
     cursor.unlink()
+    reset.unlink()
     bounds.unlink()
 
 

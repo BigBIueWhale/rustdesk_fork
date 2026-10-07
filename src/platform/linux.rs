@@ -211,7 +211,11 @@ pub fn clip_cursor(_rect: Option<(i32, i32, i32, i32)>) -> bool {
     true
 }
 
-pub fn reset_input_cache() {}
+pub fn reset_input_cache() {
+    if let Err(error) = x11_cursor::discard() {
+        log::debug!("Failed to retire local cursor snapshot: {error}");
+    }
+}
 
 pub fn get_focused_display(displays: Vec<DisplayInfo>) -> Option<usize> {
     WINDOW_FOCUS.with(|focus| {

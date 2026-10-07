@@ -45,6 +45,15 @@ pub(super) struct CursorSnapshot {
     pub colors: Vec<u8>,
 }
 
+pub(super) fn discard() -> io::Result<()> {
+    SNAPSHOT.with(|snapshot| {
+        let mut snapshot = snapshot.try_borrow_mut()
+            .map_err(|error| io::Error::new(io::ErrorKind::WouldBlock, error))?;
+        *snapshot = None;
+        Ok(())
+    })
+}
+
 pub(super) fn capture_serial() -> io::Result<Option<u64>> {
     SNAPSHOT.with(|snapshot| {
         let mut snapshot = snapshot.try_borrow_mut()

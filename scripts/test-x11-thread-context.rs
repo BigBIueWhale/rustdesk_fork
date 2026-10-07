@@ -48,9 +48,10 @@ extern "C" {
 }
 
 mod cursor {
-    use super::x11_context;
+    use super::{x11_context, x11_cursor};
     use std::ffi::c_int;
     include!("/build/x11-cursor-position.rs");
+    include!("/build/x11-cursor-reset.rs");
 }
 
 static DISPLAY_OPENS: AtomicUsize = AtomicUsize::new(0);
@@ -424,6 +425,12 @@ fn cursor_snapshots() {
         assert_eq!(x11_cursor::take_data(serial.checked_add(1).unwrap()).err().unwrap().kind(),
                    std::io::ErrorKind::InvalidInput);
         assert!(CURSOR_IMAGES.lock().unwrap().is_empty());
+        let serial = x11_cursor::capture_serial().unwrap().unwrap();
+        assert_eq!(CURSOR_IMAGES.lock().unwrap().len(), 1);
+        cursor::reset_input_cache();
+        assert!(CURSOR_IMAGES.lock().unwrap().is_empty());
+        assert_eq!(x11_cursor::take_data(serial).err().unwrap().kind(), std::io::ErrorKind::NotFound);
+        cursor::reset_input_cache(); // Idempotent, without another native query.
     }).join().unwrap();
     assert_eq!(descriptors(), baseline);
     for _ in 0..8 {
@@ -437,8 +444,8 @@ fn cursor_snapshots() {
         assert!(CURSOR_IMAGES.lock().unwrap().is_empty());
         assert_eq!(descriptors(), baseline);
     }
-    assert_eq!(CURSOR_QUERIES.load(Ordering::SeqCst), 169);
-    assert_eq!(CURSOR_FREES.load(Ordering::SeqCst), 169);
+    assert_eq!(CURSOR_QUERIES.load(Ordering::SeqCst), 170);
+    assert_eq!(CURSOR_FREES.load(Ordering::SeqCst), 170);
     assert_eq!((DISPLAY_OPENS.load(Ordering::SeqCst), XDO_OPENS.load(Ordering::SeqCst)), (9, 0));
     assert_eq!(retirements(), (9, 0));
     assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), tasks);
@@ -447,7 +454,7 @@ fn cursor_snapshots() {
         .map(str::to_owned).collect();
     assert_eq!(libraries.len(), 1);
     println!("X11_CURSOR_LOADED library={}", libraries.iter().next().unwrap());
-    println!("X11_CURSOR_SNAPSHOT_NATIVE=pass source=complete-module old=two-query-call-shape serial_mismatches=32 current_snapshots=64 changes_between_phases=32 pixels=server-real second_query=absent query_calls=169 images=169 frees=169 live_image_peak=1 replacements=16 wrong_serial=refused repeated_consume=refused retained_thread_exits=8 display_owners=9 descriptors=retired threads=joined scope=native-cursor-snapshot");
+    println!("X11_CURSOR_SNAPSHOT_NATIVE=pass source=complete-module old=two-query-call-shape serial_mismatches=32 current_snapshots=64 changes_between_phases=32 pixels=server-real second_query=absent query_calls=170 images=170 frees=170 live_image_peak=1 replacements=16 wrong_serial=refused repeated_consume=refused reset=discarded-and-idempotent retained_thread_exits=8 display_owners=9 descriptors=retired threads=joined scope=native-cursor-snapshot");
 }
 
 fn main() {

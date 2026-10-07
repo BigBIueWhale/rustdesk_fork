@@ -17,6 +17,19 @@ fn wait_finished(thread: &JoinHandle<()>, deadline: Instant) -> bool {
 
 #[test]
 fn a_retired_startup_observer() {
+    struct ObserverLog(AtomicUsize);
+    impl log::Log for ObserverLog {
+        fn enabled(&self, _: &log::Metadata<'_>) -> bool { true }
+        fn log(&self, record: &log::Record<'_>) {
+            if record.args().to_string() == "Clipboard listener startup observer retired" {
+                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        fn flush(&self) {}
+    }
+    static OBSERVER_LOG: ObserverLog = ObserverLog(AtomicUsize::new(0));
+    log::set_logger(&OBSERVER_LOG).unwrap();
+    log::set_max_level(log::LevelFilter::Debug);
     let subscribers = Subscribers::default();
     let (sender, receiver) = channel();
     drop(receiver);
@@ -27,6 +40,8 @@ fn a_retired_startup_observer() {
     ).unwrap();
     assert!(wait_finished(&thread, Instant::now() + Duration::from_secs(2)));
     thread.join().unwrap();
+    assert_eq!(OBSERVER_LOG.0.load(Ordering::Relaxed), 1,
+               "retired observer did not reach the successfully constructed master");
     assert!(subscribers.lock().unwrap().terminal.is_some());
     println!("CLIPBOARD_NATIVE_STARTUP=pass observer=retired worker=joined");
 }
@@ -391,7 +406,7 @@ fn f_native_cookie_authentication() {
     drop(owner);
     assert_native_window_retired(&connection, &children);
     assert_resources_retired(baseline);
-    for variable in ["CLIPBOARD_TEST_BAD_AUTHORITY", "CLIPBOARD_TEST_EMPTY_AUTHORITY"] {
+    for variable in ["CLIPBOARD_TEST_BAD_AUTHORITY", "CLIPBOARD_TEST_EMPTY_AUTHORITY", "CLIPBOARD_TEST_ABSENT_AUTHORITY"] {
         std::env::set_var("XAUTHORITY", std::env::var(variable).unwrap());
         let refused = subscribe("cookie-authority".to_owned()).is_err();
         std::env::set_var("XAUTHORITY", &correct);
@@ -410,7 +425,7 @@ fn f_native_cookie_authentication() {
         assert_native_window_retired(&connection, &children);
         assert_resources_retired(baseline);
     }
-    println!("CLIPBOARD_NATIVE_AUTH=pass server=cookie-required valid=3 wrong=refused missing=refused startup_budget=disarmed next_start=working resources=baseline");
+    println!("CLIPBOARD_NATIVE_AUTH=pass server=cookie-required valid=4 wrong=refused missing=refused absent_file=refused startup_budget=disarmed next_start=working resources=baseline");
 }
 
 #[test]

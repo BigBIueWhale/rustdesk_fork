@@ -188,6 +188,9 @@ def scenario(binary, variant, environment):
                 file.write(data)
             authority.chmod(0o600)
             environment[variable] = str(authority)
+        absent = BUILD / "native-absent.xauth"
+        require(not absent.exists(), "absent authority fixture is present")
+        environment["CLIPBOARD_TEST_ABSENT_AUTHORITY"] = str(absent)
         server_authority = ["-auth", environment["XAUTHORITY"]]
     with log_path.open("xb") as log:
         server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":94", "-screen", "0", "640x480x24",
@@ -276,7 +279,7 @@ def scenario(binary, variant, environment):
                     "native startup deadline did not cancel, join and permit a healthy new generation")
             elif variant == "authentication":
                 require(single_pass and not retired and output.count(
-                    b"CLIPBOARD_NATIVE_AUTH=pass server=cookie-required valid=3 wrong=refused missing=refused startup_budget=disarmed next_start=working resources=baseline\n") == 1,
+                    b"CLIPBOARD_NATIVE_AUTH=pass server=cookie-required valid=4 wrong=refused missing=refused absent_file=refused startup_budget=disarmed next_start=working resources=baseline\n") == 1,
                     "native authentication, healthy lifetime and exact recovery did not pass")
             else:
                 require(single_pass and not retired and output.count(

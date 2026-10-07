@@ -1681,8 +1681,12 @@ pub mod clipboard_listener {
             let (stream, (family, address)) = DefaultStream::from_unix_stream(socket)?;
             // Use the native library's exact local-family cookie lookup. An
             // unreadable/malformed authority file is not unauthenticated retry.
-            let (auth_name, auth_data) = xauth::get_auth(family, &address, parsed.display)
-                .map_err(native_error)?.unwrap_or_default();
+            // An absent file means no cookie; the server still authorizes setup.
+            let (auth_name, auth_data) = match xauth::get_auth(family, &address, parsed.display) {
+                Ok(auth) => auth.unwrap_or_default(),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => (Vec::new(), Vec::new()),
+                Err(error) => return Err(error),
+            };
             let stream = NativeStream { stream, startup_deadline: Cell::new(Some(deadline)),
                 stopped: Arc::new(AtomicBool::new(false)) };
             stream.check_live()?;

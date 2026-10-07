@@ -23,7 +23,7 @@ pub mod x11 {
         }
     }
 }
-use std::{ffi::{c_char, c_int, c_uint, c_ulong, CStr},
+use std::{ffi::{c_char, c_int, c_uint, c_ulong, CStr, CString},
           sync::{Mutex, atomic::{AtomicBool, AtomicUsize, Ordering}}};
 use x11::xlib::Display;
 #[repr(C)]
@@ -171,17 +171,21 @@ fn main() {
             injector.mouse_move_to(131 + iteration, 79 + iteration).unwrap();
             // Observe native pointer coordinates using an independent real X11 connection.
             unsafe {
-                let observer = __real_XOpenDisplay(b"unix/:98.0\0".as_ptr().cast());
+                let selected = CString::new(canonical).unwrap();
+                let observer = __real_XOpenDisplay(selected.as_ptr());
                 assert!(!observer.is_null());
+                assert_eq!(XDefaultScreen(observer), if canonical.ends_with(".1") { 1 } else { 0 });
                 let (mut root, mut child, mut x, mut y, mut wx, mut wy, mut mask) = (0, 0, 0, 0, 0, 0, 0);
                 let deadline = std::time::Instant::now() + std::time::Duration::from_millis(100);
                 loop {
-                    assert_ne!(XQueryPointer(observer, XDefaultRootWindow(observer), &mut root, &mut child,
-                                            &mut x, &mut y, &mut wx, &mut wy, &mut mask), 0);
-                    if (x, y) == (131 + iteration, 79 + iteration) { break; }
-                    assert!(std::time::Instant::now() < deadline, "native pointer did not arrive");
+                    let same_screen = XQueryPointer(observer, XDefaultRootWindow(observer), &mut root, &mut child,
+                                                    &mut x, &mut y, &mut wx, &mut wy, &mut mask);
+                    if same_screen != 0 && (x, y) == (131 + iteration, 79 + iteration) { break; }
+                    assert!(std::time::Instant::now() < deadline,
+                            "native pointer did not arrive on selected screen {canonical}");
                     std::thread::sleep(std::time::Duration::from_millis(1));
                 }
+                assert_eq!(root, XDefaultRootWindow(observer));
                 assert_eq!(__real_XCloseDisplay(observer), 0);
             }
             drop(injector);

@@ -737,7 +737,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         "legacy host systemd image download/publication remains reachable",
     )
     systemd_consumer_start = systemd_smoke.find(
-        'for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"'
+        '\nverify_debian_vm_base_metadata "$BASE" "$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"\n'
     )
     systemd_consumer_end = systemd_smoke.find(
         '\nif [ "$MODE" = hbb-common-fs ] ||',
@@ -751,12 +751,23 @@ def verify_sources(sources: Mapping[str, str]) -> None:
     require_all(
         systemd_consumer,
         (
-            '"$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
-            '"$HOST_UID:$HOST_GID:400:1:$size"',
+            'verify_debian_vm_base_metadata "$BASE" "$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
             'verify_sha512 "$BASE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
             '/usr/bin/qemu-img check -q "$BASE"',
         ),
         "systemd image independent consumer",
+    )
+    metadata_start = systemd_smoke.find('\nverify_debian_vm_base_metadata() {\n')
+    metadata_end = systemd_smoke.find('\n}\n', metadata_start)
+    require(metadata_start >= 0 and metadata_end > metadata_start,
+            "systemd image metadata admission is absent")
+    require_all(
+        systemd_smoke[metadata_start:metadata_end],
+        ('[ -f "$path" ] && [ ! -L "$path" ]',
+         "/usr/bin/stat -c '%u:%g:%a:%h:%s'",
+         '"$HOST_UID:$HOST_GID:400:1:$size"',
+         '*) fail "Debian verifier-VM base metadata differs: $path"'),
+        "systemd image metadata admission",
     )
     require_all(
         systemd_smoke,
@@ -1087,10 +1098,8 @@ MUTATIONS = (
     ),
     Mutation(
         "systemd_smoke",
-        '"$HOST_UID:$HOST_GID:400:1:$size" ] \\\n'
-        '        || fail "verifier-VM input metadata differs: $path"',
-        '"$HOST_UID:$HOST_GID:600:1:$size" ] \\\n'
-        '        || fail "verifier-VM input metadata differs: $path"',
+        'case "$metadata" in\n        "$HOST_UID:$HOST_GID:400:1:$size"',
+        'case "$metadata" in\n        "$HOST_UID:$HOST_GID:600:1:$size"',
         "systemd image downstream metadata profiles",
     ),
     Mutation(

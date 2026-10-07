@@ -439,6 +439,7 @@ readonly FIXED_ARCHIVE_HELPER="$SCRIPT_DIR/online-fixed-archive-output.py"
 readonly FIXED_ARCHIVE_CHECKER="$SCRIPT_DIR/verify-online-fetch-fixed-archive-authority.py"
 readonly FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly FIXED_ARCHIVE_WINDOWS_TOOLS="$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512"
+readonly BASE_METADATA_TEST="$SCRIPT_DIR/test-verifier-vm-base-metadata.sh"
 readonly ONLINE_PUB_CACHE_OUTPUT_SOURCE="$SCRIPT_DIR/online-pub-cache-output.py"
 readonly ONLINE_GRADLE_OUTPUT_SOURCE="$SCRIPT_DIR/online-gradle-output.py"
 readonly ONLINE_GRADLE_OUTPUT_AUTHORITY_CHECKER="$SCRIPT_DIR/verify-online-fetch-gradle-output-authority.py"
@@ -1069,6 +1070,18 @@ android_owner_input_inventory() {
         "${ANDROID_OWNER_KOTLIN_JARS[@]}"
     /usr/bin/sha256sum -- "$ANDROID_BUILDER_ARCHIVE" "$VIRTIOFSD_PACKAGE" \
         "${ANDROID_OWNER_KOTLIN_JARS[@]}"
+}
+
+verify_debian_vm_base_metadata() {
+    local path=$1 size=$2 metadata
+    [ -f "$path" ] && [ ! -L "$path" ] \
+        || fail "Debian verifier-VM base is absent or symlinked: $path"
+    metadata="$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" \
+        || fail "cannot inspect Debian verifier-VM base metadata: $path"
+    case "$metadata" in
+        "$HOST_UID:$HOST_GID:400:1:$size") ;;
+        *) fail "Debian verifier-VM base metadata differs: $path" ;;
+    esac
 }
 
 verify_committed_test_source() {
@@ -1761,13 +1774,13 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$M
 fi
 if [ "$MODE" = fixed-archive-tests ]; then
     for source in "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
-        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS"; do
+        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST"; do
         [ -f "$source" ] && [ ! -L "$source" ] || fail 'fixed-archive test source is absent or ambiguous'
         verify_committed_test_source "$source"
     done
     fixed_archive_sources_before="$(/usr/bin/sha256sum \
         "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
-        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS")"
+        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST")"
 fi
 reserve_verifier_run
 engine_prepare_inputs_before=
@@ -1802,8 +1815,8 @@ if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     frame_inputs_before="$(android_frame_input_inventory)" \
         || fail 'Android frame-test inputs cannot be captured'
 fi
-for input in "$BASE:$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE" \
-    "$DOCKER_BUNDLE:$SIZE_VERIFIER_VM_DOCKER_STATIC" \
+verify_debian_vm_base_metadata "$BASE" "$SIZE_DEBIAN_SYSTEMD_SMOKE_IMAGE"
+for input in "$DOCKER_BUNDLE:$SIZE_VERIFIER_VM_DOCKER_STATIC" \
     "$GIT_PACKAGE:$SIZE_VERIFIER_VM_GIT_PACKAGE"; do
     path=${input%:*}
     size=${input##*:}
@@ -3320,6 +3333,7 @@ elif [ "$MODE" = fixed-archive-tests ]; then
         "repo/scripts/verify-online-fetch-fixed-archive-authority.py=$FIXED_ARCHIVE_CHECKER"
         "repo/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt=$FIXED_ARCHIVE_MANIFEST"
         "repo/res/vcpkg/libvpx/windows-tools.sha512=$FIXED_ARCHIVE_WINDOWS_TOOLS"
+        "repo/scripts/test-verifier-vm-base-metadata.sh=$BASE_METADATA_TEST"
     )
 elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
@@ -4018,6 +4032,7 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
 elif [ "$MODE" = fixed-archive-tests ]; then
     fixed_archive_vm_receipt="FIXED_ARCHIVE_TESTS_VM=pass uid=4000 gid=4000 helper_sha256=$(/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" | /usr/bin/awk '{print $1}') checker_sha256=$(/usr/bin/sha256sum "$FIXED_ARCHIVE_CHECKER" | /usr/bin/awk '{print $1}') source=readonly responses=injected filesystem=actual network=none docker=retired scratch=retired cleanup=joined"
     require_exact_fixed_receipt 'fixed archive transaction self-test: PASS' 'adversarial archive transaction result'
+    require_exact_fixed_receipt 'VERIFIER_VM_BASE_METADATA=pass cases=22 profiles=400,444 source=production metadata=actual cleanup=joined' 'base metadata admission result'
     require_exact_fixed_receipt "$fixed_archive_vm_receipt" 'fixed-archive source and finality result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'fixed-archive guest completion'
     printf '%s\n' 'fixed archive transaction self-test: PASS' "$fixed_archive_vm_receipt"
@@ -5107,7 +5122,7 @@ fi
     || fail 'Linux app-capsule source changed during execution'
 if [ "$MODE" = fixed-archive-tests ]; then
     [ "$(/usr/bin/sha256sum "$FIXED_ARCHIVE_HELPER" "$FIXED_ARCHIVE_CHECKER" \
-        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS")" = "$fixed_archive_sources_before" ] \
+        "$FIXED_ARCHIVE_MANIFEST" "$FIXED_ARCHIVE_WINDOWS_TOOLS" "$BASE_METADATA_TEST")" = "$fixed_archive_sources_before" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \

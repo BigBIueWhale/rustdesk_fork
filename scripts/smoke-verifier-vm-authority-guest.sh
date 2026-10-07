@@ -584,11 +584,12 @@ run_fixed_archive_tests() {
     local helper=$VERIFY_REPO/scripts/online-fixed-archive-output.py
     local checker=$VERIFY_REPO/scripts/verify-online-fetch-fixed-archive-authority.py
     local output=$ROOT/fixed-archive-tests.out
+    local metadata_test=$VERIFY_REPO/scripts/test-verifier-vm-base-metadata.sh
     local -a sources=("$helper" "$checker" "$VERIFY_REPO/scripts/online-fetch.sh"
         "$VERIFY_REPO/scripts/pins.env" "$VERIFY_REPO/scripts/verify.sh"
         "$VERIFY_REPO/scripts/smoke-verifier-vm-authority.sh"
         "$VERIFY_REPO/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
-        "$VERIFY_REPO/res/vcpkg/libvpx/windows-tools.sha512")
+        "$VERIFY_REPO/res/vcpkg/libvpx/windows-tools.sha512" "$metadata_test")
     source_before="$(sha256sum "${sources[@]}")"
     helper_sha="$(sha256sum "$helper" | awk '{print $1}')"
     checker_sha="$(sha256sum "$checker" | awk '{print $1}')"
@@ -599,8 +600,36 @@ run_fixed_archive_tests() {
     [ "$(stat -c '%u:%g:%a' -- "$work")" = 4000:4000:700 ] \
         || fail 'fixed-archive test scratch authority differs'
     work_id="$(stat -c '%d:%i' -- "$work")"
+    /usr/bin/python3 -B -I -S - "$work" "$work_id" <<'PY'
+import os
+import stat
+import sys
+
+parent = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+try:
+    metadata = os.fstat(parent)
+    if (f"{metadata.st_dev}:{metadata.st_ino}" != sys.argv[2]
+            or (metadata.st_uid, metadata.st_gid, stat.S_IMODE(metadata.st_mode)) != (4000, 4000, 0o700)):
+        raise RuntimeError("base metadata fixture parent differs")
+    for name, uid, gid in (("foreign-uid", 4001, 4000), ("foreign-gid", 4000, 4001)):
+        descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o400, dir_fd=parent)
+        try:
+            payload = b"base-metadata-fixture\n"
+            if os.write(descriptor, payload) != len(payload):
+                raise RuntimeError("base metadata fixture write was incomplete")
+            os.fchown(descriptor, uid, gid)
+            os.fchmod(descriptor, 0o400)
+        finally:
+            os.close(descriptor)
+finally:
+    os.close(parent)
+PY
     (
         cd "$VERIFY_REPO" &&
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
+            /bin/bash "$metadata_test" "$work" &&
         setpriv --reuid=4000 --regid=4000 --clear-groups \
             /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent TMPDIR="$work" \
             /usr/bin/python3 -B -I -S "$checker" --self-test &&
@@ -614,7 +643,8 @@ run_fixed_archive_tests() {
         || { tail -n 80 "$output" >&2; fail "fixed-archive tests failed with status $status"; }
     [ "$(grep -Fxc 'fixed archive transaction self-test: PASS' "$output")" -eq 1 ] \
         && [ "$(grep -Ec '^fixed archive authority mutations: PASS \([1-9][0-9]*\)$' "$output")" -eq 1 ] \
-        && [ "$(wc -l <"$output")" -eq 2 ] \
+        && [ "$(grep -Fxc 'VERIFIER_VM_BASE_METADATA=pass cases=22 profiles=400,444 source=production metadata=actual cleanup=joined' "$output")" -eq 1 ] \
+        && [ "$(wc -l <"$output")" -eq 3 ] \
         || fail 'fixed-archive test results are missing, duplicated or unexpected'
     [ "$(sha256sum "${sources[@]}")" = "$source_before" ] \
         || fail 'fixed-archive test source changed during execution'

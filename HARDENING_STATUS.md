@@ -341,12 +341,63 @@ a numeric exit code, and its earlier wrapper failure remains unaccepted.
 
 **OPEN:** constructor bounds; fresh connected peer/session and authenticated-
 Xauthority cases (Xvfb uses `-ac`); protected-loader, parent-module, full Cargo/app,
-service shutdown and current installed/platform artifacts; separate Enigo/rdev
-routes; eager failed-TLS startup/retry; Xlib initialization/concurrency and failed-
+service shutdown and current installed/platform artifacts; Enigo/rdev parent
+integration; eager failed-TLS startup/retry; Xlib initialization/concurrency and failed-
 connection destruction; native allocation failures, internal heap, broader races,
 resource/performance/soak/cross-version; cold equality, independent reproduction,
 external review and reported Android/Windows delay causation. No global handler,
 authentication mechanism, signal policy, authority or service lifetime changed.
+
+### Linux Enigo XDO — one local display for input and diagnostics; integration OPEN
+
+`libs/enigo/src/linux/xdo.rs::EnigoXdo::default` now selects the shared validated
+Unix display once and passes that owned name to both native `xdo_new` and the
+pointer-map diagnostic's `XOpenDisplay`. The old null arguments implicitly
+re-read `DISPLAY` and allowed native localhost TCP fallback after Unix refusal.
+Missing/non-UTF8/malformed/remote selectors create no native context; existing
+result-bearing mouse/text operations report unavailable input. Native authentication,
+protected loader, paired destruction, parent dispatch, mouse screen semantics and
+service authority are unchanged. No compatibility fallback or new dependency exists.
+
+Source `3bc880696a440ce45bccd21a28a270edb1e89294`, tree
+`675d8f1515b87b9a942428d979ad82c59a83e637`, passed
+`--x11-display-tests` with outer exit 0 in **68 VM seconds**:
+
+- Complete historical/current backend modules ran against real X11/XDO libraries,
+  with byte-extracted production API declarations and the actual pinned log crate.
+  This is not parent Enigo, protected-loader, full Cargo or whole-app execution.
+- The historical missing-display constructor made one private guest loopback TCP
+  connection. A deterministic child-only `DISPLAY` change after successful XDO
+  construction made its historical diagnostic connect once as well. Corrected
+  code made zero connections and kept the original display for its diagnostic.
+  Old accepted peers closed without an X11 reply/session grant; all children,
+  descriptors/tasks and the exact guest-only listener retired.
+- Eighteen invalid/missing/non-UTF8 selectors refused before native construction.
+  Three normalized selectors each passed eight construction/drop cases (24 total),
+  with real diagnostic default screens/root dimensions 0=640x480 and 1=800x600,
+  actual pointer coordinates observed through an independent X11 connection,
+  paired native destruction and own descriptor/task baselines restored.
+  The existing mouse API still targets screen 0; this does not validate selected-
+  screen input confinement or successful text delivery.
+- The existing native platform-owner, capture/focus selector/route, cancellation,
+  recovery, pixel/SHM and three byte-cache regressions also passed. No host endpoint
+  addition; readonly inputs unchanged; VM/container owners joined and run root retired.
+
+Retained `.harness-state/verifier-vm/x11-display-tests-run.8DvSvLxeRW.serial.log`
+(96,325 bytes; SHA-256 `04517d26fd94a9029664f5f30cfcca0aa6fd5a38b37dc5ec8234b34a6e618571`)
+and `evidence/x11-enigo-route-run.8DvSvLxeRW.outer.receipt` bind sources, artifacts,
+scope, isolation and finality; these are assistant observations, not independent
+attestation. Remote publication is **pending**: GitHub rejected three push attempts
+with Internal Server Error; a subsequent read still found master at `a1c03eb3`.
+
+**OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
+Xauthority (Xvfb uses `-ac`); protected loader, parent/rdev, full Cargo/app and current
+installed/native artifacts; successful input delivery/screen semantics; persistent
+startup/retry, Send/Xlib concurrency and failed-connection/native-allocation behavior;
+internal heap, races, resources/performance/soak/cross-version; cold equality,
+independent reproduction, external review and Android/Windows display-delay causation.
+Deferred installed Android concurrent Stop/admission and same-ID/stale-generation
+remains INCOMPLETE / NOT VALIDATED; no such work was resumed in this slice.
 
 ### Linux window focus — request ownership and native cancellation; integration OPEN
 

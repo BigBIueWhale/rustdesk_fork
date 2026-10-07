@@ -86,7 +86,7 @@ def window_focus(root, environment):
                             text=True, timeout=15)
     receipt = ("X11_FOCUS_NATIVE=pass source=production-module old=unrelated-error-swallowed "
                "cases=12 repeats=16 geometry=server-real destroy_after_geometry=16 unrelated_errors=16 "
-               "setup_faults=7 constructors_refused=16 thread_exits=16 allocations=paired "
+               "setup_faults=7 selectors_refused=18 canonical=normalized screen=selected constructors_refused=16 thread_exits=16 allocations=paired "
                "descriptors=retired deadline_workers=constant-and-joined handler=unchanged scope=focus-component")
     lines = result.stdout.splitlines()
     require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 4096
@@ -219,6 +219,43 @@ class FragmentedReply:
             self.path.unlink()
             self.identity = None
         require(self.failure is None, f"focus relay failed: {self.failure}")
+
+
+def focus_route(binary, variant, environment, listener):
+    # This listener exists only on the network-none container's private loopback.
+    # Acceptance observes the actual native connector's route, not a mock login.
+    native = subprocess.Popen([str(binary), "route"], env=environment,
+                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        if variant == "historical":
+            listener.settimeout(2)
+            peer, address = listener.accept()
+            with peer:
+                require(address[0] == "127.0.0.1", "unexpected route-fixture peer")
+            # Closing the exact accepted peer releases native setup without
+            # sending an X11 reply or accepting application/session authority.
+        output, errors = native.communicate(timeout=5)
+        require(native.returncode == 0 and not errors and len(output) <= 4096
+                and output.decode("ascii").splitlines() == [
+                    f"X11_FOCUS_ROUTE_CHILD variant={variant} result=refused descriptors=retired threads=retired"],
+                f"native route completion differs: stdout={output!r} stderr={errors!r}")
+        if variant == "corrected":
+            listener.settimeout(0.1)
+            try:
+                peer, _ = listener.accept()
+            except socket.timeout:
+                pass
+            else:
+                peer.close()
+                raise RuntimeError("corrected local display attempted a TCP fallback")
+        print(f"X11_FOCUS_ROUTE_OBSERVED variant={variant} tcp_accepts={int(variant == 'historical')} "
+              "native=complete-module connection=retired", flush=True)
+    finally:
+        if native.poll() is None:
+            native.kill()
+        native.wait(timeout=5)
+        for stream in (native.stdout, native.stderr):
+            stream.close()
 
 
 def focus_lifecycle(root, environment):
@@ -384,23 +421,32 @@ def focus_lifecycle(root, environment):
                         server.wait(timeout=5)
             require(server.returncode == 0, "focus Xvfb terminal status differs")
 
-        for variant in ("historical", "corrected"):
-            binary = Path("/build/focus-lifecycle")
-            build_focus(root, environment, binary, fixture, historical=variant == "historical")
-            source = baseline if variant == "historical" else root / "src/platform/linux/window_focus.rs"
-            print(f"X11_FOCUS_LIFECYCLE_BUILD variant={variant} " + " ".join(
-                f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
-                    ("source", source), ("fixture", fixture), ("c_fixture", root / "scripts/test-x11-window-focus.c"),
-                    ("deadline", root / "src/platform/linux/window_focus_deadline.rs"),
-                    ("binary", binary))) + " scope=complete-focus-module whole_app=unexecuted", flush=True)
-            if variant == "historical":
-                case(binary, variant, "fragmented")
-                case(binary, variant, "backpressure")
-            else:
-                for _ in range(4):
-                    for scenario in ("stalled", "dead", "fragmented", "backpressure"):
-                        case(binary, variant, scenario)
-            binary.unlink()
+        route_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            route_listener.bind(("127.0.0.1", 6097))
+            route_listener.listen(1)
+            for variant in ("historical", "corrected"):
+                binary = Path("/build/focus-lifecycle")
+                build_focus(root, environment, binary, fixture, historical=variant == "historical")
+                source = baseline if variant == "historical" else root / "src/platform/linux/window_focus.rs"
+                print(f"X11_FOCUS_LIFECYCLE_BUILD variant={variant} " + " ".join(
+                    f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
+                        ("source", source), ("fixture", fixture), ("c_fixture", root / "scripts/test-x11-window-focus.c"),
+                        ("deadline", root / "src/platform/linux/window_focus_deadline.rs"),
+                        ("binary", binary))) + " scope=complete-focus-module whole_app=unexecuted", flush=True)
+                focus_route(binary, variant, environment, route_listener)
+                if variant == "historical":
+                    case(binary, variant, "fragmented")
+                    case(binary, variant, "backpressure")
+                else:
+                    for _ in range(4):
+                        for scenario in ("stalled", "dead", "fragmented", "backpressure"):
+                            case(binary, variant, scenario)
+                binary.unlink()
+        finally:
+            route_listener.close()
+    print("X11_FOCUS_ROUTE_NATIVE=pass old=tcp-fallback current=unix-only old_accepts=1 current_accepts=0 "
+          "listener=container-loopback-only peer=closed children=joined scope=focus-component", flush=True)
     print("X11_FOCUS_LIFECYCLE_NATIVE=pass old=fragmented-and-send-wait source=complete-module "
           "deadline_ms=100 stalled=4 dead=4 fragmented=4 backpressure=4 recovery=same-owner-fresh-connection "
           "allocations=paired descriptors=retired deadline_workers=joined relay=owned-and-joined "

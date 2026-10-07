@@ -358,6 +358,16 @@ and adds bounded no-reply traffic to that connection before retiring it. It is
 controlled native fault injection, not a production traffic/throughput schedule
 or evidence for capture's separate XCB connection and native constructor paths.
 
+Constructor review also found that native libxcb can retry localhost TCP after
+a missing/refused Unix socket for a plain local display. The focus constructor
+now validates only local `:<display>[.<screen>]` values, normalizes them within
+the native signed-integer range and explicitly selects `unix/` transport. It
+preserves native Xauthority handling; it does not invent a display or switch
+transport after refusal. Source/missing/non-UTF8 selector tests and a real
+guest-container-loopback old/current route-observation fixture are PENDING.
+No host port is published or bound by that fixture. Constructor deadlines and
+the separate capture/Xlib/XDO connector paths remain OPEN.
+
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
 PF-1 through PF-5 are closed for desktop port-forward and RDP mappings while the

@@ -56,6 +56,11 @@ fn main() {
     drop(focus);
     assert_eq!(descriptors(), baseline + 1);
     assert_eq!(threads(), baseline_threads);
+    std::env::set_var("DISPLAY", ":00098.0001");
+    assert_eq!(WindowFocus::default().center().unwrap(), None);
+    assert_eq!(descriptors(), baseline + 1);
+    assert_eq!(threads(), baseline_threads);
+    std::env::set_var("DISPLAY", ":98");
     for fault in 1..=7 {
         unsafe { focus_fixture_fault(fault); }
         let result = WindowFocus::default().center();
@@ -65,6 +70,22 @@ fn main() {
         unsafe { focus_fixture_balanced(); }
     }
     unsafe { focus_fixture_fault(0); focus_fixture_case(1); }
+    for display in ["", ":", ":1.", ":.0", ":1.0.0", ":+1", ":-1", ":1.-1",
+                    "localhost:98", "unix/:98", "/tmp/.X11-unix/X98", "tcp/:98",
+                    ":2147483648", ":98.2147483648", ":98\n", " :98"] {
+        std::env::set_var("DISPLAY", display);
+        assert!(matches!(WindowFocus::default().center(), Err(FocusError::InvalidDisplay)));
+        assert_eq!(descriptors(), baseline + 1);
+        assert_eq!(threads(), baseline_threads);
+    }
+    std::env::remove_var("DISPLAY");
+    assert!(matches!(WindowFocus::default().center(), Err(FocusError::InvalidDisplay)));
+    use std::os::unix::ffi::OsStringExt;
+    std::env::set_var("DISPLAY", std::ffi::OsString::from_vec(vec![0xff]));
+    assert!(matches!(WindowFocus::default().center(), Err(FocusError::InvalidDisplay)));
+    assert_eq!(descriptors(), baseline + 1);
+    assert_eq!(threads(), baseline_threads);
+    std::env::set_var("DISPLAY", ":98");
     for _ in 0..16 {
         std::thread::spawn(move || {
             let mut focus = WindowFocus::default();
@@ -81,7 +102,7 @@ fn main() {
         assert_eq!(descriptors(), baseline + 1);
         assert_eq!(threads(), baseline_threads);
     }
-    std::env::set_var("DISPLAY", ":98");
+    std::env::set_var("DISPLAY", ":00098.0000");
     assert_eq!(focus.center().unwrap(), Some((164, 92)));
     drop(focus);
     unsafe { focus_fixture_balanced(); focus_fixture_close(); }
@@ -92,5 +113,5 @@ fn main() {
         .filter(|name| name.contains("/libxcb.so.")).map(str::to_owned).collect();
     assert_eq!(libraries.len(), 1);
     println!("X11_FOCUS_LOADED library={}", libraries.iter().next().unwrap());
-    println!("X11_FOCUS_NATIVE=pass source=production-module old=unrelated-error-swallowed cases=12 repeats=16 geometry=server-real destroy_after_geometry=16 unrelated_errors=16 setup_faults=7 constructors_refused=16 thread_exits=16 allocations=paired descriptors=retired deadline_workers=constant-and-joined handler=unchanged scope=focus-component");
+    println!("X11_FOCUS_NATIVE=pass source=production-module old=unrelated-error-swallowed cases=12 repeats=16 geometry=server-real destroy_after_geometry=16 unrelated_errors=16 setup_faults=7 selectors_refused=18 canonical=normalized screen=selected constructors_refused=16 thread_exits=16 allocations=paired descriptors=retired deadline_workers=constant-and-joined handler=unchanged scope=focus-component");
 }

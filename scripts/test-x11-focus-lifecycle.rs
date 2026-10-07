@@ -30,6 +30,20 @@ fn marker(line: &str) {
 }
 fn main() {
     let scenario = std::env::args().nth(1).unwrap();
+    if scenario == "route" {
+        let baseline = descriptors();
+        let baseline_threads = threads();
+        std::env::set_var("DISPLAY", ":97");
+        let mut focus = WindowFocus::default();
+        let result = focus.center();
+        assert!(matches!(result, Err(FocusError::Connection(error)) if error != 0), "{result:?}");
+        drop(focus);
+        assert_eq!(descriptors(), baseline);
+        assert_eq!(threads(), baseline_threads);
+        marker(&format!("X11_FOCUS_ROUTE_CHILD variant={} result=refused descriptors=retired threads=retired",
+                        if cfg!(historical) { "historical" } else { "corrected" }));
+        return;
+    }
     assert!(matches!(scenario.as_str(), "stalled" | "dead" | "fragmented" | "backpressure"));
     let baseline = descriptors();
     let baseline_threads = threads();

@@ -4090,10 +4090,13 @@ elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     printf '%s\n' "$linux_flutter_test_receipt" "$linux_flutter_vm_receipt"
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
+        'X11_FOCUS_ROUTE_NATIVE=pass old=tcp-fallback current=unix-only old_accepts=1 current_accepts=0 listener=container-loopback-only peer=closed children=joined scope=focus-component' \
+        'production local focus constructor cannot silently select localhost TCP'
+    require_exact_fixed_receipt \
         'X11_FOCUS_LIFECYCLE_NATIVE=pass old=fragmented-and-send-wait source=complete-module deadline_ms=100 stalled=4 dead=4 fragmented=4 backpressure=4 recovery=same-owner-fresh-connection allocations=paired descriptors=retired deadline_workers=joined relay=owned-and-joined server=owned-and-joined network=none scope=focus-component' \
         'production established-focus native I/O cancellation, retirement and same-owner server recovery'
     require_exact_fixed_receipt \
-        'X11_FOCUS_NATIVE=pass source=production-module old=unrelated-error-swallowed cases=12 repeats=16 geometry=server-real destroy_after_geometry=16 unrelated_errors=16 setup_faults=7 constructors_refused=16 thread_exits=16 allocations=paired descriptors=retired deadline_workers=constant-and-joined handler=unchanged scope=focus-component' \
+        'X11_FOCUS_NATIVE=pass source=production-module old=unrelated-error-swallowed cases=12 repeats=16 geometry=server-real destroy_after_geometry=16 unrelated_errors=16 setup_faults=7 selectors_refused=18 canonical=normalized screen=selected constructors_refused=16 thread_exits=16 allocations=paired descriptors=retired deadline_workers=constant-and-joined handler=unchanged scope=focus-component' \
         'production request-scoped XCB focus with real window lifetime and unrelated Xlib error delivery'
     require_exact_fixed_receipt \
         'X11_THREAD_CONTEXT_NATIVE=pass source=production-owner old=retained-after-thread-exit old_threads=8 corrected_threads=32 unwind_threads=16 contexts=64 constructor_refusals=32 callbacks=paired descriptors=retired scope=native-owner' \

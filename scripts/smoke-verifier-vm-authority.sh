@@ -4173,6 +4173,11 @@ require_exact_fixed_receipt \
     'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined' \
     'verifier-VM run admission result'
 printf 'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined\n'
+for entry in smoke-verifier-vm-authority online-fetch-vm; do
+    require_exact_fixed_receipt \
+        "VERIFIER_VM_LISTENER_INVENTORY_NATIVE=pass entry=$entry families=ipv4,ipv6 protocols=tcp,udp paired_ports=2 additions=4 queue_changes=4 inventory=stable uid=nonroot cleanup=joined" \
+        "$entry native listener inventory result"
+done
 require_exact_fixed_receipt \
     'ANDROID_PEER_ARTIFACT=pass fixture=system-elf files=7 cases=22 publication=noclobber admission=exact execution=guest-only cleanup=joined' \
     'Android peer artifact authority result'

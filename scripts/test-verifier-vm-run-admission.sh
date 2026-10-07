@@ -35,6 +35,110 @@ for entry in smoke-verifier-vm-authority online-fetch-vm; do
     ' "$SCRIPT_DIR/$entry.sh" >"$workspace/$entry.function.sh"
 done
 /usr/bin/awk '
+    /^capture_listeners\(\) \{$/ { found++; copy = 1 }
+    copy { print; if ($0 == "}") copy = 0 }
+    END { if (found != 1 || copy) exit 1 }
+' "$SCRIPT_DIR/smoke-verifier-vm-authority.sh" >"$workspace/smoke-verifier-vm-authority.listeners.sh"
+/usr/bin/awk '
+    /^capture_listeners\(\) \{$/ { found++; copy = 1 }
+    copy { print; if ($0 == "}") copy = 0 }
+    END { if (found != 1 || copy) exit 1 }
+' "$SCRIPT_DIR/online-fetch-vm.sh" >"$workspace/online-fetch-vm.listeners.sh"
+/usr/bin/python3 -I -S - "$workspace" <<'PY'
+from contextlib import ExitStack
+from pathlib import Path
+import socket
+import subprocess
+import sys
+
+environment = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'HOME': '/nonexistent'}
+families = ((socket.AF_INET, '127.0.0.1'), (socket.AF_INET6, '::1'))
+types = ((socket.SOCK_STREAM, 'tcp'), (socket.SOCK_DGRAM, 'udp'))
+
+def endpoint(sock, protocol):
+    address, port = sock.getsockname()[:2]
+    if sock.family == socket.AF_INET6:
+        address = '[' + address + ']'
+    return protocol + ' ' + address + ':' + str(port)
+
+def bind(stack, family, kind, address, port=0):
+    sock = stack.enter_context(socket.socket(family, kind))
+    sock.settimeout(2)
+    if family == socket.AF_INET6:
+        sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+    sock.bind((address, port))
+    if kind == socket.SOCK_STREAM:
+        sock.listen(2)
+    return sock
+
+def queues(owned):
+    result = subprocess.run(['/usr/bin/ss', '-H', '-lntu'], env=environment,
+                            check=True, capture_output=True, text=True, timeout=5)
+    values = {}
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        assert len(fields) == 6, fields
+        key = fields[0] + ' ' + fields[4]
+        if key in owned:
+            assert key not in values, key
+            values[key] = int(fields[2])
+    assert values.keys() == owned, (values, owned)
+    return values
+
+for entry in ('smoke-verifier-vm-authority', 'online-fetch-vm'):
+    source = str(Path(sys.argv[1]) / (entry + '.listeners.sh'))
+
+    def snapshot():
+        result = subprocess.run([
+            '/bin/bash', '--noprofile', '--norc', '-c',
+            'set -euo pipefail; source "$1"; capture_listeners', 'listener-test', source,
+        ], env=environment, check=True, capture_output=True, text=True, timeout=5)
+        assert not result.stderr, result.stderr
+        lines = result.stdout.splitlines()
+        assert lines == sorted(set(lines)), lines
+        assert all(len(line.split()) == 2 and line.split()[0] in ('tcp', 'udp')
+                   for line in lines), lines
+        return set(lines)
+
+    original = snapshot()
+    with ExitStack() as stack:
+        incumbents = []
+        for family, address in families:
+            tcp = bind(stack, family, socket.SOCK_STREAM, address)
+            udp = bind(stack, family, socket.SOCK_DGRAM, address, tcp.getsockname()[1])
+            incumbents.extend(((tcp, 'tcp'), (udp, 'udp')))
+        owned = {endpoint(sock, protocol) for sock, protocol in incumbents}
+        assert len(owned) == 4 and not owned.intersection(original), owned
+        baseline = snapshot()
+        assert baseline == original | owned, (baseline, original, owned)
+        assert all(value == 0 for value in queues(owned).values())
+
+        for server, protocol in incumbents:
+            client = stack.enter_context(socket.socket(server.family, server.type))
+            client.settimeout(2)
+            client.connect(server.getsockname())
+            if protocol == 'udp':
+                assert client.send(b'queue-observation') == 17
+        assert all(value > 0 for value in queues(owned).values())
+        assert snapshot() == baseline, 'traffic-dependent queue state leaked into inventory'
+
+        for family, address in families:
+            for kind, protocol in types:
+                with ExitStack() as added:
+                    server = bind(added, family, kind, address)
+                    key = endpoint(server, protocol)
+                    assert key not in baseline, key
+                    current = snapshot()
+                    assert current - baseline == {key}, (entry, current, baseline, key)
+                    assert baseline <= current, 'an incumbent endpoint disappeared'
+                assert snapshot() == baseline, 'retired test endpoint remains'
+    assert snapshot() == original, 'owned listener/client socket cleanup did not converge'
+    print(f'VERIFIER_VM_LISTENER_INVENTORY_NATIVE=pass entry={entry} '
+          'families=ipv4,ipv6 protocols=tcp,udp paired_ports=2 additions=4 '
+          'queue_changes=4 inventory=stable uid=nonroot cleanup=joined',
+          file=sys.stderr, flush=True)
+PY
+/usr/bin/awk '
     /^retire_disposable_vm_file\(\) \{$/ { found++; copy = 1 }
     copy { print; if ($0 == "}") copy = 0 }
     END { if (found != 1 || copy) exit 1 }

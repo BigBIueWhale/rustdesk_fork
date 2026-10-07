@@ -281,7 +281,7 @@ artifact. Those integration/installed, Xlib initialization/concurrency, native
 failed-connection destruction, race/heap/soak/performance and platform claims remain
 OPEN. No per-reconnect growth or Android/Windows display-delay cause is established.
 
-### Linux window focus — native request-scoped errors; integration OPEN
+### Linux window focus — request ownership and native cancellation; integration OPEN
 
 The live `get_focused_display` path installed a process-global Xlib handler and
 shared error flags around XDO geometry reads. Errors from another Xlib connection
@@ -297,55 +297,53 @@ explicit, and a failed transport is retired before a later retry. Screen-relativ
 coordinates include nesting/borders and display matching uses non-overflowing sums.
 There is no Xlib handler swap, shared error flag or XDO geometry fallback.
 
-At `a9a3478b`, `--x11-display-tests` passed (outer status zero, 55 VM seconds): the
-complete production module and actual C-header ABI checks; 12 native window/property
-cases repeated 16 times; 16 real destructions between geometry/translation and
-16 unrelated Xlib errors delivered to their original handler; seven injected setup
-layouts refused; 16 constructor refusals followed by recovery, and 16 joined thread
-exits with native reply/error allocations paired and descriptor counts retired.
-The old distinction executes the historical handler shape, not an old whole app.
-Existing native context/capture cases and three byte-cache tests also passed.
+At `93ff3efd`, each established focus connection owns one retained deadline worker
+and an owned duplicate of its socket. A single 100 ms monotonic observation budget
+initiates read-side socket shutdown, waking the native reader/read-write wait
+without changing process signal policy. Deadline, transport failure and missing
+completion retire the connection and pending requests after the call drains; the
+worker joins before native disconnect. Healthy queries reuse the same worker.
+There is no polling fallback, detached retry, new dependency or authority change.
 
-Retained `.harness-state/verifier-vm/x11-display-tests-run.iTMfrCqrEQ.serial.log`
-(81,787 bytes; SHA-256 `2fc2804fa5478ae474a4c88f019a262980c77a59c9d376459f469aea786fbe0b`)
-and `evidence/x11-focus-run.iTMfrCqrEQ.outer.receipt` bind source/artifacts/libraries,
-scope and finality. No added host endpoint; readonly inputs unchanged; all exact
-runtime owners joined and owned disk/media/run-root state retired. Isolation unchanged.
+`--x11-display-tests` passed at that exact source (outer exit 0, 48 VM seconds):
 
-At `1f4a01b3`, blocking typed reply waits are replaced with native reply polling
-and descriptor readiness under one 100 ms monotonic observation budget. Deadline,
-transport failure and missing completion retire the connection and pending
-requests before a later same-mode retry. The exact previous module remained
-blocked for 301 ms until the private Xvfb resumed. Four corrected paused-server
-cases returned at 100 ms and retired their descriptors; four dead-server cases
-returned an explicit connection error. All eight recovered through the same owner
-using a fresh connection and real server geometry. Native reply/error allocations
-were paired. The complete focus module, C-header ABI, prior focus/context/capture
-scenarios and three byte-cache tests passed; outer status zero, 47 VM seconds.
+- A guest Unix-only relay forwarded a real Xvfb property-reply header and held
+  its last four bytes. The exact previous `1f4a01b3` polling module stayed blocked
+  throughout a 300 ms hold and returned only after release, at 301 ms. This
+  demonstrates a native partial-packet wait, not a model or old whole-app run.
+- Four corrected incomplete-reply cases and four actual paused-server cases
+  returned Deadline at observed 100 ms; four dead-server cases returned explicit
+  connection errors at observed 0 ms. All 12 retired the exact connection and
+  worker, then recovered through the same owner with a fresh connection and real
+  center `164,92`. Relay/server owners joined and their private sockets retired.
+- Twelve native window/property cases repeated 16 times retained one identical
+  timer TID across all 192 queries. Real destruction between geometry/translation,
+  independent Xlib error delivery, seven setup-layout refusals, 16 constructor
+  refusals/retry and 16 joined calling threads passed. Own descriptors/tasks
+  returned to baseline; tracked returned reply/error buffers were freed. This
+  does not measure internal native packet-reader allocations or the whole heap.
+- Actual C-header/Rust ABI checks, previous native context/capture cases and
+  three production byte-cache tests passed. Complete focus components compiled
+  and ran, not the parent Cargo application or installed service.
 
-Retained `.harness-state/verifier-vm/x11-display-tests-run.Rdx1CAaq9i.serial.log`
-(86,110 bytes; SHA-256 `457efb8fe495a2b7c41ebe5b1c7afe4ab77e0337fd9e579e8745eaa83c32767e`)
-and `evidence/x11-focus-lifecycle-run.Rdx1CAaq9i.outer.receipt` bind artifacts,
-scope and finality. No added host endpoint, readonly inputs unchanged, exact
-runtime owners joined, and owned disk/media/run root retired. Isolation unchanged.
+Retained `.harness-state/verifier-vm/x11-display-tests-run.TQnOjS8dmj.serial.log`
+(87,363 bytes; SHA-256 `e2ce3efc9466cbdbc9cc596708c2825913bc42cb43785d6dac4e11ee6a7b08da`)
+and `evidence/x11-focus-cancellation-run.TQnOjS8dmj.outer.receipt` bind exact
+source/artifacts/libraries, scope and finality. These are assistant-observed,
+not independent attestation. No added host endpoint; readonly inputs unchanged;
+exact runtime owners joined and owned disk/media/run root retired. Existing
+zero-NIC VM/guest-only unprivileged-container limits and isolation are unchanged.
+Earlier request-error and idle-wait evidence remains in the `iTMfrCqrEQ` and
+`Rdx1CAaq9i` serials/receipts and Git history; the latter never proved a partial-
+packet deadline and is superseded for current cancellation behavior.
 
-Whole-app/service integration, constructor, native request-flush and fragmented
-native-reply deadlines, full platform/performance/soak and reported-delay
-causation remain OPEN. Upstream libxcb's native reader can internally wait for
-remaining packet bytes after receiving a reply header; the paused-before-reply
-test does not exercise that path. The polling budget is therefore not a complete
-transport bound, nor does it bound `xcb_connect`, native flushing, OS scheduling
-or the whole application. Do not call all request deadlines closed.
-
-The next source correction gives each established focus connection one retained
-deadline worker and an owned duplicate of its socket. One observation arms a
-single monotonic budget; expiration shuts down the exact socket's read side,
-waking the native reader/read-write wait without changing process signal policy.
-The connection and pending requests retire after the call drains, and the worker
-is joined before native disconnect. Healthy queries reuse the worker. A real
-Unix-only relay forwards an actual property-reply header and holds its final
-four bytes; the exact previous polling module is the A/B baseline. Current
-native acceptance, worker-identity reuse and partial-reply recovery are PENDING.
+**OPEN:** whole-app/service integration, native constructor/timer-startup bounds,
+native write-backpressure cancellation, shutdown/worker-creation failure, query
+unwind and saturation/late-completion/cancellation races, heap/resource/performance/
+soak, current platform artifacts and reported Android/Windows delay causation.
+The deadline initiates cancellation; OS scheduling and exact owned drain can exceed
+it. The observed 100 ms returns are not a universal wall-clock guarantee or proof
+that all connection deadlines, local privilege boundaries or release evidence close.
 
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 

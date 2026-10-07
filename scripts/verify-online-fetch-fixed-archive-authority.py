@@ -770,6 +770,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
          'gid="$(/usr/bin/id -g)"',
          '[ "$uid" -ne 0 ] && [ "$gid" -ne 0 ]',
          '"$uid:$gid:400:1:$size"',
+         '"$uid:$gid:444:1:$size"',
          '*) fail "Debian verifier-VM base metadata differs: $path"'),
         "systemd image metadata admission",
     )

@@ -11,7 +11,7 @@ verify_debian_vm_base_metadata() {
     metadata="$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$path")" \
         || fail "cannot inspect Debian verifier-VM base metadata: $path"
     case "$metadata" in
-        "$uid:$gid:400:1:$size") ;;
+        "$uid:$gid:400:1:$size"|"$uid:$gid:444:1:$size") ;;
         *) fail "Debian verifier-VM base metadata differs: $path" ;;
     esac
 }

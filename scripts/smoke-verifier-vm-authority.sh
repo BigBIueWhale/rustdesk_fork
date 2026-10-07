@@ -4031,7 +4031,8 @@ elif [ "$MODE" = fixed-archive-tests ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_BASE_METADATA=pass cases=22 profiles=400,444 source=production metadata=actual cleanup=joined' 'base metadata admission result'
     require_exact_fixed_receipt "$fixed_archive_vm_receipt" 'fixed-archive source and finality result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'fixed-archive guest completion'
-    printf '%s\n' 'fixed archive transaction self-test: PASS' "$fixed_archive_vm_receipt"
+    printf '%s\n' 'VERIFIER_VM_BASE_METADATA=pass cases=22 profiles=400,444 source=production metadata=actual cleanup=joined' \
+        'fixed archive transaction self-test: PASS' "$fixed_archive_vm_receipt"
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     linux_flutter_test_receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=23 publication=noclobber admission=exact execution=guest-only cleanup=joined'
     require_exact_fixed_receipt \

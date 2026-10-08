@@ -1814,7 +1814,7 @@ prepared-native inner-loop work; VM timing excludes host preparation.
 
 ### Android runtime — intermittent presentation remains OPEN
 
-**Cursor initialization — native continuation defect reproduced; correction pending execution.**
+**Cursor initialization — native continuation A/B passed; app-level symptoms OPEN.**
 At tests-first `844e9c15` (tree `6d41f6db`), two tests exercised the actual initializer,
 CursorModel and CanvasModel across presentation retirement and higher-publication commit.
 Only session metadata and the input sink were replaced. Both failed: the stale continuation
@@ -1825,9 +1825,18 @@ issued a pointer move, reset the cursor from `(12,24)` to `(1,1)` and canvas off
 The initializer now requires the image owner's synchronous live check, including session,
 topology, presentation and publication order, before lookup and effects. The narrower
 optional topology-only API is removed. Test calls are adapted to that required API;
-assertions are unchanged, with an additional fresh-publication control. Corrected isolated
-execution is pending. Original Android/Windows causation, web saved-canvas behavior and
-other CanvasModel preference continuations remain independently OPEN.
+assertions are unchanged, with an additional fresh-publication control. At `a1c5bd6b`
+(tree `11cc23b9`), all 23 suites/207 tests and three parser methods passed. Both stale
+cases preserve pointer/cursor/canvas state; fresh presentation and publication controls
+still initialize useful geometry. The complete zero-NIC transaction passed source/input,
+listener/finality and joined-cleanup checks in 299 VM seconds, excluding host preparation.
+Full 69,157-byte raw `flutter-model-tests-run.cQ2VRMlesl.serial.log`, SHA256
+`09a0f3a771a0acc5148a57535e30a9cefec37b9c4065e7e5a7b236a039323800`.
+Both private runs/disks are retired; no owned job remains. The mutation body traces to
+the upstream 1.4.7 import `c2abd3b3`, with topology guards added at `0852116c`.
+This is shared native Flutter component evidence, not an installed client or peer/window
+reproduction. Original Android/Windows causation, default desktop texture paths, web
+saved-canvas behavior and other CanvasModel preference continuations remain OPEN.
 
 **Software first-image publication — native component A/B passed; app-level symptoms OPEN.**
 At tests-first `b0e0d47d`, the real ImageModel/native raw-image regression returned false for

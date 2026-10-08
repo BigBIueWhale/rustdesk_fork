@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hbb/common.dart' show SessionID;
+import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/input_model.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/models/rgba_publication_order.dart';
@@ -161,6 +162,10 @@ class _CursorInitializationSession implements FFI {
 
 class _CursorInitializationInput implements InputModel {
   final moves = <Offset>[];
+  int refreshes = 0;
+
+  @override
+  void refreshMousePos() => refreshes++;
 
   @override
   Future<void> moveMouse(double x, double y) async => moves.add(Offset(x, y));
@@ -168,6 +173,108 @@ class _CursorInitializationInput implements InputModel {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+enum _CanvasPreferenceStage { view, scroll, edge }
+
+class _PendingCanvasPreferences implements CanvasPreferences {
+  _PendingCanvasPreferences(this.stage);
+
+  final _CanvasPreferenceStage stage;
+  final started = Completer<void>();
+  final release = Completer<void>();
+
+  Future<void> waitFor(_CanvasPreferenceStage query) async {
+    if (query != stage) return;
+    if (!started.isCompleted) started.complete();
+    await release.future;
+  }
+
+  @override
+  String? viewStyle(SessionID sessionId) => kRemoteViewStyleCustom;
+
+  @override
+  Future<double> customScale(SessionID sessionId) async {
+    await waitFor(_CanvasPreferenceStage.view);
+    return 2.25;
+  }
+
+  @override
+  Future<String?> scrollStyle(SessionID sessionId) async {
+    await waitFor(_CanvasPreferenceStage.scroll);
+    return kRemoteScrollStyleEdge;
+  }
+
+  @override
+  Future<int?> edgeThickness(SessionID sessionId) async {
+    await waitFor(_CanvasPreferenceStage.edge);
+    return 41;
+  }
+}
+
+class _CanvasPreferenceSession implements FFI {
+  _CanvasPreferenceSession(this.preferences);
+
+  final _PendingCanvasPreferences preferences;
+  @override
+  final SessionID sessionId = Uuid().v4obj();
+  @override
+  final SessionID clientOwnerId = Uuid().v4obj();
+  @override
+  late final _ImageTopology ffiModel = _ImageTopology(sessionId);
+  @override
+  late final ImageModel imageModel = ImageModel(WeakReference<FFI>(this));
+  @override
+  late final CanvasModel canvasModel = CanvasModel(WeakReference<FFI>(this),
+      preferences: preferences);
+  @override
+  late final CursorModel cursorModel = CursorModel(WeakReference<FFI>(this));
+  @override
+  final _CursorInitializationInput inputModel = _CursorInitializationInput();
+
+  @override
+  bool isCurrentSession(SessionID expected) => expected == sessionId;
+
+  @override
+  bool isCurrentSessionOwner(SessionID session, SessionID owner) =>
+      isCurrentSession(session) && owner == clientOwnerId;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+Future<void> _readCanvasPreference(
+    _CanvasPreferenceSession session, _CanvasPreferenceStage stage) async {
+  switch (stage) {
+    case _CanvasPreferenceStage.view:
+      await session.canvasModel.updateViewStyle(
+          expectedSessionId: session.sessionId,
+          expectedDisplayTopologyRevision: 0);
+      break;
+    case _CanvasPreferenceStage.scroll:
+      await session.canvasModel.updateScrollStyle(
+          expectedSessionId: session.sessionId,
+          expectedDisplayTopologyRevision: 0);
+      break;
+    case _CanvasPreferenceStage.edge:
+      await session.canvasModel.initializeEdgeScrollEdgeThickness(
+          expectedSessionId: session.sessionId,
+          expectedDisplayTopologyRevision: 0);
+      break;
+  }
+}
+
+List<Object> _canvasPreferenceState(CanvasModel canvas) => [
+      canvas.x,
+      canvas.y,
+      canvas.scale,
+      canvas.size,
+      canvas.viewStyle,
+      canvas.scrollStyle,
+      canvas.scrollX,
+      canvas.scrollY,
+      canvas.edgeScrollEdgeThickness,
+      canvas.imageOverflow.value,
+    ];
 
 Future<void> _observeCursorInitialization(
     Future<void> Function(_CursorInitializationSession) observe) async {
@@ -332,6 +439,68 @@ Future<Map<String, Object>> _conversionFailureHandles(String failingStage) async
 }
 
 void main() {
+  for (final stage in _CanvasPreferenceStage.values) {
+    for (final retirement in ['presentation', 'clear']) {
+      testWidgets('retired $retirement canvas ${stage.name} read has no effects',
+          (tester) async {
+        await tester.runAsync(() async {
+          final preferences = _PendingCanvasPreferences(stage);
+          final session = _CanvasPreferenceSession(preferences);
+          final canvas = session.canvasModel;
+          Future<void>? pending;
+          var notifications = 0;
+          void notified() => notifications++;
+          canvas.addListener(notified);
+          try {
+            pending = _readCanvasPreference(session, stage);
+            await preferences.started.future
+                .timeout(const Duration(seconds: 5));
+            if (retirement == 'presentation') {
+              session.imageModel.retirePresentation();
+            } else {
+              canvas.clear();
+            }
+            canvas.update(31, 37, 1.75);
+            canvas.setScrollPercent(0.2, 0.3);
+            notifications = 0;
+            final before = _canvasPreferenceState(canvas);
+            preferences.release.complete();
+            await pending.timeout(const Duration(seconds: 5));
+            final after = _canvasPreferenceState(canvas);
+            expect([after, notifications, session.inputModel.refreshes],
+                [before, 0, 0]);
+
+            // A fresh owner must still be able to apply the useful preference.
+            await _readCanvasPreference(session, stage);
+            switch (stage) {
+              case _CanvasPreferenceStage.view:
+                expect(canvas.viewStyle.style, kRemoteViewStyleCustom);
+                expect(canvas.scale, 2.25 / ui.window.devicePixelRatio);
+                expect(notifications, 1);
+                expect(session.inputModel.refreshes, 1);
+                break;
+              case _CanvasPreferenceStage.scroll:
+                expect(canvas.scrollStyle, ScrollStyle.scrolledge);
+                expect([canvas.scrollX, canvas.scrollY], [0, 0]);
+                expect(notifications, 1);
+                break;
+              case _CanvasPreferenceStage.edge:
+                expect(canvas.edgeScrollEdgeThickness, 41);
+                break;
+            }
+          } finally {
+            if (!preferences.release.isCompleted) preferences.release.complete();
+            if (pending != null) await pending;
+            canvas.removeListener(notified);
+            canvas.dispose();
+            session.imageModel.dispose();
+            session.cursorModel.dispose();
+          }
+        });
+      }, timeout: const Timeout(Duration(seconds: 30)));
+    }
+  }
+
   testWidgets('retired cursor initialization preserves current geometry',
       (tester) async {
     await tester.runAsync(() async {

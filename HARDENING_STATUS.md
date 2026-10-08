@@ -1814,6 +1814,15 @@ prepared-native inner-loop work; VM timing excludes host preparation.
 
 ### Android runtime — intermittent presentation remains OPEN
 
+**Canvas preference continuations — native reproduction pending.** View/custom-scale,
+scroll-style and edge-thickness reads currently retain only optional session/topology
+checks. Presentation retirement or canvas clear can leave that pair current while a
+pending read changes successor geometry/settings. Six focused tests exercise the real
+CanvasModel with held read-only preference results, gather state/notifications/input
+effects together, and require fresh-owner controls. The production query adapter keeps
+the same session reads; no global binding replacement or extra runtime mode is added.
+Correction and native acceptance are pending; original Android/Windows causation remains OPEN.
+
 **Cursor initialization — native continuation A/B passed; app-level symptoms OPEN.**
 At tests-first `844e9c15` (tree `6d41f6db`), two tests exercised the actual initializer,
 CursorModel and CanvasModel across presentation retirement and higher-publication commit.

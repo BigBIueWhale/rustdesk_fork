@@ -2323,6 +2323,34 @@ class EdgeScrollFallbackState {
   }
 }
 
+/// Read-only session preferences used by the canvas state machine.
+abstract class CanvasPreferences {
+  String? viewStyle(SessionID sessionId);
+  Future<double> customScale(SessionID sessionId);
+  Future<String?> scrollStyle(SessionID sessionId);
+  Future<int?> edgeThickness(SessionID sessionId);
+}
+
+class _SessionCanvasPreferences implements CanvasPreferences {
+  const _SessionCanvasPreferences();
+
+  @override
+  String? viewStyle(SessionID sessionId) =>
+      bind.sessionGetViewStyleSync(sessionId: sessionId);
+
+  @override
+  Future<double> customScale(SessionID sessionId) =>
+      getSessionCustomScale(sessionId);
+
+  @override
+  Future<String?> scrollStyle(SessionID sessionId) =>
+      bind.sessionGetScrollStyle(sessionId: sessionId);
+
+  @override
+  Future<int?> edgeThickness(SessionID sessionId) =>
+      bind.sessionGetEdgeScrollEdgeThickness(sessionId: sessionId);
+}
+
 class CanvasModel with ChangeNotifier {
   // image offset of canvas
   double _x = 0;
@@ -2371,7 +2399,10 @@ class CanvasModel with ChangeNotifier {
 
   WeakReference<FFI> parent;
 
-  CanvasModel(this.parent);
+  final CanvasPreferences _preferences;
+
+  CanvasModel(this.parent, {CanvasPreferences? preferences})
+      : _preferences = preferences ?? const _SessionCanvasPreferences();
 
   double get x => _x;
   double get y => _y;
@@ -2379,6 +2410,7 @@ class CanvasModel with ChangeNotifier {
   double get devicePixelRatio => _devicePixelRatio;
   Size get size => _size;
   ScrollStyle get scrollStyle => _scrollStyle;
+  int get edgeScrollEdgeThickness => _edgeScrollEdgeThickness;
   ViewStyle get viewStyle => _lastViewStyle;
   RxBool get imageOverflow => _imageOverflow;
 
@@ -2481,7 +2513,7 @@ class CanvasModel with ChangeNotifier {
     if (!_acceptsExpectedDisplayTopology(
         expectedSessionId, expectedDisplayTopologyRevision)) return;
     final selectedSessionId = expectedSessionId ?? sessionId;
-    final style = bind.sessionGetViewStyleSync(sessionId: selectedSessionId);
+    final style = _preferences.viewStyle(selectedSessionId);
     if (!_acceptsExpectedDisplayTopology(
         expectedSessionId, expectedDisplayTopologyRevision)) return;
     if (style == null) {
@@ -2512,7 +2544,7 @@ class CanvasModel with ChangeNotifier {
     // Apply custom scale percent when in Custom mode
     if (style == kRemoteViewStyleCustom) {
       try {
-        nextScale = await getSessionCustomScale(selectedSessionId);
+        nextScale = await _preferences.customScale(selectedSessionId);
       } catch (e, stack) {
         debugPrint('Error in getSessionCustomScale: $e');
         debugPrintStack(stackTrace: stack);
@@ -2567,8 +2599,7 @@ class CanvasModel with ChangeNotifier {
     if (!_acceptsExpectedDisplayTopology(
         expectedSessionId, expectedDisplayTopologyRevision)) return;
     if (_scrollStyle == ScrollStyle.scrollauto) return;
-    style ??= bind.sessionGetViewStyleSync(
-        sessionId: expectedSessionId ?? sessionId);
+    style ??= _preferences.viewStyle(expectedSessionId ?? sessionId);
     if (!_acceptsExpectedDisplayTopology(
         expectedSessionId, expectedDisplayTopologyRevision)) return;
     if (style != kRemoteViewStyleOriginal && style != kRemoteViewStyleCustom) {
@@ -2589,8 +2620,7 @@ class CanvasModel with ChangeNotifier {
       int? expectedDisplayTopologyRevision}) async {
     if (!_acceptsExpectedDisplayTopology(
         expectedSessionId, expectedDisplayTopologyRevision)) return;
-    final style = await bind.sessionGetScrollStyle(
-        sessionId: expectedSessionId ?? sessionId);
+    final style = await _preferences.scrollStyle(expectedSessionId ?? sessionId);
     if (!_acceptsExpectedDisplayTopology(
         expectedSessionId, expectedDisplayTopologyRevision)) return;
 
@@ -2609,8 +2639,8 @@ class CanvasModel with ChangeNotifier {
       int? expectedDisplayTopologyRevision}) async {
     if (!_acceptsExpectedDisplayTopology(
         expectedSessionId, expectedDisplayTopologyRevision)) return;
-    final savedValue = await bind.sessionGetEdgeScrollEdgeThickness(
-        sessionId: expectedSessionId ?? sessionId);
+    final savedValue =
+        await _preferences.edgeThickness(expectedSessionId ?? sessionId);
     if (!_acceptsExpectedDisplayTopology(
         expectedSessionId, expectedDisplayTopologyRevision)) return;
 

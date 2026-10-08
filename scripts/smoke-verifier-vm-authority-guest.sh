@@ -1045,6 +1045,11 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
                     --mount "type=bind,src=$loader_installed/$loader_variant,dst=/usr/lib/rustdesk-fork,readonly,bind-recursive=disabled"
                 )
                 command=(/usr/bin/python3 -B -I -S /work/scripts/test-xdo-loader-native.py "$loader_variant")
+            elif [ "$phase" = native ] && [ "$MODE" = x11-display-tests ] \
+                && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ]; then
+                # Reuse only the exact pinned libc already compiled in the owned
+                # loader phase; the native component receives no writable cache.
+                mounts+=(--mount "type=bind,src=$work/loader-build/liblibc.rlib,dst=/focus-input/liblibc.rlib,readonly,bind-recursive=disabled")
             fi
         fi
         CONTAINER_ID="$(frame_docker create --name "rustdesk-android-frame-$phase" \

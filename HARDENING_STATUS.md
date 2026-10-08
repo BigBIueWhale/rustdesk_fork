@@ -816,6 +816,19 @@ local display/screen, and exact cancellation/drain; an abandoned constructor thr
 or an authentication-disabled fast refusal is not a correction. Existing established-
 connection evidence does not cover this initialization boundary.
 
+The current candidate opens only a nonblocking local Unix socket, retains its
+deadline owner before transferring that exact descriptor to `xcb_connect_to_fd`,
+and joins the timer before native retirement on constructor errors as well as normal
+drop. It shares the existing display/screen parser and uses public Xau selection
+and Xdmcp transformation for both supported authentication protocols; selected invalid
+records fail explicitly. XDM's Unix client identifier uses fresh OS randomness rather
+than a private counter that could collide with Xlib's use of libxcb. Native execution
+is pending: four setup-stall/recovery cases and real valid/wrong/missing authentication
+for both protocols are required, in addition to established-connection controls.
+No universal authentication-file, timer-startup, OS-scheduling or whole-app bound is
+claimed; native Xauthority file lookup, backlog refusals/races, heap/performance/soak,
+installed identity, other platforms and original-symptom causation remain OPEN.
+
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
 PF-1 through PF-5 are closed for desktop port-forward and RDP mappings while the

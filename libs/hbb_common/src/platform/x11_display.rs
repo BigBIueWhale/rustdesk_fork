@@ -2,6 +2,13 @@ use std::{ffi::{c_int, CString}, io};
 
 /// Native display selection is local-only; authentication remains library-owned.
 pub fn unix_display_name() -> io::Result<CString> {
+    let (display, screen) = local_display()?;
+    // An explicit protocol prevents implicit localhost TCP after Unix refusal.
+    CString::new(format!("unix/:{display}.{screen}"))
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid local X11 display selector"))
+}
+
+pub fn local_display() -> io::Result<(c_int, c_int)> {
     fn invalid() -> io::Error {
         io::Error::new(io::ErrorKind::InvalidInput, "invalid local X11 display selector")
     }
@@ -20,6 +27,5 @@ pub fn unix_display_name() -> io::Result<CString> {
         (Some(screen), None) => number(screen)?,
         _ => return Err(invalid()),
     };
-    // An explicit protocol prevents implicit localhost TCP after Unix refusal.
-    CString::new(format!("unix/:{display}.{screen}")).map_err(|_| invalid())
+    Ok((display, screen))
 }

@@ -1,5 +1,6 @@
 //! Complete production focus module, real XCB replies and independent Xlib errors.
 extern crate self as hbb_common;
+pub extern crate libc;
 mod platform {
     #[path = "/work/libs/hbb_common/src/platform/x11_display.rs"]
     pub mod x11_display;

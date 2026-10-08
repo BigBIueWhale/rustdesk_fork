@@ -577,6 +577,7 @@ def build_focus(root, environment, binary, fixture, historical=False):
                    env=environment, check=True, timeout=15)
     command = ["/usr/local/cargo/bin/rustc", "--edition=2021",
                str(fixture), "-o", str(binary),
+               "--extern", "libc=/focus-input/liblibc.rlib",
                "-C", f"link-arg={helper}", "-C", "link-arg=-lX11"]
     if historical:
         command += ["--cfg", "historical"]
@@ -782,6 +783,72 @@ def local_route(binary, variant, environment, listener, component):
             stream.close()
 
 
+def authenticated_focus(binary, environment):
+    directory = Path("/tmp/x11-focus-auth")
+    directory.mkdir(mode=0o700)
+    try:
+        for protocol in ("MIT-MAGIC-COOKIE-1", "XDM-AUTHORIZATION-1"):
+            fields = (socket.gethostname().encode("ascii"), b"92", protocol.encode("ascii"))
+            prefix = struct.pack(">H", 256) + b"".join(struct.pack(">H", len(field)) + field for field in fields)
+            valid = bytearray(range(16))
+            if protocol == "XDM-AUTHORIZATION-1":
+                valid[8] = 0  # Xserver requires the first XDM key octet to be zero.
+            for credential, cookie in (("valid", bytes(valid)), ("wrong", bytes(reversed(valid)))):
+                with (directory / credential).open("xb") as output:
+                    os.fchmod(output.fileno(), 0o600)
+                    output.write(prefix + struct.pack(">H", len(cookie)) + cookie)
+            require(not (directory / "missing").exists() and not Path("/tmp/.X11-unix/X92").exists(),
+                    "focus authentication fixture already exists")
+            with (directory / "server.log").open("xb") as log:
+                server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":92", "-screen", "0", "640x480x24",
+                                           "-nolisten", "tcp", "-auth", str(directory / "valid"), "-noreset"],
+                                          env=environment, stdout=log, stderr=subprocess.STDOUT)
+                try:
+                    until = time.monotonic() + 5
+                    while not Path("/tmp/.X11-unix/X92").is_socket():
+                        require(server.poll() is None and time.monotonic() < until, "authenticated focus Xvfb not ready")
+                        time.sleep(0.01)
+                    for credential in ("valid", "wrong", "missing", "valid"):
+                        env = dict(environment, DISPLAY=":92", XAUTHORITY=str(directory / credential))
+                        result = subprocess.run([str(binary), f"auth-{credential}"], env=env,
+                                                capture_output=True, text=True, timeout=5)
+                        admitted = credential == "valid"
+                        receipt = (f"X11_FOCUS_AUTH_NATIVE credential={credential} "
+                                   f"result={'admitted' if admitted else 'refused'} "
+                                   f"geometry={'server-real' if admitted else 'unavailable'} "
+                                   "descriptors=retired workers=joined")
+                        require(result.returncode == 0 and result.stdout.splitlines() == [receipt]
+                                and bool(result.stderr) == (not admitted)
+                                and len(result.stdout) + len(result.stderr) <= 4096 and server.poll() is None,
+                                f"native focus authentication differs: {protocol} {result}")
+                        print(receipt + f" protocol={protocol}", flush=True)
+                except BaseException:
+                    log.flush()
+                    print((directory / "server.log").read_text()[:4096], flush=True)
+                    raise
+                finally:
+                    if server.poll() is None:
+                        server.terminate()
+                    try:
+                        server.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        server.kill()
+                        server.wait(timeout=5)
+                require(server.returncode == 0 and not Path("/tmp/.X11-unix/X92").exists(),
+                        "authenticated focus server/socket retirement differs")
+            for name in ("valid", "wrong", "server.log"):
+                (directory / name).unlink()
+    finally:
+        for name in ("valid", "wrong", "server.log"):
+            path = directory / name
+            if path.exists():
+                path.unlink()
+        directory.rmdir()
+    print("X11_FOCUS_AUTH_NATIVE=pass protocols=MIT-MAGIC-COOKIE-1,XDM-AUTHORIZATION-1 cases=8 "
+          "valid=4 wrong=2 missing=2 geometry=server-real descriptors=retired workers=joined "
+          "server=owned-and-joined scope=focus-component", flush=True)
+
+
 def focus_lifecycle(root, environment):
     baseline = root / "scripts/fixtures/x11-window-focus-before-deadline.rs"
     require(hashlib.sha256(baseline.read_bytes()).hexdigest() ==
@@ -963,6 +1030,9 @@ def focus_lifecycle(root, environment):
                     f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
                         ("source", source), ("fixture", fixture), ("c_fixture", root / "scripts/test-x11-window-focus.c"),
                         ("deadline", root / "src/platform/linux/window_focus_deadline.rs"),
+                        ("auth", root / "src/platform/linux/window_focus_auth.rs"),
+                        ("display", root / "libs/hbb_common/src/platform/x11_display.rs"),
+                        ("libc", Path("/focus-input/liblibc.rlib")),
                         ("binary", binary))) + " scope=complete-focus-module whole_app=unexecuted", flush=True)
                 local_route(binary, variant, environment, route_listener, "focus")
                 if variant == "historical":
@@ -974,13 +1044,14 @@ def focus_lifecycle(root, environment):
                             case(binary, variant, scenario)
                     for _ in range(4):
                         case(binary, variant, "constructor")
+                    authenticated_focus(binary, environment)
                 binary.unlink()
         finally:
             route_listener.close()
     print("X11_FOCUS_ROUTE_NATIVE=pass old=tcp-fallback current=unix-only old_accepts=1 current_accepts=0 "
           "listener=container-loopback-only peer=closed children=joined scope=focus-component", flush=True)
     print("X11_FOCUS_LIFECYCLE_NATIVE=pass old=fragmented-and-send-wait source=complete-module "
-          "deadline_ms=100 stalled=4 dead=4 fragmented=4 backpressure=4 recovery=same-owner-fresh-connection "
+          "deadline_ms=100 stalled=4 dead=4 fragmented=4 backpressure=4 constructor=4 recovery=same-owner-fresh-connection "
           "allocations=paired descriptors=retired deadline_workers=joined relay=owned-and-joined "
           "server=owned-and-joined network=none scope=focus-component", flush=True)
 

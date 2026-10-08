@@ -1,5 +1,6 @@
 //! Real focus setup and established I/O: paused server, retirement, same-owner retry.
 extern crate self as hbb_common;
+pub extern crate libc;
 mod platform {
     #[path = "/work/libs/hbb_common/src/platform/x11_display.rs"]
     pub mod x11_display;
@@ -35,6 +36,32 @@ fn marker(line: &str) {
 }
 fn main() {
     let scenario = std::env::args().nth(1).unwrap();
+    if scenario.starts_with("auth-") {
+        assert!(!cfg!(historical));
+        let admitted = scenario == "auth-valid";
+        let baseline = descriptors();
+        let baseline_threads = threads();
+        if admitted { unsafe { focus_fixture_init(); focus_fixture_case(1); } }
+        let mut focus = WindowFocus::default();
+        let result = focus.center();
+        if admitted {
+            assert_eq!(result.unwrap(), Some((164, 92)));
+            assert_eq!(descriptors(), baseline + 3);
+            assert_eq!(threads(), baseline_threads + 1);
+        } else {
+            assert!(matches!(result, Err(FocusError::Connection(error)) if error != 0), "{result:?}");
+            assert_eq!(descriptors(), baseline);
+            assert_eq!(threads(), baseline_threads);
+        }
+        drop(focus);
+        if admitted { unsafe { focus_fixture_close(); focus_fixture_balanced(); } }
+        assert_eq!(descriptors(), baseline);
+        assert_eq!(threads(), baseline_threads);
+        marker(&format!("X11_FOCUS_AUTH_NATIVE credential={} result={} geometry={} descriptors=retired workers=joined",
+            scenario.strip_prefix("auth-").unwrap(), if admitted { "admitted" } else { "refused" },
+            if admitted { "server-real" } else { "unavailable" }));
+        return;
+    }
     if scenario == "route" {
         let baseline = descriptors();
         let baseline_threads = threads();

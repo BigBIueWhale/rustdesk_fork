@@ -1,10 +1,13 @@
 use super::native_context::NativeContext;
-use hbb_common::platform::x11_display::unix_display_name;
-use std::{ffi::{c_char, c_int, c_void}, io, os::fd::BorrowedFd,
+use hbb_common::{libc, platform::x11_display::local_display};
+use std::{ffi::{c_char, c_int, c_void}, io, os::fd::{AsFd, AsRawFd, FromRawFd, IntoRawFd, OwnedFd},
           ptr::{self, NonNull}, time::Duration};
 #[path = "window_focus_deadline.rs"]
 mod deadline;
 use deadline::SocketDeadline;
+#[path = "window_focus_auth.rs"]
+mod auth;
+use auth::{AuthInfo, Authentication};
 
 const REPLY_BUDGET: Duration = Duration::from_millis(100);
 
@@ -18,6 +21,7 @@ pub(super) enum FocusError {
     InvalidReply,
     InvalidDisplay,
     InvalidScreen,
+    InvalidAuthentication,
 }
 
 #[derive(Default)]
@@ -53,24 +57,28 @@ struct FocusConnection {
 
 impl FocusConnection {
     fn connect() -> Result<Self, FocusError> {
-        let display = unix_display_name().map_err(|_| FocusError::InvalidDisplay)?;
+        let (display, screen) = local_display().map_err(|_| FocusError::InvalidDisplay)?;
+        let mut authentication = Authentication::local(display)?;
+        let mut info = authentication.info();
+        let socket = local_socket(display)?;
+        // Declaration order also joins the deadline before native disconnect on
+        // any constructor error, not only after a complete owner is returned.
+        let connection;
+        let deadline = SocketDeadline::new(socket.as_fd()).map_err(FocusError::Transport)?;
+        let observation = deadline.start(REPLY_BUDGET)?;
         unsafe {
-            let mut screen = 0;
-            let connection = NativeContext::from_raw(xcb_connect(display.as_ptr(), &mut screen),
-                                                    |connection| xcb_disconnect(connection))
+            // The public descriptor constructor takes ownership of this socket,
+            // including on failure. Auth remains owned until synchronous setup drains.
+            connection = NativeContext::from_raw(xcb_connect_to_fd(socket.into_raw_fd(),
+                info.as_mut().map_or(ptr::null_mut(), |info| info)),
+                |connection| xcb_disconnect(connection))
                 .ok_or(FocusError::InvalidReply)?;
+            observation.finish()?;
             let error = xcb_connection_has_error(connection.as_ptr());
             if error != 0 {
                 return Err(FocusError::Connection(error));
             }
             let root = setup_root(xcb_get_setup(connection.as_ptr()), screen)?;
-            let descriptor = xcb_get_file_descriptor(connection.as_ptr());
-            if descriptor < 0 {
-                return Err(FocusError::Transport(io::Error::new(io::ErrorKind::InvalidInput,
-                    "X11 focus connection has no socket")));
-            }
-            let deadline = SocketDeadline::new(BorrowedFd::borrow_raw(descriptor))
-                .map_err(FocusError::Transport)?;
             Ok(Self { deadline, connection, root })
         }
     }
@@ -112,7 +120,6 @@ impl FocusConnection {
 
     fn center(&self) -> Result<Option<(i32, i32)>, FocusError> {
         // One owned cancellation budget covers all established-connection I/O.
-        // Native construction is separate; no worker is detached on expiration.
         let observation = self.deadline.start(REPLY_BUDGET)?;
         let result = self.query();
         observation.finish()?;
@@ -181,6 +188,45 @@ impl FocusConnection {
         }
         reply.ok_or(FocusError::MissingReply)
     }
+}
+
+fn local_socket(display: c_int) -> Result<OwnedFd, FocusError> {
+    let path = format!("/tmp/.X11-unix/X{display}");
+    // Preserve native Linux abstract-then-filesystem local transport selection,
+    // but never block on a full listener backlog or attempt a TCP fallback.
+    for abstract_socket in [true, false] {
+        let mut address: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+        address.sun_family = libc::AF_UNIX as libc::sa_family_t;
+        let start = usize::from(abstract_socket);
+        if path.len() + start >= address.sun_path.len() {
+            return Err(FocusError::InvalidDisplay);
+        }
+        for (target, byte) in address.sun_path[start..].iter_mut().zip(path.bytes()) {
+            *target = byte as c_char;
+        }
+        let length = if abstract_socket {
+            std::mem::size_of_val(&address.sun_family) + 1 + path.len()
+        } else {
+            std::mem::size_of_val(&address)
+        };
+        let descriptor = unsafe { libc::socket(libc::AF_UNIX,
+            libc::SOCK_STREAM | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK, 0) };
+        if descriptor < 0 {
+            return Err(FocusError::Transport(io::Error::last_os_error()));
+        }
+        let socket = unsafe { OwnedFd::from_raw_fd(descriptor) };
+        if unsafe { libc::connect(socket.as_raw_fd(), (&address as *const libc::sockaddr_un).cast(),
+                                  length as libc::socklen_t) } == 0 {
+            return Ok(socket);
+        }
+        let error = io::Error::last_os_error();
+        if matches!(error.raw_os_error(), Some(libc::ENOENT | libc::ECONNREFUSED)) {
+            if abstract_socket { continue; }
+            return Err(FocusError::Connection(1));
+        }
+        return Err(FocusError::Transport(error));
+    }
+    Err(FocusError::Connection(1))
 }
 
 struct Reply<T>(NonNull<T>);
@@ -275,7 +321,7 @@ const _: [(); 4] = [(); std::mem::size_of::<Cookie>()];
 
 #[link(name = "xcb")]
 extern "C" {
-    fn xcb_connect(name: *const c_char, screen: *mut c_int) -> *mut c_void;
+    fn xcb_connect_to_fd(descriptor: c_int, authentication: *mut AuthInfo) -> *mut c_void;
     fn xcb_disconnect(connection: *mut c_void);
     fn xcb_connection_has_error(connection: *mut c_void) -> c_int;
     fn xcb_get_setup(connection: *mut c_void) -> *const c_void;
@@ -284,7 +330,6 @@ extern "C" {
                         type_: u32, offset: u32, length: u32) -> Cookie;
     fn xcb_get_geometry(connection: *mut c_void, drawable: u32) -> Cookie;
     fn xcb_translate_coordinates(connection: *mut c_void, source: u32, target: u32, x: i16, y: i16) -> Cookie;
-    fn xcb_get_file_descriptor(connection: *mut c_void) -> c_int;
     fn xcb_wait_for_reply(connection: *mut c_void, sequence: u32, error: *mut *mut c_void) -> *mut c_void;
     fn free(pointer: *mut c_void);
 }

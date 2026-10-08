@@ -1,10 +1,13 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
+#include <X11/Xauth.h>
+#include <X11/Xdmcp.h>
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
 #include <xcb/xcbext.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <assert.h>
 #include <errno.h>
 #include <signal.h>
@@ -39,6 +42,16 @@ _Static_assert(_Generic(&xcb_wait_for_reply,
     void *(*)(xcb_connection_t *, unsigned int, xcb_generic_error_t **): 1,
     default: 0), "XCB wait reply ABI");
 _Static_assert(SHUT_RD == 0, "socket shutdown ABI");
+SIZE(Xauth, 64); OFFSET(Xauth, address, 8); OFFSET(Xauth, number, 24);
+OFFSET(Xauth, name, 40); OFFSET(Xauth, data, 56);
+SIZE(xcb_auth_info_t, 32); OFFSET(xcb_auth_info_t, name, 8);
+OFFSET(xcb_auth_info_t, datalen, 16); OFFSET(xcb_auth_info_t, data, 24);
+OFFSET(struct sockaddr_un, sun_path, sizeof(sa_family_t));
+_Static_assert(_Generic(&xcb_connect_to_fd,
+    xcb_connection_t *(*)(int, xcb_auth_info_t *): 1, default: 0), "XCB descriptor constructor ABI");
+_Static_assert(_Generic(&XauGetBestAuthByAddr,
+    Xauth *(*)(unsigned short, unsigned short, const char *, unsigned short,
+              const char *, int, char **, const int *): 1, default: 0), "Xau selection ABI");
 
 static Display *display;
 static Window root, window, parent, dangling;

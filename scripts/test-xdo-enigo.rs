@@ -72,7 +72,7 @@ fn main() {
                 XSync(display.0, 0);
                 let mut event: XEvent = std::mem::zeroed();
                 assert_eq!(XCheckWindowEvent(display.0, window, KeyPressMask | KeyReleaseMask, &mut event), 0,
-                           "failed keyboard-state query emitted input");
+                           "failed modifier-map query emitted input");
                 drop(enigo);
                 assert_eq!(descriptors(), connected);
                 if rejected.as_deref() != Some("libxdo key down failed with status 1") {
@@ -117,5 +117,5 @@ fn main() {
     assert_eq!(descriptors(), baseline);
     assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), 1);
     println!("XDO_ENIGO_COMPONENT=pass scenario={scenario} attempts=8 key_down={} pointer=actual descriptors=retired",
-             if scenario == "complete" { "delivered" } else { "native-state-error" });
+             if scenario == "complete" { "delivered" } else { "native-modifier-error" });
 }

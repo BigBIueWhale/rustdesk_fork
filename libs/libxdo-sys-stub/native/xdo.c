@@ -48,8 +48,8 @@ static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key, K
 static int _xdo_ewmh_is_supported(const xdo_t *xdo, const char *feature);
 static void _xdo_init_xkeyevent(const xdo_t *xdo, XKeyEvent *xk);
 static void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
-                          int modstate, int is_press, int current_group, useconds_t delay);
-static void _xdo_send_modifier(const xdo_t *xdo, int modmask, int is_press);
+                          const KeyCode *modifiers, int is_press, int current_group, useconds_t delay);
+static int _xdo_get_key_modifiers(const xdo_t *xdo, int modmask, KeyCode *modifiers);
 
 static int _xdo_mousebutton(const xdo_t *xdo, Window window, int button, int is_press);
 
@@ -891,7 +891,7 @@ int xdo_click_window_multiple(const xdo_t *xdo, Window window, int button,
 } /* int xdo_click_window_multiple */
 
 static int _xdo_send_key_window_do(const xdo_t *xdo, Window window, charcodemap_t *key,
-                                   int pressed, int *modifier, int current_group, useconds_t delay) {
+                                   int pressed, const KeyCode *modifiers, int current_group, useconds_t delay) {
   KeySym *keysyms = NULL;
   int keysyms_per_keycode = 0;
   int scratch_keycode = 0;
@@ -934,11 +934,7 @@ static int _xdo_send_key_window_do(const xdo_t *xdo, Window window, charcodemap_
     key->code = scratch_keycode;
   }
 
-  _xdo_send_key(xdo, window, key, *modifier, pressed, current_group, delay);
-  if (pressed)
-    *modifier |= key->modmask;
-  else
-    *modifier &= ~key->modmask;
+  _xdo_send_key(xdo, window, key, modifiers, pressed, current_group, delay);
 
   if (keysyms != NULL) {
     XSync(xdo->xdpy, False);
@@ -955,7 +951,7 @@ static int _xdo_send_key_window_do(const xdo_t *xdo, Window window, charcodemap_
 int xdo_send_key_window(const xdo_t *xdo, Window window, unsigned int kind,
                         unsigned long value, unsigned int action, useconds_t delay) {
   charcodemap_t key = {0};
-  int modifier = 0;
+  KeyCode modifiers[Mod5MapIndex + 1] = {0};
   if (xdo == NULL || xdo->xdpy == NULL
       || (action != XDO_KEY_DOWN && action != XDO_KEY_UP && action != XDO_KEY_CLICK))
     return XDO_ERROR;
@@ -983,16 +979,18 @@ int xdo_send_key_window(const xdo_t *xdo, Window window, unsigned int kind,
   if (XkbGetState(xdo->xdpy, XkbUseCoreKbd, &state) != Success
       || state.group >= XkbNumKbdGroups)
     return XDO_ERROR;
+  if (_xdo_get_key_modifiers(xdo, key.modmask, modifiers) != XDO_SUCCESS)
+    return XDO_ERROR;
 
   if (action != XDO_KEY_CLICK)
-    return _xdo_send_key_window_do(xdo, window, &key, action == XDO_KEY_DOWN, &modifier, state.group, delay);
+    return _xdo_send_key_window_do(xdo, window, &key, action == XDO_KEY_DOWN, modifiers, state.group, delay);
 
-  int status = _xdo_send_key_window_do(xdo, window, &key, True, &modifier, state.group, delay / 2);
+  int status = _xdo_send_key_window_do(xdo, window, &key, True, modifiers, state.group, delay / 2);
   if (status != XDO_SUCCESS)
     return status;
   /* Release the exact code just pressed without reacquiring a scratch resource. */
   key.needs_binding = 0;
-  return _xdo_send_key_window_do(xdo, window, &key, False, &modifier, state.group, delay / 2);
+  return _xdo_send_key_window_do(xdo, window, &key, False, modifiers, state.group, delay / 2);
 }
 
 /* Add by Lee Pumphret 2007-07-28
@@ -1322,10 +1320,7 @@ void _xdo_init_xkeyevent(const xdo_t *xdo, XKeyEvent *xk) {
 }
 
 void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
-                          int modstate, int is_press, int current_group, useconds_t delay) {
-  /* Properly ensure the modstate is set by finding a key
-   * that activates each bit in the modifier state */
-  int mask = modstate | key->modmask;
+                          const KeyCode *modifiers, int is_press, int current_group, useconds_t delay) {
   int use_xtest = 0;
 
   if (window == CURRENTWINDOW) {
@@ -1340,8 +1335,12 @@ void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
   if (use_xtest) {
     //printf("XTEST: Sending key %d %s\n", key->code, is_press ? "down" : "up");
     XkbLockGroup(xdo->xdpy, XkbUseCoreKbd, key->group);
-    if (mask)
-      _xdo_send_modifier(xdo, mask, is_press);
+    for (int i = ShiftMapIndex; i <= Mod5MapIndex; i++) {
+      if (modifiers[i] != 0) {
+        XTestFakeKeyEvent(xdo->xdpy, modifiers[i], is_press, CurrentTime);
+        XSync(xdo->xdpy, False);
+      }
+    }
     //printf("XTEST: Sending key %d %s %x %d\n", key->code, is_press ? "down" : "up", key->modmask, key->group);
     XTestFakeKeyEvent(xdo->xdpy, key->code, is_press, CurrentTime);
     XkbLockGroup(xdo->xdpy, XkbUseCoreKbd, current_group);
@@ -1353,7 +1352,7 @@ void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
     _xdo_init_xkeyevent(xdo, &xk);
     xk.window = window;
     xk.keycode = key->code;
-    xk.state = mask | (key->group << 13);
+    xk.state = key->modmask | (key->group << 13);
     xk.type = (is_press ? KeyPress : KeyRelease);
     XSendEvent(xdo->xdpy, xk.window, True, KeyPressMask, (XEvent *)&xk);
   }
@@ -1365,24 +1364,37 @@ void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
   }
 }
 
-void _xdo_send_modifier(const xdo_t *xdo, int modmask, int is_press) {
-  XModifierKeymap *modifiers = XGetModifierMapping(xdo->xdpy);
-  int mod_index, mod_key, keycode;
-
-  for (mod_index = ShiftMapIndex; mod_index <= Mod5MapIndex; mod_index++) {
-    if (modmask & (1 << mod_index)) {
-      for (mod_key = 0; mod_key < modifiers->max_keypermod; mod_key++) {
-        keycode = modifiers->modifiermap[mod_index * modifiers->max_keypermod + mod_key];
-        if (keycode) {
-          XTestFakeKeyEvent(xdo->xdpy, keycode, is_press, CurrentTime);
-          XSync(xdo->xdpy, False);
-          break;
-        }
-      }
+static int _xdo_get_key_modifiers(const xdo_t *xdo, int modmask, KeyCode *modifiers) {
+  if (modmask == 0)
+    return XDO_SUCCESS;
+  if ((modmask & ~0xff) != 0 || xdo->keycode_low < 8 || xdo->keycode_high > 255
+      || xdo->keycode_low > xdo->keycode_high)
+    return XDO_ERROR;
+  XModifierKeymap *map = XGetModifierMapping(xdo->xdpy);
+  if (map == NULL)
+    return XDO_ERROR;
+  int status = XDO_ERROR;
+  if (map->max_keypermod <= 0 || map->max_keypermod > 255 || map->modifiermap == NULL)
+    goto done;
+  for (int i = ShiftMapIndex; i <= Mod5MapIndex; i++) {
+    if (!(modmask & (1 << i)))
+      continue;
+    for (int j = 0; j < map->max_keypermod; j++) {
+      KeyCode code = map->modifiermap[i * map->max_keypermod + j];
+      if (code == 0)
+        continue;
+      if (code < xdo->keycode_low || code > xdo->keycode_high)
+        goto done;
+      modifiers[i] = code;
+      break;
     }
+    if (modifiers[i] == 0)
+      goto done;
   }
-
-  XFreeModifiermap(modifiers);
+  status = XDO_SUCCESS;
+done:
+  XFreeModifiermap(map);
+  return status;
 }
 
 unsigned int xdo_get_input_state(const xdo_t *xdo) {

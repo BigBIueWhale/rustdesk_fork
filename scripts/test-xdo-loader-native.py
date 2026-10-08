@@ -159,13 +159,13 @@ def build():
             elif variant == 'wrong-version':
                 path = source_dir / 'xdo_version.h'
                 text = path.read_text()
-                require(text.count('3.20160805.1-rustdesk7') == 1, 'fixture version source differs')
-                path.write_text(text.replace('3.20160805.1-rustdesk7', '3.20160805.1-rustdesk6'))
+                require(text.count('3.20160805.1-rustdesk8') == 1, 'fixture version source differs')
+                path.write_text(text.replace('3.20160805.1-rustdesk8', '3.20160805.1-rustdesk7'))
             else:
                 path = source_dir / 'xdo.c'
-                path.write_text('#define XkbGetState rd_fixture_xkb_get_state\n' + path.read_text()
-                                + '\nStatus rd_fixture_xkb_get_state(Display *display, unsigned device, XkbStatePtr state) {\n'
-                                + '  (void)display; (void)device; (void)state; return BadAccess;\n}\n')
+                path.write_text('#define XGetModifierMapping rd_fixture_x_get_modifier_mapping\n' + path.read_text()
+                                + '\nXModifierKeymap *rd_fixture_x_get_modifier_mapping(Display *display) {\n'
+                                + '  (void)display; return NULL;\n}\n')
         library = directory / 'libxdo.so.3'
         result = command(['/usr/bin/python3', '-I', '-S', str(source_dir / 'build.py'),
                           '--output', str(library)], 35)
@@ -280,7 +280,7 @@ def run(scenario):
                         'key_down=unavailable mouse=unavailable descriptors=retired'
                         if scenario not in ('complete', 'reject-key-down') else
                         f'XDO_ENIGO_COMPONENT=pass scenario={scenario} attempts=8 '
-                        f'key_down={"delivered" if scenario == "complete" else "native-state-error"} '
+                        f'key_down={"delivered" if scenario == "complete" else "native-modifier-error"} '
                         'pointer=actual descriptors=retired')
             require(result.stdout.splitlines() == [expected] and not result.stderr,
                     'complete Enigo/private-loader result differs')

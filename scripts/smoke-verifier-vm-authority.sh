@@ -4285,6 +4285,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'clipboard listener completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
+        'XDO_KEY_MODIFIER_NATIVE=pass cases=72 repeats=4 faults=6 actions=3 refused=72 recovery=72 events=288 modifier_queries=144 modifier_frees=132 click_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'complete native modifier admission, same-context recovery and paired snapshot retirement'
+    require_exact_fixed_receipt \
         'XDO_KEY_STATE_NATIVE=pass cases=108 repeats=4 faults=3 kinds=3 actions=3 refused=108 recovery=108 events=216 state_queries=216 click_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
         'checked native keyboard-state admission and recovery on each retained context'
     require_exact_fixed_receipt \

@@ -172,6 +172,7 @@ def scratch_keys(root, environment):
                     "-fno-omit-frame-pointer", "-Wl,--wrap=XGetKeyboardMapping", "-Wl,--wrap=XFree",
                     "-Wl,--wrap=XkbGetState", "-Wl,--wrap=XkbLockGroup",
                     "-Wl,--wrap=XTestFakeKeyEvent", "-Wl,--wrap=XChangeKeyboardMapping",
+                    "-Wl,--wrap=XGetModifierMapping", "-Wl,--wrap=XFreeModifiermap",
                     "-Wl,--wrap=malloc", "-Wl,--wrap=calloc", "-Wl,--wrap=realloc", "-Wl,--wrap=strdup",
                     str(scratch_source), str(native_source / "xdo.c"), str(native_source / "xdo_search.c"),
                     "-lX11", "-lXtst", "-lXinerama", "-lxkbcommon", "-o", str(scratch_binary)],

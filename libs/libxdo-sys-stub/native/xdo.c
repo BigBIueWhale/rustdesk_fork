@@ -1023,35 +1023,52 @@ int xdo_send_keysequence_window_list_do(const xdo_t *xdo, Window window, charcod
   int i = 0;
   int modstate = 0;
   int keymapchanged = 0;
+  int needs_binding = 0;
 
-  /* Find an unused keycode in case we need to bind unmapped keysyms */
   KeySym *keysyms = NULL;
   int keysyms_per_keycode = 0;
   int scratch_keycode = 0; /* Scratch space for temporary keycode bindings */
-  keysyms = XGetKeyboardMapping(xdo->xdpy, xdo->keycode_low,
-                                xdo->keycode_high - xdo->keycode_low,
-                                &keysyms_per_keycode);
 
-  /* Find a keycode that is unused for scratchspace */
-  for (i = xdo->keycode_low; i <= xdo->keycode_high; i++) {
-    int j = 0;
-    int key_is_empty = 1;
-    for (j = 0; j < keysyms_per_keycode; j++) {
-      /*char *symname;*/
-      int symindex = (i - xdo->keycode_low) * keysyms_per_keycode + j;
-      /*symname = XKeysymToString(keysyms[symindex]);*/
-      if (keysyms[symindex] != 0) {
-        key_is_empty = 0;
-      } else {
-        break;
-      }
-    }
-    if (key_is_empty) {
-      scratch_keycode = i;
+  for (i = 0; i < nkeys; i++) {
+    if (keys[i].needs_binding == 1) {
+      needs_binding = 1;
       break;
     }
   }
-  XFree(keysyms);
+
+  /* Acquire the complete scratch resource before sending any input. */
+  if (needs_binding) {
+    if (xdo->keycode_low < 8 || xdo->keycode_high > 255
+        || xdo->keycode_low > xdo->keycode_high)
+      return XDO_ERROR;
+    keysyms = XGetKeyboardMapping(xdo->xdpy, xdo->keycode_low,
+                                  xdo->keycode_high - xdo->keycode_low + 1,
+                                  &keysyms_per_keycode);
+    if (keysyms == NULL || keysyms_per_keycode <= 0) {
+      if (keysyms != NULL)
+        XFree(keysyms);
+      return XDO_ERROR;
+    }
+
+    for (i = xdo->keycode_low; i <= xdo->keycode_high; i++) {
+      int key_is_empty = 1;
+      for (int j = 0; j < keysyms_per_keycode; j++) {
+        size_t symindex = (size_t)(i - xdo->keycode_low) * keysyms_per_keycode + j;
+        if (keysyms[symindex] != NoSymbol) {
+          key_is_empty = 0;
+          break;
+        }
+      }
+      if (key_is_empty) {
+        scratch_keycode = i;
+        break;
+      }
+    }
+    if (scratch_keycode == 0) {
+      XFree(keysyms);
+      return XDO_ERROR;
+    }
+  }
 
   /* Allow passing NULL for modifier in case we don't care about knowing
    * the modifier map state after we finish */
@@ -1069,8 +1086,6 @@ int xdo_send_keysequence_window_list_do(const xdo_t *xdo, Window window, charcod
       keymapchanged = 1;
     }
 
-    //fprintf(stderr, "keyseqlist_do: Sending %lc %s (%d, mods %x)\n",
-            //keys[i].key, (pressed ? "down" : "up"), keys[i].code, *modifier);
     _xdo_send_key(xdo, window, &(keys[i]), *modifier, pressed, delay);
 
     if (keys[i].needs_binding == 1) {
@@ -1086,16 +1101,16 @@ int xdo_send_keysequence_window_list_do(const xdo_t *xdo, Window window, charcod
       *modifier &= ~(keys[i].modmask);
     }
   }
-
-
   if (keymapchanged) {
-    KeySym keysym_list[] = { 0 };
-    _xdo_debug(xdo, "Reverting scratch keycode (sym %lu to %d)",
-              keys[i].symbol, scratch_keycode);
-    XChangeKeyboardMapping(xdo->xdpy, scratch_keycode, 1, keysym_list, 1);
+    KeySym *original = keysyms + (size_t)(scratch_keycode - xdo->keycode_low)
+                                * keysyms_per_keycode;
+    _xdo_debug(xdo, "Reverting scratch keycode %d", scratch_keycode);
+    XChangeKeyboardMapping(xdo->xdpy, scratch_keycode, keysyms_per_keycode, original, 1);
+    XSync(xdo->xdpy, False);
   }
 
-  /* Necessary? */
+  if (keysyms != NULL)
+    XFree(keysyms);
   XFlush(xdo->xdpy);
   return XDO_SUCCESS;
 }

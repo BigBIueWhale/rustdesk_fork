@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-78a96701d53b6151d3294d4120efee0823918410293f0b14cd16574446b26ee3  requirements.html
+9c346f764ccfaabc099ea70f4b7b06d78c37150d4499c45c3c472b9ad8c06492  requirements.html
 ```
 
 ## Current Verdict
@@ -91,7 +91,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Repository/dependency structure (§16, R-R1) | The normative section now distinguishes security-modified in-tree source from exact-pinned external dependencies and the authenticated offline input closure. Its old tree snapshot, package counts, lockfile-only reproducibility assurance, upstream CI-job table, and claimed net-negative dependency delta were removed. Complete exact-current fork/provenance review, release builds, and independent reproduction remain OPEN. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Service/helper/process bootstrap authority (R-S11y–R-S11al; Appendix C #147–160) | The normative contracts retain empty helper environments, typed OS queries, selected-session X11 authority and bounded empty-Display recovery, kernel-parent-bound graphical/headless CM lifetime, no global process-table signal/restart authority, non-root-only UI, numeric principal selection, exact child/supervisor argument protocols, SCM-owned initialization, and fixed macOS principal/home/config/log ordering. Appendix findings map to required dispositions without implementation/gate/artifact-status narration; #154–160's original threat findings are retained. All operative MUST/MUST NOT markers, primary-source links, IDs, test mappings, and installed/native acceptance obligations remain. Appendix #152 agrees with R-S11cc's graphical-and-headless scope. No product, verifier, or executable test changed. Installed/native principals, failure/restart/resource behavior and release acceptance remain OPEN in the platform matrices. |
-| Native library provenance (R-S11c-10s/10u/10y/23/24) | Native runners and Dart FFI select the bundled core. `libs/libxdo-sys-stub/src/lib.rs` selects only `/usr/lib/rustdesk-fork/libxdo.so.3`, checks private version `3.20160805.1-rustdesk2` and the complete required ABI, and retains the owning library; no distro-candidate fallback remains. Named XDO native input/refusal and staged-provider results are recorded under Linux Enigo XDO below; they execute components with a partial common facade, not full Cargo/app/install. `scripts/verify-debian-package-authority.py` retains ELF identity, stack, interpreter, dynamic metadata and search-path validation. Exact-current installed loader/FFI identity, missing/invalid-code and ambient-search refusal, package validation, serving-principal behavior, races, resources and release acceptance remain OPEN. |
+| Native library provenance (R-S11c-10s/10u/10y/23/24) | Native runners and Dart FFI select the bundled core. `libs/libxdo-sys-stub/src/lib.rs` selects only `/usr/lib/rustdesk-fork/libxdo.so.3`, checks private version `3.20160805.1-rustdesk3` and the complete required ABI, and retains the owning library; no distro-candidate fallback remains. Named XDO native input/refusal and staged-provider results are recorded under Linux Enigo XDO below; they execute components with a partial common facade, not full Cargo/app/install. `scripts/verify-debian-package-authority.py` retains ELF identity, stack, interpreter, dynamic metadata and search-path validation. Exact-current installed loader/FFI identity, missing/invalid-code and ambient-search refusal, package validation, serving-principal behavior, races, resources and release acceptance remain OPEN. |
 | Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | Packaging, immutable-cache, extraction, replacement/recovery, and Kotlin strategy contracts remain requirement-owned. Fresh Android builds explicitly select Kotlin 2.0.21 in-process compilation and reject fallback or task-level overrides. Named APK `ca569086`/`7d49e481…8737c` passed build/install/render and one complete peer schedule, but later native presentation failed on that same artifact; the intermittent defect is OPEN. Diagnostic APK `035c9a20` has three complete corrected-observer peer schedules at `ec5544d6`, `f74470dd` and `eb7c8305`; its earlier alias-prone oracle result is not freshness proof. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound. They and the test-signed APKs do not establish complete canonical release inputs, stable signing, cold equality, sustained resource/latency bounds, network/device coverage, independent reproduction, or external review. See the Android runtime disposition below and the release-blocking matrix. |
 
 Completed documentation cleanup has no live progress log here. Requirement-specific current dispositions remain in
@@ -690,8 +690,8 @@ abort after 0/1/9-key positive controls in a zero-NIC VM (outer exit 1). Normal
 Enigo mouse calls use `CURRENTWINDOW`, so this is not an observed normal-path crash
 or an Android/Windows display-delay explanation. The unnecessary collection and
 its unused get/clear/restore APIs/declarations are removed; the existing native
-input-state mask and button delivery remain. Private provider and loader now agree
-on `3.20160805.1-rustdesk2`; the wrong-version fixture carries the old version stamp
+input-state mask and button delivery remain. That acceptance used private provider
+and loader version `3.20160805.1-rustdesk2`; its wrong-version fixture carried the old stamp
 to require refusal, not compatibility. Exact `b1d6f829c2750b082475639d05fd6bff2ab14b0c`
 (tree `4c0293e6f7fda4fd7e40bcb7139f121008a9ffd4`) passed
 `scripts/smoke-verifier-vm-authority.sh --x11-display-tests` in **120 VM seconds**
@@ -709,6 +709,27 @@ No added host endpoint; owned children joined and the exact scratch root/overlay
 is absent. This is private native component evidence with a partial common facade,
 not full Cargo/app/install, whole-resource acceptance or original-symptom causation;
 those broader claims remain OPEN.
+
+**Scratch-key query bounds and ownership corrected; native acceptance pending.**
+The live native key path queried `high-low` rows but searched through inclusive
+`high`, read `keys[nkeys]` during cleanup logging, and queried even mapped keys.
+Tests-first `b7340517` delivered its mapped-key control, then reproduced an actual
+AddressSanitizer heap-buffer read at `xdo.c:1043` with only the highest row unused
+in a zero-NIC VM (outer exit 1). The first fixture attempt failed during map setup
+and is not product evidence; the corrected fixture retains the actual normalized
+server map before calls. The helper now acquires the inclusive query only when
+binding is required, requires every slot of the selected row to be unused, refuses
+missing/invalid queries or an occupied map before input, retains/restores the full
+selected row, and frees the query on every returned path. Cleanup does not index
+past the caller's key array. Provider, loader and build require private version
+`3.20160805.1-rustdesk3`; the refusal fixture stamps current C as version 2, not an
+authentic old binary. The focused native fixture requires 20 repeated delivery,
+mapped-query bypass, query-failure and full-map-refusal cases, actual events,
+unchanged maps/physical keys, query/free census and sampled descriptor/task drain.
+Candidate execution remains pending. This is not an Android/Windows delay fix,
+whole-app/install result, native map-race/allocator closure or heap-leak/soak proof.
+The separate unused compound-parser allocation and unchecked native delivery/error
+paths remain OPEN.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,
@@ -1764,7 +1785,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `78a96701d53b6151d3294d4120efee0823918410293f0b14cd16574446b26ee3  requirements.html`.
+Current normative specification SHA-256: `9c346f764ccfaabc099ea70f4b7b06d78c37150d4499c45c3c472b9ad8c06492  requirements.html`.
 
 ### Current authority and source closure
 

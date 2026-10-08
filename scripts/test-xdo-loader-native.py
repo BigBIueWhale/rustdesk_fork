@@ -156,8 +156,8 @@ def build():
             elif variant == 'wrong-version':
                 path = source_dir / 'xdo_version.h'
                 text = path.read_text()
-                require(text.count('3.20160805.1-rustdesk2') == 1, 'fixture version source differs')
-                path.write_text(text.replace('3.20160805.1-rustdesk2', '3.20160805.1-rustdesk1'))
+                require(text.count('3.20160805.1-rustdesk3') == 1, 'fixture version source differs')
+                path.write_text(text.replace('3.20160805.1-rustdesk3', '3.20160805.1-rustdesk2'))
             else:
                 path = source_dir / 'xdo.c'
                 text = path.read_text()

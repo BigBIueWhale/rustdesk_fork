@@ -23,7 +23,9 @@ Local changes: trailing horizontal whitespace normalization; Debian's unused
 modmap/keymap ABI fields; request-map destruction uses XkbFreeKeyboard instead
 of XkbFreeClientMap, so the owned enclosing descriptor is freed as well;
 unused active-modifier collection/clear/restore APIs and mouse-event collection
-are removed. Mouse events retain the native input-state mask.
-The fixed fork version is 3.20160805.1-rustdesk2.
+are removed. Mouse events retain the native input-state mask. Scratch-key lookup
+queries the inclusive range only for unmapped symbols, requires a wholly unused
+row, retains and restores its full mapping, and retires the query on every path.
+The fixed fork version is 3.20160805.1-rustdesk3.
 The BSD redistribution notice is retained in COPYRIGHT and packaged with the
 library. Source provenance is not a claim that all native behavior is validated.

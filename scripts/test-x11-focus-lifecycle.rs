@@ -1,4 +1,4 @@
-//! Real established focus connection: paused server, retirement, same-owner retry.
+//! Real focus setup and established I/O: paused server, retirement, same-owner retry.
 extern crate self as hbb_common;
 mod platform {
     #[path = "/work/libs/hbb_common/src/platform/x11_display.rs"]
@@ -47,6 +47,38 @@ fn main() {
         assert_eq!(threads(), baseline_threads);
         marker(&format!("X11_FOCUS_ROUTE_CHILD variant={} result=refused descriptors=retired threads=retired",
                         if cfg!(historical) { "historical" } else { "corrected" }));
+        return;
+    }
+    if scenario == "constructor" {
+        assert!(!cfg!(historical));
+        let baseline = descriptors();
+        let baseline_threads = threads();
+        std::env::set_var("DISPLAY", ":98");
+        unsafe { focus_fixture_init(); focus_fixture_case(1); }
+        let mut focus = WindowFocus::default();
+        assert_eq!(descriptors(), baseline + 1);
+        assert_eq!(threads(), baseline_threads);
+        marker("X11_FOCUS_LIFECYCLE_READY established=false fixture=open");
+        token(b'C');
+        marker("X11_FOCUS_LIFECYCLE_ENTERING source=complete-module");
+        let began = Instant::now();
+        let result = focus.center();
+        let elapsed = began.elapsed();
+        assert!(matches!(result, Err(FocusError::Deadline)), "{result:?}");
+        assert!(elapsed >= Duration::from_millis(90) && elapsed < Duration::from_secs(1), "{elapsed:?}");
+        assert_eq!(descriptors(), baseline + 1);
+        assert_eq!(threads(), baseline_threads);
+        unsafe { focus_fixture_balanced(); }
+        marker(&format!("X11_FOCUS_WAIT_NATIVE variant=corrected scenario=constructor elapsed_ms={} result=retired descriptors=retired", elapsed.as_millis()));
+        token(b'R');
+        assert_eq!(focus.center().unwrap(), Some((164, 92)));
+        assert_eq!(descriptors(), baseline + 3);
+        assert_eq!(threads(), baseline_threads + 1);
+        drop(focus);
+        unsafe { focus_fixture_close(); focus_fixture_balanced(); }
+        assert_eq!(descriptors(), baseline);
+        assert_eq!(threads(), baseline_threads);
+        marker("X11_FOCUS_RECOVERY_NATIVE scenario=constructor owner=same connection=fresh geometry=server-real center=164,92 allocations=paired descriptors=retired");
         return;
     }
     assert!(matches!(scenario.as_str(), "stalled" | "dead" | "fragmented" | "backpressure"));

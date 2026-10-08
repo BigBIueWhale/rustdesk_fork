@@ -792,6 +792,18 @@ Constructor deadlines and separate Xlib/XDO routes remain OPEN; capture's local
 route correction is tracked above. A component route refusal is not installed-
 session/principal proof.
 
+The focus constructor calls `xcb_connect` before it obtains the descriptor or creates
+`SocketDeadline`; libxcb 1.15 performs setup write/read synchronously in that call.
+The VM-only focus lifecycle fixture now also requires a paused-server initial setup
+to return Deadline, retire its connection/worker, and recover through the same owner.
+This new regression has not executed yet; implementation and native acceptance remain OPEN.
+The [XCB descriptor-constructor contract](https://xcb.freedesktop.org/manual/group__XCB__Core__API.html#ga6a5bf0156ada8c8863461073adefc7e2)
+requires explicit authentication data: `NULL` selects an unauthenticated connection.
+Moving socket ownership earlier must preserve native Xauthority behavior, the selected
+local display/screen, and exact cancellation/drain; an abandoned constructor thread
+or an authentication-disabled fast refusal is not a correction. Existing established-
+connection evidence does not cover this initialization boundary.
+
 ## RESOLVED — TCP tunneling hardening (2026-07-13)
 
 PF-1 through PF-5 are closed for desktop port-forward and RDP mappings while the

@@ -849,9 +849,11 @@ def focus_lifecycle(root, environment):
                     def token(value):
                         require(native.stdin.write(value) == 1, "focus lifecycle token not delivered")
 
-                    require(line() == "X11_FOCUS_LIFECYCLE_READY established=true fixture=closed"
+                    ready = ("X11_FOCUS_LIFECYCLE_READY established=false fixture=open" if scenario == "constructor" else
+                             "X11_FOCUS_LIFECYCLE_READY established=true fixture=closed")
+                    require(line() == ready
                             and native.poll() is None and server.poll() is None, "focus established readiness differs")
-                    if scenario in ("stalled", "backpressure"):
+                    if scenario in ("stalled", "backpressure", "constructor"):
                         server.send_signal(signal.SIGSTOP)
                         stopped = True
                         until = time.monotonic() + 2
@@ -862,7 +864,7 @@ def focus_lifecycle(root, environment):
                                 break
                             require(time.monotonic() < until, "owned Xvfb pause unobserved")
                             time.sleep(0.005)
-                        token(b"B" if scenario == "backpressure" else b"T")
+                        token(b"B" if scenario == "backpressure" else b"C" if scenario == "constructor" else b"T")
                     elif scenario == "dead":
                         server.terminate()
                         server.wait(timeout=5)
@@ -872,6 +874,10 @@ def focus_lifecycle(root, environment):
                         relay.arm.set()
                         token(b"F")
                     require(line() == "X11_FOCUS_LIFECYCLE_ENTERING source=complete-module", "focus wait entry differs")
+                    if scenario == "constructor":
+                        # The exact production constructor must return before
+                        # this independently owned setup-stall observation ends.
+                        deadline = time.monotonic() + 2
                     if scenario == "backpressure":
                         pressure = line()
                         receipt = re.fullmatch(r"X11_FOCUS_BACKPRESSURE_READY bytes=([0-9]+) "
@@ -966,6 +972,8 @@ def focus_lifecycle(root, environment):
                     for _ in range(4):
                         for scenario in ("stalled", "dead", "fragmented", "backpressure"):
                             case(binary, variant, scenario)
+                    for _ in range(4):
+                        case(binary, variant, "constructor")
                 binary.unlink()
         finally:
             route_listener.close()

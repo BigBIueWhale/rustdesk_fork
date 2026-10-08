@@ -1821,6 +1821,14 @@ exceptions and stale geometry/cursor side effects are not covered; resource clea
 those paths remains OPEN. Earlier fixture-compilation and stale-summary failures, with
 their independent raw logs and exact cleanup receipts, remain in the audit journal.
 
+**First-image setup failure — native fault probe pending.** `ImageModel.update` owns
+new native images across canvas/cursor awaits but only disposes them on explicit refusal,
+not on an initialization exception. Four added native-image regressions inject view,
+scroll, edge and cursor setup errors, observe disposal before return and a useful
+successor; a fifth preserves the already-current image on refusal/identity no-op.
+Production is unchanged while establishing the negative result. Model inventory is
+23 suites/204 tests; no leak, symptom cause or correction is yet behaviorally claimed.
+
 The disposable runtime uses the pinned Emulator 37.1.11 and Android 14/API-34 x86_64 image in a
 networkless numeric-nonroot container inside the ordinary-user zero-NIC verifier VM. Source and APK
 inputs are read-only and digest-bound; host listeners are audited and every transient owner must join.

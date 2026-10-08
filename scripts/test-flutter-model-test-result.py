@@ -53,7 +53,7 @@ class ResultTests(unittest.TestCase):
             return result.parse_result(path, profile)
 
     def test_complete_profiles(self):
-        self.assertEqual(self.parse(self.events("models"), "models"), (23, 199))
+        self.assertEqual(self.parse(self.events("models"), "models"), (23, 204))
         self.assertEqual(self.parse(self.events("frame-queue"), "frame-queue"), (1, 24))
 
     def test_queue_inventory_is_exact(self):

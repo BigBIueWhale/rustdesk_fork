@@ -12,13 +12,19 @@ import 'package:uuid/uuid.dart';
 
 // Only the asynchronous geometry boundary is controlled. ImageModel, publication
 // ordering and raw-pixel conversion execute their production implementations.
+enum _GeometryFailure { view, scroll, edge, cursor }
+
 class _ImageSession implements FFI {
+  _ImageSession({_GeometryFailure? failFirstAt})
+      : canvasModel = _PendingImageGeometry(failFirstAt),
+        cursorModel = _ImageCursor(failFirstAt == _GeometryFailure.cursor);
+
   @override
   final SessionID sessionId = Uuid().v4obj();
   @override
-  final _PendingImageGeometry canvasModel = _PendingImageGeometry();
+  final _PendingImageGeometry canvasModel;
   @override
-  final _ImageCursor cursorModel = _ImageCursor();
+  final _ImageCursor cursorModel;
   @override
   late final _ImageTopology ffiModel = _ImageTopology(sessionId);
   @override
@@ -61,30 +67,46 @@ class _ImageTopology implements FfiModel {
 }
 
 class _PendingImageGeometry implements CanvasModel {
+  _PendingImageGeometry(this.failFirstAt);
+
+  final _GeometryFailure? failFirstAt;
   final started = List.generate(2, (_) => Completer<void>());
   final release = List.generate(2, (_) => Completer<void>());
   int calls = 0;
+  bool failed = false;
+
+  void failOnceAt(_GeometryFailure stage) {
+    if (!failed && failFirstAt == stage) {
+      failed = true;
+      throw StateError('injected first-image ${stage.name} failure');
+    }
+  }
 
   @override
   Future<void> updateViewStyle(
       {refreshMousePos = true,
       notify = true,
       SessionID? expectedSessionId,
-      int? expectedDisplayTopologyRevision}) {
+      int? expectedDisplayTopologyRevision}) async {
     final index = calls++;
     started[index].complete();
-    return release[index].future;
+    await release[index].future;
+    if (index == 0) failOnceAt(_GeometryFailure.view);
   }
 
   @override
   Future<void> updateScrollStyle(
       {SessionID? expectedSessionId,
-      int? expectedDisplayTopologyRevision}) async {}
+      int? expectedDisplayTopologyRevision}) async {
+    failOnceAt(_GeometryFailure.scroll);
+  }
 
   @override
   Future<void> initializeEdgeScrollEdgeThickness(
       {SessionID? expectedSessionId,
-      int? expectedDisplayTopologyRevision}) async {}
+      int? expectedDisplayTopologyRevision}) async {
+    failOnceAt(_GeometryFailure.edge);
+  }
 
   void releaseAll() {
     for (final pending in release) {
@@ -97,22 +119,40 @@ class _PendingImageGeometry implements CanvasModel {
 }
 
 class _ImageCursor implements CursorModel {
+  _ImageCursor(this.failFirstUpdate);
+
+  final bool failFirstUpdate;
+  bool failed = false;
+
   @override
-  void updateDisplayOrigin(double x, double y, {updateCursorPos = true}) {}
+  void updateDisplayOrigin(double x, double y, {updateCursorPos = true}) {
+    if (failFirstUpdate && !failed) {
+      failed = true;
+      throw StateError('injected first-image cursor failure');
+    }
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 Future<void> _observeImagePublications(
-    Future<void> Function(_ImageSession, List<Future<bool>>) observe) async {
-  final session = _ImageSession();
+    Future<void> Function(_ImageSession, List<Future<bool>>, List<ui.Image>)
+        observe,
+    {_GeometryFailure? failFirstAt}) async {
+  final session = _ImageSession(failFirstAt: failFirstAt);
   final publications = <Future<bool>>[];
   final images = <ui.Image>[];
+  final disposals = <ui.Image>[];
   final previousCreate = ui.Image.onCreate;
+  final previousDispose = ui.Image.onDispose;
   ui.Image.onCreate = (image) {
     previousCreate?.call(image);
     images.add(image);
+  };
+  ui.Image.onDispose = (image) {
+    previousDispose?.call(image);
+    disposals.add(image);
   };
   try {
     for (var publication = 1; publication <= 2; publication++) {
@@ -123,7 +163,7 @@ Future<void> _observeImagePublications(
     expect(images, hasLength(2));
     expect(session.imageModel.image, isNull);
     expect(session.imageModel.presentationPublication, isNull);
-    await observe(session, publications);
+    await observe(session, publications, images);
   } finally {
     try {
       session.canvasModel.releaseAll();
@@ -131,11 +171,16 @@ Future<void> _observeImagePublications(
       session.imageModel.clearImage();
       expect(images.every((image) => image.debugDisposed), isTrue);
       expect(images.map(_openHandles), everyElement(0));
+      expect(
+          images.map((image) =>
+              disposals.where((entry) => identical(entry, image)).length),
+          everyElement(1));
     } finally {
       for (final image in images) {
         if (!image.debugDisposed) image.dispose();
       }
       ui.Image.onCreate = previousCreate;
+      ui.Image.onDispose = previousDispose;
     }
   }
 }
@@ -240,7 +285,7 @@ void main() {
   testWidgets('a ready first image is not superseded by pending geometry',
       (tester) async {
     await tester.runAsync(() async {
-      await _observeImagePublications((session, pending) async {
+      await _observeImagePublications((session, pending, _) async {
         session.canvasModel.release[0].complete();
         expect(await pending[0], isTrue);
         final first = session.imageModel.image!;
@@ -259,7 +304,7 @@ void main() {
   testWidgets('a lower late image cannot replace a ready higher image',
       (tester) async {
     await tester.runAsync(() async {
-      await _observeImagePublications((session, pending) async {
+      await _observeImagePublications((session, pending, _) async {
         session.canvasModel.release[1].complete();
         expect(await pending[1], isTrue);
         final latest = session.imageModel.image!;
@@ -277,12 +322,59 @@ void main() {
   testWidgets('presentation retirement rejects images awaiting geometry',
       (tester) async {
     await tester.runAsync(() async {
-      await _observeImagePublications((session, pending) async {
+      await _observeImagePublications((session, pending, _) async {
         session.imageModel.retirePresentation();
         session.canvasModel.releaseAll();
         expect(await Future.wait(pending), [false, false]);
         expect(session.imageModel.image, isNull);
         expect(session.imageModel.presentationPublication, isNull);
+      });
+    });
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
+  for (final stage in _GeometryFailure.values) {
+    testWidgets('first-image ${stage.name} failure releases its image',
+        (tester) async {
+      await tester.runAsync(() async {
+        await _observeImagePublications((session, pending, images) async {
+          session.canvasModel.release[0].complete();
+          expect(await pending[0], isFalse);
+          expect(
+              session.canvasModel.failed || session.cursorModel.failed, isTrue);
+          expect(session.imageModel.image, isNull);
+          expect(session.imageModel.presentationPublication, isNull);
+          expect(images[0].debugDisposed, isTrue);
+          expect(_openHandles(images[0]), 0);
+
+          session.canvasModel.release[1].complete();
+          expect(await pending[1], isTrue);
+          expect(identical(session.imageModel.image, images[1]), isTrue);
+          expect(session.imageModel.presentationPublication, 2);
+          expect(images[1].debugDisposed, isFalse);
+        }, failFirstAt: stage);
+      });
+    }, timeout: const Timeout(Duration(seconds: 30)));
+  }
+
+  testWidgets('rejected updates cannot dispose the current image', (tester) async {
+    await tester.runAsync(() async {
+      await _observeImagePublications((session, pending, _) async {
+        session.canvasModel.release[1].complete();
+        expect(await pending[1], isTrue);
+        session.canvasModel.release[0].complete();
+        expect(await pending[0], isFalse);
+        final current = session.imageModel.image!;
+        expect(
+            await session.imageModel.update(current,
+                expectedPresentationRevision:
+                    session.imageModel.presentationRevision + 1),
+            isFalse);
+        expect(identical(session.imageModel.image, current), isTrue);
+        expect(current.debugDisposed, isFalse);
+        expect(_openHandles(current), 1);
+        expect(await session.imageModel.update(current), isTrue);
+        expect(current.debugDisposed, isFalse);
+        expect(session.imageModel.presentationPublication, 2);
       });
     });
   }, timeout: const Timeout(Duration(seconds: 30)));

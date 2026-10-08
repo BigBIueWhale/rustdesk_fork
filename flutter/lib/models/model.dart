@@ -2016,18 +2016,9 @@ class ImageModel with ChangeNotifier {
       image.dispose();
       return false;
     }
-    RgbaPublicationCommit<SessionID>? publicationCommit;
-    if (expectedRgbaPublication != null) {
-      publicationCommit =
-          _rgbaPublicationOrder.commit(expectedRgbaPublication);
-      if (publicationCommit == null) {
-        image.dispose();
-        return false;
-      }
-    }
     return update(image,
         expectedSessionId: expectedSessionId,
-        expectedRgbaCommit: publicationCommit,
+        expectedRgbaPublication: expectedRgbaPublication,
         expectedDisplayTopologyRevision: expectedDisplayTopologyRevision,
         expectedPresentationRevision: expectedPresentationRevision);
   }
@@ -2035,7 +2026,7 @@ class ImageModel with ChangeNotifier {
   Future<bool> update(ui.Image? image,
       {SessionID? expectedSessionId,
       bool allowClosedSession = false,
-      RgbaPublicationCommit<SessionID>? expectedRgbaCommit,
+      RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,
       int? expectedDisplayTopologyRevision,
       int? expectedPresentationRevision}) async {
     bool acceptsExpectedImage() =>
@@ -2044,8 +2035,9 @@ class ImageModel with ChangeNotifier {
                 ? parent.target?.sessionId == expectedSessionId
                 : parent.target?.isCurrentSession(expectedSessionId) ==
                     true)) &&
-        (expectedRgbaCommit == null ||
-            _rgbaPublicationOrder.isCurrent(expectedRgbaCommit)) &&
+        (expectedRgbaPublication == null ||
+            (image != null &&
+                _rgbaPublicationOrder.canComplete(expectedRgbaPublication))) &&
         (expectedPresentationRevision == null ||
             isCurrentPresentationRevision(expectedPresentationRevision)) &&
         (expectedDisplayTopologyRevision == null ||
@@ -2114,9 +2106,14 @@ class ImageModel with ChangeNotifier {
     if (identical(retiring, image)) {
       return true;
     }
+    if (expectedRgbaPublication != null &&
+        !_rgbaPublicationOrder.commit(expectedRgbaPublication)) {
+      image?.dispose();
+      return false;
+    }
     _image = image;
-    _presentationDisplay = expectedRgbaCommit?.display;
-    _presentationPublication = expectedRgbaCommit?.publication;
+    _presentationDisplay = expectedRgbaPublication?.display;
+    _presentationPublication = expectedRgbaPublication?.publication;
     retiring?.dispose();
     notifyListeners();
     return true;

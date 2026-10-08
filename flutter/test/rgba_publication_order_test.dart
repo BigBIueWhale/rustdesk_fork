@@ -10,12 +10,13 @@ void main() {
     expect(order.canComplete(first), isTrue);
     expect(order.canComplete(latest), isTrue);
 
-    final firstCommit = order.commit(first)!;
-    expect(order.isCurrent(firstCommit), isTrue);
+    expect(order.commit(first), isTrue);
+    expect(order.canComplete(first), isFalse);
+    expect(order.canComplete(latest), isTrue);
 
-    final latestCommit = order.commit(latest)!;
-    expect(order.isCurrent(firstCommit), isFalse);
-    expect(order.isCurrent(latestCommit), isTrue);
+    expect(order.commit(latest), isTrue);
+    expect(order.commit(first), isFalse);
+    expect(order.canComplete(latest), isFalse);
   });
 
   test('a higher completion permanently rejects a lower late result', () {
@@ -23,10 +24,10 @@ void main() {
     final first = order.admit('session', 0, 1)!;
     final latest = order.admit('session', 0, 2)!;
 
-    final latestCommit = order.commit(latest)!;
+    expect(order.commit(latest), isTrue);
 
-    expect(order.commit(first), isNull);
-    expect(order.isCurrent(latestCommit), isTrue);
+    expect(order.canComplete(first), isFalse);
+    expect(order.commit(first), isFalse);
   });
 
   test('a higher conversion failure does not starve a lower completion', () {
@@ -36,9 +37,7 @@ void main() {
 
     // No commit models an image conversion that returned no image.
     expect(order.canComplete(failedLatest), isTrue);
-    final firstCommit = order.commit(first)!;
-
-    expect(order.isCurrent(firstCommit), isTrue);
+    expect(order.commit(first), isTrue);
   });
 
   test('completion order remains global across displays', () {
@@ -46,43 +45,41 @@ void main() {
     final first = firstDisplay.admit('session', 0, 7)!;
     final second = firstDisplay.admit('session', 1, 8)!;
 
-    final firstCommit = firstDisplay.commit(first)!;
-    final secondCommit = firstDisplay.commit(second)!;
-
-    expect(firstDisplay.isCurrent(firstCommit), isFalse);
-    expect(firstDisplay.isCurrent(secondCommit), isTrue);
+    expect(firstDisplay.commit(first), isTrue);
+    expect(firstDisplay.commit(second), isTrue);
+    expect(firstDisplay.canComplete(first), isFalse);
 
     final secondDisplay = ExactRgbaPublicationOrder<String>();
     final delayedFirst = secondDisplay.admit('session', 0, 7)!;
     final earlySecond = secondDisplay.admit('session', 1, 8)!;
-    final earlySecondCommit = secondDisplay.commit(earlySecond)!;
+    expect(secondDisplay.commit(earlySecond), isTrue);
 
-    expect(secondDisplay.commit(delayedFirst), isNull);
-    expect(secondDisplay.isCurrent(earlySecondCommit), isTrue);
+    expect(secondDisplay.commit(delayedFirst), isFalse);
   });
 
   test('an exact new session invalidates predecessor work and may restart', () {
     final order = ExactRgbaPublicationOrder<String>();
     final predecessor = order.admit('predecessor', 0, 40)!;
-    final predecessorCommit = order.commit(predecessor)!;
+    expect(order.commit(predecessor), isTrue);
     final replacement = order.admit('replacement', 0, 1)!;
 
     expect(order.canComplete(predecessor), isFalse);
-    expect(order.isCurrent(predecessorCommit), isFalse);
+    expect(order.commit(predecessor), isFalse);
     expect(order.canComplete(replacement), isTrue);
-    expect(order.isCurrent(order.commit(replacement)!), isTrue);
+    expect(order.commit(replacement), isTrue);
   });
 
-  test('retirement invalidates admitted and committed work', () {
+  test('retirement invalidates admitted work and resets publication order', () {
     final order = ExactRgbaPublicationOrder<String>();
     final admitted = order.admit('session', 0, 1)!;
-    final committed = order.commit(admitted)!;
+    expect(order.commit(admitted), isTrue);
 
     order.retire();
 
     expect(order.canComplete(admitted), isFalse);
-    expect(order.isCurrent(committed), isFalse);
-    expect(order.commit(admitted), isNull);
+    expect(order.commit(admitted), isFalse);
+    final replacement = order.admit('session', 0, 1)!;
+    expect(order.commit(replacement), isTrue);
   });
 
   test('nonpositive and duplicate native publications are rejected', () {

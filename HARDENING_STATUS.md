@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-1274514d49c6ea537093751391814b28e8c2e82a4a93b495bac42cc63d09d9ef  requirements.html
+5f005b3847a4a6a05ec448d54fc1d98bf97083ae0452c809f9838c09a854ca89  requirements.html
 ```
 
 ## Current Verdict
@@ -1693,7 +1693,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `1274514d49c6ea537093751391814b28e8c2e82a4a93b495bac42cc63d09d9ef  requirements.html`.
+Current normative specification SHA-256: `5f005b3847a4a6a05ec448d54fc1d98bf97083ae0452c809f9838c09a854ca89  requirements.html`.
 
 ### Current authority and source closure
 
@@ -1795,18 +1795,23 @@ cannot close those boundaries or explain the reported Android/Windows display sy
 
 ### Android runtime — intermittent presentation remains OPEN
 
-**Software first-image publication — reproduction pending.** `ImageModel.decodeAndUpdate`
-currently commits publication order before `ImageModel.update` awaits initial canvas/cursor
-geometry. A higher converted image may therefore invalidate a useful predecessor before
-either is displayed. The focused image suite now drives the actual ImageModel and native
-raw-image conversion with independently held geometry completions: first-ready publication,
-higher-first/lower-late refusal, and presentation retirement with exact image-handle cleanup.
-Only that asynchronous boundary and session/topology fixture are controlled. No native result,
-product correction, Android/Windows causation or installed-app closure is claimed yet.
-First candidate `26d9419e` reached generated-bridge test compilation but the new fixture
-failed on its SessionID import, ambiguous Display import and inherited field-type inference.
-It establishes no behavioral reproduction. Those fixture types/imports and the guest/parser
-199-test inventory are corrected before retry; product bytes remain unchanged.
+**Software first-image publication — native component failure reproduced; correction unvalidated.**
+At tests-first `b0e0d47d`, the real ImageModel/native raw-image regression returned false for
+an earlier ready image solely because a higher converted image still awaited geometry.
+Exactly that test failed; the other 198 passed. Full 209,656-byte raw serial is
+`flutter-model-tests-run.MCPOUyqsbs.serial.log`, SHA256
+`d5b1c07c3c84dd057c6ae8d0d52344ca9bb512c8cf1f2a9c42d6e5fdf69e31e1`.
+The corrected source keeps conversion/setup provisional and commits only immediately before
+synchronous image replacement. Every asynchronous continuation still checks exact session,
+topology, presentation and admission generation plus already-published order. The obsolete
+early-commit revision token/API is removed; capacities, service lifetime and freshness limits
+are unchanged. The identical real-image fixture also covers higher-first/lower-late refusal,
+retirement and zero remaining image handles. Only session/topology and geometry completion
+are controlled; this is native Flutter component evidence, not a real window/APK/peer result.
+The early commit was introduced by `485487666` on September 29, so this cannot explain an
+older artifact without that code; default Windows textures use a different path. Corrected
+execution, original Android/Windows causation and installed/release/soak evidence remain OPEN.
+The earlier `26d9419e` attempt failed fixture compilation, not product behavior; the audit retains it.
 
 The disposable runtime uses the pinned Emulator 37.1.11 and Android 14/API-34 x86_64 image in a
 networkless numeric-nonroot container inside the ordinary-user zero-NIC verifier VM. Source and APK

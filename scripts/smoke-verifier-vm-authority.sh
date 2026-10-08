@@ -4285,8 +4285,8 @@ elif [ "$MODE" = x11-display-tests ]; then
         'X11_CURSOR_SNAPSHOT_NATIVE=pass source=complete-module old=two-query-call-shape serial_mismatches=32 current_snapshots=64 changes_between_phases=32 pixels=server-real second_query=absent query_calls=170 images=170 frees=170 live_image_peak=1 replacements=16 wrong_serial=refused repeated_consume=refused reset=discarded-and-idempotent retained_thread_exits=8 display_owners=9 descriptors=retired threads=joined scope=native-cursor-snapshot' \
         'one native cursor snapshot supplies paired serial and pixels across actual cursor changes, with bounded ownership and joined retirement'
     require_exact_fixed_receipt \
-        'X11_CONCURRENT_CONTEXTS_NATIVE=pass source=complete-context-module native_init=ready-at-main fixture_init=none workers=8 simultaneous_contexts=16 unique_owners=16 reuses_per_owner=64 queries=1024 server=real callbacks=paired live_resources=observed descriptors=retired threads=joined scope=pinned-native-runtime' \
-        'production X11/XDO thread-owned contexts run concurrently without fixture thread initialization and retire after join'
+        'X11_CONCURRENT_CONTEXTS_NATIVE=pass source=complete-context-module native_init=ready-at-main fixture_init=none workers=8 simultaneous_contexts=16 unique_owners=16 reuses_per_owner=64 queries=1024 server=real callbacks=paired live_resources=observed descriptors=retired threads=joined scope=private-product-provider' \
+        'production X11/XDO thread-owned contexts use the source-built private provider, run concurrently without fixture thread initialization and retire after join'
     require_exact_fixed_receipt \
         'X11_AUTH_NATIVE=pass source=complete-context-module components=xlib,xdo cases=4 valid=2 wrong=1 missing=1 contexts=4 refusals=4 queries=server-real callbacks=paired descriptors=retired threads=retired server=owned-and-joined credentials=private-fixture network=none scope=native-cookie-authentication' \
         'production X11/XDO constructors admit native cookie authentication and refuse wrong or missing credentials'

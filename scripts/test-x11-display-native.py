@@ -165,8 +165,7 @@ def scratch_keys(root, environment):
           "later_tests=fresh-display", flush=True)
 
 
-def enigo_route(root, environment, checksum, library):
-    providers, before_source = native_xdo(root, environment)
+def enigo_route(root, environment, checksum, library, providers, before_source):
     mouse_source = root / "scripts/test-xdo-mouse-modifiers.c"
     mouse_binary = Path("/build/xdo-mouse-modifiers")
     subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(mouse_source),
@@ -389,10 +388,12 @@ def enigo_layout(environment, binary, observer, probe, before_provider):
           flush=True)
 
 
-def thread_contexts(root, environment, checksum, library):
+def thread_contexts(root, environment, checksum, library, provider):
     owner = root / "src/platform/linux/native_context.rs"
     fixture = root / "scripts/test-x11-thread-context.rs"
     binary = Path("/build/thread-contexts")
+    provider_library = (provider / "libxdo.so.3").resolve(strict=True)
+    provider_digest = hashlib.sha256(provider_library.read_bytes()).hexdigest()
     source = (root / "src/platform/linux.rs").read_text()
     start, end = "pub fn get_cursor_pos()", "/// Clip cursor - Linux implementation is a no-op."
     require(source.count(start) == 1 and source.count(end) == 1,
@@ -416,10 +417,12 @@ def thread_contexts(root, environment, checksum, library):
         output.write(bounds_text[bounds_text.index(start):bounds_text.index(end)])
     subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2021", str(fixture),
                     "-o", str(binary), "--extern", f"log={library}",
+                    "-L", f"native={provider}", "-C", f"link-arg=-Wl,-rpath,{provider}",
                     "-C", "link-arg=-Wl,--wrap=XCloseDisplay", "-C", "link-arg=-Wl,--wrap=XOpenDisplay",
                     "-C", "link-arg=-Wl,--wrap=xdo_free", "-C", "link-arg=-Wl,--wrap=xdo_new",
                     "-C", "link-arg=-Wl,--wrap=XFixesGetCursorImage", "-C", "link-arg=-Wl,--wrap=XFree"],
-                   env=environment, check=True, timeout=30)
+                   env={**environment, "X11_CONTEXT_TEST_XDO": str(provider_library)},
+                   check=True, timeout=30)
     print("X11_THREAD_CONTEXT_BUILD "
           f"owner_sha256={hashlib.sha256(owner.read_bytes()).hexdigest()} "
           f"fixture_sha256={hashlib.sha256(fixture.read_bytes()).hexdigest()} "
@@ -433,6 +436,7 @@ def thread_contexts(root, environment, checksum, library):
           f"cursor_bounds_declarations_sha256={hashlib.sha256(bounds.read_bytes()).hexdigest()} "
           f"log_manifest_sha256={hashlib.sha256(checksum.read_bytes()).hexdigest()} "
           f"log_library_sha256={hashlib.sha256(library.read_bytes()).hexdigest()} "
+          f"provider_sha256={provider_digest} "
           f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()} "
           "scope=production-owner whole_app=unexecuted loader=direct-native-test", flush=True)
     result = subprocess.run([str(binary)], env=environment, capture_output=True,
@@ -442,17 +446,21 @@ def thread_contexts(root, environment, checksum, library):
                "constructor_refusals=32 selectors_refused=18 canonical_screens=3 "
                "callbacks=paired descriptors=retired scope=native-owner")
     lines = result.stdout.splitlines()
-    # The pinned libxdo reports each deliberate failed constructor on stderr.
+    # The private product provider reports each deliberate failed constructor on stderr.
     refusals = "Error: Can't open display: unix/:97.0\n" * 16
     require(result.returncode == 0 and result.stderr == refusals
             and len(result.stdout) + len(result.stderr) <= 4096
             and len(lines) == 3 and lines[-1] == receipt,
             f"native thread-context result differs: {result}")
-    for line, name in zip(lines[:2], ("libX11", "libxdo")):
-        library = line.removeprefix("X11_THREAD_CONTEXT_LOADED library=")
-        require(re.fullmatch(rf"/usr/lib/x86_64-linux-gnu/{name}\.so\.[0-9.]+", library),
-                "native context library identity differs")
-        print(f"{line} sha256={hashlib.sha256(Path(library).read_bytes()).hexdigest()}", flush=True)
+    loaded = [line.removeprefix("X11_THREAD_CONTEXT_LOADED library=") for line in lines[:2]]
+    require(len(set(loaded)) == 2 and str(provider_library) in loaded
+            and sum(bool(re.fullmatch(r"/usr/lib/x86_64-linux-gnu/libX11\.so\.[0-9.]+", path))
+                    for path in loaded) == 1, "native context library identity differs")
+    for line, path in zip(lines[:2], loaded):
+        digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        require(path != str(provider_library) or digest == provider_digest,
+                "loaded private XDO provider changed after compilation")
+        print(f"{line} sha256={digest}", flush=True)
     print(receipt, flush=True)
     require(not Path("/tmp/.X11-unix/X95").exists(), "platform route's Unix display is present")
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as route_listener:
@@ -471,7 +479,7 @@ def thread_contexts(root, environment, checksum, library):
     receipt = ("X11_CONCURRENT_CONTEXTS_NATIVE=pass source=complete-context-module "
                "native_init=ready-at-main fixture_init=none workers=8 simultaneous_contexts=16 "
                "unique_owners=16 reuses_per_owner=64 queries=1024 server=real callbacks=paired "
-               "live_resources=observed descriptors=retired threads=joined scope=pinned-native-runtime")
+               "live_resources=observed descriptors=retired threads=joined scope=private-product-provider")
     require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 4096
             and result.stdout.splitlines() == [receipt],
             f"native concurrent thread-context result differs: {result}")
@@ -1249,8 +1257,9 @@ def main():
             while not Path("/tmp/.X11-unix/X98").is_socket():
                 require(child.poll() is None and time.monotonic() < deadline, "Xvfb not ready")
                 time.sleep(0.05)
-            thread_contexts(root, environment, checksum, logging)
-            enigo_route(root, environment, checksum, logging)
+            providers, before_source = native_xdo(root, environment)
+            thread_contexts(root, environment, checksum, logging, providers["corrected"])
+            enigo_route(root, environment, checksum, logging, providers, before_source)
             window_focus(root, environment)
             binaries = {}
             for variant in ("historical", "corrected"):

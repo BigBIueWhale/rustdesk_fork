@@ -286,7 +286,7 @@ fn concurrent_contexts() {
     assert_eq!(retirements(), (WORKERS, WORKERS));
     assert_eq!(descriptors(), baseline);
     assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), tasks);
-    println!("X11_CONCURRENT_CONTEXTS_NATIVE=pass source=complete-context-module native_init=ready-at-main fixture_init=none workers=8 simultaneous_contexts=16 unique_owners=16 reuses_per_owner=64 queries=1024 server=real callbacks=paired live_resources=observed descriptors=retired threads=joined scope=pinned-native-runtime");
+    println!("X11_CONCURRENT_CONTEXTS_NATIVE=pass source=complete-context-module native_init=ready-at-main fixture_init=none workers=8 simultaneous_contexts=16 unique_owners=16 reuses_per_owner=64 queries=1024 server=real callbacks=paired live_resources=observed descriptors=retired threads=joined scope=private-product-provider");
 }
 
 #[repr(C)]
@@ -458,6 +458,12 @@ fn cursor_snapshots() {
 }
 
 fn main() {
+    let providers: BTreeSet<_> = std::fs::read_to_string("/proc/self/maps").unwrap().lines()
+        .filter_map(|line| line.split_whitespace().last())
+        .filter(|name| name.contains("/libxdo.so."))
+        .map(str::to_owned).collect();
+    assert_eq!(providers, BTreeSet::from([env!("X11_CONTEXT_TEST_XDO").to_owned()]),
+               "each native context child must map only the source-built private XDO provider");
     // libX11 1.8+ normally initializes threading in its ELF constructor.
     // Fail instead of hiding a missing initialization behind a fixture call.
     assert!(unsafe { !_Xglobal_lock.is_null() && _XInitDisplayLock_fn.is_some() },

@@ -1814,7 +1814,7 @@ prepared-native inner-loop work; VM timing excludes host preparation.
 
 ### Android runtime — intermittent presentation remains OPEN
 
-**Desktop canvas scrolling lifetime — component defect reproduced; corrected A/B pending.**
+**Desktop canvas scrolling lifetime — component A/B passed; installed behavior OPEN.**
 At tests-first `a4b4e800`, all twelve new cases fail and the prior 235 tests pass.
 Replacement retains two real provider tickers; disposal leaves a ticker and both
 controllers live. Retired replies mutate actual scroll positions, disposed callbacks
@@ -1829,19 +1829,27 @@ session/client, topology/presentation, registration and viewport authorize conti
 and ticker effects. Cancellation revokes those effects; clear/replacement dispose the
 old ticker and final disposal releases both controllers. Remote and camera page cleanup
 retire/join window work before removal, then dispose the canvas at State disposal;
-remote blur also cancels scrolling. Seven additional tests observe joined retirement,
+remote blur also cancels scrolling. The fallback implementation is private to the model.
+Seven additional tests observe joined retirement,
 stale/current transport failures, continuous fallback progress during new motion and
 synchronous listener retirement between the two scroll-controller effects, bump-generated
-motion before reply and waiting work reaching a scroll boundary. The first corrected
-checkpoint passed 250/252 tests; two queued-reply cases failed with a platform
-exception before the fixture recorded the next request.
-Their original one-request assertion is retained; async callback protocol validation is
-now plain validation, without Flutter guarded assertions inside platform delivery. The
-queue's post-reply expectation accounts for the accepted bump's required paired scroll,
-not supersession by its own generated motion. Final native rerun remains pending.
+motion before reply and waiting work reaching a scroll boundary. Original refusal,
+resource and one-request assertions remain; the queue's post-reply expectation preserves
+the accepted bump's required paired scroll. Intermediate fixture failures and correction
+details are retained in the audit journal, not upgraded into a native OS diagnosis.
+At final `74d766aa` (tree `7bb91135`), all23 suites/254 tests and three parser methods
+passed in the source-bound zero-NIC VM, including all19 new cases and useful fresh controls.
+Full67,220-byte raw `flutter-model-tests-run.wUXXWYdHP9.serial.log`, SHA256
+`ec0803c4d91794607e9e34a35ded351a1f980f35a06192cdcb96979e28f1456a`.
+Source/input, guest nonroot/network-none/read-only-root/caps-none, listener and joined
+cleanup checks passed in299 VM seconds, excluding host preparation. All three private
+roots/disks are retired; no owned job remains. This observes actual Flutter tickers,
+controllers, scroll positions and frames with controlled metadata/layout/platform reply,
+not a target OS window or installed app. Prepared fast narrow verification remains OPEN.
 No native request is detached or treated as cancelled merely because its effects are
 refused. Already-issued native mouse movement, native reply/cancellation/engine finality,
-installed desktop teardown and viewport integration remain OPEN. This is not installed
+installed desktop teardown, viewport integration, fallback idle-at-boundary behavior and
+sustained resource/performance evidence remain OPEN. This is not installed
 Windows evidence or a diagnosis of the original display-delay symptom.
 
 **Mobile keyboard geometry lifetime — component A/B passed; app-level symptoms OPEN.**

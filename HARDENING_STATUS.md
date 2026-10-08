@@ -91,7 +91,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Repository/dependency structure (§16, R-R1) | The normative section now distinguishes security-modified in-tree source from exact-pinned external dependencies and the authenticated offline input closure. Its old tree snapshot, package counts, lockfile-only reproducibility assurance, upstream CI-job table, and claimed net-negative dependency delta were removed. Complete exact-current fork/provenance review, release builds, and independent reproduction remain OPEN. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Service/helper/process bootstrap authority (R-S11y–R-S11al; Appendix C #147–160) | The normative contracts retain empty helper environments, typed OS queries, selected-session X11 authority and bounded empty-Display recovery, kernel-parent-bound graphical/headless CM lifetime, no global process-table signal/restart authority, non-root-only UI, numeric principal selection, exact child/supervisor argument protocols, SCM-owned initialization, and fixed macOS principal/home/config/log ordering. Appendix findings map to required dispositions without implementation/gate/artifact-status narration; #154–160's original threat findings are retained. All operative MUST/MUST NOT markers, primary-source links, IDs, test mappings, and installed/native acceptance obligations remain. Appendix #152 agrees with R-S11cc's graphical-and-headless scope. No product, verifier, or executable test changed. Installed/native principals, failure/restart/resource behavior and release acceptance remain OPEN in the platform matrices. |
-| Native library provenance (R-S11c-10s/10u/10y/23/24) | Native runners and Dart FFI select the bundled core. `libs/libxdo-sys-stub/src/lib.rs` selects only `/usr/lib/rustdesk-fork/libxdo.so.3`, checks private version `3.20160805.1-rustdesk3` and the complete required ABI, and retains the owning library; no distro-candidate fallback remains. Named XDO native input/refusal and staged-provider results are recorded under Linux Enigo XDO below; they execute components with a partial common facade, not full Cargo/app/install. `scripts/verify-debian-package-authority.py` retains ELF identity, stack, interpreter, dynamic metadata and search-path validation. Exact-current installed loader/FFI identity, missing/invalid-code and ambient-search refusal, package validation, serving-principal behavior, races, resources and release acceptance remain OPEN. |
+| Native library provenance (R-S11c-10s/10u/10y/23/24) | Native runners and Dart FFI select the bundled core. `libs/libxdo-sys-stub/src/lib.rs` selects only `/usr/lib/rustdesk-fork/libxdo.so.3`, checks private version `3.20160805.1-rustdesk4` and the complete required ABI, and retains the owning library; no distro-candidate fallback remains. Named XDO native input/refusal and staged-provider results are recorded under Linux Enigo XDO below; they execute components with a partial common facade, not full Cargo/app/install. `scripts/verify-debian-package-authority.py` retains ELF identity, stack, interpreter, dynamic metadata and search-path validation. Exact-current installed loader/FFI identity, missing/invalid-code and ambient-search refusal, package validation, serving-principal behavior, races, resources and release acceptance remain OPEN. |
 | Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | Packaging, immutable-cache, extraction, replacement/recovery, and Kotlin strategy contracts remain requirement-owned. Fresh Android builds explicitly select Kotlin 2.0.21 in-process compilation and reject fallback or task-level overrides. Named APK `ca569086`/`7d49e481…8737c` passed build/install/render and one complete peer schedule, but later native presentation failed on that same artifact; the intermittent defect is OPEN. Diagnostic APK `035c9a20` has three complete corrected-observer peer schedules at `ec5544d6`, `f74470dd` and `eb7c8305`; its earlier alias-prone oracle result is not freshness proof. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound. They and the test-signed APKs do not establish complete canonical release inputs, stable signing, cold equality, sustained resource/latency bounds, network/device coverage, independent reproduction, or external review. See the Android runtime disposition below and the release-blocking matrix. |
 
 Completed documentation cleanup has no live progress log here. Requirement-specific current dispositions remain in
@@ -722,7 +722,7 @@ binding is required, requires every slot of the selected row to be unused, refus
 missing/invalid queries or an occupied map before input, retains/restores the full
 selected row, and frees the query on every returned path. Cleanup does not index
 past the caller's key array. That acceptance used private provider/loader/build version
-`3.20160805.1-rustdesk3`; the refusal fixture stamps current C as version 2, not an
+`3.20160805.1-rustdesk3`; its refusal fixture stamped that run's corrected C as version 2, not an
 authentic old binary. The focused native fixture requires 20 repeated delivery,
 mapped-query bypass, query-failure and full-map-refusal cases, actual events,
 unchanged maps/physical keys, query/free census and sampled descriptor/task drain.
@@ -791,7 +791,7 @@ does not explain the retained distro-provider abort, prove a cross-version/threa
 or heap/soak property, or establish installed/whole-app acceptance. Production code
 was unchanged in that transaction.
 
-**Constructor map/ownership correction; native acceptance pending.**
+**Constructor map/ownership correction; native component accepted.**
 The private constructor checks context and character allocations and validates one
 XKB client-map snapshot before counting its group/type levels. The same snapshot
 supplies symbols and real-modifier masks; core-width sizing, repeated live-symbol
@@ -801,10 +801,30 @@ transfers only on success, matching Enigo's retained display guard; `xdo_new` cl
 its own display after a refused inner construction. Public struct layout is retained.
 Provider, helper and protected loader require private version
 `3.20160805.1-rustdesk4`; the wrong-version fixture stamps current corrected C as
-version 3. The new native fixture requires allocation/map refusal and both caller
-ownership modes plus internal display ownership, real key events, exact native
-allocation retirement and descriptor/task drain. These changes are not yet native
-accepted and do not explain the earlier distro-provider allocator abort.
+version 3. Exact candidate `ae6aa3ff14a4661924edafa4dde2875b34017914`
+(tree `cdb1cc6f0fcca10f91005d9b25789cbd567d797a`) passed the zero-NIC VM,
+network-none nonroot container transaction with outer status 0 in 135 VM seconds.
+The complete corrected C constructor ran under AddressSanitizer: 21 controlled
+allocation/returned-map faults across internal-open, caller-transfer and borrowed
+display paths, four rounds, 264 cases, 252 refusals and 12 accepted contexts. The
+accepted contexts delivered 24 real key events; refused and borrowed caller displays
+remained usable, context/character allocations and XKB descriptors retired exactly
+once, and sampled descriptor/task counts returned to baseline. The fixture restores
+Xlib's real allocation metadata before native destruction; corrupt allocator metadata,
+malformed wire decoding, native fatal-error paths and whole-heap/leak bounds are
+unproved. The production-helper provider SHA-256 is
+`4b15c01318a68c64279ed4f3ff43fe1967a5c27997950bcdaab4adf7a6edaf76`.
+Existing loader/Enigo, scratch, native input/layout, focus, capture and current-private
+eight-worker/16-context/1,024-query checks passed in the same transaction. That single
+concurrency schedule does not explain the earlier distro-provider allocator abort.
+Retained raw `x11-display-tests-run.UA64IiSNaf.serial.log` under
+`.harness-state/verifier-vm/` is 143,002 bytes, SHA-256
+`3c02acecb7726766fb4bde029f231c5a2b7a3d8da1888e82c7d8dbe8f8107930`;
+the nonindependent assistant-observed outer record is
+`evidence/x11-constructor-run.UA64IiSNaf.outer.receipt` in that same directory.
+The host endpoint audit reported no additions and cleanup joined; the exact run root
+and overlay are absent. This accepts the named constructor component behavior;
+installed/whole-app, timing, races, heap/soak and release acceptance remain OPEN.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,

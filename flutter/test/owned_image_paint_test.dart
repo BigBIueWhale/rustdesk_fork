@@ -591,6 +591,20 @@ void main() {
                 Duration.zero, kRemoteViewStyleCustom,
                 owner: canvas.captureUpdateOwner()),
             isTrue);
+
+        final order = ExactRgbaPublicationOrder<SessionID>();
+        final earlier = order.admit(session.sessionId, 0, 1)!;
+        final earlierOwner = canvas.captureUpdateOwner(
+            acceptsUpdate: () => order.canComplete(earlier));
+        final first = canvas.updateViewStyle(owner: earlierOwner);
+        final higher = order.admit(session.sessionId, 0, 2)!;
+        final higherOwner = canvas.captureUpdateOwner(
+            acceptsUpdate: () => order.canComplete(higher));
+        final second = canvas.updateViewStyle(owner: higherOwner);
+        expect(await first, isTrue);
+        expect(order.commit(earlier), isTrue);
+        expect(await second, isTrue);
+        expect(order.commit(higher), isTrue);
       } finally {
         canvas.dispose();
         session.imageModel.dispose();
@@ -598,6 +612,57 @@ void main() {
       }
     });
   }, timeout: const Timeout(Duration(seconds: 30)));
+
+  for (final retirement in ['clear', 'dispose', 'replacement']) {
+    testWidgets('deferred canvas scroll $retirement cancels and joins its timer',
+        (tester) async {
+      final preferences =
+          _PendingCanvasPreferences(_CanvasPreferenceStage.scroll);
+      preferences.release.complete();
+      final session = _CanvasPreferenceSession(preferences);
+      final canvas = session.canvasModel;
+      Future<bool>? pending;
+      var disposed = false;
+      try {
+        expect(await _readCanvasPreference(
+            session, _CanvasPreferenceStage.scroll), isTrue);
+        pending = canvas.tryUpdateScrollStyle(
+            const Duration(seconds: 30), kRemoteViewStyleCustom,
+            owner: canvas.captureUpdateOwner());
+        Future<bool>? replacement;
+        if (retirement == 'clear') {
+          canvas.clear();
+        } else if (retirement == 'dispose') {
+          canvas.dispose();
+          disposed = true;
+        } else {
+          replacement = canvas.tryUpdateScrollStyle(
+              const Duration(milliseconds: 1), kRemoteViewStyleCustom,
+              owner: canvas.captureUpdateOwner());
+        }
+        canvas.setScrollPercent(0.6, 0.7);
+        await tester.pump(const Duration(milliseconds: 1));
+        expect(await pending, isFalse);
+        if (replacement != null) {
+          expect(await replacement, isTrue);
+        } else {
+          expect([canvas.scrollX, canvas.scrollY], [0.6, 0.7]);
+        }
+        // Advance the controlled clock past the cancelled timer's deadline.
+        // Merely completing its Future while leaving it armed would fail here.
+        await tester.pump(const Duration(seconds: 30));
+        expect(tester.takeException(), isNull);
+      } finally {
+        if (!disposed) {
+          canvas.clear();
+          canvas.dispose();
+        }
+        if (pending != null) await pending;
+        session.imageModel.dispose();
+        session.cursorModel.dispose();
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
+  }
 
   testWidgets('disposed canvas refuses pending reads and new update owners',
       (tester) async {

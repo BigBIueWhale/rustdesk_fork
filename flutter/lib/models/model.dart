@@ -1662,9 +1662,15 @@ class FfiModel with ChangeNotifier {
       final owner = canvas.captureUpdateOwner(
           expectedSessionId: sessionId,
           expectedDisplayTopologyRevision: topologyRevision);
-      if (!await canvas.tryUpdateScrollStyle(
-          Duration(milliseconds: 300), null,
-          owner: owner)) return;
+      // Canvas owns and cancels this deferred layout adjustment. Do not make
+      // frame checkpoints wait behind its layout delay in the session queue.
+      unawaited(canvas
+          .tryUpdateScrollStyle(Duration(milliseconds: 300), null, owner: owner)
+          .catchError((Object error, StackTrace stack) {
+        debugPrint('Deferred canvas scrolling failed: $error');
+        debugPrintStack(stackTrace: stack);
+        return false;
+      }));
       if (!isCurrentDisplayTopology(sessionId, topologyRevision)) return;
     }
     notifyListeners();
@@ -2426,6 +2432,8 @@ class CanvasModel with ChangeNotifier {
   final CanvasPreferences _preferences;
   Object _lifetime = Object();
   bool _disposed = false;
+  Timer? _scrollStyleTimer;
+  Completer<bool>? _scrollStyleCompletion;
 
   CanvasModel(this.parent, {CanvasPreferences? preferences})
       : _preferences = preferences ?? const _SessionCanvasPreferences();
@@ -2640,10 +2648,41 @@ class CanvasModel with ChangeNotifier {
 
     _resetScroll();
 
-    await Future<void>.delayed(duration);
-    if (!_acceptsOwner(owner)) return false;
-    updateScrollPercent();
-    return _acceptsOwner(owner);
+    if (duration <= Duration.zero) {
+      // Frame initialization joins its own next-turn layout, without a newer
+      // frame admission cancelling an earlier useful initializer.
+      await Future<void>.delayed(Duration.zero);
+      if (!_acceptsOwner(owner)) return false;
+      updateScrollPercent();
+      return _acceptsOwner(owner);
+    }
+
+    _cancelDeferredScrollStyle();
+    final completion = Completer<bool>();
+    _scrollStyleCompletion = completion;
+    _scrollStyleTimer = Timer(duration, () {
+      _scrollStyleTimer = null;
+      _scrollStyleCompletion = null;
+      try {
+        if (!_acceptsOwner(owner)) {
+          completion.complete(false);
+          return;
+        }
+        updateScrollPercent();
+        completion.complete(_acceptsOwner(owner));
+      } catch (error, stack) {
+        completion.completeError(error, stack);
+      }
+    });
+    return completion.future;
+  }
+
+  void _cancelDeferredScrollStyle() {
+    _scrollStyleTimer?.cancel();
+    _scrollStyleTimer = null;
+    final completion = _scrollStyleCompletion;
+    _scrollStyleCompletion = null;
+    completion?.complete(false);
   }
 
   Future<bool> updateScrollStyle({required CanvasUpdateOwner? owner}) async {
@@ -2948,6 +2987,7 @@ class CanvasModel with ChangeNotifier {
 
   clear() {
     _lifetime = Object();
+    _cancelDeferredScrollStyle();
     _x = 0;
     _y = 0;
     _scale = 1.0;
@@ -2974,6 +3014,7 @@ class CanvasModel with ChangeNotifier {
   void dispose() {
     _disposed = true;
     _lifetime = Object();
+    _cancelDeferredScrollStyle();
     super.dispose();
   }
 

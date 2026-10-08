@@ -1824,11 +1824,19 @@ changed mode/percentages and notified, and edge reads changed thickness. Full ra
 The optional topology-only mutator API is replaced by a required captured owner for the
 exact canvas lifetime, session/client, topology and presentation. Image setup adds its
 existing live image/admission/publication predicate. Callers retain the owner across
-awaits; delayed scrolling is joined and checked rather than detached. Clear/dispose
-invalidate captured owners. The read-only preference adapter retains production queries,
+awaits; next-turn scrolling is joined and checked. The longer layout adjustment is one
+canvas-owned cancellable timer, with explicit completion/error observation rather than
+holding the session event queue for 300 ms. Clear/dispose invalidate captured owners and
+cancel/join that timer; replacing the deferred adjustment cancels its predecessor. The
+read-only preference adapter retains production queries,
 without a global binding replacement or alternate runtime mode. The original six refusal
 assertions are unchanged; five added tests cover committed-higher refusal, useful fresh
-controls, delayed scroll and disposed models. Corrected native acceptance is pending.
+controls, delayed scroll and disposed models. At `945c2138` (tree `f08972b9`), all 23
+suites/218 tests and three parser methods passed in the zero-NIC VM. Full raw
+`flutter-model-tests-run.DPO9terj2J.serial.log`, SHA256
+`8d7854c30275bc26262ed55766dcd1ea21d14b7c65238c62f642d611f3a6eaf0`.
+The subsequent bounded/nonblocking timer correction adds three actual cancellation/join
+tests and a two-useful-frame next-turn control; its native acceptance remains pending.
 This shared Flutter path is not Android-only; original Android/Windows causation, UI
 same-generation preference ordering, viewport-resize races, other canvas timers/controllers,
 default texture/window/device behavior and sustained resource/performance evidence remain OPEN.

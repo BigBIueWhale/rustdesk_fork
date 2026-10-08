@@ -1187,6 +1187,8 @@ android_frame_input_inventory() {
             eface4bae11ea2b6ba81ed2b07f0705d076456e4a61e2ca7409bb5649ce0c894
         if [ "$X11_CLIPBOARD_ONLY" -eq 0 ]; then
             files+=("$SCRIPT_DIR/test-xdo-loader-native.py" "$SCRIPT_DIR/test-xdo-loader.rs"
+                "$SCRIPT_DIR/test-xdo-enigo.rs" "$REPO_ROOT/libs/enigo/src/linux/mod.rs"
+                "$REPO_ROOT/libs/enigo/src/linux/nix_impl.rs" "$REPO_ROOT/libs/hbb_common/src/platform/linux.rs"
                 "$SCRIPT_DIR/fixtures/xdo-loader-common.rs" "$SCRIPT_DIR/xdo-loader-inputs.txt"
                 "$REPO_ROOT/libs/libxdo-sys-stub/src/lib.rs" "$REPO_ROOT/Cargo.lock")
             local loader_package loader_expected loader_extra
@@ -3526,6 +3528,10 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             lifecycle_payload_grafts+=(
                 "repo/scripts/test-xdo-loader-native.py=$SCRIPT_DIR/test-xdo-loader-native.py"
                 "repo/scripts/test-xdo-loader.rs=$SCRIPT_DIR/test-xdo-loader.rs"
+                "repo/scripts/test-xdo-enigo.rs=$SCRIPT_DIR/test-xdo-enigo.rs"
+                "repo/libs/enigo/src/linux/mod.rs=$REPO_ROOT/libs/enigo/src/linux/mod.rs"
+                "repo/libs/enigo/src/linux/nix_impl.rs=$REPO_ROOT/libs/enigo/src/linux/nix_impl.rs"
+                "repo/libs/hbb_common/src/platform/linux.rs=$REPO_ROOT/libs/hbb_common/src/platform/linux.rs"
                 "repo/scripts/fixtures/xdo-loader-common.rs=$SCRIPT_DIR/fixtures/xdo-loader-common.rs"
                 "repo/scripts/xdo-loader-inputs.txt=$SCRIPT_DIR/xdo-loader-inputs.txt"
                 "repo/libs/libxdo-sys-stub/src/lib.rs=$REPO_ROOT/libs/libxdo-sys-stub/src/lib.rs"

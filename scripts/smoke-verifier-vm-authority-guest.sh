@@ -948,7 +948,7 @@ run_android_frame_tests() {
     local -a mounts command phases=(prepare native)
     local loader_installed=$ROOT/xdo-loader-installed loader_variant loader_source loader_digest
     if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ]; then
-        phases=(prepare loader-build loader-complete loader-missing-mouse-up loader-wrong-version loader-writable loader-absent native)
+        phases=(prepare loader-build loader-complete loader-missing-mouse-up loader-wrong-version loader-writable loader-absent loader-reject-key-down native)
     fi
     load_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -977,7 +977,7 @@ run_android_frame_tests() {
         elif [ "$phase" = loader-complete ]; then
             # Preparation inside this disposable guest only. Never execute the provider as root.
             install -d -o 0 -g 0 -m 0755 "$loader_installed"
-            for loader_variant in complete missing-mouse-up wrong-version writable absent; do
+            for loader_variant in complete missing-mouse-up wrong-version writable absent reject-key-down; do
                 install -d -o 0 -g 0 -m 0755 "$loader_installed/$loader_variant"
                 [ "$loader_variant" != absent ] || continue
                 loader_source="$work/loader-build/$loader_variant/libxdo.so.3"
@@ -1047,7 +1047,7 @@ run_android_frame_tests() {
         [ "$(frame_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
             || fail 'Android frame-test container did not finish cleanly'
         if [ "$phase" = loader-build ]; then
-            [ "$(grep -Fxc 'XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=3' "$output")" -eq 1 ] \
+            [ "$(grep -Fxc 'XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=4' "$output")" -eq 1 ] \
                 || fail 'XDO loader build result is absent or duplicated'
         elif [[ "$phase" == loader-* ]]; then
             [ "$(grep -Fxc "XDO_LOADER_NATIVE=pass scenario=${phase#loader-} source=production network=none uid=4000 cleanup=joined" "$output")" -eq 1 ] \

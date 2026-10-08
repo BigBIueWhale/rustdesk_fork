@@ -99,6 +99,22 @@ def build():
     spec.loader.exec_module(native)
     _, logging = native.logging_library(ROOT, ENV)
     logging = Path(shutil.move(str(logging), BUILD / 'liblog.rlib'))
+    policy_source = ROOT / 'libs/hbb_common/src/platform/linux.rs'
+    policy = policy_source.read_text()
+    declarations = []
+    for name in ('DISPLAY_SERVER_X11', 'DISPLAY_SERVER_WAYLAND'):
+        prefix = f'pub const {name}:'
+        lines = [line for line in policy.splitlines() if line.startswith(prefix)]
+        require(len(lines) == 1, f'production display constant differs: {name}')
+        declarations.append(lines[0])
+    for name in ('get_display_server', 'is_desktop_wayland', 'is_x11_or_headless'):
+        prefix = f'pub fn {name}('
+        require(policy.count(prefix) == 1, f'production display function differs: {name}')
+        start = policy.index(prefix)
+        end = policy.index('\n}\n', start) + 2
+        declarations.append(policy[start:end])
+    selected_policy = BUILD / 'x11-policy.rs'
+    selected_policy.write_text('\n'.join(declarations) + '\n')
     common = compile_crate('hbb_common', ROOT / 'scripts/fixtures/xdo-loader-common.rs', 2021,
                            ['--extern', f'libc={libc}', '--extern', f'libloading={loading}',
                             '--extern', f'x11={x11}', '--extern', f'log={logging}'])
@@ -111,8 +127,20 @@ def build():
     print(f'XDO_LOADER_BUILD=pass source=complete-production-module source_sha256={sha(source)} '
           f'binary_sha256={sha(binary)} common=reexports-only dependencies=real '
           'x11_link=explicit libc_build_script=actual full_app=uncompiled', flush=True)
+    enigo = compile_crate('enigo', ROOT / 'libs/enigo/src/lib.rs', 2018,
+                          ['--extern', f'hbb_common={common}', '--extern', f'libxdo_sys={loader}',
+                           '--extern', f'log={logging}'])
+    enigo_binary = BUILD / 'test-xdo-enigo'
+    command([RUSTC, '--edition=2021', '-L', f'dependency={BUILD}',
+             '--extern', f'hbb_common={common}', '--extern', f'enigo={enigo}',
+             '-l', 'X11', str(ROOT / 'scripts/test-xdo-enigo.rs'), '-o', str(enigo_binary)])
+    print(f'XDO_ENIGO_BUILD=pass crate=complete-linux-source binary_sha256={sha(enigo_binary)} '
+          f'backend_sha256={sha(ROOT / "libs/enigo/src/linux/xdo.rs")} '
+          f'parent_sha256={sha(ROOT / "libs/enigo/src/linux/nix_impl.rs")} '
+          f'policy_parent_sha256={sha(policy_source)} selected_policy_sha256={sha(selected_policy)} '
+          'policy=production-source-extracted common=partial cargo=unexecuted', flush=True)
     native_source = ROOT / 'libs/libxdo-sys-stub/native'
-    for variant in ('complete', 'missing-mouse-up', 'wrong-version'):
+    for variant in ('complete', 'missing-mouse-up', 'wrong-version', 'reject-key-down'):
         source_dir = native_source
         directory = BUILD / variant
         directory.mkdir(mode=0o700)
@@ -122,11 +150,17 @@ def build():
             if variant == 'missing-mouse-up':
                 path = source_dir / 'xdo.c'
                 path.write_text('#define xdo_mouse_up rd_fixture_mouse_up\n' + path.read_text())
-            else:
+            elif variant == 'wrong-version':
                 path = source_dir / 'xdo_version.h'
                 text = path.read_text()
                 require(text.count('3.20160805.1-rustdesk1') == 1, 'fixture version source differs')
                 path.write_text(text.replace('3.20160805.1-rustdesk1', '3.20160805.1-wrong'))
+            else:
+                path = source_dir / 'xdo.c'
+                text = path.read_text()
+                call = 'return _xdo_send_keysequence_window_do(xdo, window, keyseq, True, NULL, delay);'
+                require(text.count(call) == 1, 'native key-down fault boundary differs')
+                path.write_text(text.replace(call, 'return 7; /* controlled native operation refusal */'))
         library = directory / 'libxdo.so.3'
         result = command(['/usr/bin/python3', '-I', '-S', str(source_dir / 'build.py'),
                           '--output', str(library)], 35)
@@ -141,11 +175,11 @@ def build():
               f'mouse_up_export={str("xdo_mouse_up" in exports).lower()}', flush=True)
     require(sum(path.stat().st_size for path in BUILD.rglob('*') if path.is_file()) <= 64 * 1024 * 1024,
             'loader build artifacts exceeded bound')
-    print('XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=3', flush=True)
+    print('XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=4', flush=True)
 
 
 def run(scenario):
-    require(scenario in ('complete', 'missing-mouse-up', 'wrong-version', 'writable', 'absent'),
+    require(scenario in ('complete', 'missing-mouse-up', 'wrong-version', 'writable', 'absent', 'reject-key-down'),
             'unknown loader scenario')
     with open('/tmp/xdo-loader-xvfb.log', 'xb') as log:
         child = subprocess.Popen(['/xvfb-root/usr/bin/Xvfb', ':98', '-screen', '0', '640x480x24',
@@ -156,13 +190,24 @@ def run(scenario):
             while not Path('/tmp/.X11-unix/X98').is_socket():
                 require(child.poll() is None and time.monotonic() < deadline, 'loader Xvfb readiness failed')
                 time.sleep(0.05)
-            result = command([str(BUILD / 'test-xdo-loader'), scenario], 10)
-            expected = (f'XDO_LOADER_COMPONENT=pass scenario={scenario} constructors=refused descriptors=retired'
-                        if scenario != 'complete' else
-                        'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative '
-                        'button=pressed,released shift=pressed,released key=a,a descriptors=retired')
+            if scenario != 'reject-key-down':
+                result = command([str(BUILD / 'test-xdo-loader'), scenario], 10)
+                expected = (f'XDO_LOADER_COMPONENT=pass scenario={scenario} constructors=refused descriptors=retired'
+                            if scenario != 'complete' else
+                            'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative '
+                            'button=pressed,released shift=pressed,released key=a,a descriptors=retired')
+                require(result.stdout.splitlines() == [expected] and not result.stderr,
+                        'loader native component result differs')
+                print(expected, flush=True)
+            result = command([str(BUILD / 'test-xdo-enigo'), scenario], 10)
+            expected = (f'XDO_ENIGO_COMPONENT=pass scenario={scenario} attempts=8 '
+                        'key_down=unavailable mouse=unavailable descriptors=retired'
+                        if scenario not in ('complete', 'reject-key-down') else
+                        f'XDO_ENIGO_COMPONENT=pass scenario={scenario} attempts=8 '
+                        f'key_down={"delivered" if scenario == "complete" else "native-error"} '
+                        'pointer=actual descriptors=retired')
             require(result.stdout.splitlines() == [expected] and not result.stderr,
-                    'loader native component result differs')
+                    'complete Enigo/private-loader result differs')
             print(expected, flush=True)
         finally:
             if child.poll() is None:

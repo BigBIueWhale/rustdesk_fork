@@ -1848,11 +1848,11 @@ controllers, scroll positions and frames with controlled metadata/layout/platfor
 not a target OS window or installed app. Prepared fast narrow verification remains OPEN.
 No native request is detached or treated as cancelled merely because its effects are
 refused. Already-issued native mouse movement, native reply/cancellation/engine finality,
-installed desktop teardown, viewport integration, fallback idle-at-boundary behavior and
+installed desktop teardown, viewport integration and
 sustained resource/performance evidence remain OPEN. This is not installed
 Windows evidence or a diagnosis of the original display-delay symptom.
 
-**Fallback idle at scroll bounds — reproduced; corrected component A/B pending.**
+**Fallback idle at scroll bounds — component A/B passed; wider performance OPEN.**
 At tests-first `0c53463b`, the three real boundary cases fail: clamped positions are
 correct, but one ticker stays active and emits two extra notifications. The other 255
 tests pass. Full raw `flutter-model-tests-run.PLMPD12FQV.serial.log`, SHA256
@@ -1863,8 +1863,17 @@ unchanged. An axis with room still progresses; a zero-time frame remains active 
 no-op publication. The three original boundary assertions stay unchanged and require
 useful restart with the same registration. The fourth zero-time guard is strengthened to
 exercise another actual callback at the same timestamp; its earlier pass is not evidence
-for that amended guard. Count 258; corrected native acceptance and wider installed-window,
-sustained resource/CPU/latency and prepared-fast verification remain OPEN.
+for that amended guard. At corrected `8aeb79c8` (tree `6430d8cd`), all 23 suites / 258
+tests and three parser methods pass, including unchanged boundary assertions, split-axis
+continuation, same-registration restarts and the strengthened zero-time guard. Full
+67,750-byte raw `flutter-model-tests-run.0lPoVasksX.serial.log`, SHA256
+`02f6ebd86c4a2e957d5e4f4636bfcc35416bfd363ba7887c3983565ea34934de`.
+The source/input-bound zero-NIC VM passes guest nonroot/network-none/read-only-root/caps-none,
+host listener and joined cleanup checks in 321 VM seconds, excluding host preparation.
+Both private roots/disks are retired; no owned job remains. Evidence is real Flutter
+component behavior with controlled metadata/layout/platform reply, not a target OS window,
+CPU measurement or display-latency diagnosis. Wider installed-window, sustained
+resource/CPU/latency and prepared-fast verification remain OPEN.
 
 **Mobile keyboard geometry lifetime — component A/B passed; app-level symptoms OPEN.**
 At tests-first `88e69b72`, eight new cases fail and the other 225 tests pass. Retired

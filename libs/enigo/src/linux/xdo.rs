@@ -322,7 +322,7 @@ impl MouseControllable for EnigoXdo {
     }
 }
 
-fn xdo_key(key: Key) -> crate::ResultType<XdoKey> {
+fn xdo_key(key: Key) -> Result<XdoKey, Box<dyn std::error::Error>> {
     let symbol = match key {
         Key::Layout(character) => {
             if character.is_control() {

@@ -92,7 +92,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Service/helper/process bootstrap authority (R-S11y–R-S11al; Appendix C #147–160) | The normative contracts retain empty helper environments, typed OS queries, selected-session X11 authority and bounded empty-Display recovery, kernel-parent-bound graphical/headless CM lifetime, no global process-table signal/restart authority, non-root-only UI, numeric principal selection, exact child/supervisor argument protocols, SCM-owned initialization, and fixed macOS principal/home/config/log ordering. Appendix findings map to required dispositions without implementation/gate/artifact-status narration; #154–160's original threat findings are retained. All operative MUST/MUST NOT markers, primary-source links, IDs, test mappings, and installed/native acceptance obligations remain. Appendix #152 agrees with R-S11cc's graphical-and-headless scope. No product, verifier, or executable test changed. Installed/native principals, failure/restart/resource behavior and release acceptance remain OPEN in the platform matrices. |
 | Linux privileged launch context and descriptors (R-S11l–r; Appendix C #134–140) | The normative contracts retain typed principal/desktop selection, account-derived home, selected session endpoints, service-owned terminal choice, pre-initialization root cwd and deployment-bound sidecars, whole-range descriptor policy, post-fork-safe failure handling, and exact child-only exceptions. Appendix #136 agrees with R-S11n/R-S11cb's executable and bootstrap-pipe handoffs. Ordinary helpers use the shared empty-default allowlist; FUSE permits only its communication socket in the forked child. Retired sudo/env, run-as-user, w and screensaver paths have no supported role. Threat prerequisites and impact limits, actual-child identity/failure tests and exact installed Debian acceptance remain required; implementation chronology, fixture receipts and documentation-wiring claims are absent. Product and verifier sources are unchanged. Installed/native launch, authorization, failure/race/resource and release evidence remain OPEN. |
-| Native library provenance (R-S11c-10s/10u/10y/23/24) | Native runners and Dart FFI select the bundled core. `libs/libxdo-sys-stub/src/lib.rs` selects only `/usr/lib/rustdesk-fork/libxdo.so.3`, checks private version `3.20160805.1-rustdesk4` and the complete required ABI, and retains the owning library; no distro-candidate fallback remains. Named XDO native input/refusal and staged-provider results are recorded under Linux Enigo XDO below; they execute components with a partial common facade, not full Cargo/app/install. `scripts/verify-debian-package-authority.py` retains ELF identity, stack, interpreter, dynamic metadata and search-path validation. Exact-current installed loader/FFI identity, missing/invalid-code and ambient-search refusal, package validation, serving-principal behavior, races, resources and release acceptance remain OPEN. |
+| Native library provenance (R-S11c-10s/10u/10y/23/24) | Native runners and Dart FFI select the bundled core. `libs/libxdo-sys-stub/src/lib.rs` selects only `/usr/lib/rustdesk-fork/libxdo.so.3`, checks private version `3.20160805.1-rustdesk5` and the complete required ABI, and retains the owning library; no distro-candidate fallback remains. Named XDO native input/refusal and staged-provider results are recorded under Linux Enigo XDO below; they execute components with a partial common facade, not full Cargo/app/install. `scripts/verify-debian-package-authority.py` retains ELF identity, stack, interpreter, dynamic metadata and search-path validation. Exact-current installed loader/FFI identity, missing/invalid-code and ambient-search refusal, package validation, serving-principal behavior, races, resources and release acceptance remain OPEN. |
 | Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | Packaging, immutable-cache, extraction, replacement/recovery, and Kotlin strategy contracts remain requirement-owned. Fresh Android builds explicitly select Kotlin 2.0.21 in-process compilation and reject fallback or task-level overrides. Named APK `ca569086`/`7d49e481…8737c` passed build/install/render and one complete peer schedule, but later native presentation failed on that same artifact; the intermittent defect is OPEN. Diagnostic APK `035c9a20` has three complete corrected-observer peer schedules at `ec5544d6`, `f74470dd` and `eb7c8305`; its earlier alias-prone oracle result is not freshness proof. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound. They and the test-signed APKs do not establish complete canonical release inputs, stable signing, cold equality, sustained resource/latency bounds, network/device coverage, independent reproduction, or external review. See the Android runtime disposition below and the release-blocking matrix. |
 
 Completed documentation cleanup has no live progress log here. Requirement-specific current dispositions remain in
@@ -753,8 +753,8 @@ result and exact artifact scope; it is not independent reproduction. No host
 listener was added, owners joined and the exact scratch root/overlay is absent.
 This is not an Android/Windows delay fix,
 whole-app/install result, native map-race/allocator closure or heap-leak/soak proof.
-The separate unused compound-parser allocation and unchecked native delivery/error
-paths remain OPEN.
+The compound-parser surface is retired by the single-key correction below;
+unchecked native delivery/error paths remain OPEN.
 
 **Concurrent native-context evidence; allocator failure remains OPEN.** Candidate `cbdfcb0e`'s first
 native run aborted in the unchanged `concurrent-contexts` child with
@@ -800,7 +800,7 @@ queries and the private core-modifier traversal are removed. Returned map/alloca
 failures retire partial native state and return NULL. Caller-supplied display ownership
 transfers only on success, matching Enigo's retained display guard; `xdo_new` closes
 its own display after a refused inner construction. Public struct layout is retained.
-Provider, helper and protected loader require private version
+That acceptance used provider, helper and protected loader private version
 `3.20160805.1-rustdesk4`; the wrong-version fixture stamps current corrected C as
 version 3. Exact candidate `ae6aa3ff14a4661924edafa4dde2875b34017914`
 (tree `cdb1cc6f0fcca10f91005d9b25789cbd567d797a`) passed the zero-NIC VM,
@@ -826,6 +826,28 @@ the nonindependent assistant-observed outer record is
 The host endpoint audit reported no additions and cleanup joined; the exact run root
 and overlay are absent. This accepts the named constructor component behavior;
 installed/whole-app, timing, races, heap/soak and release acceptance remain OPEN.
+
+**Single numeric-key API; source corrected, native acceptance PENDING.**
+`libs/libxdo-sys-stub/native/xdo.c` and `xdo.h` accept one numeric keysym or raw
+keycode with an explicit down/up/click action. The native receiver checks kind,
+action, keysym encoding and the inclusive raw-code range before input or narrowing;
+the key description is stack-owned. Click releases the exact pressed code without
+reacquiring scratch storage. Compound parsing, alias tables, locale-based native
+text entry, symbol-map/list exports and unused historical-fixture keyboard methods
+are deleted. Production Enigo and its real loader use typed key/action arguments;
+unsupported keys return an error or a diagnostic under the existing void trait.
+Private provider/build/loader version is `3.20160805.1-rustdesk5`; the refusal
+fixture stamps the same corrected C as version 4, not an authentic old binary.
+The focused command is
+`scripts/smoke-verifier-vm-authority.sh --x11-display-tests --key-input`.
+It builds the actual corrected C and production loader/Linux Enigo components,
+requires real key events, pre-input refusals, map/key/resource retirement,
+constructor ownership and missing-key-export admission refusal inside the owned
+zero-NIC VM/nonroot network-none containers. Its current-provider shard does not
+execute historical unsafe implementations. Source/syntax review is supplementary;
+native acceptance is pending until the complete outer transaction succeeds.
+Installed/whole-app, asynchronous Xlib errors/delivery, map/concurrency races,
+held modifiers, internal heap/leaks/soak, other platforms and release remain OPEN.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,
@@ -1881,7 +1903,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `3e478cc00414a8f44736eb063e29046408322020ff9e07c8cef929647eb90437  requirements.html`.
+Current normative specification SHA-256: `8e6143503f5e2338001e0dbc92385cb1030093e775b2f0f1948e9a92718f302a  requirements.html`.
 
 ### Current authority and source closure
 

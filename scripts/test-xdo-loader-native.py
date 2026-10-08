@@ -143,7 +143,7 @@ def build():
           f'policy_parent_sha256={sha(policy_source)} selected_policy_sha256={sha(selected_policy)} '
           'policy=production-source-extracted common=partial cargo=unexecuted', flush=True)
     native_source = ROOT / 'libs/libxdo-sys-stub/native'
-    for variant in ('complete', 'missing-mouse-up', 'wrong-version', 'reject-key-down'):
+    for variant in ('complete', 'missing-mouse-up', 'missing-key-input', 'wrong-version', 'reject-key-down'):
         source_dir = native_source
         directory = BUILD / variant
         directory.mkdir(mode=0o700)
@@ -153,17 +153,20 @@ def build():
             if variant == 'missing-mouse-up':
                 path = source_dir / 'xdo.c'
                 path.write_text('#define xdo_mouse_up rd_fixture_mouse_up\n' + path.read_text())
+            elif variant == 'missing-key-input':
+                path = source_dir / 'xdo.c'
+                path.write_text('#define xdo_send_key_window rd_fixture_key_input\n' + path.read_text())
             elif variant == 'wrong-version':
                 path = source_dir / 'xdo_version.h'
                 text = path.read_text()
-                require(text.count('3.20160805.1-rustdesk4') == 1, 'fixture version source differs')
-                path.write_text(text.replace('3.20160805.1-rustdesk4', '3.20160805.1-rustdesk3'))
+                require(text.count('3.20160805.1-rustdesk5') == 1, 'fixture version source differs')
+                path.write_text(text.replace('3.20160805.1-rustdesk5', '3.20160805.1-rustdesk4'))
             else:
                 path = source_dir / 'xdo.c'
                 text = path.read_text()
-                call = 'return _xdo_send_keysequence_window_do(xdo, window, keyseq, True, NULL, delay);'
+                call = 'return _xdo_send_key_window_do(xdo, window, &key, action == XDO_KEY_DOWN, &modifier, delay);'
                 require(text.count(call) == 1, 'native key-down fault boundary differs')
-                path.write_text(text.replace(call, 'return 7; /* controlled native operation refusal */'))
+                path.write_text(text.replace(call, 'return action == XDO_KEY_DOWN ? 7 : _xdo_send_key_window_do(xdo, window, &key, False, &modifier, delay);'))
         library = directory / 'libxdo.so.3'
         result = command(['/usr/bin/python3', '-I', '-S', str(source_dir / 'build.py'),
                           '--output', str(library)], 35)
@@ -171,6 +174,12 @@ def build():
         exports = {line.split()[-1] for line in command(['/usr/bin/nm', '-D', '--defined-only', str(library)]).stdout.splitlines()}
         require(('xdo_mouse_up' in exports) == (variant != 'missing-mouse-up'),
                 'missing-symbol provider fixture differs')
+        require(('xdo_send_key_window' in exports) == (variant != 'missing-key-input'),
+                'missing key-input provider fixture differs')
+        require(not exports.intersection({'xdo_send_keysequence_window', 'xdo_send_keysequence_window_down',
+                                          'xdo_send_keysequence_window_up', 'xdo_enter_text_window',
+                                          'xdo_send_keysequence_window_list_do', 'xdo_get_symbol_map'}),
+                'retired keyboard ABI remains exported')
         require('xdo_version' in exports and 'xdo_new' in exports, 'native provider fixture lacks constructors/version')
         print(f'XDO_LOADER_PROVIDER variant={variant} library_sha256={sha(library)} '
               f'bytes={library.stat().st_size} c_sha256={sha(source_dir / "xdo.c")} '
@@ -178,7 +187,7 @@ def build():
               f'mouse_up_export={str("xdo_mouse_up" in exports).lower()}', flush=True)
     require(sum(path.stat().st_size for path in BUILD.rglob('*') if path.is_file()) <= 64 * 1024 * 1024,
             'loader build artifacts exceeded bound')
-    print('XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=4', flush=True)
+    print('XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=5', flush=True)
 
 
 def resolved_dependencies(path, environment=None):
@@ -244,7 +253,7 @@ def runtime_stage():
 
 
 def run(scenario):
-    require(scenario in ('complete', 'missing-mouse-up', 'wrong-version', 'writable', 'absent', 'reject-key-down'),
+    require(scenario in ('complete', 'missing-mouse-up', 'missing-key-input', 'wrong-version', 'writable', 'absent', 'reject-key-down'),
             'unknown loader scenario')
     with open('/tmp/xdo-loader-xvfb.log', 'xb') as log:
         child = subprocess.Popen(['/xvfb-root/usr/bin/Xvfb', ':98', '-screen', '0', '640x480x24',

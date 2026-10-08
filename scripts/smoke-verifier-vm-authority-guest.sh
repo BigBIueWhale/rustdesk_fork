@@ -13,6 +13,7 @@ FLUTTER_APP_MANIFEST_SHA256=
 FLUTTER_APP_ENGINE_CONTEXT=
 FLUTTER_TEST_PROFILE=models
 APPLE_CURSOR_ONLY=0
+X11_KEY_INPUT_ONLY=0
 case "$#:${8:-}" in
     7:)
         MODE=authority-smoke
@@ -33,9 +34,12 @@ case "$#:${8:-}" in
         MODE=${8#--}
         ;;
     9:--x11-display-tests)
-        [ "${9}" = --clipboard-listener ] || exit 2
         MODE=x11-display-tests
-        X11_CLIPBOARD_ONLY=1
+        case "${9}" in
+            --clipboard-listener) X11_CLIPBOARD_ONLY=1 ;;
+            --key-input) X11_KEY_INPUT_ONLY=1 ;;
+            *) exit 2 ;;
+        esac
         ;;
     10:--linux-flutter-engine-prepare|10:--linux-flutter-engine-build)
         MODE=${8#--}
@@ -945,11 +949,14 @@ run_android_frame_tests() {
         native_script=test-native-clipboard-listener.py
         native_receipt='CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=owned-x11 callbacks=actual old=retained current=joined late_admission=refused startup_observer=retired tests=14 network=none cleanup=joined'
     fi
+    if [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
+        native_receipt='XDO_KEY_INPUT_SHARD=pass source=production-components provider=current-only parser=absent real_events=observed maps=restored network=none uid=4000 cleanup=joined whole_app=false'
+    fi
     local -a mounts command phases=(prepare native)
     local loader_installed=$ROOT/xdo-loader-installed loader_variant loader_source loader_digest
     local stage_profile_output stage_profile_expected
     if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ]; then
-        phases=(prepare loader-build loader-complete loader-missing-mouse-up loader-wrong-version loader-writable loader-absent loader-reject-key-down loader-runtime-stage native)
+        phases=(prepare loader-build loader-complete loader-missing-mouse-up loader-missing-key-input loader-wrong-version loader-writable loader-absent loader-reject-key-down loader-runtime-stage native)
     fi
     load_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -989,7 +996,7 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
         elif [ "$phase" = loader-complete ]; then
             # Preparation inside this disposable guest only. Never execute the provider as root.
             install -d -o 0 -g 0 -m 0755 "$loader_installed"
-            for loader_variant in complete missing-mouse-up wrong-version writable absent reject-key-down; do
+            for loader_variant in complete missing-mouse-up missing-key-input wrong-version writable absent reject-key-down; do
                 install -d -o 0 -g 0 -m 0755 "$loader_installed/$loader_variant"
                 [ "$loader_variant" != absent ] || continue
                 loader_source="$work/loader-build/$loader_variant/libxdo.so.3"
@@ -1050,6 +1057,9 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
                 # Reuse only the exact pinned libc already compiled in the owned
                 # loader phase; the native component receives no writable cache.
                 mounts+=(--mount "type=bind,src=$work/loader-build/liblibc.rlib,dst=/focus-input/liblibc.rlib,readonly,bind-recursive=disabled")
+                if [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
+                    command+=(--key-input)
+                fi
             fi
         fi
         CONTAINER_ID="$(frame_docker create --name "rustdesk-android-frame-$phase" \
@@ -1073,7 +1083,7 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
         [ "$(frame_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
             || fail 'Android frame-test container did not finish cleanly'
         if [ "$phase" = loader-build ]; then
-            [ "$(grep -Fxc 'XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=4' "$output")" -eq 1 ] \
+            [ "$(grep -Fxc 'XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=5' "$output")" -eq 1 ] \
                 || fail 'XDO loader build result is absent or duplicated'
         elif [ "$phase" = loader-runtime-stage ]; then
             [ "$(grep -c '^XDO_RUNTIME_STAGE=pass .* distribution_xdo=absent resolution=staged input=actual native_input=delivered full_stage_cli=unexecuted cleanup=joined$' "$output")" -eq 1 ] \
@@ -1084,7 +1094,8 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
         elif [ "$phase" = native ]; then
             [ "$(grep -Fxc "$native_receipt" "$output")" -eq 1 ] \
                 || fail 'Android native frame-test result is absent or duplicated'
-            if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ]; then
+            if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ] \
+                && [ "$X11_KEY_INPUT_ONLY" -eq 0 ]; then
                 [ "$(grep -Fxc 'X11_LAYOUT_NATIVE=pass xvfb_depths=24,16 stride_16_odd=1284 pixels=actual capture=production-shm public=production-buffer network=none uid=4000 cleanup=joined' "$output")" -eq 1 ] \
                     || fail 'X11 capture-layout native result is absent or duplicated'
             fi
@@ -1095,6 +1106,8 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
     stop_docker_authority
     if [ "${X11_CLIPBOARD_ONLY:-0}" -eq 1 ]; then
         printf 'CLIPBOARD_LISTENER_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
+    elif [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
+        printf 'XDO_KEY_INPUT_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
     elif [ "$MODE" = x11-display-tests ]; then
         printf 'X11_DISPLAY_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
     else

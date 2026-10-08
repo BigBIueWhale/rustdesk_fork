@@ -3,12 +3,15 @@
 extern crate self as hbb_common;
 extern crate self as libxdo_sys;
 include!("/build/enigo-api.rs");
+include!("/build/xdo-key-types.rs");
 mod platform {
     #[path = "/work/libs/hbb_common/src/platform/x11_display.rs"]
     pub mod x11_display;
 }
 pub mod libc { pub use std::ffi::c_int; }
 pub mod x11 {
+    #[path = "/work/xdo-vendor/x11-2.21.0/src/keysym.rs"]
+    pub mod keysym;
     pub mod xlib {
         use std::ffi::{c_char, c_int};
         #[repr(C)]
@@ -41,13 +44,19 @@ extern "C" {
     pub fn xdo_mouse_down(context: *const xdo_t, window: c_ulong, button: c_int) -> c_int;
     pub fn xdo_mouse_up(context: *const xdo_t, window: c_ulong, button: c_int) -> c_int;
     pub fn xdo_get_input_state(context: *const xdo_t) -> c_uint;
-    pub fn xdo_enter_text_window(context: *const xdo_t, window: c_ulong, text: *const c_char, delay: useconds_t) -> c_int;
-    pub fn xdo_send_keysequence_window(context: *const xdo_t, window: c_ulong, sequence: *const c_char, delay: useconds_t) -> c_int;
-    pub fn xdo_send_keysequence_window_down(context: *const xdo_t, window: c_ulong, sequence: *const c_char, delay: useconds_t) -> c_int;
-    pub fn xdo_send_keysequence_window_up(context: *const xdo_t, window: c_ulong, sequence: *const c_char, delay: useconds_t) -> c_int;
+    #[link_name = "xdo_send_key_window"]
+    fn native_send_key(context: *const xdo_t, window: c_ulong, kind: c_uint, value: c_ulong, action: c_uint, delay: useconds_t) -> c_int;
     fn __real_xdo_new(name: *const c_char) -> *mut xdo_t;
     fn __real_xdo_new_with_opened_display(display: *mut Display, name: *const c_char, close: c_int) -> *mut xdo_t;
     fn __real_xdo_free(context: *mut xdo_t);
+}
+pub unsafe fn xdo_send_key_window(context: *const xdo_t, window: c_ulong, key: XdoKey,
+                                  action: XdoKeyAction, delay: useconds_t) -> c_int {
+    let (kind, value) = match key {
+        XdoKey::Keysym(value) => (1, value),
+        XdoKey::Keycode(value) => (2, value as c_ulong),
+    };
+    native_send_key(context, window, kind, value, action as c_uint, delay)
 }
 #[link(name = "X11")]
 extern "C" {
@@ -156,6 +165,7 @@ fn main() {
     log::set_max_level(log::LevelFilter::Info);
     let baseline = descriptors();
     if let Some(scenario) = std::env::args().nth(1) {
+        #[cfg(not(historical))]
         if matches!(scenario.as_str(), "layout" | "layout-repeat") {
             use std::io::{Read, Write};
             std::env::set_var("DISPLAY", ":98");
@@ -182,6 +192,7 @@ fn main() {
             println!("X11_ENIGO_LAYOUT_CHILD=pass pairs={repeats} mapping_refusal=explicit descriptors=retired threads=retired");
             return;
         }
+        #[cfg(not(historical))]
         if scenario == "text" {
             std::env::set_var("DISPLAY", ":98");
             let mut injector = backend::EnigoXdo::default();
@@ -203,6 +214,7 @@ fn main() {
             injector.mouse_move_to(131, 79).unwrap();
         } else {
             assert!(injector.mouse_move_to(131, 79).is_err());
+            #[cfg(not(historical))]
             assert!(injector.key_sequence_result("a").is_err());
         }
         drop(injector);
@@ -226,6 +238,7 @@ fn main() {
     let refuse = || {
         let mut injector = backend::EnigoXdo::default();
         assert!(injector.mouse_move_to(131, 79).is_err());
+        #[cfg(not(historical))]
         assert!(injector.key_sequence_result("a").is_err());
         drop(injector);
         assert!(NAMES.lock().unwrap().is_empty());
@@ -246,6 +259,7 @@ fn main() {
         let mut injector = backend::EnigoXdo::default();
         assert!(!REFUSE_NEXT_CONSTRUCT.load(Ordering::SeqCst));
         assert!(injector.mouse_move_to(131, 79).is_err());
+        #[cfg(not(historical))]
         assert!(injector.key_sequence_result("a").is_err());
         drop(injector);
         assert_eq!(*NAMES.lock().unwrap(), vec![(false, Some("unix/:98.1".into())),

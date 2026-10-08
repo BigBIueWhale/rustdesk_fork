@@ -9,9 +9,10 @@ use crate::{checked_scroll_magnitude, Key, KeyboardControllable, MouseButton, Mo
 
 use hbb_common::libc::c_int;
 use hbb_common::platform::x11_display::unix_display_name;
+use hbb_common::x11::keysym::*;
 use hbb_common::x11::xlib::{Display, XCloseDisplay, XDefaultScreen, XGetPointerMapping, XOpenDisplay};
-use libxdo_sys::{self, xdo_t, CURRENTWINDOW};
-use std::{borrow::Cow, ffi::CString};
+use libxdo_sys::{self, xdo_t, XdoKey, XdoKeyAction, CURRENTWINDOW};
+use std::ffi::CString;
 
 /// Default delay per keypress in microseconds.
 /// This value is passed to libxdo functions and must fit in `useconds_t` (u32).
@@ -190,7 +191,7 @@ impl EnigoXdo {
             return Err("libxdo is unavailable".into());
         }
         // Validate the complete text before emitting any prefix. Text scalars use
-        // canonical key names, not locale-dependent native multibyte conversion.
+        // numeric keysyms without locale-dependent native multibyte conversion.
         if let Some(character) = sequence
             .chars()
             .find(|c| c.is_control() && !matches!(*c, '\n' | '\r' | '\t'))
@@ -212,17 +213,18 @@ impl EnigoXdo {
         }
         let context = TextContext(context);
         for character in sequence.chars() {
-            let token = match character {
-                '\n' | '\r' => Cow::Borrowed("Return"),
-                '\t' => Cow::Borrowed("Tab"),
-                _ => keysequence(Key::Layout(character)),
+            let key = match character {
+                '\n' | '\r' => Key::Return,
+                '\t' => Key::Tab,
+                _ => Key::Layout(character),
             };
-            let string = CString::new(token.into_owned())?;
+            let key = xdo_key(key)?;
             let status = unsafe {
-                libxdo_sys::xdo_send_keysequence_window(
+                libxdo_sys::xdo_send_key_window(
                     context.0 as *const _,
                     CURRENTWINDOW,
-                    string.as_ptr(),
+                    key,
+                    XdoKeyAction::Click,
                     (self.delay / 2) as libxdo_sys::useconds_t,
                 )
             };
@@ -320,101 +322,88 @@ impl MouseControllable for EnigoXdo {
     }
 }
 
-fn keysequence<'a>(key: Key) -> Cow<'a, str> {
-    if let Key::Layout(c) = key {
-        return Cow::Owned(format!("U{:X}", c as u32));
-    }
-    if let Key::Raw(k) = key {
-        return Cow::Owned(format!("{}", k as u16));
-    }
-    #[allow(deprecated)]
-    // I mean duh, we still need to support deprecated keys until they're removed
-    // https://www.rubydoc.info/gems/xdo/XDo/Keyboard
-    // https://gitlab.com/cunidev/gestures/-/wikis/xdotool-list-of-key-codes
-    Cow::Borrowed(match key {
-        Key::Alt => "Alt",
-        Key::Backspace => "BackSpace",
-        Key::CapsLock => "Caps_Lock",
-        Key::Control => "Control",
-        Key::Delete => "Delete",
-        Key::DownArrow => "Down",
-        Key::End => "End",
-        Key::Escape => "Escape",
-        Key::F1 => "F1",
-        Key::F10 => "F10",
-        Key::F11 => "F11",
-        Key::F12 => "F12",
-        Key::F2 => "F2",
-        Key::F3 => "F3",
-        Key::F4 => "F4",
-        Key::F5 => "F5",
-        Key::F6 => "F6",
-        Key::F7 => "F7",
-        Key::F8 => "F8",
-        Key::F9 => "F9",
-        Key::Home => "Home",
-        //Key::Layout(_) => unreachable!(),
-        Key::LeftArrow => "Left",
-        Key::Option => "Option",
-        Key::PageDown => "Page_Down",
-        Key::PageUp => "Page_Up",
-        //Key::Raw(_) => unreachable!(),
-        Key::Return => "Return",
-        Key::RightArrow => "Right",
-        Key::Shift => "Shift",
-        Key::Space => "space",
-        Key::Tab => "Tab",
-        Key::UpArrow => "Up",
-        Key::Numpad0 => "U30", //"KP_0",
-        Key::Numpad1 => "U31", //"KP_1",
-        Key::Numpad2 => "U32", //"KP_2",
-        Key::Numpad3 => "U33", //"KP_3",
-        Key::Numpad4 => "U34", //"KP_4",
-        Key::Numpad5 => "U35", //"KP_5",
-        Key::Numpad6 => "U36", //"KP_6",
-        Key::Numpad7 => "U37", //"KP_7",
-        Key::Numpad8 => "U38", //"KP_8",
-        Key::Numpad9 => "U39", //"KP_9",
-        Key::Decimal => "U2E", //"KP_Decimal",
-        Key::Cancel => "Cancel",
-        Key::Clear => "Clear",
-        Key::Pause => "Pause",
-        Key::Kana => "Kana",
-        Key::Hangul => "Hangul",
-        Key::Junja => "",
-        Key::Final => "",
-        Key::Hanja => "Hanja",
-        Key::Kanji => "Kanji",
-        Key::Convert => "",
-        Key::Select => "Select",
-        Key::Print => "Print",
-        Key::Execute => "Execute",
-        Key::Snapshot => "3270_PrintScreen",
-        Key::Insert => "Insert",
-        Key::Help => "Help",
-        Key::Sleep => "",
-        Key::Separator => "KP_Separator",
-        Key::VolumeUp => "",
-        Key::VolumeDown => "",
-        Key::Mute => "",
-        Key::Scroll => "Scroll_Lock",
-        Key::NumLock => "Num_Lock",
-        Key::RWin => "Super_R",
-        Key::Apps => "Menu",
-        Key::Multiply => "KP_Multiply",
-        Key::Add => "KP_Add",
-        Key::Subtract => "KP_Subtract",
-        Key::Divide => "KP_Divide",
-        Key::Equals => "KP_Equal",
-        Key::NumpadEnter => "KP_Enter",
-        Key::RightShift => "Shift_R",
-        Key::RightControl => "Control_R",
-        Key::RightAlt => "Alt_R",
-
-        Key::Command | Key::Super | Key::Windows | Key::Meta => "Super",
-
-        _ => "",
-    })
+fn xdo_key(key: Key) -> crate::ResultType<XdoKey> {
+    let symbol = match key {
+        Key::Layout(character) => {
+            if character.is_control() {
+                return Err("unsupported X11 layout control".into());
+            }
+            let scalar = character as u32;
+            if scalar <= 0xff { scalar } else { 0x01000000 | scalar }
+        }
+        Key::Raw(code) => return Ok(XdoKey::Keycode(code.into())),
+        Key::Alt => XK_Alt_L,
+        Key::Backspace => XK_BackSpace,
+        Key::CapsLock => XK_Caps_Lock,
+        Key::Control => XK_Control_L,
+        Key::Delete => XK_Delete,
+        Key::DownArrow => XK_Down,
+        Key::End => XK_End,
+        Key::Escape => XK_Escape,
+        Key::F1 => XK_F1,
+        Key::F10 => XK_F10,
+        Key::F11 => XK_F11,
+        Key::F12 => XK_F12,
+        Key::F2 => XK_F2,
+        Key::F3 => XK_F3,
+        Key::F4 => XK_F4,
+        Key::F5 => XK_F5,
+        Key::F6 => XK_F6,
+        Key::F7 => XK_F7,
+        Key::F8 => XK_F8,
+        Key::F9 => XK_F9,
+        Key::Home => XK_Home,
+        Key::LeftArrow => XK_Left,
+        Key::PageDown => XK_Page_Down,
+        Key::PageUp => XK_Page_Up,
+        Key::Return => XK_Return,
+        Key::RightArrow => XK_Right,
+        Key::Shift => XK_Shift_L,
+        Key::Space => XK_space,
+        Key::Tab => XK_Tab,
+        Key::UpArrow => XK_Up,
+        Key::Numpad0 => XK_0,
+        Key::Numpad1 => XK_1,
+        Key::Numpad2 => XK_2,
+        Key::Numpad3 => XK_3,
+        Key::Numpad4 => XK_4,
+        Key::Numpad5 => XK_5,
+        Key::Numpad6 => XK_6,
+        Key::Numpad7 => XK_7,
+        Key::Numpad8 => XK_8,
+        Key::Numpad9 => XK_9,
+        Key::Decimal => XK_period,
+        Key::Cancel => XK_Cancel,
+        Key::Clear => XK_Clear,
+        Key::Pause => XK_Pause,
+        Key::Kana => XK_Kana_Lock,
+        Key::Hangul => 0xff31, // Hangul
+        Key::Hanja => 0xff34, // Hangul_Hanja
+        Key::Kanji => XK_Kanji,
+        Key::Select => XK_Select,
+        Key::Print => XK_Print,
+        Key::Execute => XK_Execute,
+        Key::Snapshot => 0xfd1d, // 3270_PrintScreen
+        Key::Insert => XK_Insert,
+        Key::Help => XK_Help,
+        Key::Separator => XK_KP_Separator,
+        Key::Scroll => XK_Scroll_Lock,
+        Key::NumLock => XK_Num_Lock,
+        Key::RWin => XK_Super_R,
+        Key::Apps => XK_Menu,
+        Key::Multiply => XK_KP_Multiply,
+        Key::Add => XK_KP_Add,
+        Key::Subtract => XK_KP_Subtract,
+        Key::Divide => XK_KP_Divide,
+        Key::Equals => XK_KP_Equal,
+        Key::NumpadEnter => XK_KP_Enter,
+        Key::RightShift => XK_Shift_R,
+        Key::RightControl => XK_Control_R,
+        Key::RightAlt => XK_Alt_R,
+        Key::Command | Key::Super | Key::Windows | Key::Meta => XK_Super_L,
+        _ => return Err("unsupported X11 key".into()),
+    };
+    Ok(XdoKey::Keysym(symbol.into()))
 }
 
 impl KeyboardControllable for EnigoXdo {
@@ -469,12 +458,13 @@ impl KeyboardControllable for EnigoXdo {
         if self.xdo.is_null() {
             return Err("libxdo is unavailable".into());
         }
-        let string = CString::new(&*keysequence(key))?;
+        let key = xdo_key(key)?;
         let status = unsafe {
-            libxdo_sys::xdo_send_keysequence_window_down(
+            libxdo_sys::xdo_send_key_window(
                 self.xdo as *const _,
                 CURRENTWINDOW,
-                string.as_ptr(),
+                key,
+                XdoKeyAction::Down,
                 self.delay as libxdo_sys::useconds_t,
             )
         };
@@ -483,33 +473,45 @@ impl KeyboardControllable for EnigoXdo {
 
     fn key_up(&mut self, key: Key) {
         if self.xdo.is_null() {
+            log::warn!("EnigoXdo::key_up failed: libxdo is unavailable");
             return;
         }
-        if let Ok(string) = CString::new(&*keysequence(key)) {
-            unsafe {
-                libxdo_sys::xdo_send_keysequence_window_up(
+        let result = xdo_key(key).and_then(|key| {
+            let status = unsafe {
+                libxdo_sys::xdo_send_key_window(
                     self.xdo as *const _,
                     CURRENTWINDOW,
-                    string.as_ptr(),
+                    key,
+                    XdoKeyAction::Up,
                     self.delay as libxdo_sys::useconds_t,
-                );
-            }
+                )
+            };
+            xdo_result("key up", status)
+        });
+        if let Err(err) = result {
+            log::warn!("EnigoXdo::key_up failed: {err}");
         }
     }
 
     fn key_click(&mut self, key: Key) {
         if self.xdo.is_null() {
+            log::warn!("EnigoXdo::key_click failed: libxdo is unavailable");
             return;
         }
-        if let Ok(string) = CString::new(&*keysequence(key)) {
-            unsafe {
-                libxdo_sys::xdo_send_keysequence_window(
+        let result = xdo_key(key).and_then(|key| {
+            let status = unsafe {
+                libxdo_sys::xdo_send_key_window(
                     self.xdo as *const _,
                     CURRENTWINDOW,
-                    string.as_ptr(),
+                    key,
+                    XdoKeyAction::Click,
                     self.delay as libxdo_sys::useconds_t,
-                );
-            }
+                )
+            };
+            xdo_result("key click", status)
+        });
+        if let Err(err) = result {
+            log::warn!("EnigoXdo::key_click failed: {err}");
         }
     }
 }

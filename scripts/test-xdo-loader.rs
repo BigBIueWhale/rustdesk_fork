@@ -1,5 +1,5 @@
 //! Native test of the complete production loader through its public API.
-use hbb_common::{libc, x11::xlib::*};
+use hbb_common::{libc, x11::{keysym::*, xlib::*}};
 use libxdo_sys::*;
 use std::{ffi::CString, ptr};
 
@@ -60,15 +60,13 @@ fn main() {
         assert_eq!(xdo_mouse_up(context.0, CURRENTWINDOW, 1), 0);
         XSync(display.0, 0);
         assert_eq!(xdo_get_input_state(context.0) & Button1Mask, 0);
-        let shift = CString::new("Shift_L").unwrap();
-        assert_eq!(xdo_send_keysequence_window_down(context.0, CURRENTWINDOW, shift.as_ptr(), 0), 0);
+        assert_eq!(xdo_send_key_window(context.0, CURRENTWINDOW, XdoKey::Keysym(XK_Shift_L.into()), XdoKeyAction::Down, 0), 0);
         XSync(display.0, 0);
         assert_ne!(xdo_get_input_state(context.0) & ShiftMask, 0);
-        assert_eq!(xdo_send_keysequence_window_up(context.0, CURRENTWINDOW, shift.as_ptr(), 0), 0);
+        assert_eq!(xdo_send_key_window(context.0, CURRENTWINDOW, XdoKey::Keysym(XK_Shift_L.into()), XdoKeyAction::Up, 0), 0);
         XSync(display.0, 0);
         assert_eq!(xdo_get_input_state(context.0) & ShiftMask, 0);
-        let key = CString::new("a").unwrap();
-        assert_eq!(xdo_send_keysequence_window(context.0, CURRENTWINDOW, key.as_ptr(), 0), 0);
+        assert_eq!(xdo_send_key_window(context.0, CURRENTWINDOW, XdoKey::Keysym(XK_a.into()), XdoKeyAction::Click, 0), 0);
         XSync(display.0, 0);
         let mut events = Vec::new();
         while XPending(display.0) > 0 {

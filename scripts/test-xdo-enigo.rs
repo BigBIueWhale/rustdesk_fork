@@ -62,6 +62,9 @@ fn main() {
             assert_eq!(descriptors(), connected + 1, "one Enigo-owned display must exist");
             enigo.mouse_move_to(71 + index, 93).unwrap();
             observe(display.0, |(x, y, _)| (x, y) == (71 + index, 93));
+            for key in [Key::Sleep, Key::Layout('\0'), Key::Raw(0), Key::Raw(256), Key::Raw(u16::MAX)] {
+                assert!(enigo.key_down(key).is_err(), "unsupported key was admitted");
+            }
             let result = enigo.key_down(Key::Shift);
             if scenario == "reject-key-down" {
                 let rejected = result.as_ref().err().map(|error| error.to_string());
@@ -79,10 +82,14 @@ fn main() {
             observe(display.0, |(_, _, mask)| mask & ShiftMask != 0);
             enigo.key_up(Key::Shift);
             observe(display.0, |(_, _, mask)| mask & ShiftMask == 0);
+            let raw = XKeysymToKeycode(display.0, b'a' as libc::c_ulong);
+            assert!(raw >= 8);
+            enigo.key_down(Key::Raw(raw.into())).unwrap();
+            enigo.key_up(Key::Raw(raw.into()));
             enigo.key_sequence_result("a").unwrap();
             let until = Instant::now() + Duration::from_millis(250);
             let mut events = Vec::new();
-            while events.len() < 2 {
+            while events.len() < 4 {
                 XSync(display.0, 0);
                 while XPending(display.0) > 0 {
                     let mut event: XEvent = std::mem::zeroed();
@@ -93,9 +100,9 @@ fn main() {
                     }
                 }
                 assert!(Instant::now() < until, "Enigo text event receipt expired");
-                if events.len() < 2 { thread::sleep(Duration::from_millis(1)); }
+                if events.len() < 4 { thread::sleep(Duration::from_millis(1)); }
             }
-            assert_eq!(events, [KeyPress, KeyRelease]);
+            assert_eq!(events, [KeyPress, KeyRelease, KeyPress, KeyRelease]);
             drop(enigo);
             assert_eq!(descriptors(), connected);
         }

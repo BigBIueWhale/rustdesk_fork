@@ -14,11 +14,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <strings.h>
 #include <unistd.h>
 #include <regex.h>
-#include <ctype.h>
-#include <locale.h>
 #include <stdarg.h>
 
 #include <X11/Xlib.h>
@@ -34,7 +31,6 @@
 #include <xkbcommon/xkbcommon.h>
 
 #include "xdo.h"
-#include "xdo_util.h"
 #include "xdo_version.h"
 
 #define DEFAULT_DELAY 12
@@ -48,15 +44,7 @@
 static int _xdo_populate_charcode_map(xdo_t *xdo);
 static int _xdo_has_xtest(const xdo_t *xdo);
 
-static KeySym _xdo_keysym_from_char(const xdo_t *xdo, wchar_t key);
-static void _xdo_charcodemap_from_char(const xdo_t *xdo, charcodemap_t *key);
 static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key, KeySym keysym);
-//static int _xdo_get_shiftcode_if_needed(const xdo_t *xdo, char key);
-
-static int _xdo_send_keysequence_window_to_keycode_list(const xdo_t *xdo, const char *keyseq,
-                                            charcodemap_t **keys, int *nkeys);
-static int _xdo_send_keysequence_window_do(const xdo_t *xdo, Window window, const char *keyseq,
-                               int pressed, int *modifier, useconds_t delay);
 static int _xdo_ewmh_is_supported(const xdo_t *xdo, const char *feature);
 static void _xdo_init_xkeyevent(const xdo_t *xdo, XKeyEvent *xk);
 static void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
@@ -957,96 +945,14 @@ int xdo_click_window_multiple(const xdo_t *xdo, Window window, int button,
   return ret;
 } /* int xdo_click_window_multiple */
 
-/* XXX: Return proper code if errors found */
-int xdo_enter_text_window(const xdo_t *xdo, Window window, const char *string, useconds_t delay) {
-
-  /* Since we're doing down/up, the delay should be based on the number
-   * of keys pressed (including shift). Since up/down is two calls,
-   * divide by two. */
-  delay /= 2;
-
-  /* XXX: Add error handling */
-  //int nkeys = strlen(string);
-  //charcodemap_t *keys = calloc(nkeys, sizeof(charcodemap_t));
-  charcodemap_t key;
-  //int modifier = 0;
-  setlocale(LC_CTYPE,"");
-  mbstate_t ps = { 0 };
-  ssize_t len;
-  while ( (len = mbsrtowcs(&key.key, &string, 1, &ps)) ) {
-    if (len == -1) {
-      fprintf(stderr, "Invalid multi-byte sequence encountered\n");
-      return XDO_ERROR;
-    }
-    _xdo_charcodemap_from_char(xdo, &key);
-    if (key.code == 0 && key.symbol == NoSymbol) {
-      fprintf(stderr, "I don't what key produces '%lc', skipping.\n",
-              key.key);
-      continue;
-    } else {
-      //printf("Found key for %c\n", key.key);
-      //printf("code: %d\n", key.code);
-      //printf("sym: %s\n", XKeysymToString(key.symbol));
-    }
-
-    //printf(stderr,
-            //"Key '%c' maps to code %d / sym %lu in group %d / mods %d (%s)\n",
-            //key.key, key.code, key.symbol, key.group, key.modmask,
-            //(key.needs_binding == 1) ? "needs binding" : "ok");
-
-    //_xdo_send_key(xdo, window, keycode, modstate, True, delay);
-    //_xdo_send_key(xdo, window, keycode, modstate, False, delay);
-    xdo_send_keysequence_window_list_do(xdo, window, &key, 1, True, NULL, delay / 2);
-    key.needs_binding = 0;
-    xdo_send_keysequence_window_list_do(xdo, window, &key, 1, False, NULL, delay / 2);
-
-    /* XXX: Flush here or at the end? or never? */
-    //XFlush(xdo->xdpy);
-  } /* walk string generating a keysequence */
-
-  //free(keys);
-  return XDO_SUCCESS;
-}
-
-int _xdo_send_keysequence_window_do(const xdo_t *xdo, Window window, const char *keyseq,
-                        int pressed, int *modifier, useconds_t delay) {
-  int ret = 0;
-  charcodemap_t *keys = NULL;
-  int nkeys = 0;
-
-  if (_xdo_send_keysequence_window_to_keycode_list(xdo, keyseq, &keys, &nkeys) == False) {
-    fprintf(stderr, "Failure converting key sequence '%s' to keycodes\n", keyseq);
-    return 1;
-  }
-
-  ret = xdo_send_keysequence_window_list_do(xdo, window, keys, nkeys, pressed, modifier, delay);
-  if (keys != NULL) {
-    free(keys);
-  }
-
-  return ret;
-}
-
-int xdo_send_keysequence_window_list_do(const xdo_t *xdo, Window window, charcodemap_t *keys,
-                            int nkeys, int pressed, int *modifier, useconds_t delay) {
-  int i = 0;
-  int modstate = 0;
-  int keymapchanged = 0;
-  int needs_binding = 0;
-
+static int _xdo_send_key_window_do(const xdo_t *xdo, Window window, charcodemap_t *key,
+                                   int pressed, int *modifier, useconds_t delay) {
   KeySym *keysyms = NULL;
   int keysyms_per_keycode = 0;
-  int scratch_keycode = 0; /* Scratch space for temporary keycode bindings */
-
-  for (i = 0; i < nkeys; i++) {
-    if (keys[i].needs_binding == 1) {
-      needs_binding = 1;
-      break;
-    }
-  }
+  int scratch_keycode = 0;
 
   /* Acquire the complete scratch resource before sending any input. */
-  if (needs_binding) {
+  if (key->needs_binding) {
     if (xdo->keycode_low < 8 || xdo->keycode_high > 255
         || xdo->keycode_low > xdo->keycode_high)
       return XDO_ERROR;
@@ -1059,7 +965,7 @@ int xdo_send_keysequence_window_list_do(const xdo_t *xdo, Window window, charcod
       return XDO_ERROR;
     }
 
-    for (i = xdo->keycode_low; i <= xdo->keycode_high; i++) {
+    for (int i = xdo->keycode_low; i <= xdo->keycode_high; i++) {
       int key_is_empty = 1;
       for (int j = 0; j < keysyms_per_keycode; j++) {
         size_t symindex = (size_t)(i - xdo->keycode_low) * keysyms_per_keycode + j;
@@ -1077,71 +983,66 @@ int xdo_send_keysequence_window_list_do(const xdo_t *xdo, Window window, charcod
       XFree(keysyms);
       return XDO_ERROR;
     }
+    KeySym keysym_list[] = { key->symbol };
+    XChangeKeyboardMapping(xdo->xdpy, scratch_keycode, 1, keysym_list, 1);
+    XSync(xdo->xdpy, False);
+    key->code = scratch_keycode;
   }
 
-  /* Allow passing NULL for modifier in case we don't care about knowing
-   * the modifier map state after we finish */
-  if (modifier == NULL)
-    modifier = &modstate;
+  _xdo_send_key(xdo, window, key, *modifier, pressed, delay);
+  if (pressed)
+    *modifier |= key->modmask;
+  else
+    *modifier &= ~key->modmask;
 
-  for (i = 0; i < nkeys; i++) {
-    if (keys[i].needs_binding == 1) {
-      KeySym keysym_list[] = { keys[i].symbol };
-      _xdo_debug(xdo, "Mapping sym %lu to %d", keys[i].symbol, scratch_keycode);
-      XChangeKeyboardMapping(xdo->xdpy, scratch_keycode, 1, keysym_list, 1);
-      XSync(xdo->xdpy, False);
-      /* override the code in our current key to use the scratch_keycode */
-      keys[i].code = scratch_keycode;
-      keymapchanged = 1;
-    }
-
-    _xdo_send_key(xdo, window, &(keys[i]), *modifier, pressed, delay);
-
-    if (keys[i].needs_binding == 1) {
-      /* If we needed to make a new keymapping for this keystroke, we
-       * should sync with the server now, after the keypress, so that
-       * the next mapping or removal doesn't conflict. */
-      XSync(xdo->xdpy, False);
-    }
-
-    if (pressed) {
-      *modifier |= keys[i].modmask;
-    } else {
-      *modifier &= ~(keys[i].modmask);
-    }
-  }
-  if (keymapchanged) {
+  if (keysyms != NULL) {
+    XSync(xdo->xdpy, False);
     KeySym *original = keysyms + (size_t)(scratch_keycode - xdo->keycode_low)
                                 * keysyms_per_keycode;
-    _xdo_debug(xdo, "Reverting scratch keycode %d", scratch_keycode);
     XChangeKeyboardMapping(xdo->xdpy, scratch_keycode, keysyms_per_keycode, original, 1);
     XSync(xdo->xdpy, False);
-  }
-
-  if (keysyms != NULL)
     XFree(keysyms);
+  }
   XFlush(xdo->xdpy);
   return XDO_SUCCESS;
 }
 
-
-int xdo_send_keysequence_window_down(const xdo_t *xdo, Window window, const char *keyseq,
-                         useconds_t delay) {
-  return _xdo_send_keysequence_window_do(xdo, window, keyseq, True, NULL, delay);
-}
-
-int xdo_send_keysequence_window_up(const xdo_t *xdo, Window window, const char *keyseq,
-                       useconds_t delay) {
-  return _xdo_send_keysequence_window_do(xdo, window, keyseq, False, NULL, delay);
-}
-
-int xdo_send_keysequence_window(const xdo_t *xdo, Window window, const char *keyseq,
-                    useconds_t delay) {
-  int ret = 0;
+int xdo_send_key_window(const xdo_t *xdo, Window window, unsigned int kind,
+                        unsigned long value, unsigned int action, useconds_t delay) {
+  charcodemap_t key = {0};
   int modifier = 0;
-  ret += _xdo_send_keysequence_window_do(xdo, window, keyseq, True, &modifier, delay / 2);
-  ret += _xdo_send_keysequence_window_do(xdo, window, keyseq, False, &modifier, delay / 2);
-  return ret;
+  if (xdo == NULL || xdo->xdpy == NULL
+      || (action != XDO_KEY_DOWN && action != XDO_KEY_UP && action != XDO_KEY_CLICK))
+    return XDO_ERROR;
+
+  if (kind == XDO_KEYSYM) {
+    if (value == NoSymbol || value == XK_VoidSymbol || value > 0x1fffffffUL)
+      return XDO_ERROR;
+    if (value >= 0x01000000UL && value <= 0x01ffffffUL) {
+      unsigned long scalar = value - 0x01000000UL;
+      if (scalar < 0x100 || scalar > 0x10ffff || (scalar >= 0xd800 && scalar <= 0xdfff))
+        return XDO_ERROR;
+    }
+    _xdo_charcodemap_from_keysym(xdo, &key, value);
+  } else if (kind == XDO_KEYCODE) {
+    if (xdo->keycode_low < 8 || xdo->keycode_high > 255
+        || xdo->keycode_low > xdo->keycode_high
+        || value < (unsigned)xdo->keycode_low || value > (unsigned)xdo->keycode_high)
+      return XDO_ERROR;
+    key.code = value;
+  } else {
+    return XDO_ERROR;
+  }
+
+  if (action != XDO_KEY_CLICK)
+    return _xdo_send_key_window_do(xdo, window, &key, action == XDO_KEY_DOWN, &modifier, delay);
+
+  int status = _xdo_send_key_window_do(xdo, window, &key, True, &modifier, delay / 2);
+  if (status != XDO_SUCCESS)
+    return status;
+  /* Release the exact code just pressed without reacquiring a scratch resource. */
+  key.needs_binding = 0;
+  return _xdo_send_key_window_do(xdo, window, &key, False, &modifier, delay / 2);
 }
 
 /* Add by Lee Pumphret 2007-07-28
@@ -1256,30 +1157,6 @@ int xdo_find_window_client(const xdo_t *xdo, Window window, Window *window_ret,
 }
 
 /* Helper functions */
-static KeySym _xdo_keysym_from_char(const xdo_t *xdo, wchar_t key) {
-  int i = 0;
-  int len = xdo->charcodes_len;
-
-  //printf("Finding symbol for key '%c'\n", key);
-  for (i = 0; i < len; i++) {
-    //printf("  => %c vs %c (%d)\n",
-           //key, xdo->charcodes[i].key, (xdo->charcodes[i].key == key));
-    if (xdo->charcodes[i].key == key) {
-      //printf("  => MATCH to symbol: %lu\n", xdo->charcodes[i].symbol);
-      return xdo->charcodes[i].symbol;
-    }
-  }
-
-  if (key >= 0x100) key += 0x01000000;
-  if (XKeysymToString(key)) return key;
-  return NoSymbol;
-}
-
-static void _xdo_charcodemap_from_char(const xdo_t *xdo, charcodemap_t *key) {
-  KeySym keysym = _xdo_keysym_from_char(xdo, key->key);
-  _xdo_charcodemap_from_keysym(xdo, key, keysym);
-}
-
 static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key, KeySym keysym) {
   int i = 0;
   int len = xdo->charcodes_len;
@@ -1392,70 +1269,6 @@ done:
 /* context-free functions */
 wchar_t _keysym_to_char(KeySym keysym) {
   return (wchar_t)xkb_keysym_to_utf32(keysym);
-}
-
-int _xdo_send_keysequence_window_to_keycode_list(const xdo_t *xdo, const char *keyseq,
-                                     charcodemap_t **keys, int *nkeys) {
-  char *tokctx = NULL;
-  const char *tok = NULL;
-  char *keyseq_copy = NULL, *strptr = NULL;
-  int i = 0;
-
-  /* Array of keys to press, in order given by keyseq */
-  int keys_size = 10;
-
-  if (strcspn(keyseq, " \t\n.-[]{}\\|") != strlen(keyseq)) {
-    fprintf(stderr, "Error: Invalid key sequence '%s'\n", keyseq);
-    return False;
-  }
-
-  *nkeys = 0;
-  *keys = calloc(keys_size, sizeof(charcodemap_t));
-  keyseq_copy = strptr = strdup(keyseq);
-  while ((tok = strtok_r(strptr, "+", &tokctx)) != NULL) {
-    KeySym sym;
-    KeyCode key;
-
-    if (strptr != NULL)
-      strptr = NULL;
-
-    /* Check if 'tok' (string keysym) is an alias to another key */
-    /* symbol_map comes from xdo.util */
-    for (i = 0; symbol_map[i] != NULL; i+=2)
-      if (!strcasecmp(tok, symbol_map[i]))
-        tok = symbol_map[i + 1];
-
-    sym = XStringToKeysym(tok);
-    if (sym == NoSymbol) {
-      /* Accept a number as a explicit keycode */
-      if (isdigit(tok[0])) {
-        key = (unsigned int) atoi(tok);
-      } else {
-        fprintf(stderr, "(symbol) No such key name '%s'. Ignoring it.\n", tok);
-        continue;
-      }
-      (*keys)[*nkeys].code = key;
-      (*keys)[*nkeys].symbol = sym;
-      (*keys)[*nkeys].group = 0;
-      (*keys)[*nkeys].modmask = 0;
-      (*keys)[*nkeys].needs_binding = 0;
-      if (key == 0) {
-        //fprintf(stderr, "No such key '%s'. Ignoring it.\n", tok);
-        (*keys)[*nkeys].needs_binding = 1;
-      }
-    } else {
-      _xdo_charcodemap_from_keysym(xdo, &(*keys)[*nkeys], sym);
-    }
-
-    (*nkeys)++;
-    if (*nkeys == keys_size) {
-      keys_size *= 2;
-      *keys = realloc(*keys, keys_size * sizeof(KeyCode));
-    }
-  }
-
-  free(keyseq_copy);
-  return True;
 }
 
 int _is_success(const char *funcname, int code, const xdo_t *xdo) {
@@ -1635,10 +1448,6 @@ unsigned int xdo_get_input_state(const xdo_t *xdo) {
                 &root_x, &root_y, &win_x, &win_y, &mask);
 
   return mask;
-}
-
-const char **xdo_get_symbol_map(void) {
-  return symbol_map;
 }
 
 int xdo_get_pid_window(const xdo_t *xdo, Window window) {

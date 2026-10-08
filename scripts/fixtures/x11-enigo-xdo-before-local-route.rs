@@ -5,12 +5,11 @@
 //!
 //! If libxdo is not available at runtime, operations return errors.
 
-use crate::{checked_scroll_magnitude, Key, KeyboardControllable, MouseButton, MouseControllable};
+use crate::{checked_scroll_magnitude, MouseButton, MouseControllable};
 
 use hbb_common::libc::c_int;
 use hbb_common::x11::xlib::{Display, XCloseDisplay, XGetPointerMapping, XOpenDisplay};
 use libxdo_sys::{self, xdo_t, CURRENTWINDOW};
-use std::{borrow::Cow, ffi::CString};
 
 /// Default delay per keypress in microseconds.
 /// This value is passed to libxdo functions and must fit in `useconds_t` (u32).
@@ -152,24 +151,6 @@ impl Drop for EnigoXdo {
     }
 }
 
-impl EnigoXdo {
-    pub(crate) fn key_sequence_result(&mut self, sequence: &str) -> crate::ResultType {
-        if self.xdo.is_null() {
-            return Err("libxdo is unavailable".into());
-        }
-        let string = CString::new(sequence)?;
-        let status = unsafe {
-            libxdo_sys::xdo_enter_text_window(
-                self.xdo as *const _,
-                CURRENTWINDOW,
-                string.as_ptr(),
-                self.delay as libxdo_sys::useconds_t,
-            )
-        };
-        xdo_result("text entry", status)
-    }
-}
-
 impl MouseControllable for EnigoXdo {
     fn as_any(&self) -> &dyn std::any::Any {
         self
@@ -255,199 +236,5 @@ impl MouseControllable for EnigoXdo {
             self.mouse_click(button)?;
         }
         Ok(())
-    }
-}
-
-fn keysequence<'a>(key: Key) -> Cow<'a, str> {
-    if let Key::Layout(c) = key {
-        return Cow::Owned(format!("U{:X}", c as u32));
-    }
-    if let Key::Raw(k) = key {
-        return Cow::Owned(format!("{}", k as u16));
-    }
-    #[allow(deprecated)]
-    // I mean duh, we still need to support deprecated keys until they're removed
-    // https://www.rubydoc.info/gems/xdo/XDo/Keyboard
-    // https://gitlab.com/cunidev/gestures/-/wikis/xdotool-list-of-key-codes
-    Cow::Borrowed(match key {
-        Key::Alt => "Alt",
-        Key::Backspace => "BackSpace",
-        Key::CapsLock => "Caps_Lock",
-        Key::Control => "Control",
-        Key::Delete => "Delete",
-        Key::DownArrow => "Down",
-        Key::End => "End",
-        Key::Escape => "Escape",
-        Key::F1 => "F1",
-        Key::F10 => "F10",
-        Key::F11 => "F11",
-        Key::F12 => "F12",
-        Key::F2 => "F2",
-        Key::F3 => "F3",
-        Key::F4 => "F4",
-        Key::F5 => "F5",
-        Key::F6 => "F6",
-        Key::F7 => "F7",
-        Key::F8 => "F8",
-        Key::F9 => "F9",
-        Key::Home => "Home",
-        //Key::Layout(_) => unreachable!(),
-        Key::LeftArrow => "Left",
-        Key::Option => "Option",
-        Key::PageDown => "Page_Down",
-        Key::PageUp => "Page_Up",
-        //Key::Raw(_) => unreachable!(),
-        Key::Return => "Return",
-        Key::RightArrow => "Right",
-        Key::Shift => "Shift",
-        Key::Space => "space",
-        Key::Tab => "Tab",
-        Key::UpArrow => "Up",
-        Key::Numpad0 => "U30", //"KP_0",
-        Key::Numpad1 => "U31", //"KP_1",
-        Key::Numpad2 => "U32", //"KP_2",
-        Key::Numpad3 => "U33", //"KP_3",
-        Key::Numpad4 => "U34", //"KP_4",
-        Key::Numpad5 => "U35", //"KP_5",
-        Key::Numpad6 => "U36", //"KP_6",
-        Key::Numpad7 => "U37", //"KP_7",
-        Key::Numpad8 => "U38", //"KP_8",
-        Key::Numpad9 => "U39", //"KP_9",
-        Key::Decimal => "U2E", //"KP_Decimal",
-        Key::Cancel => "Cancel",
-        Key::Clear => "Clear",
-        Key::Pause => "Pause",
-        Key::Kana => "Kana",
-        Key::Hangul => "Hangul",
-        Key::Junja => "",
-        Key::Final => "",
-        Key::Hanja => "Hanja",
-        Key::Kanji => "Kanji",
-        Key::Convert => "",
-        Key::Select => "Select",
-        Key::Print => "Print",
-        Key::Execute => "Execute",
-        Key::Snapshot => "3270_PrintScreen",
-        Key::Insert => "Insert",
-        Key::Help => "Help",
-        Key::Sleep => "",
-        Key::Separator => "KP_Separator",
-        Key::VolumeUp => "",
-        Key::VolumeDown => "",
-        Key::Mute => "",
-        Key::Scroll => "Scroll_Lock",
-        Key::NumLock => "Num_Lock",
-        Key::RWin => "Super_R",
-        Key::Apps => "Menu",
-        Key::Multiply => "KP_Multiply",
-        Key::Add => "KP_Add",
-        Key::Subtract => "KP_Subtract",
-        Key::Divide => "KP_Divide",
-        Key::Equals => "KP_Equal",
-        Key::NumpadEnter => "KP_Enter",
-        Key::RightShift => "Shift_R",
-        Key::RightControl => "Control_R",
-        Key::RightAlt => "Alt_R",
-
-        Key::Command | Key::Super | Key::Windows | Key::Meta => "Super",
-
-        _ => "",
-    })
-}
-
-impl KeyboardControllable for EnigoXdo {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn as_mut_any(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
-    fn get_key_state(&mut self, key: Key) -> bool {
-        if self.xdo.is_null() {
-            return false;
-        }
-        /*
-        // modifier keys mask
-        pub const ShiftMask: c_uint = 0x01;
-        pub const LockMask: c_uint = 0x02;
-        pub const ControlMask: c_uint = 0x04;
-        pub const Mod1Mask: c_uint = 0x08;
-        pub const Mod2Mask: c_uint = 0x10;
-        pub const Mod3Mask: c_uint = 0x20;
-        pub const Mod4Mask: c_uint = 0x40;
-        pub const Mod5Mask: c_uint = 0x80;
-        */
-        let mod_shift = 1 << 0;
-        let mod_lock = 1 << 1;
-        let mod_control = 1 << 2;
-        let mod_alt = 1 << 3;
-        let mod_numlock = 1 << 4;
-        let mod_meta = 1 << 6;
-        let mask = unsafe { libxdo_sys::xdo_get_input_state(self.xdo as *const _) };
-        match key {
-            Key::Shift => mask & mod_shift != 0,
-            Key::CapsLock => mask & mod_lock != 0,
-            Key::Control => mask & mod_control != 0,
-            Key::Alt => mask & mod_alt != 0,
-            Key::NumLock => mask & mod_numlock != 0,
-            Key::Meta => mask & mod_meta != 0,
-            _ => false,
-        }
-    }
-
-    fn key_sequence(&mut self, sequence: &str) {
-        if let Err(err) = self.key_sequence_result(sequence) {
-            log::warn!("EnigoXdo::key_sequence failed: {err}");
-        }
-    }
-
-    fn key_down(&mut self, key: Key) -> crate::ResultType {
-        if self.xdo.is_null() {
-            return Ok(());
-        }
-        let string = CString::new(&*keysequence(key))?;
-        unsafe {
-            libxdo_sys::xdo_send_keysequence_window_down(
-                self.xdo as *const _,
-                CURRENTWINDOW,
-                string.as_ptr(),
-                self.delay as libxdo_sys::useconds_t,
-            );
-        }
-        Ok(())
-    }
-
-    fn key_up(&mut self, key: Key) {
-        if self.xdo.is_null() {
-            return;
-        }
-        if let Ok(string) = CString::new(&*keysequence(key)) {
-            unsafe {
-                libxdo_sys::xdo_send_keysequence_window_up(
-                    self.xdo as *const _,
-                    CURRENTWINDOW,
-                    string.as_ptr(),
-                    self.delay as libxdo_sys::useconds_t,
-                );
-            }
-        }
-    }
-
-    fn key_click(&mut self, key: Key) {
-        if self.xdo.is_null() {
-            return;
-        }
-        if let Ok(string) = CString::new(&*keysequence(key)) {
-            unsafe {
-                libxdo_sys::xdo_send_keysequence_window(
-                    self.xdo as *const _,
-                    CURRENTWINDOW,
-                    string.as_ptr(),
-                    self.delay as libxdo_sys::useconds_t,
-                );
-            }
-        }
     }
 }

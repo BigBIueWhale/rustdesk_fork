@@ -40,7 +40,7 @@
 
 /**
  * CURRENTWINDOW is a special identify for xdo input faking (mouse and
- * keyboard) functions like xdo_send_keysequence_window that indicate we should target the
+ * keyboard) functions like xdo_send_key_window that indicate we should target the
  * current window, not a specific window.
  *
  * Generally, this means we will use XTEST instead of XSendEvent when sending
@@ -351,83 +351,26 @@ int xdo_click_window(const xdo_t *xdo, Window window, int button);
 int xdo_click_window_multiple(const xdo_t *xdo, Window window, int button,
                        int repeat, useconds_t delay);
 
-/**
- * Type a string to the specified window.
- *
- * If you want to send a specific key or key sequence, such as "alt+l", you
- * want instead xdo_send_keysequence_window(...).
- *
- * @param window The window you want to send keystrokes to or CURRENTWINDOW
- * @param string The string to type, like "Hello world!"
- * @param delay The delay between keystrokes in microseconds. 12000 is a decent
- *    choice if you don't have other plans.
- */
-int xdo_enter_text_window(const xdo_t *xdo, Window window, const char *string, useconds_t delay);
+#define XDO_KEYSYM 1U
+#define XDO_KEYCODE 2U
+#define XDO_KEY_DOWN 1U
+#define XDO_KEY_UP 2U
+#define XDO_KEY_CLICK 3U
 
 /**
- * Send a keysequence to the specified window.
+ * Send one keysym or raw keycode with an explicit down, up, or click action.
  *
- * This allows you to send keysequences by symbol name. Any combination
- * of X11 KeySym names separated by '+' are valid. Single KeySym names
- * are valid, too.
+ * Keysyms are nonzero 29-bit X11 values, excluding VoidSymbol. Unicode keysyms
+ * must encode a Unicode scalar in U+0100..U+10FFFF. Raw keycodes must lie in the
+ * context's inclusive native range and are validated before narrowing.
+ * Invalid kinds, values, or actions return XDO_ERROR before input.
+ * A click resolves once and releases the exact code pressed.
  *
- * Examples:
- *   "l"
- *   "semicolon"
- *   "alt+Return"
- *   "Alt_L+Tab"
- *
- * If you want to type a string, such as "Hello world." you want to instead
- * use xdo_enter_text_window.
- *
- * @param window The window you want to send the keysequence to or
- *   CURRENTWINDOW
- * @param keysequence The string keysequence to send.
- * @param delay The delay between keystrokes in microseconds.
+ * @param window The target window or CURRENTWINDOW.
+ * @param delay Delay in microseconds; a click divides it between down and up.
  */
-int xdo_send_keysequence_window(const xdo_t *xdo, Window window,
-                    const char *keysequence, useconds_t delay);
-
-/**
- * Send key release (up) events for the given key sequence.
- *
- * @see xdo_send_keysequence_window
- */
-int xdo_send_keysequence_window_up(const xdo_t *xdo, Window window,
-                       const char *keysequence, useconds_t delay);
-
-/**
- * Send key press (down) events for the given key sequence.
- *
- * @see xdo_send_keysequence_window
- */
-int xdo_send_keysequence_window_down(const xdo_t *xdo, Window window,
-                         const char *keysequence, useconds_t delay);
-
-/**
- * Send a series of keystrokes.
- *
- * @param window The window to send events to or CURRENTWINDOW
- * @param keys The array of charcodemap_t entities to send.
- * @param nkeys The length of the keys parameter
- * @param pressed 1 for key press, 0 for key release.
- * @param modifier Pointer to integer to record the modifiers activated by
- *   the keys being pressed. If NULL, we don't save the modifiers.
- * @param delay The delay between keystrokes in microseconds.
- */
-int xdo_send_keysequence_window_list_do(const xdo_t *xdo, Window window,
-                            charcodemap_t *keys, int nkeys,
-                            int pressed, int *modifier, useconds_t delay);
-
-/**
- * Get a list of active keys. Uses XQueryKeymap.
- *
- * @param keys Pointer to the array of charcodemap_t that will be allocated
- *    by this function.
- * @param nkeys Pointer to integer where the number of keys will be stored.
- */
-int xdo_get_active_keys_to_keycode_list(const xdo_t *xdo, charcodemap_t **keys,
-                                         int *nkeys);
+int xdo_send_key_window(const xdo_t *xdo, Window window, unsigned int kind,
+                        unsigned long value, unsigned int action, useconds_t delay);
 
 /**
  * Wait for a window to have a specific map state.
@@ -773,16 +716,6 @@ int xdo_get_window_property(const xdo_t *xdo, Window window, const char *propert
  * @return the input mask
  */
 unsigned int xdo_get_input_state(const xdo_t *xdo);
-
-/**
- * If you need the symbol map, use this method.
- *
- * The symbol map is an array of string pairs mapping common tokens to X Keysym
- * strings, such as "alt" to "Alt_L"
- *
- * @returns array of strings.
- */
-const char **xdo_get_symbol_map(void);
 
 /**
  * Get the position of the current viewport.

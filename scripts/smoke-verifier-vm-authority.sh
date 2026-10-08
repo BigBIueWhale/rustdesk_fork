@@ -19,6 +19,7 @@ BASE_READONLY_TEST=0
 FLUTTER_TEST_PROFILE=models
 APPLE_CURSOR_ONLY=0
 X11_CLIPBOARD_ONLY=0
+X11_KEY_INPUT_ONLY=0
 LIFECYCLE_ARTIFACT=
 LIFECYCLE_ARTIFACT_SHA256=
 LIFECYCLE_COMMIT=
@@ -141,11 +142,14 @@ case "$#:${1:-}" in
         MODE=${1#--}
         ;;
     2:--x11-display-tests)
-        [ "$2" = --clipboard-listener ] \
-            && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
-            || { echo 'clipboard-listener shard or input/run authority differs' >&2; exit 2; }
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'X11 shard input/run overrides are forbidden' >&2; exit 2; }
         MODE=x11-display-tests
-        X11_CLIPBOARD_ONLY=1
+        case "$2" in
+            --clipboard-listener) X11_CLIPBOARD_ONLY=1 ;;
+            --key-input) X11_KEY_INPUT_ONLY=1 ;;
+            *) echo 'unknown X11 shard' >&2; exit 2 ;;
+        esac
         ;;
     1:--android-peer-build)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -1155,7 +1159,6 @@ android_frame_input_inventory() {
             "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.h"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_search.c"
-            "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_util.h"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_version.h"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/COPYRIGHT"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/SOURCE.txt"
@@ -3507,7 +3510,6 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/libs/libxdo-sys-stub/native/xdo.c=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
             "repo/libs/libxdo-sys-stub/native/xdo.h=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.h"
             "repo/libs/libxdo-sys-stub/native/xdo_search.c=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_search.c"
-            "repo/libs/libxdo-sys-stub/native/xdo_util.h=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_util.h"
             "repo/libs/libxdo-sys-stub/native/xdo_version.h=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_version.h"
             "repo/libs/libxdo-sys-stub/native/COPYRIGHT=$REPO_ROOT/libs/libxdo-sys-stub/native/COPYRIGHT"
             "repo/libs/libxdo-sys-stub/native/SOURCE.txt=$REPO_ROOT/libs/libxdo-sys-stub/native/SOURCE.txt"
@@ -3737,6 +3739,8 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     guest_invocation+=" --$MODE"
     if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
         guest_invocation+=' --clipboard-listener'
+    elif [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
+        guest_invocation+=' --key-input'
     fi
 elif [ "$MODE" = hbb-common-fs ]; then
     guest_invocation+=" --hbb-common-fs /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
@@ -4279,6 +4283,52 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
         'CLIPBOARD_LISTENER_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
         'clipboard listener guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'clipboard listener completion'
+elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
+    require_exact_fixed_receipt \
+        'XDO_KEY_INPUT_NATIVE=pass cases=108 repeats=4 refused=92 accepted=16 events=32 raw=both-boundaries invalid=pre-input-refused key_storage=stack product_allocations=0 click_queries=4 click_frees=4 maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_heap=false whole_app=false' \
+        'corrected single-key API validates before input and releases the exact pressed code without parser storage'
+    require_exact_fixed_receipt \
+        'XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=32 frees=24 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false' \
+        'single-key native scratch bounds, refusal and returned map ownership'
+    require_exact_fixed_receipt \
+        'XDO_SCRATCH_DISPLAY=retired owner=dedicated-xvfb server=joined socket=absent lock=absent later_tests=fresh-display' \
+        'owned scratch display retirement before a fresh native server'
+    require_exact_fixed_receipt \
+        'XDO_CONSTRUCTOR_NATIVE=pass cases=264 faults=21 paths=3 repeats=4 accepted=12 refused=252 events=24 snapshot=single allocations=paired maps=paired display_transfer=success-only caller_display=usable descriptors=retired tasks=retired sanitizer=address heap_scope=owned-allocations whole_app=false' \
+        'constructor ownership through the current public keyboard API'
+    require_exact_fixed_receipt \
+        'XDO_KEY_API_EXPORTS=pass providers=1 retired_exports=6 single_key=present' \
+        'production-helper provider omits the retired parser, text and list ABI'
+    require_exact_fixed_receipt \
+        'X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 context_refusals=32 constructor_unwinds=16 display_connections=one pointer=selected-root callbacks=paired descriptors=retired threads=retired scope=xdo-backend' \
+        'current Enigo backend ownership and selected display'
+    require_exact_fixed_receipt \
+        'X11_ENIGO_TEXT_NATIVE=pass source=complete-backend locale_scenarios=3 scalar_pairs=21 events=42 controls=preadmission-refused keys=clear observers=joined descriptors=retired scope=native-key-events whole_app=false' \
+        'current numeric Unicode and control-key events across three locale conditions'
+    require_exact_fixed_receipt \
+        'X11_ENIGO_LAYOUT_NATIVE=pass source=complete-backend map=changed-after-construction cases=2 scalar_pairs=33 events=66 mapping_refusals=2 keys=clear children=joined descriptors=retired keymap_descriptors=freed scope=native-key-events whole_app=false' \
+        'fresh text mapping and native retirement on the corrected provider'
+    require_exact_fixed_receipt \
+        'X11_ENIGO_ROUTE_NATIVE=pass source=production-backend-and-constructor-fixture old_accepts=0 current_accepts=0 scenarios=constructor,diagnostic-display-change listener=container-loopback-only peer=closed children=joined scope=xdo-backend' \
+        'current input and diagnostic constructors remain on their retained Unix route'
+    require_exact_fixed_receipt \
+        'X11_XDO_PACKAGE_ELF=pass variants=1 required=true runpath=absent full_package=unexecuted' \
+        'current private provider ELF policy'
+    require_exact_fixed_receipt \
+        'XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=5' \
+        'complete production loader and Enigo compiled with authenticated dependencies'
+    for key_scenario in missing-key-input missing-mouse-up wrong-version writable absent reject-key-down; do
+        require_exact_fixed_receipt \
+            "XDO_LOADER_NATIVE=pass scenario=$key_scenario source=production network=none uid=4000 cleanup=joined" \
+            'current production loader and Enigo refusal boundary'
+    done
+    require_exact_fixed_receipt \
+        'XDO_KEY_INPUT_SHARD=pass source=production-components provider=current-only parser=absent real_events=observed maps=restored network=none uid=4000 cleanup=joined whole_app=false' \
+        'focused current-provider key-input finality'
+    require_exact_fixed_receipt \
+        'XDO_KEY_INPUT_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined' \
+        'key-input guest finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'key-input guest completion'
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
         'MACOS_CURSOR_SNAPSHOT_STATE=pass source=complete-module tests=5 zero_seed=accepted failed_capture=not-memoized stale_image=absent same_seed=reused publication_retry=captured-image unwind=empty reset=idempotent worker=joined scope=portable-cache-state macOS_native=false' \
@@ -4299,7 +4349,7 @@ elif [ "$MODE" = x11-display-tests ]; then
         'X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 context_refusals=32 constructor_unwinds=16 display_connections=one pointer=selected-root callbacks=paired descriptors=retired threads=retired scope=xdo-backend' \
         'complete production Enigo XDO backend selected-root pointer delivery and sole-display ownership across native refusal, constructor unwind and retirement'
     require_exact_fixed_receipt \
-        'X11_ENIGO_ROUTE_NATIVE=pass source=complete-backends old_accepts=2 current_accepts=0 scenarios=constructor,diagnostic-display-change listener=container-loopback-only peer=closed children=joined scope=xdo-backend' \
+        'X11_ENIGO_ROUTE_NATIVE=pass source=production-backend-and-constructor-fixture old_accepts=2 current_accepts=0 scenarios=constructor,diagnostic-display-change listener=container-loopback-only peer=closed children=joined scope=xdo-backend' \
         'complete Enigo XDO backend retains one local-only display for input and diagnostic'
     require_exact_fixed_receipt \
         'X11_ENIGO_TEXT_NATIVE=pass source=complete-backend locale_scenarios=3 scalar_pairs=21 events=42 controls=preadmission-refused keys=clear observers=joined descriptors=retired scope=native-key-events whole_app=false' \
@@ -5529,6 +5579,9 @@ elif [ "$MODE" = fixed-archive-tests ]; then
 elif [ "$MODE" = x11-display-tests ]; then
     if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
         printf 'CLIPBOARD_LISTENER_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=linux-clipboard-component full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+    elif [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
+        printf 'XDO_KEY_INPUT_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=xdo-key-components full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
     else
         printf 'X11_DISPLAY_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly docker=guest-only product=x11-native-owner-and-capture-components full_app_acceptance=false cleanup=joined elapsed_seconds=%s\n' \

@@ -12,6 +12,7 @@ import shutil
 import socket
 import struct
 import subprocess
+import sys
 import threading
 import time
 
@@ -66,24 +67,28 @@ def logging_library(root, environment):
     return checksum, library
 
 
-def native_xdo(root, environment):
+def native_xdo(root, environment, historical_destructor=True):
     source = root / "libs/libxdo-sys-stub/native"
     checker_source = root / "scripts/verify-debian-package-authority.py"
     spec = importlib.util.spec_from_file_location("package_authority", checker_source)
     checker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(checker)
-    names = ("build.py", "xdo.c", "xdo.h", "xdo_search.c", "xdo_util.h",
+    names = ("build.py", "xdo.c", "xdo.h", "xdo_search.c",
              "xdo_version.h", "COPYRIGHT", "SOURCE.txt")
-    before_source = Path("/build/native-xdo-before-source")
-    before_source.mkdir(mode=0o700)
-    for name in names:
-        shutil.copyfile(source / name, before_source / name)
-    text = (before_source / "xdo.c").read_text()
-    destructor = "XkbFreeKeyboard(desc, 0, True);"
-    require(text.count(destructor) == 1, "native XDO descriptor destructor differs")
-    (before_source / "xdo.c").write_text(text.replace(destructor, "XkbFreeClientMap(desc, 0, 1);"))
+    before_source = None
+    variants = [("corrected", source)]
+    if historical_destructor:
+        before_source = Path("/build/native-xdo-before-source")
+        before_source.mkdir(mode=0o700)
+        for name in names:
+            shutil.copyfile(source / name, before_source / name)
+        text = (before_source / "xdo.c").read_text()
+        destructor = "XkbFreeKeyboard(desc, 0, True);"
+        require(text.count(destructor) == 1, "native XDO descriptor destructor differs")
+        (before_source / "xdo.c").write_text(text.replace(destructor, "XkbFreeClientMap(desc, 0, 1);"))
+        variants.insert(0, ("before", before_source))
     directories = {}
-    for variant, inputs in (("before", before_source), ("corrected", source)):
+    for variant, inputs in variants:
         directory = Path("/build") / f"native-xdo-{variant}"
         directory.mkdir(mode=0o700)
         output = directory / "libxdo.so.3"
@@ -113,9 +118,14 @@ def native_xdo(root, environment):
                                           "xdo_set_active_modifiers"})
                 and {"xdo_mouse_down", "xdo_mouse_up", "xdo_click_window"}.issubset(exports),
                 "native XDO modifier API retirement differs")
+        require(not exports.intersection({"xdo_send_keysequence_window", "xdo_send_keysequence_window_down",
+                                          "xdo_send_keysequence_window_up", "xdo_enter_text_window",
+                                          "xdo_send_keysequence_window_list_do", "xdo_get_symbol_map"})
+                and "xdo_send_key_window" in exports, "native keyboard API retirement differs")
         directories[variant] = directory
-    print("X11_XDO_PACKAGE_ELF=pass variants=2 required=true runpath=absent full_package=unexecuted", flush=True)
-    print("XDO_MODIFIER_API_NATIVE=pass providers=2 retired_exports=3 required_mouse=present", flush=True)
+    print(f"X11_XDO_PACKAGE_ELF=pass variants={len(variants)} required=true runpath=absent full_package=unexecuted", flush=True)
+    print(f"XDO_MODIFIER_API_NATIVE=pass providers={len(variants)} retired_exports=3 required_mouse=present", flush=True)
+    print(f"XDO_KEY_API_EXPORTS=pass providers={len(variants)} retired_exports=6 single_key=present", flush=True)
     return directories, before_source
 
 
@@ -157,6 +167,7 @@ def scratch_keys(root, environment):
     native_source = root / "libs/libxdo-sys-stub/native"
     subprocess.run(["/usr/bin/cc", "-std=c99", "-O1", "-g", "-fsanitize=address",
                     "-fno-omit-frame-pointer", "-Wl,--wrap=XGetKeyboardMapping", "-Wl,--wrap=XFree",
+                    "-Wl,--wrap=malloc", "-Wl,--wrap=calloc", "-Wl,--wrap=realloc", "-Wl,--wrap=strdup",
                     str(scratch_source), str(native_source / "xdo.c"), str(native_source / "xdo_search.c"),
                     "-lX11", "-lXtst", "-lXinerama", "-lxkbcommon", "-o", str(scratch_binary)],
                    env=environment, check=True, timeout=30)
@@ -197,7 +208,7 @@ def scratch_keys(root, environment):
           "later_tests=fresh-display", flush=True)
 
 
-def enigo_route(root, environment, checksum, library, providers, before_source):
+def enigo_route(root, environment, checksum, library, providers, before_source, historical_routes=True):
     mouse_source = root / "scripts/test-xdo-mouse-modifiers.c"
     mouse_binary = Path("/build/xdo-mouse-modifiers")
     subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(mouse_source),
@@ -213,8 +224,8 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
     mouse_binary.unlink()
     historical = root / "scripts/fixtures/x11-enigo-xdo-before-local-route.rs"
     require(hashlib.sha256(historical.read_bytes()).hexdigest() ==
-            "c7ebe8d466b1b5ff59b7c498dfd808df2927a5ef8ac79d24d287fdb661fedf6a",
-            "historical a1c03eb3 Enigo XDO backend with current API adaptation differs")
+            "77a8992182c52f4d7b705d85e30145a51d789e484f16509912ee675a33fc596e",
+            "historical a1c03eb3 constructor/mouse fixture with unused keyboard methods removed differs")
     # Extract the real public types, scroll check and traits; never substitute a test API.
     source = (root / "libs/enigo/src/lib.rs").read_text()
     start = "///\npub type ResultType ="
@@ -225,8 +236,27 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
     api = Path("/build/enigo-api.rs")
     with api.open("x") as output:
         output.write(declarations)
+    binding_source = root / "libs/libxdo-sys-stub/src/lib.rs"
+    bindings = binding_source.read_text()
+    start = bindings.index("#[derive(Clone, Copy)]\npub enum XdoKey {")
+    end = bindings.index("const TRUSTED_LIBXDO_PATHS:", start)
+    key_types = Path("/build/xdo-key-types.rs")
+    key_types.write_text(bindings[start:end])
+    keysym_source = root / "xdo-vendor/x11-2.21.0/src/keysym.rs"
+    keysym_manifest = root / "xdo-vendor/x11-2.21.0/.cargo-checksum.json"
+    expected_manifest = dict(line.split() for line in (root / "scripts/xdo-loader-inputs.txt").read_text().splitlines()
+                             if line and not line.startswith("#"))["x11-2.21.0"]
+    require(hashlib.sha256(keysym_manifest.read_bytes()).hexdigest() == expected_manifest
+            and hashlib.sha256(keysym_source.read_bytes()).hexdigest()
+            == json.loads(keysym_manifest.read_text())["files"]["src/keysym.rs"],
+            "native keysym declaration identity differs")
+    print(f"XDO_KEY_BINDINGS loader_source_sha256={hashlib.sha256(binding_source.read_bytes()).hexdigest()} "
+          f"types_sha256={hashlib.sha256(key_types.read_bytes()).hexdigest()} "
+          f"keysym_source_sha256={hashlib.sha256(keysym_source.read_bytes()).hexdigest()} "
+          "types=production-declarations keysyms=authenticated-input loader=direct-native-test", flush=True)
     binaries = {}
-    for variant in ("historical", "corrected"):
+    variants = ("historical", "corrected") if historical_routes else ("corrected",)
+    for variant in variants:
         binary = Path("/build") / f"enigo-{variant}"
         command = ["/usr/local/cargo/bin/rustc", "--edition=2021",
                    str(root / "scripts/test-x11-enigo-route.rs"), "-o", str(binary),
@@ -294,17 +324,18 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
                     native.wait(timeout=5)
                     for stream in (native.stdout, native.stderr):
                         stream.close()
-    print("X11_ENIGO_ROUTE_NATIVE=pass source=complete-backends old_accepts=2 current_accepts=0 "
+    print(f"X11_ENIGO_ROUTE_NATIVE=pass source=production-backend-and-constructor-fixture old_accepts={2 if historical_routes else 0} current_accepts=0 "
           "scenarios=constructor,diagnostic-display-change listener=container-loopback-only "
           "peer=closed children=joined scope=xdo-backend", flush=True)
-    enigo_text(root, environment, binaries["corrected"], providers["before"])
-    for path in (*binaries.values(), api):
+    enigo_text(root, environment, binaries["corrected"], providers.get("before"))
+    for path in (*binaries.values(), api, key_types):
         path.unlink()
     for directory in providers.values():
         (directory / "libxdo.so").unlink()
         (directory / "libxdo.so.3").unlink()
         directory.rmdir()
-    shutil.rmtree(before_source)
+    if before_source is not None:
+        shutil.rmtree(before_source)
 
 
 def enigo_text(root, environment, binary, before_provider):
@@ -367,8 +398,10 @@ def enigo_layout(environment, binary, observer, probe, before_provider):
             require(streams.select(2), "native layout phase did not become ready")
             require(os.read(child.stdout.fileno(), 64) == expected, "native layout phase differs")
 
-    for variant, scenario, pairs in (("before", "layout", 1), ("corrected", "layout", 1),
-                                     ("corrected", "layout-repeat", 32)):
+    cases = [("corrected", "layout", 1), ("corrected", "layout-repeat", 32)]
+    if before_provider is not None:
+        cases.insert(0, ("before", "layout", 1))
+    for variant, scenario, pairs in cases:
         native = subprocess.Popen([str(observer), scenario], env=environment,
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         injector = None
@@ -1242,6 +1275,49 @@ def capture_connection_loss(binary, environment, xserver):
             stream.close()
 
 
+def key_input_main():
+    require(os.getuid() == 4000 and os.getgid() == 4000 and Path("/.dockerenv").is_file(),
+            "key-input shard requires the isolated nonroot container")
+    root = Path("/work")
+    environment = {"PATH": "/usr/local/cargo/bin:/usr/bin:/bin", "LC_ALL": "C",
+                   "HOME": "/tmp", "DISPLAY": ":98", "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
+                   "RUSTUP_HOME": "/usr/local/rustup", "CARGO_HOME": "/usr/local/cargo",
+                   "LD_LIBRARY_PATH": "/xvfb-root/usr/lib/x86_64-linux-gnu"}
+    version = subprocess.run(["/usr/local/cargo/bin/rustc", "--version"], env=environment,
+                             check=True, capture_output=True, text=True, timeout=5)
+    require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
+    scratch_keys(root, environment)
+    checksum, logging = logging_library(root, environment)
+    with open("/tmp/xdo-key-xvfb.log", "xb") as log:
+        server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "640x480x24",
+                                   "-screen", "1", "800x600x24", "-nolisten", "tcp", "-ac", "-noreset"],
+                                  env=environment, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 5
+            while not Path("/tmp/.X11-unix/X98").is_socket():
+                require(server.poll() is None and time.monotonic() < deadline, "key-input Xvfb not ready")
+                time.sleep(0.01)
+            constructor_contexts(root, environment)
+            providers, before_source = native_xdo(root, environment, historical_destructor=False)
+            enigo_route(root, environment, checksum, logging, providers, before_source, historical_routes=False)
+            require(server.poll() is None, "key-input Xvfb exited during native cases")
+        finally:
+            if server.poll() is None:
+                server.terminate()
+            server.wait(timeout=5)
+        require(server.returncode == 0 and not Path("/tmp/.X11-unix/X98").exists()
+                and not Path("/tmp/.X98-lock").exists(), "key-input Xvfb/socket/lock retirement differs")
+    logging.unlink()
+    for name in ("tcp", "tcp6"):
+        require(not any(row.split()[3] == "0A" for row in Path("/proc/net", name).read_text().splitlines()[1:]),
+                "key-input shard retained TCP")
+    for name in ("udp", "udp6"):
+        require(len(Path("/proc/net", name).read_text().splitlines()) == 1, "key-input shard retained UDP")
+    print("XDO_KEY_INPUT_SHARD=pass source=production-components provider=current-only "
+          "parser=absent real_events=observed maps=restored network=none uid=4000 cleanup=joined "
+          "whole_app=false", flush=True)
+
+
 def main():
     require(os.getuid() == 4000 and os.getgid() == 4000, "nonroot fixture principal differs")
     root = Path("/work")
@@ -1520,4 +1596,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    require(sys.argv in ([sys.argv[0]], [sys.argv[0], "--key-input"]), "unknown native shard")
+    if len(sys.argv) == 2:
+        key_input_main()
+    else:
+        main()

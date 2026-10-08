@@ -5,7 +5,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hbb/common.dart' show SessionID;
+import 'package:flutter_hbb/models/input_model.dart';
 import 'package:flutter_hbb/models/model.dart';
+import 'package:flutter_hbb/models/rgba_publication_order.dart';
 import 'package:flutter_hbb/utils/image.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uuid/uuid.dart';
@@ -134,6 +136,54 @@ class _ImageCursor implements CursorModel {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _CursorInitializationSession implements FFI {
+  @override
+  final SessionID sessionId = Uuid().v4obj();
+  @override
+  late final _ImageTopology ffiModel = _ImageTopology(sessionId);
+  @override
+  late final ImageModel imageModel = ImageModel(WeakReference<FFI>(this));
+  @override
+  late final CanvasModel canvasModel = CanvasModel(WeakReference<FFI>(this));
+  @override
+  late final CursorModel cursorModel = CursorModel(WeakReference<FFI>(this));
+  @override
+  final _CursorInitializationInput inputModel = _CursorInitializationInput();
+
+  @override
+  bool isCurrentSession(SessionID expected) => expected == sessionId;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _CursorInitializationInput implements InputModel {
+  final moves = <Offset>[];
+
+  @override
+  Future<void> moveMouse(double x, double y) async => moves.add(Offset(x, y));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+Future<void> _observeCursorInitialization(
+    Future<void> Function(_CursorInitializationSession) observe) async {
+  final session = _CursorInitializationSession();
+  // Establish real model state without sending input to a peer.
+  session.cursorModel.updateDisplayOriginWithCursor(0, 0, 12, 24);
+  session.canvasModel.update(17, 23, 1.5);
+  session.inputModel.moves.clear();
+  try {
+    await observe(session);
+  } finally {
+    session.imageModel.clearImage();
+    session.imageModel.dispose();
+    session.cursorModel.dispose();
+    session.canvasModel.dispose();
+  }
 }
 
 Future<void> _observeImagePublications(
@@ -282,6 +332,61 @@ Future<Map<String, Object>> _conversionFailureHandles(String failingStage) async
 }
 
 void main() {
+  testWidgets('retired cursor initialization preserves current geometry',
+      (tester) async {
+    await tester.runAsync(() async {
+      await _observeCursorInitialization((session) async {
+        final pending = initializeCursorAndCanvas(session,
+            expectedSessionId: session.sessionId,
+            expectedDisplayTopologyRevision: 0);
+        // On non-web platforms saved-canvas lookup returns null as a Future.
+        // Retire after invocation, before the initializer can continue.
+        session.imageModel.retirePresentation();
+        await pending;
+        expect([
+          session.inputModel.moves,
+          session.cursorModel.offset,
+          session.canvasModel.x,
+          session.canvasModel.y,
+          session.canvasModel.scale,
+        ], [<Offset>[], const Offset(12, 24), 17, 23, 1.5]);
+
+        await initializeCursorAndCanvas(session,
+            expectedSessionId: session.sessionId,
+            expectedDisplayTopologyRevision: 0);
+        expect(session.inputModel.moves, [Offset.zero]);
+        expect(session.cursorModel.offset, const Offset(1, 1));
+        expect(session.canvasModel.x, -1.5);
+        expect(session.canvasModel.y, -1.5);
+      });
+    });
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
+  testWidgets('superseded cursor initialization cannot reset successor geometry',
+      (tester) async {
+    await tester.runAsync(() async {
+      await _observeCursorInitialization((session) async {
+        final order = ExactRgbaPublicationOrder<SessionID>();
+        final earlier = order.admit(session.sessionId, 0, 1)!;
+        final higher = order.admit(session.sessionId, 0, 2)!;
+        expect(order.canComplete(earlier), isTrue);
+        final pending = initializeCursorAndCanvas(session,
+            expectedSessionId: session.sessionId,
+            expectedDisplayTopologyRevision: 0);
+        expect(order.commit(higher), isTrue);
+        expect(order.canComplete(earlier), isFalse);
+        await pending;
+        expect([
+          session.inputModel.moves,
+          session.cursorModel.offset,
+          session.canvasModel.x,
+          session.canvasModel.y,
+          session.canvasModel.scale,
+        ], [<Offset>[], const Offset(12, 24), 17, 23, 1.5]);
+      });
+    });
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
   testWidgets('a ready first image is not superseded by pending geometry',
       (tester) async {
     await tester.runAsync(() async {

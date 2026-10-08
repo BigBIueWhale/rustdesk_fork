@@ -1814,6 +1814,15 @@ prepared-native inner-loop work; VM timing excludes host preparation.
 
 ### Android runtime — intermittent presentation remains OPEN
 
+**Cursor initialization — behavioral candidate, not yet reproduced.** The image
+owner checks presentation/order after cursor initialization returns, but the initializer
+checks only session/topology before its own pointer and canvas mutations. Two tests now
+execute the actual initializer, CursorModel and CanvasModel across presentation retirement
+and higher-publication commit, replacing only session metadata and the input sink.
+The production code is unchanged; isolated negative execution is pending. This does not
+establish original Android/Windows causation, and other canvas preference continuations
+remain independently OPEN.
+
 **Software first-image publication — native component A/B passed; app-level symptoms OPEN.**
 At tests-first `b0e0d47d`, the real ImageModel/native raw-image regression returned false for
 an earlier ready image solely because a higher converted image still awaited geometry.

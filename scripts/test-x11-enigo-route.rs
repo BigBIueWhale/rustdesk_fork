@@ -148,6 +148,18 @@ fn main() {
     log::set_max_level(log::LevelFilter::Info);
     let baseline = descriptors();
     if let Some(scenario) = std::env::args().nth(1) {
+        if scenario == "text" {
+            std::env::set_var("DISPLAY", ":98");
+            let mut injector = backend::EnigoXdo::default();
+            injector.key_sequence_result("aéא🙂+\n\t").unwrap();
+            assert!(injector.key_sequence_result("a\0a").is_err());
+            assert!(injector.key_sequence_result("a\u{1}a").is_err());
+            drop(injector);
+            retired(baseline);
+            assert_eq!(RETIREMENTS.load(Ordering::SeqCst), 1);
+            println!("X11_ENIGO_TEXT_CHILD=pass scalar_pairs=7 controls=preadmission-refused descriptors=retired threads=retired");
+            return;
+        }
         assert!(matches!(scenario.as_str(), "route" | "diagnostic"));
         let diagnostic = scenario == "diagnostic";
         std::env::set_var("DISPLAY", if diagnostic { ":98" } else { ":95" });

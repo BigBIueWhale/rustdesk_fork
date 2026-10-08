@@ -152,8 +152,53 @@ def enigo_route(root, environment, checksum, library):
     print("X11_ENIGO_ROUTE_NATIVE=pass source=complete-backends old_accepts=2 current_accepts=0 "
           "scenarios=constructor,diagnostic-display-change listener=container-loopback-only "
           "peer=closed children=joined scope=xdo-backend", flush=True)
+    enigo_text(root, environment, binaries["corrected"])
     for path in (*binaries.values(), api):
         path.unlink()
+
+
+def enigo_text(root, environment, binary):
+    source = root / "scripts/test-x11-text-observer.c"
+    observer = Path("/build/text-observer")
+    subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(source),
+                    "-lX11", "-o", str(observer)], env=environment, check=True, timeout=30)
+    print("X11_ENIGO_TEXT_BUILD "
+          f"observer_source_sha256={hashlib.sha256(source.read_bytes()).hexdigest()} "
+          f"observer_binary_sha256={hashlib.sha256(observer.read_bytes()).hexdigest()} "
+          f"injector_binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()}", flush=True)
+    for scenario, locale in (("cleared", None), ("C", "C"), ("invalid", "rd-test-unavailable")):
+        native_env = {key: value for key, value in environment.items()
+                      if key != "LANG" and not key.startswith("LC_")}
+        if locale is not None:
+            native_env["LC_ALL"] = locale
+        native = subprocess.Popen([str(observer)], env=native_env,
+                                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            with selectors.DefaultSelector() as streams:
+                streams.register(native.stdout, selectors.EVENT_READ)
+                require(streams.select(2), "native text observer did not become ready")
+                require(os.read(native.stdout.fileno(), 64) == b"X11_TEXT_OBSERVER=ready\n",
+                        "native text observer readiness differs")
+            result = subprocess.run([str(binary), "text"], env=native_env, capture_output=True,
+                                    text=True, timeout=5)
+            output, errors = native.communicate(timeout=5)
+            print(output.decode("ascii"), end="", flush=True)
+            require(result.returncode == 0 and not result.stderr and result.stdout.splitlines() ==
+                    ["X11_ENIGO_TEXT_CHILD=pass scalar_pairs=7 controls=preadmission-refused descriptors=retired threads=retired"]
+                    and native.returncode == 0 and not errors
+                    and output.splitlines()[-1:] == [b"X11_TEXT_OBSERVER=retired events=14 keys_clear=1"],
+                    f"native text differs in {scenario}: injector={result} observer={output!r} errors={errors!r}")
+            print(f"X11_ENIGO_TEXT_OBSERVED scenario={scenario} scalar_pairs=7 events=14 keys_clear=1", flush=True)
+        finally:
+            if native.poll() is None:
+                native.kill()
+            native.wait(timeout=5)
+            for stream in (native.stdout, native.stderr):
+                stream.close()
+    observer.unlink()
+    print("X11_ENIGO_TEXT_NATIVE=pass source=complete-backend locale_scenarios=3 scalar_pairs=21 "
+          "events=42 controls=preadmission-refused keys=clear observers=joined descriptors=retired "
+          "scope=native-key-events whole_app=false", flush=True)
 
 
 def thread_contexts(root, environment, checksum, library):

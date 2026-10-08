@@ -1199,6 +1199,7 @@ android_frame_input_inventory() {
                 "$SCRIPT_DIR/test-xdo-enigo.rs" "$REPO_ROOT/libs/enigo/src/linux/mod.rs"
                 "$REPO_ROOT/libs/enigo/src/linux/nix_impl.rs" "$REPO_ROOT/libs/hbb_common/src/platform/linux.rs"
                 "$SCRIPT_DIR/fixtures/xdo-loader-common.rs" "$SCRIPT_DIR/xdo-loader-inputs.txt"
+                "$SCRIPT_DIR/fixtures/xdo-retired-window-actions.txt"
                 "$REPO_ROOT/libs/libxdo-sys-stub/src/lib.rs" "$REPO_ROOT/Cargo.lock")
             local loader_package loader_expected loader_extra
             while read -r loader_package loader_expected loader_extra; do
@@ -3559,6 +3560,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
                 "repo/libs/enigo/src/linux/nix_impl.rs=$REPO_ROOT/libs/enigo/src/linux/nix_impl.rs"
                 "repo/libs/hbb_common/src/platform/linux.rs=$REPO_ROOT/libs/hbb_common/src/platform/linux.rs"
                 "repo/scripts/fixtures/xdo-loader-common.rs=$SCRIPT_DIR/fixtures/xdo-loader-common.rs"
+                "repo/scripts/fixtures/xdo-retired-window-actions.txt=$SCRIPT_DIR/fixtures/xdo-retired-window-actions.txt"
                 "repo/scripts/xdo-loader-inputs.txt=$SCRIPT_DIR/xdo-loader-inputs.txt"
                 "repo/libs/libxdo-sys-stub/src/lib.rs=$REPO_ROOT/libs/libxdo-sys-stub/src/lib.rs"
                 "repo/Cargo.lock=$REPO_ROOT/Cargo.lock"
@@ -4308,8 +4310,11 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
         'XDO_WINDOW_METADATA_API_NATIVE=pass providers=1 retired_exports=3' \
         'production-helper provider omits unused window metadata mutation APIs'
-    [ "$(/usr/bin/grep -Fc 'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a metadata_lookups=3 metadata_symbols=absent descriptors=retired' "$SERIAL_LOG")" -eq 2 ] \
-        || fail 'native metadata-symbol refusal is absent from complete or staged provider execution'
+    require_exact_fixed_receipt \
+        'XDO_WINDOW_ACTION_API_NATIVE=pass providers=1 retired_exports=22' \
+        'production-helper provider omits unsupported window and desktop actions'
+    [ "$(/usr/bin/grep -Fc 'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a metadata_lookups=3 metadata_symbols=absent window_action_lookups=22 window_action_symbols=absent descriptors=retired' "$SERIAL_LOG")" -eq 2 ] \
+        || fail 'native symbol refusal is absent from complete or staged provider execution'
     require_exact_fixed_receipt \
         'X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 context_refusals=32 constructor_unwinds=16 display_connections=one pointer=selected-root callbacks=paired descriptors=retired threads=retired scope=xdo-backend' \
         'current Enigo backend ownership and selected display'

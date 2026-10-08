@@ -17,26 +17,13 @@
 /**
  * @mainpage
  *
- * libxdo helps you send fake mouse and keyboard input, search for windows,
- * perform various window management tasks such as desktop changes, window
- * movement, etc.
+ * libxdo sends mouse and keyboard input and provides window queries and search.
  *
  * For examples on libxdo usage, the xdotool source code is a good reference.
  *
  * @see xdo.h
  * @see xdo_new
  */
-
-/**
- * When issuing a window size change, giving this flag will make the size
- * change be relative to the size hints of the window.  For terminals, this
- * generally means that the window size will be relative to the font size,
- * allowing you to change window sizes based on character rows and columns
- * instead of pixels.
- */
-#define SIZE_USEHINTS (1L << 0)
-#define SIZE_USEHINTS_X (1L << 1)
-#define SIZE_USEHINTS_Y (1L << 2)
 
 /**
  * CURRENTWINDOW is a special identify for xdo input faking (mouse and
@@ -373,106 +360,12 @@ int xdo_send_key_window(const xdo_t *xdo, Window window, unsigned int kind,
                         unsigned long value, unsigned int action, useconds_t delay);
 
 /**
- * Wait for a window to have a specific map state.
- *
- * State possibilities:
- *   IsUnmapped - window is not displayed.
- *   IsViewable - window is mapped and shown (though may be clipped by windows
- *     on top of it)
- *   IsUnviewable - window is mapped but a parent window is unmapped.
- *
- * @param wid the window you want to wait for.
- * @param map_state the state to wait for.
- */
-int xdo_wait_for_window_map_state(const xdo_t *xdo, Window wid, int map_state);
-
-#define SIZE_TO 0
-#define SIZE_FROM 1
-int xdo_wait_for_window_size(const xdo_t *xdo, Window window, unsigned int width,
-                             unsigned int height, int flags, int to_or_from);
-
-
-/**
- * Move a window to a specific location.
- *
- * The top left corner of the window will be moved to the x,y coordinate.
- *
- * @param wid the window to move
- * @param x the X coordinate to move to.
- * @param y the Y coordinate to move to.
- */
-int xdo_move_window(const xdo_t *xdo, Window wid, int x, int y);
-
-/**
- * Apply a window's sizing hints (if any) to a given width and height.
- *
- * This function wraps XGetWMNormalHints() and applies any
- * resize increment and base size to your given width and height values.
- *
- * @param window the window to use
- * @param width the unit width you want to translate
- * @param height the unit height you want to translate
- * @param width_ret the return location of the translated width
- * @param height_ret the return location of the translated height
- */
-int xdo_translate_window_with_sizehint(const xdo_t *xdo, Window window,
-                                       unsigned int width, unsigned int height,
-                                       unsigned int *width_ret, unsigned int *height_ret);
-
-/**
- * Change the window size.
- *
- * @param wid the window to resize
- * @param w the new desired width
- * @param h the new desired height
- * @param flags if 0, use pixels for units. If SIZE_USEHINTS, then
- *   the units will be relative to the window size hints.
- */
-int xdo_set_window_size(const xdo_t *xdo, Window wid, int w, int h, int flags);
-
-/**
- * Set the override_redirect value for a window. This generally means
- * whether or not a window manager will manage this window.
- *
- * If you set it to 1, the window manager will usually not draw borders on the
- * window, etc. If you set it to 0, the window manager will see it like a
- * normal application window.
- *
- */
-int xdo_set_window_override_redirect(const xdo_t *xdo, Window wid,
-                                     int override_redirect);
-
-/**
- * Focus a window.
- *
- * @see xdo_activate_window
- * @param wid the window to focus.
- */
-int xdo_focus_window(const xdo_t *xdo, Window wid);
-
-/**
- * Raise a window to the top of the window stack. This is also sometimes
- * termed as bringing the window forward.
- *
- * @param wid The window to raise.
- */
-int xdo_raise_window(const xdo_t *xdo, Window wid);
-
-/**
  * Get the window currently having focus.
  *
  * @param window_ret Pointer to a window where the currently-focused window
  *   will be stored.
  */
 int xdo_get_focused_window(const xdo_t *xdo, Window *window_ret);
-
-/**
- * Wait for a window to have or lose focus.
- *
- * @param window The window to wait on
- * @param want_focus If 1, wait for focus. If 0, wait for loss of focus.
- */
-int xdo_wait_for_window_focus(const xdo_t *xdo, Window window, int want_focus);
 
 /**
  * Get the PID owning a window. Not all applications support this.
@@ -493,58 +386,6 @@ int xdo_get_pid_window(const xdo_t *xdo, Window window);
  *   will be stored.
  */
 int xdo_get_focused_window_sane(const xdo_t *xdo, Window *window_ret);
-
-/**
- * Activate a window. This is generally a better choice than xdo_focus_window
- * for a variety of reasons, but it requires window manager support:
- *   - If the window is on another desktop, that desktop is switched to.
- *   - It moves the window forward rather than simply focusing it
- *
- * Requires your window manager to support this.
- * Uses _NET_ACTIVE_WINDOW from the EWMH spec.
- *
- * @param wid the window to activate
- */
-int xdo_activate_window(const xdo_t *xdo, Window wid);
-
-/**
- * Wait for a window to be active or not active.
- *
- * Requires your window manager to support this.
- * Uses _NET_ACTIVE_WINDOW from the EWMH spec.
- *
- * @param window the window to wait on
- * @param active If 1, wait for active. If 0, wait for inactive.
- */
-int xdo_wait_for_window_active(const xdo_t *xdo, Window window, int active);
-
-/**
- * Map a window. This mostly means to make the window visible if it is
- * not currently mapped.
- *
- * @param wid the window to map.
- */
-int xdo_map_window(const xdo_t *xdo, Window wid);
-
-/**
- * Unmap a window
- *
- * @param wid the window to unmap
- */
-int xdo_unmap_window(const xdo_t *xdo, Window wid);
-
-/**
- * Minimize a window.
- */
-int xdo_minimize_window(const xdo_t *xdo, Window wid);
-
-/**
- * Reparents a window
- *
- * @param wid_source the window to reparent
- * @param wid_target the new parent window
- */
-int xdo_reparent_window(const xdo_t *xdo, Window wid_source, Window wid_target);
 
 /**
  * Get a window's location.
@@ -582,22 +423,6 @@ int xdo_get_window_size(const xdo_t *xdo, Window wid, unsigned int *width_ret,
 int xdo_get_active_window(const xdo_t *xdo, Window *window_ret);
 
 /**
- * Get a window ID by clicking on it. This function blocks until a selection
- * is made.
- *
- * @param window_ret Pointer to Window where the selected window is stored.
- */
-int xdo_select_window_with_click(const xdo_t *xdo, Window *window_ret);
-
-/**
- * Set the number of desktops.
- * Uses _NET_NUMBER_OF_DESKTOPS of the EWMH spec.
- *
- * @param ndesktops the new number of desktops to set.
- */
-int xdo_set_number_of_desktops(const xdo_t *xdo, long ndesktops);
-
-/**
  * Get the current number of desktops.
  * Uses _NET_NUMBER_OF_DESKTOPS of the EWMH spec.
  *
@@ -607,29 +432,12 @@ int xdo_set_number_of_desktops(const xdo_t *xdo, long ndesktops);
 int xdo_get_number_of_desktops(const xdo_t *xdo, long *ndesktops);
 
 /**
- * Switch to another desktop.
- * Uses _NET_CURRENT_DESKTOP of the EWMH spec.
- *
- * @param desktop The desktop number to switch to.
- */
-int xdo_set_current_desktop(const xdo_t *xdo, long desktop);
-
-/**
  * Get the current desktop.
  * Uses _NET_CURRENT_DESKTOP of the EWMH spec.
  *
  * @param desktop pointer to long where the current desktop number is stored.
  */
 int xdo_get_current_desktop(const xdo_t *xdo, long *desktop);
-
-/**
- * Move a window to another desktop
- * Uses _NET_WM_DESKTOP of the EWMH spec.
- *
- * @param wid the window to move
- * @param desktop the desktop destination for the window
- */
-int xdo_set_desktop_for_window(const xdo_t *xdo, Window wid, long desktop);
 
 /**
  * Get the desktop a window is on.
@@ -698,26 +506,6 @@ unsigned int xdo_get_input_state(const xdo_t *xdo);
  * _NET_DESKTOP_VIEWPORT
  */
 int xdo_get_desktop_viewport(const xdo_t *xdo, int *x_ret, int *y_ret);
-
-/**
- * Set the position of the current viewport.
- *
- * This is only relevant if your window manager supports
- * _NET_DESKTOP_VIEWPORT
- */
-int xdo_set_desktop_viewport(const xdo_t *xdo, int x, int y);
-
-/**
- * Kill a window and the client owning it.
- *
- */
-int xdo_kill_window(const xdo_t *xdo, Window window);
-
-/**
- * Close a window without trying to kill the client.
- *
- */
-int xdo_close_window(const xdo_t *xdo, Window window);
 
 /**
  * Find a client window that is a parent of the window given

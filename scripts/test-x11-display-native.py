@@ -67,8 +67,19 @@ def logging_library(root, environment):
     return checksum, library
 
 
+def retired_window_actions(root):
+    data = (root / "scripts/fixtures/xdo-retired-window-actions.txt").read_bytes()
+    require(len(data) <= 1024, "retired window action inventory exceeded bound")
+    names = data.decode("ascii").splitlines()
+    require(len(names) == len(set(names)) == 22
+            and all(re.fullmatch(r"xdo_[a-z_]+", name) for name in names),
+            "retired window action inventory differs")
+    return set(names)
+
+
 def native_xdo(root, environment, historical_destructor=True):
     source = root / "libs/libxdo-sys-stub/native"
+    window_actions = retired_window_actions(root)
     checker_source = root / "scripts/verify-debian-package-authority.py"
     spec = importlib.util.spec_from_file_location("package_authority", checker_source)
     checker = importlib.util.module_from_spec(spec)
@@ -124,11 +135,13 @@ def native_xdo(root, environment, historical_destructor=True):
                 and "xdo_send_key_window" in exports, "native keyboard API retirement differs")
         require(not exports.intersection({"xdo_set_window_property", "xdo_set_window_class",
                                           "xdo_set_window_urgency"}), "native window metadata API retirement differs")
+        require(not exports.intersection(window_actions), "native window action API remains exported")
         directories[variant] = directory
     print(f"X11_XDO_PACKAGE_ELF=pass variants={len(variants)} required=true runpath=absent full_package=unexecuted", flush=True)
     print(f"XDO_MODIFIER_API_NATIVE=pass providers={len(variants)} retired_exports=3 required_mouse=present", flush=True)
     print(f"XDO_KEY_API_EXPORTS=pass providers={len(variants)} retired_exports=6 single_key=present", flush=True)
     print(f"XDO_WINDOW_METADATA_API_NATIVE=pass providers={len(variants)} retired_exports=3", flush=True)
+    print(f"XDO_WINDOW_ACTION_API_NATIVE=pass providers={len(variants)} retired_exports=22", flush=True)
     return directories, before_source
 
 

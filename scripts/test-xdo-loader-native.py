@@ -100,6 +100,7 @@ def build():
     spec = importlib.util.spec_from_file_location('native_display', ROOT / 'scripts/test-x11-display-native.py')
     native = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(native)
+    window_actions = native.retired_window_actions(ROOT)
     _, logging = native.logging_library(ROOT, ENV)
     logging = Path(shutil.move(str(logging), BUILD / 'liblog.rlib'))
     policy_source = ROOT / 'libs/hbb_common/src/platform/linux.rs'
@@ -159,8 +160,8 @@ def build():
             elif variant == 'wrong-version':
                 path = source_dir / 'xdo_version.h'
                 text = path.read_text()
-                require(text.count('3.20160805.1-rustdesk8') == 1, 'fixture version source differs')
-                path.write_text(text.replace('3.20160805.1-rustdesk8', '3.20160805.1-rustdesk7'))
+                require(text.count('3.20160805.1-rustdesk9') == 1, 'fixture version source differs')
+                path.write_text(text.replace('3.20160805.1-rustdesk9', '3.20160805.1-rustdesk8'))
             else:
                 path = source_dir / 'xdo.c'
                 path.write_text('#define XGetModifierMapping rd_fixture_x_get_modifier_mapping\n' + path.read_text()
@@ -181,6 +182,7 @@ def build():
                 'retired keyboard ABI remains exported')
         require(not exports.intersection({'xdo_set_window_property', 'xdo_set_window_class',
                                           'xdo_set_window_urgency'}), 'retired window metadata ABI remains exported')
+        require(not exports.intersection(window_actions), 'retired window action ABI remains exported')
         require('xdo_version' in exports and 'xdo_new' in exports, 'native provider fixture lacks constructors/version')
         print(f'XDO_LOADER_PROVIDER variant={variant} library_sha256={sha(library)} '
               f'bytes={library.stat().st_size} c_sha256={sha(source_dir / "xdo.c")} '
@@ -271,7 +273,8 @@ def run(scenario):
                             if scenario != 'complete' else
                             'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative '
                             'button=pressed,released shift=pressed,released key=a,a '
-                            'metadata_lookups=3 metadata_symbols=absent descriptors=retired')
+                            'metadata_lookups=3 metadata_symbols=absent '
+                            'window_action_lookups=22 window_action_symbols=absent descriptors=retired')
                 require(result.stdout.splitlines() == [expected] and not result.stderr,
                         'loader native component result differs')
                 print(expected, flush=True)

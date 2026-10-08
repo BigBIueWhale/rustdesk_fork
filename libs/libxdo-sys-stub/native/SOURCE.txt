@@ -44,6 +44,8 @@ Required modifiers resolve once into eight stack codes before input effects.
 The native modifier-map query is shape/range checked and retired before any
 group or key change; absent required rows refuse. Both click legs use the same
 codes, and requests with no required modifiers acquire no modifier map.
-The fixed fork version is 3.20160805.1-rustdesk8.
+Window-management actions, their wait and size-hint APIs, interactive pointer-grab
+selection, desktop/viewport mutation and client/window termination are removed.
+The fixed fork version is 3.20160805.1-rustdesk9.
 The BSD redistribution notice is retained in COPYRIGHT and packaged with the
 library. Source provenance is not a claim that all native behavior is validated.

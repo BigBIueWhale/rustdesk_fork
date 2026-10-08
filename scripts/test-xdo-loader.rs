@@ -1,7 +1,7 @@
 //! Native test of the complete production loader through its public API.
 use hbb_common::{libc, libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW}, x11::{keysym::*, xlib::*}};
 use libxdo_sys::*;
-use std::{ffi::CString, ptr};
+use std::{collections::HashSet, ffi::CString, ptr};
 
 struct DisplayOwner(*mut Display);
 impl Drop for DisplayOwner {
@@ -42,6 +42,14 @@ fn main() {
         let library = Library::open(Some("/usr/lib/rustdesk-fork/libxdo.so.3"), RTLD_NOW | RTLD_LOCAL).unwrap();
         for symbol in [b"xdo_set_window_property\0".as_slice(), b"xdo_set_window_class\0", b"xdo_set_window_urgency\0"] {
             assert!(library.get::<unsafe extern "C" fn()>(symbol).is_err(), "retired metadata symbol is available");
+        }
+        let actions: Vec<_> = include_str!("fixtures/xdo-retired-window-actions.txt").lines().collect();
+        assert_eq!(actions.len(), 22);
+        assert_eq!(actions.iter().collect::<HashSet<_>>().len(), 22);
+        for name in actions {
+            let symbol = CString::new(name).unwrap();
+            assert!(library.get::<unsafe extern "C" fn()>(symbol.as_bytes_with_nul()).is_err(),
+                    "retired window action {name} is available");
         }
         drop(library);
         assert_eq!(descriptors(), before_lookup);
@@ -95,5 +103,5 @@ fn main() {
     unsafe { xdo_free(ptr::null_mut()) };
     assert_eq!(descriptors(), baseline);
     assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), 1);
-    println!("XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a metadata_lookups=3 metadata_symbols=absent descriptors=retired");
+    println!("XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a metadata_lookups=3 metadata_symbols=absent window_action_lookups=22 window_action_symbols=absent descriptors=retired");
 }

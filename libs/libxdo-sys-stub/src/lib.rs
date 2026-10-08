@@ -50,7 +50,7 @@ pub enum XdoKeyAction {
 const TRUSTED_LIBXDO_PATHS: &[&str] = &[
     "/usr/lib/rustdesk-fork/libxdo.so.3",
 ];
-const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk8";
+const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk9";
 
 fn root_owned_non_writable(mode: u32, uid: u32) -> bool {
     uid == 0 && mode & 0o022 == 0
@@ -128,7 +128,6 @@ type FnXdoGetWindowLocation =
 type FnXdoGetWindowSize =
     unsafe extern "C" fn(*const xdo_t, Window, *mut c_uint, *mut c_uint) -> c_int;
 type FnXdoGetInputState = unsafe extern "C" fn(*const xdo_t) -> c_uint;
-type FnXdoActivateWindow = unsafe extern "C" fn(*const xdo_t, Window) -> c_int;
 type FnXdoWaitForMouseMoveFrom = unsafe extern "C" fn(*const xdo_t, c_int, c_int) -> c_int;
 type FnXdoWaitForMouseMoveTo = unsafe extern "C" fn(*const xdo_t, c_int, c_int) -> c_int;
 type FnXdoSearchWindows =
@@ -154,7 +153,6 @@ struct XdoLib {
     xdo_get_window_location: FnXdoGetWindowLocation,
     xdo_get_window_size: FnXdoGetWindowSize,
     xdo_get_input_state: FnXdoGetInputState,
-    xdo_activate_window: FnXdoActivateWindow,
     xdo_wait_for_mouse_move_from: FnXdoWaitForMouseMoveFrom,
     xdo_wait_for_mouse_move_to: FnXdoWaitForMouseMoveTo,
     xdo_search_windows: FnXdoSearchWindows,
@@ -207,7 +205,6 @@ impl XdoLib {
             let xdo_get_window_location = required_symbol(&lib, b"xdo_get_window_location")?;
             let xdo_get_window_size = required_symbol(&lib, b"xdo_get_window_size")?;
             let xdo_get_input_state = required_symbol(&lib, b"xdo_get_input_state")?;
-            let xdo_activate_window = required_symbol(&lib, b"xdo_activate_window")?;
             let xdo_wait_for_mouse_move_from = required_symbol(&lib, b"xdo_wait_for_mouse_move_from")?;
             let xdo_wait_for_mouse_move_to = required_symbol(&lib, b"xdo_wait_for_mouse_move_to")?;
             let xdo_search_windows = required_symbol(&lib, b"xdo_search_windows")?;
@@ -234,7 +231,6 @@ impl XdoLib {
                 xdo_get_window_location,
                 xdo_get_window_size,
                 xdo_get_input_state,
-                xdo_activate_window,
                 xdo_wait_for_mouse_move_from,
                 xdo_wait_for_mouse_move_to,
                 xdo_search_windows,
@@ -532,10 +528,6 @@ pub unsafe extern "C" fn xdo_get_window_size(
 
 pub unsafe extern "C" fn xdo_get_input_state(xdo: *const xdo_t) -> c_uint {
     get_lib().map_or(0, |lib| (lib.xdo_get_input_state)(xdo))
-}
-
-pub unsafe extern "C" fn xdo_activate_window(xdo: *const xdo_t, wid: Window) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_activate_window)(xdo, wid))
 }
 
 pub unsafe extern "C" fn xdo_wait_for_mouse_move_from(

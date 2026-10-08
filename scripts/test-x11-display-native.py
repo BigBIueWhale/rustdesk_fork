@@ -195,10 +195,52 @@ def enigo_text(root, environment, binary):
             native.wait(timeout=5)
             for stream in (native.stdout, native.stderr):
                 stream.close()
-    observer.unlink()
     print("X11_ENIGO_TEXT_NATIVE=pass source=complete-backend locale_scenarios=3 scalar_pairs=21 "
           "events=42 controls=preadmission-refused keys=clear observers=joined descriptors=retired "
           "scope=native-key-events whole_app=false", flush=True)
+    enigo_layout(environment, binary, observer)
+    observer.unlink()
+
+
+def enigo_layout(environment, binary, observer):
+    def phase(child, expected):
+        with selectors.DefaultSelector() as streams:
+            streams.register(child.stdout, selectors.EVENT_READ)
+            require(streams.select(2), "native layout phase did not become ready")
+            require(os.read(child.stdout.fileno(), 64) == expected, "native layout phase differs")
+
+    native = subprocess.Popen([str(observer), "layout"], env=environment,
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    injector = None
+    try:
+        phase(native, b"X11_TEXT_OBSERVER=ready\n")
+        injector = subprocess.Popen([str(binary), "layout"], env=environment,
+                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        phase(injector, b"X11_ENIGO_LAYOUT_CHILD=ready\n")
+        native.stdin.write(b"M")
+        native.stdin.flush()
+        phase(native, b"X11_TEXT_LAYOUT=changed-after-construction\n")
+        output, errors = injector.communicate(input=b"D", timeout=5)
+        observed, native_errors = native.communicate(timeout=5)
+        print(observed.decode("ascii"), end="", flush=True)
+        require(injector.returncode == 0 and not errors and output.splitlines() ==
+                [b"X11_ENIGO_LAYOUT_CHILD=pass contexts=2 descriptors=retired threads=retired"]
+                and native.returncode == 0 and not native_errors
+                and observed.splitlines()[-1:] == [b"X11_TEXT_OBSERVER=retired events=2 keys_clear=1"],
+                f"native layout differs: injector={injector.returncode}/{output!r}/{errors!r} "
+                f"observer={native.returncode}/{observed!r}/{native_errors!r}")
+    finally:
+        for child in (injector, native):
+            if child is None:
+                continue
+            if child.poll() is None:
+                child.kill()
+            child.wait(timeout=5)
+            for stream in (child.stdin, child.stdout, child.stderr):
+                stream.close()
+    print("X11_ENIGO_LAYOUT_NATIVE=pass source=complete-backend map=changed-after-construction "
+          "events=2 keys=clear children=joined descriptors=retired scope=native-key-events whole_app=false",
+          flush=True)
 
 
 def thread_contexts(root, environment, checksum, library):

@@ -148,6 +148,22 @@ fn main() {
     log::set_max_level(log::LevelFilter::Info);
     let baseline = descriptors();
     if let Some(scenario) = std::env::args().nth(1) {
+        if scenario == "layout" {
+            use std::io::{Read, Write};
+            std::env::set_var("DISPLAY", ":98");
+            let mut injector = backend::EnigoXdo::default();
+            println!("X11_ENIGO_LAYOUT_CHILD=ready");
+            std::io::stdout().flush().unwrap();
+            let mut command = [0];
+            std::io::stdin().read_exact(&mut command).unwrap();
+            assert_eq!(command, [b'D']);
+            injector.key_sequence_result("a").unwrap();
+            drop(injector);
+            retired(baseline);
+            assert_eq!(RETIREMENTS.load(Ordering::SeqCst), 2);
+            println!("X11_ENIGO_LAYOUT_CHILD=pass contexts=2 descriptors=retired threads=retired");
+            return;
+        }
         if scenario == "text" {
             std::env::set_var("DISPLAY", ":98");
             let mut injector = backend::EnigoXdo::default();

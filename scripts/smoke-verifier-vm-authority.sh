@@ -4226,6 +4226,9 @@ elif [ "$MODE" = x11-display-tests ]; then
         'X11_ENIGO_TEXT_NATIVE=pass source=complete-backend locale_scenarios=3 scalar_pairs=21 events=42 controls=preadmission-refused keys=clear observers=joined descriptors=retired scope=native-key-events whole_app=false' \
         'complete Enigo XDO backend delivers native Unicode key events without a locale dependency and releases every submitted key'
     require_exact_fixed_receipt \
+        'X11_ENIGO_LAYOUT_NATIVE=pass source=complete-backend map=changed-after-construction events=2 keys=clear children=joined descriptors=retired scope=native-key-events whole_app=false' \
+        'complete Enigo XDO backend follows the actual keymap after a native layout change'
+    require_exact_fixed_receipt \
         'X11_PLATFORM_ROUTE_NATIVE=pass source=production-constructors old=null-call-shape callers=xlib,xdo old_accepts=2 current_accepts=0 listener=container-loopback-only peer=closed children=joined scope=platform-constructors' \
         'production platform X11/XDO constructors cannot silently select localhost TCP'
     require_exact_fixed_receipt \

@@ -4307,6 +4307,9 @@ elif [ "$MODE" = x11-display-tests ]; then
         'XDO_MOUSE_MODIFIERS_NATIVE=pass held=0,1,9,10,12 repeats=4 cases=20 events=40 window=owned state=preserved keys=unchanged mapping=restored descriptors=retired tasks=retired scope=private-native-component' \
         'private native mouse events preserve held modifiers without an unused key-list allocation'
     require_exact_fixed_receipt \
+        'XDO_MODIFIER_API_NATIVE=pass providers=2 retired_exports=3 required_mouse=present' \
+        'actual private providers omit all three unused modifier APIs while preserving the required mouse exports'
+    require_exact_fixed_receipt \
         'X11_XDO_DESTRUCTOR_BEFORE=observed source_delta=one-call allocations=2 retirements=0 live=2 keys=correct children=joined scope=xdo-descriptor-class' \
         'same native source with the old destructor delivers keys but retains both enclosing descriptors'
     require_exact_fixed_receipt \

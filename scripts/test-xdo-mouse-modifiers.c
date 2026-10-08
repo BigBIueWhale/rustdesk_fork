@@ -3,6 +3,7 @@
 #include <X11/extensions/XTest.h>
 #include <X11/keysym.h>
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,8 +22,10 @@ static int entries(const char *path) {
   require(directory != NULL, "resource inventory unavailable");
   int count = 0;
   struct dirent *entry;
+  errno = 0;
   while ((entry = readdir(directory)) != NULL)
     if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..")) count++;
+  require(errno == 0, "resource inventory read failed");
   require(closedir(directory) == 0, "resource inventory close failed");
   return count;
 }
@@ -127,6 +130,12 @@ int main(void) {
           && memcmp(actual->modifiermap, original->modifiermap, 8 * original->max_keypermod) == 0,
           "restored modifier map differs");
   XFreeModifiermap(actual);
+  int restored_width;
+  KeySym *restored = XGetKeyboardMapping(observer, 20, 12, &restored_width);
+  require(restored != NULL && restored_width == width
+          && memcmp(restored, old_keys, 12 * width * sizeof(KeySym)) == 0,
+          "restored key map differs");
+  XFree(restored);
   XFreeModifiermap(mapping);
   XFreeModifiermap(original);
   XFree(old_keys);

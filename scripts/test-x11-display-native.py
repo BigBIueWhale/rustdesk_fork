@@ -104,8 +104,18 @@ def native_xdo(root, environment):
             for name in names) +
             f" binary_sha256={hashlib.sha256(output.read_bytes()).hexdigest()} variant={variant} "
             "compiler=product-helper source_delta=one-call loader=direct-native-test installed=false", flush=True)
+        result = subprocess.run(["/usr/bin/nm", "-D", "--defined-only", str(output)],
+                                env=environment, capture_output=True, text=True, timeout=5)
+        require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 65536,
+                "native XDO export inventory failed")
+        exports = {line.split()[-1] for line in result.stdout.splitlines() if line.split()}
+        require(not exports.intersection({"xdo_get_active_modifiers", "xdo_clear_active_modifiers",
+                                          "xdo_set_active_modifiers"})
+                and {"xdo_mouse_down", "xdo_mouse_up", "xdo_click_window"}.issubset(exports),
+                "native XDO modifier API retirement differs")
         directories[variant] = directory
     print("X11_XDO_PACKAGE_ELF=pass variants=2 required=true runpath=absent full_package=unexecuted", flush=True)
+    print("XDO_MODIFIER_API_NATIVE=pass providers=2 retired_exports=3 required_mouse=present", flush=True)
     return directories, before_source
 
 

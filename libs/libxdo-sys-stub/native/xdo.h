@@ -782,36 +782,6 @@ unsigned int xdo_get_input_state(const xdo_t *xdo);
  */
 const char **xdo_get_symbol_map(void);
 
-/* active modifiers stuff */
-
-/**
- * Get a list of active keys. Uses XQueryKeymap.
- *
- * @param keys Pointer to the array of charcodemap_t that will be allocated
- *    by this function.
- * @param nkeys Pointer to integer where the number of keys will be stored.
- */
-int xdo_get_active_modifiers(const xdo_t *xdo, charcodemap_t **keys,
-                             int *nkeys);
-
-/**
- * Send any events necessary to clear the active modifiers.
- * For example, if you are holding 'alt' when xdo_get_active_modifiers is
- * called, then this method will send a key-up for 'alt'
- */
-int xdo_clear_active_modifiers(const xdo_t *xdo, Window window,
-                               charcodemap_t *active_mods,
-                               int active_mods_n);
-
-/**
- * Send any events necessary to make these modifiers active.
- * This is useful if you just cleared the active modifiers and then wish
- * to restore them after.
- */
-int xdo_set_active_modifiers(const xdo_t *xdo, Window window,
-                             charcodemap_t *active_mods,
-                             int active_mods_n);
-
 /**
  * Get the position of the current viewport.
  *

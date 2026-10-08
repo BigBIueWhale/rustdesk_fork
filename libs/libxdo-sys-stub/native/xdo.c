@@ -810,11 +810,8 @@ int _xdo_mousebutton(const xdo_t *xdo, Window window, int button, int is_press) 
     /* Send to specific window */
     int screen = 0;
     XButtonEvent xbpe;
-    charcodemap_t *active_mod;
-    int active_mod_n;
 
     xdo_get_mouse_location(xdo, &xbpe.x_root, &xbpe.y_root, &screen);
-    xdo_get_active_modifiers(xdo, &active_mod, &active_mod_n);
 
     xbpe.window = window;
     xbpe.button = button;
@@ -847,7 +844,6 @@ int _xdo_mousebutton(const xdo_t *xdo, Window window, int button, int is_press) 
     }
     ret = XSendEvent(xdo->xdpy, window, True, ButtonPressMask, (XEvent *)&xbpe);
     XFlush(xdo->xdpy);
-    free(active_mod);
     return _is_success("XSendEvent(mousedown)", ret == 0, xdo);
   }
 }
@@ -947,8 +943,6 @@ int xdo_click_window_multiple(const xdo_t *xdo, Window window, int button,
     }
     repeat--;
 
-    /* Sleeping even after the last click is important, so that a call to xdo_set_active_modifiers()
-     * right after won't think that the button is still pressed. */
     usleep(delay);
   } /* while (repeat > 0) */
   return ret;
@@ -1601,50 +1595,6 @@ void _xdo_send_modifier(const xdo_t *xdo, int modmask, int is_press) {
   XFreeModifiermap(modifiers);
 }
 
-int xdo_get_active_modifiers(const xdo_t *xdo, charcodemap_t **keys,
-                                    int *nkeys) {
-  /* For each keyboard device, if an active key is a modifier,
-   * then add the keycode to the keycode list */
-
-  char keymap[32]; /* keycode map: 256 bits */
-  int keys_size = 10;
-  int keycode = 0;
-  int mod_index, mod_key;
-  XModifierKeymap *modifiers = XGetModifierMapping(xdo->xdpy);
-  *nkeys = 0;
-  *keys = malloc(keys_size * sizeof(charcodemap_t));
-
-  XQueryKeymap(xdo->xdpy, keymap);
-
-  for (mod_index = ShiftMapIndex; mod_index <= Mod5MapIndex; mod_index++) {
-    for (mod_key = 0; mod_key < modifiers->max_keypermod; mod_key++) {
-      keycode = modifiers->modifiermap[mod_index * modifiers->max_keypermod + mod_key];
-      if (keycode && keymap[(keycode / 8)] & (1 << (keycode % 8))) {
-        /* This keycode is active and is a modifier, record it. */
-
-        /* Zero the charcodemap_t entry before using it.
-         * Fixes a bug reported by Hong-Leong Ong - where
-         * 'xdotool key --clearmodifiers ...' sometimes failed trying
-         * to clear modifiers that didn't exist since charcodemap_t's modmask was
-         * uninitialized */
-        memset(*keys + *nkeys, 0, sizeof(charcodemap_t));
-
-        (*keys)[*nkeys].code = keycode;
-        (*nkeys)++;
-
-        if (*nkeys == keys_size) {
-          keys_size *= 2;
-          *keys = realloc(keys, keys_size * sizeof(charcodemap_t));
-        }
-      }
-    }
-  }
-
-  XFreeModifiermap(modifiers);
-
-  return XDO_SUCCESS;
-}
-
 unsigned int xdo_get_input_state(const xdo_t *xdo) {
   Window root, dummy;
   int root_x, root_y, win_x, win_y;
@@ -1659,61 +1609,6 @@ unsigned int xdo_get_input_state(const xdo_t *xdo) {
 
 const char **xdo_get_symbol_map(void) {
   return symbol_map;
-}
-
-int xdo_clear_active_modifiers(const xdo_t *xdo, Window window, charcodemap_t *active_mods, int active_mods_n) {
-  int ret = 0;
-  unsigned int input_state = xdo_get_input_state(xdo);
-  xdo_send_keysequence_window_list_do(xdo, window, active_mods,
-                          active_mods_n, False, NULL, DEFAULT_DELAY);
-
-  if (input_state & Button1MotionMask)
-    ret = xdo_mouse_up(xdo, window, 1);
-  if (!ret && input_state & Button2MotionMask)
-    ret = xdo_mouse_up(xdo, window, 2);
-  if (!ret && input_state & Button3MotionMask)
-    ret = xdo_mouse_up(xdo, window, 3);
-  if (!ret && input_state & Button4MotionMask)
-    ret = xdo_mouse_up(xdo, window, 4);
-  if (!ret && input_state & Button5MotionMask)
-    ret = xdo_mouse_up(xdo, window, 5);
-  if (!ret && input_state & LockMask) {
-    /* explicitly use down+up here since xdo_send_keysequence_window alone will track the modifiers
-     * incurred by a key (like shift, or caps) and send them on the 'up' sequence.
-     * That seems to break things with Caps_Lock only, so let's be explicit here. */
-    ret = xdo_send_keysequence_window_down(xdo, window, "Caps_Lock", DEFAULT_DELAY);
-    ret += xdo_send_keysequence_window_up(xdo, window, "Caps_Lock", DEFAULT_DELAY);
-  }
-
-  XSync(xdo->xdpy, False);
-  return ret;
-}
-
-int xdo_set_active_modifiers(const xdo_t *xdo, Window window, charcodemap_t *active_mods, int active_mods_n) {
-  int ret = 0;
-  unsigned int input_state = xdo_get_input_state(xdo);
-  xdo_send_keysequence_window_list_do(xdo, window, active_mods,
-                          active_mods_n, True, NULL, DEFAULT_DELAY);
-  if (input_state & Button1MotionMask)
-    ret = xdo_mouse_down(xdo, window, 1);
-  if (!ret && input_state & Button2MotionMask)
-    ret = xdo_mouse_down(xdo, window, 2);
-  if (!ret && input_state & Button3MotionMask)
-    ret = xdo_mouse_down(xdo, window, 3);
-  if (!ret && input_state & Button4MotionMask)
-    ret = xdo_mouse_down(xdo, window, 4);
-  if (!ret && input_state & Button5MotionMask)
-    ret = xdo_mouse_down(xdo, window, 5);
-  if (!ret && input_state & LockMask) {
-    /* explicitly use down+up here since xdo_send_keysequence_window alone will track the modifiers
-     * incurred by a key (like shift, or caps) and send them on the 'up' sequence.
-     * That seems to break things with Caps_Lock only, so let's be explicit here. */
-    ret = xdo_send_keysequence_window_down(xdo, window, "Caps_Lock", DEFAULT_DELAY);
-    ret += xdo_send_keysequence_window_up(xdo, window, "Caps_Lock", DEFAULT_DELAY);
-  }
-
-  XSync(xdo->xdpy, False);
-  return ret;
 }
 
 int xdo_get_pid_window(const xdo_t *xdo, Window window) {

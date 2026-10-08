@@ -1,6 +1,7 @@
 /* Isolated native scratch-key bounds and query-failure regression. */
 #define _POSIX_C_SOURCE 200809L
 #include <X11/Xlib.h>
+#include <X11/XKBlib.h>
 #include <X11/keysym.h>
 #include <dirent.h>
 #include <errno.h>
@@ -107,6 +108,22 @@ int main(void) {
   KeySym *original = XGetKeyboardMapping(observer, low, count, &width);
   require(original && width > 0, "original keyboard map unavailable");
   int original_width = width;
+  XkbDescPtr original_xkb = XkbGetMap(observer, XkbAllMapComponentsMask, XkbUseCoreKbd);
+  require(original_xkb && original_xkb->map && original_xkb->server,
+          "original XKB map unavailable");
+  /* Observe core-map normalization before any product call. */
+  XChangeKeyboardMapping(observer, low, original_width, original, count);
+  XSync(observer, False);
+  KeySym *roundtrip = XGetKeyboardMapping(observer, low, count, &width);
+  require(roundtrip && width > 0, "core roundtrip observation unavailable");
+  int identical = width == original_width
+                  && !memcmp(roundtrip, original, count * width * sizeof(KeySym));
+  printf("XDO_SCRATCH_CORE_ROUNDTRIP before_product=true original_width=%d returned_width=%d identical=%d\n",
+         original_width, width, identical);
+  XFree(roundtrip);
+  require(XkbSetMap(observer, XkbAllMapComponentsMask, original_xkb), "original XKB map restore failed");
+  XSync(observer, False);
+  same_map(observer, low, count, original_width, original);
   Window window = XCreateSimpleWindow(observer, DefaultRootWindow(observer), 0, 0, 120, 80, 0, 0, 0);
   require(window != None, "owned window unavailable");
   XSelectInput(observer, window, KeyPressMask | KeyReleaseMask);
@@ -172,10 +189,11 @@ int main(void) {
     product_display = NULL;
     xdo_free(input);
     XFree(mapping);
-    XChangeKeyboardMapping(observer, low, original_width, original, count);
+    require(XkbSetMap(observer, XkbAllMapComponentsMask, original_xkb), "original XKB map restore failed");
     XSync(observer, False);
     same_map(observer, low, count, original_width, original);
   }
+  XkbFreeKeyboard(original_xkb, 0, True);
   XFree(original);
   XSetInputFocus(observer, original_focus, original_revert, CurrentTime);
   XSync(observer, False);

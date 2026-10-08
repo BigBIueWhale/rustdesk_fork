@@ -726,7 +726,11 @@ past the caller's key array. Provider, loader and build require private version
 authentic old binary. The focused native fixture requires 20 repeated delivery,
 mapped-query bypass, query-failure and full-map-refusal cases, actual events,
 unchanged maps/physical keys, query/free census and sampled descriptor/task drain.
-Candidate execution remains pending. This is not an Android/Windows delay fix,
+The reordered run passed its first five product cases, then failed the fixture's
+startup-map restoration assertion. The fixture now retains the full XKB map,
+observes a core-map roundtrip before any product call, and requires exact
+startup-map equality after full XKB restoration before proceeding and after each
+round. Native acceptance remains pending. This is not an Android/Windows delay fix,
 whole-app/install result, native map-race/allocator closure or heap-leak/soak proof.
 The separate unused compound-parser allocation and unchecked native delivery/error
 paths remain OPEN.

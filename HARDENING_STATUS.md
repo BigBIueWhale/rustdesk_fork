@@ -1821,7 +1821,7 @@ exception ownership is tracked separately below; stale geometry/cursor side effe
 broader resource lifecycles remain OPEN. Earlier fixture-compilation and stale-summary failures, with
 their independent raw logs and exact cleanup receipts, remain in the audit journal.
 
-**First-image setup failure — native leak reproduced; ownership correction unvalidated.**
+**First-image setup failure — native leak reproduced and owning-update correction passed.**
 Tests-first `67eeb8a3` (tree `99726a44`) reproduced undisposed native images after view,
 scroll, edge and cursor initialization errors: all four fault tests failed cleanup;
 the other 200 passed, including current-image refusal/no-op preservation. Full raw serial
@@ -1831,11 +1831,21 @@ The corrected update owns its input in one `finally` scope until synchronous ado
 disposing any unadopted candidate on refusal or exception without re-disposing current or
 adopted handles. Post-decode validation now belongs to that owner rather than an unowned
 gap between decoding and update. Exact session/topology/presentation/order checks remain
-before initialization and after every await. Fault cases are unchanged; an additional
-notification-triggered retirement test protects post-adoption ownership. Inventory is
-23 suites/205 tests. Native corrected execution remains pending; this component finding
-does not establish original symptoms, natural error frequency, device/window behavior or
-sustained resources. The unprotected awaits already existed in the upstream 1.4.7 import.
+before initialization and after every await. At `762af726` (tree `2257f617`), all 23 suites/
+205 tests and three parser regressions passed. The four fault cases and current-image
+case are unchanged; the additional notification-triggered retirement test also passed.
+The native fixture observed useful successor adoption, exactly one disposal per image,
+and zero remaining native image handles before emergency test cleanup. The complete
+zero-NIC VM transaction passed input/listener/finality checks and retired its joined run.
+Full 68,557-byte raw serial `flutter-model-tests-run.sSADm56I2x.serial.log`, SHA256
+`2fa0d6eafec42be96d662e3913af9ad0fe2d1c0819d4215b91a887900fea3e1d`.
+VM execution was 302 seconds, with host preparation additional; a reusable prepared
+inner-loop fixture remains needed rather than treating this model checkpoint as instant.
+This shared software-image finding is not Android-only, but Linux native Flutter component
+evidence does not establish original symptoms, natural error frequency, Android/iOS or
+desktop window/device behavior, default desktop texture paths, or sustained resources.
+The unprotected awaits already existed in the upstream 1.4.7 import. Those broader
+platform/lifecycle/performance claims and stale geometry/cursor side effects remain OPEN.
 
 The disposable runtime uses the pinned Emulator 37.1.11 and Android 14/API-34 x86_64 image in a
 networkless numeric-nonroot container inside the ordinary-user zero-NIC verifier VM. Source and APK

@@ -903,7 +903,7 @@ so no independent snapshot comparison is claimed. Full Cargo/app/install or stag
 loader races, native errors, whole heap/leaks/soak, current artifacts and broader
 authority/platform/release evidence remain OPEN.
 
-**Checked request-owned XKB state; native acceptance PENDING.** The public numeric
+**Checked request-owned XKB state; focused native acceptance.** The public numeric
 key entrypoint acquires one successful, in-range XKB state snapshot after input
 validation and before scratch mapping, group/modifier changes or key emission.
 Both click legs retain its verified group; the unchecked per-leg query is deleted.
@@ -914,8 +914,31 @@ cases across mapped/raw/scratch keys and down/up/click, plus same-context recove
 real events, state/map preservation and resource checks. The Enigo refusal fixture
 now fails native `XkbGetState` and checks the actual propagated status and no events;
 the arbitrary status-7 substitution is deleted. Wrong-version uses current C stamped
-as version 6. Native acceptance remains pending complete outer success. XTest and
-group-lock failures, asynchronous Xlib errors, between-request release failure,
+as version 6. Exact candidate `2afdca0b4c59adaca1fe6e6e6e28662635d975e0`
+(tree `829caac7bed6423f945129c18845f1ef86dbe28b`) passed the complete focused
+transaction in 118 seconds with outer exit 0. Against real owned Xvfb, injected
+BadAccess, BadImplementation and successful-invalid-group queries were refused
+in all 108 cases before native key/group/mapping effects or scratch acquisition;
+108 same-context recoveries delivered 216 native events. All 216 requests made
+one state query each; both maps and observed keyboard state were preserved.
+Actual complete Linux Enigo propagated the failed native query in eight contexts
+with no key events, working pointer input and retired descriptors. Existing input,
+scratch, constructor, mouse, text, layout and complete/staged loader regressions pass.
+The 54,224-byte private version-7 provider SHA-256 is
+`78f1c59395365f131f2d08efd3d800bf84d40ef701f567b8432d440104e50a9a`.
+Raw `.harness-state/verifier-vm/x11-display-tests-run.8q5xSuEdN6.serial.log`
+is 100,063 bytes, SHA-256
+`2b4dd816991b060dd32c4bc8bdd44122e53ee779f0b1aff1ac4717a2e7392d55`.
+The explicitly nonindependent assistant-observed receipt is
+`.harness-state/verifier-vm/evidence/xdo-key-state-run.8q5xSuEdN6.outer.receipt`,
+SHA-256 `b8c8d6d18afb1ad96393718f525dd4f44d1243b9314b3b6d5778021033ffa65e`.
+The ordinary-user zero-NIC VM used guest-only network-none nonroot containers and
+read-only inputs. The outer protocol-endpoint audit reports no host listener addition;
+cleanup joined and the exact root/overlay is absent. Its snapshots auto-retired,
+so independent snapshot comparison is unclaimed. Components use four real authenticated
+dependencies and a partial common facade; full Cargo/app/install and stage CLI
+were unexecuted. XTest and group-lock failures, asynchronous Xlib errors,
+between-request release failure,
 modifier/group ownership, races/concurrency, whole heap/soak, full app/install,
 other platforms and broader authority/artifact/release evidence remain OPEN.
 

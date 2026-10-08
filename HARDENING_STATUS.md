@@ -982,7 +982,7 @@ between-request release failure, native event/group-lock/asynchronous errors,
 map races, concurrency, whole heap/soak, full Cargo/app/install, other platforms
 and broader authority/artifact/release evidence remain OPEN.
 
-**Unsupported native window actions removed; current native acceptance PENDING.**
+**Unsupported native window actions removed; focused native acceptance.**
 The private C provider and header omit 22 unused window/desktop actions and their
 wait, size-hint and interactive pointer-grab selection APIs. Window/client termination,
 window movement/size/map/focus/activation, desktop assignment/count/switching and
@@ -990,12 +990,36 @@ viewport mutation have no supported caller. The unused Rust activate-window
 function table entry, required-symbol binding and facade are deleted. Retained
 input/cursor and observation/search paths are unchanged. Provider/helper/loader
 require `3.20160805.1-rustdesk9`; wrong-version is current corrected C stamped 8.
-The focused native check must observe absent ELF exports and all 22 failed real
-symbol lookups on both normal and staged providers, followed by real input and
-descriptor retirement. Target execution is pending; source deletion is not native
-or installed authority acceptance. Full Cargo/app/install, serving-principal and
-loader races, input ownership/concurrency/resources, other platforms and broader
-artifact/release/review obligations remain OPEN.
+Exact candidate `e645b34c8caca0d89b8c79910cb33ee7cf0a1891`
+(tree `01ae92eeda309e6a87d24e90873210d2854a0ad6`) passed the complete focused
+transaction in 107 seconds with outer exit 0. Actual ELF inventories omit all 22
+retired symbols from the product-helper provider and five loader-provider fixtures.
+Both normal and actual staged complete-provider runs made 22 failed real symbol
+lookups, then delivered native pointer/button/Shift/a input and retired descriptors.
+The complete production loader and Linux Enigo passed complete, missing mouse/key
+symbol, wrong-version, writable, absent and native-modifier-error scenarios.
+Retained native constructor, state/modifier admission and recovery, numeric-key,
+scratch, mouse, text and changed-layout regressions passed on current corrected C.
+The production helper and complete-loader provider emitted the same 40,248-byte
+version-9 ELF, SHA-256
+`4302ab769f52222c154920a753f9575418d72da99dacfd9aec5ebc9d14bf7802`.
+Actual staging resolved 11 provider dependencies and 22 libraries; distribution
+XDO was absent. Raw
+`.harness-state/verifier-vm/x11-display-tests-run.OAbXaPKjW0.serial.log`
+is 101,336 bytes, SHA-256
+`9e4824156a67c83efc57aebe7d7734bda38d6995e82ef03335372239d1ab096d`.
+The explicitly nonindependent assistant-observed
+`evidence/xdo-window-actions-run.OAbXaPKjW0.outer.receipt` under the same root
+has SHA-256 `5074cb0ad18775b40e819a181c1fe6266a50ade9dd0281f0e4e4b80dfc1a6a85`.
+The ordinary-user zero-NIC VM used guest-only network-none nonroot containers
+and read-only inputs. Outer endpoint inventories report no added host listener;
+cleanup joined and the exact run root/overlay is absent. Snapshots auto-retired;
+independent snapshot comparison is unclaimed. Four real dependencies were
+authenticated; the common facade is partial. Full Cargo/app/install, stage CLI,
+privileged receiver and serving-principal/loader races were unexecuted. ASan leak
+detection is disabled and internal Xlib/whole-heap scope is unclaimed. Broader
+input ownership, concurrency/resources/soak, other platforms, installed/native
+authority and artifact/release/review obligations remain OPEN.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,

@@ -1,5 +1,5 @@
 //! Native test of the complete production loader through its public API.
-use hbb_common::{libc, x11::{keysym::*, xlib::*}};
+use hbb_common::{libc, libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW}, x11::{keysym::*, xlib::*}};
 use libxdo_sys::*;
 use std::{ffi::CString, ptr};
 
@@ -38,6 +38,13 @@ fn main() {
     assert!(!context.0.is_null() && !owned.0.is_null());
     drop(owned);
     unsafe {
+        let before_lookup = descriptors();
+        let library = Library::open(Some("/usr/lib/rustdesk-fork/libxdo.so.3"), RTLD_NOW | RTLD_LOCAL).unwrap();
+        for symbol in [b"xdo_set_window_property\0".as_slice(), b"xdo_set_window_class\0", b"xdo_set_window_urgency\0"] {
+            assert!(library.get::<unsafe extern "C" fn()>(symbol).is_err(), "retired metadata symbol is available");
+        }
+        drop(library);
+        assert_eq!(descriptors(), before_lookup);
         let root = XDefaultRootWindow(display.0);
         let window = XCreateSimpleWindow(display.0, root, 0, 0, 320, 240, 0, 0, 0);
         assert_ne!(window, 0);
@@ -88,5 +95,5 @@ fn main() {
     unsafe { xdo_free(ptr::null_mut()) };
     assert_eq!(descriptors(), baseline);
     assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), 1);
-    println!("XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a descriptors=retired");
+    println!("XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a metadata_lookups=3 metadata_symbols=absent descriptors=retired");
 }

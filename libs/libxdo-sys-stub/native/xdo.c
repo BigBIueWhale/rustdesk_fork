@@ -331,61 +331,6 @@ int xdo_set_window_override_redirect(const xdo_t *xdo, Window wid,
   return _is_success("XChangeWindowAttributes", ret == 0, xdo);
 }
 
-int xdo_set_window_class (const xdo_t *xdo, Window wid, const char *name,
-                         const char *_class) {
-  int ret = 0;
-  XClassHint *hint = XAllocClassHint();
-  XGetClassHint(xdo->xdpy, wid, hint);
-  if (name != NULL)
-    hint->res_name = (char*)name;
-
-  if(_class != NULL)
-    hint->res_class = (char*)_class;
-
-  ret = XSetClassHint(xdo->xdpy, wid, hint);
-  XFree(hint);
-  return _is_success("XSetClassHint", ret == 0, xdo);
-}
-
-int xdo_set_window_urgency (const xdo_t *xdo, Window wid, int urgency) {
-  int ret = 0;
-  XWMHints *hint = XGetWMHints(xdo->xdpy, wid);
-  if (hint == NULL)
-    hint = XAllocWMHints();
-
-  if (urgency)
-    hint->flags = hint->flags | XUrgencyHint;
-  else
-    hint->flags = hint->flags & ~XUrgencyHint;
-
-  ret = XSetWMHints(xdo->xdpy, wid, hint);
-  XFree(hint);
-  return _is_success("XSetWMHint", ret == 0, xdo);
-}
-
-int xdo_set_window_property(const xdo_t *xdo, Window wid, const char *property, const char *value) {
-
-  char netwm_property[256] = "_NET_";
-  int ret = 0;
-  strncat(netwm_property, property, strlen(property));
-
-  // Change the property
-  ret = XChangeProperty(xdo->xdpy, wid,
-                        XInternAtom(xdo->xdpy, property, False),
-                        XInternAtom(xdo->xdpy, "STRING", False), 8,
-                        PropModeReplace, (unsigned char*)value, strlen(value));
-  if (ret == 0) {
-    return _is_success("XChangeProperty", ret == 0, xdo);
-  }
-
-  // Change _NET_<property> just in case for simpler NETWM compliance?
-  ret = XChangeProperty(xdo->xdpy, wid,
-                        XInternAtom(xdo->xdpy, netwm_property, False),
-                        XInternAtom(xdo->xdpy, "STRING", False), 8,
-                        PropModeReplace, (unsigned char*)value, strlen(value));
-  return _is_success("XChangeProperty", ret == 0, xdo);
-}
-
 int xdo_focus_window(const xdo_t *xdo, Window wid) {
   int ret = 0;
   ret = XSetInputFocus(xdo->xdpy, wid, RevertToParent, CurrentTime);

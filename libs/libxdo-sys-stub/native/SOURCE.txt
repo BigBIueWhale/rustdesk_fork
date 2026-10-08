@@ -36,6 +36,7 @@ The compound string parser, locale-based text entry, alias table and generic
 key-list API are removed. Clicks resolve once and release the same code without
 reacquiring scratch storage. Enigo supplies numeric X11 symbols and validated
 Unicode scalars; unsupported keys and out-of-range raw codes are errors.
-The fixed fork version is 3.20160805.1-rustdesk5.
+Unused window property, class and urgency mutation APIs are removed.
+The fixed fork version is 3.20160805.1-rustdesk6.
 The BSD redistribution notice is retained in COPYRIGHT and packaged with the
 library. Source provenance is not a claim that all native behavior is validated.

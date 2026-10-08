@@ -92,7 +92,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Service/helper/process bootstrap authority (R-S11y–R-S11al; Appendix C #147–160) | The normative contracts retain empty helper environments, typed OS queries, selected-session X11 authority and bounded empty-Display recovery, kernel-parent-bound graphical/headless CM lifetime, no global process-table signal/restart authority, non-root-only UI, numeric principal selection, exact child/supervisor argument protocols, SCM-owned initialization, and fixed macOS principal/home/config/log ordering. Appendix findings map to required dispositions without implementation/gate/artifact-status narration; #154–160's original threat findings are retained. All operative MUST/MUST NOT markers, primary-source links, IDs, test mappings, and installed/native acceptance obligations remain. Appendix #152 agrees with R-S11cc's graphical-and-headless scope. No product, verifier, or executable test changed. Installed/native principals, failure/restart/resource behavior and release acceptance remain OPEN in the platform matrices. |
 | Linux privileged launch context and descriptors (R-S11l–r; Appendix C #134–140) | The normative contracts retain typed principal/desktop selection, account-derived home, selected session endpoints, service-owned terminal choice, pre-initialization root cwd and deployment-bound sidecars, whole-range descriptor policy, post-fork-safe failure handling, and exact child-only exceptions. Appendix #136 agrees with R-S11n/R-S11cb's executable and bootstrap-pipe handoffs. Ordinary helpers use the shared empty-default allowlist; FUSE permits only its communication socket in the forked child. Retired sudo/env, run-as-user, w and screensaver paths have no supported role. Threat prerequisites and impact limits, actual-child identity/failure tests and exact installed Debian acceptance remain required; implementation chronology, fixture receipts and documentation-wiring claims are absent. Product and verifier sources are unchanged. Installed/native launch, authorization, failure/race/resource and release evidence remain OPEN. |
-| Native library provenance (R-S11c-10s/10u/10y/23/24) | Native runners and Dart FFI select the bundled core. `libs/libxdo-sys-stub/src/lib.rs` selects only `/usr/lib/rustdesk-fork/libxdo.so.3`, checks private version `3.20160805.1-rustdesk5` and the complete required ABI, and retains the owning library; no distro-candidate fallback remains. Named XDO native input/refusal and staged-provider results are recorded under Linux Enigo XDO below; they execute components with a partial common facade, not full Cargo/app/install. `scripts/verify-debian-package-authority.py` retains ELF identity, stack, interpreter, dynamic metadata and search-path validation. Exact-current installed loader/FFI identity, missing/invalid-code and ambient-search refusal, package validation, serving-principal behavior, races, resources and release acceptance remain OPEN. |
+| Native library provenance (R-S11c-10s/10u/10y/23/24) | Native runners and Dart FFI select the bundled core. `libs/libxdo-sys-stub/src/lib.rs` selects only `/usr/lib/rustdesk-fork/libxdo.so.3`, checks private version `3.20160805.1-rustdesk6` and the complete required ABI, and retains the owning library; no distro-candidate fallback remains. Named XDO native input/refusal and staged-provider results are recorded under Linux Enigo XDO below; they execute components with a partial common facade, not full Cargo/app/install. `scripts/verify-debian-package-authority.py` retains ELF identity, stack, interpreter, dynamic metadata and search-path validation. Exact-current installed loader/FFI identity, missing/invalid-code and ambient-search refusal, package validation, serving-principal behavior, races, resources and release acceptance remain OPEN. |
 | Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | Packaging, immutable-cache, extraction, replacement/recovery, and Kotlin strategy contracts remain requirement-owned. Fresh Android builds explicitly select Kotlin 2.0.21 in-process compilation and reject fallback or task-level overrides. Named APK `ca569086`/`7d49e481…8737c` passed build/install/render and one complete peer schedule, but later native presentation failed on that same artifact; the intermittent defect is OPEN. Diagnostic APK `035c9a20` has three complete corrected-observer peer schedules at `ec5544d6`, `f74470dd` and `eb7c8305`; its earlier alias-prone oracle result is not freshness proof. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound. They and the test-signed APKs do not establish complete canonical release inputs, stable signing, cold equality, sustained resource/latency bounds, network/device coverage, independent reproduction, or external review. See the Android runtime disposition below and the release-blocking matrix. |
 
 Completed documentation cleanup has no live progress log here. Requirement-specific current dispositions remain in
@@ -836,7 +836,7 @@ reacquiring scratch storage. Compound parsing, alias tables, locale-based native
 text entry, symbol-map/list exports and unused historical-fixture keyboard methods
 are deleted. Production Enigo and its real loader use typed key/action arguments;
 unsupported keys return an error or a diagnostic under the existing void trait.
-Private provider/build/loader version is `3.20160805.1-rustdesk5`; the refusal
+That acceptance used private provider/build/loader version `3.20160805.1-rustdesk5`; its refusal
 fixture stamps the same corrected C as version 4, not an authentic old binary.
 Exact `f953fa1090b5a87b1ab9901e23079cbabe7434ac`
 (tree `93474270b4ac437d1fded91cdeeb74a790353bed`) passed
@@ -865,6 +865,21 @@ their raw logs are retained in the audit and are not accepted transactions.
 The current-provider shard executes no historical unsafe implementations.
 Installed/whole-app, asynchronous Xlib errors/delivery, map/concurrency races,
 held modifiers, internal heap/leaks/soak, other platforms and release remain OPEN.
+
+**Unused window metadata mutation APIs retired; native acceptance PENDING.**
+`libs/libxdo-sys-stub/native/xdo.c` and `xdo.h` omit the generic window-property,
+class and urgency setters; the Rust loader also omits the class-setter type,
+required symbol, function-table field and public facade. Complete caller review
+finds no product consumer. This deletes the fixed-buffer property-name construction
+and unchecked/leaking hint ownership instead of preserving unused mutation APIs.
+It is not a demonstrated privileged-input failure or local escalation. The private
+provider/helper/loader require `3.20160805.1-rustdesk6`, with no old-version fallback.
+The focused `--x11-display-tests --key-input` transaction requires all three exports
+absent from actual providers, three failed native symbol lookups in both complete
+and staged-provider execution, actual retained input behavior and resource retirement.
+The wrong-version fixture uses corrected C stamped as version 5. Native acceptance
+is pending complete outer success; full Cargo/app/install, loader races, native errors,
+heap/soak, current artifacts and broader authority/release evidence remain OPEN.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,
@@ -1920,7 +1935,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `8e6143503f5e2338001e0dbc92385cb1030093e775b2f0f1948e9a92718f302a  requirements.html`.
+Current normative specification SHA-256: `c1faaf2842974439f77514bcc0c67fb8b07c0cc0eba2d8b11d020ce09dc81f19  requirements.html`.
 
 ### Current authority and source closure
 

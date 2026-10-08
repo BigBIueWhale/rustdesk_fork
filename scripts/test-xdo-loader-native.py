@@ -159,8 +159,8 @@ def build():
             elif variant == 'wrong-version':
                 path = source_dir / 'xdo_version.h'
                 text = path.read_text()
-                require(text.count('3.20160805.1-rustdesk5') == 1, 'fixture version source differs')
-                path.write_text(text.replace('3.20160805.1-rustdesk5', '3.20160805.1-rustdesk4'))
+                require(text.count('3.20160805.1-rustdesk6') == 1, 'fixture version source differs')
+                path.write_text(text.replace('3.20160805.1-rustdesk6', '3.20160805.1-rustdesk5'))
             else:
                 path = source_dir / 'xdo.c'
                 text = path.read_text()
@@ -180,6 +180,8 @@ def build():
                                           'xdo_send_keysequence_window_up', 'xdo_enter_text_window',
                                           'xdo_send_keysequence_window_list_do', 'xdo_get_symbol_map'}),
                 'retired keyboard ABI remains exported')
+        require(not exports.intersection({'xdo_set_window_property', 'xdo_set_window_class',
+                                          'xdo_set_window_urgency'}), 'retired window metadata ABI remains exported')
         require('xdo_version' in exports and 'xdo_new' in exports, 'native provider fixture lacks constructors/version')
         print(f'XDO_LOADER_PROVIDER variant={variant} library_sha256={sha(library)} '
               f'bytes={library.stat().st_size} c_sha256={sha(source_dir / "xdo.c")} '
@@ -269,7 +271,8 @@ def run(scenario):
                 expected = (f'XDO_LOADER_COMPONENT=pass scenario={scenario} constructors=refused descriptors=retired'
                             if scenario != 'complete' else
                             'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative '
-                            'button=pressed,released shift=pressed,released key=a,a descriptors=retired')
+                            'button=pressed,released shift=pressed,released key=a,a '
+                            'metadata_lookups=3 metadata_symbols=absent descriptors=retired')
                 require(result.stdout.splitlines() == [expected] and not result.stderr,
                         'loader native component result differs')
                 print(expected, flush=True)

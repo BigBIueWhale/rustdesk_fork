@@ -431,32 +431,6 @@ int xdo_translate_window_with_sizehint(const xdo_t *xdo, Window window,
 int xdo_set_window_size(const xdo_t *xdo, Window wid, int w, int h, int flags);
 
 /**
- * Change a window property.
- *
- * Example properties you can change are WM_NAME, WM_ICON_NAME, etc.
- *
- * @param wid The window to change a property of.
- * @param property the string name of the property.
- * @param value the string value of the property.
- */
-int xdo_set_window_property(const xdo_t *xdo, Window wid, const char *property,
-                        const char *value);
-
-/**
- * Change the window's classname and or class.
- *
- * @param name The new class name. If NULL, no change.
- * @param _class The new class. If NULL, no change.
- */
-int xdo_set_window_class(const xdo_t *xdo, Window wid, const char *name,
-                        const char *_class);
-
-/**
- * Sets the urgency hint for a window.
- */
-int xdo_set_window_urgency (const xdo_t *xdo, Window wid, int urgency);
-
-/**
  * Set the override_redirect value for a window. This generally means
  * whether or not a window manager will manage this window.
  *

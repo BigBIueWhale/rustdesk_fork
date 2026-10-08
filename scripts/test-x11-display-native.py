@@ -122,10 +122,13 @@ def native_xdo(root, environment, historical_destructor=True):
                                           "xdo_send_keysequence_window_up", "xdo_enter_text_window",
                                           "xdo_send_keysequence_window_list_do", "xdo_get_symbol_map"})
                 and "xdo_send_key_window" in exports, "native keyboard API retirement differs")
+        require(not exports.intersection({"xdo_set_window_property", "xdo_set_window_class",
+                                          "xdo_set_window_urgency"}), "native window metadata API retirement differs")
         directories[variant] = directory
     print(f"X11_XDO_PACKAGE_ELF=pass variants={len(variants)} required=true runpath=absent full_package=unexecuted", flush=True)
     print(f"XDO_MODIFIER_API_NATIVE=pass providers={len(variants)} retired_exports=3 required_mouse=present", flush=True)
     print(f"XDO_KEY_API_EXPORTS=pass providers={len(variants)} retired_exports=6 single_key=present", flush=True)
+    print(f"XDO_WINDOW_METADATA_API_NATIVE=pass providers={len(variants)} retired_exports=3", flush=True)
     return directories, before_source
 
 

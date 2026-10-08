@@ -4300,6 +4300,11 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'XDO_KEY_API_EXPORTS=pass providers=1 retired_exports=6 single_key=present' \
         'production-helper provider omits the retired parser, text and list ABI'
     require_exact_fixed_receipt \
+        'XDO_WINDOW_METADATA_API_NATIVE=pass providers=1 retired_exports=3' \
+        'production-helper provider omits unused window metadata mutation APIs'
+    [ "$(/usr/bin/grep -Fc 'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a metadata_lookups=3 metadata_symbols=absent descriptors=retired' "$SERIAL_LOG")" -eq 2 ] \
+        || fail 'native metadata-symbol refusal is absent from complete or staged provider execution'
+    require_exact_fixed_receipt \
         'X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 context_refusals=32 constructor_unwinds=16 display_connections=one pointer=selected-root callbacks=paired descriptors=retired threads=retired scope=xdo-backend' \
         'current Enigo backend ownership and selected display'
     require_exact_fixed_receipt \

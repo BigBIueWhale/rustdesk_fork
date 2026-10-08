@@ -727,10 +727,12 @@ authentic old binary. The focused native fixture requires 20 repeated delivery,
 mapped-query bypass, query-failure and full-map-refusal cases, actual events,
 unchanged maps/physical keys, query/free census and sampled descriptor/task drain.
 The reordered run passed its first five product cases, then failed the fixture's
-startup-map restoration assertion. The fixture now retains the full XKB map,
-observes a core-map roundtrip before any product call, and requires exact
-startup-map equality after full XKB restoration before proceeding and after each
-round. Native acceptance remains pending. This is not an Android/Windows delay fix,
+startup-map restoration assertion. A later control proved that the core-map
+roundtrip changes 7 columns to 15 before any product call; full XKB restoration
+was also rejected after fixture remapping. The fixture now owns a dedicated Xvfb,
+requires exact map equality around every product call, and joins that server
+before later tests start on a fresh display. Native acceptance remains pending.
+This is not an Android/Windows delay fix,
 whole-app/install result, native map-race/allocator closure or heap-leak/soak proof.
 The separate unused compound-parser allocation and unchecked native delivery/error
 paths remain OPEN.
@@ -744,7 +746,7 @@ raw is `x11-display-tests-run.6d8hWuubEa.serial.log` (84,801 bytes, SHA-256
 `4da2a89c1906693ae563775d4ec426780bca987dfdd06a273e593da12ea156c5`).
 Cause and relevant product/harness/native-library ownership remain unproved;
 prior or later passes cannot erase this failure. The focused scratch test now
-runs first and restores exact focus and map state. The concurrent test and every
+runs first on its own disposable display. The concurrent test and every
 existing assertion remain mandatory; reordering is not concurrency acceptance.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated

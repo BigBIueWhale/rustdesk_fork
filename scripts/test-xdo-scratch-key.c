@@ -1,7 +1,6 @@
 /* Isolated native scratch-key bounds and query-failure regression. */
 #define _POSIX_C_SOURCE 200809L
 #include <X11/Xlib.h>
-#include <X11/XKBlib.h>
 #include <X11/keysym.h>
 #include <dirent.h>
 #include <errno.h>
@@ -98,32 +97,14 @@ int main(void) {
   Display *observer = XOpenDisplay("unix/:98.0");
   require(observer != NULL, "observer unavailable");
   clear_keys(observer);
-  Window original_focus;
-  int original_revert;
-  require(XGetInputFocus(observer, &original_focus, &original_revert), "original focus unavailable");
   int low, high, width;
   XDisplayKeycodes(observer, &low, &high);
   require(low >= 8 && high <= 255 && high > low + 1, "native keycode range differs");
   int count = high - low + 1;
-  KeySym *original = XGetKeyboardMapping(observer, low, count, &width);
-  require(original && width > 0, "original keyboard map unavailable");
-  int original_width = width;
-  XkbDescPtr original_xkb = XkbGetMap(observer, XkbAllMapComponentsMask, XkbUseCoreKbd);
-  require(original_xkb && original_xkb->map && original_xkb->server,
-          "original XKB map unavailable");
-  /* Observe core-map normalization before any product call. */
-  XChangeKeyboardMapping(observer, low, original_width, original, count);
-  XSync(observer, False);
-  KeySym *roundtrip = XGetKeyboardMapping(observer, low, count, &width);
-  require(roundtrip && width > 0, "core roundtrip observation unavailable");
-  int identical = width == original_width
-                  && !memcmp(roundtrip, original, count * width * sizeof(KeySym));
-  printf("XDO_SCRATCH_CORE_ROUNDTRIP before_product=true original_width=%d returned_width=%d identical=%d\n",
-         original_width, width, identical);
-  XFree(roundtrip);
-  require(XkbSetMap(observer, XkbAllMapComponentsMask, original_xkb), "original XKB map restore failed");
-  XSync(observer, False);
-  same_map(observer, low, count, original_width, original);
+  KeySym *initial = XGetKeyboardMapping(observer, low, count, &width);
+  require(initial && width > 0, "initial keyboard map unavailable");
+  int initial_width = width;
+  XFree(initial);
   Window window = XCreateSimpleWindow(observer, DefaultRootWindow(observer), 0, 0, 120, 80, 0, 0, 0);
   require(window != None, "owned window unavailable");
   XSelectInput(observer, window, KeyPressMask | KeyReleaseMask);
@@ -141,7 +122,7 @@ int main(void) {
   xdo_free(input);
   puts("XDO_SCRATCH_CONTROL=pass key=a events=2");
   for (int round = 0; round < 4; round++) {
-    width = original_width;
+    width = initial_width;
     KeySym *mapping = malloc(count * width * sizeof(KeySym));
     require(mapping != NULL, "fixture map allocation failed");
     for (int i = 0; i < count * width; i++) mapping[i] = XK_F30;
@@ -189,19 +170,7 @@ int main(void) {
     product_display = NULL;
     xdo_free(input);
     XFree(mapping);
-    require(XkbSetMap(observer, XkbAllMapComponentsMask, original_xkb), "original XKB map restore failed");
-    XSync(observer, False);
-    same_map(observer, low, count, original_width, original);
   }
-  XkbFreeKeyboard(original_xkb, 0, True);
-  XFree(original);
-  XSetInputFocus(observer, original_focus, original_revert, CurrentTime);
-  XSync(observer, False);
-  Window restored_focus;
-  int restored_revert;
-  require(XGetInputFocus(observer, &restored_focus, &restored_revert)
-          && restored_focus == original_focus && restored_revert == original_revert,
-          "original focus not restored");
   XDestroyWindow(observer, window);
   XCloseDisplay(observer);
   require(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks,

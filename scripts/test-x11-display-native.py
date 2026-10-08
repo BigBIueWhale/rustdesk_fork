@@ -133,8 +133,36 @@ def scratch_keys(root, environment):
             ("fixture", scratch_source), ("native_c", native_source / "xdo.c"),
             ("binary", scratch_binary))) + " native_source=complete sanitizer=address whole_app=false", flush=True)
     scratch_environment = dict(environment, ASAN_OPTIONS="detect_leaks=0:abort_on_error=0:disable_coredump=1")
-    subprocess.run([str(scratch_binary)], env=scratch_environment, check=True, timeout=5)
+    socket_path, lock_path = Path("/tmp/.X11-unix/X98"), Path("/tmp/.X98-lock")
+    require(not socket_path.exists() and not lock_path.exists(), "scratch display already present")
+    with open("/tmp/xdo-scratch-xvfb.log", "xb") as log:
+        server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "640x480x24",
+                                   "-nolisten", "tcp", "-ac", "-noreset"],
+                                  env=environment, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 5
+            while not socket_path.is_socket():
+                require(server.poll() is None and time.monotonic() < deadline, "scratch Xvfb not ready")
+                time.sleep(0.01)
+            subprocess.run([str(scratch_binary)], env=scratch_environment, check=True, timeout=5)
+            require(server.poll() is None, "scratch Xvfb exited during native cases")
+        except BaseException:
+            log.flush()
+            print(Path(log.name).read_text()[:4096], flush=True)
+            raise
+        finally:
+            if server.poll() is None:
+                server.terminate()
+            try:
+                server.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait(timeout=5)
+    require(server.returncode == 0 and not socket_path.exists() and not lock_path.exists(),
+            "scratch Xvfb/socket/lock retirement differs")
     scratch_binary.unlink()
+    print("XDO_SCRATCH_DISPLAY=retired owner=dedicated-xvfb server=joined socket=absent lock=absent "
+          "later_tests=fresh-display", flush=True)
 
 
 def enigo_route(root, environment, checksum, library):
@@ -1211,6 +1239,7 @@ def main():
           f"source_sha256={hashlib.sha256(comparator.read_bytes()).hexdigest()} "
           f"binary_sha256={hashlib.sha256(comparator_test.read_bytes()).hexdigest()}", flush=True)
     comparator_test.unlink()
+    scratch_keys(root, environment)
     with open("/tmp/x11-display-xvfb.log", "xb") as log:
         child = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "640x480x24",
                                   "-screen", "1", "800x600x24", "-nolisten", "tcp", "-ac", "-noreset"],
@@ -1220,7 +1249,6 @@ def main():
             while not Path("/tmp/.X11-unix/X98").is_socket():
                 require(child.poll() is None and time.monotonic() < deadline, "Xvfb not ready")
                 time.sleep(0.05)
-            scratch_keys(root, environment)
             thread_contexts(root, environment, checksum, logging)
             enigo_route(root, environment, checksum, logging)
             window_focus(root, environment)

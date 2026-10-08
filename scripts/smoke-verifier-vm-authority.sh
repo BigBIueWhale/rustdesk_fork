@@ -4309,6 +4309,9 @@ elif [ "$MODE" = x11-display-tests ]; then
         'XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=32 frees=24 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false' \
         'native scratch-key inclusive bounds, exact map ownership, mapped-query bypass and pre-input refusal'
     require_exact_fixed_receipt \
+        'XDO_SCRATCH_DISPLAY=retired owner=dedicated-xvfb server=joined socket=absent lock=absent later_tests=fresh-display' \
+        'scratch-key fixture owns and joins its dedicated display before other native tests use a fresh server'
+    require_exact_fixed_receipt \
         'XDO_MOUSE_MODIFIERS_NATIVE=pass held=0,1,9,10,12 repeats=4 cases=20 events=40 window=owned state=preserved keys=unchanged mapping=restored descriptors=retired tasks=retired scope=private-native-component' \
         'private native mouse events preserve held modifiers without an unused key-list allocation'
     require_exact_fixed_receipt \

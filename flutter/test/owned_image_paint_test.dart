@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter_hbb/generated_bridge.dart';
+import 'package:flutter_hbb/common.dart' show SessionID;
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/utils/image.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,13 +16,13 @@ class _ImageSession implements FFI {
   @override
   final SessionID sessionId = Uuid().v4obj();
   @override
-  final canvasModel = _PendingImageGeometry();
+  final _PendingImageGeometry canvasModel = _PendingImageGeometry();
   @override
-  final cursorModel = _ImageCursor();
+  final _ImageCursor cursorModel = _ImageCursor();
   @override
-  late final ffiModel = _ImageTopology(sessionId);
+  late final _ImageTopology ffiModel = _ImageTopology(sessionId);
   @override
-  late final imageModel = ImageModel(WeakReference<FFI>(this));
+  late final ImageModel imageModel = ImageModel(WeakReference<FFI>(this));
 
   @override
   bool isCurrentSession(SessionID expected) => expected == sessionId;

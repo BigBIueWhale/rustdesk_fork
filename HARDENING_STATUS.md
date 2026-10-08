@@ -1803,6 +1803,10 @@ raw-image conversion with independently held geometry completions: first-ready p
 higher-first/lower-late refusal, and presentation retirement with exact image-handle cleanup.
 Only that asynchronous boundary and session/topology fixture are controlled. No native result,
 product correction, Android/Windows causation or installed-app closure is claimed yet.
+First candidate `26d9419e` reached generated-bridge test compilation but the new fixture
+failed on its SessionID import, ambiguous Display import and inherited field-type inference.
+It establishes no behavioral reproduction. Those fixture types/imports and the guest/parser
+199-test inventory are corrected before retry; product bytes remain unchanged.
 
 The disposable runtime uses the pinned Emulator 37.1.11 and Android 14/API-34 x86_64 image in a
 networkless numeric-nonroot container inside the ordinary-user zero-NIC verifier VM. Source and APK

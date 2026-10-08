@@ -1188,6 +1188,7 @@ android_frame_input_inventory() {
         if [ "$X11_CLIPBOARD_ONLY" -eq 0 ]; then
             files+=("$SCRIPT_DIR/test-xdo-loader-native.py" "$SCRIPT_DIR/test-xdo-loader.rs"
                 "$SCRIPT_DIR/stage-debian-systemd-runtime-libs.sh"
+                "$SCRIPT_DIR/verify-debian-systemd-lifecycle-authority.py"
                 "$SCRIPT_DIR/test-xdo-enigo.rs" "$REPO_ROOT/libs/enigo/src/linux/mod.rs"
                 "$REPO_ROOT/libs/enigo/src/linux/nix_impl.rs" "$REPO_ROOT/libs/hbb_common/src/platform/linux.rs"
                 "$SCRIPT_DIR/fixtures/xdo-loader-common.rs" "$SCRIPT_DIR/xdo-loader-inputs.txt"
@@ -3529,6 +3530,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             lifecycle_payload_grafts+=(
                 "repo/scripts/test-xdo-loader-native.py=$SCRIPT_DIR/test-xdo-loader-native.py"
                 "repo/scripts/stage-debian-systemd-runtime-libs.sh=$SCRIPT_DIR/stage-debian-systemd-runtime-libs.sh"
+                "repo/scripts/verify-debian-systemd-lifecycle-authority.py=$SCRIPT_DIR/verify-debian-systemd-lifecycle-authority.py"
                 "repo/scripts/test-xdo-loader.rs=$SCRIPT_DIR/test-xdo-loader.rs"
                 "repo/scripts/test-xdo-enigo.rs=$SCRIPT_DIR/test-xdo-enigo.rs"
                 "repo/libs/enigo/src/linux/mod.rs=$REPO_ROOT/libs/enigo/src/linux/mod.rs"

@@ -947,6 +947,7 @@ run_android_frame_tests() {
     fi
     local -a mounts command phases=(prepare native)
     local loader_installed=$ROOT/xdo-loader-installed loader_variant loader_source loader_digest
+    local stage_profile_output stage_profile_expected
     if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ]; then
         phases=(prepare loader-build loader-complete loader-missing-mouse-up loader-wrong-version loader-writable loader-absent loader-reject-key-down loader-runtime-stage native)
     fi
@@ -972,6 +973,17 @@ run_android_frame_tests() {
         || fail 'Android frame-test image load receipt differs'
     install -d -o 4000 -g 4000 -m 0700 "$work" "$work/xvfb-debs" "$work/xvfb-root"
     for phase in "${phases[@]}"; do
+        if [ "$phase" = loader-runtime-stage ]; then
+            stage_profile_output="$(
+                setpriv --reuid=4000 --regid=4000 --clear-groups \
+                    /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" --self-test-vm-authority "$DEV_CHECK_IMAGE_CONFIG_ID"
+            )" || fail 'updated runtime staging launch profile failed'
+            stage_profile_expected="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
+DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION profile=debian-systemd-runtime-libs runtime=real input=private-fixture-only workload=unexecuted cleanup=joined"
+            [ "$stage_profile_output" = "$stage_profile_expected" ] \
+                || fail 'updated runtime staging launch receipt differs'
+            printf '%s\n' "$stage_profile_output"
+        fi
         if [ "$phase" = loader-build ]; then
             install -d -o 4000 -g 4000 -m 0700 "$work/loader-build"
         elif [ "$phase" = loader-complete ]; then
@@ -1059,7 +1071,7 @@ run_android_frame_tests() {
             [ "$(grep -Fxc 'XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=4' "$output")" -eq 1 ] \
                 || fail 'XDO loader build result is absent or duplicated'
         elif [ "$phase" = loader-runtime-stage ]; then
-            [ "$(grep -c '^XDO_RUNTIME_STAGE=pass .* distribution_xdo=absent resolution=staged input=actual native_input=delivered authority_cli=unexecuted cleanup=joined$' "$output")" -eq 1 ] \
+            [ "$(grep -c '^XDO_RUNTIME_STAGE=pass .* distribution_xdo=absent resolution=staged input=actual native_input=delivered full_stage_cli=unexecuted cleanup=joined$' "$output")" -eq 1 ] \
                 || fail 'XDO runtime staging result is absent or duplicated'
         elif [[ "$phase" == loader-* ]]; then
             [ "$(grep -Fxc "XDO_LOADER_NATIVE=pass scenario=${phase#loader-} source=production network=none uid=4000 cleanup=joined" "$output")" -eq 1 ] \
@@ -1111,6 +1123,7 @@ run_debian_systemd_lifecycle() {
     local extracted=$lifecycle_root/artifact-root
     local libraries=$lifecycle_root/runtime-libs
     local binary=$extracted/usr/share/rustdesk/rustdesk
+    local provider=$extracted/usr/lib/rustdesk-fork/libxdo.so.3
     local archive_before artifact_before load_output stage_output stage_count stage_bytes
     local -a stage_receipt=()
     local lifecycle_network_before lifecycle_network_after
@@ -1171,11 +1184,14 @@ run_debian_systemd_lifecycle() {
     chmod 0555 "$binary"
     [ "$(stat -c '%u:%g:%a:%h' -- "$binary")" = 0:0:555:1 ] \
         || fail 'extracted lifecycle executable metadata differs'
+    [ -f "$provider" ] && [ ! -L "$provider" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' -- "$provider")" = 0:0:644:1 ] \
+        || fail 'extracted private XDO provider metadata differs'
     mkdir "$libraries"
     chown 4000:4000 "$libraries"
     chmod 0700 "$libraries"
 
-    if /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" "$binary" "$libraries" \
+    if /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" "$binary" "$provider" "$libraries" \
         >"$lifecycle_root/root-stage.out" 2>"$lifecycle_root/root-stage.err"; then
         fail 'VM root passed runtime-library staging entry'
     fi
@@ -1185,7 +1201,7 @@ run_debian_systemd_lifecycle() {
       'Debian systemd runtime-library staging refuses root execution' ] \
         || fail 'root runtime-library refusal diagnostic differs'
     if setpriv --reuid=4001 --regid=4001 --clear-groups \
-        /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" "$binary" "$libraries" \
+        /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" "$binary" "$provider" "$libraries" \
         >"$lifecycle_root/foreign-stage.out" 2>"$lifecycle_root/foreign-stage.err"; then
         fail 'foreign principal passed runtime-library staging entry'
     fi
@@ -1196,7 +1212,7 @@ run_debian_systemd_lifecycle() {
         || fail 'foreign runtime-library refusal diagnostic differs'
     stage_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
-            /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" "$binary" "$libraries"
+            /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" "$binary" "$provider" "$libraries"
     )" || fail 'authorized runtime-library staging failed'
     mapfile -t stage_receipt <<<"$stage_output"
     [ "${#stage_receipt[@]}" -eq 2 ] \

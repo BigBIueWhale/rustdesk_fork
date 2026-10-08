@@ -30,18 +30,20 @@ readonly DOCKER_CONFIG=$AUTHORITY_ROOT/docker-config
 SELF_TEST=0
 PROBE_IMAGE_ID=
 BINARY=
+LIBRARY=
 OUTPUT=
 case "$#:${1:-}" in
     2:--self-test-vm-authority)
         SELF_TEST=1
         PROBE_IMAGE_ID=$2
         ;;
-    2:*)
+    3:*)
         BINARY=$1
-        OUTPUT=$2
+        LIBRARY=$2
+        OUTPUT=$3
         ;;
     *)
-        printf 'usage: %s BINARY EMPTY_OUTPUT_DIR | --self-test-vm-authority PROBE_IMAGE_ID\n' "${0##*/}" >&2
+        printf 'usage: %s BINARY PRIVATE_XDO_LIBRARY EMPTY_OUTPUT_DIR | --self-test-vm-authority PROBE_IMAGE_ID\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
@@ -92,7 +94,7 @@ verifier_vm_docker() {
 }
 
 require_input_file() {
-    local path=$1 label=$2 resolved metadata owner group mode links size
+    local path=$1 label=$2 kind=$3 resolved metadata owner group mode links size
     case "$path" in /*) ;; *) fail "$label path must be absolute" ;; esac
     [ -f "$path" ] && [ ! -L "$path" ] || fail "$label is not one regular file"
     resolved="$(/usr/bin/readlink -f -- "$path" 2>/dev/null)" \
@@ -104,9 +106,18 @@ require_input_file() {
     [ "$owner:$group" = 0:0 ] || fail "$label is not VM-root-owned"
     [ "$links" = 1 ] || fail "$label has multiple links"
     [ $((8#$mode & 8#022)) -eq 0 ] || fail "$label is group/world writable"
-    [ $((8#$mode & 8#111)) -ne 0 ] || fail "$label is not executable"
     [ "$size" -gt 0 ] && [ "$size" -le 1073741824 ] \
         || fail "$label size is outside 1..1073741824 bytes"
+    case "$kind" in
+        binary)
+            [ $((8#$mode & 8#111)) -ne 0 ] || fail "$label is not executable"
+            ;;
+        library)
+            [ "$mode" = 644 ] && [ "$size" -le 1048576 ] \
+                || fail "$label is not a mode-0644 provider within 1 MiB"
+            ;;
+        *) fail 'runtime-library input role differs' ;;
+    esac
     case "$path" in *,*) fail "$label path contains a mount delimiter" ;; esac
 }
 
@@ -128,9 +139,9 @@ require_empty_output() {
 }
 
 runtime_library_stage_run() {
-    [ "$#" -ge 5 ] || fail 'runtime-library launch requires IMAGE BINARY OUTPUT ENTRYPOINT ARGUMENT'
-    local image=$1 binary=$2 output=$3 entrypoint=$4
-    shift 4
+    [ "$#" -ge 6 ] || fail 'runtime-library launch requires IMAGE BINARY LIBRARY OUTPUT ENTRYPOINT ARGUMENT'
+    local image=$1 binary=$2 library=$3 output=$4 entrypoint=$5
+    shift 5
     verifier_vm_docker run --rm --pull=never \
         --network=none \
         --read-only \
@@ -149,6 +160,7 @@ runtime_library_stage_run() {
         --ulimit fsize=268435456:268435456 \
         --tmpfs "/tmp:rw,noexec,nosuid,nodev,mode=700,uid=$STAGE_UID,gid=$STAGE_GID,size=32m" \
         --mount "type=bind,source=$binary,target=/input/rustdesk,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$library,target=/input/libxdo.so.3,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$output,target=/out,bind-recursive=disabled" \
         --workdir /tmp \
         --entrypoint "$entrypoint" \
@@ -180,6 +192,8 @@ run_self_test() {
         [ "$$" = 1 ]
         IFS= read -r input_line </input/rustdesk
         [ "$input_line" = "immutable executable fixture" ]
+        IFS= read -r provider_line </input/libxdo.so.3
+        [ "$provider_line" = "immutable executable fixture" ]
         uid= gid= cap= nnp= seccomp=
         while IFS=":" read -r key value; do
             set -- $value
@@ -219,10 +233,11 @@ run_self_test() {
         [ "$#" = 1 ] && [ "$1" = /sys/class/net/lo ]
         if (: >/forbidden-root-write) 2>/dev/null; then exit 91; fi
         if (: >/input/rustdesk) 2>/dev/null; then exit 92; fi
+        if (: >/input/libxdo.so.3) 2>/dev/null; then exit 93; fi
         printf "fixture library\n" >/out/libfixture.so
         printf "profile=debian-systemd-runtime-libs uid=4000 network=none root=readonly input=readonly output=private caps=none nnp=on seccomp=filter apparmor=docker-default\n"
     '
-    profile_output="$(runtime_library_stage_run "$PROBE_IMAGE_ID" "$BINARY" "$OUTPUT" \
+    profile_output="$(runtime_library_stage_run "$PROBE_IMAGE_ID" "$BINARY" "$BINARY" "$OUTPUT" \
         /bin/dash -euc "$profile")" \
         || fail 'runtime-library production confinement profile failed'
     [ "$profile_output" = \
@@ -246,8 +261,10 @@ run_self_test() {
 
 stage_runtime_libraries() {
     local runtime_image_id binary_before binary_after count bytes library size bad
+    local provider_before provider_after
     local library_metadata library_owner library_group library_mode library_links
-    require_input_file "$BINARY" 'RustDesk lifecycle executable'
+    require_input_file "$BINARY" 'RustDesk lifecycle executable' binary
+    require_input_file "$LIBRARY" 'Private XDO provider' library
     require_empty_output "$OUTPUT"
     [[ "$DEV_CHECK_IMAGE_CONFIG_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
         || fail 'pinned devcheck runtime config ID is malformed'
@@ -256,7 +273,8 @@ stage_runtime_libraries() {
     [ "$runtime_image_id" = "$DEV_CHECK_IMAGE_CONFIG_ID" ] \
         || fail 'devcheck runtime image identity differs from its config pin'
     binary_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$BINARY"):$(/usr/bin/sha256sum "$BINARY")"
-    runtime_library_stage_run "$DEV_CHECK_IMAGE_CONFIG_ID" "$BINARY" "$OUTPUT" \
+    provider_before="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$LIBRARY"):$(/usr/bin/sha256sum "$LIBRARY")"
+    runtime_library_stage_run "$DEV_CHECK_IMAGE_CONFIG_ID" "$BINARY" "$LIBRARY" "$OUTPUT" \
         /bin/bash --noprofile --norc -euo pipefail -c '
             umask 077
             stage_library() {
@@ -270,7 +288,7 @@ stage_runtime_libraries() {
                     cp -L --no-preserve=ownership -- "$source" "$destination"
                 fi
             }
-            ldd_output="$(ldd /input/rustdesk)"
+            ldd_output="$(ldd /input/rustdesk /input/libxdo.so.3)"
             case "$ldd_output" in
                 *"not found"*) printf "%s\n" "$ldd_output" >&2; exit 1 ;;
             esac
@@ -282,7 +300,6 @@ stage_runtime_libraries() {
                     | sort -u
             )
             for pattern in \
-                /usr/lib/x86_64-linux-gnu/libxdo.so\* \
                 /usr/lib/x86_64-linux-gnu/libva.so\* \
                 /usr/lib/x86_64-linux-gnu/libva-drm.so\* \
                 /usr/lib/x86_64-linux-gnu/libva-x11.so\* \
@@ -296,6 +313,9 @@ stage_runtime_libraries() {
     binary_after="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$BINARY"):$(/usr/bin/sha256sum "$BINARY")"
     [ "$binary_after" = "$binary_before" ] \
         || fail 'RustDesk lifecycle executable changed during staging'
+    provider_after="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$LIBRARY"):$(/usr/bin/sha256sum "$LIBRARY")"
+    [ "$provider_after" = "$provider_before" ] \
+        || fail 'Private XDO provider changed during staging'
     [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$OUTPUT")" = \
       "$STAGE_UID:$STAGE_GID:700:2" ] \
         || fail 'runtime-library output directory metadata changed'

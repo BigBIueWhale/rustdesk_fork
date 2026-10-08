@@ -105,6 +105,7 @@ def validate_stage(source: str) -> None:
         ('--tmpfs "/tmp:rw,noexec,nosuid,nodev,mode=700', "bounded private tmpfs"),
         ("size=32m", "tmpfs byte bound"),
         ("source=$binary,target=/input/rustdesk,readonly,bind-recursive=disabled", "exact read-only input"),
+        ("source=$library,target=/input/libxdo.so.3,readonly,bind-recursive=disabled", "exact read-only private provider"),
         ("source=$output,target=/out,bind-recursive=disabled", "sole writable output"),
         ('--entrypoint "$entrypoint"', "fixed explicit entrypoint"),
     ):
@@ -120,7 +121,7 @@ def validate_stage(source: str) -> None:
         forbid(source, token, label)
     for token, label in (
         ('image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_CONFIG_ID"', "runtime config-ID image selection"),
-        ('ldd /input/rustdesk', "exact executable dependency discovery"),
+        ('ldd /input/rustdesk /input/libxdo.so.3', "executable and private-provider dependency discovery"),
         ('runtime library basename collision', "basename-collision rejection"),
         ('runtime-library count is outside 60..256', "output count bound"),
         ('runtime-library output exceeds 1 GiB', "output byte bound"),
@@ -133,6 +134,7 @@ def validate_stage(source: str) -> None:
         ('if (: >/input/rustdesk)', "behavioral input-write refusal"),
     ):
         require(source, token, label)
+    forbid(source, '/usr/lib/x86_64-linux-gnu/libxdo.so\\*', "distribution XDO staging")
 
 
 def validate_outer(source: str) -> None:

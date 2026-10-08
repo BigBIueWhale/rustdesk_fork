@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Build and exercise the complete production loader in guest-only containers.
+"""Build and exercise the production loader and Linux Enigo in guest-only containers.
 
-This is a component test with real pinned dependencies and a re-export-only common
-facade, not a full Cargo/app, package installation, or host-service test.
+This is a component test with real pinned dependencies and a partial common facade
+with selected production display policy, not full Cargo/app, package installation,
+or a host-service test.
 """
 import hashlib
 import importlib.util
@@ -127,7 +128,7 @@ def build():
              '--extern', f'hbb_common={common}', '--extern', f'libxdo_sys={loader}',
              '-l', 'X11', str(ROOT / 'scripts/test-xdo-loader.rs'), '-o', str(binary)])
     print(f'XDO_LOADER_BUILD=pass source=complete-production-module source_sha256={sha(source)} '
-          f'binary_sha256={sha(binary)} common=reexports-only dependencies=real '
+          f'binary_sha256={sha(binary)} common=partial dependencies=real '
           'x11_link=explicit libc_build_script=actual full_app=uncompiled', flush=True)
     enigo = compile_crate('enigo', ROOT / 'libs/enigo/src/lib.rs', 2018,
                           ['--extern', f'hbb_common={common}', '--extern', f'libxdo_sys={loader}',
@@ -196,6 +197,11 @@ def resolved_dependencies(path, environment=None):
 def runtime_stage():
     source = ROOT / 'scripts/stage-debian-systemd-runtime-libs.sh'
     text = source.read_text()
+    spec = importlib.util.spec_from_file_location(
+        'stage_authority', ROOT / 'scripts/verify-debian-systemd-lifecycle-authority.py')
+    stage_authority = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(stage_authority)
+    stage_authority.validate_stage(text)
     prefix = '    runtime_library_stage_run "$DEV_CHECK_IMAGE_CONFIG_ID"'
     require(text.count(prefix) == 1, 'production staging command is ambiguous')
     start = text.index(prefix)
@@ -234,7 +240,7 @@ def runtime_stage():
     print(f'XDO_RUNTIME_STAGE=pass source_sha256={sha(source)} body_sha256='
           f'{hashlib.sha256(body.encode()).hexdigest()} provider_dependencies={len(provider_dependencies)} '
           f'libraries={len(files)} distribution_xdo=absent resolution=staged input=actual '
-          'native_input=delivered authority_cli=unexecuted cleanup=joined', flush=True)
+          'native_input=delivered full_stage_cli=unexecuted cleanup=joined', flush=True)
 
 
 def run(scenario):

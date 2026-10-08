@@ -796,7 +796,19 @@ The focus constructor calls `xcb_connect` before it obtains the descriptor or cr
 `SocketDeadline`; libxcb 1.15 performs setup write/read synchronously in that call.
 The VM-only focus lifecycle fixture now also requires a paused-server initial setup
 to return Deadline, retire its connection/worker, and recover through the same owner.
-This new regression has not executed yet; implementation and native acceptance remain OPEN.
+**Reproduced, not fixed:** `--x11-display-tests` at `1a9dc16c` (tree `9e7045ab`)
+returned outer exit 1 after 119 VM seconds. All 16 established-connection controls
+returned and recovered; the first initial-setup case entered the complete production
+module but produced no result during the independent two-second observation window.
+The owned child was stopped/joined by the fixture; constructor recovery and the other
+three repetitions were not reached. This regression currently fails on master.
+Retained `x11-display-tests-run.qZNqFW4iyd.serial.log` under
+`.harness-state/verifier-vm/` is 129,026 bytes, SHA-256
+`2df9f035bb0417c5d7ccb09b80109bf621ae657a466ce28073c275dbf0b799be`.
+Host endpoint snapshots were independently byte-equal; the failed run's exact owners,
+disks and private root were retired, with the raw log retained outside that root.
+Implementation and positive native acceptance remain OPEN; this Linux result is not
+evidence of the cause of the reported Android/Windows display defects.
 The [XCB descriptor-constructor contract](https://xcb.freedesktop.org/manual/group__XCB__Core__API.html#ga6a5bf0156ada8c8863461073adefc7e2)
 requires explicit authentication data: `NULL` selects an unauthenticated connection.
 Moving socket ownership earlier must preserve native Xauthority behavior, the selected

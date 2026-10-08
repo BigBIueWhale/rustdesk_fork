@@ -28,29 +28,6 @@ Forbidden native decoder expansion remains: no `ffmpeg`, no `mfx-dispatch`, no
 
 VCPKG_BASELINE: 120deac3062162151622ca4860575a33844ba10b
 
-## Retired Libraries
-
-Retired library: aom
-Status: removed
-Disposition: AV1/libaom dependency removal (closed 2026-07-11). The prior
-AV1/libaom runtime quarantine remains the product behavior, but the library is no
-longer linked or watched as a native package: `vcpkg.json` no longer lists `aom`,
-`res/vcpkg/aom` is deleted, `libs/scrap` has no `aom` module or FFI binding,
-`scrap` bindgen no longer generates `aom_ffi.rs`, and the offline Linux,
-Android, Windows, Apple source-conformance, dev-check, build-Dockerfile, and
-tracked build scaffolds do not install, stub, or reference `aom`. AV1 remains a
-protocol/wire enum only. It is not advertised, selected, encoded, decoded,
-benchmarked, or exposed in UI; inbound peer `Av1s` frames are locally
-unsupported before any native decoder or recorder worker. `verify.sh` and this
-ledger gate the removal so a future manifest, source, FFI, overlay,
-build-Dockerfile, or build-scaffold reintroduction fails closed.
-
-Historical rationale: CVE-2026-56208/56209/56210/56211 were recorded against
-libaom while the fork still carried the dependency. Current public records
-localize the reviewed issues to encoder/control surfaces, but this fork has no
-design requirement for AV1, so the correct final state is deletion rather than a
-permanent linked quarantine.
-
 ## Overlay-Pinned Libraries
 
 Package: libvpx

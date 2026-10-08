@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-987de146f6b66c1afa11b88c14f7f9c67a12b77897ecb5490a2e3b7556951104  requirements.html
+36cff98813f68f95531a81e28e84ee0ffbaed5b54158ffc5a66ea705ee761e73  requirements.html
 ```
 
 ## Current Verdict
@@ -85,8 +85,8 @@ by their requirements and the STOP-SHIP matrices below.
 | VM host-observation boundary (R-S11dh/R-S11cj) | Both outer launchers collect only protocol/numeric endpoints and refuse additions; they do not inventory foreign process owners or permit attributed drift. Exact owned-child tracking and cleanup remain. At source `47183f864dd12917ea910e4a7c17eb989b41fdb2`, the extracted production collectors each passed real guest IPv4/IPv6 TCP/UDP cases: two protocol-paired ports, four added endpoints, four observed nonzero queues with unchanged inventories, and exact socket retirement. The complete zero-NIC authority smoke passed in 86 seconds with unchanged inputs, no added host endpoint and joined cleanup; its scratch root/large assets retired. Raw `authority-smoke-run.ivyvYhnvdd.serial.log` is 82,391 bytes/SHA-256 `c0352d154f58d403dce055663e8d52c6ffab37d52ba1546983b99d90066e070a`; the nonindependent assistant-observed `evidence/listener-inventory-run.ivyvYhnvdd.outer.receipt` is 1,018 bytes/SHA-256 `cd4ca58a01df8d0840c832de4206fa5eb39b0173715ec808dedd0a8c83f7072a`, both under `.harness-state/verifier-vm/`. This closes the named native collector addition/queue-stability/retirement gap, not a whole host-launcher abort test. The prior outbound-only acquisition self-test at `227c3c63` passed in 23 seconds (`online-fetch-receipts/run.Ivut9euxxT.receipt`); its v4 endpoint-only receipt and private-fixture-only exports are unchanged, not freshly replayed here. **OPEN:** host added-listener abort/failure-injection and cleanup coverage, collector malformed-output/tool-failure negatives, product and installed/native privilege boundaries, performance/resources, and release acceptance. |
 | Build pins and target profiles (§3.1–3.2, R-B5a) | The normative table now matches the three software-codec release feature sets selected by the build entry points; its former `hwcodec`/`vram` rows and the header/footer's historical package-count/whole-tree-review claims are gone. `scripts/pins.env`, lockfiles, manifests, and toolchain files remain separate concrete authorities that must agree. This documentation correction is not a current release build, authenticated complete input closure, cold equality, or native platform proof; those remain OPEN. |
 | Controlled-side policy and network authentication (R-S2/R-S16/R-S18; R-S11b-3j/3q) | R-S16 requires one direct-only route and receiver-owned policy funnels; retired proxy strings stay pinned empty, old `socks` tables cannot be serialized, and proxy types/stores/APIs/transports/TLS/parser/validator/dependencies and NAT/STUN actuators are absent. Restriction-only peer overlays, R-S19 confinement, empty builtin/hard-setting startup namespaces, and no preset-credential fallback remain required. R-S2/R-S18 require one CPace network authentication and grant topology, symmetric absence of peer OS-credential/schema/storage/UI paths and alternative CM/recent-session/switch-side/trusted-device grants. Session-type confinement precedes publication; malformed metadata, credential-generation change, owner retirement or resource failure cannot demand admission merely because a stream keyed. Local OS-admin provisioning and exact IPC/helper proof are separate action authority, not another peer credential. Explicit fresh remote-input typing cannot become per-peer storage or reconnect auto-input. These are normative/source dispositions, not a completed audit or native/artifact acceptance; the platform/release matrices remain OPEN. |
-| Appendix C #90–95, #97, #99, #101–105, #109–110, #112, #119, #122, #161–163, #168–183, #185–206, #212, #234–241, #259–260, #262, #264–268, #349–353, and #363–370 | The findings retain threat rationale and timeless disposition-to-requirement mappings. Dispositions do not report implemented fixes, gate counts, or artifact results. The process-context, checker-ownership, and scanner rationales R-S11az/R-S11ba/R-S11bb/R-S11be likewise state binding contracts without implementation chronology. Original #173–184 threat findings, operative keywords, source links, identities, input/provenance bounds, and native/artifact acceptance remain intact. This row does not promote source checks to native evidence; current evidence limits remain in the relevant requirement entries and platform/open matrices. |
-| Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub and RustSec snapshots have real no-NIC VM verdicts recorded in R-S11df and R-S11dg below; future snapshot refresh, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. Documentation or mutation counts are not scanner evidence. |
+| Appendix C #87–88, #90–95, #97, #99, #101–105, #109–110, #112, #119, #122, #161–163, #168–183, #185–206, #212, #234–241, #259–260, #262, #264–268, #348–353, and #363–370 | The findings retain threat rationale and timeless disposition-to-requirement mappings. Dispositions do not report implemented fixes, gate counts, or artifact results. The process-context, checker-ownership, and scanner rationales R-S11az/R-S11ba/R-S11bb/R-S11be likewise state binding contracts without implementation chronology. Original #173–184 threat findings, operative keywords, source links, identities, input/provenance bounds, and native/artifact acceptance remain intact. This row does not promote source checks to native evidence; current evidence limits remain in the relevant requirement entries and platform/open matrices. |
+| Dependency advisories (R-A7/R-R3) | Timeless freshness and fail-closed policy remains normative; machine-readable accepts remain in `deny.toml`. The exact current Dart/Pub and RustSec snapshots have real no-NIC VM verdicts recorded in R-S11df and R-S11dg below; future snapshot refresh, independent reproduction, cold release artifacts, and the other explicitly listed release gaps remain open. The native-codec source guard retains package, version, baseline, patch, archive, offline-acquisition and advisory-record checks, but no longer requires explanatory phrases or CVE mentions in this hardening ledger. Its duplicate retired-AV1 report is absent from the manual watch; source/build-path absence remains guarded directly. Checker/self-test execution on this changed source has not been replayed. Documentation or mutation counts are not scanner, native or artifact evidence. |
 | Git-fork review and mirroring (R-B5b) | Exact revisions and primary-tree byte binding are reproducibility/provenance evidence, not a supplier safety verdict. Caller review shows RustDesk uses rdev physical input and result-bearing XDO text rather than Enigo's generic TFC key path; the unused TFC dependency, eager context, fallback/remap hooks, owned crate and dedicated probes are retired. Its earlier 53-second corrected-component evidence remains historical, not whole-app acceptance. Git X11 2.19.0 is also no longer selected. Complete canonical-closure/Cargo-graph regeneration, actual input/native/platform/whole-app acceptance, independent authentication and remaining supplier/mirror work remain OPEN. |
 | Repository/dependency structure (§16, R-R1) | The normative section now distinguishes security-modified in-tree source from exact-pinned external dependencies and the authenticated offline input closure. Its old tree snapshot, package counts, lockfile-only reproducibility assurance, upstream CI-job table, and claimed net-negative dependency delta were removed. Complete exact-current fork/provenance review, release builds, and independent reproduction remain OPEN. |
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
@@ -1672,7 +1672,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `987de146f6b66c1afa11b88c14f7f9c67a12b77897ecb5490a2e3b7556951104  requirements.html`.
+Current normative specification SHA-256: `36cff98813f68f95531a81e28e84ee0ffbaed5b54158ffc5a66ea705ee761e73  requirements.html`.
 
 ### Current authority and source closure
 
@@ -4346,47 +4346,15 @@ shallow, sparse, and index-masking state, runs strict `git fsck`, and proves mou
 The release transaction creates no Git worktree registration and never reads, prunes, adopts, or removes the invoking
 repository's worktree registry.
 
-Every source consumer that necessarily generates Flutter, Gradle, or package state is enclosed by generated-state
-resets; compilation-only consumers mount source read-only. The normalizer accepts only a recorded pass-A or
-pass-B device/inode identity, rejects descendant mounts, requires `fs.protected_hardlinks=1`, and
-re-verifies the digest-pinned Debian image. One no-pull, no-network container has a read-only root,
-no-new-privileges, a nonrecursive bind, and exactly `DAC_READ_SEARCH` plus `CHOWN`. Its helper retains every directory
-and non-directory inode descriptor, exact directory inventory, edge, mount identity, mode, link count, and internal
-hardlink count before mutation. Special objects, external hardlinks, changed inventories, or changed authorities abort.
-The 524,288-entry authority bound carries a 256-descriptor reserve over an enforced depth limit of 128, at most 64
-pre-existing descriptors, at most eight transient descriptors, one root, and contingency. The helper rejects excess
-depth or inherited descriptors before mutation, fixes and re-proves its soft `RLIMIT_NOFILE` at 524,544 before
-enumerating inherited descriptors, and rejects a
-lower hard limit. Docker fixes both limits at 524,544. Release preflight proves host and pinned-container capacity before
-the authenticated online snapshot or a build is created.
-The committed helper is opened once during workspace creation. Every host and container closure, normalization,
-preflight, and deletion execution reads from that descriptor and verifies the complete bounded in-memory bytes against
-the committed digest; no release operation executes or mounts the mutable helper pathname.
-The retained authority records and re-proves every file type, owner, group, mode, and link count before mutation. Only
-after that complete acquisition does it normalize ownership and modes through retained descriptors, stripping
-setuid, setgid, sticky, and group/world-write bits and returning the root to the invoking UID/GID at mode 0700. It
-re-proves the complete authority and postconditions before returning. Git then removes ignored state, requires an
-equivalent `-nffdx` dry run to be empty, and re-proves detached HEAD, index, and tracked bytes.
-
-Production workspace deletion no longer normalizes the workspace or its authenticated online snapshot. Cleanup opens
-the exact helper, proves pathname/descriptor identity and its committed digest, and retains that descriptor. Every
-terminal invocation receives at most 1 MiB directly from the retained descriptor, hashes the complete bytes in memory
-against the committed digest, and only then compiles and dispatches them. Privileged execution resolves no mutable
-helper pathname. One no-pull, no-network, read-only-root container receives the workspace by nonrecursive bind and has
-only `DAC_OVERRIDE` and `FOWNER`. Before the online snapshot or any build, a disposable fixture
-proves that exact image, bind, descriptor, limit, and capability path against root-owned mode-0000 state and a
-current-user sticky-directory entry, then proves content deletion, empty-root removal, and absence. The helper
-acquires the complete bounded mount, type, depth, inventory, and hardlink authority before deletion; removes only
-descriptor-relative authenticated regular-file, symlink, and directory edges; requires every retained non-directory
-link count to reach zero; and proves the original mode-0700 root remains empty with unchanged identity and metadata.
-The host then re-authenticates the still-open helper bytes, re-acquires that exact empty root and its protected parent,
-refuses any late content instead of traversing it, removes only the root through its retained parent,
-requires the root link count to reach zero, synchronizes the parent, proves pathname absence, and closes the helper.
-Any uncertain precondition or postcondition preserves state and exits nonzero. The invoking UID is the cooperating
-release authority, admitted trees must remain quiescent, and deliberately concurrent same-UID namespace mutation is not
-claimed to be contained.
-Production cleanup without the exact pinned image preserves the workspace and fails; recursive host removal is confined
-to the non-privileged fixture transaction.
+Generated-state reset and terminal cleanup use the direct current-principal descriptor helper,
+not host Docker, added capabilities, or ownership conversion. `build-release.sh` retains and
+digest-checks the helper bytes, accepts only recorded source/workspace identities, and checks
+mount/owner authority before mode normalization or removal. `reset_snapshot_build_state` then
+removes ignored state and re-proves the exact snapshot; terminal cleanup separately removes
+only acquired contents and the exact empty root. Uncertain ownership, identity, inventory,
+hardlink or cleanup state is preserved and fails. Current source disposition and the named
+reset/removal fixture limits are recorded once under R-S11gm/R-S11e-225 below. Exact cold
+R-B2/R-B10 execution of the actual builders remains OPEN.
 
 Fail-loud dirty probes use exclusive random files. The production dirty-source proof runs in its own mode-0700,
 complete-history, no-hardlink clone attached as `master` to the exact expected commit; it proves that baseline clean,
@@ -4453,15 +4421,6 @@ Detached exact-commit source validation is branch-neutral and takes an independe
 release wrapper requires attached `master`. Exact snapshot contracts require private object storage, remote removal,
 strict object validation, mode 0700, mount closure, and complete inode-link closure. Mutations remove each authority
 stage independently.
-
-The focused Docker regression first requires production admission to reject an external hardlink without changing its
-outside inode. It then creates internally closed hardlinks, root-owned mode-0000 Cargo and Flutter trees, a root-owned
-mode-6755 file, and an external symlink in the private snapshot. Ordinary Git cleanup must fail and preserve both
-hostile trees. The exact production normalizer must transfer every retained inode to the invoking UID/GID, restore
-directory access, and reduce the special file to mode 0755 before production reset removes generated state without
-changing the external target or tracked snapshot. Exact Docker allowlists and structural mutations reject missing,
-reordered, broadened, networked, recursively bound, symlink-following, hardlink-unprotected, mode-weakening,
-postcondition-free, or bypassed normalization.
 
 Release verification is reset both before and after its writable consumer, so pass B is re-proved after pass A and no
 ignored state can become verifier input. Final APK certificate verification precedes the last A/B byte comparison and
@@ -4561,28 +4520,15 @@ CLIPRDR; AV1/libaom is runtime-quarantined and no longer linked) — is disposit
 **documented residual** not closable by keying — the fork SHOULD sandbox the
 decode path." It is **not** a MUST.
 
-**AV1/libaom runtime quarantine (closed 2026-07-11).**
-Current public descriptions and upstream patches localize CVE-2026-56208/56209/
-56210/56211 to encoder/control surfaces rather than a proven viewer decoder path.
-The fork nevertheless closes the AV1 runtime exposure directly: AV1 is not
-advertised by encoder or decoder capability messages, not accepted from
-`codec-preference`, not offered in the desktop/mobile/toolbar UI, not benchmarked
-at startup, not constructed by the server encoder config, and hostile peer
-`Av1s` frames are locally unsupported before any native decoder or recorder
-worker is created. A stale AV1 preference falls back to the normal software
-policy, and VP9 remains the software fallback.
-
-**AV1/libaom dependency removal (closed 2026-07-11).**
-The runtime quarantine is backed by deletion of the native dependency itself:
-`vcpkg.json` no longer lists `aom`; `res/vcpkg/aom`, `libs/scrap/src/common/aom.rs`,
-and `libs/scrap/src/bindings/aom_ffi.h` are deleted; `libs/scrap/build.rs` no
-longer generates `aom_ffi.rs`; `EncoderCfg` has no AV1/libaom variant; and the
-offline Linux, Android, Windows, Apple source-conformance, dev-check, README,
-build-Dockerfile, and tracked build-scaffold paths do not install, stub, or
-reference `aom`. `docs/NATIVE-CODEC-WATCH.md` records `aom` as a retired library
-rather than a watched package, and `verify.sh` fails if a future source module,
-FFI binding, bindgen package, overlay path, manifest entry, build-Dockerfile,
-build-scaffold, or ledger shape reintroduces libaom.
+**AV1/libaom — source quarantine and dependency removal; native/artifact acceptance OPEN.**
+The source omits the native dependency, overlay, module/bindings, encoder variant,
+build-scaffold selection, UI/FFI/config selection and startup probes. The viewer
+refuses `Av1s` before state admission or decoder/recorder creation; stale preferences
+retain the software policy and stale server requests select VP9. Focused source
+checks in `verify.sh` and `native-codec-watch.sh` guard those paths and retained
+package/pin identities, not requirements or progress wording. No new codec runtime,
+final-artifact absence or platform acceptance follows from this documentation/checker
+cleanup; broader native decoder and release obligations remain OPEN.
 
 **R-B13 / Appendix C #129 — CVE-2026-1861 / CVE-2026-2447 libvpx remediation — SOURCE CLOSED; ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.**
 The advisory affects the VP9 encoder's `write_superframe_index` path, not the

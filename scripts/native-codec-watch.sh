@@ -113,7 +113,7 @@ run_self_test() {
   (
     cd "${NATIVE_CODEC_WATCH_ROOT:-$(dirname "$SCRIPT_PATH")/..}"
     cp --parents \
-      vcpkg.json HARDENING_STATUS.md \
+      vcpkg.json \
       docs/NATIVE-CODEC-WATCH.md \
       scripts/native-codec-watch.sh scripts/pins.env scripts/online-fetch.sh \
       scripts/build-windows-vm.sh scripts/build-windows.ps1 \
@@ -217,12 +217,7 @@ if grep -qE '"(ffmpeg|mfx-dispatch|ffnvcodec|amd-amf)"' vcpkg.json; then
 fi
 
 require_literal "Native-Codec-Watch-Version: 1" "$LEDGER"
-require_literal "Cargo/RustSec and Dart/OSV gates do not cover these vcpkg C/C++" "$LEDGER"
-require_literal "This gate is not the decoder sandbox." "$LEDGER"
 require_literal "VCPKG_BASELINE: $VCPKG_BASELINE" "$LEDGER"
-require_literal "Forbidden native decoder expansion remains: no \`ffmpeg\`, no \`mfx-dispatch\`, no" "$LEDGER"
-require_literal "Retired library: aom" "$LEDGER"
-require_literal "AV1/libaom dependency removal" "$LEDGER"
 
 for pkg in "${expected_packages[@]}"; do
   require_literal "Package: $pkg" "$LEDGER"
@@ -282,9 +277,6 @@ require_literal "LIBVPX_SOURCE_REF: $LIBVPX_SOURCE_REF" "$LEDGER"
 require_literal "LIBVPX_FIX_COMMIT: $LIBVPX_FIX_COMMIT" "$LEDGER"
 require_literal "libvpx patch SHA512: $SHA512_LIBVPX_PATCH" "$LEDGER"
 require_literal "CVE-2026-2447" "$LEDGER"
-require_literal "VP9 encoder" "$LEDGER"
-require_literal "CVE-2026-1861" HARDENING_STATUS.md
-require_literal "CVE-2026-2447" HARDENING_STATUS.md
 require_literal "libyuv version: $libyuv_version" "$LEDGER"
 require_literal "LIBYUV_COMMIT: $LIBYUV_COMMIT" "$LEDGER"
 require_literal "libyuv SHA512: $SHA512_LIBYUV" "$LEDGER"

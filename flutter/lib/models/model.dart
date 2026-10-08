@@ -2839,7 +2839,7 @@ class CanvasModel with ChangeNotifier {
     return (scrollPixel, max);
   }
 
-  void edgeScrollMouse(double x, double y) async {
+  Future<void> edgeScrollMouse(double x, double y) async {
     if ((_edgeScrollState == EdgeScrollState.inactive) ||
         (size.width == 0 || size.height == 0) ||
         !(_horizontal.hasClients || _vertical.hasClients)) {

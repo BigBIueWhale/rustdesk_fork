@@ -1814,6 +1814,18 @@ prepared-native inner-loop work; VM timing excludes host preparation.
 
 ### Android runtime — intermittent presentation remains OPEN
 
+**Desktop canvas scrolling lifetime — native A/B pending; OPEN.**
+Current fallback replacement/clear stops but does not dispose the Flutter ticker;
+canvas disposal releases neither that ticker nor its two scroll controllers. Each
+mouse motion can also start independent cross-window work whose reply applies after
+cancellation, disable, presentation/topology retirement, replacement or disposal.
+Twelve new Flutter component tests observe actual provider registrations, scroll
+positions, frame ticks, notifications and held cross-window replies. Tests-first changes
+only the mouse method's return type so its existing async body can be joined; no
+ownership correction is yet applied. One-request/latest-motion bounds and real desktop
+page teardown remain to implement and validate. This is not installed Windows evidence
+or a diagnosis of the original display-delay symptom.
+
 **Mobile keyboard geometry lifetime — component A/B passed; app-level symptoms OPEN.**
 At tests-first `88e69b72`, eight new cases fail and the other 225 tests pass. Retired
 focus changes successor offsets and size; retired restore reapplies the old offset/scale,

@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hbb/common.dart' show SessionID, isMobile;
 import 'package:flutter_hbb/consts.dart';
@@ -286,6 +288,164 @@ List<Object> _canvasPreferenceState(CanvasModel canvas) => [
       canvas.imageOverflow.value,
     ];
 
+class _CanvasScrollHost extends StatefulWidget {
+  const _CanvasScrollHost({super.key, required this.canvas});
+
+  final CanvasModel canvas;
+
+  @override
+  State<_CanvasScrollHost> createState() => _CanvasScrollHostState();
+}
+
+class _CanvasScrollHostState extends State<_CanvasScrollHost>
+    with TickerProviderStateMixin {
+  @override
+  void initState() {
+    super.initState();
+    widget.canvas.initializeEdgeScrollFallback(this);
+  }
+
+  // Read Flutter's actual provider registry, not a fixture-created ticker count.
+  Set<Ticker> get registeredTickers {
+    final properties = DiagnosticPropertiesBuilder();
+    super.debugFillProperties(properties);
+    for (final property in properties.properties) {
+      if (property.name == 'tickers' &&
+          property is DiagnosticsProperty<Set<Ticker>>) {
+        return {...?property.value};
+      }
+    }
+    return {};
+  }
+
+  int get activeTickers =>
+      registeredTickers.where((ticker) => ticker.isActive).length;
+
+  @override
+  Widget build(BuildContext context) => Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: widget.canvas.size.width,
+            height: widget.canvas.size.height,
+            child: SingleChildScrollView(
+              controller: widget.canvas.scrollHorizontal,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: 2000,
+                child: SingleChildScrollView(
+                  controller: widget.canvas.scrollVertical,
+                  child: const SizedBox(width: 2000, height: 2000),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+bool _notifierDisposed(ChangeNotifier notifier) {
+  try {
+    ChangeNotifier.debugAssertNotDisposed(notifier);
+    return false;
+  } on FlutterError {
+    return true;
+  }
+}
+
+class _EdgeScrollFixture {
+  _EdgeScrollFixture(this.tester);
+
+  final WidgetTester tester;
+  final session = _CanvasPreferenceSession(
+      _PendingCanvasPreferences(_CanvasPreferenceStage.view));
+  final key = GlobalKey<_CanvasScrollHostState>();
+  final replies = <Completer<bool>>[];
+  final requests = <Map<Object?, Object?>>[];
+  final work = <Future<void>>[];
+  bool closing = false;
+  bool disposed = false;
+  static const channel =
+      MethodChannel('mixin.one/flutter_multi_window_channel');
+
+  CanvasModel get canvas => session.canvasModel;
+  _CanvasScrollHostState get host => key.currentState!;
+
+  Future<void> mount() async {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,
+        (call) async {
+      if (closing) return true;
+      expect(call.method, kWindowBumpMouse);
+      expect(call.arguments['targetWindowId'], 0);
+      requests.add(Map<Object?, Object?>.from(call.arguments['arguments']));
+      final reply = Completer<bool>();
+      replies.add(reply);
+      return reply.future;
+    });
+    canvas.updateSize();
+    await canvas.updateScrollStyle(owner: canvas.captureUpdateOwner());
+    await tester.pumpWidget(_CanvasScrollHost(key: key, canvas: canvas));
+    expect(canvas.scrollHorizontal.position.maxScrollExtent, greaterThan(500));
+    expect(canvas.scrollVertical.position.maxScrollExtent, greaterThan(500));
+    await prepareMotion();
+  }
+
+  Future<void> prepareMotion() async {
+    canvas.updateSize();
+    await canvas.updateScrollStyle(owner: canvas.captureUpdateOwner());
+    canvas.scrollHorizontal.jumpTo(500);
+    canvas.scrollVertical.jumpTo(500);
+    canvas.rearmEdgeScroll();
+    await move(canvas.size.width / 2, canvas.size.height / 2);
+  }
+
+  Future<void> move(double x, double y) {
+    final pending = canvas.edgeScrollMouse(x, y);
+    work.add(pending);
+    return pending;
+  }
+
+  void disposeCanvas() {
+    canvas.dispose();
+    disposed = true;
+  }
+
+  Future<void> close() async {
+    closing = true;
+    for (final reply in replies) {
+      if (!reply.isCompleted) reply.complete(true);
+    }
+    await tester.pump();
+    await Future.wait(work);
+    if (!disposed) canvas.clear();
+    // Emergency cleanup is deliberately after all product observations, so a
+    // failed old implementation cannot leak its real ticker into another test.
+    for (final ticker in key.currentState?.registeredTickers ?? <Ticker>{}) {
+      ticker.dispose();
+    }
+    await tester.pumpWidget(const SizedBox());
+    if (!disposed) disposeCanvas();
+    for (final controller in [canvas.scrollHorizontal, canvas.scrollVertical]) {
+      if (!_notifierDisposed(controller)) controller.dispose();
+    }
+    session.imageModel.dispose();
+    session.cursorModel.dispose();
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
+  }
+}
+
+Future<void> _observeEdgeScroll(WidgetTester tester,
+    Future<void> Function(_EdgeScrollFixture) observe) async {
+  final fixture = _EdgeScrollFixture(tester);
+  try {
+    await fixture.mount();
+    await observe(fixture);
+  } finally {
+    await fixture.close();
+  }
+}
+
 Future<void> _observeMobileCanvas(
     Future<void> Function(_CanvasPreferenceSession, VoidCallback) observe) async {
   final previousMobile = isMobile;
@@ -479,6 +639,178 @@ Future<Map<String, Object>> _conversionFailureHandles(String failingStage) async
 }
 
 void main() {
+  testWidgets('edge fallback replacement and clear release provider tickers',
+      (tester) async {
+    await _observeEdgeScroll(tester, (fixture) async {
+      final canvas = fixture.canvas;
+      expect(fixture.host.registeredTickers, hasLength(1));
+      canvas.initializeEdgeScrollFallback(fixture.host);
+      expect(fixture.host.registeredTickers, hasLength(1));
+      canvas.clear();
+      expect(fixture.host.registeredTickers, isEmpty);
+      canvas.initializeEdgeScrollFallback(fixture.host);
+      await fixture.prepareMotion();
+      final pending = fixture.move(0, 0);
+      await tester.pump();
+      fixture.replies.single.complete(false);
+      await tester.pump();
+      await pending;
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(canvas.scrollHorizontal.position.pixels, lessThan(500));
+    });
+  });
+
+  testWidgets('canvas disposal releases ticker and both scroll controllers',
+      (tester) async {
+    await _observeEdgeScroll(tester, (fixture) async {
+      fixture.disposeCanvas();
+      expect([
+        fixture.host.registeredTickers.length,
+        _notifierDisposed(fixture.canvas.scrollHorizontal),
+        _notifierDisposed(fixture.canvas.scrollVertical),
+      ], [0, true, true]);
+      fixture.canvas.initializeEdgeScrollFallback(fixture.host);
+      expect(fixture.host.registeredTickers, isEmpty);
+    });
+  });
+
+  for (final retirement in [
+    'cancel', 'disable', 'presentation', 'topology', 'replacement', 'clear', 'dispose'
+  ]) {
+    testWidgets('held edge reply refuses $retirement owner', (tester) async {
+      await _observeEdgeScroll(tester, (fixture) async {
+        final canvas = fixture.canvas;
+        final horizontal = canvas.scrollHorizontal.position;
+        final vertical = canvas.scrollVertical.position;
+        var notifications = 0;
+        canvas.addListener(() => notifications++);
+        final pending = fixture.move(0, 0);
+        await tester.pump();
+        expect(fixture.replies, hasLength(1));
+        switch (retirement) {
+          case 'cancel':
+            canvas.cancelEdgeScroll();
+            break;
+          case 'disable':
+            canvas.disableEdgeScroll();
+            break;
+          case 'presentation':
+            fixture.session.imageModel.retirePresentation();
+            break;
+          case 'topology':
+            fixture.session.ffiModel.revision++;
+            break;
+          case 'replacement':
+            canvas.initializeEdgeScrollFallback(fixture.host);
+            break;
+          case 'clear':
+            canvas.clear();
+            break;
+          case 'dispose':
+            fixture.disposeCanvas();
+            break;
+        }
+        notifications = 0;
+        final before = _canvasPreferenceState(canvas);
+        final pixels = [horizontal.pixels, vertical.pixels];
+        final succeeded = ['cancel', 'presentation', 'clear'].contains(retirement);
+        fixture.replies.single.complete(succeeded);
+        await tester.pump();
+        await pending;
+        await tester.pump(const Duration(milliseconds: 16));
+        await tester.pump(const Duration(milliseconds: 16));
+        expect({
+          'state': _canvasPreferenceState(canvas),
+          'pixels': [horizontal.pixels, vertical.pixels],
+          'notifications': notifications,
+          'activeTickers': fixture.host.activeTickers,
+          'exception': tester.takeException(),
+        }, {
+          'state': before,
+          'pixels': pixels,
+          'notifications': 0,
+          'activeTickers': 0,
+          'exception': null,
+        });
+        if (retirement == 'dispose') return;
+        if (retirement == 'clear') {
+          canvas.initializeEdgeScrollFallback(fixture.host);
+        }
+        await fixture.prepareMotion();
+        final fresh = fixture.move(0, 0);
+        await tester.pump();
+        expect(fixture.replies, hasLength(2));
+        fixture.replies.last.complete(true);
+        await tester.pump();
+        await fresh;
+        expect(horizontal.pixels, lessThan(500));
+        expect(notifications, greaterThan(0));
+      });
+    });
+  }
+
+  testWidgets('edge motion holds one request and only the latest waiting motion',
+      (tester) async {
+    await _observeEdgeScroll(tester, (fixture) async {
+      final first = fixture.move(0, 0);
+      await tester.pump();
+      final second = fixture.move(10, 10);
+      final latest = fixture.move(20, 20);
+      await tester.pump();
+      expect(fixture.requests, hasLength(1));
+      fixture.replies.first.complete(true);
+      await tester.pump();
+      expect(fixture.canvas.scrollHorizontal.position.pixels, 500);
+      expect(fixture.requests, hasLength(2));
+      expect(fixture.requests.last, {'dx': 81, 'dy': 81});
+      fixture.replies.last.complete(true);
+      await tester.pump();
+      await Future.wait([first, second, latest]);
+      expect(fixture.canvas.scrollHorizontal.position.pixels, 420);
+      expect(fixture.canvas.scrollVertical.position.pixels, 420);
+    });
+  });
+
+  for (final retirement in ['presentation', 'topology']) {
+    testWidgets('active fallback stops at $retirement and fresh motion is useful',
+        (tester) async {
+      await _observeEdgeScroll(tester, (fixture) async {
+        final canvas = fixture.canvas;
+        final pending = fixture.move(0, 0);
+        await tester.pump();
+        fixture.replies.single.complete(false);
+        await tester.pump();
+        await pending;
+        await tester.pump(const Duration(milliseconds: 16));
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(canvas.scrollHorizontal.position.pixels, lessThan(500));
+        expect(fixture.host.activeTickers, 1);
+        if (retirement == 'presentation') {
+          fixture.session.imageModel.retirePresentation();
+        } else {
+          fixture.session.ffiModel.revision++;
+        }
+        final pixels = [canvas.scrollHorizontal.position.pixels,
+          canvas.scrollVertical.position.pixels];
+        var notifications = 0;
+        canvas.addListener(() => notifications++);
+        await tester.pump(const Duration(milliseconds: 16));
+        expect([
+          canvas.scrollHorizontal.position.pixels,
+          canvas.scrollVertical.position.pixels,
+          fixture.host.activeTickers,
+          notifications,
+        ], [...pixels, 0, 0]);
+        await fixture.prepareMotion();
+        await fixture.move(0, 0);
+        await tester.pump(const Duration(milliseconds: 16));
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(canvas.scrollHorizontal.position.pixels, lessThan(500));
+      });
+    });
+  }
+
   for (final retirement in ['clear', 'dispose']) {
     testWidgets('mobile canvas $retirement removes both pending timers',
         (tester) async {

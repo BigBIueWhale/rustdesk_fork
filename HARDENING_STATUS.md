@@ -8923,7 +8923,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   cold A==B R-B2/R-B10 artifacts, installed/native behavior, independent
   reproduction, and R-V3 external review remain open.
 - **R-S11dl/R-S11e-130 — installed Debian systemd lifecycle is VM-only;
-  REAL STAGING PROFILE VERIFIED 2026-09-15; CURRENT FINAL ARTIFACT LIFECYCLE,
+  STAGING PROFILE AND PRIVATE-XDO DEPENDENCY COMPONENT VERIFIED; CURRENT FINAL ARTIFACT LIFECYCLE,
   COLD RELEASE, NATIVE/DEVICE, REPRODUCTION, AND EXTERNAL REVIEW REMAIN OPEN.**
   Platform/boundary: unprivileged release host → common disposable Debian
   verifier VM with no NIC and private Unix-only channels → VM-root Docker used
@@ -8960,9 +8960,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   explicit entrypoint, zero capabilities, no-new-privileges, seccomp filtering,
   `docker-default` AppArmor, private cgroup/IPC namespaces, 64 PIDs, 1 GiB
   memory with no added swap, one CPU, zero core, 4096 descriptors, 256 MiB file
-  size, and 32 MiB private no-exec scratch. Docker receives exactly one
-  root-owned RustDesk executable read-only and one empty private output
-  directory writable, both nonrecursive. The flat library output is
+  size, and 32 MiB private no-exec scratch. Docker receives the artifact's
+  root-owned RustDesk executable and private XDO provider read-only, plus one
+  empty private output directory writable; all mounts are nonrecursive.
+  Each ELF's dependencies are discovered individually, with failures propagated;
+  the distribution XDO copy is absent. Both input identities are checked after
+  staging. The flat library output is
   collision-checked and bounded to 60..256 nonempty single-link files and
   1 GiB.
 
@@ -8976,7 +8979,25 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   proofs, normal restart, stop/start, KILL recovery, portable-sibling survival,
   removal, purge, and cleanup requirements.
 
-  Current behavioral evidence is deliberately narrow and exact. On 2026-09-15
+  **Private-provider dependency component accepted; full staging/install OPEN.**
+  Test-first `fc416c09` executed the real staging shell body against the complete
+  Enigo native-component ELF and private provider. It omitted `libXext`,
+  `libXinerama`, `libXtst` and `libxkbcommon` (`run.ALYegqBlRe`, outer 1).
+  Corrected `7e8a982e` passed in **145 seconds** (`run.3ijUXLrPYr`, outer 0):
+  all eleven provider dependencies and the executable's resolved DSO entries
+  came from the 22-file staged set, no distribution XDO was copied, and actual
+  pointer/Shift/text delivery passed with staged-first loading. The pinned-image
+  interpreter remains separate. The updated nonroot production launch profile's
+  two read-only inputs, confinement and cleanup passed with its minimal fixture;
+  the focused source guard also passed. Existing native regressions and outer
+  input/source/listener/finality checks passed with joined transient retirement.
+  Bounded serials and `evidence/xdo-runtime-stage-run.*.outer.receipt` under
+  `.harness-state/verifier-vm/` bind the evidence. This does not run the final
+  release executable, full staging CLI/minimum-count/input-metadata path,
+  package install or service lifecycle; collision/race/fault and whole-resource
+  acceptance remain OPEN.
+
+  Earlier boundary evidence remains deliberately narrow. On 2026-09-15
   the ordinary common harness booted the SHA-512-pinned Debian base with direct
   authenticated boot assets and `-nic none`; started the VM-root Docker
   daemon; refused root and foreign staging entries; and ran the real production

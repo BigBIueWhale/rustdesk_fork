@@ -948,7 +948,7 @@ run_android_frame_tests() {
     local -a mounts command phases=(prepare native)
     local loader_installed=$ROOT/xdo-loader-installed loader_variant loader_source loader_digest
     if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ]; then
-        phases=(prepare loader-build loader-complete loader-missing-mouse-up loader-wrong-version loader-writable loader-absent loader-reject-key-down native)
+        phases=(prepare loader-build loader-complete loader-missing-mouse-up loader-wrong-version loader-writable loader-absent loader-reject-key-down loader-runtime-stage native)
     fi
     load_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -1017,6 +1017,15 @@ run_android_frame_tests() {
             if [ "$phase" = loader-build ]; then
                 mounts+=(--mount "type=bind,src=$work/loader-build,dst=/loader-build,bind-recursive=disabled")
                 command=(/usr/bin/python3 -B -I -S /work/scripts/test-xdo-loader-native.py build)
+            elif [ "$phase" = loader-runtime-stage ]; then
+                mounts+=(
+                    --mount "type=bind,src=$work/loader-build,dst=/loader-build,readonly,bind-recursive=disabled"
+                    --mount "type=bind,src=$work/loader-build/test-xdo-enigo,dst=/input/rustdesk,readonly,bind-recursive=disabled"
+                    --mount "type=bind,src=$loader_installed/complete/libxdo.so.3,dst=/input/libxdo.so.3,readonly,bind-recursive=disabled"
+                    --mount "type=bind,src=$loader_installed/complete,dst=/usr/lib/rustdesk-fork,readonly,bind-recursive=disabled"
+                    --tmpfs /out:rw,exec,nosuid,nodev,size=128m,mode=700,uid=4000,gid=4000
+                )
+                command=(/usr/bin/python3 -B -I -S /work/scripts/test-xdo-loader-native.py runtime-stage)
             elif [[ "$phase" == loader-* ]]; then
                 loader_variant=${phase#loader-}
                 mounts+=(
@@ -1049,6 +1058,9 @@ run_android_frame_tests() {
         if [ "$phase" = loader-build ]; then
             [ "$(grep -Fxc 'XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=4' "$output")" -eq 1 ] \
                 || fail 'XDO loader build result is absent or duplicated'
+        elif [ "$phase" = loader-runtime-stage ]; then
+            [ "$(grep -c '^XDO_RUNTIME_STAGE=pass .* distribution_xdo=absent resolution=staged input=actual native_input=delivered authority_cli=unexecuted cleanup=joined$' "$output")" -eq 1 ] \
+                || fail 'XDO runtime staging result is absent or duplicated'
         elif [[ "$phase" == loader-* ]]; then
             [ "$(grep -Fxc "XDO_LOADER_NATIVE=pass scenario=${phase#loader-} source=production network=none uid=4000 cleanup=joined" "$output")" -eq 1 ] \
                 || fail 'XDO loader native result is absent or duplicated'

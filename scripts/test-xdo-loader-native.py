@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -33,8 +34,9 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def command(arguments, timeout=30):
-    result = subprocess.run(arguments, env=ENV, capture_output=True, text=True, timeout=timeout)
+def command(arguments, timeout=30, environment=None):
+    result = subprocess.run(arguments, env=ENV if environment is None else environment,
+                            capture_output=True, text=True, timeout=timeout)
     require(len(result.stdout) + len(result.stderr) <= 65536, 'component command output exceeded bound')
     if result.returncode:
         print(result.stdout, end='', flush=True)
@@ -178,6 +180,63 @@ def build():
     print('XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=4', flush=True)
 
 
+def resolved_dependencies(path, environment=None):
+    result = command(['/usr/bin/ldd', str(path)], environment=environment)
+    require('not found' not in result.stdout, 'native dependency is unavailable')
+    dependencies = {}
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) >= 3 and fields[1] == '=>':
+            require(fields[2].startswith('/'), 'native dependency resolution is ambiguous')
+            dependencies[fields[0]] = Path(fields[2])
+    require(dependencies, 'native dependency inventory is empty')
+    return dependencies
+
+
+def runtime_stage():
+    source = ROOT / 'scripts/stage-debian-systemd-runtime-libs.sh'
+    text = source.read_text()
+    prefix = '    runtime_library_stage_run "$DEV_CHECK_IMAGE_CONFIG_ID"'
+    require(text.count(prefix) == 1, 'production staging command is ambiguous')
+    start = text.index(prefix)
+    end = text.index('\n    binary_after=', start)
+    # Parse the real shell-quoted command argument, without substituting or rewriting its body.
+    body = shlex.split(text[start:end])[-1]
+    require('stage_library() {' in body, 'production staging body is unavailable')
+    provider_dependencies = resolved_dependencies('/input/libxdo.so.3')
+    binary_dependencies = resolved_dependencies('/input/rustdesk')
+    command(['/bin/bash', '--noprofile', '--norc', '-euo', 'pipefail', '-c', body])
+    output = Path('/out')
+    missing = sorted(name for name in provider_dependencies if not (output / name).is_file())
+    require(not missing, f'runtime staging omitted private-provider dependencies: {missing}')
+    require(not any(path.name.startswith('libxdo.so') for path in output.iterdir()),
+            'runtime staging retained a distribution XDO provider')
+    files = list(output.iterdir())
+    require(1 <= len(files) <= 256 and sum(path.stat().st_size for path in files) <= 128 * 1024 * 1024,
+            'component runtime staging exceeded its output bound')
+    for path in files:
+        metadata = path.lstat()
+        require(path.is_file() and not path.is_symlink() and metadata.st_nlink == 1
+                and metadata.st_uid == 4000 and not metadata.st_mode & 0o022,
+                'component runtime library metadata differs')
+    staged_env = dict(ENV, LD_LIBRARY_PATH='/out')
+    for path, expected in (('/input/libxdo.so.3', provider_dependencies),
+                           ('/input/rustdesk', binary_dependencies)):
+        actual = resolved_dependencies(path, staged_env)
+        require(set(actual) == set(expected) and all(value.parent == output for value in actual.values()),
+                'native dependency resolution fell back outside the staged libraries')
+    previous = ENV['LD_LIBRARY_PATH']
+    try:
+        ENV['LD_LIBRARY_PATH'] = '/out:/xvfb-root/usr/lib/x86_64-linux-gnu'
+        run('complete')
+    finally:
+        ENV['LD_LIBRARY_PATH'] = previous
+    print(f'XDO_RUNTIME_STAGE=pass source_sha256={sha(source)} body_sha256='
+          f'{hashlib.sha256(body.encode()).hexdigest()} provider_dependencies={len(provider_dependencies)} '
+          f'libraries={len(files)} distribution_xdo=absent resolution=staged input=actual '
+          'native_input=delivered authority_cli=unexecuted cleanup=joined', flush=True)
+
+
 def run(scenario):
     require(scenario in ('complete', 'missing-mouse-up', 'wrong-version', 'writable', 'absent', 'reject-key-down'),
             'unknown loader scenario')
@@ -230,5 +289,7 @@ if __name__ == '__main__':
     require(len(sys.argv) == 2, 'exact loader phase required')
     if sys.argv[1] == 'build':
         build()
+    elif sys.argv[1] == 'runtime-stage':
+        runtime_stage()
     else:
         run(sys.argv[1])

@@ -2280,7 +2280,7 @@ enum EdgeScrollState {
   active,
 }
 
-class EdgeScrollFallbackState {
+class _EdgeScrollFallbackState {
   final CanvasModel _owner;
 
   late final Ticker _ticker;
@@ -2289,7 +2289,7 @@ class EdgeScrollFallbackState {
   bool _nextEventIsFirst = true;
   _EdgeScrollUpdate? _update;
 
-  EdgeScrollFallbackState(this._owner, TickerProvider tickerProvider) {
+  _EdgeScrollFallbackState(this._owner, TickerProvider tickerProvider) {
     _ticker = tickerProvider.createTicker(emitTick);
   }
 
@@ -2395,7 +2395,7 @@ class _EdgeScrollUpdate {
       this.scale, this.thickness);
 
   final CanvasUpdateOwner owner;
-  final EdgeScrollFallbackState fallback;
+  final _EdgeScrollFallbackState fallback;
   final Vector2 encroachment;
   final Size size;
   final double scale;
@@ -2437,7 +2437,7 @@ class CanvasModel with ChangeNotifier {
   // scrolling when the cursor enters the view from outside
   EdgeScrollState _edgeScrollState = EdgeScrollState.inactive;
   // fallback strategy for when Bump Mouse isn't available
-  EdgeScrollFallbackState? _edgeScrollFallbackState;
+  _EdgeScrollFallbackState? _edgeScrollFallbackState;
   _EdgeScrollUpdate? _currentEdgeScrollUpdate;
   _EdgeScrollUpdate? _pendingEdgeScrollUpdate;
   Future<void>? _edgeScrollWorker;
@@ -2839,7 +2839,7 @@ class CanvasModel with ChangeNotifier {
   void initializeEdgeScrollFallback(TickerProvider tickerProvider) {
     _retireEdgeScrollFallback();
     if (_disposed) return;
-    _edgeScrollFallbackState = EdgeScrollFallbackState(this, tickerProvider);
+    _edgeScrollFallbackState = _EdgeScrollFallbackState(this, tickerProvider);
     _bumpMouseIsWorking = true;
   }
 
@@ -2897,8 +2897,6 @@ class CanvasModel with ChangeNotifier {
   }
 
   Future<void> edgeScrollMouse(double x, double y) {
-    _currentEdgeScrollUpdate = null;
-    _pendingEdgeScrollUpdate = null;
     final owner = captureUpdateOwner();
     final fallback = _edgeScrollFallbackState;
     if (owner == null || fallback == null ||
@@ -2946,17 +2944,8 @@ class CanvasModel with ChangeNotifier {
 
     var encroachment = Vector2(dxOffset, dyOffset);
 
-    var (scrollPixel, max) = getScrollInfo();
-
-    encroachment.clamp(-scrollPixel, max - scrollPixel);
-
-    if (encroachment.length2 == 0) {
-      cancelEdgeScroll();
-      return _edgeScrollWorker ?? Future<void>.value();
-    }
     final update = _EdgeScrollUpdate(owner, fallback, encroachment, _size,
         _scale, _edgeScrollEdgeThickness);
-    _currentEdgeScrollUpdate = update;
     _pendingEdgeScrollUpdate = update;
     final worker = _edgeScrollWorker;
     if (worker != null) return worker;
@@ -2970,9 +2959,23 @@ class CanvasModel with ChangeNotifier {
   Future<void> _drainEdgeScroll(Completer<void> completion) async {
     try {
       while (_pendingEdgeScrollUpdate != null) {
-        final update = _pendingEdgeScrollUpdate!;
+        final pending = _pendingEdgeScrollUpdate!;
         _pendingEdgeScrollUpdate = null;
-        if (!_acceptsEdgeScrollUpdate(update)) continue;
+        // An accepted native bump and its canvas adjustment are one operation.
+        // A newer motion replaces waiting work, not this in-flight pair: the
+        // bump itself may generate that motion before returning its reply.
+        _currentEdgeScrollUpdate = pending;
+        if (!_acceptsEdgeScrollUpdate(pending)) continue;
+        final (scrollPixel, max) = getScrollInfo();
+        final encroachment = pending.encroachment.clone()
+          ..clamp(-scrollPixel, max - scrollPixel);
+        final update = _EdgeScrollUpdate(pending.owner, pending.fallback,
+            encroachment, pending.size, pending.scale, pending.thickness);
+        _currentEdgeScrollUpdate = update;
+        if (update.encroachment.length2 == 0) {
+          update.fallback.stop();
+          continue;
+        }
         try {
           var bumpMouseSucceeded = false;
           if (_bumpMouseIsWorking) {
@@ -3001,7 +3004,10 @@ class CanvasModel with ChangeNotifier {
             update.fallback.start(update);
           }
         } catch (error, stack) {
-          if (_acceptsEdgeScrollUpdate(update)) cancelEdgeScroll();
+          if (_acceptsEdgeScrollUpdate(update)) {
+            _currentEdgeScrollUpdate = null;
+            update.fallback.stop();
+          }
           debugPrint('Edge scrolling failed: ${error.runtimeType}');
           debugPrintStack(stackTrace: stack);
         }

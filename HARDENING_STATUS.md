@@ -1821,14 +1821,24 @@ controllers live. Retired replies mutate actual scroll positions, disposed callb
 report use-after-dispose, and three held motions start three requests. Retained raw
 `flutter-model-tests-run.mxIhryZ1gS.serial.log`, SHA256
 `daaf4c6b59a13d8ffbf29053b2e1fbfab036dd5e7237034bc4c6726bf642a97e`.
-Canvas now owns one request with only the latest waiting motion. Exact motion, canvas,
+Canvas now owns one accepted request with only the latest waiting motion. New motion
+does not revoke that accepted bump's matching canvas adjustment: the native bump can
+generate a pointer event before returning. Explicit cancellation/retirement still revokes
+effects. Waiting motion recomputes scroll bounds when admitted. Exact motion, canvas,
 session/client, topology/presentation, registration and viewport authorize continuation
 and ticker effects. Cancellation revokes those effects; clear/replacement dispose the
 old ticker and final disposal releases both controllers. Remote and camera page cleanup
 retire/join window work before removal, then dispose the canvas at State disposal;
-remote blur also cancels scrolling. Five additional tests observe joined retirement,
+remote blur also cancels scrolling. Seven additional tests observe joined retirement,
 stale/current transport failures, continuous fallback progress during new motion and
-synchronous listener retirement between the two scroll-controller effects.
+synchronous listener retirement between the two scroll-controller effects, bump-generated
+motion before reply and waiting work reaching a scroll boundary. The first corrected
+checkpoint passed 250/252 tests; two queued-reply cases failed with a platform
+exception before the fixture recorded the next request.
+Their original one-request assertion is retained; async callback protocol validation is
+now plain validation, without Flutter guarded assertions inside platform delivery. The
+queue's post-reply expectation accounts for the accepted bump's required paired scroll,
+not supersession by its own generated motion. Final native rerun remains pending.
 No native request is detached or treated as cancelled merely because its effects are
 refused. Already-issued native mouse movement, native reply/cancellation/engine finality,
 installed desktop teardown and viewport integration remain OPEN. This is not installed

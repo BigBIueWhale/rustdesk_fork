@@ -376,8 +376,10 @@ class _EdgeScrollFixture {
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel,
         (call) async {
       if (closing) return true;
-      expect(call.method, kWindowBumpMouse);
-      expect(call.arguments['targetWindowId'], 0);
+      if (call.method != kWindowBumpMouse ||
+          call.arguments['targetWindowId'] != 0) {
+        throw StateError('Unexpected edge-scroll cross-window request');
+      }
       requests.add(Map<Object?, Object?>.from(call.arguments['arguments']));
       final reply = Completer<bool>();
       replies.add(reply);
@@ -761,14 +763,14 @@ void main() {
       expect(fixture.requests, hasLength(1));
       fixture.replies.first.complete(true);
       await tester.pump();
-      expect(fixture.canvas.scrollHorizontal.position.pixels, 500);
+      expect(fixture.canvas.scrollHorizontal.position.pixels, 400);
       expect(fixture.requests, hasLength(2));
       expect(fixture.requests.last, {'dx': 81, 'dy': 81});
       fixture.replies.last.complete(true);
       await tester.pump();
       await Future.wait([first, second, latest]);
-      expect(fixture.canvas.scrollHorizontal.position.pixels, 420);
-      expect(fixture.canvas.scrollVertical.position.pixels, 420);
+      expect(fixture.canvas.scrollHorizontal.position.pixels, 320);
+      expect(fixture.canvas.scrollVertical.position.pixels, 320);
     });
   });
 
@@ -937,6 +939,43 @@ void main() {
       } finally {
         canvas.scrollHorizontal.removeListener(retireAfterFirstScroll);
       }
+    });
+  });
+
+  testWidgets('bump-generated interior motion does not cancel its canvas pair',
+      (tester) async {
+    await _observeEdgeScroll(tester, (fixture) async {
+      final bump = fixture.move(0, 0);
+      await tester.pump();
+      final generated = fixture.move(101, 101);
+      await tester.pump();
+      expect(fixture.replies, hasLength(1));
+      fixture.replies.single.complete(true);
+      await tester.pump();
+      await Future.wait([bump, generated]);
+      expect(fixture.canvas.scrollHorizontal.position.pixels, 400);
+      expect(fixture.canvas.scrollVertical.position.pixels, 400);
+      expect(fixture.replies, hasLength(1));
+      expect(fixture.host.activeTickers, 0);
+    });
+  });
+
+  testWidgets('waiting edge motion rechecks bounds after the accepted scroll',
+      (tester) async {
+    await _observeEdgeScroll(tester, (fixture) async {
+      fixture.canvas.scrollHorizontal.jumpTo(50);
+      fixture.canvas.scrollVertical.jumpTo(50);
+      final bump = fixture.move(0, 0);
+      await tester.pump();
+      final waiting = fixture.move(0, 0);
+      expect(fixture.requests.single, {'dx': 51, 'dy': 51});
+      fixture.replies.single.complete(true);
+      await tester.pump();
+      await Future.wait([bump, waiting]);
+      expect(fixture.canvas.scrollHorizontal.position.pixels, 0);
+      expect(fixture.canvas.scrollVertical.position.pixels, 0);
+      expect(fixture.requests, hasLength(1));
+      expect(fixture.host.activeTickers, 0);
     });
   });
 

@@ -567,54 +567,58 @@ Unicode, parent/rdev/protected-loader/full-app or installed-service execution, a
 does not explain the Android/Windows display delay. Existing native regressions
 also passed; this does not upgrade their scope or independent-attestation status.
 
-**Native map freshness correction — INCOMPLETE / resource-unaccepted.** XDO retains
-its construction-time keyboard map. Test-first `3eb169b6` holds the native display
-and constructor-complete/map-swapped/emission phases constant: after the independent
-observer swaps the complete `a`/`b` rows, unchanged production emits `b` for requested
-`a` (`run.eYxh0ZXVJM`, explicit outer 1). Candidate `81eb367c` creates a request-owned
+**Native map freshness and descriptor ownership — component accepted; integration OPEN.**
+XDO retains its construction-time keyboard map. Test-first `3eb169b6` held the
+constructor-complete/map-swapped/emission phases constant: after the independent
+observer swapped the complete `a`/`b` rows, unchanged production emitted `b` for
+requested `a` (`run.eYxh0ZXVJM`, explicit outer 1). `81eb367c` creates a request-owned
 temporary XDO context on the sole retained display, without rereading `DISPLAY` or
-opening another connection. Construction refusal returns an error without stale-map
-fallback. Native `run.BfJfihjF74` passed correct `a` delivery for 1 and 32 requests
-(66 native events), two controlled construction-refusal/retry cases, sampled clear
-keys, original-map restoration, and context/display/fd/task retirement. Its 7.372 ms
-and 212.266 ms command-to-child-retirement observations include the configured key
-delay; they are not remote UI latency or soak acceptance.
+opening another connection. Native construction refusal returns an error without
+stale-map fallback. Its earlier correct-key/fd/task pass was insufficient: the
+unchanged exact-pointer heap probe observed **2 allocations, 0 retirements, 2 live**
+in `run.c06EDXJfqr` (explicit outer 1); later scenarios did not execute.
 
-That success is **not resource acceptance**. The load-bearing native heap probe
-`788c6109` observes exact enclosing XKB descriptors directly allocated by the pinned
-XDO library, without freeing them itself. `run.c06EDXJfqr` explicitly failed outer 1:
-the correct native key pair and both child retirements passed, but actual descriptor
-counts were **allocations=2, retirements=0, live=2**. The 32-request case and later
-focus/capture/complete aggregate did not execute after that failure. The
-[supplier routine](https://raw.githubusercontent.com/jordansissel/xdotool/v3.20160805.1/xdo.c)
-calls `XkbFreeClientMap`; its
-[Xlib implementation](https://raw.githubusercontent.com/mirror/libX11/libX11-1.8.4/src/xkb/XKBMAlloc.c)
-frees the inner map, not the enclosing descriptor. Per-request construction therefore
-introduces repeated allocation with no observed enclosing retirement in the pinned
-library. Do not accept this candidate, weaken the heap predicate, or return to stale
-map reuse merely to make the check pass. Correct native allocation ownership in the
-reproducible product dependency path, then rerun the same behavioral/resource oracle;
-no installed host library or RustDesk service is a test/fix target.
+The [supplier routine](https://raw.githubusercontent.com/jordansissel/xdotool/v3.20160805.1/xdo.c)
+frees only the inner map. `b9a4d5eb` carries the full enclosing-descriptor destructor
+in checked-in XDO source with exact provenance, the distro ABI fields, and retained
+BSD notice. The native helper builds a private library; Debian construction and the
+closed package verifier require `/usr/lib/rustdesk-fork/libxdo.so.3` plus its notices.
+Loader source selects only that protected root-owned path and exact fork version;
+there is no distro-library fallback. The version is a component guard, not
+cryptographic code authentication. `39c14ad5` preserves stack-protection/fortified
+library compiler flags; fixed immediate-binding/RELRO and internal-function binding
+remain explicit. No installed host library or service is changed.
 
-The retained 88,539-byte `x11-display-tests-run.c06EDXJfqr.serial.log` has SHA-256
-`8cda11a81041bd7966d93c1b1808e4d23ca99b0764f683d87a4aa5141c12ad57`.
-Frozen `evidence/x11-layout-heap-run.c06EDXJfqr.outer.receipt` binds sources, probe,
-actual libraries, preceding narrower evidence, and explicit failure. Before/during/
-after endpoint-only snapshots are identical; no added host endpoint. After receipt
-retention, only the exact terminal diagnostic root `66306:103729570` was removed by
-the identity-bound helper (explicit 0, then ENOENT); serial and evidence remain.
-This is exact-class native observation, not whole heap, installed/full-app, independent
-attestation, or Android/Windows delay-causation proof. The broad obligations below
+Source `39c14ad547bad6080418a9a7eff743be5887f6c8`, tree
+`266abfc980d9d7aedd510f21a8379da6b4a11348`, passed the focused native lane in
+**74 seconds**, explicit outer 0 (`run.Bfvp1vGbcC`):
+
+- The actual product C source/helper was compiled twice in the same isolated
+  environment. A one-call old-destructor control delivered the correct native key
+  pair but retained both enclosing descriptors: **2/0/2**.
+- The corrected provider passed the unchanged retirement predicates: **2/2/0**
+  for one request and **33/33/0** for 32 requests, with 66 correct key events,
+  two controlled constructor-refusal/retry cases, sampled clear keys, restored
+  mapping and joined context/display/fd/task retirement.
+- The actual compiled private objects passed the package verifier's ELF and
+  no-RUNPATH policies; this was not full package construction or installation.
+  Existing native component regressions passed without upgrading their scope.
+
+The corrected native library SHA-256 is
+`687f2fd536c8dd6da2ca9c555ecb8057372aea456f314d9aa1fee3174557abea`.
+The retained 123,627-byte serial log `x11-display-tests-run.Bfvp1vGbcC.serial.log`
+has SHA-256 `7e663e7a66c3d5bf7fbc409a28a92b6a37c4e9835475e288d8af7d41df7c7585`;
+`evidence/x11-private-xdo-run.Bfvp1vGbcC.outer.receipt` binds sources/artifacts,
+before-state, scope and finality. Endpoint-only host audits passed with no additions;
+owners joined and the exact transient run root retired (post-terminal ENOENT).
+Earlier failures and narrower passes remain in their named receipts and audit.
+
+This accepts one exact descriptor class in the complete Enigo backend with direct
+native-test linkage, not the protected loader, other private-XDO consumers, whole
+heap, full Cargo/app/package/installed service or independent reproduction.
+The 6.947/210.859 ms request-to-child/observer retirement measurements include key
+delay and are not remote UI latency or soak acceptance. Broader obligations below
 remain OPEN.
-
-The follow-up draft carries the corrected full descriptor destructor in checked-in,
-provenance-recorded XDO source. Debian packaging builds this fork-owned library at
-`/usr/lib/rustdesk-fork/libxdo.so.3`; the protected loader admits only that private
-root-owned path and exact fork version, with no distro-library fallback. The native
-lane now compiles that actual product source/helper and a one-call old-destructor
-control. This remains **INCOMPLETE / NOT VALIDATED** until the same key-event and
-exact descriptor-retirement predicates pass. Private packaging/loader, whole-app,
-installed and other native-resource behavior are not established by this draft.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); protected loader, parent/rdev, full Cargo/app and current

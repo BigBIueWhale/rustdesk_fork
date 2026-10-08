@@ -470,8 +470,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                             final owner = canvas.captureUpdateOwner(
                                 expectedSessionId: sessionId);
                             Timer(const Duration(milliseconds: 200), () {
-                              if (!mounted ||
-                                  owner?.isCurrent != true) {
+                              if (!mounted || owner?.isCurrent != true) {
                                 return;
                               }
                               gFFI.dialogManager

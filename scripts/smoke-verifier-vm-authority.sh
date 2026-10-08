@@ -1147,6 +1147,7 @@ android_frame_input_inventory() {
             "$SCRIPT_DIR/test-x11-enigo-route.rs"
             "$SCRIPT_DIR/test-x11-text-observer.c"
             "$SCRIPT_DIR/test-xdo-keymap-lifetime.c"
+            "$SCRIPT_DIR/test-xdo-mouse-modifiers.c"
             "$SCRIPT_DIR/verify-debian-package-authority.py"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/build.py"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
@@ -3496,6 +3497,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/scripts/test-x11-enigo-route.rs=$SCRIPT_DIR/test-x11-enigo-route.rs"
             "repo/scripts/test-x11-text-observer.c=$SCRIPT_DIR/test-x11-text-observer.c"
             "repo/scripts/test-xdo-keymap-lifetime.c=$SCRIPT_DIR/test-xdo-keymap-lifetime.c"
+            "repo/scripts/test-xdo-mouse-modifiers.c=$SCRIPT_DIR/test-xdo-mouse-modifiers.c"
             "repo/scripts/verify-debian-package-authority.py=$SCRIPT_DIR/verify-debian-package-authority.py"
             "repo/libs/libxdo-sys-stub/native/build.py=$REPO_ROOT/libs/libxdo-sys-stub/native/build.py"
             "repo/libs/libxdo-sys-stub/native/xdo.c=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
@@ -4301,6 +4303,9 @@ elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
         'X11_XDO_PACKAGE_ELF=pass variants=2 required=true runpath=absent full_package=unexecuted' \
         'actual built private XDO libraries satisfy the package ELF policy without an ambient runtime search path'
+    require_exact_fixed_receipt \
+        'XDO_MOUSE_MODIFIERS_NATIVE=pass held=0,1,9,10,12 repeats=4 cases=20 events=40 window=owned state=preserved keys=unchanged mapping=restored descriptors=retired tasks=retired scope=private-native-component' \
+        'private native mouse events preserve held modifiers without an unused key-list allocation'
     require_exact_fixed_receipt \
         'X11_XDO_DESTRUCTOR_BEFORE=observed source_delta=one-call allocations=2 retirements=0 live=2 keys=correct children=joined scope=xdo-descriptor-class' \
         'same native source with the old destructor delivers keys but retains both enclosing descriptors'

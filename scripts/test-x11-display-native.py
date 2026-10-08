@@ -111,6 +111,19 @@ def native_xdo(root, environment):
 
 def enigo_route(root, environment, checksum, library):
     providers, before_source = native_xdo(root, environment)
+    mouse_source = root / "scripts/test-xdo-mouse-modifiers.c"
+    mouse_binary = Path("/build/xdo-mouse-modifiers")
+    subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(mouse_source),
+                    "-L", str(providers["corrected"]), f"-Wl,-rpath,{providers['corrected']}",
+                    "-lxdo", "-lX11", "-lXtst", "-o", str(mouse_binary)],
+                   env=environment, check=True, timeout=15)
+    print("XDO_MOUSE_MODIFIERS_BUILD " + " ".join(
+        f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
+            ("fixture", mouse_source), ("binary", mouse_binary),
+            ("provider", providers["corrected"] / "libxdo.so.3"))) +
+        " loader=direct-native-test whole_app=unexecuted", flush=True)
+    subprocess.run([str(mouse_binary)], env=environment, check=True, timeout=5)
+    mouse_binary.unlink()
     historical = root / "scripts/fixtures/x11-enigo-xdo-before-local-route.rs"
     require(hashlib.sha256(historical.read_bytes()).hexdigest() ==
             "c7ebe8d466b1b5ff59b7c498dfd808df2927a5ef8ac79d24d287fdb661fedf6a",

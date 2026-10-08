@@ -755,7 +755,7 @@ whole-app/install result, native map-race/allocator closure or heap-leak/soak pr
 The separate unused compound-parser allocation and unchecked native delivery/error
 paths remain OPEN.
 
-**Concurrent native-context execution reopened.** Candidate `cbdfcb0e`'s first
+**Concurrent native-context evidence; allocator failure remains OPEN.** Candidate `cbdfcb0e`'s first
 native run aborted in the unchanged `concurrent-contexts` child with
 `double free or corruption (fasttop)` before reaching the scratch-key test. That
 child links the pinned distro XDO, not the changed private provider; its exact
@@ -767,6 +767,29 @@ the same eight-worker schedule passed in `af4586af`'s accepted transaction,
 but that later pass does not explain or erase this failure. The focused scratch test
 runs first on its own disposable display. The concurrent test and every
 existing assertion remain mandatory; reordering is not concurrency acceptance.
+
+**Private-provider component acceptance.** At `160dc28ce1e72ddedd7677c15735b9bd4e22a31d`
+(tree `067049ccf0adb6d718c5f36cf69515c17f65e335`), the native thread-context runner
+builds the current private XDO through the product helper before compiling the fixture;
+Enigo reuses those builds. Each scenario child checks its actual mapped XDO against
+the compile-bound private path before dispatch. The runner binds the mapped bytes to
+the built SHA-256, removing the earlier suite's distro-provider substitution.
+The zero-NIC VM/network-none nonroot container transaction passed with outer status 0
+in 134 VM seconds. Eight workers held 16 unique live contexts and completed 1,024
+real queries, with paired retirements, descriptor/task baselines restored and all
+threads joined. Ownership/unwind, startup retry, cookie authentication and cursor
+scenarios passed with that private provider; existing loader/Enigo, scratch, mouse,
+focus and capture checks also passed. Actual provider SHA-256 is
+`d91afd6c2167d2b9a9cf481747fad11624d75e2e6fdd12d3b7ff9401c19bdce0`;
+thread-context binary is
+`1e5100c058ac79097be7609896cc8fd6bdda5db747b6fe57b2d8327c68ee81bc`.
+Retained raw `x11-display-tests-run.5xHc66JHF4.serial.log` is 140,792 bytes, SHA-256
+`96a712e8a49c2a04a4c6b34dffb7615d18ca1f9b1b166feefad9693aab420858`.
+No host listener was added; outer cleanup joined and the exact root/overlay is absent.
+This accepts one schedule of the direct-native component on the pinned runtime. It
+does not explain the retained distro-provider abort, prove a cross-version/threading
+or heap/soak property, or establish installed/whole-app acceptance. Production code
+is unchanged.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,

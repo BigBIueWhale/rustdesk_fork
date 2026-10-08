@@ -641,6 +641,26 @@ and the failed before-state. This is actual loader-component execution, not full
 Cargo/common/app/package installation, all symbols individually fault-tested,
 other-consumer integration, whole-resource or display-delay acceptance.
 
+**Enigo key-down results — component accepted; broader keyboard API OPEN.**
+The complete Linux Enigo caller previously reported success with an unavailable XDO
+context and discarded native key-down status. Test-first `1259377a` reproduced the
+unavailable-context false success through the production private loader
+(`run.GR5GU7lvbd`, outer 1), after real positive input passed. `8d80f791` returns
+an unavailable error and maps native status through the existing result helper;
+the result means native submission acceptance, not guaranteed eventual X delivery.
+The unchanged oracle passed all six cases, eight construction/call/drop attempts
+each, in **128 seconds** (`run.EnTdK1KaO8`, outer 0): actual pointer, Shift and text
+events; unavailable errors for incomplete, wrong-version, writable and absent
+providers; exact status-7 propagation from a controlled native function refusal.
+That refusal is not a server/allocation fault. Per-attempt display descriptors
+retired; existing native regressions, input/source postchecks, listener audit and
+joined cleanup passed. Bounded serials and `evidence/enigo-key-down-run.*.outer.receipt`
+under `.harness-state/verifier-vm/` bind the before/after artifacts. This executes
+complete Enigo Linux source with real dependencies and source-extracted production
+display policy, but a partial common facade, not full Cargo/app/install. Resultless
+key-up/click/state and DSL error semantics, other consumers and whole-resource
+acceptance remain OPEN; this does not explain Android/Windows display delay.
+
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,
 parent/rdev, full Cargo/app and current

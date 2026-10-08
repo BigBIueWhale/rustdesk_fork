@@ -1814,6 +1814,17 @@ prepared-native inner-loop work; VM timing excludes host preparation.
 
 ### Android runtime — intermittent presentation remains OPEN
 
+**Mobile keyboard geometry lifetime — source candidate; native acceptance pending.**
+`CanvasModel` saves keyboard offset/scale without a captured owner; its delayed
+focus/restore callbacks check only session ID, and disposal leaves both timers armed.
+Twelve production-model regressions cover presentation/topology retirement, clear/dispose,
+retirement before restore is scheduled, useful repeated keyboard cycles, snapshot replacement
+and duplicate restore. Only existing mobile-layout selection, session metadata and the test
+clock are controlled; this is not Android OS/device evidence. The intended snapshot belongs
+to the exact canvas/session/client/topology/presentation at save time, not to a fresh owner
+chosen by restore. No product correction or original-symptom closure is claimed yet.
+Desktop ticker/controller lifetime and the wider installed/performance matrices remain OPEN.
+
 **Canvas preference continuations — native component A/B passed; app-level symptoms OPEN.**
 At tests-first `871e24dc` (tree `8ca15c28`), all six real CanvasModel tests failed across
 presentation retirement or clear; the other 207 tests passed. Held view reads changed

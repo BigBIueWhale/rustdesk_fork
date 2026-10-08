@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter_hbb/common.dart' show SessionID;
+import 'package:flutter_hbb/common.dart' show SessionID, isMobile;
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/input_model.dart';
 import 'package:flutter_hbb/models/model.dart';
@@ -61,6 +61,7 @@ class _ImageTopology implements FfiModel {
   _ImageTopology(this.sessionId);
 
   final SessionID sessionId;
+  int revision = 0;
   @override
   final pi = PeerInfo()
     ..displays.add(Display()
@@ -70,12 +71,12 @@ class _ImageTopology implements FfiModel {
   ui.Rect get rect => const ui.Rect.fromLTWH(0, 0, 2, 2);
 
   @override
-  bool isCurrentDisplayTopology(SessionID expected, int revision) =>
-      expected == sessionId && revision == 0;
+  bool isCurrentDisplayTopology(SessionID expected, int expectedRevision) =>
+      expected == sessionId && expectedRevision == revision;
 
   @override
   int? currentDisplayTopologyRevision(SessionID expected) =>
-      expected == sessionId ? 0 : null;
+      expected == sessionId ? revision : null;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -284,6 +285,34 @@ List<Object> _canvasPreferenceState(CanvasModel canvas) => [
       canvas.imageOverflow.value,
     ];
 
+Future<void> _observeMobileCanvas(
+    Future<void> Function(_CanvasPreferenceSession, VoidCallback) observe) async {
+  final previousMobile = isMobile;
+  isMobile = true;
+  final session = _CanvasPreferenceSession(
+      _PendingCanvasPreferences(_CanvasPreferenceStage.view));
+  var disposed = false;
+  void disposeCanvas() {
+    session.canvasModel.dispose();
+    disposed = true;
+  }
+
+  try {
+    await observe(session, disposeCanvas);
+  } finally {
+    try {
+      if (!disposed) {
+        session.canvasModel.clear();
+        disposeCanvas();
+      }
+      session.imageModel.dispose();
+      session.cursorModel.dispose();
+    } finally {
+      isMobile = previousMobile;
+    }
+  }
+}
+
 Future<void> _observeCursorInitialization(
     Future<void> Function(_CursorInitializationSession) observe) async {
   final session = _CursorInitializationSession();
@@ -449,6 +478,209 @@ Future<Map<String, Object>> _conversionFailureHandles(String failingStage) async
 }
 
 void main() {
+  for (final retirement in ['presentation', 'topology', 'clear', 'dispose']) {
+    testWidgets('mobile focus $retirement preserves current geometry',
+        (tester) async {
+      await _observeMobileCanvas((session, disposeCanvas) async {
+        final canvas = session.canvasModel;
+        var notifications = 0;
+        canvas.addListener(() => notifications++);
+        canvas.update(31, 37, 1.75);
+        canvas.mobileFocusCanvasCursor();
+        switch (retirement) {
+          case 'presentation':
+            session.imageModel.retirePresentation();
+            break;
+          case 'topology':
+            session.ffiModel.revision++;
+            break;
+          case 'clear':
+            canvas.clear();
+            canvas.update(31, 37, 1.75);
+            break;
+          case 'dispose':
+            disposeCanvas();
+            // New requests must not create work on a disposed model either.
+            canvas.mobileFocusCanvasCursor();
+            canvas.saveMobileOffsetBeforeSoftKeyboard();
+            canvas.restoreMobileOffsetAfterSoftKeyboard();
+            break;
+        }
+        notifications = 0;
+        final before = _canvasPreferenceState(canvas);
+        await tester.pump(const Duration(milliseconds: 100));
+        expect([
+          _canvasPreferenceState(canvas),
+          notifications,
+          tester.takeException(),
+        ], [before, 0, null]);
+
+        if (retirement != 'dispose') {
+          canvas.mobileFocusCanvasCursor();
+          await tester.pump(const Duration(milliseconds: 100));
+          expect([
+            canvas.size,
+            canvas.x,
+            canvas.y,
+            notifications,
+          ], [
+            canvas.getSize(),
+            (canvas.size.width - 2 * canvas.scale) / 2,
+            (canvas.size.height - 2 * canvas.scale) / 2,
+            1,
+          ]);
+        }
+      });
+    }, timeout: const Timeout(Duration(seconds: 30)));
+
+    testWidgets('mobile restore $retirement preserves current geometry',
+        (tester) async {
+      await _observeMobileCanvas((session, disposeCanvas) async {
+        final canvas = session.canvasModel;
+        var notifications = 0;
+        canvas.addListener(() => notifications++);
+        canvas.update(7, 11, 1.25);
+        canvas.saveMobileOffsetBeforeSoftKeyboard();
+        canvas.update(31, 37, 1.75);
+        canvas.restoreMobileOffsetAfterSoftKeyboard();
+        switch (retirement) {
+          case 'presentation':
+            session.imageModel.retirePresentation();
+            break;
+          case 'topology':
+            session.ffiModel.revision++;
+            break;
+          case 'clear':
+            canvas.clear();
+            canvas.update(31, 37, 1.75);
+            break;
+          case 'dispose':
+            disposeCanvas();
+            break;
+        }
+        notifications = 0;
+        final before = _canvasPreferenceState(canvas);
+        await tester.pump(const Duration(milliseconds: 100));
+        expect([
+          _canvasPreferenceState(canvas),
+          notifications,
+          tester.takeException(),
+        ], [before, 0, null]);
+
+        if (retirement != 'dispose') {
+          canvas.saveMobileOffsetBeforeSoftKeyboard();
+          canvas.update(5, 9, 0.75);
+          notifications = 0;
+          canvas.restoreMobileOffsetAfterSoftKeyboard();
+          await tester.pump(const Duration(milliseconds: 100));
+          expect([canvas.x, canvas.y, canvas.scale, notifications],
+              [31, 37, 1.75, 1]);
+        }
+      });
+    }, timeout: const Timeout(Duration(seconds: 30)));
+  }
+
+  for (final retirement in ['presentation', 'topology']) {
+    testWidgets('saved mobile snapshot $retirement refuses a later restore',
+        (tester) async {
+      await _observeMobileCanvas((session, _) async {
+        final canvas = session.canvasModel;
+        var notifications = 0;
+        canvas.addListener(() => notifications++);
+        canvas.update(7, 11, 1.25);
+        canvas.saveMobileOffsetBeforeSoftKeyboard();
+        if (retirement == 'presentation') {
+          session.imageModel.retirePresentation();
+        } else {
+          session.ffiModel.revision++;
+        }
+        canvas.update(31, 37, 1.75);
+        notifications = 0;
+        final before = _canvasPreferenceState(canvas);
+        canvas.restoreMobileOffsetAfterSoftKeyboard();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect([
+          _canvasPreferenceState(canvas),
+          notifications,
+          tester.takeException(),
+        ], [before, 0, null]);
+
+        canvas.saveMobileOffsetBeforeSoftKeyboard();
+        canvas.update(5, 9, 0.75);
+        notifications = 0;
+        canvas.restoreMobileOffsetAfterSoftKeyboard();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect([canvas.x, canvas.y, canvas.scale, notifications],
+            [31, 37, 1.75, 1]);
+      });
+    }, timeout: const Timeout(Duration(seconds: 30)));
+  }
+
+  testWidgets('mobile keyboard cycles focus and restore useful geometry',
+      (tester) async {
+    await _observeMobileCanvas((session, _) async {
+      final canvas = session.canvasModel;
+      var notifications = 0;
+      canvas.addListener(() => notifications++);
+      for (final offset in [const Offset(7, 11), const Offset(31, 37)]) {
+        canvas.update(offset.dx, offset.dy, 1.25);
+        notifications = 0;
+        session.cursorModel.keyHelpToolsVisibilityChanged(
+            const Rect.fromLTWH(0, 0, 10, 20), true);
+        await tester.pump(const Duration(milliseconds: 100));
+        expect([
+          canvas.size,
+          canvas.x,
+          canvas.y,
+          notifications,
+        ], [
+          canvas.getSize(),
+          (canvas.size.width - 2 * canvas.scale) / 2,
+          (canvas.size.height - 2 * canvas.scale) / 2,
+          1,
+        ]);
+        canvas.update(5, 9, 0.75);
+        notifications = 0;
+        session.cursorModel.keyHelpToolsVisibilityChanged(null, false);
+        await tester.pump(const Duration(milliseconds: 100));
+        expect([canvas.x, canvas.y, canvas.scale, canvas.size, notifications],
+            [offset.dx, offset.dy, 1.25, canvas.getSize(), 1]);
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
+  testWidgets('mobile snapshot replacement and duplicate restore keep one timer',
+      (tester) async {
+    await _observeMobileCanvas((session, _) async {
+      final canvas = session.canvasModel;
+      var notifications = 0;
+      canvas.addListener(() => notifications++);
+      canvas.update(7, 11, 1.25);
+      canvas.saveMobileOffsetBeforeSoftKeyboard();
+      canvas.update(31, 37, 1.75);
+      canvas.restoreMobileOffsetAfterSoftKeyboard();
+      await tester.pump(const Duration(milliseconds: 50));
+      canvas.saveMobileOffsetBeforeSoftKeyboard();
+      canvas.update(5, 9, 0.75);
+      canvas.mobileFocusCanvasCursor();
+      canvas.restoreMobileOffsetAfterSoftKeyboard();
+      canvas.restoreMobileOffsetAfterSoftKeyboard();
+      notifications = 0;
+      await tester.pump(const Duration(milliseconds: 50));
+      expect([canvas.x, canvas.y, canvas.scale, notifications], [5, 9, 0.75, 0]);
+      await tester.pump(const Duration(milliseconds: 50));
+      expect([canvas.x, canvas.y, canvas.scale, notifications],
+          [31, 37, 1.75, 1]);
+      // The snapshot was consumed; repeated restore cannot apply it twice.
+      canvas.restoreMobileOffsetAfterSoftKeyboard();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect([canvas.x, canvas.y, canvas.scale, notifications],
+          [31, 37, 1.75, 1]);
+      expect(tester.takeException(), isNull);
+    });
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
   for (final stage in _CanvasPreferenceStage.values) {
     testWidgets('superseded canvas ${stage.name} read preserves successor state',
         (tester) async {

@@ -682,7 +682,7 @@ outer status/source/artifact scope. No added host listener; owned children joine
 and the exact scratch root/overlay is absent. Other-platform/app integration,
 whole-resource acceptance and Android/Windows display-delay causation remain OPEN.
 
-**Unused XDO modifier APIs retired; corrected native execution pending.**
+**Unused XDO modifier APIs retired; native correction accepted.**
 The explicit-window mouse branch collected a modifier list it never used; the
 tenth held modifier triggered `realloc` on the caller's pointer-to-pointer rather
 than the allocated list. Tests-first `5bf3d9ee` reproduced the real invalid-pointer
@@ -692,10 +692,23 @@ or an Android/Windows display-delay explanation. The unnecessary collection and
 its unused get/clear/restore APIs/declarations are removed; the existing native
 input-state mask and button delivery remain. Private provider and loader now agree
 on `3.20160805.1-rustdesk2`; the wrong-version fixture carries the old version stamp
-to require refusal, not compatibility. New native checks require 20 real held-key
-mouse cases, 40 exact events, unchanged keys/state, restored maps, retired sampled
-descriptors/tasks and absence of all three retired exports. Corrected execution
-is not yet accepted; full Cargo/app/install and broader resource evidence remain OPEN.
+to require refusal, not compatibility. Exact `b1d6f829c2750b082475639d05fd6bff2ab14b0c`
+(tree `4c0293e6f7fda4fd7e40bcb7139f121008a9ffd4`) passed
+`scripts/smoke-verifier-vm-authority.sh --x11-display-tests` in **120 VM seconds**
+(outer exit 0). All 20 held-key cases delivered 40 exact events with unchanged
+keys/state, restored modifier/keyboard maps and retired sampled descriptors/tasks.
+Both built providers omit all three retired exports and retain required mouse APIs.
+Protected-loader/Enigo admission/refusal, staged native input and the existing native
+input/capture/focus regressions also passed. The wrong-version provider is current C
+with the old stamp, not an authentic old binary. Corrected provider SHA-256 is
+`d0d51861092b58d180a7964c7b934cfb6e1d931de121a84615b1ffc8c76f7d29`.
+Retained raw `.harness-state/verifier-vm/x11-display-tests-run.Mlw4FXJpyQ.serial.log`
+is 135,801 bytes, SHA-256
+`1e5f7d7efaae7b7750652a5aed3043d49ec2030708e7720af7135f893b700e1f`.
+No added host endpoint; owned children joined and the exact scratch root/overlay
+is absent. This is private native component evidence with a partial common facade,
+not full Cargo/app/install, whole-resource acceptance or original-symptom causation;
+those broader claims remain OPEN.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,

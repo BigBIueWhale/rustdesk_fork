@@ -1814,17 +1814,25 @@ prepared-native inner-loop work; VM timing excludes host preparation.
 
 ### Android runtime — intermittent presentation remains OPEN
 
-**Desktop canvas scrolling lifetime — native A/B pending; OPEN.**
-Current fallback replacement/clear stops but does not dispose the Flutter ticker;
-canvas disposal releases neither that ticker nor its two scroll controllers. Each
-mouse motion can also start independent cross-window work whose reply applies after
-cancellation, disable, presentation/topology retirement, replacement or disposal.
-Twelve new Flutter component tests observe actual provider registrations, scroll
-positions, frame ticks, notifications and held cross-window replies. Tests-first changes
-only the mouse method's return type so its existing async body can be joined; no
-ownership correction is yet applied. One-request/latest-motion bounds and real desktop
-page teardown remain to implement and validate. This is not installed Windows evidence
-or a diagnosis of the original display-delay symptom.
+**Desktop canvas scrolling lifetime — component defect reproduced; corrected A/B pending.**
+At tests-first `a4b4e800`, all twelve new cases fail and the prior 235 tests pass.
+Replacement retains two real provider tickers; disposal leaves a ticker and both
+controllers live. Retired replies mutate actual scroll positions, disposed callbacks
+report use-after-dispose, and three held motions start three requests. Retained raw
+`flutter-model-tests-run.mxIhryZ1gS.serial.log`, SHA256
+`daaf4c6b59a13d8ffbf29053b2e1fbfab036dd5e7237034bc4c6726bf642a97e`.
+Canvas now owns one request with only the latest waiting motion. Exact motion, canvas,
+session/client, topology/presentation, registration and viewport authorize continuation
+and ticker effects. Cancellation revokes those effects; clear/replacement dispose the
+old ticker and final disposal releases both controllers. Remote and camera page cleanup
+retire/join window work before removal, then dispose the canvas at State disposal;
+remote blur also cancels scrolling. Five additional tests observe joined retirement,
+stale/current transport failures, continuous fallback progress during new motion and
+synchronous listener retirement between the two scroll-controller effects.
+No native request is detached or treated as cancelled merely because its effects are
+refused. Already-issued native mouse movement, native reply/cancellation/engine finality,
+installed desktop teardown and viewport integration remain OPEN. This is not installed
+Windows evidence or a diagnosis of the original display-delay symptom.
 
 **Mobile keyboard geometry lifetime — component A/B passed; app-level symptoms OPEN.**
 At tests-first `88e69b72`, eight new cases fail and the other 225 tests pass. Retired

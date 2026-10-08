@@ -811,6 +811,135 @@ void main() {
     });
   }
 
+  testWidgets('edge retirement joins a held reply without reviving scrolling',
+      (tester) async {
+    await _observeEdgeScroll(tester, (fixture) async {
+      final pending = fixture.move(0, 0);
+      await tester.pump();
+      var joined = false;
+      final retirement = fixture.canvas.retireEdgeScroll().then((_) {
+        joined = true;
+      });
+      await tester.pump();
+      expect(joined, isFalse);
+      expect(fixture.host.registeredTickers, isEmpty);
+      fixture.replies.single.complete(false);
+      await tester.pump();
+      await Future.wait([pending, retirement]);
+      expect(joined, isTrue);
+      expect(fixture.canvas.scrollHorizontal.position.pixels, 500);
+      expect(fixture.host.activeTickers, 0);
+      fixture.canvas.initializeEdgeScrollFallback(fixture.host);
+      await fixture.prepareMotion();
+      final fresh = fixture.move(0, 0);
+      await tester.pump();
+      expect(fixture.replies, hasLength(2));
+      fixture.replies.last.complete(true);
+      await tester.pump();
+      await fresh;
+      expect(fixture.canvas.scrollHorizontal.position.pixels, lessThan(500));
+    });
+  });
+
+  testWidgets('failed old edge request preserves the latest useful motion',
+      (tester) async {
+    await _observeEdgeScroll(tester, (fixture) async {
+      final first = fixture.move(0, 0);
+      await tester.pump();
+      final latest = fixture.move(20, 20);
+      fixture.replies.single.completeError(
+          PlatformException(code: 'test-window-reply-failure'));
+      await tester.pump();
+      expect(fixture.replies, hasLength(2));
+      expect(fixture.canvas.scrollHorizontal.position.pixels, 500);
+      expect(fixture.host.activeTickers, 0);
+      fixture.replies.last.complete(true);
+      await tester.pump();
+      await Future.wait([first, latest]);
+      expect(fixture.canvas.scrollHorizontal.position.pixels, 420);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  testWidgets('fallback keeps progressing while current edge motion changes',
+      (tester) async {
+    await _observeEdgeScroll(tester, (fixture) async {
+      final pending = fixture.move(0, 0);
+      await tester.pump();
+      fixture.replies.single.complete(false);
+      await tester.pump();
+      await pending;
+      await tester.pump(const Duration(milliseconds: 16));
+      for (var event = 1; event <= 4; event++) {
+        final before = fixture.canvas.scrollHorizontal.position.pixels;
+        await fixture.move(event.toDouble(), event.toDouble());
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(fixture.canvas.scrollHorizontal.position.pixels, lessThan(before));
+      }
+      expect(fixture.replies, hasLength(1));
+      expect(fixture.host.registeredTickers, hasLength(1));
+    });
+  });
+
+  testWidgets('current edge transport failure refuses fallback and permits retry',
+      (tester) async {
+    await _observeEdgeScroll(tester, (fixture) async {
+      final pending = fixture.move(0, 0);
+      await tester.pump();
+      fixture.replies.single.completeError(
+          PlatformException(code: 'test-current-window-failure'));
+      await tester.pump();
+      await pending;
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(fixture.host.activeTickers, 0);
+      expect(fixture.canvas.scrollHorizontal.position.pixels, 500);
+      expect(tester.takeException(), isNull);
+      final retry = fixture.move(0, 0);
+      await tester.pump();
+      expect(fixture.replies, hasLength(2));
+      fixture.replies.last.complete(true);
+      await tester.pump();
+      await retry;
+      expect(fixture.canvas.scrollHorizontal.position.pixels, 400);
+    });
+  });
+
+  testWidgets('edge scroll listener retirement stops remaining canvas effects',
+      (tester) async {
+    await _observeEdgeScroll(tester, (fixture) async {
+      final canvas = fixture.canvas;
+      final horizontal = canvas.scrollHorizontal.position;
+      final vertical = canvas.scrollVertical.position;
+      var retired = false;
+      var notifications = 0;
+      List<Object>? cleared;
+      canvas.addListener(() => notifications++);
+      void retireAfterFirstScroll() {
+        if (retired) return;
+        retired = true;
+        canvas.clear();
+        cleared = _canvasPreferenceState(canvas);
+      }
+      canvas.scrollHorizontal.addListener(retireAfterFirstScroll);
+      try {
+        final pending = fixture.move(0, 0);
+        await tester.pump();
+        fixture.replies.single.complete(true);
+        await tester.pump();
+        await pending;
+        expect(retired, isTrue);
+        expect(horizontal.pixels, 400);
+        expect(vertical.pixels, 500);
+        expect(_canvasPreferenceState(canvas), cleared);
+        expect(notifications, 0);
+        expect(fixture.host.registeredTickers, isEmpty);
+        expect(tester.takeException(), isNull);
+      } finally {
+        canvas.scrollHorizontal.removeListener(retireAfterFirstScroll);
+      }
+    });
+  });
+
   for (final retirement in ['clear', 'dispose']) {
     testWidgets('mobile canvas $retirement removes both pending timers',
         (tester) async {

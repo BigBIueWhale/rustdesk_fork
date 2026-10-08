@@ -2283,21 +2283,22 @@ enum EdgeScrollState {
 class EdgeScrollFallbackState {
   final CanvasModel _owner;
 
-  late Ticker _ticker;
+  late final Ticker _ticker;
 
   Duration _lastTotalElapsed = Duration.zero;
   bool _nextEventIsFirst = true;
-  Vector2 _encroachment = Vector2.zero();
+  _EdgeScrollUpdate? _update;
 
   EdgeScrollFallbackState(this._owner, TickerProvider tickerProvider) {
     _ticker = tickerProvider.createTicker(emitTick);
   }
 
-  void setEncroachment(Vector2 encroachment) {
-    _encroachment = encroachment;
-  }
-
   void emitTick(Duration totalElapsed) {
+    final update = _update;
+    if (update == null || !_owner._acceptsEdgeScrollUpdate(update)) {
+      stop();
+      return;
+    }
     if (_nextEventIsFirst) {
       _lastTotalElapsed = totalElapsed;
       _nextEventIsFirst = false;
@@ -2307,16 +2308,18 @@ class EdgeScrollFallbackState {
       const double kFrameTime = 1000.0 / 60.0;
       const double kSpeedFactor = 0.1;
 
-      var delta = _encroachment *
+      var delta = update.encroachment *
           (kSpeedFactor * thisTickElapsed.inMilliseconds / kFrameTime);
 
-      _owner.performEdgeScroll(delta);
+      _owner._performEdgeScroll(update, delta);
 
       _lastTotalElapsed = totalElapsed;
     }
   }
 
-  void start() {
+  void start(_EdgeScrollUpdate update) {
+    if (!_owner._acceptsEdgeScrollUpdate(update)) return;
+    _update = update;
     if (!_ticker.isActive) {
       _nextEventIsFirst = true;
       _ticker.start();
@@ -2324,7 +2327,13 @@ class EdgeScrollFallbackState {
   }
 
   void stop() {
+    _update = null;
     _ticker.stop();
+  }
+
+  void dispose() {
+    stop();
+    _ticker.dispose();
   }
 }
 
@@ -2381,6 +2390,18 @@ class CanvasUpdateOwner {
       (_acceptsUpdate?.call() ?? true);
 }
 
+class _EdgeScrollUpdate {
+  _EdgeScrollUpdate(this.owner, this.fallback, this.encroachment, this.size,
+      this.scale, this.thickness);
+
+  final CanvasUpdateOwner owner;
+  final EdgeScrollFallbackState fallback;
+  final Vector2 encroachment;
+  final Size size;
+  final double scale;
+  final int thickness;
+}
+
 class _MobileKeyboardCanvasSnapshot {
   _MobileKeyboardCanvasSnapshot(this.owner, this.offset, this.scale);
 
@@ -2417,6 +2438,9 @@ class CanvasModel with ChangeNotifier {
   EdgeScrollState _edgeScrollState = EdgeScrollState.inactive;
   // fallback strategy for when Bump Mouse isn't available
   EdgeScrollFallbackState? _edgeScrollFallbackState;
+  _EdgeScrollUpdate? _currentEdgeScrollUpdate;
+  _EdgeScrollUpdate? _pendingEdgeScrollUpdate;
+  Future<void>? _edgeScrollWorker;
   // to avoid hammering a non-functional Bump Mouse
   bool _bumpMouseIsWorking = true;
   ViewStyle _lastViewStyle = ViewStyle.defaultViewStyle();
@@ -2699,6 +2723,7 @@ class CanvasModel with ChangeNotifier {
 
     _scrollStyle =
         style != null ? ScrollStyle.fromString(style) : ScrollStyle.scrollauto;
+    cancelEdgeScroll();
 
     if (_scrollStyle != ScrollStyle.scrollauto) {
       _resetScroll();
@@ -2715,12 +2740,14 @@ class CanvasModel with ChangeNotifier {
     if (!_acceptsOwner(owner)) return false;
 
     if (savedValue != null) {
+      cancelEdgeScroll();
       _edgeScrollEdgeThickness = savedValue;
     }
     return true;
   }
 
   void updateEdgeScrollEdgeThickness(int newThickness) {
+    cancelEdgeScroll();
     _edgeScrollEdgeThickness = newThickness;
     notifyListeners();
   }
@@ -2810,8 +2837,10 @@ class CanvasModel with ChangeNotifier {
   }
 
   void initializeEdgeScrollFallback(TickerProvider tickerProvider) {
-    _edgeScrollFallbackState?.stop();
+    _retireEdgeScrollFallback();
+    if (_disposed) return;
     _edgeScrollFallbackState = EdgeScrollFallbackState(this, tickerProvider);
+    _bumpMouseIsWorking = true;
   }
 
   void disableEdgeScroll() {
@@ -2820,12 +2849,40 @@ class CanvasModel with ChangeNotifier {
   }
 
   void rearmEdgeScroll() {
+    cancelEdgeScroll();
+    if (_disposed) return;
     _edgeScrollState = EdgeScrollState.armed;
   }
 
   void cancelEdgeScroll() {
+    _currentEdgeScrollUpdate = null;
+    _pendingEdgeScrollUpdate = null;
     _edgeScrollFallbackState?.stop();
   }
+
+  void _retireEdgeScrollFallback() {
+    disableEdgeScroll();
+    final fallback = _edgeScrollFallbackState;
+    _edgeScrollFallbackState = null;
+    fallback?.dispose();
+  }
+
+  /// Revoke scrolling now, then join any request already handed to the window.
+  Future<void> retireEdgeScroll() {
+    _retireEdgeScrollFallback();
+    return _edgeScrollWorker ?? Future<void>.value();
+  }
+
+  bool _acceptsEdgeScrollUpdate(_EdgeScrollUpdate update) =>
+      identical(_currentEdgeScrollUpdate, update) &&
+      identical(_edgeScrollFallbackState, update.fallback) &&
+      update.owner.isCurrent &&
+      _edgeScrollState == EdgeScrollState.active &&
+      _scrollStyle == ScrollStyle.scrolledge &&
+      _size == update.size &&
+      getSize() == update.size &&
+      _scale == update.scale &&
+      _edgeScrollEdgeThickness == update.thickness;
 
   (Vector2, Vector2) getScrollInfo() {
     final scrollPixel = Vector2(
@@ -2839,11 +2896,18 @@ class CanvasModel with ChangeNotifier {
     return (scrollPixel, max);
   }
 
-  Future<void> edgeScrollMouse(double x, double y) async {
-    if ((_edgeScrollState == EdgeScrollState.inactive) ||
+  Future<void> edgeScrollMouse(double x, double y) {
+    _currentEdgeScrollUpdate = null;
+    _pendingEdgeScrollUpdate = null;
+    final owner = captureUpdateOwner();
+    final fallback = _edgeScrollFallbackState;
+    if (owner == null || fallback == null ||
+        (_scrollStyle != ScrollStyle.scrolledge) ||
+        (_edgeScrollState == EdgeScrollState.inactive) ||
         (size.width == 0 || size.height == 0) ||
         !(_horizontal.hasClients || _vertical.hasClients)) {
-      return;
+      cancelEdgeScroll();
+      return _edgeScrollWorker ?? Future<void>.value();
     }
 
     if (_edgeScrollState == EdgeScrollState.armed) {
@@ -2860,7 +2924,8 @@ class CanvasModel with ChangeNotifier {
         _edgeScrollState = EdgeScrollState.active;
       } else {
         // Not yet.
-        return;
+        cancelEdgeScroll();
+        return _edgeScrollWorker ?? Future<void>.value();
       }
     }
 
@@ -2886,36 +2951,73 @@ class CanvasModel with ChangeNotifier {
     encroachment.clamp(-scrollPixel, max - scrollPixel);
 
     if (encroachment.length2 == 0) {
-      _edgeScrollFallbackState?.stop();
-    } else {
-      var bumpAmount = -encroachment;
+      cancelEdgeScroll();
+      return _edgeScrollWorker ?? Future<void>.value();
+    }
+    final update = _EdgeScrollUpdate(owner, fallback, encroachment, _size,
+        _scale, _edgeScrollEdgeThickness);
+    _currentEdgeScrollUpdate = update;
+    _pendingEdgeScrollUpdate = update;
+    final worker = _edgeScrollWorker;
+    if (worker != null) return worker;
 
-      // Round away from 0: this ensures that the mouse will be bumped clear of
-      // whichever edge scroll zone(s) it is in
-      bumpAmount.x += bumpAmount.x.sign * 0.5;
-      bumpAmount.y += bumpAmount.y.sign * 0.5;
+    final completion = Completer<void>();
+    _edgeScrollWorker = completion.future;
+    unawaited(_drainEdgeScroll(completion));
+    return completion.future;
+  }
 
-      var bumpMouseSucceeded = _bumpMouseIsWorking &&
-          (await rustDeskWinManager.call(WindowType.Main, kWindowBumpMouse,
-                  {"dx": bumpAmount.x.round(), "dy": bumpAmount.y.round()}))
-              .result;
+  Future<void> _drainEdgeScroll(Completer<void> completion) async {
+    try {
+      while (_pendingEdgeScrollUpdate != null) {
+        final update = _pendingEdgeScrollUpdate!;
+        _pendingEdgeScrollUpdate = null;
+        if (!_acceptsEdgeScrollUpdate(update)) continue;
+        try {
+          var bumpMouseSucceeded = false;
+          if (_bumpMouseIsWorking) {
+            var bumpAmount = -update.encroachment;
 
-      if (bumpMouseSucceeded) {
-        performEdgeScroll(encroachment);
-      } else {
-        // If we can't BumpMouse, then we switch to slower scrolling with autorepeat
+            // Move clear of whichever edge scroll zones the mouse is in.
+            bumpAmount.x += bumpAmount.x.sign * 0.5;
+            bumpAmount.y += bumpAmount.y.sign * 0.5;
 
-        // Don't keep hammering BumpMouse if it's not working.
-        _bumpMouseIsWorking = false;
+            final reply = await rustDeskWinManager.call(WindowType.Main,
+                kWindowBumpMouse,
+                {"dx": bumpAmount.x.round(), "dy": bumpAmount.y.round()});
+            if (!_acceptsEdgeScrollUpdate(update)) continue;
+            if (reply.result is! bool) {
+              throw StateError('Invalid mouse-bump reply');
+            }
+            bumpMouseSucceeded = reply.result as bool;
+          }
+          if (!_acceptsEdgeScrollUpdate(update)) continue;
 
-        // Keep scrolling as long as the user is overtop of an edge.
-        _edgeScrollFallbackState?.setEncroachment(encroachment);
-        _edgeScrollFallbackState?.start();
+          if (bumpMouseSucceeded) {
+            _performEdgeScroll(update, update.encroachment);
+          } else {
+            // Only an explicit current false reply selects autorepeat.
+            _bumpMouseIsWorking = false;
+            update.fallback.start(update);
+          }
+        } catch (error, stack) {
+          if (_acceptsEdgeScrollUpdate(update)) cancelEdgeScroll();
+          debugPrint('Edge scrolling failed: ${error.runtimeType}');
+          debugPrintStack(stackTrace: stack);
+        }
       }
+    } catch (error, stack) {
+      cancelEdgeScroll();
+      debugPrint('Edge scroll drain failed: ${error.runtimeType}');
+      debugPrintStack(stackTrace: stack);
+    } finally {
+      _edgeScrollWorker = null;
+      completion.complete();
     }
   }
 
-  void performEdgeScroll(Vector2 delta) {
+  void _performEdgeScroll(_EdgeScrollUpdate update, Vector2 delta) {
+    if (!_acceptsEdgeScrollUpdate(update)) return;
     var (scrollPixel, max) = getScrollInfo();
 
     scrollPixel += delta;
@@ -2928,7 +3030,14 @@ class CanvasModel with ChangeNotifier {
     scrollPixelPercent.scale(100.0);
 
     setScrollPercent(scrollPixelPercent.x, scrollPixelPercent.y);
-    pushScrollPositionToUI(scrollPixel.x, scrollPixel.y);
+    if (_horizontal.hasClients) {
+      _horizontal.jumpTo(scrollPixel.x);
+      if (!_acceptsEdgeScrollUpdate(update)) return;
+    }
+    if (_vertical.hasClients) {
+      _vertical.jumpTo(scrollPixel.y);
+      if (!_acceptsEdgeScrollUpdate(update)) return;
+    }
 
     notifyListeners();
   }
@@ -2996,6 +3105,7 @@ class CanvasModel with ChangeNotifier {
     _lifetime = Object();
     _cancelDeferredScrollStyle();
     _cancelMobileCanvasUpdates();
+    _retireEdgeScrollFallback();
     _x = 0;
     _y = 0;
     _scale = 1.0;
@@ -3003,9 +3113,6 @@ class CanvasModel with ChangeNotifier {
     _scrollY = 0;
     _scrollStyle = ScrollStyle.scrollauto;
     _edgeScrollEdgeThickness = 100;
-    _edgeScrollState = EdgeScrollState.inactive;
-    _edgeScrollFallbackState?.stop();
-    _edgeScrollFallbackState = null;
     _bumpMouseIsWorking = true;
     _imageOverflow.value = false;
     isMobileCanvasChanged = false;
@@ -3018,6 +3125,9 @@ class CanvasModel with ChangeNotifier {
     _lifetime = Object();
     _cancelDeferredScrollStyle();
     _cancelMobileCanvasUpdates();
+    _retireEdgeScrollFallback();
+    _horizontal.dispose();
+    _vertical.dispose();
     super.dispose();
   }
 

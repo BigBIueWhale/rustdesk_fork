@@ -281,6 +281,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
           sessionId, presentationReadyRegistration);
     }
     _presentationRecovery.retire();
+    final edgeScrollDisposal = _ffi.canvasModel.retireEdgeScroll();
     debugPrint("VIEW CAMERA PAGE cleanup session $sessionId ${widget.id}");
     // Invalidate texture publication before any asynchronous page cleanup.
     // The framework does not await State.dispose(), so keep the ordering inside
@@ -300,7 +301,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     // All engine-backed work must finish while the owning Flutter engine is
     // still alive. State.dispose() is synchronous and cannot provide that
     // boundary, so every tab/window close awaits this method before removal.
-    await textureDisposal;
+    await Future.wait<void>([edgeScrollDisposal, textureDisposal]);
     await _ffi.close(closeSession: closeSession);
     _ffi.dialogManager.dismissAll();
     if (closeSession) {
@@ -330,6 +331,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
           'VIEW CAMERA PAGE cleanup failed for ${widget.id}: ${error.runtimeType}');
       debugPrintStack(stackTrace: stackTrace);
     }));
+    _ffi.canvasModel.dispose();
     _rawKeyFocusNode.dispose();
     widget._lastState.value = null;
     super.dispose();

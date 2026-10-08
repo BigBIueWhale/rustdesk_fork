@@ -368,6 +368,7 @@ class _RemotePageState extends State<RemotePage>
           sessionId, presentationReadyRegistration);
     }
     _presentationRecovery.retire();
+    final edgeScrollDisposal = _ffi.canvasModel.retireEdgeScroll();
     debugPrint("REMOTE PAGE cleanup session $sessionId ${widget.id}");
 
     _pointerLockCenterDebounceTimer?.cancel();
@@ -393,7 +394,7 @@ class _RemotePageState extends State<RemotePage>
     // All engine-backed work must finish while the owning Flutter engine is
     // still alive. State.dispose() is synchronous and cannot provide that
     // boundary, so every tab/window close awaits this method before removal.
-    await textureDisposal;
+    await Future.wait<void>([edgeScrollDisposal, textureDisposal]);
     await _ffi.close(closeSession: closeSession);
     _ffi.dialogManager.dismissAll();
     if (closeSession) {
@@ -423,6 +424,7 @@ class _RemotePageState extends State<RemotePage>
           'REMOTE PAGE cleanup failed for ${widget.id}: ${error.runtimeType}');
       debugPrintStack(stackTrace: stackTrace);
     }));
+    _ffi.canvasModel.dispose();
     _rawKeyFocusNode.dispose();
     widget._lastState.value = null;
     super.dispose();
@@ -437,6 +439,7 @@ class _RemotePageState extends State<RemotePage>
   }
 
   void _suspendPresentation({required bool stopFrames}) {
+    _ffi.canvasModel.cancelEdgeScroll();
     _presentationRecovery.suspend();
     if (stopFrames &&
         !_ffi.suspendPresentation(sessionId, _ffi.clientOwnerId) &&

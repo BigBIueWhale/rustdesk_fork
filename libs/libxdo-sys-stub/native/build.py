@@ -28,6 +28,8 @@ def build(output):
             library = Path(work) / "libxdo.so.3"
             subprocess.run([
                 "/usr/bin/cc", "-std=c99", "-O2", "-g0", "-fPIC", "-Wall", "-Wextra",
+                "-fstack-protector-strong", "-D_FORTIFY_SOURCE=2", "-Wformat",
+                "-Werror=format-security",
                 "-shared", "-Wl,-soname,libxdo.so.3", "-Wl,-z,defs,-z,relro,-z,now",
                 "-Wl,-Bsymbolic-functions", str(source / "xdo.c"), str(source / "xdo_search.c"),
                 "-lX11", "-lXtst", "-lXinerama", "-lxkbcommon", "-o", str(library),

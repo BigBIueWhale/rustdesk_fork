@@ -3024,24 +3024,31 @@ class CanvasModel with ChangeNotifier {
 
   void _performEdgeScroll(_EdgeScrollUpdate update, Vector2 delta) {
     if (!_acceptsEdgeScrollUpdate(update)) return;
-    var (scrollPixel, max) = getScrollInfo();
+    final (scrollPixel, max) = getScrollInfo();
+    final remaining = update.encroachment.clone()
+      ..clamp(-scrollPixel, max - scrollPixel);
+    if (remaining.length2 == 0) {
+      update.fallback.stop();
+      return;
+    }
 
-    scrollPixel += delta;
+    final nextPixel = scrollPixel + delta;
 
-    scrollPixel.clamp(Vector2.zero(), max);
+    nextPixel.clamp(Vector2.zero(), max);
+    if (nextPixel == scrollPixel) return;
 
-    var scrollPixelPercent = scrollPixel.clone();
+    var scrollPixelPercent = nextPixel.clone();
 
     scrollPixelPercent.divide(max);
     scrollPixelPercent.scale(100.0);
 
     setScrollPercent(scrollPixelPercent.x, scrollPixelPercent.y);
     if (_horizontal.hasClients) {
-      _horizontal.jumpTo(scrollPixel.x);
+      _horizontal.jumpTo(nextPixel.x);
       if (!_acceptsEdgeScrollUpdate(update)) return;
     }
     if (_vertical.hasClients) {
-      _vertical.jumpTo(scrollPixel.y);
+      _vertical.jumpTo(nextPixel.y);
       if (!_acceptsEdgeScrollUpdate(update)) return;
     }
 

@@ -1048,6 +1048,9 @@ void main() {
       await tester.pump();
       await pending;
       notifications = 0;
+      // The first callback sets the ticker's elapsed marker. Exercise another
+      // actual frame at that same timestamp before permitting useful motion.
+      await tester.pump();
       await tester.pump();
       expect([
         fixture.host.activeTickers,

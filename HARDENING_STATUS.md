@@ -1852,14 +1852,19 @@ installed desktop teardown, viewport integration, fallback idle-at-boundary beha
 sustained resource/performance evidence remain OPEN. This is not installed
 Windows evidence or a diagnosis of the original display-delay symptom.
 
-**Fallback idle at scroll bounds — tests-first, component A/B pending.**
-The current ticker keeps scheduling frames and Canvas notifications after clamping
-exhausts useful motion. Four new real-Flutter cases exercise horizontal, vertical and
-two-axis limits (one axis reaches its limit first), plus a zero-time frame. They require
-an idle owned ticker, no no-op notifications, useful restart without a new registration,
-and continued work where the other axis or a later frame can still move. Product code
-is unchanged; the shared checkpoint count is 258. Native reproduction/correction and
-the wider sustained performance/installed-window evidence remain OPEN.
+**Fallback idle at scroll bounds — reproduced; corrected component A/B pending.**
+At tests-first `0c53463b`, the three real boundary cases fail: clamped positions are
+correct, but one ticker stays active and emits two extra notifications. The other 255
+tests pass. Full raw `flutter-model-tests-run.PLMPD12FQV.serial.log`, SHA256
+`5990396c8d3a4ce99ac27dbac104664e06500f8d4c0dae56f13983e261e4bed1`.
+The owned scroll mutation now stops its exact fallback when neither axis has useful
+directional motion and returns before writes/notification when the computed position is
+unchanged. An axis with room still progresses; a zero-time frame remains active without
+no-op publication. The three original boundary assertions stay unchanged and require
+useful restart with the same registration. The fourth zero-time guard is strengthened to
+exercise another actual callback at the same timestamp; its earlier pass is not evidence
+for that amended guard. Count 258; corrected native acceptance and wider installed-window,
+sustained resource/CPU/latency and prepared-fast verification remain OPEN.
 
 **Mobile keyboard geometry lifetime — component A/B passed; app-level symptoms OPEN.**
 At tests-first `88e69b72`, eight new cases fail and the other 225 tests pass. Retired

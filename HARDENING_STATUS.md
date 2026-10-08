@@ -1795,16 +1795,22 @@ cannot close those boundaries or explain the reported Android/Windows display sy
 
 ### Flutter result inventory — single model-count source
 
-The model checkpoint's test total is now one reviewed data file,
+The model checkpoint's test total is one reviewed data file,
 `scripts/flutter-model-test-count.txt`, shared by the parser, parser fixtures, guest
 summary and outer receipt check. The guest copies it beside the immutable validator
 before giving the test process its source workspace; both receive read-only mounts.
 The 23-suite inventory, successful non-skipped completion and terminal checks remain
 mandatory; the fixed queue shard still requires its exact 24 named tests. This removes
-the stale-summary duplication that rejected an otherwise successful native run. Parser
-file/format refusals and missing-test regression coverage are added; isolated execution
-of the changed readers and both profiles is pending. This is harness maintenance, not
-an app behavior fix or closure of the faster prepared-native inner-loop work.
+the stale-summary duplication that rejected an otherwise successful native run.
+At `1b9f1d0c` (tree `3b573a19`), both source-bound zero-NIC transactions passed:
+the queue shard's 24 named tests in 107 VM seconds and the model checkpoint's 23 suites/
+205 tests in 299 VM seconds, with three parser methods in each. Those methods exercise
+count-file/format refusal and rejection of a removed complete test pair. Both outer
+exits were zero with no added host endpoint and joined cleanup; neither private run nor
+overlay remains. Retained full raw serials are `flutter-model-tests-run.hRcpK8Izc9.serial.log`
+and `flutter-model-tests-run.IF3CyuilTJ.serial.log`; exact hashes are in the audit journal.
+This is harness maintenance, not an app behavior fix or closure of the faster
+prepared-native inner-loop work; VM timing excludes host preparation.
 
 ### Android runtime — intermittent presentation remains OPEN
 

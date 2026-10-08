@@ -198,11 +198,19 @@ def enigo_text(root, environment, binary):
     print("X11_ENIGO_TEXT_NATIVE=pass source=complete-backend locale_scenarios=3 scalar_pairs=21 "
           "events=42 controls=preadmission-refused keys=clear observers=joined descriptors=retired "
           "scope=native-key-events whole_app=false", flush=True)
-    enigo_layout(environment, binary, observer)
+    probe_source = root / "scripts/test-xdo-keymap-lifetime.c"
+    probe = Path("/build/xdo-keymap-lifetime.so")
+    subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-shared", "-fPIC",
+                    str(probe_source), "-ldl", "-o", str(probe)], env=environment, check=True, timeout=30)
+    print("X11_XDO_KEYMAP_PROBE_BUILD "
+          f"source_sha256={hashlib.sha256(probe_source.read_bytes()).hexdigest()} "
+          f"binary_sha256={hashlib.sha256(probe.read_bytes()).hexdigest()}", flush=True)
+    enigo_layout(environment, binary, observer, probe)
+    probe.unlink()
     observer.unlink()
 
 
-def enigo_layout(environment, binary, observer):
+def enigo_layout(environment, binary, observer, probe):
     def phase(child, expected):
         with selectors.DefaultSelector() as streams:
             streams.register(child.stdout, selectors.EVENT_READ)
@@ -215,7 +223,8 @@ def enigo_layout(environment, binary, observer):
         injector = None
         try:
             phase(native, b"X11_TEXT_OBSERVER=ready\n")
-            injector = subprocess.Popen([str(binary), scenario], env=environment,
+            injector = subprocess.Popen([str(binary), scenario],
+                                        env={**environment, "LD_PRELOAD": str(probe)},
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             phase(injector, b"X11_ENIGO_LAYOUT_CHILD=ready\n")
             native.stdin.write(b"M")
@@ -226,9 +235,12 @@ def enigo_layout(environment, binary, observer):
             observed, native_errors = native.communicate(timeout=5)
             elapsed_ms = (time.monotonic() - start) * 1000
             print(observed.decode("ascii"), end="", flush=True)
+            print(errors.decode("ascii"), end="", flush=True)
             receipt = (f"X11_ENIGO_LAYOUT_CHILD=pass pairs={pairs} mapping_refusal=explicit "
                        "descriptors=retired threads=retired").encode("ascii")
-            require(injector.returncode == 0 and not errors and output.splitlines() == [receipt]
+            heap = (f"X11_XDO_KEYMAP_HEAP allocations={pairs + 1} retirements={pairs + 1} live=0\n")
+            require(injector.returncode == 0 and errors.decode("ascii") == heap
+                    and output.splitlines() == [receipt]
                     and native.returncode == 0 and not native_errors
                     and observed.splitlines()[-1:] ==
                     [f"X11_TEXT_OBSERVER=retired events={pairs * 2} keys_clear=1".encode("ascii")],
@@ -247,7 +259,7 @@ def enigo_layout(environment, binary, observer):
                     stream.close()
     print("X11_ENIGO_LAYOUT_NATIVE=pass source=complete-backend map=changed-after-construction "
           "cases=2 scalar_pairs=33 events=66 mapping_refusals=2 keys=clear children=joined "
-          "descriptors=retired scope=native-key-events whole_app=false",
+          "descriptors=retired keymap_descriptors=freed scope=native-key-events whole_app=false",
           flush=True)
 
 

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-8b7110bf9a4ab3814d6b2dc7ffdf0dd75a4bf5ea8f55b2d6b1e79417481e8ccb  requirements.html
+aff63d2abe5f4bea22d5c7c0ca2d1623461cb057503cdc9818b3c8caef1834cc  requirements.html
 ```
 
 ## Current Verdict
@@ -1693,7 +1693,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `8b7110bf9a4ab3814d6b2dc7ffdf0dd75a4bf5ea8f55b2d6b1e79417481e8ccb  requirements.html`.
+Current normative specification SHA-256: `aff63d2abe5f4bea22d5c7c0ca2d1623461cb057503cdc9818b3c8caef1834cc  requirements.html`.
 
 ### Current authority and source closure
 
@@ -1814,14 +1814,20 @@ prepared-native inner-loop work; VM timing excludes host preparation.
 
 ### Android runtime — intermittent presentation remains OPEN
 
-**Cursor initialization — behavioral candidate, not yet reproduced.** The image
-owner checks presentation/order after cursor initialization returns, but the initializer
-checks only session/topology before its own pointer and canvas mutations. Two tests now
-execute the actual initializer, CursorModel and CanvasModel across presentation retirement
-and higher-publication commit, replacing only session metadata and the input sink.
-The production code is unchanged; isolated negative execution is pending. This does not
-establish original Android/Windows causation, and other canvas preference continuations
-remain independently OPEN.
+**Cursor initialization — native continuation defect reproduced; correction pending execution.**
+At tests-first `844e9c15` (tree `6d41f6db`), two tests exercised the actual initializer,
+CursorModel and CanvasModel across presentation retirement and higher-publication commit.
+Only session metadata and the input sink were replaced. Both failed: the stale continuation
+issued a pointer move, reset the cursor from `(12,24)` to `(1,1)` and canvas offset from
+`(17,23)` to `(-1.5,-1.5)`; the other 205 tests passed. Full raw serial is
+`flutter-model-tests-run.MdhbjuoPua.serial.log`, SHA256
+`3744252c9d7f5dc41c03751a401e3d6a996e1e8889a8984ca1b6d0fbe5ed17e1`.
+The initializer now requires the image owner's synchronous live check, including session,
+topology, presentation and publication order, before lookup and effects. The narrower
+optional topology-only API is removed. Test calls are adapted to that required API;
+assertions are unchanged, with an additional fresh-publication control. Corrected isolated
+execution is pending. Original Android/Windows causation, web saved-canvas behavior and
+other CanvasModel preference continuations remain independently OPEN.
 
 **Software first-image publication — native component A/B passed; app-level symptoms OPEN.**
 At tests-first `b0e0d47d`, the real ImageModel/native raw-image regression returned false for

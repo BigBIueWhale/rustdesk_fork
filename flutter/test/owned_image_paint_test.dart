@@ -336,9 +336,11 @@ void main() {
       (tester) async {
     await tester.runAsync(() async {
       await _observeCursorInitialization((session) async {
+        final revision = session.imageModel.presentationRevision;
         final pending = initializeCursorAndCanvas(session,
             expectedSessionId: session.sessionId,
-            expectedDisplayTopologyRevision: 0);
+            acceptsInitialization: () =>
+                session.imageModel.isCurrentPresentationRevision(revision));
         // On non-web platforms saved-canvas lookup returns null as a Future.
         // Retire after invocation, before the initializer can continue.
         session.imageModel.retirePresentation();
@@ -351,9 +353,11 @@ void main() {
           session.canvasModel.scale,
         ], [<Offset>[], const Offset(12, 24), 17, 23, 1.5]);
 
+        final freshRevision = session.imageModel.presentationRevision;
         await initializeCursorAndCanvas(session,
             expectedSessionId: session.sessionId,
-            expectedDisplayTopologyRevision: 0);
+            acceptsInitialization: () =>
+                session.imageModel.isCurrentPresentationRevision(freshRevision));
         expect(session.inputModel.moves, [Offset.zero]);
         expect(session.cursorModel.offset, const Offset(1, 1));
         expect(session.canvasModel.x, -1.5);
@@ -372,7 +376,7 @@ void main() {
         expect(order.canComplete(earlier), isTrue);
         final pending = initializeCursorAndCanvas(session,
             expectedSessionId: session.sessionId,
-            expectedDisplayTopologyRevision: 0);
+            acceptsInitialization: () => order.canComplete(earlier));
         expect(order.commit(higher), isTrue);
         expect(order.canComplete(earlier), isFalse);
         await pending;
@@ -383,6 +387,16 @@ void main() {
           session.canvasModel.y,
           session.canvasModel.scale,
         ], [<Offset>[], const Offset(12, 24), 17, 23, 1.5]);
+
+        final fresh = order.admit(session.sessionId, 0, 3)!;
+        await initializeCursorAndCanvas(session,
+            expectedSessionId: session.sessionId,
+            acceptsInitialization: () => order.canComplete(fresh));
+        expect(session.inputModel.moves, [Offset.zero]);
+        expect(session.cursorModel.offset, const Offset(1, 1));
+        expect(session.canvasModel.x, -1.5);
+        expect(session.canvasModel.y, -1.5);
+        expect(order.commit(fresh), isTrue);
       });
     });
   }, timeout: const Timeout(Duration(seconds: 30)));

@@ -2070,11 +2070,11 @@ class ImageModel with ChangeNotifier {
             return false;
           }
         }
-        if (parent.target != null) {
-          await initializeCursorAndCanvas(parent.target!,
-              expectedSessionId: expectedSessionId,
-              expectedDisplayTopologyRevision:
-                  expectedDisplayTopologyRevision);
+        final ffi = parent.target;
+        if (ffi != null) {
+          await initializeCursorAndCanvas(ffi,
+              expectedSessionId: expectedSessionId ?? ffi.sessionId,
+              acceptsInitialization: acceptsExpectedImage);
           if (!acceptsExpectedImage()) {
             return false;
           }
@@ -5666,26 +5666,17 @@ Future<Map<String, dynamic>?> getCanvasConfig(SessionID sessionId) async {
 }
 
 Future<void> initializeCursorAndCanvas(FFI ffi,
-    {SessionID? expectedSessionId,
-    int? expectedDisplayTopologyRevision}) async {
-  bool acceptsExpectedTopology() =>
-      expectedSessionId == null
-          ? expectedDisplayTopologyRevision == null
-          : ffi.isCurrentSession(expectedSessionId) &&
-              (expectedDisplayTopologyRevision == null ||
-                  ffi.ffiModel.isCurrentDisplayTopology(
-                      expectedSessionId, expectedDisplayTopologyRevision));
-
-  if (!acceptsExpectedTopology()) return;
-  final selectedSessionId = expectedSessionId ?? ffi.sessionId;
-  var p = await getCanvasConfig(selectedSessionId);
-  if (!acceptsExpectedTopology()) return;
+    {required SessionID expectedSessionId,
+    required bool Function() acceptsInitialization}) async {
+  if (!acceptsInitialization()) return;
+  final p = await getCanvasConfig(expectedSessionId);
+  if (!acceptsInitialization()) return;
   int currentDisplay = 0;
   if (p != null) {
     currentDisplay = p['currentDisplay'];
   }
   if (p == null || currentDisplay != ffi.ffiModel.pi.currentDisplay) {
-    if (!acceptsExpectedTopology()) return;
+    if (!acceptsInitialization()) return;
     ffi.cursorModel.updateDisplayOrigin(
         ffi.ffiModel.rect?.left ?? 0, ffi.ffiModel.rect?.top ?? 0);
     return;
@@ -5695,9 +5686,10 @@ Future<void> initializeCursorAndCanvas(FFI ffi,
   double xCanvas = p['xCanvas'];
   double yCanvas = p['yCanvas'];
   double scale = p['scale'];
-  if (!acceptsExpectedTopology()) return;
+  if (!acceptsInitialization()) return;
   ffi.cursorModel.updateDisplayOriginWithCursor(ffi.ffiModel.rect?.left ?? 0,
       ffi.ffiModel.rect?.top ?? 0, xCursor, yCursor);
+  if (!acceptsInitialization()) return;
   ffi.canvasModel.update(xCanvas, yCanvas, scale);
 }
 

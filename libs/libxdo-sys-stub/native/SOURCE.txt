@@ -1,0 +1,27 @@
+XDO native source for the fork's private Linux input library.
+
+Upstream: https://github.com/jordansissel/xdotool
+Version: v3.20160805.1
+Commit: f11c44edd4d426d69bcff479b0d643a4da8bc99b
+Tree: 404e99b76318df37ebd90dc130d2a6ae37287625
+Original Git blobs:
+  xdo.c: 4cd63a630b11806bfeb44f5736e4de529ace1ba2
+  xdo.h: 80daea1470ec1d9ca3f634ab2ec25bb34ccfb525
+  xdo_search.c: 98567aa0f2ebcff9357f85c9c42816e777e4b15d
+  xdo_util.h: 0127b9793fa5e1a5d307f474832930e057bdfb40
+  COPYRIGHT: 6e7aab0e2d47d3768147e5fcf8d55b73ead64e3c
+
+Debian source: https://salsa.debian.org/debian/xdotool
+Package: 1:3.20160805.1-5
+Commit: 58dfb1097c2af7ad36cf9fc8ab2940b8a2295904
+Tree: 470a4509f5ecb55c8639dc0a8a09006a3d178bf7
+Its native files match those upstream blobs. The two-entry Debian patch set
+preserves the xdo_t ABI and records the upstream version. The ABI fields are
+retained here; the version header is fixed rather than derived from the clock.
+
+Local changes: trailing horizontal whitespace normalization; Debian's unused
+modmap/keymap ABI fields; request-map destruction uses XkbFreeKeyboard instead
+of XkbFreeClientMap, so the owned enclosing descriptor is freed as well.
+The fixed fork version is 3.20160805.1-rustdesk1.
+The BSD redistribution notice is retained in COPYRIGHT and packaged with the
+library. Source provenance is not a claim that all native behavior is validated.

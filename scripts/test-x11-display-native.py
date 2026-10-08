@@ -65,7 +65,37 @@ def logging_library(root, environment):
     return checksum, library
 
 
+def native_xdo(root, environment):
+    source = root / "libs/libxdo-sys-stub/native"
+    names = ("build.py", "xdo.c", "xdo.h", "xdo_search.c", "xdo_util.h",
+             "xdo_version.h", "COPYRIGHT", "SOURCE.txt")
+    before_source = Path("/build/native-xdo-before-source")
+    before_source.mkdir(mode=0o700)
+    for name in names:
+        shutil.copyfile(source / name, before_source / name)
+    text = (before_source / "xdo.c").read_text()
+    destructor = "XkbFreeKeyboard(desc, 0, True);"
+    require(text.count(destructor) == 1, "native XDO descriptor destructor differs")
+    (before_source / "xdo.c").write_text(text.replace(destructor, "XkbFreeClientMap(desc, 0, 1);"))
+    directories = {}
+    for variant, inputs in (("before", before_source), ("corrected", source)):
+        directory = Path("/build") / f"native-xdo-{variant}"
+        directory.mkdir(mode=0o700)
+        output = directory / "libxdo.so.3"
+        subprocess.run(["/usr/bin/python3", "-I", "-S", str(inputs / "build.py"),
+                        "--output", str(output)], env=environment, check=True, timeout=35)
+        (directory / "libxdo.so").symlink_to(output.name)
+        print("X11_XDO_PRODUCT_BUILD " + " ".join(
+            f"{name.replace('.', '_')}_sha256={hashlib.sha256((inputs / name).read_bytes()).hexdigest()}"
+            for name in names) +
+            f" binary_sha256={hashlib.sha256(output.read_bytes()).hexdigest()} variant={variant} "
+            "compiler=product-helper source_delta=one-call loader=direct-native-test installed=false", flush=True)
+        directories[variant] = directory
+    return directories, before_source
+
+
 def enigo_route(root, environment, checksum, library):
+    providers, before_source = native_xdo(root, environment)
     historical = root / "scripts/fixtures/x11-enigo-xdo-before-local-route.rs"
     require(hashlib.sha256(historical.read_bytes()).hexdigest() ==
             "47afa6ff695fa877979f22b934cbebee081d24a9855e7f85b90a3d87c81e201d",
@@ -85,7 +115,8 @@ def enigo_route(root, environment, checksum, library):
         binary = Path("/build") / f"enigo-{variant}"
         command = ["/usr/local/cargo/bin/rustc", "--edition=2021",
                    str(root / "scripts/test-x11-enigo-route.rs"), "-o", str(binary),
-                   "--extern", f"log={library}"]
+                   "--extern", f"log={library}", "-L", f"native={providers['corrected']}",
+                   "-C", f"link-arg=-Wl,-rpath,{providers['corrected']}"]
         if variant == "historical":
             command += ["--cfg", "historical"]
         for symbol in ("xdo_new", "xdo_new_with_opened_display", "xdo_free", "XOpenDisplay", "XCloseDisplay"):
@@ -152,12 +183,17 @@ def enigo_route(root, environment, checksum, library):
     print("X11_ENIGO_ROUTE_NATIVE=pass source=complete-backends old_accepts=2 current_accepts=0 "
           "scenarios=constructor,diagnostic-display-change listener=container-loopback-only "
           "peer=closed children=joined scope=xdo-backend", flush=True)
-    enigo_text(root, environment, binaries["corrected"])
+    enigo_text(root, environment, binaries["corrected"], providers["before"])
     for path in (*binaries.values(), api):
         path.unlink()
+    for directory in providers.values():
+        (directory / "libxdo.so").unlink()
+        (directory / "libxdo.so.3").unlink()
+        directory.rmdir()
+    shutil.rmtree(before_source)
 
 
-def enigo_text(root, environment, binary):
+def enigo_text(root, environment, binary, before_provider):
     source = root / "scripts/test-x11-text-observer.c"
     observer = Path("/build/text-observer")
     subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(source),
@@ -205,26 +241,29 @@ def enigo_text(root, environment, binary):
     print("X11_XDO_KEYMAP_PROBE_BUILD "
           f"source_sha256={hashlib.sha256(probe_source.read_bytes()).hexdigest()} "
           f"binary_sha256={hashlib.sha256(probe.read_bytes()).hexdigest()}", flush=True)
-    enigo_layout(environment, binary, observer, probe)
+    enigo_layout(environment, binary, observer, probe, before_provider)
     probe.unlink()
     observer.unlink()
 
 
-def enigo_layout(environment, binary, observer, probe):
+def enigo_layout(environment, binary, observer, probe, before_provider):
     def phase(child, expected):
         with selectors.DefaultSelector() as streams:
             streams.register(child.stdout, selectors.EVENT_READ)
             require(streams.select(2), "native layout phase did not become ready")
             require(os.read(child.stdout.fileno(), 64) == expected, "native layout phase differs")
 
-    for scenario, pairs in (("layout", 1), ("layout-repeat", 32)):
+    for variant, scenario, pairs in (("before", "layout", 1), ("corrected", "layout", 1),
+                                     ("corrected", "layout-repeat", 32)):
         native = subprocess.Popen([str(observer), scenario], env=environment,
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         injector = None
         try:
             phase(native, b"X11_TEXT_OBSERVER=ready\n")
-            injector = subprocess.Popen([str(binary), scenario],
-                                        env={**environment, "LD_PRELOAD": str(probe)},
+            injector_env = {**environment, "LD_PRELOAD": str(probe)}
+            if variant == "before":
+                injector_env["LD_LIBRARY_PATH"] = str(before_provider) + ":" + environment["LD_LIBRARY_PATH"]
+            injector = subprocess.Popen([str(binary), scenario], env=injector_env,
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             phase(injector, b"X11_ENIGO_LAYOUT_CHILD=ready\n")
             native.stdin.write(b"M")
@@ -238,7 +277,8 @@ def enigo_layout(environment, binary, observer, probe):
             print(errors.decode("ascii"), end="", flush=True)
             receipt = (f"X11_ENIGO_LAYOUT_CHILD=pass pairs={pairs} mapping_refusal=explicit "
                        "descriptors=retired threads=retired").encode("ascii")
-            heap = (f"X11_XDO_KEYMAP_HEAP allocations={pairs + 1} retirements={pairs + 1} live=0\n")
+            heap = ("X11_XDO_KEYMAP_HEAP allocations=2 retirements=0 live=2\n" if variant == "before" else
+                    f"X11_XDO_KEYMAP_HEAP allocations={pairs + 1} retirements={pairs + 1} live=0\n")
             require(injector.returncode == 0 and errors.decode("ascii") == heap
                     and output.splitlines() == [receipt]
                     and native.returncode == 0 and not native_errors
@@ -246,7 +286,10 @@ def enigo_layout(environment, binary, observer, probe):
                     [f"X11_TEXT_OBSERVER=retired events={pairs * 2} keys_clear=1".encode("ascii")],
                     f"native layout differs: injector={injector.returncode}/{output!r}/{errors!r} "
                     f"observer={native.returncode}/{observed!r}/{native_errors!r}")
-            print(f"X11_ENIGO_LAYOUT_OBSERVED scenario={scenario} pairs={pairs} "
+            if variant == "before":
+                print("X11_XDO_DESTRUCTOR_BEFORE=observed source_delta=one-call allocations=2 "
+                      "retirements=0 live=2 keys=correct children=joined scope=xdo-descriptor-class", flush=True)
+            print(f"X11_ENIGO_LAYOUT_OBSERVED variant={variant} scenario={scenario} pairs={pairs} "
                   f"submission_and_retirement_ms={elapsed_ms:.3f}", flush=True)
         finally:
             for child in (injector, native):

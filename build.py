@@ -75,6 +75,7 @@ DEBIAN_DATA_REQUIRED_DIRECTORIES = {
     "usr",
     "usr/bin",
     "usr/lib",
+    "usr/lib/rustdesk-fork",
     "usr/lib/systemd",
     "usr/lib/systemd/system",
     "usr/share",
@@ -101,6 +102,7 @@ DEBIAN_DATA_REQUIRED_FILES = {
     "etc/rustdesk/startwm.sh",
     "etc/rustdesk/xorg.conf",
     "usr/lib/systemd/system/rustdesk.service",
+    "usr/lib/rustdesk-fork/libxdo.so.3",
     "usr/share/applications/rustdesk-link.desktop",
     "usr/share/applications/rustdesk.desktop",
     "usr/share/icons/hicolor/256x256/apps/rustdesk.png",
@@ -113,6 +115,8 @@ DEBIAN_DATA_REQUIRED_FILES = {
     "usr/share/rustdesk/files/manual/rustdesk-service",
     "usr/share/rustdesk/files/openrc/rustdesk",
     "usr/share/rustdesk/files/runit/run",
+    "usr/share/rustdesk/files/native-xdo-COPYRIGHT",
+    "usr/share/rustdesk/files/native-xdo-SOURCE.txt",
     "usr/share/rustdesk/rustdesk",
     "usr/share/rustdesk/rustdesk-service-child",
 }
@@ -327,7 +331,7 @@ Version: %s
 Architecture: %s
 Maintainer: rustdesk <info@rustdesk.com>
 Homepage: https://rustdesk.com
-Depends: init-system-helpers, libgtk-3-0t64 | libgtk-3-0, libxcb-randr0, libxdo3 | libxdo4, libxfixes3, libxcb-shape0, libxcb-xfixes0, libasound2t64 | libasound2, libsystemd0, curl, libgstreamer-plugins-base1.0-0, gstreamer1.0-pipewire%s
+Depends: init-system-helpers, libgtk-3-0t64 | libgtk-3-0, libxcb-randr0, libxtst6, libxinerama1, libxkbcommon0, libxfixes3, libxcb-shape0, libxcb-xfixes0, libasound2t64 | libasound2, libsystemd0, curl, libgstreamer-plugins-base1.0-0, gstreamer1.0-pipewire%s
 Recommends: libayatana-appindicator3-1
 Description: A remote control software.
 
@@ -547,6 +551,11 @@ def build_flutter_deb(version, features):
     system2('mkdir -p tmpdeb/etc/rustdesk/')
     system2('mkdir -p tmpdeb/usr/bin/')
     system2('mkdir -p tmpdeb/usr/lib/systemd/system/')
+    native_xdo = Path(__file__).resolve().parent / "libs/libxdo-sys-stub/native"
+    native_output = Path("tmpdeb/usr/lib/rustdesk-fork/libxdo.so.3").absolute()
+    native_output.parent.mkdir(mode=0o755)
+    subprocess.run([sys.executable, "-I", "-S", str(native_xdo / "build.py"),
+                    "--output", str(native_output)], check=True)
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/')
     system2('mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/')
     system2('mkdir -p tmpdeb/usr/share/applications/')
@@ -557,6 +566,9 @@ def build_flutter_deb(version, features):
         'cp ../res/rustdesk.service tmpdeb/usr/lib/systemd/system/rustdesk.service')
     system2(
         'cp -r ../res/service-managers/. tmpdeb/usr/share/rustdesk/files/')
+    for source, name in (("COPYRIGHT", "native-xdo-COPYRIGHT"),
+                         ("SOURCE.txt", "native-xdo-SOURCE.txt")):
+        shutil.copyfile(native_xdo / source, Path("tmpdeb/usr/share/rustdesk/files") / name)
     system2('cp ../res/rustdesk.init tmpdeb/etc/init.d/rustdesk')
     system2(
         'cp ../res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/rustdesk.png')

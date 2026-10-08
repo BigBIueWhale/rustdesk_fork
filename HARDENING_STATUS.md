@@ -607,6 +607,15 @@ This is exact-class native observation, not whole heap, installed/full-app, inde
 attestation, or Android/Windows delay-causation proof. The broad obligations below
 remain OPEN.
 
+The follow-up draft carries the corrected full descriptor destructor in checked-in,
+provenance-recorded XDO source. Debian packaging builds this fork-owned library at
+`/usr/lib/rustdesk-fork/libxdo.so.3`; the protected loader admits only that private
+root-owned path and exact fork version, with no distro-library fallback. The native
+lane now compiles that actual product source/helper and a one-call old-destructor
+control. This remains **INCOMPLETE / NOT VALIDATED** until the same key-event and
+exact descriptor-retirement predicates pass. Private packaging/loader, whole-app,
+installed and other native-resource behavior are not established by this draft.
+
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); protected loader, parent/rdev, full Cargo/app and current
 installed/native artifacts; capture-to-input mapping across all native roots, unmapped

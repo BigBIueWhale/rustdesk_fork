@@ -1,6 +1,6 @@
-//! Dynamic loading wrapper for libxdo.
+//! Dynamic loading wrapper for the fork's private libxdo.
 //!
-//! Provides the same API as libxdo-sys but loads libxdo at runtime,
+//! Provides the same API as libxdo-sys but loads the packaged library at runtime,
 //! allowing the program to run on systems without libxdo installed
 //! (e.g., Wayland-only environments).
 
@@ -10,6 +10,7 @@ use hbb_common::{
     log,
 };
 use std::{
+    ffi::CStr,
     fs,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
@@ -38,31 +39,9 @@ pub type useconds_t = c_uint;
 pub const CURRENTWINDOW: Window = 0;
 
 const TRUSTED_LIBXDO_PATHS: &[&str] = &[
-    "/usr/lib/x86_64-linux-gnu/libxdo.so.4",
-    "/usr/lib/x86_64-linux-gnu/libxdo.so.3",
-    "/usr/lib/aarch64-linux-gnu/libxdo.so.4",
-    "/usr/lib/aarch64-linux-gnu/libxdo.so.3",
-    "/usr/lib/arm-linux-gnueabihf/libxdo.so.4",
-    "/usr/lib/arm-linux-gnueabihf/libxdo.so.3",
-    "/usr/lib/i386-linux-gnu/libxdo.so.4",
-    "/usr/lib/i386-linux-gnu/libxdo.so.3",
-    "/usr/lib/libxdo.so.4",
-    "/usr/lib/libxdo.so.3",
-    "/usr/lib64/libxdo.so.4",
-    "/usr/lib64/libxdo.so.3",
-    "/lib/x86_64-linux-gnu/libxdo.so.4",
-    "/lib/x86_64-linux-gnu/libxdo.so.3",
-    "/lib/aarch64-linux-gnu/libxdo.so.4",
-    "/lib/aarch64-linux-gnu/libxdo.so.3",
-    "/lib/arm-linux-gnueabihf/libxdo.so.4",
-    "/lib/arm-linux-gnueabihf/libxdo.so.3",
-    "/lib/i386-linux-gnu/libxdo.so.4",
-    "/lib/i386-linux-gnu/libxdo.so.3",
-    "/lib/libxdo.so.4",
-    "/lib/libxdo.so.3",
-    "/lib64/libxdo.so.4",
-    "/lib64/libxdo.so.3",
+    "/usr/lib/rustdesk-fork/libxdo.so.3",
 ];
+const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk1";
 
 fn root_owned_non_writable(mode: u32, uid: u32) -> bool {
     uid == 0 && mode & 0o022 == 0
@@ -115,6 +94,7 @@ fn trusted_libxdo_paths() -> impl Iterator<Item = PathBuf> {
 }
 
 type FnXdoNew = unsafe extern "C" fn(*const c_char) -> *mut xdo_t;
+type FnXdoVersion = unsafe extern "C" fn() -> *const c_char;
 type FnXdoNewWithOpenedDisplay =
     unsafe extern "C" fn(*mut Display, *const c_char, c_int) -> *mut xdo_t;
 type FnXdoFree = unsafe extern "C" fn(*mut xdo_t);
@@ -189,6 +169,12 @@ impl XdoLib {
                     .map(|lib| (lib, path))
             })?;
 
+            let version: FnXdoVersion = *lib.get(b"xdo_version").ok()?;
+            let version = version();
+            if version.is_null() || CStr::from_ptr(version).to_bytes() != EXPECTED_XDO_VERSION {
+                log::warn!("The private XDO library has an unexpected version");
+                return None;
+            }
             log::info!("libxdo-sys Loaded {}", lib_path.display());
 
             let xdo_new: FnXdoNew = *lib.get(b"xdo_new").ok()?;
@@ -361,7 +347,7 @@ mod tests {
 
     #[test]
     fn trusted_libxdo_candidates_are_fixed_absolute_sonames() {
-        assert!(!TRUSTED_LIBXDO_PATHS.is_empty());
+        assert_eq!(TRUSTED_LIBXDO_PATHS, &["/usr/lib/rustdesk-fork/libxdo.so.3"]);
         for path in TRUSTED_LIBXDO_PATHS {
             let path = Path::new(path);
             assert!(path.is_absolute());

@@ -1147,6 +1147,14 @@ android_frame_input_inventory() {
             "$SCRIPT_DIR/test-x11-enigo-route.rs"
             "$SCRIPT_DIR/test-x11-text-observer.c"
             "$SCRIPT_DIR/test-xdo-keymap-lifetime.c"
+            "$REPO_ROOT/libs/libxdo-sys-stub/native/build.py"
+            "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
+            "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.h"
+            "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_search.c"
+            "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_util.h"
+            "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_version.h"
+            "$REPO_ROOT/libs/libxdo-sys-stub/native/COPYRIGHT"
+            "$REPO_ROOT/libs/libxdo-sys-stub/native/SOURCE.txt"
             "$SCRIPT_DIR/fixtures/x11-enigo-xdo-before-local-route.rs"
             "$REPO_ROOT/libs/enigo/src/lib.rs" "$REPO_ROOT/libs/enigo/src/dsl.rs"
             "$REPO_ROOT/libs/enigo/src/linux/xdo.rs"
@@ -3454,6 +3462,14 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/scripts/test-x11-enigo-route.rs=$SCRIPT_DIR/test-x11-enigo-route.rs"
             "repo/scripts/test-x11-text-observer.c=$SCRIPT_DIR/test-x11-text-observer.c"
             "repo/scripts/test-xdo-keymap-lifetime.c=$SCRIPT_DIR/test-xdo-keymap-lifetime.c"
+            "repo/libs/libxdo-sys-stub/native/build.py=$REPO_ROOT/libs/libxdo-sys-stub/native/build.py"
+            "repo/libs/libxdo-sys-stub/native/xdo.c=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
+            "repo/libs/libxdo-sys-stub/native/xdo.h=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.h"
+            "repo/libs/libxdo-sys-stub/native/xdo_search.c=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_search.c"
+            "repo/libs/libxdo-sys-stub/native/xdo_util.h=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_util.h"
+            "repo/libs/libxdo-sys-stub/native/xdo_version.h=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_version.h"
+            "repo/libs/libxdo-sys-stub/native/COPYRIGHT=$REPO_ROOT/libs/libxdo-sys-stub/native/COPYRIGHT"
+            "repo/libs/libxdo-sys-stub/native/SOURCE.txt=$REPO_ROOT/libs/libxdo-sys-stub/native/SOURCE.txt"
             "repo/scripts/fixtures/x11-enigo-xdo-before-local-route.rs=$SCRIPT_DIR/fixtures/x11-enigo-xdo-before-local-route.rs"
             "repo/libs/enigo/src/lib.rs=$REPO_ROOT/libs/enigo/src/lib.rs"
             "repo/libs/enigo/src/dsl.rs=$REPO_ROOT/libs/enigo/src/dsl.rs"
@@ -4227,6 +4243,9 @@ elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
         'X11_ENIGO_TEXT_NATIVE=pass source=complete-backend locale_scenarios=3 scalar_pairs=21 events=42 controls=preadmission-refused keys=clear observers=joined descriptors=retired scope=native-key-events whole_app=false' \
         'complete Enigo XDO backend delivers native Unicode key events without a locale dependency and releases every submitted key'
+    require_exact_fixed_receipt \
+        'X11_XDO_DESTRUCTOR_BEFORE=observed source_delta=one-call allocations=2 retirements=0 live=2 keys=correct children=joined scope=xdo-descriptor-class' \
+        'same native source with the old destructor delivers keys but retains both enclosing descriptors'
     require_exact_fixed_receipt \
         'X11_ENIGO_LAYOUT_NATIVE=pass source=complete-backend map=changed-after-construction cases=2 scalar_pairs=33 events=66 mapping_refusals=2 keys=clear children=joined descriptors=retired keymap_descriptors=freed scope=native-key-events whole_app=false' \
         'complete Enigo XDO backend follows the actual keymap after a native layout change'

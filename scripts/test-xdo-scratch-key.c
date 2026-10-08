@@ -97,6 +97,9 @@ int main(void) {
   Display *observer = XOpenDisplay("unix/:98.0");
   require(observer != NULL, "observer unavailable");
   clear_keys(observer);
+  Window original_focus;
+  int original_revert;
+  require(XGetInputFocus(observer, &original_focus, &original_revert), "original focus unavailable");
   int low, high, width;
   XDisplayKeycodes(observer, &low, &high);
   require(low >= 8 && high <= 255 && high > low + 1, "native keycode range differs");
@@ -174,6 +177,13 @@ int main(void) {
     same_map(observer, low, count, original_width, original);
   }
   XFree(original);
+  XSetInputFocus(observer, original_focus, original_revert, CurrentTime);
+  XSync(observer, False);
+  Window restored_focus;
+  int restored_revert;
+  require(XGetInputFocus(observer, &restored_focus, &restored_revert)
+          && restored_focus == original_focus && restored_revert == original_revert,
+          "original focus not restored");
   XDestroyWindow(observer, window);
   XCloseDisplay(observer);
   require(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks,

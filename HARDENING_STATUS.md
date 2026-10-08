@@ -731,6 +731,18 @@ whole-app/install result, native map-race/allocator closure or heap-leak/soak pr
 The separate unused compound-parser allocation and unchecked native delivery/error
 paths remain OPEN.
 
+**Concurrent native-context execution reopened.** Candidate `cbdfcb0e`'s first
+native run aborted in the unchanged `concurrent-contexts` child with
+`double free or corruption (fasttop)` before reaching the scratch-key test. That
+child links the pinned distro XDO, not the changed private provider; its exact
+binary and native-library digests match the preceding negative run. The retained
+raw is `x11-display-tests-run.6d8hWuubEa.serial.log` (84,801 bytes, SHA-256
+`4da2a89c1906693ae563775d4ec426780bca987dfdd06a273e593da12ea156c5`).
+Cause and relevant product/harness/native-library ownership remain unproved;
+prior or later passes cannot erase this failure. The focused scratch test now
+runs first and restores exact focus and map state. The concurrent test and every
+existing assertion remain mandatory; reordering is not concurrency acceptance.
+
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,
 parent/rdev, full Cargo/app and current

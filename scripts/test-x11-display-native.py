@@ -119,8 +119,7 @@ def native_xdo(root, environment):
     return directories, before_source
 
 
-def enigo_route(root, environment, checksum, library):
-    providers, before_source = native_xdo(root, environment)
+def scratch_keys(root, environment):
     scratch_source = root / "scripts/test-xdo-scratch-key.c"
     scratch_binary = Path("/build/xdo-scratch-key")
     native_source = root / "libs/libxdo-sys-stub/native"
@@ -136,6 +135,10 @@ def enigo_route(root, environment, checksum, library):
     scratch_environment = dict(environment, ASAN_OPTIONS="detect_leaks=0:abort_on_error=0:disable_coredump=1")
     subprocess.run([str(scratch_binary)], env=scratch_environment, check=True, timeout=5)
     scratch_binary.unlink()
+
+
+def enigo_route(root, environment, checksum, library):
+    providers, before_source = native_xdo(root, environment)
     mouse_source = root / "scripts/test-xdo-mouse-modifiers.c"
     mouse_binary = Path("/build/xdo-mouse-modifiers")
     subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(mouse_source),
@@ -1217,6 +1220,7 @@ def main():
             while not Path("/tmp/.X11-unix/X98").is_socket():
                 require(child.poll() is None and time.monotonic() < deadline, "Xvfb not ready")
                 time.sleep(0.05)
+            scratch_keys(root, environment)
             thread_contexts(root, environment, checksum, logging)
             enigo_route(root, environment, checksum, logging)
             window_focus(root, environment)

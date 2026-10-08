@@ -2107,6 +2107,19 @@ elif [ "$MODE" = android-rust-target-check ]; then
     android_rust_target_input_inventory >/dev/null \
         || fail 'cannot inventory Android Rust target-check inputs'
 elif [ "$MODE" = flutter-model-tests ]; then
+    model_count_file=$SCRIPT_DIR/flutter-model-test-count.txt
+    [ -f "$model_count_file" ] && [ ! -L "$model_count_file" ] \
+        && [ "$(/usr/bin/stat -c '%h' -- "$model_count_file")" -eq 1 ] \
+        && [ "$(/usr/bin/stat -c '%s' -- "$model_count_file")" -le 5 ] \
+        || fail 'focused Flutter model-test count metadata differs'
+    IFS= read -r FLUTTER_MODEL_TEST_COUNT < "$model_count_file" \
+        || fail 'focused Flutter model-test count is unterminated'
+    [[ "$FLUTTER_MODEL_TEST_COUNT" =~ ^[1-9][0-9]{0,3}$ ]] \
+        && [ "$FLUTTER_MODEL_TEST_COUNT" -le 4096 ] \
+        && [ "$(/usr/bin/stat -c '%s' -- "$model_count_file")" -eq \
+             "$(( ${#FLUTTER_MODEL_TEST_COUNT} + 1 ))" ] \
+        || fail 'focused Flutter model-test count is malformed'
+    readonly FLUTTER_MODEL_TEST_COUNT
     [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
@@ -5156,7 +5169,7 @@ else
             'focused Flutter frame-queue receipt'
     else
         require_exact_fixed_receipt \
-            "FLUTTER_MODEL_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=23 tests=205 flutter=$FLUTTER_VERSION rust=1.75.0 llvm=$LLVM_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined" \
+            "FLUTTER_MODEL_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=23 tests=$FLUTTER_MODEL_TEST_COUNT flutter=$FLUTTER_VERSION rust=1.75.0 llvm=$LLVM_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined" \
             'focused Flutter model-test receipt'
     fi
     require_exact_fixed_receipt \

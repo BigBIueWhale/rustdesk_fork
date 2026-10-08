@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import re
 import stat
 import sys
 
@@ -33,7 +34,6 @@ EXPECTED_SUITES = {
     "session_stream_finality_test.dart",
     "start_ellipsis_text_test.dart",
 }
-EXPECTED_TESTS = 205
 FRAME_QUEUE_TESTS = {
     "retains one running frame and only the latest successor per display",
     "different displays drain independently",
@@ -74,13 +74,30 @@ def require(condition, message):
         raise ResultError(message)
 
 
+def model_test_count(path=None):
+    if path is None:
+        path = os.path.join(os.path.dirname(__file__), "flutter-model-test-count.txt")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        metadata = os.fstat(stream.fileno())
+        require(stat.S_ISREG(metadata.st_mode), "model test count is not one regular file")
+        require(metadata.st_nlink == 1, "model test count has multiple links")
+        require(metadata.st_size <= 5, "model test count exceeds its byte bound")
+        value = stream.read(6)
+    require(re.fullmatch(rb"[1-9][0-9]{0,3}\n", value), "model test count is malformed")
+    count = int(value)
+    require(count <= 4096, "model test count exceeds its bound")
+    return count
+
+
 def parse_result(path, profile="models"):
     require(profile in {"models", "frame-queue"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
-    expected_tests = EXPECTED_TESTS
     if profile == "frame-queue":
         expected_suites = {"latest_frame_queue_test.dart"}
         expected_tests = len(FRAME_QUEUE_TESTS)
+    else:
+        expected_tests = model_test_count()
     metadata = os.lstat(path)
     require(stat.S_ISREG(metadata.st_mode), "result is not one regular file")
     require(metadata.st_nlink == 1, "result has multiple links")

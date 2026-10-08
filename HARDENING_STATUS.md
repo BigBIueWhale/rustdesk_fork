@@ -1793,6 +1793,19 @@ native macOS authority; current installed/release artifacts, cold R-B2/R-B10 equ
 independent reproduction and external review. Provider-call tests and source wiring
 cannot close those boundaries or explain the reported Android/Windows display symptoms.
 
+### Flutter result inventory — single model-count source
+
+The model checkpoint's test total is now one reviewed data file,
+`scripts/flutter-model-test-count.txt`, shared by the parser, parser fixtures, guest
+summary and outer receipt check. The guest copies it beside the immutable validator
+before giving the test process its source workspace; both receive read-only mounts.
+The 23-suite inventory, successful non-skipped completion and terminal checks remain
+mandatory; the fixed queue shard still requires its exact 24 named tests. This removes
+the stale-summary duplication that rejected an otherwise successful native run. Parser
+file/format refusals and missing-test regression coverage are added; isolated execution
+of the changed readers and both profiles is pending. This is harness maintenance, not
+an app behavior fix or closure of the faster prepared-native inner-loop work.
+
 ### Android runtime — intermittent presentation remains OPEN
 
 **Software first-image publication — native component A/B passed; app-level symptoms OPEN.**

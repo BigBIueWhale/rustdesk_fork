@@ -5431,6 +5431,7 @@ run_flutter_model_tests() {
     local work_root=$ROOT/flutter-model-work
     local output=$ROOT/flutter-model-tests.out
     local result_validator=$ROOT/flutter-model-result-validator.py
+    local model_count_file=$ROOT/flutter-model-test-count.txt model_test_count
     local pub_validator=$ROOT/flutter-pub-cache-validator.py
     local cargo_validator=$ROOT/flutter-cargo-vendor-validator.py
     local rust_archive=$inputs/rust-1.75.tar.xz
@@ -5445,7 +5446,7 @@ run_flutter_model_tests() {
     local source_archive_sha input_mount_options cargo_receipt pub_receipt post_pub_receipt
     local tools_freshness_line source_authority source_writable=true
     local memory=8g memory_bytes=8589934592 result_prefix=FLUTTER_MODEL_TEST_JSON
-    local expected_result='suites=23 tests=205' queue_sha256 tests_sha256
+    local expected_result queue_sha256 tests_sha256
     local -a toolchain_mounts=()
     local source_mount="type=bind,source=$source_root,target=/source"
     if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
@@ -5495,6 +5496,11 @@ run_flutter_model_tests() {
     [ -f "$source_root/scripts/test-flutter-model-test-result.py" ] \
         && [ ! -L "$source_root/scripts/test-flutter-model-test-result.py" ] \
         || fail 'focused Flutter-test parser regression is absent or ambiguous'
+    [ -f "$source_root/scripts/flutter-model-test-count.txt" ] \
+        && [ ! -L "$source_root/scripts/flutter-model-test-count.txt" ] \
+        && [ "$(stat -c '%h' -- "$source_root/scripts/flutter-model-test-count.txt")" -eq 1 ] \
+        && [ "$(stat -c '%s' -- "$source_root/scripts/flutter-model-test-count.txt")" -le 5 ] \
+        || fail 'focused Flutter model-test count metadata differs'
     [ -f "$source_root/scripts/online-pub-cache-output.py" ] \
         && [ ! -L "$source_root/scripts/online-pub-cache-output.py" ] \
         || fail 'focused Flutter-test Pub-cache validator is absent or ambiguous'
@@ -5505,13 +5511,25 @@ run_flutter_model_tests() {
         "$source_root/scripts/verify-flutter-model-test-result.py" \
         "$result_validator"
     install -o 0 -g 0 -m 0444 -- \
+        "$source_root/scripts/flutter-model-test-count.txt" "$model_count_file"
+    install -o 0 -g 0 -m 0444 -- \
         "$source_root/scripts/online-pub-cache-output.py" "$pub_validator"
     install -o 0 -g 0 -m 0444 -- \
         "$source_root/scripts/online-input-provenance.py" "$cargo_validator"
     [ "$(stat -c '%u:%g:%a:%h' -- \
-            "$result_validator" "$pub_validator" "$cargo_validator")" = \
-      $'0:0:444:1\n0:0:444:1\n0:0:444:1' ] \
+            "$result_validator" "$model_count_file" "$pub_validator" "$cargo_validator")" = \
+      $'0:0:444:1\n0:0:444:1\n0:0:444:1\n0:0:444:1' ] \
         || fail 'focused Flutter-test immutable validator metadata differs'
+    IFS= read -r model_test_count < "$model_count_file" \
+        || fail 'focused Flutter model-test count is unterminated'
+    [[ "$model_test_count" =~ ^[1-9][0-9]{0,3}$ ]] \
+        && [ "$model_test_count" -le 4096 ] \
+        && [ "$(stat -c '%s' -- "$model_count_file")" -eq \
+             "$(( ${#model_test_count} + 1 ))" ] \
+        || fail 'focused Flutter model-test count is malformed'
+    if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+        expected_result="suites=23 tests=$model_test_count"
+    fi
     chown -R 1000:1000 "$source_root" "$work_root"
     chmod 0700 "$work_root"
 
@@ -5630,6 +5648,7 @@ run_flutter_model_tests() {
             --mount "type=bind,source=$flutter_archive,target=/inputs/flutter.tar.xz,readonly" \
             "${toolchain_mounts[@]}" \
             --mount "type=bind,source=$result_validator,target=/authority/result.py,readonly" \
+            --mount "type=bind,source=$model_count_file,target=/authority/flutter-model-test-count.txt,readonly" \
             --env "FLUTTER_TEST_PROFILE=$FLUTTER_TEST_PROFILE" \
             --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
             --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
@@ -5657,6 +5676,8 @@ run_flutter_model_tests() {
                 IFS= read -r apparmor </proc/self/attr/current
                 case "$apparmor" in docker-default\ *) ;; *) exit 92 ;; esac
                 mkdir /work/toolchain /work/home /work/flutter-shim
+                [ "$(stat -c "%u:%g:%a:%h" /authority/flutter-model-test-count.txt)" = 0:0:444:1 ]
+                [ ! -w /authority/flutter-model-test-count.txt ]
                 tar -C /work/toolchain -xf /inputs/flutter.tar.xz
                 if [ "$FLUTTER_TEST_PROFILE" = models ]; then
                     mkdir /work/cargo-home
@@ -5931,8 +5952,8 @@ run_flutter_model_tests() {
             "$queue_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     else
-        printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=23 tests=205 flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
-            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+        printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=23 tests=%s flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$model_test_count" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
             "$SHA256_PUB_CACHE_CLOSURE_V1" \

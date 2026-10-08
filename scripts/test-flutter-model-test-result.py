@@ -4,6 +4,7 @@
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -22,7 +23,7 @@ class ResultTests(unittest.TestCase):
     def events(self, profile):
         if profile == "models":
             suites = sorted(result.EXPECTED_SUITES)
-            names = ["model {}".format(i) for i in range(result.EXPECTED_TESTS)]
+            names = ["model {}".format(i) for i in range(result.model_test_count())]
         else:
             suites = ["latest_frame_queue_test.dart"]
             names = sorted(result.FRAME_QUEUE_TESTS)
@@ -53,8 +54,42 @@ class ResultTests(unittest.TestCase):
             return result.parse_result(path, profile)
 
     def test_complete_profiles(self):
-        self.assertEqual(self.parse(self.events("models"), "models"), (23, 205))
+        self.assertEqual(
+            self.parse(self.events("models"), "models"),
+            (len(result.EXPECTED_SUITES), result.model_test_count()),
+        )
         self.assertEqual(self.parse(self.events("frame-queue"), "frame-queue"), (1, 24))
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "count"
+            path.write_bytes(b"7\n")
+            self.assertEqual(result.model_test_count(path), 7)
+            for value in (
+                b"", b"0\n", b"07\n", b"+7\n", b"-7\n", b"7\r\n", b"7",
+                b"7\n8\n", b"word\n", b"10000\n", b"4097\n",
+            ):
+                with self.subTest(count=value):
+                    path.write_bytes(value)
+                    with self.assertRaises(result.ResultError):
+                        result.model_test_count(path)
+            path.unlink()
+            target = Path(root) / "target"
+            target.write_bytes(b"7\n")
+            for kind in ("missing", "directory", "symlink", "hardlink", "fifo"):
+                with self.subTest(count_file=kind):
+                    if kind == "directory":
+                        path.mkdir()
+                    elif kind == "symlink":
+                        path.symlink_to(target)
+                    elif kind == "hardlink":
+                        os.link(target, path)
+                    elif kind == "fifo":
+                        os.mkfifo(path)
+                    with self.assertRaises((OSError, result.ResultError)):
+                        result.model_test_count(path)
+                    if kind == "directory":
+                        path.rmdir()
+                    elif kind != "missing":
+                        path.unlink()
 
     def test_queue_inventory_is_exact(self):
         events = self.events("frame-queue")
@@ -78,7 +113,7 @@ class ResultTests(unittest.TestCase):
             done_index = next(
                 i for i, event in enumerate(events) if event["type"] == "testDone"
             )
-            for edit in ("failed", "skipped", "unfinished", "no-final", "late-event"):
+            for edit in ("failed", "skipped", "unfinished", "lost-test", "no-final", "late-event"):
                 with self.subTest(profile=profile, edit=edit):
                     changed = copy.deepcopy(events)
                     if edit == "failed":
@@ -87,6 +122,8 @@ class ResultTests(unittest.TestCase):
                         changed[done_index]["skipped"] = True
                     elif edit == "unfinished":
                         del changed[done_index]
+                    elif edit == "lost-test":
+                        del changed[-3:-1]
                     elif edit == "no-final":
                         changed.pop()
                     else:

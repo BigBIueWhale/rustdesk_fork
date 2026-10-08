@@ -121,7 +121,8 @@ def validate_stage(source: str) -> None:
         forbid(source, token, label)
     for token, label in (
         ('image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_CONFIG_ID"', "runtime config-ID image selection"),
-        ('ldd /input/rustdesk /input/libxdo.so.3', "executable and private-provider dependency discovery"),
+        ('for input in /input/rustdesk /input/libxdo.so.3; do', "executable and private-provider roots"),
+        ('ldd "$input" || exit 1', "individual dependency discovery with error propagation"),
         ('runtime library basename collision', "basename-collision rejection"),
         ('runtime-library count is outside 60..256', "output count bound"),
         ('runtime-library output exceeds 1 GiB', "output byte bound"),

@@ -288,7 +288,11 @@ stage_runtime_libraries() {
                     cp -L --no-preserve=ownership -- "$source" "$destination"
                 fi
             }
-            ldd_output="$(ldd /input/rustdesk /input/libxdo.so.3)"
+            ldd_output="$(
+                for input in /input/rustdesk /input/libxdo.so.3; do
+                    ldd "$input" || exit 1
+                done
+            )"
             case "$ldd_output" in
                 *"not found"*) printf "%s\n" "$ldd_output" >&2; exit 1 ;;
             esac

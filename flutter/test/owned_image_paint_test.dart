@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_hbb/common.dart' show SessionID, isMobile;
@@ -478,6 +479,45 @@ Future<Map<String, Object>> _conversionFailureHandles(String failingStage) async
 }
 
 void main() {
+  for (final retirement in ['clear', 'dispose']) {
+    testWidgets('mobile canvas $retirement removes both pending timers',
+        (tester) async {
+      await _observeMobileCanvas((session, disposeCanvas) async {
+        fakeAsync((clock) {
+          final canvas = session.canvasModel;
+          canvas.update(7, 11, 1.25);
+          canvas.saveMobileOffsetBeforeSoftKeyboard();
+          canvas.update(31, 37, 1.75);
+          canvas.restoreMobileOffsetAfterSoftKeyboard();
+          canvas.mobileFocusCanvasCursor();
+          expect(clock.nonPeriodicTimerCount, 2);
+          if (retirement == 'clear') {
+            canvas.clear();
+          } else {
+            disposeCanvas();
+          }
+          final before = _canvasPreferenceState(canvas);
+          expect(clock.nonPeriodicTimerCount, 0);
+          clock.elapse(const Duration(milliseconds: 100));
+          expect(_canvasPreferenceState(canvas), before);
+          if (retirement == 'clear') {
+            canvas.mobileFocusCanvasCursor();
+            expect(clock.nonPeriodicTimerCount, 1);
+            clock.elapse(const Duration(milliseconds: 100));
+            expect(canvas.size, canvas.getSize());
+          } else {
+            canvas.mobileFocusCanvasCursor();
+            canvas.saveMobileOffsetBeforeSoftKeyboard();
+            canvas.restoreMobileOffsetAfterSoftKeyboard();
+            clock.elapse(const Duration(milliseconds: 100));
+            expect(_canvasPreferenceState(canvas), before);
+          }
+          expect(clock.nonPeriodicTimerCount, 0);
+        });
+      });
+    }, timeout: const Timeout(Duration(seconds: 30)));
+  }
+
   for (final retirement in ['presentation', 'topology', 'clear', 'dispose']) {
     testWidgets('mobile focus $retirement preserves current geometry',
         (tester) async {

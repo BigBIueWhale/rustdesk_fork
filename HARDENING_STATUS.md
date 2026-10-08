@@ -1814,15 +1814,21 @@ prepared-native inner-loop work; VM timing excludes host preparation.
 
 ### Android runtime — intermittent presentation remains OPEN
 
-**Mobile keyboard geometry lifetime — source candidate; native acceptance pending.**
-`CanvasModel` saves keyboard offset/scale without a captured owner; its delayed
-focus/restore callbacks check only session ID, and disposal leaves both timers armed.
-Twelve production-model regressions cover presentation/topology retirement, clear/dispose,
-retirement before restore is scheduled, useful repeated keyboard cycles, snapshot replacement
-and duplicate restore. Only existing mobile-layout selection, session metadata and the test
-clock are controlled; this is not Android OS/device evidence. The intended snapshot belongs
-to the exact canvas/session/client/topology/presentation at save time, not to a fresh owner
-chosen by restore. No product correction or original-symptom closure is claimed yet.
+**Mobile keyboard geometry lifetime — native baseline reproduced; correction pending acceptance.**
+At tests-first `88e69b72`, eight new cases fail and the other 225 tests pass. Retired
+focus changes successor offsets and size; retired restore reapplies the old offset/scale,
+including a snapshot retired before restore is scheduled. Disposed callbacks notify a
+disposed model. Raw `flutter-model-tests-run.tag8LAJj1n.serial.log`, SHA256
+`d035e10c80dfe7aa268f5f7eee731e4d437cd879bdd2fbfc3a0c41f0d07e107d`.
+The correction captures exact canvas/session/client/topology/presentation ownership at
+save or focus scheduling, uses one immutable snapshot, consumes it at restore/refusal,
+and cancels/releases both timers on clear/dispose. Original twelve assertions remain;
+two additional clock-zone censuses require pending timer counts 2→0, not merely guarded
+callbacks. Already-locked `fake_async` 1.3.1 is now an explicit test dependency; no new
+package version or input acquisition. Useful repeated keyboard cycles, replacement and
+duplicate restore remain tested. Only existing mobile-layout selection, session metadata
+and the test clock are controlled; this is not Android OS/device or native timer-handle
+evidence. Corrected execution and original-symptom closure are not claimed yet.
 Desktop ticker/controller lifetime and the wider installed/performance matrices remain OPEN.
 
 **Canvas preference continuations — native component A/B passed; app-level symptoms OPEN.**

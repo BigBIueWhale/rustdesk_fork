@@ -2381,6 +2381,14 @@ class CanvasUpdateOwner {
       (_acceptsUpdate?.call() ?? true);
 }
 
+class _MobileKeyboardCanvasSnapshot {
+  _MobileKeyboardCanvasSnapshot(this.owner, this.offset, this.scale);
+
+  final CanvasUpdateOwner owner;
+  final Offset offset;
+  final double scale;
+}
+
 class CanvasModel with ChangeNotifier {
   // image offset of canvas
   double _x = 0;
@@ -2415,8 +2423,7 @@ class CanvasModel with ChangeNotifier {
 
   Timer? _timerMobileFocusCanvasCursor;
   Timer? _timerMobileRestoreCanvasOffset;
-  Offset? _offsetBeforeMobileSoftKeyboard;
-  double? _scaleBeforeMobileSoftKeyboard;
+  _MobileKeyboardCanvasSnapshot? _mobileKeyboardSnapshot;
 
   // `isMobileCanvasChanged` is used to avoid canvas reset when changing the input method
   // after showing the soft keyboard.
@@ -2988,6 +2995,7 @@ class CanvasModel with ChangeNotifier {
   clear() {
     _lifetime = Object();
     _cancelDeferredScrollStyle();
+    _cancelMobileCanvasUpdates();
     _x = 0;
     _y = 0;
     _scale = 1.0;
@@ -3002,12 +3010,6 @@ class CanvasModel with ChangeNotifier {
     _imageOverflow.value = false;
     isMobileCanvasChanged = false;
     _lastViewStyle = ViewStyle.defaultViewStyle();
-    _timerMobileFocusCanvasCursor?.cancel();
-    _timerMobileFocusCanvasCursor = null;
-    _timerMobileRestoreCanvasOffset?.cancel();
-    _timerMobileRestoreCanvasOffset = null;
-    _offsetBeforeMobileSoftKeyboard = null;
-    _scaleBeforeMobileSoftKeyboard = null;
   }
 
   @override
@@ -3015,6 +3017,7 @@ class CanvasModel with ChangeNotifier {
     _disposed = true;
     _lifetime = Object();
     _cancelDeferredScrollStyle();
+    _cancelMobileCanvasUpdates();
     super.dispose();
   }
 
@@ -3035,12 +3038,14 @@ class CanvasModel with ChangeNotifier {
   }
 
   void mobileFocusCanvasCursor() {
-    final expectedSessionId = parent.target?.sessionId;
-    if (expectedSessionId == null) return;
     _timerMobileFocusCanvasCursor?.cancel();
+    _timerMobileFocusCanvasCursor = null;
+    final owner = captureUpdateOwner();
+    if (owner == null) return;
     _timerMobileFocusCanvasCursor =
-        Timer(Duration(milliseconds: 100), () async {
-      if (parent.target?.isCurrentSession(expectedSessionId) != true) return;
+        Timer(Duration(milliseconds: 100), () {
+      _timerMobileFocusCanvasCursor = null;
+      if (!_acceptsOwner(owner)) return;
       updateSize();
       _resetCanvasOffset(getDisplayWidth(), getDisplayHeight());
       notifyListeners();
@@ -3049,30 +3054,42 @@ class CanvasModel with ChangeNotifier {
 
   void saveMobileOffsetBeforeSoftKeyboard() {
     _timerMobileRestoreCanvasOffset?.cancel();
-    _offsetBeforeMobileSoftKeyboard = Offset(_x, _y);
-    _scaleBeforeMobileSoftKeyboard = _scale;
+    _timerMobileRestoreCanvasOffset = null;
+    final owner = captureUpdateOwner();
+    _mobileKeyboardSnapshot = owner == null
+        ? null
+        : _MobileKeyboardCanvasSnapshot(owner, Offset(_x, _y), _scale);
   }
 
   void restoreMobileOffsetAfterSoftKeyboard() {
-    final expectedSessionId = parent.target?.sessionId;
-    if (expectedSessionId == null) return;
     _timerMobileRestoreCanvasOffset?.cancel();
+    _timerMobileRestoreCanvasOffset = null;
     _timerMobileFocusCanvasCursor?.cancel();
-    final targetOffset = _offsetBeforeMobileSoftKeyboard;
-    final targetScale = _scaleBeforeMobileSoftKeyboard;
-    if (targetOffset == null || targetScale == null) {
+    _timerMobileFocusCanvasCursor = null;
+    final snapshot = _mobileKeyboardSnapshot;
+    if (snapshot == null || !_acceptsOwner(snapshot.owner)) {
+      _mobileKeyboardSnapshot = null;
       return;
     }
     _timerMobileRestoreCanvasOffset = Timer(Duration(milliseconds: 100), () {
-      if (parent.target?.isCurrentSession(expectedSessionId) != true) return;
+      _timerMobileRestoreCanvasOffset = null;
+      if (!identical(_mobileKeyboardSnapshot, snapshot)) return;
+      _mobileKeyboardSnapshot = null;
+      if (!_acceptsOwner(snapshot.owner)) return;
       updateSize();
-      _x = targetOffset.dx;
-      _y = targetOffset.dy;
-      _scale = targetScale;
-      _offsetBeforeMobileSoftKeyboard = null;
-      _scaleBeforeMobileSoftKeyboard = null;
+      _x = snapshot.offset.dx;
+      _y = snapshot.offset.dy;
+      _scale = snapshot.scale;
       notifyListeners();
     });
+  }
+
+  void _cancelMobileCanvasUpdates() {
+    _timerMobileFocusCanvasCursor?.cancel();
+    _timerMobileFocusCanvasCursor = null;
+    _timerMobileRestoreCanvasOffset?.cancel();
+    _timerMobileRestoreCanvasOffset = null;
+    _mobileKeyboardSnapshot = null;
   }
 
   // mobile only

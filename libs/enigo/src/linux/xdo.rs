@@ -171,16 +171,32 @@ impl EnigoXdo {
         if self.xdo.is_null() {
             return Err("libxdo is unavailable".into());
         }
-        let string = CString::new(sequence)?;
-        let status = unsafe {
-            libxdo_sys::xdo_enter_text_window(
-                self.xdo as *const _,
-                CURRENTWINDOW,
-                string.as_ptr(),
-                self.delay as libxdo_sys::useconds_t,
-            )
-        };
-        xdo_result("text entry", status)
+        // Validate the complete text before emitting any prefix. Text scalars use
+        // canonical key names, not locale-dependent native multibyte conversion.
+        if let Some(character) = sequence
+            .chars()
+            .find(|c| c.is_control() && !matches!(*c, '\n' | '\r' | '\t'))
+        {
+            return Err(format!("unsupported text control U+{:04X}", character as u32).into());
+        }
+        for character in sequence.chars() {
+            let token = match character {
+                '\n' | '\r' => Cow::Borrowed("Return"),
+                '\t' => Cow::Borrowed("Tab"),
+                _ => keysequence(Key::Layout(character)),
+            };
+            let string = CString::new(token.into_owned())?;
+            let status = unsafe {
+                libxdo_sys::xdo_send_keysequence_window(
+                    self.xdo as *const _,
+                    CURRENTWINDOW,
+                    string.as_ptr(),
+                    (self.delay / 2) as libxdo_sys::useconds_t,
+                )
+            };
+            xdo_result("text entry", status)?;
+        }
+        Ok(())
     }
 }
 

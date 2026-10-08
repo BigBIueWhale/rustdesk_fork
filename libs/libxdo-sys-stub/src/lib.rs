@@ -124,8 +124,6 @@ type FnXdoSendKeysequenceWindowDown =
     unsafe extern "C" fn(*const xdo_t, Window, *const c_char, useconds_t) -> c_int;
 type FnXdoSendKeysequenceWindowUp =
     unsafe extern "C" fn(*const xdo_t, Window, *const c_char, useconds_t) -> c_int;
-type FnXdoEnterTextWindow =
-    unsafe extern "C" fn(*const xdo_t, Window, *const c_char, useconds_t) -> c_int;
 type FnXdoClickWindow = unsafe extern "C" fn(*const xdo_t, Window, c_int) -> c_int;
 type FnXdoMouseDown = unsafe extern "C" fn(*const xdo_t, Window, c_int) -> c_int;
 type FnXdoMouseUp = unsafe extern "C" fn(*const xdo_t, Window, c_int) -> c_int;
@@ -161,7 +159,6 @@ struct XdoLib {
     xdo_send_keysequence_window: FnXdoSendKeysequenceWindow,
     xdo_send_keysequence_window_down: Option<FnXdoSendKeysequenceWindowDown>,
     xdo_send_keysequence_window_up: Option<FnXdoSendKeysequenceWindowUp>,
-    xdo_enter_text_window: Option<FnXdoEnterTextWindow>,
     xdo_click_window: Option<FnXdoClickWindow>,
     xdo_mouse_down: Option<FnXdoMouseDown>,
     xdo_mouse_up: Option<FnXdoMouseUp>,
@@ -211,10 +208,6 @@ impl XdoLib {
                 .get(b"xdo_send_keysequence_window_up")
                 .ok()
                 .map(|s: Symbol<FnXdoSendKeysequenceWindowUp>| *s);
-            let xdo_enter_text_window = lib
-                .get(b"xdo_enter_text_window")
-                .ok()
-                .map(|s: Symbol<FnXdoEnterTextWindow>| *s);
             let xdo_click_window = lib
                 .get(b"xdo_click_window")
                 .ok()
@@ -300,7 +293,6 @@ impl XdoLib {
                 xdo_send_keysequence_window,
                 xdo_send_keysequence_window_down,
                 xdo_send_keysequence_window_up,
-                xdo_enter_text_window,
                 xdo_click_window,
                 xdo_mouse_down,
                 xdo_mouse_up,
@@ -532,17 +524,6 @@ pub unsafe extern "C" fn xdo_send_keysequence_window_up(
     get_lib()
         .and_then(|lib| lib.xdo_send_keysequence_window_up)
         .map_or(1, |f| f(xdo, window, keysequence, delay))
-}
-
-pub unsafe extern "C" fn xdo_enter_text_window(
-    xdo: *const xdo_t,
-    window: Window,
-    string: *const c_char,
-    delay: useconds_t,
-) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_enter_text_window)
-        .map_or(1, |f| f(xdo, window, string, delay))
 }
 
 pub unsafe extern "C" fn xdo_click_window(

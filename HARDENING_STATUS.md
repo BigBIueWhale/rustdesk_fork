@@ -942,7 +942,7 @@ between-request release failure,
 modifier/group ownership, races/concurrency, whole heap/soak, full app/install,
 other platforms and broader authority/artifact/release evidence remain OPEN.
 
-**Complete modifier-map admission; current native acceptance PENDING.** Each numeric
+**Complete modifier-map admission; focused native acceptance.** Each numeric
 key request resolves every required modifier row once, after checked XKB state and
 before scratch mapping, group changes or key emission. Selected codes occupy an
 eight-code stack snapshot; queried storage is retired before effects and both click
@@ -951,13 +951,33 @@ accumulator are deleted. No-modifier requests make no modifier query. NULL, inva
 width/storage, empty required rows and out-of-range selected codes return `XDO_ERROR`.
 The provider, production helper and protected loader require
 `3.20160805.1-rustdesk8`; wrong-version uses current corrected C stamped 7.
-The current-only native shard adds six injected modifier-map faults, three actions
-and four rounds, with 72 intended refusals and 72 same-context uppercase-A recovery
-clicks. It observes real keycodes/order/state, native effects, query/free pairing,
-map/state preservation and resource retirement. Complete Enigo's native refusal
-provider now fails `XGetModifierMapping`, expecting actual status 1 and no events;
-the native state-query regression remains. No current runtime acceptance is claimed
-before the complete isolated transaction. Held/locked modifier ownership,
+Exact candidate `9d8ca60b7624a22a7f2aca00e3f9cdfb0fa95aa3`
+(tree `ac8b1a0fddfe32570cc29d6510e592e040a4dc46`) passed the complete focused
+transaction in 111 seconds with outer exit 0. Six injected modifier-map faults,
+three actions and four rounds produced 72 refusals before key/group/mapping effects
+or scratch acquisition. All 72 same-context uppercase-A recovery clicks delivered
+288 real Shift/key events with exact code/order/state, one modifier query per click
+and retirement before effects. The 144 queries/132 frees paired every nonnull map;
+both maps and keyboard state remained unchanged and no key stayed held.
+Actual complete Linux Enigo propagated key-input status 1 after native
+`XGetModifierMapping` failure in eight contexts, with no key events, working pointer
+input and retired descriptors.
+Existing state, numeric-key, scratch, constructor, mouse, text, layout and
+complete/staged loader regressions passed. The 54,224-byte version-8 provider
+SHA-256 is `266ffddf7cf60b4c18d7438464e21b86c72b6c1f7890a48a66c683762f79373a`.
+Raw `.harness-state/verifier-vm/x11-display-tests-run.3SHN5VQlRI.serial.log`
+is 101,753 bytes, SHA-256
+`228f3ca482cabb2ada2e5458c76e7f6ddaf3dedf0215f8ef31b2789306c72311`.
+The explicitly nonindependent assistant-observed receipt is
+`.harness-state/verifier-vm/evidence/xdo-key-modifier-run.3SHN5VQlRI.outer.receipt`,
+SHA-256 `d607ea2a7d9b3afff865f1a4e3077a61ff6e2c8204205cdaa782ca8aea701dfd`.
+The ordinary-user zero-NIC VM used guest-only network-none nonroot containers and
+read-only inputs. Outer endpoint inventories report no host listener addition;
+cleanup joined and the exact root/overlay is absent. Snapshots auto-retired, so
+independent snapshot comparison is unclaimed. Components use four authenticated
+real dependencies and a partial common facade; full Cargo/app/install and stage CLI
+were unexecuted. ASan leak detection is disabled; internal Xlib/whole-heap scope
+is unclaimed. Other layouts and modifier combinations, held/locked ownership,
 between-request release failure, native event/group-lock/asynchronous errors,
 map races, concurrency, whole heap/soak, full Cargo/app/install, other platforms
 and broader authority/artifact/release evidence remain OPEN.

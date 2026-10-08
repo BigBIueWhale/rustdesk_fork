@@ -1814,7 +1814,7 @@ prepared-native inner-loop work; VM timing excludes host preparation.
 
 ### Android runtime — intermittent presentation remains OPEN
 
-**Canvas preference continuations — native failure reproduced; correction pending acceptance.**
+**Canvas preference continuations — native component A/B passed; app-level symptoms OPEN.**
 At tests-first `871e24dc` (tree `8ca15c28`), all six real CanvasModel tests failed across
 presentation retirement or clear; the other 207 tests passed. Held view reads changed
 offset/scale/size/scroll state and emitted notification plus mouse refresh, scroll reads
@@ -1828,15 +1828,21 @@ awaits; next-turn scrolling is joined and checked. The longer layout adjustment 
 canvas-owned cancellable timer, with explicit completion/error observation rather than
 holding the session event queue for 300 ms. Clear/dispose invalidate captured owners and
 cancel/join that timer; replacing the deferred adjustment cancels its predecessor. The
-read-only preference adapter retains production queries,
-without a global binding replacement or alternate runtime mode. The original six refusal
-assertions are unchanged; five added tests cover committed-higher refusal, useful fresh
-controls, delayed scroll and disposed models. At `945c2138` (tree `f08972b9`), all 23
-suites/218 tests and three parser methods passed in the zero-NIC VM. Full raw
-`flutter-model-tests-run.DPO9terj2J.serial.log`, SHA256
-`8d7854c30275bc26262ed55766dcd1ea21d14b7c65238c62f642d611f3a6eaf0`.
-The subsequent bounded/nonblocking timer correction adds three actual cancellation/join
-tests and a two-useful-frame next-turn control; its native acceptance remains pending.
+read-only preference adapter retains production queries, without a global binding
+replacement or alternate runtime mode. The original six refusal assertions are unchanged;
+added cases cover committed-higher refusal, useful fresh controls, delayed scroll and
+disposed models. Three clock-controlled tests exercise the production deferred timer,
+observe immediate cancellation/refusal and advance past its old deadline to expose a
+still-armed callback. A real next-turn control accepts two useful Canvas initializers
+without cancellation merely by higher admission. At `6c89bd09` (tree `0bdef8da`), all 23
+suites/221 tests and three parser methods passed in the zero-NIC VM. Full 66,976-byte raw
+`flutter-model-tests-run.yJD6jomd5d.serial.log`, SHA256
+`f30e8f296d3b813d9eec6cbe4dcd228f5596ca4c46c299900a7003bf4785619d`.
+The transaction passed source/input, nonroot-container, listener/finality and joined-cleanup
+checks in 296 VM seconds, excluding host preparation. All four private roots/disks from
+this slice are retired; no owned job remains. Intermediate formatter and 218-test receipts
+remain in the audit journal. This is actual Flutter component behavior with controlled
+preference IO/session metadata, not an installed client, peer/window or OS timer census.
 This shared Flutter path is not Android-only; original Android/Windows causation, UI
 same-generation preference ordering, viewport-resize races, other canvas timers/controllers,
 default texture/window/device behavior and sustained resource/performance evidence remain OPEN.

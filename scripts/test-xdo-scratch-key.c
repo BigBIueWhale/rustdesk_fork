@@ -82,6 +82,15 @@ static void same_map(Display *display, int low, int count, int width, const KeyS
   XFree(actual);
 }
 
+static void scratch_map(const KeySym *mapping, int count, int width, int last_empty) {
+  for (int row = 0; row < count; row++) {
+    int empty = 1;
+    for (int column = 0; column < width; column++)
+      if (mapping[row * width + column] != NoSymbol) empty = 0;
+    require(empty == (last_empty && row == count - 1), "scratch map setup differs");
+  }
+}
+
 int main(void) {
   setbuf(stdout, NULL);
   int descriptors = entries("/proc/self/fd"), tasks = entries("/proc/self/task");
@@ -94,8 +103,7 @@ int main(void) {
   int count = high - low + 1;
   KeySym *original = XGetKeyboardMapping(observer, low, count, &width);
   require(original && width > 0, "original keyboard map unavailable");
-  KeySym *mapping = malloc(count * width * sizeof(KeySym));
-  require(mapping != NULL, "fixture map allocation failed");
+  int original_width = width;
   Window window = XCreateSimpleWindow(observer, DefaultRootWindow(observer), 0, 0, 120, 80, 0, 0, 0);
   require(window != None, "owned window unavailable");
   XSelectInput(observer, window, KeyPressMask | KeyReleaseMask);
@@ -113,10 +121,17 @@ int main(void) {
   xdo_free(input);
   puts("XDO_SCRATCH_CONTROL=pass key=a events=2");
   for (int round = 0; round < 4; round++) {
+    width = original_width;
+    KeySym *mapping = malloc(count * width * sizeof(KeySym));
+    require(mapping != NULL, "fixture map allocation failed");
     for (int i = 0; i < count * width; i++) mapping[i] = XK_F30;
     memset(mapping + (count - 1) * width, 0, width * sizeof(KeySym));
     XChangeKeyboardMapping(observer, low, width, mapping, count);
     XSync(observer, False);
+    free(mapping);
+    mapping = XGetKeyboardMapping(observer, low, count, &width);
+    require(mapping && width > 0, "canonical fixture map unavailable");
+    scratch_map(mapping, count, width, 1);
     same_map(observer, low, count, width, mapping);
     input = xdo_new("unix/:98.0");
     require(input != NULL, "fresh product context unavailable");
@@ -126,6 +141,10 @@ int main(void) {
         for (int i = 0; i < width; i++) mapping[(count - 1) * width + i] = XK_F30;
         XChangeKeyboardMapping(observer, high, width, mapping + (count - 1) * width, 1);
         XSync(observer, False);
+        XFree(mapping);
+        mapping = XGetKeyboardMapping(observer, low, count, &width);
+        require(mapping && width > 0, "canonical full map unavailable");
+        scratch_map(mapping, count, width, 0);
         same_map(observer, low, count, width, mapping);
       }
       key = (charcodemap_t){.code = low + 1, .symbol = XK_F30};
@@ -149,11 +168,11 @@ int main(void) {
     }
     product_display = NULL;
     xdo_free(input);
-    XChangeKeyboardMapping(observer, low, width, original, count);
+    XFree(mapping);
+    XChangeKeyboardMapping(observer, low, original_width, original, count);
     XSync(observer, False);
-    same_map(observer, low, count, width, original);
+    same_map(observer, low, count, original_width, original);
   }
-  free(mapping);
   XFree(original);
   XDestroyWindow(observer, window);
   XCloseDisplay(observer);

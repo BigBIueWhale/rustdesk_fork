@@ -661,7 +661,7 @@ display policy, but a partial common facade, not full Cargo/app/install. Resultl
 key-up/click/state, other consumers and whole-resource
 acceptance remain OPEN; this does not explain Android/Windows display delay.
 
-**Unused Enigo DSL retired; native replay pending.** The parser, default/override
+**Unused Enigo DSL retired; Linux native replay accepted.** The parser, default/override
 trait methods, example and parser-only tests are deleted. No RustDesk caller used
 this API; `process_unicode`/`process_seq` retain literal-text native submission and
 physical keys retain rdev. This removes recursively formatted parse errors and
@@ -669,8 +669,18 @@ discarded key-down failures rather than repairing an unused second input languag
 The existing native lane drops only dead parser imports/inventory entries; its
 historical XDO fixture removes the two obsolete trait methods to match the current
 API, with a new exact-source pin. Original native routing and test assertions are
-unchanged. Current-source native Linux replay and other-platform/app integration
-are not yet validated by this deletion.
+unchanged. Exact `994f06826a367f2d42041124ccec7677abf4f424` (tree `6c80a96a`)
+passed the unchanged native input/failure/resource checks and outer transaction in
+**145 seconds**, including complete Linux Enigo compilation and real pointer,
+Shift and text events. This uses a partial common facade and extracted display
+policy, not full Cargo/app/install or other-platform execution. Raw serial
+`.harness-state/verifier-vm/x11-display-tests-run.JWo6MvBvXQ.serial.log`
+is 128,171 bytes, SHA-256
+`69692b15d335d6d2a557a0b988b4801d5b681f1cea32ac423dacbee89bf242e5`;
+`evidence/enigo-dsl-retirement-run.JWo6MvBvXQ.outer.receipt` records the observed
+outer status/source/artifact scope. No added host listener; owned children joined
+and the exact scratch root/overlay is absent. Other-platform/app integration,
+whole-resource acceptance and Android/Windows display-delay causation remain OPEN.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,

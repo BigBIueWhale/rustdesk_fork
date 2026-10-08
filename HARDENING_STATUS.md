@@ -1814,22 +1814,30 @@ prepared-native inner-loop work; VM timing excludes host preparation.
 
 ### Android runtime — intermittent presentation remains OPEN
 
-**Mobile keyboard geometry lifetime — native baseline reproduced; correction pending acceptance.**
+**Mobile keyboard geometry lifetime — component A/B passed; app-level symptoms OPEN.**
 At tests-first `88e69b72`, eight new cases fail and the other 225 tests pass. Retired
 focus changes successor offsets and size; retired restore reapplies the old offset/scale,
 including a snapshot retired before restore is scheduled. Disposed callbacks notify a
 disposed model. Raw `flutter-model-tests-run.tag8LAJj1n.serial.log`, SHA256
 `d035e10c80dfe7aa268f5f7eee731e4d437cd879bdd2fbfc3a0c41f0d07e107d`.
-The correction captures exact canvas/session/client/topology/presentation ownership at
+`CanvasModel` captures exact canvas/session/client/topology/presentation ownership at
 save or focus scheduling, uses one immutable snapshot, consumes it at restore/refusal,
-and cancels/releases both timers on clear/dispose. Original twelve assertions remain;
+and cancels/releases both timers on clear/dispose. Original twelve tests remain;
 two additional clock-zone censuses require pending timer counts 2→0, not merely guarded
 callbacks. Already-locked `fake_async` 1.3.1 is now an explicit test dependency; no new
 package version or input acquisition. Useful repeated keyboard cycles, replacement and
 duplicate restore remain tested. Only existing mobile-layout selection, session metadata
-and the test clock are controlled; this is not Android OS/device or native timer-handle
-evidence. Corrected execution and original-symptom closure are not claimed yet.
-Desktop ticker/controller lifetime and the wider installed/performance matrices remain OPEN.
+and the test clock are controlled. At corrected `55c02ca1` (tree `bf193f21`), all 23
+suites/235 tests and three parser methods passed. The original refusal assertions, useful
+fresh controls and both timer-count censuses pass. Full 66,644-byte raw
+`flutter-model-tests-run.X3qmOuZXmf.serial.log`, SHA256
+`c593b894b128c0d9ab5f6fada243afe6ead58ae354adeb4f6d69a465a737272c`.
+The source-bound no-NIC VM transaction passed nonroot-container, source/input, listener
+and joined-cleanup checks in 308 VM seconds, excluding host preparation. Both private
+roots/disks are retired; no owned job remains. This is actual Flutter component execution,
+not Android/iOS OS/device, native timer-handle, installed-app or original-symptom evidence.
+UI metrics/viewport ordering, desktop ticker/controller lifetime, the faster prepared-native
+inner loop and the wider installed/performance matrices remain OPEN.
 
 **Canvas preference continuations — native component A/B passed; app-level symptoms OPEN.**
 At tests-first `871e24dc` (tree `8ca15c28`), all six real CanvasModel tests failed across
@@ -1861,7 +1869,7 @@ this slice are retired; no owned job remains. Intermediate formatter and 218-tes
 remain in the audit journal. This is actual Flutter component behavior with controlled
 preference IO/session metadata, not an installed client, peer/window or OS timer census.
 This shared Flutter path is not Android-only; original Android/Windows causation, UI
-same-generation preference ordering, viewport-resize races, other canvas timers/controllers,
+same-generation preference ordering, viewport-resize races, remaining UI/ticker/controller lifetimes,
 default texture/window/device behavior and sustained resource/performance evidence remain OPEN.
 
 **Cursor initialization — native continuation A/B passed; app-level symptoms OPEN.**

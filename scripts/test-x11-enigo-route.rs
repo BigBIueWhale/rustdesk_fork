@@ -10,6 +10,7 @@ mod platform {
 }
 pub mod libc { pub use std::ffi::c_int; }
 pub mod x11 {
+    #[allow(non_upper_case_globals)]
     #[path = "/work/xdo-vendor/x11-2.21.0/src/keysym.rs"]
     pub mod keysym;
     pub mod xlib {

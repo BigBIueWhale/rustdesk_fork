@@ -284,9 +284,11 @@ Future<List<TRadioMenu<String>>> toolbarViewStyle(
       await bind.sessionGetViewStyle(sessionId: ffi.sessionId) ?? '';
   void onChanged(String? value) async {
     if (value == null) return;
-    bind
-        .sessionSetViewStyle(sessionId: ffi.sessionId, value: value)
-        .then((_) => ffi.canvasModel.updateViewStyle());
+    final canvas = ffi.canvasModel;
+    final owner = canvas.captureUpdateOwner();
+    if (owner == null) return;
+    await bind.sessionSetViewStyle(sessionId: owner.sessionId, value: value);
+    await canvas.updateViewStyle(owner: owner);
   }
 
   return [

@@ -100,21 +100,26 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
   }
 
   Future<void> _applyScale(int v) async {
+    final canvas = ffi.canvasModel;
+    final owner = canvas.captureUpdateOwner();
+    if (!mounted || owner == null) return;
     v = clampCustomScalePercent(v);
     setState(() {
       _scaleValue = v;
     });
     try {
       await bind.sessionSetFlutterOption(
-          sessionId: ffi.sessionId,
+          sessionId: owner.sessionId,
           k: kCustomScalePercentKey,
           v: v.toString());
-      final curStyle = await bind.sessionGetViewStyle(sessionId: ffi.sessionId);
+      if (!mounted || !owner.isCurrent) return;
+      final curStyle = await bind.sessionGetViewStyle(sessionId: owner.sessionId);
+      if (!mounted || !owner.isCurrent) return;
       if (curStyle != kRemoteViewStyleCustom) {
         await bind.sessionSetViewStyle(
-            sessionId: ffi.sessionId, value: kRemoteViewStyleCustom);
+            sessionId: owner.sessionId, value: kRemoteViewStyleCustom);
       }
-      await ffi.canvasModel.updateViewStyle();
+      if (!await canvas.updateViewStyle(owner: owner) || !mounted) return;
       if (isMobile) {
         HapticFeedback.selectionClick();
       }

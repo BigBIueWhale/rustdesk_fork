@@ -466,16 +466,18 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                     : SafeArea(
                         child: OrientationBuilder(builder: (ctx, orientation) {
                           if (_currentOrientation != orientation) {
+                            final canvas = gFFI.canvasModel;
+                            final owner = canvas.captureUpdateOwner(
+                                expectedSessionId: sessionId);
                             Timer(const Duration(milliseconds: 200), () {
                               if (!mounted ||
-                                  !gFFI.isCurrentSession(sessionId)) {
+                                  owner?.isCurrent != true) {
                                 return;
                               }
                               gFFI.dialogManager
                                   .resetMobileActionsOverlay(ffi: gFFI);
                               _currentOrientation = orientation;
-                              gFFI.canvasModel.updateViewStyle(
-                                  expectedSessionId: sessionId);
+                              canvas.updateViewStyle(owner: owner);
                             });
                           }
                           return Container(

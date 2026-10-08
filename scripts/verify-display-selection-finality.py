@@ -1458,7 +1458,10 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         first_image,
         (
-            "isCurrentDisplayTopology(",
+            "final owner = canvasModel.captureUpdateOwner(",
+            "expectedDisplayTopologyRevision: expectedDisplayTopologyRevision",
+            "if (owner == null) return false;",
+            "if (!owner.isCurrent) return false;",
             "final inProgress = _firstImageInitialization;",
             "if (inProgress != null)",
             "final initialization = _initializeFirstImage(",
@@ -1472,6 +1475,7 @@ def validate(sources: Dict[str, str]) -> None:
         first_image,
         (
             "final completed = await inProgress;",
+            "if (!owner.isCurrent) return false;",
             "if (completed) return true;",
             "continue;",
             "final initialization = _initializeFirstImage(",

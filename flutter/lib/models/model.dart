@@ -947,10 +947,12 @@ class FfiModel with ChangeNotifier {
       _rect = newRect;
       // Await updateViewStyle to ensure view geometry is fully updated before
       // updating pointer lock center. This prevents stale center calculations.
-      await parent.target?.canvasModel.updateViewStyle(
-          refreshMousePos: updateCursorPos,
+      final canvas = ffi.canvasModel;
+      final owner = canvas.captureUpdateOwner(
           expectedSessionId: sessionId,
           expectedDisplayTopologyRevision: expectedTopologyRevision);
+      if (!await canvas.updateViewStyle(
+          owner: owner, refreshMousePos: updateCursorPos)) return false;
       if (!ffi.isCurrentSessionOwner(sessionId, expectedClientOwnerId) ||
           !isCurrentDisplayTopology(sessionId, expectedTopologyRevision)) {
         return false;
@@ -1656,10 +1658,13 @@ class FfiModel with ChangeNotifier {
         }
       }
       if (!isCurrentDisplayTopology(sessionId, topologyRevision)) return;
-      await parent.target!.canvasModel.tryUpdateScrollStyle(
-          Duration(milliseconds: 300), null,
+      final canvas = parent.target!.canvasModel;
+      final owner = canvas.captureUpdateOwner(
           expectedSessionId: sessionId,
           expectedDisplayTopologyRevision: topologyRevision);
+      if (!await canvas.tryUpdateScrollStyle(
+          Duration(milliseconds: 300), null,
+          owner: owner)) return;
       if (!isCurrentDisplayTopology(sessionId, topologyRevision)) return;
     }
     notifyListeners();
@@ -2045,39 +2050,33 @@ class ImageModel with ChangeNotifier {
         return false;
       }
       if (_image == null && image != null) {
+        final ffi = parent.target;
+        if (ffi == null) return false;
+        final canvas = ffi.canvasModel;
+        final owner = canvas.captureUpdateOwner(
+            expectedSessionId: expectedSessionId,
+            expectedDisplayTopologyRevision: expectedDisplayTopologyRevision,
+            acceptsUpdate: acceptsExpectedImage);
+        if (owner == null) return false;
         if (isDesktop || isWebDesktop) {
-          await parent.target?.canvasModel
-              .updateViewStyle(
-                  expectedSessionId: expectedSessionId,
-                  expectedDisplayTopologyRevision:
-                      expectedDisplayTopologyRevision);
-          if (!acceptsExpectedImage()) {
+          if (!await canvas.updateViewStyle(owner: owner) ||
+              !acceptsExpectedImage()) {
             return false;
           }
-          await parent.target?.canvasModel
-              .updateScrollStyle(
-                  expectedSessionId: expectedSessionId,
-                  expectedDisplayTopologyRevision:
-                      expectedDisplayTopologyRevision);
-          if (!acceptsExpectedImage()) {
+          if (!await canvas.updateScrollStyle(owner: owner) ||
+              !acceptsExpectedImage()) {
             return false;
           }
-          await parent.target?.canvasModel.initializeEdgeScrollEdgeThickness(
-              expectedSessionId: expectedSessionId,
-              expectedDisplayTopologyRevision:
-                  expectedDisplayTopologyRevision);
-          if (!acceptsExpectedImage()) {
+          if (!await canvas.initializeEdgeScrollEdgeThickness(owner: owner) ||
+              !acceptsExpectedImage()) {
             return false;
           }
         }
-        final ffi = parent.target;
-        if (ffi != null) {
-          await initializeCursorAndCanvas(ffi,
-              expectedSessionId: expectedSessionId ?? ffi.sessionId,
-              acceptsInitialization: acceptsExpectedImage);
-          if (!acceptsExpectedImage()) {
-            return false;
-          }
+        await initializeCursorAndCanvas(ffi,
+            expectedSessionId: owner.sessionId,
+            acceptsInitialization: () => owner.isCurrent);
+        if (!owner.isCurrent || !acceptsExpectedImage()) {
+          return false;
         }
       }
       if (!acceptsExpectedImage()) {
@@ -2351,6 +2350,31 @@ class _SessionCanvasPreferences implements CanvasPreferences {
       bind.sessionGetEdgeScrollEdgeThickness(sessionId: sessionId);
 }
 
+/// The exact session and canvas lifetime that may receive an asynchronous update.
+class CanvasUpdateOwner {
+  CanvasUpdateOwner._(this._canvas, this._ffi, this.sessionId, this._clientOwnerId,
+      this._topology, this._presentation, this._lifetime, this._acceptsUpdate);
+
+  final CanvasModel _canvas;
+  final FFI _ffi;
+  final SessionID sessionId;
+  final SessionID _clientOwnerId;
+  final int _topology;
+  final int _presentation;
+  final Object _lifetime;
+  final bool Function()? _acceptsUpdate;
+
+  bool get isCurrent =>
+      !_canvas._disposed &&
+      identical(_canvas._lifetime, _lifetime) &&
+      identical(_canvas.parent.target, _ffi) &&
+      identical(_ffi.canvasModel, _canvas) &&
+      _ffi.isCurrentSessionOwner(sessionId, _clientOwnerId) &&
+      _ffi.ffiModel.isCurrentDisplayTopology(sessionId, _topology) &&
+      _ffi.imageModel.isCurrentPresentationRevision(_presentation) &&
+      (_acceptsUpdate?.call() ?? true);
+}
+
 class CanvasModel with ChangeNotifier {
   // image offset of canvas
   double _x = 0;
@@ -2400,6 +2424,8 @@ class CanvasModel with ChangeNotifier {
   WeakReference<FFI> parent;
 
   final CanvasPreferences _preferences;
+  Object _lifetime = Object();
+  bool _disposed = false;
 
   CanvasModel(this.parent, {CanvasPreferences? preferences})
       : _preferences = preferences ?? const _SessionCanvasPreferences();
@@ -2491,33 +2517,42 @@ class CanvasModel with ChangeNotifier {
 
   updateSize() => _size = getSize();
 
-  bool _acceptsExpectedDisplayTopology(SessionID? expectedSessionId,
-      int? expectedDisplayTopologyRevision) {
-    if (expectedSessionId == null) {
-      return expectedDisplayTopologyRevision == null;
-    }
-    if (parent.target?.isCurrentSession(expectedSessionId) != true) {
-      return false;
-    }
-    return expectedDisplayTopologyRevision == null ||
-        parent.target?.ffiModel.isCurrentDisplayTopology(
-                expectedSessionId, expectedDisplayTopologyRevision) ==
-            true;
+  CanvasUpdateOwner? captureUpdateOwner(
+      {SessionID? expectedSessionId,
+      int? expectedDisplayTopologyRevision,
+      bool Function()? acceptsUpdate}) {
+    final ffi = parent.target;
+    if (_disposed || ffi == null) return null;
+    final selectedSessionId = expectedSessionId ?? ffi.sessionId;
+    final topology =
+        ffi.ffiModel.currentDisplayTopologyRevision(selectedSessionId);
+    if (topology == null ||
+        (expectedDisplayTopologyRevision != null &&
+            topology != expectedDisplayTopologyRevision)) return null;
+    final owner = CanvasUpdateOwner._(
+        this,
+        ffi,
+        selectedSessionId,
+        ffi.clientOwnerId,
+        topology,
+        ffi.imageModel.presentationRevision,
+        _lifetime,
+        acceptsUpdate);
+    return owner.isCurrent ? owner : null;
   }
 
-  updateViewStyle(
-      {refreshMousePos = true,
-      notify = true,
-      SessionID? expectedSessionId,
-      int? expectedDisplayTopologyRevision}) async {
-    if (!_acceptsExpectedDisplayTopology(
-        expectedSessionId, expectedDisplayTopologyRevision)) return;
-    final selectedSessionId = expectedSessionId ?? sessionId;
-    final style = _preferences.viewStyle(selectedSessionId);
-    if (!_acceptsExpectedDisplayTopology(
-        expectedSessionId, expectedDisplayTopologyRevision)) return;
+  bool _acceptsOwner(CanvasUpdateOwner? owner) =>
+      owner != null && identical(owner._canvas, this) && owner.isCurrent;
+
+  Future<bool> updateViewStyle(
+      {required CanvasUpdateOwner? owner,
+      bool refreshMousePos = true,
+      bool notify = true}) async {
+    if (!_acceptsOwner(owner)) return false;
+    final style = _preferences.viewStyle(owner!.sessionId);
+    if (!_acceptsOwner(owner)) return false;
     if (style == null) {
-      return;
+      return false;
     }
 
     final nextSize = getSize();
@@ -2537,22 +2572,22 @@ class CanvasModel with ChangeNotifier {
     // allow updates to proceed when style == kRemoteViewStyleCustom, even if the
     // rest of the ViewStyle fields are unchanged.
     if (_lastViewStyle == viewStyle && style != kRemoteViewStyleCustom) {
-      return;
+      return true;
     }
     var nextScale = viewStyle.scale;
 
     // Apply custom scale percent when in Custom mode
     if (style == kRemoteViewStyleCustom) {
       try {
-        nextScale = await _preferences.customScale(selectedSessionId);
+        nextScale = await _preferences.customScale(owner.sessionId);
       } catch (e, stack) {
         debugPrint('Error in getSessionCustomScale: $e');
         debugPrintStack(stackTrace: stack);
         nextScale = 1.0;
       }
-      if (!_acceptsExpectedDisplayTopology(
-          expectedSessionId, expectedDisplayTopologyRevision)) return;
     }
+
+    if (!_acceptsOwner(owner)) return false;
 
     if (_lastViewStyle.style != viewStyle.style) {
       _resetScroll();
@@ -2574,15 +2609,15 @@ class CanvasModel with ChangeNotifier {
     if (_imageOverflow.value != overflow) {
       _imageOverflow.value = overflow;
     }
+    if (!_acceptsOwner(owner)) return false;
     if (notify) {
       notifyListeners();
     }
+    if (!_acceptsOwner(owner)) return false;
     if (!isMobile && refreshMousePos) {
       parent.target?.inputModel.refreshMousePos();
     }
-    tryUpdateScrollStyle(Duration.zero, style,
-        expectedSessionId: expectedSessionId,
-        expectedDisplayTopologyRevision: expectedDisplayTopologyRevision);
+    return await tryUpdateScrollStyle(Duration.zero, style, owner: owner);
   }
 
   _resetCanvasOffset(int displayWidth, int displayHeight) {
@@ -2593,36 +2628,28 @@ class CanvasModel with ChangeNotifier {
     }
   }
 
-  tryUpdateScrollStyle(Duration duration, String? style,
-      {SessionID? expectedSessionId,
-      int? expectedDisplayTopologyRevision}) async {
-    if (!_acceptsExpectedDisplayTopology(
-        expectedSessionId, expectedDisplayTopologyRevision)) return;
-    if (_scrollStyle == ScrollStyle.scrollauto) return;
-    style ??= _preferences.viewStyle(expectedSessionId ?? sessionId);
-    if (!_acceptsExpectedDisplayTopology(
-        expectedSessionId, expectedDisplayTopologyRevision)) return;
+  Future<bool> tryUpdateScrollStyle(Duration duration, String? style,
+      {required CanvasUpdateOwner? owner}) async {
+    if (!_acceptsOwner(owner)) return false;
+    if (_scrollStyle == ScrollStyle.scrollauto) return true;
+    style ??= _preferences.viewStyle(owner!.sessionId);
+    if (!_acceptsOwner(owner)) return false;
     if (style != kRemoteViewStyleOriginal && style != kRemoteViewStyleCustom) {
-      return;
+      return true;
     }
 
     _resetScroll();
 
-    Future.delayed(duration, () async {
-      if (!_acceptsExpectedDisplayTopology(
-          expectedSessionId, expectedDisplayTopologyRevision)) return;
-      updateScrollPercent();
-    });
+    await Future<void>.delayed(duration);
+    if (!_acceptsOwner(owner)) return false;
+    updateScrollPercent();
+    return _acceptsOwner(owner);
   }
 
-  Future<void> updateScrollStyle(
-      {SessionID? expectedSessionId,
-      int? expectedDisplayTopologyRevision}) async {
-    if (!_acceptsExpectedDisplayTopology(
-        expectedSessionId, expectedDisplayTopologyRevision)) return;
-    final style = await _preferences.scrollStyle(expectedSessionId ?? sessionId);
-    if (!_acceptsExpectedDisplayTopology(
-        expectedSessionId, expectedDisplayTopologyRevision)) return;
+  Future<bool> updateScrollStyle({required CanvasUpdateOwner? owner}) async {
+    if (!_acceptsOwner(owner)) return false;
+    final style = await _preferences.scrollStyle(owner!.sessionId);
+    if (!_acceptsOwner(owner)) return false;
 
     _scrollStyle =
         style != null ? ScrollStyle.fromString(style) : ScrollStyle.scrollauto;
@@ -2632,21 +2659,19 @@ class CanvasModel with ChangeNotifier {
     }
 
     notifyListeners();
+    return _acceptsOwner(owner);
   }
 
-  Future<void> initializeEdgeScrollEdgeThickness(
-      {SessionID? expectedSessionId,
-      int? expectedDisplayTopologyRevision}) async {
-    if (!_acceptsExpectedDisplayTopology(
-        expectedSessionId, expectedDisplayTopologyRevision)) return;
-    final savedValue =
-        await _preferences.edgeThickness(expectedSessionId ?? sessionId);
-    if (!_acceptsExpectedDisplayTopology(
-        expectedSessionId, expectedDisplayTopologyRevision)) return;
+  Future<bool> initializeEdgeScrollEdgeThickness(
+      {required CanvasUpdateOwner? owner}) async {
+    if (!_acceptsOwner(owner)) return false;
+    final savedValue = await _preferences.edgeThickness(owner!.sessionId);
+    if (!_acceptsOwner(owner)) return false;
 
     if (savedValue != null) {
       _edgeScrollEdgeThickness = savedValue;
     }
+    return true;
   }
 
   void updateEdgeScrollEdgeThickness(int newThickness) {
@@ -2872,7 +2897,7 @@ class CanvasModel with ChangeNotifier {
 
   resetOffset() {
     if (isWebDesktop) {
-      updateViewStyle();
+      updateViewStyle(owner: captureUpdateOwner());
     } else {
       _resetCanvasOffset(getDisplayWidth(), getDisplayHeight());
     }
@@ -2922,6 +2947,7 @@ class CanvasModel with ChangeNotifier {
   }
 
   clear() {
+    _lifetime = Object();
     _x = 0;
     _y = 0;
     _scale = 1.0;
@@ -2942,6 +2968,13 @@ class CanvasModel with ChangeNotifier {
     _timerMobileRestoreCanvasOffset = null;
     _offsetBeforeMobileSoftKeyboard = null;
     _scaleBeforeMobileSoftKeyboard = null;
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _lifetime = Object();
+    super.dispose();
   }
 
   updateScrollPercent() {
@@ -5323,44 +5356,34 @@ class FFI {
   }
 
   Future<bool> _initializeFirstImage(
-      SessionID expectedSessionId,
-      int expectedDisplayTopologyRevision,
-      bool imageGeometryInitialized) async {
-    bool acceptsTopology() => ffiModel.isCurrentDisplayTopology(
-        expectedSessionId, expectedDisplayTopologyRevision);
-
-    if (!acceptsTopology()) return false;
+      CanvasUpdateOwner owner, bool imageGeometryInitialized) async {
+    if (!owner.isCurrent) return false;
     if (!imageGeometryInitialized) {
-      await canvasModel.updateViewStyle(
-          expectedSessionId: expectedSessionId,
-          expectedDisplayTopologyRevision:
-              expectedDisplayTopologyRevision);
-      if (!acceptsTopology()) return false;
-      await canvasModel.updateScrollStyle(
-          expectedSessionId: expectedSessionId,
-          expectedDisplayTopologyRevision:
-              expectedDisplayTopologyRevision);
-      if (!acceptsTopology()) return false;
-      await canvasModel.initializeEdgeScrollEdgeThickness(
-          expectedSessionId: expectedSessionId,
-          expectedDisplayTopologyRevision:
-              expectedDisplayTopologyRevision);
-      if (!acceptsTopology()) return false;
+      if (!await canvasModel.updateViewStyle(owner: owner)) return false;
+      if (!await canvasModel.updateScrollStyle(owner: owner)) return false;
+      if (!await canvasModel.initializeEdgeScrollEdgeThickness(owner: owner)) {
+        return false;
+      }
     }
 
+    if (!owner.isCurrent) return false;
     ffiModel.waitForFirstImage.value = false;
+    if (!owner.isCurrent) return false;
     dialogManager.dismissAll();
     for (final cb in imageModel.callbacksOnFirstImage) {
+      if (!owner.isCurrent) return false;
       cb(id);
     }
-    return true;
+    return owner.isCurrent;
   }
 
   Future<bool> onEvent2UIRgba(SessionID expectedSessionId,
       int expectedDisplayTopologyRevision,
       {required bool imageGeometryInitialized}) async {
-    if (!ffiModel.isCurrentDisplayTopology(
-        expectedSessionId, expectedDisplayTopologyRevision)) return false;
+    final owner = canvasModel.captureUpdateOwner(
+        expectedSessionId: expectedSessionId,
+        expectedDisplayTopologyRevision: expectedDisplayTopologyRevision);
+    if (owner == null) return false;
     if (ffiModel.waitForImageDialogShow.isTrue) {
       ffiModel.waitForImageDialogShow.value = false;
       ffiModel.waitForImageTimer?.cancel();
@@ -5368,8 +5391,7 @@ class FFI {
     }
 
     while (true) {
-      if (!ffiModel.isCurrentDisplayTopology(
-          expectedSessionId, expectedDisplayTopologyRevision)) return false;
+      if (!owner.isCurrent) return false;
       if (ffiModel.waitForFirstImage.value != true) {
         return true;
       }
@@ -5377,11 +5399,12 @@ class FFI {
       final inProgress = _firstImageInitialization;
       if (inProgress != null) {
         final completed = await inProgress;
+        if (!owner.isCurrent) return false;
         if (completed) return true;
         continue;
       }
-      final initialization = _initializeFirstImage(expectedSessionId,
-          expectedDisplayTopologyRevision, imageGeometryInitialized);
+      final initialization = _initializeFirstImage(
+          owner, imageGeometryInitialized);
       _firstImageInitialization = initialization;
       try {
         return await initialization;

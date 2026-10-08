@@ -18,14 +18,18 @@ import 'package:uuid/uuid.dart';
 enum _GeometryFailure { view, scroll, edge, cursor }
 
 class _ImageSession implements FFI {
-  _ImageSession({_GeometryFailure? failFirstAt})
-      : canvasModel = _PendingImageGeometry(failFirstAt),
-        cursorModel = _ImageCursor(failFirstAt == _GeometryFailure.cursor);
+  _ImageSession({this.failFirstAt})
+      : cursorModel = _ImageCursor(failFirstAt == _GeometryFailure.cursor);
+
+  final _GeometryFailure? failFirstAt;
 
   @override
   final SessionID sessionId = Uuid().v4obj();
   @override
-  final _PendingImageGeometry canvasModel;
+  final SessionID clientOwnerId = Uuid().v4obj();
+  @override
+  late final _PendingImageGeometry canvasModel =
+      _PendingImageGeometry(this, failFirstAt);
   @override
   final _ImageCursor cursorModel;
   @override
@@ -35,6 +39,10 @@ class _ImageSession implements FFI {
 
   @override
   bool isCurrentSession(SessionID expected) => expected == sessionId;
+
+  @override
+  bool isCurrentSessionOwner(SessionID session, SessionID owner) =>
+      isCurrentSession(session) && owner == clientOwnerId;
 
   Future<bool> publish(int publication) => imageModel.onRgba(
         sessionId,
@@ -66,11 +74,15 @@ class _ImageTopology implements FfiModel {
       expected == sessionId && revision == 0;
 
   @override
+  int? currentDisplayTopologyRevision(SessionID expected) =>
+      expected == sessionId ? 0 : null;
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class _PendingImageGeometry implements CanvasModel {
-  _PendingImageGeometry(this.failFirstAt);
+class _PendingImageGeometry extends CanvasModel {
+  _PendingImageGeometry(FFI ffi, this.failFirstAt) : super(WeakReference(ffi));
 
   final _GeometryFailure? failFirstAt;
   final started = List.generate(2, (_) => Completer<void>());
@@ -86,29 +98,28 @@ class _PendingImageGeometry implements CanvasModel {
   }
 
   @override
-  Future<void> updateViewStyle(
-      {refreshMousePos = true,
-      notify = true,
-      SessionID? expectedSessionId,
-      int? expectedDisplayTopologyRevision}) async {
+  Future<bool> updateViewStyle(
+      {required CanvasUpdateOwner? owner,
+      bool refreshMousePos = true,
+      bool notify = true}) async {
     final index = calls++;
     started[index].complete();
     await release[index].future;
     if (index == 0) failOnceAt(_GeometryFailure.view);
+    return owner?.isCurrent ?? false;
   }
 
   @override
-  Future<void> updateScrollStyle(
-      {SessionID? expectedSessionId,
-      int? expectedDisplayTopologyRevision}) async {
+  Future<bool> updateScrollStyle({required CanvasUpdateOwner? owner}) async {
     failOnceAt(_GeometryFailure.scroll);
+    return owner?.isCurrent ?? false;
   }
 
   @override
-  Future<void> initializeEdgeScrollEdgeThickness(
-      {SessionID? expectedSessionId,
-      int? expectedDisplayTopologyRevision}) async {
+  Future<bool> initializeEdgeScrollEdgeThickness(
+      {required CanvasUpdateOwner? owner}) async {
     failOnceAt(_GeometryFailure.edge);
+    return owner?.isCurrent ?? false;
   }
 
   void releaseAll() {
@@ -242,24 +253,21 @@ class _CanvasPreferenceSession implements FFI {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-Future<void> _readCanvasPreference(
-    _CanvasPreferenceSession session, _CanvasPreferenceStage stage) async {
+Future<bool> _readCanvasPreference(
+    _CanvasPreferenceSession session, _CanvasPreferenceStage stage,
+    {CanvasUpdateOwner? owner}) async {
+  final canvas = session.canvasModel;
+  final selectedOwner = owner ??
+      canvas.captureUpdateOwner(
+          expectedSessionId: session.sessionId,
+          expectedDisplayTopologyRevision: 0);
   switch (stage) {
     case _CanvasPreferenceStage.view:
-      await session.canvasModel.updateViewStyle(
-          expectedSessionId: session.sessionId,
-          expectedDisplayTopologyRevision: 0);
-      break;
+      return canvas.updateViewStyle(owner: selectedOwner);
     case _CanvasPreferenceStage.scroll:
-      await session.canvasModel.updateScrollStyle(
-          expectedSessionId: session.sessionId,
-          expectedDisplayTopologyRevision: 0);
-      break;
+      return canvas.updateScrollStyle(owner: selectedOwner);
     case _CanvasPreferenceStage.edge:
-      await session.canvasModel.initializeEdgeScrollEdgeThickness(
-          expectedSessionId: session.sessionId,
-          expectedDisplayTopologyRevision: 0);
-      break;
+      return canvas.initializeEdgeScrollEdgeThickness(owner: selectedOwner);
   }
 }
 
@@ -338,6 +346,8 @@ Future<void> _observeImagePublications(
       }
       ui.Image.onCreate = previousCreate;
       ui.Image.onDispose = previousDispose;
+      session.canvasModel.dispose();
+      session.imageModel.dispose();
     }
   }
 }
@@ -440,6 +450,63 @@ Future<Map<String, Object>> _conversionFailureHandles(String failingStage) async
 
 void main() {
   for (final stage in _CanvasPreferenceStage.values) {
+    testWidgets('superseded canvas ${stage.name} read preserves successor state',
+        (tester) async {
+      await tester.runAsync(() async {
+        final preferences = _PendingCanvasPreferences(stage);
+        final session = _CanvasPreferenceSession(preferences);
+        final canvas = session.canvasModel;
+        final order = ExactRgbaPublicationOrder<SessionID>();
+        final earlier = order.admit(session.sessionId, 0, 1)!;
+        final higher = order.admit(session.sessionId, 0, 2)!;
+        final owner = canvas.captureUpdateOwner(
+            acceptsUpdate: () => order.canComplete(earlier));
+        expect(owner, isNotNull);
+        // A newer admission alone does not invalidate a useful ready update.
+        expect(owner!.isCurrent, isTrue);
+        final pending = _readCanvasPreference(session, stage, owner: owner);
+        try {
+          await preferences.started.future
+              .timeout(const Duration(seconds: 5));
+          expect(order.commit(higher), isTrue);
+          canvas.update(31, 37, 1.75);
+          canvas.setScrollPercent(0.2, 0.3);
+          final before = _canvasPreferenceState(canvas);
+          preferences.release.complete();
+          final accepted = await pending.timeout(const Duration(seconds: 5));
+          expect([
+            accepted,
+            _canvasPreferenceState(canvas),
+            session.inputModel.refreshes,
+          ], [false, before, 0]);
+
+          final fresh = order.admit(session.sessionId, 0, 3)!;
+          final freshOwner = canvas.captureUpdateOwner(
+              acceptsUpdate: () => order.canComplete(fresh));
+          expect(await _readCanvasPreference(session, stage, owner: freshOwner),
+              isTrue);
+          expect(order.commit(fresh), isTrue);
+          switch (stage) {
+            case _CanvasPreferenceStage.view:
+              expect(canvas.scale, 2.25 / ui.window.devicePixelRatio);
+              break;
+            case _CanvasPreferenceStage.scroll:
+              expect(canvas.scrollStyle, ScrollStyle.scrolledge);
+              break;
+            case _CanvasPreferenceStage.edge:
+              expect(canvas.edgeScrollEdgeThickness, 41);
+              break;
+          }
+        } finally {
+          if (!preferences.release.isCompleted) preferences.release.complete();
+          await pending;
+          canvas.dispose();
+          session.imageModel.dispose();
+          session.cursorModel.dispose();
+        }
+      });
+    }, timeout: const Timeout(Duration(seconds: 30)));
+
     for (final retirement in ['presentation', 'clear']) {
       testWidgets('retired $retirement canvas ${stage.name} read has no effects',
           (tester) async {
@@ -500,6 +567,71 @@ void main() {
       }, timeout: const Timeout(Duration(seconds: 30)));
     }
   }
+
+  testWidgets('delayed canvas scroll update joins and refuses a retired owner',
+      (tester) async {
+    await tester.runAsync(() async {
+      final preferences =
+          _PendingCanvasPreferences(_CanvasPreferenceStage.scroll);
+      preferences.release.complete();
+      final session = _CanvasPreferenceSession(preferences);
+      final canvas = session.canvasModel;
+      try {
+        expect(await _readCanvasPreference(session, _CanvasPreferenceStage.scroll),
+            isTrue);
+        final owner = canvas.captureUpdateOwner();
+        final pending = canvas.tryUpdateScrollStyle(
+            Duration.zero, kRemoteViewStyleCustom, owner: owner);
+        session.imageModel.retirePresentation();
+        canvas.setScrollPercent(0.6, 0.7);
+        expect(await pending.timeout(const Duration(seconds: 5)), isFalse);
+        expect([canvas.scrollX, canvas.scrollY], [0.6, 0.7]);
+        expect(
+            await canvas.tryUpdateScrollStyle(
+                Duration.zero, kRemoteViewStyleCustom,
+                owner: canvas.captureUpdateOwner()),
+            isTrue);
+      } finally {
+        canvas.dispose();
+        session.imageModel.dispose();
+        session.cursorModel.dispose();
+      }
+    });
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
+  testWidgets('disposed canvas refuses pending reads and new update owners',
+      (tester) async {
+    await tester.runAsync(() async {
+      for (final stage in _CanvasPreferenceStage.values) {
+        final preferences = _PendingCanvasPreferences(stage);
+        final session = _CanvasPreferenceSession(preferences);
+        final canvas = session.canvasModel;
+        final pending = _readCanvasPreference(session, stage);
+        var disposed = false;
+        try {
+          await preferences.started.future
+              .timeout(const Duration(seconds: 5));
+          final before = _canvasPreferenceState(canvas);
+          canvas.dispose();
+          disposed = true;
+          preferences.release.complete();
+          expect(await pending.timeout(const Duration(seconds: 5)), isFalse);
+          expect(_canvasPreferenceState(canvas), before);
+          expect(canvas.captureUpdateOwner(), isNull);
+          expect(await canvas.updateViewStyle(owner: null), isFalse);
+          expect(await canvas.updateScrollStyle(owner: null), isFalse);
+          expect(await canvas.initializeEdgeScrollEdgeThickness(owner: null),
+              isFalse);
+        } finally {
+          if (!preferences.release.isCompleted) preferences.release.complete();
+          await pending;
+          if (!disposed) canvas.dispose();
+          session.imageModel.dispose();
+          session.cursorModel.dispose();
+        }
+      }
+    });
+  }, timeout: const Timeout(Duration(seconds: 30)));
 
   testWidgets('retired cursor initialization preserves current geometry',
       (tester) async {

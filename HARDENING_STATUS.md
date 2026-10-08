@@ -1814,14 +1814,24 @@ prepared-native inner-loop work; VM timing excludes host preparation.
 
 ### Android runtime — intermittent presentation remains OPEN
 
-**Canvas preference continuations — native reproduction pending.** View/custom-scale,
-scroll-style and edge-thickness reads currently retain only optional session/topology
-checks. Presentation retirement or canvas clear can leave that pair current while a
-pending read changes successor geometry/settings. Six focused tests exercise the real
-CanvasModel with held read-only preference results, gather state/notifications/input
-effects together, and require fresh-owner controls. The production query adapter keeps
-the same session reads; no global binding replacement or extra runtime mode is added.
-Correction and native acceptance are pending; original Android/Windows causation remains OPEN.
+**Canvas preference continuations — native failure reproduced; correction pending acceptance.**
+At tests-first `871e24dc` (tree `8ca15c28`), all six real CanvasModel tests failed across
+presentation retirement or clear; the other 207 tests passed. Held view reads changed
+offset/scale/size/scroll state and emitted notification plus mouse refresh, scroll reads
+changed mode/percentages and notified, and edge reads changed thickness. Full raw
+`flutter-model-tests-run.SCD5Pm9sva.serial.log`, SHA256
+`52887a48cc073f2ce493558d9c83eb00ef609b9a93b00043f9116f697b6e55b3`.
+The optional topology-only mutator API is replaced by a required captured owner for the
+exact canvas lifetime, session/client, topology and presentation. Image setup adds its
+existing live image/admission/publication predicate. Callers retain the owner across
+awaits; delayed scrolling is joined and checked rather than detached. Clear/dispose
+invalidate captured owners. The read-only preference adapter retains production queries,
+without a global binding replacement or alternate runtime mode. The original six refusal
+assertions are unchanged; five added tests cover committed-higher refusal, useful fresh
+controls, delayed scroll and disposed models. Corrected native acceptance is pending.
+This shared Flutter path is not Android-only; original Android/Windows causation, UI
+same-generation preference ordering, viewport-resize races, other canvas timers/controllers,
+default texture/window/device behavior and sustained resource/performance evidence remain OPEN.
 
 **Cursor initialization — native continuation A/B passed; app-level symptoms OPEN.**
 At tests-first `844e9c15` (tree `6d41f6db`), two tests exercised the actual initializer,

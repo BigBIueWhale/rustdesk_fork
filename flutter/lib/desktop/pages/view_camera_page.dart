@@ -592,7 +592,8 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     var paints = <Widget>[
       LayoutBuilder(builder: (context, constraints) {
         final c = Provider.of<CanvasModel>(context, listen: false);
-        Future.delayed(Duration.zero, () => c.updateViewStyle());
+        final owner = c.captureUpdateOwner();
+        Future.delayed(Duration.zero, () => c.updateViewStyle(owner: owner));
         final peerDisplay = CurrentDisplayState.find(widget.id);
         return Obx(
           () => _ffi.ffiModel.pi.isSet.isFalse

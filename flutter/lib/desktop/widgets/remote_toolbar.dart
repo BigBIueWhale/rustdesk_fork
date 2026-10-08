@@ -1575,9 +1575,14 @@ class _DisplayMenuState extends State<_DisplayMenu> {
 
       onChangeScrollStyle(String? value) async {
         if (value == null) return;
+        final canvas = widget.ffi.canvasModel;
+        final owner = canvas.captureUpdateOwner();
+        if (owner == null) return;
         await bind.sessionSetScrollStyle(
-            sessionId: ffi.sessionId, value: value);
-        widget.ffi.canvasModel.updateScrollStyle();
+            sessionId: owner.sessionId, value: value);
+        if (!await canvas.updateScrollStyle(owner: owner) || !state.mounted) {
+          return;
+        }
         state.setState(() {});
       }
 

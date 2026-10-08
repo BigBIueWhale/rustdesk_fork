@@ -810,7 +810,8 @@ class _ViewStyleUpdaterState extends State<_ViewStyleUpdater> {
               _callbackScheduled = false;
               final currentSize = _lastSize;
               if (mounted && currentSize != null) {
-                widget.canvasModel.updateViewStyle();
+                final canvas = widget.canvasModel;
+                canvas.updateViewStyle(owner: canvas.captureUpdateOwner());
                 widget.inputModel.updateImageWidgetSize(currentSize);
               }
             });

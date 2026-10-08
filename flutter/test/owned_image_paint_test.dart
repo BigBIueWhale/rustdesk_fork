@@ -379,6 +379,29 @@ void main() {
     });
   }, timeout: const Timeout(Duration(seconds: 30)));
 
+  testWidgets('notification retirement cannot dispose an adopted image twice',
+      (tester) async {
+    await tester.runAsync(() async {
+      await _observeImagePublications((session, pending, images) async {
+        void clearOnNotification() => session.imageModel.clearImage();
+        session.imageModel.addListener(clearOnNotification);
+        try {
+          session.canvasModel.release[0].complete();
+          expect(await pending[0], isTrue);
+          expect(session.imageModel.image, isNull);
+          expect(images[0].debugDisposed, isTrue);
+          expect(_openHandles(images[0]), 0);
+
+          session.canvasModel.release[1].complete();
+          expect(await pending[1], isFalse);
+          expect(images[1].debugDisposed, isTrue);
+        } finally {
+          session.imageModel.removeListener(clearOnNotification);
+        }
+      });
+    });
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
   testWidgets('owned image paint fills loose stack bounds and retains pixels',
       (tester) async {
     final source = (await tester.runAsync(

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-5f005b3847a4a6a05ec448d54fc1d98bf97083ae0452c809f9838c09a854ca89  requirements.html
+8b7110bf9a4ab3814d6b2dc7ffdf0dd75a4bf5ea8f55b2d6b1e79417481e8ccb  requirements.html
 ```
 
 ## Current Verdict
@@ -1693,7 +1693,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `5f005b3847a4a6a05ec448d54fc1d98bf97083ae0452c809f9838c09a854ca89  requirements.html`.
+Current normative specification SHA-256: `8b7110bf9a4ab3814d6b2dc7ffdf0dd75a4bf5ea8f55b2d6b1e79417481e8ccb  requirements.html`.
 
 ### Current authority and source closure
 
@@ -1817,17 +1817,25 @@ component evidence, not a real window/APK/peer result.
 The early commit was introduced by `485487666` on September 29, so this cannot explain an
 older artifact without that code; default Windows textures use a different path. Original
 Android/Windows causation and installed/release/soak evidence remain OPEN. Initialization
-exceptions and stale geometry/cursor side effects are not covered; resource cleanup on
-those paths remains OPEN. Earlier fixture-compilation and stale-summary failures, with
+exception ownership is tracked separately below; stale geometry/cursor side effects and
+broader resource lifecycles remain OPEN. Earlier fixture-compilation and stale-summary failures, with
 their independent raw logs and exact cleanup receipts, remain in the audit journal.
 
-**First-image setup failure — native fault probe pending.** `ImageModel.update` owns
-new native images across canvas/cursor awaits but only disposes them on explicit refusal,
-not on an initialization exception. Four added native-image regressions inject view,
-scroll, edge and cursor setup errors, observe disposal before return and a useful
-successor; a fifth preserves the already-current image on refusal/identity no-op.
-Production is unchanged while establishing the negative result. Model inventory is
-23 suites/204 tests; no leak, symptom cause or correction is yet behaviorally claimed.
+**First-image setup failure — native leak reproduced; ownership correction unvalidated.**
+Tests-first `67eeb8a3` (tree `99726a44`) reproduced undisposed native images after view,
+scroll, edge and cursor initialization errors: all four fault tests failed cleanup;
+the other 200 passed, including current-image refusal/no-op preservation. Full raw serial
+`flutter-model-tests-run.g8Ss8Pycra.serial.log` is 235,505 bytes, SHA256
+`dc87afdd30fa6d2ba51adb68642b657d5b36302416392ef065e14a4898e72cb8`.
+The corrected update owns its input in one `finally` scope until synchronous adoption,
+disposing any unadopted candidate on refusal or exception without re-disposing current or
+adopted handles. Post-decode validation now belongs to that owner rather than an unowned
+gap between decoding and update. Exact session/topology/presentation/order checks remain
+before initialization and after every await. Fault cases are unchanged; an additional
+notification-triggered retirement test protects post-adoption ownership. Inventory is
+23 suites/205 tests. Native corrected execution remains pending; this component finding
+does not establish original symptoms, natural error frequency, device/window behavior or
+sustained resources. The unprotected awaits already existed in the upstream 1.4.7 import.
 
 The disposable runtime uses the pinned Emulator 37.1.11 and Android 14/API-34 x86_64 image in a
 networkless numeric-nonroot container inside the ordinary-user zero-NIC verifier VM. Source and APK

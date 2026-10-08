@@ -2007,15 +2007,6 @@ class ImageModel with ChangeNotifier {
     if (image == null) {
       return false;
     }
-    if (parent.target?.ffiModel.isCurrentDisplayTopology(
-                expectedSessionId, expectedDisplayTopologyRevision) !=
-            true ||
-        !isCurrentPresentationRevision(expectedPresentationRevision) ||
-        (expectedRgbaPublication != null &&
-            !_rgbaPublicationOrder.canComplete(expectedRgbaPublication))) {
-      image.dispose();
-      return false;
-    }
     return update(image,
         expectedSessionId: expectedSessionId,
         expectedRgbaPublication: expectedRgbaPublication,
@@ -2023,6 +2014,7 @@ class ImageModel with ChangeNotifier {
         expectedPresentationRevision: expectedPresentationRevision);
   }
 
+  /// Consumes a new image until adoption; an already-current image stays owned.
   Future<bool> update(ui.Image? image,
       {SessionID? expectedSessionId,
       bool allowClosedSession = false,
@@ -2047,76 +2039,73 @@ class ImageModel with ChangeNotifier {
                         expectedDisplayTopologyRevision) ==
                     true));
 
-    if (!acceptsExpectedImage()) {
-      if (!identical(image, _image)) {
-        image?.dispose();
+    var adopted = false;
+    try {
+      if (!acceptsExpectedImage()) {
+        return false;
       }
-      return false;
-    }
-    if (_image == null && image != null) {
-      if (isDesktop || isWebDesktop) {
-        await parent.target?.canvasModel
-            .updateViewStyle(
-                expectedSessionId: expectedSessionId,
-                expectedDisplayTopologyRevision:
-                    expectedDisplayTopologyRevision);
-        if (!acceptsExpectedImage()) {
-          image.dispose();
-          return false;
+      if (_image == null && image != null) {
+        if (isDesktop || isWebDesktop) {
+          await parent.target?.canvasModel
+              .updateViewStyle(
+                  expectedSessionId: expectedSessionId,
+                  expectedDisplayTopologyRevision:
+                      expectedDisplayTopologyRevision);
+          if (!acceptsExpectedImage()) {
+            return false;
+          }
+          await parent.target?.canvasModel
+              .updateScrollStyle(
+                  expectedSessionId: expectedSessionId,
+                  expectedDisplayTopologyRevision:
+                      expectedDisplayTopologyRevision);
+          if (!acceptsExpectedImage()) {
+            return false;
+          }
+          await parent.target?.canvasModel.initializeEdgeScrollEdgeThickness(
+              expectedSessionId: expectedSessionId,
+              expectedDisplayTopologyRevision:
+                  expectedDisplayTopologyRevision);
+          if (!acceptsExpectedImage()) {
+            return false;
+          }
         }
-        await parent.target?.canvasModel
-            .updateScrollStyle(
-                expectedSessionId: expectedSessionId,
-                expectedDisplayTopologyRevision:
-                    expectedDisplayTopologyRevision);
-        if (!acceptsExpectedImage()) {
-          image.dispose();
-          return false;
-        }
-        await parent.target?.canvasModel.initializeEdgeScrollEdgeThickness(
-            expectedSessionId: expectedSessionId,
-            expectedDisplayTopologyRevision:
-                expectedDisplayTopologyRevision);
-        if (!acceptsExpectedImage()) {
-          image.dispose();
-          return false;
-        }
-      }
-      if (parent.target != null) {
-        await initializeCursorAndCanvas(parent.target!,
-            expectedSessionId: expectedSessionId,
-            expectedDisplayTopologyRevision:
-                expectedDisplayTopologyRevision);
-        if (!acceptsExpectedImage()) {
-          image.dispose();
-          return false;
+        if (parent.target != null) {
+          await initializeCursorAndCanvas(parent.target!,
+              expectedSessionId: expectedSessionId,
+              expectedDisplayTopologyRevision:
+                  expectedDisplayTopologyRevision);
+          if (!acceptsExpectedImage()) {
+            return false;
+          }
         }
       }
-    }
-    if (!acceptsExpectedImage()) {
-      if (!identical(image, _image)) {
-        image?.dispose();
+      if (!acceptsExpectedImage()) {
+        return false;
       }
-      return false;
-    }
-    if (image == null) {
-      _rgbaPublicationOrder.retire();
-    }
-    final retiring = _image;
-    if (identical(retiring, image)) {
+      if (image == null) {
+        _rgbaPublicationOrder.retire();
+      }
+      final retiring = _image;
+      if (identical(retiring, image)) {
+        return true;
+      }
+      if (expectedRgbaPublication != null &&
+          !_rgbaPublicationOrder.commit(expectedRgbaPublication)) {
+        return false;
+      }
+      _image = image;
+      adopted = true;
+      _presentationDisplay = expectedRgbaPublication?.display;
+      _presentationPublication = expectedRgbaPublication?.publication;
+      retiring?.dispose();
+      notifyListeners();
       return true;
+    } finally {
+      if (!adopted && !identical(image, _image)) {
+        image?.dispose();
+      }
     }
-    if (expectedRgbaPublication != null &&
-        !_rgbaPublicationOrder.commit(expectedRgbaPublication)) {
-      image?.dispose();
-      return false;
-    }
-    _image = image;
-    _presentationDisplay = expectedRgbaPublication?.display;
-    _presentationPublication = expectedRgbaPublication?.publication;
-    retiring?.dispose();
-    notifyListeners();
-    return true;
   }
 
   // mobile only

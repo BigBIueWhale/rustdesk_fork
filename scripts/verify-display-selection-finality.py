@@ -1418,13 +1418,37 @@ def validate(sources: Dict[str, str]) -> None:
             "isCurrentPresentationRevision(",
             "final rect = parent.target?.ffiModel.pi.getDisplayRect(display);",
             "final image = await img.decodeImageFromPixels(",
-            "isCurrentDisplayTopology(",
-            "isCurrentPresentationRevision(",
-            "image.dispose();",
+            "if (image == null)",
+            "return update(image,",
             "expectedDisplayTopologyRevision: expectedDisplayTopologyRevision",
             "expectedPresentationRevision: expectedPresentationRevision",
         ),
-        "pre/post-decode topology and presentation revision admission",
+        "pre-decode admission and exact image-ownership transfer",
+    )
+    image_update = extract_braced_item(
+        sources["model_dart"],
+        "Future<bool> update(ui.Image? image,",
+        "owned image admission and adoption",
+    )
+    require_order(
+        image_update,
+        (
+            "bool acceptsExpectedImage() =>",
+            "isCurrentSession(expectedSessionId)",
+            "_rgbaPublicationOrder.canComplete(expectedRgbaPublication)",
+            "isCurrentPresentationRevision(expectedPresentationRevision)",
+            "isCurrentDisplayTopology(",
+            "var adopted = false;",
+            "try {",
+            "if (!acceptsExpectedImage())",
+            "_rgbaPublicationOrder.commit(expectedRgbaPublication)",
+            "_image = image;",
+            "adopted = true;",
+            "finally {",
+            "if (!adopted && !identical(image, _image))",
+            "image?.dispose();",
+        ),
+        "exact image admission, synchronous adoption and unadopted cleanup",
     )
     first_image = extract_braced_item(
         sources["model_dart"],

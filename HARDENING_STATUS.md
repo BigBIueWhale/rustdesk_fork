@@ -567,6 +567,46 @@ Unicode, parent/rdev/protected-loader/full-app or installed-service execution, a
 does not explain the Android/Windows display delay. Existing native regressions
 also passed; this does not upgrade their scope or independent-attestation status.
 
+**Native map freshness correction — INCOMPLETE / resource-unaccepted.** XDO retains
+its construction-time keyboard map. Test-first `3eb169b6` holds the native display
+and constructor-complete/map-swapped/emission phases constant: after the independent
+observer swaps the complete `a`/`b` rows, unchanged production emits `b` for requested
+`a` (`run.eYxh0ZXVJM`, explicit outer 1). Candidate `81eb367c` creates a request-owned
+temporary XDO context on the sole retained display, without rereading `DISPLAY` or
+opening another connection. Construction refusal returns an error without stale-map
+fallback. Native `run.BfJfihjF74` passed correct `a` delivery for 1 and 32 requests
+(66 native events), two controlled construction-refusal/retry cases, sampled clear
+keys, original-map restoration, and context/display/fd/task retirement. Its 7.372 ms
+and 212.266 ms command-to-child-retirement observations include the configured key
+delay; they are not remote UI latency or soak acceptance.
+
+That success is **not resource acceptance**. The load-bearing native heap probe
+`788c6109` observes exact enclosing XKB descriptors directly allocated by the pinned
+XDO library, without freeing them itself. `run.c06EDXJfqr` explicitly failed outer 1:
+the correct native key pair and both child retirements passed, but actual descriptor
+counts were **allocations=2, retirements=0, live=2**. The 32-request case and later
+focus/capture/complete aggregate did not execute after that failure. The
+[supplier routine](https://raw.githubusercontent.com/jordansissel/xdotool/v3.20160805.1/xdo.c)
+calls `XkbFreeClientMap`; its
+[Xlib implementation](https://raw.githubusercontent.com/mirror/libX11/libX11-1.8.4/src/xkb/XKBMAlloc.c)
+frees the inner map, not the enclosing descriptor. Per-request construction therefore
+introduces repeated allocation with no observed enclosing retirement in the pinned
+library. Do not accept this candidate, weaken the heap predicate, or return to stale
+map reuse merely to make the check pass. Correct native allocation ownership in the
+reproducible product dependency path, then rerun the same behavioral/resource oracle;
+no installed host library or RustDesk service is a test/fix target.
+
+The retained 88,539-byte `x11-display-tests-run.c06EDXJfqr.serial.log` has SHA-256
+`8cda11a81041bd7966d93c1b1808e4d23ca99b0764f683d87a4aa5141c12ad57`.
+Frozen `evidence/x11-layout-heap-run.c06EDXJfqr.outer.receipt` binds sources, probe,
+actual libraries, preceding narrower evidence, and explicit failure. Before/during/
+after endpoint-only snapshots are identical; no added host endpoint. After receipt
+retention, only the exact terminal diagnostic root `66306:103729570` was removed by
+the identity-bound helper (explicit 0, then ENOENT); serial and evidence remain.
+This is exact-class native observation, not whole heap, installed/full-app, independent
+attestation, or Android/Windows delay-causation proof. The broad obligations below
+remain OPEN.
+
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); protected loader, parent/rdev, full Cargo/app and current
 installed/native artifacts; capture-to-input mapping across all native roots, unmapped

@@ -121,6 +121,21 @@ def native_xdo(root, environment):
 
 def enigo_route(root, environment, checksum, library):
     providers, before_source = native_xdo(root, environment)
+    scratch_source = root / "scripts/test-xdo-scratch-key.c"
+    scratch_binary = Path("/build/xdo-scratch-key")
+    native_source = root / "libs/libxdo-sys-stub/native"
+    subprocess.run(["/usr/bin/cc", "-std=c99", "-O1", "-g", "-fsanitize=address",
+                    "-fno-omit-frame-pointer", "-Wl,--wrap=XGetKeyboardMapping", "-Wl,--wrap=XFree",
+                    str(scratch_source), str(native_source / "xdo.c"), str(native_source / "xdo_search.c"),
+                    "-lX11", "-lXtst", "-lXinerama", "-lxkbcommon", "-o", str(scratch_binary)],
+                   env=environment, check=True, timeout=30)
+    print("XDO_SCRATCH_BUILD " + " ".join(
+        f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
+            ("fixture", scratch_source), ("native_c", native_source / "xdo.c"),
+            ("binary", scratch_binary))) + " native_source=complete sanitizer=address whole_app=false", flush=True)
+    scratch_environment = dict(environment, ASAN_OPTIONS="detect_leaks=0:abort_on_error=0:disable_coredump=1")
+    subprocess.run([str(scratch_binary)], env=scratch_environment, check=True, timeout=5)
+    scratch_binary.unlink()
     mouse_source = root / "scripts/test-xdo-mouse-modifiers.c"
     mouse_binary = Path("/build/xdo-mouse-modifiers")
     subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(mouse_source),

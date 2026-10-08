@@ -527,10 +527,51 @@ geometry are held constant, but candidate fixtures add construction-fault/unwind
 and call wrapping; the whole A/B fixtures are not byte-identical. Earlier local-route
 evidence remains in `evidence/x11-enigo-route-run.8DvSvLxeRW.outer.receipt`.
 
+The live `process_unicode`/`process_seq` route calls the result-bearing XDO text
+operation. Its former native routine changes process-global `LC_CTYPE` from the
+environment and converts multibyte text; the deliberately cleared service-child
+environment carries no locale. This is a concrete incompatibility, not permission
+to inherit user-controlled launch state. The pinned
+[XDO source](https://raw.githubusercontent.com/jordansissel/xdotool/v3.20160805.1/xdo.c)
+and [locale contract](https://man7.org/linux/man-pages/man3/setlocale.3.html)
+informed the correction.
+
+`827864b6078e02bd33470af48099ecea30e1d53f` replaces that conversion with existing
+canonical ASCII Unicode key names and complete native press/release submissions.
+Newline/carriage return and tab have explicit key names; unsupported controls are
+preflighted over the entire string before any prefix can be emitted. Native status
+errors propagate; the per-scalar delay preserves the old submission cadence.
+The obsolete `xdo_enter_text_window` wrapper/load field is deleted; no production
+locale mutation, launcher change, fallback, dependency or worker is added.
+
+The unchanged test-first fixture (`4f588563`) distinguishes the actual behavior:
+before-state `run.klNraLivX9` explicitly failed after the independent native window
+received only ASCII `a` press/release, then XDO rejected `é` as an invalid multibyte
+sequence. Later cases did not run. Current `run.Z1Nqo3wgWj` explicitly passed the
+complete native lane in **83 seconds**. Locale-cleared, `C`, and invalid-locale
+children each delivered seven expected non-modifier press/release pairs for
+`aéא🙂+`, newline and tab (42 expected events total), with no keys held at the
+sampled end state. The observer restores its three configured native keymap rows;
+all children, native contexts, sampled descriptors/tasks and VM/container owners
+retire. NUL/SOH error assertions pass; pre-emission refusal is source-proved, not
+independently established by the observer after its fourteen-event stop.
+
+The retained 109,879-byte serial log
+`x11-display-tests-run.Z1Nqo3wgWj.serial.log` (SHA-256
+`d63d21470d6ca01a3f08925fbcd728bbe1c9eb0bed69bf40e35cae04e6406527`)
+and `evidence/x11-text-run.Z1Nqo3wgWj.outer.receipt` bind exact source/binary identities,
+the failed before-state, unchanged fixtures, isolation and terminal cleanup.
+There was no added host endpoint; the exact transient root/disks/media are absent.
+This is configured-layout native key-event evidence, not widget text, unmapped
+Unicode, parent/rdev/protected-loader/full-app or installed-service execution, and
+does not explain the Android/Windows display delay. Existing native regressions
+also passed; this does not upgrade their scope or independent-attestation status.
+
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); protected loader, parent/rdev, full Cargo/app and current
-installed/native artifacts; capture-to-input mapping across all native roots, text/
-modifier/key delivery and cleanup; persistent
+installed/native artifacts; capture-to-input mapping across all native roots, unmapped
+Unicode, native layouts/IMEs/widget text, held/locked modifiers/key delivery and cleanup;
+persistent
 startup/retry, Send/Xlib concurrency and failed-connection/native-allocation behavior;
 internal heap, races, resources/performance/soak/cross-version; cold equality,
 independent reproduction, external review and Android/Windows display-delay causation.

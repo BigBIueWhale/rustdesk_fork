@@ -67,24 +67,24 @@ def logging_library(root, environment):
     return checksum, library
 
 
-def retired_window_actions(root):
-    data = (root / "scripts/fixtures/xdo-retired-window-actions.txt").read_bytes()
-    require(len(data) <= 1024, "retired window action inventory exceeded bound")
+def input_exports(root):
+    data = (root / "scripts/fixtures/xdo-input-exports.txt").read_bytes()
+    require(len(data) <= 1024, "private input export inventory exceeded bound")
     names = data.decode("ascii").splitlines()
-    require(len(names) == len(set(names)) == 22
+    require(len(names) == len(set(names)) == 12
             and all(re.fullmatch(r"xdo_[a-z_]+", name) for name in names),
-            "retired window action inventory differs")
+            "private input export inventory differs")
     return set(names)
 
 
 def native_xdo(root, environment, historical_destructor=True):
     source = root / "libs/libxdo-sys-stub/native"
-    window_actions = retired_window_actions(root)
+    required_exports = input_exports(root)
     checker_source = root / "scripts/verify-debian-package-authority.py"
     spec = importlib.util.spec_from_file_location("package_authority", checker_source)
     checker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(checker)
-    names = ("build.py", "xdo.c", "xdo.h", "xdo_search.c",
+    names = ("build.py", "xdo.c", "xdo.h",
              "xdo_version.h", "COPYRIGHT", "SOURCE.txt")
     before_source = None
     variants = [("corrected", source)]
@@ -125,23 +125,11 @@ def native_xdo(root, environment, historical_destructor=True):
         require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 65536,
                 "native XDO export inventory failed")
         exports = {line.split()[-1] for line in result.stdout.splitlines() if line.split()}
-        require(not exports.intersection({"xdo_get_active_modifiers", "xdo_clear_active_modifiers",
-                                          "xdo_set_active_modifiers"})
-                and {"xdo_mouse_down", "xdo_mouse_up", "xdo_click_window"}.issubset(exports),
-                "native XDO modifier API retirement differs")
-        require(not exports.intersection({"xdo_send_keysequence_window", "xdo_send_keysequence_window_down",
-                                          "xdo_send_keysequence_window_up", "xdo_enter_text_window",
-                                          "xdo_send_keysequence_window_list_do", "xdo_get_symbol_map"})
-                and "xdo_send_key_window" in exports, "native keyboard API retirement differs")
-        require(not exports.intersection({"xdo_set_window_property", "xdo_set_window_class",
-                                          "xdo_set_window_urgency"}), "native window metadata API retirement differs")
-        require(not exports.intersection(window_actions), "native window action API remains exported")
+        require({name for name in exports if name.startswith("xdo_")} == required_exports,
+                "private XDO input export closure differs")
         directories[variant] = directory
     print(f"X11_XDO_PACKAGE_ELF=pass variants={len(variants)} required=true runpath=absent full_package=unexecuted", flush=True)
-    print(f"XDO_MODIFIER_API_NATIVE=pass providers={len(variants)} retired_exports=3 required_mouse=present", flush=True)
-    print(f"XDO_KEY_API_EXPORTS=pass providers={len(variants)} retired_exports=6 single_key=present", flush=True)
-    print(f"XDO_WINDOW_METADATA_API_NATIVE=pass providers={len(variants)} retired_exports=3", flush=True)
-    print(f"XDO_WINDOW_ACTION_API_NATIVE=pass providers={len(variants)} retired_exports=22", flush=True)
+    print(f"XDO_INPUT_API_NATIVE=pass providers={len(variants)} exports=12 scope=closed-private-abi", flush=True)
     return directories, before_source
 
 
@@ -151,7 +139,7 @@ def constructor_contexts(root, environment):
     binary = Path("/build/xdo-constructor")
     command = ["/usr/bin/cc", "-std=c99", "-O1", "-g", "-fsanitize=address",
                "-fno-omit-frame-pointer", str(fixture), str(native_source / "xdo.c"),
-               str(native_source / "xdo_search.c"), "-lX11", "-lXtst", "-lXinerama",
+               "-lX11", "-lXtst",
                "-lxkbcommon", "-o", str(binary)]
     for symbol in ("calloc", "free", "XOpenDisplay", "XCloseDisplay", "XkbGetMap",
                    "XkbFreeKeyboard", "XGetKeyboardMapping", "XkbKeycodeToKeysym", "XGetModifierMapping"):
@@ -187,8 +175,8 @@ def scratch_keys(root, environment):
                     "-Wl,--wrap=XTestFakeKeyEvent", "-Wl,--wrap=XChangeKeyboardMapping",
                     "-Wl,--wrap=XGetModifierMapping", "-Wl,--wrap=XFreeModifiermap",
                     "-Wl,--wrap=malloc", "-Wl,--wrap=calloc", "-Wl,--wrap=realloc", "-Wl,--wrap=strdup",
-                    str(scratch_source), str(native_source / "xdo.c"), str(native_source / "xdo_search.c"),
-                    "-lX11", "-lXtst", "-lXinerama", "-lxkbcommon", "-o", str(scratch_binary)],
+                    str(scratch_source), str(native_source / "xdo.c"),
+                    "-lX11", "-lXtst", "-lxkbcommon", "-o", str(scratch_binary)],
                    env=environment, check=True, timeout=30)
     print("XDO_SCRATCH_BUILD " + " ".join(
         f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (

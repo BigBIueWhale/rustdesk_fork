@@ -17,15 +17,10 @@ use std::{
     sync::OnceLock,
 };
 
-pub use hbb_common::x11::xlib::{Display, Screen, Window};
+pub use hbb_common::x11::xlib::{Display, Window};
 
 #[repr(C)]
 pub struct xdo_t {
-    _private: [u8; 0],
-}
-
-#[repr(C)]
-pub struct xdo_search_t {
     _private: [u8; 0],
 }
 
@@ -50,7 +45,7 @@ pub enum XdoKeyAction {
 const TRUSTED_LIBXDO_PATHS: &[&str] = &[
     "/usr/lib/rustdesk-fork/libxdo.so.3",
 ];
-const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk9";
+const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk10";
 
 fn root_owned_non_writable(mode: u32, uid: u32) -> bool {
     uid == 0 && mode & 0o022 == 0
@@ -114,24 +109,9 @@ type FnXdoMouseDown = unsafe extern "C" fn(*const xdo_t, Window, c_int) -> c_int
 type FnXdoMouseUp = unsafe extern "C" fn(*const xdo_t, Window, c_int) -> c_int;
 type FnXdoMoveMouse = unsafe extern "C" fn(*const xdo_t, c_int, c_int, c_int) -> c_int;
 type FnXdoMoveMouseRelative = unsafe extern "C" fn(*const xdo_t, c_int, c_int) -> c_int;
-type FnXdoMoveMouseRelativeToWindow =
-    unsafe extern "C" fn(*const xdo_t, Window, c_int, c_int) -> c_int;
 type FnXdoGetMouseLocation =
     unsafe extern "C" fn(*const xdo_t, *mut c_int, *mut c_int, *mut c_int) -> c_int;
-type FnXdoGetMouseLocation2 =
-    unsafe extern "C" fn(*const xdo_t, *mut c_int, *mut c_int, *mut c_int, *mut Window) -> c_int;
-type FnXdoGetActiveWindow = unsafe extern "C" fn(*const xdo_t, *mut Window) -> c_int;
-type FnXdoGetFocusedWindow = unsafe extern "C" fn(*const xdo_t, *mut Window) -> c_int;
-type FnXdoGetFocusedWindowSane = unsafe extern "C" fn(*const xdo_t, *mut Window) -> c_int;
-type FnXdoGetWindowLocation =
-    unsafe extern "C" fn(*const xdo_t, Window, *mut c_int, *mut c_int, *mut *mut Screen) -> c_int;
-type FnXdoGetWindowSize =
-    unsafe extern "C" fn(*const xdo_t, Window, *mut c_uint, *mut c_uint) -> c_int;
 type FnXdoGetInputState = unsafe extern "C" fn(*const xdo_t) -> c_uint;
-type FnXdoWaitForMouseMoveFrom = unsafe extern "C" fn(*const xdo_t, c_int, c_int) -> c_int;
-type FnXdoWaitForMouseMoveTo = unsafe extern "C" fn(*const xdo_t, c_int, c_int) -> c_int;
-type FnXdoSearchWindows =
-    unsafe extern "C" fn(*const xdo_t, *const xdo_search_t, *mut *mut Window, *mut c_uint) -> c_int;
 
 struct XdoLib {
     _lib: Library,
@@ -144,18 +124,8 @@ struct XdoLib {
     xdo_mouse_up: FnXdoMouseUp,
     xdo_move_mouse: FnXdoMoveMouse,
     xdo_move_mouse_relative: FnXdoMoveMouseRelative,
-    xdo_move_mouse_relative_to_window: FnXdoMoveMouseRelativeToWindow,
     xdo_get_mouse_location: FnXdoGetMouseLocation,
-    xdo_get_mouse_location2: FnXdoGetMouseLocation2,
-    xdo_get_active_window: FnXdoGetActiveWindow,
-    xdo_get_focused_window: FnXdoGetFocusedWindow,
-    xdo_get_focused_window_sane: FnXdoGetFocusedWindowSane,
-    xdo_get_window_location: FnXdoGetWindowLocation,
-    xdo_get_window_size: FnXdoGetWindowSize,
     xdo_get_input_state: FnXdoGetInputState,
-    xdo_wait_for_mouse_move_from: FnXdoWaitForMouseMoveFrom,
-    xdo_wait_for_mouse_move_to: FnXdoWaitForMouseMoveTo,
-    xdo_search_windows: FnXdoSearchWindows,
 }
 
 unsafe fn required_symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
@@ -195,19 +165,8 @@ impl XdoLib {
             let xdo_mouse_up = required_symbol(&lib, b"xdo_mouse_up")?;
             let xdo_move_mouse = required_symbol(&lib, b"xdo_move_mouse")?;
             let xdo_move_mouse_relative = required_symbol(&lib, b"xdo_move_mouse_relative")?;
-            let xdo_move_mouse_relative_to_window =
-                required_symbol(&lib, b"xdo_move_mouse_relative_to_window")?;
             let xdo_get_mouse_location = required_symbol(&lib, b"xdo_get_mouse_location")?;
-            let xdo_get_mouse_location2 = required_symbol(&lib, b"xdo_get_mouse_location2")?;
-            let xdo_get_active_window = required_symbol(&lib, b"xdo_get_active_window")?;
-            let xdo_get_focused_window = required_symbol(&lib, b"xdo_get_focused_window")?;
-            let xdo_get_focused_window_sane = required_symbol(&lib, b"xdo_get_focused_window_sane")?;
-            let xdo_get_window_location = required_symbol(&lib, b"xdo_get_window_location")?;
-            let xdo_get_window_size = required_symbol(&lib, b"xdo_get_window_size")?;
             let xdo_get_input_state = required_symbol(&lib, b"xdo_get_input_state")?;
-            let xdo_wait_for_mouse_move_from = required_symbol(&lib, b"xdo_wait_for_mouse_move_from")?;
-            let xdo_wait_for_mouse_move_to = required_symbol(&lib, b"xdo_wait_for_mouse_move_to")?;
-            let xdo_search_windows = required_symbol(&lib, b"xdo_search_windows")?;
 
             log::info!("libxdo-sys Loaded {}", lib_path.display());
 
@@ -222,18 +181,8 @@ impl XdoLib {
                 xdo_mouse_up,
                 xdo_move_mouse,
                 xdo_move_mouse_relative,
-                xdo_move_mouse_relative_to_window,
                 xdo_get_mouse_location,
-                xdo_get_mouse_location2,
-                xdo_get_active_window,
-                xdo_get_focused_window,
-                xdo_get_focused_window_sane,
-                xdo_get_window_location,
-                xdo_get_window_size,
                 xdo_get_input_state,
-                xdo_wait_for_mouse_move_from,
-                xdo_wait_for_mouse_move_to,
-                xdo_search_windows,
             })
         }
     }
@@ -458,15 +407,6 @@ pub unsafe extern "C" fn xdo_move_mouse_relative(xdo: *const xdo_t, x: c_int, y:
     get_lib().map_or(1, |lib| (lib.xdo_move_mouse_relative)(xdo, x, y))
 }
 
-pub unsafe extern "C" fn xdo_move_mouse_relative_to_window(
-    xdo: *const xdo_t,
-    window: Window,
-    x: c_int,
-    y: c_int,
-) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_move_mouse_relative_to_window)(xdo, window, x, y))
-}
-
 pub unsafe extern "C" fn xdo_get_mouse_location(
     xdo: *const xdo_t,
     x: *mut c_int,
@@ -476,81 +416,6 @@ pub unsafe extern "C" fn xdo_get_mouse_location(
     get_lib().map_or(1, |lib| (lib.xdo_get_mouse_location)(xdo, x, y, screen_num))
 }
 
-pub unsafe extern "C" fn xdo_get_mouse_location2(
-    xdo: *const xdo_t,
-    x: *mut c_int,
-    y: *mut c_int,
-    screen_num: *mut c_int,
-    window: *mut Window,
-) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_get_mouse_location2)(xdo, x, y, screen_num, window))
-}
-
-pub unsafe extern "C" fn xdo_get_active_window(
-    xdo: *const xdo_t,
-    window_ret: *mut Window,
-) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_get_active_window)(xdo, window_ret))
-}
-
-pub unsafe extern "C" fn xdo_get_focused_window(
-    xdo: *const xdo_t,
-    window_ret: *mut Window,
-) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_get_focused_window)(xdo, window_ret))
-}
-
-pub unsafe extern "C" fn xdo_get_focused_window_sane(
-    xdo: *const xdo_t,
-    window_ret: *mut Window,
-) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_get_focused_window_sane)(xdo, window_ret))
-}
-
-pub unsafe extern "C" fn xdo_get_window_location(
-    xdo: *const xdo_t,
-    window: Window,
-    x: *mut c_int,
-    y: *mut c_int,
-    screen_ret: *mut *mut Screen,
-) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_get_window_location)(xdo, window, x, y, screen_ret))
-}
-
-pub unsafe extern "C" fn xdo_get_window_size(
-    xdo: *const xdo_t,
-    window: Window,
-    width: *mut c_uint,
-    height: *mut c_uint,
-) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_get_window_size)(xdo, window, width, height))
-}
-
 pub unsafe extern "C" fn xdo_get_input_state(xdo: *const xdo_t) -> c_uint {
     get_lib().map_or(0, |lib| (lib.xdo_get_input_state)(xdo))
-}
-
-pub unsafe extern "C" fn xdo_wait_for_mouse_move_from(
-    xdo: *const xdo_t,
-    origin_x: c_int,
-    origin_y: c_int,
-) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_wait_for_mouse_move_from)(xdo, origin_x, origin_y))
-}
-
-pub unsafe extern "C" fn xdo_wait_for_mouse_move_to(
-    xdo: *const xdo_t,
-    dest_x: c_int,
-    dest_y: c_int,
-) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_wait_for_mouse_move_to)(xdo, dest_x, dest_y))
-}
-
-pub unsafe extern "C" fn xdo_search_windows(
-    xdo: *const xdo_t,
-    search: *const xdo_search_t,
-    windowlist_ret: *mut *mut Window,
-    nwindows_ret: *mut c_uint,
-) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_search_windows)(xdo, search, windowlist_ret, nwindows_ret))
 }

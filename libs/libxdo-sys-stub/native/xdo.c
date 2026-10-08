@@ -10,21 +10,15 @@
 #define _XOPEN_SOURCE 500
 #endif /* _XOPEN_SOURCE */
 
-#include <sys/select.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <regex.h>
 #include <stdarg.h>
 
 #include <X11/Xlib.h>
 #include <X11/XKBlib.h>
-#include <X11/Xatom.h>
-#include <X11/Xresource.h>
-#include <X11/Xutil.h>
 #include <X11/extensions/XTest.h>
-#include <X11/extensions/Xinerama.h>
 #include <X11/keysym.h>
 
 #include <xkbcommon/xkbcommon.h>
@@ -34,17 +28,11 @@
 
 #define DEFAULT_DELAY 12
 
-/**
- * The number of tries to check for a wait condition before aborting.
- * TODO(sissel): Make this tunable at runtime?
- */
-#define MAX_TRIES 500
-
 static int _xdo_populate_charcode_map(xdo_t *xdo);
 static int _xdo_has_xtest(const xdo_t *xdo);
 
 static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key, KeySym keysym);
-static int _xdo_ewmh_is_supported(const xdo_t *xdo, const char *feature);
+static int _xdo_get_focused_window(const xdo_t *xdo, Window *window_ret);
 static void _xdo_init_xkeyevent(const xdo_t *xdo, XKeyEvent *xk);
 static void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
                           const KeyCode *modifiers, int is_press, int current_group, useconds_t delay);
@@ -58,13 +46,6 @@ static void _xdo_eprintf(const xdo_t *xdo, int hushable, const char *format, ...
 
 /* context-free functions */
 static wchar_t _keysym_to_char(KeySym keysym);
-
-/* Default to -1, initialize it when we need it */
-static Atom atom_NET_WM_PID = -1;
-static Atom atom_NET_WM_NAME = -1;
-static Atom atom_WM_NAME = -1;
-static Atom atom_STRING = -1;
-static Atom atom_UTF8_STRING = -1;
 
 xdo_t* xdo_new(const char *display_name) {
   Display *xdpy;
@@ -113,13 +94,11 @@ xdo_t* xdo_new_with_opened_display(Display *xdpy, const char *display,
   }
 
   if (_xdo_has_xtest(xdo)) {
-    xdo_enable_feature(xdo, XDO_FEATURE_XTEST);
     _xdo_debug(xdo, "XTEST enabled.");
   } else {
     _xdo_eprintf(xdo, False, "Warning: XTEST extension unavailable on '%.128s'. Some"
                 " functionality may be disabled; See 'man xdotool' for more"
                 " info.", display);
-    xdo_disable_feature(xdo, XDO_FEATURE_XTEST);
   }
 
   if (_xdo_populate_charcode_map(xdo) != XDO_SUCCESS) {
@@ -149,190 +128,6 @@ const char *xdo_version(void) {
   return XDO_VERSION;
 }
 
-int xdo_get_window_location(const xdo_t *xdo, Window wid,
-                            int *x_ret, int *y_ret, Screen **screen_ret) {
-  int ret;
-  XWindowAttributes attr;
-  ret = XGetWindowAttributes(xdo->xdpy, wid, &attr);
-  if (ret != 0) {
-    int x, y;
-    Window unused_child;
-
-    /* The coordinates in attr are relative to the parent window.  If
-     * the parent window is the root window, then the coordinates are
-     * correct.  If the parent window isn't the root window --- which
-     * is likely --- then we translate them. */
-    Window parent;
-    Window root;
-    Window* children;
-    unsigned int nchildren;
-    XQueryTree(xdo->xdpy, wid, &root, &parent, &children, &nchildren);
-    if (children != NULL) {
-      XFree(children);
-    }
-    if (parent == attr.root) {
-      x = attr.x;
-      y = attr.y;
-    } else {
-      XTranslateCoordinates(xdo->xdpy, wid, attr.root,
-                            attr.x, attr.y, &x, &y, &unused_child);
-    }
-
-    if (x_ret != NULL) {
-      *x_ret = x;
-    }
-
-    if (y_ret != NULL) {
-      *y_ret = y;
-    }
-
-    if (screen_ret != NULL) {
-      *screen_ret = attr.screen;
-    }
-  }
-  return _is_success("XGetWindowAttributes", ret == 0, xdo);
-}
-
-int xdo_get_window_size(const xdo_t *xdo, Window wid, unsigned int *width_ret,
-                        unsigned int *height_ret) {
-  int ret;
-  XWindowAttributes attr;
-  ret = XGetWindowAttributes(xdo->xdpy, wid, &attr);
-  if (ret != 0) {
-    if (width_ret != NULL) {
-      *width_ret = attr.width;
-    }
-
-    if (height_ret != NULL) {
-      *height_ret = attr.height;
-    }
-  }
-  return _is_success("XGetWindowAttributes", ret == 0, xdo);
-}
-
-int xdo_get_number_of_desktops(const xdo_t *xdo, long *ndesktops) {
-  Atom type;
-  int size;
-  long nitems;
-  unsigned char *data;
-  Window root;
-  Atom request;
-
-  if (_xdo_ewmh_is_supported(xdo, "_NET_NUMBER_OF_DESKTOPS") == False) {
-    fprintf(stderr,
-            "Your windowmanager claims not to support _NET_NUMBER_OF_DESKTOPS, "
-            "so the attempt to query the number of desktops was aborted.\n");
-    return XDO_ERROR;
-  }
-
-  request = XInternAtom(xdo->xdpy, "_NET_NUMBER_OF_DESKTOPS", False);
-  root = XDefaultRootWindow(xdo->xdpy);
-
-  data = xdo_get_window_property_by_atom(xdo, root, request, &nitems, &type, &size);
-
-  if (nitems > 0) {
-    *ndesktops = *((long*)data);
-  } else {
-    *ndesktops = 0;
-  }
-  free(data);
-
-  return _is_success("XGetWindowProperty[_NET_NUMBER_OF_DESKTOPS]",
-                     *ndesktops == 0, xdo);
-}
-
-int xdo_get_current_desktop(const xdo_t *xdo, long *desktop) {
-  Atom type;
-  int size;
-  long nitems;
-  unsigned char *data;
-  Window root;
-
-  Atom request;
-
-  if (_xdo_ewmh_is_supported(xdo, "_NET_CURRENT_DESKTOP") == False) {
-    fprintf(stderr,
-            "Your windowmanager claims not to support _NET_CURRENT_DESKTOP, "
-            "so the query for the current desktop was aborted.\n");
-    return XDO_ERROR;
-  }
-
-  request = XInternAtom(xdo->xdpy, "_NET_CURRENT_DESKTOP", False);
-  root = XDefaultRootWindow(xdo->xdpy);
-
-  data = xdo_get_window_property_by_atom(xdo, root, request, &nitems, &type, &size);
-
-  if (nitems > 0) {
-    *desktop = *((long*)data);
-  } else {
-    *desktop = -1;
-  }
-  free(data);
-
-  return _is_success("XGetWindowProperty[_NET_CURRENT_DESKTOP]",
-                     *desktop == -1, xdo);
-}
-
-int xdo_get_desktop_for_window(const xdo_t *xdo, Window wid, long *desktop) {
-  Atom type;
-  int size;
-  long nitems;
-  unsigned char *data;
-  Atom request;
-
-  if (_xdo_ewmh_is_supported(xdo, "_NET_WM_DESKTOP") == False) {
-    fprintf(stderr,
-            "Your windowmanager claims not to support _NET_WM_DESKTOP, "
-            "so the attempt to query a window's desktop location was "
-            "aborted.\n");
-    return XDO_ERROR;
-  }
-
-  request = XInternAtom(xdo->xdpy, "_NET_WM_DESKTOP", False);
-
-  data = xdo_get_window_property_by_atom(xdo, wid, request, &nitems, &type, &size);
-
-  if (nitems > 0) {
-    *desktop = *((long*)data);
-  } else {
-    *desktop = -1;
-  }
-  free(data);
-
-  return _is_success("XGetWindowProperty[_NET_WM_DESKTOP]",
-                     *desktop == -1, xdo);
-}
-
-int xdo_get_active_window(const xdo_t *xdo, Window *window_ret) {
-  Atom type;
-  int size;
-  long nitems;
-  unsigned char *data;
-  Atom request;
-  Window root;
-
-  if (_xdo_ewmh_is_supported(xdo, "_NET_ACTIVE_WINDOW") == False) {
-    fprintf(stderr,
-            "Your windowmanager claims not to support _NET_ACTIVE_WINDOW, "
-            "so the attempt to query the active window aborted.\n");
-    return XDO_ERROR;
-  }
-
-  request = XInternAtom(xdo->xdpy, "_NET_ACTIVE_WINDOW", False);
-  root = XDefaultRootWindow(xdo->xdpy);
-  data = xdo_get_window_property_by_atom(xdo, root, request, &nitems, &type, &size);
-
-  if (nitems > 0) {
-    *window_ret = *((Window*)data);
-  } else {
-    *window_ret = 0;
-  }
-  free(data);
-
-  return _is_success("XGetWindowProperty[_NET_ACTIVE_WINDOW]",
-                     *window_ret == 0, xdo);
-}
-
 int xdo_move_mouse(const xdo_t *xdo, int x, int y, int screen)  {
   int ret = 0;
 
@@ -345,17 +140,6 @@ int xdo_move_mouse(const xdo_t *xdo, int x, int y, int screen)  {
   ret = XWarpPointer(xdo->xdpy, None, screen_root, 0, 0, 0, 0, x, y);
   XFlush(xdo->xdpy);
   return _is_success("XWarpPointer", ret == 0, xdo);
-}
-
-int xdo_move_mouse_relative_to_window(const xdo_t *xdo, Window window, int x, int y) {
-  XWindowAttributes attr;
-  Window unused_child;
-  int root_x, root_y;
-
-  XGetWindowAttributes(xdo->xdpy, window, &attr);
-  XTranslateCoordinates(xdo->xdpy, window, attr.root,
-                        x, y, &root_x, &root_y, &unused_child);
-  return xdo_move_mouse(xdo, root_x, root_y, XScreenNumberOfScreen(attr.screen));
 }
 
 int xdo_move_mouse_relative(const xdo_t *xdo, int x, int y)  {
@@ -424,15 +208,6 @@ int xdo_mouse_down(const xdo_t *xdo, Window window, int button) {
 
 int xdo_get_mouse_location(const xdo_t *xdo, int *x_ret, int *y_ret,
                            int *screen_num_ret) {
-  return xdo_get_mouse_location2(xdo, x_ret, y_ret, screen_num_ret, NULL);
-}
-
-int xdo_get_window_at_mouse(const xdo_t *xdo, Window *window_ret) {
-  return xdo_get_mouse_location2(xdo, NULL, NULL, NULL, window_ret);
-}
-
-int xdo_get_mouse_location2(const xdo_t *xdo, int *x_ret, int *y_ret,
-                            int *screen_num_ret, Window *window_ret) {
   int ret = False;
   int x = 0, y = 0, screen_num = 0;
   int i = 0;
@@ -453,34 +228,10 @@ int xdo_get_mouse_location2(const xdo_t *xdo, int *x_ret, int *y_ret,
     }
   }
 
-  if (window_ret != NULL) {
-    /* Find the client window if we are not root. */
-    if (window != root && window != 0) {
-      int findret;
-      Window client = 0;
-
-      /* Search up the stack for a client window for this window */
-      findret = xdo_find_window_client(xdo, window, &client, XDO_FIND_PARENTS);
-      if (findret == XDO_ERROR) {
-        /* If no client found, search down the stack */
-        findret = xdo_find_window_client(xdo, window, &client, XDO_FIND_CHILDREN);
-      }
-      //fprintf(stderr, "%ld, %ld, %ld, %d\n", window, root, client, findret);
-      if (findret == XDO_SUCCESS) {
-        window = client;
-      }
-    } else {
-      window = root;
-    }
-  }
-  //printf("mouseloc root: %ld\n", root);
-  //printf("mouseloc window: %ld\n", window);
-
   if (ret == True) {
     if (x_ret != NULL) *x_ret = x;
     if (y_ret != NULL) *y_ret = y;
     if (screen_num_ret != NULL) *screen_num_ret = screen_num;
-    if (window_ret != NULL) *window_ret = window;
   }
 
   return _is_success("XQueryPointer", ret == False, xdo);
@@ -497,22 +248,6 @@ int xdo_click_window(const xdo_t *xdo, Window window, int button) {
   ret = xdo_mouse_up(xdo, window, button);
   return ret;
 }
-
-int xdo_click_window_multiple(const xdo_t *xdo, Window window, int button,
-                       int repeat, useconds_t delay) {
-  int ret = 0;
-  while (repeat > 0) {
-    ret = xdo_click_window(xdo, window, button);
-    if (ret != XDO_SUCCESS) {
-      fprintf(stderr, "click failed with %d repeats remaining\n", repeat);
-      return ret;
-    }
-    repeat--;
-
-    usleep(delay);
-  } /* while (repeat > 0) */
-  return ret;
-} /* int xdo_click_window_multiple */
 
 static int _xdo_send_key_window_do(const xdo_t *xdo, Window window, charcodemap_t *key,
                                    int pressed, const KeyCode *modifiers, int current_group, useconds_t delay) {
@@ -619,92 +354,13 @@ int xdo_send_key_window(const xdo_t *xdo, Window window, unsigned int kind,
 
 /* Add by Lee Pumphret 2007-07-28
  * Modified slightly by Jordan Sissel */
-int xdo_get_focused_window(const xdo_t *xdo, Window *window_ret) {
+static int _xdo_get_focused_window(const xdo_t *xdo, Window *window_ret) {
   int ret = 0;
   int unused_revert_ret;
 
   ret = XGetInputFocus(xdo->xdpy, window_ret, &unused_revert_ret);
 
-  /* Xvfb with no window manager and given otherwise no input, with
-   * a single client, will return the current focused window as '1'
-   * I think this is a bug, so let's alert the user. */
-  if (*window_ret == 1) {
-    fprintf(stderr,
-            "XGetInputFocus returned the focused window of %ld. "
-            "This is likely a bug in the X server.\n", *window_ret);
-  }
   return _is_success("XGetInputFocus", ret == 0, xdo);
-}
-
-/* Like xdo_get_focused_window, but return the first ancestor-or-self window
- * having a property of WM_CLASS. This allows you to get the "real" or
- * top-level-ish window having focus rather than something you may
- * not expect to be the window having focused. */
-int xdo_get_focused_window_sane(const xdo_t *xdo, Window *window_ret) {
-  xdo_get_focused_window(xdo, window_ret);
-  xdo_find_window_client(xdo, *window_ret, window_ret, XDO_FIND_PARENTS);
-  return _is_success("xdo_get_focused_window_sane", *window_ret == 0, xdo);
-}
-
-int xdo_find_window_client(const xdo_t *xdo, Window window, Window *window_ret,
-                           int direction) {
-  /* for XQueryTree */
-  Window dummy, parent, *children = NULL;
-  unsigned int nchildren;
-  Atom atom_wmstate = XInternAtom(xdo->xdpy, "WM_STATE", False);
-
-  int done = False;
-  while (!done) {
-    if (window == 0) {
-      return XDO_ERROR;
-    }
-
-    long items;
-    _xdo_debug(xdo, "get_window_property on %lu", window);
-    xdo_get_window_property_by_atom(xdo, window, atom_wmstate, &items, NULL, NULL);
-
-    if (items == 0) {
-      /* This window doesn't have WM_STATE property, keep searching. */
-      _xdo_debug(xdo, "window %lu has no WM_STATE property, digging more.", window);
-      XQueryTree(xdo->xdpy, window, &dummy, &parent, &children, &nchildren);
-
-      if (direction == XDO_FIND_PARENTS) {
-        _xdo_debug(xdo, "searching parents");
-        /* Don't care about the children, but we still need to free them */
-        if (children != NULL)
-          XFree(children);
-        window = parent;
-      } else if (direction == XDO_FIND_CHILDREN) {
-        _xdo_debug(xdo, "searching %d children", nchildren);
-        unsigned int i = 0;
-        int ret;
-        done = True; /* recursion should end us */
-        for (i = 0; i < nchildren; i++) {
-          ret = xdo_find_window_client(xdo, children[i], &window, direction);
-          //fprintf(stderr, "findclient: %ld\n", window);
-          if (ret == XDO_SUCCESS) {
-            *window_ret = window;
-            break;
-          }
-        }
-        if (nchildren == 0) {
-          return XDO_ERROR;
-        }
-        if (children != NULL)
-          XFree(children);
-      } else {
-        fprintf(stderr, "Invalid find_client direction (%d)\n", direction);
-        *window_ret = 0;
-        if (children != NULL)
-          XFree(children);
-        return XDO_ERROR;
-      }
-    } else {
-      *window_ret = window;
-      done = True;
-    }
-  }
-  return XDO_SUCCESS;
 }
 
 /* Helper functions */
@@ -829,89 +485,6 @@ int _is_success(const char *funcname, int code, const xdo_t *xdo) {
   return code;
 }
 
-int xdo_get_window_property(const xdo_t *xdo, Window window, const char *property,
-                            unsigned char **value, long *nitems, Atom *type, int *size) {
-    *value = xdo_get_window_property_by_atom(xdo, window, XInternAtom(xdo->xdpy, property, False), nitems, type, size);
-    if (*value == NULL) {
-        return XDO_ERROR;
-    }
-    return XDO_SUCCESS;
-}
-
-/* Arbitrary window property retrieval
- * slightly modified version from xprop.c from Xorg */
-unsigned char *xdo_get_window_property_by_atom(const xdo_t *xdo, Window window, Atom atom,
-                                            long *nitems, Atom *type, int *size) {
-  Atom actual_type;
-  int actual_format;
-  unsigned long _nitems;
-  /*unsigned long nbytes;*/
-  unsigned long bytes_after; /* unused */
-  unsigned char *prop;
-  int status;
-
-  status = XGetWindowProperty(xdo->xdpy, window, atom, 0, (~0L),
-                              False, AnyPropertyType, &actual_type,
-                              &actual_format, &_nitems, &bytes_after,
-                              &prop);
-  if (status == BadWindow) {
-    fprintf(stderr, "window id # 0x%lx does not exists!", window);
-    return NULL;
-  } if (status != Success) {
-    fprintf(stderr, "XGetWindowProperty failed!");
-    return NULL;
-  }
-
-  /*
-   *if (actual_format == 32)
-   *  nbytes = sizeof(long);
-   *else if (actual_format == 16)
-   *  nbytes = sizeof(short);
-   *else if (actual_format == 8)
-   *  nbytes = 1;
-   *else if (actual_format == 0)
-   *  nbytes = 0;
-   */
-
-  if (nitems != NULL) {
-    *nitems = _nitems;
-  }
-
-  if (type != NULL) {
-    *type = actual_type;
-  }
-
-  if (size != NULL) {
-    *size = actual_format;
-  }
-  return prop;
-}
-
-int _xdo_ewmh_is_supported(const xdo_t *xdo, const char *feature) {
-  Atom type = 0;
-  long nitems = 0L;
-  int size = 0;
-  Atom *results = NULL;
-  long i = 0;
-
-  Window root;
-  Atom request;
-  Atom feature_atom;
-
-  request = XInternAtom(xdo->xdpy, "_NET_SUPPORTED", False);
-  feature_atom = XInternAtom(xdo->xdpy, feature, False);
-  root = XDefaultRootWindow(xdo->xdpy);
-
-  results = (Atom *) xdo_get_window_property_by_atom(xdo, root, request, &nitems, &type, &size);
-  for (i = 0L; i < nitems; i++) {
-    if (results[i] == feature_atom)
-      return True;
-  }
-  free(results);
-
-  return False;
-}
-
 void _xdo_init_xkeyevent(const xdo_t *xdo, XKeyEvent *xk) {
   xk->display = xdo->xdpy;
   xk->subwindow = None;
@@ -930,7 +503,7 @@ void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
     use_xtest = 1;
   } else {
     Window focuswin = 0;
-    xdo_get_focused_window(xdo, &focuswin);
+    _xdo_get_focused_window(xdo, &focuswin);
     if (focuswin == window) {
       use_xtest = 1;
     }
@@ -1012,134 +585,6 @@ unsigned int xdo_get_input_state(const xdo_t *xdo) {
   return mask;
 }
 
-int xdo_get_pid_window(const xdo_t *xdo, Window window) {
-  Atom type;
-  int size;
-  long nitems;
-  unsigned char *data;
-  int window_pid = 0;
-
-  if (atom_NET_WM_PID == (Atom)-1) {
-    atom_NET_WM_PID = XInternAtom(xdo->xdpy, "_NET_WM_PID", False);
-  }
-
-  data = xdo_get_window_property_by_atom(xdo, window, atom_NET_WM_PID, &nitems, &type, &size);
-
-  if (nitems > 0) {
-    /* The data itself is unsigned long, but everyone uses int as pid values */
-    window_pid = (int) *((unsigned long *)data);
-  }
-  free(data);
-
-  return window_pid;
-}
-
-int xdo_wait_for_mouse_move_from(const xdo_t *xdo, int origin_x, int origin_y) {
-  int x, y;
-  int ret = 0;
-  int tries = MAX_TRIES;
-
-  ret = xdo_get_mouse_location(xdo, &x, &y, NULL);
-  while (tries > 0 &&
-         (x == origin_x && y == origin_y)) {
-    usleep(30000);
-    ret = xdo_get_mouse_location(xdo, &x, &y, NULL);
-    tries--;
-  }
-
-  return ret;
-}
-
-int xdo_wait_for_mouse_move_to(const xdo_t *xdo, int dest_x, int dest_y) {
-  int x, y;
-  int ret = 0;
-  int tries = MAX_TRIES;
-
-  ret = xdo_get_mouse_location(xdo, &x, &y, NULL);
-  while (tries > 0 && (x != dest_x && y != dest_y)) {
-    usleep(30000);
-    ret = xdo_get_mouse_location(xdo, &x, &y, NULL);
-    tries--;
-  }
-
-  return ret;
-}
-
-int xdo_get_desktop_viewport(const xdo_t *xdo, int *x_ret, int *y_ret) {
-  if (_xdo_ewmh_is_supported(xdo, "_NET_DESKTOP_VIEWPORT") == False) {
-    fprintf(stderr,
-            "Your windowmanager claims not to support _NET_DESKTOP_VIEWPORT, "
-            "so I cannot tell you the viewport position.\n");
-    return XDO_ERROR;
-  }
-
-  Atom type;
-  int size;
-  long nitems;
-  unsigned char *data;
-  Atom request = XInternAtom(xdo->xdpy, "_NET_DESKTOP_VIEWPORT", False);
-  Window root = RootWindow(xdo->xdpy, 0);
-  data = xdo_get_window_property_by_atom(xdo, root, request, &nitems, &type, &size);
-
-  if (type != XA_CARDINAL) {
-    fprintf(stderr,
-            "Got unexpected type returned from _NET_DESKTOP_VIEWPORT."
-            " Expected CARDINAL, got %s\n",
-            XGetAtomName(xdo->xdpy, type));
-    return XDO_ERROR;
-  }
-
-  if (nitems != 2) {
-    fprintf(stderr, "Expected 2 items for _NET_DESKTOP_VIEWPORT, got %ld\n",
-            nitems);
-    return XDO_ERROR;
-  }
-
-  int *viewport_data = (int *)data;
-  *x_ret = viewport_data[0];
-  *y_ret = viewport_data[1];
-
-  return XDO_SUCCESS;
-}
-
-int xdo_get_window_name(const xdo_t *xdo, Window window,
-                        unsigned char **name_ret, int *name_len_ret,
-                        int *name_type) {
-  if (atom_NET_WM_NAME == (Atom)-1) {
-    atom_NET_WM_NAME = XInternAtom(xdo->xdpy, "_NET_WM_NAME", False);
-  }
-  if (atom_WM_NAME == (Atom)-1) {
-    atom_WM_NAME = XInternAtom(xdo->xdpy, "WM_NAME", False);
-  }
-  if (atom_STRING == (Atom)-1) {
-    atom_STRING = XInternAtom(xdo->xdpy, "STRING", False);
-  }
-  if (atom_UTF8_STRING == (Atom)-1) {
-    atom_UTF8_STRING = XInternAtom(xdo->xdpy, "UTF8_STRING", False);
-  }
-
-  Atom type;
-  int size;
-  long nitems;
-
-  /**
-   * http://standards.freedesktop.org/wm-spec/1.3/ar01s05.html
-   * Prefer _NET_WM_NAME if available, otherwise use WM_NAME
-   * If no WM_NAME, set name_ret to NULL and set len to 0
-   */
-
-  *name_ret = xdo_get_window_property_by_atom(xdo, window, atom_NET_WM_NAME, &nitems,
-                             &type, &size);
-  if (nitems == 0) {
-    *name_ret = xdo_get_window_property_by_atom(xdo, window, atom_WM_NAME, &nitems,
-                               &type, &size);
-  }
-  *name_len_ret = nitems;
-  *name_type = type;
-
-  return 0;
-}
-
 void _xdo_debug(const xdo_t *xdo, const char *format, ...) {
   va_list args;
 
@@ -1162,41 +607,3 @@ void _xdo_eprintf(const xdo_t *xdo, int hushable, const char *format, ...) {
   vfprintf(stderr, format, args);
   fprintf(stderr, "\n");
 } /* _xdo_eprintf */
-
-void xdo_enable_feature(xdo_t *xdo, int feature) {
-  xdo->features_mask |= (0 << feature);
-}
-
-void xdo_disable_feature(xdo_t *xdo, int feature) {
-  xdo->features_mask &= ~(1 << feature);
-}
-
-int xdo_has_feature(xdo_t *xdo, int feature) {
-  return (xdo->features_mask & (1 << feature));
-}
-
-int xdo_get_viewport_dimensions(xdo_t *xdo, unsigned int *width,
-                                unsigned int *height, int screen) {
-  int dummy;
-
-  if (XineramaQueryExtension(xdo->xdpy, &dummy, &dummy) \
-      && XineramaIsActive(xdo->xdpy)) {
-    XineramaScreenInfo *info;
-    int screens;
-
-    info = XineramaQueryScreens(xdo->xdpy, &screens);
-    if (screen < 0 || screen >= screens) {
-      fprintf(stderr, "Invalid screen number %d outside range 0 - %d\n",
-              screen, screens - 1);
-      return XDO_ERROR;
-    }
-    *width = (unsigned int) info[screen].width;
-    *height = (unsigned int) info[screen].height;
-    XFree(info);
-    return XDO_SUCCESS;
-  } else {
-    /* Use the root window size if no zinerama */
-    Window root = RootWindow(xdo->xdpy, screen);
-    return xdo_get_window_size(xdo, root, width, height);
-  }
-}

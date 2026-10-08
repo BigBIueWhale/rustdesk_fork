@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-9c346f764ccfaabc099ea70f4b7b06d78c37150d4499c45c3c472b9ad8c06492  requirements.html
+a9f43c042386ba8917bede671f947114db34267d92ba035a43123c70adb7e2f0  requirements.html
 ```
 
 ## Current Verdict
@@ -92,7 +92,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Service/helper/process bootstrap authority (R-S11y–R-S11al; Appendix C #147–160) | The normative contracts retain empty helper environments, typed OS queries, selected-session X11 authority and bounded empty-Display recovery, kernel-parent-bound graphical/headless CM lifetime, no global process-table signal/restart authority, non-root-only UI, numeric principal selection, exact child/supervisor argument protocols, SCM-owned initialization, and fixed macOS principal/home/config/log ordering. Appendix findings map to required dispositions without implementation/gate/artifact-status narration; #154–160's original threat findings are retained. All operative MUST/MUST NOT markers, primary-source links, IDs, test mappings, and installed/native acceptance obligations remain. Appendix #152 agrees with R-S11cc's graphical-and-headless scope. No product, verifier, or executable test changed. Installed/native principals, failure/restart/resource behavior and release acceptance remain OPEN in the platform matrices. |
 | Linux privileged launch context and descriptors (R-S11l–r; Appendix C #134–140) | The normative contracts retain typed principal/desktop selection, account-derived home, selected session endpoints, service-owned terminal choice, pre-initialization root cwd and deployment-bound sidecars, whole-range descriptor policy, post-fork-safe failure handling, and exact child-only exceptions. Appendix #136 agrees with R-S11n/R-S11cb's executable and bootstrap-pipe handoffs. Ordinary helpers use the shared empty-default allowlist; FUSE permits only its communication socket in the forked child. Retired sudo/env, run-as-user, w and screensaver paths have no supported role. Threat prerequisites and impact limits, actual-child identity/failure tests and exact installed Debian acceptance remain required; implementation chronology, fixture receipts and documentation-wiring claims are absent. Product and verifier sources are unchanged. Installed/native launch, authorization, failure/race/resource and release evidence remain OPEN. |
-| Native library provenance (R-S11c-10s/10u/10y/23/24) | Native runners and Dart FFI select the bundled core. `libs/libxdo-sys-stub/src/lib.rs` selects only `/usr/lib/rustdesk-fork/libxdo.so.3`, checks private version `3.20160805.1-rustdesk9` and the complete required ABI, and retains the owning library; no distro-candidate fallback remains. Named XDO native input/refusal and staged-provider results are recorded under Linux Enigo XDO below; they execute components with a partial common facade, not full Cargo/app/install. `scripts/verify-debian-package-authority.py` retains ELF identity, stack, interpreter, dynamic metadata and search-path validation. Exact-current installed loader/FFI identity, missing/invalid-code and ambient-search refusal, package validation, serving-principal behavior, races, resources and release acceptance remain OPEN. |
+| Native library provenance (R-S11c-10s/10u/10y/23/24) | Native runners and Dart FFI select the bundled core. `libs/libxdo-sys-stub/src/lib.rs` selects only `/usr/lib/rustdesk-fork/libxdo.so.3`, checks private version `3.20160805.1-rustdesk10` and the complete required ABI, and retains the owning library; no distro-candidate fallback remains. Named XDO native input/refusal and staged-provider results are recorded under Linux Enigo XDO below; they execute components with a partial common facade, not full Cargo/app/install. `scripts/verify-debian-package-authority.py` retains ELF identity, stack, interpreter, dynamic metadata and search-path validation. Exact-current installed loader/FFI identity, missing/invalid-code and ambient-search refusal, package validation, serving-principal behavior, races, resources and release acceptance remain OPEN. |
 | Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | Packaging, immutable-cache, extraction, replacement/recovery, and Kotlin strategy contracts remain requirement-owned. Fresh Android builds explicitly select Kotlin 2.0.21 in-process compilation and reject fallback or task-level overrides. Named APK `ca569086`/`7d49e481…8737c` passed build/install/render and one complete peer schedule, but later native presentation failed on that same artifact; the intermittent defect is OPEN. Diagnostic APK `035c9a20` has three complete corrected-observer peer schedules at `ec5544d6`, `f74470dd` and `eb7c8305`; its earlier alias-prone oracle result is not freshness proof. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound. They and the test-signed APKs do not establish complete canonical release inputs, stable signing, cold equality, sustained resource/latency bounds, network/device coverage, independent reproduction, or external review. See the Android runtime disposition below and the release-blocking matrix. |
 
 Completed documentation cleanup has no live progress log here. Requirement-specific current dispositions remain in
@@ -982,44 +982,25 @@ between-request release failure, native event/group-lock/asynchronous errors,
 map races, concurrency, whole heap/soak, full Cargo/app/install, other platforms
 and broader authority/artifact/release evidence remain OPEN.
 
-**Unsupported native window actions removed; focused native acceptance.**
-The private C provider and header omit 22 unused window/desktop actions and their
-wait, size-hint and interactive pointer-grab selection APIs. Window/client termination,
-window movement/size/map/focus/activation, desktop assignment/count/switching and
-viewport mutation have no supported caller. The unused Rust activate-window
-function table entry, required-symbol binding and facade are deleted. Retained
-input/cursor and observation/search paths are unchanged. Provider/helper/loader
-require `3.20160805.1-rustdesk9`; wrong-version is current corrected C stamped 8.
-Exact candidate `e645b34c8caca0d89b8c79910cb33ee7cf0a1891`
-(tree `01ae92eeda309e6a87d24e90873210d2854a0ad6`) passed the complete focused
-transaction in 107 seconds with outer exit 0. Actual ELF inventories omit all 22
-retired symbols from the product-helper provider and five loader-provider fixtures.
-Both normal and actual staged complete-provider runs made 22 failed real symbol
-lookups, then delivered native pointer/button/Shift/a input and retired descriptors.
-The complete production loader and Linux Enigo passed complete, missing mouse/key
-symbol, wrong-version, writable, absent and native-modifier-error scenarios.
-Retained native constructor, state/modifier admission and recovery, numeric-key,
-scratch, mouse, text and changed-layout regressions passed on current corrected C.
-The production helper and complete-loader provider emitted the same 40,248-byte
-version-9 ELF, SHA-256
-`4302ab769f52222c154920a753f9575418d72da99dacfd9aec5ebc9d14bf7802`.
-Actual staging resolved 11 provider dependencies and 22 libraries; distribution
-XDO was absent. Raw
-`.harness-state/verifier-vm/x11-display-tests-run.OAbXaPKjW0.serial.log`
-is 101,336 bytes, SHA-256
+**Closed private native input ABI; native acceptance pending.**
+The provider/header expose only the twelve context, version, numeric-key,
+pointer/button and cursor/input-state operations listed in
+`scripts/fixtures/xdo-input-exports.txt`. Twenty-five unused window/property/name,
+client/desktop/geometry queries, polling, repeated-click and feature APIs,
+the entire regex search module and ten unused Rust bindings/facades are removed.
+Cursor coordinates retain only `XQueryPointer`; focused-window observation is
+private to key routing. There is no Xinerama provider dependency. Context layout
+and supported input semantics remain. Provider/helper/loader require
+`3.20160805.1-rustdesk10`; the wrong-version fixture is corrected current C
+stamped 9. Actual ELF export equality and 59 retired-name loader refusals are
+required before current acceptance. The normal/staged loader fixture also
+observes native delivery to its explicitly focused window.
+The version-9 acceptance at `e645b34c8caca0d89b8c79910cb33ee7cf0a1891` is
+historical; its raw `x11-display-tests-run.OAbXaPKjW0.serial.log` SHA-256 is
 `9e4824156a67c83efc57aebe7d7734bda38d6995e82ef03335372239d1ab096d`.
-The explicitly nonindependent assistant-observed
-`evidence/xdo-window-actions-run.OAbXaPKjW0.outer.receipt` under the same root
-has SHA-256 `5074cb0ad18775b40e819a181c1fe6266a50ade9dd0281f0e4e4b80dfc1a6a85`.
-The ordinary-user zero-NIC VM used guest-only network-none nonroot containers
-and read-only inputs. Outer endpoint inventories report no added host listener;
-cleanup joined and the exact run root/overlay is absent. Snapshots auto-retired;
-independent snapshot comparison is unclaimed. Four real dependencies were
-authenticated; the common facade is partial. Full Cargo/app/install, stage CLI,
-privileged receiver and serving-principal/loader races were unexecuted. ASan leak
-detection is disabled and internal Xlib/whole-heap scope is unclaimed. Broader
-input ownership, concurrency/resources/soak, other platforms, installed/native
-authority and artifact/release/review obligations remain OPEN.
+Current native execution remains pending. Full Cargo/app/install, staging CLI,
+serving-principal/loader races, Xlib/whole-heap and concurrency/resource/soak
+coverage and all broader installed/native/release obligations remain OPEN.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,

@@ -1158,7 +1158,6 @@ android_frame_input_inventory() {
             "$REPO_ROOT/libs/libxdo-sys-stub/native/build.py"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.h"
-            "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_search.c"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_version.h"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/COPYRIGHT"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/SOURCE.txt"
@@ -1199,7 +1198,8 @@ android_frame_input_inventory() {
                 "$SCRIPT_DIR/test-xdo-enigo.rs" "$REPO_ROOT/libs/enigo/src/linux/mod.rs"
                 "$REPO_ROOT/libs/enigo/src/linux/nix_impl.rs" "$REPO_ROOT/libs/hbb_common/src/platform/linux.rs"
                 "$SCRIPT_DIR/fixtures/xdo-loader-common.rs" "$SCRIPT_DIR/xdo-loader-inputs.txt"
-                "$SCRIPT_DIR/fixtures/xdo-retired-window-actions.txt"
+                "$SCRIPT_DIR/fixtures/xdo-input-exports.txt"
+                "$SCRIPT_DIR/fixtures/xdo-retired-apis.txt"
                 "$REPO_ROOT/libs/libxdo-sys-stub/src/lib.rs" "$REPO_ROOT/Cargo.lock")
             local loader_package loader_expected loader_extra
             while read -r loader_package loader_expected loader_extra; do
@@ -3510,7 +3510,6 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/libs/libxdo-sys-stub/native/build.py=$REPO_ROOT/libs/libxdo-sys-stub/native/build.py"
             "repo/libs/libxdo-sys-stub/native/xdo.c=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
             "repo/libs/libxdo-sys-stub/native/xdo.h=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.h"
-            "repo/libs/libxdo-sys-stub/native/xdo_search.c=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_search.c"
             "repo/libs/libxdo-sys-stub/native/xdo_version.h=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_version.h"
             "repo/libs/libxdo-sys-stub/native/COPYRIGHT=$REPO_ROOT/libs/libxdo-sys-stub/native/COPYRIGHT"
             "repo/libs/libxdo-sys-stub/native/SOURCE.txt=$REPO_ROOT/libs/libxdo-sys-stub/native/SOURCE.txt"
@@ -3560,7 +3559,8 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
                 "repo/libs/enigo/src/linux/nix_impl.rs=$REPO_ROOT/libs/enigo/src/linux/nix_impl.rs"
                 "repo/libs/hbb_common/src/platform/linux.rs=$REPO_ROOT/libs/hbb_common/src/platform/linux.rs"
                 "repo/scripts/fixtures/xdo-loader-common.rs=$SCRIPT_DIR/fixtures/xdo-loader-common.rs"
-                "repo/scripts/fixtures/xdo-retired-window-actions.txt=$SCRIPT_DIR/fixtures/xdo-retired-window-actions.txt"
+                "repo/scripts/fixtures/xdo-input-exports.txt=$SCRIPT_DIR/fixtures/xdo-input-exports.txt"
+                "repo/scripts/fixtures/xdo-retired-apis.txt=$SCRIPT_DIR/fixtures/xdo-retired-apis.txt"
                 "repo/scripts/xdo-loader-inputs.txt=$SCRIPT_DIR/xdo-loader-inputs.txt"
                 "repo/libs/libxdo-sys-stub/src/lib.rs=$REPO_ROOT/libs/libxdo-sys-stub/src/lib.rs"
                 "repo/Cargo.lock=$REPO_ROOT/Cargo.lock"
@@ -4305,15 +4305,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'XDO_CONSTRUCTOR_NATIVE=pass cases=264 faults=21 paths=3 repeats=4 accepted=12 refused=252 events=24 snapshot=single allocations=paired maps=paired display_transfer=success-only caller_display=usable descriptors=retired tasks=retired sanitizer=address heap_scope=owned-allocations whole_app=false' \
         'constructor ownership through the current public keyboard API'
     require_exact_fixed_receipt \
-        'XDO_KEY_API_EXPORTS=pass providers=1 retired_exports=6 single_key=present' \
-        'production-helper provider omits the retired parser, text and list ABI'
-    require_exact_fixed_receipt \
-        'XDO_WINDOW_METADATA_API_NATIVE=pass providers=1 retired_exports=3' \
-        'production-helper provider omits unused window metadata mutation APIs'
-    require_exact_fixed_receipt \
-        'XDO_WINDOW_ACTION_API_NATIVE=pass providers=1 retired_exports=22' \
-        'production-helper provider omits unsupported window and desktop actions'
-    [ "$(/usr/bin/grep -Fc 'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a metadata_lookups=3 metadata_symbols=absent window_action_lookups=22 window_action_symbols=absent descriptors=retired' "$SERIAL_LOG")" -eq 2 ] \
+        'XDO_INPUT_API_NATIVE=pass providers=1 exports=12 scope=closed-private-abi' \
+        'production-helper provider exposes exactly the private input ABI'
+    [ "$(/usr/bin/grep -Fc 'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a focus=private retired_lookups=59 retired_symbols=absent descriptors=retired' "$SERIAL_LOG")" -eq 2 ] \
         || fail 'native symbol refusal is absent from complete or staged provider execution'
     require_exact_fixed_receipt \
         'X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 context_refusals=32 constructor_unwinds=16 display_connections=one pointer=selected-root callbacks=paired descriptors=retired threads=retired scope=xdo-backend' \
@@ -4386,8 +4380,8 @@ elif [ "$MODE" = x11-display-tests ]; then
         'XDO_MOUSE_MODIFIERS_NATIVE=pass held=0,1,9,10,12 repeats=4 cases=20 events=40 window=owned state=preserved keys=unchanged mapping=restored descriptors=retired tasks=retired scope=private-native-component' \
         'private native mouse events preserve held modifiers without an unused key-list allocation'
     require_exact_fixed_receipt \
-        'XDO_MODIFIER_API_NATIVE=pass providers=2 retired_exports=3 required_mouse=present' \
-        'actual private providers omit all three unused modifier APIs while preserving the required mouse exports'
+        'XDO_INPUT_API_NATIVE=pass providers=2 exports=12 scope=closed-private-abi' \
+        'actual private providers expose exactly the twelve supported input APIs'
     require_exact_fixed_receipt \
         'X11_XDO_DESTRUCTOR_BEFORE=observed source_delta=one-call allocations=2 retirements=0 live=2 keys=correct children=joined scope=xdo-descriptor-class' \
         'same native source with the old destructor delivers keys but retains both enclosing descriptors'

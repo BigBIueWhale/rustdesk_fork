@@ -48,7 +48,7 @@ static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key, K
 static int _xdo_ewmh_is_supported(const xdo_t *xdo, const char *feature);
 static void _xdo_init_xkeyevent(const xdo_t *xdo, XKeyEvent *xk);
 static void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
-                          int modstate, int is_press, useconds_t delay);
+                          int modstate, int is_press, int current_group, useconds_t delay);
 static void _xdo_send_modifier(const xdo_t *xdo, int modmask, int is_press);
 
 static int _xdo_mousebutton(const xdo_t *xdo, Window window, int button, int is_press);
@@ -891,7 +891,7 @@ int xdo_click_window_multiple(const xdo_t *xdo, Window window, int button,
 } /* int xdo_click_window_multiple */
 
 static int _xdo_send_key_window_do(const xdo_t *xdo, Window window, charcodemap_t *key,
-                                   int pressed, int *modifier, useconds_t delay) {
+                                   int pressed, int *modifier, int current_group, useconds_t delay) {
   KeySym *keysyms = NULL;
   int keysyms_per_keycode = 0;
   int scratch_keycode = 0;
@@ -934,7 +934,7 @@ static int _xdo_send_key_window_do(const xdo_t *xdo, Window window, charcodemap_
     key->code = scratch_keycode;
   }
 
-  _xdo_send_key(xdo, window, key, *modifier, pressed, delay);
+  _xdo_send_key(xdo, window, key, *modifier, pressed, current_group, delay);
   if (pressed)
     *modifier |= key->modmask;
   else
@@ -979,15 +979,20 @@ int xdo_send_key_window(const xdo_t *xdo, Window window, unsigned int kind,
     return XDO_ERROR;
   }
 
-  if (action != XDO_KEY_CLICK)
-    return _xdo_send_key_window_do(xdo, window, &key, action == XDO_KEY_DOWN, &modifier, delay);
+  XkbStateRec state;
+  if (XkbGetState(xdo->xdpy, XkbUseCoreKbd, &state) != Success
+      || state.group >= XkbNumKbdGroups)
+    return XDO_ERROR;
 
-  int status = _xdo_send_key_window_do(xdo, window, &key, True, &modifier, delay / 2);
+  if (action != XDO_KEY_CLICK)
+    return _xdo_send_key_window_do(xdo, window, &key, action == XDO_KEY_DOWN, &modifier, state.group, delay);
+
+  int status = _xdo_send_key_window_do(xdo, window, &key, True, &modifier, state.group, delay / 2);
   if (status != XDO_SUCCESS)
     return status;
   /* Release the exact code just pressed without reacquiring a scratch resource. */
   key.needs_binding = 0;
-  return _xdo_send_key_window_do(xdo, window, &key, False, &modifier, delay / 2);
+  return _xdo_send_key_window_do(xdo, window, &key, False, &modifier, state.group, delay / 2);
 }
 
 /* Add by Lee Pumphret 2007-07-28
@@ -1317,7 +1322,7 @@ void _xdo_init_xkeyevent(const xdo_t *xdo, XKeyEvent *xk) {
 }
 
 void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
-                          int modstate, int is_press, useconds_t delay) {
+                          int modstate, int is_press, int current_group, useconds_t delay) {
   /* Properly ensure the modstate is set by finding a key
    * that activates each bit in the modifier state */
   int mask = modstate | key->modmask;
@@ -1334,9 +1339,6 @@ void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
   }
   if (use_xtest) {
     //printf("XTEST: Sending key %d %s\n", key->code, is_press ? "down" : "up");
-    XkbStateRec state;
-    XkbGetState(xdo->xdpy, XkbUseCoreKbd, &state);
-    int current_group = state.group;
     XkbLockGroup(xdo->xdpy, XkbUseCoreKbd, key->group);
     if (mask)
       _xdo_send_modifier(xdo, mask, is_press);

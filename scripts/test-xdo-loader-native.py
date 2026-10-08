@@ -159,14 +159,13 @@ def build():
             elif variant == 'wrong-version':
                 path = source_dir / 'xdo_version.h'
                 text = path.read_text()
-                require(text.count('3.20160805.1-rustdesk6') == 1, 'fixture version source differs')
-                path.write_text(text.replace('3.20160805.1-rustdesk6', '3.20160805.1-rustdesk5'))
+                require(text.count('3.20160805.1-rustdesk7') == 1, 'fixture version source differs')
+                path.write_text(text.replace('3.20160805.1-rustdesk7', '3.20160805.1-rustdesk6'))
             else:
                 path = source_dir / 'xdo.c'
-                text = path.read_text()
-                call = 'return _xdo_send_key_window_do(xdo, window, &key, action == XDO_KEY_DOWN, &modifier, delay);'
-                require(text.count(call) == 1, 'native key-down fault boundary differs')
-                path.write_text(text.replace(call, 'return action == XDO_KEY_DOWN ? 7 : _xdo_send_key_window_do(xdo, window, &key, False, &modifier, delay);'))
+                path.write_text('#define XkbGetState rd_fixture_xkb_get_state\n' + path.read_text()
+                                + '\nStatus rd_fixture_xkb_get_state(Display *display, unsigned device, XkbStatePtr state) {\n'
+                                + '  (void)display; (void)device; (void)state; return BadAccess;\n}\n')
         library = directory / 'libxdo.so.3'
         result = command(['/usr/bin/python3', '-I', '-S', str(source_dir / 'build.py'),
                           '--output', str(library)], 35)
@@ -281,7 +280,7 @@ def run(scenario):
                         'key_down=unavailable mouse=unavailable descriptors=retired'
                         if scenario not in ('complete', 'reject-key-down') else
                         f'XDO_ENIGO_COMPONENT=pass scenario={scenario} attempts=8 '
-                        f'key_down={"delivered" if scenario == "complete" else "native-error"} '
+                        f'key_down={"delivered" if scenario == "complete" else "native-state-error"} '
                         'pointer=actual descriptors=retired')
             require(result.stdout.splitlines() == [expected] and not result.stderr,
                     'complete Enigo/private-loader result differs')

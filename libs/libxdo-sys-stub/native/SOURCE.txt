@@ -37,6 +37,9 @@ key-list API are removed. Clicks resolve once and release the same code without
 reacquiring scratch storage. Enigo supplies numeric X11 symbols and validated
 Unicode scalars; unsupported keys and out-of-range raw codes are errors.
 Unused window property, class and urgency mutation APIs are removed.
-The fixed fork version is 3.20160805.1-rustdesk6.
+Every key request checks one XKB state snapshot before mapping or input effects;
+both click legs retain its verified restoration group. Failed queries and
+out-of-range returned groups are errors without scratch or input effects.
+The fixed fork version is 3.20160805.1-rustdesk7.
 The BSD redistribution notice is retained in COPYRIGHT and packaged with the
 library. Source provenance is not a claim that all native behavior is validated.

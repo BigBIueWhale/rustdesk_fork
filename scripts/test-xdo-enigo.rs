@@ -69,9 +69,13 @@ fn main() {
             if scenario == "reject-key-down" {
                 let rejected = result.as_ref().err().map(|error| error.to_string());
                 assert_eq!(pointer(display.0).2 & ShiftMask, 0);
+                XSync(display.0, 0);
+                let mut event: XEvent = std::mem::zeroed();
+                assert_eq!(XCheckWindowEvent(display.0, window, KeyPressMask | KeyReleaseMask, &mut event), 0,
+                           "failed keyboard-state query emitted input");
                 drop(enigo);
                 assert_eq!(descriptors(), connected);
-                if rejected.as_deref() != Some("libxdo key down failed with status 7") {
+                if rejected.as_deref() != Some("libxdo key down failed with status 1") {
                     drop(display);
                     assert_eq!(descriptors(), baseline);
                     panic!("Enigo discarded the native key-down refusal: {rejected:?}");
@@ -113,5 +117,5 @@ fn main() {
     assert_eq!(descriptors(), baseline);
     assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), 1);
     println!("XDO_ENIGO_COMPONENT=pass scenario={scenario} attempts=8 key_down={} pointer=actual descriptors=retired",
-             if scenario == "complete" { "delivered" } else { "native-error" });
+             if scenario == "complete" { "delivered" } else { "native-state-error" });
 }

@@ -170,6 +170,8 @@ def scratch_keys(root, environment):
     native_source = root / "libs/libxdo-sys-stub/native"
     subprocess.run(["/usr/bin/cc", "-std=c99", "-O1", "-g", "-fsanitize=address",
                     "-fno-omit-frame-pointer", "-Wl,--wrap=XGetKeyboardMapping", "-Wl,--wrap=XFree",
+                    "-Wl,--wrap=XkbGetState", "-Wl,--wrap=XkbLockGroup",
+                    "-Wl,--wrap=XTestFakeKeyEvent", "-Wl,--wrap=XChangeKeyboardMapping",
                     "-Wl,--wrap=malloc", "-Wl,--wrap=calloc", "-Wl,--wrap=realloc", "-Wl,--wrap=strdup",
                     str(scratch_source), str(native_source / "xdo.c"), str(native_source / "xdo_search.c"),
                     "-lX11", "-lXtst", "-lXinerama", "-lxkbcommon", "-o", str(scratch_binary)],

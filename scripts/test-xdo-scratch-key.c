@@ -1,6 +1,8 @@
 /* Isolated native scratch-key bounds and query-failure regression. */
 #define _POSIX_C_SOURCE 200809L
 #include <X11/Xlib.h>
+#include <X11/XKBlib.h>
+#include <X11/extensions/XTest.h>
 #include <X11/keysym.h>
 #include <dirent.h>
 #include <errno.h>
@@ -12,9 +14,14 @@
 
 static Display *product_display;
 static int observe, fault, queries, frees;
+static int state_fault, state_queries, group_changes, input_calls, mapping_changes;
 static KeySym *owned_query;
 extern KeySym *__real_XGetKeyboardMapping(Display *, KeyCode, int, int *);
 extern int __real_XFree(void *);
+extern Status __real_XkbGetState(Display *, unsigned int, XkbStatePtr);
+extern Bool __real_XkbLockGroup(Display *, unsigned int, unsigned int);
+extern int __real_XTestFakeKeyEvent(Display *, unsigned int, Bool, unsigned long);
+extern int __real_XChangeKeyboardMapping(Display *, int, int, KeySym *, int);
 extern void *__real_malloc(size_t);
 extern void *__real_calloc(size_t, size_t);
 extern void *__real_realloc(void *, size_t);
@@ -25,6 +32,35 @@ static void require(int condition, const char *message) {
     fprintf(stderr, "XDO_SCRATCH_FAILURE=%s\n", message);
     exit(1);
   }
+}
+
+Status __wrap_XkbGetState(Display *display, unsigned int device, XkbStatePtr state) {
+  if (!observe || display != product_display)
+    return __real_XkbGetState(display, device, state);
+  state_queries++;
+  if (state_fault == 1) return BadAccess;
+  if (state_fault == 2) return BadImplementation;
+  Status status = __real_XkbGetState(display, device, state);
+  if (state_fault == 3) {
+    require(status == Success, "real keyboard state unavailable");
+    state->group = XkbNumKbdGroups;
+  }
+  return status;
+}
+
+Bool __wrap_XkbLockGroup(Display *display, unsigned int device, unsigned int group) {
+  if (observe && display == product_display) group_changes++;
+  return __real_XkbLockGroup(display, device, group);
+}
+
+int __wrap_XTestFakeKeyEvent(Display *display, unsigned int code, Bool pressed, unsigned long delay) {
+  if (observe && display == product_display) input_calls++;
+  return __real_XTestFakeKeyEvent(display, code, pressed, delay);
+}
+
+int __wrap_XChangeKeyboardMapping(Display *display, int first, int width, KeySym *symbols, int count) {
+  if (observe && display == product_display) mapping_changes++;
+  return __real_XChangeKeyboardMapping(display, first, width, symbols, count);
 }
 
 KeySym *__wrap_XGetKeyboardMapping(Display *display, KeyCode first, int count, int *width) {
@@ -111,6 +147,54 @@ static void scratch_map(const KeySym *mapping, int count, int width, int last_em
     for (int column = 0; column < width; column++)
       if (mapping[row * width + column] != NoSymbol) empty = 0;
     require(empty == (last_empty && row == count - 1), "scratch map setup differs");
+  }
+}
+
+static void keyboard_state(xdo_t *input, Display *observer, Window window,
+                           int low, int high, int width, const KeySym *mapping) {
+  struct request { unsigned kind; unsigned long value; int code; };
+  const struct request keys[] = {
+    {XDO_KEYSYM, XK_F30, low}, {XDO_KEYCODE, low + 1, low + 1},
+    {XDO_KEYSYM, 0x0101f642, high},
+  };
+  fault = 0;
+  for (int failure = 1; failure <= 3; failure++) {
+    for (size_t index = 0; index < sizeof(keys) / sizeof(keys[0]); index++) {
+      for (unsigned action = XDO_KEY_DOWN; action <= XDO_KEY_CLICK; action++) {
+        XkbStateRec before = {0}, after = {0};
+        require(XkbGetState(observer, XkbUseCoreKbd, &before) == Success,
+                "observer keyboard state unavailable");
+        queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+        state_fault = failure;
+        observe = 1;
+        int status = xdo_send_key_window(input, CURRENTWINDOW, keys[index].kind,
+                                         keys[index].value, action, 0);
+        observe = 0;
+        require(status == XDO_ERROR && state_queries == 1 && group_changes == 0
+                && input_calls == 0 && mapping_changes == 0 && queries == 0
+                && frees == 0 && owned_query == NULL, "keyboard-state refusal has effects");
+        events(observer, window, 0, 0);
+        same_map(observer, low, high - low + 1, width, mapping);
+        require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
+                && !memcmp(&before, &after, sizeof(before)), "keyboard-state refusal changed state");
+
+        state_fault = 0;
+        queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+        observe = 1;
+        status = xdo_send_key_window(input, CURRENTWINDOW, keys[index].kind,
+                                     keys[index].value, XDO_KEY_CLICK, 0);
+        observe = 0;
+        int scratch = index == 2;
+        require(status == XDO_SUCCESS && state_queries == 1 && group_changes == 4
+                && input_calls == 2 && mapping_changes == 2 * scratch
+                && queries == scratch && frees == scratch && owned_query == NULL,
+                "keyboard-state recovery ownership differs");
+        events(observer, window, keys[index].code, 2);
+        same_map(observer, low, high - low + 1, width, mapping);
+        require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
+                && !memcmp(&before, &after, sizeof(before)), "keyboard-state recovery changed state");
+      }
+    }
   }
 }
 
@@ -213,6 +297,7 @@ int main(void) {
     input = xdo_new("unix/:98.0");
     require(input != NULL, "fresh product context unavailable");
     product_display = input->xdpy;
+    keyboard_state(input, observer, window, low, high, width, mapping);
     key_input(input, observer, window, low, high);
     same_map(observer, low, count, width, mapping);
     for (int scenario = 0; scenario < 5; scenario++) {
@@ -257,5 +342,6 @@ int main(void) {
           "native descriptors/tasks retained");
   puts("XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=32 frees=24 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false");
   puts("XDO_KEY_INPUT_NATIVE=pass cases=108 repeats=4 refused=92 accepted=16 events=32 raw=both-boundaries invalid=pre-input-refused key_storage=stack product_allocations=0 click_queries=4 click_frees=4 maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_heap=false whole_app=false");
+  puts("XDO_KEY_STATE_NATIVE=pass cases=108 repeats=4 faults=3 kinds=3 actions=3 refused=108 recovery=108 events=216 state_queries=216 click_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
   return 0;
 }

@@ -945,7 +945,11 @@ run_android_frame_tests() {
         native_script=test-native-clipboard-listener.py
         native_receipt='CLIPBOARD_LISTENER_NATIVE=pass scope=linux-component source=production master=owned-x11 callbacks=actual old=retained current=joined late_admission=refused startup_observer=retired tests=14 network=none cleanup=joined'
     fi
-    local -a mounts command
+    local -a mounts command phases=(prepare native)
+    local loader_installed=$ROOT/xdo-loader-installed loader_variant loader_source loader_digest
+    if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ]; then
+        phases=(prepare loader-build loader-complete loader-missing-mouse-up loader-wrong-version loader-writable loader-absent native)
+    fi
     load_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
             env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
@@ -967,7 +971,30 @@ run_android_frame_tests() {
     [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
         || fail 'Android frame-test image load receipt differs'
     install -d -o 4000 -g 4000 -m 0700 "$work" "$work/xvfb-debs" "$work/xvfb-root"
-    for phase in prepare native; do
+    for phase in "${phases[@]}"; do
+        if [ "$phase" = loader-build ]; then
+            install -d -o 4000 -g 4000 -m 0700 "$work/loader-build"
+        elif [ "$phase" = loader-complete ]; then
+            # Preparation inside this disposable guest only. Never execute the provider as root.
+            install -d -o 0 -g 0 -m 0755 "$loader_installed"
+            for loader_variant in complete missing-mouse-up wrong-version writable absent; do
+                install -d -o 0 -g 0 -m 0755 "$loader_installed/$loader_variant"
+                [ "$loader_variant" != absent ] || continue
+                loader_source="$work/loader-build/$loader_variant/libxdo.so.3"
+                [ "$loader_variant" != writable ] || loader_source="$work/loader-build/complete/libxdo.so.3"
+                [ -f "$loader_source" ] && [ ! -L "$loader_source" ] \
+                    && [ "$(stat -c '%u:%g:%a:%h' -- "$loader_source")" = 4000:4000:644:1 ] \
+                    && [ "$(stat -c '%s' -- "$loader_source")" -le 1048576 ] \
+                    || fail 'XDO loader compiled provider authority differs'
+                loader_digest="$(sha256sum -- "$loader_source")"
+                loader_digest=${loader_digest%% *}
+                install -o 0 -g 0 -m 0644 "$loader_source" "$loader_installed/$loader_variant/libxdo.so.3"
+                [ "$(sha256sum <"$loader_installed/$loader_variant/libxdo.so.3")" = "$loader_digest  -" ] \
+                    || fail 'XDO loader prepared provider bytes differ'
+                [ "$loader_variant" != writable ] || chmod 0664 "$loader_installed/$loader_variant/libxdo.so.3"
+            done
+            printf 'XDO_LOADER_GUEST_PREPARATION=pass root=disposable-guest-only execution=nonroot fixed_path=/usr/lib/rustdesk-fork\n'
+        fi
         mounts=(--mount "type=bind,src=$VERIFY_REPO,dst=/work,readonly,bind-recursive=disabled")
         if [ "$phase" = prepare ]; then
             mounts+=(
@@ -987,6 +1014,17 @@ run_android_frame_tests() {
                 --tmpfs "/build:rw,exec,nosuid,nodev,size=$build_size,mode=700,uid=4000,gid=4000"
             )
             command=(/usr/bin/python3 -B -I -S "/work/scripts/$native_script")
+            if [ "$phase" = loader-build ]; then
+                mounts+=(--mount "type=bind,src=$work/loader-build,dst=/loader-build,bind-recursive=disabled")
+                command=(/usr/bin/python3 -B -I -S /work/scripts/test-xdo-loader-native.py build)
+            elif [[ "$phase" == loader-* ]]; then
+                loader_variant=${phase#loader-}
+                mounts+=(
+                    --mount "type=bind,src=$work/loader-build,dst=/loader-build,readonly,bind-recursive=disabled"
+                    --mount "type=bind,src=$loader_installed/$loader_variant,dst=/usr/lib/rustdesk-fork,readonly,bind-recursive=disabled"
+                )
+                command=(/usr/bin/python3 -B -I -S /work/scripts/test-xdo-loader-native.py "$loader_variant")
+            fi
         fi
         CONTAINER_ID="$(frame_docker create --name "rustdesk-android-frame-$phase" \
             --pull never --network none --user 4000:4000 --read-only --cap-drop ALL \
@@ -1008,7 +1046,13 @@ run_android_frame_tests() {
             || fail 'Android frame-test container failed or exceeded output bound'
         [ "$(frame_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
             || fail 'Android frame-test container did not finish cleanly'
-        if [ "$phase" = native ]; then
+        if [ "$phase" = loader-build ]; then
+            [ "$(grep -Fxc 'XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=3' "$output")" -eq 1 ] \
+                || fail 'XDO loader build result is absent or duplicated'
+        elif [[ "$phase" == loader-* ]]; then
+            [ "$(grep -Fxc "XDO_LOADER_NATIVE=pass scenario=${phase#loader-} source=production network=none uid=4000 cleanup=joined" "$output")" -eq 1 ] \
+                || fail 'XDO loader native result is absent or duplicated'
+        elif [ "$phase" = native ]; then
             [ "$(grep -Fxc "$native_receipt" "$output")" -eq 1 ] \
                 || fail 'Android native frame-test result is absent or duplicated'
             if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ]; then

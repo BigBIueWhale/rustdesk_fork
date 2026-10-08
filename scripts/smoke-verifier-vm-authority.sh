@@ -1142,6 +1142,9 @@ android_frame_input_inventory() {
     )
     if [ "$MODE" = x11-display-tests ]; then
         files+=("$SCRIPT_DIR/test-x11-display-native.py" "$SCRIPT_DIR/test-x11-display.rs"
+            "$SCRIPT_DIR/test-xdo-loader-native.py" "$SCRIPT_DIR/test-xdo-loader.rs"
+            "$SCRIPT_DIR/fixtures/xdo-loader-common.rs" "$SCRIPT_DIR/xdo-loader-inputs.txt"
+            "$REPO_ROOT/libs/libxdo-sys-stub/src/lib.rs" "$REPO_ROOT/Cargo.lock"
             "$SCRIPT_DIR/test-x11-thread-context.rs"
             "$SCRIPT_DIR/fixtures/x11-thread-context-before-retry.rs"
             "$SCRIPT_DIR/test-x11-enigo-route.rs"
@@ -1185,6 +1188,16 @@ android_frame_input_inventory() {
             "$REPO_ROOT/libs/scrap/src/common/frame_compare.rs")
         verify_sha256 "$CARGO_VENDOR_ROOT/log-0.4.22/.cargo-checksum.json" \
             eface4bae11ea2b6ba81ed2b07f0705d076456e4a61e2ca7409bb5649ce0c894
+        local loader_package loader_expected loader_extra
+        while read -r loader_package loader_expected loader_extra; do
+            [[ "$loader_package" == \#* ]] && continue
+            [[ "$loader_package" =~ ^[A-Za-z0-9._-]+$ ]] \
+                && [[ "$loader_expected" =~ ^[0-9a-f]{64}$ ]] && [ -z "$loader_extra" ] \
+                || fail 'XDO loader dependency record differs'
+            file="$CARGO_VENDOR_ROOT/$loader_package/.cargo-checksum.json"
+            verify_sha256 "$file" "$loader_expected"
+            files+=("$file")
+        done <"$SCRIPT_DIR/xdo-loader-inputs.txt"
     fi
     if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
         files+=("$SCRIPT_DIR/test-native-clipboard-listener.py" "$SCRIPT_DIR/test-native-clipboard-listener.rs"
@@ -3457,6 +3470,12 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
     if [ "$MODE" = x11-display-tests ]; then
         lifecycle_payload_grafts+=(
             "repo/scripts/test-x11-display-native.py=$SCRIPT_DIR/test-x11-display-native.py"
+            "repo/scripts/test-xdo-loader-native.py=$SCRIPT_DIR/test-xdo-loader-native.py"
+            "repo/scripts/test-xdo-loader.rs=$SCRIPT_DIR/test-xdo-loader.rs"
+            "repo/scripts/fixtures/xdo-loader-common.rs=$SCRIPT_DIR/fixtures/xdo-loader-common.rs"
+            "repo/scripts/xdo-loader-inputs.txt=$SCRIPT_DIR/xdo-loader-inputs.txt"
+            "repo/libs/libxdo-sys-stub/src/lib.rs=$REPO_ROOT/libs/libxdo-sys-stub/src/lib.rs"
+            "repo/Cargo.lock=$REPO_ROOT/Cargo.lock"
             "repo/scripts/test-x11-display.rs=$SCRIPT_DIR/test-x11-display.rs"
             "repo/scripts/test-x11-thread-context.rs=$SCRIPT_DIR/test-x11-thread-context.rs"
             "repo/scripts/fixtures/x11-thread-context-before-retry.rs=$SCRIPT_DIR/fixtures/x11-thread-context-before-retry.rs"
@@ -3507,6 +3526,10 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/libs/scrap/src/common/x11.rs=$REPO_ROOT/libs/scrap/src/common/x11.rs"
             "repo/libs/scrap/src/common/frame_compare.rs=$REPO_ROOT/libs/scrap/src/common/frame_compare.rs"
         )
+        while read -r loader_package loader_expected loader_extra; do
+            [[ "$loader_package" == \#* ]] && continue
+            lifecycle_payload_grafts+=("repo/xdo-vendor/$loader_package=$CARGO_VENDOR_ROOT/$loader_package")
+        done <"$SCRIPT_DIR/xdo-loader-inputs.txt"
     fi
     if [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
         lifecycle_payload_grafts+=(

@@ -14,7 +14,8 @@ static double now(void) {
 }
 
 int main(int argc, char **argv) {
-    int layout = argc == 2 && !strcmp(argv[1], "layout");
+    int repeat = argc == 2 && !strcmp(argv[1], "layout-repeat");
+    int layout = argc == 2 && (!strcmp(argv[1], "layout") || repeat);
     assert(argc == 1 || layout);
     Display *display = XOpenDisplay("unix/:98.0");
     assert(display);
@@ -53,7 +54,7 @@ int main(int argc, char **argv) {
     const KeySym expected[] = {0x61, 0xe9, 0x010005d0, 0x0101f642,
                                0x2b, XK_Return, XK_Tab};
     unsigned events = 0;
-    unsigned expected_events = layout ? 2 : 14;
+    unsigned expected_events = repeat ? 64 : layout ? 2 : 14;
     unsigned pressed_code = 0;
     double deadline = now() + 3;
     while (events < expected_events && now() < deadline) {
@@ -76,7 +77,7 @@ int main(int argc, char **argv) {
         fflush(stdout);
         assert(event.type == (events % 2 ? KeyRelease : KeyPress));
         if (event.type == KeyPress) {
-            assert(symbol == expected[events / 2]);
+            assert(symbol == expected[layout ? 0 : events / 2]);
             pressed_code = event.xkey.keycode;
         } else {
             assert(event.xkey.keycode == pressed_code);

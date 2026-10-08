@@ -72,6 +72,8 @@ mod backend;
 static NAMES: Mutex<Vec<(bool, Option<String>)>> = Mutex::new(Vec::new());
 static RETIREMENTS: AtomicUsize = AtomicUsize::new(0);
 static DISPLAY_RETIREMENTS: AtomicUsize = AtomicUsize::new(0);
+static RETAINED_DISPLAY: AtomicUsize = AtomicUsize::new(0);
+static TEXT_BORROWS: AtomicUsize = AtomicUsize::new(0);
 static SHIFT_AFTER_OPEN: AtomicBool = AtomicBool::new(false);
 static REFUSE_NEXT_CONSTRUCT: AtomicBool = AtomicBool::new(false);
 static PANIC_AFTER_CONSTRUCT: AtomicBool = AtomicBool::new(false);
@@ -107,7 +109,14 @@ unsafe extern "C" fn __wrap_xdo_new_with_opened_display(display: *mut Display, n
                                                        close: c_int) -> *mut xdo_t {
     record(true, name);
     assert!(!display.is_null());
-    assert_eq!(close, 1);
+    assert!(matches!(close, 0 | 1));
+    assert_eq!(display as usize, RETAINED_DISPLAY.load(Ordering::SeqCst));
+    if close == 0 {
+        let names = NAMES.lock().unwrap();
+        assert_eq!(names.iter().filter(|(native, _)| !native).count(), 1);
+        assert_eq!(names.first().unwrap().1, names.last().unwrap().1);
+        TEXT_BORROWS.fetch_add(1, Ordering::SeqCst);
+    }
     if REFUSE_NEXT_CONSTRUCT.swap(false, Ordering::SeqCst) { return std::ptr::null_mut(); }
     let context = __real_xdo_new_with_opened_display(display, name, close);
     assert!(!context.is_null());
@@ -124,6 +133,7 @@ unsafe extern "C" fn __wrap_xdo_free(context: *mut xdo_t) {
 unsafe extern "C" fn __wrap_XOpenDisplay(name: *const c_char) -> *mut Display {
     record(false, name);
     let display = __real_XOpenDisplay(name);
+    if !display.is_null() { RETAINED_DISPLAY.store(display as usize, Ordering::SeqCst); }
     if !display.is_null() && !name.is_null() {
         let screen = if CStr::from_ptr(name).to_bytes().ends_with(b".1") { 1 } else { 0 };
         assert_eq!(XDefaultScreen(display), screen);
@@ -148,7 +158,7 @@ fn main() {
     log::set_max_level(log::LevelFilter::Info);
     let baseline = descriptors();
     if let Some(scenario) = std::env::args().nth(1) {
-        if scenario == "layout" {
+        if matches!(scenario.as_str(), "layout" | "layout-repeat") {
             use std::io::{Read, Write};
             std::env::set_var("DISPLAY", ":98");
             let mut injector = backend::EnigoXdo::default();
@@ -157,11 +167,21 @@ fn main() {
             let mut command = [0];
             std::io::stdin().read_exact(&mut command).unwrap();
             assert_eq!(command, [b'D']);
-            injector.key_sequence_result("a").unwrap();
+            std::env::set_var("DISPLAY", ":95");
+            REFUSE_NEXT_CONSTRUCT.store(true, Ordering::SeqCst);
+            assert!(injector.key_sequence_result("a").is_err());
+            assert!(!REFUSE_NEXT_CONSTRUCT.load(Ordering::SeqCst));
+            let repeats = if scenario == "layout-repeat" { 32 } else { 1 };
+            for _ in 0..repeats {
+                injector.key_sequence_result("a").unwrap();
+                assert_eq!(descriptors(), baseline + 1);
+                assert_eq!(tasks(), 1);
+            }
             drop(injector);
             retired(baseline);
-            assert_eq!(RETIREMENTS.load(Ordering::SeqCst), 2);
-            println!("X11_ENIGO_LAYOUT_CHILD=pass contexts=2 descriptors=retired threads=retired");
+            assert_eq!(RETIREMENTS.load(Ordering::SeqCst), repeats + 1);
+            assert_eq!(TEXT_BORROWS.load(Ordering::SeqCst), repeats + 1);
+            println!("X11_ENIGO_LAYOUT_CHILD=pass pairs={repeats} mapping_refusal=explicit descriptors=retired threads=retired");
             return;
         }
         if scenario == "text" {
@@ -172,7 +192,7 @@ fn main() {
             assert!(injector.key_sequence_result("a\u{1}a").is_err());
             drop(injector);
             retired(baseline);
-            assert_eq!(RETIREMENTS.load(Ordering::SeqCst), 1);
+            assert_eq!(RETIREMENTS.load(Ordering::SeqCst), 2);
             println!("X11_ENIGO_TEXT_CHILD=pass scalar_pairs=7 controls=preadmission-refused descriptors=retired threads=retired");
             return;
         }

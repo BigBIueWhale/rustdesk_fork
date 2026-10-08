@@ -83,9 +83,19 @@ impl Drop for OpenedDisplay {
     }
 }
 
+struct TextContext(*mut xdo_t);
+
+impl Drop for TextContext {
+    fn drop(&mut self) {
+        unsafe { libxdo_sys::xdo_free(self.0) };
+    }
+}
+
 /// The main struct for handling the event emitting
 pub(super) struct EnigoXdo {
     xdo: *mut xdo_t,
+    display: *mut Display,
+    display_name: Option<CString>,
     screen: c_int,
     delay: u64,
 }
@@ -98,7 +108,13 @@ impl Default for EnigoXdo {
     ///
     /// If libxdo is unavailable, input operations return errors.
     fn default() -> Self {
-        let mut owner = Self { xdo: std::ptr::null_mut(), screen: 0, delay: DEFAULT_DELAY };
+        let mut owner = Self {
+            xdo: std::ptr::null_mut(),
+            display: std::ptr::null_mut(),
+            display_name: None,
+            screen: 0,
+            delay: DEFAULT_DELAY,
+        };
         let display_name = match unix_display_name() {
             Ok(display_name) => display_name,
             Err(err) => {
@@ -121,6 +137,8 @@ impl Default for EnigoXdo {
         // Transfer the sole display to the native context, then retain that
         // context before diagnostics or logging can unwind.
         owner.xdo = xdo;
+        owner.display = display;
+        owner.display_name = Some(display_name);
         owner.screen = screen;
         std::mem::forget(opened);
         log::info!("xdo context created successfully");
@@ -179,6 +197,20 @@ impl EnigoXdo {
         {
             return Err(format!("unsupported text control U+{:04X}", character as u32).into());
         }
+        if sequence.is_empty() {
+            return Ok(());
+        }
+        // libxdo caches its keyboard map at construction. Give each text request
+        // a fresh map on the retained display; the temporary context borrows that
+        // display and retires before its owning EnigoXdo can close it.
+        let display_name = self.display_name.as_ref().ok_or("libxdo display is unavailable")?;
+        let context = unsafe {
+            libxdo_sys::xdo_new_with_opened_display(self.display, display_name.as_ptr(), 0)
+        };
+        if context.is_null() {
+            return Err("libxdo text mapping is unavailable".into());
+        }
+        let context = TextContext(context);
         for character in sequence.chars() {
             let token = match character {
                 '\n' | '\r' => Cow::Borrowed("Return"),
@@ -188,7 +220,7 @@ impl EnigoXdo {
             let string = CString::new(token.into_owned())?;
             let status = unsafe {
                 libxdo_sys::xdo_send_keysequence_window(
-                    self.xdo as *const _,
+                    context.0 as *const _,
                     CURRENTWINDOW,
                     string.as_ptr(),
                     (self.delay / 2) as libxdo_sys::useconds_t,

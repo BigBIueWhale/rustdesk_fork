@@ -45,7 +45,7 @@
  */
 #define MAX_TRIES 500
 
-static void _xdo_populate_charcode_map(xdo_t *xdo);
+static int _xdo_populate_charcode_map(xdo_t *xdo);
 static int _xdo_has_xtest(const xdo_t *xdo);
 
 static KeySym _xdo_keysym_from_char(const xdo_t *xdo, wchar_t key);
@@ -63,7 +63,6 @@ static void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
                           int modstate, int is_press, useconds_t delay);
 static void _xdo_send_modifier(const xdo_t *xdo, int modmask, int is_press);
 
-static int _xdo_query_keycode_to_modifier(XModifierKeymap *modmap, KeyCode keycode);
 static int _xdo_mousebutton(const xdo_t *xdo, Window window, int button, int is_press);
 
 static int _is_success(const char *funcname, int code, const xdo_t *xdo);
@@ -85,7 +84,8 @@ xdo_t* xdo_new(const char *display_name) {
 
   if ((xdpy = XOpenDisplay(display_name)) == NULL) {
     /* Can't use _xdo_eprintf yet ... */
-    fprintf(stderr, "Error: Can't open display: %s\n", display_name);
+    fprintf(stderr, "Error: Can't open display: %.128s\n",
+            display_name != NULL ? display_name : "(default)");
     return NULL;
   }
 
@@ -93,7 +93,10 @@ xdo_t* xdo_new(const char *display_name) {
     display_name = getenv("DISPLAY");
   }
 
-  return xdo_new_with_opened_display(xdpy, display_name, 1);
+  xdo_t *xdo = xdo_new_with_opened_display(xdpy, display_name, 1);
+  if (xdo == NULL)
+    XCloseDisplay(xdpy);
+  return xdo;
 }
 
 xdo_t* xdo_new_with_opened_display(Display *xdpy, const char *display,
@@ -106,12 +109,13 @@ xdo_t* xdo_new_with_opened_display(Display *xdpy, const char *display,
     return NULL;
   }
 
-  /* XXX: Check for NULL here */
-  xdo = malloc(sizeof(xdo_t));
-  memset(xdo, 0, sizeof(xdo_t));
+  xdo = calloc(1, sizeof(xdo_t));
+  if (xdo == NULL) {
+    fprintf(stderr, "xdo_new: context allocation failed\n");
+    return NULL;
+  }
 
   xdo->xdpy = xdpy;
-  xdo->close_display_when_freed = close_display_when_freed;
 
   if (display == NULL) {
     display = "unknown";
@@ -125,13 +129,18 @@ xdo_t* xdo_new_with_opened_display(Display *xdpy, const char *display,
     xdo_enable_feature(xdo, XDO_FEATURE_XTEST);
     _xdo_debug(xdo, "XTEST enabled.");
   } else {
-    _xdo_eprintf(xdo, False, "Warning: XTEST extension unavailable on '%s'. Some"
+    _xdo_eprintf(xdo, False, "Warning: XTEST extension unavailable on '%.128s'. Some"
                 " functionality may be disabled; See 'man xdotool' for more"
-                " info.", xdo->display_name);
+                " info.", display);
     xdo_disable_feature(xdo, XDO_FEATURE_XTEST);
   }
 
-  _xdo_populate_charcode_map(xdo);
+  if (_xdo_populate_charcode_map(xdo) != XDO_SUCCESS) {
+    fprintf(stderr, "xdo_new: keyboard map unavailable or invalid\n");
+    xdo_free(xdo);
+    return NULL;
+  }
+  xdo->close_display_when_freed = close_display_when_freed;
   return xdo;
 }
 
@@ -1297,33 +1306,62 @@ static int _xdo_has_xtest(const xdo_t *xdo) {
   return (XTestQueryExtension(xdo->xdpy, &dummy, &dummy, &dummy, &dummy) == True);
 }
 
-static void _xdo_populate_charcode_map(xdo_t *xdo) {
-  /* assert xdo->display is valid */
+static int _xdo_populate_charcode_map(xdo_t *xdo) {
   int keycodes_length = 0;
   int idx = 0;
   int keycode, group, groups, level, modmask, num_map;
-
-  XDisplayKeycodes(xdo->xdpy, &(xdo->keycode_low), &(xdo->keycode_high));
-  XModifierKeymap *modmap = XGetModifierMapping(xdo->xdpy);
-  KeySym *keysyms = XGetKeyboardMapping(xdo->xdpy, xdo->keycode_low,
-                                        xdo->keycode_high - xdo->keycode_low + 1,
-                                        &xdo->keysyms_per_keycode);
-  XFree(keysyms);
-
-  /* Add 2 to the size because the range [low, high] is inclusive */
-  /* Add 2 more for tab (\t) and newline (\n) */
-  keycodes_length = ((xdo->keycode_high - xdo->keycode_low) + 1)
-                     * xdo->keysyms_per_keycode;
-
-  xdo->charcodes = calloc(keycodes_length, sizeof(charcodemap_t));
+  int status = XDO_ERROR;
   XkbDescPtr desc = XkbGetMap(xdo->xdpy, XkbAllClientInfoMask, XkbUseCoreKbd);
+  if (desc == NULL)
+    return XDO_ERROR;
+  XkbClientMapPtr map = desc->map;
+  if (desc->min_key_code < XkbMinLegalKeyCode
+      || desc->max_key_code < desc->min_key_code
+      || map == NULL || map->types == NULL || map->key_sym_map == NULL
+      || map->syms == NULL || map->modmap == NULL
+      || map->num_types == 0 || map->num_types > map->size_types
+      || map->num_syms > map->size_syms)
+    goto done;
+
+  /* Validate and count the same snapshot that supplies the stored symbols. */
+  for (keycode = desc->min_key_code; keycode <= desc->max_key_code; keycode++) {
+    XkbSymMapPtr symbols = &map->key_sym_map[keycode];
+    groups = XkbKeyNumGroups(desc, keycode);
+    if (groups > XkbNumKbdGroups)
+      goto done;
+    if (groups == 0)
+      continue;
+    if (symbols->width == 0 || symbols->offset > map->num_syms
+        || groups * symbols->width > map->num_syms - symbols->offset)
+      goto done;
+    for (group = 0; group < groups; group++) {
+      if (symbols->kt_index[group] >= map->num_types)
+        goto done;
+      XkbKeyTypePtr type = XkbKeyKeyType(desc, keycode, group);
+      if (type->num_levels == 0 || type->num_levels > symbols->width
+          || (type->map_count != 0 && type->map == NULL))
+        goto done;
+      for (num_map = 0; num_map < type->map_count; num_map++)
+        if (type->map[num_map].level >= type->num_levels)
+          goto done;
+      /* KeyCode, four groups and byte-sized levels bound this integer sum. */
+      keycodes_length += type->num_levels;
+    }
+  }
+  if (keycodes_length == 0)
+    goto done;
+  xdo->charcodes = calloc(keycodes_length, sizeof(charcodemap_t));
+  if (xdo->charcodes == NULL)
+    goto done;
+  xdo->keycode_low = desc->min_key_code;
+  xdo->keycode_high = desc->max_key_code;
 
   for (keycode = xdo->keycode_low; keycode <= xdo->keycode_high; keycode++) {
     groups = XkbKeyNumGroups(desc, keycode);
     for (group = 0; group < groups; group++) {
       XkbKeyTypePtr key_type = XkbKeyKeyType(desc, keycode, group);
       for (level = 0; level < key_type->num_levels; level++) {
-        KeySym keysym = XkbKeycodeToKeysym(xdo->xdpy, keycode, group, level);
+        KeySym keysym = XkbKeySymEntry(desc, keycode, level, group);
         modmask = 0;
 
         for (num_map = 0; num_map < key_type->map_count; num_map++) {
@@ -1337,7 +1375,7 @@ static void _xdo_populate_charcode_map(xdo_t *xdo) {
         xdo->charcodes[idx].key = _keysym_to_char(keysym);
         xdo->charcodes[idx].code = keycode;
         xdo->charcodes[idx].group = group;
-        xdo->charcodes[idx].modmask = modmask | _xdo_query_keycode_to_modifier(modmap, keycode);
+        xdo->charcodes[idx].modmask = modmask | map->modmap[keycode];
         xdo->charcodes[idx].symbol = keysym;
 
         idx++;
@@ -1345,8 +1383,10 @@ static void _xdo_populate_charcode_map(xdo_t *xdo) {
     }
   }
   xdo->charcodes_len = idx;
+  status = XDO_SUCCESS;
+done:
   XkbFreeKeyboard(desc, 0, True);
-  XFreeModifiermap(modmap);
+  return status;
 }
 
 /* context-free functions */
@@ -1563,31 +1603,6 @@ void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
   if (delay > 0) {
     usleep(delay);
   }
-}
-
-int _xdo_query_keycode_to_modifier(XModifierKeymap *modmap, KeyCode keycode) {
-  int i = 0, j = 0;
-  int max = modmap->max_keypermod;
-
-  for (i = 0; i < 8; i++) { /* 8 modifier types, per XGetModifierMapping(3X) */
-    for (j = 0; j < max && modmap->modifiermap[(i * max) + j]; j++) {
-      if (keycode == modmap->modifiermap[(i * max) + j]) {
-        switch (i) {
-          case ShiftMapIndex: return ShiftMask; break;
-          case LockMapIndex: return LockMask; break;
-          case ControlMapIndex: return ControlMask; break;
-          case Mod1MapIndex: return Mod1Mask; break;
-          case Mod2MapIndex: return Mod2Mask; break;
-          case Mod3MapIndex: return Mod3Mask; break;
-          case Mod4MapIndex: return Mod4Mask; break;
-          case Mod5MapIndex: return Mod5Mask; break;
-        }
-      } /* end if */
-    } /* end loop j */
-  } /* end loop i */
-
-  /* No modifier found for this keycode, return no mask */
-  return 0;
 }
 
 void _xdo_send_modifier(const xdo_t *xdo, int modmask, int is_press) {

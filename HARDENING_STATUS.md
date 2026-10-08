@@ -721,7 +721,7 @@ server map before calls. The helper now acquires the inclusive query only when
 binding is required, requires every slot of the selected row to be unused, refuses
 missing/invalid queries or an occupied map before input, retains/restores the full
 selected row, and frees the query on every returned path. Cleanup does not index
-past the caller's key array. Provider, loader and build require private version
+past the caller's key array. That acceptance used private provider/loader/build version
 `3.20160805.1-rustdesk3`; the refusal fixture stamps current C as version 2, not an
 authentic old binary. The focused native fixture requires 20 repeated delivery,
 mapped-query bypass, query-failure and full-map-refusal cases, actual events,
@@ -741,7 +741,7 @@ replies freed, exact maps/physical keys preserved and sampled descriptors/tasks
 retired. The real mapped-key control passed separately. AddressSanitizer was
 enabled; heap-leak checking was explicitly disabled. Dedicated server/socket/lock
 retirement and later fresh-display execution passed, as did the unchanged
-protected-loader/Enigo, mouse, focus, cursor and capture checks. Product C is
+protected-loader/Enigo, mouse, focus, cursor and capture checks. That run's product C was
 unchanged from `cbdfcb0e`; its SHA-256 is
 `87869889954226ec60877d3b14a70c4e2d191d259c86fd7c16f8989c20e23783`.
 Retained raw `.harness-state/verifier-vm/x11-display-tests-run.bLrDBWErfM.serial.log`
@@ -789,7 +789,22 @@ No host listener was added; outer cleanup joined and the exact root/overlay is a
 This accepts one schedule of the direct-native component on the pinned runtime. It
 does not explain the retained distro-provider abort, prove a cross-version/threading
 or heap/soak property, or establish installed/whole-app acceptance. Production code
-is unchanged.
+was unchanged in that transaction.
+
+**Constructor map/ownership correction; native acceptance pending.**
+The private constructor checks context and character allocations and validates one
+XKB client-map snapshot before counting its group/type levels. The same snapshot
+supplies symbols and real-modifier masks; core-width sizing, repeated live-symbol
+queries and the private core-modifier traversal are removed. Returned map/allocation
+failures retire partial native state and return NULL. Caller-supplied display ownership
+transfers only on success, matching Enigo's retained display guard; `xdo_new` closes
+its own display after a refused inner construction. Public struct layout is retained.
+Provider, helper and protected loader require private version
+`3.20160805.1-rustdesk4`; the wrong-version fixture stamps current corrected C as
+version 3. The new native fixture requires allocation/map refusal and both caller
+ownership modes plus internal display ownership, real key events, exact native
+allocation retirement and descriptor/task drain. These changes are not yet native
+accepted and do not explain the earlier distro-provider allocator abort.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,
@@ -1845,7 +1860,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `9c346f764ccfaabc099ea70f4b7b06d78c37150d4499c45c3c472b9ad8c06492  requirements.html`.
+Current normative specification SHA-256: `2e824033e5b21c3da97e32b04a404ab8b23c51635e39270848726b86ca7cf138  requirements.html`.
 
 ### Current authority and source closure
 

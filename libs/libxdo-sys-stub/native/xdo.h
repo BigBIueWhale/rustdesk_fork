@@ -97,7 +97,7 @@ typedef struct xdo {
   /** @internal lowest keycode value */
   int keycode_low;  /* used by this X server */
 
-  /** @internal number of keysyms per keycode */
+  /** @internal UNUSED -- core keysyms-per-keycode ABI field */
   int keysyms_per_keycode;
 
   /** Should we close the display when calling xdo_free? */
@@ -217,7 +217,9 @@ xdo_t* xdo_new(const char *display);
  * @param xdpy the Display pointer given by a previous XOpenDisplay()
  * @param display the string display name
  * @param close_display_when_freed If true, we will close the display when
- * xdo_free is called. Otherwise, we leave it open.
+ * xdo_free is called. Otherwise, we leave it open. Ownership transfers only
+ * on success; the caller retains the display when construction returns NULL.
+ * @return Pointer to a complete xdo_t or NULL on failure.
  */
 xdo_t* xdo_new_with_opened_display(Display *xdpy, const char *display,
                                    int close_display_when_freed);

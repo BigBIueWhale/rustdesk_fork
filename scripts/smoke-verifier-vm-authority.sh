@@ -1149,6 +1149,7 @@ android_frame_input_inventory() {
             "$SCRIPT_DIR/test-xdo-keymap-lifetime.c"
             "$SCRIPT_DIR/test-xdo-mouse-modifiers.c"
             "$SCRIPT_DIR/test-xdo-scratch-key.c"
+            "$SCRIPT_DIR/test-xdo-constructor.c"
             "$SCRIPT_DIR/verify-debian-package-authority.py"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/build.py"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
@@ -3500,6 +3501,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/scripts/test-xdo-keymap-lifetime.c=$SCRIPT_DIR/test-xdo-keymap-lifetime.c"
             "repo/scripts/test-xdo-mouse-modifiers.c=$SCRIPT_DIR/test-xdo-mouse-modifiers.c"
             "repo/scripts/test-xdo-scratch-key.c=$SCRIPT_DIR/test-xdo-scratch-key.c"
+            "repo/scripts/test-xdo-constructor.c=$SCRIPT_DIR/test-xdo-constructor.c"
             "repo/scripts/verify-debian-package-authority.py=$SCRIPT_DIR/verify-debian-package-authority.py"
             "repo/libs/libxdo-sys-stub/native/build.py=$REPO_ROOT/libs/libxdo-sys-stub/native/build.py"
             "repo/libs/libxdo-sys-stub/native/xdo.c=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
@@ -4305,6 +4307,9 @@ elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
         'X11_XDO_PACKAGE_ELF=pass variants=2 required=true runpath=absent full_package=unexecuted' \
         'actual built private XDO libraries satisfy the package ELF policy without an ambient runtime search path'
+    require_exact_fixed_receipt \
+        'XDO_CONSTRUCTOR_NATIVE=pass cases=264 faults=21 paths=3 repeats=4 accepted=12 refused=252 events=24 snapshot=single allocations=paired maps=paired display_transfer=success-only caller_display=usable descriptors=retired tasks=retired sanitizer=address heap_scope=owned-allocations whole_app=false' \
+        'private native XDO constructors validate one map, retire partial allocations, transfer display ownership only on success and deliver real key events'
     require_exact_fixed_receipt \
         'XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=32 frees=24 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false' \
         'native scratch-key inclusive bounds, exact map ownership, mapped-query bypass and pre-input refusal'

@@ -827,7 +827,7 @@ The host endpoint audit reported no additions and cleanup joined; the exact run 
 and overlay are absent. This accepts the named constructor component behavior;
 installed/whole-app, timing, races, heap/soak and release acceptance remain OPEN.
 
-**Single numeric-key API; source corrected, native acceptance PENDING.**
+**Single numeric-key API; native component accepted.**
 `libs/libxdo-sys-stub/native/xdo.c` and `xdo.h` accept one numeric keysym or raw
 keycode with an explicit down/up/click action. The native receiver checks kind,
 action, keysym encoding and the inclusive raw-code range before input or narrowing;
@@ -838,14 +838,31 @@ are deleted. Production Enigo and its real loader use typed key/action arguments
 unsupported keys return an error or a diagnostic under the existing void trait.
 Private provider/build/loader version is `3.20160805.1-rustdesk5`; the refusal
 fixture stamps the same corrected C as version 4, not an authentic old binary.
-The focused command is
-`scripts/smoke-verifier-vm-authority.sh --x11-display-tests --key-input`.
-It builds the actual corrected C and production loader/Linux Enigo components,
-requires real key events, pre-input refusals, map/key/resource retirement,
-constructor ownership and missing-key-export admission refusal inside the owned
-zero-NIC VM/nonroot network-none containers. Its current-provider shard does not
-execute historical unsafe implementations. Source/syntax review is supplementary;
-native acceptance is pending until the complete outer transaction succeeds.
+Exact `f953fa1090b5a87b1ab9901e23079cbabe7434ac`
+(tree `93474270b4ac437d1fded91cdeeb74a790353bed`) passed
+`scripts/smoke-verifier-vm-authority.sh --x11-display-tests --key-input`
+with outer status 0 in **116 VM seconds**, in the owned zero-NIC VM/nonroot
+network-none containers. Corrected C under AddressSanitizer passed 108 key
+requests across four rounds: 92 pre-input refusals, 16 accepted requests, 32
+exact events, both raw boundaries, unchanged maps/clear keys, zero direct product
+key-storage allocations and four click query/free pairs. Xlib's internal heap is
+outside that allocation census; leak checking was disabled. The existing 20
+scratch cases and 264 constructor cases passed. Actual production loader/whole
+Linux Enigo components passed complete, missing-key-export, missing-mouse-export,
+old-stamp, writable, absent and operation-refusal scenarios and staged native
+input. Current-backend display/ownership, mouse, 42 text events across three locale
+conditions and 66 changed-layout events passed; common facade remains partial.
+The production-helper provider is 54,688 bytes, SHA-256
+`4a3e3b623c766cbe2230054a7182faad292990db0b653c2f3b10c7a52e442478`.
+Retained raw `x11-display-tests-run.4CP48yzUyJ.serial.log` under
+`.harness-state/verifier-vm/` is 101,824 bytes, SHA-256
+`36d89c458ad8a79feed0570aee1d207a740c14f82505f3b1fd927b7059c804e8`;
+`evidence/xdo-key-input-run.4CP48yzUyJ.outer.receipt` there is the nonindependent
+assistant-observed outer/source/artifact record. The host endpoint audit found no
+additions, cleanup joined and the exact run root/overlay is absent. Two earlier
+transactions failed real compilation and the unchanged phase-output bound;
+their raw logs are retained in the audit and are not accepted transactions.
+The current-provider shard executes no historical unsafe implementations.
 Installed/whole-app, asynchronous Xlib errors/delivery, map/concurrency races,
 held modifiers, internal heap/leaks/soak, other platforms and release remain OPEN.
 

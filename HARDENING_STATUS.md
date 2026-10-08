@@ -866,7 +866,7 @@ The current-provider shard executes no historical unsafe implementations.
 Installed/whole-app, asynchronous Xlib errors/delivery, map/concurrency races,
 held modifiers, internal heap/leaks/soak, other platforms and release remain OPEN.
 
-**Unused window metadata mutation APIs retired; native acceptance PENDING.**
+**Unused window metadata mutation APIs retired; focused native acceptance.**
 `libs/libxdo-sys-stub/native/xdo.c` and `xdo.h` omit the generic window-property,
 class and urgency setters; the Rust loader also omits the class-setter type,
 required symbol, function-table field and public facade. Complete caller review
@@ -877,9 +877,31 @@ provider/helper/loader require `3.20160805.1-rustdesk6`, with no old-version fal
 The focused `--x11-display-tests --key-input` transaction requires all three exports
 absent from actual providers, three failed native symbol lookups in both complete
 and staged-provider execution, actual retained input behavior and resource retirement.
-The wrong-version fixture uses corrected C stamped as version 5. Native acceptance
-is pending complete outer success; full Cargo/app/install, loader races, native errors,
-heap/soak, current artifacts and broader authority/release evidence remain OPEN.
+The wrong-version fixture uses corrected C stamped as version 5; no historical unsafe
+implementation runs. Candidate `284518389fb2c6f0b2c5de72b657cd14dbcbc4e2`
+(tree `d0d932c0464649a6e9e9f5aa1aa11bf296d23384`) passed the complete corrected-only
+transaction in 104 seconds with outer exit 0. The actual helper and all five loader
+fixtures omit the three exports; both complete-provider runs pass all three native
+lookup refusals while delivering mouse/keyboard input. The whole production loader
+and Linux Enigo compile with four authenticated real dependencies and a partial common
+facade. Complete, missing-mouse-up, missing-key-input, wrong-version, writable, absent
+and native-key-refusal scenarios pass; staged resolution also delivers actual input.
+The 54,224-byte version-6 provider SHA-256 is
+`0b34d3bc7d317a5247aa452cc51d81b346375199d966662ef11b199e0fb22bbb`.
+Existing 108-key, 20-scratch and 264-constructor cases pass, including ASan; retained
+backend, mouse, text and layout checks pass with native event and resource observations.
+Raw `.harness-state/verifier-vm/x11-display-tests-run.MqlTFyxxwt.serial.log` is
+100,094 bytes, SHA-256
+`87800832fc0b95cbad05276cc4be5b23ea176d888750b9530d13118308df2f73`.
+The explicitly nonindependent assistant-observed evidence receipt is
+`.harness-state/verifier-vm/evidence/xdo-window-metadata-run.MqlTFyxxwt.outer.receipt`,
+SHA-256 `efcc2ce12154e2b289a8d775c413f62e562dbdc73b673ae2d1808347c408459d`.
+Ordinary-user zero-NIC VM, guest-only network-none nonroot containers and read-only
+inputs were used; the outer protocol-endpoint audit reports no added host listener.
+Cleanup joined and the exact root/overlay is absent; its snapshots auto-retired,
+so no independent snapshot comparison is claimed. Full Cargo/app/install or stage CLI,
+loader races, native errors, whole heap/leaks/soak, current artifacts and broader
+authority/platform/release evidence remain OPEN.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,

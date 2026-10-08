@@ -1795,30 +1795,31 @@ cannot close those boundaries or explain the reported Android/Windows display sy
 
 ### Android runtime — intermittent presentation remains OPEN
 
-**Software first-image publication — native component failure reproduced; correction unvalidated.**
+**Software first-image publication — native component A/B passed; app-level symptoms OPEN.**
 At tests-first `b0e0d47d`, the real ImageModel/native raw-image regression returned false for
 an earlier ready image solely because a higher converted image still awaited geometry.
 Exactly that test failed; the other 198 passed. Full 209,656-byte raw serial is
 `flutter-model-tests-run.MCPOUyqsbs.serial.log`, SHA256
 `d5b1c07c3c84dd057c6ae8d0d52344ca9bb512c8cf1f2a9c42d6e5fdf69e31e1`.
-The corrected source keeps conversion/setup provisional and commits only immediately before
+Product correction `e6ee1c32` keeps conversion/setup provisional and commits only immediately before
 synchronous image replacement. Every asynchronous continuation still checks exact session,
 topology, presentation and admission generation plus already-published order. The obsolete
 early-commit revision token/API is removed; capacities, service lifetime and freshness limits
 are unchanged. The identical real-image fixture also covers higher-first/lower-late refusal,
-retirement and zero remaining image handles. Only session/topology and geometry completion
-are controlled; this is native Flutter component evidence, not a real window/APK/peer result.
+retirement and zero remaining image handles. After the guest summary expectation was aligned,
+exact `67a5a9f9` (tree `af9002a6`) passed all 23 suites/199 tests and three parser regressions
+inside the zero-NIC VM. Its 298-second VM execution completed all input/listener/finality
+postconditions, joined owners and retired the private run/overlay. The full 66,750-byte raw is
+`flutter-model-tests-run.yOgVyEk0wt.serial.log`, SHA256
+`c4fec8cae6e671fe4814eb695a1e3d640e6b11c9e2cb0fa38775b412b677db17`.
+Only session/topology and geometry completion are controlled; this is native Flutter
+component evidence, not a real window/APK/peer result.
 The early commit was introduced by `485487666` on September 29, so this cannot explain an
-older artifact without that code; default Windows textures use a different path. Corrected
-execution, original Android/Windows causation and installed/release/soak evidence remain OPEN.
-The earlier `26d9419e` attempt failed fixture compilation, not product behavior; the audit retains it.
-The first corrected-source run at `e6ee1c32` passed all 23 suites/199 tests and parser
-regressions, then failed the guest's stale 196-test summary check. Its retained raw serial is
-`flutter-model-tests-run.Rpo2E7zUaf.serial.log`, SHA256
-`6ae5968a71100f1b259cd845cf7fa55048692dfeb351f3de6f8623a479f7a787`.
-That exact expectation is corrected; complete postconditions await a rerun. Initialization
-exceptions and stale geometry/cursor side effects are not covered by these ordering tests;
-resource cleanup on those paths remains OPEN.
+older artifact without that code; default Windows textures use a different path. Original
+Android/Windows causation and installed/release/soak evidence remain OPEN. Initialization
+exceptions and stale geometry/cursor side effects are not covered; resource cleanup on
+those paths remains OPEN. Earlier fixture-compilation and stale-summary failures, with
+their independent raw logs and exact cleanup receipts, remain in the audit journal.
 
 The disposable runtime uses the pinned Emulator 37.1.11 and Android 14/API-34 x86_64 image in a
 networkless numeric-nonroot container inside the ordinary-user zero-NIC verifier VM. Source and APK

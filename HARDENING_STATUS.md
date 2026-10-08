@@ -727,7 +727,7 @@ authentic old binary. The focused native fixture requires 20 repeated delivery,
 mapped-query bypass, query-failure and full-map-refusal cases, actual events,
 unchanged maps/physical keys, query/free census and sampled descriptor/task drain.
 The fixture owns a dedicated Xvfb,
-requires exact map equality around every product call, and joins that server
+requires exact map equality after each press/release scenario, and joins that server
 before later tests start on a fresh display. Core/XKB startup-map restoration
 assumptions are absent; failed fixture attempts remain in the retained audit/raw
 evidence and Git history, not product acceptance.

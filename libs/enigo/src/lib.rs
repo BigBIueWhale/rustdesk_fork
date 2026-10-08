@@ -4,20 +4,6 @@
 //! [Redox](https://redox-os.org/) and *BSD are planned. Please see the
 //! [Repo](https://github.com/enigo-rs/enigo) for the current status.
 //!
-//! I consider this library in an early alpha status, the API will change in
-//! in the future. The keyboard handling is far from being very usable. I plan
-//! to build a simple
-//! [DSL](https://en.wikipedia.org/wiki/Domain-specific_language)
-//! that will resemble something like:
-//!
-//! `"hello {+SHIFT}world{-SHIFT} and break line{ENTER}"`
-//!
-//! The current status is that you can just print
-//! [unicode](http://unicode.org/)
-//! characters like [emoji](http://getemoji.com/) without the `{+SHIFT}`
-//! [DSL](https://en.wikipedia.org/wiki/Domain-specific_language)
-//! or any other "special" key on the Linux, macOS and Windows operating system.
-//!
 //! Possible use cases could be for testing user interfaces on different
 //! platforms,
 //! building remote control applications or just automating tasks for user
@@ -77,9 +63,6 @@ pub use macos::ENIGO_INPUT_EXTRA_VALUE;
 mod linux;
 #[cfg(target_os = "linux")]
 pub use crate::linux::Enigo;
-
-/// DSL parser module
-pub mod dsl;
 
 #[cfg(feature = "with_serde")]
 #[macro_use]
@@ -457,26 +440,6 @@ pub trait KeyboardControllable {
 
     /// Offer the ability to confer concrete type.
     fn as_mut_any(&mut self) -> &mut dyn std::any::Any;
-
-    /// Types the string parsed with DSL.
-    ///
-    /// Typing {+SHIFT}hello{-SHIFT} becomes HELLO.
-    /// TODO: Full documentation
-    fn key_sequence_parse(&mut self, sequence: &str)
-    where
-        Self: Sized,
-    {
-        if let Err(..) = self.key_sequence_parse_try(sequence) {
-            println!("Could not parse sequence");
-        }
-    }
-    /// Same as key_sequence_parse except returns any errors
-    fn key_sequence_parse_try(&mut self, sequence: &str) -> Result<(), dsl::ParseError>
-    where
-        Self: Sized,
-    {
-        dsl::eval(self, sequence)
-    }
 
     /// Types the string
     ///

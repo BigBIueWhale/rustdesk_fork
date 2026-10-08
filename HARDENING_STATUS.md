@@ -658,8 +658,19 @@ joined cleanup passed. Bounded serials and `evidence/enigo-key-down-run.*.outer.
 under `.harness-state/verifier-vm/` bind the before/after artifacts. This executes
 complete Enigo Linux source with real dependencies and source-extracted production
 display policy, but a partial common facade, not full Cargo/app/install. Resultless
-key-up/click/state and DSL error semantics, other consumers and whole-resource
+key-up/click/state, other consumers and whole-resource
 acceptance remain OPEN; this does not explain Android/Windows display delay.
+
+**Unused Enigo DSL retired; native replay pending.** The parser, default/override
+trait methods, example and parser-only tests are deleted. No RustDesk caller used
+this API; `process_unicode`/`process_seq` retain literal-text native submission and
+physical keys retain rdev. This removes recursively formatted parse errors and
+discarded key-down failures rather than repairing an unused second input language.
+The existing native lane drops only dead parser imports/inventory entries; its
+historical XDO fixture removes the two obsolete trait methods to match the current
+API, with a new exact-source pin. Original native routing and test assertions are
+unchanged. Current-source native Linux replay and other-platform/app integration
+are not yet validated by this deletion.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,

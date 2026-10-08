@@ -18,7 +18,6 @@ Cross platform input simulation in Rust!
 - [x] MacOS text
 - [x] Win mouse
 - [x] Win text
-- [x] Custom Parser
 
 
 ```Rust
@@ -26,7 +25,6 @@ let mut enigo = Enigo::new();
 
 enigo.mouse_move_to(500, 200);
 enigo.mouse_click(MouseButton::Left);
-enigo.key_sequence_parse("{+CTRL}a{-CTRL}{+SHIFT}Hello World{-SHIFT}");
 ```
 
 for more look at examples

@@ -113,8 +113,8 @@ def enigo_route(root, environment, checksum, library):
     providers, before_source = native_xdo(root, environment)
     historical = root / "scripts/fixtures/x11-enigo-xdo-before-local-route.rs"
     require(hashlib.sha256(historical.read_bytes()).hexdigest() ==
-            "47afa6ff695fa877979f22b934cbebee081d24a9855e7f85b90a3d87c81e201d",
-            "historical a1c03eb3 complete Enigo XDO backend differs")
+            "c7ebe8d466b1b5ff59b7c498dfd808df2927a5ef8ac79d24d287fdb661fedf6a",
+            "historical a1c03eb3 Enigo XDO backend with current API adaptation differs")
     # Extract the real public types, scroll check and traits; never substitute a test API.
     source = (root / "libs/enigo/src/lib.rs").read_text()
     start = "///\npub type ResultType ="
@@ -142,7 +142,6 @@ def enigo_route(root, environment, checksum, library):
             f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
                 ("backend", historical if variant == "historical" else root / "libs/enigo/src/linux/xdo.rs"),
                 ("api_source", root / "libs/enigo/src/lib.rs"), ("api_declarations", api),
-                ("dsl", root / "libs/enigo/src/dsl.rs"),
                 ("selector", root / "libs/hbb_common/src/platform/x11_display.rs"),
                 ("fixture", root / "scripts/test-x11-enigo-route.rs"),
                 ("log_manifest", checksum), ("log_library", library), ("binary", binary)))

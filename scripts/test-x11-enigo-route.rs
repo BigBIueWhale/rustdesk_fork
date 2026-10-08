@@ -3,8 +3,6 @@
 extern crate self as hbb_common;
 extern crate self as libxdo_sys;
 include!("/build/enigo-api.rs");
-#[path = "/work/libs/enigo/src/dsl.rs"]
-pub mod dsl;
 mod platform {
     #[path = "/work/libs/hbb_common/src/platform/x11_display.rs"]
     pub mod x11_display;

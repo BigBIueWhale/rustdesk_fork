@@ -467,18 +467,18 @@ impl KeyboardControllable for EnigoXdo {
 
     fn key_down(&mut self, key: Key) -> crate::ResultType {
         if self.xdo.is_null() {
-            return Ok(());
+            return Err("libxdo is unavailable".into());
         }
         let string = CString::new(&*keysequence(key))?;
-        unsafe {
+        let status = unsafe {
             libxdo_sys::xdo_send_keysequence_window_down(
                 self.xdo as *const _,
                 CURRENTWINDOW,
                 string.as_ptr(),
                 self.delay as libxdo_sys::useconds_t,
-            );
-        }
-        Ok(())
+            )
+        };
+        xdo_result("key down", status)
     }
 
     fn key_up(&mut self, key: Key) {

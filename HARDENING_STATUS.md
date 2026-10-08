@@ -710,7 +710,7 @@ is absent. This is private native component evidence with a partial common facad
 not full Cargo/app/install, whole-resource acceptance or original-symptom causation;
 those broader claims remain OPEN.
 
-**Scratch-key query bounds and ownership corrected; native acceptance pending.**
+**Scratch-key query bounds and ownership corrected; native component accepted.**
 The live native key path queried `high-low` rows but searched through inclusive
 `high`, read `keys[nkeys]` during cleanup logging, and queried even mapped keys.
 Tests-first `b7340517` delivered its mapped-key control, then reproduced an actual
@@ -726,12 +726,30 @@ past the caller's key array. Provider, loader and build require private version
 authentic old binary. The focused native fixture requires 20 repeated delivery,
 mapped-query bypass, query-failure and full-map-refusal cases, actual events,
 unchanged maps/physical keys, query/free census and sampled descriptor/task drain.
-The reordered run passed its first five product cases, then failed the fixture's
-startup-map restoration assertion. A later control proved that the core-map
-roundtrip changes 7 columns to 15 before any product call; full XKB restoration
-was also rejected after fixture remapping. The fixture now owns a dedicated Xvfb,
+The fixture owns a dedicated Xvfb,
 requires exact map equality around every product call, and joins that server
-before later tests start on a fresh display. Native acceptance remains pending.
+before later tests start on a fresh display. Core/XKB startup-map restoration
+assumptions are absent; failed fixture attempts remain in the retained audit/raw
+evidence and Git history, not product acceptance.
+
+Exact `af4586af32a560345356e02b8325f72799b30ae3`
+(tree `cb66effcd31822625557aa57989deeff47b15b37`) passed
+`scripts/smoke-verifier-vm-authority.sh --x11-display-tests` in **138 VM seconds**,
+outer exit 0. All 20 scratch cases over four rounds passed: 16 scenario key
+events, 32 queries including eight null-query faults, all 24 allocated query
+replies freed, exact maps/physical keys preserved and sampled descriptors/tasks
+retired. The real mapped-key control passed separately. AddressSanitizer was
+enabled; heap-leak checking was explicitly disabled. Dedicated server/socket/lock
+retirement and later fresh-display execution passed, as did the unchanged
+protected-loader/Enigo, mouse, focus, cursor and capture checks. Product C is
+unchanged from `cbdfcb0e`; its SHA-256 is
+`87869889954226ec60877d3b14a70c4e2d191d259c86fd7c16f8989c20e23783`.
+Retained raw `.harness-state/verifier-vm/x11-display-tests-run.bLrDBWErfM.serial.log`
+is 142,632 bytes, SHA-256
+`4e9955805a26a0b63524e452cc8c6eabd1294d20aaac94d51eb71624928e6680`.
+`evidence/xdo-scratch-key-run.bLrDBWErfM.outer.receipt` records the observed outer
+result and exact artifact scope; it is not independent reproduction. No host
+listener was added, owners joined and the exact scratch root/overlay is absent.
 This is not an Android/Windows delay fix,
 whole-app/install result, native map-race/allocator closure or heap-leak/soak proof.
 The separate unused compound-parser allocation and unchecked native delivery/error
@@ -745,7 +763,8 @@ binary and native-library digests match the preceding negative run. The retained
 raw is `x11-display-tests-run.6d8hWuubEa.serial.log` (84,801 bytes, SHA-256
 `4da2a89c1906693ae563775d4ec426780bca987dfdd06a273e593da12ea156c5`).
 Cause and relevant product/harness/native-library ownership remain unproved;
-prior or later passes cannot erase this failure. The focused scratch test now
+the same eight-worker schedule passed in `af4586af`'s accepted transaction,
+but that later pass does not explain or erase this failure. The focused scratch test
 runs first on its own disposable display. The concurrent test and every
 existing assertion remain mandatory; reordering is not concurrency acceptance.
 

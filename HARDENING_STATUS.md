@@ -1852,6 +1852,15 @@ installed desktop teardown, viewport integration, fallback idle-at-boundary beha
 sustained resource/performance evidence remain OPEN. This is not installed
 Windows evidence or a diagnosis of the original display-delay symptom.
 
+**Fallback idle at scroll bounds — tests-first, component A/B pending.**
+The current ticker keeps scheduling frames and Canvas notifications after clamping
+exhausts useful motion. Four new real-Flutter cases exercise horizontal, vertical and
+two-axis limits (one axis reaches its limit first), plus a zero-time frame. They require
+an idle owned ticker, no no-op notifications, useful restart without a new registration,
+and continued work where the other axis or a later frame can still move. Product code
+is unchanged; the shared checkpoint count is 258. Native reproduction/correction and
+the wider sustained performance/installed-window evidence remain OPEN.
+
 **Mobile keyboard geometry lifetime — component A/B passed; app-level symptoms OPEN.**
 At tests-first `88e69b72`, eight new cases fail and the other 225 tests pass. Retired
 focus changes successor offsets and size; retired restore reapplies the old offset/scale,

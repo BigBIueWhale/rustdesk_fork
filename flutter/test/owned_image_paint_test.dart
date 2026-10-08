@@ -979,6 +979,88 @@ void main() {
     });
   });
 
+  for (final axis in ['horizontal', 'vertical', 'both']) {
+    testWidgets('fallback becomes idle at $axis bounds and can restart',
+        (tester) async {
+      await _observeEdgeScroll(tester, (fixture) async {
+        final canvas = fixture.canvas;
+        final horizontal = canvas.scrollHorizontal.position;
+        final vertical = canvas.scrollVertical.position;
+        final scrollX = axis != 'vertical';
+        final scrollY = axis != 'horizontal';
+        canvas.scrollHorizontal.jumpTo(scrollX ? 50 : 500);
+        canvas.scrollVertical.jumpTo(scrollY ? 150 : 500);
+        final pending = fixture.move(
+            scrollX ? 0 : canvas.size.width / 2,
+            scrollY ? 0 : canvas.size.height / 2);
+        await tester.pump();
+        fixture.replies.single.complete(false);
+        await tester.pump();
+        await pending;
+        var sawSplitBoundary = false;
+        for (var frame = 0; frame < 32; frame++) {
+          await tester.pump(const Duration(milliseconds: 16));
+          if (axis == 'both' && horizontal.pixels == 0 && vertical.pixels > 0) {
+            sawSplitBoundary = true;
+            expect(fixture.host.activeTickers, 1);
+          }
+        }
+        final expected = [scrollX ? 0.0 : 500.0, scrollY ? 0.0 : 500.0];
+        expect([horizontal.pixels, vertical.pixels], expected);
+        if (axis == 'both') expect(sawSplitBoundary, isTrue);
+        var idleNotifications = 0;
+        canvas.addListener(() => idleNotifications++);
+        await tester.pump(const Duration(milliseconds: 16));
+        await tester.pump(const Duration(milliseconds: 16));
+        expect({
+          'activeTickers': fixture.host.activeTickers,
+          'registeredTickers': fixture.host.registeredTickers.length,
+          'notifications': idleNotifications,
+          'pixels': [horizontal.pixels, vertical.pixels],
+        }, {
+          'activeTickers': 0,
+          'registeredTickers': 1,
+          'notifications': 0,
+          'pixels': expected,
+        });
+        await fixture.move(
+            scrollX ? canvas.size.width - 1 : canvas.size.width / 2,
+            scrollY ? canvas.size.height - 1 : canvas.size.height / 2);
+        await tester.pump(const Duration(milliseconds: 16));
+        await tester.pump(const Duration(milliseconds: 16));
+        if (scrollX) expect(horizontal.pixels, greaterThan(0));
+        if (scrollY) expect(vertical.pixels, greaterThan(0));
+        expect(idleNotifications, greaterThan(0));
+        expect(fixture.host.registeredTickers, hasLength(1));
+        expect(fixture.replies, hasLength(1));
+      });
+    });
+  }
+
+  testWidgets('zero-time fallback frame stays useful without notifying',
+      (tester) async {
+    await _observeEdgeScroll(tester, (fixture) async {
+      var notifications = 0;
+      fixture.canvas.addListener(() => notifications++);
+      final pending = fixture.move(0, 0);
+      await tester.pump();
+      fixture.replies.single.complete(false);
+      await tester.pump();
+      await pending;
+      notifications = 0;
+      await tester.pump();
+      expect([
+        fixture.host.activeTickers,
+        fixture.canvas.scrollHorizontal.position.pixels,
+        fixture.canvas.scrollVertical.position.pixels,
+        notifications,
+      ], [1, 500.0, 500.0, 0]);
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(fixture.canvas.scrollHorizontal.position.pixels, lessThan(500));
+      expect(notifications, greaterThan(0));
+    });
+  });
+
   for (final retirement in ['clear', 'dispose']) {
     testWidgets('mobile canvas $retirement removes both pending timers',
         (tester) async {

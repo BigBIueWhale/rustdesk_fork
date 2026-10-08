@@ -1147,6 +1147,7 @@ android_frame_input_inventory() {
             "$SCRIPT_DIR/test-x11-enigo-route.rs"
             "$SCRIPT_DIR/test-x11-text-observer.c"
             "$SCRIPT_DIR/test-xdo-keymap-lifetime.c"
+            "$SCRIPT_DIR/verify-debian-package-authority.py"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/build.py"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.h"
@@ -3462,6 +3463,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/scripts/test-x11-enigo-route.rs=$SCRIPT_DIR/test-x11-enigo-route.rs"
             "repo/scripts/test-x11-text-observer.c=$SCRIPT_DIR/test-x11-text-observer.c"
             "repo/scripts/test-xdo-keymap-lifetime.c=$SCRIPT_DIR/test-xdo-keymap-lifetime.c"
+            "repo/scripts/verify-debian-package-authority.py=$SCRIPT_DIR/verify-debian-package-authority.py"
             "repo/libs/libxdo-sys-stub/native/build.py=$REPO_ROOT/libs/libxdo-sys-stub/native/build.py"
             "repo/libs/libxdo-sys-stub/native/xdo.c=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
             "repo/libs/libxdo-sys-stub/native/xdo.h=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.h"
@@ -4243,6 +4245,9 @@ elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
         'X11_ENIGO_TEXT_NATIVE=pass source=complete-backend locale_scenarios=3 scalar_pairs=21 events=42 controls=preadmission-refused keys=clear observers=joined descriptors=retired scope=native-key-events whole_app=false' \
         'complete Enigo XDO backend delivers native Unicode key events without a locale dependency and releases every submitted key'
+    require_exact_fixed_receipt \
+        'X11_XDO_PACKAGE_ELF=pass variants=2 required=true runpath=absent full_package=unexecuted' \
+        'actual built private XDO libraries satisfy the package ELF policy without an ambient runtime search path'
     require_exact_fixed_receipt \
         'X11_XDO_DESTRUCTOR_BEFORE=observed source_delta=one-call allocations=2 retirements=0 live=2 keys=correct children=joined scope=xdo-descriptor-class' \
         'same native source with the old destructor delivers keys but retains both enclosing descriptors'

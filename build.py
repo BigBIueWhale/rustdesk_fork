@@ -331,7 +331,7 @@ Version: %s
 Architecture: %s
 Maintainer: rustdesk <info@rustdesk.com>
 Homepage: https://rustdesk.com
-Depends: init-system-helpers, libgtk-3-0t64 | libgtk-3-0, libxcb-randr0, libxtst6, libxinerama1, libxkbcommon0, libxfixes3, libxcb-shape0, libxcb-xfixes0, libasound2t64 | libasound2, libsystemd0, curl, libgstreamer-plugins-base1.0-0, gstreamer1.0-pipewire%s
+Depends: init-system-helpers, libgtk-3-0t64 | libgtk-3-0, libxcb-randr0, libx11-6, libxtst6, libxinerama1, libxkbcommon0, libxfixes3, libxcb-shape0, libxcb-xfixes0, libasound2t64 | libasound2, libsystemd0, curl, libgstreamer-plugins-base1.0-0, gstreamer1.0-pipewire%s
 Recommends: libayatana-appindicator3-1
 Description: A remote control software.
 

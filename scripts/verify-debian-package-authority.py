@@ -62,6 +62,7 @@ DATA_REQUIRED_DIRECTORIES = {
     "./usr",
     "./usr/bin",
     "./usr/lib",
+    "./usr/lib/rustdesk-fork",
     "./usr/lib/systemd",
     "./usr/lib/systemd/system",
     "./usr/share",
@@ -88,6 +89,7 @@ DATA_REQUIRED_FILES = {
     "./etc/rustdesk/startwm.sh",
     "./etc/rustdesk/xorg.conf",
     "./usr/lib/systemd/system/rustdesk.service",
+    "./usr/lib/rustdesk-fork/libxdo.so.3",
     "./usr/share/applications/rustdesk-link.desktop",
     "./usr/share/applications/rustdesk.desktop",
     "./usr/share/icons/hicolor/256x256/apps/rustdesk.png",
@@ -100,6 +102,8 @@ DATA_REQUIRED_FILES = {
     "./usr/share/rustdesk/files/manual/rustdesk-service",
     "./usr/share/rustdesk/files/openrc/rustdesk",
     "./usr/share/rustdesk/files/runit/run",
+    "./usr/share/rustdesk/files/native-xdo-COPYRIGHT",
+    "./usr/share/rustdesk/files/native-xdo-SOURCE.txt",
     "./usr/share/rustdesk/rustdesk",
     "./usr/share/rustdesk/rustdesk-service-child",
 }
@@ -111,7 +115,8 @@ DATA_VARIABLE_ROOT = "./usr/share/rustdesk/data/flutter_assets"
 PRIMARY_BINARY = "./usr/share/rustdesk/rustdesk"
 SERVICE_CHILD_BINARY = "./usr/share/rustdesk/rustdesk-service-child"
 RUNNER_BINARIES = {PRIMARY_BINARY, SERVICE_CHILD_BINARY}
-MANDATORY_ELVES = RUNNER_BINARIES | FLUTTER_LIBRARIES
+NATIVE_XDO_LIBRARY = "./usr/lib/rustdesk-fork/libxdo.so.3"
+MANDATORY_ELVES = RUNNER_BINARIES | FLUTTER_LIBRARIES | {NATIVE_XDO_LIBRARY}
 DATA_REQUIRED = {
     name: ("dir", 0o755) for name in DATA_REQUIRED_DIRECTORIES
 }
@@ -1705,7 +1710,7 @@ def populate_valid_synthetic_elves(root):
     shutil.copyfile(primary, service_child)
     primary.chmod(0o755)
     service_child.chmod(0o711)
-    for name in sorted(FLUTTER_LIBRARIES):
+    for name in sorted(FLUTTER_LIBRARIES | {NATIVE_XDO_LIBRARY}):
         basename = Path(name).name
         runpath = "$ORIGIN" if basename == "libflutter_linux_gtk.so" or basename.endswith("_plugin.so") else None
         build_synthetic_elf(root / name[2:], runpath, shared=True)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run production X11 owner and capture checks against isolated Xvfb."""
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -67,6 +68,10 @@ def logging_library(root, environment):
 
 def native_xdo(root, environment):
     source = root / "libs/libxdo-sys-stub/native"
+    checker_source = root / "scripts/verify-debian-package-authority.py"
+    spec = importlib.util.spec_from_file_location("package_authority", checker_source)
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
     names = ("build.py", "xdo.c", "xdo.h", "xdo_search.c", "xdo_util.h",
              "xdo_version.h", "COPYRIGHT", "SOURCE.txt")
     before_source = Path("/build/native-xdo-before-source")
@@ -84,6 +89,15 @@ def native_xdo(root, environment):
         output = directory / "libxdo.so.3"
         subprocess.run(["/usr/bin/python3", "-I", "-S", str(inputs / "build.py"),
                         "--output", str(output)], env=environment, check=True, timeout=35)
+        member = "./usr/lib/rustdesk-fork/libxdo.so.3"
+        require(member in checker.DATA_REQUIRED_FILES and member in checker.MANDATORY_ELVES,
+                "private XDO object is absent from the closed package inventory")
+        actual, present = checker.validate_elf_identity(output.read_bytes(), member, str(output))
+        checker.validate_runpath_policy(actual, present, member, str(output))
+        require(not actual and not present, "private XDO object has an unexpected runtime search path")
+        print(f"X11_XDO_PACKAGE_ELF variant={variant} result=pass required=true runpath=absent "
+              f"checker_sha256={hashlib.sha256(checker_source.read_bytes()).hexdigest()} "
+              "full_package=unexecuted", flush=True)
         (directory / "libxdo.so").symlink_to(output.name)
         print("X11_XDO_PRODUCT_BUILD " + " ".join(
             f"{name.replace('.', '_')}_sha256={hashlib.sha256((inputs / name).read_bytes()).hexdigest()}"
@@ -91,6 +105,7 @@ def native_xdo(root, environment):
             f" binary_sha256={hashlib.sha256(output.read_bytes()).hexdigest()} variant={variant} "
             "compiler=product-helper source_delta=one-call loader=direct-native-test installed=false", flush=True)
         directories[variant] = directory
+    print("X11_XDO_PACKAGE_ELF=pass variants=2 required=true runpath=absent full_package=unexecuted", flush=True)
     return directories, before_source
 
 

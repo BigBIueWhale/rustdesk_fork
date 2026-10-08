@@ -613,15 +613,37 @@ before-state, scope and finality. Endpoint-only host audits passed with no addit
 owners joined and the exact transient run root retired (post-terminal ENOENT).
 Earlier failures and narrower passes remain in their named receipts and audit.
 
-This accepts one exact descriptor class in the complete Enigo backend with direct
+That run accepts one exact descriptor class in the complete Enigo backend with direct
 native-test linkage, not the protected loader, other private-XDO consumers, whole
 heap, full Cargo/app/package/installed service or independent reproduction.
 The 6.947/210.859 ms request-to-child/observer retirement measurements include key
 delay and are not remote UI latency or soak acceptance. Broader obligations below
 remain OPEN.
 
+**Private-loader readiness — component accepted; full integration OPEN.**
+Test-first `dfc48988` compiled the complete production Rust loader with real pinned
+libloading/libc/x11/log dependencies and a re-export-only common facade. At the actual
+protected `/usr/lib/rustdesk-fork/libxdo.so.3` path, the complete provider worked, but
+a same-version provider missing `xdo_mouse_up` still admitted contexts; the native
+refusal predicate failed (`run.1zjK1rOeJQ`, outer 1). `c88cf1f8` requires the complete
+exposed API before either constructor can admit a context, removing per-function
+optional slots. The fixed path/version and absent-backend behavior remain unchanged.
+
+Final harness source `2e551f67` passed in **118 seconds**, explicit outer 0
+(`run.j2Wmn2Mm3W`): real pointer coordinates, button/Shift state and native key events
+with the complete private provider; both constructors refused missing-function,
+wrong-version, writable-file and absent-provider cases. One source-bound binary ran
+all five cases nonroot; guest-root preparation only set up protected fixture files.
+Existing native regressions and outer input/listener/finality checks passed; no host
+listener additions, joined owners and exact transient-root retirement. The retained
+126,359-byte serial and `evidence/xdo-loader-run.j2Wmn2Mm3W.outer.receipt` bind artifacts
+and the failed before-state. This is actual loader-component execution, not full
+Cargo/common/app/package installation, all symbols individually fault-tested,
+other-consumer integration, whole-resource or display-delay acceptance.
+
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
-Xauthority (Xvfb uses `-ac`); protected loader, parent/rdev, full Cargo/app and current
+Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,
+parent/rdev, full Cargo/app and current
 installed/native artifacts; capture-to-input mapping across all native roots, unmapped
 Unicode, native layouts/IMEs/widget text, held/locked modifiers/key delivery and cleanup;
 persistent

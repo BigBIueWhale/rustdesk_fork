@@ -1812,6 +1812,13 @@ The early commit was introduced by `485487666` on September 29, so this cannot e
 older artifact without that code; default Windows textures use a different path. Corrected
 execution, original Android/Windows causation and installed/release/soak evidence remain OPEN.
 The earlier `26d9419e` attempt failed fixture compilation, not product behavior; the audit retains it.
+The first corrected-source run at `e6ee1c32` passed all 23 suites/199 tests and parser
+regressions, then failed the guest's stale 196-test summary check. Its retained raw serial is
+`flutter-model-tests-run.Rpo2E7zUaf.serial.log`, SHA256
+`6ae5968a71100f1b259cd845cf7fa55048692dfeb351f3de6f8623a479f7a787`.
+That exact expectation is corrected; complete postconditions await a rerun. Initialization
+exceptions and stale geometry/cursor side effects are not covered by these ordering tests;
+resource cleanup on those paths remains OPEN.
 
 The disposable runtime uses the pinned Emulator 37.1.11 and Android 14/API-34 x86_64 image in a
 networkless numeric-nonroot container inside the ordinary-user zero-NIC verifier VM. Source and APK

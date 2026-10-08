@@ -5445,7 +5445,7 @@ run_flutter_model_tests() {
     local source_archive_sha input_mount_options cargo_receipt pub_receipt post_pub_receipt
     local tools_freshness_line source_authority source_writable=true
     local memory=8g memory_bytes=8589934592 result_prefix=FLUTTER_MODEL_TEST_JSON
-    local expected_result='suites=23 tests=196' queue_sha256 tests_sha256
+    local expected_result='suites=23 tests=199' queue_sha256 tests_sha256
     local -a toolchain_mounts=()
     local source_mount="type=bind,source=$source_root,target=/source"
     if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then

@@ -4,8 +4,141 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_hbb/generated_bridge.dart';
+import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_hbb/utils/image.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uuid/uuid.dart';
+
+// Only the asynchronous geometry boundary is controlled. ImageModel, publication
+// ordering and raw-pixel conversion execute their production implementations.
+class _ImageSession implements FFI {
+  @override
+  final SessionID sessionId = Uuid().v4obj();
+  @override
+  final canvasModel = _PendingImageGeometry();
+  @override
+  final cursorModel = _ImageCursor();
+  @override
+  late final ffiModel = _ImageTopology(sessionId);
+  @override
+  late final imageModel = ImageModel(WeakReference<FFI>(this));
+
+  @override
+  bool isCurrentSession(SessionID expected) => expected == sessionId;
+
+  Future<bool> publish(int publication) => imageModel.onRgba(
+        sessionId,
+        0,
+        Uint8List(16)..fillRange(0, 16, publication == 1 ? 255 : 127),
+        publication: publication,
+        expectedDisplayTopologyRevision: 0,
+        expectedPresentationRevision: imageModel.presentationRevision,
+      );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _ImageTopology implements FfiModel {
+  _ImageTopology(this.sessionId);
+
+  final SessionID sessionId;
+  @override
+  final pi = PeerInfo()
+    ..displays.add(Display()
+      ..width = 2
+      ..height = 2);
+  @override
+  ui.Rect get rect => const ui.Rect.fromLTWH(0, 0, 2, 2);
+
+  @override
+  bool isCurrentDisplayTopology(SessionID expected, int revision) =>
+      expected == sessionId && revision == 0;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _PendingImageGeometry implements CanvasModel {
+  final started = List.generate(2, (_) => Completer<void>());
+  final release = List.generate(2, (_) => Completer<void>());
+  int calls = 0;
+
+  @override
+  Future<void> updateViewStyle(
+      {refreshMousePos = true,
+      notify = true,
+      SessionID? expectedSessionId,
+      int? expectedDisplayTopologyRevision}) {
+    final index = calls++;
+    started[index].complete();
+    return release[index].future;
+  }
+
+  @override
+  Future<void> updateScrollStyle(
+      {SessionID? expectedSessionId,
+      int? expectedDisplayTopologyRevision}) async {}
+
+  @override
+  Future<void> initializeEdgeScrollEdgeThickness(
+      {SessionID? expectedSessionId,
+      int? expectedDisplayTopologyRevision}) async {}
+
+  void releaseAll() {
+    for (final pending in release) {
+      if (!pending.isCompleted) pending.complete();
+    }
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _ImageCursor implements CursorModel {
+  @override
+  void updateDisplayOrigin(double x, double y, {updateCursorPos = true}) {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+Future<void> _observeImagePublications(
+    Future<void> Function(_ImageSession, List<Future<bool>>) observe) async {
+  final session = _ImageSession();
+  final publications = <Future<bool>>[];
+  final images = <ui.Image>[];
+  final previousCreate = ui.Image.onCreate;
+  ui.Image.onCreate = (image) {
+    previousCreate?.call(image);
+    images.add(image);
+  };
+  try {
+    for (var publication = 1; publication <= 2; publication++) {
+      publications.add(session.publish(publication));
+      await session.canvasModel.started[publication - 1].future
+          .timeout(const Duration(seconds: 5));
+    }
+    expect(images, hasLength(2));
+    expect(session.imageModel.image, isNull);
+    expect(session.imageModel.presentationPublication, isNull);
+    await observe(session, publications);
+  } finally {
+    try {
+      session.canvasModel.releaseAll();
+      await Future.wait(publications).timeout(const Duration(seconds: 5));
+      session.imageModel.clearImage();
+      expect(images.every((image) => image.debugDisposed), isTrue);
+      expect(images.map(_openHandles), everyElement(0));
+    } finally {
+      for (final image in images) {
+        if (!image.debugDisposed) image.dispose();
+      }
+      ui.Image.onCreate = previousCreate;
+    }
+  }
+}
 
 Future<ui.Image> _solidImage(ui.Color color) async {
   final recorder = ui.PictureRecorder();
@@ -104,6 +237,56 @@ Future<Map<String, Object>> _conversionFailureHandles(String failingStage) async
 }
 
 void main() {
+  testWidgets('a ready first image is not superseded by pending geometry',
+      (tester) async {
+    await tester.runAsync(() async {
+      await _observeImagePublications((session, pending) async {
+        session.canvasModel.release[0].complete();
+        expect(await pending[0], isTrue);
+        final first = session.imageModel.image!;
+        expect(session.imageModel.presentationPublication, 1);
+        expect(first.debugDisposed, isFalse);
+
+        session.canvasModel.release[1].complete();
+        expect(await pending[1], isTrue);
+        expect(session.imageModel.presentationPublication, 2);
+        expect(identical(session.imageModel.image, first), isFalse);
+        expect(first.debugDisposed, isTrue);
+      });
+    });
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
+  testWidgets('a lower late image cannot replace a ready higher image',
+      (tester) async {
+    await tester.runAsync(() async {
+      await _observeImagePublications((session, pending) async {
+        session.canvasModel.release[1].complete();
+        expect(await pending[1], isTrue);
+        final latest = session.imageModel.image!;
+        expect(session.imageModel.presentationPublication, 2);
+
+        session.canvasModel.release[0].complete();
+        expect(await pending[0], isFalse);
+        expect(identical(session.imageModel.image, latest), isTrue);
+        expect(session.imageModel.presentationPublication, 2);
+        expect(latest.debugDisposed, isFalse);
+      });
+    });
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
+  testWidgets('presentation retirement rejects images awaiting geometry',
+      (tester) async {
+    await tester.runAsync(() async {
+      await _observeImagePublications((session, pending) async {
+        session.imageModel.retirePresentation();
+        session.canvasModel.releaseAll();
+        expect(await Future.wait(pending), [false, false]);
+        expect(session.imageModel.image, isNull);
+        expect(session.imageModel.presentationPublication, isNull);
+      });
+    });
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
   testWidgets('owned image paint fills loose stack bounds and retains pixels',
       (tester) async {
     final source = (await tester.runAsync(

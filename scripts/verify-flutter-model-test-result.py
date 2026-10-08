@@ -33,7 +33,7 @@ EXPECTED_SUITES = {
     "session_stream_finality_test.dart",
     "start_ellipsis_text_test.dart",
 }
-EXPECTED_TESTS = 196
+EXPECTED_TESTS = 199
 FRAME_QUEUE_TESTS = {
     "retains one running frame and only the latest successor per display",
     "different displays drain independently",

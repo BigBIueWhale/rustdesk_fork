@@ -1795,6 +1795,15 @@ cannot close those boundaries or explain the reported Android/Windows display sy
 
 ### Android runtime — intermittent presentation remains OPEN
 
+**Software first-image publication — reproduction pending.** `ImageModel.decodeAndUpdate`
+currently commits publication order before `ImageModel.update` awaits initial canvas/cursor
+geometry. A higher converted image may therefore invalidate a useful predecessor before
+either is displayed. The focused image suite now drives the actual ImageModel and native
+raw-image conversion with independently held geometry completions: first-ready publication,
+higher-first/lower-late refusal, and presentation retirement with exact image-handle cleanup.
+Only that asynchronous boundary and session/topology fixture are controlled. No native result,
+product correction, Android/Windows causation or installed-app closure is claimed yet.
+
 The disposable runtime uses the pinned Emulator 37.1.11 and Android 14/API-34 x86_64 image in a
 networkless numeric-nonroot container inside the ordinary-user zero-NIC verifier VM. Source and APK
 inputs are read-only and digest-bound; host listeners are audited and every transient owner must join.

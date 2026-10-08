@@ -6,7 +6,7 @@
 
 use hbb_common::{
     libc::{c_char, c_int, c_uint},
-    libloading::os::unix::{Library, Symbol, RTLD_LOCAL, RTLD_NOW},
+    libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW},
     log,
 };
 use std::{
@@ -134,30 +134,43 @@ type FnXdoSearchWindows =
 struct XdoLib {
     _lib: Library,
     xdo_new: FnXdoNew,
-    xdo_new_with_opened_display: Option<FnXdoNewWithOpenedDisplay>,
+    xdo_new_with_opened_display: FnXdoNewWithOpenedDisplay,
     xdo_free: FnXdoFree,
     xdo_send_keysequence_window: FnXdoSendKeysequenceWindow,
-    xdo_send_keysequence_window_down: Option<FnXdoSendKeysequenceWindowDown>,
-    xdo_send_keysequence_window_up: Option<FnXdoSendKeysequenceWindowUp>,
-    xdo_click_window: Option<FnXdoClickWindow>,
-    xdo_mouse_down: Option<FnXdoMouseDown>,
-    xdo_mouse_up: Option<FnXdoMouseUp>,
-    xdo_move_mouse: Option<FnXdoMoveMouse>,
-    xdo_move_mouse_relative: Option<FnXdoMoveMouseRelative>,
-    xdo_move_mouse_relative_to_window: Option<FnXdoMoveMouseRelativeToWindow>,
-    xdo_get_mouse_location: Option<FnXdoGetMouseLocation>,
-    xdo_get_mouse_location2: Option<FnXdoGetMouseLocation2>,
-    xdo_get_active_window: Option<FnXdoGetActiveWindow>,
-    xdo_get_focused_window: Option<FnXdoGetFocusedWindow>,
-    xdo_get_focused_window_sane: Option<FnXdoGetFocusedWindowSane>,
-    xdo_get_window_location: Option<FnXdoGetWindowLocation>,
-    xdo_get_window_size: Option<FnXdoGetWindowSize>,
-    xdo_get_input_state: Option<FnXdoGetInputState>,
-    xdo_activate_window: Option<FnXdoActivateWindow>,
-    xdo_wait_for_mouse_move_from: Option<FnXdoWaitForMouseMoveFrom>,
-    xdo_wait_for_mouse_move_to: Option<FnXdoWaitForMouseMoveTo>,
-    xdo_set_window_class: Option<FnXdoSetWindowClass>,
-    xdo_search_windows: Option<FnXdoSearchWindows>,
+    xdo_send_keysequence_window_down: FnXdoSendKeysequenceWindowDown,
+    xdo_send_keysequence_window_up: FnXdoSendKeysequenceWindowUp,
+    xdo_click_window: FnXdoClickWindow,
+    xdo_mouse_down: FnXdoMouseDown,
+    xdo_mouse_up: FnXdoMouseUp,
+    xdo_move_mouse: FnXdoMoveMouse,
+    xdo_move_mouse_relative: FnXdoMoveMouseRelative,
+    xdo_move_mouse_relative_to_window: FnXdoMoveMouseRelativeToWindow,
+    xdo_get_mouse_location: FnXdoGetMouseLocation,
+    xdo_get_mouse_location2: FnXdoGetMouseLocation2,
+    xdo_get_active_window: FnXdoGetActiveWindow,
+    xdo_get_focused_window: FnXdoGetFocusedWindow,
+    xdo_get_focused_window_sane: FnXdoGetFocusedWindowSane,
+    xdo_get_window_location: FnXdoGetWindowLocation,
+    xdo_get_window_size: FnXdoGetWindowSize,
+    xdo_get_input_state: FnXdoGetInputState,
+    xdo_activate_window: FnXdoActivateWindow,
+    xdo_wait_for_mouse_move_from: FnXdoWaitForMouseMoveFrom,
+    xdo_wait_for_mouse_move_to: FnXdoWaitForMouseMoveTo,
+    xdo_set_window_class: FnXdoSetWindowClass,
+    xdo_search_windows: FnXdoSearchWindows,
+}
+
+unsafe fn required_symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
+    match lib.get::<T>(name) {
+        Ok(symbol) => Some(*symbol),
+        Err(err) => {
+            log::warn!(
+                "Private XDO is missing required symbol {}: {err}",
+                String::from_utf8_lossy(name)
+            );
+            None
+        }
+    }
 }
 
 impl XdoLib {
@@ -169,107 +182,42 @@ impl XdoLib {
                     .map(|lib| (lib, path))
             })?;
 
-            let version: FnXdoVersion = *lib.get(b"xdo_version").ok()?;
+            let version: FnXdoVersion = required_symbol(&lib, b"xdo_version")?;
             let version = version();
             if version.is_null() || CStr::from_ptr(version).to_bytes() != EXPECTED_XDO_VERSION {
                 log::warn!("The private XDO library has an unexpected version");
                 return None;
             }
+            let xdo_new = required_symbol(&lib, b"xdo_new")?;
+            let xdo_free = required_symbol(&lib, b"xdo_free")?;
+            let xdo_send_keysequence_window = required_symbol(&lib, b"xdo_send_keysequence_window")?;
+            let xdo_new_with_opened_display = required_symbol(&lib, b"xdo_new_with_opened_display")?;
+            let xdo_send_keysequence_window_down =
+                required_symbol(&lib, b"xdo_send_keysequence_window_down")?;
+            let xdo_send_keysequence_window_up =
+                required_symbol(&lib, b"xdo_send_keysequence_window_up")?;
+            let xdo_click_window = required_symbol(&lib, b"xdo_click_window")?;
+            let xdo_mouse_down = required_symbol(&lib, b"xdo_mouse_down")?;
+            let xdo_mouse_up = required_symbol(&lib, b"xdo_mouse_up")?;
+            let xdo_move_mouse = required_symbol(&lib, b"xdo_move_mouse")?;
+            let xdo_move_mouse_relative = required_symbol(&lib, b"xdo_move_mouse_relative")?;
+            let xdo_move_mouse_relative_to_window =
+                required_symbol(&lib, b"xdo_move_mouse_relative_to_window")?;
+            let xdo_get_mouse_location = required_symbol(&lib, b"xdo_get_mouse_location")?;
+            let xdo_get_mouse_location2 = required_symbol(&lib, b"xdo_get_mouse_location2")?;
+            let xdo_get_active_window = required_symbol(&lib, b"xdo_get_active_window")?;
+            let xdo_get_focused_window = required_symbol(&lib, b"xdo_get_focused_window")?;
+            let xdo_get_focused_window_sane = required_symbol(&lib, b"xdo_get_focused_window_sane")?;
+            let xdo_get_window_location = required_symbol(&lib, b"xdo_get_window_location")?;
+            let xdo_get_window_size = required_symbol(&lib, b"xdo_get_window_size")?;
+            let xdo_get_input_state = required_symbol(&lib, b"xdo_get_input_state")?;
+            let xdo_activate_window = required_symbol(&lib, b"xdo_activate_window")?;
+            let xdo_wait_for_mouse_move_from = required_symbol(&lib, b"xdo_wait_for_mouse_move_from")?;
+            let xdo_wait_for_mouse_move_to = required_symbol(&lib, b"xdo_wait_for_mouse_move_to")?;
+            let xdo_set_window_class = required_symbol(&lib, b"xdo_set_window_class")?;
+            let xdo_search_windows = required_symbol(&lib, b"xdo_search_windows")?;
+
             log::info!("libxdo-sys Loaded {}", lib_path.display());
-
-            let xdo_new: FnXdoNew = *lib.get(b"xdo_new").ok()?;
-            let xdo_free: FnXdoFree = *lib.get(b"xdo_free").ok()?;
-            let xdo_send_keysequence_window: FnXdoSendKeysequenceWindow =
-                *lib.get(b"xdo_send_keysequence_window").ok()?;
-
-            let xdo_new_with_opened_display = lib
-                .get(b"xdo_new_with_opened_display")
-                .ok()
-                .map(|s: Symbol<FnXdoNewWithOpenedDisplay>| *s);
-            let xdo_send_keysequence_window_down = lib
-                .get(b"xdo_send_keysequence_window_down")
-                .ok()
-                .map(|s: Symbol<FnXdoSendKeysequenceWindowDown>| *s);
-            let xdo_send_keysequence_window_up = lib
-                .get(b"xdo_send_keysequence_window_up")
-                .ok()
-                .map(|s: Symbol<FnXdoSendKeysequenceWindowUp>| *s);
-            let xdo_click_window = lib
-                .get(b"xdo_click_window")
-                .ok()
-                .map(|s: Symbol<FnXdoClickWindow>| *s);
-            let xdo_mouse_down = lib
-                .get(b"xdo_mouse_down")
-                .ok()
-                .map(|s: Symbol<FnXdoMouseDown>| *s);
-            let xdo_mouse_up = lib
-                .get(b"xdo_mouse_up")
-                .ok()
-                .map(|s: Symbol<FnXdoMouseUp>| *s);
-            let xdo_move_mouse = lib
-                .get(b"xdo_move_mouse")
-                .ok()
-                .map(|s: Symbol<FnXdoMoveMouse>| *s);
-            let xdo_move_mouse_relative = lib
-                .get(b"xdo_move_mouse_relative")
-                .ok()
-                .map(|s: Symbol<FnXdoMoveMouseRelative>| *s);
-            let xdo_move_mouse_relative_to_window = lib
-                .get(b"xdo_move_mouse_relative_to_window")
-                .ok()
-                .map(|s: Symbol<FnXdoMoveMouseRelativeToWindow>| *s);
-            let xdo_get_mouse_location = lib
-                .get(b"xdo_get_mouse_location")
-                .ok()
-                .map(|s: Symbol<FnXdoGetMouseLocation>| *s);
-            let xdo_get_mouse_location2 = lib
-                .get(b"xdo_get_mouse_location2")
-                .ok()
-                .map(|s: Symbol<FnXdoGetMouseLocation2>| *s);
-            let xdo_get_active_window = lib
-                .get(b"xdo_get_active_window")
-                .ok()
-                .map(|s: Symbol<FnXdoGetActiveWindow>| *s);
-            let xdo_get_focused_window = lib
-                .get(b"xdo_get_focused_window")
-                .ok()
-                .map(|s: Symbol<FnXdoGetFocusedWindow>| *s);
-            let xdo_get_focused_window_sane = lib
-                .get(b"xdo_get_focused_window_sane")
-                .ok()
-                .map(|s: Symbol<FnXdoGetFocusedWindowSane>| *s);
-            let xdo_get_window_location = lib
-                .get(b"xdo_get_window_location")
-                .ok()
-                .map(|s: Symbol<FnXdoGetWindowLocation>| *s);
-            let xdo_get_window_size = lib
-                .get(b"xdo_get_window_size")
-                .ok()
-                .map(|s: Symbol<FnXdoGetWindowSize>| *s);
-            let xdo_get_input_state = lib
-                .get(b"xdo_get_input_state")
-                .ok()
-                .map(|s: Symbol<FnXdoGetInputState>| *s);
-            let xdo_activate_window = lib
-                .get(b"xdo_activate_window")
-                .ok()
-                .map(|s: Symbol<FnXdoActivateWindow>| *s);
-            let xdo_wait_for_mouse_move_from = lib
-                .get(b"xdo_wait_for_mouse_move_from")
-                .ok()
-                .map(|s: Symbol<FnXdoWaitForMouseMoveFrom>| *s);
-            let xdo_wait_for_mouse_move_to = lib
-                .get(b"xdo_wait_for_mouse_move_to")
-                .ok()
-                .map(|s: Symbol<FnXdoWaitForMouseMoveTo>| *s);
-            let xdo_set_window_class = lib
-                .get(b"xdo_set_window_class")
-                .ok()
-                .map(|s: Symbol<FnXdoSetWindowClass>| *s);
-            let xdo_search_windows = lib
-                .get(b"xdo_search_windows")
-                .ok()
-                .map(|s: Symbol<FnXdoSearchWindows>| *s);
 
             Some(Self {
                 _lib: lib,
@@ -463,11 +411,9 @@ pub unsafe extern "C" fn xdo_new_with_opened_display(
     display: *const c_char,
     close_display_when_freed: c_int,
 ) -> *mut xdo_t {
-    get_lib()
-        .and_then(|lib| lib.xdo_new_with_opened_display)
-        .map_or(std::ptr::null_mut(), |f| {
-            f(xdpy, display, close_display_when_freed)
-        })
+    get_lib().map_or(std::ptr::null_mut(), |lib| {
+        (lib.xdo_new_with_opened_display)(xdpy, display, close_display_when_freed)
+    })
 }
 
 pub unsafe extern "C" fn xdo_free(xdo: *mut xdo_t) {
@@ -496,9 +442,9 @@ pub unsafe extern "C" fn xdo_send_keysequence_window_down(
     keysequence: *const c_char,
     delay: useconds_t,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_send_keysequence_window_down)
-        .map_or(1, |f| f(xdo, window, keysequence, delay))
+    get_lib().map_or(1, |lib| {
+        (lib.xdo_send_keysequence_window_down)(xdo, window, keysequence, delay)
+    })
 }
 
 pub unsafe extern "C" fn xdo_send_keysequence_window_up(
@@ -507,9 +453,9 @@ pub unsafe extern "C" fn xdo_send_keysequence_window_up(
     keysequence: *const c_char,
     delay: useconds_t,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_send_keysequence_window_up)
-        .map_or(1, |f| f(xdo, window, keysequence, delay))
+    get_lib().map_or(1, |lib| {
+        (lib.xdo_send_keysequence_window_up)(xdo, window, keysequence, delay)
+    })
 }
 
 pub unsafe extern "C" fn xdo_click_window(
@@ -517,21 +463,15 @@ pub unsafe extern "C" fn xdo_click_window(
     window: Window,
     button: c_int,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_click_window)
-        .map_or(1, |f| f(xdo, window, button))
+    get_lib().map_or(1, |lib| (lib.xdo_click_window)(xdo, window, button))
 }
 
 pub unsafe extern "C" fn xdo_mouse_down(xdo: *const xdo_t, window: Window, button: c_int) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_mouse_down)
-        .map_or(1, |f| f(xdo, window, button))
+    get_lib().map_or(1, |lib| (lib.xdo_mouse_down)(xdo, window, button))
 }
 
 pub unsafe extern "C" fn xdo_mouse_up(xdo: *const xdo_t, window: Window, button: c_int) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_mouse_up)
-        .map_or(1, |f| f(xdo, window, button))
+    get_lib().map_or(1, |lib| (lib.xdo_mouse_up)(xdo, window, button))
 }
 
 pub unsafe extern "C" fn xdo_move_mouse(
@@ -540,15 +480,11 @@ pub unsafe extern "C" fn xdo_move_mouse(
     y: c_int,
     screen: c_int,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_move_mouse)
-        .map_or(1, |f| f(xdo, x, y, screen))
+    get_lib().map_or(1, |lib| (lib.xdo_move_mouse)(xdo, x, y, screen))
 }
 
 pub unsafe extern "C" fn xdo_move_mouse_relative(xdo: *const xdo_t, x: c_int, y: c_int) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_move_mouse_relative)
-        .map_or(1, |f| f(xdo, x, y))
+    get_lib().map_or(1, |lib| (lib.xdo_move_mouse_relative)(xdo, x, y))
 }
 
 pub unsafe extern "C" fn xdo_move_mouse_relative_to_window(
@@ -557,9 +493,7 @@ pub unsafe extern "C" fn xdo_move_mouse_relative_to_window(
     x: c_int,
     y: c_int,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_move_mouse_relative_to_window)
-        .map_or(1, |f| f(xdo, window, x, y))
+    get_lib().map_or(1, |lib| (lib.xdo_move_mouse_relative_to_window)(xdo, window, x, y))
 }
 
 pub unsafe extern "C" fn xdo_get_mouse_location(
@@ -568,9 +502,7 @@ pub unsafe extern "C" fn xdo_get_mouse_location(
     y: *mut c_int,
     screen_num: *mut c_int,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_get_mouse_location)
-        .map_or(1, |f| f(xdo, x, y, screen_num))
+    get_lib().map_or(1, |lib| (lib.xdo_get_mouse_location)(xdo, x, y, screen_num))
 }
 
 pub unsafe extern "C" fn xdo_get_mouse_location2(
@@ -580,36 +512,28 @@ pub unsafe extern "C" fn xdo_get_mouse_location2(
     screen_num: *mut c_int,
     window: *mut Window,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_get_mouse_location2)
-        .map_or(1, |f| f(xdo, x, y, screen_num, window))
+    get_lib().map_or(1, |lib| (lib.xdo_get_mouse_location2)(xdo, x, y, screen_num, window))
 }
 
 pub unsafe extern "C" fn xdo_get_active_window(
     xdo: *const xdo_t,
     window_ret: *mut Window,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_get_active_window)
-        .map_or(1, |f| f(xdo, window_ret))
+    get_lib().map_or(1, |lib| (lib.xdo_get_active_window)(xdo, window_ret))
 }
 
 pub unsafe extern "C" fn xdo_get_focused_window(
     xdo: *const xdo_t,
     window_ret: *mut Window,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_get_focused_window)
-        .map_or(1, |f| f(xdo, window_ret))
+    get_lib().map_or(1, |lib| (lib.xdo_get_focused_window)(xdo, window_ret))
 }
 
 pub unsafe extern "C" fn xdo_get_focused_window_sane(
     xdo: *const xdo_t,
     window_ret: *mut Window,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_get_focused_window_sane)
-        .map_or(1, |f| f(xdo, window_ret))
+    get_lib().map_or(1, |lib| (lib.xdo_get_focused_window_sane)(xdo, window_ret))
 }
 
 pub unsafe extern "C" fn xdo_get_window_location(
@@ -619,9 +543,7 @@ pub unsafe extern "C" fn xdo_get_window_location(
     y: *mut c_int,
     screen_ret: *mut *mut Screen,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_get_window_location)
-        .map_or(1, |f| f(xdo, window, x, y, screen_ret))
+    get_lib().map_or(1, |lib| (lib.xdo_get_window_location)(xdo, window, x, y, screen_ret))
 }
 
 pub unsafe extern "C" fn xdo_get_window_size(
@@ -630,21 +552,15 @@ pub unsafe extern "C" fn xdo_get_window_size(
     width: *mut c_uint,
     height: *mut c_uint,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_get_window_size)
-        .map_or(1, |f| f(xdo, window, width, height))
+    get_lib().map_or(1, |lib| (lib.xdo_get_window_size)(xdo, window, width, height))
 }
 
 pub unsafe extern "C" fn xdo_get_input_state(xdo: *const xdo_t) -> c_uint {
-    get_lib()
-        .and_then(|lib| lib.xdo_get_input_state)
-        .map_or(0, |f| f(xdo))
+    get_lib().map_or(0, |lib| (lib.xdo_get_input_state)(xdo))
 }
 
 pub unsafe extern "C" fn xdo_activate_window(xdo: *const xdo_t, wid: Window) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_activate_window)
-        .map_or(1, |f| f(xdo, wid))
+    get_lib().map_or(1, |lib| (lib.xdo_activate_window)(xdo, wid))
 }
 
 pub unsafe extern "C" fn xdo_wait_for_mouse_move_from(
@@ -652,9 +568,7 @@ pub unsafe extern "C" fn xdo_wait_for_mouse_move_from(
     origin_x: c_int,
     origin_y: c_int,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_wait_for_mouse_move_from)
-        .map_or(1, |f| f(xdo, origin_x, origin_y))
+    get_lib().map_or(1, |lib| (lib.xdo_wait_for_mouse_move_from)(xdo, origin_x, origin_y))
 }
 
 pub unsafe extern "C" fn xdo_wait_for_mouse_move_to(
@@ -662,9 +576,7 @@ pub unsafe extern "C" fn xdo_wait_for_mouse_move_to(
     dest_x: c_int,
     dest_y: c_int,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_wait_for_mouse_move_to)
-        .map_or(1, |f| f(xdo, dest_x, dest_y))
+    get_lib().map_or(1, |lib| (lib.xdo_wait_for_mouse_move_to)(xdo, dest_x, dest_y))
 }
 
 pub unsafe extern "C" fn xdo_set_window_class(
@@ -673,9 +585,7 @@ pub unsafe extern "C" fn xdo_set_window_class(
     name: *const c_char,
     class: *const c_char,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_set_window_class)
-        .map_or(1, |f| f(xdo, wid, name, class))
+    get_lib().map_or(1, |lib| (lib.xdo_set_window_class)(xdo, wid, name, class))
 }
 
 pub unsafe extern "C" fn xdo_search_windows(
@@ -684,7 +594,5 @@ pub unsafe extern "C" fn xdo_search_windows(
     windowlist_ret: *mut *mut Window,
     nwindows_ret: *mut c_uint,
 ) -> c_int {
-    get_lib()
-        .and_then(|lib| lib.xdo_search_windows)
-        .map_or(1, |f| f(xdo, search, windowlist_ret, nwindows_ret))
+    get_lib().map_or(1, |lib| (lib.xdo_search_windows)(xdo, search, windowlist_ret, nwindows_ret))
 }

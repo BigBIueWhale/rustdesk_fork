@@ -13028,21 +13028,24 @@ performant remain open STOP-SHIP obligations.
 
 ### R-S11ix/R-S11e-287 — exact Dart event-stream consumer generation
 
-**State:** Source implementation plus the exact clean Flutter model regression and
-fresh bridge generation pass at `2403bef449d67778cc89a580c34840d2cd029cc3`.
-Native execution, device lifecycle and performance evidence, current artifacts,
-independent reproduction, and external review remain pending.
+**State:** Direct callback admission is source implemented, with the named clean
+Flutter model regression and bridge-generation pass at
+`2403bef449d67778cc89a580c34840d2cd029cc3`. Already-admitted asynchronous settlement
+across stream replacement, native execution, device lifecycle and performance,
+current artifacts, independent reproduction and external review remain OPEN.
 
 **Boundary and current implementation.** This is the Flutter session-event
 consumer shared by Android, iOS, Windows, Linux, macOS, and the web parity path.
 One exact connection session, UI owner, and process-local stream generation own
 each listener. `SessionStreamGeneration` retains one strictly advancing integer
 and one current identity-bearing binding. Mobile and desktop start paths reserve
-the binding before native `sessionStart`. Listener installation, every message,
-web RGBA, error, and done callback require that exact current binding before any
-session, queue, presentation, failure, or native-close effect. Exact owner
-retirement clears only its own binding. No stream history, subscription registry,
-retry, queue, worker, service transition, or reconnect policy is added.
+the binding before native `sessionStart`. Listener installation and direct message,
+web RGBA, stream-error and stream-done callbacks check that exact current binding
+at entry. Already-admitted work continues through session-owned state/presentation
+queues and resource checks; reserving a binding does not retire those queues.
+Exact owner retirement clears only its own binding. No stream history,
+subscription registry, retry, queue, worker, service transition or reconnect policy
+is added by the binding owner.
 
 **Evidence.** The four executable cases in
 `flutter/test/session_stream_finality_test.dart` exercise the production generation
@@ -13060,11 +13063,29 @@ message, web RGBA, error or done callback. The executable Dart cases and their f
 and focused guest test commands remain unchanged; none ran for this deletion.
 They do not establish stale-callback finality through native stream replacement.
 
+**Admitted-work boundary: source reviewed; replacement acceptance OPEN.**
+In `flutter/lib/models/model.dart`, queued cached-state and web/software-RGBA
+failure continuations report by connection-session ID. `_reportSessionStreamFailure`
+checks that ID, then closes and retires the current session owner. The production
+`SessionEventQueue` and `LatestFrameQueue` also retire their retained successors on
+an active operation failure; their separate executable tests cover that behavior.
+The four stream-generation tests do not compose these queues with actual stream
+replacement. Suppressing a delayed failure report alone would not establish that
+the replacement's queue remains usable or that required terminal failure is delivered.
+Ordinary mobile `FFI.start` retires the old owner and creates a fresh connection
+UUID; same-session/same-UI-owner reattachment reachability is a separate unproved
+case. This review establishes neither a new LPE nor Android/Windows hang causation.
+
 **Open evidence.** Run the exact current bridge and artifact through physical
 Android task-swipe/reopen/Force-Stop and native Windows focus/minimize/window-
 transfer replacement scenarios, plus iOS, Linux, macOS, web, and cross-version
 behavior. Measure capture-through-presentation latency and bounded resource
-cleanup under sustained lifecycle/reconnect load. Current signed artifacts, clean
+cleanup under sustained lifecycle/reconnect load. For a reachable same-session,
+same-UI-owner stream replacement, hold admitted predecessor state/presentation
+work, reserve the replacement, and release predecessor success and failure.
+Observe bounded settlement, queue health or truthful terminal retirement, exact
+failure/native-close authority and successor pixels through the actual attachment.
+Current signed artifacts, clean
 cold R-B2/R-B10 equality, independent reproduction, causation, external review,
 and proof that the complete connection flow is correct and performant remain open
 STOP-SHIP obligations.

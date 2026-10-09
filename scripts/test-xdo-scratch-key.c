@@ -158,9 +158,13 @@ int __wrap_XTestFakeKeyEvent(Display *display, unsigned int code, Bool pressed, 
             && pressed == modifier_steps[modifier_step].pressed,
             "temporary modifier dependency order differs");
     XSync(display, False);
-    XEvent event;
-    require(XCheckWindowEvent(modifier_observer, modifier_window,
-                             KeyPressMask | KeyReleaseMask, &event)
+    XEvent event = {0};
+    int seen = XCheckWindowEvent(modifier_observer, modifier_window,
+                                KeyPressMask | KeyReleaseMask, &event);
+    if (!seen || event.xkey.state != modifier_mask)
+      fprintf(stderr, "XDO_MODIFIER_OBSERVATION step=%d seen=%d code=%u expected_code=%u state=%u expected_state=%u\n",
+              modifier_step, seen, event.xkey.keycode, code, event.xkey.state, modifier_mask);
+    require(seen
             && event.type == (pressed ? KeyPress : KeyRelease)
             && event.xkey.window == modifier_window && !event.xkey.send_event
             && event.xkey.keycode == code && event.xkey.state == modifier_mask,
@@ -918,6 +922,7 @@ static void modifier_pair_order(Display *observer, Window window, int shared) {
     *action = (XkbAction){0};
     action->mods.type = XkbSA_SetMods;
     action->mods.flags = XkbSA_UseModMapMods;
+    action->mods.mask = action->mods.real_mods = ShiftMask | ControlMask;
     changed->server->explicit[shift] = XkbAllExplicitMask;
     changes.changed |= XkbModifierMapMask | XkbKeyActionsMask;
     changes.first_modmap_key = changed->min_key_code;
@@ -944,6 +949,8 @@ static void modifier_pair_order(Display *observer, Window window, int shared) {
             && XkbKeySymEntry(configured, shift, 0, 0) == 0x0101f603UL
             && XkbKeyHasActions(configured, shift)
             && XkbKeyActionsPtr(configured, shift)[0].mods.type == XkbSA_SetMods
+            && XkbKeyActionsPtr(configured, shift)[0].mods.mask == (ShiftMask | ControlMask)
+            && XkbKeyActionsPtr(configured, shift)[0].mods.real_mods == (ShiftMask | ControlMask)
             && (XkbKeyActionsPtr(configured, shift)[0].mods.flags & XkbSA_UseModMapMods),
             "shared modifier native slot/action map differs");
   }

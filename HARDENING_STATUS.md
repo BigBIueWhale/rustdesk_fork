@@ -13346,176 +13346,75 @@ after the correct source or receive sidecar is opened, its actual length admits 
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
 
-**Send starting-index admission — source corrected; named Linux library behavior PASSED, native integration OPEN.**
-`TransferJob::new_read_with_budget` admits filesystem jobs only at indexes from zero through the exact
-enumerated list end, inclusive; an invalid index cannot become a successful empty send job. The ordinary
-`new_read` wrapper shares that admission. CM, controlled-side and viewer callers propagate its typed
-failure before publishing/admitting the job; their installed/peer behavior was reviewed, not executed.
-At `964043eace0aa3b54090d9411f315bf7c56426c4`, unchanged production failed the native admission
-regression while the valid-start/resume/end fixture and 76 prior filesystem plus four config tests passed.
-Correction `2bea3ad205dd6a727e04c29fa31bc91c898ab342`, tree
-`f228240c12a4f28dfcf7de7cdbe2f00b56864d7b`, passed `--hbb-common-fs` in 143 VM seconds:
-78 filesystem, four config, five address and one socket-helper test. Both new tests are mandatory;
-they use real single-file, two-file and empty-directory inputs, exact bytes, EOF and accounting.
-The selected executable retained SHA-256 `f938665b72b1a6e1dc56939528377ec95898ad626b0fc3cebf3f6628e051898c`
-across all four groups. Raw `hbb-common-fs-run.JcXNTit3cR.serial.log` is 68,704 bytes/SHA-256
-`50ec682057691980999288a08bd30aec1ddd78580c4c517f46412540c4d89dcb`; baseline log, inert failure
-diagnostics and bounded assistant-observed receipts are in `send-index-964043ea-evidence` under the same
-VM root. The test oracle is unchanged except an explicit Rust 2018 diagnostic-format argument; baseline
-failure did not print its collected index list. Both runs used the same pinned zero-NIC VM/guest-only
-networkless inputs, frozen 1,283-path source records, unchanged host endpoints and joined cleanup.
-Full successful stdout and binary bytes were ephemeral. This is ordinary-user shared Linux library
-evidence; installed caller/peer errors, privilege boundaries, other platforms, namespace races,
-resources/latency/soak, release equality, independent reproduction and external review remain OPEN.
+**Current library disposition — source corrected; named ordinary-user Linux behavior PASSED,
+native integration OPEN.** The relevant implementation is in `libs/hbb_common/src/fs.rs`.
 
-**Whole-list receive completion — source corrected; named Linux library behavior PASSED, native integration OPEN.**
-`TransferJob::finalize_write` requires the active file's exact next index to equal the whole admitted
-file-list length before consuming its stream or publishing its claim. Viewer and CM callers already
-propagate refusal through their terminal file results and explicit fallible cleanup; that caller/peer
-behavior was reviewed but not executed for this correction. Empty and explicitly skipped lists retain
-the existing no-stream completion path.
+| Surface | Current behavior |
+| --- | --- |
+| Send starting index | `new_read_with_budget` and its `new_read` wrapper admit filesystem indexes only in the inclusive range zero through the exact list length. An invalid index fails before job publication rather than becoming an empty successful transfer. |
+| Whole-list receive completion | `finalize_write` requires the active file's exact next index to equal the whole admitted list length before consuming the stream or publishing the claim. Empty and explicitly skipped lists retain their no-stream completion path. |
+| Send length and EOF | `read` owns a per-file position and probes at most the admitted remainder plus one byte, capped at 128 KiB. Short EOF or overrun closes the stream and fails before publishing the affected block or changing counters/file number. Successful seek establishes the position; skip, retirement, fresh open and exact EOF reset it. Memory-cursor behavior is unchanged. |
+| Direct read-step retirement | `handle_read_jobs` uses one selected vector entry through initialization, reading and terminal retirement, and returns at most one exact writer receipt. The separate initializer and numeric-ID finished list are deleted. |
+| Send resume source ownership | `set_stream_offset` checks metadata and seeks on the retained send `FileStream`; it does not reopen the pathname to replace an active stream. A first open remains provisional until length validation and seek succeed. Refused offsets preserve confirmation and accounting. |
+| Resume admitted size | Both roles reject offsets beyond the admitted entry size before path resolution, open, seek or accounting. Send also checks the retained object's actual length; in-place growth does not enlarge the admitted authority. |
+| File-list construction | `read_dir_with_budget`, both recursive scanners and `new_read_with_budget` propagate iterator, root/entry metadata and descendant failures. Unsupported UTF-8 names, unavailable modification times and pre-epoch times fail explicitly. Every scanned entry consumes quota even when hidden filtering excludes it; recursive byte accounting includes the complete relative name. Child-error string classification and partial-success branches are deleted. |
 
-The byte-identical regression failed against unchanged production at
-`c7dbf0baebc896c7f3c8742c9f6138da9fe7a756`: an early `Done` returned `Ok(())`, while 75 other filesystem
-tests and four config tests passed. Correction `76ab9e1279bdf94d20a5da5a76de4a7788f0a513`, tree
-`519024644b992326c778b2923c65bc8410fceacf`, passed `--hbb-common-fs` in 143 VM seconds:
-76 filesystem, four config, five address and one socket-helper test. Three mandatory new production-job
-tests prove pre-publication refusal with retained stream/claim and explicit exact cleanup, valid two-file
-completion including an empty last file, and valid empty/explicitly skipped lists. The one Cargo-selected
-library executable retained SHA-256 `610343669b19a43b091ab260ff068212b540a9de28cca00b5513d9980b43fde8`
-before, between and after all four groups. Raw `hbb-common-fs-run.UM0xkL1hEt.serial.log` is 68,593 bytes,
-SHA-256 `0010dc621b1e19c923f5940a596110de343726377f380b6f9b2f1e497954d0fb`; bounded assistant-observed
-receipt: `.harness-state/verifier-vm/receive-list-c7dbf0ba-evidence/corrected.accepted.json`.
-Baseline failure, pre-execution binary digest, source identity and inert cleanup diagnostics remain in
-`hbb-common-fs-run.WtblkwSIXY.serial.log` and the same evidence directory's `baseline.observed.json`;
-the failed baseline is not an accepted whole transaction. Both used the same pinned inputs, zero-NIC
-ordinary-user VMs and guest-only networkless UID/GID-1000 containers; 1,284 tracked source/mode/owner
-records stayed unchanged within each run, no host endpoint was added, and exact cleanup joined.
-Successful full test stdout and executable bytes were ephemeral; raw serial retains group summaries
-and the source-bound artifact receipt. This is shared Linux library evidence, not installed viewer/CM,
-peer-visible failure, Windows/other-platform, complete namespace-race, resource/latency/soak, release,
-independent-reproduction or external-review evidence; those obligations remain OPEN.
+CM, controlled-side and viewer constructor/confirmation/finalization error propagation remains
+source-reviewed for these corrections. The direct common producer has the separate native TCP
+fixture below. Source-object continuity and length checks do not establish an immutable content
+snapshot or descriptor-relative initial-open/traversal safety.
 
-**Send read length and EOF — source corrected; named Linux library behavior PASSED, native integration OPEN.**
-`TransferJob::read` uses an owned per-file position and reads at most the admitted remainder plus one
-probe byte, capped at 128 KiB. Short EOF and an overrun close the stream and return an error before
-publishing the affected block or updating counters/file number. Successful seek establishes the position;
-skip, retirement, a fresh open and exact EOF reset it. Memory-cursor semantics remain unchanged.
-CM error propagation remains source-reviewed; the direct common producer has separate native TCP
-retirement evidence below. Four real-file shrink/growth regressions failed at
-`2794cc21763e12b331e954d5391f163e12ffac73` while 82 filesystem and four config tests passed.
-Correction `04185e180ed55649ccbf19f30ba416f32fb9879e`, tree
-`543759c463b4913d0d9a39eb70d9643922e75260`, passed the complete `--hbb-common-fs` transaction
-in 143 VM seconds: 86 filesystem, four config, five address and one socket test. The baseline/corrected
-test module is byte-identical; the two new positive tests cover eighteen empty/resumed/chunk-boundary
-cases and partial-file skip followed by normal and empty files. One executable retained SHA-256
-`391c15f69c289cec1eeda67f4b5c5fca383588affa20aff2d95f51c075df49fe` across all four groups.
-Raw `hbb-common-fs-run.0fJIKk1scE.serial.log` is 68,797 bytes/SHA-256
-`f78dd4d35d55ea6b9027d7d900ff9d2e9d3909954621ad9f1554bcf7cd16fd26`; bounded manual observations and
-baseline diagnostics are in `send-read-length-2794cc21-evidence` under the same VM root. Both runs
-used the same pinned zero-NIC/guest-only networkless inputs and frozen 1,282-path source/index records
-through joined cleanup. No endpoint addition or retained run root remains; successful full stdout and
-executable bytes were ephemeral. This establishes length/EOF consistency, not immutable content.
-Installed callers/peers, privileged receivers, same-size content and namespace races, other platforms,
-resources/soak, release equality, independent reproduction and review remain OPEN.
+**Named A/B evidence.** Each accepted correction ran
+`/bin/bash scripts/smoke-verifier-vm-authority.sh --hbb-common-fs`; its filesystem count below
+is accompanied by four configuration, five address/IPv6-formatting and one socket-helper test.
+All took 143 VM seconds except the admitted-size replay (142 seconds).
+Paths below are relative to `.harness-state/verifier-vm`; serial suffixes expand to
+`hbb-common-fs-run.<suffix>.serial.log`. Each observation directory contains
+`corrected.accepted.json` with full source/tree and executed-artifact identities. These are
+assistant-recorded observations, not independent attestations. Detailed historical receipts remain
+in Git at `3504862aefee504d16ed36004267c1b2f0a4782a`.
 
-**Direct read-step retirement — source corrected; named native Linux TCP fixture PASSED, full integration OPEN.**
-`handle_read_jobs` selects one vector entry for initialization/read/retirement and returns at most one
-exact writer receipt; its private initializer and numeric-ID finished list are removed. Two real-file
-tests at `de370fb5c35c88491d3e02a909def8ba73229e91` decoded the expected error/Done but observed the
-earlier paused same-ID entry retired; 87 filesystem and four config tests passed, including the open-error
-control. Correction `babdb676d7c570155e3ff7640e285d841b39d889`, tree
-`3d9a9a258569beb8f82369d1a19d88d7de5e86b7`, passed 99 tests in 143 VM seconds with a byte-identical
-oracle. All three cases use native guest-loopback TCP and fixed fixture session keys, check typed
-responses and writer completion, preserve the paused handle/counters, then resume exact bytes and
-EOF/Done. The repeated IDs deliberately challenge the producer; ordinary UI reachability is unproved.
-Raw `hbb-common-fs-run.n2ziKlIpRz.serial.log` is 69,737 bytes/SHA-256
-`f352124ff9106bd29cede7f60dc5b51ada7114c47b6c160efd0c03f1772baad2`; one executable retained SHA-256
-`6eff8274da5d4c40134d0f7dfd7df890ac54fb5587e75ae4d357710b1ed41798` across all four groups.
-Manual observations/baseline diagnostics are in `read-retirement-de370fb5-evidence` under the VM root.
-Both runs kept the same pinned zero-NIC/networkless inputs and 1,282-path source/index records frozen
-through joined cleanup; the complete endpoint-only gate passed and no run root remains. Successful
-source archive, full stdout and executable bytes were ephemeral. PAKE, native UI admission/routing,
-CM IPC/installed receivers, privileged principals, other platforms, cancellation/storage faults,
-resources/soak, release equality, independent reproduction and review remain OPEN.
+| Behavior; baseline → correction | Native distinction and accepted coverage | Retained observation directory; accepted serial suffix / SHA-256 |
+| --- | --- | --- |
+| Starting index: `964043ea` → `2bea3ad2` | One admission regression failed while 76 prior filesystem tests and the valid-start/resume/end fixture passed. Corrected: 78 filesystem tests; two mandatory cases use real single-file, two-file and empty-directory inputs, exact bytes, EOF and accounting. | `send-index-964043ea-evidence`; `JcXNTit3cR` / `50ec682057691980999288a08bd30aec1ddd78580c4c517f46412540c4d89dcb` |
+| Whole-list completion: `c7dbf0ba` → `76ab9e12` | Early Done incorrectly returned success while 75 filesystem tests passed. Corrected: 76 filesystem tests; three mandatory cases cover refusal retaining stream/claim for exact cleanup, valid two-file completion with an empty last file, and empty/explicitly skipped lists. | `receive-list-c7dbf0ba-evidence`; `UM0xkL1hEt` / `0010dc621b1e19c923f5940a596110de343726377f380b6f9b2f1e497954d0fb` |
+| Send length/EOF: `2794cc21` → `04185e18` | Four real-file shrink/growth regressions failed while 82 filesystem tests passed. Corrected: 86 filesystem tests; two positive cases cover eighteen empty/resumed/chunk-boundary combinations and partial-file skip followed by normal and empty files. | `send-read-length-2794cc21-evidence`; `0fJIKk1scE` / `f78dd4d35d55ea6b9027d7d900ff9d2e9d3909954621ad9f1554bcf7cd16fd26` |
+| Direct retirement: `de370fb5` → `babdb676` | Two cases decoded the correct error/Done but found the paused same-ID entry retired; 87 filesystem tests, including the open-error control, passed. Corrected: 89 filesystem tests (99 total). Three real-file, native guest-loopback TCP cases use fixed fixture session keys, decode typed responses, await exact writer receipts, preserve the paused handle/counters and resume its exact bytes through EOF/Done. | `read-retirement-de370fb5-evidence`; `n2ziKlIpRz` / `f352124ff9106bd29cede7f60dc5b51ada7114c47b6c160efd0c03f1772baad2` |
+| Resume object ownership: `c414d58f` → `07124e48` | Two rename/replacement cases failed: the old sender read replacement bytes and accepted an offset beyond the original object's length; 71 filesystem tests passed. Corrected: 73 filesystem tests, including both mandatory regressions and the existing lazy-first-open and receive cases. | `send-resume-07124e48-evidence`; `Gjl2L7yk9D` / `c53f7d3a09a33138ff6a767fd1bae5427ad95d127f0d21b590f6ced22e50e14b` |
+| Resume admitted size: `1f3965a9` → `4b3a5d63` | Two growth regressions failed while 78 filesystem tests passed. Corrected accepted replay: 80 filesystem tests. The retained-object fixture separately shrinks the original before pathname replacement to exercise its actual-length bound. | `send-resume-size-1f3965a9-evidence`; `AOOweDjRGY` / `12489427af583f88a006360e9e1abe9ad8ab2cc65e54f7bf85563b54de5b32c4` |
+| Enumeration: `9451d01b` → `013d6798` | Five regressions failed while 65 filesystem tests passed. Corrected: 71 filesystem tests; six mandatory cases cover metadata/child permission refusal before admission, non-UTF8 names, pre-epoch metadata, hidden-entry quota with valid filtering, and the inclusive 435-byte/refused 434-byte relative-name bound. Timestamp refusal ran only on the corrected candidate; the old timestamp fallback was source-observed. | `enumeration-013d6798-evidence`; `ne9zGPqrXt` / `e2503548a9de8fcbe7204dc1c49c54161bfc8eb35d530034beceaa5c39f48f75` |
 
-**Send resume source ownership — source corrected; named Linux library behavior PASSED, native integration OPEN.**
-`TransferJob::set_stream_offset` reuses the active send `FileStream` for metadata and seek rather than
-reopening and replacing its pathname. A first open stays provisional until length validation and seek
-succeed; rejected offsets preserve confirmation and accounting. Existing CM/direct callers retire their
-exact job and return typed file errors on failure. Path validation remains; this is object continuity,
-not an immutable content snapshot or descriptor-relative initial-open/traversal proof.
+All baselines also passed four configuration tests; their failures are not accepted whole
+transactions. Baseline observations remain in each directory except resume
+ownership (`send-resume-c414d58f-evidence/old.observed.json`) and enumeration
+(`enumeration-9451d01b-evidence/old.observed.json`). Baseline binary retention/digest limits
+remain in those records; no missing final artifact digest is inferred. Five A/B test modules were
+byte-identical. The starting-index fixture changed only its explicit Rust 2018 diagnostic-format
+argument, retaining its assertions and inputs. Enumeration retained its five baseline regressions
+and added the sixth timestamp test only on the corrected candidate. Retained baseline raw logs and
+diagnostics are named in those observations.
 
-**Send resume admitted size — source corrected; named Linux library behavior PASSED, native integration OPEN.**
-The admitted file-entry size now bounds both roles before path resolution, opening, seeking or accounting;
-the sender also retains its separate current-length check on the exact opened file. In-place growth cannot
-authorize an offset outside the admitted list. At `1f3965a9a57e3165fa3d93e1ef9af5265a25224a`, both new
-real-file growth regressions failed on unchanged production while 78 filesystem and four config tests passed.
-The retained-object fixture separately shrinks the original before pathname replacement, so that it still
-tests the actual object-length bound. Correction `4b3a5d63b216e8fb8e071cce80e5f0f5a946aa40`, tree
-`889d43d183a7306fe9ca0b4ba30ec29a440b7e77`, passed `--hbb-common-fs` in 142 VM seconds: 80 filesystem,
-four config, five address and one socket test, with byte-identical baseline/corrected test oracles.
-One executable retained SHA-256 `04eeacf554cb26f0592afd3c92524f3df9225d0e0afebb60b0da1d93e8bc9f2f` across
-all groups. Raw `hbb-common-fs-run.AOOweDjRGY.serial.log` is 67,368 bytes/SHA-256
-`12489427af583f88a006360e9e1abe9ad8ab2cc65e54f7bf85563b54de5b32c4`; bounded observer receipts and failed-run
-diagnostics are in `send-resume-size-1f3965a9-evidence` under the same VM root. The first corrected guest
-passed 90 tests but failed the outer endpoint audit and remains unaccepted; the unchanged replay passed
-the complete gate. All runs used the same pinned zero-NIC/guest-only networkless inputs and frozen
-1,282-path source records through joined cleanup. The accepted endpoint-only audit found no addition;
-successful full stdout and executable bytes were ephemeral. Installed callers/peer-visible errors,
-privilege boundaries, other platforms, initial namespace and later content races, resources/soak,
-release equality, independent reproduction and review remain OPEN.
+Accepted runs used the same pinned Rust 1.75, builder/vendor/base inputs, ordinary-user zero-NIC
+QEMU and guest-only networkless UID/GID-1000 containers. Sources were read-only and source/index,
+mode and ownership records stayed frozen through each exact owner's joined cleanup. One selected
+executable retained its digest before, between and after the four groups. Accepted endpoint audits
+found no added host listener; they do not establish a process inventory. Successful full test stdout
+and executable bytes were ephemeral; retained serials carry group summaries and source/artifact
+receipts. Exact counts, hashes, topology and observation limits remain in the named records.
 
-Two unchanged native rename/replacement fixtures failed at
-`c414d58f1ed9dbeea7e4946b4765f53aff12b804`: the old sender read replacement bytes and accepted an
-offset beyond the announced object's length, while 71 prior filesystem and four config tests passed.
-Correction `07124e48454cacced0d879330465241de02b8762`, tree
-`674253cf8cb41b0e36f4b646284bbeddcc1515d0`, passed `--hbb-common-fs` in 143 seconds:
-73 filesystem, four config, five address and one socket-helper test. The guest requires both new exact
-test names; the existing lazy-first-open and receive tests remain in the executed filesystem group.
-The one Rust 1.75 library test executable retained SHA-256
-`2e6927bf2f630728c25e931508c56aa0d141b464cdacd59d0217d547a7d74f10` across all four groups.
-Accepted raw serial `hbb-common-fs-run.Gjl2L7yk9D.serial.log` is 68,240 bytes, SHA-256
-`c53f7d3a09a33138ff6a767fd1bae5427ad95d127f0d21b590f6ced22e50e14b`; bounded receipt:
-`.harness-state/verifier-vm/send-resume-07124e48-evidence/corrected.accepted.json`.
-The baseline failure remains in `hbb-common-fs-run.W8awqbOeib.serial.log` and
-`send-resume-c414d58f-evidence/old.observed.json`; no baseline binary digest or whole-run acceptance
-is claimed. Both runs used the same pinned inputs, ordinary-user zero-NIC VMs and guest-only
-networkless UID/GID-1000 containers. All 1,284 tracked source/index/mode/owner records and host
-endpoints stayed unchanged during execution, and exact cleanup joined. Installed receivers/callers,
-in-place content changes, initial namespace races, other platforms and release evidence remain OPEN.
+Two distinctions remain load-bearing. The first admitted-size corrected attempt passed all 90 guest
+tests but failed the outer endpoint audit and is **UNACCEPTED**:
+`send-resume-size-1f3965a9-evidence/corrected.outer-failed.observed.json`, raw serial
+`hbb-common-fs-run.t18sLN0ok9.serial.log`; the unchanged replay passed the complete gate.
+Direct-retirement fixtures deliberately supply repeated IDs; ordinary UI duplicate-ID reachability
+is unproved, and fixed session keys do not execute PAKE.
 
-**File-list construction — source corrected; named Linux library behavior PASSED, native integration OPEN.**
-`read_dir_with_budget`, both recursive scanners and `TransferJob::new_read_with_budget` propagate iterator,
-entry/root metadata and descendant failures rather than admitting a partial list. Unsupported UTF-8 names,
-unavailable modification times and times before the protocol's unsigned epoch are explicit errors, not omitted
-entries or fabricated zero metadata. Every scanned entry consumes quota even when hidden filtering excludes it;
-recursive byte accounting charges the complete relative name. The child-error string classifier and its
-partial-success branches are absent. Existing CM and direct controlled-side callers already propagate the
-result through their typed file errors.
-
-Five unchanged regressions first failed on production source at
-`9451d01b8b05888996aafe41aa9e2d171c9c2de8` while the prior 65 filesystem and four config tests passed.
-The corrected candidate `013d67986d1d38f3a93ac729a2bf621a772f9624`, tree
-`85c4e1bae95286c947a854af97b3e708521bb437`, passed `--hbb-common-fs` in 143 seconds: 71 filesystem,
-four config, five address/IPv6-formatting and one socket-helper test. Six mandatory enumeration regressions
-cover native metadata/child permission refusal before send-job admission, non-UTF8 names, pre-epoch metadata,
-hidden-entry quota with valid filtering, and the inclusive 435-byte/refused 434-byte relative-name bound.
-Timestamp refusal was exercised on the corrected candidate; its old fallback was source-observed only.
-The one compiled Rust 1.75 library test executable retained SHA-256
-`279f1be77dbfa357482c8468ad19c2c2b4e8d5a66c6d56144f06bb121c61c8ba` before, between and after all
-four groups. Accepted raw serial `.harness-state/verifier-vm/hbb-common-fs-run.ne9zGPqrXt.serial.log`
-is 67,196 bytes, SHA-256 `e2503548a9de8fcbe7204dc1c49c54161bfc8eb35d530034beceaa5c39f48f75`;
-bounded source/observer receipt:
-`.harness-state/verifier-vm/enumeration-013d6798-evidence/corrected.accepted.json`.
-The old native failure is retained in `hbb-common-fs-run.EC4w6b59UA.serial.log` and
-`enumeration-9451d01b-evidence/old.observed.json`; its binary digest was not retained and it is not an
-accepted whole transaction. Both runs used the pinned offline builder/vendor/base in ordinary-user zero-NIC
-VMs with guest-only networkless UID/GID-1000 containers, frozen 1,284-path source inputs, unchanged
-before/during/after host endpoints and joined exact cleanup. These are ordinary-user library results;
-installed receiver/caller behavior, atomic filesystem snapshots, descriptor-relative read/race closure,
-complete serialized-response memory ceilings, other platforms, soak, release artifacts and independent
-reproduction remain OPEN.
+**OPEN:** installed viewer/CM/controlled-side caller and peer-visible error behavior, privileged
+receiver/principal acceptance, native UI admission/routing, other platforms, initial namespace and
+same-size content races, atomic filesystem snapshots, complete serialized-response memory ceilings,
+cancellation/storage faults, bounded resources/latency/soak, current release artifact binding,
+cold R-B2/R-B10 equality, independent reproduction and external review. These library results
+close none of those obligations.
 
 Receive blocks advance files monotonically. A terminal `Done` commits only the exact next index at the
 end of the whole admitted file list, after the active stream and retained staged handle are synchronized

@@ -7847,6 +7847,17 @@ else
   echo "  ok  R-S11e-181 native diagnostic helper, fixed temp pathname, and call scar are absent"
 fi
 
+# Windows Enigo captures the OS error without a private native formatting buffer.
+# This is a source invariant; native SendInput acceptance remains separate.
+echo "== Windows Enigo mouse error capture (source only) =="
+if grep -Eq 'FormatMessage[AW]|GetLastError|fn get_error' libs/enigo/src/win/win_impl.rs \
+  || ! grep -qF 'let error = std::io::Error::last_os_error();' libs/enigo/src/win/win_impl.rs; then
+  echo "  FAIL Windows Enigo retains a private OS error formatter or lost error capture"
+  rc=1
+else
+  echo "  ok  Windows Enigo captures an owned OS error; native acceptance remains separate"
+fi
+
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and
 # supervised child are bound by immutable pid+creation-time identity. Policy is read-only.

@@ -466,6 +466,37 @@ installed/native principal, resource/latency/performance/soak/cross-version and
 artifact/reproduction/review evidence. No legitimate isolated macOS runtime is
 locally available. No Android/Windows delay causation or platform closure is claimed.
 
+### Windows mouse submission — owned OS error; native acceptance OPEN
+
+`libs/enigo/src/win/win_impl.rs::mouse_events` captures an owned
+`std::io::Error` immediately after a noncomplete `SendInput` result, before
+allocation or message formatting, and retains it with the insertion count.
+The count determines acceptance; a zero or unknown OS error does not turn a
+failed insertion into success or identify UIPI. Single-event/no-insertion
+requests return an error; a partially inserted click still aborts.
+
+The private `get_error` formatter, raw `GetLastError` declaration and unused
+winbase import are deleted. The removed formatter allocated 256 UTF-16 elements
+but advertised 257 to `FormatMessageW`, indexed the returned length, and
+allocated before capturing the last error. This is a source-confirmed contract
+defect; corruption or privilege escalation was not reproduced. Formatting now
+uses the pinned Rust 1.75 standard library, whose Windows implementation passes
+its actual buffer length and retains the numeric OS error when formatting fails.
+Primary contracts: [Microsoft FormatMessageW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-formatmessagew),
+[SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput),
+and [Rust 1.75 Windows error formatting](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys/windows/os.rs).
+
+The focused source invariant in `scripts/verify.sh` forbids the private formatter
+and requires the owned error capture. It is supplementary, not a Windows
+compiler or runtime result. **OPEN:** exact Windows crate/app compilation and
+isolated native no-insertion/partial-click behavior, numeric-code retention
+across later formatting, zero/unknown-code refusal, thread-local error identity,
+real UIPI/desktop failures and installed/resource/release acceptance.
+`.harness-state/win11-golden.qcow2`, `online/inputs/win11.iso`,
+`online/inputs/win/vs_BuildTools.exe` and `online/inputs/win/rustup-init.exe`
+are absent; native execution and the full verification gate were not run.
+No Linux component result is Windows acceptance.
+
 ### Linux Enigo XDO — one local display for input and diagnostics; integration OPEN
 
 **Current disposition:** private provider `3.20160805.1-rustdesk15` and the

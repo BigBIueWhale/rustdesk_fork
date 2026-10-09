@@ -1,16 +1,11 @@
 use self::winapi::ctypes::c_int;
 use self::winapi::shared::{basetsd::ULONG_PTR, minwindef::*, windef::*};
-use self::winapi::um::winbase::*;
 use self::winapi::um::winuser::*;
 use winapi;
 
 use crate::win::keycodes::*;
 use crate::{Key, KeyboardControllable, MouseButton, MouseControllable};
 use std::mem::*;
-
-extern "system" {
-    pub fn GetLastError() -> DWORD;
-}
 
 /// The main struct for handling the event emitting
 #[derive(Default)]
@@ -22,11 +17,11 @@ const MAX_SCROLL_LENGTH: i32 = 64 * WHEEL_DELTA as i32;
 
 enum MouseInsertOutcome {
     Complete,
-    None(String),
+    None(std::io::Error),
     Partial {
         inserted: UINT,
         requested: UINT,
-        details: String,
+        error: std::io::Error,
     },
 }
 
@@ -55,19 +50,15 @@ fn mouse_events(events: &[(u32, u32, i32, i32)]) -> MouseInsertOutcome {
     if inserted == requested {
         return MouseInsertOutcome::Complete;
     }
-    let details = get_error();
-    let details = if details.is_empty() {
-        "GetLastError supplied no details (possible UIPI rejection)".to_owned()
-    } else {
-        details
-    };
+    // The insertion count determines acceptance; the error code cannot diagnose UIPI.
+    let error = std::io::Error::last_os_error();
     if inserted == 0 {
-        MouseInsertOutcome::None(details)
+        MouseInsertOutcome::None(error)
     } else {
         MouseInsertOutcome::Partial {
             inserted,
             requested,
-            details,
+            error,
         }
     }
 }
@@ -75,15 +66,15 @@ fn mouse_events(events: &[(u32, u32, i32, i32)]) -> MouseInsertOutcome {
 fn mouse_event(flags: u32, data: u32, dx: i32, dy: i32) -> crate::ResultType {
     match mouse_events(&[(flags, data, dx, dy)]) {
         MouseInsertOutcome::Complete => Ok(()),
-        MouseInsertOutcome::None(details) => {
-            Err(format!("SendInput inserted no mouse event: {details}").into())
+        MouseInsertOutcome::None(error) => {
+            Err(format!("SendInput inserted no mouse event: {error}").into())
         }
         MouseInsertOutcome::Partial {
             inserted,
             requested,
-            details,
+            error,
         } => Err(format!(
-            "SendInput reported {inserted} of {requested} for one mouse event: {details}"
+            "SendInput reported {inserted} of {requested} for one mouse event: {error}"
         )
         .into()),
     }
@@ -107,41 +98,6 @@ fn mouse_button_event(button: MouseButton, down: bool) -> Result<(u32, u32), Str
         _ => 0,
     };
     Ok((flags, data))
-}
-
-fn get_error() -> String {
-    unsafe {
-        let buff_size = 256;
-        let mut buff: Vec<u16> = Vec::with_capacity(buff_size);
-        buff.resize(buff_size, 0);
-        let errno = GetLastError();
-        let chars_copied = FormatMessageW(
-            FORMAT_MESSAGE_IGNORE_INSERTS
-                | FORMAT_MESSAGE_FROM_SYSTEM
-                | FORMAT_MESSAGE_ARGUMENT_ARRAY,
-            std::ptr::null(),
-            errno,
-            0,
-            buff.as_mut_ptr(),
-            (buff_size + 1) as u32,
-            std::ptr::null_mut(),
-        );
-        if chars_copied == 0 {
-            return "".to_owned();
-        }
-        let mut curr_char: usize = chars_copied as usize;
-        while curr_char > 0 {
-            let ch = buff[curr_char];
-
-            if ch >= ' ' as u16 {
-                break;
-            }
-            curr_char -= 1;
-        }
-        let sl = std::slice::from_raw_parts(buff.as_ptr(), curr_char);
-        let err_msg = String::from_utf16(sl);
-        return err_msg.unwrap_or("".to_owned());
-    }
 }
 
 impl MouseControllable for Enigo {
@@ -183,16 +139,16 @@ impl MouseControllable for Enigo {
         let (up_flags, _) = mouse_button_event(button, false)?;
         match mouse_events(&[(down_flags, data, 0, 0), (up_flags, data, 0, 0)]) {
             MouseInsertOutcome::Complete => Ok(()),
-            MouseInsertOutcome::None(details) => {
-                Err(format!("SendInput inserted no mouse-click events: {details}").into())
+            MouseInsertOutcome::None(error) => {
+                Err(format!("SendInput inserted no mouse-click events: {error}").into())
             }
             MouseInsertOutcome::Partial {
                 inserted,
                 requested,
-                details,
+                error,
             } => {
                 log::error!(
-                    "SendInput inserted {inserted} of {requested} mouse-click events: {details}"
+                    "SendInput inserted {inserted} of {requested} mouse-click events: {error}"
                 );
                 std::process::abort();
             }

@@ -106,7 +106,7 @@ mod tests {
         assert_eq!(increase_port("1.2.2.4", 1), "1.2.2.4");
         assert_eq!(increase_port("test.com", 1), "test.com");
         assert_eq!(increase_port("test.com:13", 4), "test.com:17");
-        assert_eq!(increase_port("1:13", 4), "1:13");
+        assert_eq!(increase_port("::1", 4), "::1");
         assert_eq!(increase_port("22:1:13", 4), "22:1:13");
         assert_eq!(increase_port("z1:2", 1), "z1:3");
     }

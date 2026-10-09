@@ -536,20 +536,34 @@ Only current corrected C runs; the wrong-version refusal fixture stamps it
 as version 15 rather than executing an old ABI. Windows/macOS source changes
 remain uncompiled/unexecuted on those targets. Later root-consumer correction
 `f2689e3c712b487b101f9dcc02e722e2405eb7c7` changes the tray feature graph and
-macOS missing-state refusal; it does not change the accepted Linux component bytes.
+macOS missing-state refusal; it does not change the accepted Linux component source bytes.
 
-**Root integration is not yet accepted:** the first pushed-root job at
-`9cd825a5` generated the Flutter bridge but failed compiling the unused
-tray/muda libxdo wrapper against the closed ABI. After that feature was removed,
-the `f2689e3c` guest built both Linux root-library feature configurations and
-passed all 75 selected tests. Its outer run was rejected because this ledger,
-a declared harness input, changed during execution. That guest result is not
-promoted to complete transaction acceptance. Retained raw
-`android-rust-lifecycle-tests-run.0GeDpPR5X5.serial.log` is 70,959 bytes,
-SHA-256 `6d801f00a0c8185e8dfaa6b7cb10c83485d0dfe250adb4f126e26e891040723d`.
-All three independent host-listener inventories remained byte-identical with
-zero additions; exact failed-root cleanup followed terminal/joined ownership.
-The next complete run must freeze every declared source through outer cleanup.
+**Root-library integration passed:** pushed
+`4978b5c769f1eccabcfa5ea4c12561991326538c`, tree
+`affa845ec4507e3162f8d977ba9f3a50930f3bba`, passed
+`scripts/smoke-verifier-vm-authority.sh --android-rust-lifecycle-tests`
+in 680 seconds with outer exit 0. The guest generated the Flutter bridge from
+that source and ran offline/locked Linux root-library builds with and without
+the Flutter feature. Thirteen selected suites passed all 75 tests covering
+listener generations, child/resource ownership, typed viewer/file framing and
+admission, software RGBA mailboxes and UID policy. The optional upstream libxdo
+wrapper is absent from this compiled graph. This is Linux library integration,
+not native input caller, Android Service/JNI, Flutter UI, installed or release
+acceptance. Root test executable digests were not retained; no final-artifact
+identity claim follows.
+
+Retained raw `android-rust-lifecycle-tests-run.5iuQFFCjVR.serial.log` is
+69,156 bytes, SHA-256
+`10a43d8e0f7022b6ddc3a1a75aca92d7f4f6f565fceb078c7bb86d1c69237850`.
+All declared sources and authenticated inputs stayed unchanged through outer
+cleanup. The ordinary-user zero-NIC VM used guest-only network-none UID/GID1000
+containers, read-only source/generated bridge/root and dropped capabilities.
+The outer listener audit passed; independent before/during/after inventories
+under `evidence/keyboard-state-app-sealed.listeners.*` are each 1,320 bytes with
+the same baseline SHA-256 recorded below, byte-identical with zero additions.
+Exact private-root/disks absence follows joined retirement. The initial wrapper
+compile failure and a later guest pass rejected for an in-run ledger edit remain
+retained in the audit/raw evidence; neither is retroactively accepted.
 
 | Executed native scenario | Observed result and evidence limit |
 | --- | --- |
@@ -638,6 +652,20 @@ closure follows from these component receipts.
   state changes and partial-effect cleanup remain OPEN. Separate native reads
   and accepted-operation planning updates are not atomic hardware state or
   eventual-delivery acknowledgment.
+  This preflight covers the closed keyboard-state collection. Native text
+  execution still collects per-request XKB/map state after controller lock or
+  modifier changes; whole-operation no-effects-on-every-native-refusal is not
+  established by the component refusal tests.
+  Windows has a concrete queue-context concern: the controlled worker
+  (`OwnedInputExecutor` in `src/server/input_service.rs`) receives synchronous
+  actions without a keyboard-message retrieval loop. Microsoft's
+  [GetKeyboardState contract](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getkeyboardstate)
+  updates state on that thread's message retrieval. A successful query can
+  therefore be stale relative to foreground/physical state. Native tests must
+  resolve this before Windows state correctness is claimed. Input-queue
+  attachment resets state, and GetAsyncKeyState's zero can mean access failure;
+  neither is an unchecked substitute. Desktop selection likewise still
+  conflates unchanged and failed selection in `try_change_desktop`.
 - Constructor/diagnostic/request/destructor bounds, persistent startup/retry,
   exact connected peer/session/principal and authenticated Xauthority;
   actual allocation/connection/fatal-native failures, Send/Xlib concurrency
@@ -652,8 +680,8 @@ closure follows from these component receipts.
   not a reproduced escalation or native acceptance claim.
 - Broader unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;
   native events and an in-request lease observer do not prove text consumption.
-- Loader identity/ACL/path races, all consumers, full common/parent/Cargo/
-  Flutter/app/stage CLI/package/install integration and exact current native
+- Loader identity/ACL/path races, native application consumers, full
+  Flutter UI/app/stage CLI/package/install integration and exact current native
   installed artifacts on every supported platform.
 - Whole heap/leaks, resources/performance/soak/cross-version, cold equality,
   independent reproduction, external review and Android/Windows display-delay

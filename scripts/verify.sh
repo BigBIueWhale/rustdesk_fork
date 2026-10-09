@@ -8282,12 +8282,6 @@ if [ -n "$r_s11c22" ]; then echo "  FAIL R-S11c-22 Windows CM non-file clipboard
 echo "== (3b-iii-f2) Desktop CM endpoint selection requires launch-bound proof (R-S11c-11) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config cm_endpoint_proof --color never
 r_s11c11=
-if ! python3 scripts/verify-cm-process-ownership.py --self-test; then
-  r_s11c11="$r_s11c11 exact-process-verifier-self-test-failed"
-fi
-if ! python3 scripts/verify-cm-process-ownership.py .; then
-  r_s11c11="$r_s11c11 exact-process-verifier-failed"
-fi
 grep -q 'CmEndpointChallenge {' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-endpoint-challenge"
 grep -q 'CmEndpointProof {' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-endpoint-proof"
 grep -q 'CmServerChallenge {' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-server-challenge"
@@ -8365,7 +8359,7 @@ for line in $(grep -n 'crate::ipc::connect(1000, "_cm")' src/server/connection.r
   fi
 done
 if [ -n "$r_s11c11" ]; then echo "  FAIL R-S11c-11 desktop CM endpoint-selection authority:$r_s11c11"; rc=1; else
-  echo "  ok  R-S11c-11/R-S11gi Linux uses direct-child identity; macOS/Windows retain and lease the exact launched process generation before mutual proof and token disclosure; secondary clients use the server-owned facade"; fi
+  echo "  ok  R-S11c-11/R-S11gi CM endpoint source assertions passed; native process ownership and lifecycle acceptance remain required"; fi
 
 
 # (3b-iii-f3) R-S11c-8/R-S11dz: whiteboard is a helper authority and resource

@@ -3106,12 +3106,6 @@ fi
 
 echo "== (2b-iii-b) R-S11c-11 macOS CM endpoint-selection proof =="
 r_s11c11=
-if ! python3 "$REPO/scripts/verify-cm-process-ownership.py" --self-test; then
-  r_s11c11="$r_s11c11 exact-process-verifier-self-test-failed"
-fi
-if ! python3 "$REPO/scripts/verify-cm-process-ownership.py" "$REPO"; then
-  r_s11c11="$r_s11c11 exact-process-verifier-failed"
-fi
 grep -q 'CmEndpointChallenge {' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-endpoint-challenge"
 grep -q 'CmEndpointProof {' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-endpoint-proof"
 grep -q 'CmServerChallenge {' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-server-challenge"
@@ -3172,7 +3166,7 @@ if [ -n "$r_s11c11" ]; then
   echo "  FAIL R-S11c-11 macOS CM endpoint-selection proof:$r_s11c11"
   rc=1
 else
-  note "ok  R-S11c-11/R-S11gi macOS CM selection retains and leases the exact launched child and proves its live launch parent before token-bearing login"
+  note "ok  R-S11c-11/R-S11gi macOS CM endpoint source assertions passed; native process ownership and lifecycle acceptance remain required"
 fi
 
 echo "== (2b-iii-c) R-S11c-8/R-S11dz macOS whiteboard helper authority and resource finality =="

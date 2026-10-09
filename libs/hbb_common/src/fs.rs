@@ -4512,6 +4512,198 @@ mod tests {
             .expect("the exact file frame write must succeed");
     }
 
+    async fn keyed_read_job_tcp_pair() -> (crate::Stream, crate::Stream) {
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .expect("bind an isolated guest-loopback listener");
+        let address = listener.local_addr().expect("read listener address");
+        assert!(address.ip().is_loopback());
+        let (sender_side, (receiver_side, _)) = tokio::time::timeout(
+            Duration::from_secs(5),
+            async {
+                tokio::try_join!(tokio::net::TcpStream::connect(address), listener.accept())
+            },
+        )
+        .await
+        .expect("loopback connection deadline")
+        .expect("connect both native socket endpoints");
+        drop(listener);
+        let mut sender = crate::tcp::FramedStream::from(sender_side, address);
+        let mut receiver = crate::tcp::FramedStream::from(receiver_side, address);
+        sender.set_max_packet_length(8 * 1024);
+        receiver.set_max_packet_length(8 * 1024);
+        sender.set_session_keys(crate::cpace::DirectionalKeys {
+            send: [0x51; 32],
+            recv: [0x62; 32],
+        });
+        receiver.set_session_keys(crate::cpace::DirectionalKeys {
+            send: [0x62; 32],
+            recv: [0x51; 32],
+        });
+        (crate::Stream::Tcp(sender), crate::Stream::Tcp(receiver))
+    }
+
+    async fn read_job_tcp_step(
+        jobs: &mut Vec<TransferJob>,
+        sender: &mut crate::Stream,
+        receiver: &mut crate::Stream,
+    ) -> (String, FileResponse) {
+        let (log, receipt) = tokio::time::timeout(
+            Duration::from_secs(5),
+            handle_read_jobs(jobs, sender),
+        )
+        .await
+        .expect("read-step deadline")
+        .expect("admit the production read-step result");
+        let receipt = receipt.expect("one exact frame receipt");
+        let encoded = tokio::time::timeout(Duration::from_secs(5), receiver.next())
+            .await
+            .expect("peer frame deadline")
+            .expect("one peer frame")
+            .expect("authenticate the peer frame");
+        let message = Message::parse_from_bytes(encoded.as_ref()).expect("decode peer message");
+        tokio::time::timeout(Duration::from_secs(5), receipt)
+            .await
+            .expect("writer receipt deadline")
+            .expect("owned writer completion")
+            .expect("flush the exact frame");
+        let Some(message::Union::FileResponse(response)) = message.union else {
+            panic!("read step did not produce a file response");
+        };
+        (log, response)
+    }
+
+    enum ReadJobRetirementCase {
+        ReadError,
+        Complete,
+        OpenError,
+    }
+
+    async fn assert_read_step_retires_selected_entry(case: ReadJobRetirementCase) {
+        let tmp = TestTempDir::new("rustdesk_read_step_selected_entry");
+        std::fs::create_dir_all(&tmp.path).expect("create source directory");
+        let paused_source = tmp.join("paused.zip");
+        let active_source = tmp.join("active.zip");
+        std::fs::write(&paused_source, b"paused").expect("create paused source");
+        std::fs::write(&active_source, b"active").expect("create active source");
+        let mut paused = TransferJob::new_read(
+            184,
+            JobType::Generic,
+            "paused".to_owned(),
+            DataSource::FilePath(paused_source.clone()),
+            0,
+            false,
+            false,
+            false,
+        )
+        .expect("admit paused entry");
+        paused.init_data_stream_for_cm().await.expect("retain paused source handle");
+        paused.is_last_job = true;
+        let active = TransferJob::new_read(
+            184,
+            JobType::Generic,
+            "active".to_owned(),
+            DataSource::FilePath(active_source.clone()),
+            0,
+            false,
+            false,
+            false,
+        )
+        .expect("admit active entry with the same external ID");
+        match case {
+            ReadJobRetirementCase::ReadError => {
+                std::fs::write(&active_source, b"act").expect("truncate admitted source");
+            }
+            ReadJobRetirementCase::OpenError => {
+                std::fs::remove_file(&active_source).expect("remove admitted source before open");
+            }
+            ReadJobRetirementCase::Complete => {}
+        }
+        let mut jobs = vec![paused, active];
+        let (mut sender, mut receiver) = keyed_read_job_tcp_pair().await;
+        if matches!(case, ReadJobRetirementCase::Complete) {
+            let (_, data) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+            assert!(matches!(
+                data.union,
+                Some(file_response::Union::Block(block))
+                    if block.id == 184 && block.file_num == 0
+                        && !block.compressed && block.data.as_ref() == b"active"
+            ));
+            assert_eq!(jobs.len(), 2);
+            let (_, eof) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+            assert!(matches!(
+                eof.union,
+                Some(file_response::Union::Block(block))
+                    if block.id == 184 && block.file_num == 0 && block.data.is_empty()
+            ));
+            assert_eq!(jobs.len(), 2);
+        }
+        let (log, response) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+        let expected_done = matches!(case, ReadJobRetirementCase::Complete);
+        if expected_done {
+            assert!(matches!(
+                response.union,
+                Some(file_response::Union::Done(done)) if done.id == 184 && done.file_num == 1
+            ));
+        } else {
+            assert!(matches!(
+                response.union,
+                Some(file_response::Union::Error(error))
+                    if error.id == 184 && error.file_num == 0 && !error.error.is_empty()
+            ));
+        }
+        if !matches!(case, ReadJobRetirementCase::OpenError) {
+            let log: serde_json::Value = serde_json::from_str(&log).expect("decode terminal log");
+            assert_eq!(log["remote"], "active");
+            assert_eq!(log["done"], expected_done);
+        }
+        assert_eq!(jobs.len(), 1);
+        assert!(jobs[0].is_last_job, "retirement must preserve the paused entry");
+        assert_eq!(jobs[0].remote, "paused");
+        assert_eq!(jobs[0].file_num(), 0);
+        assert_eq!(jobs[0].finished_size(), 0);
+        assert_eq!(jobs[0].transferred(), 0);
+        assert!(jobs[0].data_stream.is_some());
+        let (_, receipt) = handle_read_jobs(&mut jobs, &mut sender)
+            .await
+            .expect("leave the paused entry inert");
+        assert!(receipt.is_none());
+        jobs[0].is_last_job = false;
+        let (_, resumed) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+        assert!(matches!(
+            resumed.union,
+            Some(file_response::Union::Block(block))
+                if block.id == 184 && block.file_num == 0
+                    && !block.compressed && block.data.as_ref() == b"paused"
+        ));
+        let (_, eof) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+        assert!(matches!(
+            eof.union,
+            Some(file_response::Union::Block(block)) if block.data.is_empty()
+        ));
+        let (_, done) = read_job_tcp_step(&mut jobs, &mut sender, &mut receiver).await;
+        assert!(matches!(
+            done.union,
+            Some(file_response::Union::Done(done)) if done.id == 184 && done.file_num == 1
+        ));
+        assert!(jobs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_step_error_retires_selected_entry_with_a_repeated_id() {
+        assert_read_step_retires_selected_entry(ReadJobRetirementCase::ReadError).await;
+    }
+
+    #[tokio::test]
+    async fn read_step_completion_retires_selected_entry_with_a_repeated_id() {
+        assert_read_step_retires_selected_entry(ReadJobRetirementCase::Complete).await;
+    }
+
+    #[tokio::test]
+    async fn read_step_open_error_preserves_paused_entry_with_a_repeated_id() {
+        assert_read_step_retires_selected_entry(ReadJobRetirementCase::OpenError).await;
+    }
+
     struct TestTempDir {
         path: PathBuf,
     }

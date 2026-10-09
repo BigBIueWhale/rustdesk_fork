@@ -4311,7 +4311,7 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
         'XDO_INPUT_API_NATIVE=pass providers=1 exports=11 scope=closed-private-abi' \
         'production-helper provider exposes exactly the private input ABI'
-    [ "$(/usr/bin/grep -Fc 'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a input=xtest retired_lookups=61 retired_symbols=absent descriptors=retired' "$SERIAL_LOG")" -eq 2 ] \
+    [ "$(/usr/bin/grep -Fc 'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a input=xtest retired_lookups=62 retired_symbols=absent descriptors=retired' "$SERIAL_LOG")" -eq 2 ] \
         || fail 'native symbol refusal is absent from complete or staged provider execution'
     require_exact_fixed_receipt \
         'X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 context_refusals=32 constructor_unwinds=16 display_connections=one pointer=selected-root callbacks=paired descriptors=retired threads=retired scope=xdo-backend' \

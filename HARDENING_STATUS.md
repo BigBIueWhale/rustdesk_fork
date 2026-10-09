@@ -94,7 +94,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Windows selected-token environment (R-S11ay) | The retained source contract uses the selected token's environment, fail-closed construction, case-insensitive launcher-owned overlays, exact Unicode-block construction, and cleanup. Exact-artifact principal, collision, failure, child-observation, and cleanup execution remains open in the Windows matrix. |
 | Service/helper/process bootstrap authority (R-S11y–R-S11al; Appendix C #147–160) | The normative contracts retain empty helper environments, typed OS queries, selected-session X11 authority and bounded empty-Display recovery, kernel-parent-bound graphical/headless CM lifetime, no global process-table signal/restart authority, non-root-only UI, numeric principal selection, exact child/supervisor argument protocols, SCM-owned initialization, and fixed macOS principal/home/config/log ordering. Appendix findings map to required dispositions without implementation/gate/artifact-status narration; #154–160's original threat findings are retained. All operative MUST/MUST NOT markers, primary-source links, IDs, test mappings, and installed/native acceptance obligations remain. Appendix #152 agrees with R-S11cc's graphical-and-headless scope. No product, verifier, or executable test changed. Installed/native principals, failure/restart/resource behavior and release acceptance remain OPEN in the platform matrices. |
 | Linux privileged launch context and descriptors (R-S11l–r; Appendix C #134–140) | The normative contracts retain typed principal/desktop selection, account-derived home, selected session endpoints, service-owned terminal choice, pre-initialization root cwd and deployment-bound sidecars, whole-range descriptor policy, post-fork-safe failure handling, and exact child-only exceptions. Appendix #136 agrees with R-S11n/R-S11cb's executable and bootstrap-pipe handoffs. Ordinary helpers use the shared empty-default allowlist; FUSE permits only its communication socket in the forked child. Retired sudo/env, run-as-user, w and screensaver paths have no supported role. Threat prerequisites and impact limits, actual-child identity/failure tests and exact installed Debian acceptance remain required; implementation chronology, fixture receipts and documentation-wiring claims are absent. Product and verifier sources are unchanged. Installed/native launch, authorization, failure/race/resource and release evidence remain OPEN. |
-| Native library provenance (R-S11c-10s/10u/10y/23/24) | Native runners and Dart FFI select the bundled core. `libs/libxdo-sys-stub/src/lib.rs` selects only `/usr/lib/rustdesk-fork/libxdo.so.3`, checks private version `3.20160805.1-rustdesk14` and the complete required ABI, and retains the owning library; no distro-candidate fallback remains. Named XDO native input/refusal and staged-provider results are recorded under Linux Enigo XDO below; they execute components with a partial common facade, not full Cargo/app/install. `scripts/verify-debian-package-authority.py` retains ELF identity, stack, interpreter, dynamic metadata and search-path validation. Exact-current installed loader/FFI identity, missing/invalid-code and ambient-search refusal, package validation, serving-principal behavior, races, resources and release acceptance remain OPEN. |
+| Native library provenance (R-S11c-10s/10u/10y/23/24) | Native runners and Dart FFI select the bundled core. `libs/libxdo-sys-stub/src/lib.rs` selects only `/usr/lib/rustdesk-fork/libxdo.so.3`, checks private version `3.20160805.1-rustdesk15` and the complete required ABI, and retains the owning library; no distro-candidate fallback remains. Named XDO native input/refusal and staged-provider results are recorded under Linux Enigo XDO below; they execute components with a partial common facade, not full Cargo/app/install. `scripts/verify-debian-package-authority.py` retains ELF identity, stack, interpreter, dynamic metadata and search-path validation. Exact-current installed loader/FFI identity, missing/invalid-code and ambient-search refusal, package validation, serving-principal behavior, races, resources and release acceptance remain OPEN. |
 | Android packaging and cache publication (R-S11fu/R-S11fv/R-S11fz/R-S11cq/R-S11cn/R-S11fy) | Packaging, immutable-cache, extraction, replacement/recovery, and Kotlin strategy contracts remain requirement-owned. Fresh Android builds explicitly select Kotlin 2.0.21 in-process compilation and reject fallback or task-level overrides. Named APK `ca569086`/`7d49e481…8737c` passed build/install/render and one complete peer schedule, but later native presentation failed on that same artifact; the intermittent defect is OPEN. Diagnostic APK `035c9a20` has three complete corrected-observer peer schedules at `ec5544d6`, `f74470dd` and `eb7c8305`; its earlier alias-prone oracle result is not freshness proof. All six current Android, Debian, and Windows-helper bootstrap/certified builder archives are locally present and pin-bound. They and the test-signed APKs do not establish complete canonical release inputs, stable signing, cold equality, sustained resource/latency bounds, network/device coverage, independent reproduction, or external review. See the Android runtime disposition below and the release-blocking matrix. |
 
 Completed documentation cleanup has no live progress log here. Requirement-specific current dispositions remain in
@@ -469,9 +469,10 @@ locally available. No Android/Windows delay causation or platform closure is cla
 ### Linux Enigo XDO — one local display for input and diagnostics; integration OPEN
 
 `libs/enigo/src/linux/xdo.rs::EnigoXdo::default` opens the shared validated Unix
-display once, retains its native `XDefaultScreen`, and transfers the sole display
-to `xdo_new_with_opened_display` with close-on-free ownership. Absolute mouse moves
-use that retained screen rather than hardcoded screen 0. The pointer-map diagnostic
+display once and transfers the sole display to `xdo_new_with_opened_display`
+with close-on-free ownership. Native absolute movement derives `DefaultRootWindow`
+from that retained Display; Enigo and platform cursor callers supply only context
+and coordinates, with no separate screen index or cache. The pointer-map diagnostic
 borrows the same display; it neither reopens a connection nor rereads `DISPLAY`.
 An `OpenedDisplay` RAII guard owns the connection until handoff and closes it on
 native refusal or Rust-side unwind. The Enigo owner retains the successful context
@@ -983,6 +984,57 @@ is unclaimed. Other layouts and modifier combinations, held/locked ownership,
 between-request release failure, native event/group-lock/asynchronous errors,
 map races, concurrency, whole heap/soak, full Cargo/app/install, other platforms
 and broader authority/artifact/release evidence remain OPEN.
+
+**Absolute cursor movement bound to the retained Display screen — focused native acceptance.**
+`native/xdo.c:114`, the protected loader, Enigo and
+`src/platform/linux.rs:173` use a context-and-coordinates ABI. Native movement
+selects the retained Display's default root and refuses absent context/display;
+the platform's hardcoded screen 0 and Enigo's duplicate screen cache are removed.
+Provider/helper/header/loader require `3.20160805.1-rustdesk15`; the refusal
+fixture stamps corrected current C as version 14, without executing the old ABI.
+
+Candidate `07d8ee97c52088dfa05f06f380ba4d20a0d5feeb`
+(tree `f170c79ba467d9d09c7c26f90687f914ce071a70`) passed
+`scripts/smoke-verifier-vm-authority.sh --x11-display-tests --key-input`
+in 154 seconds, outer exit 0. Complete production native/TLS owner modules
+and byte-extracted platform cursor functions executed against the current
+provider and real two-screen Xvfb. Three normalized selectors, four fresh
+worker owners each and eight moves each give 96 cases. Before every request,
+an independent Display puts the pointer on the opposite root; it then observes
+the selected root and exact coordinates within 100ms, plus platform readback.
+Changing ambient `DISPLAY` after construction does not replace the retained
+owner. Two descriptors remain live per worker, twelve context frees pair,
+and sampled FD/task baselines return after each joined retirement.
+
+Existing key/state/modifier/scratch/constructor, raw-group, mouse, complete
+Enigo, text/layout, eight loader scenarios and staged-provider checks pass.
+The product helper and complete protected loader share the 21,000-byte ELF,
+SHA-256 `36397d9284e8417a971f75665693b9c0d7025f90165fb6523d8e44daccad5c60`;
+C SHA-256 is
+`48c3a2515be4f68e0bf2a76029edb5a0be41a001d25a7f899f1dc41f642d8546`.
+Raw `.harness-state/verifier-vm/x11-display-tests-run.dF4cI63jGB.serial.log`
+is 111,286 bytes, SHA-256
+`d981f2e86e029dbb13b10a6e50cfd3be02faa6921f729b957f81fec6d8db474d`.
+The nonindependent assistant-observed
+`evidence/cursor-position-run.dF4cI63jGB.outer.receipt` under that root
+is 12,914 bytes, SHA-256
+`6744e6db0385595d77adb8f813969ed82e24b2690668ce5a09f7973b09c585a3`.
+It retains native/source/artifact and terminal-owner bindings. The ordinary-user
+zero-NIC VM used guest-only network-none UID/GID4000 containers and read-only
+inputs. Outer endpoint-only before/during/after audit reports no host addition
+and joined cleanup; exact root/overlay is absent. Before/during snapshots
+were preserved and match; independent after-snapshot comparison is unclaimed.
+
+This is component evidence with four authenticated real dependencies and a
+partial common facade; full Cargo/Flutter/app/install remain OPEN. Xvfb uses
+`-ac`, and ASan leak detection is disabled. Xauthority, grabs/asynchronous
+protocol errors, query uncertainty, global input ownership/concurrency,
+loader identity/ACL races, whole heap/resources/soak and other platform/release
+acceptance remain OPEN. The input-state getter still cannot report uncertain
+queries through the boolean keyboard API; its real consumers also require
+pointer-button masks. Future correction must distinguish valid different-screen
+pointer replies and plan required queries before input effects. This slice
+does not implement or validate that separate API redesign.
 
 **Scratch mapping retained through a complete key click — focused native acceptance.**
 `native/xdo.c:180,223,277` gives the validated complete action to the

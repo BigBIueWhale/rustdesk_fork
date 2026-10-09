@@ -6678,6 +6678,170 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    fn directory_enumeration_refuses_metadata_permission_failure() {
+        use std::os::unix::fs::PermissionsExt;
+
+        assert_ne!(
+            unsafe { crate::libc::geteuid() },
+            0,
+            "requires a nonroot receiver"
+        );
+        let tmp = TestTempDir::new("rustdesk_enum_metadata_permission");
+        std::fs::create_dir_all(&tmp.path).expect("create directory");
+        std::fs::write(tmp.join("visible.txt"), b"visible").expect("create file");
+        std::fs::set_permissions(&tmp.path, std::fs::Permissions::from_mode(0o400))
+            .expect("allow enumeration but deny metadata lookup");
+        let entries = std::fs::read_dir(&tmp.path)
+            .expect("the directory iterator itself must be admitted")
+            .collect::<std::io::Result<Vec<_>>>()
+            .expect("the iterator must return its real entry");
+        let result = read_dir_with_budget(
+            &tmp.path,
+            true,
+            FileEnumerationBudget::for_max_entries(8),
+        );
+        std::fs::set_permissions(&tmp.path, std::fs::Permissions::from_mode(0o700))
+            .expect("restore fixture permissions before assertions");
+
+        assert_eq!(entries.len(), 1);
+        let error = result.expect_err("metadata refusal must not become an empty listing");
+        assert_eq!(
+            error
+                .downcast_ref::<std::io::Error>()
+                .map(std::io::Error::kind),
+            Some(std::io::ErrorKind::PermissionDenied)
+        );
+        assert_eq!(
+            std::fs::read(tmp.join("visible.txt")).expect("read unchanged file"),
+            b"visible"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn recursive_enumeration_refuses_unreadable_children_before_job_admission() {
+        use std::os::unix::fs::PermissionsExt;
+
+        assert_ne!(
+            unsafe { crate::libc::geteuid() },
+            0,
+            "requires a nonroot receiver"
+        );
+        let tmp = TestTempDir::new("rustdesk_enum_child_permission");
+        let blocked = tmp.join("blocked");
+        std::fs::create_dir_all(&blocked).expect("create child directory");
+        std::fs::create_dir(tmp.join("empty")).expect("create readable empty sibling");
+        std::fs::write(tmp.join("visible.txt"), b"visible").expect("create readable sibling");
+        std::fs::write(blocked.join("private.txt"), b"private").expect("create child payload");
+        std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o000))
+            .expect("deny child enumeration");
+        let budget = FileEnumerationBudget::for_max_entries(8);
+        let files = get_recursive_files_with_budget(&get_string(&tmp.path), true, budget);
+        let empty_dirs = get_empty_dirs_recursive_with_budget(&get_string(&tmp.path), true, budget);
+        let job = TransferJob::new_read_with_budget(
+            92,
+            JobType::Generic,
+            "remote".to_owned(),
+            DataSource::FilePath(tmp.path.clone()),
+            0,
+            true,
+            false,
+            false,
+            budget,
+        );
+        std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o700))
+            .expect("restore fixture permissions before assertions");
+
+        for result in [files.map(|_| ()), empty_dirs.map(|_| ()), job.map(|_| ())] {
+            let error = result.expect_err("an unreadable child must refuse the complete operation");
+            assert_eq!(
+                error
+                    .downcast_ref::<std::io::Error>()
+                    .map(std::io::Error::kind),
+                Some(std::io::ErrorKind::PermissionDenied)
+            );
+        }
+        assert_eq!(
+            std::fs::read(blocked.join("private.txt")).expect("read unchanged child"),
+            b"private"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn directory_enumeration_refuses_unrepresentable_file_names() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let tmp = TestTempDir::new("rustdesk_enum_non_utf8");
+        std::fs::create_dir_all(&tmp.path).expect("create directory");
+        let file = tmp.path.join(std::ffi::OsString::from_vec(b"name\xff".to_vec()));
+        std::fs::write(&file, b"unchanged").expect("create non-UTF8 file");
+        let error = read_dir_with_budget(
+            &tmp.path,
+            true,
+            FileEnumerationBudget::for_max_entries(8),
+        )
+        .expect_err("an unrepresentable filename must not silently disappear");
+        assert_err_contains(error, "file name is not valid UTF-8");
+        assert_eq!(std::fs::read(file).expect("read unchanged file"), b"unchanged");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn directory_enumeration_budgets_excluded_hidden_entries() {
+        let tmp = TestTempDir::new("rustdesk_enum_hidden_budget");
+        std::fs::create_dir_all(&tmp.path).expect("create directory");
+        std::fs::write(tmp.join(".one"), b"1").expect("create hidden file");
+        std::fs::write(tmp.join(".two"), b"2").expect("create hidden file");
+        let directory = read_dir_with_budget(
+            &tmp.path,
+            false,
+            FileEnumerationBudget::for_max_entries(2),
+        )
+        .expect("hidden exclusion remains valid within the scan budget");
+        assert!(directory.entries.is_empty());
+        let error = read_dir_with_budget(
+            &tmp.path,
+            false,
+            FileEnumerationBudget::for_max_entries(1),
+        )
+        .expect_err("hidden exclusion must not bypass the scanned-entry bound");
+        assert_err_contains(error, "entries exceed limit");
+    }
+
+    #[test]
+    fn recursive_enumeration_budgets_complete_relative_paths() {
+        let tmp = TestTempDir::new("rustdesk_enum_prefix_budget");
+        let parent = tmp.join("abcdefgh/ijklmnop");
+        std::fs::create_dir_all(&parent).expect("create nested directory");
+        std::fs::write(parent.join("qrstuvwx"), b"payload").expect("create leaf");
+        let budget = FileEnumerationBudget {
+            max_entries: 8,
+            max_dirs: 8,
+            max_depth: 3,
+            max_serialized_bytes: 435,
+        };
+        let files = get_recursive_files_with_budget(&get_string(&tmp.path), true, budget)
+            .expect("the complete relative paths fit the exact byte budget");
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            files[0].name,
+            get_string(Path::new("abcdefgh/ijklmnop/qrstuvwx"))
+        );
+        let error = get_recursive_files_with_budget(
+            &get_string(&tmp.path),
+            true,
+            FileEnumerationBudget {
+                max_serialized_bytes: 434,
+                ..budget
+            },
+        )
+        .expect_err("relative path prefixes must contribute to the byte bound");
+        assert_err_contains(error, "approx serialized bytes 435 exceed limit 434");
+    }
+
+    #[test]
     fn budgeted_read_dir_rejects_too_many_entries_before_returning_vector() {
         let tmp = TestTempDir::new("rustdesk_budgeted_read_dir");
         std::fs::create_dir_all(&tmp.path).expect("create temp dir");

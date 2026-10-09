@@ -43,7 +43,7 @@ def build(output):
                 raise RuntimeError("native XDO output directory changed during compilation")
             os.link(library, output.name, dst_dir_fd=parent, follow_symlinks=False)
         print(f"NATIVE_XDO_BUILD=pass sha256={hashlib.sha256(data).hexdigest()} "
-              f"bytes={len(data)} version=3.20160805.1-rustdesk17 source=checked-in")
+              f"bytes={len(data)} version=3.20160805.1-rustdesk18 source=checked-in")
     finally:
         os.close(parent)
 

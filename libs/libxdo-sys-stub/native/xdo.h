@@ -83,10 +83,15 @@ typedef struct xdo {
   /** @internal UNUSED -- feature-mask ABI field */
   int features_mask;
 
+  /** Unconfirmed scratch restoration retains its original map and blocks text. */
+  struct _XkbDesc *scratch_original;
+  KeyCode scratch_keycode;
+
 } xdo_t;
 
 #define XDO_ERROR 1
 #define XDO_SUCCESS 0
+#define XDO_CLEANUP_ERROR 2
 
 /**
  * Create a new xdo_t instance.
@@ -175,11 +180,14 @@ int xdo_get_mouse_location(const xdo_t *xdo, int *x, int *y, int *screen_num);
  * and carriage return return XDO_ERROR before input. Tab maps to XK_Tab;
  * newline and carriage return map to XK_Return. Other scalars use Latin-1
  * or Unicode keysyms. Both legs retain the same resolved code, modifiers
- * and scratch mapping; the full scratch row is restored after release.
+ * and scratch mapping. Scratch rows must have neutral XKB semantics; their
+ * original symbols, types, groups, actions and explicit controls are restored
+ * and checked after release. XDO_CLEANUP_ERROR means restoration is unconfirmed;
+ * the context retains the original map and accepts no further text.
  *
  * @param delay Delay in microseconds, divided between press and release.
  */
-int xdo_enter_text_scalar(const xdo_t *xdo, unsigned int scalar, useconds_t delay);
+int xdo_enter_text_scalar(xdo_t *xdo, unsigned int scalar, useconds_t delay);
 
 typedef struct xdo_input_state {
   unsigned int pointer_mask;

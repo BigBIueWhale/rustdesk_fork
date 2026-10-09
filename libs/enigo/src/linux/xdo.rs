@@ -100,6 +100,7 @@ pub(super) struct EnigoXdo {
     display: *mut Display,
     display_name: Option<CString>,
     delay: u64,
+    text_cleanup_failed: bool,
 }
 // This is safe, we have a unique pointer.
 // TODO: use Unique<c_char> once stable.
@@ -115,6 +116,7 @@ impl Default for EnigoXdo {
             display: std::ptr::null_mut(),
             display_name: None,
             delay: DEFAULT_DELAY,
+            text_cleanup_failed: false,
         };
         let display_name = match unix_display_name() {
             Ok(display_name) => display_name,
@@ -188,6 +190,9 @@ impl EnigoXdo {
         if self.xdo.is_null() {
             return Err("libxdo is unavailable".into());
         }
+        if self.text_cleanup_failed {
+            return Err("libxdo text mapping restoration is unconfirmed".into());
+        }
         // Validate the complete text before emitting any prefix.
         if let Some(character) = sequence
             .chars()
@@ -212,11 +217,14 @@ impl EnigoXdo {
         for character in sequence.chars() {
             let status = unsafe {
                 libxdo_sys::xdo_enter_text_scalar(
-                    context.0 as *const _,
+                    context.0,
                     character,
                     (self.delay / 2) as libxdo_sys::useconds_t,
                 )
             };
+            if status == libxdo_sys::XDO_CLEANUP_ERROR {
+                self.text_cleanup_failed = true;
+            }
             xdo_result("text entry", status)?;
         }
         Ok(())

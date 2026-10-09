@@ -200,7 +200,8 @@ def scratch_keys(root, environment):
     scratch_binary = Path("/build/xdo-scratch-key")
     native_source = root / "libs/libxdo-sys-stub/native"
     subprocess.run(["/usr/bin/cc", "-std=c99", "-O1", "-g", "-fsanitize=address",
-                    "-fno-omit-frame-pointer", "-Wl,--wrap=XGetKeyboardMapping", "-Wl,--wrap=XFree",
+                    "-fno-omit-frame-pointer", "-Wl,--wrap=XkbGetMap", "-Wl,--wrap=XkbFreeKeyboard",
+                    "-Wl,--wrap=XkbChangeMap",
                     "-Wl,--wrap=XkbGetState", "-Wl,--wrap=XkbLockGroup",
                     "-Wl,--wrap=XTestFakeKeyEvent", "-Wl,--wrap=XChangeKeyboardMapping",
                     "-Wl,--wrap=XGetModifierMapping", "-Wl,--wrap=XFreeModifiermap",
@@ -340,6 +341,13 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
     require(result.returncode == 0 and not result.stderr and result.stdout.splitlines() == [receipt],
             f"native Enigo backend result differs: {result}")
     print(receipt, flush=True)
+    cleanup = subprocess.run([str(binary), "cleanup-refusal"], env=environment,
+                             capture_output=True, text=True, timeout=5)
+    cleanup_receipt = ("X11_ENIGO_CLEANUP_REFUSAL=pass status=injected later_requests=8 native_calls=1 "
+                       "contexts=2 descriptors=retired tasks=retired scope=backend-status-contract whole_app=false")
+    require(cleanup.returncode == 0 and not cleanup.stderr and cleanup.stdout.splitlines() == [cleanup_receipt],
+            f"Enigo cleanup refusal differs: {cleanup}")
+    print(cleanup_receipt, flush=True)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 6095))
         listener.listen(1)

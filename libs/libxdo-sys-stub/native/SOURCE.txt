@@ -24,8 +24,19 @@ modmap/keymap ABI fields; request-map destruction uses XkbFreeKeyboard instead
 of XkbFreeClientMap, so the owned enclosing descriptor is freed as well;
 unused active-modifier collection/clear/restore APIs and mouse-event collection
 are removed. Mouse events retain the native input-state mask. Scratch-key lookup
-queries the inclusive range only for unmapped symbols, requires a wholly unused
-row, retains and restores its full mapping, and retires the query on every path.
+queries a complete XKB snapshot only for unmapped symbols. A row must have no
+symbols, real/virtual modifiers, non-default behavior or meaningful actions.
+It installs only that row with ONE_LEVEL symbols, no actions and explicit
+interpretation/behavior/repeat/type protection, and checks the server map before
+input. Both legs retain the lease. Original symbols, groups, type indices and
+actions are restored under protection; original explicit flags are restored in
+a separate request. Each restoration phase requires readback. An unconfirmed
+restoration retains the original descriptor on its context and blocks further
+text; destruction retries restoration and diagnoses any remaining uncertainty.
+Enigo refuses subsequent text after the distinct cleanup-error status.
+Core-only XChangeKeyboardMapping is absent from product input. Other clients,
+slave keyboards, held keys, dead connections and fatal Xlib error handling still
+require separate ownership/concurrency/native acceptance.
 Context construction requires XTEST before allocations or a single XKB snapshot
 and checks that snapshot before publishing the character map. Caller-supplied
 display ownership transfers only on success; the display opened by xdo_new
@@ -35,7 +46,8 @@ are removed in favor of the snapshot's types, symbols and real-modifier map.
 Keyboard input accepts one validated Unicode text scalar as a matched pair.
 The compound string parser, locale-based text entry, alias table and generic
 key-list API are removed. Text pairs resolve once and retain the same scratch mapping
-through press and release, then restore its full row and retire the query once.
+through press and release, then restore its complete per-key XKB mapping and
+retire the original descriptor after verified restoration.
 Enigo supplies Rust characters. The native receiver rejects invalid scalars and
 unsupported controls before input, maps tab and line endings explicitly, and
 converts other scalars to Latin-1 or Unicode keysyms. Raw keycodes, caller-selected
@@ -68,6 +80,8 @@ must both be available. Failed collection leaves the caller's output untouched
 and performs no input or mapping mutation. The separate reads are not atomic
 against concurrent input; X11's keymap is server logical state, not a hardware
 acknowledgment. The shared connection requires libX11-xcb and libxcb.
-The fixed fork version is 3.20160805.1-rustdesk17.
+The fixed fork version is 3.20160805.1-rustdesk18. The private context appends
+scratch-lease ownership fields; text entry takes a mutable context. Original
+upstream ABI fields remain for layout provenance, not distro compatibility.
 The BSD redistribution notice is retained in COPYRIGHT and packaged with the
 library. Source provenance is not a claim that all native behavior is validated.

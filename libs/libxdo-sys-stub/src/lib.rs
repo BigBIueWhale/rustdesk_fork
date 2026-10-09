@@ -25,6 +25,7 @@ pub struct xdo_t {
 }
 
 pub type useconds_t = c_uint;
+pub const XDO_CLEANUP_ERROR: c_int = 2;
 
 #[repr(C)]
 #[derive(Default)]
@@ -40,7 +41,7 @@ pub struct XdoInputState {
 const TRUSTED_LIBXDO_PATHS: &[&str] = &[
     "/usr/lib/rustdesk-fork/libxdo.so.3",
 ];
-const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk17";
+const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk18";
 
 fn root_owned_non_writable(mode: u32, uid: u32) -> bool {
     uid == 0 && mode & 0o022 == 0
@@ -97,7 +98,7 @@ type FnXdoVersion = unsafe extern "C" fn() -> *const c_char;
 type FnXdoNewWithOpenedDisplay =
     unsafe extern "C" fn(*mut Display, *const c_char, c_int) -> *mut xdo_t;
 type FnXdoFree = unsafe extern "C" fn(*mut xdo_t);
-type FnXdoEnterTextScalar = unsafe extern "C" fn(*const xdo_t, c_uint, useconds_t) -> c_int;
+type FnXdoEnterTextScalar = unsafe extern "C" fn(*mut xdo_t, c_uint, useconds_t) -> c_int;
 type FnXdoMouseDown = unsafe extern "C" fn(*const xdo_t, c_int) -> c_int;
 type FnXdoMouseUp = unsafe extern "C" fn(*const xdo_t, c_int) -> c_int;
 type FnXdoMoveMouse = unsafe extern "C" fn(*const xdo_t, c_int, c_int) -> c_int;
@@ -353,7 +354,7 @@ pub unsafe extern "C" fn xdo_free(xdo: *mut xdo_t) {
 }
 
 pub unsafe fn xdo_enter_text_scalar(
-    xdo: *const xdo_t,
+    xdo: *mut xdo_t,
     scalar: char,
     delay: useconds_t,
 ) -> c_int {

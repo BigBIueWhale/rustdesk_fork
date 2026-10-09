@@ -16,7 +16,9 @@ static Display *product_display;
 static int observe, fault, queries, frees;
 static int state_fault, state_queries, group_changes, input_calls, mapping_changes;
 static int modifier_fault, modifier_queries, modifier_frees, modifier_width;
-static KeySym *owned_query;
+static XkbDescPtr owned_query;
+static int map_readbacks, map_live, map_gets, map_releases, setmap_fault, readback_fault;
+static XkbDescPtr tracked_maps[2];
 static Display *click_observer;
 static Window click_window;
 static KeyCode click_code;
@@ -24,8 +26,9 @@ static KeySym click_symbol;
 static int click_events;
 static XModifierKeymap *owned_modifiers;
 static KeyCode *modifier_codes;
-extern KeySym *__real_XGetKeyboardMapping(Display *, KeyCode, int, int *);
-extern int __real_XFree(void *);
+extern XkbDescPtr __real_XkbGetMap(Display *, unsigned, unsigned);
+extern void __real_XkbFreeKeyboard(XkbDescPtr, unsigned, Bool);
+extern Bool __real_XkbChangeMap(Display *, XkbDescPtr, XkbMapChangesPtr);
 extern Status __real_XkbGetState(Display *, unsigned int, XkbStatePtr);
 extern Bool __real_XkbLockGroup(Display *, unsigned int, unsigned int);
 extern int __real_XTestFakeKeyEvent(Display *, unsigned int, Bool, unsigned long);
@@ -82,6 +85,16 @@ int __wrap_XTestFakeKeyEvent(Display *display, unsigned int code, Bool pressed, 
     require(mapping && width > 0 && mapping[0] == click_symbol,
             "scratch click server symbol absent during a leg");
     XFree(mapping);
+    XkbDescPtr installed = XkbGetMap(click_observer, XkbAllMapComponentsMask, XkbUseCoreKbd);
+    require(installed && installed->map && installed->server
+            && XkbKeyNumGroups(installed, code) == 1 && XkbKeyGroupsWidth(installed, code) == 1
+            && XkbKeyKeyType(installed, code, 0) == &installed->map->types[XkbOneLevelIndex]
+            && installed->map->modmap[code] == 0 && installed->server->vmodmap[code] == 0
+            && !XkbKeyHasActions(installed, code)
+            && installed->server->behaviors[code].type == XkbKB_Default
+            && installed->server->explicit[code] == XkbAllExplicitMask,
+            "installed scratch XKB semantics are not neutral during a leg");
+    XkbFreeKeyboard(installed, 0, True);
     XEvent event;
     require(XCheckWindowEvent(click_observer, click_window, KeyPressMask | KeyReleaseMask, &event)
             && event.type == (pressed ? KeyPress : KeyRelease)
@@ -99,8 +112,16 @@ int __wrap_XTestFakeKeyEvent(Display *display, unsigned int code, Bool pressed, 
 }
 
 int __wrap_XChangeKeyboardMapping(Display *display, int first, int width, KeySym *symbols, int count) {
-  if (observe && display == product_display) mapping_changes++;
+  require(!observe || display != product_display, "product used core-only symbol mutation");
   return __real_XChangeKeyboardMapping(display, first, width, symbols, count);
+}
+
+Bool __wrap_XkbChangeMap(Display *display, XkbDescPtr map, XkbMapChangesPtr changes) {
+  if (observe && display == product_display) {
+    if (setmap_fault && mapping_changes == 0) return False;
+    if (changes->changed & XkbKeySymsMask) mapping_changes++;
+  }
+  return __real_XkbChangeMap(display, map, changes);
 }
 
 XModifierKeymap *__wrap_XGetModifierMapping(Display *display) {
@@ -136,21 +157,46 @@ int __wrap_XFreeModifiermap(XModifierKeymap *map) {
   return __real_XFreeModifiermap(map);
 }
 
-KeySym *__wrap_XGetKeyboardMapping(Display *display, KeyCode first, int count, int *width) {
+XkbDescPtr __wrap_XkbGetMap(Display *display, unsigned which, unsigned device) {
   if (!observe || display != product_display)
-    return __real_XGetKeyboardMapping(display, first, count, width);
-  queries++;
-  require(owned_query == NULL, "previous native query not retired");
-  if (fault == 1) { *width = 0; return NULL; }
-  owned_query = __real_XGetKeyboardMapping(display, first, count, width);
-  require(owned_query != NULL && *width > 0, "real native query unavailable");
-  if (fault == 2) *width = 0;
-  return owned_query;
+    return __real_XkbGetMap(display, which, device);
+  require(which == XkbAllMapComponentsMask && device == XkbUseCoreKbd,
+          "scratch snapshot omitted XKB components");
+  int initial = owned_query == NULL;
+  if (initial) {
+    queries++;
+    if (fault == 1) return NULL;
+  } else {
+    map_readbacks++;
+    if (readback_fault && map_readbacks == readback_fault) return NULL;
+  }
+  XkbDescPtr map = __real_XkbGetMap(display, which, device);
+  require(map && map->map && map->server, "real native snapshot unavailable");
+  map_live++;
+  map_gets++;
+  int slot = tracked_maps[0] == NULL ? 0 : 1;
+  require(tracked_maps[slot] == NULL && map_live <= 2, "scratch snapshot live bound exceeded");
+  tracked_maps[slot] = map;
+  if (initial) {
+    owned_query = map;
+    if (fault == 2) map->map->key_sym_map[map->min_key_code].width = 0;
+  }
+  return map;
 }
 
-int __wrap_XFree(void *pointer) {
-  if (pointer && pointer == owned_query) { owned_query = NULL; frees++; }
-  return __real_XFree(pointer);
+void __wrap_XkbFreeKeyboard(XkbDescPtr map, unsigned which, Bool all) {
+  for (int slot = 0; slot < 2; slot++) {
+    if (map != NULL && map == tracked_maps[slot]) {
+      require(which == 0 && all, "scratch descriptor only partially freed");
+      tracked_maps[slot] = NULL;
+      map_live--;
+      map_releases++;
+      require(map_live >= 0, "scratch descriptor freed without ownership");
+      if (map == owned_query) { owned_query = NULL; frees++; }
+      break;
+    }
+  }
+  __real_XkbFreeKeyboard(map, which, all);
 }
 
 /* Only direct product calls are wrapped; Xlib's internal heap is outside this census. */
@@ -438,6 +484,167 @@ static void same_xkb_symbols(Display *display, const XkbDescRec *expected) {
   XkbFreeKeyboard(actual, 0, True);
 }
 
+static XkbDescPtr component_snapshot(Display *display) {
+  XkbDescPtr map = XkbGetMap(display, XkbAllMapComponentsMask, XkbUseCoreKbd);
+  require(map && map->map && map->map->types && map->map->syms && map->map->key_sym_map
+          && map->map->modmap && map->server && map->server->key_acts
+          && map->server->behaviors && map->server->explicit && map->server->vmodmap
+          && XkbGetControls(display, XkbPerKeyRepeatMask, map) == Success && map->ctrls,
+          "complete native component snapshot unavailable");
+  return map;
+}
+
+static void same_components(Display *display, XkbDescPtr expected) {
+  XkbDescPtr actual = component_snapshot(display);
+  require(actual->min_key_code == expected->min_key_code
+          && actual->max_key_code == expected->max_key_code
+          && actual->map->num_types == expected->map->num_types
+          && !memcmp(actual->server->vmods, expected->server->vmods, sizeof(actual->server->vmods))
+          && !memcmp(actual->ctrls->per_key_repeat, expected->ctrls->per_key_repeat,
+                     sizeof(actual->ctrls->per_key_repeat)), "global XKB components changed");
+  for (int index = 0; index < expected->map->num_types; index++) {
+    XkbKeyTypePtr a = &actual->map->types[index], b = &expected->map->types[index];
+    require(a->num_levels == b->num_levels && a->map_count == b->map_count
+            && !memcmp(&a->mods, &b->mods, sizeof(a->mods))
+            && (!a->map_count || !memcmp(a->map, b->map, a->map_count * sizeof(XkbKTMapEntryRec)))
+            && !!a->preserve == !!b->preserve
+            && (!a->preserve || !memcmp(a->preserve, b->preserve,
+                                        a->map_count * sizeof(XkbModsRec))), "XKB key types changed");
+  }
+  for (int code = expected->min_key_code; code <= expected->max_key_code; code++) {
+    XkbSymMapPtr a = &actual->map->key_sym_map[code], b = &expected->map->key_sym_map[code];
+    require(a->group_info == b->group_info && a->width == b->width
+            && !memcmp(a->kt_index, b->kt_index, sizeof(a->kt_index))
+            && !memcmp(XkbKeySymsPtr(actual, code), XkbKeySymsPtr(expected, code),
+                       XkbKeyNumSyms(expected, code) * sizeof(KeySym))
+            && actual->map->modmap[code] == expected->map->modmap[code]
+            && actual->server->explicit[code] == expected->server->explicit[code]
+            && actual->server->vmodmap[code] == expected->server->vmodmap[code]
+            && !memcmp(&actual->server->behaviors[code], &expected->server->behaviors[code],
+                       sizeof(XkbBehavior))
+            && !!XkbKeyHasActions(actual, code) == !!XkbKeyHasActions(expected, code)
+            && (!XkbKeyHasActions(expected, code)
+                || !memcmp(XkbKeyActionsPtr(actual, code), XkbKeyActionsPtr(expected, code),
+                           XkbKeyNumActions(expected, code) * sizeof(XkbAction))),
+            "per-key XKB components changed");
+  }
+  XkbFreeKeyboard(actual, 0, True);
+}
+
+static void scratch_components(xdo_t *input, Display *observer, Window window, int code) {
+  XkbDescPtr baseline = component_snapshot(observer);
+  XkbMapChangesRec changes = {0};
+  changes.changed = XkbKeySymsMask | XkbKeyActionsMask | XkbKeyBehaviorsMask
+      | XkbExplicitComponentsMask | XkbModifierMapMask | XkbVirtualModMapMask;
+  changes.first_key_sym = changes.first_key_act = changes.first_key_behavior
+      = changes.first_key_explicit = changes.first_modmap_key = changes.first_vmodmap_key = code;
+  changes.num_key_syms = changes.num_key_acts = changes.num_key_behaviors
+      = changes.num_key_explicit = changes.num_modmap_keys = changes.num_vmodmap_keys = 1;
+  for (int scenario = 0; scenario < 5; scenario++) {
+    XkbDescPtr fixture = component_snapshot(observer);
+    int types[] = {XkbTwoLevelIndex, XkbAlphabeticIndex};
+    XkbMapChangesRec resize = {0};
+    require(XkbChangeTypesOfKey(fixture, code, 2, XkbGroup1Mask | XkbGroup2Mask,
+                               types, &resize) == Success, "component fixture group resize failed");
+    memset(XkbKeySymsPtr(fixture, code), 0, XkbKeyNumSyms(fixture, code) * sizeof(KeySym));
+    fixture->server->explicit[code] = XkbAllExplicitMask;
+    XkbAction *actions = XkbResizeKeyActions(fixture, code, XkbKeyNumSyms(fixture, code));
+    require(actions != NULL, "component fixture action storage unavailable");
+    memset(actions, 0, XkbKeyNumSyms(fixture, code) * sizeof(XkbAction));
+    if (scenario == 1) fixture->map->modmap[code] = ShiftMask;
+    if (scenario == 2) fixture->server->vmodmap[code] = 1;
+    if (scenario == 3) fixture->server->behaviors[code].type = XkbKB_Lock;
+    if (scenario == 4) actions[0].type = XkbSA_SetMods;
+    require(XkbChangeMap(observer, fixture, &changes), "component fixture not sent");
+    XSync(observer, False);
+    XkbFreeKeyboard(fixture, 0, True);
+    XkbDescPtr configured = component_snapshot(observer);
+    require(XkbKeyNumGroups(configured, code) == 2 && XkbKeyGroupsWidth(configured, code) == 2
+            && configured->server->explicit[code] == XkbAllExplicitMask
+            && configured->map->modmap[code] == (scenario == 1 ? ShiftMask : 0)
+            && configured->server->vmodmap[code] == (scenario == 2 ? 1 : 0)
+            && configured->server->behaviors[code].type == (scenario == 3 ? XkbKB_Lock : XkbKB_Default)
+            && XkbKeyHasActions(configured, code)
+            && XkbKeyActionsPtr(configured, code)[0].type == (scenario == 4 ? XkbSA_SetMods : XkbSA_NoAction),
+            "native server component fixture differs");
+    for (int round = 0; round < 4; round++) {
+      queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+      map_readbacks = 0;
+      observe = 1;
+      int status = xdo_enter_text_scalar(input, 0x1f642, 0);
+      observe = 0;
+      require(status == (scenario == 0 ? XDO_SUCCESS : XDO_ERROR)
+              && queries == 1 && frees == 1 && owned_query == NULL && map_live == 0
+              && input_calls == (scenario == 0 ? 2 : 0)
+              && group_changes == (scenario == 0 ? 4 : 0)
+              && mapping_changes == (scenario == 0 ? 2 : 0)
+              && map_readbacks == (scenario == 0 ? 3 : 0), "component admission/effect census differs");
+      events(observer, window, code, scenario == 0 ? 2 : 0);
+      same_components(observer, configured);
+    }
+    XkbFreeKeyboard(configured, 0, True);
+    unsigned flags = baseline->server->explicit[code];
+    baseline->server->explicit[code] = XkbAllExplicitMask;
+    require(XkbChangeMap(observer, baseline, &changes), "component fixture original map not sent");
+    baseline->server->explicit[code] = flags;
+    XkbMapChangesRec thaw = {0};
+    thaw.changed = XkbExplicitComponentsMask;
+    thaw.first_key_explicit = code;
+    thaw.num_key_explicit = 1;
+    require(XkbChangeMap(observer, baseline, &thaw), "component fixture original overrides not sent");
+    XSync(observer, False);
+    same_components(observer, baseline);
+  }
+  for (int failure = 0; failure < 4; failure++) {
+    for (int round = 0; round < 4; round++) {
+      queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+      map_readbacks = 0;
+      setmap_fault = failure == 0;
+      readback_fault = failure;
+      observe = 1;
+      int status = xdo_enter_text_scalar(input, 0x1f642, 0);
+      observe = 0;
+      int cleanup_failed = failure >= 2;
+      require(status == (cleanup_failed ? XDO_CLEANUP_ERROR : XDO_ERROR)
+              && input_calls == (cleanup_failed ? 2 : 0)
+              && (owned_query != NULL) == cleanup_failed
+              && map_live == cleanup_failed, "map failure finality differs");
+      events(observer, window, code, cleanup_failed ? 2 : 0);
+      setmap_fault = readback_fault = 0;
+      if (cleanup_failed) {
+        int old_inputs = input_calls, old_groups = group_changes, old_changes = mapping_changes;
+        observe = 1;
+        require(xdo_enter_text_scalar(input, 'a', 0) == XDO_CLEANUP_ERROR,
+                "unconfirmed scratch restoration accepted later text");
+        observe = 0;
+        require(input_calls == old_inputs && group_changes == old_groups && mapping_changes == old_changes
+                && owned_query != NULL, "blocked context performed effects or dropped original state");
+        observe = 1;
+        xdo_free(input);
+        observe = 0;
+        product_display = NULL;
+        require(map_live == 0 && owned_query == NULL, "destruction failed to retire its scratch lease");
+        same_components(observer, baseline);
+        input = xdo_new("unix/:98.0");
+        require(input != NULL, "fresh recovery context unavailable");
+        product_display = input->xdpy;
+      }
+      same_components(observer, baseline);
+      observe = 1;
+      require(xdo_enter_text_scalar(input, 0x1f642, 0) == XDO_SUCCESS,
+              "corrected component did not recover after map refusal");
+      observe = 0;
+      events(observer, window, code, 2);
+      same_components(observer, baseline);
+    }
+  }
+  product_display = NULL;
+  xdo_free(input);
+  XkbFreeKeyboard(baseline, 0, True);
+  require(map_live == 0 && map_gets == map_releases, "complete descriptor census differs");
+  puts("XDO_SCRATCH_COMPONENTS_NATIVE=pass candidates=5 repeats=4 accepted=4 refused=16 mapping_faults=4 fault_repeats=4 recovery=16 cleanup_pending=8 later_text=refused destructor=restored full_xkb=preserved snapshots=retired live_peak=2 provider=current-only whole_app=false");
+}
+
 static void scratch_click(xdo_t *input, Display *observer, Window window,
                           int round, int low, int high, int width, const KeySym *mapping) {
   click_observer = observer;
@@ -642,6 +849,7 @@ int main(void) {
     input = xdo_new("unix/:98.0");
     require(input != NULL, "fresh product context unavailable");
     product_display = input->xdpy;
+    XkbDescPtr components = component_snapshot(observer);
     keyboard_state(input, observer, window, low, high, width, mapping);
     key_input(input, observer, window, low, high);
     same_map(observer, low, count, width, mapping);
@@ -656,6 +864,8 @@ int main(void) {
         require(mapping && width > 0, "canonical full map unavailable");
         scratch_map(mapping, count, width, 0);
         same_map(observer, low, count, width, mapping);
+        XkbFreeKeyboard(components, 0, True);
+        components = component_snapshot(observer);
       }
       fault = scenario == 2 ? 1 : scenario == 3 ? 2 : 0;
       queries = frees = 0;
@@ -669,13 +879,23 @@ int main(void) {
               && frees == (scenario != 1 && scenario != 2), "query ownership differs");
       events(observer, window, scenario == 0 ? high : low + 1, accepted ? 2 : 0);
       same_map(observer, low, count, width, mapping);
+      same_components(observer, components);
       printf("XDO_SCRATCH_CASE=pass round=%d scenario=%d events=%d queries=%d frees=%d\n",
              round, scenario, accepted ? 2 : 0, queries, frees);
     }
     product_display = NULL;
     xdo_free(input);
+    XkbFreeKeyboard(components, 0, True);
     XFree(mapping);
   }
+  /* Restore one empty row, then test only the corrected provider's XKB lease. */
+  KeySym empty_symbol = NoSymbol;
+  XChangeKeyboardMapping(observer, high, 1, &empty_symbol, 1);
+  XSync(observer, False);
+  input = xdo_new("unix/:98.0");
+  require(input != NULL, "component admission context unavailable");
+  product_display = input->xdpy;
+  scratch_components(input, observer, window, high);
   XDestroyWindow(observer, window);
   XCloseDisplay(observer);
   require(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks,

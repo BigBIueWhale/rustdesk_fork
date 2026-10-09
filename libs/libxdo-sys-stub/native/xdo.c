@@ -28,6 +28,7 @@ static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key, K
 static void _xdo_text_event(const xdo_t *xdo, charcodemap_t *key,
                           const KeyCode *modifiers, int is_press, int current_group, useconds_t delay);
 static int _xdo_get_key_modifiers(const xdo_t *xdo, int modmask, KeyCode *modifiers);
+static int _xdo_restore_scratch(xdo_t *xdo);
 
 static int _xdo_mousebutton(const xdo_t *xdo, int button, int is_press);
 
@@ -92,6 +93,13 @@ xdo_t* xdo_new_with_opened_display(Display *xdpy, const char *display,
 void xdo_free(xdo_t *xdo) {
   if (xdo == NULL)
     return;
+
+  if (xdo->scratch_original != NULL) {
+    if (_xdo_restore_scratch(xdo) != XDO_SUCCESS) {
+      fprintf(stderr, "xdo_free: scratch keyboard restoration unconfirmed\n");
+      XkbFreeKeyboard(xdo->scratch_original, 0, True);
+    }
+  }
 
   if (xdo->display_name)
     free(xdo->display_name);
@@ -171,10 +179,128 @@ int xdo_get_mouse_location(const xdo_t *xdo, int *x_ret, int *y_ret,
   return _is_success("XQueryPointer", ret == False, xdo);
 }
 
-static int _xdo_enter_text_scalar_do(const xdo_t *xdo, charcodemap_t *key,
+static int _xdo_scratch_map_valid(const xdo_t *xdo, XkbDescPtr desc) {
+  if (desc == NULL || desc->min_key_code != xdo->keycode_low
+      || desc->max_key_code != xdo->keycode_high || desc->map == NULL
+      || desc->server == NULL)
+    return 0;
+  XkbClientMapPtr map = desc->map;
+  XkbServerMapPtr server = desc->server;
+  if (map->types == NULL || map->key_sym_map == NULL || map->syms == NULL
+      || map->modmap == NULL || map->num_types < XkbNumRequiredTypes
+      || map->num_types > map->size_types || map->num_syms > map->size_syms
+      || server->key_acts == NULL || server->behaviors == NULL
+      || server->explicit == NULL || server->vmodmap == NULL
+      || server->num_acts > server->size_acts)
+    return 0;
+  XkbKeyTypePtr one_level = &map->types[XkbOneLevelIndex];
+  if (one_level->num_levels != 1 || one_level->map_count != 0
+      || one_level->mods.mask != 0 || one_level->mods.real_mods != 0
+      || one_level->mods.vmods != 0)
+    return 0;
+  for (int code = desc->min_key_code; code <= desc->max_key_code; code++) {
+    XkbSymMapPtr symbols = &map->key_sym_map[code];
+    int groups = XkbKeyNumGroups(desc, code);
+    int count = groups * symbols->width;
+    if (groups > XkbNumKbdGroups || (groups != 0 && symbols->width == 0)
+        || symbols->offset > map->num_syms || count > map->num_syms - symbols->offset)
+      return 0;
+    for (int group = 0; group < XkbNumKbdGroups; group++) {
+      if (symbols->kt_index[group] >= map->num_types)
+        return 0;
+      if (group < groups && (map->types[symbols->kt_index[group]].num_levels == 0
+          || map->types[symbols->kt_index[group]].num_levels > symbols->width))
+        return 0;
+    }
+    unsigned offset = server->key_acts[code];
+    if (offset != 0 && (server->acts == NULL || count == 0
+        || offset > server->num_acts || count > server->num_acts - offset))
+      return 0;
+  }
+  return 1;
+}
+
+static int _xdo_scratch_neutral(XkbDescPtr desc, int code) {
+  XkbServerMapPtr server = desc->server;
+  if (desc->map->modmap[code] != 0 || server->vmodmap[code] != 0
+      || server->behaviors[code].type != XkbKB_Default
+      || server->behaviors[code].data != 0
+      || (XkbKeyHasActions(desc, code) && XkbKeyNumActions(desc, code) > 255))
+    return 0;
+  for (int i = 0; i < XkbKeyNumSyms(desc, code); i++) {
+    if (XkbKeySymsPtr(desc, code)[i] != NoSymbol
+        || (XkbKeyHasActions(desc, code)
+            && XkbKeyActionsPtr(desc, code)[i].type != XkbSA_NoAction))
+      return 0;
+  }
+  return 1;
+}
+
+static int _xdo_scratch_matches(const xdo_t *xdo, XkbDescPtr expected,
+                                 unsigned char explicit_flags) {
+  int code = xdo->scratch_keycode;
+  int matches = 0;
+  XkbDescPtr actual = XkbGetMap(xdo->xdpy, XkbAllMapComponentsMask, XkbUseCoreKbd);
+  if (!_xdo_scratch_map_valid(xdo, actual))
+    goto done;
+  XkbSymMapPtr before = &expected->map->key_sym_map[code];
+  XkbSymMapPtr after = &actual->map->key_sym_map[code];
+  if (before->group_info != after->group_info || before->width != after->width
+      || memcmp(before->kt_index, after->kt_index, sizeof(before->kt_index))
+      || memcmp(XkbKeySymsPtr(expected, code), XkbKeySymsPtr(actual, code),
+                XkbKeyNumSyms(expected, code) * sizeof(KeySym))
+      || expected->map->modmap[code] != actual->map->modmap[code]
+      || expected->server->vmodmap[code] != actual->server->vmodmap[code]
+      || expected->server->behaviors[code].type != actual->server->behaviors[code].type
+      || expected->server->behaviors[code].data != actual->server->behaviors[code].data
+      || actual->server->explicit[code] != explicit_flags
+      || memcmp(expected->server->vmods, actual->server->vmods, sizeof(expected->server->vmods))
+      || !!XkbKeyHasActions(expected, code) != !!XkbKeyHasActions(actual, code))
+    goto done;
+  if (XkbKeyHasActions(expected, code)
+      && memcmp(XkbKeyActionsPtr(expected, code), XkbKeyActionsPtr(actual, code),
+                 XkbKeyNumActions(expected, code) * sizeof(XkbAction)))
+    goto done;
+  matches = 1;
+done:
+  if (actual != NULL)
+    XkbFreeKeyboard(actual, 0, True);
+  return matches;
+}
+
+static XkbMapChangesRec _xdo_scratch_changes(KeyCode code) {
+  XkbMapChangesRec changes = {0};
+  changes.changed = XkbKeySymsMask | XkbKeyActionsMask | XkbExplicitComponentsMask;
+  changes.first_key_sym = changes.first_key_act = changes.first_key_explicit = code;
+  changes.num_key_syms = changes.num_key_acts = changes.num_key_explicit = 1;
+  return changes;
+}
+
+static int _xdo_restore_scratch(xdo_t *xdo) {
+  XkbDescPtr original = xdo->scratch_original;
+  int code = xdo->scratch_keycode;
+  XkbMapChangesRec changes = _xdo_scratch_changes(code);
+  unsigned char explicit_flags = original->server->explicit[code];
+  /* Xlib recomputes actions: keep interpretation/repeat/behavior protected
+   * until the original symbols and actions have been read back. */
+  original->server->explicit[code] = XkbAllExplicitMask;
+  int sent = XkbChangeMap(xdo->xdpy, original, &changes);
+  original->server->explicit[code] = explicit_flags;
+  if (!sent || !_xdo_scratch_matches(xdo, original, XkbAllExplicitMask))
+    return XDO_CLEANUP_ERROR;
+  changes.changed = XkbExplicitComponentsMask;
+  changes.num_key_syms = changes.num_key_acts = 0;
+  if (!XkbChangeMap(xdo->xdpy, original, &changes)
+      || !_xdo_scratch_matches(xdo, original, explicit_flags))
+    return XDO_CLEANUP_ERROR;
+  XkbFreeKeyboard(original, 0, True);
+  xdo->scratch_original = NULL;
+  xdo->scratch_keycode = 0;
+  return XDO_SUCCESS;
+}
+
+static int _xdo_enter_text_scalar_do(xdo_t *xdo, charcodemap_t *key,
                                    const KeyCode *modifiers, int current_group, useconds_t delay) {
-  KeySym *keysyms = NULL;
-  int keysyms_per_keycode = 0;
   int scratch_keycode = 0;
 
   /* Acquire the complete scratch resource before sending any input. */
@@ -182,55 +308,64 @@ static int _xdo_enter_text_scalar_do(const xdo_t *xdo, charcodemap_t *key,
     if (xdo->keycode_low < 8 || xdo->keycode_high > 255
         || xdo->keycode_low > xdo->keycode_high)
       return XDO_ERROR;
-    keysyms = XGetKeyboardMapping(xdo->xdpy, xdo->keycode_low,
-                                  xdo->keycode_high - xdo->keycode_low + 1,
-                                  &keysyms_per_keycode);
-    if (keysyms == NULL || keysyms_per_keycode <= 0) {
-      if (keysyms != NULL)
-        XFree(keysyms);
+    XkbDescPtr original = XkbGetMap(xdo->xdpy, XkbAllMapComponentsMask, XkbUseCoreKbd);
+    if (!_xdo_scratch_map_valid(xdo, original)) {
+      if (original != NULL)
+        XkbFreeKeyboard(original, 0, True);
       return XDO_ERROR;
     }
-
     for (int i = xdo->keycode_low; i <= xdo->keycode_high; i++) {
-      int key_is_empty = 1;
-      for (int j = 0; j < keysyms_per_keycode; j++) {
-        size_t symindex = (size_t)(i - xdo->keycode_low) * keysyms_per_keycode + j;
-        if (keysyms[symindex] != NoSymbol) {
-          key_is_empty = 0;
-          break;
-        }
-      }
-      if (key_is_empty) {
+      if (_xdo_scratch_neutral(original, i)) {
         scratch_keycode = i;
         break;
       }
     }
     if (scratch_keycode == 0) {
-      XFree(keysyms);
+      XkbFreeKeyboard(original, 0, True);
       return XDO_ERROR;
     }
-    KeySym keysym_list[] = { key->symbol };
-    XChangeKeyboardMapping(xdo->xdpy, scratch_keycode, 1, keysym_list, 1);
-    XSync(xdo->xdpy, False);
+
+    /* A stack view serializes only this row; the original snapshot stays intact. */
+    XkbDescRec installed = *original;
+    XkbClientMapRec client = *original->map;
+    XkbServerMapRec server = *original->server;
+    XkbSymMapRec symbols[256] = {0};
+    unsigned short actions[256] = {0};
+    unsigned char explicit_flags[256] = {0};
+    KeySym symbol = key->symbol;
+    symbols[scratch_keycode].group_info = 1;
+    symbols[scratch_keycode].width = 1;
+    explicit_flags[scratch_keycode] = XkbAllExplicitMask;
+    client.key_sym_map = symbols;
+    client.syms = &symbol;
+    client.num_syms = client.size_syms = 1;
+    server.key_acts = actions;
+    server.explicit = explicit_flags;
+    installed.map = &client;
+    installed.server = &server;
+    XkbMapChangesRec changes = _xdo_scratch_changes(scratch_keycode);
+    if (!XkbChangeMap(xdo->xdpy, &installed, &changes)) {
+      XkbFreeKeyboard(original, 0, True);
+      return XDO_ERROR;
+    }
+    xdo->scratch_original = original;
+    xdo->scratch_keycode = scratch_keycode;
+    if (!_xdo_scratch_matches(xdo, &installed, XkbAllExplicitMask)) {
+      return _xdo_restore_scratch(xdo) == XDO_SUCCESS ? XDO_ERROR : XDO_CLEANUP_ERROR;
+    }
     key->code = scratch_keycode;
   }
 
   _xdo_text_event(xdo, key, modifiers, True, current_group, delay / 2);
   _xdo_text_event(xdo, key, modifiers, False, current_group, delay / 2);
 
-  if (keysyms != NULL) {
-    XSync(xdo->xdpy, False);
-    KeySym *original = keysyms + (size_t)(scratch_keycode - xdo->keycode_low)
-                                * keysyms_per_keycode;
-    XChangeKeyboardMapping(xdo->xdpy, scratch_keycode, keysyms_per_keycode, original, 1);
-    XSync(xdo->xdpy, False);
-    XFree(keysyms);
-  }
+  if (xdo->scratch_original != NULL && _xdo_restore_scratch(xdo) != XDO_SUCCESS)
+    return XDO_CLEANUP_ERROR;
   XFlush(xdo->xdpy);
   return XDO_SUCCESS;
 }
 
-int xdo_enter_text_scalar(const xdo_t *xdo, unsigned int scalar, useconds_t delay) {
+int xdo_enter_text_scalar(xdo_t *xdo, unsigned int scalar, useconds_t delay) {
   charcodemap_t key = {0};
   KeyCode modifiers[Mod5MapIndex + 1] = {0};
   if (xdo == NULL || xdo->xdpy == NULL
@@ -238,6 +373,8 @@ int xdo_enter_text_scalar(const xdo_t *xdo, unsigned int scalar, useconds_t dela
       || (scalar < 0x20 && scalar != '\t' && scalar != '\n' && scalar != '\r')
       || (scalar >= 0x7f && scalar <= 0x9f))
     return XDO_ERROR;
+  if (xdo->scratch_original != NULL)
+    return XDO_CLEANUP_ERROR;
 
   KeySym symbol = scalar <= 0xff ? scalar : 0x01000000UL | scalar;
   if (scalar == '\n' || scalar == '\r') symbol = XK_Return;

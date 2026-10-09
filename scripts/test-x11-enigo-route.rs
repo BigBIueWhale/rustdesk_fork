@@ -31,6 +31,7 @@ use x11::xlib::{Display, XDefaultScreen};
 pub struct xdo_t { _private: [u8; 0] }
 #[allow(non_camel_case_types)]
 pub type useconds_t = c_uint;
+pub const XDO_CLEANUP_ERROR: c_int = 2;
 #[link(name = "xdo")]
 extern "C" {
     pub fn xdo_new_with_opened_display(display: *mut Display, name: *const c_char, close: c_int) -> *mut xdo_t;
@@ -41,11 +42,13 @@ extern "C" {
     pub fn xdo_mouse_up(context: *const xdo_t, button: c_int) -> c_int;
     pub fn xdo_query_input_state(context: *const xdo_t, output: *mut XdoInputState) -> c_int;
     #[link_name = "xdo_enter_text_scalar"]
-    fn native_enter_text_scalar(context: *const xdo_t, scalar: c_uint, delay: useconds_t) -> c_int;
+    fn native_enter_text_scalar(context: *mut xdo_t, scalar: c_uint, delay: useconds_t) -> c_int;
     fn __real_xdo_new_with_opened_display(display: *mut Display, name: *const c_char, close: c_int) -> *mut xdo_t;
     fn __real_xdo_free(context: *mut xdo_t);
 }
-pub unsafe fn xdo_enter_text_scalar(context: *const xdo_t, scalar: char, delay: useconds_t) -> c_int {
+pub unsafe fn xdo_enter_text_scalar(context: *mut xdo_t, scalar: char, delay: useconds_t) -> c_int {
+    TEXT_NATIVE_CALLS.fetch_add(1, Ordering::SeqCst);
+    if REFUSE_TEXT_CLEANUP.swap(false, Ordering::SeqCst) { return XDO_CLEANUP_ERROR; }
     native_enter_text_scalar(context, scalar as c_uint, delay)
 }
 #[link(name = "X11")]
@@ -71,6 +74,8 @@ static SHIFT_AFTER_OPEN: AtomicBool = AtomicBool::new(false);
 static REFUSE_NEXT_CONSTRUCT: AtomicBool = AtomicBool::new(false);
 static PANIC_AFTER_CONSTRUCT: AtomicBool = AtomicBool::new(false);
 static PANIC_NEXT_LOG: AtomicBool = AtomicBool::new(false);
+static REFUSE_TEXT_CLEANUP: AtomicBool = AtomicBool::new(false);
+static TEXT_NATIVE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
 struct NativeLogger;
 impl log::Log for NativeLogger {
@@ -140,6 +145,21 @@ fn main() {
     log::set_max_level(log::LevelFilter::Info);
     let baseline = descriptors();
     if let Some(scenario) = std::env::args().nth(1) {
+        if scenario == "cleanup-refusal" {
+            std::env::set_var("DISPLAY", ":98");
+            let mut injector = backend::EnigoXdo::default();
+            REFUSE_TEXT_CLEANUP.store(true, Ordering::SeqCst);
+            assert!(injector.key_sequence_result("a").is_err());
+            assert!(!REFUSE_TEXT_CLEANUP.load(Ordering::SeqCst));
+            for _ in 0..8 { assert!(injector.key_sequence_result("a").is_err()); }
+            assert_eq!(TEXT_NATIVE_CALLS.load(Ordering::SeqCst), 1);
+            assert_eq!(TEXT_BORROWS.load(Ordering::SeqCst), 1);
+            drop(injector);
+            retired(baseline);
+            assert_eq!(RETIREMENTS.load(Ordering::SeqCst), 2);
+            println!("X11_ENIGO_CLEANUP_REFUSAL=pass status=injected later_requests=8 native_calls=1 contexts=2 descriptors=retired tasks=retired scope=backend-status-contract whole_app=false");
+            return;
+        }
         if matches!(scenario.as_str(), "layout" | "layout-repeat") {
             use std::io::{Read, Write};
             std::env::set_var("DISPLAY", ":98");

@@ -17,6 +17,7 @@ load_pins
 MODE=authority-smoke
 BASE_READONLY_TEST=0
 FLUTTER_TEST_PROFILE=models
+RUST_TEST_PROFILE=integration
 APPLE_CURSOR_ONLY=0
 X11_CLIPBOARD_ONLY=0
 X11_KEY_INPUT_ONLY=0
@@ -78,6 +79,14 @@ case "$#:${1:-}" in
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Android Rust-lifecycle input/run overrides are forbidden' >&2; exit 2; }
         MODE=android-rust-lifecycle-tests
+        ;;
+    2:--android-rust-lifecycle-tests)
+        [ "$2" = --clipboard ] \
+            && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
+            || { echo 'focused Rust shard or input/run authority differs' >&2; exit 2; }
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=clipboard
         ;;
     1:--android-rust-target-check)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -289,12 +298,14 @@ case "$#:${1:-}" in
         printf 'Current-source CM file replay: %s --cm-file-replay\n' "${0##*/}" >&2
         printf 'Focused production frame-queue runtime: %s --flutter-model-tests --frame-queue\n' "${0##*/}" >&2
         printf 'Focused direct-address validation: %s --flutter-model-tests --direct-address\n' "${0##*/}" >&2
+        printf 'Focused production clipboard tests: %s --android-rust-lifecycle-tests --clipboard\n' "${0##*/}" >&2
         printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --linux-pa-authority-tests | --linux-service-uid-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario {peer-lifecycle|controlled-cm} --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --linux-flutter-app-build | --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCH]\n' "${0##*/}" >&2
         exit 2
         ;;
 esac
 readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_EXPECTED_MANIFEST_SHA256
 readonly FLUTTER_TEST_PROFILE
+readonly RUST_TEST_PROFILE
 readonly FLUTTER_APP_ENGINE_COMMIT FLUTTER_APP_ENGINE_ARCHIVE_SHA256 FLUTTER_APP_ENGINE_MANIFEST_SHA256
 if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ] || [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
     [[ "$FLUTTER_APP_ENGINE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -506,7 +517,11 @@ if [ "$MODE" = debian-systemd-lifecycle ]; then
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
-    readonly VM_TIMEOUT_SECONDS=2400
+    if [ "$RUST_TEST_PROFILE" = clipboard ]; then
+        readonly VM_TIMEOUT_SECONDS=300
+    else
+        readonly VM_TIMEOUT_SECONDS=2400
+    fi
     readonly OVERLAY_SIZE=40G
     readonly VM_MEMORY=16384
 elif [ "$MODE" = linux-service-uid-tests ]; then
@@ -2053,14 +2068,23 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_INPUTS")" = \
              "$HOST_UID:$HOST_GID:700" ] \
         || fail 'sealed Android Rust-lifecycle input root metadata differs'
-    for input in \
-        "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75" \
-        "$FLUTTER_TEST_ARCHIVE:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5" \
-        "$LLVM_TEST_ARCHIVE:$SIZE_LLVM_15_0_6:$SHA256_LLVM_15_0_6" \
-        "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG" \
-        "$DEB_BUILDER_ARCHIVE:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE" \
-        "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
-        "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"; do
+    rust_lifecycle_inputs=(
+        "$CARGO_VENDOR_CONFIG:$SIZE_CARGO_VENDOR_CONFIG:$SHA256_CARGO_VENDOR_CONFIG"
+        "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE"
+        "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE"
+    )
+    rust_lifecycle_dirs=("$ONLINE_INPUTS" "$CARGO_VENDOR_ROOT")
+    rust_lifecycle_files=()
+    if [ "$RUST_TEST_PROFILE" = integration ]; then
+        rust_lifecycle_inputs+=(
+            "$RUST_TEST_ARCHIVE:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
+            "$FLUTTER_TEST_ARCHIVE:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5"
+            "$LLVM_TEST_ARCHIVE:$SIZE_LLVM_15_0_6:$SHA256_LLVM_15_0_6"
+            "$DEB_BUILDER_ARCHIVE:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE:$SHA256_DEB_BUILDER_IMAGE_ARCHIVE"
+        )
+        rust_lifecycle_dirs+=("$PUB_CACHE_ROOT")
+    fi
+    for input in "${rust_lifecycle_inputs[@]}"; do
         path=${input%%:*}
         remainder=${input#*:}
         size=${remainder%%:*}
@@ -2070,12 +2094,17 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
                  "$HOST_UID:$HOST_GID:400:1:$size" ] \
             || fail "sealed Android Rust-lifecycle input metadata differs: $path"
         verify_sha256 "$path" "$digest"
+        rust_lifecycle_files+=("$path")
     done
-    [ -f "$FRB_CODEGEN" ] && [ ! -L "$FRB_CODEGEN" ] \
-        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$FRB_CODEGEN")" = \
-             "$HOST_UID:$HOST_GID:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
-        || fail "sealed Android Rust-lifecycle executable metadata differs: $FRB_CODEGEN"
-    verify_sha256 "$FRB_CODEGEN" "$SHA256_FLUTTER_PEER_FRB_CODEGEN"
+    if [ "$RUST_TEST_PROFILE" = integration ]; then
+        [ -f "$FRB_CODEGEN" ] && [ ! -L "$FRB_CODEGEN" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$FRB_CODEGEN")" = \
+                 "$HOST_UID:$HOST_GID:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
+            || fail "sealed Android Rust-lifecycle executable metadata differs: $FRB_CODEGEN"
+        verify_sha256 "$FRB_CODEGEN" "$SHA256_FLUTTER_PEER_FRB_CODEGEN"
+        rust_lifecycle_files+=("$FRB_CODEGEN")
+    fi
+    readonly -a rust_lifecycle_inputs rust_lifecycle_dirs rust_lifecycle_files
     verify_sha512 "$VIRTIOFSD_PACKAGE" "$SHA512_VERIFIER_VM_VIRTIOFSD_PACKAGE"
     [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Package)" = virtiofsd ] \
         && [ "$(/usr/bin/dpkg-deb --field "$VIRTIOFSD_PACKAGE" Version)" = \
@@ -2086,10 +2115,12 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$CARGO_VENDOR_ROOT")" = \
              "$HOST_UID:$HOST_GID:500" ] \
         || fail 'sealed Cargo vendor root metadata differs'
-    [ -d "$PUB_CACHE_ROOT" ] && [ ! -L "$PUB_CACHE_ROOT" ] \
-        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$PUB_CACHE_ROOT")" = \
-             "$HOST_UID:$HOST_GID:500" ] \
-        || fail 'sealed Pub-cache root metadata differs'
+    if [ "$RUST_TEST_PROFILE" = integration ]; then
+        [ -d "$PUB_CACHE_ROOT" ] && [ ! -L "$PUB_CACHE_ROOT" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$PUB_CACHE_ROOT")" = \
+                 "$HOST_UID:$HOST_GID:500" ] \
+            || fail 'sealed Pub-cache root metadata differs'
+    fi
 elif [ "$MODE" = android-rust-target-check ]; then
     [ -d "$ONLINE_INPUTS" ] && [ ! -L "$ONLINE_INPUTS" ] \
         && [ "$(/usr/bin/readlink -f -- "$ONLINE_INPUTS")" = "$ONLINE_INPUTS" ] \
@@ -3182,14 +3213,10 @@ elif [ "$MODE" = apple-conform ]; then
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     focused_inputs_before="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
-            "$ONLINE_INPUTS" "$PUB_CACHE_ROOT" "$CARGO_VENDOR_ROOT"
+            "${rust_lifecycle_dirs[@]}"
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-            "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" \
-            "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" "$DEB_BUILDER_ARCHIVE" \
-            "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
-        /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" \
-            "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
-            "$DEB_BUILDER_ARCHIVE" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+            "${rust_lifecycle_files[@]}"
+        /usr/bin/sha256sum -- "${rust_lifecycle_files[@]}"
     )"
 elif [ "$MODE" = android-rust-target-check ]; then
     focused_inputs_before="$(android_rust_target_input_inventory)" \
@@ -3758,6 +3785,9 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
     guest_invocation+=" --linux-service-uid-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     guest_invocation+=" --android-rust-lifecycle-tests /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
+    if [ "$RUST_TEST_PROFILE" = clipboard ]; then
+        guest_invocation+=' --clipboard'
+    fi
 elif [ "$MODE" = android-rust-target-check ]; then
     guest_invocation+=" --android-rust-target-check /mnt/rustdesk-verifier-inputs/source.tar $RUST_TEST_SOURCE_COMMIT $RUST_TEST_SOURCE_TREE $RUST_TEST_SOURCE_ARCHIVE_SHA256"
 elif [ "$MODE" = apple-conform ]; then
@@ -4819,9 +4849,15 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     clipboard_decode_before=${clipboard_decode_artifacts[0]/CLIPBOARD_DECODE_ARTIFACT=pass /CLIPBOARD_DECODE_ARTIFACT_BEFORE=}
     clipboard_decode_before=${clipboard_decode_before% tests=13 unchanged=before-after}
     require_exact_fixed_receipt "$clipboard_decode_before" 'clipboard decode artifact before execution'
-    require_exact_fixed_receipt \
-        "ANDROID_RUST_LIFECYCLE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=88 target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 bridge_builder=$DEB_BUILDER_CONFIG_ID devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
-        'focused Android Rust-lifecycle receipt'
+    if [ "$RUST_TEST_PROFILE" = clipboard ]; then
+        require_exact_fixed_receipt \
+            "CLIPBOARD_DECODE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=13 target=linux-x86_64 scope=production-clipboard-sanitizer rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+            'focused clipboard decode receipt'
+    else
+        require_exact_fixed_receipt \
+            "ANDROID_RUST_LIFECYCLE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=88 target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 bridge_builder=$DEB_BUILDER_CONFIG_ID devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+            'focused Android Rust-lifecycle receipt'
+    fi
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Android Rust-lifecycle cloud-init completion marker'
@@ -5433,14 +5469,10 @@ elif [ "$MODE" = apple-conform ]; then
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     focused_inputs_after="$(
         /usr/bin/stat -c '%d:%i:%u:%g:%a' -- \
-            "$ONLINE_INPUTS" "$PUB_CACHE_ROOT" "$CARGO_VENDOR_ROOT"
+            "${rust_lifecycle_dirs[@]}"
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
-            "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" "$LLVM_TEST_ARCHIVE" \
-            "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" "$DEB_BUILDER_ARCHIVE" \
-            "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
-        /usr/bin/sha256sum -- "$RUST_TEST_ARCHIVE" "$FLUTTER_TEST_ARCHIVE" \
-            "$LLVM_TEST_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$FRB_CODEGEN" \
-            "$DEB_BUILDER_ARCHIVE" "$DEV_CHECK_IMAGE_ARCHIVE" "$VIRTIOFSD_PACKAGE"
+            "${rust_lifecycle_files[@]}"
+        /usr/bin/sha256sum -- "${rust_lifecycle_files[@]}"
     )"
     [ "$focused_inputs_after" = "$focused_inputs_before" ] \
         || fail 'sealed Android Rust-lifecycle inputs changed during execution'
@@ -5707,9 +5739,15 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$UID_POLICY_ARTIFACT_SHA256" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
-    printf 'ANDROID_RUST_LIFECYCLE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
-        "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
-        "$vm_elapsed_seconds"
+    if [ "$RUST_TEST_PROFILE" = clipboard ]; then
+        printf 'CLIPBOARD_DECODE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-clipboard-sanitizer network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+            "$vm_elapsed_seconds"
+    else
+        printf 'ANDROID_RUST_LIFECYCLE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
+            "$vm_elapsed_seconds"
+    fi
 elif [ "$MODE" = android-rust-target-check ]; then
     printf 'ANDROID_RUST_TARGET_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=aarch64-linux-android profile=focused-target-check network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-cargo-ndk-check cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \

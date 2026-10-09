@@ -12,6 +12,7 @@ FLUTTER_APP_RECIPE_SHA256=
 FLUTTER_APP_MANIFEST_SHA256=
 FLUTTER_APP_ENGINE_CONTEXT=
 FLUTTER_TEST_PROFILE=models
+RUST_TEST_PROFILE=integration
 APPLE_CURSOR_ONLY=0
 X11_KEY_INPUT_ONLY=0
 case "$#:${8:-}" in
@@ -62,6 +63,11 @@ case "$#:${8:-}" in
         ;;
     12:--android-rust-lifecycle-tests)
         MODE=android-rust-lifecycle-tests
+        ;;
+    13:--android-rust-lifecycle-tests)
+        [ "${13}" = --clipboard ] || exit 2
+        MODE=android-rust-lifecycle-tests
+        RUST_TEST_PROFILE=clipboard
         ;;
     12:--android-rust-target-check)
         MODE=android-rust-target-check
@@ -143,10 +149,12 @@ case "$#:${8:-}" in
         echo 'CM file integration replay accepts --cm-file-replay SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused Flutter queue shard appends --frame-queue to --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused Flutter address shard appends --direct-address to that same source-bound invocation.' >&2
+        echo 'The focused Rust clipboard shard appends --clipboard to --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused macOS cursor compiler appends --cursor-compile to --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         exit 2
         ;;
 esac
+readonly RUST_TEST_PROFILE
 readonly DOCKER_ARCHIVE=$1
 readonly ENTRY_PREFLIGHT=$2
 readonly GIT_PACKAGE=/mnt/rustdesk-verifier-inputs/git.deb
@@ -2241,9 +2249,9 @@ run_focused_rust_tests() {
     local load_output container_status=0 inspect namespace_inspect result_line passed tests_passed=0
     local container_name memory memory_bytes tmpfs_size source_fingerprints
     local source_archive_sha source_before input_mount_options pub_receipt post_pub_receipt
-    local path remainder size digest
+    local path remainder size digest test_name expected_groups
     local uid_test_artifact_sha hbb_test_artifact_sha
-    local -a required_tests result_lines toolchain_mount bridge_mounts bridge_inputs
+    local -a required_tests result_lines toolchain_mount bridge_mounts bridge_inputs clipboard_tests
     local -a pa_mounts=() pa_env=() dependency_mounts=()
 
     [ "$(stat -c '%u:%g:%a' -- "$SOCK")" = 0:1000:660 ] \
@@ -2418,6 +2426,7 @@ run_focused_rust_tests() {
         image_index=$DEV_CHECK_IMAGE_ID
         toolchain_mode=devcheck-image
         toolchain_mount=()
+        bridge_mounts=()
         source_fingerprints=(
             Cargo.lock
             flutter/pubspec.lock
@@ -2536,6 +2545,17 @@ run_focused_rust_tests() {
             flutter::mobile_session_lifecycle_tests::r_s11iw_stream_replacement_refusal_retires_only_its_exact_rgba_session
             flutter::mobile_session_lifecycle_tests::r_s11ex_desktop_tab_move_requires_live_source_and_preserves_peer_on_old_close
         )
+        if [ "$RUST_TEST_PROFILE" = clipboard ]; then
+            clipboard_tests=()
+            for test_name in "${required_tests[@]}"; do
+                case "$test_name" in
+                    clipboard::native_clipboard_limit_tests::*) clipboard_tests+=("$test_name") ;;
+                esac
+            done
+            [ "${#clipboard_tests[@]}" -eq 13 ] \
+                || fail 'focused clipboard test inventory differs'
+            required_tests=("${clipboard_tests[@]}")
+        fi
     fi
 
     [[ "$RUST_TEST_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -2557,7 +2577,7 @@ run_focused_rust_tests() {
         -C "$source_root" \
         || fail 'cannot extract the exact focused-test source archive'
     chown -R 1000:1000 "$source_root"
-    if [ "$MODE" = android-rust-lifecycle-tests ]; then
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = integration ]; then
         install -o 1000 -g 1000 -m 0444 /dev/null \
             "$source_root/src/bridge_generated.rs"
         install -o 1000 -g 1000 -m 0444 /dev/null \
@@ -2673,7 +2693,7 @@ run_focused_rust_tests() {
         [ "$load_output" = "loaded and verified deb-builder $DEB_BUILDER_IMAGE_ID" ] \
             || fail "Debian-builder image receipt differs: $load_output"
     else
-        if [ "$MODE" = android-rust-lifecycle-tests ]; then
+        if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = integration ]; then
             bridge_inputs=(
                 "$rust_archive:$SIZE_RUST_1_75:$SHA256_RUST_1_75"
                 "$flutter_archive:$SIZE_FLUTTER_3_24_5:$SHA256_FLUTTER_3_24_5"
@@ -2693,7 +2713,7 @@ run_focused_rust_tests() {
                 && [ "$(sha256sum "$path" | awk '{ print $1 }')" = "$digest" ] \
                 || fail "sealed Android Rust bridge input differs: $path"
         done
-        if [ "$MODE" = android-rust-lifecycle-tests ]; then
+        if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = integration ]; then
             [ "$(stat -c '%u:%g:%a:%h:%s' -- "$frb_codegen")" = \
               "1000:1000:500:1:$SIZE_FLUTTER_PEER_FRB_CODEGEN" ] \
                 && [ "$(sha256sum "$frb_codegen" | awk '{ print $1 }')" = \
@@ -2739,7 +2759,7 @@ run_focused_rust_tests() {
         )" || fail 'development-check image verification/load failed'
         [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
             || fail "development-check image receipt differs: $load_output"
-        if [ "$MODE" = android-rust-lifecycle-tests ]; then
+        if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = integration ]; then
             generate_focused_rust_flutter_bridge
             bridge_mounts=(
                 --mount "type=bind,source=$ROOT/focused-rust-bridge/bridge_generated.rs,target=/source/src/bridge_generated.rs,readonly"
@@ -2765,6 +2785,7 @@ run_focused_rust_tests() {
             --security-opt=apparmor=docker-default \
             --user 1000:1000 \
             --env "RUST_TEST_MODE=$MODE" \
+            --env "RUST_TEST_PROFILE=$RUST_TEST_PROFILE" \
             --env "RUST_TOOLCHAIN_MODE=$toolchain_mode" \
             --env RUSTDESK_CANARY_OFFLINE=1 \
             --mount "type=bind,source=$source_root,target=/source,readonly" \
@@ -2867,8 +2888,11 @@ run_focused_rust_tests() {
                         /cargo-target/uid-policy-tests --test-threads=1 --color never
                         ;;
                     android-rust-lifecycle-tests)
+                        clipboard_build_started=$SECONDS
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             --no-run --color never
+                        printf "CLIPBOARD_DECODE_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
+                            "$((SECONDS - clipboard_build_started))"
                         clipboard_executable=
                         for candidate in /cargo-target/debug/deps/librustdesk-*; do
                             [[ "$candidate" =~ ^/cargo-target/debug/deps/librustdesk-[0-9a-f]{16}$ ]] || continue
@@ -2888,6 +2912,9 @@ run_focused_rust_tests() {
                         [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
                         printf "CLIPBOARD_DECODE_ARTIFACT=pass sha256=%s executable=%s tests=13 unchanged=before-after\n" \
                             "$clipboard_artifact_sha" "$clipboard_executable"
+                        if [ "$RUST_TEST_PROFILE" = clipboard ]; then
+                            exit 0
+                        fi
                         python3 -I -S /source/scripts/verify-linux-service-password-ipc.py --repo /source
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             ipc::uid_policy::tests::r_s11e60_ --color never -- --test-threads=1
@@ -2942,6 +2969,9 @@ run_focused_rust_tests() {
         "$CONTAINER_ID")"
     [ "$namespace_inspect" = 'false||private||private|[]|{}' ] \
         || fail "focused Rust-test container namespace/device/port authority differs: $namespace_inspect"
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
+        printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=13 bridge=absent\n'
+    fi
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
     [ "$container_status" -eq 0 ] \
@@ -3007,13 +3037,19 @@ run_focused_rust_tests() {
         [[ "$uid_test_artifact_sha" =~ ^[0-9a-f]{64}$ ]] \
             || fail 'compiled UID-policy test artifact digest is malformed'
     else
-        [ "${#result_lines[@]}" -eq 14 ] \
+        expected_groups=14
+        if [ "$RUST_TEST_PROFILE" = clipboard ]; then
+            expected_groups=1
+        fi
+        [ "${#result_lines[@]}" -eq "$expected_groups" ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
         [ "$(grep -Ec '^CLIPBOARD_DECODE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=13 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CLIPBOARD_DECODE_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'clipboard decode test artifact receipt is absent, malformed or duplicated'
-        grep -Fxq 'verify-linux-service-password-ipc: ok' "$output" \
-            || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }
+        if [ "$RUST_TEST_PROFILE" = integration ]; then
+            grep -Fxq 'verify-linux-service-password-ipc: ok' "$output" \
+                || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }
+        fi
     fi
     [ "$(grep -Ec '^test result: ' "$output")" -eq "${#result_lines[@]}" ] \
         || fail 'focused Rust-test output contains a non-success result summary'
@@ -3036,7 +3072,7 @@ run_focused_rust_tests() {
           sha256sum "${source_fingerprints[@]}"
       )" ] \
         || fail 'focused Rust-test source inputs changed during execution'
-    if [ "$MODE" = android-rust-lifecycle-tests ]; then
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = integration ]; then
         post_pub_receipt="$(
             setpriv --reuid=1000 --regid=1000 --clear-groups \
                 env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
@@ -3049,7 +3085,7 @@ run_focused_rust_tests() {
     stop_docker_authority
     umount "$inputs" || fail 'cannot retire the sealed focused-test input mount'
     SEALED_INPUTS_MOUNTED=0
-    if [ "$MODE" = android-rust-lifecycle-tests ]; then
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = integration ]; then
         grep -E '^test ipc::uid_policy::tests::r_s11e60_.* \.\.\. ok$|^verify-linux-service-password-ipc: ok$' "$output"
     elif [ "$MODE" = linux-service-uid-tests ]; then
         grep -E '^test uid_policy::tests::.* \.\.\. ok$|^verify-linux-service-password-ipc: ok$' "$output"
@@ -3089,11 +3125,19 @@ run_focused_rust_tests() {
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
         grep -E '^CLIPBOARD_DECODE_ARTIFACT_BEFORE=sha256=' "$output"
         grep -E '^CLIPBOARD_DECODE_ARTIFACT=pass ' "$output"
-        printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
-            "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
-            "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
-            "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_PUB_CACHE_CLOSURE_V1" \
-            "$DEB_BUILDER_CONFIG_ID" "$image_index" "$image_config"
+        if [ "$RUST_TEST_PROFILE" = clipboard ]; then
+            grep -E '^CLIPBOARD_DECODE_BUILD=pass elapsed_seconds=[0-9]+ features=linux-pkg-config$' "$output"
+            grep -E '^test clipboard::native_clipboard_limit_tests::.* \.\.\. ok$' "$output"
+            printf 'CLIPBOARD_DECODE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-clipboard-sanitizer rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        else
+            printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_PUB_CACHE_CLOSURE_V1" \
+                "$DEB_BUILDER_CONFIG_ID" "$image_index" "$image_config"
+        fi
     fi
 }
 

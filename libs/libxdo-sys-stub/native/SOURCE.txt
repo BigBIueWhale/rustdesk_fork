@@ -28,9 +28,10 @@ queries a complete XKB snapshot only for unmapped symbols. A row must have no
 symbols, real/virtual modifiers, non-default behavior or meaningful actions.
 It installs only that row with ONE_LEVEL symbols, no actions and explicit
 interpretation/behavior/repeat/type protection, and checks the server map before
-input. Both legs retain the lease. Original symbols, groups, type indices and
-actions are restored under protection; original explicit flags are restored in
-a separate request. Each restoration phase requires readback. An unconfirmed
+input. Both legs retain the lease. Original symbols, groups and type indices
+are restored and read back under protection before any original action array
+is restored in its own checked request. Original explicit flags are restored
+in a separate request. Each restoration phase requires readback. An unconfirmed
 restoration retains the original descriptor on its context and blocks further
 text; destruction retries restoration and diagnoses any remaining uncertainty.
 Enigo refuses subsequent text after the distinct cleanup-error status.

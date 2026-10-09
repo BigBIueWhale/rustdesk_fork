@@ -119,6 +119,12 @@ int __wrap_XChangeKeyboardMapping(Display *display, int first, int width, KeySym
 Bool __wrap_XkbChangeMap(Display *display, XkbDescPtr map, XkbMapChangesPtr changes) {
   if (observe && display == product_display) {
     if (setmap_fault && mapping_changes == 0) return False;
+    if ((changes->changed & (XkbKeySymsMask | XkbKeyActionsMask))
+        == (XkbKeySymsMask | XkbKeyActionsMask)) {
+      for (int code = changes->first_key_act;
+           code < changes->first_key_act + changes->num_key_acts; code++)
+        require(!XkbKeyHasActions(map, code), "action array sent before symbol width readback");
+    }
     if (changes->changed & XkbKeySymsMask) mapping_changes++;
   }
   return __real_XkbChangeMap(display, map, changes);
@@ -531,71 +537,29 @@ static void same_components(Display *display, XkbDescPtr expected) {
   XkbFreeKeyboard(actual, 0, True);
 }
 
-static void scratch_components(xdo_t *input, Display *observer, Window window, int code) {
-  XkbDescPtr baseline = component_snapshot(observer);
-  XkbMapChangesRec changes = {0};
-  changes.changed = XkbKeySymsMask | XkbKeyActionsMask | XkbKeyBehaviorsMask
-      | XkbExplicitComponentsMask | XkbModifierMapMask | XkbVirtualModMapMask;
-  changes.first_key_sym = changes.first_key_act = changes.first_key_behavior
-      = changes.first_key_explicit = changes.first_modmap_key = changes.first_vmodmap_key = code;
-  changes.num_key_syms = changes.num_key_acts = changes.num_key_behaviors
-      = changes.num_key_explicit = changes.num_modmap_keys = changes.num_vmodmap_keys = 1;
-  for (int scenario = 0; scenario < 5; scenario++) {
-    XkbDescPtr fixture = component_snapshot(observer);
-    int types[] = {XkbTwoLevelIndex, XkbAlphabeticIndex};
-    XkbMapChangesRec resize = {0};
-    require(XkbChangeTypesOfKey(fixture, code, 2, XkbGroup1Mask | XkbGroup2Mask,
-                               types, &resize) == Success, "component fixture group resize failed");
-    memset(XkbKeySymsPtr(fixture, code), 0, XkbKeyNumSyms(fixture, code) * sizeof(KeySym));
-    fixture->server->explicit[code] = XkbAllExplicitMask;
-    XkbAction *actions = XkbResizeKeyActions(fixture, code, XkbKeyNumSyms(fixture, code));
-    require(actions != NULL, "component fixture action storage unavailable");
-    memset(actions, 0, XkbKeyNumSyms(fixture, code) * sizeof(XkbAction));
-    if (scenario == 1) fixture->map->modmap[code] = ShiftMask;
-    if (scenario == 2) fixture->server->vmodmap[code] = 1;
-    if (scenario == 3) fixture->server->behaviors[code].type = XkbKB_Lock;
-    if (scenario == 4) actions[0].type = XkbSA_SetMods;
-    require(XkbChangeMap(observer, fixture, &changes), "component fixture not sent");
-    XSync(observer, False);
-    XkbFreeKeyboard(fixture, 0, True);
-    XkbDescPtr configured = component_snapshot(observer);
-    require(XkbKeyNumGroups(configured, code) == 2 && XkbKeyGroupsWidth(configured, code) == 2
-            && configured->server->explicit[code] == XkbAllExplicitMask
-            && configured->map->modmap[code] == (scenario == 1 ? ShiftMask : 0)
-            && configured->server->vmodmap[code] == (scenario == 2 ? 1 : 0)
-            && configured->server->behaviors[code].type == (scenario == 3 ? XkbKB_Lock : XkbKB_Default)
-            && XkbKeyHasActions(configured, code)
-            && XkbKeyActionsPtr(configured, code)[0].type == (scenario == 4 ? XkbSA_SetMods : XkbSA_NoAction),
-            "native server component fixture differs");
-    for (int round = 0; round < 4; round++) {
-      queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
-      map_readbacks = 0;
-      observe = 1;
-      int status = xdo_enter_text_scalar(input, 0x1f642, 0);
-      observe = 0;
-      require(status == (scenario == 0 ? XDO_SUCCESS : XDO_ERROR)
-              && queries == 1 && frees == 1 && owned_query == NULL && map_live == 0
-              && input_calls == (scenario == 0 ? 2 : 0)
-              && group_changes == (scenario == 0 ? 4 : 0)
-              && mapping_changes == (scenario == 0 ? 2 : 0)
-              && map_readbacks == (scenario == 0 ? 3 : 0), "component admission/effect census differs");
-      events(observer, window, code, scenario == 0 ? 2 : 0);
-      same_components(observer, configured);
-    }
-    XkbFreeKeyboard(configured, 0, True);
-    unsigned flags = baseline->server->explicit[code];
-    baseline->server->explicit[code] = XkbAllExplicitMask;
-    require(XkbChangeMap(observer, baseline, &changes), "component fixture original map not sent");
-    baseline->server->explicit[code] = flags;
-    XkbMapChangesRec thaw = {0};
-    thaw.changed = XkbExplicitComponentsMask;
-    thaw.first_key_explicit = code;
-    thaw.num_key_explicit = 1;
-    require(XkbChangeMap(observer, baseline, &thaw), "component fixture original overrides not sent");
-    XSync(observer, False);
-    same_components(observer, baseline);
-  }
-  for (int failure = 0; failure < 4; failure++) {
+static void component_row(Display *display, XkbDescPtr map, XkbMapChangesRec changes, int code) {
+  XkbMapChangesRec symbols = changes;
+  symbols.changed = XkbKeySymsMask | XkbExplicitComponentsMask;
+  require(XkbChangeMap(display, map, &symbols), "component symbols not sent");
+  XkbDescPtr actual = component_snapshot(display);
+  XkbSymMapPtr a = &actual->map->key_sym_map[code], b = &map->map->key_sym_map[code];
+  require(a->group_info == b->group_info && a->width == b->width
+          && !memcmp(a->kt_index, b->kt_index, sizeof(a->kt_index))
+          && !memcmp(XkbKeySymsPtr(actual, code), XkbKeySymsPtr(map, code),
+                     XkbKeyNumSyms(map, code) * sizeof(KeySym))
+          && actual->server->explicit[code] == XkbAllExplicitMask,
+          "component symbol width not established before actions");
+  XkbFreeKeyboard(actual, 0, True);
+  changes.changed &= ~XkbKeySymsMask;
+  changes.num_key_syms = 0;
+  require(XkbChangeMap(display, map, &changes), "component server map not sent");
+  XSync(display, False);
+}
+
+static xdo_t *scratch_failures(xdo_t *input, Display *observer, Window window,
+                               int code, XkbDescPtr baseline) {
+  int failures = XkbKeyHasActions(baseline, code) ? 5 : 4;
+  for (int failure = 0; failure < failures; failure++) {
     for (int round = 0; round < 4; round++) {
       queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
       map_readbacks = 0;
@@ -636,13 +600,83 @@ static void scratch_components(xdo_t *input, Display *observer, Window window, i
       observe = 0;
       events(observer, window, code, 2);
       same_components(observer, baseline);
+      printf("XDO_SCRATCH_RESTORE_CASE=pass actions=%d failure=%d round=%d cleanup_pending=%d\n",
+             failures == 5, failure, round, cleanup_failed);
     }
   }
+  return input;
+}
+
+static void scratch_components(xdo_t *input, Display *observer, Window window, int code) {
+  XkbDescPtr baseline = component_snapshot(observer);
+  XkbMapChangesRec changes = {0};
+  changes.changed = XkbKeySymsMask | XkbKeyActionsMask | XkbKeyBehaviorsMask
+      | XkbExplicitComponentsMask | XkbModifierMapMask | XkbVirtualModMapMask;
+  changes.first_key_sym = changes.first_key_act = changes.first_key_behavior
+      = changes.first_key_explicit = changes.first_modmap_key = changes.first_vmodmap_key = code;
+  changes.num_key_syms = changes.num_key_acts = changes.num_key_behaviors
+      = changes.num_key_explicit = changes.num_modmap_keys = changes.num_vmodmap_keys = 1;
+  for (int scenario = 0; scenario < 5; scenario++) {
+    XkbDescPtr fixture = component_snapshot(observer);
+    int types[] = {XkbTwoLevelIndex, XkbAlphabeticIndex};
+    XkbMapChangesRec resize = {0};
+    require(XkbChangeTypesOfKey(fixture, code, 2, XkbGroup1Mask | XkbGroup2Mask,
+                               types, &resize) == Success, "component fixture group resize failed");
+    memset(XkbKeySymsPtr(fixture, code), 0, XkbKeyNumSyms(fixture, code) * sizeof(KeySym));
+    fixture->server->explicit[code] = XkbAllExplicitMask;
+    XkbAction *actions = XkbResizeKeyActions(fixture, code, XkbKeyNumSyms(fixture, code));
+    require(actions != NULL, "component fixture action storage unavailable");
+    memset(actions, 0, XkbKeyNumSyms(fixture, code) * sizeof(XkbAction));
+    if (scenario == 1) fixture->map->modmap[code] = ShiftMask;
+    if (scenario == 2) fixture->server->vmodmap[code] = 1;
+    if (scenario == 3) fixture->server->behaviors[code].type = XkbKB_Lock;
+    if (scenario == 4) actions[0].type = XkbSA_SetMods;
+    component_row(observer, fixture, changes, code);
+    XkbFreeKeyboard(fixture, 0, True);
+    XkbDescPtr configured = component_snapshot(observer);
+    require(XkbKeyNumGroups(configured, code) == 2 && XkbKeyGroupsWidth(configured, code) == 2
+            && configured->server->explicit[code] == XkbAllExplicitMask
+            && configured->map->modmap[code] == (scenario == 1 ? ShiftMask : 0)
+            && configured->server->vmodmap[code] == (scenario == 2 ? 1 : 0)
+            && configured->server->behaviors[code].type == (scenario == 3 ? XkbKB_Lock : XkbKB_Default)
+            && XkbKeyHasActions(configured, code)
+            && XkbKeyActionsPtr(configured, code)[0].type == (scenario == 4 ? XkbSA_SetMods : XkbSA_NoAction),
+            "native server component fixture differs");
+    for (int round = 0; round < 4; round++) {
+      queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+      map_readbacks = 0;
+      observe = 1;
+      int status = xdo_enter_text_scalar(input, 0x1f642, 0);
+      observe = 0;
+      require(status == (scenario == 0 ? XDO_SUCCESS : XDO_ERROR)
+              && queries == 1 && frees == 1 && owned_query == NULL && map_live == 0
+              && input_calls == (scenario == 0 ? 2 : 0)
+              && group_changes == (scenario == 0 ? 4 : 0)
+              && mapping_changes == (scenario == 0 ? 2 : 0)
+              && map_readbacks == (scenario == 0 ? 4 : 0), "component admission/effect census differs");
+      events(observer, window, code, scenario == 0 ? 2 : 0);
+      same_components(observer, configured);
+    }
+    if (scenario == 0) input = scratch_failures(input, observer, window, code, configured);
+    XkbFreeKeyboard(configured, 0, True);
+    unsigned flags = baseline->server->explicit[code];
+    baseline->server->explicit[code] = XkbAllExplicitMask;
+    component_row(observer, baseline, changes, code);
+    baseline->server->explicit[code] = flags;
+    XkbMapChangesRec thaw = {0};
+    thaw.changed = XkbExplicitComponentsMask;
+    thaw.first_key_explicit = code;
+    thaw.num_key_explicit = 1;
+    require(XkbChangeMap(observer, baseline, &thaw), "component fixture original overrides not sent");
+    XSync(observer, False);
+    same_components(observer, baseline);
+  }
+  input = scratch_failures(input, observer, window, code, baseline);
   product_display = NULL;
   xdo_free(input);
   XkbFreeKeyboard(baseline, 0, True);
   require(map_live == 0 && map_gets == map_releases, "complete descriptor census differs");
-  puts("XDO_SCRATCH_COMPONENTS_NATIVE=pass candidates=5 repeats=4 accepted=4 refused=16 mapping_faults=4 fault_repeats=4 recovery=16 cleanup_pending=8 later_text=refused destructor=restored full_xkb=preserved snapshots=retired live_peak=2 provider=current-only whole_app=false");
+  puts("XDO_SCRATCH_COMPONENTS_NATIVE=pass candidates=5 repeats=4 accepted=4 refused=16 mapping_faults=9 fault_repeats=4 recovery=36 cleanup_pending=20 later_text=refused destructor=restored full_xkb=preserved snapshots=retired live_peak=2 provider=current-only whole_app=false");
 }
 
 static void scratch_click(xdo_t *input, Display *observer, Window window,

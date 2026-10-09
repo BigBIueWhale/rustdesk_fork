@@ -281,13 +281,27 @@ static int _xdo_restore_scratch(xdo_t *xdo) {
   int code = xdo->scratch_keycode;
   XkbMapChangesRec changes = _xdo_scratch_changes(code);
   unsigned char explicit_flags = original->server->explicit[code];
-  /* Xlib recomputes actions: keep interpretation/repeat/behavior protected
-   * until the original symbols and actions have been read back. */
-  original->server->explicit[code] = XkbAllExplicitMask;
-  int sent = XkbChangeMap(xdo->xdpy, original, &changes);
-  original->server->explicit[code] = explicit_flags;
-  if (!sent || !_xdo_scratch_matches(xdo, original, XkbAllExplicitMask))
+  XkbDescRec protected = *original;
+  XkbServerMapRec server = *original->server;
+  unsigned short actions[256] = {0};
+  unsigned char flags[256] = {0};
+  flags[code] = XkbAllExplicitMask;
+  server.key_acts = actions;
+  server.explicit = flags;
+  protected.server = &server;
+  /* Establish and read back the symbol width before sending an action array.
+   * Keep interpretation/repeat/behavior protected throughout restoration. */
+  if (!XkbChangeMap(xdo->xdpy, &protected, &changes)
+      || !_xdo_scratch_matches(xdo, &protected, XkbAllExplicitMask))
     return XDO_CLEANUP_ERROR;
+  if (XkbKeyHasActions(original, code)) {
+    server.key_acts = original->server->key_acts;
+    changes.changed = XkbKeyActionsMask | XkbExplicitComponentsMask;
+    changes.num_key_syms = 0;
+    if (!XkbChangeMap(xdo->xdpy, &protected, &changes)
+        || !_xdo_scratch_matches(xdo, original, XkbAllExplicitMask))
+      return XDO_CLEANUP_ERROR;
+  }
   changes.changed = XkbExplicitComponentsMask;
   changes.num_key_syms = changes.num_key_acts = 0;
   if (!XkbChangeMap(xdo->xdpy, original, &changes)

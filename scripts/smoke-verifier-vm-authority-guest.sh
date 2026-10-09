@@ -2329,6 +2329,8 @@ run_focused_rust_tests() {
             fs::tests::receive_write_completes_the_full_file_list_with_an_empty_last_file
             fs::tests::receive_write_completes_empty_and_explicitly_skipped_file_lists
             fs::tests::send_open_failure_keeps_the_failed_file_number
+            fs::tests::send_file_job_refuses_a_start_index_outside_its_native_list
+            fs::tests::send_file_job_preserves_valid_start_resume_and_exact_end
             fs::tests::send_resume_keeps_the_announced_source_after_path_replacement
             fs::tests::send_resume_bounds_the_offset_by_the_announced_source
         )

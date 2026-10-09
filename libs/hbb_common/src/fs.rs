@@ -6561,6 +6561,127 @@ mod tests {
         assert!(digest.exists());
     }
 
+    #[test]
+    fn send_file_job_refuses_a_start_index_outside_its_native_list() {
+        let tmp = TestTempDir::new("rustdesk_send_index_admission");
+        let directory = tmp.join("files");
+        let single = tmp.join("single.zip");
+        let empty = tmp.join("empty");
+        std::fs::create_dir_all(&directory).expect("create send directory");
+        std::fs::create_dir(&empty).expect("create empty send directory");
+        std::fs::write(directory.join("first.zip"), b"first").expect("create first source");
+        std::fs::write(directory.join("second.zip"), b"second").expect("create second source");
+        std::fs::write(&single, b"single").expect("create single source");
+        let mut admitted = Vec::new();
+
+        for (path, count) in [(&directory, 2), (&single, 1), (&empty, 0)] {
+            for file_num in [count + 1, i32::MAX, -1, i32::MIN] {
+                let result = TransferJob::new_read_with_budget(
+                    174,
+                    JobType::Generic,
+                    String::new(),
+                    DataSource::FilePath(path.clone()),
+                    file_num,
+                    false,
+                    false,
+                    false,
+                    FileEnumerationBudget::for_max_entries(8),
+                );
+                if result.is_ok() {
+                    admitted.push((path.clone(), file_num));
+                }
+            }
+        }
+
+        assert_eq!(
+            std::fs::read(&single).expect("read unchanged source"),
+            b"single"
+        );
+        assert_eq!(
+            std::fs::read(directory.join("first.zip")).expect("read unchanged first source"),
+            b"first"
+        );
+        assert_eq!(
+            std::fs::read(directory.join("second.zip")).expect("read unchanged second source"),
+            b"second"
+        );
+        assert!(empty.is_dir());
+        assert!(
+            admitted.is_empty(),
+            "invalid send indexes were admitted: {admitted:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_file_job_preserves_valid_start_resume_and_exact_end() {
+        let tmp = TestTempDir::new("rustdesk_send_index_valid");
+        let directory = tmp.join("files");
+        let single = tmp.join("single.zip");
+        let empty = tmp.join("empty");
+        std::fs::create_dir_all(&directory).expect("create send directory");
+        std::fs::create_dir(&empty).expect("create empty send directory");
+        std::fs::write(directory.join("first.zip"), b"first").expect("create first source");
+        std::fs::write(directory.join("second.zip"), b"second").expect("create second source");
+        std::fs::write(&single, b"single").expect("create single source");
+
+        for (path, count) in [(&directory, 2), (&single, 1), (&empty, 0)] {
+            for start in 0..=count {
+                let mut job = TransferJob::new_read(
+                    175,
+                    JobType::Generic,
+                    String::new(),
+                    DataSource::FilePath(path.clone()),
+                    start,
+                    false,
+                    false,
+                    false,
+                )
+                .expect("admit a valid start or exact end index");
+                assert_eq!(job.files().len(), count as usize);
+                assert!(job.data_stream.is_none());
+                let mut sent = 0;
+                for file_num in start..count {
+                    let entry = &job.files()[file_num as usize];
+                    let expected = std::fs::read(TransferJob::join(path, &entry.name))
+                        .expect("read the exact enumerated source");
+                    assert!(!expected.is_empty());
+                    job.init_data_stream_for_cm()
+                        .await
+                        .expect("open current source");
+                    let block = job
+                        .read()
+                        .await
+                        .expect("read source")
+                        .expect("source block");
+                    assert_eq!(block.id, 175);
+                    assert_eq!(block.file_num, file_num);
+                    assert!(!block.compressed);
+                    assert_eq!(block.data.as_ref(), expected.as_slice());
+                    sent += expected.len() as u64;
+                    let eof = job
+                        .read()
+                        .await
+                        .expect("read source EOF")
+                        .expect("EOF block");
+                    assert_eq!(eof.file_num, file_num);
+                    assert!(eof.data.is_empty());
+                    assert_eq!(job.file_num(), file_num + 1);
+                }
+                assert!(job
+                    .init_data_stream_for_cm()
+                    .await
+                    .expect("exact list end")
+                    .is_none());
+                assert!(job.read().await.expect("complete exact list").is_none());
+                assert_eq!(job.file_num(), count);
+                assert!(job.data_stream.is_none());
+                assert!(job.job_completed());
+                assert_eq!(job.finished_size(), sent);
+                assert_eq!(job.transferred(), sent);
+            }
+        }
+    }
+
     #[tokio::test]
     async fn send_resume_seeks_the_source_not_receive_sidecars() {
         let tmp = TestTempDir::new("rustdesk_send_resume");

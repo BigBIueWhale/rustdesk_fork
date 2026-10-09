@@ -499,16 +499,19 @@ No Linux component result is Windows acceptance.
 
 ### Keyboard state and Linux Enigo XDO — admission before input; integration OPEN
 
-**Accepted-press ownership (native acceptance pending):** provider23 replaces
+**Accepted-press ownership:** provider23 replaces
 the void text emitter with checked acquisition and a fixed nine-code context
 stack. Only accepted presses enter it; acquisition refusal stops new presses,
 and retirement releases the stack in reverse order. A failed release retains
 the unresolved prefix and any scratch mapping, returns the cleanup error and
 blocks later native text before queries/effects. Destruction retries keys before
 scratch restoration and Display close. The existing Enigo child owner retains
-this cleanup state through normal Drop/unwind. The new current-provider native
-failure cases have not run yet; provider22's named receipts below are historical.
-Persistent final refusal, fatal native failures and application retirement remain OPEN.
+this cleanup state through normal Drop/unwind. The current-provider native
+fixture passes 144 controlled submission cases, 168 no-emission refusals,
+84 pending owners, 252 blocked later requests, 144 recoveries and 920 real events.
+Complete backend/provider composition passes sixteen map/key-release refusal
+cases across normal Drop and unwind. Persistent final refusal, fatal native
+failures and application retirement remain OPEN.
 
 **Unique physical-key admission:** provider23's
 `_xdo_get_key_modifiers` admits the resolved main key and held snapshot together.
@@ -520,8 +523,8 @@ The current-provider native fixture passed 32 shared-modifier pairs/96 real even
 same-context text. Four preheld subsets (none/shared/unrelated-b/both), two delays
 and four repeats preserve full XKB state/components and sampled FD/task baselines.
 The existing distinct-modifier schedule passes in the same transaction.
-The native successful-role evidence below is from provider22; checked submission
-and transient partial-release retirement await provider23 acceptance.
+Checked submission and transient partial-release retirement pass the named
+provider23 component schedule; irreversible/global cleanup remains OPEN.
 
 **Temporary modifier lifetime:** temporary modifiers press before the main key,
 remain live through its release, and retire in reverse press order. The existing
@@ -530,7 +533,7 @@ A two-modifier native layout passed 32 pairs/128 events with both main symbols
 and exact logical keys observed at every leg, across four preheld subsets,
 zero/12,000-microsecond delay and four repeats. Full XKB components, preheld
 state and sampled descriptor/task baselines restore. This accepts the successful
-private-provider schedule below; new failure-path acceptance, global/concurrent ownership,
+private-provider schedule below; global/concurrent ownership,
 widget/IME consumption and application lifecycle remain OPEN.
 
 **Current disposition:** private provider `3.20160805.1-rustdesk23` admits
@@ -556,16 +559,16 @@ installed-service, resources and release acceptance remain OPEN.
 | Closed input surface | The provider exposes eleven context/version/input/cursor-state APIs. Keyboard and button input use XTEST on the retained Display, with server-owned focus/pointer/grab routing. Caller-Window/directed XSendEvent input, focus-routing helpers, modifier get/clear/restore APIs, window/desktop/property/search/termination APIs, compound parsing, alias/list/text-language APIs and Enigo DSL are absent. The sole keyboard operation is `xdo_enter_text_scalar(context, scalar, delay)`, with a Rust `char` facade. Generic `xdo_send_key`, `XdoKey`, `XdoKeyAction`, raw keycodes, caller-selected keysyms and separate Down/Up actions are deleted without aliases. Unused per-symbol Unicode storage/conversion and its xkbcommon dependency are removed. |
 | State admission | `native/xdo.c::xdo_query_input_state` borrows XGetXCBConnection from the retained Display, keeps Xlib as event-queue owner, and checks sequential pointer/keymap replies, reply errors/shapes and connection health. Valid different-screen pointer replies retain their button mask. CapsLock/NumLock use checked named XKB indicators; native keycode range and lock outputs are validated. Reply/error allocations retire and output is assigned only after all checks. Missing loader/provider/query state returns an error without publishing a partial value. Linux modifier codes come from the pinned rdev mapping used by injection. X11 state is server logical state, and separate queries are not atomic. Named indicators are native configuration, not proof of global key ownership. |
 | Closed state and callers | `libs/enigo/src/keyboard_state.rs` distinguishes eight exact modifier identities from family unions and represents macOS NumLock absence explicitly. Windows checks GetKeyboardState before copying exact side/toggle bits; its documented thread-queue semantics still need native-context acceptance. macOS retains its existing event source, rejects known source or virtual-injector absence, and uses documented HID Boolean queries, which have no independent error channel. `src/keyboard.rs` preflights before modifier/release-cache mutation and event publication. `src/server/input_service.rs` preflights before lock synchronization, modifier release/press planning and mode dispatch; Windows semantic sequences resolve required foreground/layout/key mappings before effects. Accepted local operations update only the retained operation plan, not a claimed native acknowledgment. Windows mouse publication likewise preflights the required Meta family state. Native application admission/failure/cleanup remains unproved. |
-| Text-request state and modifier admission | `native/xdo.c::xdo_enter_text_scalar` rejects invalid Unicode scalars and unsupported C0/C1 controls before native queries/effects, then checks one successful, in-range XKB state and one logical-key snapshot from its retained Display's XCB connection. The private `_xdo_query_keys` helper also supplies state queries; connection/reply error, shape or health failure refuses and retires every returned allocation before effects. Held mapped keys refuse. Character entries retain their native `group_info`; resolution matches the current effective group through per-key wrap/clamp/redirect, including redirect-outside-to-group0. Symbols unavailable in that group use the neutral scratch lease. All product `XkbLockGroup` calls and saved-effective-group restoration parameters are deleted. Required modifier rows resolve once into eight stack codes through a shape/range-checked map, which retires before effects; absent required rows refuse. The helper admits the main key and held snapshot together, rejects a selected modifier equal to a mapped main code, excludes held codes and deduplicates remaining physical modifier codes in first-slot order before effects. No-modifier requests acquire no modifier map. Both legs use the same filtered plan and scratch binding. Each XTEST key press/release submission is checked. Only accepted presses are retained; a failed release blocks later text while its remaining reverse-retirement stack stays owned. Native acceptance of this new failure path is pending; modifier-driven group actions, concurrent/global ownership and integrated caller behavior remain OPEN. |
+| Text-request state and modifier admission | `native/xdo.c::xdo_enter_text_scalar` rejects invalid Unicode scalars and unsupported C0/C1 controls before native queries/effects, then checks one successful, in-range XKB state and one logical-key snapshot from its retained Display's XCB connection. The private `_xdo_query_keys` helper also supplies state queries; connection/reply error, shape or health failure refuses and retires every returned allocation before effects. Held mapped keys refuse. Character entries retain their native `group_info`; resolution matches the current effective group through per-key wrap/clamp/redirect, including redirect-outside-to-group0. Symbols unavailable in that group use the neutral scratch lease. All product `XkbLockGroup` calls and saved-effective-group restoration parameters are deleted. Required modifier rows resolve once into eight stack codes through a shape/range-checked map, which retires before effects; absent required rows refuse. The helper admits the main key and held snapshot together, rejects a selected modifier equal to a mapped main code, excludes held codes and deduplicates remaining physical modifier codes in first-slot order before effects. No-modifier requests acquire no modifier map. Both legs use the same filtered plan and scratch binding. Each XTEST key press/release submission is checked. Only accepted presses are retained; a failed release blocks later text while its remaining reverse-retirement stack stays owned. The named current-provider component schedule accepts controlled no-emission failures and transient reverse retirement; modifier-driven group actions, concurrent/global ownership and integrated caller behavior remain OPEN. |
 | Scratch ownership | Symbols requiring a scratch binding acquire a complete validated XKB snapshot and require a row not held in the admitted logical-key snapshot, all-NoSymbol semantics, zero real/virtual modifiers, default behavior and no meaningful actions. A one-row canonical ONE_LEVEL/NoAction mapping is installed with explicit interpretation/type/behavior/repeat protection and checked before input. Both legs retain its exact code. Original symbols, groups and type indices restore and are read back before any original action array is restored in its own protected request carrying those unchanged symbols; original explicit flags restore separately. Every phase requires readback. Unresolved presses retain the original scratch descriptor without attempting restoration; unconfirmed restoration likewise retains its original descriptor, blocks subsequent native text and returns a distinct cleanup error; destruction retries and diagnoses uncertainty. Enigo refuses further text after that status. Core-only mapping mutation is deleted; version23 excludes earlier providers. Corrected-provider native component cases below pass, including the highest keycode and neutral NoAction arrays with lower original explicit flags. Concurrent map mutation, concurrent/global key ownership, slave-device consistency, fatal native errors and delayed consumer acknowledgment remain OPEN. |
-| Pending text cleanup | `EnigoXdo::key_sequence_result` transfers the actual borrowed `TextContext` into one `pending_text_cleanup` owner before formatting or returning the native cleanup error. The former Boolean discarded that resource at request return. Later text refuses before context construction or native calls, including empty text. `EnigoXdo::drop` explicitly takes and destroys that child before the main native context closes their shared Display; automatic field destruction after custom Drop would violate the borrow. Normal successful requests still retire their temporary contexts. The native destructor retries unresolved keys before restoring the scratch map. The prior native receipt covers transient map refusal; key-release composition acceptance is pending. Persistent final key or map retirement failure still diagnoses and frees its snapshot, so fatal/irrecoverable cleanup remains OPEN. |
+| Pending text cleanup | `EnigoXdo::key_sequence_result` transfers the actual borrowed `TextContext` into one `pending_text_cleanup` owner before formatting or returning the native cleanup error. The former Boolean discarded that resource at request return. Later text refuses before context construction or native calls, including empty text. `EnigoXdo::drop` explicitly takes and destroys that child before the main native context closes their shared Display; automatic field destruction after custom Drop would violate the borrow. Normal successful requests still retire their temporary contexts. The native destructor retries unresolved keys before restoring the scratch map. The named native composition covers transient map and key-release refusals through normal Drop/unwind. Persistent final key or map retirement failure still diagnoses and frees the native owner and any original snapshot, so fatal/irrecoverable cleanup remains OPEN. |
 | Literal text and result boundary | `EnigoXdo::key_sequence_result` preflights controls over the whole string and submits Rust characters without locale mutation. The native receiver maps newline/carriage return, tab and other Unicode scalars to Return, Tab and Latin-1/Unicode keysyms. Each nonempty text request constructs a fresh borrowed context on the retained Display, refreshes its map and retires its enclosing XKB descriptors; construction refusal has no stale-map fallback. Text reports unavailability, admission and cleanup errors; mouse submission status is checked. Neither proves eventual X delivery. The common Enigo trait and all platform implementations omit the unused generic `key_sequence`, `key_down`, `key_up` and `key_click` emission API. Dead arbitrary Windows/macOS key/layout query machinery is removed. Supported platform text operations and application-owned physical rdev input remain. These XDO checks do not execute remote rdev input. |
 
-**Previous component-native acceptance (provider22; provider23 not yet run):** candidate
-`6c6b1975425cf8def7d9f9a2e0f4c9ef163490da`, tree
-`65406db06b3c9b00edafcaef099bdc2f63639512`, passed
+**Current component-native acceptance (provider23):** candidate
+`5d17f673c104baacb6d68ad8a478cdb3130b22a1`, tree
+`278569d568cd7c319bdf37b4230e00fe232df806`, passed
 `scripts/smoke-verifier-vm-authority.sh --x11-display-tests --key-input`
-in 122 seconds with outer exit 0. The native scalar/group/held-key fixture's
+in 106 seconds with outer exit 0. The native scalar/group/held-key fixture's
 existing five-second budget is unchanged.
 Complete protected-loader and Linux Enigo components compile with five
 authenticated dependencies, partial common and rdev mapping/type facades, and
@@ -573,8 +576,8 @@ the complete pinned rdev Linux mapping. The cursor fixture uses complete product
 modules and byte-extracted platform functions with direct native linkage.
 This is not full hbb_common/root Cargo/Flutter/application or installed execution.
 Only current corrected C runs; the wrong-version refusal fixture stamps
-provider22 as version21. Windows/macOS source changes remain uncompiled/unexecuted
-on those targets. Earlier provider21/20/19/18/17 acceptance and failed fixture attempts
+provider23 as version22. Windows/macOS source changes remain uncompiled/unexecuted
+on those targets. Earlier provider22/21/20/19/18/17 acceptance and fixture attempts
 remain in Git, the audit and retained raw evidence; they are not current acceptance.
 
 The removed path passed saved **effective** group to the **locked** group writer,
@@ -594,6 +597,14 @@ The checked replacement uses X11's logical key vector, as defined by the
 Frozen event processing can lag physical state; separate reads and later input
 cannot grant atomic ownership against another input producer. This accepts
 snapshot-based refusal and preservation only.
+
+The removed void emitter discarded each `XTestFakeKeyEvent` status and returned
+success even when acquisition or release refused. The replacement follows
+[X.Org's XTEST C binding](https://xorg.freedesktop.org/archive/X11R7.7/doc/libXtst/xtestlib.html):
+zero indicates failure, and availability may be withdrawn after initial admission.
+Accepted submission is retained ownership, not consumer delivery. Controlled
+no-emission failures exercise this state machine; actual transport/fatal failure
+and application retirement remain separate obligations.
 
 **Root-library integration passed:** pushed
 `4978b5c769f1eccabcfa5ea4c12561991326538c`, tree
@@ -632,42 +643,43 @@ retained in the audit/raw evidence; neither is retroactively accepted.
 | Text scalar admission | 332 requests: 284 pre-input refusals and 48 accepted pairs/96 exact events. All 62 unsupported C0/C1 controls, scalar/surrogate/context/range refusals and Latin-1/Unicode boundaries are exercised. Forty original scratch descriptor query/free pairs retain the expected symbol and code at both legs, including U+FFE1 as a Unicode symbol, U+10FFFF, emoji, Tab and Return. Restoration readbacks acquire and retire separate descriptors. Zero direct product key-storage allocations excludes Xlib's internal heap. |
 | Text-request XKB state | 36 query/invalid-group refusals and 36 same-context recoveries, 72 real events, one query per pair, preserved maps/state and no refusal input/group/mapping effects. This tests text admission; the separate row above covers state queries. Neither supplies application-wide native preflight acceptance. |
 | Modifier-map admission | 24 returned-map refusals and 24 same-context recovery pairs, 96 events and 48 queries/44 nonnull frees, with maps/state preserved. Complete Enigo propagates the injected native modifier error while pointer input remains usable. Separate held-key cases below establish snapshot preservation; locked/global ownership remains OPEN. |
-| Temporary modifier lifetime | Four repeats, two delays (zero/12,000 microseconds) and four preheld subsets (none/Shift/Control/both) produce 32 pairs/128 native events. A separate Display observes exact modifier/main dependency order and reversed retirement, both main symbols from a fresh native map and logical key bits after each leg. Preheld keys receive no generated press/release; full XKB components, original layout and sampled FD/task baselines restore. The existing 24 uppercase recovery pairs also resolve both main events with Shift retained. These observe successful current-provider submissions, not failure cleanup, atomic concurrent ownership, modifier-driven group actions or widget/IME consumption. |
-| Unique physical text-key roles | The same current-provider ASan fixture installs a real Shift\|Control code in both native modifier slots with explicit SetMods/UseModMapMods and read-back resolved masks. Four repeats, two delays and four preheld subsets (none/shared/unrelated-b/both) yield 32 accepted pairs/96 events/64 observed main legs, with one shared-code press/release, dependency/reverse-retirement order and per-leg logical bits. Sixteen unheld mapped main/modifier collisions refuse without input/map/group effects and each permits valid same-context text afterward. Exact preheld state, full XKB components, original layout and sampled FD/task baselines restore. Arbitrary modifier actions, XTEST failures, concurrent ownership and widget/IME consumption remain OPEN. |
+| Temporary modifier lifetime | Four repeats, two delays (zero/12,000 microseconds) and four preheld subsets (none/Shift/Control/both) produce 32 pairs/128 native events. A separate Display observes exact modifier/main dependency order and reversed retirement, both main symbols from a fresh native map and logical key bits after each leg. Preheld keys receive no generated press/release; full XKB components, original layout and sampled FD/task baselines restore. The existing 24 uppercase recovery pairs also resolve both main events with Shift retained. Controlled submission-failure retirement is covered below; atomic concurrent ownership, arbitrary modifier-driven group actions and widget/IME consumption remain unproved. |
+| Unique physical text-key roles | The same current-provider ASan fixture installs a real Shift\|Control code in both native modifier slots with explicit SetMods/UseModMapMods and read-back resolved masks. Four repeats, two delays and four preheld subsets (none/shared/unrelated-b/both) yield 32 accepted pairs/96 events/64 observed main legs, with one shared-code press/release, dependency/reverse-retirement order and per-leg logical bits. Sixteen unheld mapped main/modifier collisions refuse without input/map/group effects and each permits valid same-context text afterward. Exact preheld state, full XKB components, original layout and sampled FD/task baselines restore. Arbitrary modifier actions, actual transport/fatal failures, concurrent ownership and widget/IME consumption remain OPEN. |
+| Text submission and reverse retirement | 144 cases: 136 mapped cases cover every modifier/main press and main/modifier release under distinct/shared native layouts, four preheld profiles, two delays and two repeats; eight scratch cases repeat press/release refusal four times at zero delay. 168 controlled no-emission refusals include 24 failed acquisitions whose first cleanup release also refuses. Only accepted presses enter the owner; reverse retirement preserves dependencies and preheld bits. 84 pending contexts reject 252 later scalars before queries/effects; borrowed-context destruction retries remaining keys before map restoration. Every case recovers valid text on the same context when already retired, or the retained parent Display after pending-child retirement. 920 real events, per-leg logical bits and live main symbols, full XKB components and sampled FD/task baselines are observed. This is current-provider ASan component acceptance, not actual transport/fatal failure, global ownership or application retirement. |
 | Text-request logical-key admission | Seven controlled connection/reply/error/type/length/health faults over three mapped/scratch scalars and four repeats: 84 refusals with no input/group/mapping effects, then 84 same-context recovery pairs/168 actual events. Authentic replies are consumed before returned-reply faults; every handed reply/error retires. Each accepted pair uses one keymap reply; full XKB components, logical keys and native state are preserved. This does not prove actual transport/fatal-library failure bounds. |
 | Preexisting held keys | Four repeats of required Shift, Shift+Control, unrelated Control and other-Shift profiles produce sixteen accepted pairs/forty actual events, with exact preexisting logical bits, native XKB state and map components preserved. Both a/A requests refuse an already-held main code, eight times, before modifier or input effects. A held sole neutral scratch row refuses four times without input/map writes; after fixture release, the same context recovers four pairs/eight events and restores its mapping. No atomic concurrent/global-key ownership or widget/IME consumption follows. |
 | Scratch bounds and complete-click lease | Twenty bounds/query/full-map cases preserve maps/keys with sixteen queries/twelve allocated replies retired. Twenty-four complete-click cases at zero/12,000-microsecond delay yield eight accepted clicks/sixteen events and sixteen refusals/no events; both legs see the installed symbol, and install/restore/free pair. The observer synchronizes each leg, proving the lease rather than arbitrary widget/XIM consumption. |
 | Scratch XKB components and restoration finality | Five native candidates at highest code255 repeat four times: a two-group/two-level all-NoSymbol row with four NoAction entries and original Interpret-only explicit bits accepts four pairs; real-modifier, virtual-modifier, non-default-behavior and meaningful-action rows refuse sixteen requests without input or map writes. Nine controlled map/readback failure points repeat four times over zero-action and NoAction-array originals, with 36 recoveries and 20 retained cleanup-pending leases. Later text refuses without effects; destruction retries, restores the full map and retires the original descriptor. Independent before/after census compares all key symbols/groups/types/actions, real/virtual modifiers, behavior, explicit bits, global virtual bindings and per-key repeat. Tracked product snapshots peak at two; test-observer allocations are outside that census. The complete-click cases above independently observe neutral installed semantics at both legs. Fatal native errors, allocator internals, concurrent maps and application composition remain unproved. |
-| Enigo pending-cleanup composition | The complete current backend/provider executes eight real scratch pairs/sixteen events under one controlled restoration-submission refusal per case. Four normal drops and four Rust unwinds retain the original descriptor/context and installed symbol until owner retirement; the suffix is absent. Sixty-four later requests refuse without another native call/context or early destruction. Removing the fault permits native destructor retry; an independent X11 observer checks full key types/rows/actions/modifiers/behaviors/explicit flags/vmods and per-key repeat restored before primary Display destruction, clear keys, sixteen context retirements and sampled FD/task baselines. The synthetic status shortcut is deleted. This composes the backend with actual native cleanup for a transient API-submission refusal; persistent destructor refusal, real transport failure, whole heap, release panic behavior and application caller composition remain OPEN. |
+| Enigo pending-cleanup composition | The complete current backend/provider executes sixteen actual scratch cases: eight restoration-submission and eight key-release refusals, each kind with four normal Drops and four Rust unwinds. Thirty-two real events are observed. The pending native child retains its exact original descriptor/context, installed symbol and unresolved key when present; no suffix is emitted. 128 later requests refuse without another native call/context or early destruction. Removing the fault permits destructor retry. An independent Display observes the key release under the installed scratch mapping and complete map restoration before primary Display destruction, clear keys, 32 context retirements and sampled FD/task baselines. This accepts transient API-submission refusal composition; persistent destructor refusal, transport/fatal failure, whole heap, release panic behavior and application caller/lifecycle composition remain OPEN. |
 | Constructor ownership | 276 cases over 22 controlled faults, three Display ownership paths and four repeats: twelve accepted contexts/24 events and 264 refusals. Partial product allocations/maps retire and caller Displays remain usable. Actual allocator corruption, malformed native replies, fatal errors and whole-heap/leak bounds are unproved. |
 | Text group and mouse state | 136 text pairs/272 events use unique U+1F600/U+1F601 symbols: four per-key wrap/clamp/redirect/redirect-outside policies, four effective groups and four repeats, plus eight latched-group cases. 68 mapped and 68 scratch pairs resolve the requested press symbol from the live native map, retain the paired code and held/released state, make zero product group-lock calls, and preserve all per-request XKB map components. Locked-group cases preserve full state; locked0/latched1 cases consume the latch and preserve locked0. Twenty mouse cases under 0/1/9/10/12 held modifiers deliver forty events with preserved keys/state and actual Button1Mask. This is private-provider input, not current remote rdev execution. |
 | Complete backend, locale and changed map | Eighteen refused selectors, 24 contexts, 32 context-entry refusals and sixteen constructor-log unwinds preserve one Display and paired ownership. Constructor/diagnostic ambient-route probes observe zero TCP accepts. Three locale conditions deliver 21 scalar pairs/42 events. Changed-layout requests deliver 33 pairs/66 events with two mapping refusals; exact enclosing-descriptor censuses are 2/2/0 and 33/33/0 allocations/retirements/live. These are configured native events and one descriptor class, not unmapped Unicode, widget text or whole-resource proof. |
 
-The product helper and complete protected loader share the 25,528-byte ELF,
-SHA-256 `f7c0917c5999458c472cf162e69314635cc14ccf16e09ad96fd40f5895721425`.
+The product helper and complete protected loader share the 25,576-byte ELF,
+SHA-256 `d74a9f960222280e1c05447d6d631af23a74f638f4331c0c060018aeaaffe1e2`.
 That accepted C SHA-256 is
-`568c993b4a9f116392694efb47614df80e4109b6c67f6859cafc545f6dfd5ca0`.
+`404d601b2ddf055af76dbf9ca10b485dd245fdfc65456f5cb6ef7d7d9ddadcfc`.
 The complete protected-loader binary is SHA-256
-`ffc493fc88466f682279621acfae15199bb23f0e83515ebcb52d2c637a7cbf4c`.
+`6d6fc9fa3ee26fe8e4db604f761e7f0d7bad40e437c43d567204263bf5cab794`.
 The complete Linux Enigo fixture binary is SHA-256
-`8d73b36e554f78ef4ecddac48afb00adca7658ee830a6fd134eed0a9caba5deb`;
+`dee3141813f097accd61777656549b0e8bd20ce5c23dafc743842a13a9bbe6e3`;
 the state-query fault fixture binary is
-`486725e666d789b2b246fc525290c30a3e9a8202a6f068924348a8c90f966659`;
+`45265640a307b2e0ae009f4b061a54f818ef24568a345f4f2fccbe2a1c28b7c0`;
 the scratch fixture binary is
-`0f1e183f68bd25c4466f4b003b69c55434c16188013a000bce5eecd7e8cbd525`.
+`aa0a968c2e06ba5a2e0647d704d9c89e864f3d7f3137aa388c99fb26a473b27d`.
 The complete-backend cleanup fixture binary is SHA-256
-`34ad77a75301fef7ce784b5896df1ea7687943348bfa0a3fd527b47dd1462f13`;
+`21f4d5c43cbc26b9765dee4a8233395b49876f26003849aa46032598509169d6`;
 its native observer object is
-`050cf2683293e29a44a835161817f0316a4b7cd6a8cac04e146211dfe063ef80`.
+`ea0d26ddeeb848bd0679f72a892e26a3785a68e853ea08af0d2a17ff32e9ac08`.
 Under `.harness-state/verifier-vm/`, retained raw
-`x11-display-tests-run.pVgU30fGPx.serial.log` is 134,698 bytes, SHA-256
-`cb00c902f9539a4b6df39a2a2d810200e34b1c05733c0c14b38daf527cc168bc`;
-`modifier-roles-6c6b1975-evidence/outer.log` is 2,668 bytes, SHA-256
-`82a5bf1c6554e3ea297e5f5ad61688f62136f7e1ce2696edb3926edfb573a719`.
-The assistant-observed `modifier-roles-6c6b1975-evidence/observed.receipt.json`
-is 26,429 bytes, SHA-256
-`46b9cd42e81d44f74ee0de07ea1f45c9a97b762b8fdf6957acff2d951e32aeab`.
-The receipt binds seventeen frozen files, nineteen artifact records, 66 native
+`x11-display-tests-run.cE802xLCyw.serial.log` is 134,827 bytes, SHA-256
+`54b1b3deee9804dd515bd56b2ef8d474e3147e0d4c9b85733a982a9e03bc38f7`;
+`text-submission-5d17f673-evidence/outer.log` is 2,668 bytes, SHA-256
+`887a59f7919fd46ec9e0c7c3f37ab3a5bbf65208bcd5ab9753647a27b4724fa7`.
+The assistant-observed `text-submission-5d17f673-evidence/observed.receipt.json`
+is 28,420 bytes, SHA-256
+`3901f98b5fe41c770d55b50e3802ddde5c4e6c6150a39a196f0c04f5d452bd61`.
+The receipt binds seventeen frozen files, nineteen artifact records, 67 native
 outcome records, all 136 distinct group cases, component scope and terminal owner status;
 it is an assistant observation, not independent reproduction.
 
@@ -675,8 +687,8 @@ The ordinary-user zero-NIC VM used guest-only network-none UID/GID4000
 containers and read-only inputs. Outer endpoint-only before/during/after
 audits report no host addition and joined cleanup; the exact root/overlay
 is absent. Independent endpoint-only before/during/after inventories under
-`modifier-roles-6c6b1975-evidence/listeners.*` are each 1,320 bytes,
-SHA-256 `bc3cd49a4004b289459020b0934444f83f660900e520c1edf42157d291ba8e1e`,
+`text-submission-5d17f673-evidence/listeners.*` are each 1,320 bytes,
+SHA-256 `be86d813aa5b12c9147fa8f6be65963bb553a9efc40af8f204f9550e7708be4e`,
 byte-identical with zero additions. Xvfb uses `-ac`.
 ASan covers named native C cases with leak detection disabled; it does not
 establish Xlib internals, whole heap or a release artifact's panic behavior.
@@ -745,16 +757,17 @@ closure follows from these component receipts.
   and the unexplained distro-provider abort.
 - Capture-to-input mapping across native roots, actual remote physical rdev,
   locked modifiers/groups and concurrent/global key ownership, map races,
-  per-request XTEST submission failures, modifier-driven group actions, later facility
-  withdrawal, between-request release failure and partial input cleanup.
+  modifier-driven group actions, real facility withdrawal/native transport failure,
+  persistent key/map release failure and application-owned partial input cleanup.
   Current scratch selection and restoration use separate XKB components,
   explicit protection and readback; the named native component schedule passes.
   Per-key repeat is protected against compatibility recomputation, but existing
   repeat settings, long delays and consumer timing still require acceptance.
   This is a defensive correction, not a reproduced escalation claim.
   The actual Enigo pending-context ownership and child-before-Display teardown
-  now pass the named transient-refusal composition schedule. Persistent final
-  restoration refusal still frees the original snapshot after a diagnostic;
+  now pass the named transient map/key-refusal composition schedule. Persistent
+  final key or map retirement refusal still frees its native owner and original
+  snapshot after a diagnostic;
   a truthful irrecoverable-cleanup policy and fatal transport bounds remain OPEN.
   Application retirement is a concrete source gap: `src/server/input_service.rs`
   holds controlled-side `ENIGO` in a lazy-static `Arc<Mutex<Enigo>>`. Rust
@@ -763,6 +776,9 @@ closure follows from these component receipts.
   provide no automatic destructor at process exit. Component Drop tests therefore
   do not establish cleanup on disconnect, service stop or process exit; explicit
   application retirement and native lifecycle acceptance remain required.
+  Pending cleanup currently closes only text admission. The Enigo mouse methods
+  and application physical-rdev path have separate admission; whether a pending
+  held text modifier can affect subsequent application input remains OPEN.
 - Broader unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;
   native events and an in-request lease observer do not prove text consumption.
 - Loader identity/ACL/path races, native application consumers, full

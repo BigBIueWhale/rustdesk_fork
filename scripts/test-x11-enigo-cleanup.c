@@ -1,4 +1,5 @@
 /* Actual backend/provider composition; the observer owns a separate X11 connection. */
+#define _POSIX_C_SOURCE 200809L
 #include "../libs/libxdo-sys-stub/native/xdo.h"
 #include <X11/XKBlib.h>
 #include <assert.h>

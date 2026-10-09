@@ -71,7 +71,7 @@ def input_exports(root):
     data = (root / "scripts/fixtures/xdo-input-exports.txt").read_bytes()
     require(len(data) <= 1024, "private input export inventory exceeded bound")
     names = data.decode("ascii").splitlines()
-    require(len(names) == len(set(names)) == 12
+    require(len(names) == len(set(names)) == 11
             and all(re.fullmatch(r"xdo_[a-z_]+", name) for name in names),
             "private input export inventory differs")
     return set(names)
@@ -130,7 +130,7 @@ def native_xdo(root, environment, historical_destructor=True):
                 "private XDO input export closure differs")
         directories[variant] = directory
     print(f"X11_XDO_PACKAGE_ELF=pass variants={len(variants)} required=true runpath=absent full_package=unexecuted", flush=True)
-    print(f"XDO_INPUT_API_NATIVE=pass providers={len(variants)} exports=12 scope=closed-private-abi", flush=True)
+    print(f"XDO_INPUT_API_NATIVE=pass providers={len(variants)} exports=11 scope=closed-private-abi", flush=True)
     return directories, before_source
 
 
@@ -217,7 +217,7 @@ def scratch_keys(root, environment):
           "later_tests=fresh-display", flush=True)
 
 
-def enigo_route(root, environment, checksum, library, providers, before_source, historical_routes=True):
+def enigo_route(root, environment, checksum, library, providers, before_source):
     mouse_source = root / "scripts/test-xdo-mouse-modifiers.c"
     mouse_binary = Path("/build/xdo-mouse-modifiers")
     subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(mouse_source),
@@ -231,10 +231,6 @@ def enigo_route(root, environment, checksum, library, providers, before_source, 
         " loader=direct-native-test whole_app=unexecuted", flush=True)
     subprocess.run([str(mouse_binary)], env=environment, check=True, timeout=5)
     mouse_binary.unlink()
-    historical = root / "scripts/fixtures/x11-enigo-xdo-before-local-route.rs"
-    require(hashlib.sha256(historical.read_bytes()).hexdigest() ==
-            "77a8992182c52f4d7b705d85e30145a51d789e484f16509912ee675a33fc596e",
-            "historical a1c03eb3 constructor/mouse fixture with unused keyboard methods removed differs")
     # Extract the real public types, scroll check and traits; never substitute a test API.
     source = (root / "libs/enigo/src/lib.rs").read_text()
     start = "///\npub type ResultType ="
@@ -263,29 +259,23 @@ def enigo_route(root, environment, checksum, library, providers, before_source, 
           f"types_sha256={hashlib.sha256(key_types.read_bytes()).hexdigest()} "
           f"keysym_source_sha256={hashlib.sha256(keysym_source.read_bytes()).hexdigest()} "
           "types=production-declarations keysyms=authenticated-input loader=direct-native-test", flush=True)
-    binaries = {}
-    variants = ("historical", "corrected") if historical_routes else ("corrected",)
-    for variant in variants:
-        binary = Path("/build") / f"enigo-{variant}"
-        command = ["/usr/local/cargo/bin/rustc", "--edition=2021",
-                   str(root / "scripts/test-x11-enigo-route.rs"), "-o", str(binary),
-                   "--extern", f"log={library}", "-L", f"native={providers['corrected']}",
-                   "-C", f"link-arg=-Wl,-rpath,{providers['corrected']}"]
-        if variant == "historical":
-            command += ["--cfg", "historical"]
-        for symbol in ("xdo_new", "xdo_new_with_opened_display", "xdo_free", "XOpenDisplay", "XCloseDisplay"):
-            command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
-        subprocess.run(command, env=environment, check=True, timeout=30)
-        binaries[variant] = binary
-        print("X11_ENIGO_BUILD " + " ".join(
-            f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
-                ("backend", historical if variant == "historical" else root / "libs/enigo/src/linux/xdo.rs"),
-                ("api_source", root / "libs/enigo/src/lib.rs"), ("api_declarations", api),
-                ("selector", root / "libs/hbb_common/src/platform/x11_display.rs"),
-                ("fixture", root / "scripts/test-x11-enigo-route.rs"),
-                ("log_manifest", checksum), ("log_library", library), ("binary", binary)))
-              + f" variant={variant} parent_enigo=unexecuted loader=direct-native-test whole_app=unexecuted", flush=True)
-    result = subprocess.run([str(binaries["corrected"])], env=environment, capture_output=True,
+    binary = Path("/build/enigo-corrected")
+    command = ["/usr/local/cargo/bin/rustc", "--edition=2021",
+               str(root / "scripts/test-x11-enigo-route.rs"), "-o", str(binary),
+               "--extern", f"log={library}", "-L", f"native={providers['corrected']}",
+               "-C", f"link-arg=-Wl,-rpath,{providers['corrected']}"]
+    for symbol in ("xdo_new_with_opened_display", "xdo_free", "XOpenDisplay", "XCloseDisplay"):
+        command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
+    subprocess.run(command, env=environment, check=True, timeout=30)
+    print("X11_ENIGO_BUILD " + " ".join(
+        f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
+            ("backend", root / "libs/enigo/src/linux/xdo.rs"),
+            ("api_source", root / "libs/enigo/src/lib.rs"), ("api_declarations", api),
+            ("selector", root / "libs/hbb_common/src/platform/x11_display.rs"),
+            ("fixture", root / "scripts/test-x11-enigo-route.rs"),
+            ("log_manifest", checksum), ("log_library", library), ("binary", binary)))
+          + " variant=corrected parent_enigo=unexecuted loader=direct-native-test whole_app=unexecuted", flush=True)
+    result = subprocess.run([str(binary)], env=environment, capture_output=True,
                             text=True, timeout=15)
     receipt = ("X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations "
                "selectors_refused=18 canonical_screens=3 contexts=24 context_refusals=32 "
@@ -298,46 +288,37 @@ def enigo_route(root, environment, checksum, library, providers, before_source, 
         listener.bind(("127.0.0.1", 6095))
         listener.listen(1)
         for scenario in ("route", "diagnostic"):
-            for variant, binary in binaries.items():
-                native = subprocess.Popen([str(binary), scenario], env=environment,
-                                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            native = subprocess.Popen([str(binary), scenario], env=environment,
+                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                output, errors = native.communicate(timeout=5)
+                receipt = (f"X11_ENIGO_{scenario.upper()}_CHILD variant=corrected "
+                           f"result={'refused' if scenario == 'route' else 'selected-once'} "
+                           "descriptors=retired threads=retired")
+                require(native.returncode == 0 and not errors
+                        and output.decode("ascii").splitlines() == [receipt],
+                        f"native Enigo route differs: stdout={output!r} stderr={errors!r}")
+                listener.settimeout(0.1)
                 try:
-                    if variant == "historical":
-                        listener.settimeout(2)
-                        peer, address = listener.accept()
-                        with peer:
-                            require(address[0] == "127.0.0.1", "unexpected Enigo route peer")
-                    output, errors = native.communicate(timeout=5)
-                    expected_errors = (b"Error: Can't open display: (default)\n"
-                                       if scenario == "route" and variant == "historical" else b"")
-                    receipt = (f"X11_ENIGO_{scenario.upper()}_CHILD variant={variant} "
-                               f"result={'refused' if scenario == 'route' else 'environment-reread' if variant == 'historical' else 'selected-once'} "
-                               "descriptors=retired threads=retired")
-                    require(native.returncode == 0 and errors == expected_errors
-                            and output.decode("ascii").splitlines() == [receipt],
-                            f"native Enigo route differs: stdout={output!r} stderr={errors!r}")
-                    if variant == "corrected":
-                        listener.settimeout(0.1)
-                        try:
-                            peer, _ = listener.accept()
-                        except socket.timeout:
-                            pass
-                        else:
-                            peer.close()
-                            raise RuntimeError("corrected Enigo constructor attempted TCP")
-                    print(f"X11_ENIGO_ROUTE_OBSERVED variant={variant} scenario={scenario} "
-                          f"tcp_accepts={int(variant == 'historical')} native=complete-backend", flush=True)
-                finally:
-                    if native.poll() is None:
-                        native.kill()
-                    native.wait(timeout=5)
-                    for stream in (native.stdout, native.stderr):
-                        stream.close()
-    print(f"X11_ENIGO_ROUTE_NATIVE=pass source=production-backend-and-constructor-fixture old_accepts={2 if historical_routes else 0} current_accepts=0 "
+                    peer, _ = listener.accept()
+                except socket.timeout:
+                    pass
+                else:
+                    peer.close()
+                    raise RuntimeError("corrected Enigo constructor attempted TCP")
+                print(f"X11_ENIGO_ROUTE_OBSERVED variant=corrected scenario={scenario} "
+                      "tcp_accepts=0 native=complete-backend", flush=True)
+            finally:
+                if native.poll() is None:
+                    native.kill()
+                native.wait(timeout=5)
+                for stream in (native.stdout, native.stderr):
+                    stream.close()
+    print("X11_ENIGO_ROUTE_NATIVE=pass source=production-backend current_accepts=0 "
           "scenarios=constructor,diagnostic-display-change listener=container-loopback-only "
           "peer=closed children=joined scope=xdo-backend", flush=True)
-    enigo_text(root, environment, binaries["corrected"], providers.get("before"))
-    for path in (*binaries.values(), api, key_types):
+    enigo_text(root, environment, binary, providers.get("before"))
+    for path in (binary, api, key_types):
         path.unlink()
     for directory in providers.values():
         (directory / "libxdo.so").unlink()
@@ -1308,7 +1289,7 @@ def key_input_main():
                 time.sleep(0.01)
             constructor_contexts(root, environment)
             providers, before_source = native_xdo(root, environment, historical_destructor=False)
-            enigo_route(root, environment, checksum, logging, providers, before_source, historical_routes=False)
+            enigo_route(root, environment, checksum, logging, providers, before_source)
             require(server.poll() is None, "key-input Xvfb exited during native cases")
         finally:
             if server.poll() is None:

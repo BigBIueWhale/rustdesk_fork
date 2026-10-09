@@ -157,12 +157,12 @@ def build():
                 path.write_text('#define xdo_mouse_up rd_fixture_mouse_up\n' + path.read_text())
             elif variant == 'missing-key-input':
                 path = source_dir / 'xdo.c'
-                path.write_text('#define xdo_send_key_window rd_fixture_key_input\n' + path.read_text())
+                path.write_text('#define xdo_send_key rd_fixture_key_input\n' + path.read_text())
             elif variant == 'wrong-version':
                 path = source_dir / 'xdo_version.h'
                 text = path.read_text()
-                require(text.count('3.20160805.1-rustdesk11') == 1, 'fixture version source differs')
-                path.write_text(text.replace('3.20160805.1-rustdesk11', '3.20160805.1-rustdesk10'))
+                require(text.count('3.20160805.1-rustdesk12') == 1, 'fixture version source differs')
+                path.write_text(text.replace('3.20160805.1-rustdesk12', '3.20160805.1-rustdesk11'))
             else:
                 path = source_dir / 'xdo.c'
                 path.write_text('#define XGetModifierMapping rd_fixture_x_get_modifier_mapping\n' + path.read_text()
@@ -174,7 +174,7 @@ def build():
         # The helper stamp describes production source; fixture differences are recorded here.
         exports = {line.split()[-1] for line in command(['/usr/bin/nm', '-D', '--defined-only', str(library)]).stdout.splitlines()}
         expected_exports = required_exports - ({'xdo_mouse_up'} if variant == 'missing-mouse-up' else
-                                               {'xdo_send_key_window'} if variant == 'missing-key-input' else set())
+                                               {'xdo_send_key'} if variant == 'missing-key-input' else set())
         require({name for name in exports if name.startswith('xdo_')} == expected_exports,
                 'private loader provider input export closure differs')
         print(f'XDO_LOADER_PROVIDER variant={variant} library_sha256={sha(library)} '
@@ -277,8 +277,8 @@ def run(scenario):
                 expected = (f'XDO_LOADER_COMPONENT=pass scenario={scenario} constructors=refused descriptors=retired'
                             if scenario != 'complete' else
                             'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative '
-                            'button=pressed,released shift=pressed,released key=a,a focus=private '
-                            'retired_lookups=59 retired_symbols=absent descriptors=retired')
+                            'button=pressed,released shift=pressed,released key=a,a input=xtest '
+                            'retired_lookups=61 retired_symbols=absent descriptors=retired')
                 if scenario == 'no-xtest':
                     expected = expected.replace(' descriptors=',
                         ' extension=absent paths=3 borrowed_display=usable descriptors=')

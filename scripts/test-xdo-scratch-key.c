@@ -236,7 +236,7 @@ static void modifier_admission(xdo_t *input, Display *observer, Window window,
         modifier_queries = modifier_frees = 0;
         modifier_fault = failure;
         observe = 1;
-        int status = xdo_send_key_window(input, CURRENTWINDOW, XDO_KEYSYM, XK_A, action, 0);
+        int status = xdo_send_key(input, XDO_KEYSYM, XK_A, action, 0);
         observe = 0;
         require(status == XDO_ERROR && state_queries == 1 && modifier_queries == 1
                 && modifier_frees == (failure != 1) && owned_modifiers == NULL
@@ -253,7 +253,7 @@ static void modifier_admission(xdo_t *input, Display *observer, Window window,
         modifier_queries = modifier_frees = 0;
         state_queries = group_changes = input_calls = 0;
         observe = 1;
-        status = xdo_send_key_window(input, CURRENTWINDOW, XDO_KEYSYM, XK_A, XDO_KEY_CLICK, 0);
+        status = xdo_send_key(input, XDO_KEYSYM, XK_A, XDO_KEY_CLICK, 0);
         observe = 0;
         require(status == XDO_SUCCESS && state_queries == 1 && modifier_queries == 1
                 && modifier_frees == 1 && owned_modifiers == NULL && group_changes == 4
@@ -299,7 +299,7 @@ static void keyboard_state(xdo_t *input, Display *observer, Window window,
         modifier_queries = modifier_frees = 0;
         state_fault = failure;
         observe = 1;
-        int status = xdo_send_key_window(input, CURRENTWINDOW, keys[index].kind,
+        int status = xdo_send_key(input, keys[index].kind,
                                          keys[index].value, action, 0);
         observe = 0;
         require(status == XDO_ERROR && state_queries == 1 && group_changes == 0
@@ -314,7 +314,7 @@ static void keyboard_state(xdo_t *input, Display *observer, Window window,
         state_fault = 0;
         queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
         observe = 1;
-        status = xdo_send_key_window(input, CURRENTWINDOW, keys[index].kind,
+        status = xdo_send_key(input, keys[index].kind,
                                      keys[index].value, XDO_KEY_CLICK, 0);
         observe = 0;
         int scratch = index == 2;
@@ -351,35 +351,35 @@ static void key_input(xdo_t *input, Display *observer, Window window, int low, i
   observe = 1;
   for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
     struct request request = invalid[i];
-    require(xdo_send_key_window(input, CURRENTWINDOW, request.kind, request.value, request.action, 0)
+    require(xdo_send_key(input, request.kind, request.value, request.action, 0)
             == XDO_ERROR, "invalid key request admitted");
     events(observer, window, 0, 0);
   }
   xdo_t empty = {0};
-  require(xdo_send_key_window(NULL, CURRENTWINDOW, XDO_KEYSYM, XK_a, XDO_KEY_CLICK, 0) == XDO_ERROR
-          && xdo_send_key_window(&empty, CURRENTWINDOW, XDO_KEYSYM, XK_a, XDO_KEY_CLICK, 0) == XDO_ERROR,
+  require(xdo_send_key(NULL, XDO_KEYSYM, XK_a, XDO_KEY_CLICK, 0) == XDO_ERROR
+          && xdo_send_key(&empty, XDO_KEYSYM, XK_a, XDO_KEY_CLICK, 0) == XDO_ERROR,
           "unavailable context admitted");
   for (int field = 0; field < 3; field++) {
     xdo_t changed = *input;
     if (field == 0) changed.keycode_low = 7;
     if (field == 1) changed.keycode_high = 256;
     if (field == 2) changed.keycode_high = changed.keycode_low - 1;
-    require(xdo_send_key_window(&changed, CURRENTWINDOW, XDO_KEYCODE, low, XDO_KEY_CLICK, 0) == XDO_ERROR,
+    require(xdo_send_key(&changed, XDO_KEYCODE, low, XDO_KEY_CLICK, 0) == XDO_ERROR,
             "invalid native range admitted");
   }
   events(observer, window, 0, 0);
   require(queries == 0 && frees == 0, "refusal queried scratch storage");
-  require(xdo_send_key_window(input, CURRENTWINDOW, XDO_KEYCODE, low, XDO_KEY_CLICK, 0) == XDO_SUCCESS,
+  require(xdo_send_key(input, XDO_KEYCODE, low, XDO_KEY_CLICK, 0) == XDO_SUCCESS,
           "lowest raw code refused");
   events(observer, window, low, 2);
-  require(xdo_send_key_window(input, CURRENTWINDOW, XDO_KEYCODE, high, XDO_KEY_CLICK, 0) == XDO_SUCCESS,
+  require(xdo_send_key(input, XDO_KEYCODE, high, XDO_KEY_CLICK, 0) == XDO_SUCCESS,
           "highest raw code refused");
   events(observer, window, high, 2);
-  require(xdo_send_key_window(input, CURRENTWINDOW, XDO_KEYSYM, XK_F30, XDO_KEY_CLICK, 0) == XDO_SUCCESS,
+  require(xdo_send_key(input, XDO_KEYSYM, XK_F30, XDO_KEY_CLICK, 0) == XDO_SUCCESS,
           "mapped keysym refused");
   events(observer, window, low, 2);
   require(queries == 0 && frees == 0, "mapped request queried scratch storage");
-  require(xdo_send_key_window(input, CURRENTWINDOW, XDO_KEYSYM, 0x0101f642, XDO_KEY_CLICK, 0) == XDO_SUCCESS,
+  require(xdo_send_key(input, XDO_KEYSYM, 0x0101f642, XDO_KEY_CLICK, 0) == XDO_SUCCESS,
           "unmapped click refused");
   events(observer, window, high, 2);
   require(queries == 1 && frees == 1 && owned_query == NULL,
@@ -411,7 +411,7 @@ int main(void) {
   require(input != NULL, "product context unavailable");
   charcodemap_t key = {.code = XKeysymToKeycode(observer, XK_a), .symbol = XK_a};
   require(key.code != 0, "positive control key absent");
-  require(!xdo_send_key_window(input, CURRENTWINDOW, XDO_KEYSYM, XK_a, XDO_KEY_CLICK, 0),
+  require(!xdo_send_key(input, XDO_KEYSYM, XK_a, XDO_KEY_CLICK, 0),
           "mapped positive control failed");
   events(observer, window, key.code, 2);
   product_display = input->xdpy;
@@ -458,8 +458,8 @@ int main(void) {
       printf("XDO_SCRATCH_ENTER round=%d scenario=%d highest=%d\n", round, scenario, high);
       unsigned kind = scenario == 1 ? XDO_KEYCODE : XDO_KEYSYM;
       unsigned long value = scenario == 1 ? low + 1 : key.symbol;
-      int down = xdo_send_key_window(input, CURRENTWINDOW, kind, value, XDO_KEY_DOWN, 0);
-      int up = xdo_send_key_window(input, CURRENTWINDOW, kind, value, XDO_KEY_UP, 0);
+      int down = xdo_send_key(input, kind, value, XDO_KEY_DOWN, 0);
+      int up = xdo_send_key(input, kind, value, XDO_KEY_UP, 0);
       observe = 0;
       int accepted = scenario < 2;
       require(accepted ? down == XDO_SUCCESS && up == XDO_SUCCESS

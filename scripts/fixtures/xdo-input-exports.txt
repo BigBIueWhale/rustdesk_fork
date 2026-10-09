@@ -2,8 +2,7 @@ xdo_new
 xdo_new_with_opened_display
 xdo_free
 xdo_version
-xdo_send_key_window
-xdo_click_window
+xdo_send_key
 xdo_mouse_down
 xdo_mouse_up
 xdo_move_mouse

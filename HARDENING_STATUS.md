@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-676102dd13499c461818be3c91de695f77460b5669dfbad71945951db51fcc3d  requirements.html
+6f419c2dc3a8345857ce7299ef81c1b2066ff3e4f5f555febeae1eaef121c6d8  requirements.html
 ```
 
 ## Current Verdict
@@ -982,7 +982,21 @@ between-request release failure, native event/group-lock/asynchronous errors,
 map races, concurrency, whole heap/soak, full Cargo/app/install, other platforms
 and broader authority/artifact/release evidence remain OPEN.
 
-**XTEST constructor admission and closed input ABI — focused native acceptance.**
+**Display-owned XTEST keyboard/button ABI — native acceptance pending.**
+The current provider/helper/header/loader require `3.20160805.1-rustdesk12`.
+Keyboard/button requests have no Window parameter, CURRENTWINDOW selector,
+directed XSendEvent branch, focus-routing helper or native click export.
+Production Enigo uses the display retained by its context. Exact ELF inventory
+has eleven exports; normal/staged loader must refuse all61 retired names.
+The owned-window fixture observes XTEST events plus physical Button1Mask
+before/after release while preserving held keys, maps and FD/task lifetime.
+The obsolete historical Enigo route replica and its compile/run branches are
+absent; current Unix-route and diagnostic DISPLAY-change coverage remain.
+This candidate is not yet executed. Prior acceptance below is historical.
+Per-request XTEST/group errors, partial input cleanup, global key ownership,
+concurrency, installed principals/races and broader native/release remain OPEN.
+
+**Historical XTEST constructor admission and closed input ABI acceptance.**
 `native/xdo.c:65` requires XTEST before context allocation or XKB acquisition.
 A refused borrowed constructor preserves the caller display for either close flag;
 `xdo_new` closes its own opened display. The warning-and-continue branch,
@@ -2106,7 +2120,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `676102dd13499c461818be3c91de695f77460b5669dfbad71945951db51fcc3d  requirements.html`.
+Current normative specification SHA-256: `6f419c2dc3a8345857ce7299ef81c1b2066ff3e4f5f555febeae1eaef121c6d8  requirements.html`.
 
 ### Current authority and source closure
 

@@ -1161,7 +1161,6 @@ android_frame_input_inventory() {
             "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_version.h"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/COPYRIGHT"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/SOURCE.txt"
-            "$SCRIPT_DIR/fixtures/x11-enigo-xdo-before-local-route.rs"
             "$REPO_ROOT/libs/enigo/src/lib.rs"
             "$REPO_ROOT/libs/enigo/src/linux/xdo.rs"
             "$CARGO_VENDOR_ROOT/log-0.4.22/.cargo-checksum.json"
@@ -3513,7 +3512,6 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/libs/libxdo-sys-stub/native/xdo_version.h=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo_version.h"
             "repo/libs/libxdo-sys-stub/native/COPYRIGHT=$REPO_ROOT/libs/libxdo-sys-stub/native/COPYRIGHT"
             "repo/libs/libxdo-sys-stub/native/SOURCE.txt=$REPO_ROOT/libs/libxdo-sys-stub/native/SOURCE.txt"
-            "repo/scripts/fixtures/x11-enigo-xdo-before-local-route.rs=$SCRIPT_DIR/fixtures/x11-enigo-xdo-before-local-route.rs"
             "repo/libs/enigo/src/lib.rs=$REPO_ROOT/libs/enigo/src/lib.rs"
             "repo/libs/enigo/src/linux/xdo.rs=$REPO_ROOT/libs/enigo/src/linux/xdo.rs"
             "repo/test-inputs/log-0.4.22/.cargo-checksum.json=$CARGO_VENDOR_ROOT/log-0.4.22/.cargo-checksum.json"
@@ -4305,13 +4303,16 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'XDO_CONSTRUCTOR_NATIVE=pass cases=276 faults=22 paths=3 repeats=4 accepted=12 refused=264 events=24 xtest_refusal=pre-allocation snapshot=single allocations=paired maps=paired display_transfer=success-only caller_display=usable descriptors=retired tasks=retired sanitizer=address heap_scope=owned-allocations whole_app=false' \
         'constructor ownership through the current public keyboard API'
     require_exact_fixed_receipt \
-        'XDO_INPUT_API_NATIVE=pass providers=1 exports=12 scope=closed-private-abi' \
+        'XDO_INPUT_API_NATIVE=pass providers=1 exports=11 scope=closed-private-abi' \
         'production-helper provider exposes exactly the private input ABI'
-    [ "$(/usr/bin/grep -Fc 'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a focus=private retired_lookups=59 retired_symbols=absent descriptors=retired' "$SERIAL_LOG")" -eq 2 ] \
+    [ "$(/usr/bin/grep -Fc 'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a input=xtest retired_lookups=61 retired_symbols=absent descriptors=retired' "$SERIAL_LOG")" -eq 2 ] \
         || fail 'native symbol refusal is absent from complete or staged provider execution'
     require_exact_fixed_receipt \
         'X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 context_refusals=32 constructor_unwinds=16 display_connections=one pointer=selected-root callbacks=paired descriptors=retired threads=retired scope=xdo-backend' \
         'current Enigo backend ownership and selected display'
+    require_exact_fixed_receipt \
+        'XDO_MOUSE_MODIFIERS_NATIVE=pass held=0,1,9,10,12 repeats=4 cases=20 events=40 input=xtest physical_button=pressed,released window=owned state=preserved keys=unchanged mapping=restored descriptors=retired tasks=retired scope=private-native-component' \
+        'XTEST mouse events and physical button state preserve held modifiers'
     require_exact_fixed_receipt \
         'X11_ENIGO_TEXT_NATIVE=pass source=complete-backend locale_scenarios=3 scalar_pairs=21 events=42 controls=preadmission-refused keys=clear observers=joined descriptors=retired scope=native-key-events whole_app=false' \
         'current numeric Unicode and control-key events across three locale conditions'
@@ -4319,7 +4320,7 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'X11_ENIGO_LAYOUT_NATIVE=pass source=complete-backend map=changed-after-construction cases=2 scalar_pairs=33 events=66 mapping_refusals=2 keys=clear children=joined descriptors=retired keymap_descriptors=freed scope=native-key-events whole_app=false' \
         'fresh text mapping and native retirement on the corrected provider'
     require_exact_fixed_receipt \
-        'X11_ENIGO_ROUTE_NATIVE=pass source=production-backend-and-constructor-fixture old_accepts=0 current_accepts=0 scenarios=constructor,diagnostic-display-change listener=container-loopback-only peer=closed children=joined scope=xdo-backend' \
+        'X11_ENIGO_ROUTE_NATIVE=pass source=production-backend current_accepts=0 scenarios=constructor,diagnostic-display-change listener=container-loopback-only peer=closed children=joined scope=xdo-backend' \
         'current input and diagnostic constructors remain on their retained Unix route'
     require_exact_fixed_receipt \
         'X11_XDO_PACKAGE_ELF=pass variants=1 required=true runpath=absent full_package=unexecuted' \
@@ -4362,7 +4363,7 @@ elif [ "$MODE" = x11-display-tests ]; then
         'X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 context_refusals=32 constructor_unwinds=16 display_connections=one pointer=selected-root callbacks=paired descriptors=retired threads=retired scope=xdo-backend' \
         'complete production Enigo XDO backend selected-root pointer delivery and sole-display ownership across native refusal, constructor unwind and retirement'
     require_exact_fixed_receipt \
-        'X11_ENIGO_ROUTE_NATIVE=pass source=production-backend-and-constructor-fixture old_accepts=2 current_accepts=0 scenarios=constructor,diagnostic-display-change listener=container-loopback-only peer=closed children=joined scope=xdo-backend' \
+        'X11_ENIGO_ROUTE_NATIVE=pass source=production-backend current_accepts=0 scenarios=constructor,diagnostic-display-change listener=container-loopback-only peer=closed children=joined scope=xdo-backend' \
         'complete Enigo XDO backend retains one local-only display for input and diagnostic'
     require_exact_fixed_receipt \
         'X11_ENIGO_TEXT_NATIVE=pass source=complete-backend locale_scenarios=3 scalar_pairs=21 events=42 controls=preadmission-refused keys=clear observers=joined descriptors=retired scope=native-key-events whole_app=false' \
@@ -4380,11 +4381,11 @@ elif [ "$MODE" = x11-display-tests ]; then
         'XDO_SCRATCH_DISPLAY=retired owner=dedicated-xvfb server=joined socket=absent lock=absent later_tests=fresh-display' \
         'scratch-key fixture owns and joins its dedicated display before other native tests use a fresh server'
     require_exact_fixed_receipt \
-        'XDO_MOUSE_MODIFIERS_NATIVE=pass held=0,1,9,10,12 repeats=4 cases=20 events=40 window=owned state=preserved keys=unchanged mapping=restored descriptors=retired tasks=retired scope=private-native-component' \
+        'XDO_MOUSE_MODIFIERS_NATIVE=pass held=0,1,9,10,12 repeats=4 cases=20 events=40 input=xtest physical_button=pressed,released window=owned state=preserved keys=unchanged mapping=restored descriptors=retired tasks=retired scope=private-native-component' \
         'private native mouse events preserve held modifiers without an unused key-list allocation'
     require_exact_fixed_receipt \
-        'XDO_INPUT_API_NATIVE=pass providers=2 exports=12 scope=closed-private-abi' \
-        'actual private providers expose exactly the twelve supported input APIs'
+        'XDO_INPUT_API_NATIVE=pass providers=2 exports=11 scope=closed-private-abi' \
+        'actual private providers expose exactly the eleven supported input APIs'
     require_exact_fixed_receipt \
         'X11_XDO_DESTRUCTOR_BEFORE=observed source_delta=one-call allocations=2 retirements=0 live=2 keys=correct children=joined scope=xdo-descriptor-class' \
         'same native source with the old destructor delivers keys but retains both enclosing descriptors'

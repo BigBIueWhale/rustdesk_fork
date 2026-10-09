@@ -17,7 +17,7 @@ use std::{
     sync::OnceLock,
 };
 
-pub use hbb_common::x11::xlib::{Display, Window};
+pub use hbb_common::x11::xlib::Display;
 
 #[repr(C)]
 pub struct xdo_t {
@@ -25,8 +25,6 @@ pub struct xdo_t {
 }
 
 pub type useconds_t = c_uint;
-
-pub const CURRENTWINDOW: Window = 0;
 
 #[derive(Clone, Copy)]
 pub enum XdoKey {
@@ -45,7 +43,7 @@ pub enum XdoKeyAction {
 const TRUSTED_LIBXDO_PATHS: &[&str] = &[
     "/usr/lib/rustdesk-fork/libxdo.so.3",
 ];
-const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk11";
+const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk12";
 
 fn root_owned_non_writable(mode: u32, uid: u32) -> bool {
     uid == 0 && mode & 0o022 == 0
@@ -102,11 +100,10 @@ type FnXdoVersion = unsafe extern "C" fn() -> *const c_char;
 type FnXdoNewWithOpenedDisplay =
     unsafe extern "C" fn(*mut Display, *const c_char, c_int) -> *mut xdo_t;
 type FnXdoFree = unsafe extern "C" fn(*mut xdo_t);
-type FnXdoSendKeyWindow =
-    unsafe extern "C" fn(*const xdo_t, Window, c_uint, c_ulong, c_uint, useconds_t) -> c_int;
-type FnXdoClickWindow = unsafe extern "C" fn(*const xdo_t, Window, c_int) -> c_int;
-type FnXdoMouseDown = unsafe extern "C" fn(*const xdo_t, Window, c_int) -> c_int;
-type FnXdoMouseUp = unsafe extern "C" fn(*const xdo_t, Window, c_int) -> c_int;
+type FnXdoSendKey =
+    unsafe extern "C" fn(*const xdo_t, c_uint, c_ulong, c_uint, useconds_t) -> c_int;
+type FnXdoMouseDown = unsafe extern "C" fn(*const xdo_t, c_int) -> c_int;
+type FnXdoMouseUp = unsafe extern "C" fn(*const xdo_t, c_int) -> c_int;
 type FnXdoMoveMouse = unsafe extern "C" fn(*const xdo_t, c_int, c_int, c_int) -> c_int;
 type FnXdoMoveMouseRelative = unsafe extern "C" fn(*const xdo_t, c_int, c_int) -> c_int;
 type FnXdoGetMouseLocation =
@@ -118,8 +115,7 @@ struct XdoLib {
     xdo_new: FnXdoNew,
     xdo_new_with_opened_display: FnXdoNewWithOpenedDisplay,
     xdo_free: FnXdoFree,
-    xdo_send_key_window: FnXdoSendKeyWindow,
-    xdo_click_window: FnXdoClickWindow,
+    xdo_send_key: FnXdoSendKey,
     xdo_mouse_down: FnXdoMouseDown,
     xdo_mouse_up: FnXdoMouseUp,
     xdo_move_mouse: FnXdoMoveMouse,
@@ -158,9 +154,8 @@ impl XdoLib {
             }
             let xdo_new = required_symbol(&lib, b"xdo_new")?;
             let xdo_free = required_symbol(&lib, b"xdo_free")?;
-            let xdo_send_key_window = required_symbol(&lib, b"xdo_send_key_window")?;
+            let xdo_send_key = required_symbol(&lib, b"xdo_send_key")?;
             let xdo_new_with_opened_display = required_symbol(&lib, b"xdo_new_with_opened_display")?;
-            let xdo_click_window = required_symbol(&lib, b"xdo_click_window")?;
             let xdo_mouse_down = required_symbol(&lib, b"xdo_mouse_down")?;
             let xdo_mouse_up = required_symbol(&lib, b"xdo_mouse_up")?;
             let xdo_move_mouse = required_symbol(&lib, b"xdo_move_mouse")?;
@@ -175,8 +170,7 @@ impl XdoLib {
                 xdo_new,
                 xdo_new_with_opened_display,
                 xdo_free,
-                xdo_send_key_window,
-                xdo_click_window,
+                xdo_send_key,
                 xdo_mouse_down,
                 xdo_mouse_up,
                 xdo_move_mouse,
@@ -362,9 +356,8 @@ pub unsafe extern "C" fn xdo_free(xdo: *mut xdo_t) {
     }
 }
 
-pub unsafe fn xdo_send_key_window(
+pub unsafe fn xdo_send_key(
     xdo: *const xdo_t,
-    window: Window,
     key: XdoKey,
     action: XdoKeyAction,
     delay: useconds_t,
@@ -374,24 +367,16 @@ pub unsafe fn xdo_send_key_window(
         XdoKey::Keycode(value) => (2, value as c_ulong),
     };
     get_lib().map_or(1, |lib| {
-        (lib.xdo_send_key_window)(xdo, window, kind, value, action as c_uint, delay)
+        (lib.xdo_send_key)(xdo, kind, value, action as c_uint, delay)
     })
 }
 
-pub unsafe extern "C" fn xdo_click_window(
-    xdo: *const xdo_t,
-    window: Window,
-    button: c_int,
-) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_click_window)(xdo, window, button))
+pub unsafe extern "C" fn xdo_mouse_down(xdo: *const xdo_t, button: c_int) -> c_int {
+    get_lib().map_or(1, |lib| (lib.xdo_mouse_down)(xdo, button))
 }
 
-pub unsafe extern "C" fn xdo_mouse_down(xdo: *const xdo_t, window: Window, button: c_int) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_mouse_down)(xdo, window, button))
-}
-
-pub unsafe extern "C" fn xdo_mouse_up(xdo: *const xdo_t, window: Window, button: c_int) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_mouse_up)(xdo, window, button))
+pub unsafe extern "C" fn xdo_mouse_up(xdo: *const xdo_t, button: c_int) -> c_int {
+    get_lib().map_or(1, |lib| (lib.xdo_mouse_up)(xdo, button))
 }
 
 pub unsafe extern "C" fn xdo_move_mouse(

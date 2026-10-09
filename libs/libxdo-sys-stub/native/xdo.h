@@ -18,20 +18,12 @@
  * @mainpage
  *
  * The private provider sends mouse and keyboard input and queries cursor/input state.
+ * Keyboard and button input use XTEST on the context display; the X server
+ * routes it according to its focus, pointer and grabs.
  *
  * @see xdo.h
  * @see xdo_new
  */
-
-/**
- * CURRENTWINDOW is a special identify for xdo input faking (mouse and
- * keyboard) functions like xdo_send_key_window that indicate we should target the
- * current window, not a specific window.
- *
- * Generally, this means we will use XTEST instead of XSendEvent when sending
- * events.
- */
-#define CURRENTWINDOW (0)
 
 /**
  * @internal
@@ -156,21 +148,19 @@ int xdo_move_mouse_relative(const xdo_t *xdo, int x, int y);
  * Send a mouse press (aka mouse down) for a given button at the current mouse
  * location.
  *
- * @param window The window you want to send the event to or CURRENTWINDOW
  * @param button The mouse button. Generally, 1 is left, 2 is middle, 3 is
  *    right, 4 is wheel up, 5 is wheel down.
  */
-int xdo_mouse_down(const xdo_t *xdo, Window window, int button);
+int xdo_mouse_down(const xdo_t *xdo, int button);
 
 /**
  * Send a mouse release (aka mouse up) for a given button at the current mouse
  * location.
  *
- * @param window The window you want to send the event to or CURRENTWINDOW
  * @param button The mouse button. Generally, 1 is left, 2 is middle, 3 is
  *    right, 4 is wheel up, 5 is wheel down.
  */
-int xdo_mouse_up(const xdo_t *xdo, Window window, int button);
+int xdo_mouse_up(const xdo_t *xdo, int button);
 
 /**
  * Get the current mouse location (coordinates and screen number).
@@ -180,15 +170,6 @@ int xdo_mouse_up(const xdo_t *xdo, Window window, int button);
  * @param screen_num integer pointer where the screen number will be stored
  */
 int xdo_get_mouse_location(const xdo_t *xdo, int *x, int *y, int *screen_num);
-
-/**
- * Send a click for a specific mouse button at the current mouse location.
- *
- * @param window The window you want to send the event to or CURRENTWINDOW
- * @param button The mouse button. Generally, 1 is left, 2 is middle, 3 is
- *    right, 4 is wheel up, 5 is wheel down.
- */
-int xdo_click_window(const xdo_t *xdo, Window window, int button);
 
 #define XDO_KEYSYM 1U
 #define XDO_KEYCODE 2U
@@ -205,10 +186,9 @@ int xdo_click_window(const xdo_t *xdo, Window window, int button);
  * Invalid kinds, values, or actions return XDO_ERROR before input.
  * A click resolves once and releases the exact code pressed.
  *
- * @param window The target window or CURRENTWINDOW.
  * @param delay Delay in microseconds; a click divides it between down and up.
  */
-int xdo_send_key_window(const xdo_t *xdo, Window window, unsigned int kind,
+int xdo_send_key(const xdo_t *xdo, unsigned int kind,
                         unsigned long value, unsigned int action, useconds_t delay);
 
 /**

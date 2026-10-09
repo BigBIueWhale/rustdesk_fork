@@ -1,6 +1,4 @@
 /* xdo library
- * - getwindowfocus contributed by Lee Pumphret
- * - keysequence_{up,down} contributed by Magnus Boman
  *
  * See the following url for an explanation of how keymaps work in X11
  * http://www.in-ulm.de/~mascheck/X11/xmodmap.html
@@ -25,18 +23,14 @@
 #include "xdo.h"
 #include "xdo_version.h"
 
-#define DEFAULT_DELAY 12
-
 static int _xdo_populate_charcode_map(xdo_t *xdo);
 
 static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key, KeySym keysym);
-static int _xdo_get_focused_window(const xdo_t *xdo, Window *window_ret);
-static void _xdo_init_xkeyevent(const xdo_t *xdo, XKeyEvent *xk);
-static void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
+static void _xdo_send_key(const xdo_t *xdo, charcodemap_t *key,
                           const KeyCode *modifiers, int is_press, int current_group, useconds_t delay);
 static int _xdo_get_key_modifiers(const xdo_t *xdo, int modmask, KeyCode *modifiers);
 
-static int _xdo_mousebutton(const xdo_t *xdo, Window window, int button, int is_press);
+static int _xdo_mousebutton(const xdo_t *xdo, int button, int is_press);
 
 static int _is_success(const char *funcname, int code, const xdo_t *xdo);
 
@@ -138,61 +132,18 @@ int xdo_move_mouse_relative(const xdo_t *xdo, int x, int y)  {
   return _is_success("XTestFakeRelativeMotionEvent", ret == 0, xdo);
 }
 
-int _xdo_mousebutton(const xdo_t *xdo, Window window, int button, int is_press) {
-  int ret = 0;
-
-  if (window == CURRENTWINDOW) {
-    ret = XTestFakeButtonEvent(xdo->xdpy, button, is_press, CurrentTime);
-    XFlush(xdo->xdpy);
-    return _is_success("XTestFakeButtonEvent(down)", ret == 0, xdo);
-  } else {
-    /* Send to specific window */
-    int screen = 0;
-    XButtonEvent xbpe;
-
-    xdo_get_mouse_location(xdo, &xbpe.x_root, &xbpe.y_root, &screen);
-
-    xbpe.window = window;
-    xbpe.button = button;
-    xbpe.display = xdo->xdpy;
-    xbpe.root = RootWindow(xdo->xdpy, screen);
-    xbpe.same_screen = True; /* Should we detect if window is on the same
-                                 screen as cursor? */
-    xbpe.state = xdo_get_input_state(xdo);
-
-    xbpe.subwindow = None;
-    xbpe.time = CurrentTime;
-    xbpe.type = (is_press ? ButtonPress : ButtonRelease);
-
-    /* Get the coordinates of the cursor relative to xbpe.window and also find what
-     * subwindow it might be on */
-    XTranslateCoordinates(xdo->xdpy, xbpe.root, xbpe.window,
-                          xbpe.x_root, xbpe.y_root, &xbpe.x, &xbpe.y, &xbpe.subwindow);
-
-    /* Normal behavior of 'mouse up' is that the modifier mask includes
-     * 'ButtonNMotionMask' where N is the button being released. This works the
-     * same way with keys, too. */
-    if (!is_press) { /* is mouse up */
-      switch(button) {
-        case 1: xbpe.state |= Button1MotionMask; break;
-        case 2: xbpe.state |= Button2MotionMask; break;
-        case 3: xbpe.state |= Button3MotionMask; break;
-        case 4: xbpe.state |= Button4MotionMask; break;
-        case 5: xbpe.state |= Button5MotionMask; break;
-      }
-    }
-    ret = XSendEvent(xdo->xdpy, window, True, ButtonPressMask, (XEvent *)&xbpe);
-    XFlush(xdo->xdpy);
-    return _is_success("XSendEvent(mousedown)", ret == 0, xdo);
-  }
+int _xdo_mousebutton(const xdo_t *xdo, int button, int is_press) {
+  int ret = XTestFakeButtonEvent(xdo->xdpy, button, is_press, CurrentTime);
+  XFlush(xdo->xdpy);
+  return _is_success("XTestFakeButtonEvent", ret == 0, xdo);
 }
 
-int xdo_mouse_up(const xdo_t *xdo, Window window, int button) {
-  return _xdo_mousebutton(xdo, window, button, False);
+int xdo_mouse_up(const xdo_t *xdo, int button) {
+  return _xdo_mousebutton(xdo, button, False);
 }
 
-int xdo_mouse_down(const xdo_t *xdo, Window window, int button) {
-  return _xdo_mousebutton(xdo, window, button, True);
+int xdo_mouse_down(const xdo_t *xdo, int button) {
+  return _xdo_mousebutton(xdo, button, True);
 }
 
 int xdo_get_mouse_location(const xdo_t *xdo, int *x_ret, int *y_ret,
@@ -226,19 +177,7 @@ int xdo_get_mouse_location(const xdo_t *xdo, int *x_ret, int *y_ret,
   return _is_success("XQueryPointer", ret == False, xdo);
 }
 
-int xdo_click_window(const xdo_t *xdo, Window window, int button) {
-  int ret = 0;
-  ret = xdo_mouse_down(xdo, window, button);
-  if (ret != XDO_SUCCESS) {
-    fprintf(stderr, "xdo_mouse_down failed, aborting click.\n");
-    return ret;
-  }
-  usleep(DEFAULT_DELAY);
-  ret = xdo_mouse_up(xdo, window, button);
-  return ret;
-}
-
-static int _xdo_send_key_window_do(const xdo_t *xdo, Window window, charcodemap_t *key,
+static int _xdo_send_key_do(const xdo_t *xdo, charcodemap_t *key,
                                    int pressed, const KeyCode *modifiers, int current_group, useconds_t delay) {
   KeySym *keysyms = NULL;
   int keysyms_per_keycode = 0;
@@ -282,7 +221,7 @@ static int _xdo_send_key_window_do(const xdo_t *xdo, Window window, charcodemap_
     key->code = scratch_keycode;
   }
 
-  _xdo_send_key(xdo, window, key, modifiers, pressed, current_group, delay);
+  _xdo_send_key(xdo, key, modifiers, pressed, current_group, delay);
 
   if (keysyms != NULL) {
     XSync(xdo->xdpy, False);
@@ -296,7 +235,7 @@ static int _xdo_send_key_window_do(const xdo_t *xdo, Window window, charcodemap_
   return XDO_SUCCESS;
 }
 
-int xdo_send_key_window(const xdo_t *xdo, Window window, unsigned int kind,
+int xdo_send_key(const xdo_t *xdo, unsigned int kind,
                         unsigned long value, unsigned int action, useconds_t delay) {
   charcodemap_t key = {0};
   KeyCode modifiers[Mod5MapIndex + 1] = {0};
@@ -331,25 +270,14 @@ int xdo_send_key_window(const xdo_t *xdo, Window window, unsigned int kind,
     return XDO_ERROR;
 
   if (action != XDO_KEY_CLICK)
-    return _xdo_send_key_window_do(xdo, window, &key, action == XDO_KEY_DOWN, modifiers, state.group, delay);
+    return _xdo_send_key_do(xdo, &key, action == XDO_KEY_DOWN, modifiers, state.group, delay);
 
-  int status = _xdo_send_key_window_do(xdo, window, &key, True, modifiers, state.group, delay / 2);
+  int status = _xdo_send_key_do(xdo, &key, True, modifiers, state.group, delay / 2);
   if (status != XDO_SUCCESS)
     return status;
   /* Release the exact code just pressed without reacquiring a scratch resource. */
   key.needs_binding = 0;
-  return _xdo_send_key_window_do(xdo, window, &key, False, modifiers, state.group, delay / 2);
-}
-
-/* Add by Lee Pumphret 2007-07-28
- * Modified slightly by Jordan Sissel */
-static int _xdo_get_focused_window(const xdo_t *xdo, Window *window_ret) {
-  int ret = 0;
-  int unused_revert_ret;
-
-  ret = XGetInputFocus(xdo->xdpy, window_ret, &unused_revert_ret);
-
-  return _is_success("XGetInputFocus", ret == 0, xdo);
+  return _xdo_send_key_do(xdo, &key, False, modifiers, state.group, delay / 2);
 }
 
 /* Helper functions */
@@ -469,53 +397,18 @@ int _is_success(const char *funcname, int code, const xdo_t *xdo) {
   return code;
 }
 
-void _xdo_init_xkeyevent(const xdo_t *xdo, XKeyEvent *xk) {
-  xk->display = xdo->xdpy;
-  xk->subwindow = None;
-  xk->time = CurrentTime;
-  xk->same_screen = True;
-
-  /* Should we set these at all? */
-  xk->x = xk->y = xk->x_root = xk->y_root = 1;
-}
-
-void _xdo_send_key(const xdo_t *xdo, Window window, charcodemap_t *key,
+void _xdo_send_key(const xdo_t *xdo, charcodemap_t *key,
                           const KeyCode *modifiers, int is_press, int current_group, useconds_t delay) {
-  int use_xtest = 0;
-
-  if (window == CURRENTWINDOW) {
-    use_xtest = 1;
-  } else {
-    Window focuswin = 0;
-    _xdo_get_focused_window(xdo, &focuswin);
-    if (focuswin == window) {
-      use_xtest = 1;
+  XkbLockGroup(xdo->xdpy, XkbUseCoreKbd, key->group);
+  for (int i = ShiftMapIndex; i <= Mod5MapIndex; i++) {
+    if (modifiers[i] != 0) {
+      XTestFakeKeyEvent(xdo->xdpy, modifiers[i], is_press, CurrentTime);
+      XSync(xdo->xdpy, False);
     }
   }
-  if (use_xtest) {
-    //printf("XTEST: Sending key %d %s\n", key->code, is_press ? "down" : "up");
-    XkbLockGroup(xdo->xdpy, XkbUseCoreKbd, key->group);
-    for (int i = ShiftMapIndex; i <= Mod5MapIndex; i++) {
-      if (modifiers[i] != 0) {
-        XTestFakeKeyEvent(xdo->xdpy, modifiers[i], is_press, CurrentTime);
-        XSync(xdo->xdpy, False);
-      }
-    }
-    //printf("XTEST: Sending key %d %s %x %d\n", key->code, is_press ? "down" : "up", key->modmask, key->group);
-    XTestFakeKeyEvent(xdo->xdpy, key->code, is_press, CurrentTime);
-    XkbLockGroup(xdo->xdpy, XkbUseCoreKbd, current_group);
-    XSync(xdo->xdpy, False);
-  } else {
-    /* Since key events have 'state' (shift, etc) in the event, we don't
-     * need to worry about key press ordering. */
-    XKeyEvent xk;
-    _xdo_init_xkeyevent(xdo, &xk);
-    xk.window = window;
-    xk.keycode = key->code;
-    xk.state = key->modmask | (key->group << 13);
-    xk.type = (is_press ? KeyPress : KeyRelease);
-    XSendEvent(xdo->xdpy, xk.window, True, KeyPressMask, (XEvent *)&xk);
-  }
+  XTestFakeKeyEvent(xdo->xdpy, key->code, is_press, CurrentTime);
+  XkbLockGroup(xdo->xdpy, XkbUseCoreKbd, current_group);
+  XSync(xdo->xdpy, False);
 
   /* Skipping the usleep if delay is 0 is much faster than calling usleep(0) */
   XFlush(xdo->xdpy);

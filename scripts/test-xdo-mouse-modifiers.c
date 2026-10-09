@@ -93,15 +93,24 @@ int main(void) {
                             &x, &y, &state) && state == (count ? ShiftMask : 0),
               "effective modifier state differs");
       printf("XDO_MOUSE_MODIFIERS_ENTER round=%d held=%d window=owned state=%u\n", round, count, state);
-      require(xdo_mouse_down(input, window, 1) == XDO_SUCCESS, "product mouse press failed");
-      require(xdo_mouse_up(input, window, 1) == XDO_SUCCESS, "product mouse release failed");
+      require(xdo_mouse_down(input, 1) == XDO_SUCCESS, "product mouse press failed");
       XSync(input->xdpy, False);
+      unsigned int pressed_state;
+      require(XQueryPointer(observer, window, &returned_root, &child, &root_x, &root_y,
+                            &x, &y, &pressed_state) && pressed_state == (state | Button1Mask),
+              "physical button not pressed");
+      require(xdo_mouse_up(input, 1) == XDO_SUCCESS, "product mouse release failed");
+      XSync(input->xdpy, False);
+      unsigned int released_state;
+      require(XQueryPointer(observer, window, &returned_root, &child, &root_x, &root_y,
+                            &x, &y, &released_state) && released_state == state,
+              "physical button not released");
       XSync(observer, False);
       for (int press = 1; press >= 0; press--) {
         XEvent event;
         require(XCheckWindowEvent(observer, window, ButtonPressMask | ButtonReleaseMask, &event),
                 "expected mouse event missing");
-        require(event.type == (press ? ButtonPress : ButtonRelease) && event.xbutton.send_event
+        require(event.type == (press ? ButtonPress : ButtonRelease) && !event.xbutton.send_event
                 && event.xbutton.window == window && event.xbutton.root == root
                 && event.xbutton.button == 1 && event.xbutton.same_screen
                 && event.xbutton.x_root == 47 && event.xbutton.y_root == 69
@@ -143,6 +152,6 @@ int main(void) {
   XCloseDisplay(observer);
   require(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks,
           "product context resources retained");
-  puts("XDO_MOUSE_MODIFIERS_NATIVE=pass held=0,1,9,10,12 repeats=4 cases=20 events=40 window=owned state=preserved keys=unchanged mapping=restored descriptors=retired tasks=retired scope=private-native-component");
+  puts("XDO_MOUSE_MODIFIERS_NATIVE=pass held=0,1,9,10,12 repeats=4 cases=20 events=40 input=xtest physical_button=pressed,released window=owned state=preserved keys=unchanged mapping=restored descriptors=retired tasks=retired scope=private-native-component");
   return 0;
 }

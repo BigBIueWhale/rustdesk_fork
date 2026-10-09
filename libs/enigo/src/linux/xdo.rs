@@ -11,7 +11,7 @@ use hbb_common::libc::c_int;
 use hbb_common::platform::x11_display::unix_display_name;
 use hbb_common::x11::keysym::*;
 use hbb_common::x11::xlib::{Display, XCloseDisplay, XDefaultScreen, XGetPointerMapping, XOpenDisplay};
-use libxdo_sys::{self, xdo_t, XdoKey, XdoKeyAction, CURRENTWINDOW};
+use libxdo_sys::{self, xdo_t, XdoKey, XdoKeyAction};
 use std::ffi::CString;
 
 /// Default delay per keypress in microseconds.
@@ -220,9 +220,8 @@ impl EnigoXdo {
             };
             let key = xdo_key(key)?;
             let status = unsafe {
-                libxdo_sys::xdo_send_key_window(
+                libxdo_sys::xdo_send_key(
                     context.0 as *const _,
-                    CURRENTWINDOW,
                     key,
                     XdoKeyAction::Click,
                     (self.delay / 2) as libxdo_sys::useconds_t,
@@ -264,7 +263,7 @@ impl MouseControllable for EnigoXdo {
             return Err("libxdo is unavailable".into());
         }
         let status = unsafe {
-            libxdo_sys::xdo_mouse_down(self.xdo as *const _, CURRENTWINDOW, mousebutton(button))
+            libxdo_sys::xdo_mouse_down(self.xdo as *const _, mousebutton(button))
         };
         xdo_result("mouse down", status)
     }
@@ -274,7 +273,7 @@ impl MouseControllable for EnigoXdo {
             return Err("libxdo is unavailable".into());
         }
         let status = unsafe {
-            libxdo_sys::xdo_mouse_up(self.xdo as *const _, CURRENTWINDOW, mousebutton(button))
+            libxdo_sys::xdo_mouse_up(self.xdo as *const _, mousebutton(button))
         };
         xdo_result("mouse up", status)
     }
@@ -460,9 +459,8 @@ impl KeyboardControllable for EnigoXdo {
         }
         let key = xdo_key(key)?;
         let status = unsafe {
-            libxdo_sys::xdo_send_key_window(
+            libxdo_sys::xdo_send_key(
                 self.xdo as *const _,
-                CURRENTWINDOW,
                 key,
                 XdoKeyAction::Down,
                 self.delay as libxdo_sys::useconds_t,
@@ -478,9 +476,8 @@ impl KeyboardControllable for EnigoXdo {
         }
         let result = xdo_key(key).and_then(|key| {
             let status = unsafe {
-                libxdo_sys::xdo_send_key_window(
+                libxdo_sys::xdo_send_key(
                     self.xdo as *const _,
-                    CURRENTWINDOW,
                     key,
                     XdoKeyAction::Up,
                     self.delay as libxdo_sys::useconds_t,
@@ -500,9 +497,8 @@ impl KeyboardControllable for EnigoXdo {
         }
         let result = xdo_key(key).and_then(|key| {
             let status = unsafe {
-                libxdo_sys::xdo_send_key_window(
+                libxdo_sys::xdo_send_key(
                     self.xdo as *const _,
-                    CURRENTWINDOW,
                     key,
                     XdoKeyAction::Click,
                     self.delay as libxdo_sys::useconds_t,

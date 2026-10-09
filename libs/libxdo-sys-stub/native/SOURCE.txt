@@ -49,9 +49,11 @@ Window-management actions, their wait and size-hint APIs, interactive pointer-gr
 selection, desktop/viewport mutation and client/window termination are removed.
 Unused window/desktop/property/name/client queries, polling, repeated-click and
 feature APIs and the entire regex window-search module are removed. Cursor
-coordinates use only the native pointer query; focus is private to key routing.
-The provider has twelve context, version, input and cursor/state exports and
-no Xinerama dependency.
-The fixed fork version is 3.20160805.1-rustdesk11.
+coordinates use only the native pointer query. Keyboard and button input use
+only XTEST on the context display, with server-owned focus, pointer and grab
+routing. Caller-selected windows, directed XSendEvent input, focus-routing
+helpers and the unused native click helper are removed. The provider has eleven
+context, version, input and cursor/state exports and no Xinerama dependency.
+The fixed fork version is 3.20160805.1-rustdesk12.
 The BSD redistribution notice is retained in COPYRIGHT and packaged with the
 library. Source provenance is not a claim that all native behavior is validated.

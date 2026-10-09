@@ -34,30 +34,27 @@ use x11::xlib::{Display, XDefaultScreen};
 pub struct xdo_t { _private: [u8; 0] }
 #[allow(non_camel_case_types)]
 pub type useconds_t = c_uint;
-pub const CURRENTWINDOW: c_ulong = 0;
 #[link(name = "xdo")]
 extern "C" {
-    pub fn xdo_new(name: *const c_char) -> *mut xdo_t;
     pub fn xdo_new_with_opened_display(display: *mut Display, name: *const c_char, close: c_int) -> *mut xdo_t;
     pub fn xdo_free(context: *mut xdo_t);
     pub fn xdo_move_mouse(context: *const xdo_t, x: c_int, y: c_int, screen: c_int) -> c_int;
     pub fn xdo_move_mouse_relative(context: *const xdo_t, x: c_int, y: c_int) -> c_int;
-    pub fn xdo_mouse_down(context: *const xdo_t, window: c_ulong, button: c_int) -> c_int;
-    pub fn xdo_mouse_up(context: *const xdo_t, window: c_ulong, button: c_int) -> c_int;
+    pub fn xdo_mouse_down(context: *const xdo_t, button: c_int) -> c_int;
+    pub fn xdo_mouse_up(context: *const xdo_t, button: c_int) -> c_int;
     pub fn xdo_get_input_state(context: *const xdo_t) -> c_uint;
-    #[link_name = "xdo_send_key_window"]
-    fn native_send_key(context: *const xdo_t, window: c_ulong, kind: c_uint, value: c_ulong, action: c_uint, delay: useconds_t) -> c_int;
-    fn __real_xdo_new(name: *const c_char) -> *mut xdo_t;
+    #[link_name = "xdo_send_key"]
+    fn native_send_key(context: *const xdo_t, kind: c_uint, value: c_ulong, action: c_uint, delay: useconds_t) -> c_int;
     fn __real_xdo_new_with_opened_display(display: *mut Display, name: *const c_char, close: c_int) -> *mut xdo_t;
     fn __real_xdo_free(context: *mut xdo_t);
 }
-pub unsafe fn xdo_send_key_window(context: *const xdo_t, window: c_ulong, key: XdoKey,
+pub unsafe fn xdo_send_key(context: *const xdo_t, key: XdoKey,
                                   action: XdoKeyAction, delay: useconds_t) -> c_int {
     let (kind, value) = match key {
         XdoKey::Keysym(value) => (1, value),
         XdoKey::Keycode(value) => (2, value as c_ulong),
     };
-    native_send_key(context, window, kind, value, action as c_uint, delay)
+    native_send_key(context, kind, value, action as c_uint, delay)
 }
 #[link(name = "X11")]
 extern "C" {
@@ -70,11 +67,7 @@ extern "C" {
     fn XQueryPointer(display: *mut Display, window: c_ulong, root: *mut c_ulong, child: *mut c_ulong,
                      root_x: *mut c_int, root_y: *mut c_int, x: *mut c_int, y: *mut c_int, mask: *mut c_uint) -> c_int;
 }
-#[cfg(not(historical))]
 #[path = "/work/libs/enigo/src/linux/xdo.rs"]
-mod backend;
-#[cfg(historical)]
-#[path = "/work/scripts/fixtures/x11-enigo-xdo-before-local-route.rs"]
 mod backend;
 
 static NAMES: Mutex<Vec<(bool, Option<String>)>> = Mutex::new(Vec::new());
@@ -100,17 +93,6 @@ impl log::Log for NativeLogger {
 unsafe fn record(xdo: bool, name: *const c_char) {
     NAMES.lock().unwrap().push((xdo, if name.is_null() { None }
                               else { Some(CStr::from_ptr(name).to_str().unwrap().to_owned()) }));
-}
-#[no_mangle]
-unsafe extern "C" fn __wrap_xdo_new(name: *const c_char) -> *mut xdo_t {
-    record(true, name);
-    let context = __real_xdo_new(name);
-    if SHIFT_AFTER_OPEN.swap(false, Ordering::SeqCst) {
-        assert!(!context.is_null());
-        // A controlled environment change between the two real native constructors.
-        std::env::set_var("DISPLAY", ":95");
-    }
-    context
 }
 #[no_mangle]
 unsafe extern "C" fn __wrap_xdo_new_with_opened_display(display: *mut Display, name: *const c_char,
@@ -166,7 +148,6 @@ fn main() {
     log::set_max_level(log::LevelFilter::Info);
     let baseline = descriptors();
     if let Some(scenario) = std::env::args().nth(1) {
-        #[cfg(not(historical))]
         if matches!(scenario.as_str(), "layout" | "layout-repeat") {
             use std::io::{Read, Write};
             std::env::set_var("DISPLAY", ":98");
@@ -193,7 +174,6 @@ fn main() {
             println!("X11_ENIGO_LAYOUT_CHILD=pass pairs={repeats} mapping_refusal=explicit descriptors=retired threads=retired");
             return;
         }
-        #[cfg(not(historical))]
         if scenario == "text" {
             std::env::set_var("DISPLAY", ":98");
             let mut injector = backend::EnigoXdo::default();
@@ -215,31 +195,24 @@ fn main() {
             injector.mouse_move_to(131, 79).unwrap();
         } else {
             assert!(injector.mouse_move_to(131, 79).is_err());
-            #[cfg(not(historical))]
             assert!(injector.key_sequence_result("a").is_err());
         }
         drop(injector);
         assert_eq!(RETIREMENTS.load(Ordering::SeqCst), usize::from(diagnostic));
         let names = NAMES.lock().unwrap();
-        let canonical = |name: &str| if cfg!(historical) { None } else { Some(name.to_owned()) };
         assert_eq!(*names, if diagnostic {
-            if cfg!(historical) {
-                vec![(true, None), (false, None)]
-            } else { vec![(false, canonical("unix/:98.0")), (true, canonical("unix/:98.0"))] }
-        } else { vec![(cfg!(historical), canonical("unix/:95.0"))] });
+            vec![(false, Some("unix/:98.0".into())), (true, Some("unix/:98.0".into()))]
+        } else { vec![(false, Some("unix/:95.0".into()))] });
         assert_eq!(DISPLAY_RETIREMENTS.load(Ordering::SeqCst), 0);
         retired(baseline);
-        println!("X11_ENIGO_{}_CHILD variant={} result={} descriptors=retired threads=retired",
+        println!("X11_ENIGO_{}_CHILD variant=corrected result={} descriptors=retired threads=retired",
                  if diagnostic { "DIAGNOSTIC" } else { "ROUTE" },
-                 if cfg!(historical) { "historical" } else { "corrected" },
-                 if !diagnostic { "refused" } else if cfg!(historical) { "environment-reread" } else { "selected-once" });
+                 if diagnostic { "selected-once" } else { "refused" });
         return;
     }
-    assert!(!cfg!(historical));
     let refuse = || {
         let mut injector = backend::EnigoXdo::default();
         assert!(injector.mouse_move_to(131, 79).is_err());
-        #[cfg(not(historical))]
         assert!(injector.key_sequence_result("a").is_err());
         drop(injector);
         assert!(NAMES.lock().unwrap().is_empty());
@@ -260,7 +233,6 @@ fn main() {
         let mut injector = backend::EnigoXdo::default();
         assert!(!REFUSE_NEXT_CONSTRUCT.load(Ordering::SeqCst));
         assert!(injector.mouse_move_to(131, 79).is_err());
-        #[cfg(not(historical))]
         assert!(injector.key_sequence_result("a").is_err());
         drop(injector);
         assert_eq!(*NAMES.lock().unwrap(), vec![(false, Some("unix/:98.1".into())),

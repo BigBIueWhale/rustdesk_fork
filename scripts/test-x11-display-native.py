@@ -205,6 +205,8 @@ def scratch_keys(root, environment):
                     "-Wl,--wrap=XkbGetState", "-Wl,--wrap=XkbLockGroup",
                     "-Wl,--wrap=XTestFakeKeyEvent", "-Wl,--wrap=XChangeKeyboardMapping",
                     "-Wl,--wrap=XGetModifierMapping", "-Wl,--wrap=XFreeModifiermap",
+                    "-Wl,--wrap=XGetXCBConnection", "-Wl,--wrap=xcb_connection_has_error",
+                    "-Wl,--wrap=xcb_query_keymap_reply", "-Wl,--wrap=free",
                     "-Wl,--wrap=malloc", "-Wl,--wrap=calloc", "-Wl,--wrap=realloc", "-Wl,--wrap=strdup",
                     str(scratch_source), str(native_source / "xdo.c"),
                     "-lX11", "-lXtst", "-lX11-xcb", "-lxcb", "-o", str(scratch_binary)],

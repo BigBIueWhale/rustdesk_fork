@@ -30,6 +30,7 @@ static void _xdo_text_event(const xdo_t *xdo, charcodemap_t *key,
                           const KeyCode *modifiers, int is_press, useconds_t delay);
 static int _xdo_get_key_modifiers(const xdo_t *xdo, int modmask, KeyCode *modifiers);
 static int _xdo_restore_scratch(xdo_t *xdo);
+static int _xdo_query_keys(xcb_connection_t *connection, unsigned char *output);
 
 static int _xdo_mousebutton(const xdo_t *xdo, int button, int is_press);
 
@@ -314,7 +315,8 @@ static int _xdo_restore_scratch(xdo_t *xdo) {
 }
 
 static int _xdo_enter_text_scalar_do(xdo_t *xdo, charcodemap_t *key,
-                                   const KeyCode *modifiers, useconds_t delay) {
+                                   const KeyCode *modifiers, const unsigned char *held,
+                                   useconds_t delay) {
   int scratch_keycode = 0;
 
   /* Acquire the complete scratch resource before sending any input. */
@@ -329,7 +331,7 @@ static int _xdo_enter_text_scalar_do(xdo_t *xdo, charcodemap_t *key,
       return XDO_ERROR;
     }
     for (int i = xdo->keycode_low; i <= xdo->keycode_high; i++) {
-      if (_xdo_scratch_neutral(original, i)) {
+      if (!(held[i / 8] & (1U << (i % 8))) && _xdo_scratch_neutral(original, i)) {
         scratch_keycode = i;
         break;
       }
@@ -397,11 +399,25 @@ int xdo_enter_text_scalar(xdo_t *xdo, unsigned int scalar, useconds_t delay) {
   if (XkbGetState(xdo->xdpy, XkbUseCoreKbd, &state) != Success
       || state.group >= XkbNumKbdGroups)
     return XDO_ERROR;
+  xcb_connection_t *connection = XGetXCBConnection(xdo->xdpy);
+  if (connection == NULL || xcb_connection_has_error(connection))
+    return XDO_ERROR;
+  XFlush(xdo->xdpy);
+  unsigned char held[32];
+  if (_xdo_query_keys(connection, held) != XDO_SUCCESS)
+    return XDO_ERROR;
   _xdo_charcodemap_from_keysym(xdo, &key, symbol, state.group);
+  if (!key.needs_binding && (held[key.code / 8] & (1U << (key.code % 8))))
+    return XDO_ERROR;
   if (_xdo_get_key_modifiers(xdo, key.modmask, modifiers) != XDO_SUCCESS)
     return XDO_ERROR;
+  for (int i = ShiftMapIndex; i <= Mod5MapIndex; i++) {
+    KeyCode code = modifiers[i];
+    if (code != 0 && (held[code / 8] & (1U << (code % 8))))
+      modifiers[i] = 0;
+  }
 
-  return _xdo_enter_text_scalar_do(xdo, &key, modifiers, delay);
+  return _xdo_enter_text_scalar_do(xdo, &key, modifiers, held, delay);
 }
 
 /* Helper functions */
@@ -583,6 +599,21 @@ done:
   return status;
 }
 
+static int _xdo_query_keys(xcb_connection_t *connection, unsigned char *output) {
+  int status = XDO_ERROR;
+  xcb_generic_error_t *error = NULL;
+  xcb_query_keymap_reply_t *keys = xcb_query_keymap_reply(connection,
+      xcb_query_keymap(connection), &error);
+  if (keys != NULL && error == NULL && keys->response_type == 1
+      && keys->length == 2 && !xcb_connection_has_error(connection)) {
+    memcpy(output, keys->keys, 32);
+    status = XDO_SUCCESS;
+  }
+  free(error);
+  free(keys);
+  return status;
+}
+
 int xdo_query_input_state(const xdo_t *xdo, xdo_input_state_t *output) {
   if (xdo == NULL || xdo->xdpy == NULL || output == NULL
       || xdo->keycode_low < 8 || xdo->keycode_high > 255
@@ -612,20 +643,8 @@ pointer_done:
   if (status != XDO_SUCCESS)
     return status;
 
-  status = XDO_ERROR;
-  error = NULL;
-  xcb_query_keymap_reply_t *keys = xcb_query_keymap_reply(connection,
-      xcb_query_keymap(connection), &error);
-  if (keys == NULL || error != NULL || keys->response_type != 1
-      || keys->length != 2 || xcb_connection_has_error(connection))
-    goto keys_done;
-  memcpy(state.keys, keys->keys, sizeof(state.keys));
-  status = XDO_SUCCESS;
-keys_done:
-  free(error);
-  free(keys);
-  if (status != XDO_SUCCESS)
-    return status;
+  if (_xdo_query_keys(connection, state.keys) != XDO_SUCCESS)
+    return XDO_ERROR;
 
   Atom caps_name = XInternAtom(xdo->xdpy, "Caps Lock", True);
   Atom num_name = XInternAtom(xdo->xdpy, "Num Lock", True);

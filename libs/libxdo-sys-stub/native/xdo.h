@@ -182,6 +182,9 @@ int xdo_get_mouse_location(const xdo_t *xdo, int *x, int *y, int *screen_num);
  * or Unicode keysyms. Both legs retain the same resolved code, modifiers
  * and scratch mapping. Resolution uses the current effective group and each
  * key's group normalization; text never writes the global group lock. Scratch
+ * selection excludes keys held in a checked logical-key snapshot. A mapped
+ * text key already held refuses; required modifiers already held are preserved.
+ * Separate state queries are not atomic against concurrent input. Scratch
  * rows must have neutral XKB semantics; their original symbols, types, groups,
  * actions and explicit controls are restored
  * and checked after release. XDO_CLEANUP_ERROR means restoration is unconfirmed;

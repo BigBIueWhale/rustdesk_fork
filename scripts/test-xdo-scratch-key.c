@@ -1,6 +1,7 @@
 /* Isolated native scratch-key bounds and query-failure regression. */
 #define _POSIX_C_SOURCE 200809L
 #include <X11/Xlib.h>
+#include <X11/Xlib-xcb.h>
 #include <X11/XKBlib.h>
 #include <X11/extensions/XTest.h>
 #include <X11/keysym.h>
@@ -32,6 +33,9 @@ static unsigned group_current, group_locked;
 static int group_events, group_latched;
 static XModifierKeymap *owned_modifiers;
 static KeyCode *modifier_codes;
+static int key_fault, key_queries, key_checks, key_replies, key_retirements;
+static xcb_connection_t *product_connection;
+static void *owned_keys, *owned_key_error;
 extern XkbDescPtr __real_XkbGetMap(Display *, unsigned, unsigned);
 extern void __real_XkbFreeKeyboard(XkbDescPtr, unsigned, Bool);
 extern Bool __real_XkbChangeMap(Display *, XkbDescPtr, XkbMapChangesPtr);
@@ -45,12 +49,69 @@ extern void *__real_malloc(size_t);
 extern void *__real_calloc(size_t, size_t);
 extern void *__real_realloc(void *, size_t);
 extern char *__real_strdup(const char *);
+extern void __real_free(void *);
+extern xcb_connection_t *__real_XGetXCBConnection(Display *);
+extern int __real_xcb_connection_has_error(xcb_connection_t *);
+extern xcb_query_keymap_reply_t *__real_xcb_query_keymap_reply(
+    xcb_connection_t *, xcb_query_keymap_cookie_t, xcb_generic_error_t **);
 
 static void require(int condition, const char *message) {
   if (!condition) {
     fprintf(stderr, "XDO_SCRATCH_FAILURE=%s\n", message);
     exit(1);
   }
+}
+
+xcb_connection_t *__wrap_XGetXCBConnection(Display *display) {
+  if (observe && display == product_display && key_fault == 1) return NULL;
+  xcb_connection_t *connection = __real_XGetXCBConnection(display);
+  if (observe && display == product_display) product_connection = connection;
+  return connection;
+}
+
+int __wrap_xcb_connection_has_error(xcb_connection_t *connection) {
+  if (observe && connection == product_connection) {
+    key_checks++;
+    if ((key_fault == 2 && key_checks == 1) || (key_fault == 7 && key_checks == 2))
+      return 1;
+  }
+  return __real_xcb_connection_has_error(connection);
+}
+
+xcb_query_keymap_reply_t *__wrap_xcb_query_keymap_reply(
+    xcb_connection_t *connection, xcb_query_keymap_cookie_t cookie, xcb_generic_error_t **error) {
+  xcb_query_keymap_reply_t *reply = __real_xcb_query_keymap_reply(connection, cookie, error);
+  require(reply && !*error, "real keymap reply unavailable");
+  if (observe && connection == product_connection) {
+    require(!owned_keys && !owned_key_error, "previous keymap reply retained");
+    key_queries++;
+    /* Consume the authentic reply before injecting a bounded returned-reply fault. */
+    if (key_fault == 3) { __real_free(reply); return NULL; }
+    if (key_fault == 4) {
+      *error = __real_calloc(1, sizeof(**error));
+      require(*error != NULL, "keymap error fixture allocation failed");
+      owned_key_error = *error;
+      key_replies++;
+    }
+    if (key_fault == 5) reply->response_type = 0;
+    if (key_fault == 6) reply->length = 0;
+    owned_keys = reply;
+    key_replies++;
+  }
+  return reply;
+}
+
+void __wrap_free(void *pointer) {
+  if (pointer && pointer == owned_keys) { owned_keys = NULL; key_retirements++; }
+  if (pointer && pointer == owned_key_error) { owned_key_error = NULL; key_retirements++; }
+  __real_free(pointer);
+}
+
+static void reset_key_query(void) {
+  require(!owned_keys && !owned_key_error && key_replies == key_retirements,
+          "keymap reply or error retained");
+  key_fault = key_queries = key_checks = key_replies = key_retirements = 0;
+  product_connection = NULL;
 }
 
 Status __wrap_XkbGetState(Display *display, unsigned int device, XkbStatePtr state) {
@@ -78,6 +139,8 @@ Bool __wrap_XkbLockGroup(Display *display, unsigned int device, unsigned int gro
 int __wrap_XTestFakeKeyEvent(Display *display, unsigned int code, Bool pressed, unsigned long delay) {
   if (observe && display == product_display) {
     require(owned_modifiers == NULL, "modifier map retained during key effect");
+    require(!owned_keys && !owned_key_error && key_replies == key_retirements,
+            "keymap reply retained during key effect");
     input_calls++;
   }
   int status = __real_XTestFakeKeyEvent(display, code, pressed, delay);
@@ -586,6 +649,203 @@ static void same_components(Display *display, XkbDescPtr expected) {
   XkbFreeKeyboard(actual, 0, True);
 }
 
+static void reset_text_query(void) {
+  reset_key_query();
+  queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+  modifier_queries = modifier_frees = 0;
+  fault = state_fault = modifier_fault = 0;
+}
+
+static void keymap_admission(xdo_t *input, Display *observer, Window window,
+                            int low, int high, XkbDescPtr baseline) {
+  const unsigned scalars[] = {'a', 'b', 0x1f642};
+  const int codes[] = {low, low + 1, high};
+  for (int failure = 1; failure <= 7; failure++) {
+    for (int scalar = 0; scalar < 3; scalar++) {
+      XkbStateRec before = {0}, after = {0};
+      require(XkbGetState(observer, XkbUseCoreKbd, &before) == Success,
+              "keymap admission state unavailable");
+      reset_text_query();
+      key_fault = failure;
+      observe = 1;
+      int status = xdo_enter_text_scalar(input, scalars[scalar], 0);
+      observe = 0;
+      require(status == XDO_ERROR && state_queries == 1 && input_calls == 0
+              && group_changes == 0 && mapping_changes == 0 && queries == 0 && frees == 0
+              && owned_query == NULL && modifier_queries == 0 && modifier_frees == 0
+              && key_queries == (failure >= 3) && key_replies == key_retirements
+              && !owned_keys && !owned_key_error, "keymap refusal performed effects or retained a reply");
+      events(observer, window, 0, 0);
+      same_components(observer, baseline);
+      require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
+              && !memcmp(&before, &after, sizeof(before)), "keymap refusal changed state");
+
+      reset_text_query();
+      observe = 1;
+      status = xdo_enter_text_scalar(input, scalars[scalar], 0);
+      observe = 0;
+      int scratch = scalar == 2;
+      require(status == XDO_SUCCESS && key_queries == 1 && key_replies == 1
+              && key_retirements == 1 && state_queries == 1 && input_calls == 2
+              && group_changes == 0 && mapping_changes == 2 * scratch
+              && queries == scratch && frees == scratch && owned_query == NULL
+              && modifier_queries == 0 && modifier_frees == 0,
+              "keymap same-context recovery differs");
+      events(observer, window, codes[scalar], 2);
+      same_components(observer, baseline);
+      require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
+              && !memcmp(&before, &after, sizeof(before)), "keymap recovery changed state");
+    }
+  }
+  reset_key_query();
+}
+
+static void fixture_key(Display *observer, Window window, int code, int pressed) {
+  require(XTestFakeKeyEvent(observer, code, pressed, 0), "held-key fixture submission failed");
+  XSync(observer, False);
+  XEvent event;
+  require(XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &event)
+          && event.type == (pressed ? KeyPress : KeyRelease) && !event.xkey.send_event
+          && event.xkey.keycode == (unsigned)code, "held-key fixture event missing");
+  require(!XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &event),
+          "held-key fixture had extra events");
+}
+
+static void held_state(Display *observer, char *keys, XkbStatePtr state) {
+  require(XQueryKeymap(observer, keys) && XkbGetState(observer, XkbUseCoreKbd, state) == Success,
+          "held-key native state unavailable");
+}
+
+static void same_held_state(Display *observer, const char *keys, const XkbStateRec *state) {
+  char actual_keys[32];
+  XkbStateRec actual_state = {0};
+  held_state(observer, actual_keys, &actual_state);
+  require(!memcmp(keys, actual_keys, 32) && !memcmp(state, &actual_state, sizeof(*state)),
+          "text changed preexisting held state");
+}
+
+static void held_modifiers(xdo_t *input, Display *observer, Window window) {
+  XModifierKeymap *map = XGetModifierMapping(observer);
+  require(map && map->modifiermap && map->max_keypermod > 0, "held modifiers unavailable");
+  int shift = 0, other_shift = 0, control = 0;
+  for (int i = 0; i < map->max_keypermod; i++) {
+    int code = map->modifiermap[ShiftMapIndex * map->max_keypermod + i];
+    if (code && !shift) shift = code;
+    else if (code && code != shift && !other_shift) other_shift = code;
+    code = map->modifiermap[ControlMapIndex * map->max_keypermod + i];
+    if (code && !control) control = code;
+  }
+  int code = XKeysymToKeycode(observer, XK_a), found = 0;
+  require(shift && other_shift && control && code, "held-key fixture codes unavailable");
+  for (int i = 0; i < input->charcodes_len; i++)
+    if (input->charcodes[i].symbol == XK_A && input->charcodes[i].group == 0) {
+      require(input->charcodes[i].code == code && input->charcodes[i].modmask == ShiftMask,
+              "held modifier control mapping differs");
+      found++;
+    }
+  require(found == 1, "held modifier control mapping absent or duplicated");
+  XkbDescPtr baseline = component_snapshot(observer);
+  for (int round = 0; round < 4; round++) {
+    for (int profile = 0; profile < 4; profile++) {
+      int held_code = profile == 2 ? control : profile == 3 ? other_shift : shift;
+      unsigned mask = profile == 2 ? ControlMask : profile == 1 ? ShiftMask | ControlMask : ShiftMask;
+      fixture_key(observer, window, held_code, 1);
+      if (profile == 1) fixture_key(observer, window, control, 1);
+      char keys[32];
+      XkbStateRec state = {0};
+      held_state(observer, keys, &state);
+      require(state.mods == mask && ((unsigned char)keys[held_code / 8] & (1U << (held_code % 8))),
+              "fixture did not hold the requested modifier");
+      reset_text_query();
+      observe = 1;
+      int status = xdo_enter_text_scalar(input, profile == 2 ? 'a' : 'A', 0);
+      observe = 0;
+      int expected = profile == 3 ? 4 : 2;
+      require(status == XDO_SUCCESS && input_calls == expected && key_queries == 1
+              && state_queries == 1 && group_changes == 0 && mapping_changes == 0
+              && queries == 0 && frees == 0 && modifier_queries == (profile != 2)
+              && modifier_frees == (profile != 2), "held modifier text census differs");
+      XSync(observer, False);
+      for (int i = 0; i < expected; i++) {
+        XEvent event;
+        int modifier = profile == 3 && (i == 0 || i == 2);
+        require(XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &event)
+                && event.type == (i < expected / 2 ? KeyPress : KeyRelease)
+                && !event.xkey.send_event && event.xkey.keycode == (unsigned)(modifier ? shift : code)
+                && event.xkey.state == mask, "held modifier native event differs");
+      }
+      XEvent extra;
+      require(!XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &extra),
+              "held modifier text had extra events");
+      same_held_state(observer, keys, &state);
+      same_components(observer, baseline);
+      same_modifiers(observer, map);
+      if (profile == 1) fixture_key(observer, window, control, 0);
+      fixture_key(observer, window, held_code, 0);
+      clear_keys(observer);
+    }
+    fixture_key(observer, window, code, 1);
+    char keys[32];
+    XkbStateRec state = {0};
+    held_state(observer, keys, &state);
+    require((unsigned char)keys[code / 8] & (1U << (code % 8)), "mapped fixture key not held");
+    for (int upper = 0; upper < 2; upper++) {
+      reset_text_query();
+      observe = 1;
+      int status = xdo_enter_text_scalar(input, upper ? 'A' : 'a', 0);
+      observe = 0;
+      require(status == XDO_ERROR && key_queries == 1 && state_queries == 1
+              && input_calls == 0 && group_changes == 0 && mapping_changes == 0
+              && queries == 0 && frees == 0 && modifier_queries == 0 && modifier_frees == 0,
+              "held mapped key admitted input");
+      XEvent extra;
+      XSync(observer, False);
+      require(!XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &extra),
+              "held mapped refusal delivered an event");
+      same_held_state(observer, keys, &state);
+      same_components(observer, baseline);
+    }
+    fixture_key(observer, window, code, 0);
+    clear_keys(observer);
+  }
+  reset_key_query();
+  XkbFreeKeyboard(baseline, 0, True);
+  XFreeModifiermap(map);
+}
+
+static void held_scratch(xdo_t *input, Display *observer, Window window,
+                         int code, XkbDescPtr baseline) {
+  fixture_key(observer, window, code, 1);
+  char keys[32];
+  XkbStateRec state = {0};
+  held_state(observer, keys, &state);
+  require((unsigned char)keys[code / 8] & (1U << (code % 8)), "scratch fixture key not held");
+  reset_text_query();
+  observe = 1;
+  int status = xdo_enter_text_scalar(input, 0x1f642, 0);
+  observe = 0;
+  require(status == XDO_ERROR && key_queries == 1 && state_queries == 1 && input_calls == 0
+          && group_changes == 0 && mapping_changes == 0 && queries == 1 && frees == 1
+          && owned_query == NULL, "held scratch key admitted input or mapping effects");
+  XEvent extra;
+  XSync(observer, False);
+  require(!XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &extra),
+          "held scratch refusal delivered an event");
+  same_held_state(observer, keys, &state);
+  same_components(observer, baseline);
+  fixture_key(observer, window, code, 0);
+  reset_text_query();
+  observe = 1;
+  status = xdo_enter_text_scalar(input, 0x1f642, 0);
+  observe = 0;
+  require(status == XDO_SUCCESS && key_queries == 1 && input_calls == 2
+          && group_changes == 0 && mapping_changes == 2 && queries == 1 && frees == 1
+          && owned_query == NULL, "released scratch key did not recover");
+  events(observer, window, code, 2);
+  same_components(observer, baseline);
+  reset_key_query();
+}
+
 static void component_row(Display *display, XkbDescPtr map, XkbMapChangesRec changes, int code) {
   XkbMapChangesRec symbols = changes;
   symbols.changed = XkbKeySymsMask | XkbExplicitComponentsMask;
@@ -963,6 +1223,7 @@ int main(void) {
           "mapped positive control failed");
   events(observer, window, key.code, 2);
   product_display = input->xdpy;
+  held_modifiers(input, observer, window);
   modifier_admission(input, observer, window, low, high, initial_width, initial);
   product_display = NULL;
   XFree(initial);
@@ -989,6 +1250,8 @@ int main(void) {
     require(input != NULL, "fresh product context unavailable");
     product_display = input->xdpy;
     XkbDescPtr components = component_snapshot(observer);
+    keymap_admission(input, observer, window, low, high, components);
+    held_scratch(input, observer, window, high, components);
     keyboard_state(input, observer, window, low, high, width, mapping);
     key_input(input, observer, window, low, high);
     same_map(observer, low, count, width, mapping);
@@ -1039,6 +1302,9 @@ int main(void) {
   XCloseDisplay(observer);
   require(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks,
           "native descriptors/tasks retained");
+  reset_key_query();
+  puts("XDO_TEXT_KEYMAP_NATIVE=pass faults=7 repeats=4 scalars=3 refused=84 recovery=84 events=168 snapshot=single refusal_effects=none replies=retired errors=retired mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
+  puts("XDO_TEXT_HELD_NATIVE=pass repeats=4 modifier_profiles=4 modifier_pairs=16 mapped_refused=8 scratch_refused=4 scratch_recovery=4 events=48 held=preserved snapshot=single refusal_effects=none mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
   puts("XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=16 frees=12 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false");
   puts("XDO_SCRATCH_CLICK_NATIVE=pass cases=24 repeats=4 delays=0,12000 accepted=8 refused=16 events=16 binding=both-legs queries=24 frees=16 maps=restored keys=clear descriptors=retired tasks=retired sanitizer=address observer=in-request consumer=unproved whole_app=false");
   puts("XDO_TEXT_SCALAR_NATIVE=pass cases=332 repeats=4 refused=284 accepted=48 events=96 controls=all-C0,C1 boundaries=Latin1,Unicode invalid=pre-input-refused key_storage=stack product_allocations=0 pair_queries=40 pair_frees=40 maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_heap=false whole_app=false");

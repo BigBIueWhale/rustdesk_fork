@@ -4288,6 +4288,12 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'clipboard listener completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
+        'XDO_TEXT_KEYMAP_NATIVE=pass faults=7 repeats=4 scalars=3 refused=84 recovery=84 events=168 snapshot=single refusal_effects=none replies=retired errors=retired mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'checked per-scalar keymap admission refuses before text effects and retires returned replies'
+    require_exact_fixed_receipt \
+        'XDO_TEXT_HELD_NATIVE=pass repeats=4 modifier_profiles=4 modifier_pairs=16 mapped_refused=8 scratch_refused=4 scratch_recovery=4 events=48 held=preserved snapshot=single refusal_effects=none mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'text preserves held modifiers and refuses held mapped or sole scratch keys'
+    require_exact_fixed_receipt \
         'XDO_CURSOR_POSITION_NATIVE=pass selectors=3 contexts=12 moves=96 roots=0,1 starting_root=opposite selected_root=observed retained_display=unchanged callbacks=paired descriptors=retired tasks=retired scope=production-platform-component whole_app=false' \
         'actual platform cursor movement reaches the retained Display screen'
     require_exact_fixed_receipt \
@@ -4361,6 +4367,12 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'key-input guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'key-input guest completion'
 elif [ "$MODE" = x11-display-tests ]; then
+    require_exact_fixed_receipt \
+        'XDO_TEXT_KEYMAP_NATIVE=pass faults=7 repeats=4 scalars=3 refused=84 recovery=84 events=168 snapshot=single refusal_effects=none replies=retired errors=retired mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'checked per-scalar keymap admission refuses before text effects and retires returned replies'
+    require_exact_fixed_receipt \
+        'XDO_TEXT_HELD_NATIVE=pass repeats=4 modifier_profiles=4 modifier_pairs=16 mapped_refused=8 scratch_refused=4 scratch_recovery=4 events=48 held=preserved snapshot=single refusal_effects=none mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'text preserves held modifiers and refuses held mapped or sole scratch keys'
     require_exact_fixed_receipt \
         'XDO_TEXT_GROUP_NATIVE=pass groups=0,1,2,3 policies=wrap,clamp,redirect,redirect-outside repeats=4 cases=136 events=272 mapped=68 scratch=68 group_locks=0 symbols=observed-in-request locked_group=preserved latch=consumed mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
         'text scalars resolve the current per-key group without global group writes'

@@ -416,13 +416,16 @@ static void raw_group_layout(Display *observer, Window window) {
           "raw-group fixture initial state differs");
   clear_keys(observer);
   XkbDescPtr original = XkbGetMap(observer, XkbAllClientInfoMask, XkbUseCoreKbd);
-  XkbDescPtr changed = XkbGetMap(observer, XkbAllClientInfoMask, XkbUseCoreKbd);
+  /* Group resizing also examines the server's per-key action array. */
+  XkbDescPtr changed = XkbGetMap(observer, XkbAllClientInfoMask | XkbKeyActionsMask, XkbUseCoreKbd);
   require(original && original->map && original->map->key_sym_map && original->map->syms
           && original->map->modmap && changed && changed->map && changed->map->types
-          && changed->map->num_types > XkbAlphabeticIndex, "raw-group fixture maps unavailable");
+          && changed->map->num_types > XkbAlphabeticIndex && changed->server
+          && changed->server->key_acts, "raw-group fixture maps unavailable");
   KeyCode code = XKeysymToKeycode(observer, XK_a);
   require(code >= original->min_key_code && code <= original->max_key_code
-          && original->map->modmap[code] == 0, "raw-group fixture physical key differs");
+          && original->map->modmap[code] == 0 && !XkbKeyHasActions(changed, code),
+          "raw-group fixture physical key differs");
   int types[] = {XkbAlphabeticIndex, XkbAlphabeticIndex};
   require(XkbChangeTypesOfKey(changed, code, 2, XkbGroup1Mask | XkbGroup2Mask,
                              types, NULL) == Success, "raw-group fixture resize failed");

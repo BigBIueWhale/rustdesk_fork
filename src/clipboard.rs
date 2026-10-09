@@ -764,6 +764,64 @@ mod native_clipboard_limit_tests {
         assert_eq!(sanitized.clipboards.len(), 1);
         assert!(sanitized.clipboards[0].special_name.is_empty());
     }
+
+    #[test]
+    fn r_s7_malformed_compressed_clipboard_refuses_the_complete_update() {
+        let clips = vec![
+            Clipboard {
+                content: b"valid text".to_vec().into(),
+                format: ClipboardFormat::Text.into(),
+                ..Default::default()
+            },
+            Clipboard {
+                content: b"not a zstd frame".to_vec().into(),
+                compress: true,
+                format: ClipboardFormat::Html.into(),
+                ..Default::default()
+            },
+        ];
+        assert!(sanitize_multi_clipboards_for_native_proto(clips).is_none());
+    }
+
+    #[test]
+    fn r_s7_truncated_compressed_clipboard_refuses_native_handoff() {
+        let mut compressed = hbb_common::compress::compress(b"clipboard text");
+        assert!(!compressed.is_empty());
+        compressed.truncate(compressed.len() / 2);
+        let clips = vec![Clipboard {
+            content: compressed.into(),
+            compress: true,
+            format: ClipboardFormat::Text.into(),
+            ..Default::default()
+        }];
+        assert!(sanitize_multi_clipboards_for_native_proto(clips).is_none());
+    }
+
+    #[test]
+    fn r_s7_valid_compressed_clipboard_preserves_text_and_empty_content() {
+        let clips = [
+            (ClipboardFormat::Text, &b"clipboard text"[..]),
+            (ClipboardFormat::Html, &b""[..]),
+        ]
+        .into_iter()
+        .map(|(format, content)| {
+            let compressed = hbb_common::compress::compress(content);
+            assert!(!compressed.is_empty());
+            Clipboard {
+                content: compressed.into(),
+                compress: true,
+                format: format.into(),
+                ..Default::default()
+            }
+        })
+        .collect();
+        let sanitized = sanitize_multi_clipboards_for_native_proto(clips)
+            .expect("valid compressed clipboard content must survive");
+        assert_eq!(sanitized.clipboards.len(), 2);
+        assert_eq!(&sanitized.clipboards[0].content[..], b"clipboard text");
+        assert!(sanitized.clipboards[1].content.is_empty());
+        assert!(sanitized.clipboards.iter().all(|item| !item.compress));
+    }
 }
 
 #[cfg(all(feature = "unix-file-copy-paste", not(target_os = "windows")))]

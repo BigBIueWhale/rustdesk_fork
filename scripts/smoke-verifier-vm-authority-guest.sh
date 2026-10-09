@@ -2429,6 +2429,7 @@ run_focused_rust_tests() {
             src/cli.rs
             src/client.rs
             src/client/io_loop.rs
+            src/clipboard.rs
             src/direct_service.rs
             src/flutter.rs
             src/flutter_ffi.rs
@@ -2446,6 +2447,9 @@ run_focused_rust_tests() {
             src/ui_session_interface.rs
         )
         required_tests=(
+            clipboard::native_clipboard_limit_tests::r_s7_malformed_compressed_clipboard_refuses_the_complete_update
+            clipboard::native_clipboard_limit_tests::r_s7_truncated_compressed_clipboard_refuses_native_handoff
+            clipboard::native_clipboard_limit_tests::r_s7_valid_compressed_clipboard_preserves_text_and_empty_content
             ipc::uid_policy::tests::r_s11e60_linux_service_root_skips_both_uid_lookups
             ipc::uid_policy::tests::r_s11e60_linux_service_cached_negative_skips_fresh_uid_lookup
             ipc::uid_policy::tests::r_s11e60_linux_service_cache_match_requires_fresh_uid_authority
@@ -2853,6 +2857,25 @@ run_focused_rust_tests() {
                         /cargo-target/uid-policy-tests --test-threads=1 --color never
                         ;;
                     android-rust-lifecycle-tests)
+                        cargo test --offline --locked --lib --features linux-pkg-config \
+                            --no-run --color never
+                        clipboard_executable=
+                        for candidate in /cargo-target/debug/deps/librustdesk-*; do
+                            [[ "$candidate" =~ ^/cargo-target/debug/deps/librustdesk-[0-9a-f]{16}$ ]] || continue
+                            [ -f "$candidate" ] && [ ! -L "$candidate" ] && [ -x "$candidate" ] \
+                                && [ "$(stat -c "%u:%g:%h" -- "$candidate")" = 1000:1000:1 ] \
+                                || exit 95
+                            [ -z "$clipboard_executable" ] || exit 95
+                            clipboard_executable=$candidate
+                        done
+                        [ -n "$clipboard_executable" ] || exit 95
+                        clipboard_artifact_sha="$(sha256sum "$clipboard_executable" | cut -d " " -f 1)"
+                        [[ "$clipboard_artifact_sha" =~ ^[0-9a-f]{64}$ ]]
+                        "$clipboard_executable" clipboard::native_clipboard_limit_tests::r_s7_ \
+                            --color never --test-threads=1
+                        [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
+                        printf "CLIPBOARD_DECODE_ARTIFACT=pass sha256=%s executable=%s tests=3 unchanged=before-after\n" \
+                            "$clipboard_artifact_sha" "$clipboard_executable"
                         python3 -I -S /source/scripts/verify-linux-service-password-ipc.py --repo /source
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             ipc::uid_policy::tests::r_s11e60_ --color never -- --test-threads=1
@@ -2972,8 +2995,11 @@ run_focused_rust_tests() {
         [[ "$uid_test_artifact_sha" =~ ^[0-9a-f]{64}$ ]] \
             || fail 'compiled UID-policy test artifact digest is malformed'
     else
-        [ "${#result_lines[@]}" -eq 13 ] \
+        [ "${#result_lines[@]}" -eq 14 ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
+        [ "$(grep -Ec '^CLIPBOARD_DECODE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'CLIPBOARD_DECODE_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'clipboard decode test artifact receipt is absent, malformed or duplicated'
         grep -Fxq 'verify-linux-service-password-ipc: ok' "$output" \
             || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }
     fi
@@ -3049,6 +3075,7 @@ run_focused_rust_tests() {
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
+        grep -E '^CLIPBOARD_DECODE_ARTIFACT=pass ' "$output"
         printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \

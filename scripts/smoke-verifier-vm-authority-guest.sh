@@ -2447,6 +2447,16 @@ run_focused_rust_tests() {
             src/ui_session_interface.rs
         )
         required_tests=(
+            clipboard::native_clipboard_limit_tests::accepts_bounded_text_payload
+            clipboard::native_clipboard_limit_tests::rejects_payload_over_native_clipboard_cap
+            clipboard::native_clipboard_limit_tests::rejects_rgba_with_invalid_dimensions_or_length
+            clipboard::native_clipboard_limit_tests::rejects_too_many_clipboard_items_before_native_handoff
+            clipboard::native_clipboard_limit_tests::rejects_aggregate_clipboard_payload_over_cap
+            clipboard::native_clipboard_limit_tests::rejects_unallowlisted_special_clipboard_format_before_native_handoff
+            clipboard::native_clipboard_limit_tests::rejects_peer_supplied_owner_marker_before_native_handoff
+            clipboard::native_clipboard_limit_tests::rejects_oversized_special_clipboard_name_before_native_handoff
+            clipboard::native_clipboard_limit_tests::accepts_allowlisted_excel_special_clipboard_format
+            clipboard::native_clipboard_limit_tests::strips_irrelevant_special_name_from_non_special_clipboard_format
             clipboard::native_clipboard_limit_tests::r_s7_malformed_compressed_clipboard_refuses_the_complete_update
             clipboard::native_clipboard_limit_tests::r_s7_truncated_compressed_clipboard_refuses_native_handoff
             clipboard::native_clipboard_limit_tests::r_s7_valid_compressed_clipboard_preserves_text_and_empty_content
@@ -2871,10 +2881,12 @@ run_focused_rust_tests() {
                         [ -n "$clipboard_executable" ] || exit 95
                         clipboard_artifact_sha="$(sha256sum "$clipboard_executable" | cut -d " " -f 1)"
                         [[ "$clipboard_artifact_sha" =~ ^[0-9a-f]{64}$ ]]
-                        "$clipboard_executable" clipboard::native_clipboard_limit_tests::r_s7_ \
+                        printf "CLIPBOARD_DECODE_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
+                            "$clipboard_artifact_sha" "$clipboard_executable"
+                        "$clipboard_executable" clipboard::native_clipboard_limit_tests:: \
                             --color never --test-threads=1
                         [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
-                        printf "CLIPBOARD_DECODE_ARTIFACT=pass sha256=%s executable=%s tests=3 unchanged=before-after\n" \
+                        printf "CLIPBOARD_DECODE_ARTIFACT=pass sha256=%s executable=%s tests=13 unchanged=before-after\n" \
                             "$clipboard_artifact_sha" "$clipboard_executable"
                         python3 -I -S /source/scripts/verify-linux-service-password-ipc.py --repo /source
                         cargo test --offline --locked --lib --features linux-pkg-config \
@@ -2997,7 +3009,7 @@ run_focused_rust_tests() {
     else
         [ "${#result_lines[@]}" -eq 14 ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
-        [ "$(grep -Ec '^CLIPBOARD_DECODE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^CLIPBOARD_DECODE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=13 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'CLIPBOARD_DECODE_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'clipboard decode test artifact receipt is absent, malformed or duplicated'
         grep -Fxq 'verify-linux-service-password-ipc: ok' "$output" \
@@ -3075,6 +3087,7 @@ run_focused_rust_tests() {
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
+        grep -E '^CLIPBOARD_DECODE_ARTIFACT_BEFORE=sha256=' "$output"
         grep -E '^CLIPBOARD_DECODE_ARTIFACT=pass ' "$output"
         printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \

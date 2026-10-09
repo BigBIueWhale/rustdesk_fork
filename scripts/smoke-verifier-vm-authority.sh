@@ -4810,14 +4810,17 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
         'focused Linux UID-policy cloud-init completion marker'
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     mapfile -t clipboard_decode_artifacts < <(
-        /usr/bin/grep -E \
-            '^CLIPBOARD_DECODE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after$' "$SERIAL"
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'CLIPBOARD_DECODE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=13 unchanged=before-after$'
     )
     [ "${#clipboard_decode_artifacts[@]}" -eq 1 ] \
-        && [ "$(/usr/bin/grep -Fc 'CLIPBOARD_DECODE_ARTIFACT=' "$SERIAL")" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'CLIPBOARD_DECODE_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'clipboard decode artifact receipt is absent, malformed or duplicated'
+    clipboard_decode_before=${clipboard_decode_artifacts[0]/CLIPBOARD_DECODE_ARTIFACT=pass /CLIPBOARD_DECODE_ARTIFACT_BEFORE=}
+    clipboard_decode_before=${clipboard_decode_before% tests=13 unchanged=before-after}
+    require_exact_fixed_receipt "$clipboard_decode_before" 'clipboard decode artifact before execution'
     require_exact_fixed_receipt \
-        "ANDROID_RUST_LIFECYCLE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=78 target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 bridge_builder=$DEB_BUILDER_CONFIG_ID devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "ANDROID_RUST_LIFECYCLE_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=88 target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 bridge_builder=$DEB_BUILDER_CONFIG_ID devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused Android Rust-lifecycle receipt'
     require_exact_fixed_receipt \
         'VERIFIER_VM_CLOUD_INIT=pass' \

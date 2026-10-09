@@ -89,45 +89,49 @@ pub(crate) fn native_clipboard_payload_within_limit(
 
 fn clipboard_content_for_native(
     clipboard: &hbb_common::message_proto::Clipboard,
-) -> Option<Vec<u8>> {
-    let format = clipboard.format.enum_value().ok()?;
+) -> ResultType<Vec<u8>> {
+    let format = clipboard
+        .format
+        .enum_value()
+        .map_err(|e| hbb_common::anyhow::anyhow!("invalid clipboard format: {e}"))?;
     let data = if clipboard.compress {
-        hbb_common::compress::decompress(&clipboard.content)
+        hbb_common::compress::try_decompress(&clipboard.content)?
     } else {
         clipboard.content.to_vec()
     };
     if !native_clipboard_payload_within_limit(format, clipboard.width, clipboard.height, data.len())
     {
-        log::warn!(
-            "dropping oversized or invalid clipboard payload before native handoff: format={format:?}, width={}, height={}, bytes={}",
+        bail!(
+            "oversized or invalid clipboard payload before native handoff: format={format:?}, width={}, height={}, bytes={}",
             clipboard.width,
             clipboard.height,
             data.len()
         );
-        return None;
     }
-    Some(data)
+    Ok(data)
 }
 
 fn sanitize_clipboard_for_native_proto(
     mut clipboard: hbb_common::message_proto::Clipboard,
-) -> Option<hbb_common::message_proto::Clipboard> {
-    let format = clipboard.format.enum_value().ok()?;
+) -> ResultType<Option<hbb_common::message_proto::Clipboard>> {
+    let format = clipboard
+        .format
+        .enum_value()
+        .map_err(|e| hbb_common::anyhow::anyhow!("invalid clipboard format: {e}"))?;
     if format == hbb_common::message_proto::ClipboardFormat::Special {
         if clipboard.special_name.len() > MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES {
-            log::warn!(
-                "dropping clipboard special format with oversized name before native handoff: {} > {}",
+            bail!(
+                "clipboard special format has oversized name before native handoff: {} > {}",
                 clipboard.special_name.len(),
                 MAX_NATIVE_CLIPBOARD_SPECIAL_NAME_BYTES
             );
-            return None;
         }
         if clipboard.special_name != CLIPBOARD_FORMAT_EXCEL_XML_SPREADSHEET {
             log::warn!(
                 "dropping unsupported clipboard special format before native handoff: bytes={}",
                 clipboard.special_name.len()
             );
-            return None;
+            return Ok(None);
         }
     } else {
         clipboard.special_name.clear();
@@ -135,7 +139,7 @@ fn sanitize_clipboard_for_native_proto(
     let data = clipboard_content_for_native(&clipboard)?;
     clipboard.content = data.into();
     clipboard.compress = false;
-    Some(clipboard)
+    Ok(Some(clipboard))
 }
 
 fn sanitize_multi_clipboards_for_native_proto(
@@ -153,9 +157,16 @@ fn sanitize_multi_clipboards_for_native_proto(
     let mut total = 0usize;
     let mut sanitized = Vec::with_capacity(clipboards.len());
     for clipboard in clipboards {
-        let Some(clipboard) = sanitize_clipboard_for_native_proto(clipboard) else {
-            log::warn!("dropping unsupported clipboard item before native handoff");
-            continue;
+        let clipboard = match sanitize_clipboard_for_native_proto(clipboard) {
+            Ok(Some(clipboard)) => clipboard,
+            Ok(None) => {
+                log::warn!("dropping unsupported clipboard item before native handoff");
+                continue;
+            }
+            Err(error) => {
+                log::warn!("refusing invalid clipboard update before native handoff: {error}");
+                return None;
+            }
         };
         total = match total.checked_add(clipboard.content.len()) {
             Some(total) => total,
@@ -241,31 +252,6 @@ pub(crate) fn sanitize_linux_file_clipboard_urls(
         sanitized.push(file);
     }
     Ok(sanitized)
-}
-
-#[cfg(target_os = "android")]
-fn android_service_clipboard_content_for_native(
-    clipboard: hbb_common::message_proto::Clipboard,
-) -> ResultType<Vec<u8>> {
-    let format = clipboard
-        .format
-        .enum_value()
-        .map_err(|e| hbb_common::anyhow::anyhow!("invalid clipboard format: {e}"))?;
-    let data = if clipboard.compress {
-        hbb_common::compress::decompress(&clipboard.content)
-    } else {
-        clipboard.content.to_vec()
-    };
-    if !native_clipboard_payload_within_limit(format, clipboard.width, clipboard.height, data.len())
-    {
-        bail!(
-            "oversized or invalid Android clipboard payload before platform handoff: format={format:?}, width={}, height={}, bytes={}",
-            clipboard.width,
-            clipboard.height,
-            data.len()
-        );
-    }
-    Ok(data)
 }
 
 #[cfg(target_os = "android")]
@@ -435,7 +421,7 @@ pub fn android_service_clipboard_sanitize_payload(data: &[u8]) -> ResultType<Vec
         let Some(target) = target else {
             continue;
         };
-        let data = android_service_clipboard_content_for_native(clipboard)?;
+        let data = clipboard_content_for_native(&clipboard)?;
         std::str::from_utf8(&data).map_err(|e| {
             hbb_common::anyhow::anyhow!("Android clipboard {format:?} is not UTF-8: {e}")
         })?;
@@ -1335,6 +1321,7 @@ mod proto {
     use arboard::ClipboardData;
     use hbb_common::{
         compress::compress as compress_func,
+        log,
         message_proto::{Clipboard, ClipboardFormat, Message, MultiClipboards},
     };
 
@@ -1437,7 +1424,13 @@ mod proto {
 
     #[cfg(not(target_os = "android"))]
     fn from_clipboard(clipboard: Clipboard) -> Option<ClipboardData> {
-        let data = super::clipboard_content_for_native(&clipboard)?;
+        let data = match super::clipboard_content_for_native(&clipboard) {
+            Ok(data) => data,
+            Err(error) => {
+                log::warn!("dropping invalid clipboard item before native conversion: {error}");
+                return None;
+            }
+        };
         match clipboard.format.enum_value() {
             Ok(ClipboardFormat::Text) => String::from_utf8(data).ok().map(ClipboardData::Text),
             Ok(ClipboardFormat::Rtf) => String::from_utf8(data).ok().map(ClipboardData::Rtf),

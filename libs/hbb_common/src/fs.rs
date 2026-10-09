@@ -3421,9 +3421,9 @@ impl TransferJob {
     /// Commit the exact receive-write job after the sender's terminal `Done` index.
     ///
     /// The sender advances its file number after emitting the final (possibly empty) block, so an
-    /// active stream must finish at `self.file_num + 1`. A job with no active stream is complete
-    /// only when its current index is already the end of the admitted list (an empty or skipped
-    /// transfer). Anything else is an incomplete or stale terminal command, not success.
+    /// active stream must finish at `self.file_num + 1`, which must also end the admitted list.
+    /// A job with no active stream is complete only when its current index is already the end
+    /// of that list (an empty or skipped transfer). Other terminal commands are incomplete or stale.
     pub async fn finalize_write(&mut self, done_file_num: i32) -> ResultType<()> {
         if self.role != TransferRole::Receive {
             bail!("cannot finalize a send job as a receive write");
@@ -3438,6 +3438,13 @@ impl TransferJob {
                     "terminal file number {} does not follow active file {}",
                     done_file_num,
                     self.file_num
+                );
+            }
+            if done_file_num as usize != self.files.len() {
+                bail!(
+                    "terminal file number {} does not complete the admitted list of {} files",
+                    done_file_num,
+                    self.files.len()
                 );
             }
             self.finish_current_write_file().await?;

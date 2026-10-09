@@ -24,9 +24,10 @@
 
 static int _xdo_populate_charcode_map(xdo_t *xdo);
 
-static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key, KeySym keysym);
+static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key,
+                                      KeySym keysym, unsigned int current_group);
 static void _xdo_text_event(const xdo_t *xdo, charcodemap_t *key,
-                          const KeyCode *modifiers, int is_press, int current_group, useconds_t delay);
+                          const KeyCode *modifiers, int is_press, useconds_t delay);
 static int _xdo_get_key_modifiers(const xdo_t *xdo, int modmask, KeyCode *modifiers);
 static int _xdo_restore_scratch(xdo_t *xdo);
 
@@ -313,7 +314,7 @@ static int _xdo_restore_scratch(xdo_t *xdo) {
 }
 
 static int _xdo_enter_text_scalar_do(xdo_t *xdo, charcodemap_t *key,
-                                   const KeyCode *modifiers, int current_group, useconds_t delay) {
+                                   const KeyCode *modifiers, useconds_t delay) {
   int scratch_keycode = 0;
 
   /* Acquire the complete scratch resource before sending any input. */
@@ -369,8 +370,8 @@ static int _xdo_enter_text_scalar_do(xdo_t *xdo, charcodemap_t *key,
     key->code = scratch_keycode;
   }
 
-  _xdo_text_event(xdo, key, modifiers, True, current_group, delay / 2);
-  _xdo_text_event(xdo, key, modifiers, False, current_group, delay / 2);
+  _xdo_text_event(xdo, key, modifiers, True, delay / 2);
+  _xdo_text_event(xdo, key, modifiers, False, delay / 2);
 
   if (xdo->scratch_original != NULL && _xdo_restore_scratch(xdo) != XDO_SUCCESS)
     return XDO_CLEANUP_ERROR;
@@ -392,20 +393,20 @@ int xdo_enter_text_scalar(xdo_t *xdo, unsigned int scalar, useconds_t delay) {
   KeySym symbol = scalar <= 0xff ? scalar : 0x01000000UL | scalar;
   if (scalar == '\n' || scalar == '\r') symbol = XK_Return;
   if (scalar == '\t') symbol = XK_Tab;
-  _xdo_charcodemap_from_keysym(xdo, &key, symbol);
-
   XkbStateRec state;
   if (XkbGetState(xdo->xdpy, XkbUseCoreKbd, &state) != Success
       || state.group >= XkbNumKbdGroups)
     return XDO_ERROR;
+  _xdo_charcodemap_from_keysym(xdo, &key, symbol, state.group);
   if (_xdo_get_key_modifiers(xdo, key.modmask, modifiers) != XDO_SUCCESS)
     return XDO_ERROR;
 
-  return _xdo_enter_text_scalar_do(xdo, &key, modifiers, state.group, delay);
+  return _xdo_enter_text_scalar_do(xdo, &key, modifiers, delay);
 }
 
 /* Helper functions */
-static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key, KeySym keysym) {
+static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key,
+                                      KeySym keysym, unsigned int current_group) {
   int i = 0;
   int len = xdo->charcodes_len;
 
@@ -416,7 +417,22 @@ static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key, K
   key->needs_binding = 1;
 
   for (i = 0; i < len; i++) {
-    if (xdo->charcodes[i].symbol == keysym) {
+    unsigned int groups = XkbNumGroups(xdo->charcodes[i].group_info);
+    unsigned int group = current_group;
+    if (groups == 0)
+      continue;
+    /* Match XKB event lookup without changing the keyboard's group state. */
+    if (group >= groups) {
+      switch (XkbOutOfRangeGroupAction(xdo->charcodes[i].group_info)) {
+        case XkbClampIntoRange: group = groups - 1; break;
+        case XkbRedirectIntoRange:
+          group = XkbOutOfRangeGroupNumber(xdo->charcodes[i].group_info);
+          if (group >= groups) group = 0;
+          break;
+        default: group %= groups; break;
+      }
+    }
+    if (xdo->charcodes[i].symbol == keysym && xdo->charcodes[i].group == (int)group) {
       key->code = xdo->charcodes[i].code;
       key->group = xdo->charcodes[i].group;
       key->modmask = xdo->charcodes[i].modmask;
@@ -494,6 +510,7 @@ static int _xdo_populate_charcode_map(xdo_t *xdo) {
 
         xdo->charcodes[idx].code = keycode;
         xdo->charcodes[idx].group = group;
+        xdo->charcodes[idx].group_info = XkbKeyGroupInfo(desc, keycode);
         xdo->charcodes[idx].modmask = modmask | map->modmap[keycode];
         xdo->charcodes[idx].symbol = keysym;
 
@@ -516,8 +533,7 @@ int _is_success(const char *funcname, int code, const xdo_t *xdo) {
 }
 
 void _xdo_text_event(const xdo_t *xdo, charcodemap_t *key,
-                          const KeyCode *modifiers, int is_press, int current_group, useconds_t delay) {
-  XkbLockGroup(xdo->xdpy, XkbUseCoreKbd, key->group);
+                          const KeyCode *modifiers, int is_press, useconds_t delay) {
   for (int i = ShiftMapIndex; i <= Mod5MapIndex; i++) {
     if (modifiers[i] != 0) {
       XTestFakeKeyEvent(xdo->xdpy, modifiers[i], is_press, CurrentTime);
@@ -525,7 +541,6 @@ void _xdo_text_event(const xdo_t *xdo, charcodemap_t *key,
     }
   }
   XTestFakeKeyEvent(xdo->xdpy, key->code, is_press, CurrentTime);
-  XkbLockGroup(xdo->xdpy, XkbUseCoreKbd, current_group);
   XSync(xdo->xdpy, False);
 
   /* Skipping the usleep if delay is 0 is much faster than calling usleep(0) */

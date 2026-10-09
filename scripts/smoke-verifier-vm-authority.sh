@@ -4291,8 +4291,8 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'XDO_CURSOR_POSITION_NATIVE=pass selectors=3 contexts=12 moves=96 roots=0,1 starting_root=opposite selected_root=observed retained_display=unchanged callbacks=paired descriptors=retired tasks=retired scope=production-platform-component whole_app=false' \
         'actual platform cursor movement reaches the retained Display screen'
     require_exact_fixed_receipt \
-        'XDO_TEXT_GROUP_NATIVE=pass groups=0,1 repeats=4 cases=16 events=32 scalars=a,b group_locks=64 symbols=resolved state=preserved mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
-        'text scalars resolve their native group and restore the admitted server state'
+        'XDO_TEXT_GROUP_NATIVE=pass groups=0,1,2,3 policies=wrap,clamp,redirect,redirect-outside repeats=4 cases=136 events=272 mapped=68 scratch=68 group_locks=0 symbols=observed-in-request locked_group=preserved latch=consumed mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'text scalars resolve the current per-key group without global group writes'
     require_exact_fixed_receipt \
         'XDO_KEY_MODIFIER_NATIVE=pass cases=24 repeats=4 faults=6 refused=24 recovery=24 events=96 modifier_queries=48 modifier_frees=44 pair_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
         'complete native modifier admission, same-context recovery and paired snapshot retirement'
@@ -4362,8 +4362,8 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'key-input guest completion'
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
-        'XDO_TEXT_GROUP_NATIVE=pass groups=0,1 repeats=4 cases=16 events=32 scalars=a,b group_locks=64 symbols=resolved state=preserved mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
-        'text scalars resolve their native group and restore the admitted server state'
+        'XDO_TEXT_GROUP_NATIVE=pass groups=0,1,2,3 policies=wrap,clamp,redirect,redirect-outside repeats=4 cases=136 events=272 mapped=68 scratch=68 group_locks=0 symbols=observed-in-request locked_group=preserved latch=consumed mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'text scalars resolve the current per-key group without global group writes'
     require_exact_fixed_receipt \
         'MACOS_CURSOR_SNAPSHOT_STATE=pass source=complete-module tests=5 zero_seed=accepted failed_capture=not-memoized stale_image=absent same_seed=reused publication_retry=captured-image unwind=empty reset=idempotent worker=joined scope=portable-cache-state macOS_native=false' \
         'portable production macOS cursor cache commits only complete images and retires exact state; not native macOS acceptance'

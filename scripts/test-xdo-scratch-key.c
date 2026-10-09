@@ -24,6 +24,12 @@ static Window click_window;
 static KeyCode click_code;
 static KeySym click_symbol;
 static int click_events;
+static Display *group_observer;
+static Window group_window;
+static KeyCode group_code;
+static KeySym group_symbol;
+static unsigned group_current, group_locked;
+static int group_events, group_latched;
 static XModifierKeymap *owned_modifiers;
 static KeyCode *modifier_codes;
 extern XkbDescPtr __real_XkbGetMap(Display *, unsigned, unsigned);
@@ -75,6 +81,39 @@ int __wrap_XTestFakeKeyEvent(Display *display, unsigned int code, Bool pressed, 
     input_calls++;
   }
   int status = __real_XTestFakeKeyEvent(display, code, pressed, delay);
+  if (observe && display == product_display && group_observer != NULL) {
+    require(status && group_events < 2 && pressed == (group_events == 0),
+            "text-group native submission differs");
+    if (pressed) group_code = code;
+    require(code == group_code, "text-group pair changed its code");
+    XSync(display, False);
+    XEvent event;
+    require(XCheckWindowEvent(group_observer, group_window, KeyPressMask | KeyReleaseMask, &event)
+            && event.type == (pressed ? KeyPress : KeyRelease)
+            && event.xkey.window == group_window && !event.xkey.send_event
+            && event.xkey.keycode == code
+            && ((!group_latched || pressed) ? event.xkey.state == (group_current << 13)
+                                            : event.xkey.state == 0),
+            "text-group native event differs during a leg");
+    /* Read the server map while a scratch lease is still installed. */
+    XkbDescPtr installed = XkbGetMap(group_observer, XkbAllClientInfoMask, XkbUseCoreKbd);
+    KeySym symbol = NoSymbol;
+    unsigned consumed;
+    require(installed && XkbTranslateKeyCode(installed, code, event.xkey.state, &consumed, &symbol)
+            && ((!group_latched || pressed) ? symbol == group_symbol : symbol != NoSymbol),
+            "text-group native symbol differs during a leg");
+    XkbFreeKeyboard(installed, 0, True);
+    XkbStateRec state = {0};
+    require(XkbGetState(group_observer, XkbUseCoreKbd, &state) == Success
+            && state.locked_group == group_locked && state.base_group == 0 && state.mods == 0,
+            "text-group input changed the native locked state");
+    char keys[32];
+    require(XQueryKeymap(group_observer, keys), "text-group key state unavailable");
+    for (int byte = 0; byte < 32; byte++)
+      require((unsigned char)keys[byte] == (pressed && byte == code / 8 ? 1U << (code % 8) : 0),
+              "text-group pair did not hold and release exactly its code");
+    group_events++;
+  }
   if (observe && display == product_display && click_observer != NULL) {
     require(status && code == click_code && pressed == (click_events == 0)
             && click_events < 2 && owned_query != NULL && mapping_changes == 1,
@@ -346,7 +385,7 @@ static void modifier_admission(xdo_t *input, Display *observer, Window window,
       status = xdo_enter_text_scalar(input, 'A', 0);
       observe = 0;
       require(status == XDO_SUCCESS && state_queries == 1 && modifier_queries == 1
-              && modifier_frees == 1 && owned_modifiers == NULL && group_changes == 4
+              && modifier_frees == 1 && owned_modifiers == NULL && group_changes == 0
               && input_calls == 4 && mapping_changes == 0 && queries == 0 && frees == 0,
               "modifier recovery snapshot or ownership differs");
       XSync(observer, False);
@@ -404,7 +443,7 @@ static void keyboard_state(xdo_t *input, Display *observer, Window window,
       observe = 0;
       int scratch = index == 2;
       require(status == XDO_SUCCESS && state_queries == 1
-              && group_changes == 4
+              && group_changes == 0
               && input_calls == 2 && mapping_changes == 2 * scratch
               && queries == scratch && frees == scratch && owned_query == NULL
               && modifier_queries == 0 && modifier_frees == 0,
@@ -473,7 +512,7 @@ static void key_input(xdo_t *input, Display *observer, Window window, int low, i
             "valid text scalar refused");
     click_observer = NULL;
     require(queries == scratch && frees == scratch && owned_query == NULL
-            && state_queries == 1 && group_changes == 4 && input_calls == 2
+            && state_queries == 1 && group_changes == 0 && input_calls == 2
             && mapping_changes == 2 * scratch && click_events == 2 * scratch,
             "text pair mapping or storage ownership differs");
     events(observer, window, i == 0 ? low : i == 1 ? low + 1 : high, scratch ? 0 : 2);
@@ -670,7 +709,7 @@ static void scratch_components(xdo_t *input, Display *observer, Window window, i
       require(status == (scenario == 0 ? XDO_SUCCESS : XDO_ERROR)
               && queries == 1 && frees == 1 && owned_query == NULL && map_live == 0
               && input_calls == (scenario == 0 ? 2 : 0)
-              && group_changes == (scenario == 0 ? 4 : 0)
+              && group_changes == 0
               && mapping_changes == (scenario == 0 ? 3 : 0)
               && map_readbacks == (scenario == 0 ? 4 : 0), "component admission/effect census differs");
       events(observer, window, code, scenario == 0 ? 2 : 0);
@@ -718,7 +757,7 @@ static void scratch_click(xdo_t *input, Display *observer, Window window,
       require(status == (accepted ? XDO_SUCCESS : XDO_ERROR)
               && queries == 1 && frees == (fault != 1) && owned_query == NULL
               && state_queries == 1 && modifier_queries == 0 && modifier_frees == 0
-              && group_changes == 4 * accepted && input_calls == 2 * accepted
+              && group_changes == 0 && input_calls == 2 * accepted
               && mapping_changes == 2 * accepted && click_events == 2 * accepted,
               "scratch click action outcome or mapping ownership differs");
       events(observer, window, 0, 0);
@@ -731,6 +770,52 @@ static void scratch_click(xdo_t *input, Display *observer, Window window,
   }
   click_observer = NULL;
   fault = 0;
+}
+
+static void text_group_case(xdo_t *input, Display *observer, Window window, XkbDescPtr baseline,
+                            KeyCode mapped_code, unsigned group, unsigned selected,
+                            int scratch, int latched) {
+  require(XkbLockGroup(observer, XkbUseCoreKbd, latched ? 0 : group), "fixture group not sent");
+  if (latched)
+    require(XkbLatchGroup(observer, XkbUseCoreKbd, group), "fixture latch not sent");
+  XSync(observer, False);
+  XkbStateRec before = {0}, after = {0};
+  require(XkbGetState(observer, XkbUseCoreKbd, &before) == Success
+          && before.group == group && before.locked_group == (latched ? 0 : group)
+          && before.base_group == 0 && before.latched_group == (latched ? group : 0)
+          && before.mods == 0, "native server did not select the fixture group");
+  queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+  modifier_queries = modifier_frees = 0;
+  fault = state_fault = modifier_fault = 0;
+  group_observer = observer;
+  group_window = window;
+  group_symbol = 0x0101f600UL + selected;
+  group_current = group;
+  group_locked = before.locked_group;
+  group_events = 0;
+  group_latched = latched;
+  observe = 1;
+  int status = xdo_enter_text_scalar(input, 0x1f600 + selected, 0);
+  observe = 0;
+  group_observer = NULL;
+  require(status == XDO_SUCCESS && group_events == 2
+          && (scratch ? group_code != mapped_code : group_code == mapped_code),
+          "text-group input or route differs");
+  require(state_queries == 1 && input_calls == 2 && group_changes == 0
+          && mapping_changes == 2 * scratch && queries == scratch && frees == scratch
+          && owned_query == NULL && map_live == 0
+          && modifier_queries == 0 && modifier_frees == 0,
+          "text-group product call census differs");
+  require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success,
+          "text-group final state unavailable");
+  if (latched)
+    require(after.group == 0 && after.locked_group == 0 && after.base_group == 0
+            && after.latched_group == 0 && after.mods == 0,
+            "text-group latch was not consumed without changing the lock");
+  else
+    require(!memcmp(&before, &after, sizeof(before)), "input changed the XKB state");
+  same_components(observer, baseline);
+  events(observer, window, 0, 0);
 }
 
 static void text_group_layout(Display *observer, Window window) {
@@ -746,95 +831,96 @@ static void text_group_layout(Display *observer, Window window) {
   XkbDescPtr changed = XkbGetMap(observer, XkbAllClientInfoMask | XkbKeyActionsMask, XkbUseCoreKbd);
   require(original && original->map && original->map->key_sym_map && original->map->syms
           && original->map->modmap && changed && changed->map && changed->map->types
-          && changed->map->num_types > XkbAlphabeticIndex && changed->server
+          && changed->map->num_types > XkbOneLevelIndex && changed->server
           && changed->server->key_acts, "text-group fixture maps unavailable");
   KeyCode code = XKeysymToKeycode(observer, XK_a);
+  KeyCode anchor = XKeysymToKeycode(observer, XK_b);
   require(code >= original->min_key_code && code <= original->max_key_code
-          && original->map->modmap[code] == 0 && !XkbKeyHasActions(changed, code),
+          && anchor >= original->min_key_code && anchor <= original->max_key_code && anchor != code
+          && original->map->modmap[code] == 0 && !XkbKeyHasActions(changed, code)
+          && original->map->modmap[anchor] == 0 && !XkbKeyHasActions(changed, anchor),
           "text-group fixture physical key differs");
-  int types[] = {XkbAlphabeticIndex, XkbAlphabeticIndex};
+  int types[] = {XkbOneLevelIndex, XkbOneLevelIndex, XkbOneLevelIndex, XkbOneLevelIndex};
   XkbMapChangesRec map_change = {0};
+  XkbMapChangesRec anchor_change = {0};
   require(XkbChangeTypesOfKey(changed, code, 2, XkbGroup1Mask | XkbGroup2Mask,
                              types, &map_change) == Success
           && map_change.changed == XkbKeySymsMask && map_change.first_key_sym == code
           && map_change.num_key_syms == 1, "text-group fixture resize failed");
-  XkbKeySymEntry(changed, code, 0, 0) = XK_a;
-  XkbKeySymEntry(changed, code, 1, 0) = XK_A;
-  XkbKeySymEntry(changed, code, 0, 1) = XK_b;
-  XkbKeySymEntry(changed, code, 1, 1) = XK_B;
-  require(XkbChangeMap(observer, changed, &map_change), "text-group fixture map not sent");
-  XSync(observer, False);
-  Display *reader = XOpenDisplay("unix/:98.0");
-  require(reader != NULL, "text-group independent lookup display unavailable");
-  XkbDescPtr actual = XkbGetMap(reader, XkbAllClientInfoMask, XkbUseCoreKbd);
-  require(actual && actual->map && XkbKeyNumGroups(actual, code) == 2
-          && XkbKeyGroupsWidth(actual, code) == 2
-          && XkbKeySymEntry(actual, code, 0, 0) == XK_a
-          && XkbKeySymEntry(actual, code, 1, 0) == XK_A
-          && XkbKeySymEntry(actual, code, 0, 1) == XK_b
-          && XkbKeySymEntry(actual, code, 1, 1) == XK_B,
-          "native server did not install the two-group map");
-  XkbFreeKeyboard(actual, 0, True);
-  xdo_t *input = xdo_new("unix/:98.0");
-  require(input != NULL, "text-group product context unavailable");
-  int found = 0;
-  for (int index = 0; index < input->charcodes_len; index++) {
-    if (input->charcodes[index].symbol == XK_a) {
-      require(input->charcodes[index].code == code && input->charcodes[index].group == 0
-              && input->charcodes[index].modmask == 0, "keysym control mapping differs");
-      found = 1;
-      break;
+  XkbKeySymEntry(changed, code, 0, 0) = 0x0101f600UL;
+  XkbKeySymEntry(changed, code, 0, 1) = 0x0101f601UL;
+  /* A separate four-group key makes effective groups 2 and 3 real server states. */
+  require(XkbChangeTypesOfKey(changed, anchor, 4,
+                             XkbGroup1Mask | XkbGroup2Mask | XkbGroup3Mask | XkbGroup4Mask,
+                             types, &anchor_change) == Success
+          && anchor_change.changed == XkbKeySymsMask && anchor_change.first_key_sym == anchor
+          && anchor_change.num_key_syms == 1, "text-group anchor resize failed");
+  for (int group = 0; group < 4; group++) XkbKeySymEntry(changed, anchor, 0, group) = XK_F30;
+  require(XkbChangeMap(observer, changed, &anchor_change), "text-group anchor not sent");
+  const char *policies[] = {"wrap", "clamp", "redirect", "redirect-outside"};
+  unsigned char info[] = {XkbSetGroupInfo(2, XkbWrapIntoRange, 0),
+                          XkbSetGroupInfo(2, XkbClampIntoRange, 0),
+                          XkbSetGroupInfo(2, XkbRedirectIntoRange, 1),
+                          XkbSetGroupInfo(2, XkbRedirectIntoRange, 3)};
+  int cases = 0, mapped = 0, scratch = 0;
+  for (int policy = 0; policy < 4; policy++) {
+    changed->map->key_sym_map[code].group_info = info[policy];
+    require(XkbChangeMap(observer, changed, &map_change), "text-group fixture map not sent");
+    XSync(observer, False);
+    XkbDescPtr actual = component_snapshot(observer);
+    require(XkbKeyGroupInfo(actual, code) == info[policy] && XkbKeyGroupsWidth(actual, code) == 1
+            && XkbKeySymEntry(actual, code, 0, 0) == 0x0101f600UL
+            && XkbKeySymEntry(actual, code, 0, 1) == 0x0101f601UL
+            && XkbKeyNumGroups(actual, anchor) == 4,
+            "native server did not install the group-policy map");
+    xdo_t *input = xdo_new("unix/:98.0");
+    require(input != NULL, "text-group product context unavailable");
+    int found = 0;
+    for (int index = 0; index < input->charcodes_len; index++) {
+      charcodemap_t *entry = &input->charcodes[index];
+      if (entry->symbol != 0x0101f600UL && entry->symbol != 0x0101f601UL) continue;
+      require(entry->code == code && entry->group == (int)(entry->symbol - 0x0101f600UL)
+              && entry->group_info == info[policy] && entry->modmask == 0,
+              "keysym control mapping differs");
+      found++;
     }
-  }
-  require(found, "keysym control mapping absent");
-  product_display = input->xdpy;
-  for (int round = 0; round < 4; round++) {
-    for (unsigned group = 0; group < 2; group++) {
-      for (unsigned selected = 0; selected < 2; selected++) {
-        require(XkbLockGroup(observer, XkbUseCoreKbd, group), "fixture group not sent");
-        XSync(observer, False);
-        XkbStateRec before = {0}, after = {0};
-        require(XkbGetState(observer, XkbUseCoreKbd, &before) == Success
-                && before.group == group && before.locked_group == group
-                && before.base_group == 0 && before.latched_group == 0 && before.mods == 0,
-                "native server did not select the fixture group");
-        queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
-        modifier_queries = modifier_frees = 0;
-        fault = state_fault = modifier_fault = 0;
-        observe = 1;
-        int status = xdo_enter_text_scalar(input, selected ? 'b' : 'a', 0);
-        observe = 0;
-        require(status == XDO_SUCCESS, "text-group input refused");
-        require(state_queries == 1 && input_calls == 2 && group_changes == 4
-                && mapping_changes == 0 && queries == 0 && frees == 0
-                && modifier_queries == 0 && modifier_frees == 0,
-                "text-group product call census differs");
-        require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
-                && !memcmp(&before, &after, sizeof(before)), "input changed the XKB state");
-        XSync(observer, False);
-        for (int index = 0; index < 2; index++) {
-          XEvent event;
-          require(XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &event),
-                  "text-group native event missing");
-          KeySym symbol = NoSymbol;
-          unsigned consumed;
-          require(event.type == (index == 0 ? KeyPress : KeyRelease)
-                  && event.xkey.window == window && !event.xkey.send_event
-                  && event.xkey.keycode == code && event.xkey.state == (selected << 13)
-                  && XkbLookupKeySym(reader, code, event.xkey.state, &consumed, &symbol)
-                  && symbol == (selected ? XK_b : XK_a),
-                  "text-group native event group or symbol differs");
+    require(found == 2, "unique group symbols are absent or duplicated");
+    product_display = input->xdpy;
+    for (int round = 0; round < 4; round++) {
+      for (unsigned group = 0; group < 4; group++) {
+        unsigned resolved = group < 2 ? group : policy == 1 || policy == 2 ? 1
+                                                        : policy == 3 ? 0 : group % 2;
+        for (unsigned selected = 0; selected < 2; selected++) {
+          int uses_scratch = selected != resolved;
+          text_group_case(input, observer, window, actual, code, group, selected, uses_scratch, 0);
+          cases++;
+          mapped += !uses_scratch;
+          scratch += uses_scratch;
+          printf("XDO_TEXT_GROUP_CASE=pass policy=%s round=%d group=%u selected=%u route=%s events=2 group_locks=0\n",
+                 policies[policy], round, group, selected, uses_scratch ? "scratch" : "mapped");
         }
-        events(observer, window, 0, 0);
-        printf("XDO_TEXT_GROUP_CASE=pass round=%d group=%u selected=%u events=2 group_locks=%d\n",
-               round, group, selected, group_changes);
       }
     }
+    if (policy == 3) {
+      for (int round = 0; round < 4; round++) {
+        for (unsigned selected = 0; selected < 2; selected++) {
+          int uses_scratch = selected == 0;
+          text_group_case(input, observer, window, actual, code, 1, selected, uses_scratch, 1);
+          cases++;
+          mapped += !uses_scratch;
+          scratch += uses_scratch;
+          printf("XDO_TEXT_GROUP_CASE=pass policy=latched round=%d group=1 locked=0 selected=%u route=%s events=2 group_locks=0 latch=consumed\n",
+                 round, selected, uses_scratch ? "scratch" : "mapped");
+        }
+      }
+    }
+    product_display = NULL;
+    xdo_free(input);
+    XkbFreeKeyboard(actual, 0, True);
   }
-  product_display = NULL;
-  xdo_free(input);
-  XCloseDisplay(reader);
+  require(cases == 136 && mapped == 68 && scratch == 68, "text-group coverage differs");
   require(XkbChangeMap(observer, original, &map_change), "original XKB map not sent");
+  require(XkbChangeMap(observer, original, &anchor_change), "original anchor map not sent");
   require(XkbLockGroup(observer, XkbUseCoreKbd, baseline.locked_group), "original group not sent");
   XSync(observer, False);
   same_xkb_symbols(observer, original);
@@ -845,7 +931,7 @@ static void text_group_layout(Display *observer, Window window) {
   clear_keys(observer);
   require(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks,
           "text-group descriptors/tasks retained");
-  puts("XDO_TEXT_GROUP_NATIVE=pass groups=0,1 repeats=4 cases=16 events=32 scalars=a,b group_locks=64 symbols=resolved state=preserved mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
+  puts("XDO_TEXT_GROUP_NATIVE=pass groups=0,1,2,3 policies=wrap,clamp,redirect,redirect-outside repeats=4 cases=136 events=272 mapped=68 scratch=68 group_locks=0 symbols=observed-in-request locked_group=preserved latch=consumed mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
 }
 
 int main(void) {

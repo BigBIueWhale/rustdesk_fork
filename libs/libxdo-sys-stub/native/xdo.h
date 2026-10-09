@@ -33,9 +33,9 @@ typedef struct charcodemap {
   KeyCode code; /** the keycode that this key is on */
   KeySym symbol; /** the symbol representing this key */
   int group; /** the keyboard group that has this key in it */
+  unsigned char group_info; /** snapshot group count and range normalization */
   int modmask; /** the modifiers to apply when sending this key */
-   /** if this key need to be bound at runtime because it does not
-    * exist in the current keymap, this will be set to 1. */
+   /** Set when the symbol needs a binding in the current effective group. */
   int needs_binding;
 } charcodemap_t;
 
@@ -180,8 +180,10 @@ int xdo_get_mouse_location(const xdo_t *xdo, int *x, int *y, int *screen_num);
  * and carriage return return XDO_ERROR before input. Tab maps to XK_Tab;
  * newline and carriage return map to XK_Return. Other scalars use Latin-1
  * or Unicode keysyms. Both legs retain the same resolved code, modifiers
- * and scratch mapping. Scratch rows must have neutral XKB semantics; their
- * original symbols, types, groups, actions and explicit controls are restored
+ * and scratch mapping. Resolution uses the current effective group and each
+ * key's group normalization; text never writes the global group lock. Scratch
+ * rows must have neutral XKB semantics; their original symbols, types, groups,
+ * actions and explicit controls are restored
  * and checked after release. XDO_CLEANUP_ERROR means restoration is unconfirmed;
  * the context retains the original map and accepts no further text.
  *

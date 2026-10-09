@@ -119,7 +119,8 @@ def native_xdo(root, environment, historical_destructor=True):
             f"{name.replace('.', '_')}_sha256={hashlib.sha256((inputs / name).read_bytes()).hexdigest()}"
             for name in names) +
             f" binary_sha256={hashlib.sha256(output.read_bytes()).hexdigest()} variant={variant} "
-            "compiler=product-helper source_delta=one-call loader=direct-native-test installed=false", flush=True)
+            f"compiler=product-helper source_delta={'one-call' if variant == 'before' else 'none'} "
+            "loader=direct-native-test installed=false", flush=True)
         result = subprocess.run(["/usr/bin/nm", "-D", "--defined-only", str(output)],
                                 env=environment, capture_output=True, text=True, timeout=5)
         require(result.returncode == 0 and not result.stderr and len(result.stdout) <= 65536,

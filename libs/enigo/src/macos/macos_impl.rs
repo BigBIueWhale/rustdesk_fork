@@ -142,27 +142,8 @@ impl Enigo {
         self.flags |= flag;
     }
 
-    // Just check F11 for minimal changes.
-    // Since enigo (legacy mode) is deprecated, it is currently in maintenance only.
-    fn post(&self, event: CGEvent, keycode: Option<u16>) {
-        if keycode == Some(kVK_F11) {
-            // Some key events require the flags to work.
-            // We can't simply set the flag to `CGEventFlags::CGEventFlagNull`.
-            // eg. `F11` requires flags `CGEventFlags::CGEventFlagSecondaryFn | 0x20000000` to work.
-            self.post_event(event, false);
-        } else {
-            // macOS system may use the previous event flag to generate the next event.
-            // Only found this issue when locking the screen.
-            // When we use enigo to lock the screen, the next mouse event will have the flag
-            // `CGEventFlagControl | CGEventFlagCommand | 0x20000000`.
-            // The key event will also have the flag `CGEventFlagControl | CGEventFlagCommand | 0x20000000`.
-            // Therefore, we need to set the flag to `event.set_flags(self.flags)` to avoid this.
-            self.post_event(event, true);
-        }
-    }
-
-    fn post_event(&self, event: CGEvent, force_flags: bool) {
-        if !self.ignore_flags && (force_flags || self.flags != CGEventFlags::CGEventFlagNull) {
+    fn post(&self, event: CGEvent) {
+        if !self.ignore_flags {
             event.set_flags(self.flags);
         }
         event.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, ENIGO_INPUT_EXTRA_VALUE);
@@ -301,7 +282,7 @@ impl MouseControllable for Enigo {
         if let Some(v) = btn_value {
             event.set_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER, v);
         }
-        self.post(event, None);
+        self.post(event);
         Ok(())
     }
 
@@ -337,7 +318,7 @@ impl MouseControllable for Enigo {
         if let Some(v) = btn_value {
             event.set_integer_value_field(EventField::MOUSE_EVENT_BUTTON_NUMBER, v);
         }
-        self.post(event, None);
+        self.post(event);
         Ok(())
     }
 
@@ -465,7 +446,7 @@ impl Enigo {
             event.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_X, dx as i64);
             event.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_Y, dy as i64);
         }
-        self.post(event, None);
+        self.post(event);
         Ok(())
     }
 
@@ -727,8 +708,8 @@ impl Enigo {
             let up = CGEvent::new_keyboard_event(src.clone(), 0, false)
                 .map_err(|err| format!("could not construct macOS text key-up: {err:?}"))?;
             down.set_string(cluster);
-            self.post(down, None);
-            self.post(up, None);
+            self.post(down);
+            self.post(up);
         }
         Ok(())
     }

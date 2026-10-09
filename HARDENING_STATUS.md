@@ -12176,12 +12176,17 @@ macOS, and Linux renderers consume that owner and wait while idle, using one
 event-loop deadline only while ripples remain. macOS also retires exact-owner text
 layouts and redraws both old and new monitor surfaces on movement.
 
-Two focused Rust tests in `src/whiteboard/server.rs` cover exact-owner Clear and
-owner/ripple bounds. `scripts/verify-whiteboard-presentation-lifecycle.py` and the
-shared/Apple source gates cover the closed source topology; the recorded confined
-checks for this slice had no Rust or native toolchain and cannot establish that
-those tests or any target renderer ran. The original review and source-check
-receipts remain in Git history at `78bbce8e4`.
+Two executable Rust tests in `src/whiteboard/server.rs` exercise exact-owner Clear,
+retention of another owner, current owner/ripple ceilings, and oldest-first
+eviction. They derive their sizes from production constants and do not independently
+pin the required 16-owner/64-ripple limits. Their shared `r_s11hp_` command and the
+real whiteboard protocol/token-authority tests remain. The 535-line
+`scripts/verify-whiteboard-presentation-lifecycle.py` and its shared/Apple calls are
+deleted: source substring/order/count checks and 42 in-memory text replacements
+did not execute those tests, an overlay, clearing frames or idle redraw behavior.
+The recorded confined checks had no Rust/native toolchain and establish no test
+or renderer execution; none ran for this deletion. Original review/source-check
+receipts remain in Git history at `78bbce8e4`. Native acceptance remains OPEN.
 
 **Still required:** execute the focused tests from the exact current source, then
 exercise two concurrent owners, refusal/toggle/Close/abrupt retirement, boundary

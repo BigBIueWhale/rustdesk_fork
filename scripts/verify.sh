@@ -10549,12 +10549,6 @@ else
   echo "  FAIL R-S11ho/R-S11e-252: whiteboard client lifecycle regained duplicate launch, nested runtime, lost stop-window demand, automatic failure retry, or stale finalization"
   rc=1
 fi
-if python3 scripts/verify-whiteboard-presentation-lifecycle.py --repo . --self-test; then
-  echo "  ok  R-S11hp/R-S11e-253 whiteboard presentation resources are bounded, exact-owner final, and demand-redrawn"
-else
-  echo "  FAIL R-S11hp/R-S11e-253: whiteboard presentation regained generic event authority, stale owner resources, unbounded ripples, or continuous idle redraw"
-  rc=1
-fi
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
   echo "  ok  R-S11go native Flutter display selection is exact-owner, typed, ordered, bounded, and failure-visible"
 else

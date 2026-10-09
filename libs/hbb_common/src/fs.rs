@@ -3245,6 +3245,13 @@ impl TransferJob {
             DataSource::FilePath(p) => {
                 let p = p.to_str().ok_or(anyhow!("Invalid path"))?;
                 let files = get_recursive_files_with_budget(p, show_hidden, budget)?;
+                if file_num < 0 || file_num as usize > files.len() {
+                    bail!(
+                        "initial file number {} is outside the admitted file list ({} files)",
+                        file_num,
+                        files.len()
+                    );
+                }
                 let total_size = checked_file_total_size(&files)?;
                 (files, total_size)
             }
@@ -6608,7 +6615,8 @@ mod tests {
         assert!(empty.is_dir());
         assert!(
             admitted.is_empty(),
-            "invalid send indexes were admitted: {admitted:?}"
+            "invalid send indexes were admitted: {:?}",
+            admitted
         );
     }
 

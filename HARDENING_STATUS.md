@@ -468,747 +468,132 @@ locally available. No Android/Windows delay causation or platform closure is cla
 
 ### Linux Enigo XDO — one local display for input and diagnostics; integration OPEN
 
-`libs/enigo/src/linux/xdo.rs::EnigoXdo::default` opens the shared validated Unix
-display once and transfers the sole display to `xdo_new_with_opened_display`
-with close-on-free ownership. Native absolute movement derives `DefaultRootWindow`
-from that retained Display; Enigo and platform cursor callers supply only context
-and coordinates, with no separate screen index or cache. The pointer-map diagnostic
-borrows the same display; it neither reopens a connection nor rereads `DISPLAY`.
-An `OpenedDisplay` RAII guard owns the connection until handoff and closes it on
-native refusal or Rust-side unwind. The Enigo owner retains the successful context
-before logging/diagnostics, so their unwind also destroys the context/display.
-Missing/non-UTF8/malformed/remote selectors create no native connection; existing
-result-bearing mouse/text operations report unavailable input. Native authentication,
-protected-loader policy, parent dispatch and service authority are unchanged; no
-constructor fallback, new dependency, worker or runtime exists.
+**Current disposition:** private provider `3.20160805.1-rustdesk15` and the
+named native component checks below are accepted at their exact sources.
+Full Cargo/Flutter/app, installed-service, resources and release acceptance
+remain OPEN. The input-state getter and boolean keyboard API still cannot
+represent uncertain queries; checked native key-request admission does not
+close that separate caller contract.
 
-The old production mouse API always targeted screen 0, and its native fixture also
-queried root 0 even for a screen-1 context. Correcting the observer to require the
-selected root exposed the actual mismatch: unchanged production in `run.ByLx6SUQmb`
-exited 101 with `native pointer did not arrive on selected screen unix/:98.1` under
-the unchanged 100ms observation bound. The outer transaction explicitly failed;
-later scenarios and aggregate acceptance did not execute. The frozen before-state
-receipt retains that failure and exact terminal scratch cleanup, not an old-app or
-deployed symptom-causation claim.
+| Current source surface | Contract and boundary |
+| --- | --- |
+| Display and context ownership | `libs/enigo/src/linux/xdo.rs` opens one shared validated Unix Display. Missing/non-UTF8/malformed/remote selectors refuse before native construction. `OpenedDisplay` owns it until successful close-on-free handoff; native refusal or Rust unwind closes the exact owner. Diagnostics borrow the retained Display, and the successful native owner is retained before logging. `src/platform/linux/x11_context.rs` owns platform contexts separately. Absolute movement derives `DefaultRootWindow` from its retained Display; callers supply only context and coordinates, with no screen index/cache or ambient-selector reread. |
+| Private library and construction | `libs/libxdo-sys-stub/src/lib.rs` admits only protected root-owned `/usr/lib/rustdesk-fork/libxdo.so.3`, exact version 15 and the complete required ABI before constructors are available; no distro or per-function fallback remains. The version is an ABI guard, not cryptographic authentication. Native construction requires XTEST before allocation/keymap work, validates one XKB snapshot, checks partial allocations, and transfers caller-supplied Display ownership only on success. `xdo_new` closes its own Display after inner refusal. Provenance/local modifications and BSD notices remain in `native/SOURCE.txt` and `COPYRIGHT`. The product helper retains stack protection, fortification, RELRO and immediate/internal-function binding; package ELF/no-RUNPATH validation remains a separate gate. |
+| Closed input surface | The provider exposes eleven context/version/input/cursor-state APIs. Keyboard and button input use XTEST on the retained Display, with server-owned focus/pointer/grab routing. Caller-Window/directed XSendEvent input, focus-routing helpers, modifier get/clear/restore APIs, window/desktop/property/search/termination APIs, compound parsing, alias/list/text-language APIs and Enigo DSL are absent. One typed numeric keysym or raw keycode and explicit Down/Up/Click action replace compound native key descriptions; kind/value/action and raw bounds are checked before input or narrowing, with stack-owned key storage. |
+| Key-request state and modifier admission | `native/xdo.c::xdo_send_key` checks one successful, in-range XKB state before scratch/group/key effects. Required modifier rows resolve once into eight stack codes through a shape/range-checked map, which retires before effects; absent required rows refuse. No-modifier requests acquire no modifier map. Both click legs use the same admitted codes. Raw input sends physical codes without group-lock calls; keysyms select their resolved group and use the verified restoration group. Native per-request delivery/group errors and caller-level state preflight remain unproved. |
+| Scratch ownership | Unmapped symbols query the inclusive native range and require a wholly unused row; mapped keys bypass that query. Missing/invalid maps and exhausted scratch space refuse before input. A complete click retains one installed symbol and exact code through both legs, then restores the full original row and frees once. Separate Down/Up leases, concurrent map mutation and delayed consumer acknowledgment remain OPEN. |
+| Literal text and result boundary | `EnigoXdo::key_sequence_result` preflights controls over the whole string, maps newline/carriage return and tab explicitly, and supplies numeric Unicode keysyms without locale mutation. Each nonempty text request constructs a fresh borrowed context on the retained Display, refreshes its map and retires its enclosing XKB descriptors; construction refusal has no stale-map fallback. Result-bearing mouse/text/key-down operations report unavailable/native submission errors. Their result does not guarantee eventual X delivery. Resultless key-up/click and the boolean state API remain open. RustDesk's remote physical-key path uses rdev; these XDO checks do not execute that route. |
 
-Source `607b2cb12f4adabe1d4cf84fd0f3f2a1b09611e9`, tree
-`7c2ddaac4e2582f749526386bce036b9585ce55b`, passed
-`--x11-display-tests` with explicit outer exit 0 in **95 seconds**:
-
-- Complete historical/current backend modules ran against real X11/XDO libraries,
-  with byte-extracted production API declarations and the actual pinned log crate.
-  This is not parent Enigo, protected-loader, full Cargo or whole-app execution.
-- The historical missing-display constructor made one private guest loopback TCP
-  connection. A deterministic child-only `DISPLAY` change after successful XDO
-  construction made its historical diagnostic connect once as well. Current
-  code made zero connections and kept the sole original display for its diagnostic.
-  Old accepted peers closed without an X11 reply/session grant; all children,
-  descriptors/tasks and the exact guest-only listener retired.
-- Eighteen invalid/missing/non-UTF8 selectors refused before native construction.
-  Three normalized selectors each passed eight construction/drop cases (24 total),
-  with real default screens/root dimensions 0=640x480 and 1=800x600. An independent
-  X11 connection observed the requested pointer coordinates on the selected root
-  within the unchanged 100ms bound: sixteen deliveries on screen 0 and eight on
-  screen 1. One native descriptor is live during each context, and paired native
-  destruction restores sampled descriptor/task baselines after each retirement.
-- Thirty-two injected context-entry refusals follow a successful real X11 open;
-  each closes that owned display and refuses mouse/text availability. Sixteen real
-  successful contexts then undergo an injected Rust constructor-log unwind; each
-  destroys the native context/display. All sampled task/fd baselines return, with
-  forty native-context free callbacks and thirty-two direct failed-handoff closes.
-  These are controlled interface/log faults, not actual native allocator or protected-
-  loader failures; unwind executes in the test's non-aborting build, not a release artifact.
-- The existing native platform-owner, capture/focus selector/route, cancellation,
-  recovery, pixel/SHM and three byte-cache regressions also passed. No host endpoint
-  addition; readonly inputs unchanged; VM/container owners joined and run root retired.
-
-Retained `.harness-state/verifier-vm/x11-display-tests-run.cUh1bgpWpP.serial.log`
-(103,681 bytes; SHA-256 `2c9ad4a24b25025289fdc7df3fa7549034a7ec9ca51b92180ef86fa06703a01b`)
-and `evidence/x11-enigo-screen-run.cUh1bgpWpP.outer.receipt` bind sources, artifacts,
-before-state, scope, isolation and explicit finality; these are assistant observations,
-not independent attestation. The selected-root oracle, pinned VM/library and screen
-geometry are held constant, but candidate fixtures add construction-fault/unwind cases
-and call wrapping; the whole A/B fixtures are not byte-identical. Earlier local-route
-evidence remains in `evidence/x11-enigo-route-run.8DvSvLxeRW.outer.receipt`.
-
-The live `process_unicode`/`process_seq` route calls the result-bearing XDO text
-operation. Its former native routine changes process-global `LC_CTYPE` from the
-environment and converts multibyte text; the deliberately cleared service-child
-environment carries no locale. This is a concrete incompatibility, not permission
-to inherit user-controlled launch state. The pinned
-[XDO source](https://raw.githubusercontent.com/jordansissel/xdotool/v3.20160805.1/xdo.c)
-and [locale contract](https://man7.org/linux/man-pages/man3/setlocale.3.html)
-informed the correction.
-
-`827864b6078e02bd33470af48099ecea30e1d53f` replaces that conversion with existing
-canonical ASCII Unicode key names and complete native press/release submissions.
-Newline/carriage return and tab have explicit key names; unsupported controls are
-preflighted over the entire string before any prefix can be emitted. Native status
-errors propagate; the per-scalar delay preserves the old submission cadence.
-The obsolete `xdo_enter_text_window` wrapper/load field is deleted; no production
-locale mutation, launcher change, fallback, dependency or worker is added.
-
-The unchanged test-first fixture (`4f588563`) distinguishes the actual behavior:
-before-state `run.klNraLivX9` explicitly failed after the independent native window
-received only ASCII `a` press/release, then XDO rejected `é` as an invalid multibyte
-sequence. Later cases did not run. Current `run.Z1Nqo3wgWj` explicitly passed the
-complete native lane in **83 seconds**. Locale-cleared, `C`, and invalid-locale
-children each delivered seven expected non-modifier press/release pairs for
-`aéא🙂+`, newline and tab (42 expected events total), with no keys held at the
-sampled end state. The observer restores its three configured native keymap rows;
-all children, native contexts, sampled descriptors/tasks and VM/container owners
-retire. NUL/SOH error assertions pass; pre-emission refusal is source-proved, not
-independently established by the observer after its fourteen-event stop.
-
-The retained 109,879-byte serial log
-`x11-display-tests-run.Z1Nqo3wgWj.serial.log` (SHA-256
-`d63d21470d6ca01a3f08925fbcd728bbe1c9eb0bed69bf40e35cae04e6406527`)
-and `evidence/x11-text-run.Z1Nqo3wgWj.outer.receipt` bind exact source/binary identities,
-the failed before-state, unchanged fixtures, isolation and terminal cleanup.
-There was no added host endpoint; the exact transient root/disks/media are absent.
-This is configured-layout native key-event evidence, not widget text, unmapped
-Unicode, parent/rdev/protected-loader/full-app or installed-service execution, and
-does not explain the Android/Windows display delay. Existing native regressions
-also passed; this does not upgrade their scope or independent-attestation status.
-
-**Native map freshness and descriptor ownership — component accepted; integration OPEN.**
-XDO retains its construction-time keyboard map. Test-first `3eb169b6` held the
-constructor-complete/map-swapped/emission phases constant: after the independent
-observer swapped the complete `a`/`b` rows, unchanged production emitted `b` for
-requested `a` (`run.eYxh0ZXVJM`, explicit outer 1). `81eb367c` creates a request-owned
-temporary XDO context on the sole retained display, without rereading `DISPLAY` or
-opening another connection. Native construction refusal returns an error without
-stale-map fallback. Its earlier correct-key/fd/task pass was insufficient: the
-unchanged exact-pointer heap probe observed **2 allocations, 0 retirements, 2 live**
-in `run.c06EDXJfqr` (explicit outer 1); later scenarios did not execute.
-
-The [supplier routine](https://raw.githubusercontent.com/jordansissel/xdotool/v3.20160805.1/xdo.c)
-frees only the inner map. `b9a4d5eb` carries the full enclosing-descriptor destructor
-in checked-in XDO source with exact provenance, the distro ABI fields, and retained
-BSD notice. The native helper builds a private library; Debian construction and the
-closed package verifier require `/usr/lib/rustdesk-fork/libxdo.so.3` plus its notices.
-Loader source selects only that protected root-owned path and exact fork version;
-there is no distro-library fallback. The version is a component guard, not
-cryptographic code authentication. `39c14ad5` preserves stack-protection/fortified
-library compiler flags; fixed immediate-binding/RELRO and internal-function binding
-remain explicit. No installed host library or service is changed.
-
-Source `39c14ad547bad6080418a9a7eff743be5887f6c8`, tree
-`266abfc980d9d7aedd510f21a8379da6b4a11348`, passed the focused native lane in
-**74 seconds**, explicit outer 0 (`run.Bfvp1vGbcC`):
-
-- The actual product C source/helper was compiled twice in the same isolated
-  environment. A one-call old-destructor control delivered the correct native key
-  pair but retained both enclosing descriptors: **2/0/2**.
-- The corrected provider passed the unchanged retirement predicates: **2/2/0**
-  for one request and **33/33/0** for 32 requests, with 66 correct key events,
-  two controlled constructor-refusal/retry cases, sampled clear keys, restored
-  mapping and joined context/display/fd/task retirement.
-- The actual compiled private objects passed the package verifier's ELF and
-  no-RUNPATH policies; this was not full package construction or installation.
-  Existing native component regressions passed without upgrading their scope.
-
-The corrected native library SHA-256 is
-`687f2fd536c8dd6da2ca9c555ecb8057372aea456f314d9aa1fee3174557abea`.
-The retained 123,627-byte serial log `x11-display-tests-run.Bfvp1vGbcC.serial.log`
-has SHA-256 `7e663e7a66c3d5bf7fbc409a28a92b6a37c4e9835475e288d8af7d41df7c7585`;
-`evidence/x11-private-xdo-run.Bfvp1vGbcC.outer.receipt` binds sources/artifacts,
-before-state, scope and finality. Endpoint-only host audits passed with no additions;
-owners joined and the exact transient run root retired (post-terminal ENOENT).
-Earlier failures and narrower passes remain in their named receipts and audit.
-
-That run accepts one exact descriptor class in the complete Enigo backend with direct
-native-test linkage, not the protected loader, other private-XDO consumers, whole
-heap, full Cargo/app/package/installed service or independent reproduction.
-The 6.947/210.859 ms request-to-child/observer retirement measurements include key
-delay and are not remote UI latency or soak acceptance. Broader obligations below
-remain OPEN.
-
-**Private-loader readiness — component accepted; full integration OPEN.**
-Test-first `dfc48988` compiled the complete production Rust loader with real pinned
-libloading/libc/x11/log dependencies and a re-export-only common facade. At the actual
-protected `/usr/lib/rustdesk-fork/libxdo.so.3` path, the complete provider worked, but
-a same-version provider missing `xdo_mouse_up` still admitted contexts; the native
-refusal predicate failed (`run.1zjK1rOeJQ`, outer 1). `c88cf1f8` requires the complete
-exposed API before either constructor can admit a context, removing per-function
-optional slots. The fixed path/version and absent-backend behavior remain unchanged.
-
-Final harness source `2e551f67` passed in **118 seconds**, explicit outer 0
-(`run.j2Wmn2Mm3W`): real pointer coordinates, button/Shift state and native key events
-with the complete private provider; both constructors refused missing-function,
-wrong-version, writable-file and absent-provider cases. One source-bound binary ran
-all five cases nonroot; guest-root preparation only set up protected fixture files.
-Existing native regressions and outer input/listener/finality checks passed; no host
-listener additions, joined owners and exact transient-root retirement. The retained
-126,359-byte serial and `evidence/xdo-loader-run.j2Wmn2Mm3W.outer.receipt` bind artifacts
-and the failed before-state. This is actual loader-component execution, not full
-Cargo/common/app/package installation, all symbols individually fault-tested,
-other-consumer integration, whole-resource or display-delay acceptance.
-
-**Enigo key-down results — component accepted; broader keyboard API OPEN.**
-The complete Linux Enigo caller previously reported success with an unavailable XDO
-context and discarded native key-down status. Test-first `1259377a` reproduced the
-unavailable-context false success through the production private loader
-(`run.GR5GU7lvbd`, outer 1), after real positive input passed. `8d80f791` returns
-an unavailable error and maps native status through the existing result helper;
-the result means native submission acceptance, not guaranteed eventual X delivery.
-The unchanged oracle passed all six cases, eight construction/call/drop attempts
-each, in **128 seconds** (`run.EnTdK1KaO8`, outer 0): actual pointer, Shift and text
-events; unavailable errors for incomplete, wrong-version, writable and absent
-providers; exact status-7 propagation from a controlled native function refusal.
-That refusal is not a server/allocation fault. Per-attempt display descriptors
-retired; existing native regressions, input/source postchecks, listener audit and
-joined cleanup passed. Bounded serials and `evidence/enigo-key-down-run.*.outer.receipt`
-under `.harness-state/verifier-vm/` bind the before/after artifacts. This executes
-complete Enigo Linux source with real dependencies and source-extracted production
-display policy, but a partial common facade, not full Cargo/app/install. Resultless
-key-up/click/state, other consumers and whole-resource
-acceptance remain OPEN; this does not explain Android/Windows display delay.
-
-**Unused Enigo DSL retired; Linux native replay accepted.** The parser, default/override
-trait methods, example and parser-only tests are deleted. No RustDesk caller used
-this API; `process_unicode`/`process_seq` retain literal-text native submission and
-physical keys retain rdev. This removes recursively formatted parse errors and
-discarded key-down failures rather than repairing an unused second input language.
-The existing native lane drops only dead parser imports/inventory entries; its
-historical XDO fixture removes the two obsolete trait methods to match the current
-API, with a new exact-source pin. Original native routing and test assertions are
-unchanged. Exact `994f06826a367f2d42041124ccec7677abf4f424` (tree `6c80a96a`)
-passed the unchanged native input/failure/resource checks and outer transaction in
-**145 seconds**, including complete Linux Enigo compilation and real pointer,
-Shift and text events. This uses a partial common facade and extracted display
-policy, not full Cargo/app/install or other-platform execution. Raw serial
-`.harness-state/verifier-vm/x11-display-tests-run.JWo6MvBvXQ.serial.log`
-is 128,171 bytes, SHA-256
-`69692b15d335d6d2a557a0b988b4801d5b681f1cea32ac423dacbee89bf242e5`;
-`evidence/enigo-dsl-retirement-run.JWo6MvBvXQ.outer.receipt` records the observed
-outer status/source/artifact scope. No added host listener; owned children joined
-and the exact scratch root/overlay is absent. Other-platform/app integration,
-whole-resource acceptance and Android/Windows display-delay causation remain OPEN.
-
-**Unused XDO modifier APIs retired; native correction accepted.**
-The explicit-window mouse branch collected a modifier list it never used; the
-tenth held modifier triggered `realloc` on the caller's pointer-to-pointer rather
-than the allocated list. Tests-first `5bf3d9ee` reproduced the real invalid-pointer
-abort after 0/1/9-key positive controls in a zero-NIC VM (outer exit 1). Normal
-Enigo mouse calls use `CURRENTWINDOW`, so this is not an observed normal-path crash
-or an Android/Windows display-delay explanation. The unnecessary collection and
-its unused get/clear/restore APIs/declarations are removed; the existing native
-input-state mask and button delivery remain. That acceptance used private provider
-and loader version `3.20160805.1-rustdesk2`; its wrong-version fixture carried the old stamp
-to require refusal, not compatibility. Exact `b1d6f829c2750b082475639d05fd6bff2ab14b0c`
-(tree `4c0293e6f7fda4fd7e40bcb7139f121008a9ffd4`) passed
-`scripts/smoke-verifier-vm-authority.sh --x11-display-tests` in **120 VM seconds**
-(outer exit 0). All 20 held-key cases delivered 40 exact events with unchanged
-keys/state, restored modifier/keyboard maps and retired sampled descriptors/tasks.
-Both built providers omit all three retired exports and retain required mouse APIs.
-Protected-loader/Enigo admission/refusal, staged native input and the existing native
-input/capture/focus regressions also passed. The wrong-version provider is current C
-with the old stamp, not an authentic old binary. Corrected provider SHA-256 is
-`d0d51861092b58d180a7964c7b934cfb6e1d931de121a84615b1ffc8c76f7d29`.
-Retained raw `.harness-state/verifier-vm/x11-display-tests-run.Mlw4FXJpyQ.serial.log`
-is 135,801 bytes, SHA-256
-`1e5f7d7efaae7b7750652a5aed3043d49ec2030708e7720af7135f893b700e1f`.
-No added host endpoint; owned children joined and the exact scratch root/overlay
-is absent. This is private native component evidence with a partial common facade,
-not full Cargo/app/install, whole-resource acceptance or original-symptom causation;
-those broader claims remain OPEN.
-
-**Scratch-key query bounds and ownership corrected; native component accepted.**
-The live native key path queried `high-low` rows but searched through inclusive
-`high`, read `keys[nkeys]` during cleanup logging, and queried even mapped keys.
-Tests-first `b7340517` delivered its mapped-key control, then reproduced an actual
-AddressSanitizer heap-buffer read at `xdo.c:1043` with only the highest row unused
-in a zero-NIC VM (outer exit 1). The first fixture attempt failed during map setup
-and is not product evidence; the corrected fixture retains the actual normalized
-server map before calls. The helper now acquires the inclusive query only when
-binding is required, requires every slot of the selected row to be unused, refuses
-missing/invalid queries or an occupied map before input, retains/restores the full
-selected row, and frees the query on every returned path. Cleanup does not index
-past the caller's key array. That acceptance used private provider/loader/build version
-`3.20160805.1-rustdesk3`; its refusal fixture stamped that run's corrected C as version 2, not an
-authentic old binary. The focused native fixture requires 20 repeated delivery,
-mapped-query bypass, query-failure and full-map-refusal cases, actual events,
-unchanged maps/physical keys, query/free census and sampled descriptor/task drain.
-The fixture owns a dedicated Xvfb,
-requires exact map equality after each press/release scenario, and joins that server
-before later tests start on a fresh display. Core/XKB startup-map restoration
-assumptions are absent; failed fixture attempts remain in the retained audit/raw
-evidence and Git history, not product acceptance.
-
-Exact `af4586af32a560345356e02b8325f72799b30ae3`
-(tree `cb66effcd31822625557aa57989deeff47b15b37`) passed
-`scripts/smoke-verifier-vm-authority.sh --x11-display-tests` in **138 VM seconds**,
-outer exit 0. All 20 scratch cases over four rounds passed: 16 scenario key
-events, 32 queries including eight null-query faults, all 24 allocated query
-replies freed, exact maps/physical keys preserved and sampled descriptors/tasks
-retired. The real mapped-key control passed separately. AddressSanitizer was
-enabled; heap-leak checking was explicitly disabled. Dedicated server/socket/lock
-retirement and later fresh-display execution passed, as did the unchanged
-protected-loader/Enigo, mouse, focus, cursor and capture checks. That run's product C was
-unchanged from `cbdfcb0e`; its SHA-256 is
-`87869889954226ec60877d3b14a70c4e2d191d259c86fd7c16f8989c20e23783`.
-Retained raw `.harness-state/verifier-vm/x11-display-tests-run.bLrDBWErfM.serial.log`
-is 142,632 bytes, SHA-256
-`4e9955805a26a0b63524e452cc8c6eabd1294d20aaac94d51eb71624928e6680`.
-`evidence/xdo-scratch-key-run.bLrDBWErfM.outer.receipt` records the observed outer
-result and exact artifact scope; it is not independent reproduction. No host
-listener was added, owners joined and the exact scratch root/overlay is absent.
-This is not an Android/Windows delay fix,
-whole-app/install result, native map-race/allocator closure or heap-leak/soak proof.
-The compound-parser surface is retired by the single-key correction below;
-unchecked native delivery/error paths remain OPEN.
-
-**Concurrent native-context evidence; allocator failure remains OPEN.** Candidate `cbdfcb0e`'s first
-native run aborted in the unchanged `concurrent-contexts` child with
-`double free or corruption (fasttop)` before reaching the scratch-key test. That
-child links the pinned distro XDO, not the changed private provider; its exact
-binary and native-library digests match the preceding negative run. The retained
-raw is `x11-display-tests-run.6d8hWuubEa.serial.log` (84,801 bytes, SHA-256
-`4da2a89c1906693ae563775d4ec426780bca987dfdd06a273e593da12ea156c5`).
-Cause and relevant product/harness/native-library ownership remain unproved;
-the same eight-worker schedule passed in `af4586af`'s accepted transaction,
-but that later pass does not explain or erase this failure. The focused scratch test
-runs first on its own disposable display. The concurrent test and every
-existing assertion remain mandatory; reordering is not concurrency acceptance.
-
-**Private-provider component acceptance.** At `160dc28ce1e72ddedd7677c15735b9bd4e22a31d`
-(tree `067049ccf0adb6d718c5f36cf69515c17f65e335`), the native thread-context runner
-builds the current private XDO through the product helper before compiling the fixture;
-Enigo reuses those builds. Each scenario child checks its actual mapped XDO against
-the compile-bound private path before dispatch. The runner binds the mapped bytes to
-the built SHA-256, removing the earlier suite's distro-provider substitution.
-The zero-NIC VM/network-none nonroot container transaction passed with outer status 0
-in 134 VM seconds. Eight workers held 16 unique live contexts and completed 1,024
-real queries, with paired retirements, descriptor/task baselines restored and all
-threads joined. Ownership/unwind, startup retry, cookie authentication and cursor
-scenarios passed with that private provider; existing loader/Enigo, scratch, mouse,
-focus and capture checks also passed. Actual provider SHA-256 is
-`d91afd6c2167d2b9a9cf481747fad11624d75e2e6fdd12d3b7ff9401c19bdce0`;
-thread-context binary is
-`1e5100c058ac79097be7609896cc8fd6bdda5db747b6fe57b2d8327c68ee81bc`.
-Retained raw `x11-display-tests-run.5xHc66JHF4.serial.log` is 140,792 bytes, SHA-256
-`96a712e8a49c2a04a4c6b34dffb7615d18ca1f9b1b166feefad9693aab420858`.
-No host listener was added; outer cleanup joined and the exact root/overlay is absent.
-This accepts one schedule of the direct-native component on the pinned runtime. It
-does not explain the retained distro-provider abort, prove a cross-version/threading
-or heap/soak property, or establish installed/whole-app acceptance. Production code
-was unchanged in that transaction.
-
-**Constructor map/ownership correction; native component accepted.**
-The private constructor checks context and character allocations and validates one
-XKB client-map snapshot before counting its group/type levels. The same snapshot
-supplies symbols and real-modifier masks; core-width sizing, repeated live-symbol
-queries and the private core-modifier traversal are removed. Returned map/allocation
-failures retire partial native state and return NULL. Caller-supplied display ownership
-transfers only on success, matching Enigo's retained display guard; `xdo_new` closes
-its own display after a refused inner construction. Public struct layout is retained.
-That acceptance used provider, helper and protected loader private version
-`3.20160805.1-rustdesk4`; the wrong-version fixture stamps current corrected C as
-version 3. Exact candidate `ae6aa3ff14a4661924edafa4dde2875b34017914`
-(tree `cdb1cc6f0fcca10f91005d9b25789cbd567d797a`) passed the zero-NIC VM,
-network-none nonroot container transaction with outer status 0 in 135 VM seconds.
-The complete corrected C constructor ran under AddressSanitizer: 21 controlled
-allocation/returned-map faults across internal-open, caller-transfer and borrowed
-display paths, four rounds, 264 cases, 252 refusals and 12 accepted contexts. The
-accepted contexts delivered 24 real key events; refused and borrowed caller displays
-remained usable, context/character allocations and XKB descriptors retired exactly
-once, and sampled descriptor/task counts returned to baseline. The fixture restores
-Xlib's real allocation metadata before native destruction; corrupt allocator metadata,
-malformed wire decoding, native fatal-error paths and whole-heap/leak bounds are
-unproved. The production-helper provider SHA-256 is
-`4b15c01318a68c64279ed4f3ff43fe1967a5c27997950bcdaab4adf7a6edaf76`.
-Existing loader/Enigo, scratch, native input/layout, focus, capture and current-private
-eight-worker/16-context/1,024-query checks passed in the same transaction. That single
-concurrency schedule does not explain the earlier distro-provider allocator abort.
-Retained raw `x11-display-tests-run.UA64IiSNaf.serial.log` under
-`.harness-state/verifier-vm/` is 143,002 bytes, SHA-256
-`3c02acecb7726766fb4bde029f231c5a2b7a3d8da1888e82c7d8dbe8f8107930`;
-the nonindependent assistant-observed outer record is
-`evidence/x11-constructor-run.UA64IiSNaf.outer.receipt` in that same directory.
-The host endpoint audit reported no additions and cleanup joined; the exact run root
-and overlay are absent. This accepts the named constructor component behavior;
-installed/whole-app, timing, races, heap/soak and release acceptance remain OPEN.
-
-**Single numeric-key API; native component accepted.**
-`libs/libxdo-sys-stub/native/xdo.c` and `xdo.h` accept one numeric keysym or raw
-keycode with an explicit down/up/click action. The native receiver checks kind,
-action, keysym encoding and the inclusive raw-code range before input or narrowing;
-the key description is stack-owned. Click releases the exact pressed code without
-reacquiring scratch storage. Compound parsing, alias tables, locale-based native
-text entry, symbol-map/list exports and unused historical-fixture keyboard methods
-are deleted. Production Enigo and its real loader use typed key/action arguments;
-unsupported keys return an error or a diagnostic under the existing void trait.
-That acceptance used private provider/build/loader version `3.20160805.1-rustdesk5`; its refusal
-fixture stamps the same corrected C as version 4, not an authentic old binary.
-Exact `f953fa1090b5a87b1ab9901e23079cbabe7434ac`
-(tree `93474270b4ac437d1fded91cdeeb74a790353bed`) passed
+**Latest named native acceptance:** candidate
+`07d8ee97c52088dfa05f06f380ba4d20a0d5feeb`, tree
+`f170c79ba467d9d09c7c26f90687f914ce071a70`, passed
 `scripts/smoke-verifier-vm-authority.sh --x11-display-tests --key-input`
-with outer status 0 in **116 VM seconds**, in the owned zero-NIC VM/nonroot
-network-none containers. Corrected C under AddressSanitizer passed 108 key
-requests across four rounds: 92 pre-input refusals, 16 accepted requests, 32
-exact events, both raw boundaries, unchanged maps/clear keys, zero direct product
-key-storage allocations and four click query/free pairs. Xlib's internal heap is
-outside that allocation census; leak checking was disabled. The existing 20
-scratch cases and 264 constructor cases passed. Actual production loader/whole
-Linux Enigo components passed complete, missing-key-export, missing-mouse-export,
-old-stamp, writable, absent and operation-refusal scenarios and staged native
-input. Current-backend display/ownership, mouse, 42 text events across three locale
-conditions and 66 changed-layout events passed; common facade remains partial.
-The production-helper provider is 54,688 bytes, SHA-256
-`4a3e3b623c766cbe2230054a7182faad292990db0b653c2f3b10c7a52e442478`.
-Retained raw `x11-display-tests-run.4CP48yzUyJ.serial.log` under
-`.harness-state/verifier-vm/` is 101,824 bytes, SHA-256
-`36d89c458ad8a79feed0570aee1d207a740c14f82505f3b1fd927b7059c804e8`;
-`evidence/xdo-key-input-run.4CP48yzUyJ.outer.receipt` there is the nonindependent
-assistant-observed outer/source/artifact record. The host endpoint audit found no
-additions, cleanup joined and the exact run root/overlay is absent. Two earlier
-transactions failed real compilation and the unchanged phase-output bound;
-their raw logs are retained in the audit and are not accepted transactions.
-The current-provider shard executes no historical unsafe implementations.
-Installed/whole-app, asynchronous Xlib errors/delivery, map/concurrency races,
-held modifiers, internal heap/leaks/soak, other platforms and release remain OPEN.
+in 154 seconds with outer exit 0. Complete protected-loader and Linux Enigo
+components compile with four authenticated real dependencies and a partial
+common facade. The cursor fixture uses complete production native/TLS owner
+modules and byte-extracted platform functions with direct native linkage.
+Neither path is full Cargo/common/parent/Flutter/app or installed execution.
+Only current corrected C runs; the wrong-version refusal fixture stamps it
+as version 14 rather than executing an old ABI.
 
-**Unused window metadata mutation APIs retired; focused native acceptance.**
-`libs/libxdo-sys-stub/native/xdo.c` and `xdo.h` omit the generic window-property,
-class and urgency setters; the Rust loader also omits the class-setter type,
-required symbol, function-table field and public facade. Complete caller review
-finds no product consumer. This deletes the fixed-buffer property-name construction
-and unchecked/leaking hint ownership instead of preserving unused mutation APIs.
-It is not a demonstrated privileged-input failure or local escalation. That acceptance
-used private provider/helper/loader `3.20160805.1-rustdesk6`, with no old-version fallback.
-The focused `--x11-display-tests --key-input` transaction requires all three exports
-absent from actual providers, three failed native symbol lookups in both complete
-and staged-provider execution, actual retained input behavior and resource retirement.
-The wrong-version fixture uses corrected C stamped as version 5; no historical unsafe
-implementation runs. Candidate `284518389fb2c6f0b2c5de72b657cd14dbcbc4e2`
-(tree `d0d932c0464649a6e9e9f5aa1aa11bf296d23384`) passed the complete corrected-only
-transaction in 104 seconds with outer exit 0. The actual helper and all five loader
-fixtures omit the three exports; both complete-provider runs pass all three native
-lookup refusals while delivering mouse/keyboard input. The whole production loader
-and Linux Enigo compile with four authenticated real dependencies and a partial common
-facade. Complete, missing-mouse-up, missing-key-input, wrong-version, writable, absent
-and native-key-refusal scenarios pass; staged resolution also delivers actual input.
-The 54,224-byte version-6 provider SHA-256 is
-`0b34d3bc7d317a5247aa452cc51d81b346375199d966662ef11b199e0fb22bbb`.
-Existing 108-key, 20-scratch and 264-constructor cases pass, including ASan; retained
-backend, mouse, text and layout checks pass with native event and resource observations.
-Raw `.harness-state/verifier-vm/x11-display-tests-run.MqlTFyxxwt.serial.log` is
-100,094 bytes, SHA-256
-`87800832fc0b95cbad05276cc4be5b23ea176d888750b9530d13118308df2f73`.
-The explicitly nonindependent assistant-observed evidence receipt is
-`.harness-state/verifier-vm/evidence/xdo-window-metadata-run.MqlTFyxxwt.outer.receipt`,
-SHA-256 `efcc2ce12154e2b289a8d775c413f62e562dbdc73b673ae2d1808347c408459d`.
-Ordinary-user zero-NIC VM, guest-only network-none nonroot containers and read-only
-inputs were used; the outer protocol-endpoint audit reports no added host listener.
-Cleanup joined and the exact root/overlay is absent; its snapshots auto-retired,
-so no independent snapshot comparison is claimed. Full Cargo/app/install or stage CLI,
-loader races, native errors, whole heap/leaks/soak, current artifacts and broader
-authority/platform/release evidence remain OPEN.
+| Executed native scenario | Observed result and evidence limit |
+| --- | --- |
+| Platform cursor destination | Three normalized selectors, twelve fresh worker owners and 96 moves. A separate real Display places the pointer on the opposite root before every request and observes the selected root/exact coordinates within 100ms, plus platform readback. Ambient `DISPLAY` changes leave the retained owner unchanged. Two descriptors are live per worker; twelve frees pair and sampled FD/task baselines return after joined retirement. This is an observation bound, not remote presentation latency. |
+| Loader, ABI and staging | Eight complete/unavailable/native-refusal scenarios, with complete-provider replay after staged resolution. Normal/staged loaders deliver real pointer/button/Shift/key input and reject 61 retired symbols. The product provider has eleven exports and passes package-ELF/no-RUNPATH checks. Staging resolves ten provider dependencies and 21 libraries without distro XDO. Full stage CLI/package installation, other consumers and loader races are unexecuted. |
+| Numeric key admission | 108 requests: 92 pre-input refusals, sixteen accepted requests and 32 exact events, including both raw boundaries. Four click query/free pairs and zero direct product key-storage allocations; this excludes Xlib's internal heap. |
+| Key-request XKB state | 108 query/invalid-group refusals and 108 same-context recoveries, 216 real events, one query per request, preserved maps/state and no refusal input/group/mapping effects. This tests `xdo_send_key` admission, not the unchecked `xdo_get_input_state` getter or application-wide preflight. |
+| Modifier-map admission | 72 returned-map refusals and 72 same-context recovery clicks, 288 events and 144 queries/132 nonnull frees, with maps/state preserved. Complete Enigo propagates the injected native modifier error while pointer input remains usable. Held/locked modifier ownership is not closed. |
+| Scratch bounds and complete-click lease | Twenty bounds/query/full-map cases preserve maps/keys and pair allocated replies. Twenty-four complete-click cases at zero/12,000-microsecond delay yield eight accepted clicks/sixteen events and sixteen refusals/no events; both legs see the installed symbol, and install/restore/free pair. The observer synchronizes each leg, proving the lease rather than arbitrary widget/XIM consumption. |
+| Constructor ownership | 276 cases over 22 controlled faults, three Display ownership paths and four repeats: twelve accepted contexts/24 events and 264 refusals. Partial product allocations/maps retire and caller Displays remain usable. Actual allocator corruption, malformed native replies, fatal errors and whole-heap/leak bounds are unproved. |
+| Raw group and mouse state | 32 raw/keysym cases in groups 0/1 deliver 64 events; raw uses zero group-lock calls, keysym resolution is observed, and maps/state restore. Twenty mouse cases under 0/1/9/10/12 held modifiers deliver forty events with preserved keys/state and actual Button1Mask. This is private-provider input, not current remote rdev execution. |
+| Complete backend, locale and changed map | Eighteen refused selectors, 24 contexts, 32 context-entry refusals and sixteen constructor-log unwinds preserve one Display and paired ownership. Constructor/diagnostic ambient-route probes observe zero TCP accepts. Three locale conditions deliver 21 scalar pairs/42 events. Changed-layout requests deliver 33 pairs/66 events with two mapping refusals; exact enclosing-descriptor censuses are 2/2/0 and 33/33/0 allocations/retirements/live. These are configured native events and one descriptor class, not unmapped Unicode, widget text or whole-resource proof. |
 
-**Historical version-7 XKB-state native acceptance.** The public numeric
-key entrypoint acquires one successful, in-range XKB state snapshot after input
-validation and before scratch mapping, group/modifier changes or key emission.
-Both click legs retain its verified group; the unchecked per-leg query is deleted.
-Failed queries or invalid returned groups refuse with `XDO_ERROR`, without acquiring
-scratch storage or selecting a default group. The private provider/helper/loader
-require `3.20160805.1-rustdesk7`. The current-only native shard adds 108 query-failure
-cases across mapped/raw/scratch keys and down/up/click, plus same-context recovery,
-real events, state/map preservation and resource checks. The Enigo refusal fixture
-now fails native `XkbGetState` and checks the actual propagated status and no events;
-the arbitrary status-7 substitution is deleted. Wrong-version uses current C stamped
-as version 6. Exact candidate `2afdca0b4c59adaca1fe6e6e6e28662635d975e0`
-(tree `829caac7bed6423f945129c18845f1ef86dbe28b`) passed the complete focused
-transaction in 118 seconds with outer exit 0. Against real owned Xvfb, injected
-BadAccess, BadImplementation and successful-invalid-group queries were refused
-in all 108 cases before native key/group/mapping effects or scratch acquisition;
-108 same-context recoveries delivered 216 native events. All 216 requests made
-one state query each; both maps and observed keyboard state were preserved.
-Actual complete Linux Enigo propagated the failed native query in eight contexts
-with no key events, working pointer input and retired descriptors. Existing input,
-scratch, constructor, mouse, text, layout and complete/staged loader regressions pass.
-The 54,224-byte private version-7 provider SHA-256 is
-`78f1c59395365f131f2d08efd3d800bf84d40ef701f567b8432d440104e50a9a`.
-Raw `.harness-state/verifier-vm/x11-display-tests-run.8q5xSuEdN6.serial.log`
-is 100,063 bytes, SHA-256
-`2b4dd816991b060dd32c4bc8bdd44122e53ee779f0b1aff1ac4717a2e7392d55`.
-The explicitly nonindependent assistant-observed receipt is
-`.harness-state/verifier-vm/evidence/xdo-key-state-run.8q5xSuEdN6.outer.receipt`,
-SHA-256 `b8c8d6d18afb1ad96393718f525dd4f44d1243b9314b3b6d5778021033ffa65e`.
-The ordinary-user zero-NIC VM used guest-only network-none nonroot containers and
-read-only inputs. The outer protocol-endpoint audit reports no host listener addition;
-cleanup joined and the exact root/overlay is absent. Its snapshots auto-retired,
-so independent snapshot comparison is unclaimed. Components use four real authenticated
-dependencies and a partial common facade; full Cargo/app/install and stage CLI
-were unexecuted. XTest and group-lock failures, asynchronous Xlib errors,
-between-request release failure,
-modifier/group ownership, races/concurrency, whole heap/soak, full app/install,
-other platforms and broader authority/artifact/release evidence remain OPEN.
-
-**Historical version-8 modifier-map admission; focused native acceptance.** Each numeric
-key request resolves every required modifier row once, after checked XKB state and
-before scratch mapping, group changes or key emission. Selected codes occupy an
-eight-code stack snapshot; queried storage is retired before effects and both click
-legs use the same codes. The unchecked per-leg modifier query and obsolete modifier
-accumulator are deleted. No-modifier requests make no modifier query. NULL, invalid
-width/storage, empty required rows and out-of-range selected codes return `XDO_ERROR`.
-The provider, production helper and protected loader require
-`3.20160805.1-rustdesk8`; wrong-version uses current corrected C stamped 7.
-Exact candidate `9d8ca60b7624a22a7f2aca00e3f9cdfb0fa95aa3`
-(tree `ac8b1a0fddfe32570cc29d6510e592e040a4dc46`) passed the complete focused
-transaction in 111 seconds with outer exit 0. Six injected modifier-map faults,
-three actions and four rounds produced 72 refusals before key/group/mapping effects
-or scratch acquisition. All 72 same-context uppercase-A recovery clicks delivered
-288 real Shift/key events with exact code/order/state, one modifier query per click
-and retirement before effects. The 144 queries/132 frees paired every nonnull map;
-both maps and keyboard state remained unchanged and no key stayed held.
-Actual complete Linux Enigo propagated key-input status 1 after native
-`XGetModifierMapping` failure in eight contexts, with no key events, working pointer
-input and retired descriptors.
-Existing state, numeric-key, scratch, constructor, mouse, text, layout and
-complete/staged loader regressions passed. The 54,224-byte version-8 provider
-SHA-256 is `266ffddf7cf60b4c18d7438464e21b86c72b6c1f7890a48a66c683762f79373a`.
-Raw `.harness-state/verifier-vm/x11-display-tests-run.3SHN5VQlRI.serial.log`
-is 101,753 bytes, SHA-256
-`228f3ca482cabb2ada2e5458c76e7f6ddaf3dedf0215f8ef31b2789306c72311`.
-The explicitly nonindependent assistant-observed receipt is
-`.harness-state/verifier-vm/evidence/xdo-key-modifier-run.3SHN5VQlRI.outer.receipt`,
-SHA-256 `d607ea2a7d9b3afff865f1a4e3077a61ff6e2c8204205cdaa782ca8aea701dfd`.
-The ordinary-user zero-NIC VM used guest-only network-none nonroot containers and
-read-only inputs. Outer endpoint inventories report no host listener addition;
-cleanup joined and the exact root/overlay is absent. Snapshots auto-retired, so
-independent snapshot comparison is unclaimed. Components use four authenticated
-real dependencies and a partial common facade; full Cargo/app/install and stage CLI
-were unexecuted. ASan leak detection is disabled; internal Xlib/whole-heap scope
-is unclaimed. Other layouts and modifier combinations, held/locked ownership,
-between-request release failure, native event/group-lock/asynchronous errors,
-map races, concurrency, whole heap/soak, full Cargo/app/install, other platforms
-and broader authority/artifact/release evidence remain OPEN.
-
-**Absolute cursor movement bound to the retained Display screen — focused native acceptance.**
-`native/xdo.c:114`, the protected loader, Enigo and
-`src/platform/linux.rs:173` use a context-and-coordinates ABI. Native movement
-selects the retained Display's default root and refuses absent context/display;
-the platform's hardcoded screen 0 and Enigo's duplicate screen cache are removed.
-Provider/helper/header/loader require `3.20160805.1-rustdesk15`; the refusal
-fixture stamps corrected current C as version 14, without executing the old ABI.
-
-Candidate `07d8ee97c52088dfa05f06f380ba4d20a0d5feeb`
-(tree `f170c79ba467d9d09c7c26f90687f914ce071a70`) passed
-`scripts/smoke-verifier-vm-authority.sh --x11-display-tests --key-input`
-in 154 seconds, outer exit 0. Complete production native/TLS owner modules
-and byte-extracted platform cursor functions executed against the current
-provider and real two-screen Xvfb. Three normalized selectors, four fresh
-worker owners each and eight moves each give 96 cases. Before every request,
-an independent Display puts the pointer on the opposite root; it then observes
-the selected root and exact coordinates within 100ms, plus platform readback.
-Changing ambient `DISPLAY` after construction does not replace the retained
-owner. Two descriptors remain live per worker, twelve context frees pair,
-and sampled FD/task baselines return after each joined retirement.
-
-Existing key/state/modifier/scratch/constructor, raw-group, mouse, complete
-Enigo, text/layout, eight loader scenarios and staged-provider checks pass.
 The product helper and complete protected loader share the 21,000-byte ELF,
-SHA-256 `36397d9284e8417a971f75665693b9c0d7025f90165fb6523d8e44daccad5c60`;
-C SHA-256 is
+SHA-256 `36397d9284e8417a971f75665693b9c0d7025f90165fb6523d8e44daccad5c60`.
+Current C SHA-256 is
 `48c3a2515be4f68e0bf2a76029edb5a0be41a001d25a7f899f1dc41f642d8546`.
-Raw `.harness-state/verifier-vm/x11-display-tests-run.dF4cI63jGB.serial.log`
-is 111,286 bytes, SHA-256
-`d981f2e86e029dbb13b10a6e50cfd3be02faa6921f729b957f81fec6d8db474d`.
-The nonindependent assistant-observed
-`evidence/cursor-position-run.dF4cI63jGB.outer.receipt` under that root
-is 12,914 bytes, SHA-256
-`6744e6db0385595d77adb8f813969ed82e24b2690668ce5a09f7973b09c585a3`.
-It retains native/source/artifact and terminal-owner bindings. The ordinary-user
-zero-NIC VM used guest-only network-none UID/GID4000 containers and read-only
-inputs. Outer endpoint-only before/during/after audit reports no host addition
-and joined cleanup; exact root/overlay is absent. Before/during snapshots
-were preserved and match; independent after-snapshot comparison is unclaimed.
+Under `.harness-state/verifier-vm/`, retained raw
+`x11-display-tests-run.dF4cI63jGB.serial.log` is 111,286 bytes, SHA-256
+`d981f2e86e029dbb13b10a6e50cfd3be02faa6921f729b957f81fec6d8db474d`;
+`evidence/cursor-position-run.dF4cI63jGB.outer.receipt` is 12,914 bytes,
+SHA-256 `6744e6db0385595d77adb8f813969ed82e24b2690668ce5a09f7973b09c585a3`.
+The receipt binds sources/artifacts, native outcomes and terminal owner status;
+it is an assistant observation, not independent reproduction.
 
-This is component evidence with four authenticated real dependencies and a
-partial common facade; full Cargo/Flutter/app/install remain OPEN. Xvfb uses
-`-ac`, and ASan leak detection is disabled. Xauthority, grabs/asynchronous
-protocol errors, query uncertainty, global input ownership/concurrency,
-loader identity/ACL races, whole heap/resources/soak and other platform/release
-acceptance remain OPEN. The input-state getter still cannot report uncertain
-queries through the boolean keyboard API; its real consumers also require
-pointer-button masks. Future correction must distinguish valid different-screen
-pointer replies and plan required queries before input effects. This slice
-does not implement or validate that separate API redesign.
-
-**Scratch mapping retained through a complete key click — focused native acceptance.**
-`native/xdo.c:180,223,277` gives the validated complete action to the
-scratch-resource owner. A click executes press and release on one code while
-the same temporary symbol remains installed; its full original row is restored
-and the query retired once after release. The former press-only lease and
-`needs_binding = 0` release bypass are removed. Admission checks, separate
-Down/Up behavior, mapped/raw routing and the eleven-export ABI are retained.
-Provider/helper/header/protected loader require `3.20160805.1-rustdesk14`;
-the wrong-version fixture uses corrected current C stamped 13.
-
-Candidate `fe9f904cf1c551eecec36abb7413a7108a7d1356`
-(tree `48242e06daff8565ad17f5c78bdcc717646e6a90`) passed
-`scripts/smoke-verifier-vm-authority.sh --x11-display-tests --key-input`
-in 178 seconds, outer exit 0. The ASan scratch fixture executes 24 new cases
-over four retained contexts: zero/12,000-microsecond delay and successful,
-null-query or invalid-width admission. Eight accepted clicks deliver sixteen
-native events; sixteen refusals deliver none. A separate Display reads the
-actual server symbol during both click legs and observes the exact native
-press/release code, destination, flags and state. Native key-state readback
-proves only that code held after press and no key held after release. Each
-accepted click installs/restores once; all 24 queries and sixteen nonnull frees
-pair, original maps/state remain unchanged and sampled FD/task counts retire.
-The observer synchronizes each leg deliberately: this proves the mapping
-lease, not arbitrary asynchronous widget/XIM text consumption.
-
-Existing constructor, numeric-key, state/modifier refusal and recovery,
-scratch, raw-group, mouse/modifier, complete backend, three-locale text,
-changed-layout, eight loader scenarios and staged-provider regressions pass.
-The actual helper and complete loader share the 21,000-byte version-14 ELF,
-SHA-256 `326692c622cf09de06d929d985bba59309bc530fd43d4a510da63993d499c275`.
-C SHA-256 is
-`c6e5ddb20fc3a9c28ce9ddbc46627e816264c70447488d09a9c6f726fcd960a7`;
-scratch fixture SHA-256 is
-`6af497052df29d6c2df2a32370184c2c6d6830f44d289ed1eaad3543d2bb2980`.
-Raw `.harness-state/verifier-vm/x11-display-tests-run.6hRhNWkSGQ.serial.log`
-is 106,974 bytes, SHA-256
-`fc39ded0c89ece41a5e574d3cdeb4928aa7698c32d1a7c262fc16b7b6bdd857b`.
-The explicitly nonindependent assistant-observed
-`evidence/xdo-scratch-click-run.6hRhNWkSGQ.outer.receipt` under that same root
-is 27,181 bytes, SHA-256
-`ce311f427c4f46e688dc5c9073d92b41dcdd2d891b060a0ad876b467ba812975`.
-It retains all 24 cases and native/source/artifact/terminal-owner identities.
 The ordinary-user zero-NIC VM used guest-only network-none UID/GID4000
 containers and read-only inputs. Outer endpoint-only before/during/after
-audit reports no host addition and joined cleanup; exact root/overlay is
-absent. Snapshots auto-retired; independent after-snapshot comparison is
-unclaimed. Four authenticated real dependencies use a partial common facade;
-ASan leak detection is disabled and Xvfb uses `-ac`. Separate Down/Up scratch
-ownership, delayed Unicode consumers, held/locked modifiers and group state,
-input-state query uncertainty, per-request XTEST/group errors and partial
-cleanup, global key ownership/concurrency, Xauthority, loader identity/ACL
-races, whole heap/resources/soak, actual remote physical rdev input, full
-Cargo/app/install, other platforms and release/review remain OPEN.
+audits report no host addition and joined cleanup; the exact root/overlay
+is absent. Preserved before/during inventories match; the after snapshot
+auto-retired, so independent after comparison is unclaimed. Xvfb uses `-ac`.
+ASan covers named native C cases with leak detection disabled; it does not
+establish Xlib internals, whole heap or a release artifact's panic behavior.
+Constructor-log unwind cases use the fixture's non-aborting build; this is
+not a release-artifact unwind result.
 
-**Physical raw-keycode group preservation — focused native acceptance.**
-`native/xdo.c:180,238,400` carries the validated kind through both private
-helpers. Only keysyms select and restore an XKB group; raw keycodes submit
-physical events without group-lock calls. Checked state/modifier/scratch
-admission, symbol mapping and the eleven-export public ABI are retained.
-Provider/helper/header/loader require `3.20160805.1-rustdesk13`; wrong-version
-uses corrected current C stamped 12. This fixes the supported native/Enigo
-`Key::Raw` contract; the current remote physical rdev route is unexecuted.
+**Distinct older evidence and unresolved failure:** source
+`160dc28ce1e72ddedd7677c15735b9bd4e22a31d`, tree
+`067049ccf0adb6d718c5f36cf69515c17f65e335`, passed a 134-second direct-native
+transaction with private-provider mapping checked in every child.
+Eight workers retained sixteen unique contexts and made 1,024 real queries;
+ownership/unwind, startup retry, cookie authentication and cursor checks
+passed, with joined threads and sampled descriptor/task retirement.
+Provider SHA-256 was
+`d91afd6c2167d2b9a9cf481747fad11624d75e2e6fdd12d3b7ff9401c19bdce0`;
+thread-context binary SHA-256 was
+`1e5100c058ac79097be7609896cc8fd6bdda5db747b6fe57b2d8327c68ee81bc`.
+Raw `x11-display-tests-run.5xHc66JHF4.serial.log` under the same verifier
+root is 140,792 bytes, SHA-256
+`96a712e8a49c2a04a4c6b34dffb7615d18ca1f9b1b166feefad9693aab420858`.
+No host listener addition and joined exact-root cleanup were recorded.
+This accepts one older pinned-runtime schedule; the latest focused key-input
+run does not refresh its concurrency/authentication/startup scope.
 
-Candidate `2a7268d50e6d46d85def4242a7dd3aa365110483`
-(tree `390874cf98bdbdc0ab43f3168669712e5b5cc49a`) passed
-`scripts/smoke-verifier-vm-authority.sh --x11-display-tests --key-input`
-in 133 seconds, outer exit 0. The new ASan fixture acquires checked client
-and server key-action maps, resizes one nonmodifier/non-action key to
-`a/A` and `b/B` in groups 0 and 1, and publishes/restores only that key with
-XkbChangeMap. Independent native readback proves the map and selected group
-before product calls. Thirty-two cases over four repeats deliver 64 actual
-XTEST events for raw/symbol down-up pairs and clicks in both groups.
-XkbLookupKeySym on a separately opened post-map display verifies actual
-event-state symbols: raw follows the selected group, keysym resolves `a`.
-The fixture checks native flags/destination, exactly one physically held
-key after down, clear keys after up/click, unchanged XKB state, zero raw
-group locks, preserved keysym behavior, original core map and all symbol/
-modifier rows restored, and context FD/task retirement. The two superseded
-fixture-setup failures occurred before product raw-group requests; their
-separate raw/outer receipts and reconciliation remain in the audit.
+The preceding `cbdfcb0e` run aborted in its distro-provider
+`concurrent-contexts` child with `double free or corruption (fasttop)`
+before the scratch test. Raw `x11-display-tests-run.6d8hWuubEa.serial.log`
+is 84,801 bytes, SHA-256
+`4da2a89c1906693ae563775d4ec426780bca987dfdd06a273e593da12ea156c5`.
+Its binary/library digests matched the preceding run; cause and relevant
+product/harness/native-library ownership remain unproved. A later pass at
+`af4586af` and the private-provider schedule above do not explain or erase
+that failure. Concurrent native-context assertions remain required.
+No Android/Windows delay causation, deployed symptom or privilege-escalation
+closure follows from these component receipts.
 
-Retained native regressions passed: constructor 276 cases/22 faults/three
-paths/four repeats (12 accepted, 264 refused, 24 events), numeric 108 cases,
-state 108 refusals plus 108 recoveries, modifier 72 refusals plus 72
-recoveries, and scratch twenty cases. Mouse twenty cases/forty events
-preserve 0,1,9,10,12 held modifiers and actual pressed/released Button1Mask.
-Complete backend execution retains 24 contexts, 32 constructor refusals,
-sixteen unwinds, one display and exact FD/task retirement. Text passes
-three locale conditions, 21 pairs/42 events; changed layout passes 33
-pairs/66 events and two mapping refusals. All eight loader availability/
-error scenarios pass. Normal and staged complete loaders each refuse 61
-retired symbols; helper/five fixtures satisfy the eleven-export inventory.
-Actual staging resolves ten dependencies and 21 libraries without distro
-XDO; the staging CLI is unexecuted.
+**OPEN work:**
 
-Helper and complete loader share the 21,016-byte version-13 ELF, SHA-256
-`37e4bf5ec4715ed2f20de9bf20845bf69aabac5e4a9350cd45d484a2591ea77e`;
-C SHA-256 `cae6140fa9d4a063305ab019c9bb1c4b33b6e8ec5ae9bd4d5b4b55627ba31196`.
-Scratch fixture SHA-256 is
-`4923fe1714e8a2b05e639c6f2b96bb02c72af7d4c009a1197c2750020e14714d`.
-Raw `.harness-state/verifier-vm/x11-display-tests-run.bP1v40I66E.serial.log`
-is 106,235 bytes, SHA-256
-`95c44197e32f4d4fd86e112f4d9ad8eeeda4e3034415bd09d7aedb46df4e7fb3`.
-The explicitly nonindependent assistant-observed
-`evidence/xdo-raw-group-run.bP1v40I66E.outer.receipt` under that same root
-is 23,498 bytes, SHA-256
-`f3ee690bca974834fe1933c147eac124d62ba29f18ade7480ba8fc041ab9dcc8`.
-It retains native/source/artifact/outer identities and all 32 group cases.
-Outer before/during/after endpoint-only audit reports no host additions and
-joined cleanup; exact root/overlay is absent. Snapshots auto-retired;
-independent after-snapshot comparison is unclaimed. Four authenticated real
-dependencies use a partial common facade. Full Cargo/app/install, serving
-principals, loader ACL/identity races and authenticated Xauthority (Xvfb
-`-ac`) remain unproved. ASan leak detection is disabled. Xlib internals/
-whole heap, per-request XTEST/group errors, later facility withdrawal,
-partial input cleanup, global key ownership/concurrency, resources/soak,
-other platforms and broader artifact/release/review remain OPEN.
+- Result-bearing input-state and complete keyboard caller contract. The native
+  getter ignores `XQueryPointer` status, the loader maps absence to zero, and
+  the boolean API loses uncertainty. Required queries must precede input
+  effects across viewer construction, lock synchronization and modifier
+  planning. Valid different-screen pointer replies and pointer-button masks
+  must survive; exact physical left/right state must remain distinct from
+  aggregate modifier-family state. The Wayland hardcoded LED/false fallback,
+  resultless key-up/click and integrated consumers require correction/validation.
+- Constructor/diagnostic/request/destructor bounds, persistent startup/retry,
+  exact connected peer/session/principal and authenticated Xauthority;
+  actual allocation/connection/fatal-native failures, Send/Xlib concurrency
+  and the unexplained distro-provider abort.
+- Capture-to-input mapping across native roots, actual remote physical rdev,
+  held/locked modifier/group and global key ownership, separate Down/Up
+  scratch leases, map races, per-request XTEST/group failures, later facility
+  withdrawal, between-request release failure and partial input cleanup.
+- Unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;
+  native events and an in-request lease observer do not prove text consumption.
+- Loader identity/ACL/path races, all consumers, full common/parent/Cargo/
+  Flutter/app/stage CLI/package/install integration and exact current native
+  installed artifacts on every supported platform.
+- Whole heap/leaks, resources/performance/soak/cross-version, cold equality,
+  independent reproduction, external review and Android/Windows display-delay
+  causation. Installed Android concurrent Stop/admission and same-ID/
+  stale-generation work remains **INCOMPLETE / NOT VALIDATED**.
 
-**Historical version-12 display-owned XTEST input acceptance.** Candidate
-`467eeb9f5ab176971261bb87a3966e9b7697f014`
-(tree `b403e50e30b02f011a75d6ec73edc4fe694f62f8`) passed in 128 seconds,
-outer exit 0. It removed caller-Window/directed-event input and exposed
-eleven APIs with 61 retired-name refusals; raw-group behavior was unproved.
-Its 21,016-byte ELF SHA-256 is
-`0b835d2e3418df4941a240955675ff137616972ee30776335111ba01dbb1f3a9`.
-Raw `x11-display-tests-run.0hxhhl45Op.serial.log` under the same verifier root
-is 103,577 bytes, SHA-256
-`df5f7c4d5ea0c8ca146480156ee57329f705a72cd64ead25632fa3c3c8b3a057`;
-`evidence/xdo-display-owned-input-run.0hxhhl45Op.outer.receipt` is 17,795
-bytes, SHA-256
-`3c54c995dc2c2d468cb2b174935de10543efa264847eb2629e2fdd871b0f4274`.
-This superseded artifact is not current acceptance.
-
-**Historical version-11 constructor acceptance.** Candidate
-`874b25e208dfabc1199b67d65c51c3bfcd6ec8f3`
-(tree `8e8f23181db195ca6c9754ca0f07350b5d339c27`) passed in 122 seconds,
-outer exit 0, with twelve exports and 59 retired-name refusals. Its
-21,232-byte ELF SHA-256 is
-`cd056954ad0d6ca37487678ba35c559d0b8593a03578b04659e7cbec566b2fa4`.
-Raw `x11-display-tests-run.4zzGyhWy3B.serial.log` under the same verifier root
-is 101,825 bytes, SHA-256
-`aae5a27226620fbd7d3322aa88a0c436f48fb56d1eea09c20d85765bf6eb482d`;
-`evidence/xdo-xtest-admission-run.4zzGyhWy3B.outer.receipt` is 17,200 bytes,
-SHA-256 `e4b006f5148575b38887224a123d0479c063577f8119dd87222212749fce0b63`.
-This superseded artifact is not current acceptance; its receipt retains
-constructor, native source and exact-run lifetime scope.
-
-**Historical version-10 ABI acceptance.** Product
-`7eed7127d2b6a31f74beb91e191989d6ab999ad6` and receipt-corrected candidate
-`9e3635d02ee6e5d5415cbdbab5220800cc942290`
-(tree `9b9ba9c818e3cbf8aac839959daf4fb3f745def6`) passed in 135 seconds,
-outer exit 0. Its 21,384-byte ELF SHA-256 is
-`e18925cb04b475e6ff563af997020c92338d831cc764eceadc67851869c58c36`.
-Raw `x11-display-tests-run.B2ueT7vZm8.serial.log` under the same verifier root
-is 103,702 bytes, SHA-256
-`76423d8a5e082f5c89e073f8b32c656d8d0aca6bcd70b494936deef4d7de65e7`;
-`evidence/xdo-input-abi-run.B2ueT7vZm8.outer.receipt` is 18,213 bytes,
-SHA-256 `a5b59373fdd45a316511ad2f3c3633cd5f383c0f630eb51ff7ba95440cc8c5d9`.
-The receipt retains the superseded first-run source-delta limitation.
-Version-9 acceptance at `e645b34c8caca0d89b8c79910cb33ee7cf0a1891`
-also remains historical; neither prior artifact is current acceptance.
-
-**OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
-Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,
-parent/rdev, full Cargo/app and current
-installed/native artifacts; capture-to-input mapping across all native roots, unmapped
-Unicode, native layouts/IMEs/widget text, held/locked modifiers/key delivery and cleanup;
-persistent
-startup/retry, Send/Xlib concurrency and failed-connection/native-allocation behavior;
-internal heap, races, resources/performance/soak/cross-version; cold equality,
-independent reproduction, external review and Android/Windows display-delay causation.
-Deferred installed Android concurrent Stop/admission and same-ID/stale-generation
-remains INCOMPLETE / NOT VALIDATED; no such work was resumed in this slice.
+Superseded implementation chronology, version-specific receipts and failed
+fixture attempts remain in Git and retained raw evidence. The complete
+pre-compression ledger is retrievable with
+`git show 115fd6e8896b93da10664f36ea97880f881adc67:HARDENING_STATUS.md`.
+That archive preserves the original supplier/locale rationale and before-state
+receipts; it is not current provider or release acceptance.
 
 ### Linux window focus — request ownership and native cancellation; integration OPEN
 

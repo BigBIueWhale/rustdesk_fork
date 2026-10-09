@@ -1673,7 +1673,7 @@ exist; it does not upgrade those checks into target-native, package, latency, so
 - **Outgoing viewer generic command admission** — Source closed. Each viewer round owns a capacity- and byte-
   bounded command FIFO plus an out-of-band terminal state. Oversize, exhaustion, accounting failure, receiver
   loss, or writer rejection poisons the round instead of silently dropping ordered UI/file/control work.
-- **R-S11fg/R-S11e-194 outgoing viewer file-command admission and exact local writer finality** — Source closed.
+- **R-S11fg/R-S11e-194 outgoing viewer file-command admission and exact local writer finality** — Source implemented; native operation acceptance OPEN.
   Flutter file operations await fallible exact-round admission; file actions use their typed path; and one bounded
   receipt tracker owns the exact local encrypted-frame write. Peer operation completion remains a separate
   authenticated `FileResponse`, not a cosmetic acknowledgement. Native Flutter file-job IDs now come only from
@@ -1682,9 +1682,16 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   in the no-NIC verifier VM, including injected allocator failures through production Dart controller code. This is
   generated-bridge/Dart-model evidence, not a real native bridge failure, peer operation, or installed target result;
   the wider CM/file and native release obligations below remain OPEN.
-- **R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality** — Source closed. Directory,
+- **R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality** — Source implemented; native operation acceptance OPEN. Directory,
   digest, block, done, and error responses from direct and CM paths retain bounded exact writer receipts through
   the controlled connection, with writer failure/timeout terminal for that round.
+  The former `verify-viewer-file-finality.py` source-string/mutation checker is deleted from the main and
+  Apple gates; its output established no writer, filesystem, bridge or peer result. Executable viewer and
+  controlled receipt-tracker tests, the keyed backpressure/decode test, shared filesystem regressions, and
+  Flutter file-command/session/dialog tests remain in their existing lanes. Tracker tests use injected
+  receipts; the keyed test uses an in-memory duplex stream. Neither establishes installed socket/peer
+  behavior. Full native typed/generic admission, complete caller error propagation and read/write/digest/
+  cancel/error, saturation, interruption, reconnect and resource/latency acceptance remain required and OPEN.
 - **R-S11fi/R-S11e-196 receive-file failure and cleanup finality** — **PARTIAL; DELAYED-WRITE PUBLICATION
   CORRECTED; NAMED LINUX LIBRARY ACCEPTED; BROADER NATIVE EXECUTION OPEN.** A block, confirmation, finalization, peer error, skip, or cancellation
   retires exact current-file state through one fallible operation. Cleanup uncertainty is terminal and visible; an identity-mismatched replacement

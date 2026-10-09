@@ -10603,12 +10603,6 @@ else
   echo "  FAIL R-S11gc/R-S11e-216: Linux full-peer harness lost its focused VM-isolation, candidate-input, or native-observer source guard (runtime behavior still requires the no-NIC VM transaction)"
   rc=1
 fi
-if python3 scripts/verify-viewer-file-finality.py --repo . --self-test; then
-  echo "  ok  R-S11fg/R-S11fh file frames retain exact writer completion"
-else
-  echo "  FAIL R-S11fg/R-S11fh: file commands regained silent admission, discarded completion, ambiguous send progress, or unbounded ownership"
-  rc=1
-fi
 grep -qF 'native_video_format_locally_unsupported(&lc.mark_unsupported, format)' src/client.rs ||
   { echo "  FAIL Appendix C #2b/R-T0: video receive loop must drop locally-unsupported peer codecs before recreating a native decoder worker"; rc=1; }
 grep -qF 'local decoder is marked unsupported' src/client.rs ||

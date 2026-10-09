@@ -151,7 +151,7 @@ fn main() {
             }
             assert_eq!(events, [
                 (KeyPress, b'a' as libc::c_ulong, ShiftMask),
-                (KeyRelease, b'a' as libc::c_ulong, 0),
+                (KeyRelease, b'a' as libc::c_ulong, ShiftMask),
                 (KeyPress, b'a' as libc::c_ulong, 0),
                 (KeyRelease, b'a' as libc::c_ulong, 0),
                 (KeyPress, 0xff0d, 0), (KeyRelease, 0xff0d, 0),

@@ -4955,8 +4955,20 @@ verifier root. This is real zstd/production-sanitizer unit behavior, not an OS c
 write, installed peer/principal/generation, native Android/Windows/macOS/iOS, sandbox,
 release artifact, resource/latency soak, independent reproduction or external review.
 Those obligations and the separate Flutter cursor/terminal infallible-decompression
-paths remain OPEN. This 12-minute lane is noninteractive integration; a fast
-clipboard-only development profile remains OPEN.
+paths remain OPEN. The focused development command is
+`scripts/smoke-verifier-vm-authority.sh --android-rust-lifecycle-tests --clipboard`.
+Harness `ea8bb4f14c0404d0259fb25b9b0c1d452d43973e` freshly compiled the complete
+Linux library in 148 seconds and passed the same 13 named tests in a 215-second
+accepted VM transaction (249-second observed upper bound including host preparation).
+It skips Flutter bridge generation and unrelated groups, uses the pinned
+devcheck/vendor workload inputs, and retains the offline canary, exact names, artifact proof,
+input/source preservation, zero-NIC isolation, host-listener checks and joined cleanup.
+Its clipboard binary matches the preceding product run's digest above. The unchanged
+integration invocation also passed all 88 names/14 groups on that harness in 720 seconds.
+Both raw serial logs and `focused.accepted.json`/`integration.accepted.json` are retained
+under `.harness-state/verifier-vm/clipboard-profile-ea8bb4f1-evidence` and its verifier root.
+This establishes the named Linux development profile; broader native/platform acceptance,
+general performance, soak and release reproducibility remain OPEN.
 
 **R-B13 / Appendix C #129 — CVE-2026-1861 / CVE-2026-2447 libvpx remediation — SOURCE CLOSED; ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.**
 The advisory affects the VP9 encoder's `write_superframe_index` path, not the

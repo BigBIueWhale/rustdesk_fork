@@ -214,7 +214,7 @@ static int _xdo_scratch_map_valid(const xdo_t *xdo, XkbDescPtr desc) {
     }
     unsigned offset = server->key_acts[code];
     if (offset != 0 && (server->acts == NULL || count == 0
-        || offset > server->num_acts || count > server->num_acts - offset))
+        || offset > server->num_acts || (unsigned)count > server->num_acts - offset))
       return 0;
   }
   return 1;

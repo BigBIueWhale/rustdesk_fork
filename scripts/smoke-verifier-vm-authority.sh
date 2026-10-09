@@ -4290,7 +4290,7 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'clipboard listener completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
-        'XDO_TEXT_SUBMISSION_NATIVE=pass cases=144 mapped=136 scratch=8 mapped_repeats=2 scratch_repeats=4 delays=0,12000 held_profiles=4 submission_refusals=168 pending=84 later_refused=252 recovery=144 events=920 acquisition=checked retirement=reverse accepted_keys=retained scratch=after-keys logical_keys=each-leg symbols=live-map held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
+        'XDO_TEXT_SUBMISSION_NATIVE=pass cases=144 mapped=136 scratch=8 mapped_repeats=2 scratch_repeats=4 delays=0,12000 held_profiles=4 submission_refusals=168 pending=84 later_refused=252 recovery=144 events=920 acquisition=checked retirement=reverse accepted_keys=retained scratch_retirement=after-keys logical_keys=each-leg symbols=live-map held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
         'text submission refusals retain accepted presses through reverse retirement before scratch restoration'
     require_exact_fixed_receipt \
         'XDO_TEXT_MODIFIER_ROLES_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=96 main_legs=64 modifier_slots=2 physical_modifier=single role_collision_refused=16 refusal_effects=none recovery=same-context order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
@@ -4382,7 +4382,7 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'key-input guest completion'
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
-        'XDO_TEXT_SUBMISSION_NATIVE=pass cases=144 mapped=136 scratch=8 mapped_repeats=2 scratch_repeats=4 delays=0,12000 held_profiles=4 submission_refusals=168 pending=84 later_refused=252 recovery=144 events=920 acquisition=checked retirement=reverse accepted_keys=retained scratch=after-keys logical_keys=each-leg symbols=live-map held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
+        'XDO_TEXT_SUBMISSION_NATIVE=pass cases=144 mapped=136 scratch=8 mapped_repeats=2 scratch_repeats=4 delays=0,12000 held_profiles=4 submission_refusals=168 pending=84 later_refused=252 recovery=144 events=920 acquisition=checked retirement=reverse accepted_keys=retained scratch_retirement=after-keys logical_keys=each-leg symbols=live-map held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
         'text submission refusals retain accepted presses through reverse retirement before scratch restoration'
     require_exact_fixed_receipt \
         'XDO_TEXT_MODIFIER_ROLES_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=96 main_legs=64 modifier_slots=2 physical_modifier=single role_collision_refused=16 refusal_effects=none recovery=same-context order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \

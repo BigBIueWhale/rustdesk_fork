@@ -43,7 +43,7 @@ pub enum XdoKeyAction {
 const TRUSTED_LIBXDO_PATHS: &[&str] = &[
     "/usr/lib/rustdesk-fork/libxdo.so.3",
 ];
-const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk12";
+const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk13";
 
 fn root_owned_non_writable(mode: u32, uid: u32) -> bool {
     uid == 0 && mode & 0o022 == 0

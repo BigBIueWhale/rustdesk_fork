@@ -26,7 +26,7 @@
 static int _xdo_populate_charcode_map(xdo_t *xdo);
 
 static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key, KeySym keysym);
-static void _xdo_send_key(const xdo_t *xdo, charcodemap_t *key,
+static void _xdo_send_key(const xdo_t *xdo, unsigned int kind, charcodemap_t *key,
                           const KeyCode *modifiers, int is_press, int current_group, useconds_t delay);
 static int _xdo_get_key_modifiers(const xdo_t *xdo, int modmask, KeyCode *modifiers);
 
@@ -177,7 +177,7 @@ int xdo_get_mouse_location(const xdo_t *xdo, int *x_ret, int *y_ret,
   return _is_success("XQueryPointer", ret == False, xdo);
 }
 
-static int _xdo_send_key_do(const xdo_t *xdo, charcodemap_t *key,
+static int _xdo_send_key_do(const xdo_t *xdo, unsigned int kind, charcodemap_t *key,
                                    int pressed, const KeyCode *modifiers, int current_group, useconds_t delay) {
   KeySym *keysyms = NULL;
   int keysyms_per_keycode = 0;
@@ -221,7 +221,7 @@ static int _xdo_send_key_do(const xdo_t *xdo, charcodemap_t *key,
     key->code = scratch_keycode;
   }
 
-  _xdo_send_key(xdo, key, modifiers, pressed, current_group, delay);
+  _xdo_send_key(xdo, kind, key, modifiers, pressed, current_group, delay);
 
   if (keysyms != NULL) {
     XSync(xdo->xdpy, False);
@@ -270,14 +270,14 @@ int xdo_send_key(const xdo_t *xdo, unsigned int kind,
     return XDO_ERROR;
 
   if (action != XDO_KEY_CLICK)
-    return _xdo_send_key_do(xdo, &key, action == XDO_KEY_DOWN, modifiers, state.group, delay);
+    return _xdo_send_key_do(xdo, kind, &key, action == XDO_KEY_DOWN, modifiers, state.group, delay);
 
-  int status = _xdo_send_key_do(xdo, &key, True, modifiers, state.group, delay / 2);
+  int status = _xdo_send_key_do(xdo, kind, &key, True, modifiers, state.group, delay / 2);
   if (status != XDO_SUCCESS)
     return status;
   /* Release the exact code just pressed without reacquiring a scratch resource. */
   key.needs_binding = 0;
-  return _xdo_send_key_do(xdo, &key, False, modifiers, state.group, delay / 2);
+  return _xdo_send_key_do(xdo, kind, &key, False, modifiers, state.group, delay / 2);
 }
 
 /* Helper functions */
@@ -397,9 +397,10 @@ int _is_success(const char *funcname, int code, const xdo_t *xdo) {
   return code;
 }
 
-void _xdo_send_key(const xdo_t *xdo, charcodemap_t *key,
+void _xdo_send_key(const xdo_t *xdo, unsigned int kind, charcodemap_t *key,
                           const KeyCode *modifiers, int is_press, int current_group, useconds_t delay) {
-  XkbLockGroup(xdo->xdpy, XkbUseCoreKbd, key->group);
+  if (kind == XDO_KEYSYM)
+    XkbLockGroup(xdo->xdpy, XkbUseCoreKbd, key->group);
   for (int i = ShiftMapIndex; i <= Mod5MapIndex; i++) {
     if (modifiers[i] != 0) {
       XTestFakeKeyEvent(xdo->xdpy, modifiers[i], is_press, CurrentTime);
@@ -407,7 +408,8 @@ void _xdo_send_key(const xdo_t *xdo, charcodemap_t *key,
     }
   }
   XTestFakeKeyEvent(xdo->xdpy, key->code, is_press, CurrentTime);
-  XkbLockGroup(xdo->xdpy, XkbUseCoreKbd, current_group);
+  if (kind == XDO_KEYSYM)
+    XkbLockGroup(xdo->xdpy, XkbUseCoreKbd, current_group);
   XSync(xdo->xdpy, False);
 
   /* Skipping the usleep if delay is 0 is much faster than calling usleep(0) */

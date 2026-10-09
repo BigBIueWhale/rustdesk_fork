@@ -182,7 +182,8 @@ int xdo_get_mouse_location(const xdo_t *xdo, int *x, int *y, int *screen_num);
  *
  * Keysyms are nonzero 29-bit X11 values, excluding VoidSymbol. Unicode keysyms
  * must encode a Unicode scalar in U+0100..U+10FFFF. Raw keycodes must lie in the
- * context's inclusive native range and are validated before narrowing.
+ * context's inclusive native range and are validated before narrowing. They
+ * send physical key events without selecting or restoring a keyboard group.
  * Invalid kinds, values, or actions return XDO_ERROR before input.
  * A click resolves once and releases the exact code pressed.
  *

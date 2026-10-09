@@ -4285,6 +4285,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'clipboard listener completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
+        'XDO_RAW_GROUP_NATIVE=pass groups=0,1 repeats=4 cases=32 events=64 raw_group_locks=0 symbols=group-derived keysym=resolved state=preserved mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'physical raw keycodes preserve server group routing and keysym input retains explicit mapping'
+    require_exact_fixed_receipt \
         'XDO_KEY_MODIFIER_NATIVE=pass cases=72 repeats=4 faults=6 actions=3 refused=72 recovery=72 events=288 modifier_queries=144 modifier_frees=132 click_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
         'complete native modifier admission, same-context recovery and paired snapshot retirement'
     require_exact_fixed_receipt \
@@ -4344,6 +4347,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'key-input guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'key-input guest completion'
 elif [ "$MODE" = x11-display-tests ]; then
+    require_exact_fixed_receipt \
+        'XDO_RAW_GROUP_NATIVE=pass groups=0,1 repeats=4 cases=32 events=64 raw_group_locks=0 symbols=group-derived keysym=resolved state=preserved mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'physical raw keycodes preserve server group routing and keysym input retains explicit mapping'
     require_exact_fixed_receipt \
         'MACOS_CURSOR_SNAPSHOT_STATE=pass source=complete-module tests=5 zero_seed=accepted failed_capture=not-memoized stale_image=absent same_seed=reused publication_retry=captured-image unwind=empty reset=idempotent worker=joined scope=portable-cache-state macOS_native=false' \
         'portable production macOS cursor cache commits only complete images and retires exact state; not native macOS acceptance'

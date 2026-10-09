@@ -39,7 +39,8 @@ reacquiring scratch storage. Enigo supplies numeric X11 symbols and validated
 Unicode scalars; unsupported keys and out-of-range raw codes are errors.
 Unused window property, class and urgency mutation APIs are removed.
 Every key request checks one XKB state snapshot before mapping or input effects;
-both click legs retain its verified restoration group. Failed queries and
+both keysym click legs retain its verified restoration group. Raw keycodes send
+physical key events without selecting or restoring a group. Failed queries and
 out-of-range returned groups are errors without scratch or input effects.
 Required modifiers resolve once into eight stack codes before input effects.
 The native modifier-map query is shape/range checked and retired before any
@@ -54,6 +55,6 @@ only XTEST on the context display, with server-owned focus, pointer and grab
 routing. Caller-selected windows, directed XSendEvent input, focus-routing
 helpers and the unused native click helper are removed. The provider has eleven
 context, version, input and cursor/state exports and no Xinerama dependency.
-The fixed fork version is 3.20160805.1-rustdesk12.
+The fixed fork version is 3.20160805.1-rustdesk13.
 The BSD redistribution notice is retained in COPYRIGHT and packaged with the
 library. Source provenance is not a claim that all native behavior is validated.

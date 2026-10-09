@@ -318,7 +318,8 @@ static void keyboard_state(xdo_t *input, Display *observer, Window window,
                                      keys[index].value, XDO_KEY_CLICK, 0);
         observe = 0;
         int scratch = index == 2;
-        require(status == XDO_SUCCESS && state_queries == 1 && group_changes == 4
+        require(status == XDO_SUCCESS && state_queries == 1
+                && group_changes == (keys[index].kind == XDO_KEYSYM ? 4 : 0)
                 && input_calls == 2 && mapping_changes == 2 * scratch
                 && queries == scratch && frees == scratch && owned_query == NULL
                 && modifier_queries == 0 && modifier_frees == 0,
@@ -388,6 +389,151 @@ static void key_input(xdo_t *input, Display *observer, Window window, int low, i
   observe = 0;
 }
 
+static void same_xkb_symbols(Display *display, const XkbDescRec *expected) {
+  XkbDescPtr actual = XkbGetMap(display, XkbAllClientInfoMask, XkbUseCoreKbd);
+  require(actual && actual->map && actual->map->key_sym_map && actual->map->syms
+          && actual->map->modmap && actual->min_key_code == expected->min_key_code
+          && actual->max_key_code == expected->max_key_code, "restored XKB map unavailable");
+  for (int code = expected->min_key_code; code <= expected->max_key_code; code++) {
+    XkbSymMapPtr before = &expected->map->key_sym_map[code];
+    XkbSymMapPtr after = &actual->map->key_sym_map[code];
+    require(before->group_info == after->group_info && before->width == after->width
+            && !memcmp(before->kt_index, after->kt_index, sizeof(before->kt_index))
+            && expected->map->modmap[code] == actual->map->modmap[code]
+            && !memcmp(XkbKeySymsPtr(expected, code), XkbKeySymsPtr(actual, code),
+                       XkbKeyNumSyms(expected, code) * sizeof(KeySym)),
+            "restored XKB symbols or modifiers differ");
+  }
+  XkbFreeKeyboard(actual, 0, True);
+}
+
+static void raw_group_layout(Display *observer, Window window) {
+  int descriptors = entries("/proc/self/fd"), tasks = entries("/proc/self/task");
+  XkbStateRec baseline = {0}, restored = {0};
+  require(XkbGetState(observer, XkbUseCoreKbd, &baseline) == Success
+          && baseline.group == baseline.locked_group && baseline.base_group == 0
+          && baseline.latched_group == 0 && baseline.mods == 0,
+          "raw-group fixture initial state differs");
+  clear_keys(observer);
+  XkbDescPtr original = XkbGetMap(observer, XkbAllClientInfoMask, XkbUseCoreKbd);
+  XkbDescPtr changed = XkbGetMap(observer, XkbAllClientInfoMask, XkbUseCoreKbd);
+  require(original && original->map && original->map->key_sym_map && original->map->syms
+          && original->map->modmap && changed && changed->map && changed->map->types
+          && changed->map->num_types > XkbAlphabeticIndex, "raw-group fixture maps unavailable");
+  KeyCode code = XKeysymToKeycode(observer, XK_a);
+  require(code >= original->min_key_code && code <= original->max_key_code
+          && original->map->modmap[code] == 0, "raw-group fixture physical key differs");
+  int types[] = {XkbAlphabeticIndex, XkbAlphabeticIndex};
+  require(XkbChangeTypesOfKey(changed, code, 2, XkbGroup1Mask | XkbGroup2Mask,
+                             types, NULL) == Success, "raw-group fixture resize failed");
+  XkbKeySymEntry(changed, code, 0, 0) = XK_a;
+  XkbKeySymEntry(changed, code, 1, 0) = XK_A;
+  XkbKeySymEntry(changed, code, 0, 1) = XK_b;
+  XkbKeySymEntry(changed, code, 1, 1) = XK_B;
+  require(XkbSetMap(observer, XkbKeySymsMask, changed), "raw-group fixture map not sent");
+  XSync(observer, False);
+  Display *reader = XOpenDisplay("unix/:98.0");
+  require(reader != NULL, "raw-group independent lookup display unavailable");
+  XkbDescPtr actual = XkbGetMap(reader, XkbAllClientInfoMask, XkbUseCoreKbd);
+  require(actual && actual->map && XkbKeyNumGroups(actual, code) == 2
+          && XkbKeyGroupsWidth(actual, code) == 2
+          && XkbKeySymEntry(actual, code, 0, 0) == XK_a
+          && XkbKeySymEntry(actual, code, 1, 0) == XK_A
+          && XkbKeySymEntry(actual, code, 0, 1) == XK_b
+          && XkbKeySymEntry(actual, code, 1, 1) == XK_B,
+          "native server did not install the two-group map");
+  XkbFreeKeyboard(actual, 0, True);
+  xdo_t *input = xdo_new("unix/:98.0");
+  require(input != NULL, "raw-group product context unavailable");
+  int found = 0;
+  for (int index = 0; index < input->charcodes_len; index++) {
+    if (input->charcodes[index].symbol == XK_a) {
+      require(input->charcodes[index].code == code && input->charcodes[index].group == 0
+              && input->charcodes[index].modmask == 0, "keysym control mapping differs");
+      found = 1;
+      break;
+    }
+  }
+  require(found, "keysym control mapping absent");
+  product_display = input->xdpy;
+  for (int round = 0; round < 4; round++) {
+    for (unsigned group = 0; group < 2; group++) {
+      for (unsigned kind = XDO_KEYSYM; kind <= XDO_KEYCODE; kind++) {
+        for (int click = 0; click < 2; click++) {
+          require(XkbLockGroup(observer, XkbUseCoreKbd, group), "fixture group not sent");
+          XSync(observer, False);
+          XkbStateRec before = {0}, after = {0};
+          require(XkbGetState(observer, XkbUseCoreKbd, &before) == Success
+                  && before.group == group && before.locked_group == group
+                  && before.base_group == 0 && before.latched_group == 0 && before.mods == 0,
+                  "native server did not select the fixture group");
+          queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+          modifier_queries = modifier_frees = 0;
+          fault = state_fault = modifier_fault = 0;
+          unsigned long value = kind == XDO_KEYCODE ? code : XK_a;
+          observe = 1;
+          int status = xdo_send_key(input, kind, value, click ? XDO_KEY_CLICK : XDO_KEY_DOWN, 0);
+          observe = 0;
+          require(status == XDO_SUCCESS, "raw-group input refused");
+          if (!click) {
+            char held[32];
+            require(XQueryKeymap(observer, held), "raw-group down state unavailable");
+            for (int byte = 0; byte < 32; byte++)
+              require((unsigned char)held[byte] == (byte == code / 8 ? 1U << (code % 8) : 0),
+                      "raw-group down did not hold exactly the physical key");
+            require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
+                    && !memcmp(&before, &after, sizeof(before)), "down changed the XKB state");
+            observe = 1;
+            status = xdo_send_key(input, kind, value, XDO_KEY_UP, 0);
+            observe = 0;
+            require(status == XDO_SUCCESS, "raw-group release refused");
+          }
+          require(state_queries == (click ? 1 : 2) && input_calls == 2
+                  && group_changes == (kind == XDO_KEYCODE ? 0 : 4)
+                  && mapping_changes == 0 && queries == 0 && frees == 0
+                  && modifier_queries == 0 && modifier_frees == 0,
+                  "raw-group product call census differs");
+          require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
+                  && !memcmp(&before, &after, sizeof(before)), "input changed the XKB state");
+          XSync(observer, False);
+          unsigned event_group = kind == XDO_KEYCODE ? group : 0;
+          for (int index = 0; index < 2; index++) {
+            XEvent event;
+            require(XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &event),
+                    "raw-group native event missing");
+            KeySym symbol = NoSymbol;
+            unsigned consumed;
+            require(event.type == (index == 0 ? KeyPress : KeyRelease)
+                    && event.xkey.window == window && !event.xkey.send_event
+                    && event.xkey.keycode == code && event.xkey.state == (event_group << 13)
+                    && XkbLookupKeySym(reader, code, event.xkey.state, &consumed, &symbol)
+                    && symbol == (event_group == 0 ? XK_a : XK_b),
+                    "raw-group native event group or symbol differs");
+          }
+          events(observer, window, 0, 0);
+          printf("XDO_RAW_GROUP_CASE=pass round=%d group=%u kind=%u click=%d events=2 group_locks=%d\n",
+                 round, group, kind, click, group_changes);
+        }
+      }
+    }
+  }
+  product_display = NULL;
+  xdo_free(input);
+  XCloseDisplay(reader);
+  require(XkbSetMap(observer, XkbKeySymsMask, original), "original XKB map not sent");
+  require(XkbLockGroup(observer, XkbUseCoreKbd, baseline.locked_group), "original group not sent");
+  XSync(observer, False);
+  same_xkb_symbols(observer, original);
+  require(XkbGetState(observer, XkbUseCoreKbd, &restored) == Success
+          && !memcmp(&baseline, &restored, sizeof(baseline)), "original XKB state not restored");
+  XkbFreeKeyboard(changed, 0, True);
+  XkbFreeKeyboard(original, 0, True);
+  clear_keys(observer);
+  require(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks,
+          "raw-group descriptors/tasks retained");
+  puts("XDO_RAW_GROUP_NATIVE=pass groups=0,1 repeats=4 cases=32 events=64 raw_group_locks=0 symbols=group-derived keysym=resolved state=preserved mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
+}
+
 int main(void) {
   setbuf(stdout, NULL);
   int descriptors = entries("/proc/self/fd"), tasks = entries("/proc/self/task");
@@ -407,6 +553,8 @@ int main(void) {
   XMapWindow(observer, window);
   XSetInputFocus(observer, window, RevertToParent, CurrentTime);
   XSync(observer, False);
+  raw_group_layout(observer, window);
+  same_map(observer, low, count, initial_width, initial);
   xdo_t *input = xdo_new("unix/:98.0");
   require(input != NULL, "product context unavailable");
   charcodemap_t key = {.code = XKeysymToKeycode(observer, XK_a), .symbol = XK_a};

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-6f419c2dc3a8345857ce7299ef81c1b2066ff3e4f5f555febeae1eaef121c6d8  requirements.html
+a75cd5d1774e397f07586bc6ac650b01db3724558c8e2f15fae153b4a23900a9  requirements.html
 ```
 
 ## Current Verdict
@@ -982,7 +982,18 @@ between-request release failure, native event/group-lock/asynchronous errors,
 map races, concurrency, whole heap/soak, full Cargo/app/install, other platforms
 and broader authority/artifact/release evidence remain OPEN.
 
-**Display-owned XTEST keyboard/button ABI — focused native acceptance.**
+**Physical raw-keycode group preservation — native acceptance pending.**
+The validated key kind reaches both private send helpers; only keysyms select
+and restore a group. Raw input submits the physical code without group locks.
+The public eleven-export ABI, checked state/modifier/scratch admission and
+symbol behavior are retained. Provider/helper/header/loader require version
+`3.20160805.1-rustdesk13`; wrong-version uses corrected current C stamped 12.
+The corrected-code native fixture installs and independently verifies a real
+two-group map before observing raw/symbol down-up and click events, state,
+physical keys, zero raw group locks, exact map restoration and FD/task retirement.
+No native result or broader closure is claimed before the isolated run.
+
+**Historical version-12 display-owned XTEST keyboard/button acceptance.**
 `native/xdo.c:135,238,400` and its header/loader have no caller Window input
 parameter, CURRENTWINDOW selector, directed XSendEvent branch, focus-routing
 helper or native click API. Production Enigo submits key/button input on its
@@ -2128,7 +2139,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `6f419c2dc3a8345857ce7299ef81c1b2066ff3e4f5f555febeae1eaef121c6d8  requirements.html`.
+Current normative specification SHA-256: `a75cd5d1774e397f07586bc6ac650b01db3724558c8e2f15fae153b4a23900a9  requirements.html`.
 
 ### Current authority and source closure
 

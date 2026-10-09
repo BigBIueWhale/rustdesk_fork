@@ -26,8 +26,9 @@ static int _xdo_populate_charcode_map(xdo_t *xdo);
 
 static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key,
                                       KeySym keysym, unsigned int current_group);
-static void _xdo_text_event(const xdo_t *xdo, charcodemap_t *key,
-                          const KeyCode *modifiers, int is_press, useconds_t delay);
+static int _xdo_text_pair(xdo_t *xdo, KeyCode key,
+                         const KeyCode *modifiers, useconds_t delay);
+static int _xdo_retire_text_keys(xdo_t *xdo);
 static int _xdo_get_key_modifiers(const xdo_t *xdo, const charcodemap_t *key,
                                 const unsigned char *held, KeyCode *modifiers);
 static int _xdo_restore_scratch(xdo_t *xdo);
@@ -97,8 +98,11 @@ void xdo_free(xdo_t *xdo) {
   if (xdo == NULL)
     return;
 
+  int keys_retired = _xdo_retire_text_keys(xdo) == XDO_SUCCESS;
+  if (!keys_retired)
+    fprintf(stderr, "xdo_free: text key retirement unconfirmed\n");
   if (xdo->scratch_original != NULL) {
-    if (_xdo_restore_scratch(xdo) != XDO_SUCCESS) {
+    if (!keys_retired || _xdo_restore_scratch(xdo) != XDO_SUCCESS) {
       fprintf(stderr, "xdo_free: scratch keyboard restoration unconfirmed\n");
       XkbFreeKeyboard(xdo->scratch_original, 0, True);
     }
@@ -373,13 +377,14 @@ static int _xdo_enter_text_scalar_do(xdo_t *xdo, charcodemap_t *key,
     key->code = scratch_keycode;
   }
 
-  _xdo_text_event(xdo, key, modifiers, True, delay / 2);
-  _xdo_text_event(xdo, key, modifiers, False, delay / 2);
+  int status = _xdo_text_pair(xdo, key->code, modifiers, delay);
+  if (status == XDO_CLEANUP_ERROR)
+    return status;
 
   if (xdo->scratch_original != NULL && _xdo_restore_scratch(xdo) != XDO_SUCCESS)
     return XDO_CLEANUP_ERROR;
   XFlush(xdo->xdpy);
-  return XDO_SUCCESS;
+  return status;
 }
 
 int xdo_enter_text_scalar(xdo_t *xdo, unsigned int scalar, useconds_t delay) {
@@ -390,7 +395,7 @@ int xdo_enter_text_scalar(xdo_t *xdo, unsigned int scalar, useconds_t delay) {
       || (scalar < 0x20 && scalar != '\t' && scalar != '\n' && scalar != '\r')
       || (scalar >= 0x7f && scalar <= 0x9f))
     return XDO_ERROR;
-  if (xdo->scratch_original != NULL)
+  if (xdo->scratch_original != NULL || xdo->text_keys_len != 0)
     return XDO_CLEANUP_ERROR;
 
   KeySym symbol = scalar <= 0xff ? scalar : 0x01000000UL | scalar;
@@ -544,32 +549,45 @@ int _is_success(const char *funcname, int code, const xdo_t *xdo) {
   return code;
 }
 
-void _xdo_text_event(const xdo_t *xdo, charcodemap_t *key,
-                          const KeyCode *modifiers, int is_press, useconds_t delay) {
-  if (is_press) {
-    for (int i = ShiftMapIndex; i <= Mod5MapIndex; i++) {
-      if (modifiers[i] != 0) {
-        XTestFakeKeyEvent(xdo->xdpy, modifiers[i], True, CurrentTime);
-        XSync(xdo->xdpy, False);
-      }
-    }
-  }
-  XTestFakeKeyEvent(xdo->xdpy, key->code, is_press, CurrentTime);
+static int _xdo_press_text_key(xdo_t *xdo, KeyCode code) {
+  if (xdo->text_keys_len >= sizeof(xdo->text_keys) / sizeof(xdo->text_keys[0])
+      || !XTestFakeKeyEvent(xdo->xdpy, code, True, CurrentTime))
+    return XDO_ERROR;
+  xdo->text_keys[xdo->text_keys_len++] = code;
   XSync(xdo->xdpy, False);
-  if (!is_press) {
-    for (int i = Mod5MapIndex; i >= ShiftMapIndex; i--) {
-      if (modifiers[i] != 0) {
-        XTestFakeKeyEvent(xdo->xdpy, modifiers[i], False, CurrentTime);
-        XSync(xdo->xdpy, False);
-      }
+  return XDO_SUCCESS;
+}
+
+static int _xdo_retire_text_keys(xdo_t *xdo) {
+  while (xdo->text_keys_len != 0) {
+    KeyCode code = xdo->text_keys[xdo->text_keys_len - 1];
+    if (!XTestFakeKeyEvent(xdo->xdpy, code, False, CurrentTime))
+      return XDO_CLEANUP_ERROR;
+    xdo->text_keys_len--;
+    XSync(xdo->xdpy, False);
+  }
+  return XDO_SUCCESS;
+}
+
+static int _xdo_text_pair(xdo_t *xdo, KeyCode key,
+                         const KeyCode *modifiers, useconds_t delay) {
+  int status = XDO_SUCCESS;
+  for (int i = ShiftMapIndex; i <= Mod5MapIndex; i++) {
+    if (modifiers[i] != 0
+        && _xdo_press_text_key(xdo, modifiers[i]) != XDO_SUCCESS) {
+      status = XDO_ERROR;
+      break;
     }
   }
-
-  /* Skipping the usleep if delay is 0 is much faster than calling usleep(0) */
-  XFlush(xdo->xdpy);
-  if (delay > 0) {
-    usleep(delay);
-  }
+  if (status == XDO_SUCCESS)
+    status = _xdo_press_text_key(xdo, key);
+  if (status == XDO_SUCCESS && delay / 2 > 0)
+    usleep(delay / 2);
+  if (_xdo_retire_text_keys(xdo) != XDO_SUCCESS)
+    return XDO_CLEANUP_ERROR;
+  if (status == XDO_SUCCESS && delay / 2 > 0)
+    usleep(delay / 2);
+  return status;
 }
 
 static int _xdo_get_key_modifiers(const xdo_t *xdo, const charcodemap_t *key,

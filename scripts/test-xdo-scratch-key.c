@@ -37,8 +37,14 @@ static KeyCode modifier_main;
 static KeySym modifier_symbol;
 static unsigned modifier_mask;
 static unsigned char modifier_keys[32];
-static struct { KeyCode code; unsigned mask; Bool pressed; } modifier_steps[6];
+struct modifier_step { KeyCode code; unsigned mask; Bool pressed; };
+static struct modifier_step modifier_steps[6];
 static int modifier_step, modifier_step_count;
+static int submission_fault_at, submission_cleanup_at, submission_refusals;
+static int submission_cases, submission_pending, submission_events, submission_blocked;
+static int submission_total_refusals;
+static KeyCode submission_fault_code, submission_cleanup_code;
+static Bool submission_fault_press;
 static XModifierKeymap *owned_modifiers;
 static KeyCode *modifier_codes;
 static int key_fault, key_queries, key_checks, key_replies, key_retirements;
@@ -150,6 +156,14 @@ int __wrap_XTestFakeKeyEvent(Display *display, unsigned int code, Bool pressed, 
     require(!owned_keys && !owned_key_error && key_replies == key_retirements,
             "keymap reply retained during key effect");
     input_calls++;
+    if (input_calls == submission_fault_at || input_calls == submission_cleanup_at) {
+      require(code == (input_calls == submission_fault_at ? submission_fault_code
+                                                        : submission_cleanup_code)
+              && pressed == (input_calls == submission_fault_at ? submission_fault_press : False),
+              "submission refusal targeted the wrong native leg");
+      submission_refusals++;
+      return False;
+    }
   }
   int status = __real_XTestFakeKeyEvent(display, code, pressed, delay);
   if (observe && display == product_display && modifier_observer != NULL) {
@@ -868,6 +882,98 @@ static void held_modifiers(xdo_t *input, Display *observer, Window window) {
   XFreeModifiermap(map);
 }
 
+static void submission_case(xdo_t *parent, XkbDescPtr baseline, unsigned scalar,
+                          int presses, int failure, int cleanup_failure,
+                          int scratch, useconds_t delay) {
+  Display *observer = modifier_observer;
+  require(observer && !observe && presses > 0 && presses <= 3
+          && failure >= 0 && failure < 2 * presses
+          && (!cleanup_failure || (failure > 0 && failure < presses)),
+          "submission fault fixture shape differs");
+  char held[32];
+  XkbStateRec before = {0};
+  held_state(observer, held, &before);
+  struct modifier_step normal[6];
+  memcpy(normal, modifier_steps, sizeof(normal));
+  int accepted = failure < presses ? failure : presses;
+  int remaining = cleanup_failure ? accepted : failure < presses ? 0 : 2 * presses - failure;
+  xdo_t *input = xdo_new_with_opened_display(parent->xdpy, "unix/:98.0", 0);
+  require(input && !input->close_display_when_freed, "submission borrower unavailable");
+  for (int i = 0; i < accepted; i++) {
+    modifier_steps[i] = normal[i];
+    modifier_steps[2 * accepted - 1 - i] = normal[i];
+    modifier_steps[2 * accepted - 1 - i].pressed = False;
+  }
+  modifier_step = 0;
+  modifier_step_count = 2 * accepted;
+  reset_text_query();
+  submission_refusals = 0;
+  submission_fault_at = failure + 1;
+  submission_fault_code = normal[failure].code;
+  submission_fault_press = normal[failure].pressed;
+  submission_cleanup_at = cleanup_failure ? failure + 2 : 0;
+  submission_cleanup_code = cleanup_failure ? normal[failure - 1].code : 0;
+  observe = 1;
+  int status = xdo_enter_text_scalar(input, scalar, delay);
+  observe = 0;
+  require(status == (remaining ? XDO_CLEANUP_ERROR : XDO_ERROR)
+          && submission_refusals == 1 + cleanup_failure
+          && input_calls == (remaining ? failure + 1 + cleanup_failure : 2 * accepted + 1)
+          && input->text_keys_len == (unsigned)remaining
+          && modifier_step == 2 * accepted - remaining
+          && state_queries == 1 && key_queries == 1 && key_replies == key_retirements
+          && group_changes == 0 && mapping_changes == (scratch ? remaining ? 1 : 2 : 0)
+          && (input->scratch_original != NULL) == (scratch && remaining),
+          "submission failure status, accepted presses or lease differs");
+  for (int i = 0; i < remaining; i++)
+    require(input->text_keys[i] == normal[i].code, "unresolved press identity differs");
+  char actual_keys[32];
+  require(XQueryKeymap(observer, actual_keys) && !memcmp(actual_keys, modifier_keys, 32),
+          "refused submission changed logical keys");
+  XEvent extra;
+  require(!XCheckWindowEvent(observer, modifier_window, KeyPressMask | KeyReleaseMask, &extra),
+          "refused submission emitted an event");
+  submission_fault_at = submission_cleanup_at = 0;
+  if (remaining) {
+    int calls = input_calls, states = state_queries, keymaps = key_queries, changes = mapping_changes;
+    const unsigned later[] = {'a', 'A', 0x1f642};
+    observe = 1;
+    for (size_t i = 0; i < sizeof(later) / sizeof(later[0]); i++)
+      require(xdo_enter_text_scalar(input, later[i], 0) == XDO_CLEANUP_ERROR,
+              "unresolved presses accepted later text");
+    require(input_calls == calls && state_queries == states && key_queries == keymaps
+            && mapping_changes == changes && input->text_keys_len == (unsigned)remaining,
+            "blocked text performed queries/effects or lost its owner");
+    xdo_free(input);
+    input = NULL;
+    observe = 0;
+    submission_pending++;
+    submission_blocked += 3;
+  }
+  require(modifier_step == 2 * accepted && owned_query == NULL && map_live == 0,
+          "retirement omitted an accepted press or scratch lease");
+  same_held_state(observer, held, &before);
+  same_components(observer, baseline);
+  memcpy(modifier_steps, normal, sizeof(normal));
+  memcpy(modifier_keys, held, sizeof(held));
+  modifier_mask = before.mods;
+  modifier_step = 0;
+  modifier_step_count = 2 * presses;
+  reset_text_query();
+  observe = 1;
+  status = xdo_enter_text_scalar(remaining ? parent : input, scalar, delay);
+  observe = 0;
+  require(status == XDO_SUCCESS && modifier_step == 2 * presses
+          && input_calls == 2 * presses && owned_query == NULL && map_live == 0,
+          "retired submission did not recover on the retained Display");
+  same_held_state(observer, held, &before);
+  same_components(observer, baseline);
+  if (!remaining) xdo_free(input);
+  submission_cases++;
+  submission_total_refusals += 1 + cleanup_failure;
+  submission_events += 2 * accepted + 2 * presses;
+}
+
 static void modifier_pair_order(Display *observer, Window window, int shared) {
   int descriptors = entries("/proc/self/fd"), tasks = entries("/proc/self/task");
   clear_keys(observer);
@@ -1003,6 +1109,23 @@ static void modifier_pair_order(Display *observer, Window window, int shared) {
         }
         modifier_step = 0;
         modifier_step_count = 2 * presses;
+        if (round < 2) {
+          struct modifier_step normal[6];
+          memcpy(normal, modifier_steps, sizeof(normal));
+          modifier_observer = observer;
+          for (int failed = 0; failed < 2 * presses; failed++) {
+            for (int cleanup = 0; cleanup <= (failed > 0 && failed < presses); cleanup++) {
+              submission_case(input, configured, 0x1f602, presses, failed, cleanup, 0,
+                              delayed ? 12000 : 0);
+              memcpy(modifier_steps, normal, sizeof(normal));
+              memcpy(modifier_keys, keys, sizeof(keys));
+              modifier_mask = state.mods;
+            }
+          }
+          modifier_observer = NULL;
+          modifier_step = 0;
+          modifier_step_count = 2 * presses;
+        }
         if (shared && !(profile & 1)) {
           reset_text_query();
           observe = 1;
@@ -1509,6 +1632,18 @@ int main(void) {
     XkbDescPtr components = component_snapshot(observer);
     keymap_admission(input, observer, window, low, high, components);
     held_scratch(input, observer, window, high, components);
+    modifier_observer = observer;
+    modifier_window = window;
+    modifier_main = high;
+    modifier_symbol = 0x0101f642UL;
+    for (int failed = 0; failed < 2; failed++) {
+      modifier_steps[0] = (struct modifier_step){.code = high, .pressed = True};
+      modifier_steps[1] = (struct modifier_step){.code = high, .pressed = False};
+      modifier_mask = 0;
+      memset(modifier_keys, 0, sizeof(modifier_keys));
+      submission_case(input, components, 0x1f642, 1, failed, 0, 1, 0);
+    }
+    modifier_observer = NULL;
     keyboard_state(input, observer, window, low, high, width, mapping);
     key_input(input, observer, window, low, high);
     same_map(observer, low, count, width, mapping);
@@ -1560,6 +1695,10 @@ int main(void) {
   require(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks,
           "native descriptors/tasks retained");
   reset_key_query();
+  require(submission_cases == 144 && submission_pending == 84
+          && submission_blocked == 252 && submission_total_refusals == 168
+          && submission_events == 920, "text submission coverage differs");
+  puts("XDO_TEXT_SUBMISSION_NATIVE=pass cases=144 mapped=136 scratch=8 mapped_repeats=2 scratch_repeats=4 delays=0,12000 held_profiles=4 submission_refusals=168 pending=84 later_refused=252 recovery=144 events=920 acquisition=checked retirement=reverse accepted_keys=retained scratch=after-keys logical_keys=each-leg symbols=live-map held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false");
   puts("XDO_TEXT_KEYMAP_NATIVE=pass faults=7 repeats=4 scalars=3 refused=84 recovery=84 events=168 snapshot=single refusal_effects=none replies=retired errors=retired mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
   puts("XDO_TEXT_HELD_NATIVE=pass repeats=4 modifier_profiles=4 modifier_pairs=16 mapped_refused=8 scratch_refused=4 scratch_recovery=4 events=48 held=preserved snapshot=single refusal_effects=none mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
   puts("XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=16 frees=12 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false");

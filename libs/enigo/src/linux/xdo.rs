@@ -177,7 +177,7 @@ impl EnigoXdo {
 
 impl Drop for EnigoXdo {
     fn drop(&mut self) {
-        // The text context borrows the main context's Display for restoration.
+        // The text context borrows the main Display for key and map retirement.
         drop(self.pending_text_cleanup.take());
         if !self.xdo.is_null() {
             unsafe {
@@ -193,7 +193,7 @@ impl EnigoXdo {
             return Err("libxdo is unavailable".into());
         }
         if self.pending_text_cleanup.is_some() {
-            return Err("libxdo text mapping restoration is unconfirmed".into());
+            return Err("libxdo text cleanup is unconfirmed".into());
         }
         // Validate the complete text before emitting any prefix.
         if let Some(character) = sequence

@@ -4290,14 +4290,17 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'clipboard listener completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
+        'XDO_TEXT_SUBMISSION_NATIVE=pass cases=144 mapped=136 scratch=8 mapped_repeats=2 scratch_repeats=4 delays=0,12000 held_profiles=4 submission_refusals=168 pending=84 later_refused=252 recovery=144 events=920 acquisition=checked retirement=reverse accepted_keys=retained scratch=after-keys logical_keys=each-leg symbols=live-map held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
+        'text submission refusals retain accepted presses through reverse retirement before scratch restoration'
+    require_exact_fixed_receipt \
         'XDO_TEXT_MODIFIER_ROLES_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=96 main_legs=64 modifier_slots=2 physical_modifier=single role_collision_refused=16 refusal_effects=none recovery=same-context order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
         'shared text modifier codes are owned once and main/modifier collisions refuse before effects'
     require_exact_fixed_receipt \
         'XDO_TEXT_MODIFIER_ORDER_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=128 main_legs=64 order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
         'temporary text modifiers remain live through main release and retire in reverse order'
     require_exact_fixed_receipt \
-        'X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider fault=restore-submission repeats=4 cases=8 unwind=4 later_requests=64 native_calls=8 contexts=16 events=16 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false' \
-        'pending native scratch context stays owned and retires before its borrowed Display during drop and unwind'
+        'X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider faults=restore-submission,key-release repeats=4 cases=16 unwind=8 later_requests=128 native_calls=16 contexts=32 events=32 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false' \
+        'pending native keys and scratch context retire before their borrowed Display during drop and unwind'
     require_exact_fixed_receipt \
         'XDO_TEXT_KEYMAP_NATIVE=pass faults=7 repeats=4 scalars=3 refused=84 recovery=84 events=168 snapshot=single refusal_effects=none replies=retired errors=retired mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
         'checked per-scalar keymap admission refuses before text effects and retires returned replies'
@@ -4379,14 +4382,17 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'key-input guest completion'
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
+        'XDO_TEXT_SUBMISSION_NATIVE=pass cases=144 mapped=136 scratch=8 mapped_repeats=2 scratch_repeats=4 delays=0,12000 held_profiles=4 submission_refusals=168 pending=84 later_refused=252 recovery=144 events=920 acquisition=checked retirement=reverse accepted_keys=retained scratch=after-keys logical_keys=each-leg symbols=live-map held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
+        'text submission refusals retain accepted presses through reverse retirement before scratch restoration'
+    require_exact_fixed_receipt \
         'XDO_TEXT_MODIFIER_ROLES_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=96 main_legs=64 modifier_slots=2 physical_modifier=single role_collision_refused=16 refusal_effects=none recovery=same-context order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
         'shared text modifier codes are owned once and main/modifier collisions refuse before effects'
     require_exact_fixed_receipt \
         'XDO_TEXT_MODIFIER_ORDER_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=128 main_legs=64 order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
         'temporary text modifiers remain live through main release and retire in reverse order'
     require_exact_fixed_receipt \
-        'X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider fault=restore-submission repeats=4 cases=8 unwind=4 later_requests=64 native_calls=8 contexts=16 events=16 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false' \
-        'pending native scratch context stays owned and retires before its borrowed Display during drop and unwind'
+        'X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider faults=restore-submission,key-release repeats=4 cases=16 unwind=8 later_requests=128 native_calls=16 contexts=32 events=32 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false' \
+        'pending native keys and scratch context retire before their borrowed Display during drop and unwind'
     require_exact_fixed_receipt \
         'XDO_TEXT_KEYMAP_NATIVE=pass faults=7 repeats=4 scalars=3 refused=84 recovery=84 events=168 snapshot=single refusal_effects=none replies=retired errors=retired mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
         'checked per-scalar keymap admission refuses before text effects and retires returned replies'

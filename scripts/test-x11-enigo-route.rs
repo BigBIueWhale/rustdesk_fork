@@ -47,7 +47,7 @@ extern "C" {
     fn __real_xdo_free(context: *mut xdo_t);
 }
 extern "C" {
-    fn enigo_cleanup_begin();
+    fn enigo_cleanup_begin(key_release: c_int);
     fn enigo_cleanup_register(context: *mut xdo_t);
     fn enigo_cleanup_pending();
     fn enigo_cleanup_allow_retirement();
@@ -159,10 +159,10 @@ fn main() {
         if scenario == "cleanup-refusal" {
             std::env::set_var("DISPLAY", ":98");
             NATIVE_CLEANUP_TEST.store(true, Ordering::SeqCst);
-            for iteration in 0..8 {
+            for iteration in 0..16 {
                 let mut injector = backend::EnigoXdo::default();
-                unsafe { enigo_cleanup_begin(); }
-                // The real Unicode pair is delivered, then restoration submission refuses.
+                unsafe { enigo_cleanup_begin((iteration / 8) as c_int); }
+                // A real scratch pair meets a controlled map or key-release submission refusal.
                 let error = injector.key_sequence_result("🙂a").unwrap_err();
                 assert_eq!(error.to_string(), "libxdo text entry failed with status 2");
                 assert_eq!(RETIREMENTS.load(Ordering::SeqCst), iteration * 2);
@@ -170,7 +170,7 @@ fn main() {
                 unsafe { enigo_cleanup_pending(); }
                 for text in ["a", "A", "🙂", "", "a", "A", "🙂", ""] {
                     assert_eq!(injector.key_sequence_result(text).unwrap_err().to_string(),
-                               "libxdo text mapping restoration is unconfirmed");
+                               "libxdo text cleanup is unconfirmed");
                 }
                 assert_eq!(TEXT_NATIVE_CALLS.load(Ordering::SeqCst), iteration + 1);
                 assert_eq!(TEXT_BORROWS.load(Ordering::SeqCst), iteration + 1);
@@ -195,7 +195,7 @@ fn main() {
                 NAMES.lock().unwrap().clear();
                 retired(baseline);
             }
-            println!("X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider fault=restore-submission repeats=4 cases=8 unwind=4 later_requests=64 native_calls=8 contexts=16 events=16 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false");
+            println!("X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider faults=restore-submission,key-release repeats=4 cases=16 unwind=8 later_requests=128 native_calls=16 contexts=32 events=32 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false");
             return;
         }
         if matches!(scenario.as_str(), "layout" | "layout-repeat") {

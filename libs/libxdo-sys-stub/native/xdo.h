@@ -83,9 +83,13 @@ typedef struct xdo {
   /** @internal UNUSED -- feature-mask ABI field */
   int features_mask;
 
-  /** Unconfirmed scratch restoration retains its original map and blocks text. */
+  /** Scratch lease retained until keys retire and restoration is confirmed. */
   struct _XkbDesc *scratch_original;
   KeyCode scratch_keycode;
+
+  /** Accepted text presses awaiting reverse-order retirement. */
+  KeyCode text_keys[9];
+  unsigned int text_keys_len;
 
 } xdo_t;
 
@@ -190,8 +194,10 @@ int xdo_get_mouse_location(const xdo_t *xdo, int *x, int *y, int *screen_num);
  * Separate state queries are not atomic against concurrent input. Scratch
  * rows must have neutral XKB semantics; their original symbols, types, groups,
  * actions and explicit controls are restored
- * and checked after release. XDO_CLEANUP_ERROR means restoration is unconfirmed;
- * the context retains the original map and accepts no further text.
+ * and checked after release. Submission failure stops acquisition and retires
+ * only accepted presses. XDO_CLEANUP_ERROR retains unresolved presses and any
+ * original scratch map, blocks further text, and retries retirement at destruction
+ * before restoring the map or closing the Display. Submission is not delivery.
  *
  * @param delay Delay in microseconds, divided between press and release.
  */

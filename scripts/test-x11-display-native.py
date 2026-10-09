@@ -329,7 +329,8 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
                "-L", f"native={providers['corrected']}",
                "-C", f"link-arg=-Wl,-rpath,{providers['corrected']}",
                "-C", f"link-arg={cleanup_helper}", "-C", "link-arg=-ldl",
-               "-C", "link-arg=-Wl,--export-dynamic-symbol=XkbChangeMap"]
+               "-C", "link-arg=-Wl,--export-dynamic-symbol=XkbChangeMap",
+               "-C", "link-arg=-Wl,--export-dynamic-symbol=XTestFakeKeyEvent"]
     for symbol in ("xdo_new_with_opened_display", "xdo_free", "XOpenDisplay", "XCloseDisplay"):
         command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
     subprocess.run(command, env=environment, check=True, timeout=30)
@@ -356,8 +357,8 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
     cleanup = subprocess.run([str(binary), "cleanup-refusal"], env=environment,
                              capture_output=True, text=True, timeout=5)
     cleanup_receipt = ("X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider "
-                       "fault=restore-submission repeats=4 cases=8 unwind=4 later_requests=64 "
-                       "native_calls=8 contexts=16 events=16 pending=retained teardown=text-before-display "
+                       "faults=restore-submission,key-release repeats=4 cases=16 unwind=8 later_requests=128 "
+                       "native_calls=16 contexts=32 events=32 pending=retained teardown=text-before-display "
                        "mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false")
     require(cleanup.returncode == 0 and not cleanup.stderr and cleanup.stdout.splitlines() == [cleanup_receipt],
             f"Enigo cleanup refusal differs: {cleanup}")

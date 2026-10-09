@@ -34,9 +34,10 @@ Core-width sizing, repeated live symbol lookup and the private modifier traversa
 are removed in favor of the snapshot's types, symbols and real-modifier map.
 Keyboard input accepts one numeric keysym or raw keycode and one explicit action.
 The compound string parser, locale-based text entry, alias table and generic
-key-list API are removed. Clicks resolve once and release the same code without
-reacquiring scratch storage. Enigo supplies numeric X11 symbols and validated
-Unicode scalars; unsupported keys and out-of-range raw codes are errors.
+key-list API are removed. Clicks resolve once and retain the same scratch mapping
+through press and release, then restore its full row and retire the query once.
+Enigo supplies numeric X11 symbols and validated Unicode scalars; unsupported
+keys and out-of-range raw codes are errors.
 Unused window property, class and urgency mutation APIs are removed.
 Every key request checks one XKB state snapshot before mapping or input effects;
 both keysym click legs retain its verified restoration group. Raw keycodes send
@@ -55,6 +56,6 @@ only XTEST on the context display, with server-owned focus, pointer and grab
 routing. Caller-selected windows, directed XSendEvent input, focus-routing
 helpers and the unused native click helper are removed. The provider has eleven
 context, version, input and cursor/state exports and no Xinerama dependency.
-The fixed fork version is 3.20160805.1-rustdesk13.
+The fixed fork version is 3.20160805.1-rustdesk14.
 The BSD redistribution notice is retained in COPYRIGHT and packaged with the
 library. Source provenance is not a claim that all native behavior is validated.

@@ -178,7 +178,7 @@ int xdo_get_mouse_location(const xdo_t *xdo, int *x_ret, int *y_ret,
 }
 
 static int _xdo_send_key_do(const xdo_t *xdo, unsigned int kind, charcodemap_t *key,
-                                   int pressed, const KeyCode *modifiers, int current_group, useconds_t delay) {
+                                   unsigned int action, const KeyCode *modifiers, int current_group, useconds_t delay) {
   KeySym *keysyms = NULL;
   int keysyms_per_keycode = 0;
   int scratch_keycode = 0;
@@ -221,7 +221,12 @@ static int _xdo_send_key_do(const xdo_t *xdo, unsigned int kind, charcodemap_t *
     key->code = scratch_keycode;
   }
 
-  _xdo_send_key(xdo, kind, key, modifiers, pressed, current_group, delay);
+  if (action == XDO_KEY_CLICK) {
+    _xdo_send_key(xdo, kind, key, modifiers, True, current_group, delay / 2);
+    _xdo_send_key(xdo, kind, key, modifiers, False, current_group, delay / 2);
+  } else {
+    _xdo_send_key(xdo, kind, key, modifiers, action == XDO_KEY_DOWN, current_group, delay);
+  }
 
   if (keysyms != NULL) {
     XSync(xdo->xdpy, False);
@@ -269,15 +274,7 @@ int xdo_send_key(const xdo_t *xdo, unsigned int kind,
   if (_xdo_get_key_modifiers(xdo, key.modmask, modifiers) != XDO_SUCCESS)
     return XDO_ERROR;
 
-  if (action != XDO_KEY_CLICK)
-    return _xdo_send_key_do(xdo, kind, &key, action == XDO_KEY_DOWN, modifiers, state.group, delay);
-
-  int status = _xdo_send_key_do(xdo, kind, &key, True, modifiers, state.group, delay / 2);
-  if (status != XDO_SUCCESS)
-    return status;
-  /* Release the exact code just pressed without reacquiring a scratch resource. */
-  key.needs_binding = 0;
-  return _xdo_send_key_do(xdo, kind, &key, False, modifiers, state.group, delay / 2);
+  return _xdo_send_key_do(xdo, kind, &key, action, modifiers, state.group, delay);
 }
 
 /* Helper functions */

@@ -17,6 +17,11 @@ static int observe, fault, queries, frees;
 static int state_fault, state_queries, group_changes, input_calls, mapping_changes;
 static int modifier_fault, modifier_queries, modifier_frees, modifier_width;
 static KeySym *owned_query;
+static Display *click_observer;
+static Window click_window;
+static KeyCode click_code;
+static KeySym click_symbol;
+static int click_events;
 static XModifierKeymap *owned_modifiers;
 static KeyCode *modifier_codes;
 extern KeySym *__real_XGetKeyboardMapping(Display *, KeyCode, int, int *);
@@ -66,7 +71,31 @@ int __wrap_XTestFakeKeyEvent(Display *display, unsigned int code, Bool pressed, 
     require(owned_modifiers == NULL, "modifier map retained during key effect");
     input_calls++;
   }
-  return __real_XTestFakeKeyEvent(display, code, pressed, delay);
+  int status = __real_XTestFakeKeyEvent(display, code, pressed, delay);
+  if (observe && display == product_display && click_observer != NULL) {
+    require(status && code == click_code && pressed == (click_events == 0)
+            && click_events < 2 && owned_query != NULL && mapping_changes == 1,
+            "scratch click released its binding before the complete action");
+    XSync(display, False);
+    int width;
+    KeySym *mapping = XGetKeyboardMapping(click_observer, code, 1, &width);
+    require(mapping && width > 0 && mapping[0] == click_symbol,
+            "scratch click server symbol absent during a leg");
+    XFree(mapping);
+    XEvent event;
+    require(XCheckWindowEvent(click_observer, click_window, KeyPressMask | KeyReleaseMask, &event)
+            && event.type == (pressed ? KeyPress : KeyRelease)
+            && event.xkey.window == click_window && !event.xkey.send_event
+            && event.xkey.keycode == code && event.xkey.state == 0,
+            "scratch click native event differs during a leg");
+    char keys[32];
+    require(XQueryKeymap(click_observer, keys), "scratch click key state unavailable");
+    for (int byte = 0; byte < 32; byte++)
+      require((unsigned char)keys[byte] == (pressed && byte == code / 8 ? 1U << (code % 8) : 0),
+              "scratch click did not hold and release exactly its code");
+    click_events++;
+  }
+  return status;
 }
 
 int __wrap_XChangeKeyboardMapping(Display *display, int first, int width, KeySym *symbols, int count) {
@@ -407,6 +436,41 @@ static void same_xkb_symbols(Display *display, const XkbDescRec *expected) {
   XkbFreeKeyboard(actual, 0, True);
 }
 
+static void scratch_click(xdo_t *input, Display *observer, Window window,
+                          int round, int low, int high, int width, const KeySym *mapping) {
+  click_observer = observer;
+  click_window = window;
+  click_code = high;
+  click_symbol = 0x0101f642;
+  for (int delayed = 0; delayed < 2; delayed++) {
+    for (fault = 0; fault < 3; fault++) {
+      XkbStateRec before = {0}, after = {0};
+      require(XkbGetState(observer, XkbUseCoreKbd, &before) == Success,
+              "scratch click initial state unavailable");
+      queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+      modifier_queries = modifier_frees = click_events = 0;
+      observe = 1;
+      int status = xdo_send_key(input, XDO_KEYSYM, click_symbol, XDO_KEY_CLICK, delayed ? 12000 : 0);
+      observe = 0;
+      int accepted = fault == 0;
+      require(status == (accepted ? XDO_SUCCESS : XDO_ERROR)
+              && queries == 1 && frees == (fault != 1) && owned_query == NULL
+              && state_queries == 1 && modifier_queries == 0 && modifier_frees == 0
+              && group_changes == 4 * accepted && input_calls == 2 * accepted
+              && mapping_changes == 2 * accepted && click_events == 2 * accepted,
+              "scratch click action outcome or mapping ownership differs");
+      events(observer, window, 0, 0);
+      same_map(observer, low, high - low + 1, width, mapping);
+      require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
+              && !memcmp(&before, &after, sizeof(before)), "scratch click changed XKB state");
+      printf("XDO_SCRATCH_CLICK_CASE=pass round=%d delay=%d fault=%d events=%d\n",
+             round, delayed ? 12000 : 0, fault, click_events);
+    }
+  }
+  click_observer = NULL;
+  fault = 0;
+}
+
 static void raw_group_layout(Display *observer, Window window) {
   int descriptors = entries("/proc/self/fd"), tasks = entries("/proc/self/task");
   XkbStateRec baseline = {0}, restored = {0};
@@ -593,6 +657,7 @@ int main(void) {
     keyboard_state(input, observer, window, low, high, width, mapping);
     key_input(input, observer, window, low, high);
     same_map(observer, low, count, width, mapping);
+    scratch_click(input, observer, window, round, low, high, width, mapping);
     for (int scenario = 0; scenario < 5; scenario++) {
       if (scenario == 4) {
         for (int i = 0; i < width; i++) mapping[(count - 1) * width + i] = XK_F30;
@@ -634,6 +699,7 @@ int main(void) {
   require(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks,
           "native descriptors/tasks retained");
   puts("XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=32 frees=24 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false");
+  puts("XDO_SCRATCH_CLICK_NATIVE=pass cases=24 repeats=4 delays=0,12000 accepted=8 refused=16 events=16 binding=both-legs queries=24 frees=16 maps=restored keys=clear descriptors=retired tasks=retired sanitizer=address observer=in-request consumer=unproved whole_app=false");
   puts("XDO_KEY_INPUT_NATIVE=pass cases=108 repeats=4 refused=92 accepted=16 events=32 raw=both-boundaries invalid=pre-input-refused key_storage=stack product_allocations=0 click_queries=4 click_frees=4 maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_heap=false whole_app=false");
   puts("XDO_KEY_STATE_NATIVE=pass cases=108 repeats=4 faults=3 kinds=3 actions=3 refused=108 recovery=108 events=216 state_queries=216 click_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
   puts("XDO_KEY_MODIFIER_NATIVE=pass cases=72 repeats=4 faults=6 actions=3 refused=72 recovery=72 events=288 modifier_queries=144 modifier_frees=132 click_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");

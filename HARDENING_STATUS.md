@@ -982,67 +982,75 @@ between-request release failure, native event/group-lock/asynchronous errors,
 map races, concurrency, whole heap/soak, full Cargo/app/install, other platforms
 and broader authority/artifact/release evidence remain OPEN.
 
-**XTEST constructor admission — implemented; native acceptance pending.**
-The native constructor requires XTEST before context allocation or XKB acquisition.
-A failed borrowed constructor preserves caller display ownership for either close flag;
-`xdo_new` closes its own opened display on refusal. The warning-and-continue branch
-and unused feature/variadic diagnostic helpers are absent. Provider/helper/loader
-require `3.20160805.1-rustdesk11`; the wrong-version fixture is corrected current
-C stamped 10. Context layout and the twelve-export input ABI remain.
-The authored focused native cases cover preallocation query failure under ASan,
-real Xvfb XTEST absence, three loader constructor refusals, borrowed display
-usability and eight complete production Enigo key/button refusals. They have
-not yet run for this candidate. Later XTEST facility withdrawal, per-request
-native status handling and partial input cleanup remain OPEN.
+**XTEST constructor admission and closed input ABI — focused native acceptance.**
+`native/xdo.c:65` requires XTEST before context allocation or XKB acquisition.
+A refused borrowed constructor preserves the caller display for either close flag;
+`xdo_new` closes its own opened display. The warning-and-continue branch,
+postallocation XTEST helper and unused variadic diagnostics are absent.
+Provider/helper/header/loader require `3.20160805.1-rustdesk11`; wrong-version
+uses corrected current C stamped 10. Context layout and the twelve-export ABI
+in `scripts/fixtures/xdo-input-exports.txt` remain. The prior twenty-five unused
+query/poll/repeat/feature APIs, regex search module and ten Rust bindings remain
+absent; cursor coordinates use `XQueryPointer`, focus is private to key routing,
+and Xinerama is absent.
 
-**Closed private native input ABI — historical version-10 native acceptance.**
-The provider/header expose only the twelve context, version, numeric-key,
-pointer/button and cursor/input-state operations in
-`scripts/fixtures/xdo-input-exports.txt`. Twenty-five unused window/property/name,
-client/desktop/geometry queries, polling, repeated-click and feature APIs,
-the entire regex search module and ten unused Rust bindings/facades are removed.
-Cursor coordinates use only `XQueryPointer`; focus observation is private to
-key routing. The provider has no Xinerama dependency. Context layout and
-supported input semantics remain. Provider/helper/loader require
-`3.20160805.1-rustdesk10`; wrong-version uses corrected current C stamped 9.
-Product `7eed7127d2b6a31f74beb91e191989d6ab999ad6` plus the truthful
-variant-derived source-delta receipt at candidate
-`9e3635d02ee6e5d5415cbdbab5220800cc942290`
-(tree `9b9ba9c818e3cbf8aac839959daf4fb3f745def6`) passed the complete
-focused zero-NIC transaction in 135 seconds with outer exit 0.
-Actual ELF inventories match the exact twelve-name API on the helper and
-five loader fixtures, omitting only intentionally renamed required symbols
-in missing-symbol fixtures. Normal and staged complete-provider runs each
-refused all 59 retired names through real symbol lookups, then delivered
-native absolute/relative pointer, button, Shift and focused-window a input
-and retired descriptors. Complete production-loader/Linux Enigo passed
-complete, missing mouse/key, wrong-version, writable, absent and native
-modifier-error scenarios. Retained ASan constructor, state/modifier admission
-and same-context recovery, numeric-key and scratch regressions and actual
-Enigo/mouse/text/layout events passed on corrected current C.
-Helper/complete-loader provider are the same 21,384-byte version-10 ELF,
-SHA-256 `e18925cb04b475e6ff563af997020c92338d831cc764eceadc67851869c58c36`.
-Actual staging resolved 10 provider dependencies and 21 libraries; distribution
-XDO is absent. Raw
-`.harness-state/verifier-vm/x11-display-tests-run.B2ueT7vZm8.serial.log`
-is 103,702 bytes, SHA-256
-`76423d8a5e082f5c89e073f8b32c656d8d0aca6bcd70b494936deef4d7de65e7`.
+Candidate `874b25e208dfabc1199b67d65c51c3bfcd6ec8f3`
+(tree `8e8f23181db195ca6c9754ca0f07350b5d339c27`) passed
+`scripts/smoke-verifier-vm-authority.sh --x11-display-tests --key-input`
+in 122 seconds, outer exit 0. ASan constructor execution passed 276 cases,
+22 faults, three paths and four repeats: 12 accepted/264 refused and 24
+actual key events. The twelve controlled XTEST-query failures refused before
+any native-owned context allocation or XKB query, preserving caller displays
+and retiring internally opened displays. A fresh real Xvfb with XTEST disabled
+was independently queried through `XQueryExtension`: three public loader
+constructor paths refused, caller display remained usable, and eight complete
+production Enigo attempts returned key/button unavailability with exact FD
+baselines. Complete, no-XTEST, missing mouse/key, wrong-version, writable,
+absent and native modifier-error scenarios passed. Normal and staged complete
+runs each refused all 59 retired symbol names and delivered actual pointer,
+button, Shift and focused-window a input. Exact ELF inventories match the
+private ABI on the helper and five provider fixtures, omitting only renamed
+required symbols. Retained ASan numeric/state/modifier/scratch and real
+mouse/Enigo/text/layout regressions passed on corrected current C only.
+
+Helper and complete-loader share the 21,232-byte version-11 ELF, SHA-256
+`cd056954ad0d6ca37487678ba35c559d0b8593a03578b04659e7cbec566b2fa4`;
+native C SHA-256
+`0d4736b7112a6162263916996b18b9e9dca31a138fdd43321034b8e040b86e34`.
+Staging resolved 10 provider dependencies and 21 libraries; distribution XDO
+is absent. Raw
+`.harness-state/verifier-vm/x11-display-tests-run.4zzGyhWy3B.serial.log`
+is 101,825 bytes, SHA-256
+`aae5a27226620fbd7d3322aa88a0c436f48fb56d1eea09c20d85765bf6eb482d`.
 The explicitly nonindependent assistant-observed
-`evidence/xdo-input-abi-run.B2ueT7vZm8.outer.receipt` under that same root
-is 18,213 bytes, SHA-256
-`a5b59373fdd45a316511ad2f3c3633cd5f383c0f630eb51ff7ba95440cc8c5d9`.
-It retains exact outer/native/source evidence and the superseded first-run limit.
-Outer before/during/after protocol-endpoint-only inventories report no host
-listener additions; cleanup joined and the exact run root/overlay is absent.
-Snapshots auto-retired; independent after-snapshot comparison is unclaimed.
-Four real dependencies were authenticated; the common facade is partial.
-Full Cargo/app/install and staging CLI, privileged receiver/serving-principal
-and loader identity/ACL races were unexecuted. Xvfb uses `-ac`; authenticated
-Xauthority is unproved. ASan leak detection is disabled; Xlib-internal and
-whole-heap scope, concurrency/resources/soak, other platforms and broader
-native/installed/artifact/release/review obligations remain OPEN.
-Version-9 native acceptance at
-`e645b34c8caca0d89b8c79910cb33ee7cf0a1891` remains historical.
+`evidence/xdo-xtest-admission-run.4zzGyhWy3B.outer.receipt` under that same
+root is 17,200 bytes, SHA-256
+`e4b006f5148575b38887224a123d0479c063577f8119dd87222212749fce0b63`.
+It retains outer/native/source identities and the exact-run ownership limits.
+Outer before/during/after endpoint-only inventories report no host additions;
+cleanup joined and the exact run root/overlay is absent. Snapshots auto-retired;
+independent after-snapshot comparison is unclaimed. Four real dependencies
+were authenticated; the common facade is partial. Full Cargo/app/install,
+staging CLI, serving-principal/privileged receiver and loader ACL/identity races
+were unexecuted. Xvfb uses `-ac`; authenticated Xauthority is unproved. ASan
+leak detection is disabled; Xlib-internal/whole-heap, later XTEST withdrawal,
+per-request status and partial input cleanup, concurrency/resources/soak,
+other platforms and broader native/installed/artifact/release/review remain OPEN.
+
+**Historical version-10 ABI acceptance.** Product
+`7eed7127d2b6a31f74beb91e191989d6ab999ad6` and receipt-corrected candidate
+`9e3635d02ee6e5d5415cbdbab5220800cc942290`
+(tree `9b9ba9c818e3cbf8aac839959daf4fb3f745def6`) passed in 135 seconds,
+outer exit 0. Its 21,384-byte ELF SHA-256 is
+`e18925cb04b475e6ff563af997020c92338d831cc764eceadc67851869c58c36`.
+Raw `x11-display-tests-run.B2ueT7vZm8.serial.log` under the same verifier root
+is 103,702 bytes, SHA-256
+`76423d8a5e082f5c89e073f8b32c656d8d0aca6bcd70b494936deef4d7de65e7`;
+`evidence/xdo-input-abi-run.B2ueT7vZm8.outer.receipt` is 18,213 bytes,
+SHA-256 `a5b59373fdd45a316511ad2f3c3633cd5f383c0f630eb51ff7ba95440cc8c5d9`.
+The receipt retains the superseded first-run source-delta limitation.
+Version-9 acceptance at `e645b34c8caca0d89b8c79910cb33ee7cf0a1891`
+also remains historical; neither prior artifact is current acceptance.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,

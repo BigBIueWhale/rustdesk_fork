@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-649befda1b6ff3c55d1b9d4b79be67ede9117e8dd53c5880a1fb14b29433e304  requirements.html
+3383c9d3d4fe3e30761416382f7d6d994df53f415dcc623952ba9317435ad9f0  requirements.html
 ```
 
 ## Current Verdict
@@ -78,6 +78,7 @@ by their requirements and the STOP-SHIP matrices below.
 | Current documentation-sensitive item | Current disposition |
 | --- | --- |
 | Normative identity and ledger budget | The exact `requirements.html` identity is recorded above. `scripts/hardening-status-size.sh --check` is the reproducible approximately 400,000-token ledger limit; satisfying the size limit is not release completion. |
+| GUI/UX contracts (R-G1–R-G9) | Section 19 retains direct-address and exact-target validation, removed/pinned-control absence, honest PAKE/direct security labels, deleted feature actuators, retired host-key UI, distinct reachability/capability errors, headless CM, Android notification/consent and secure-link/naming policy. The complete role-switch and consumed-only DTO contracts remain unchanged. Its stale inherited-widget diagnosis and claimed source-check success are removed; Git retains the original assessment. Acceptance separates focused source/UI/serialization checks from exact-artifact rendered and native lifecycle/resource evidence. No product, gate or native result changed. Native/artifact acceptance, independent reproduction and remaining document-role cleanup remain OPEN. The IPv6 accept-set discrepancy recorded in the presentation backlog below is also OPEN. |
 | Builder certification (R-S11da–dc; Appendix C #254–256) | The contracts select bootstrap and final identities through the complete reviewed role-specific pin sets in `scripts/pins.env`, with separate certification, promotion and final-only loading. Historical VCS/recipe narration, copied artifact values and FIX verdicts are absent from the selected contracts/dispositions; original finding cells retain their provenance rationale and impact limits. Exact archive/recipe/package/config/manifest/layout binding, direct OCI export, networkless UID/GID-1000 certification, bounded normalization, no-clobber publication and real fixture/runtime/reproduction obligations remain required. The three source gates, executable fixtures, pins and product code are unchanged. This documentation correction adds no runtime result; complete canonical inputs, cold product artifacts, installed/native evidence, independent reproduction, external review and remaining document-role cleanup remain OPEN. |
 | Shared resource, protocol, and storage contracts (R-S11gx–R-S11hg, R-S11hi/R-S11hj) | The selected specification contracts retain resource bounds, exact-owner/endpoint rules, executable regression requirements, and native/release acceptance without source-closure or symptom-causation verdicts. Their current ledger entries retain source references, real test/gate commands, current accepted model evidence, and all unproved obligations, not inspection transcripts, mutation scoreboards, or superseded input/toolchain availability. Current Flutter model receipts are shared under R-S11gr; they do not establish native service, audio, bridge/package absence, or release acceptance. |
 | Gradle acquisition/output contract (R-S11ck/R-S11cl/R-S11cr/R-S11fv/R-S11fz, Appendix C #231) | The specification has one guest-local writable Gradle output, read-only canonical/projected SDK inputs, and post-exit trusted import into an unmounted durable candidate. Writable SDK cloning, SDK exchange and two-output commit/recovery clauses are absent from the current Gradle contract. The appendix retains the original threat finding but has a timeless required disposition. Superseded transaction history and gate-count claims are absent from R-S11cl's current-state entry; retained producer/reuse evidence and all unproved negatives, replacement, native/artifact/performance/reproduction/review obligations remain explicit there and under R-S11fv/R-S11fz. This is documentation reconciliation, not a new runtime result. |
@@ -1854,7 +1855,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `649befda1b6ff3c55d1b9d4b79be67ede9117e8dd53c5880a1fb14b29433e304  requirements.html`.
+Current normative specification SHA-256: `3383c9d3d4fe3e30761416382f7d6d994df53f415dcc623952ba9317435ad9f0  requirements.html`.
 
 ### Current authority and source closure
 
@@ -10721,6 +10722,13 @@ presence is supplementary and does not prove exact packaged bytes or native beha
 Debian/Android/Windows R-B2/R-B10 transaction, native Apple/device coverage where applicable, independent
 reproduction, and external review remain governed by their open ledger rows. A regression or contrary runtime result
 reopens the affected claim; the removed historical “do not re-open” instruction carried no authority.
+
+**OPEN — direct-address accept-set conformance.** R-SV5/R-G2 enumerate IPv4, IPv4:port and domain:port,
+while `flutter/lib/common/formatter/direct_address.dart` also accepts IPv6 and bracketed IPv6:port. The
+closed numeric-ID/relay topology above does not establish agreement with that enumerated grammar. Resolve
+the intended address contract and verify the same exact accept set at UI and Rust admission; listener IPv4-only
+binding is a separate R-D5 property. The Section 19 documentation correction preserves the grammar and does
+not change the product or claim native acceptance.
 
 ### R-S11gk/R-S11e-223 — real Windows full-peer focus/presentation transaction
 

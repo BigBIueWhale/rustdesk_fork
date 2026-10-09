@@ -151,12 +151,104 @@ unsafe extern "C" fn __wrap_XCloseDisplay(display: *mut Display) -> c_int {
 fn descriptors() -> usize { std::fs::read_dir("/proc/self/fd").unwrap().count() }
 fn tasks() -> usize { std::fs::read_dir("/proc/self/task").unwrap().count() }
 fn retired(baseline: usize) { assert_eq!(descriptors(), baseline); assert_eq!(tasks(), 1); }
+
+// The lease body is exact production source. Protobuf fields and the click transport
+// are component adapters; this test does not execute the application dispatcher/rdev.
+mod lock_modes {
+    use super::{backend, KeyboardControllable, KeyboardState, ModifierKey, NumLockState, ResultType};
+    use rdev::Key as RdevKey;
+    #[derive(Clone, Copy, PartialEq)]
+    enum ControlKey { CapsLock, NumLock }
+    struct KeyEvent { down: bool, modifiers: Vec<ControlKey>, legacy: bool }
+    fn is_legacy_mode(event: &KeyEvent) -> bool { event.legacy }
+    macro_rules! bail {
+        ($message:expr) => { return Err($message.into()) };
+    }
+    extern "C" {
+        fn lock_modes_begin(caps: i32, num: i32);
+        fn lock_modes_click(caps: i32) -> i32;
+        fn lock_modes_check(caps: i32, num: i32, caps_pair: i32, num_pair: i32);
+        fn lock_modes_finish();
+    }
+    fn complete_lock_key_click(key: RdevKey) -> ResultType<()> {
+        let caps = match key {
+            RdevKey::CapsLock => 1,
+            RdevKey::NumLock => 0,
+            _ => panic!("unexpected lock-lease key"),
+        };
+        assert_eq!(unsafe { lock_modes_click(caps) }, 0);
+        Ok(())
+    }
+    fn retry_lock_key_click(key: RdevKey) { complete_lock_key_click(key).unwrap(); }
+    include!("/build/lock-modes-handler.rs");
+
+    pub fn run(baseline: usize) {
+        let mut cases = 0;
+        for unwind in [false, true] {
+            for down in [false, true] {
+                for legacy in [false, true] {
+                    for numpad in [false, true] {
+                        for caps in [false, true] {
+                            for num in [false, true] {
+                                unsafe { lock_modes_begin(caps.into(), num.into()); }
+                                let mut backend = backend::EnigoXdo::default();
+                                let state = backend.keyboard_state().unwrap();
+                                assert_eq!(state.caps_lock_enabled(), caps);
+                                assert_eq!(state.num_lock(), if num { NumLockState::On } else { NumLockState::Off });
+                                assert!(state.modifier_down(ModifierKey::RightShift));
+                                let mut event = KeyEvent { down, modifiers: Vec::new(), legacy };
+                                if !caps { event.modifiers.push(ControlKey::CapsLock); }
+                                if !num { event.modifiers.push(ControlKey::NumLock); }
+                                let lease = LockModesHandler::for_key_press(&event, numpad, &state).unwrap();
+                                assert_eq!(lease.is_some(), down);
+                                unsafe {
+                                    lock_modes_check((caps ^ down).into(), (num ^ (down && numpad)).into(),
+                                                     down.into(), (down && numpad).into());
+                                }
+                                if unwind {
+                                    let hook = std::panic::take_hook();
+                                    std::panic::set_hook(Box::new(|_| {}));
+                                    let result = std::panic::catch_unwind(move || {
+                                        let _owner = lease;
+                                        panic!("controlled lock-lease unwind");
+                                    });
+                                    std::panic::set_hook(hook);
+                                    assert!(result.is_err());
+                                } else {
+                                    drop(lease);
+                                }
+                                unsafe { lock_modes_check(caps.into(), num.into(), down.into(), (down && numpad).into()); }
+                                let restored = backend.keyboard_state().unwrap();
+                                assert_eq!(restored.caps_lock_enabled(), caps);
+                                assert_eq!(restored.num_lock(), state.num_lock());
+                                assert!(restored.modifier_down(ModifierKey::RightShift));
+                                drop(backend);
+                                unsafe { lock_modes_finish(); }
+                                super::NAMES.lock().unwrap().clear();
+                                super::retired(baseline);
+                                cases += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 64);
+        println!("LOCK_MODES_NATIVE=pass source=exact-production-lease cases=64 releases=32 presses=32 unwind=32 lock_events=192 release_lock_events=0 locks=server-observed other_held_key=preserved owned_key=retired descriptors=retired tasks=retired protobuf=adapter click_transport=native-adapter dispatcher=false rdev=false whole_app=false");
+    }
+}
+
 fn main() {
     assert_ne!(unsafe { XInitThreads() }, 0);
     log::set_logger(&NativeLogger).unwrap();
     log::set_max_level(log::LevelFilter::Info);
     let baseline = descriptors();
     if let Some(scenario) = std::env::args().nth(1) {
+        if scenario == "lock-modes" {
+            std::env::set_var("DISPLAY", ":98");
+            lock_modes::run(baseline);
+            return;
+        }
         if scenario == "cleanup-refusal" || scenario == "cleanup-retry" || scenario.starts_with("cleanup-abort-") {
             let abort = scenario.starts_with("cleanup-abort-");
             let retry = scenario == "cleanup-retry";

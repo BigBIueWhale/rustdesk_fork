@@ -2,6 +2,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "../libs/libxdo-sys-stub/native/xdo.h"
 #include <X11/XKBlib.h>
+#include <X11/keysym.h>
 #include <X11/extensions/XTest.h>
 #include <assert.h>
 #include <dlfcn.h>
@@ -287,4 +288,95 @@ void enigo_cleanup_finish(void) {
   observer = borrowed_display = NULL;
   pending = NULL;
   baseline = retained_original = NULL;
+}
+
+/* Lock-lease component oracle. Injection and observation use distinct connections. */
+static Display *lock_observer;
+static Window lock_window, lock_previous_focus;
+static int lock_previous_revert;
+static unsigned int lock_num_mask, lock_original_mods;
+static KeyCode lock_caps_code, lock_num_code, lock_owned_code, lock_held_code;
+
+static void lock_event(int type, KeyCode code) {
+  XEvent event;
+  XSync(lock_observer, False);
+  assert(XCheckWindowEvent(lock_observer, lock_window, KeyPressMask | KeyReleaseMask, &event)
+         && event.type == type && event.xkey.keycode == code
+         && event.xkey.window == lock_window && !event.xkey.send_event);
+}
+
+void lock_modes_begin(int caps, int num) {
+  assert(lock_observer == NULL && observer == NULL);
+  lock_observer = __real_XOpenDisplay("unix/:98.0");
+  assert(lock_observer != NULL);
+  XkbStateRec state;
+  assert(XkbGetState(lock_observer, XkbUseCoreKbd, &state) == Success);
+  lock_original_mods = state.locked_mods;
+  lock_num_mask = XkbKeysymToModifiers(lock_observer, XK_Num_Lock);
+  assert(lock_num_mask && !(lock_num_mask & LockMask));
+  lock_caps_code = XKeysymToKeycode(lock_observer, XK_Caps_Lock);
+  lock_num_code = XKeysymToKeycode(lock_observer, XK_Num_Lock);
+  lock_owned_code = XKeysymToKeycode(lock_observer, XK_a);
+  lock_held_code = XKeysymToKeycode(lock_observer, XK_Shift_R);
+  assert(lock_caps_code && lock_num_code && lock_owned_code && lock_held_code);
+  char keys[32];
+  assert(XQueryKeymap(lock_observer, keys));
+  for (int byte = 0; byte < 32; byte++) assert(keys[byte] == 0);
+  assert(XkbLockModifiers(lock_observer, XkbUseCoreKbd, LockMask | lock_num_mask,
+                         (caps ? LockMask : 0) | (num ? lock_num_mask : 0)));
+  XGetInputFocus(lock_observer, &lock_previous_focus, &lock_previous_revert);
+  lock_window = XCreateSimpleWindow(lock_observer, DefaultRootWindow(lock_observer),
+                                    0, 0, 200, 100, 0, 0, 0);
+  assert(lock_window != None);
+  XSelectInput(lock_observer, lock_window, KeyPressMask | KeyReleaseMask);
+  XMapWindow(lock_observer, lock_window);
+  XSetInputFocus(lock_observer, lock_window, RevertToPointerRoot, CurrentTime);
+  assert(XTestFakeKeyEvent(lock_observer, lock_owned_code, True, 0));
+  assert(XTestFakeKeyEvent(lock_observer, lock_held_code, True, 0));
+  lock_event(KeyPress, lock_owned_code);
+  lock_event(KeyPress, lock_held_code);
+}
+
+int lock_modes_click(int caps) {
+  Display *injector = __real_XOpenDisplay("unix/:98.0");
+  assert(injector != NULL && injector != lock_observer);
+  KeyCode code = caps ? lock_caps_code : lock_num_code;
+  assert(XTestFakeKeyEvent(injector, code, True, 0));
+  assert(XTestFakeKeyEvent(injector, code, False, 0));
+  XSync(injector, False);
+  assert(__real_XCloseDisplay(injector) == 0);
+  return 0;
+}
+
+void lock_modes_check(int caps, int num, int caps_pair, int num_pair) {
+  if (caps_pair) { lock_event(KeyPress, lock_caps_code); lock_event(KeyRelease, lock_caps_code); }
+  if (num_pair) { lock_event(KeyPress, lock_num_code); lock_event(KeyRelease, lock_num_code); }
+  XEvent event;
+  XSync(lock_observer, False);
+  assert(!XCheckWindowEvent(lock_observer, lock_window, KeyPressMask | KeyReleaseMask, &event));
+  XkbStateRec state;
+  assert(XkbGetState(lock_observer, XkbUseCoreKbd, &state) == Success
+         && !!(state.locked_mods & LockMask) == caps
+         && !!(state.locked_mods & lock_num_mask) == num);
+  char keys[32], expected[32] = {0};
+  expected[lock_owned_code / 8] |= (char)(1U << (lock_owned_code % 8));
+  expected[lock_held_code / 8] |= (char)(1U << (lock_held_code % 8));
+  assert(XQueryKeymap(lock_observer, keys) && !memcmp(keys, expected, sizeof(keys)));
+}
+
+void lock_modes_finish(void) {
+  assert(XTestFakeKeyEvent(lock_observer, lock_owned_code, False, 0));
+  lock_event(KeyRelease, lock_owned_code);
+  char keys[32], expected[32] = {0};
+  expected[lock_held_code / 8] = (char)(1U << (lock_held_code % 8));
+  assert(XQueryKeymap(lock_observer, keys) && !memcmp(keys, expected, sizeof(keys)));
+  assert(XTestFakeKeyEvent(lock_observer, lock_held_code, False, 0));
+  lock_event(KeyRelease, lock_held_code);
+  assert(XQueryKeymap(lock_observer, keys));
+  for (int byte = 0; byte < 32; byte++) assert(keys[byte] == 0);
+  assert(XkbLockModifiers(lock_observer, XkbUseCoreKbd, LockMask | lock_num_mask, lock_original_mods));
+  XSetInputFocus(lock_observer, lock_previous_focus, lock_previous_revert, CurrentTime);
+  XDestroyWindow(lock_observer, lock_window);
+  assert(__real_XCloseDisplay(lock_observer) == 0);
+  lock_observer = NULL;
 }

@@ -316,6 +316,18 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
     require(loader.count(state) == 1, "native state declaration boundary differs")
     start = loader.index(state)
     Path("/build/xdo-input-state.rs").write_text(loader[start:loader.index("\n}", start)+2])
+    service_source = root / "src/server/input_service.rs"
+    service = service_source.read_text()
+    start = '#[cfg(any(target_os = "windows", target_os = "linux"))]\nstruct LockModesHandler {'
+    end = '#[inline]\n#[cfg(target_os = "windows")]\nfn should_disable_numlock('
+    require(service.count(start) == 1 and service.count(end) == 1,
+            "production lock-lease extraction boundary differs")
+    lease_source = Path("/build/lock-modes-handler.rs")
+    with lease_source.open("x") as output:
+        output.write(service[service.index(start):service.index(end)])
+    # Supplementary caller closure; native acceptance below observes lease effects.
+    require(re.findall(r"LockModesHandler::(\w+)\(", service) == ["for_key_press"] * 4,
+            "keyboard dispatch bypasses the press-only lock-lease factory")
     binary = Path("/build/enigo-corrected")
     mapping = rdev_keyboard_mapping(root, environment, Path("/build"))
     cleanup_source = root / "scripts/test-x11-enigo-cleanup.c"
@@ -341,6 +353,7 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
             ("selector", root / "libs/hbb_common/src/platform/x11_display.rs"),
             ("fixture", root / "scripts/test-x11-enigo-route.rs"),
             ("cleanup_fixture", cleanup_source), ("cleanup_helper", cleanup_helper),
+            ("service_source", service_source), ("lease_source", lease_source),
             ("provider", providers["corrected"] / "libxdo.so.3"),
             ("log_manifest", checksum), ("log_library", library), ("binary", binary)))
           + " variant=corrected parent_enigo=unexecuted loader=direct-native-test whole_app=unexecuted", flush=True)
@@ -354,6 +367,16 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
     require(result.returncode == 0 and not result.stderr and result.stdout.splitlines() == [receipt],
             f"native Enigo backend result differs: {result}")
     print(receipt, flush=True)
+    lock_modes = subprocess.run([str(binary), "lock-modes"], env=environment,
+                               capture_output=True, text=True, timeout=5)
+    lock_receipt = ("LOCK_MODES_NATIVE=pass source=exact-production-lease cases=64 releases=32 presses=32 "
+                    "unwind=32 lock_events=192 release_lock_events=0 locks=server-observed "
+                    "other_held_key=preserved owned_key=retired descriptors=retired tasks=retired "
+                    "protobuf=adapter click_transport=native-adapter dispatcher=false rdev=false whole_app=false")
+    require(lock_modes.returncode == 0 and not lock_modes.stderr
+            and lock_modes.stdout.splitlines() == [lock_receipt],
+            f"native lock-lease phase behavior differs: {lock_modes}")
+    print(lock_receipt, flush=True)
     cleanup = subprocess.run([str(binary), "cleanup-refusal"], env=environment,
                              capture_output=True, text=True, timeout=5)
     cleanup_receipt = ("X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider "
@@ -398,7 +421,7 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
           "scenarios=constructor,diagnostic-display-change listener=container-loopback-only "
           "peer=closed children=joined scope=xdo-backend", flush=True)
     enigo_text(root, environment, binary, providers.get("before"))
-    for path in (binary, api):
+    for path in (binary, api, lease_source):
         path.unlink()
     for directory in providers.values():
         (directory / "libxdo.so").unlink()

@@ -592,14 +592,21 @@ impl LockModesHandler {
 
     #[inline]
     #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-    fn new_handler(key_event: &KeyEvent, _is_numpad_key: bool, _state: &KeyboardState) -> ResultType<Self> {
+    fn for_key_press(
+        key_event: &KeyEvent,
+        _is_numpad_key: bool,
+        _state: &KeyboardState,
+    ) -> ResultType<Option<Self>> {
+        if !key_event.down {
+            return Ok(None);
+        }
         #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
-            Self::new(key_event, _is_numpad_key, _state)
+            Self::new(key_event, _is_numpad_key, _state).map(Some)
         }
         #[cfg(target_os = "macos")]
         {
-            Self::new(key_event)
+            Self::new(key_event).map(Some)
         }
     }
 
@@ -2763,11 +2770,7 @@ fn skip_led_sync_control_key(_key: &ControlKey) -> bool {
     false
 }
 
-// LockModesHandler should not be created when single meta is pressing and releasing.
-// Because the drop function may insert "CapsLock Click" and "NumLock Click", which breaks single meta click.
-// https://github.com/rustdesk/rustdesk/issues/3928#issuecomment-1496936687
-// https://github.com/rustdesk/rustdesk/issues/3928#issuecomment-1500415822
-// https://github.com/rustdesk/rustdesk/issues/3928#issuecomment-1500773473
+// Temporary lock-key clicks would interrupt these keys' press sequences.
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn skip_led_sync_control_key(key: &ControlKey) -> bool {
     matches!(
@@ -2851,7 +2854,7 @@ fn handle_key_with_preserved_modifiers(
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     match &evt.union {
         Some(key_event::Union::Unicode(..)) | Some(key_event::Union::Seq(..)) => {
-            _lock_mode_handler = Some(LockModesHandler::new_handler(&evt, false, &state)?);
+            _lock_mode_handler = LockModesHandler::for_key_press(evt, false, &state)?;
         }
         Some(key_event::Union::ControlKey(ck)) => {
             let key = ck.enum_value_or(ControlKey::Unknown);
@@ -2860,12 +2863,12 @@ fn handle_key_with_preserved_modifiers(
                 let is_numpad_key = false;
                 #[cfg(any(target_os = "windows", target_os = "linux"))]
                 let is_numpad_key = is_numpad_control_key(&key);
-                _lock_mode_handler = Some(LockModesHandler::new_handler(&evt, is_numpad_key, &state)?);
+                _lock_mode_handler = LockModesHandler::for_key_press(evt, is_numpad_key, &state)?;
             }
         }
         Some(key_event::Union::Chr(code)) => {
             if is_legacy_mode(&evt) {
-                _lock_mode_handler = Some(LockModesHandler::new_handler(evt, false, &state)?);
+                _lock_mode_handler = LockModesHandler::for_key_press(evt, false, &state)?;
             } else {
                 let key = crate::keyboard::keycode_to_rdev_key(*code);
                 if !skip_led_sync_rdev_key(&key) {
@@ -2873,7 +2876,7 @@ fn handle_key_with_preserved_modifiers(
                     let is_numpad_key = false;
                     #[cfg(any(target_os = "windows", target_os = "linux"))]
                     let is_numpad_key = crate::keyboard::is_numpad_rdev_key(&key);
-                    _lock_mode_handler = Some(LockModesHandler::new_handler(evt, is_numpad_key, &state)?);
+                    _lock_mode_handler = LockModesHandler::for_key_press(evt, is_numpad_key, &state)?;
                 }
             }
         }

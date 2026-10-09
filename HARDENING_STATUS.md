@@ -13333,6 +13333,28 @@ after the correct source or receive sidecar is opened, its actual length admits 
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
 
+**Send starting-index admission — source corrected; named Linux library behavior PASSED, native integration OPEN.**
+`TransferJob::new_read_with_budget` admits filesystem jobs only at indexes from zero through the exact
+enumerated list end, inclusive; an invalid index cannot become a successful empty send job. The ordinary
+`new_read` wrapper shares that admission. CM, controlled-side and viewer callers propagate its typed
+failure before publishing/admitting the job; their installed/peer behavior was reviewed, not executed.
+At `964043eace0aa3b54090d9411f315bf7c56426c4`, unchanged production failed the native admission
+regression while the valid-start/resume/end fixture and 76 prior filesystem plus four config tests passed.
+Correction `2bea3ad205dd6a727e04c29fa31bc91c898ab342`, tree
+`f228240c12a4f28dfcf7de7cdbe2f00b56864d7b`, passed `--hbb-common-fs` in 143 VM seconds:
+78 filesystem, four config, five address and one socket-helper test. Both new tests are mandatory;
+they use real single-file, two-file and empty-directory inputs, exact bytes, EOF and accounting.
+The selected executable retained SHA-256 `f938665b72b1a6e1dc56939528377ec95898ad626b0fc3cebf3f6628e051898c`
+across all four groups. Raw `hbb-common-fs-run.JcXNTit3cR.serial.log` is 68,704 bytes/SHA-256
+`50ec682057691980999288a08bd30aec1ddd78580c4c517f46412540c4d89dcb`; baseline log, inert failure
+diagnostics and bounded assistant-observed receipts are in `send-index-964043ea-evidence` under the same
+VM root. The test oracle is unchanged except an explicit Rust 2018 diagnostic-format argument; baseline
+failure did not print its collected index list. Both runs used the same pinned zero-NIC VM/guest-only
+networkless inputs, frozen 1,283-path source records, unchanged host endpoints and joined cleanup.
+Full successful stdout and binary bytes were ephemeral. This is ordinary-user shared Linux library
+evidence; installed caller/peer errors, privilege boundaries, other platforms, namespace races,
+resources/latency/soak, release equality, independent reproduction and external review remain OPEN.
+
 **Whole-list receive completion — source corrected; named Linux library behavior PASSED, native integration OPEN.**
 `TransferJob::finalize_write` requires the active file's exact next index to equal the whole admitted
 file-list length before consuming its stream or publishing its claim. Viewer and CM callers already

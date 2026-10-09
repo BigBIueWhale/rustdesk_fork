@@ -35,7 +35,7 @@ target OS has executed them or that every in-flight helper operation drains on c
 | --- | --- |
 | Portable Linux server transaction (`250e775b9a88a62a980937e1f278ad053f2d9d58`) | Real nonroot parked/listening, CPace, Remote/FileTransfer admission, capacity/refusal, and joined-shutdown behavior in confinement. It is not an installed root service or current release artifact. |
 | Named Linux full-peer lifecycles (app `a3755044`; harness `7f6649f0`) | The exact retained Flutter 3.47.5 bundle, independently selected patched engine and shared overlay passed six uninstrumented viewer lifecycles in a 458-second zero-NIC replay without rebuilding the app. Real password prompts, visible publication-bound X11 pixels, eighteen 2/6/12-second focus-loss cycles on unchanged connections, eighteen server-generation reconnects, eighteen native resizes of the same accessible dialog, sampled resource bounds and joined teardown passed. Maximum measured pixel age was 444 ms; focus recovery at most 8 ms and first fresh reconnect pixels at most 367 ms. Complete raw serial and outer receipt are retained below. This named Linux 640x480/4-Hz scenario does not establish Android/Windows causation, the full FlView restart/dispose/subtree/Wayland matrix, sustained soak, cross-version, installed-service, cold-equality or release-artifact closure. |
-| Named Linux filesystem library evidence (`babdb676`) | A complete 143-second zero-NIC transaction passed 89 `hbb_common::fs` tests, four configuration transactions, five address/IPv6-formatting tests and one socket-helper test on pinned Rust 1.75. Two common-producer retirement regressions first failed at `de370fb5`; the byte-identical test module passed after correction. Initialization, reading and terminal retirement now use one selected entry, preserving a paused entry even when the fixture deliberately supplies repeated IDs. Three real-file/native guest-loopback TCP cases decode encrypted error/block/Done responses, own exact writer receipts and resume the survivor's exact bytes. This does not prove ordinary UI duplicate-ID reachability, PAKE or installed admission/routing. Earlier length/EOF, receive completion, index, enumeration and resume cases also passed. One executable retained its SHA-256 across all groups; the endpoint-only audit and joined cleanup passed. R-S11c-4d retains current/earlier evidence and unaccepted runs. Full viewer/CM/installed peer behavior, privileged receivers, other platforms, namespace/content races, response-memory bounds, soak and release evidence remain OPEN. |
+| Named Linux filesystem library evidence (`babdb676`) | A complete 143-second zero-NIC transaction passed 89 `hbb_common::fs` tests, four configuration transactions, five address/IPv6-formatting tests and one socket-helper test on pinned Rust 1.75. Two common-producer retirement regressions first failed at `de370fb5`; the byte-identical test module passed after correction. Initialization, reading and terminal retirement now use one selected entry, preserving a paused entry even when the fixture deliberately supplies repeated IDs. Three real-file/native guest-loopback TCP cases decode encrypted error/block/Done responses, own exact writer receipts and resume the survivor's exact bytes. This does not prove ordinary UI duplicate-ID reachability, PAKE or installed admission/routing. Earlier length/EOF, receive completion, index, enumeration and resume cases also passed. One executable retained its SHA-256 across all groups; the endpoint-only audit and joined cleanup passed. R-S11c-4d retains named evidence and unaccepted runs. Later confirmation correction `3b1558e8` passed 102 guest tests twice, but both whole transactions failed their post-run host endpoint audits; complete current-source harness acceptance remains OPEN. Full viewer/CM/installed peer behavior, privileged receivers, other platforms, namespace/content races, response-memory bounds, soak and release evidence remain OPEN. |
 | Exact clean Flutter model transaction (`ca5690869c4c665c2d5a17a8e6baeeb664afbb78`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 18 focused suites and 138 tests in 278 seconds on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. In addition to presentation-generation and completion-order coverage, the executed tests prove one isolate-wide three-conversion authority across distinct queue/session replacement, latest-only pending data, FIFO live waiters, exact cancelled-waiter removal, and visible bounded-waiter exhaustion. No host listener was added and cleanup joined. This is exact Dart/model and generated-bridge evidence, not target-native behavior by itself. |
 | Exact Android owner states (`a2cbbbd27228aa053994a2f65ee075baf7e88f68`) | A zero-NIC VM and networkless guest-only container compiled seven exact production Kotlin state classes with pinned Kotlin 2.0.21 and passed 15 scenarios with 293 assertions over closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation. This is pure owner-state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, JNI, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
 | Exact Android/CM Rust lifecycles (`ceec168e8a25d231156e59c25b08365a29fef5d7`) | A zero-NIC VM freshly generated the Flutter bridge, compiled the complete Linux-host Rust library with `linux-pkg-config,flutter`, and executed 24 exact production tests in a networkless guest-only container. Four cover listener generation and owned-child convergence; 20 cover exact CM registry/file-log/Android-child ownership, privacy activation/retirement, final-Remote cleanup, and resolution restoration. The offline canary, pinned sub-closures, read-only source/generated bindings, unchanged host listeners, and joined cleanup passed. This is Linux-target Rust behavior, not Android-target, JNI, Service/Activity, real socket/peer, APK/device, task-swipe, Force Stop, rendered presentation, or native Windows evidence. |
@@ -13334,14 +13334,16 @@ platform behavior, performance/soak, cold equality, independent reproduction, an
 
 ### R-S11c-4d — receive-file commit, resume, and failure finality
 
-**SOURCE CORRECTED; NAMED HEADLESS LINUX CM/VIEWER REPLAY AND CURRENT LINUX
-LIBRARY TESTS PASSED; PRIOR CROSS-PROCESS/PROCESS-DEATH AND SYSCALL-TRACED DURABILITY
+**SOURCE CORRECTED; NAMED HEADLESS LINUX CM/VIEWER REPLAY AND EARLIER LINUX LIBRARY
+TRANSACTIONS PASSED; CURRENT CONFIRMATION GUEST TESTS PASSED BUT COMPLETE HARNESS
+ACCEPTANCE OPEN; PRIOR CROSS-PROCESS/PROCESS-DEATH AND SYSCALL-TRACED DURABILITY
 EVIDENCE RETAINED; CURRENT NATIVE INTEGRATION, INSTALLED AND PHYSICAL POWER-LOSS
 EVIDENCE OPEN.**
 A transfer job has one immutable send or receive role.
 Only receive jobs may write, own receive sidecars, clean them, or commit them; only send jobs may
 read. File-list admission rejects invalid initial indexes and aggregate-size overflow. Confirmation
-requires the exact job and active file, refuses duplicates, and publishes a resumed stream only
+requires the exact job and active file and, for filesystem jobs, a present admitted list entry before
+any action, refuses duplicates, and publishes a resumed stream only
 after the correct source or receive sidecar is opened, its actual length admits the offset, the seek
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
@@ -13357,6 +13359,7 @@ native integration OPEN.** The relevant implementation is in `libs/hbb_common/sr
 | Direct read-step retirement | `handle_read_jobs` uses one selected vector entry through initialization, reading and terminal retirement, and returns at most one exact writer receipt. The separate initializer and numeric-ID finished list are deleted. |
 | Send resume source ownership | `set_stream_offset` checks metadata and seeks on the retained send `FileStream`; it does not reopen the pathname to replace an active stream. A first open remains provisional until length validation and seek succeed. Refused offsets preserve confirmation and accounting. |
 | Resume admitted size | Both roles reject offsets beyond the admitted entry size before path resolution, open, seek or accounting. Send also checks the retained object's actual length; in-place growth does not enlarge the admitted authority. |
+| File confirmation entry | Every filesystem-backed skip, overwrite and resume action requires a present entry at the exact matching current index before changing flags, counters, streams or cleanup state. Empty and completed lists cannot confirm an absent file; a present zero-byte file remains valid. |
 | File-list construction | `read_dir_with_budget`, both recursive scanners and `new_read_with_budget` propagate iterator, root/entry metadata and descendant failures. Unsupported UTF-8 names, unavailable modification times and pre-epoch times fail explicitly. Every scanned entry consumes quota even when hidden filtering excludes it; recursive byte accounting includes the complete relative name. Child-error string classification and partial-success branches are deleted. |
 
 CM, controlled-side and viewer constructor/confirmation/finalization error propagation remains
@@ -13415,6 +13418,35 @@ same-size content races, atomic filesystem snapshots, complete serialized-respon
 cancellation/storage faults, bounded resources/latency/soak, current release artifact binding,
 cold R-B2/R-B10 equality, independent reproduction and external review. These library results
 close none of those obligations.
+
+**Current confirmation admission — source corrected; native guest behavior PASSED, complete
+harness acceptance OPEN.** `TransferJob::confirm` previously checked list bounds only through
+nonzero resume; skip, overwrite and zero-offset actions could mutate an empty/completed job.
+Baseline `fd872be8` failed all three new negative regressions: each absent entry accepted those
+three actions. Its 89 passing filesystem tests include the new positive control; four config
+tests passed. Correction `3b1558e8` checks for the exact present filesystem entry before the shared
+action dispatch. The byte-identical test module covers sixteen absent-entry attempts across
+empty send/receive lists, real send EOF and completed receive publication, plus six valid
+empty/nonempty send-file skip/overwrite/zero-offset cases. Refusal preserves flags, counters,
+terminal completion and stream/claim absence; published and source bytes remain intact.
+These cases supersede the narrow synthetic nonzero-offset/empty-list test.
+
+Two corrected guests each passed 92 filesystem, four config, five address and one socket test
+(102 total), requiring all four new exact names. Both reported executable SHA-256
+`4b5ddbae68f591ca755391fa0779fa0d7ead3f32159d579bc1b9b654f956467c` across the groups and used
+the same source archive. **All three whole transactions are UNACCEPTED:** post-run host endpoint
+audits inventoried five new UDP endpoints on the baseline and two on each corrected attempt.
+No endpoint was attributed, inspected through a foreign process, or changed; the gate was not
+weakened. Each exact owner ended, source/index/mode/owner records remained frozen through joined
+cleanup, and disposable disks/media/sockets were retired. Inert diagnostic roots and manual
+`baseline.observed.json`, `corrected.outer-failed.observed.json` and
+`replay.outer-failed.observed.json` are retained under
+`.harness-state/verifier-vm/confirmation-fd872be8-evidence`; raw serials are
+`hbb-common-fs-run.tT7av7GOAQ.serial.log`, `hbb-common-fs-run.P33nzDqUEE.serial.log` and
+`hbb-common-fs-run.Q4gE5tu9tk.serial.log` under the VM root. These are ordinary-user Linux
+production-library outcomes, not an accepted complete isolation transaction, live peer/CM/UI or
+installed-principal result. Current full harness acceptance and every broader OPEN obligation above
+remain required.
 
 Receive blocks advance files monotonically. A terminal `Done` commits only the exact next index at the
 end of the whole admitted file list, after the active stream and retained staged handle are synchronized

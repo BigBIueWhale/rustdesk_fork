@@ -35,7 +35,7 @@ target OS has executed them or that every in-flight helper operation drains on c
 | --- | --- |
 | Portable Linux server transaction (`250e775b9a88a62a980937e1f278ad053f2d9d58`) | Real nonroot parked/listening, CPace, Remote/FileTransfer admission, capacity/refusal, and joined-shutdown behavior in confinement. It is not an installed root service or current release artifact. |
 | Named Linux full-peer lifecycles (app `a3755044`; harness `7f6649f0`) | The exact retained Flutter 3.47.5 bundle, independently selected patched engine and shared overlay passed six uninstrumented viewer lifecycles in a 458-second zero-NIC replay without rebuilding the app. Real password prompts, visible publication-bound X11 pixels, eighteen 2/6/12-second focus-loss cycles on unchanged connections, eighteen server-generation reconnects, eighteen native resizes of the same accessible dialog, sampled resource bounds and joined teardown passed. Maximum measured pixel age was 444 ms; focus recovery at most 8 ms and first fresh reconnect pixels at most 367 ms. Complete raw serial and outer receipt are retained below. This named Linux 640x480/4-Hz scenario does not establish Android/Windows causation, the full FlView restart/dispose/subtree/Wayland matrix, sustained soak, cross-version, installed-service, cold-equality or release-artifact closure. |
-| Named Linux filesystem library evidence (`07124e48`) | A complete 143-second zero-NIC transaction passed 73 `hbb_common::fs` tests, four configuration transactions, five address/IPv6-formatting tests and one socket-helper test on pinned Rust 1.75. Two byte-identical resume regressions first failed against unchanged production at `c414d58f` while the prior 71 filesystem tests passed; the corrected sender retains its announced source handle after pathname replacement and bounds the offset by that object's length. The six enumeration regressions also passed again. Cargo compiled one exact library test executable whose SHA-256 stayed unchanged before, between and after all four groups and is bound into guest/outer receipts under R-S11c-4d. Host endpoint-only checks and joined retirement passed. This supersedes `013d6798` as the latest named library evidence; earlier `d853188a` guest success had an invalid outer transaction and remains unaccepted. These are ordinary-user Linux library results, not Windows junction/handle, installed peer, end-to-end transfer, content snapshot/namespace-race, complete response-memory, soak or release-artifact evidence. |
+| Named Linux filesystem library evidence (`76ab9e12`) | A complete 143-second zero-NIC transaction passed 76 `hbb_common::fs` tests, four configuration transactions, five address/IPv6-formatting tests and one socket-helper test on pinned Rust 1.75. The byte-identical early-Done regression first failed against unchanged production at `c7dbf0ba`: completion returned success despite an unreceived admitted file. Corrected finalization requires both the exact next index and the end of the whole admitted list before publication; three mandatory new tests cover refusal/cleanup and valid multi-file, empty and explicitly skipped completion. Existing resume and enumeration regressions also passed. One exact Cargo-selected executable retained its SHA-256 across all four groups; source, raw serial and bounded observer evidence are recorded under R-S11c-4d. Endpoint-only audits found no host addition and exact cleanup joined. This supersedes `07124e48` as the latest named library evidence; its distinct resume evidence remains below. Earlier `d853188a` guest success had an invalid outer transaction and remains unaccepted. Installed viewer/CM and peer-visible outcomes, Windows/other targets, namespace/content races, response-memory bounds, soak and release evidence remain OPEN. |
 | Exact clean Flutter model transaction (`ca5690869c4c665c2d5a17a8e6baeeb664afbb78`) | A zero-NIC VM and networkless guest-only container freshly generated the Rust/Dart bridges and passed all 18 focused suites and 138 tests in 278 seconds on sealed Flutter 3.24.5, Rust 1.75.0, LLVM 15.0.6, FRB, Cargo-vendor, Pub-cache, and builder inputs. In addition to presentation-generation and completion-order coverage, the executed tests prove one isolate-wide three-conversion authority across distinct queue/session replacement, latest-only pending data, FIFO live waiters, exact cancelled-waiter removal, and visible bounded-waiter exhaustion. No host listener was added and cleanup joined. This is exact Dart/model and generated-bridge evidence, not target-native behavior by itself. |
 | Exact Android owner states (`a2cbbbd27228aa053994a2f65ee075baf7e88f68`) | A zero-NIC VM and networkless guest-only container compiled seven exact production Kotlin state classes with pinned Kotlin 2.0.21 and passed 15 scenarios with 293 assertions over closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation. This is pure owner-state behavior, not Android framework, `Activity`/service, MediaProjection, `AudioRecord`, JNI, APK, peer, device, task-swipe, Force Stop, or recorder cleanup evidence. |
 | Exact Android/CM Rust lifecycles (`ceec168e8a25d231156e59c25b08365a29fef5d7`) | A zero-NIC VM freshly generated the Flutter bridge, compiled the complete Linux-host Rust library with `linux-pkg-config,flutter`, and executed 24 exact production tests in a networkless guest-only container. Four cover listener generation and owned-child convergence; 20 cover exact CM registry/file-log/Android-child ownership, privacy activation/retirement, final-Remote cleanup, and resolution restoration. The offline canary, pinned sub-closures, read-only source/generated bindings, unchanged host listeners, and joined cleanup passed. This is Linux-target Rust behavior, not Android-target, JNI, Service/Activity, real socket/peer, APK/device, task-swipe, Force Stop, rendered presentation, or native Windows evidence. |
@@ -1689,6 +1689,9 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   CORRECTED; NAMED LINUX LIBRARY ACCEPTED; BROADER NATIVE EXECUTION OPEN.** A block, confirmation, finalization, peer error, skip, or cancellation
   retires exact current-file state through one fallible operation. Cleanup uncertainty is terminal and visible; an identity-mismatched replacement
   survives, and CM cancellation retains its exact generation until cleanup finality instead of manufacturing `Done`.
+  Whole-job `Done` also requires the end of the admitted list before active-file publication; the named Linux
+  early-completion refusal/cleanup and valid-list evidence is under R-S11c-4d. Installed caller and peer-visible
+  finality remain OPEN.
   `TransferJob::finish_current_write_file` now consumes `flush().await?` before `sync_all()` and
   publication. Pinned [Tokio 1.44.2](https://github.com/tokio-rs/tokio/blob/tokio-1.44.2/tokio/src/fs/file.rs)
   can otherwise retain a pending write error while filesystem sync succeeds. Correction `d853188a`
@@ -13311,7 +13314,7 @@ platform behavior, performance/soak, cold equality, independent reproduction, an
 
 ### R-S11c-4d — receive-file commit, resume, and failure finality
 
-**SOURCE CORRECTED; NAMED HEADLESS LINUX CM/VIEWER REPLAY AND CURRENT RESUME/ENUMERATION
+**SOURCE CORRECTED; NAMED HEADLESS LINUX CM/VIEWER REPLAY AND CURRENT LINUX
 LIBRARY TESTS PASSED; PRIOR CROSS-PROCESS/PROCESS-DEATH AND SYSCALL-TRACED DURABILITY
 EVIDENCE RETAINED; CURRENT NATIVE INTEGRATION, INSTALLED AND PHYSICAL POWER-LOSS
 EVIDENCE OPEN.**
@@ -13322,6 +13325,34 @@ requires the exact job and active file, refuses duplicates, and publishes a resu
 after the correct source or receive sidecar is opened, its actual length admits the offset, the seek
 succeeds, and byte accounting remains representable. Malformed or over-limit zstd input is an
 explicit write failure rather than a successful empty block.
+
+**Whole-list receive completion — source corrected; named Linux library behavior PASSED, native integration OPEN.**
+`TransferJob::finalize_write` requires the active file's exact next index to equal the whole admitted
+file-list length before consuming its stream or publishing its claim. Viewer and CM callers already
+propagate refusal through their terminal file results and explicit fallible cleanup; that caller/peer
+behavior was reviewed but not executed for this correction. Empty and explicitly skipped lists retain
+the existing no-stream completion path.
+
+The byte-identical regression failed against unchanged production at
+`c7dbf0baebc896c7f3c8742c9f6138da9fe7a756`: an early `Done` returned `Ok(())`, while 75 other filesystem
+tests and four config tests passed. Correction `76ab9e1279bdf94d20a5da5a76de4a7788f0a513`, tree
+`519024644b992326c778b2923c65bc8410fceacf`, passed `--hbb-common-fs` in 143 VM seconds:
+76 filesystem, four config, five address and one socket-helper test. Three mandatory new production-job
+tests prove pre-publication refusal with retained stream/claim and explicit exact cleanup, valid two-file
+completion including an empty last file, and valid empty/explicitly skipped lists. The one Cargo-selected
+library executable retained SHA-256 `610343669b19a43b091ab260ff068212b540a9de28cca00b5513d9980b43fde8`
+before, between and after all four groups. Raw `hbb-common-fs-run.UM0xkL1hEt.serial.log` is 68,593 bytes,
+SHA-256 `0010dc621b1e19c923f5940a596110de343726377f380b6f9b2f1e497954d0fb`; bounded assistant-observed
+receipt: `.harness-state/verifier-vm/receive-list-c7dbf0ba-evidence/corrected.accepted.json`.
+Baseline failure, pre-execution binary digest, source identity and inert cleanup diagnostics remain in
+`hbb-common-fs-run.WtblkwSIXY.serial.log` and the same evidence directory's `baseline.observed.json`;
+the failed baseline is not an accepted whole transaction. Both used the same pinned inputs, zero-NIC
+ordinary-user VMs and guest-only networkless UID/GID-1000 containers; 1,284 tracked source/mode/owner
+records stayed unchanged within each run, no host endpoint was added, and exact cleanup joined.
+Successful full test stdout and executable bytes were ephemeral; raw serial retains group summaries
+and the source-bound artifact receipt. This is shared Linux library evidence, not installed viewer/CM,
+peer-visible failure, Windows/other-platform, complete namespace-race, resource/latency/soak, release,
+independent-reproduction or external-review evidence; those obligations remain OPEN.
 
 **Send resume source ownership — source corrected; named Linux library behavior PASSED, native integration OPEN.**
 `TransferJob::set_stream_offset` reuses the active send `FileStream` for metadata and seek rather than
@@ -13381,8 +13412,9 @@ installed receiver/caller behavior, atomic filesystem snapshots, descriptor-rela
 complete serialized-response memory ceilings, other platforms, soak, release artifacts and independent
 reproduction remain OPEN.
 
-Receive blocks advance files monotonically. A terminal `Done` commits only the exact next index,
-after the active stream and retained staged handle are synchronized and the staged file's time is set;
+Receive blocks advance files monotonically. A terminal `Done` commits only the exact next index at the
+end of the whole admitted file list, after the active stream and retained staged handle are synchronized
+and the staged file's time is set;
 incomplete or stale terminal indexes fail. The admitted digest handle is removed before the exact
 final rename. Publication is an irreversible in-memory state transition immediately after rename,
 before any post-rename barrier. Unix then synchronizes the retained containing-directory handle;

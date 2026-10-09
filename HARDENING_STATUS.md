@@ -982,25 +982,54 @@ between-request release failure, native event/group-lock/asynchronous errors,
 map races, concurrency, whole heap/soak, full Cargo/app/install, other platforms
 and broader authority/artifact/release evidence remain OPEN.
 
-**Closed private native input ABI; native acceptance pending.**
+**Closed private native input ABI; focused native acceptance.**
 The provider/header expose only the twelve context, version, numeric-key,
-pointer/button and cursor/input-state operations listed in
+pointer/button and cursor/input-state operations in
 `scripts/fixtures/xdo-input-exports.txt`. Twenty-five unused window/property/name,
 client/desktop/geometry queries, polling, repeated-click and feature APIs,
 the entire regex search module and ten unused Rust bindings/facades are removed.
-Cursor coordinates retain only `XQueryPointer`; focused-window observation is
-private to key routing. There is no Xinerama provider dependency. Context layout
-and supported input semantics remain. Provider/helper/loader require
-`3.20160805.1-rustdesk10`; the wrong-version fixture is corrected current C
-stamped 9. Actual ELF export equality and 59 retired-name loader refusals are
-required before current acceptance. The normal/staged loader fixture also
-observes native delivery to its explicitly focused window.
-The version-9 acceptance at `e645b34c8caca0d89b8c79910cb33ee7cf0a1891` is
-historical; its raw `x11-display-tests-run.OAbXaPKjW0.serial.log` SHA-256 is
-`9e4824156a67c83efc57aebe7d7734bda38d6995e82ef03335372239d1ab096d`.
-Current native execution remains pending. Full Cargo/app/install, staging CLI,
-serving-principal/loader races, Xlib/whole-heap and concurrency/resource/soak
-coverage and all broader installed/native/release obligations remain OPEN.
+Cursor coordinates use only `XQueryPointer`; focus observation is private to
+key routing. The provider has no Xinerama dependency. Context layout and
+supported input semantics remain. Provider/helper/loader require
+`3.20160805.1-rustdesk10`; wrong-version uses corrected current C stamped 9.
+Product `7eed7127d2b6a31f74beb91e191989d6ab999ad6` plus the truthful
+variant-derived source-delta receipt at candidate
+`9e3635d02ee6e5d5415cbdbab5220800cc942290`
+(tree `9b9ba9c818e3cbf8aac839959daf4fb3f745def6`) passed the complete
+focused zero-NIC transaction in 135 seconds with outer exit 0.
+Actual ELF inventories match the exact twelve-name API on the helper and
+five loader fixtures, omitting only intentionally renamed required symbols
+in missing-symbol fixtures. Normal and staged complete-provider runs each
+refused all 59 retired names through real symbol lookups, then delivered
+native absolute/relative pointer, button, Shift and focused-window a input
+and retired descriptors. Complete production-loader/Linux Enigo passed
+complete, missing mouse/key, wrong-version, writable, absent and native
+modifier-error scenarios. Retained ASan constructor, state/modifier admission
+and same-context recovery, numeric-key and scratch regressions and actual
+Enigo/mouse/text/layout events passed on corrected current C.
+Helper/complete-loader provider are the same 21,384-byte version-10 ELF,
+SHA-256 `e18925cb04b475e6ff563af997020c92338d831cc764eceadc67851869c58c36`.
+Actual staging resolved 10 provider dependencies and 21 libraries; distribution
+XDO is absent. Raw
+`.harness-state/verifier-vm/x11-display-tests-run.B2ueT7vZm8.serial.log`
+is 103,702 bytes, SHA-256
+`76423d8a5e082f5c89e073f8b32c656d8d0aca6bcd70b494936deef4d7de65e7`.
+The explicitly nonindependent assistant-observed
+`evidence/xdo-input-abi-run.B2ueT7vZm8.outer.receipt` under that same root
+is 18,213 bytes, SHA-256
+`a5b59373fdd45a316511ad2f3c3633cd5f383c0f630eb51ff7ba95440cc8c5d9`.
+It retains exact outer/native/source evidence and the superseded first-run limit.
+Outer before/during/after protocol-endpoint-only inventories report no host
+listener additions; cleanup joined and the exact run root/overlay is absent.
+Snapshots auto-retired; independent after-snapshot comparison is unclaimed.
+Four real dependencies were authenticated; the common facade is partial.
+Full Cargo/app/install and staging CLI, privileged receiver/serving-principal
+and loader identity/ACL races were unexecuted. Xvfb uses `-ac`; authenticated
+Xauthority is unproved. ASan leak detection is disabled; Xlib-internal and
+whole-heap scope, concurrency/resources/soak, other platforms and broader
+native/installed/artifact/release/review obligations remain OPEN.
+Version-9 native acceptance at
+`e645b34c8caca0d89b8c79910cb33ee7cf0a1891` remains historical.
 
 **OPEN:** constructor/diagnostic bounds; exact connected peer/session and authenticated
 Xauthority (Xvfb uses `-ac`); loader identity/ACL races and integrated consumers,

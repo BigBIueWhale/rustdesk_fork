@@ -1339,12 +1339,6 @@ fi
 echo "== (3b-iii-a1a01) Voice-call exact input ownership (R-S11bq/R-S11e-83) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e83_ --color never
 
-if python3 scripts/verify-session-stream-generation.py --repo . --self-test; then
-  echo "  ok  R-S11e-287 outgoing Flutter event streams reserve exact consumer generations before native replacement"
-else
-  echo "  FAIL R-S11e-287 outgoing Flutter event streams regained same-owner predecessor callback or finality authority"
-  rc=1
-fi
 if python3 scripts/verify-android-client-lifecycle-drain.py --repo .; then
   echo "  ok  R-S11e-178 Android component lifecycle retires exact outgoing owners without waiting on native worker finality"
 else

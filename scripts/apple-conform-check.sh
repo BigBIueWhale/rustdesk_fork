@@ -4618,14 +4618,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c2ade) R-S11ix exact Dart session-stream consumer generation =="
-if python3 scripts/verify-session-stream-generation.py --repo . --self-test; then
-  note "ok  R-S11ix Apple/shared Flutter event streams reserve exact consumer generations before native replacement"
-else
-  echo "  FAIL R-S11ix Apple/shared Flutter event streams regained same-owner predecessor callback or finality authority"
-  rc=1
-fi
-
 echo "== (2g-c2b) R-S11go exact-owner ordered display-selection finality =="
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
   note "ok  R-S11go Apple/shared display selection is exact-owner, typed, ordered, bounded, and failure-visible"

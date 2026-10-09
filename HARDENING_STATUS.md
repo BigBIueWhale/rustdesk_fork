@@ -13044,14 +13044,21 @@ session, queue, presentation, failure, or native-close effect. Exact owner
 retirement clears only its own binding. No stream history, subscription registry,
 retry, queue, worker, service transition, or reconnect policy is added.
 
-**Evidence.** `flutter/test/session_stream_finality_test.dart` covers same-owner
-replacement, strict generation advance, different-owner retirement refusal, and
-exact current-owner retirement. `scripts/verify-session-stream-generation.py`,
-the shared Android ownership gate, Apple gate, and independent workspace baseline
-bind pre-native reservation and exact-current callback/finality checks. The named
-clean transaction generated the bridges and executed this suite under Flutter
-3.24.5 in a networkless guest-only container. This is Dart/model and generated-
-bridge evidence, not device or installed-artifact evidence.
+**Evidence.** The four executable cases in
+`flutter/test/session_stream_finality_test.dart` exercise the production generation
+and finality classes: expected-close suppression, once-only unexpected termination,
+same-owner replacement/generation advance, and different-owner refusal/exact-owner
+retirement. The named clean transaction generated the bridges and executed this
+suite under Flutter 3.24.5 in a networkless guest-only container. This is Dart/model
+and generated-bridge evidence, not native callback, device or installed-artifact evidence.
+
+The 364-line `scripts/verify-session-stream-generation.py` wording checker and its
+32 in-memory string replacements are deleted from the shared and Apple gates.
+Substring order/counts, brace scanning, test descriptions and the checker's own
+invocation text did not execute Dart, attach a stream, or deliver a predecessor
+message, web RGBA, error or done callback. The executable Dart cases and their full
+and focused guest test commands remain unchanged; none ran for this deletion.
+They do not establish stale-callback finality through native stream replacement.
 
 **Open evidence.** Run the exact current bridge and artifact through physical
 Android task-swipe/reopen/Force-Stop and native Windows focus/minimize/window-

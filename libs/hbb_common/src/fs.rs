@@ -3869,11 +3869,6 @@ impl TransferJob {
 
     async fn set_stream_offset(&mut self, file_num: usize, offset: u64) -> ResultType<()> {
         if let DataSource::FilePath(p) = &self.data_source {
-            // §20 post-key DoS bound (defensive — mirrors write()'s "Wrong file number" guard):
-            // file_num arrives from a peer FileTransferSendConfirmRequest. confirm() gates it on
-            // self.file_num(), but that defaults to 0 and self.files can be empty (e.g. an
-            // empty-directory send job), so a crafted confirm(file_num=0, OffsetBlk>0) would index
-            // out of bounds and panic the connection task. Fail closed instead of indexing.
             if file_num >= self.files.len() {
                 bail!("confirmation file number {} is out of range", file_num);
             }
@@ -3881,7 +3876,6 @@ impl TransferJob {
             let path = self
                 .resolve_entry_path(p, &entry.name)
                 .ok_or_else(|| anyhow!("invalid confirmation path for file {}", file_num))?;
-            let file_path = get_string(&path);
             let transferred = self
                 .transferred
                 .checked_add(offset)
@@ -3911,7 +3905,14 @@ impl TransferJob {
                     self.receive_write_claim = Some(claim);
                 }
                 TransferRole::Send => {
-                    let mut file = File::open(&file_path).await?;
+                    let mut opened_file = None;
+                    let file = match self.data_stream.as_mut() {
+                        Some(DataStream::FileStream(file)) => file,
+                        Some(DataStream::BufStream(_)) => {
+                            bail!("cannot seek an in-memory stream to a confirmed file offset")
+                        }
+                        None => opened_file.insert(File::open(&path).await?),
+                    };
                     let available = file.metadata().await?.len();
                     if offset > available {
                         bail!(
@@ -3921,7 +3922,9 @@ impl TransferJob {
                         );
                     }
                     file.seek(std::io::SeekFrom::Start(offset)).await?;
-                    self.data_stream = Some(DataStream::FileStream(file));
+                    if let Some(file) = opened_file {
+                        self.data_stream = Some(DataStream::FileStream(file));
+                    }
                 }
             }
             self.transferred = transferred;

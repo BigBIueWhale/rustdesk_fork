@@ -642,10 +642,19 @@ static void scratch_components(xdo_t *input, Display *observer, Window window, i
     if (scenario == 3) fixture->server->behaviors[code].type = XkbKB_Lock;
     if (scenario == 4) actions[0].type = XkbSA_SetMods;
     component_row(observer, fixture, changes, code);
+    if (scenario == 0) {
+      fixture->server->explicit[code] = XkbExplicitInterpretMask;
+      XkbMapChangesRec flags = {0};
+      flags.changed = XkbExplicitComponentsMask;
+      flags.first_key_explicit = code;
+      flags.num_key_explicit = 1;
+      require(XkbChangeMap(observer, fixture, &flags), "neutral fixture original flags not sent");
+      XSync(observer, False);
+    }
     XkbFreeKeyboard(fixture, 0, True);
     XkbDescPtr configured = component_snapshot(observer);
     require(XkbKeyNumGroups(configured, code) == 2 && XkbKeyGroupsWidth(configured, code) == 2
-            && configured->server->explicit[code] == XkbAllExplicitMask
+            && configured->server->explicit[code] == (scenario == 0 ? XkbExplicitInterpretMask : XkbAllExplicitMask)
             && configured->map->modmap[code] == (scenario == 1 ? ShiftMask : 0)
             && configured->server->vmodmap[code] == (scenario == 2 ? 1 : 0)
             && configured->server->behaviors[code].type == (scenario == 3 ? XkbKB_Lock : XkbKB_Default)

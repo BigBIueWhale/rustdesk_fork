@@ -177,8 +177,8 @@ def build():
             elif variant == 'wrong-version':
                 path = source_dir / 'xdo_version.h'
                 text = path.read_text()
-                require(text.count('3.20160805.1-rustdesk21') == 1, 'fixture version source differs')
-                path.write_text(text.replace('3.20160805.1-rustdesk21', '3.20160805.1-rustdesk20'))
+                require(text.count('3.20160805.1-rustdesk22') == 1, 'fixture version source differs')
+                path.write_text(text.replace('3.20160805.1-rustdesk22', '3.20160805.1-rustdesk21'))
             else:
                 path = source_dir / 'xdo.c'
                 path.write_text('#define XGetModifierMapping rd_fixture_x_get_modifier_mapping\n' + path.read_text()

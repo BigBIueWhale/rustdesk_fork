@@ -864,7 +864,7 @@ static void held_modifiers(xdo_t *input, Display *observer, Window window) {
   XFreeModifiermap(map);
 }
 
-static void modifier_pair_order(Display *observer, Window window) {
+static void modifier_pair_order(Display *observer, Window window, int shared) {
   int descriptors = entries("/proc/self/fd"), tasks = entries("/proc/self/task");
   clear_keys(observer);
   XkbDescPtr original = component_snapshot(observer), changed = component_snapshot(observer);
@@ -901,6 +901,31 @@ static void modifier_pair_order(Display *observer, Window window) {
   changes.num_types = 1;
   changes.first_key_explicit = code;
   changes.num_key_explicit = 1;
+  KeyCode unrelated = 0;
+  if (shared) {
+    unrelated = XKeysymToKeycode(observer, XK_F1);
+    require(unrelated && unrelated != code && unrelated != shift
+            && changed->map->modmap[unrelated] == 0 && !XkbKeyHasActions(changed, unrelated)
+            && XkbKeyNumGroups(changed, shift) == 1 && XkbKeyNumSyms(changed, shift) == 1,
+            "shared modifier fixture rows unavailable");
+    for (int key = changed->min_key_code; key <= changed->max_key_code; key++)
+      changed->map->modmap[key] &= ~ControlMask;
+    changed->map->modmap[shift] = ShiftMask | ControlMask;
+    XkbKeySymEntry(changed, shift, 0, 0) = 0x0101f603UL;
+    XkbAction *action = XkbResizeKeyActions(changed, shift, 1);
+    require(action != NULL, "shared modifier action storage unavailable");
+    *action = (XkbAction){0};
+    action->mods.type = XkbSA_SetMods;
+    action->mods.flags = XkbSA_UseModMapMods;
+    changed->server->explicit[shift] = XkbAllExplicitMask;
+    changes.changed |= XkbModifierMapMask | XkbKeyActionsMask;
+    changes.first_modmap_key = changed->min_key_code;
+    changes.num_modmap_keys = changed->max_key_code - changed->min_key_code + 1;
+    changes.first_key_sym = changes.first_key_explicit = code < shift ? code : shift;
+    changes.num_key_syms = changes.num_key_explicit = abs(code - shift) + 1;
+    changes.first_key_act = shift;
+    changes.num_key_acts = 1;
+  }
   require(XkbChangeMap(observer, changed, &changes), "modifier order fixture map not sent");
   XSync(observer, False);
   XkbDescPtr configured = component_snapshot(observer);
@@ -908,6 +933,19 @@ static void modifier_pair_order(Display *observer, Window window) {
           && XkbKeyKeyType(configured, code, 0)->mods.mask == (ShiftMask | ControlMask)
           && XkbKeySymEntry(configured, code, 1, 0) == 0x0101f602UL
           && !XkbKeyHasActions(configured, code), "native modifier order layout differs");
+  if (shared) {
+    XFreeModifiermap(modifiers);
+    modifiers = XGetModifierMapping(observer);
+    require(modifiers && modifiers->modifiermap && modifiers->max_keypermod > 0
+            && modifiers->modifiermap[ShiftMapIndex * modifiers->max_keypermod] == shift
+            && modifiers->modifiermap[ControlMapIndex * modifiers->max_keypermod] == shift
+            && configured->map->modmap[shift] == (ShiftMask | ControlMask)
+            && XkbKeySymEntry(configured, shift, 0, 0) == 0x0101f603UL
+            && XkbKeyHasActions(configured, shift)
+            && XkbKeyActionsPtr(configured, shift)[0].mods.type == XkbSA_SetMods
+            && (XkbKeyActionsPtr(configured, shift)[0].mods.flags & XkbSA_UseModMapMods),
+            "shared modifier native slot/action map differs");
+  }
   xdo_t *input = xdo_new("unix/:98.0");
   require(input != NULL, "modifier order product context unavailable");
   int found = 0;
@@ -923,26 +961,27 @@ static void modifier_pair_order(Display *observer, Window window) {
   modifier_main = code;
   modifier_symbol = 0x0101f602UL;
   modifier_window = window;
-  int total_events = 0;
+  int total_events = 0, collisions = 0;
   for (int round = 0; round < 4; round++) {
     for (int delayed = 0; delayed < 2; delayed++) {
       for (int profile = 0; profile < 4; profile++) {
         if (profile & 1) fixture_key(observer, window, shift, 1);
-        if (profile & 2) fixture_key(observer, window, control, 1);
+        if (profile & 2) fixture_key(observer, window, shared ? unrelated : control, 1);
         char keys[32];
         XkbStateRec state = {0};
         held_state(observer, keys, &state);
-        modifier_mask = (profile & 1 ? ShiftMask : 0) | (profile & 2 ? ControlMask : 0);
+        modifier_mask = shared ? (profile & 1 ? ShiftMask | ControlMask : 0)
+                              : (profile & 1 ? ShiftMask : 0) | (profile & 2 ? ControlMask : 0);
         require(state.mods == modifier_mask && state.group == 0,
                 "modifier order preheld state differs");
         memcpy(modifier_keys, keys, 32);
         int presses = 0;
         if (!(profile & 1)) {
           modifier_steps[presses].code = shift;
-          modifier_steps[presses].mask = ShiftMask;
+          modifier_steps[presses].mask = shared ? ShiftMask | ControlMask : ShiftMask;
           modifier_steps[presses++].pressed = True;
         }
-        if (!(profile & 2)) {
+        if (!shared && !(profile & 2)) {
           modifier_steps[presses].code = control;
           modifier_steps[presses].mask = ControlMask;
           modifier_steps[presses++].pressed = True;
@@ -956,6 +995,25 @@ static void modifier_pair_order(Display *observer, Window window) {
         }
         modifier_step = 0;
         modifier_step_count = 2 * presses;
+        if (shared && !(profile & 1)) {
+          reset_text_query();
+          observe = 1;
+          int status = xdo_enter_text_scalar(input, 0x1f603, delayed ? 12000 : 0);
+          observe = 0;
+          require(status == XDO_ERROR && state_queries == 1 && key_queries == 1
+                  && key_replies == 1 && key_retirements == 1
+                  && modifier_queries == 1 && modifier_frees == 1 && input_calls == 0
+                  && group_changes == 0 && mapping_changes == 0 && queries == 0 && frees == 0,
+                  "main/modifier role collision emitted input or retained storage");
+          XEvent extra;
+          XSync(observer, False);
+          require(!XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &extra),
+                  "main/modifier role refusal delivered an event");
+          same_held_state(observer, keys, &state);
+          same_components(observer, configured);
+          same_modifiers(observer, modifiers);
+          collisions++;
+        }
         reset_text_query();
         modifier_observer = observer;
         observe = 1;
@@ -974,14 +1032,15 @@ static void modifier_pair_order(Display *observer, Window window) {
         same_held_state(observer, keys, &state);
         same_components(observer, configured);
         same_modifiers(observer, modifiers);
-        if (profile & 2) fixture_key(observer, window, control, 0);
+        if (profile & 2) fixture_key(observer, window, shared ? unrelated : control, 0);
         if (profile & 1) fixture_key(observer, window, shift, 0);
         clear_keys(observer);
         total_events += modifier_step_count;
       }
     }
   }
-  require(total_events == 128, "modifier order event coverage differs");
+  require(total_events == (shared ? 96 : 128) && collisions == (shared ? 16 : 0),
+          "modifier order/role coverage differs");
   product_display = NULL;
   xdo_free(input);
   require(XkbChangeMap(observer, original, &changes), "modifier order original map not sent");
@@ -995,7 +1054,10 @@ static void modifier_pair_order(Display *observer, Window window) {
   clear_keys(observer);
   require(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks,
           "modifier order descriptors/tasks retained");
-  puts("XDO_TEXT_MODIFIER_ORDER_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=128 main_legs=64 order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false");
+  if (shared)
+    puts("XDO_TEXT_MODIFIER_ROLES_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=96 main_legs=64 modifier_slots=2 physical_modifier=single role_collision_refused=16 refusal_effects=none recovery=same-context order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false");
+  else
+    puts("XDO_TEXT_MODIFIER_ORDER_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=128 main_legs=64 order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false");
 }
 
 static void held_scratch(xdo_t *input, Display *observer, Window window,
@@ -1399,7 +1461,8 @@ int main(void) {
   XSetInputFocus(observer, window, RevertToParent, CurrentTime);
   XSync(observer, False);
   text_group_layout(observer, window);
-  modifier_pair_order(observer, window);
+  modifier_pair_order(observer, window, 0);
+  modifier_pair_order(observer, window, 1);
   same_map(observer, low, count, initial_width, initial);
   xdo_t *input = xdo_new("unix/:98.0");
   require(input != NULL, "product context unavailable");

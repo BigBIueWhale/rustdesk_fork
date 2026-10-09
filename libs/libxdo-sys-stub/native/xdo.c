@@ -28,7 +28,8 @@ static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key,
                                       KeySym keysym, unsigned int current_group);
 static void _xdo_text_event(const xdo_t *xdo, charcodemap_t *key,
                           const KeyCode *modifiers, int is_press, useconds_t delay);
-static int _xdo_get_key_modifiers(const xdo_t *xdo, int modmask, KeyCode *modifiers);
+static int _xdo_get_key_modifiers(const xdo_t *xdo, const charcodemap_t *key,
+                                const unsigned char *held, KeyCode *modifiers);
 static int _xdo_restore_scratch(xdo_t *xdo);
 static int _xdo_query_keys(xcb_connection_t *connection, unsigned char *output);
 
@@ -409,13 +410,8 @@ int xdo_enter_text_scalar(xdo_t *xdo, unsigned int scalar, useconds_t delay) {
   _xdo_charcodemap_from_keysym(xdo, &key, symbol, state.group);
   if (!key.needs_binding && (held[key.code / 8] & (1U << (key.code % 8))))
     return XDO_ERROR;
-  if (_xdo_get_key_modifiers(xdo, key.modmask, modifiers) != XDO_SUCCESS)
+  if (_xdo_get_key_modifiers(xdo, &key, held, modifiers) != XDO_SUCCESS)
     return XDO_ERROR;
-  for (int i = ShiftMapIndex; i <= Mod5MapIndex; i++) {
-    KeyCode code = modifiers[i];
-    if (code != 0 && (held[code / 8] & (1U << (code % 8))))
-      modifiers[i] = 0;
-  }
 
   return _xdo_enter_text_scalar_do(xdo, &key, modifiers, held, delay);
 }
@@ -576,7 +572,9 @@ void _xdo_text_event(const xdo_t *xdo, charcodemap_t *key,
   }
 }
 
-static int _xdo_get_key_modifiers(const xdo_t *xdo, int modmask, KeyCode *modifiers) {
+static int _xdo_get_key_modifiers(const xdo_t *xdo, const charcodemap_t *key,
+                                const unsigned char *held, KeyCode *modifiers) {
+  int modmask = key->modmask;
   if (modmask == 0)
     return XDO_SUCCESS;
   if ((modmask & ~0xff) != 0 || xdo->keycode_low < 8 || xdo->keycode_high > 255
@@ -591,17 +589,28 @@ static int _xdo_get_key_modifiers(const xdo_t *xdo, int modmask, KeyCode *modifi
   for (int i = ShiftMapIndex; i <= Mod5MapIndex; i++) {
     if (!(modmask & (1 << i)))
       continue;
+    KeyCode selected = 0;
     for (int j = 0; j < map->max_keypermod; j++) {
       KeyCode code = map->modifiermap[i * map->max_keypermod + j];
       if (code == 0)
         continue;
       if (code < xdo->keycode_low || code > xdo->keycode_high)
         goto done;
-      modifiers[i] = code;
+      selected = code;
       break;
     }
-    if (modifiers[i] == 0)
+    if (selected == 0 || (!key->needs_binding && selected == key->code))
       goto done;
+    if (held[selected / 8] & (1U << (selected % 8)))
+      continue;
+    /* Modifier slots may share a physical code; acquire that code only once. */
+    for (int j = ShiftMapIndex; j < i; j++) {
+      if (modifiers[j] == selected) {
+        selected = 0;
+        break;
+      }
+    }
+    modifiers[i] = selected;
   }
   status = XDO_SUCCESS;
 done:

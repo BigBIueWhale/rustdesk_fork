@@ -4290,6 +4290,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'clipboard listener completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
+        'XDO_TEXT_MODIFIER_ROLES_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=96 main_legs=64 modifier_slots=2 physical_modifier=single role_collision_refused=16 refusal_effects=none recovery=same-context order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
+        'shared text modifier codes are owned once and main/modifier collisions refuse before effects'
+    require_exact_fixed_receipt \
         'XDO_TEXT_MODIFIER_ORDER_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=128 main_legs=64 order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
         'temporary text modifiers remain live through main release and retire in reverse order'
     require_exact_fixed_receipt \
@@ -4375,6 +4378,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'key-input guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'key-input guest completion'
 elif [ "$MODE" = x11-display-tests ]; then
+    require_exact_fixed_receipt \
+        'XDO_TEXT_MODIFIER_ROLES_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=96 main_legs=64 modifier_slots=2 physical_modifier=single role_collision_refused=16 refusal_effects=none recovery=same-context order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
+        'shared text modifier codes are owned once and main/modifier collisions refuse before effects'
     require_exact_fixed_receipt \
         'XDO_TEXT_MODIFIER_ORDER_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=128 main_legs=64 order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
         'temporary text modifiers remain live through main release and retire in reverse order'

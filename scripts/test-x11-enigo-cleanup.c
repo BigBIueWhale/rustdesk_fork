@@ -165,7 +165,7 @@ void enigo_cleanup_before_free(xdo_t *context) {
            && context->scratch_keycode == scratch_code);
     phase = 1;
   } else {
-    assert(phase == 2 && context != pending && context->close_display_when_freed
+    assert(phase == 2 && pending == NULL && context->close_display_when_freed
            && context->scratch_original == NULL);
     /* A real request succeeds after child retirement and before owner close. */
     XSync(borrowed_display, False);
@@ -173,17 +173,19 @@ void enigo_cleanup_before_free(xdo_t *context) {
   }
 }
 
-void enigo_cleanup_after_free(xdo_t *context) {
+void enigo_cleanup_after_free(void) {
   if (observer == NULL) return;
-  /* Only compare identities; the native destructor already freed context. */
+  /* Identity was checked before free; never evaluate a retired C pointer. */
   if (phase == 1) {
-    assert(context == pending);
+    pending = NULL;
+    retained_original = NULL;
     restored_components();
     keys_clear();
     no_events();
     phase = 2;
   } else {
-    assert(phase == 3 && context != pending);
+    assert(phase == 3);
+    borrowed_display = NULL;
     phase = 4;
   }
 }

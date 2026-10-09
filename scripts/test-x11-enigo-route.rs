@@ -52,7 +52,7 @@ extern "C" {
     fn enigo_cleanup_pending();
     fn enigo_cleanup_allow_retirement();
     fn enigo_cleanup_before_free(context: *mut xdo_t);
-    fn enigo_cleanup_after_free(context: *mut xdo_t);
+    fn enigo_cleanup_after_free();
     fn enigo_cleanup_finish();
 }
 pub unsafe fn xdo_enter_text_scalar(context: *mut xdo_t, scalar: char, delay: useconds_t) -> c_int {
@@ -124,7 +124,7 @@ unsafe extern "C" fn __wrap_xdo_new_with_opened_display(display: *mut Display, n
 unsafe extern "C" fn __wrap_xdo_free(context: *mut xdo_t) {
     enigo_cleanup_before_free(context);
     __real_xdo_free(context);
-    enigo_cleanup_after_free(context);
+    enigo_cleanup_after_free();
     RETIREMENTS.fetch_add(1, Ordering::SeqCst);
 }
 #[no_mangle]

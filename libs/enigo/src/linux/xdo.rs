@@ -10,7 +10,7 @@ use crate::{checked_scroll_magnitude, Key, KeyboardControllable, MouseButton, Mo
 use hbb_common::libc::c_int;
 use hbb_common::platform::x11_display::unix_display_name;
 use hbb_common::x11::keysym::*;
-use hbb_common::x11::xlib::{Display, XCloseDisplay, XDefaultScreen, XGetPointerMapping, XOpenDisplay};
+use hbb_common::x11::xlib::{Display, XCloseDisplay, XGetPointerMapping, XOpenDisplay};
 use libxdo_sys::{self, xdo_t, XdoKey, XdoKeyAction};
 use std::ffi::CString;
 
@@ -97,7 +97,6 @@ pub(super) struct EnigoXdo {
     xdo: *mut xdo_t,
     display: *mut Display,
     display_name: Option<CString>,
-    screen: c_int,
     delay: u64,
 }
 // This is safe, we have a unique pointer.
@@ -113,7 +112,6 @@ impl Default for EnigoXdo {
             xdo: std::ptr::null_mut(),
             display: std::ptr::null_mut(),
             display_name: None,
-            screen: 0,
             delay: DEFAULT_DELAY,
         };
         let display_name = match unix_display_name() {
@@ -129,7 +127,6 @@ impl Default for EnigoXdo {
             return owner;
         }
         let opened = OpenedDisplay(display);
-        let screen = unsafe { XDefaultScreen(display) };
         let xdo = unsafe { libxdo_sys::xdo_new_with_opened_display(display, display_name.as_ptr(), 1) };
         if xdo.is_null() {
             log::warn!("Failed to create xdo context, xdo functions will be disabled");
@@ -140,7 +137,6 @@ impl Default for EnigoXdo {
         owner.xdo = xdo;
         owner.display = display;
         owner.display_name = Some(display_name);
-        owner.screen = screen;
         std::mem::forget(opened);
         log::info!("xdo context created successfully");
         check_x11_button_map(display);
@@ -246,7 +242,7 @@ impl MouseControllable for EnigoXdo {
         if self.xdo.is_null() {
             return Err("libxdo is unavailable".into());
         }
-        let status = unsafe { libxdo_sys::xdo_move_mouse(self.xdo as *const _, x, y, self.screen) };
+        let status = unsafe { libxdo_sys::xdo_move_mouse(self.xdo as *const _, x, y) };
         xdo_result("mouse move", status)
     }
 

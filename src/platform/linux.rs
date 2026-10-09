@@ -172,7 +172,7 @@ pub fn get_cursor_pos() -> Option<(i32, i32)> {
 
 pub fn set_cursor_pos(x: i32, y: i32) -> bool {
     match x11_context::with_xdo(|xdo| unsafe {
-        let ret = libxdo_sys::xdo_move_mouse(xdo.as_ptr() as *const _, x, y, 0);
+        let ret = libxdo_sys::xdo_move_mouse(xdo.as_ptr() as *const _, x, y);
         if ret != 0 {
             log::debug!(
                 "set_cursor_pos: xdo_move_mouse failed with code {} for coordinates ({}, {})",

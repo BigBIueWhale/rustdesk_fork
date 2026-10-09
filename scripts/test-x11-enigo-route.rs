@@ -38,7 +38,7 @@ pub type useconds_t = c_uint;
 extern "C" {
     pub fn xdo_new_with_opened_display(display: *mut Display, name: *const c_char, close: c_int) -> *mut xdo_t;
     pub fn xdo_free(context: *mut xdo_t);
-    pub fn xdo_move_mouse(context: *const xdo_t, x: c_int, y: c_int, screen: c_int) -> c_int;
+    pub fn xdo_move_mouse(context: *const xdo_t, x: c_int, y: c_int) -> c_int;
     pub fn xdo_move_mouse_relative(context: *const xdo_t, x: c_int, y: c_int) -> c_int;
     pub fn xdo_mouse_down(context: *const xdo_t, button: c_int) -> c_int;
     pub fn xdo_mouse_up(context: *const xdo_t, button: c_int) -> c_int;

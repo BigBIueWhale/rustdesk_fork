@@ -43,7 +43,7 @@ pub enum XdoKeyAction {
 const TRUSTED_LIBXDO_PATHS: &[&str] = &[
     "/usr/lib/rustdesk-fork/libxdo.so.3",
 ];
-const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk14";
+const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk15";
 
 fn root_owned_non_writable(mode: u32, uid: u32) -> bool {
     uid == 0 && mode & 0o022 == 0
@@ -104,7 +104,7 @@ type FnXdoSendKey =
     unsafe extern "C" fn(*const xdo_t, c_uint, c_ulong, c_uint, useconds_t) -> c_int;
 type FnXdoMouseDown = unsafe extern "C" fn(*const xdo_t, c_int) -> c_int;
 type FnXdoMouseUp = unsafe extern "C" fn(*const xdo_t, c_int) -> c_int;
-type FnXdoMoveMouse = unsafe extern "C" fn(*const xdo_t, c_int, c_int, c_int) -> c_int;
+type FnXdoMoveMouse = unsafe extern "C" fn(*const xdo_t, c_int, c_int) -> c_int;
 type FnXdoMoveMouseRelative = unsafe extern "C" fn(*const xdo_t, c_int, c_int) -> c_int;
 type FnXdoGetMouseLocation =
     unsafe extern "C" fn(*const xdo_t, *mut c_int, *mut c_int, *mut c_int) -> c_int;
@@ -383,9 +383,8 @@ pub unsafe extern "C" fn xdo_move_mouse(
     xdo: *const xdo_t,
     x: c_int,
     y: c_int,
-    screen: c_int,
 ) -> c_int {
-    get_lib().map_or(1, |lib| (lib.xdo_move_mouse)(xdo, x, y, screen))
+    get_lib().map_or(1, |lib| (lib.xdo_move_mouse)(xdo, x, y))
 }
 
 pub unsafe extern "C" fn xdo_move_mouse_relative(xdo: *const xdo_t, x: c_int, y: c_int) -> c_int {

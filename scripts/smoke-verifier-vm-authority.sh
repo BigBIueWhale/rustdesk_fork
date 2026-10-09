@@ -4285,6 +4285,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'clipboard listener completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
+        'XDO_CURSOR_POSITION_NATIVE=pass selectors=3 contexts=12 moves=96 roots=0,1 starting_root=opposite selected_root=observed retained_display=unchanged callbacks=paired descriptors=retired tasks=retired scope=production-platform-component whole_app=false' \
+        'actual platform cursor movement reaches the retained Display screen'
+    require_exact_fixed_receipt \
         'XDO_RAW_GROUP_NATIVE=pass groups=0,1 repeats=4 cases=32 events=64 raw_group_locks=0 symbols=group-derived keysym=resolved state=preserved mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
         'physical raw keycodes preserve server group routing and keysym input retains explicit mapping'
     require_exact_fixed_receipt \

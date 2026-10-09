@@ -6,7 +6,7 @@ mod platform {
     pub mod x11_display;
     include!("/build/x11-cursor-bounds.rs");
 }
-use std::{cell::RefCell, collections::BTreeSet, ffi::{c_char, c_int, c_ulong, c_void}, io::Read, ptr,
+use std::{cell::RefCell, collections::BTreeSet, ffi::{c_char, c_int, c_uint, c_ulong, c_void}, io::Read, ptr,
           sync::{Arc, Barrier, Mutex, atomic::{AtomicUsize, Ordering}}, thread, time::{Duration, Instant}};
 
 #[path = "/work/src/platform/linux/native_context.rs"]
@@ -34,6 +34,14 @@ extern "C" {
     fn XDefaultScreen(display: *mut c_void) -> c_int;
     fn XDisplayWidth(display: *mut c_void, screen: c_int) -> c_int;
     fn XDisplayHeight(display: *mut c_void, screen: c_int) -> c_int;
+    fn XRootWindow(display: *mut c_void, screen: c_int) -> c_ulong;
+    fn XQueryPointer(display: *mut c_void, window: c_ulong, root: *mut c_ulong, child: *mut c_ulong,
+                     root_x: *mut c_int, root_y: *mut c_int, x: *mut c_int, y: *mut c_int,
+                     mask: *mut c_uint) -> c_int;
+    fn XWarpPointer(display: *mut c_void, source: c_ulong, destination: c_ulong,
+                    source_x: c_int, source_y: c_int, width: c_uint, height: c_uint,
+                    x: c_int, y: c_int) -> c_int;
+    fn XSync(display: *mut c_void, discard: c_int) -> c_int;
     fn XGetInputFocus(display: *mut c_void, focus: *mut c_ulong, revert: *mut c_int) -> c_int;
 }
 #[link(name = "xdo")]
@@ -44,7 +52,7 @@ extern "C" {
     fn __real_xdo_free(context: *mut Xdo);
     pub fn xdo_get_mouse_location(context: *const Xdo, x: *mut c_int, y: *mut c_int,
                                   screen: *mut c_int) -> c_int;
-    pub fn xdo_move_mouse(context: *const Xdo, x: c_int, y: c_int, screen: c_int) -> c_int;
+    pub fn xdo_move_mouse(context: *const Xdo, x: c_int, y: c_int) -> c_int;
 }
 
 mod cursor {
@@ -457,6 +465,68 @@ fn cursor_snapshots() {
     println!("X11_CURSOR_SNAPSHOT_NATIVE=pass source=complete-module old=two-query-call-shape serial_mismatches=32 current_snapshots=64 changes_between_phases=32 pixels=server-real second_query=absent query_calls=170 images=170 frees=170 live_image_peak=1 replacements=16 wrong_serial=refused repeated_consume=refused reset=discarded-and-idempotent retained_thread_exits=8 display_owners=9 descriptors=retired threads=joined scope=native-cursor-snapshot");
 }
 
+fn cursor_position() {
+    let baseline = descriptors();
+    let tasks = std::fs::read_dir("/proc/self/task").unwrap().count();
+    for (selector, screen) in [(":00098", 0), (":00098.0000", 0), (":00098.0001", 1)] {
+        for _ in 0..4 {
+            std::env::set_var("DISPLAY", selector);
+            thread::spawn(move || {
+                let name = std::ffi::CString::new(selector).unwrap();
+                let observer = unsafe {
+                    NativeContext::from_raw(__real_XOpenDisplay(name.as_ptr()), |display| {
+                        assert_eq!(__real_XCloseDisplay(display), 0);
+                    }).expect("independent X11 observer unavailable")
+                };
+                let display = observer.as_ptr();
+                assert_eq!(unsafe { XDefaultScreen(display) }, screen);
+                let root = unsafe { XRootWindow(display, screen) };
+                let other_root = unsafe { XRootWindow(display, 1 - screen) };
+                let context = pointer(true).unwrap().unwrap();
+                assert_eq!(descriptors(), baseline + 2);
+                // The retained owner must ignore a later ambient selector change.
+                std::env::set_var("DISPLAY", ":95");
+                let query = |window| {
+                    let (mut actual_root, mut child, mut x, mut y, mut wx, mut wy, mut mask) =
+                        (0, 0, 0, 0, 0, 0, 0);
+                    let same_screen = unsafe {
+                        XQueryPointer(display, window, &mut actual_root, &mut child,
+                                      &mut x, &mut y, &mut wx, &mut wy, &mut mask)
+                    };
+                    (same_screen != 0, actual_root, x, y)
+                };
+                for iteration in 0..8 {
+                    unsafe {
+                        assert_ne!(XWarpPointer(display, 0, other_root, 0, 0, 0, 0, 19, 23), 0);
+                        XSync(display, 0);
+                    }
+                    assert_eq!(query(other_root), (true, other_root, 19, 23));
+                    assert!(!query(root).0);
+                    let (x, y) = if screen == 0 { (73 + iteration, 91 + iteration) }
+                                 else { (701 + iteration, 513 + iteration) };
+                    assert!(cursor::set_cursor_pos(x, y), "production cursor movement refused");
+                    let deadline = Instant::now() + Duration::from_millis(100);
+                    loop {
+                        if query(root) == (true, root, x, y) { break; }
+                        assert!(Instant::now() < deadline,
+                                "platform cursor did not arrive on selected screen {screen}");
+                        thread::sleep(Duration::from_millis(1));
+                    }
+                    assert!(!query(other_root).0, "cursor remained on the other screen");
+                    assert_eq!(cursor::get_cursor_pos(), Some((x, y)));
+                    assert_eq!(pointer(true).unwrap(), Some(context));
+                    assert_eq!(descriptors(), baseline + 2);
+                }
+            }).join().unwrap();
+            assert_eq!(descriptors(), baseline);
+        }
+    }
+    assert_eq!((DISPLAY_OPENS.load(Ordering::SeqCst), XDO_OPENS.load(Ordering::SeqCst)), (0, 12));
+    assert_eq!(retirements(), (0, 12));
+    assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), tasks);
+    println!("XDO_CURSOR_POSITION_NATIVE=pass selectors=3 contexts=12 moves=96 roots=0,1 starting_root=opposite selected_root=observed retained_display=unchanged callbacks=paired descriptors=retired tasks=retired scope=production-platform-component whole_app=false");
+}
+
 fn main() {
     let providers: BTreeSet<_> = std::fs::read_to_string("/proc/self/maps").unwrap().lines()
         .filter_map(|line| line.split_whitespace().last())
@@ -469,6 +539,10 @@ fn main() {
     assert!(unsafe { !_Xglobal_lock.is_null() && _XInitDisplayLock_fn.is_some() },
             "pinned Xlib threading is not initialized at fixture main entry");
     if let Some(scenario) = std::env::args().nth(1) {
+        if scenario == "cursor-position" {
+            cursor_position();
+            return;
+        }
         if scenario == "cursor-snapshots" {
             cursor_snapshots();
             return;

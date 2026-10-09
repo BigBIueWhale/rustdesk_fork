@@ -72,7 +72,8 @@ fn main() {
         XMapWindow(display.0, window);
         XSetInputFocus(display.0, window, RevertToParent, CurrentTime);
         XSync(display.0, 0);
-        assert_eq!(xdo_move_mouse(context.0, 73, 91, 0), 0);
+        assert_ne!(xdo_move_mouse(ptr::null(), 73, 91), 0);
+        assert_eq!(xdo_move_mouse(context.0, 73, 91), 0);
         XSync(display.0, 0);
         let (mut x, mut y, mut screen) = (0, 0, -1);
         assert_eq!(xdo_get_mouse_location(context.0, &mut x, &mut y, &mut screen), 0);

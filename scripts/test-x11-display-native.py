@@ -443,7 +443,7 @@ def enigo_layout(environment, binary, observer, probe, before_provider):
           flush=True)
 
 
-def thread_contexts(root, environment, checksum, library, provider):
+def thread_contexts(root, environment, checksum, library, provider, position_only=False):
     owner = root / "src/platform/linux/native_context.rs"
     fixture = root / "scripts/test-x11-thread-context.rs"
     binary = Path("/build/thread-contexts")
@@ -494,6 +494,17 @@ def thread_contexts(root, environment, checksum, library, provider):
           f"provider_sha256={provider_digest} "
           f"binary_sha256={hashlib.sha256(binary.read_bytes()).hexdigest()} "
           "scope=production-owner whole_app=unexecuted loader=direct-native-test", flush=True)
+    result = subprocess.run([str(binary), "cursor-position"], env=environment,
+                            capture_output=True, text=True, timeout=15)
+    receipt = ("XDO_CURSOR_POSITION_NATIVE=pass selectors=3 contexts=12 moves=96 roots=0,1 "
+               "starting_root=opposite selected_root=observed retained_display=unchanged "
+               "callbacks=paired descriptors=retired tasks=retired "
+               "scope=production-platform-component whole_app=false")
+    require(result.returncode == 0 and not result.stderr and result.stdout.splitlines() == [receipt],
+            f"native platform cursor destination result differs: {result}")
+    print(receipt, flush=True)
+    if position_only:
+        return
     result = subprocess.run([str(binary)], env=environment, capture_output=True,
                             text=True, timeout=15)
     receipt = ("X11_THREAD_CONTEXT_NATIVE=pass source=production-owner-and-constructors old=retained-after-thread-exit "
@@ -1289,6 +1300,7 @@ def key_input_main():
                 time.sleep(0.01)
             constructor_contexts(root, environment)
             providers, before_source = native_xdo(root, environment, historical_destructor=False)
+            thread_contexts(root, environment, checksum, logging, providers["corrected"], position_only=True)
             enigo_route(root, environment, checksum, logging, providers, before_source)
             require(server.poll() is None, "key-input Xvfb exited during native cases")
         finally:

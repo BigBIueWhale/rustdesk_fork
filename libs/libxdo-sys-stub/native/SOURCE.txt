@@ -56,6 +56,8 @@ only XTEST on the context display, with server-owned focus, pointer and grab
 routing. Caller-selected windows, directed XSendEvent input, focus-routing
 helpers and the unused native click helper are removed. The provider has eleven
 context, version, input and cursor/state exports and no Xinerama dependency.
-The fixed fork version is 3.20160805.1-rustdesk14.
+Absolute movement derives the selected root from the retained Display; its API
+has no separate caller-selected screen index or duplicate screen cache.
+The fixed fork version is 3.20160805.1-rustdesk15.
 The BSD redistribution notice is retained in COPYRIGHT and packaged with the
 library. Source provenance is not a claim that all native behavior is validated.

@@ -128,13 +128,12 @@ const char *xdo_version(void);
 void xdo_free(xdo_t *xdo);
 
 /**
- * Move the mouse to a specific location.
+ * Move the mouse to a location on the context Display's selected screen.
  *
  * @param x the target X coordinate on the screen in pixels.
  * @param y the target Y coordinate on the screen in pixels.
- * @param screen the screen (number) you want to move on.
  */
-int xdo_move_mouse(const xdo_t *xdo, int x, int y, int screen);
+int xdo_move_mouse(const xdo_t *xdo, int x, int y);
 
 /**
  * Move the mouse relative to it's current position.

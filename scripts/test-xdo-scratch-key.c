@@ -903,11 +903,12 @@ static void modifier_pair_order(Display *observer, Window window, int shared) {
   changes.num_key_explicit = 1;
   KeyCode unrelated = 0;
   if (shared) {
-    unrelated = XKeysymToKeycode(observer, XK_F1);
+    unrelated = XKeysymToKeycode(observer, XK_b);
     require(unrelated && unrelated != code && unrelated != shift
-            && changed->map->modmap[unrelated] == 0 && !XkbKeyHasActions(changed, unrelated)
-            && XkbKeyNumGroups(changed, shift) == 1 && XkbKeyNumSyms(changed, shift) == 1,
-            "shared modifier fixture rows unavailable");
+            && changed->map->modmap[unrelated] == 0 && !XkbKeyHasActions(changed, unrelated),
+            "shared modifier unrelated fixture row unavailable");
+    require(XkbKeyNumGroups(changed, shift) == 1 && XkbKeyNumSyms(changed, shift) == 1,
+            "shared modifier fixture row width differs");
     for (int key = changed->min_key_code; key <= changed->max_key_code; key++)
       changed->map->modmap[key] &= ~ControlMask;
     changed->map->modmap[shift] = ShiftMask | ControlMask;

@@ -1429,9 +1429,17 @@ impl<T: InvokeUiSession> Session<T> {
         command: bool,
     ) {
         #[cfg(windows)]
-        let command = command
-            || crate::client::get_key_state(enigo::Key::Meta)
-            || crate::client::get_key_state(enigo::Key::RWin);
+        let command = if command {
+            true
+        } else {
+            match crate::client::keyboard_state() {
+                Ok(state) => state.modifier_family_down(enigo::ModifierKey::Meta),
+                Err(err) => {
+                    log::error!("Could not construct mouse event: {err}");
+                    return;
+                }
+            }
+        };
 
         // Compute event type once using MOUSE_TYPE_MASK for reuse
         let event_type = mask & MOUSE_TYPE_MASK;

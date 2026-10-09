@@ -20,6 +20,11 @@ impl Drop for Context {
     fn drop(&mut self) { unsafe { xdo_free(self.0) }; }
 }
 fn descriptors() -> usize { std::fs::read_dir("/proc/self/fd").unwrap().count() }
+unsafe fn state(context: *const xdo_t) -> XdoInputState {
+    let mut value = XdoInputState::default();
+    assert_eq!(xdo_query_input_state(context, &mut value), 0);
+    value
+}
 
 fn main() {
     assert_eq!(unsafe { libc::geteuid() }, 4000);
@@ -31,6 +36,9 @@ fn main() {
     assert!(!display.0.is_null(), "real X display must be ready in every case");
     let context = Context(unsafe { xdo_new_with_opened_display(display.0, name.as_ptr(), 0) });
     let owned = Context(unsafe { xdo_new(name.as_ptr()) });
+    let mut unpublished = XdoInputState { pointer_mask: 0xa5a5a5a5, ..Default::default() };
+    assert_ne!(unsafe { xdo_query_input_state(ptr::null(), &mut unpublished) }, 0);
+    assert_eq!(unpublished.pointer_mask, 0xa5a5a5a5);
     if scenario != "complete" {
         if scenario == "no-xtest" {
             unsafe {
@@ -62,8 +70,8 @@ fn main() {
         let before_lookup = descriptors();
         let library = Library::open(Some("/usr/lib/rustdesk-fork/libxdo.so.3"), RTLD_NOW | RTLD_LOCAL).unwrap();
         let retired: Vec<_> = include_str!("fixtures/xdo-retired-apis.txt").lines().collect();
-        assert_eq!(retired.len(), 62);
-        assert_eq!(retired.iter().collect::<HashSet<_>>().len(), 62);
+        assert_eq!(retired.len(), 63);
+        assert_eq!(retired.iter().collect::<HashSet<_>>().len(), 63);
         for name in retired {
             let symbol = CString::new(name).unwrap();
             assert!(library.get::<unsafe extern "C" fn()>(symbol.as_bytes_with_nul()).is_err(),
@@ -90,18 +98,20 @@ fn main() {
         assert_eq!((x, y), (78, 88));
         assert_eq!(xdo_mouse_down(context.0, 1), 0);
         XSync(display.0, 0);
-        assert_ne!(xdo_get_input_state(context.0) & Button1Mask, 0);
+        assert_ne!(state(context.0).pointer_mask & Button1Mask, 0);
         assert_eq!(xdo_mouse_up(context.0, 1), 0);
         XSync(display.0, 0);
-        assert_eq!(xdo_get_input_state(context.0) & Button1Mask, 0);
+        assert_eq!(state(context.0).pointer_mask & Button1Mask, 0);
         let shift = XKeysymToKeycode(display.0, XK_Shift_L.into());
         assert_ne!(shift, 0);
         assert_ne!(XTestFakeKeyEvent(display.0, shift.into(), 1, CurrentTime), 0);
         XSync(display.0, 0);
-        assert_ne!(xdo_get_input_state(context.0) & ShiftMask, 0);
+        let down = state(context.0);
+        assert_ne!(down.pointer_mask & ShiftMask, 0);
+        assert_ne!(down.keys[shift as usize / 8] & (1 << (shift % 8)), 0);
         assert_ne!(XTestFakeKeyEvent(display.0, shift.into(), 0, CurrentTime), 0);
         XSync(display.0, 0);
-        assert_eq!(xdo_get_input_state(context.0) & ShiftMask, 0);
+        assert_eq!(state(context.0).pointer_mask & ShiftMask, 0);
         assert_eq!(xdo_enter_text_scalar(context.0, 'a', 0), 0);
         XSync(display.0, 0);
         let mut events = Vec::new();
@@ -126,5 +136,5 @@ fn main() {
     unsafe { xdo_free(ptr::null_mut()) };
     assert_eq!(descriptors(), baseline);
     assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), 1);
-    println!("XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a input=xtest retired_lookups=62 retired_symbols=absent descriptors=retired");
+    println!("XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a input=xtest retired_lookups=63 retired_symbols=absent descriptors=retired");
 }

@@ -5,7 +5,10 @@
 //!
 //! If libxdo is not available at runtime, operations return errors.
 
-use crate::{checked_scroll_magnitude, Key, KeyboardControllable, MouseButton, MouseControllable};
+use crate::{
+    checked_scroll_magnitude, KeyboardControllable, KeyboardState, ModifierKey, MouseButton,
+    MouseControllable, NumLockState,
+};
 
 use hbb_common::libc::c_int;
 use hbb_common::platform::x11_display::unix_display_name;
@@ -317,36 +320,37 @@ impl KeyboardControllable for EnigoXdo {
         self
     }
 
-    fn get_key_state(&mut self, key: Key) -> bool {
+    fn keyboard_state(&mut self) -> Result<KeyboardState, Box<dyn std::error::Error>> {
         if self.xdo.is_null() {
-            return false;
+            return Err("X11 keyboard state is unavailable".into());
         }
-        /*
-        // modifier keys mask
-        pub const ShiftMask: c_uint = 0x01;
-        pub const LockMask: c_uint = 0x02;
-        pub const ControlMask: c_uint = 0x04;
-        pub const Mod1Mask: c_uint = 0x08;
-        pub const Mod2Mask: c_uint = 0x10;
-        pub const Mod3Mask: c_uint = 0x20;
-        pub const Mod4Mask: c_uint = 0x40;
-        pub const Mod5Mask: c_uint = 0x80;
-        */
-        let mod_shift = 1 << 0;
-        let mod_lock = 1 << 1;
-        let mod_control = 1 << 2;
-        let mod_alt = 1 << 3;
-        let mod_numlock = 1 << 4;
-        let mod_meta = 1 << 6;
-        let mask = unsafe { libxdo_sys::xdo_get_input_state(self.xdo as *const _) };
-        match key {
-            Key::Shift => mask & mod_shift != 0,
-            Key::CapsLock => mask & mod_lock != 0,
-            Key::Control => mask & mod_control != 0,
-            Key::Alt => mask & mod_alt != 0,
-            Key::NumLock => mask & mod_numlock != 0,
-            Key::Meta => mask & mod_meta != 0,
-            _ => false,
+        let mut state = libxdo_sys::XdoInputState::default();
+        let status = unsafe { libxdo_sys::xdo_query_input_state(self.xdo, &mut state) };
+        xdo_result("keyboard state", status)?;
+        if state.keycode_min < 8
+            || state.keycode_min > state.keycode_max
+            || state.caps_lock > 1
+            || state.num_lock > 1
+        {
+            return Err("X11 keyboard state has invalid bounds or lock values".into());
         }
+        let mut modifiers = [false; 8];
+        for (index, key) in ModifierKey::ALL.iter().enumerate() {
+            let code = rdev::linux_keycode_from_key(key.rdev_key())
+                .ok_or("X11 modifier has no physical injector identity")?;
+            if code < u32::from(state.keycode_min) || code > u32::from(state.keycode_max) {
+                return Err("X11 modifier is outside the native keycode range".into());
+            }
+            modifiers[index] = state.keys[code as usize / 8] & (1 << (code % 8)) != 0;
+        }
+        Ok(KeyboardState::from_parts(
+            modifiers,
+            state.caps_lock != 0,
+            if state.num_lock != 0 {
+                NumLockState::On
+            } else {
+                NumLockState::Off
+            },
+        ))
     }
 }

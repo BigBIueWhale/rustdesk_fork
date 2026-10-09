@@ -3,6 +3,7 @@
 extern crate self as hbb_common;
 extern crate self as libxdo_sys;
 include!("/build/enigo-api.rs");
+include!("/build/xdo-input-state.rs");
 mod platform {
     #[path = "/work/libs/hbb_common/src/platform/x11_display.rs"]
     pub mod x11_display;
@@ -38,7 +39,7 @@ extern "C" {
     pub fn xdo_move_mouse_relative(context: *const xdo_t, x: c_int, y: c_int) -> c_int;
     pub fn xdo_mouse_down(context: *const xdo_t, button: c_int) -> c_int;
     pub fn xdo_mouse_up(context: *const xdo_t, button: c_int) -> c_int;
-    pub fn xdo_get_input_state(context: *const xdo_t) -> c_uint;
+    pub fn xdo_query_input_state(context: *const xdo_t, output: *mut XdoInputState) -> c_int;
     #[link_name = "xdo_enter_text_scalar"]
     fn native_enter_text_scalar(context: *const xdo_t, scalar: c_uint, delay: useconds_t) -> c_int;
     fn __real_xdo_new_with_opened_display(display: *mut Display, name: *const c_char, close: c_int) -> *mut xdo_t;

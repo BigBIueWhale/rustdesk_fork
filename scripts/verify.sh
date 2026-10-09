@@ -7803,9 +7803,9 @@ if [ "$(grep -cF 'crate::keyboard::client::change_grab_status(' <<<"$ffi_grab_bo
   || grep -Eq 'as_u128|lc\.session_id' <<<"$ffi_grab_body"; then
   r_s11e180="$r_s11e180 sole-typed-flutter-grab-route-missing"
 fi
-legacy_keyboard_body=$(awk '/pub fn legacy_keyboard_mode\(/,/^}/' src/keyboard.rs)
+legacy_keyboard_body=$(awk '/^fn legacy_keyboard_mode\(/,/^}/' src/keyboard.rs)
 for legacy_binding in \
-  'get_key_state(enigo::Key::Meta) || get_key_state(enigo::Key::RWin);' \
+  'state.modifier_family_down(ModifierKey::Meta);' \
   'let (_, _, _, command) = client::get_modifiers_state(false, false, false, command);' \
   "if chr == 'l' && is_win && command {"; do
   grep -qF "$legacy_binding" <<<"$legacy_keyboard_body" \
@@ -7813,8 +7813,8 @@ for legacy_binding in \
 done
 viewer_mouse_body=$(awk '/    pub fn send_mouse\(/,/    pub fn reconnect\(/' src/ui_session_interface.rs)
 for mouse_binding in \
-  '|| crate::client::get_key_state(enigo::Key::Meta)' \
-  '|| crate::client::get_key_state(enigo::Key::RWin);' \
+  'match crate::client::keyboard_state() {' \
+  'Ok(state) => state.modifier_family_down(enigo::ModifierKey::Meta),' \
   'keyboard::client::get_modifiers_state(alt, ctrl, shift, command);'; do
   grep -qF "$mouse_binding" <<<"$viewer_mouse_body" \
     || r_s11e180="$r_s11e180 mouse-meta-source-binding-missing"

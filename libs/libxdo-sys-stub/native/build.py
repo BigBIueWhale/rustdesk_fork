@@ -32,7 +32,7 @@ def build(output):
                 "-Werror=format-security",
                 "-shared", "-Wl,-soname,libxdo.so.3", "-Wl,-z,defs,-z,relro,-z,now",
                 "-Wl,-Bsymbolic-functions", str(source / "xdo.c"),
-                "-lX11", "-lXtst", "-o", str(library),
+                "-lX11", "-lX11-xcb", "-lxcb", "-lXtst", "-o", str(library),
             ], check=True, timeout=30)
             data = library.read_bytes()
             if not data.startswith(b"\x7fELF") or not 0 < len(data) <= 1024 * 1024:
@@ -43,7 +43,7 @@ def build(output):
                 raise RuntimeError("native XDO output directory changed during compilation")
             os.link(library, output.name, dst_dir_fd=parent, follow_symlinks=False)
         print(f"NATIVE_XDO_BUILD=pass sha256={hashlib.sha256(data).hexdigest()} "
-              f"bytes={len(data)} version=3.20160805.1-rustdesk16 source=checked-in")
+              f"bytes={len(data)} version=3.20160805.1-rustdesk17 source=checked-in")
     finally:
         os.close(parent)
 

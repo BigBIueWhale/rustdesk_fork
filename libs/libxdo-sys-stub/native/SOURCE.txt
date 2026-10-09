@@ -60,6 +60,14 @@ helpers and the unused native click helper are removed. The provider has eleven
 context, version, input and cursor/state exports and no Xinerama dependency.
 Absolute movement derives the selected root from the retained Display; its API
 has no separate caller-selected screen index or duplicate screen cache.
-The fixed fork version is 3.20160805.1-rustdesk16.
+Input-state collection returns status separately from its output. It borrows the
+retained Display's XCB connection and checks pointer and logical keymap replies,
+including error replies and connection status. Valid different-screen pointer
+replies retain their button mask. Named XKB Caps Lock and Num Lock indicators
+must both be available. Failed collection leaves the caller's output untouched
+and performs no input or mapping mutation. The separate reads are not atomic
+against concurrent input; X11's keymap is server logical state, not a hardware
+acknowledgment. The shared connection requires libX11-xcb and libxcb.
+The fixed fork version is 3.20160805.1-rustdesk17.
 The BSD redistribution notice is retained in COPYRIGHT and packaged with the
 library. Source provenance is not a claim that all native behavior is validated.

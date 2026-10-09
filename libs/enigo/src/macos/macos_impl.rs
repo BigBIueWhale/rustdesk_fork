@@ -4,39 +4,14 @@ use core_graphics;
 use self::core_graphics::display::*;
 use self::core_graphics::event::*;
 use self::core_graphics::event_source::*;
-use std::collections::HashMap as Map;
-use std::ffi::c_void;
-use std::ffi::CStr;
-use std::os::raw::*;
-use std::ptr::null_mut;
 
 use crate::macos::keycodes::*;
-use crate::{checked_scroll_magnitude, Key, KeyboardControllable, MouseButton, MouseControllable};
+use crate::{checked_scroll_magnitude, Key, KeyboardState, ModifierKey, NumLockState,
+            KeyboardControllable, MouseButton, MouseControllable};
 use objc::runtime::Class;
 
 struct MyCGEvent;
-type TISInputSourceRef = *mut c_void;
-type CFDataRef = *const c_void;
-type OptionBits = u32;
-type OSStatus = i32;
-type UniChar = u16;
-type UniCharCount = usize;
-type Boolean = c_uchar;
 const MAX_SCROLL_LENGTH: i32 = 64;
-type CFStringEncoding = u32;
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-struct __CFString([u8; 0]);
-type CFStringRef = *const __CFString;
-
-#[allow(non_upper_case_globals)]
-const kCFStringEncodingUTF8: u32 = 134_217_984;
-#[allow(non_upper_case_globals)]
-const kUCKeyActionDisplay: u16 = 3;
-#[allow(non_upper_case_globals)]
-const kUCKeyTranslateDeadKeysBit: OptionBits = 1 << 31;
-const BUF_LEN: usize = 4;
 
 const MOUSE_EVENT_BUTTON_NUMBER_BACK: i64 = 3;
 const MOUSE_EVENT_BUTTON_NUMBER_FORWARD: i64 = 4;
@@ -47,38 +22,8 @@ pub const ENIGO_INPUT_EXTRA_VALUE: i64 = 100;
 #[allow(improper_ctypes)]
 #[allow(non_snake_case)]
 #[link(name = "ApplicationServices", kind = "framework")]
-#[link(name = "Carbon", kind = "framework")]
 extern "C" {
-    fn CFDataGetBytePtr(theData: CFDataRef) -> *const u8;
-    fn TISCopyCurrentKeyboardInputSource() -> TISInputSourceRef;
-    fn TISCopyCurrentKeyboardLayoutInputSource() -> TISInputSourceRef;
-    fn TISCopyCurrentASCIICapableKeyboardLayoutInputSource() -> TISInputSourceRef;
-    static kTISPropertyUnicodeKeyLayoutData: *mut c_void;
-    static kTISPropertyInputSourceID: *mut c_void;
-    fn UCKeyTranslate(
-        keyLayoutPtr: *const u8, //*const UCKeyboardLayout,
-        virtualKeyCode: u16,
-        keyAction: u16,
-        modifierKeyState: u32,
-        keyboardType: u32,
-        keyTranslateOptions: OptionBits,
-        deadKeyState: *mut u32,
-        maxStringLength: UniCharCount,
-        actualStringLength: *mut UniCharCount,
-        unicodeString: *mut [UniChar; BUF_LEN],
-    ) -> OSStatus;
-    fn LMGetKbdType() -> u8;
-    fn CFStringGetCString(
-        theString: CFStringRef,
-        buffer: *mut c_char,
-        bufferSize: CFIndex,
-        encoding: CFStringEncoding,
-    ) -> Boolean;
-
     fn CGEventPost(tapLocation: CGEventTapLocation, event: *mut MyCGEvent);
-    // Actually return CFDataRef which is const here, but for coding convenience, return *mut c_void
-    fn TISGetInputSourceProperty(source: TISInputSourceRef, property: *const c_void)
-        -> *mut c_void;
     // not present in servo/core-graphics
     fn CGEventCreateScrollWheelEvent(
         source: &CGEventSourceRef,
@@ -88,6 +33,7 @@ extern "C" {
         ...
     ) -> *mut MyCGEvent;
     fn CGEventSourceKeyState(stateID: i32, key: u16) -> bool;
+    fn CGEventSourceFlagsState(stateID: i32) -> u64;
 }
 
 #[repr(C)]
@@ -114,7 +60,6 @@ pub struct Enigo {
     multiple_click: i64,
     ignore_flags: bool,
     flags: CGEventFlags,
-    char_to_vkey_map: Map<String, Map<char, CGKeyCode>>,
 }
 
 impl Enigo {
@@ -177,7 +122,6 @@ impl Default for Enigo {
             last_click_time: None,
             ignore_flags: false,
             flags: CGEventFlags::CGEventFlagNull,
-            char_to_vkey_map: Default::default(),
         }
     }
 }
@@ -395,9 +339,27 @@ impl KeyboardControllable for Enigo {
         self
     }
 
-    fn get_key_state(&mut self, key: Key) -> bool {
-        let keycode = self.key_to_keycode(key);
-        unsafe { CGEventSourceKeyState(1, keycode) }
+    fn keyboard_state(&mut self) -> Result<KeyboardState, Box<dyn std::error::Error>> {
+        if self.event_source.is_none() {
+            return Err("macOS event source is unavailable".into());
+        }
+        let state_id = CGEventSourceStateID::HIDSystemState as i32;
+        let modifiers = ModifierKey::ALL.map(|key| {
+            let code = match key {
+                ModifierKey::Shift => kVK_Shift,
+                ModifierKey::Control => kVK_Control,
+                ModifierKey::Alt => kVK_Option,
+                ModifierKey::Meta => kVK_Command,
+                ModifierKey::RightShift => kVK_RightShift,
+                ModifierKey::RightControl => kVK_RightControl,
+                ModifierKey::RightAlt => kVK_RightOption,
+                ModifierKey::RightMeta => kVK_RIGHT_COMMAND,
+            };
+            unsafe { CGEventSourceKeyState(state_id, code) }
+        });
+        let flags = unsafe { CGEventSourceFlagsState(state_id) };
+        Ok(KeyboardState::from_parts(modifiers,
+            flags & CGEventFlags::CGEventFlagAlphaShift.bits() != 0, NumLockState::NotPresent))
     }
 }
 
@@ -478,167 +440,6 @@ impl Enigo {
         (x, (display_height as i32) - y_inv)
     }
 
-    fn key_to_keycode(&mut self, key: Key) -> CGKeyCode {
-        #[allow(deprecated)]
-        // I mean duh, we still need to support deprecated keys until they're removed
-        match key {
-            Key::Alt => kVK_Option,
-            Key::Backspace => kVK_Delete,
-            Key::CapsLock => kVK_CapsLock,
-            Key::Control => kVK_Control,
-            Key::Delete => kVK_ForwardDelete,
-            Key::DownArrow => kVK_DownArrow,
-            Key::End => kVK_End,
-            Key::Escape => kVK_Escape,
-            Key::F1 => kVK_F1,
-            Key::F10 => kVK_F10,
-            Key::F11 => kVK_F11,
-            Key::F12 => kVK_F12,
-            Key::F2 => kVK_F2,
-            Key::F3 => kVK_F3,
-            Key::F4 => kVK_F4,
-            Key::F5 => kVK_F5,
-            Key::F6 => kVK_F6,
-            Key::F7 => kVK_F7,
-            Key::F8 => kVK_F8,
-            Key::F9 => kVK_F9,
-            Key::Home => kVK_Home,
-            Key::LeftArrow => kVK_LeftArrow,
-            Key::Option => kVK_Option,
-            Key::PageDown => kVK_PageDown,
-            Key::PageUp => kVK_PageUp,
-            Key::Return => kVK_Return,
-            Key::RightArrow => kVK_RightArrow,
-            Key::Shift => kVK_Shift,
-            Key::Space => kVK_Space,
-            Key::Tab => kVK_Tab,
-            Key::UpArrow => kVK_UpArrow,
-            Key::Numpad0 => kVK_ANSI_Keypad0,
-            Key::Numpad1 => kVK_ANSI_Keypad1,
-            Key::Numpad2 => kVK_ANSI_Keypad2,
-            Key::Numpad3 => kVK_ANSI_Keypad3,
-            Key::Numpad4 => kVK_ANSI_Keypad4,
-            Key::Numpad5 => kVK_ANSI_Keypad5,
-            Key::Numpad6 => kVK_ANSI_Keypad6,
-            Key::Numpad7 => kVK_ANSI_Keypad7,
-            Key::Numpad8 => kVK_ANSI_Keypad8,
-            Key::Numpad9 => kVK_ANSI_Keypad9,
-            Key::Mute => kVK_Mute,
-            Key::VolumeDown => kVK_VolumeUp,
-            Key::VolumeUp => kVK_VolumeDown,
-            Key::Help => kVK_Help,
-            Key::Snapshot => kVK_F13,
-            Key::Clear => kVK_ANSI_KeypadClear,
-            Key::Decimal => kVK_ANSI_KeypadDecimal,
-            Key::Multiply => kVK_ANSI_KeypadMultiply,
-            Key::Add => kVK_ANSI_KeypadPlus,
-            Key::Divide => kVK_ANSI_KeypadDivide,
-            Key::NumpadEnter => kVK_ANSI_KeypadEnter,
-            Key::Subtract => kVK_ANSI_KeypadMinus,
-            Key::Equals => kVK_ANSI_KeypadEquals,
-            Key::NumLock => kVK_ANSI_KeypadClear,
-            Key::RWin => kVK_RIGHT_COMMAND,
-            Key::RightShift => kVK_RightShift,
-            Key::RightControl => kVK_RightControl,
-            Key::RightAlt => kVK_RightOption,
-
-            Key::Raw(raw_keycode) => raw_keycode,
-            Key::Layout(c) => self.map_key_board(c),
-
-            Key::Super | Key::Command | Key::Windows | Key::Meta => kVK_Command,
-            _ => u16::MAX,
-        }
-    }
-
-    #[inline]
-    fn map_key_board(&mut self, ch: char) -> CGKeyCode {
-        // no idea why below char not working with shift, https://github.com/rustdesk/rustdesk/issues/406#issuecomment-1145157327
-        // seems related to numpad char
-        if ch == '-' || ch == '=' || ch == '.' || ch == '/' || (ch >= '0' && ch <= '9') {
-            return self.map_key_board_en(ch);
-        }
-        let mut code = u16::MAX;
-        unsafe {
-            let (keyboard, layout) = get_layout();
-            if !keyboard.is_null() && !layout.is_null() {
-                let name_ref = TISGetInputSourceProperty(keyboard, kTISPropertyInputSourceID);
-                if !name_ref.is_null() {
-                    let name = get_string(name_ref as _);
-                    if let Some(name) = name {
-                        if let Some(m) = self.char_to_vkey_map.get(&name) {
-                            code = *m.get(&ch).unwrap_or(&u16::MAX);
-                        } else {
-                            let m = get_map(&name, layout);
-                            code = *m.get(&ch).unwrap_or(&u16::MAX);
-                            self.char_to_vkey_map.insert(name.clone(), m);
-                        }
-                    }
-                }
-            }
-            if !keyboard.is_null() {
-                CFRelease(keyboard);
-            }
-        }
-        if code != u16::MAX {
-            return code;
-        }
-        self.map_key_board_en(ch)
-    }
-
-    #[inline]
-    fn map_key_board_en(&mut self, ch: char) -> CGKeyCode {
-        match ch {
-            'a' => kVK_ANSI_A,
-            'b' => kVK_ANSI_B,
-            'c' => kVK_ANSI_C,
-            'd' => kVK_ANSI_D,
-            'e' => kVK_ANSI_E,
-            'f' => kVK_ANSI_F,
-            'g' => kVK_ANSI_G,
-            'h' => kVK_ANSI_H,
-            'i' => kVK_ANSI_I,
-            'j' => kVK_ANSI_J,
-            'k' => kVK_ANSI_K,
-            'l' => kVK_ANSI_L,
-            'm' => kVK_ANSI_M,
-            'n' => kVK_ANSI_N,
-            'o' => kVK_ANSI_O,
-            'p' => kVK_ANSI_P,
-            'q' => kVK_ANSI_Q,
-            'r' => kVK_ANSI_R,
-            's' => kVK_ANSI_S,
-            't' => kVK_ANSI_T,
-            'u' => kVK_ANSI_U,
-            'v' => kVK_ANSI_V,
-            'w' => kVK_ANSI_W,
-            'x' => kVK_ANSI_X,
-            'y' => kVK_ANSI_Y,
-            'z' => kVK_ANSI_Z,
-            '0' => kVK_ANSI_0,
-            '1' => kVK_ANSI_1,
-            '2' => kVK_ANSI_2,
-            '3' => kVK_ANSI_3,
-            '4' => kVK_ANSI_4,
-            '5' => kVK_ANSI_5,
-            '6' => kVK_ANSI_6,
-            '7' => kVK_ANSI_7,
-            '8' => kVK_ANSI_8,
-            '9' => kVK_ANSI_9,
-            '-' => kVK_ANSI_Minus,
-            '=' => kVK_ANSI_Equal,
-            '[' => kVK_ANSI_LeftBracket,
-            ']' => kVK_ANSI_RightBracket,
-            '\\' => kVK_ANSI_Backslash,
-            ';' => kVK_ANSI_Semicolon,
-            '\'' => kVK_ANSI_Quote,
-            ',' => kVK_ANSI_Comma,
-            '.' => kVK_ANSI_Period,
-            '/' => kVK_ANSI_Slash,
-            '`' => kVK_ANSI_Grave,
-            _ => u16::MAX,
-        }
-    }
-
     #[inline]
     fn mouse_scroll_impl(
         &mut self,
@@ -715,99 +516,4 @@ impl Enigo {
     }
 }
 
-#[inline]
-unsafe fn get_string(cf_string: CFStringRef) -> Option<String> {
-    if !cf_string.is_null() {
-        let mut buf: [i8; 255] = [0; 255];
-        let success = CFStringGetCString(
-            cf_string,
-            buf.as_mut_ptr(),
-            buf.len() as _,
-            kCFStringEncodingUTF8,
-        );
-        if success != 0 {
-            let name: &CStr = CStr::from_ptr(buf.as_ptr());
-            if let Ok(name) = name.to_str() {
-                return Some(name.to_string());
-            }
-        }
-    }
-    None
-}
-
-#[inline]
-unsafe fn get_layout() -> (TISInputSourceRef, *const u8) {
-    let mut keyboard = TISCopyCurrentKeyboardInputSource();
-    let mut layout = null_mut();
-    if !keyboard.is_null() {
-        layout = TISGetInputSourceProperty(keyboard, kTISPropertyUnicodeKeyLayoutData);
-    }
-    if layout.is_null() {
-        if !keyboard.is_null() {
-            CFRelease(keyboard);
-        }
-        // https://github.com/microsoft/vscode/issues/23833
-        keyboard = TISCopyCurrentKeyboardLayoutInputSource();
-        if !keyboard.is_null() {
-            layout = TISGetInputSourceProperty(keyboard, kTISPropertyUnicodeKeyLayoutData);
-        }
-    }
-    if layout.is_null() {
-        if !keyboard.is_null() {
-            CFRelease(keyboard);
-        }
-        keyboard = TISCopyCurrentASCIICapableKeyboardLayoutInputSource();
-        if !keyboard.is_null() {
-            layout = TISGetInputSourceProperty(keyboard, kTISPropertyUnicodeKeyLayoutData);
-        }
-    }
-    if layout.is_null() {
-        if !keyboard.is_null() {
-            CFRelease(keyboard);
-        }
-        return (null_mut(), null_mut());
-    }
-    let layout_ptr = CFDataGetBytePtr(layout as _);
-    if layout_ptr.is_null() {
-        if !keyboard.is_null() {
-            CFRelease(keyboard);
-        }
-        return (null_mut(), null_mut());
-    }
-    (keyboard, layout_ptr)
-}
-
-#[inline]
-fn get_map(name: &str, layout: *const u8) -> Map<char, CGKeyCode> {
-    log::info!("Create keyboard map for {}", name);
-    let mut keys_down: u32 = 0;
-    let mut map = Map::new();
-    for keycode in 0..128 {
-        let mut buff = [0_u16; BUF_LEN];
-        let kb_type = unsafe { LMGetKbdType() };
-        let mut length: UniCharCount = 0;
-        let _retval = unsafe {
-            UCKeyTranslate(
-                layout,
-                keycode,
-                kUCKeyActionDisplay as _,
-                0,
-                kb_type as _,
-                kUCKeyTranslateDeadKeysBit as _,
-                &mut keys_down,
-                BUF_LEN,
-                &mut length,
-                &mut buff,
-            )
-        };
-        if length > 0 {
-            if let Ok(str) = String::from_utf16(&buff[..length]) {
-                if let Some(chr) = str.chars().next() {
-                    map.insert(chr, keycode as _);
-                }
-            }
-        }
-    }
-    map
-}
 unsafe impl Send for Enigo {}

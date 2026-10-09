@@ -8,4 +8,4 @@ xdo_mouse_up
 xdo_move_mouse
 xdo_move_mouse_relative
 xdo_get_mouse_location
-xdo_get_input_state
+xdo_query_input_state

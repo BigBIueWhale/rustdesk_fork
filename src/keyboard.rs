@@ -4,7 +4,9 @@ use crate::flutter;
 use crate::platform::windows::{get_char_from_vk, get_unicode_from_vk};
 use crate::ui_session_interface::{InvokeUiSession, Session};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use crate::{client::get_key_state, common::GrabState};
+use crate::common::GrabState;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use enigo::{KeyboardState, ModifierKey, NumLockState};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::log;
 use hbb_common::message_proto::*;
@@ -891,18 +893,19 @@ fn parse_add_lock_modes_modifiers(
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn add_lock_modes_modifiers(key_event: &mut KeyEvent, is_numpad_key: bool, is_letter_key: bool) {
-    if is_letter_key && get_key_state(enigo::Key::CapsLock) {
+fn add_lock_modes_modifiers(key_event: &mut KeyEvent, is_numpad_key: bool, is_letter_key: bool,
+                            state: &KeyboardState) {
+    if is_letter_key && state.caps_lock_enabled() {
         key_event.modifiers.push(ControlKey::CapsLock.into());
     }
-    if is_numpad_key && get_key_state(enigo::Key::NumLock) {
+    if is_numpad_key && matches!(state.num_lock(), NumLockState::On | NumLockState::NotPresent) {
         key_event.modifiers.push(ControlKey::NumLock.into());
     }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn convert_numpad_keys(key: Key) -> Key {
-    if get_key_state(enigo::Key::NumLock) {
+fn convert_numpad_keys(key: Key, state: &KeyboardState) -> Key {
+    if matches!(state.num_lock(), NumLockState::On | NumLockState::NotPresent) {
         return key;
     }
     match key {
@@ -940,12 +943,39 @@ fn update_modifiers_state(event: &Event) {
 }
 
 pub fn event_to_key_events(
+    peer: String,
+    event: &Event,
+    keyboard_mode: KeyboardMode,
+    lock_modes: Option<i32>,
+) -> Vec<KeyEvent> {
+    match event_to_key_events_result(peer, event, keyboard_mode, lock_modes) {
+        Ok(events) => events,
+        Err(err) => {
+            hbb_common::log::error!("Could not construct keyboard event: {err}");
+            Vec::new()
+        }
+    }
+}
+
+fn event_to_key_events_result(
     mut peer: String,
     event: &Event,
     keyboard_mode: KeyboardMode,
     _lock_modes: Option<i32>,
-) -> Vec<KeyEvent> {
+) -> hbb_common::ResultType<Vec<KeyEvent>> {
     peer.retain(|c| !c.is_whitespace());
+
+    let is_numpad_key = is_numpad_key(event);
+    let is_letter_key = is_letter_key_4_lock_modes(event);
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let state = if !matches!(keyboard_mode, KeyboardMode::Map | KeyboardMode::Translate)
+        || (_lock_modes.is_none() && (is_numpad_key
+            || (is_letter_key && keyboard_mode != KeyboardMode::Translate)))
+    {
+        Some(crate::client::keyboard_state()?)
+    } else {
+        None
+    };
 
     update_modifiers_state(event);
 
@@ -968,7 +998,9 @@ pub fn event_to_key_events(
         _ => {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                legacy_keyboard_mode(event, key_event)
+                let state = state.as_ref().ok_or_else(||
+                    hbb_common::anyhow::anyhow!("Legacy keyboard state was not admitted"))?;
+                legacy_keyboard_mode(event, key_event, state)
             }
             #[cfg(any(target_os = "android", target_os = "ios"))]
             {
@@ -977,19 +1009,21 @@ pub fn event_to_key_events(
         }
     };
 
-    let is_numpad_key = is_numpad_key(&event);
     if keyboard_mode != KeyboardMode::Translate || is_numpad_key {
-        let is_letter_key = is_letter_key_4_lock_modes(&event);
         for key_event in &mut key_events {
             if let Some(lock_modes) = _lock_modes {
                 parse_add_lock_modes_modifiers(key_event, lock_modes, is_numpad_key, is_letter_key);
             } else {
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                add_lock_modes_modifiers(key_event, is_numpad_key, is_letter_key);
+                if is_numpad_key || is_letter_key {
+                    let state = state.as_ref().ok_or_else(||
+                        hbb_common::anyhow::anyhow!("keyboard lock state was not admitted"))?;
+                    add_lock_modes_modifiers(key_event, is_numpad_key, is_letter_key, state);
+                }
             }
         }
     }
-    key_events
+    Ok(key_events)
 }
 
 pub fn send_key_event(key_event: &KeyEvent) {
@@ -1008,7 +1042,7 @@ pub fn get_peer_platform() -> String {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn legacy_keyboard_mode(event: &Event, mut key_event: KeyEvent) -> Vec<KeyEvent> {
+fn legacy_keyboard_mode(event: &Event, mut key_event: KeyEvent, state: &KeyboardState) -> Vec<KeyEvent> {
     let mut events = Vec::new();
     // legacy mode(0): Generate characters locally, look for keycode on other side.
     let (mut key, down_or_up) = match event.event_type {
@@ -1022,13 +1056,13 @@ pub fn legacy_keyboard_mode(event: &Event, mut key_event: KeyEvent) -> Vec<KeyEv
     let peer = get_peer_platform();
     let is_win = peer == "Windows";
     if is_win {
-        key = convert_numpad_keys(key);
+        key = convert_numpad_keys(key, state);
     }
 
-    let alt = get_key_state(enigo::Key::Alt);
+    let alt = state.modifier_family_down(ModifierKey::Alt);
     #[cfg(windows)]
     let ctrl = {
-        let mut tmp = get_key_state(enigo::Key::Control) || get_key_state(enigo::Key::RightControl);
+        let mut tmp = state.modifier_family_down(ModifierKey::Control);
         unsafe {
             if IS_ALT_GR {
                 if alt || key == Key::AltGr {
@@ -1043,10 +1077,9 @@ pub fn legacy_keyboard_mode(event: &Event, mut key_event: KeyEvent) -> Vec<KeyEv
         tmp
     };
     #[cfg(not(windows))]
-    let ctrl = get_key_state(enigo::Key::Control) || get_key_state(enigo::Key::RightControl);
-    let shift = get_key_state(enigo::Key::Shift) || get_key_state(enigo::Key::RightShift);
-    let command =
-        get_key_state(enigo::Key::Meta) || get_key_state(enigo::Key::RWin);
+    let ctrl = state.modifier_family_down(ModifierKey::Control);
+    let shift = state.modifier_family_down(ModifierKey::Shift);
+    let command = state.modifier_family_down(ModifierKey::Meta);
     let (_, _, _, command) = client::get_modifiers_state(false, false, false, command);
     let control_key = match key {
         Key::Alt => Some(ControlKey::Alt),

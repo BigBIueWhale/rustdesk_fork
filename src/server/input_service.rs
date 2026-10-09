@@ -4,7 +4,8 @@ use crate::input::*;
 use crate::whiteboard;
 #[cfg(target_os = "macos")]
 use dispatch::Queue;
-use enigo::{Enigo, Key, KeyboardControllable, MouseButton, MouseControllable};
+use enigo::{Enigo, Key, KeyboardState, ModifierKey, NumLockState,
+            KeyboardControllable, MouseButton, MouseControllable};
 use hbb_common::{
     get_time,
     message_proto::{pointer_device_event::Union::TouchEvent, touch_event::Union::ScaleUpdate},
@@ -591,10 +592,10 @@ impl LockModesHandler {
 
     #[inline]
     #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
-    fn new_handler(key_event: &KeyEvent, _is_numpad_key: bool) -> ResultType<Self> {
+    fn new_handler(key_event: &KeyEvent, _is_numpad_key: bool, _state: &KeyboardState) -> ResultType<Self> {
         #[cfg(any(target_os = "windows", target_os = "linux"))]
         {
-            Self::new(key_event, _is_numpad_key)
+            Self::new(key_event, _is_numpad_key, _state)
         }
         #[cfg(target_os = "macos")]
         {
@@ -603,28 +604,30 @@ impl LockModesHandler {
     }
 
     #[cfg(any(target_os = "windows", target_os = "linux"))]
-    fn new(key_event: &KeyEvent, is_numpad_key: bool) -> ResultType<Self> {
-        let mut en = lock_input_state(&ENIGO, "Enigo state while synchronizing lock modes");
+    fn new(key_event: &KeyEvent, is_numpad_key: bool, state: &KeyboardState) -> ResultType<Self> {
         let event_caps_enabled = Self::is_modifier_enabled(key_event, ControlKey::CapsLock);
-        let local_caps_enabled = en.get_key_state(enigo::Key::CapsLock);
+        let local_caps_enabled = state.caps_lock_enabled();
         let caps_lock_changed = event_caps_enabled != local_caps_enabled;
-        if caps_lock_changed {
-            complete_lock_key_click(RdevKey::CapsLock)?;
-        }
-
+        let local_num_enabled = match state.num_lock() {
+            NumLockState::Off => false,
+            NumLockState::On => true,
+            NumLockState::NotPresent => bail!("required NumLock state is unavailable"),
+        };
         let mut num_lock_changed = false;
         #[allow(unused)]
         let mut event_num_enabled = false;
         if is_numpad_key {
-            let local_num_enabled = en.get_key_state(enigo::Key::NumLock);
             event_num_enabled = Self::is_modifier_enabled(key_event, ControlKey::NumLock);
             num_lock_changed = event_num_enabled != local_num_enabled;
         } else if is_legacy_mode(key_event) {
             #[cfg(target_os = "windows")]
             {
                 num_lock_changed =
-                    should_disable_numlock(key_event) && en.get_key_state(enigo::Key::NumLock);
+                    should_disable_numlock(key_event) && local_num_enabled;
             }
+        }
+        if caps_lock_changed {
+            complete_lock_key_click(RdevKey::CapsLock)?;
         }
         if num_lock_changed {
             if let Err(err) = complete_lock_key_click(RdevKey::NumLock) {
@@ -644,13 +647,7 @@ impl LockModesHandler {
     #[cfg(target_os = "macos")]
     fn new(key_event: &KeyEvent) -> ResultType<Self> {
         let event_caps_enabled = Self::is_modifier_enabled(key_event, ControlKey::CapsLock);
-        // Do not use the following code to detect `local_caps_enabled`.
-        // Because the state of get_key_state will not affect simulation of `VIRTUAL_INPUT_STATE` in this file.
-        //
-        // let local_caps_enabled = VirtualInput::get_key_state(
-        //     CGEventSourceStateID::CombinedSessionState,
-        //     rdev::kVK_CapsLock,
-        // );
+        // CapsLock synchronization belongs to the retained virtual injector state.
         let local_caps_enabled = unsafe {
             let _lock = VIRTUAL_INPUT_MTX.lock();
             VIRTUAL_INPUT_STATE
@@ -917,9 +914,9 @@ fn enigo_ignore_flags() -> bool {
 }
 #[inline]
 #[cfg(target_os = "macos")]
-fn set_last_legacy_mode(v: bool) {
+fn set_last_legacy_mode(en: &mut Enigo, v: bool) {
     LAST_KEY_LEGACY_MODE.store(v, Ordering::SeqCst);
-    lock_input_state(&ENIGO, "Enigo state while updating macOS input flags").set_ignore_flags(!v);
+    en.set_ignore_flags(!v);
 }
 
 pub fn try_start_record_cursor_pos() -> Option<thread::JoinHandle<()>> {
@@ -1041,12 +1038,6 @@ fn modifier_sleep() {
     std::thread::sleep(std::time::Duration::from_nanos(1));
 }
 
-#[inline]
-#[cfg(not(target_os = "macos"))]
-fn is_pressed(key: &Key, en: &mut Enigo) -> bool {
-    get_exact_key_state(key.clone(), en)
-}
-
 // Sleep for 8ms is enough in my tests, but we sleep 12ms to be safe.
 // sleep 12ms In my test, the characters are already output in real time.
 #[inline]
@@ -1064,27 +1055,26 @@ fn key_sleep() {
 }
 
 #[inline]
-fn get_exact_key_state(key: Key, en: &mut Enigo) -> bool {
-    en.get_key_state(key)
+fn collect_keyboard_state(en: &mut Enigo) -> ResultType<KeyboardState> {
+    en.keyboard_state()
+        .map_err(|err| hbb_common::anyhow::anyhow!("Could not collect controlled keyboard state: {err}"))
 }
 
-#[inline]
-fn get_modifier_family_state(key: Key, en: &mut Enigo) -> bool {
-    // https://github.com/rustdesk/rustdesk/issues/332
-    // on Linux, if RightAlt is down, RightAlt status is false, Alt status is true
-    // but on Windows, both are true
-    let x = en.get_key_state(key.clone());
-    match key {
-        Key::Shift => x || en.get_key_state(Key::RightShift),
-        Key::Control => x || en.get_key_state(Key::RightControl),
-        Key::Alt => x || en.get_key_state(Key::RightAlt),
-        Key::Meta => x || en.get_key_state(Key::RWin),
-        Key::RightShift => x || en.get_key_state(Key::Shift),
-        Key::RightControl => x || en.get_key_state(Key::Control),
-        Key::RightAlt => x || en.get_key_state(Key::Alt),
-        Key::RWin => x || en.get_key_state(Key::Meta),
-        _ => x,
-    }
+const CONTROL_MODIFIERS: [(ControlKey, ModifierKey); 8] = [
+    (ControlKey::Shift, ModifierKey::Shift),
+    (ControlKey::RShift, ModifierKey::RightShift),
+    (ControlKey::Alt, ModifierKey::Alt),
+    (ControlKey::RAlt, ModifierKey::RightAlt),
+    (ControlKey::Control, ModifierKey::Control),
+    (ControlKey::RControl, ModifierKey::RightControl),
+    (ControlKey::Meta, ModifierKey::Meta),
+    (ControlKey::RWin, ModifierKey::RightMeta),
+];
+
+fn control_modifier(value: i32) -> Option<ModifierKey> {
+    CONTROL_MODIFIERS
+        .iter()
+        .find_map(|(control, modifier)| (control.value() == value).then_some(*modifier))
 }
 
 #[allow(unreachable_code)]
@@ -1173,18 +1163,10 @@ fn lock_input_state<'a, T>(state: &'a Mutex<T>, context: &str) -> std::sync::Mut
 
 fn release_device_modifiers_inner() -> ResultType<()> {
     let mut en = lock_input_state(&ENIGO, "Enigo state while releasing device modifiers");
-    for (modifier, physical) in [
-        (Key::Shift, RdevKey::ShiftLeft),
-        (Key::Control, RdevKey::ControlLeft),
-        (Key::Alt, RdevKey::Alt),
-        (Key::Meta, RdevKey::MetaLeft),
-        (Key::RightShift, RdevKey::ShiftRight),
-        (Key::RightControl, RdevKey::ControlRight),
-        (Key::RightAlt, RdevKey::AltGr),
-        (Key::RWin, RdevKey::MetaRight),
-    ] {
-        if get_exact_key_state(modifier, &mut en) {
-            simulate_(&EventType::KeyRelease(physical))?;
+    let state = collect_keyboard_state(&mut en)?;
+    for modifier in ModifierKey::ALL {
+        if state.modifier_down(modifier) {
+            simulate_(&EventType::KeyRelease(modifier.rdev_key()))?;
         }
     }
     Ok(())
@@ -1418,116 +1400,27 @@ mod input_state_tests {
     }
 }
 
-// e.g. current state of ctrl is down, but ctrl not in modifier, we should change ctrl to up, to make modifier state sync between remote and local
-#[inline]
-fn fix_modifier(
-    modifiers: &[EnumOrUnknown<ControlKey>],
-    key0: ControlKey,
-    key1: Key,
-    physical_key: RdevKey,
-    en: &mut Enigo,
-    preserve_modifiers: &[ControlKey],
-) -> ResultType<()> {
-    if get_exact_key_state(key1, en)
-        && !modifiers.contains(&EnumOrUnknown::new(key0))
-        && !preserve_modifiers.contains(&key0)
-    {
-        #[cfg(windows)]
-        if key0 == ControlKey::Control && get_modifier_family_state(Key::Alt, en) {
-            // AltGr case
-            return Ok(());
-        }
-        simulate_(&EventType::KeyRelease(physical_key))?;
-        log::debug!("Fixed {:?}", key1);
-    }
-    Ok(())
-}
-
 fn fix_modifiers(
     modifiers: &[EnumOrUnknown<ControlKey>],
-    en: &mut Enigo,
+    state: &mut KeyboardState,
     ck: i32,
     preserve_modifiers: &[ControlKey],
 ) -> ResultType<()> {
-    if ck != ControlKey::Shift.value() {
-        fix_modifier(
-            modifiers,
-            ControlKey::Shift,
-            Key::Shift,
-            RdevKey::ShiftLeft,
-            en,
-            preserve_modifiers,
-        )?;
-    }
-    if ck != ControlKey::RShift.value() {
-        fix_modifier(
-            modifiers,
-            ControlKey::RShift,
-            Key::RightShift,
-            RdevKey::ShiftRight,
-            en,
-            preserve_modifiers,
-        )?;
-    }
-    if ck != ControlKey::Alt.value() {
-        fix_modifier(
-            modifiers,
-            ControlKey::Alt,
-            Key::Alt,
-            RdevKey::Alt,
-            en,
-            preserve_modifiers,
-        )?;
-    }
-    if ck != ControlKey::RAlt.value() {
-        fix_modifier(
-            modifiers,
-            ControlKey::RAlt,
-            Key::RightAlt,
-            RdevKey::AltGr,
-            en,
-            preserve_modifiers,
-        )?;
-    }
-    if ck != ControlKey::Control.value() {
-        fix_modifier(
-            modifiers,
-            ControlKey::Control,
-            Key::Control,
-            RdevKey::ControlLeft,
-            en,
-            preserve_modifiers,
-        )?;
-    }
-    if ck != ControlKey::RControl.value() {
-        fix_modifier(
-            modifiers,
-            ControlKey::RControl,
-            Key::RightControl,
-            RdevKey::ControlRight,
-            en,
-            preserve_modifiers,
-        )?;
-    }
-    if ck != ControlKey::Meta.value() {
-        fix_modifier(
-            modifiers,
-            ControlKey::Meta,
-            Key::Meta,
-            RdevKey::MetaLeft,
-            en,
-            preserve_modifiers,
-        )?;
-    }
-    if ck != ControlKey::RWin.value() {
-        fix_modifier(
-            modifiers,
-            ControlKey::RWin,
-            Key::RWin,
-            RdevKey::MetaRight,
-            en,
-            preserve_modifiers,
-        )?;
+    for (control, modifier) in CONTROL_MODIFIERS {
+        if ck == control.value() || !state.modifier_down(modifier)
+            || modifiers.contains(&EnumOrUnknown::new(control))
+            || preserve_modifiers.contains(&control)
+        {
+            continue;
+        }
+        #[cfg(windows)]
+        if control == ControlKey::Control && state.modifier_family_down(ModifierKey::Alt) {
+            // Keep the synthetic Control associated with a retained AltGr press.
+            continue;
+        }
+        simulate_(&EventType::KeyRelease(modifier.rdev_key()))?;
+        state.record_modifier(modifier, false);
+        log::debug!("Fixed {:?}", modifier);
     }
     Ok(())
 }
@@ -1699,7 +1592,8 @@ fn handle_mouse_simulation_(
     #[cfg(not(target_os = "macos"))]
     let mut to_press = Vec::new();
     if evt_type == MOUSE_TYPE_DOWN {
-        fix_modifiers(&evt.modifiers[..], &mut en, 0, preserve_modifiers)?;
+        let mut state = collect_keyboard_state(&mut en)?;
+        fix_modifiers(&evt.modifiers[..], &mut state, 0, preserve_modifiers)?;
         #[cfg(target_os = "macos")]
         en.reset_flag();
         for ref ck in evt.modifiers.iter() {
@@ -1709,16 +1603,12 @@ fn handle_mouse_simulation_(
                 #[cfg(not(target_os = "macos"))]
                 if key != &Key::CapsLock && key != &Key::NumLock {
                     let modifier = ck.enum_value_or(ControlKey::Unknown);
-                    if !preserve_modifiers.contains(&modifier)
-                        && !get_exact_key_state(key.clone(), &mut en)
-                    {
-                        let physical_key =
-                            control_key_to_rdev_key(ck.value()).ok_or_else(|| {
-                                hbb_common::anyhow::anyhow!(
-                                    "mouse modifier has no physical injector identity"
-                                )
-                            })?;
-                        to_press.push(physical_key);
+                    if let Some(key) = control_modifier(ck.value()) {
+                        if !preserve_modifiers.contains(&modifier) && !state.modifier_down(key)
+                            && !to_press.contains(&key.rdev_key())
+                        {
+                            to_press.push(key.rdev_key());
+                        }
                     }
                 }
             }
@@ -1849,8 +1739,6 @@ fn handle_mouse_simulation_(
         }
         action_result
     }));
-    #[cfg(not(target_os = "macos"))]
-    drop(en);
     #[cfg(not(target_os = "macos"))]
     release_temporary_keys(&to_release, "mouse modifier")?;
     match action_result {
@@ -2289,19 +2177,11 @@ fn retry_lock_key_click(key: RdevKey) {
 }
 
 #[inline]
-fn control_key_value_to_key(value: i32) -> Option<Key> {
-    KEY_MAP.get(&value).and_then(|k| Some(*k))
-}
-
-#[inline]
 fn char_value_to_key(value: u32) -> Key {
     Key::Layout(std::char::from_u32(value).unwrap_or('\0'))
 }
 
 fn map_keyboard_mode(evt: &KeyEvent) -> ResultType<()> {
-    #[cfg(windows)]
-    crate::platform::windows::try_change_desktop();
-
     // Wayland
     #[cfg(target_os = "linux")]
     if !crate::platform::linux::is_x11() {
@@ -2360,42 +2240,25 @@ fn has_hotkey_modifiers(key_event: &KeyEvent) -> bool {
     })
 }
 
-fn release_unpressed_modifiers(
-    en: &mut Enigo,
-    key_event: &KeyEvent,
-    preserve_modifiers: &[ControlKey],
-) -> ResultType<()> {
-    let ck_value = get_control_key_value(key_event);
-    fix_modifiers(&key_event.modifiers[..], en, ck_value, preserve_modifiers)
-}
-
-#[cfg(target_os = "linux")]
-fn is_altgr_pressed(en: &mut Enigo) -> bool {
-    get_modifier_family_state(Key::RightAlt, en)
-}
-
 #[cfg(not(target_os = "macos"))]
 fn temporary_modifiers_to_press(
-    en: &mut Enigo,
+    state: &KeyboardState,
     key_event: &KeyEvent,
     preserve_modifiers: &[ControlKey],
-) -> Vec<RdevKey> {
+) -> Vec<ModifierKey> {
     let mut to_press = Vec::new();
     for ref ck in key_event.modifiers.iter() {
         let modifier = ck.enum_value_or(ControlKey::Unknown);
         if preserve_modifiers.contains(&modifier) {
             continue;
         }
-        if let (Some(key), Some(physical_key)) = (
-            control_key_value_to_key(ck.value()),
-            control_key_to_rdev_key(ck.value()),
-        ) {
-            if !is_pressed(&key, en) {
+        if let Some(key) = control_modifier(ck.value()) {
+            if !state.modifier_down(key) && !to_press.contains(&key) {
                 #[cfg(target_os = "linux")]
-                if key == Key::Alt && is_altgr_pressed(en) {
+                if key == ModifierKey::Alt && state.modifier_down(ModifierKey::RightAlt) {
                     continue;
                 }
-                to_press.push(physical_key);
+                to_press.push(key);
             }
         }
     }
@@ -2403,20 +2266,25 @@ fn temporary_modifiers_to_press(
 }
 
 fn sync_modifiers(
-    en: &mut Enigo,
+    _en: &mut Enigo,
+    state: &mut KeyboardState,
     key_event: &KeyEvent,
     preserve_modifiers: &[ControlKey],
     _to_release: &mut Vec<RdevKey>,
 ) -> ResultType<()> {
     #[cfg(target_os = "macos")]
-    add_flags_to_enigo(en, key_event);
+    add_flags_to_enigo(_en, key_event);
 
     if key_event.down {
-        release_unpressed_modifiers(en, key_event, preserve_modifiers)?;
+        fix_modifiers(&key_event.modifiers[..], state, get_control_key_value(key_event), preserve_modifiers)?;
         #[cfg(not(target_os = "macos"))]
         {
-            let to_press = temporary_modifiers_to_press(en, key_event, preserve_modifiers);
-            _to_release.extend(press_temporary_keys(&to_press, "key modifier")?);
+            let to_press = temporary_modifiers_to_press(state, key_event, preserve_modifiers);
+            let physical: Vec<_> = to_press.iter().map(|key| key.rdev_key()).collect();
+            _to_release.extend(press_temporary_keys(&physical, "key modifier")?);
+            for key in to_press {
+                state.record_modifier(key, true);
+            }
         }
     }
     Ok(())
@@ -2620,10 +2488,10 @@ fn with_temporary_keys_with<T>(
 /// (e.g., Ctrl+Shift+Z), in which case this function already returns true via Ctrl.
 #[cfg(target_os = "linux")]
 #[inline]
-fn is_hotkey_modifier_pressed(en: &mut Enigo) -> bool {
-    get_modifier_family_state(Key::Control, en)
-        || get_modifier_family_state(Key::Alt, en)
-        || get_modifier_family_state(Key::Meta, en)
+fn is_hotkey_modifier_pressed(state: &KeyboardState) -> bool {
+    state.modifier_family_down(ModifierKey::Control)
+        || state.modifier_family_down(ModifierKey::Alt)
+        || state.modifier_family_down(ModifierKey::Meta)
 }
 
 /// Release Shift keys before character input in Legacy/Translate mode.
@@ -2634,12 +2502,12 @@ fn is_hotkey_modifier_pressed(en: &mut Enigo) -> bool {
 /// to preserve combinations like Ctrl+Shift+Z.
 #[cfg(target_os = "linux")]
 fn release_shift_for_char_input(
-    en: &mut Enigo,
+    state: &mut KeyboardState,
     preserve_modifiers: &[ControlKey],
 ) -> ResultType<()> {
     // Don't release Shift if hotkey modifiers (Ctrl/Alt/Meta) are pressed.
     // This preserves combinations like Ctrl+Shift+Z.
-    if is_hotkey_modifier_pressed(en) {
+    if is_hotkey_modifier_pressed(state) {
         return Ok(());
     }
 
@@ -2651,31 +2519,27 @@ fn release_shift_for_char_input(
     // Shift key_up event when the user physically releases Shift. Restoring it here would
     // cause a brief Shift re-press that could interfere with the next input event.
 
-    let is_x11 = crate::platform::linux::is_x11();
-
-    if !preserve_modifiers.contains(&ControlKey::Shift) && get_exact_key_state(Key::Shift, en) {
-        if !is_x11 {
-            bail!("owned modifier synchronization is unavailable outside X11");
-        }
+    if !preserve_modifiers.contains(&ControlKey::Shift) && state.modifier_down(ModifierKey::Shift) {
         simulate_(&EventType::KeyRelease(RdevKey::ShiftLeft))?;
+        state.record_modifier(ModifierKey::Shift, false);
     }
-    if !preserve_modifiers.contains(&ControlKey::RShift) && get_exact_key_state(Key::RightShift, en)
+    if !preserve_modifiers.contains(&ControlKey::RShift) && state.modifier_down(ModifierKey::RightShift)
     {
-        if !is_x11 {
-            bail!("owned modifier synchronization is unavailable outside X11");
-        }
         simulate_(&EventType::KeyRelease(RdevKey::ShiftRight))?;
+        state.record_modifier(ModifierKey::RightShift, false);
     }
     Ok(())
 }
 
-fn legacy_keyboard_mode(evt: &KeyEvent, preserve_modifiers: &[ControlKey]) -> ResultType<()> {
-    #[cfg(windows)]
-    crate::platform::windows::try_change_desktop();
+fn legacy_keyboard_mode(
+    en: &mut Enigo,
+    state: &mut KeyboardState,
+    evt: &KeyEvent,
+    preserve_modifiers: &[ControlKey],
+    #[cfg(windows)] semantic_keys: &[WindowsSemanticKey],
+) -> ResultType<()> {
     let mut to_release: Vec<RdevKey> = Vec::new();
-
-    let mut en = lock_input_state(&ENIGO, "Enigo state while handling a legacy key");
-    sync_modifiers(&mut en, evt, preserve_modifiers, &mut to_release)?;
+    sync_modifiers(en, state, evt, preserve_modifiers, &mut to_release)?;
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match evt.union {
         Some(key_event::Union::ControlKey(ck)) => process_control_key(&ck, evt.down),
@@ -2685,7 +2549,7 @@ fn legacy_keyboard_mode(evt: &KeyEvent, preserve_modifiers: &[ControlKey]) -> Re
             } else if has_hotkey_modifiers(evt) {
                 #[cfg(target_os = "windows")]
                 {
-                    windows_semantic_key_click(chr, &mut en, preserve_modifiers)
+                    windows_semantic_keys(semantic_keys, state, preserve_modifiers)
                 }
                 #[cfg(not(target_os = "windows"))]
                 {
@@ -2693,10 +2557,10 @@ fn legacy_keyboard_mode(evt: &KeyEvent, preserve_modifiers: &[ControlKey]) -> Re
                 }
             } else {
                 #[cfg(target_os = "linux")]
-                release_shift_for_char_input(&mut en, preserve_modifiers)?;
+                release_shift_for_char_input(state, preserve_modifiers)?;
                 let chr = char::try_from(chr)
                     .map_err(|_| hbb_common::anyhow::anyhow!("invalid Legacy character"))?;
-                process_seq(&mut en, &chr.to_string())
+                process_seq(en, &chr.to_string())
             }
         }
         Some(key_event::Union::Unicode(chr)) => {
@@ -2704,7 +2568,7 @@ fn legacy_keyboard_mode(evt: &KeyEvent, preserve_modifiers: &[ControlKey]) -> Re
                 if has_hotkey_modifiers(evt) {
                     bail!("Legacy Unicode hotkeys require a physical keyboard mode");
                 }
-                process_unicode(&mut en, chr)?;
+                process_unicode(en, chr)?;
             }
             Ok(())
         }
@@ -2713,7 +2577,7 @@ fn legacy_keyboard_mode(evt: &KeyEvent, preserve_modifiers: &[ControlKey]) -> Re
                 if has_hotkey_modifiers(evt) {
                     bail!("Legacy sequence hotkeys require a physical keyboard mode");
                 }
-                process_seq(&mut en, seq)?;
+                process_seq(en, seq)?;
             }
             Ok(())
         }
@@ -2722,7 +2586,6 @@ fn legacy_keyboard_mode(evt: &KeyEvent, preserve_modifiers: &[ControlKey]) -> Re
 
     #[cfg(not(target_os = "macos"))]
     {
-        drop(en);
         release_keys(&to_release)?;
     }
     match result {
@@ -2737,112 +2600,126 @@ fn windows_complete_scan_click(scan: u32) -> ResultType<()> {
 }
 
 #[cfg(target_os = "windows")]
-fn windows_semantic_key_click(
-    chr: u32,
-    en: &mut Enigo,
+struct WindowsSemanticKey {
+    scan: u32,
+    modifiers: u16,
+}
+
+#[cfg(target_os = "windows")]
+fn prepare_windows_semantic_keys(evt: &KeyEvent) -> ResultType<Vec<WindowsSemanticKey>> {
+    if !evt.down {
+        return Ok(Vec::new());
+    }
+    let characters: Vec<_> = match (evt.mode.enum_value_or(KeyboardMode::Legacy), &evt.union) {
+        (KeyboardMode::Legacy, Some(key_event::Union::Chr(chr))) if has_hotkey_modifiers(evt) => vec![*chr],
+        (KeyboardMode::Translate, Some(key_event::Union::Seq(seq))) if has_hotkey_modifiers(evt) =>
+            seq.chars().map(u32::from).collect(),
+        (KeyboardMode::Translate, Some(key_event::Union::Win2winHotkey(code))) => vec![code & 0xffff],
+        _ => return Ok(Vec::new()),
+    };
+    if characters.is_empty() {
+        return Ok(Vec::new());
+    }
+    let foreground = unsafe { GetForegroundWindow() };
+    if foreground.is_null() {
+        bail!("Windows semantic input has no foreground window");
+    }
+    let foreground_thread = unsafe { GetWindowThreadProcessId(foreground, std::ptr::null_mut()) };
+    if foreground_thread == 0 {
+        let error = std::io::Error::last_os_error();
+        bail!("Could not identify Windows foreground thread: {error}");
+    }
+    let layout = unsafe { GetKeyboardLayout(foreground_thread) };
+    if layout.is_null() {
+        bail!("Windows foreground keyboard layout is unavailable");
+    }
+    characters.into_iter().map(|chr| {
+        char::try_from(chr)
+            .map_err(|_| hbb_common::anyhow::anyhow!("invalid Windows semantic character"))?;
+        let unicode = u16::try_from(chr)
+            .map_err(|_| hbb_common::anyhow::anyhow!("Windows semantic character exceeds UTF-16"))?;
+        let mapped = unsafe { VkKeyScanExW(unicode, layout) as u16 };
+        if mapped == 0xffff {
+            bail!("character is not representable in the target Windows layout");
+        }
+        let scan = unsafe { MapVirtualKeyExW(u32::from(mapped & 0xff), MAPVK_VK_TO_VSC_EX, layout) };
+        if scan == 0 {
+            bail!("target Windows layout produced no scan code");
+        }
+        let modifiers = mapped >> 8;
+        if modifiers & !0x07 != 0 {
+            bail!("target Windows layout requires unsupported semantic modifiers");
+        }
+        Ok(WindowsSemanticKey { scan, modifiers })
+    }).collect()
+}
+
+#[cfg(target_os = "windows")]
+fn windows_semantic_keys(
+    keys: &[WindowsSemanticKey],
+    state: &KeyboardState,
     preserve_modifiers: &[ControlKey],
 ) -> ResultType<()> {
-    let unicode = u16::try_from(chr)
-        .map_err(|_| hbb_common::anyhow::anyhow!("Windows semantic character exceeds UTF-16"))?;
-    let foreground_thread =
-        unsafe { GetWindowThreadProcessId(GetForegroundWindow(), std::ptr::null_mut()) };
-    let layout = unsafe { GetKeyboardLayout(foreground_thread) };
-    let mapped = unsafe { VkKeyScanExW(unicode, layout) as u16 };
-    if mapped == 0xFFFF {
-        bail!("character is not representable in the target Windows layout");
-    }
-    let vk = u32::from(mapped & 0x00FF);
-    let scan = unsafe { MapVirtualKeyExW(vk, MAPVK_VK_TO_VSC_EX, layout) };
-    if scan == 0 {
-        bail!("target Windows layout produced no scan code");
-    }
-
-    let flags = mapped >> 8;
-    if flags & !0x07 != 0 {
-        bail!("target Windows layout requires unsupported semantic modifiers");
-    }
-    let required = [
-        (
-            0x01,
-            ControlKey::Shift,
-            ControlKey::RShift,
-            Key::Shift,
-            Key::RightShift,
-            RdevKey::ShiftLeft,
-        ),
-        (
-            0x02,
-            ControlKey::Control,
-            ControlKey::RControl,
-            Key::Control,
-            Key::RightControl,
-            RdevKey::ControlLeft,
-        ),
-        (
-            0x04,
-            ControlKey::Alt,
-            ControlKey::RAlt,
-            Key::Alt,
-            Key::RightAlt,
-            RdevKey::Alt,
-        ),
-    ];
-    let mut to_press = Vec::new();
-    for (flag, left, right, left_key, right_key, physical) in required {
-        if flags & flag == 0
-            || get_exact_key_state(left_key, en)
-            || get_exact_key_state(right_key, en)
-            || preserve_modifiers.contains(&left)
-            || preserve_modifiers.contains(&right)
-        {
-            continue;
+    for key in keys {
+        let mut to_press = Vec::new();
+        for (flag, left, right, modifier) in [
+            (0x01, ControlKey::Shift, ControlKey::RShift, ModifierKey::Shift),
+            (0x02, ControlKey::Control, ControlKey::RControl, ModifierKey::Control),
+            (0x04, ControlKey::Alt, ControlKey::RAlt, ModifierKey::Alt),
+        ] {
+            if key.modifiers & flag != 0 && !state.modifier_family_down(modifier)
+                && !preserve_modifiers.contains(&left) && !preserve_modifiers.contains(&right)
+            {
+                to_press.push(modifier.rdev_key());
+            }
         }
-        to_press.push(physical);
+        with_temporary_keys(&to_press, "Windows semantic modifier", || {
+            windows_complete_scan_click(key.scan)
+        })?;
     }
-    with_temporary_keys(&to_press, "Windows semantic modifier", || {
-        windows_complete_scan_click(scan)
-    })
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
 fn translate_process_code(code: u32, down: bool) -> ResultType<()> {
-    crate::platform::windows::try_change_desktop();
     match code >> 16 {
         0 => sim_rdev_rawkey_position(code as _, down),
         vk_code => sim_rdev_rawkey_virtual(vk_code, down),
     }
 }
 
-fn translate_keyboard_mode(evt: &KeyEvent, preserve_modifiers: &[ControlKey]) -> ResultType<()> {
+fn translate_keyboard_mode(
+    en: &mut Enigo,
+    _state: &KeyboardState,
+    evt: &KeyEvent,
+    preserve_modifiers: &[ControlKey],
+    #[cfg(windows)] semantic_keys: &[WindowsSemanticKey],
+) -> ResultType<()> {
     match &evt.union {
         Some(key_event::Union::Seq(seq)) => {
             if !evt.down {
                 return Ok(());
             }
-            let mut en = lock_input_state(&ENIGO, "Enigo state while translating a key sequence");
-
             #[cfg(target_os = "macos")]
             {
                 if has_hotkey_modifiers(evt) {
                     bail!("Translate sequence hotkeys require a physical keyboard mode");
                 }
-                process_seq(&mut en, seq)?;
+                process_seq(en, seq)?;
             }
             #[cfg(target_os = "linux")]
             {
                 if has_hotkey_modifiers(evt) {
                     bail!("Translate sequence hotkeys require a physical keyboard mode");
                 }
-                process_seq(&mut en, seq)?;
+                process_seq(en, seq)?;
             }
             #[cfg(target_os = "windows")]
             {
                 if has_hotkey_modifiers(evt) {
-                    for chr in seq.chars() {
-                        windows_semantic_key_click(chr as u32, &mut en, preserve_modifiers)?;
-                    }
+                    windows_semantic_keys(semantic_keys, _state, preserve_modifiers)?;
                 } else {
-                    process_seq(&mut en, seq)?;
+                    process_seq(en, seq)?;
                 }
             }
         }
@@ -2861,14 +2738,11 @@ fn translate_keyboard_mode(evt: &KeyEvent, preserve_modifiers: &[ControlKey]) ->
             sim_rdev_rawkey_position(evt.chr() as _, evt.down)?;
         }
         Some(key_event::Union::ControlKey(key)) => {
-            #[cfg(target_os = "windows")]
-            crate::platform::windows::try_change_desktop();
             process_control_key(key, evt.down)?;
         }
         #[cfg(target_os = "windows")]
-        Some(key_event::Union::Win2winHotkey(code)) => {
-            let mut en = lock_input_state(&ENIGO, "Enigo state while handling Win2win input");
-            simulate_win2win_hotkey(*code, evt.down, &mut en, preserve_modifiers)?;
+        Some(key_event::Union::Win2winHotkey(_)) => {
+            windows_semantic_keys(semantic_keys, _state, preserve_modifiers)?;
         }
         _ => {
             log::debug!(
@@ -2879,20 +2753,6 @@ fn translate_keyboard_mode(evt: &KeyEvent, preserve_modifiers: &[ControlKey]) ->
         }
     }
     Ok(())
-}
-
-#[cfg(target_os = "windows")]
-fn simulate_win2win_hotkey(
-    code: u32,
-    down: bool,
-    en: &mut Enigo,
-    preserve_modifiers: &[ControlKey],
-) -> ResultType<()> {
-    if !down {
-        return Ok(());
-    }
-    let unicode = code & 0x0000FFFF;
-    windows_semantic_key_click(unicode, en, preserve_modifiers)
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
@@ -2976,12 +2836,19 @@ fn handle_key_with_preserved_modifiers(
         return Ok(());
     }
 
+    #[cfg(windows)]
+    crate::platform::windows::try_change_desktop();
+    let mut en = lock_input_state(&ENIGO, "Enigo state while handling keyboard input");
+    let mut state = collect_keyboard_state(&mut en)?;
+    #[cfg(windows)]
+    let semantic_keys = prepare_windows_semantic_keys(evt)?;
+
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let mut _lock_mode_handler = None;
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     match &evt.union {
         Some(key_event::Union::Unicode(..)) | Some(key_event::Union::Seq(..)) => {
-            _lock_mode_handler = Some(LockModesHandler::new_handler(&evt, false)?);
+            _lock_mode_handler = Some(LockModesHandler::new_handler(&evt, false, &state)?);
         }
         Some(key_event::Union::ControlKey(ck)) => {
             let key = ck.enum_value_or(ControlKey::Unknown);
@@ -2990,12 +2857,12 @@ fn handle_key_with_preserved_modifiers(
                 let is_numpad_key = false;
                 #[cfg(any(target_os = "windows", target_os = "linux"))]
                 let is_numpad_key = is_numpad_control_key(&key);
-                _lock_mode_handler = Some(LockModesHandler::new_handler(&evt, is_numpad_key)?);
+                _lock_mode_handler = Some(LockModesHandler::new_handler(&evt, is_numpad_key, &state)?);
             }
         }
         Some(key_event::Union::Chr(code)) => {
             if is_legacy_mode(&evt) {
-                _lock_mode_handler = Some(LockModesHandler::new_handler(evt, false)?);
+                _lock_mode_handler = Some(LockModesHandler::new_handler(evt, false, &state)?);
             } else {
                 let key = crate::keyboard::keycode_to_rdev_key(*code);
                 if !skip_led_sync_rdev_key(&key) {
@@ -3003,7 +2870,7 @@ fn handle_key_with_preserved_modifiers(
                     let is_numpad_key = false;
                     #[cfg(any(target_os = "windows", target_os = "linux"))]
                     let is_numpad_key = crate::keyboard::is_numpad_rdev_key(&key);
-                    _lock_mode_handler = Some(LockModesHandler::new_handler(evt, is_numpad_key)?);
+                    _lock_mode_handler = Some(LockModesHandler::new_handler(evt, is_numpad_key, &state)?);
                 }
             }
         }
@@ -3013,20 +2880,34 @@ fn handle_key_with_preserved_modifiers(
     match evt.mode.enum_value() {
         Ok(KeyboardMode::Map) => {
             #[cfg(target_os = "macos")]
-            set_last_legacy_mode(false);
+            set_last_legacy_mode(&mut en, false);
             map_keyboard_mode(evt)
         }
         Ok(KeyboardMode::Translate) => {
             #[cfg(target_os = "macos")]
-            set_last_legacy_mode(false);
-            translate_keyboard_mode(evt, preserve_modifiers)
+            set_last_legacy_mode(&mut en, false);
+            translate_keyboard_mode(
+                &mut en,
+                &state,
+                evt,
+                preserve_modifiers,
+                #[cfg(windows)]
+                &semantic_keys,
+            )
         }
         _ => {
             // All key down events are started from here,
             // so we can reset the flag of last legacy mode here.
             #[cfg(target_os = "macos")]
-            set_last_legacy_mode(true);
-            legacy_keyboard_mode(evt, preserve_modifiers)
+            set_last_legacy_mode(&mut en, true);
+            legacy_keyboard_mode(
+                &mut en,
+                &mut state,
+                evt,
+                preserve_modifiers,
+                #[cfg(windows)]
+                &semantic_keys,
+            )
         }
     }
 }

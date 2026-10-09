@@ -345,13 +345,10 @@ async fn sync_windows_viewer_cpu_usage_once() {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn get_key_state(key: enigo::Key) -> bool {
+pub fn keyboard_state() -> ResultType<enigo::KeyboardState> {
     use enigo::KeyboardControllable;
-    #[cfg(target_os = "macos")]
-    if key == enigo::Key::NumLock {
-        return true;
-    }
-    ENIGO.lock().unwrap().get_key_state(key)
+    ENIGO.lock().unwrap().keyboard_state()
+        .map_err(|err| hbb_common::anyhow::anyhow!("Could not collect viewer keyboard state: {err}"))
 }
 
 impl Client {

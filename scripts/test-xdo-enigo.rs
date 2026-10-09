@@ -1,5 +1,5 @@
 //! Complete production Enigo Linux crate through the production private loader.
-use enigo::{Enigo, Key, KeyboardControllable, MouseButton, MouseControllable};
+use enigo::{Enigo, ModifierKey, NumLockState, KeyboardControllable, MouseButton, MouseControllable};
 use hbb_common::{libc, x11::xlib::*};
 use std::{ptr, thread, time::{Duration, Instant}};
 
@@ -40,6 +40,7 @@ fn main() {
             let mut enigo = Enigo::new();
             let refused = enigo.key_sequence_result("A").is_err();
             assert!(enigo.mouse_down(MouseButton::Left).is_err());
+            assert!(enigo.keyboard_state().is_err());
             drop(enigo);
             assert_eq!(descriptors(), connected);
             if !refused {
@@ -67,31 +68,36 @@ fn main() {
             enigo.mouse_move_to(71 + index, 93).unwrap();
             observe(display.0, |(x, y, _)| (x, y) == (71 + index, 93));
             if scenario == "complete" {
-                for (key, symbol, mask, lock) in [
-                    (Key::Shift, 0xffe1, ShiftMask, false),
-                    (Key::Control, 0xffe3, ControlMask, false),
-                    (Key::Alt, 0xffe9, Mod1Mask, false),
-                    (Key::CapsLock, 0xffe5, LockMask, true),
-                    (Key::NumLock, 0xff7f, Mod2Mask, true),
-                ] {
-                    let code = XKeysymToKeycode(display.0, symbol);
+                for key in ModifierKey::ALL {
+                    let code = rdev::linux_keycode_from_key(key.rdev_key()).unwrap();
                     assert!(code >= 8);
-                    assert_eq!(pointer(display.0).2 & mask, 0);
-                    assert!(!enigo.get_key_state(key));
+                    assert!(!enigo.keyboard_state().unwrap().modifier_down(key));
                     assert_ne!(XTestFakeKeyEvent(display.0, code.into(), 1, 0), 0);
-                    if lock {
-                        assert_ne!(XTestFakeKeyEvent(display.0, code.into(), 0, 0), 0);
-                    }
                     XSync(display.0, 0);
-                    observe(display.0, |(_, _, state)| state & mask != 0);
-                    assert!(enigo.get_key_state(key));
-                    if lock {
-                        assert_ne!(XTestFakeKeyEvent(display.0, code.into(), 1, 0), 0);
+                    let mut observed = [0i8; 32];
+                    assert_ne!(XQueryKeymap(display.0, observed.as_mut_ptr()), 0);
+                    assert_ne!(observed[code as usize / 8] & (1 << (code % 8)), 0);
+                    let state = enigo.keyboard_state().unwrap();
+                    for other in ModifierKey::ALL {
+                        assert_eq!(state.modifier_down(other), other == key, "exact identity {key:?}/{other:?}");
+                        assert_eq!(state.modifier_family_down(other), (other as u8 & 3) == (key as u8 & 3));
                     }
                     assert_ne!(XTestFakeKeyEvent(display.0, code.into(), 0, 0), 0);
                     XSync(display.0, 0);
-                    observe(display.0, |(_, _, state)| state & mask == 0);
-                    assert!(!enigo.get_key_state(key));
+                    assert!(!enigo.keyboard_state().unwrap().modifier_down(key));
+                }
+                for (symbol, caps) in [(0xffe5, true), (0xff7f, false)] {
+                    let code = XKeysymToKeycode(display.0, symbol);
+                    assert!(code >= 8);
+                    let state = enigo.keyboard_state().unwrap();
+                    assert!(!if caps { state.caps_lock_enabled() } else { state.num_lock() == NumLockState::On });
+                    for expected in [true, false] {
+                        assert_ne!(XTestFakeKeyEvent(display.0, code.into(), 1, 0), 0);
+                        assert_ne!(XTestFakeKeyEvent(display.0, code.into(), 0, 0), 0);
+                        XSync(display.0, 0);
+                        let state = enigo.keyboard_state().unwrap();
+                        assert_eq!(if caps { state.caps_lock_enabled() } else { state.num_lock() == NumLockState::On }, expected);
+                    }
                 }
                 while XPending(display.0) > 0 {
                     let mut event: XEvent = std::mem::zeroed();
@@ -107,6 +113,7 @@ fn main() {
                        "text preflight emitted a prefix before refusal");
             let result = enigo.key_sequence_result("A");
             if scenario == "reject-text" {
+                assert!(enigo.keyboard_state().is_err(), "failed native state query was published as all-up");
                 let rejected = result.as_ref().err().map(|error| error.to_string());
                 assert_eq!(pointer(display.0).2 & ShiftMask, 0);
                 XSync(display.0, 0);
@@ -160,7 +167,7 @@ fn main() {
     assert_eq!(descriptors(), baseline);
     assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), 1);
     if scenario == "complete" {
-        println!("XDO_ENIGO_STATE=pass contexts=8 queries=120 keys=Shift,Control,Alt,CapsLock,NumLock state=server-observed source=complete-linux-crate uncertainty=unproved");
+        println!("XDO_ENIGO_STATE=pass contexts=8 modifiers=8 locks=2 exact_sides=distinct family=union state=server-observed source=complete-linux-crate");
     }
     println!("XDO_ENIGO_COMPONENT=pass scenario={scenario} attempts=8 text={} pointer=actual descriptors=retired",
              if scenario == "complete" { "delivered" } else { "native-modifier-error" });

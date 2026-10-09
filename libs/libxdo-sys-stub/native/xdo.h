@@ -181,13 +181,21 @@ int xdo_get_mouse_location(const xdo_t *xdo, int *x, int *y, int *screen_num);
  */
 int xdo_enter_text_scalar(const xdo_t *xdo, unsigned int scalar, useconds_t delay);
 
+typedef struct xdo_input_state {
+  unsigned int pointer_mask;
+  unsigned char keys[32];
+  unsigned char caps_lock;
+  unsigned char num_lock;
+  unsigned char keycode_min;
+  unsigned char keycode_max;
+} xdo_input_state_t;
+
 /**
- * Get the current input state. This is a mask value containing any of the
- * following: ShiftMask, LockMask, ControlMask, Mod1Mask, Mod2Mask, Mod3Mask,
- * Mod4Mask, or Mod5Mask.
- *
- * @return the input mask
+ * Collect checked core pointer/key state and named XKB lock indicators on the
+ * retained Display. A valid pointer reply on a different screen is accepted.
+ * Queries precede publication; failure leaves the caller's output untouched.
+ * Separate replies are not an atomic hardware sample. No input is emitted.
  */
-unsigned int xdo_get_input_state(const xdo_t *xdo);
+int xdo_query_input_state(const xdo_t *xdo, xdo_input_state_t *state);
 
 #endif /* ifndef _XDO_H_ */

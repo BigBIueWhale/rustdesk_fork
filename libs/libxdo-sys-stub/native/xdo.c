@@ -14,6 +14,7 @@
 #include <unistd.h>
 
 #include <X11/Xlib.h>
+#include <X11/Xlib-xcb.h>
 #include <X11/XKBlib.h>
 #include <X11/extensions/XTest.h>
 #include <X11/keysym.h>
@@ -417,14 +418,63 @@ done:
   return status;
 }
 
-unsigned int xdo_get_input_state(const xdo_t *xdo) {
-  Window root, dummy;
-  int root_x, root_y, win_x, win_y;
-  unsigned int mask;
-  root = DefaultRootWindow(xdo->xdpy);
+int xdo_query_input_state(const xdo_t *xdo, xdo_input_state_t *output) {
+  if (xdo == NULL || xdo->xdpy == NULL || output == NULL
+      || xdo->keycode_low < 8 || xdo->keycode_high > 255
+      || xdo->keycode_low > xdo->keycode_high)
+    return XDO_ERROR;
 
-  XQueryPointer(xdo->xdpy, root, &dummy, &dummy,
-                &root_x, &root_y, &win_x, &win_y, &mask);
+  /* Borrow the same connection; Xlib retains Display and event-queue ownership. */
+  xcb_connection_t *connection = XGetXCBConnection(xdo->xdpy);
+  if (connection == NULL || xcb_connection_has_error(connection))
+    return XDO_ERROR;
+  XFlush(xdo->xdpy);
 
-  return mask;
+  xdo_input_state_t state = {0};
+  int status = XDO_ERROR;
+  xcb_generic_error_t *error = NULL;
+  xcb_query_pointer_reply_t *pointer = xcb_query_pointer_reply(connection,
+      xcb_query_pointer(connection, DefaultRootWindow(xdo->xdpy)), &error);
+  if (pointer == NULL || error != NULL || pointer->response_type != 1
+      || pointer->length != 0 || pointer->same_screen > 1
+      || xcb_connection_has_error(connection))
+    goto pointer_done;
+  state.pointer_mask = pointer->mask;
+  status = XDO_SUCCESS;
+pointer_done:
+  free(error);
+  free(pointer);
+  if (status != XDO_SUCCESS)
+    return status;
+
+  status = XDO_ERROR;
+  error = NULL;
+  xcb_query_keymap_reply_t *keys = xcb_query_keymap_reply(connection,
+      xcb_query_keymap(connection), &error);
+  if (keys == NULL || error != NULL || keys->response_type != 1
+      || keys->length != 2 || xcb_connection_has_error(connection))
+    goto keys_done;
+  memcpy(state.keys, keys->keys, sizeof(state.keys));
+  status = XDO_SUCCESS;
+keys_done:
+  free(error);
+  free(keys);
+  if (status != XDO_SUCCESS)
+    return status;
+
+  Atom caps_name = XInternAtom(xdo->xdpy, "Caps Lock", True);
+  Atom num_name = XInternAtom(xdo->xdpy, "Num Lock", True);
+  Bool caps = False, num = False;
+  if (caps_name == None || num_name == None
+      || !XkbGetNamedIndicator(xdo->xdpy, caps_name, NULL, &caps, NULL, NULL)
+      || !XkbGetNamedIndicator(xdo->xdpy, num_name, NULL, &num, NULL, NULL)
+      || (caps != False && caps != True) || (num != False && num != True)
+      || xcb_connection_has_error(connection))
+    return XDO_ERROR;
+  state.caps_lock = caps;
+  state.num_lock = num;
+  state.keycode_min = xdo->keycode_low;
+  state.keycode_max = xdo->keycode_high;
+  *output = state;
+  return XDO_SUCCESS;
 }

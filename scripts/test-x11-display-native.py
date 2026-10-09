@@ -140,7 +140,7 @@ def constructor_contexts(root, environment):
     binary = Path("/build/xdo-constructor")
     command = ["/usr/bin/cc", "-std=c99", "-O1", "-g", "-fsanitize=address",
                "-fno-omit-frame-pointer", str(fixture), str(native_source / "xdo.c"),
-               "-lX11", "-lXtst", "-o", str(binary)]
+               "-lX11", "-lXtst", "-lX11-xcb", "-lxcb", "-o", str(binary)]
     for symbol in ("calloc", "free", "XOpenDisplay", "XCloseDisplay", "XTestQueryExtension", "XkbGetMap",
                    "XkbFreeKeyboard", "XGetKeyboardMapping", "XkbKeycodeToKeysym", "XGetModifierMapping"):
         command += [f"-Wl,--wrap={symbol}"]
@@ -166,6 +166,51 @@ def constructor_contexts(root, environment):
     binary.unlink()
 
 
+def input_state_queries(root, environment):
+    fixture = root / "scripts/test-xdo-input-state.c"
+    native = root / "libs/libxdo-sys-stub/native/xdo.c"
+    binary = Path("/build/xdo-input-state")
+    command = ["/usr/bin/cc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-O1", "-g",
+               "-fsanitize=address", "-fno-omit-frame-pointer", str(fixture), str(native),
+               "-lX11", "-lXtst", "-lX11-xcb", "-lxcb", "-o", str(binary)]
+    for symbol in ("free", "XGetXCBConnection", "xcb_connection_has_error",
+                   "xcb_query_pointer_reply", "xcb_query_keymap_reply", "XInternAtom",
+                   "XkbGetNamedIndicator", "XTestFakeKeyEvent", "XTestFakeButtonEvent",
+                   "XChangeKeyboardMapping", "XkbLockGroup"):
+        command.append(f"-Wl,--wrap={symbol}")
+    subprocess.run(command, env=environment, check=True, timeout=30)
+    print("XDO_INPUT_STATE_BUILD " + " ".join(
+        f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}"
+        for name, path in (("fixture", fixture), ("native_c", native), ("binary", binary))) +
+        " native_source=complete sanitizer=address whole_app=false", flush=True)
+    receipt = ("XDO_INPUT_STATE_NATIVE=pass faults=23 repeats=4 refused=92 recovery=92 "
+               "output=unpublished-on-error effects=none replies=retired pointer_screens=2 "
+               "button_mask=preserved mapping=unchanged descriptors=retired tasks=retired "
+               "sanitizer=address whole_app=false")
+    result = subprocess.run([str(binary)], env=dict(environment, ASAN_OPTIONS="detect_leaks=0:abort_on_error=0:disable_coredump=1"),
+                            capture_output=True, text=True, timeout=10)
+    require(result.returncode == 0 and not result.stderr and result.stdout.splitlines() == [receipt],
+            f"native input-state query result differs: {result}")
+    print(receipt, flush=True)
+    binary.unlink()
+
+
+def keyboard_caller_syntax(root, environment):
+    # Parse every changed consumer and platform implementation; this does not
+    # type-check the full application or establish target-native behavior.
+    paths = ("src/client.rs", "src/keyboard.rs", "src/ui_session_interface.rs",
+             "src/server/input_service.rs", "libs/enigo/src/win/win_impl.rs",
+             "libs/enigo/src/macos/macos_impl.rs")
+    for name in paths:
+        result = subprocess.run(["/usr/local/cargo/bin/rustfmt", "--edition=2021", "--emit=stdout",
+                                 "--config=skip_children=true", str(root / name)],
+                                env=environment, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.PIPE, text=True, timeout=15)
+        require(result.returncode == 0 and not result.stderr,
+                f"keyboard consumer syntax failed: {name}: {result.stderr[:4096]}")
+    print("KEYBOARD_CALLER_SYNTAX=pass files=6 source=production type_check=unperformed native=unperformed", flush=True)
+
+
 def scratch_keys(root, environment):
     scratch_source = root / "scripts/test-xdo-scratch-key.c"
     scratch_binary = Path("/build/xdo-scratch-key")
@@ -177,7 +222,7 @@ def scratch_keys(root, environment):
                     "-Wl,--wrap=XGetModifierMapping", "-Wl,--wrap=XFreeModifiermap",
                     "-Wl,--wrap=malloc", "-Wl,--wrap=calloc", "-Wl,--wrap=realloc", "-Wl,--wrap=strdup",
                     str(scratch_source), str(native_source / "xdo.c"),
-                    "-lX11", "-lXtst", "-o", str(scratch_binary)],
+                    "-lX11", "-lXtst", "-lX11-xcb", "-lxcb", "-o", str(scratch_binary)],
                    env=environment, check=True, timeout=30)
     print("XDO_SCRATCH_BUILD " + " ".join(
         f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
@@ -216,6 +261,42 @@ def scratch_keys(root, environment):
           "later_tests=fresh-display", flush=True)
 
 
+def rdev_keyboard_mapping(root, environment, build):
+    # Compile the complete pinned mapping and enum bodies, without rdev's listener,
+    # simulator or optional serialization/EnumIter derives. This is a partial crate.
+    directory = root / "xdo-vendor/rdev-0.5.0-2"
+    checksum = directory / ".cargo-checksum.json"
+    require(hashlib.sha256(checksum.read_bytes()).hexdigest() ==
+            "20fd1e4760d42f53240bb8da143336977afc390fd83188abac8316b43a0141ef",
+            "rdev mapping manifest differs")
+    manifest = json.loads(checksum.read_bytes())
+    for name, expected in manifest["files"].items():
+        path = directory / name
+        require(not path.is_symlink() and hashlib.sha256(path.read_bytes()).hexdigest() == expected,
+                f"rdev mapping input differs: {name}")
+    source = (directory / "src/rdev.rs").read_text()
+    enums = []
+    for name in ("Key", "RawKey"):
+        start = f"pub enum {name} {{"
+        require(source.count(start) == 1, "rdev enum extraction differs")
+        begin = source.index(start)
+        end = source.index("\n}", begin) + 2
+        enums.append("#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]\n" + source[begin:end])
+    facade = build / "rdev-mapping.rs"
+    facade.write_text("pub mod rdev { pub type KeyCode = u32;\n" + "\n".join(enums) +
+                      "\n}\npub use rdev::Key;\n" +
+                      f'#[path="{directory}/src/keycodes/linux.rs"] mod linux;\n' +
+                      "pub use linux::code_from_key as linux_keycode_from_key;\n")
+    library = build / "librdev.rlib"
+    subprocess.run(["/usr/local/cargo/bin/rustc", "--edition=2021", "--crate-type=rlib",
+                    "--crate-name=rdev", str(facade), "-o", str(library)],
+                   env=environment, check=True, timeout=30)
+    print(f"XDO_RDEV_MAPPING_BUILD=pass source=pinned-complete-mapping enum_bodies=exact "
+          f"derives=primitive-only simulator=unexecuted facade_sha256={hashlib.sha256(facade.read_bytes()).hexdigest()} "
+          f"binary_sha256={hashlib.sha256(library.read_bytes()).hexdigest()}", flush=True)
+    return library
+
+
 def enigo_route(root, environment, checksum, library, providers, before_source):
     mouse_source = root / "scripts/test-xdo-mouse-modifiers.c"
     mouse_binary = Path("/build/xdo-mouse-modifiers")
@@ -237,13 +318,23 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
     require(source.count(start) == 1 and source.count(end) == 1,
             "production Enigo API extraction boundary differs")
     declarations = source[source.index(start):source.index(end)]
+    require(declarations.count("mod keyboard_state;") == 1, "keyboard state module boundary differs")
+    declarations = declarations.replace("mod keyboard_state;",
+        '#[path="/work/libs/enigo/src/keyboard_state.rs"] mod keyboard_state;')
     api = Path("/build/enigo-api.rs")
     with api.open("x") as output:
         output.write(declarations)
+    loader = (root / "libs/libxdo-sys-stub/src/lib.rs").read_text()
+    state = "#[repr(C)]\n#[derive(Default)]\npub struct XdoInputState {"
+    require(loader.count(state) == 1, "native state declaration boundary differs")
+    start = loader.index(state)
+    Path("/build/xdo-input-state.rs").write_text(loader[start:loader.index("\n}", start)+2])
     binary = Path("/build/enigo-corrected")
+    mapping = rdev_keyboard_mapping(root, environment, Path("/build"))
     command = ["/usr/local/cargo/bin/rustc", "--edition=2021",
                str(root / "scripts/test-x11-enigo-route.rs"), "-o", str(binary),
-               "--extern", f"log={library}", "-L", f"native={providers['corrected']}",
+               "--extern", f"log={library}", "--extern", f"rdev={mapping}",
+               "-L", f"native={providers['corrected']}",
                "-C", f"link-arg=-Wl,-rpath,{providers['corrected']}"]
     for symbol in ("xdo_new_with_opened_display", "xdo_free", "XOpenDisplay", "XCloseDisplay"):
         command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
@@ -1268,6 +1359,7 @@ def key_input_main():
     version = subprocess.run(["/usr/local/cargo/bin/rustc", "--version"], env=environment,
                              check=True, capture_output=True, text=True, timeout=5)
     require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
+    keyboard_caller_syntax(root, environment)
     scratch_keys(root, environment)
     checksum, logging = logging_library(root, environment)
     with open("/tmp/xdo-key-xvfb.log", "xb") as log:
@@ -1280,6 +1372,7 @@ def key_input_main():
                 require(server.poll() is None and time.monotonic() < deadline, "key-input Xvfb not ready")
                 time.sleep(0.01)
             constructor_contexts(root, environment)
+            input_state_queries(root, environment)
             providers, before_source = native_xdo(root, environment, historical_destructor=False)
             thread_contexts(root, environment, checksum, logging, providers["corrected"], position_only=True)
             enigo_route(root, environment, checksum, logging, providers, before_source)
@@ -1349,6 +1442,7 @@ def main():
                 require(child.poll() is None and time.monotonic() < deadline, "Xvfb not ready")
                 time.sleep(0.05)
             constructor_contexts(root, environment)
+            input_state_queries(root, environment)
             providers, before_source = native_xdo(root, environment)
             thread_contexts(root, environment, checksum, logging, providers["corrected"])
             enigo_route(root, environment, checksum, logging, providers, before_source)

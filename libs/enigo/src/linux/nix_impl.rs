@@ -1,5 +1,5 @@
 use super::xdo::EnigoXdo;
-use crate::{Key, KeyboardControllable, MouseButton, MouseControllable};
+use crate::{KeyboardState, KeyboardControllable, MouseButton, MouseControllable};
 
 /// Linux input through the owned XDO backend.
 #[derive(Default)]
@@ -66,7 +66,7 @@ impl KeyboardControllable for Enigo {
         self
     }
 
-    fn get_key_state(&mut self, key: Key) -> bool {
-        self.xdo.get_key_state(key)
+    fn keyboard_state(&mut self) -> Result<KeyboardState, Box<dyn std::error::Error>> {
+        self.xdo.keyboard_state()
     }
 }

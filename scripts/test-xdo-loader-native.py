@@ -48,11 +48,11 @@ def command(arguments, timeout=30, environment=None):
 
 
 def inputs():
-    locked = {(item['name'], item['version']): item.get('checksum')
+    locked = {(item['name'], item['version']): item
               for item in tomllib.loads((ROOT / 'Cargo.lock').read_text())['package']}
     records = [line.split() for line in (ROOT / 'scripts/xdo-loader-inputs.txt').read_text().splitlines()
                if line and not line.startswith('#')]
-    require(len(records) == 4 and len({record[0] for record in records}) == 4,
+    require(len(records) == 5 and len({record[0] for record in records}) == 5,
             'loader dependency closure differs')
     crates = {}
     for package, expected in records:
@@ -61,8 +61,12 @@ def inputs():
         require(sha(checksum) == expected, f'loader input manifest differs: {package}')
         manifest = json.loads(checksum.read_bytes())
         metadata = tomllib.loads((directory / 'Cargo.toml').read_text())['package']
-        require(manifest['package'] == locked[(metadata['name'], metadata['version'])],
+        lock = locked[(metadata['name'], metadata['version'])]
+        require(manifest['package'] == lock.get('checksum'),
                 f'loader dependency root-lock identity differs: {package}')
+        if metadata['name'] == 'rdev':
+            require(lock['source'] == 'git+https://github.com/rustdesk-org/rdev#f9b60b1dd0f3300a1b797d7a74c116683cd232c8',
+                    'rdev mapping revision differs')
         actual = {str(path.relative_to(directory)) for path in directory.rglob('*') if path.is_file()}
         require(actual == set(manifest['files']) | {'.cargo-checksum.json'},
                 f'loader dependency file closure differs: {package}')
@@ -71,7 +75,7 @@ def inputs():
             require(not path.is_symlink() and sha(path) == expected_file,
                     f'loader dependency bytes differ: {package}/{name}')
         crates[metadata['name']] = directory
-    print('XDO_LOADER_INPUTS=pass crates=4 manifests=authenticated files=complete root_lock=matched', flush=True)
+    print('XDO_LOADER_INPUTS=pass crates=5 manifests=authenticated files=complete root_lock=matched rdev=partial-mapping', flush=True)
     return crates
 
 
@@ -102,6 +106,7 @@ def build():
     native = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(native)
     required_exports = native.input_exports(ROOT)
+    mapping = native.rdev_keyboard_mapping(ROOT, ENV, BUILD)
     _, logging = native.logging_library(ROOT, ENV)
     logging = Path(shutil.move(str(logging), BUILD / 'liblog.rlib'))
     common = compile_crate('hbb_common', ROOT / 'scripts/fixtures/xdo-loader-common.rs', 2021,
@@ -118,7 +123,7 @@ def build():
           'x11_link=explicit libc_build_script=actual full_app=uncompiled', flush=True)
     enigo = compile_crate('enigo', ROOT / 'libs/enigo/src/lib.rs', 2018,
                           ['--extern', f'hbb_common={common}', '--extern', f'libxdo_sys={loader}',
-                           '--extern', f'log={logging}'])
+                           '--extern', f'log={logging}', '--extern', f'rdev={mapping}'])
     retired_source = BUILD / 'retired-enigo-api.rs'
     retired_source.write_text('use enigo::{Enigo, Key, KeyboardControllable};\n'
                               'fn main() { let mut enigo = Enigo::new();\n'
@@ -126,7 +131,8 @@ def build():
                               'enigo.key_up(Key::Shift); enigo.key_click(Key::Shift);\n'
                               'enigo.set_custom_keyboard(Box::new(Enigo::new()));\n'
                               'enigo.set_custom_mouse(Box::new(Enigo::new()));\n'
-                              'let _ = enigo.get_custom_keyboard(); let _ = enigo.get_custom_mouse(); }\n')
+                              'let _ = enigo.get_custom_keyboard(); let _ = enigo.get_custom_mouse();\n'
+                              'let _ = enigo.get_key_state(Key::Shift); }\n')
     retired_binary = BUILD / 'retired-enigo-api'
     rejected = subprocess.run(
         [RUSTC, '--edition=2021', '--error-format=json', '-L', f'dependency={BUILD}',
@@ -137,17 +143,18 @@ def build():
             'retired Enigo API compiled or failed without bounded diagnostics')
     diagnostics = [json.loads(line) for line in rejected.stderr.splitlines()]
     errors = [item for item in diagnostics if item.get('level') == 'error' and item.get('code')]
-    require(len(errors) == 8 and all(item['code']['code'] == 'E0599' for item in errors)
+    require(len(errors) == 9 and all(item['code']['code'] == 'E0599' for item in errors)
             and all(sum(f'`{name}`' in item['message'] for item in errors) == 1
                     for name in ('key_sequence', 'key_down', 'key_up', 'key_click',
                                  'set_custom_keyboard', 'set_custom_mouse',
-                                 'get_custom_keyboard', 'get_custom_mouse')),
+                                 'get_custom_keyboard', 'get_custom_mouse', 'get_key_state')),
             'retired Enigo API refusal differs')
-    print('XDO_ENIGO_RETIRED_API=refused emission_methods=4 custom_backend_methods=4 crate=complete-linux-source '
+    print('XDO_ENIGO_RETIRED_API=refused emission_methods=4 custom_backend_methods=4 boolean_state_methods=1 crate=complete-linux-source '
           'compiler=rustc-1.75.0 artifact=absent runtime=unexecuted', flush=True)
     enigo_binary = BUILD / 'test-xdo-enigo'
     command([RUSTC, '--edition=2021', '-L', f'dependency={BUILD}',
              '--extern', f'hbb_common={common}', '--extern', f'enigo={enigo}',
+             '--extern', f'rdev={mapping}',
              '-l', 'X11', str(ROOT / 'scripts/test-xdo-enigo.rs'), '-o', str(enigo_binary)])
     print(f'XDO_ENIGO_BUILD=pass crate=complete-linux-source binary_sha256={sha(enigo_binary)} '
           f'backend_sha256={sha(ROOT / "libs/enigo/src/linux/xdo.rs")} '
@@ -170,13 +177,17 @@ def build():
             elif variant == 'wrong-version':
                 path = source_dir / 'xdo_version.h'
                 text = path.read_text()
-                require(text.count('3.20160805.1-rustdesk16') == 1, 'fixture version source differs')
-                path.write_text(text.replace('3.20160805.1-rustdesk16', '3.20160805.1-rustdesk15'))
+                require(text.count('3.20160805.1-rustdesk17') == 1, 'fixture version source differs')
+                path.write_text(text.replace('3.20160805.1-rustdesk17', '3.20160805.1-rustdesk16'))
             else:
                 path = source_dir / 'xdo.c'
                 path.write_text('#define XGetModifierMapping rd_fixture_x_get_modifier_mapping\n' + path.read_text()
                                 + '\nXModifierKeymap *rd_fixture_x_get_modifier_mapping(Display *display) {\n'
                                 + '  (void)display; return NULL;\n}\n')
+                text = path.read_text()
+                path.write_text('#define XkbGetNamedIndicator rd_fixture_named_indicator\n' + text +
+                    '\nBool rd_fixture_named_indicator(Display *d, Atom a, int *i, Bool *s, XkbIndicatorMapPtr m, Bool *r) {\n'
+                    ' (void)d; (void)a; (void)i; (void)s; (void)m; (void)r; return False;\n}\n')
         library = directory / 'libxdo.so.3'
         result = command(['/usr/bin/python3', '-I', '-S', str(source_dir / 'build.py'),
                           '--output', str(library)], 35)
@@ -287,7 +298,7 @@ def run(scenario):
                             if scenario != 'complete' else
                             'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative '
                             'button=pressed,released shift=pressed,released key=a,a input=xtest '
-                            'retired_lookups=62 retired_symbols=absent descriptors=retired')
+                            'retired_lookups=63 retired_symbols=absent descriptors=retired')
                 if scenario == 'no-xtest':
                     expected = expected.replace(' descriptors=',
                         ' extension=absent paths=3 borrowed_display=usable descriptors=')
@@ -307,9 +318,9 @@ def run(scenario):
                            if scenario == 'no-xtest' else not result.stderr)
             expected_lines = [expected]
             if scenario == 'complete':
-                expected_lines.insert(0, 'XDO_ENIGO_STATE=pass contexts=8 queries=120 '
-                                      'keys=Shift,Control,Alt,CapsLock,NumLock state=server-observed '
-                                      'source=complete-linux-crate uncertainty=unproved')
+                expected_lines.insert(0, 'XDO_ENIGO_STATE=pass contexts=8 modifiers=8 locks=2 '
+                                      'exact_sides=distinct family=union state=server-observed '
+                                      'source=complete-linux-crate')
             require(result.stdout.splitlines() == expected_lines and diagnostics,
                     'complete Enigo/private-loader result differs')
             print(result.stdout, end='', flush=True)

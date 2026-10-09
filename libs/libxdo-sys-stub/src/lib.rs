@@ -26,10 +26,21 @@ pub struct xdo_t {
 
 pub type useconds_t = c_uint;
 
+#[repr(C)]
+#[derive(Default)]
+pub struct XdoInputState {
+    pub pointer_mask: c_uint,
+    pub keys: [u8; 32],
+    pub caps_lock: u8,
+    pub num_lock: u8,
+    pub keycode_min: u8,
+    pub keycode_max: u8,
+}
+
 const TRUSTED_LIBXDO_PATHS: &[&str] = &[
     "/usr/lib/rustdesk-fork/libxdo.so.3",
 ];
-const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk16";
+const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk17";
 
 fn root_owned_non_writable(mode: u32, uid: u32) -> bool {
     uid == 0 && mode & 0o022 == 0
@@ -93,7 +104,7 @@ type FnXdoMoveMouse = unsafe extern "C" fn(*const xdo_t, c_int, c_int) -> c_int;
 type FnXdoMoveMouseRelative = unsafe extern "C" fn(*const xdo_t, c_int, c_int) -> c_int;
 type FnXdoGetMouseLocation =
     unsafe extern "C" fn(*const xdo_t, *mut c_int, *mut c_int, *mut c_int) -> c_int;
-type FnXdoGetInputState = unsafe extern "C" fn(*const xdo_t) -> c_uint;
+type FnXdoQueryInputState = unsafe extern "C" fn(*const xdo_t, *mut XdoInputState) -> c_int;
 
 struct XdoLib {
     _lib: Library,
@@ -106,7 +117,7 @@ struct XdoLib {
     xdo_move_mouse: FnXdoMoveMouse,
     xdo_move_mouse_relative: FnXdoMoveMouseRelative,
     xdo_get_mouse_location: FnXdoGetMouseLocation,
-    xdo_get_input_state: FnXdoGetInputState,
+    xdo_query_input_state: FnXdoQueryInputState,
 }
 
 unsafe fn required_symbol<T: Copy>(lib: &Library, name: &[u8]) -> Option<T> {
@@ -146,7 +157,7 @@ impl XdoLib {
             let xdo_move_mouse = required_symbol(&lib, b"xdo_move_mouse")?;
             let xdo_move_mouse_relative = required_symbol(&lib, b"xdo_move_mouse_relative")?;
             let xdo_get_mouse_location = required_symbol(&lib, b"xdo_get_mouse_location")?;
-            let xdo_get_input_state = required_symbol(&lib, b"xdo_get_input_state")?;
+            let xdo_query_input_state = required_symbol(&lib, b"xdo_query_input_state")?;
 
             log::info!("libxdo-sys Loaded {}", lib_path.display());
 
@@ -161,7 +172,7 @@ impl XdoLib {
                 xdo_move_mouse,
                 xdo_move_mouse_relative,
                 xdo_get_mouse_location,
-                xdo_get_input_state,
+                xdo_query_input_state,
             })
         }
     }
@@ -380,6 +391,6 @@ pub unsafe extern "C" fn xdo_get_mouse_location(
     get_lib().map_or(1, |lib| (lib.xdo_get_mouse_location)(xdo, x, y, screen_num))
 }
 
-pub unsafe extern "C" fn xdo_get_input_state(xdo: *const xdo_t) -> c_uint {
-    get_lib().map_or(0, |lib| (lib.xdo_get_input_state)(xdo))
+pub unsafe extern "C" fn xdo_query_input_state(xdo: *const xdo_t, state: *mut XdoInputState) -> c_int {
+    get_lib().map_or(1, |lib| (lib.xdo_query_input_state)(xdo, state))
 }

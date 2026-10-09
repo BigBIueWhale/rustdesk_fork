@@ -38,6 +38,9 @@ extern crate serde;
 ///
 pub type ResultType = std::result::Result<(), Box<dyn std::error::Error>>;
 
+mod keyboard_state;
+pub use keyboard_state::{KeyboardState, ModifierKey, NumLockState};
+
 pub(crate) fn checked_scroll_magnitude(
     length: i32,
     maximum: i32,
@@ -404,8 +407,9 @@ pub trait KeyboardControllable {
     /// Offer the ability to confer concrete type.
     fn as_mut_any(&mut self) -> &mut dyn std::any::Any;
 
-    /// Query the platform's state for a key.
-    fn get_key_state(&mut self, key: Key) -> bool;
+    /// Collect all supported keyboard state before an operation starts.
+    /// Unavailable native state returns an error; no partial state is published.
+    fn keyboard_state(&mut self) -> std::result::Result<KeyboardState, Box<dyn std::error::Error>>;
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]

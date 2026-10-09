@@ -60,3 +60,4 @@ xdo_search_windows
 xdo_send_key_window
 xdo_click_window
 xdo_send_key
+xdo_get_input_state

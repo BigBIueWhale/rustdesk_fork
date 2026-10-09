@@ -1154,6 +1154,7 @@ android_frame_input_inventory() {
             "$SCRIPT_DIR/test-xdo-mouse-modifiers.c"
             "$SCRIPT_DIR/test-xdo-scratch-key.c"
             "$SCRIPT_DIR/test-xdo-constructor.c"
+            "$SCRIPT_DIR/test-xdo-input-state.c"
             "$SCRIPT_DIR/verify-debian-package-authority.py"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/build.py"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
@@ -1162,6 +1163,7 @@ android_frame_input_inventory() {
             "$REPO_ROOT/libs/libxdo-sys-stub/native/COPYRIGHT"
             "$REPO_ROOT/libs/libxdo-sys-stub/native/SOURCE.txt"
             "$REPO_ROOT/libs/enigo/src/lib.rs"
+            "$REPO_ROOT/libs/enigo/src/keyboard_state.rs"
             "$REPO_ROOT/libs/enigo/src/linux/xdo.rs"
             "$CARGO_VENDOR_ROOT/log-0.4.22/.cargo-checksum.json"
             "$CARGO_VENDOR_ROOT/log-0.4.22/src/lib.rs"
@@ -1176,6 +1178,8 @@ android_frame_input_inventory() {
             "$REPO_ROOT/src/platform/linux/x11_cursor.rs" "$REPO_ROOT/src/platform/mod.rs"
             "$REPO_ROOT/src/platform/macos/cursor_snapshot.rs" "$REPO_ROOT/src/platform/macos.rs"
             "$REPO_ROOT/src/server/input_service.rs"
+            "$REPO_ROOT/src/client.rs" "$REPO_ROOT/src/keyboard.rs" "$REPO_ROOT/src/ui_session_interface.rs"
+            "$REPO_ROOT/libs/enigo/src/win/win_impl.rs" "$REPO_ROOT/libs/enigo/src/macos/macos_impl.rs"
             "$REPO_ROOT/libs/hbb_common/src/platform/mod.rs"
             "$REPO_ROOT/libs/hbb_common/src/platform/x11_display.rs"
             "$REPO_ROOT/src/platform/linux/window_focus.rs"
@@ -3505,6 +3509,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/scripts/test-xdo-mouse-modifiers.c=$SCRIPT_DIR/test-xdo-mouse-modifiers.c"
             "repo/scripts/test-xdo-scratch-key.c=$SCRIPT_DIR/test-xdo-scratch-key.c"
             "repo/scripts/test-xdo-constructor.c=$SCRIPT_DIR/test-xdo-constructor.c"
+            "repo/scripts/test-xdo-input-state.c=$SCRIPT_DIR/test-xdo-input-state.c"
             "repo/scripts/verify-debian-package-authority.py=$SCRIPT_DIR/verify-debian-package-authority.py"
             "repo/libs/libxdo-sys-stub/native/build.py=$REPO_ROOT/libs/libxdo-sys-stub/native/build.py"
             "repo/libs/libxdo-sys-stub/native/xdo.c=$REPO_ROOT/libs/libxdo-sys-stub/native/xdo.c"
@@ -3513,6 +3518,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/libs/libxdo-sys-stub/native/COPYRIGHT=$REPO_ROOT/libs/libxdo-sys-stub/native/COPYRIGHT"
             "repo/libs/libxdo-sys-stub/native/SOURCE.txt=$REPO_ROOT/libs/libxdo-sys-stub/native/SOURCE.txt"
             "repo/libs/enigo/src/lib.rs=$REPO_ROOT/libs/enigo/src/lib.rs"
+            "repo/libs/enigo/src/keyboard_state.rs=$REPO_ROOT/libs/enigo/src/keyboard_state.rs"
             "repo/libs/enigo/src/linux/xdo.rs=$REPO_ROOT/libs/enigo/src/linux/xdo.rs"
             "repo/test-inputs/log-0.4.22/.cargo-checksum.json=$CARGO_VENDOR_ROOT/log-0.4.22/.cargo-checksum.json"
             "repo/test-inputs/log-0.4.22/src/lib.rs=$CARGO_VENDOR_ROOT/log-0.4.22/src/lib.rs"
@@ -3531,6 +3537,11 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/src/platform/macos/cursor_snapshot.rs=$REPO_ROOT/src/platform/macos/cursor_snapshot.rs"
             "repo/src/platform/macos.rs=$REPO_ROOT/src/platform/macos.rs"
             "repo/src/server/input_service.rs=$REPO_ROOT/src/server/input_service.rs"
+            "repo/src/client.rs=$REPO_ROOT/src/client.rs"
+            "repo/src/keyboard.rs=$REPO_ROOT/src/keyboard.rs"
+            "repo/src/ui_session_interface.rs=$REPO_ROOT/src/ui_session_interface.rs"
+            "repo/libs/enigo/src/win/win_impl.rs=$REPO_ROOT/libs/enigo/src/win/win_impl.rs"
+            "repo/libs/enigo/src/macos/macos_impl.rs=$REPO_ROOT/libs/enigo/src/macos/macos_impl.rs"
             "repo/libs/hbb_common/src/platform/mod.rs=$REPO_ROOT/libs/hbb_common/src/platform/mod.rs"
             "repo/libs/hbb_common/src/platform/x11_display.rs=$REPO_ROOT/libs/hbb_common/src/platform/x11_display.rs"
             "repo/src/platform/linux/window_focus.rs=$REPO_ROOT/src/platform/linux/window_focus.rs"
@@ -4310,7 +4321,7 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
         'XDO_INPUT_API_NATIVE=pass providers=1 exports=11 scope=closed-private-abi' \
         'production-helper provider exposes exactly the private input ABI'
-    [ "$(/usr/bin/grep -Fc 'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a input=xtest retired_lookups=62 retired_symbols=absent descriptors=retired' "$SERIAL_LOG")" -eq 2 ] \
+    [ "$(/usr/bin/grep -Fc 'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a input=xtest retired_lookups=63 retired_symbols=absent descriptors=retired' "$SERIAL_LOG")" -eq 2 ] \
         || fail 'native symbol refusal is absent from complete or staged provider execution'
     require_exact_fixed_receipt \
         'X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations selectors_refused=18 canonical_screens=3 contexts=24 context_refusals=32 constructor_unwinds=16 display_connections=one pointer=selected-root callbacks=paired descriptors=retired threads=retired scope=xdo-backend' \
@@ -4334,8 +4345,16 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=5' \
         'complete production loader and Enigo compiled with authenticated dependencies'
     require_exact_fixed_receipt \
-        'XDO_ENIGO_RETIRED_API=refused emission_methods=4 custom_backend_methods=4 crate=complete-linux-source compiler=rustc-1.75.0 artifact=absent runtime=unexecuted' \
+        'XDO_ENIGO_RETIRED_API=refused emission_methods=4 custom_backend_methods=4 boolean_state_methods=1 crate=complete-linux-source compiler=rustc-1.75.0 artifact=absent runtime=unexecuted' \
         'retired Enigo emission and custom-backend methods are absent from the compiled crate'
+    require_exact_fixed_receipt \
+        'XDO_INPUT_STATE_NATIVE=pass faults=23 repeats=4 refused=92 recovery=92 output=unpublished-on-error effects=none replies=retired pointer_screens=2 button_mask=preserved mapping=unchanged descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'checked native state queries retire replies and refuse without publishing state or input effects'
+    require_exact_fixed_receipt \
+        'KEYBOARD_CALLER_SYNTAX=pass files=6 source=production type_check=unperformed native=unperformed' \
+        'changed keyboard consumers parse; full type checking and target execution remain separate'
+    [ "$(/usr/bin/grep -Fc 'XDO_ENIGO_STATE=pass contexts=8 modifiers=8 locks=2 exact_sides=distinct family=union state=server-observed source=complete-linux-crate' "$SERIAL_LOG")" -eq 2 ] \
+        || fail 'exact modifier and lock states are absent from complete or staged Enigo execution'
     for key_scenario in no-xtest missing-key-input missing-mouse-up wrong-version writable absent reject-text; do
         require_exact_fixed_receipt \
             "XDO_LOADER_NATIVE=pass scenario=$key_scenario source=production network=none uid=4000 cleanup=joined" \

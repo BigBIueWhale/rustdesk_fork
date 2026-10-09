@@ -5355,6 +5355,123 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn receive_write_refuses_done_before_the_admitted_file_list_ends() {
+        let tmp = TestTempDir::new("rustdesk_receive_early_done");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let payload = b"first file";
+        let mut first = new_file_entry("first.bin");
+        first.size = payload.len() as u64;
+        let mut second = new_file_entry("second.bin");
+        second.size = 1;
+        let mut job = new_write_job(101, tmp.path.clone(), "first.bin")
+            .expect("create receive job")
+            .with_files(vec![first, second])
+            .expect("admit both files");
+        job.write(FileTransferBlock {
+            id: 101,
+            file_num: 0,
+            data: payload.to_vec().into(),
+            ..Default::default()
+        })
+        .await
+        .expect("write the complete first file");
+
+        for done_file_num in [2, 1] {
+            job.finalize_write(done_file_num)
+                .await
+                .expect_err("Done cannot complete an unreceived admitted file");
+            assert_eq!(job.file_num(), 0);
+            assert_eq!(job.receive_file_offset, payload.len() as u64);
+            assert!(job.data_stream.is_some());
+            assert!(job.receive_write_claim.is_some());
+            assert!(!tmp.join("first.bin").exists());
+            assert!(!tmp.join("second.bin").exists());
+            for suffix in [".download", ".digest", ".download.lock"] {
+                assert!(tmp.join(&format!("first.bin{suffix}")).exists());
+                assert!(!tmp.join(&format!("second.bin{suffix}")).exists());
+            }
+        }
+        job.retire_current_file_state()
+            .expect("retire the refused job's exact current claim");
+        assert!(job.data_stream.is_none());
+        assert!(job.receive_write_claim.is_none());
+        assert_eq!(
+            std::fs::read_dir(&tmp.path)
+                .expect("read receive directory")
+                .count(),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn receive_write_completes_the_full_file_list_with_an_empty_last_file() {
+        let tmp = TestTempDir::new("rustdesk_receive_complete_list");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let payload = b"complete first file";
+        let mut first = new_file_entry("first.bin");
+        first.size = payload.len() as u64;
+        let second = new_file_entry("empty.bin");
+        let mut job = new_write_job(102, tmp.path.clone(), "first.bin")
+            .expect("create receive job")
+            .with_files(vec![first, second])
+            .expect("admit both files");
+        for (file_num, data) in [(0, payload.as_slice()), (1, b"".as_slice())] {
+            job.write(FileTransferBlock {
+                id: 102,
+                file_num,
+                data: data.to_vec().into(),
+                ..Default::default()
+            })
+            .await
+            .expect("write the admitted file");
+        }
+        job.finalize_write(2).await.expect("complete the full list");
+        assert_eq!(job.file_num(), 2);
+        assert_eq!(
+            std::fs::read(tmp.join("first.bin")).expect("read first file"),
+            payload
+        );
+        assert!(std::fs::read(tmp.join("empty.bin"))
+            .expect("read empty file")
+            .is_empty());
+        assert!(job.data_stream.is_none());
+        assert!(job.receive_write_claim.is_none());
+        assert_eq!(
+            std::fs::read_dir(&tmp.path)
+                .expect("read receive directory")
+                .count(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn receive_write_completes_empty_and_explicitly_skipped_file_lists() {
+        let tmp = TestTempDir::new("rustdesk_receive_skipped_list");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        for names in [vec![], vec!["first.bin", "second.bin"]] {
+            let mut job = new_write_job(103, tmp.path.clone(), "unused.bin")
+                .expect("create receive job")
+                .with_files(names.iter().map(|name| new_file_entry(name)).collect())
+                .expect("admit the file list");
+            for _ in &names {
+                job.set_file_skipped()
+                    .expect("explicitly skip the current file");
+            }
+            job.finalize_write(names.len() as i32)
+                .await
+                .expect("complete an empty or explicitly skipped list");
+            assert!(job.data_stream.is_none());
+            assert!(job.receive_write_claim.is_none());
+        }
+        assert_eq!(
+            std::fs::read_dir(&tmp.path)
+                .expect("read receive directory")
+                .count(),
+            0
+        );
+    }
+
+    #[tokio::test]
     async fn receive_write_refuses_a_short_file_with_the_correct_terminal_index() {
         let tmp = TestTempDir::new("rustdesk_receive_short_terminal");
         std::fs::create_dir_all(&tmp.path).expect("create receive directory");

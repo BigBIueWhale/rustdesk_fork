@@ -2325,6 +2325,9 @@ run_focused_rust_tests() {
             fs::tests::abandoned_blocking_finalize_error_retires_only_its_claim
             fs::tests::new_receive_refuses_existing_sidecars_without_changing_their_bytes
             fs::tests::receive_finalize_refuses_a_real_partial_write_with_matching_staged_length
+            fs::tests::receive_write_refuses_done_before_the_admitted_file_list_ends
+            fs::tests::receive_write_completes_the_full_file_list_with_an_empty_last_file
+            fs::tests::receive_write_completes_empty_and_explicitly_skipped_file_lists
             fs::tests::send_open_failure_keeps_the_failed_file_number
             fs::tests::send_resume_keeps_the_announced_source_after_path_replacement
             fs::tests::send_resume_bounds_the_offset_by_the_announced_source
@@ -2875,6 +2878,8 @@ run_focused_rust_tests() {
                             || exit 95
                         artifact_sha="$(sha256sum "$test_executable" | cut -d " " -f 1)"
                         [[ "$artifact_sha" =~ ^[0-9a-f]{64}$ ]]
+                        printf "HBB_COMMON_FS_ARTIFACT_START=observed sha256=%s executable=%s\n" \
+                            "$artifact_sha" "$test_executable"
                         cd /source/libs/hbb_common
                         "$test_executable" config::tests::config_transaction_ \
                             --color never --test-threads=1

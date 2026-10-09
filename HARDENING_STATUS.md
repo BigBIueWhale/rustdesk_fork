@@ -500,13 +500,16 @@ No Linux component result is Windows acceptance.
 
 ### Keyboard state and Linux Enigo XDO — admission before input; integration OPEN
 
-**Unique physical-key admission (native acceptance pending):** provider22's
+**Unique physical-key admission:** provider22's
 `_xdo_get_key_modifiers` admits the resolved main key and held snapshot together.
 It preserves held codes, deduplicates shared modifier codes in first-slot order,
 and rejects a selected modifier equal to a mapped main code before effects.
 The sole plan feeds both legs; no allocation or additional emission API is added.
-The current-provider native fixture now includes a real shared Shift|Control row
-and no-effect main-role refusal, alongside the existing distinct-modifier schedule.
+The current-provider native fixture passed 32 shared-modifier pairs/96 real events,
+64 main-leg symbol checks and sixteen no-effect main-role refusals followed by valid
+same-context text. Four preheld subsets (none/shared/unrelated-b/both), two delays
+and four repeats preserve full XKB state/components and sampled FD/task baselines.
+The existing distinct-modifier schedule passes in the same transaction.
 XTEST submission status, partial-release retirement and irreversible cleanup remain OPEN.
 
 **Temporary modifier lifetime:** temporary modifiers press before the main key,
@@ -547,11 +550,11 @@ installed-service, resources and release acceptance remain OPEN.
 | Pending text cleanup | `EnigoXdo::key_sequence_result` transfers the actual borrowed `TextContext` into one `pending_text_cleanup` owner before formatting or returning the native cleanup error. The former Boolean discarded that resource at request return. Later text refuses before context construction or native calls, including empty text. `EnigoXdo::drop` explicitly takes and destroys that child before the main native context closes their shared Display; automatic field destruction after custom Drop would violate the borrow. Normal successful requests still retire their temporary contexts. The native retry can restore after a transient refusal; persistent final restoration failure still diagnoses and frees its snapshot, so fatal/irrecoverable cleanup remains OPEN. |
 | Literal text and result boundary | `EnigoXdo::key_sequence_result` preflights controls over the whole string and submits Rust characters without locale mutation. The native receiver maps newline/carriage return, tab and other Unicode scalars to Return, Tab and Latin-1/Unicode keysyms. Each nonempty text request constructs a fresh borrowed context on the retained Display, refreshes its map and retires its enclosing XKB descriptors; construction refusal has no stale-map fallback. Text reports unavailability, admission and cleanup errors; mouse submission status is checked. Neither proves eventual X delivery. The common Enigo trait and all platform implementations omit the unused generic `key_sequence`, `key_down`, `key_up` and `key_click` emission API. Dead arbitrary Windows/macOS key/layout query machinery is removed. Supported platform text operations and application-owned physical rdev input remain. These XDO checks do not execute remote rdev input. |
 
-**Retained component-native acceptance (provider21):** candidate
-`e5a381f69912f2888f3d4c40921749587bf75977`, tree
-`6bcd33e608c4fe625be841a8ed4b8f828a9075eb`, passed
+**Current component-native acceptance (provider22):** candidate
+`6c6b1975425cf8def7d9f9a2e0f4c9ef163490da`, tree
+`65406db06b3c9b00edafcaef099bdc2f63639512`, passed
 `scripts/smoke-verifier-vm-authority.sh --x11-display-tests --key-input`
-in 116 seconds with outer exit 0. The native scalar/group/held-key fixture's
+in 122 seconds with outer exit 0. The native scalar/group/held-key fixture's
 existing five-second budget is unchanged.
 Complete protected-loader and Linux Enigo components compile with five
 authenticated dependencies, partial common and rdev mapping/type facades, and
@@ -559,8 +562,8 @@ the complete pinned rdev Linux mapping. The cursor fixture uses complete product
 modules and byte-extracted platform functions with direct native linkage.
 This is not full hbb_common/root Cargo/Flutter/application or installed execution.
 Only current corrected C runs; the wrong-version refusal fixture stamps
-provider21 as version20. Windows/macOS source changes remain uncompiled/unexecuted
-on those targets. Earlier provider20/19/18/17 acceptance and failed fixture attempts
+provider22 as version21. Windows/macOS source changes remain uncompiled/unexecuted
+on those targets. Earlier provider21/20/19/18/17 acceptance and failed fixture attempts
 remain in Git, the audit and retained raw evidence; they are not current acceptance.
 
 The removed path passed saved **effective** group to the **locked** group writer,
@@ -619,6 +622,7 @@ retained in the audit/raw evidence; neither is retroactively accepted.
 | Text-request XKB state | 36 query/invalid-group refusals and 36 same-context recoveries, 72 real events, one query per pair, preserved maps/state and no refusal input/group/mapping effects. This tests text admission; the separate row above covers state queries. Neither supplies application-wide native preflight acceptance. |
 | Modifier-map admission | 24 returned-map refusals and 24 same-context recovery pairs, 96 events and 48 queries/44 nonnull frees, with maps/state preserved. Complete Enigo propagates the injected native modifier error while pointer input remains usable. Separate held-key cases below establish snapshot preservation; locked/global ownership remains OPEN. |
 | Temporary modifier lifetime | Four repeats, two delays (zero/12,000 microseconds) and four preheld subsets (none/Shift/Control/both) produce 32 pairs/128 native events. A separate Display observes exact modifier/main dependency order and reversed retirement, both main symbols from a fresh native map and logical key bits after each leg. Preheld keys receive no generated press/release; full XKB components, original layout and sampled FD/task baselines restore. The existing 24 uppercase recovery pairs also resolve both main events with Shift retained. These observe successful current-provider submissions, not failure cleanup, atomic concurrent ownership, modifier-driven group actions or widget/IME consumption. |
+| Unique physical text-key roles | The same current-provider ASan fixture installs a real Shift\|Control code in both native modifier slots with explicit SetMods/UseModMapMods and read-back resolved masks. Four repeats, two delays and four preheld subsets (none/shared/unrelated-b/both) yield 32 accepted pairs/96 events/64 observed main legs, with one shared-code press/release, dependency/reverse-retirement order and per-leg logical bits. Sixteen unheld mapped main/modifier collisions refuse without input/map/group effects and each permits valid same-context text afterward. Exact preheld state, full XKB components, original layout and sampled FD/task baselines restore. Arbitrary modifier actions, XTEST failures, concurrent ownership and widget/IME consumption remain OPEN. |
 | Text-request logical-key admission | Seven controlled connection/reply/error/type/length/health faults over three mapped/scratch scalars and four repeats: 84 refusals with no input/group/mapping effects, then 84 same-context recovery pairs/168 actual events. Authentic replies are consumed before returned-reply faults; every handed reply/error retires. Each accepted pair uses one keymap reply; full XKB components, logical keys and native state are preserved. This does not prove actual transport/fatal-library failure bounds. |
 | Preexisting held keys | Four repeats of required Shift, Shift+Control, unrelated Control and other-Shift profiles produce sixteen accepted pairs/forty actual events, with exact preexisting logical bits, native XKB state and map components preserved. Both a/A requests refuse an already-held main code, eight times, before modifier or input effects. A held sole neutral scratch row refuses four times without input/map writes; after fixture release, the same context recovers four pairs/eight events and restores its mapping. No atomic concurrent/global-key ownership or widget/IME consumption follows. |
 | Scratch bounds and complete-click lease | Twenty bounds/query/full-map cases preserve maps/keys with sixteen queries/twelve allocated replies retired. Twenty-four complete-click cases at zero/12,000-microsecond delay yield eight accepted clicks/sixteen events and sixteen refusals/no events; both legs see the installed symbol, and install/restore/free pair. The observer synchronizes each leg, proving the lease rather than arbitrary widget/XIM consumption. |
@@ -629,28 +633,30 @@ retained in the audit/raw evidence; neither is retroactively accepted.
 | Complete backend, locale and changed map | Eighteen refused selectors, 24 contexts, 32 context-entry refusals and sixteen constructor-log unwinds preserve one Display and paired ownership. Constructor/diagnostic ambient-route probes observe zero TCP accepts. Three locale conditions deliver 21 scalar pairs/42 events. Changed-layout requests deliver 33 pairs/66 events with two mapping refusals; exact enclosing-descriptor censuses are 2/2/0 and 33/33/0 allocations/retirements/live. These are configured native events and one descriptor class, not unmapped Unicode, widget text or whole-resource proof. |
 
 The product helper and complete protected loader share the 25,528-byte ELF,
-SHA-256 `546722425fefad6a15676bde0851b37ebd83d4655e5231368f5f952feee29b1b`.
+SHA-256 `f7c0917c5999458c472cf162e69314635cc14ccf16e09ad96fd40f5895721425`.
 That accepted C SHA-256 is
-`9f98ec70cbddd515a7dc0bf47370288c0b3f9e2b86e377ac4a6a7d46964ac011`.
+`568c993b4a9f116392694efb47614df80e4109b6c67f6859cafc545f6dfd5ca0`.
+The complete protected-loader binary is SHA-256
+`ffc493fc88466f682279621acfae15199bb23f0e83515ebcb52d2c637a7cbf4c`.
 The complete Linux Enigo fixture binary is SHA-256
-`3bd88e2053e2350169d7d7f9873c39e5a97e07c9ca861fb2a4ae3e4bda4276e0`;
+`8d73b36e554f78ef4ecddac48afb00adca7658ee830a6fd134eed0a9caba5deb`;
 the state-query fault fixture binary is
-`2229ac9cf18a676c471829511e04709c898003626b2b17fc83884b72ea1aee31`;
+`486725e666d789b2b246fc525290c30a3e9a8202a6f068924348a8c90f966659`;
 the scratch fixture binary is
-`7e4a13f37cd856070cf0f025bc22b8e39a77d32bb25c3f74ccd860e8ace7f9ef`.
+`0f1e183f68bd25c4466f4b003b69c55434c16188013a000bce5eecd7e8cbd525`.
 The complete-backend cleanup fixture binary is SHA-256
 `34ad77a75301fef7ce784b5896df1ea7687943348bfa0a3fd527b47dd1462f13`;
 its native observer object is
 `050cf2683293e29a44a835161817f0316a4b7cd6a8cac04e146211dfe063ef80`.
 Under `.harness-state/verifier-vm/`, retained raw
-`x11-display-tests-run.89viwSqdwq.serial.log` is 134,129 bytes, SHA-256
-`d0dee8c4cc8d2dac9cc19d06cccdaf171d8793d7fb0fc73be6092694f2559895`;
-`modifier-order-e5a381f6-evidence/outer.log` is 2,668 bytes, SHA-256
-`1f0fe23e3320647397ee18300e41d2862a00cb7f07e5b2f4863b398741277d4a`.
-The assistant-observed `modifier-order-e5a381f6-evidence/observed.receipt.json`
-is 25,332 bytes, SHA-256
-`f6d25a772fb7aa9ac3442dc75459ee07c551e155e9ebe2a640d0d064fd9588f8`.
-The receipt binds seventeen frozen files, nineteen artifact records, 65 native
+`x11-display-tests-run.pVgU30fGPx.serial.log` is 134,698 bytes, SHA-256
+`cb00c902f9539a4b6df39a2a2d810200e34b1c05733c0c14b38daf527cc168bc`;
+`modifier-roles-6c6b1975-evidence/outer.log` is 2,668 bytes, SHA-256
+`82a5bf1c6554e3ea297e5f5ad61688f62136f7e1ce2696edb3926edfb573a719`.
+The assistant-observed `modifier-roles-6c6b1975-evidence/observed.receipt.json`
+is 26,429 bytes, SHA-256
+`46b9cd42e81d44f74ee0de07ea1f45c9a97b762b8fdf6957acff2d951e32aeab`.
+The receipt binds seventeen frozen files, nineteen artifact records, 66 native
 outcome records, all 136 distinct group cases, component scope and terminal owner status;
 it is an assistant observation, not independent reproduction.
 
@@ -658,7 +664,7 @@ The ordinary-user zero-NIC VM used guest-only network-none UID/GID4000
 containers and read-only inputs. Outer endpoint-only before/during/after
 audits report no host addition and joined cleanup; the exact root/overlay
 is absent. Independent endpoint-only before/during/after inventories under
-`modifier-order-e5a381f6-evidence/listeners.*` are each 1,320 bytes,
+`modifier-roles-6c6b1975-evidence/listeners.*` are each 1,320 bytes,
 SHA-256 `bc3cd49a4004b289459020b0934444f83f660900e520c1edf42157d291ba8e1e`,
 byte-identical with zero additions. Xvfb uses `-ac`.
 ASan covers named native C cases with leak detection disabled; it does not

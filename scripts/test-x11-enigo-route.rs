@@ -155,8 +155,9 @@ fn retired(baseline: usize) { assert_eq!(descriptors(), baseline); assert_eq!(ta
 // The lease body is exact production source. Protobuf fields and the click transport
 // are component adapters; this test does not execute the application dispatcher/rdev.
 mod lock_modes {
-    use super::{backend, KeyboardControllable, KeyboardState, ModifierKey, NumLockState, ResultType};
+    use super::{backend, KeyboardControllable, KeyboardState, ModifierKey, NumLockState};
     use rdev::Key as RdevKey;
+    type ResultType<T> = Result<T, Box<dyn std::error::Error>>;
     #[derive(Clone, Copy, PartialEq)]
     enum ControlKey { CapsLock, NumLock }
     struct KeyEvent { down: bool, modifiers: Vec<ControlKey>, legacy: bool }

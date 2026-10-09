@@ -3887,6 +3887,13 @@ impl TransferJob {
                 bail!("confirmation file number {} is out of range", file_num);
             }
             let entry = &self.files[file_num];
+            if offset > entry.size {
+                bail!(
+                    "confirmed offset {} exceeds declared file size {}",
+                    offset,
+                    entry.size
+                );
+            }
             let path = self
                 .resolve_entry_path(p, &entry.name)
                 .ok_or_else(|| anyhow!("invalid confirmation path for file {}", file_num))?;
@@ -3900,13 +3907,6 @@ impl TransferJob {
                 .ok_or_else(|| anyhow!("finished byte counter overflow"))?;
             match self.role {
                 TransferRole::Receive => {
-                    if offset > entry.size {
-                        bail!(
-                            "confirmed offset {} exceeds declared file size {}",
-                            offset,
-                            entry.size
-                        );
-                    }
                     if self.receive_write_claim.is_some() {
                         bail!("receive write job already owns a destination claim");
                     }

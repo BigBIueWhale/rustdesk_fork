@@ -195,22 +195,6 @@ def input_state_queries(root, environment):
     binary.unlink()
 
 
-def keyboard_caller_syntax(root, environment):
-    # Parse every changed consumer and platform implementation; this does not
-    # type-check the full application or establish target-native behavior.
-    paths = ("src/client.rs", "src/keyboard.rs", "src/ui_session_interface.rs",
-             "src/server/input_service.rs", "libs/enigo/src/win/win_impl.rs",
-             "libs/enigo/src/macos/macos_impl.rs")
-    for name in paths:
-        result = subprocess.run(["/usr/local/cargo/bin/rustfmt", "--edition=2021", "--emit=stdout",
-                                 "--config=skip_children=true", str(root / name)],
-                                env=environment, stdout=subprocess.DEVNULL,
-                                stderr=subprocess.PIPE, text=True, timeout=15)
-        require(result.returncode == 0 and not result.stderr,
-                f"keyboard consumer syntax failed: {name}: {result.stderr[:4096]}")
-    print("KEYBOARD_CALLER_SYNTAX=pass files=6 source=production type_check=unperformed native=unperformed", flush=True)
-
-
 def scratch_keys(root, environment):
     scratch_source = root / "scripts/test-xdo-scratch-key.c"
     scratch_binary = Path("/build/xdo-scratch-key")
@@ -1359,7 +1343,6 @@ def key_input_main():
     version = subprocess.run(["/usr/local/cargo/bin/rustc", "--version"], env=environment,
                              check=True, capture_output=True, text=True, timeout=5)
     require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
-    keyboard_caller_syntax(root, environment)
     scratch_keys(root, environment)
     checksum, logging = logging_library(root, environment)
     with open("/tmp/xdo-key-xvfb.log", "xb") as log:

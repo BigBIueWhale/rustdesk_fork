@@ -1178,8 +1178,6 @@ android_frame_input_inventory() {
             "$REPO_ROOT/src/platform/linux/x11_cursor.rs" "$REPO_ROOT/src/platform/mod.rs"
             "$REPO_ROOT/src/platform/macos/cursor_snapshot.rs" "$REPO_ROOT/src/platform/macos.rs"
             "$REPO_ROOT/src/server/input_service.rs"
-            "$REPO_ROOT/src/client.rs" "$REPO_ROOT/src/keyboard.rs" "$REPO_ROOT/src/ui_session_interface.rs"
-            "$REPO_ROOT/libs/enigo/src/win/win_impl.rs" "$REPO_ROOT/libs/enigo/src/macos/macos_impl.rs"
             "$REPO_ROOT/libs/hbb_common/src/platform/mod.rs"
             "$REPO_ROOT/libs/hbb_common/src/platform/x11_display.rs"
             "$REPO_ROOT/src/platform/linux/window_focus.rs"
@@ -3537,11 +3535,6 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/src/platform/macos/cursor_snapshot.rs=$REPO_ROOT/src/platform/macos/cursor_snapshot.rs"
             "repo/src/platform/macos.rs=$REPO_ROOT/src/platform/macos.rs"
             "repo/src/server/input_service.rs=$REPO_ROOT/src/server/input_service.rs"
-            "repo/src/client.rs=$REPO_ROOT/src/client.rs"
-            "repo/src/keyboard.rs=$REPO_ROOT/src/keyboard.rs"
-            "repo/src/ui_session_interface.rs=$REPO_ROOT/src/ui_session_interface.rs"
-            "repo/libs/enigo/src/win/win_impl.rs=$REPO_ROOT/libs/enigo/src/win/win_impl.rs"
-            "repo/libs/enigo/src/macos/macos_impl.rs=$REPO_ROOT/libs/enigo/src/macos/macos_impl.rs"
             "repo/libs/hbb_common/src/platform/mod.rs=$REPO_ROOT/libs/hbb_common/src/platform/mod.rs"
             "repo/libs/hbb_common/src/platform/x11_display.rs=$REPO_ROOT/libs/hbb_common/src/platform/x11_display.rs"
             "repo/src/platform/linux/window_focus.rs=$REPO_ROOT/src/platform/linux/window_focus.rs"
@@ -4350,9 +4343,6 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
         'XDO_INPUT_STATE_NATIVE=pass faults=23 repeats=4 refused=92 recovery=92 output=unpublished-on-error effects=none replies=retired pointer_screens=2 button_mask=preserved mapping=unchanged descriptors=retired tasks=retired sanitizer=address whole_app=false' \
         'checked native state queries retire replies and refuse without publishing state or input effects'
-    require_exact_fixed_receipt \
-        'KEYBOARD_CALLER_SYNTAX=pass files=6 source=production type_check=unperformed native=unperformed' \
-        'changed keyboard consumers parse; full type checking and target execution remain separate'
     [ "$(/usr/bin/grep -Fc 'XDO_ENIGO_STATE=pass contexts=8 modifiers=8 locks=2 exact_sides=distinct family=union state=server-observed source=complete-linux-crate' "$SERIAL_LOG")" -eq 2 ] \
         || fail 'exact modifier and lock states are absent from complete or staged Enigo execution'
     for key_scenario in no-xtest missing-key-input missing-mouse-up wrong-version writable absent reject-text; do

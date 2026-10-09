@@ -427,13 +427,16 @@ static void raw_group_layout(Display *observer, Window window) {
           && original->map->modmap[code] == 0 && !XkbKeyHasActions(changed, code),
           "raw-group fixture physical key differs");
   int types[] = {XkbAlphabeticIndex, XkbAlphabeticIndex};
+  XkbMapChangesRec map_change = {0};
   require(XkbChangeTypesOfKey(changed, code, 2, XkbGroup1Mask | XkbGroup2Mask,
-                             types, NULL) == Success, "raw-group fixture resize failed");
+                             types, &map_change) == Success
+          && map_change.changed == XkbKeySymsMask && map_change.first_key_sym == code
+          && map_change.num_key_syms == 1, "raw-group fixture resize failed");
   XkbKeySymEntry(changed, code, 0, 0) = XK_a;
   XkbKeySymEntry(changed, code, 1, 0) = XK_A;
   XkbKeySymEntry(changed, code, 0, 1) = XK_b;
   XkbKeySymEntry(changed, code, 1, 1) = XK_B;
-  require(XkbSetMap(observer, XkbKeySymsMask, changed), "raw-group fixture map not sent");
+  require(XkbChangeMap(observer, changed, &map_change), "raw-group fixture map not sent");
   XSync(observer, False);
   Display *reader = XOpenDisplay("unix/:98.0");
   require(reader != NULL, "raw-group independent lookup display unavailable");
@@ -523,7 +526,7 @@ static void raw_group_layout(Display *observer, Window window) {
   product_display = NULL;
   xdo_free(input);
   XCloseDisplay(reader);
-  require(XkbSetMap(observer, XkbKeySymsMask, original), "original XKB map not sent");
+  require(XkbChangeMap(observer, original, &map_change), "original XKB map not sent");
   require(XkbLockGroup(observer, XkbUseCoreKbd, baseline.locked_group), "original group not sent");
   XSync(observer, False);
   same_xkb_symbols(observer, original);

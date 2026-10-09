@@ -528,10 +528,10 @@ installed-service, resources and release acceptance remain OPEN.
 | Literal text and result boundary | `EnigoXdo::key_sequence_result` preflights controls over the whole string and submits Rust characters without locale mutation. The native receiver maps newline/carriage return, tab and other Unicode scalars to Return, Tab and Latin-1/Unicode keysyms. Each nonempty text request constructs a fresh borrowed context on the retained Display, refreshes its map and retires its enclosing XKB descriptors; construction refusal has no stale-map fallback. Text reports unavailability, admission and cleanup errors; mouse submission status is checked. Neither proves eventual X delivery. The common Enigo trait and all platform implementations omit the unused generic `key_sequence`, `key_down`, `key_up` and `key_click` emission API. Dead arbitrary Windows/macOS key/layout query machinery is removed. Supported platform text operations and application-owned physical rdev input remain. These XDO checks do not execute remote rdev input. |
 
 **Current component-native acceptance (provider20):** candidate
-`504f6c12d2b8bdea9cb6e6eb95e077185f35be17`, tree
-`702ea77825823bf08a23058c9631e8462648b197`, passed
+`c858f927affe15c38e83c048080a8ce06ff940c7`, tree
+`b803d89b2454f50551816f50c205ccde9df6bb56`, passed
 `scripts/smoke-verifier-vm-authority.sh --x11-display-tests --key-input`
-in 114 seconds with outer exit 0. The native scalar/group/held-key fixture's
+in 116 seconds with outer exit 0. The native scalar/group/held-key fixture's
 existing five-second budget is unchanged.
 Complete protected-loader and Linux Enigo components compile with five
 authenticated dependencies, partial common and rdev mapping/type facades, and
@@ -618,17 +618,17 @@ the state-query fault fixture binary is
 the scratch fixture binary is
 `8dc3b39870910b45ee27ce0d03e76fe21bc2ab8953da51bbc4b43d5067f10433`.
 The complete-backend cleanup fixture binary is SHA-256
-`c96c714fa36cf6141d15dec2562a1cf83f4c3ece73f90c566be205d4b57bd9db`;
+`34ad77a75301fef7ce784b5896df1ea7687943348bfa0a3fd527b47dd1462f13`;
 its native observer object is
-`9a6420b5c0f9d9a94ed12fd32f2a2b35916f2b873451b0dff1db36d5af1b2136`.
+`050cf2683293e29a44a835161817f0316a4b7cd6a8cac04e146211dfe063ef80`.
 Under `.harness-state/verifier-vm/`, retained raw
-`x11-display-tests-run.MwKAGqYPbq.serial.log` is 133,803 bytes, SHA-256
-`0e9056d9bee5af56cb3e2ea3b68b43d8db2cd19d26f1b1e46499667dff52c3d3`;
-`text-cleanup-504f6c12-evidence/outer.log` is 2,668 bytes, SHA-256
-`8e915cfaa22a6f858cfa3f5ab2bdb15b568d9edf858a8146aa331050468c969d`.
-The assistant-observed `text-cleanup-504f6c12-evidence/observed.receipt.json`
-is 23,933 bytes, SHA-256
-`fd671697c3f61a50b2bd63405c14e650a5ff29c43ec1f276155c4aca69be5ef4`.
+`x11-display-tests-run.A8C1LSdct4.serial.log` is 134,046 bytes, SHA-256
+`df08d75f60bfdaefb4d1cbf59034fad87b7fa77a97784e8916dbf50206913ddb`;
+`text-cleanup-c858f927-evidence/outer.log` is 2,668 bytes, SHA-256
+`e3ba147ff4627059dbc92ce65d13e6aee221ffdc0f8ba1bd93fc22d39365b4ef`.
+The assistant-observed `text-cleanup-c858f927-evidence/observed.receipt.json`
+is 24,083 bytes, SHA-256
+`8b676710fb9fd8f846ab83c2435d47751f5cfcdb2d8123a73dcaac290d2b8caf`.
 The receipt binds sixteen frozen files, nineteen artifact records, 63 native
 outcome records, all 136 distinct group cases, component scope and terminal owner status;
 it is an assistant observation, not independent reproduction.
@@ -637,7 +637,7 @@ The ordinary-user zero-NIC VM used guest-only network-none UID/GID4000
 containers and read-only inputs. Outer endpoint-only before/during/after
 audits report no host addition and joined cleanup; the exact root/overlay
 is absent. Independent endpoint-only before/during/after inventories under
-`text-cleanup-504f6c12-evidence/listeners.*` are each 1,265 bytes,
+`text-cleanup-c858f927-evidence/listeners.*` are each 1,265 bytes,
 SHA-256 `addd4367d0aa6a1903588573c9d3abe875acadb367b2f42ff5b4a8e2e1e68d02`,
 byte-identical with zero additions. Xvfb uses `-ac`.
 ASan covers named native C cases with leak detection disabled; it does not
@@ -718,6 +718,13 @@ closure follows from these component receipts.
   now pass the named transient-refusal composition schedule. Persistent final
   restoration refusal still frees the original snapshot after a diagnostic;
   a truthful irrecoverable-cleanup policy and fatal transport bounds remain OPEN.
+  Application retirement is a concrete source gap: `src/server/input_service.rs`
+  holds controlled-side `ENIGO` in a lazy-static `Arc<Mutex<Enigo>>`. Rust
+  [static lifetime semantics](https://doc.rust-lang.org/reference/items/static-items.html)
+  and [lazy_static semantics](https://docs.rs/lazy_static/1.4.0/lazy_static/)
+  provide no automatic destructor at process exit. Component Drop tests therefore
+  do not establish cleanup on disconnect, service stop or process exit; explicit
+  application retirement and native lifecycle acceptance remain required.
 - Broader unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;
   native events and an in-request lease observer do not prove text consumption.
 - Loader identity/ACL/path races, native application consumers, full

@@ -122,8 +122,18 @@ Bool __wrap_XkbChangeMap(Display *display, XkbDescPtr map, XkbMapChangesPtr chan
     if ((changes->changed & (XkbKeySymsMask | XkbKeyActionsMask))
         == (XkbKeySymsMask | XkbKeyActionsMask)) {
       for (int code = changes->first_key_act;
-           code < changes->first_key_act + changes->num_key_acts; code++)
-        require(!XkbKeyHasActions(map, code), "action array sent before symbol width readback");
+           code < changes->first_key_act + changes->num_key_acts; code++) {
+        if (!XkbKeyHasActions(map, code)) continue;
+        XkbDescPtr actual = __real_XkbGetMap(display, XkbAllMapComponentsMask, XkbUseCoreKbd);
+        require(actual && actual->map && XkbKeyNumGroups(actual, code) == XkbKeyNumGroups(map, code)
+                && XkbKeyGroupsWidth(actual, code) == XkbKeyGroupsWidth(map, code)
+                && !memcmp(actual->map->key_sym_map[code].kt_index,
+                           map->map->key_sym_map[code].kt_index, XkbNumKbdGroups)
+                && !memcmp(XkbKeySymsPtr(actual, code), XkbKeySymsPtr(map, code),
+                           XkbKeyNumSyms(map, code) * sizeof(KeySym)),
+                "action array sent before unchanged symbols were established");
+        __real_XkbFreeKeyboard(actual, 0, True);
+      }
     }
     if (changes->changed & XkbKeySymsMask) mapping_changes++;
   }
@@ -550,8 +560,8 @@ static void component_row(Display *display, XkbDescPtr map, XkbMapChangesRec cha
           && actual->server->explicit[code] == XkbAllExplicitMask,
           "component symbol width not established before actions");
   XkbFreeKeyboard(actual, 0, True);
-  changes.changed &= ~XkbKeySymsMask;
-  changes.num_key_syms = 0;
+  printf("XDO_SCRATCH_COMPONENT_WIDTH=pass code=%d groups=%d width=%d actions=%d\n",
+         code, XkbKeyNumGroups(map, code), XkbKeyGroupsWidth(map, code), XkbKeyHasActions(map, code) != 0);
   require(XkbChangeMap(display, map, &changes), "component server map not sent");
   XSync(display, False);
 }
@@ -652,7 +662,7 @@ static void scratch_components(xdo_t *input, Display *observer, Window window, i
               && queries == 1 && frees == 1 && owned_query == NULL && map_live == 0
               && input_calls == (scenario == 0 ? 2 : 0)
               && group_changes == (scenario == 0 ? 4 : 0)
-              && mapping_changes == (scenario == 0 ? 2 : 0)
+              && mapping_changes == (scenario == 0 ? 3 : 0)
               && map_readbacks == (scenario == 0 ? 4 : 0), "component admission/effect census differs");
       events(observer, window, code, scenario == 0 ? 2 : 0);
       same_components(observer, configured);

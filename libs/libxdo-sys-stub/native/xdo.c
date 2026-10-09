@@ -296,8 +296,7 @@ static int _xdo_restore_scratch(xdo_t *xdo) {
     return XDO_CLEANUP_ERROR;
   if (XkbKeyHasActions(original, code)) {
     server.key_acts = original->server->key_acts;
-    changes.changed = XkbKeyActionsMask | XkbExplicitComponentsMask;
-    changes.num_key_syms = 0;
+    changes.changed = XkbKeySymsMask | XkbKeyActionsMask | XkbExplicitComponentsMask;
     if (!XkbChangeMap(xdo->xdpy, &protected, &changes)
         || !_xdo_scratch_matches(xdo, original, XkbAllExplicitMask))
       return XDO_CLEANUP_ERROR;

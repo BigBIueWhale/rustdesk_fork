@@ -4170,16 +4170,18 @@ pub fn get_job_immutable(id: i32, jobs: &[TransferJob]) -> Option<&TransferJob> 
     jobs.iter().find(|x| x.id() == id)
 }
 
-async fn init_jobs(
+pub async fn handle_read_jobs(
     jobs: &mut Vec<TransferJob>,
     stream: &mut crate::Stream,
-) -> ResultType<Option<crate::tcp::WriterReceipt>> {
+) -> ResultType<(String, Option<crate::tcp::WriterReceipt>)> {
+    // One selected entry owns the step through initialization and terminal retirement.
     let Some(index) = jobs.iter().position(|job| !job.is_last_job) else {
-        return Ok(None);
+        return Ok((String::new(), None));
     };
     let job = &mut jobs[index];
     match job.init_data_stream(stream).await {
-        Ok(receipt) => Ok(receipt),
+        Ok(Some(receipt)) => return Ok((String::new(), Some(receipt))),
+        Ok(None) => {}
         Err(err) => {
             let id = job.id();
             let file_num = job.file_num();
@@ -4187,72 +4189,37 @@ async fn init_jobs(
             let receipt = stream
                 .send_with_receipt(&new_error(id, err, file_num))
                 .await?;
-            Ok(Some(receipt))
+            return Ok((String::new(), Some(receipt)));
         }
-    }
-}
-
-pub async fn handle_read_jobs(
-    jobs: &mut Vec<TransferJob>,
-    stream: &mut crate::Stream,
-) -> ResultType<(String, Option<crate::tcp::WriterReceipt>)> {
-    // Preserve the one-job-at-a-time contract below all the way through initialization. Every call
-    // returns ownership of at most one exact writer completion to the connection loop.
-    if let Some(receipt) = init_jobs(jobs, stream).await? {
-        return Ok((String::new(), Some(receipt)));
     }
 
-    let mut job_log = Default::default();
-    let mut finished = Vec::new();
-    let mut receipt = None;
-    for job in jobs.iter_mut() {
-        if job.is_last_job {
-            continue;
-        }
-        match job.read().await {
-            Err(err) => {
-                finished.push(job.id());
-                job_log = serialize_transfer_job(job, false, false, &err.to_string());
-                receipt = Some(
-                    stream
-                        .send_with_receipt(&new_error(job.id(), err, job.file_num()))
-                        .await?,
-                );
-            }
-            Ok(Some(block)) => {
-                receipt = Some(stream.send_with_receipt(&new_block(block)).await?);
-            }
-            Ok(None) => {
-                if job.job_completed() {
-                    job_log = serialize_transfer_job(job, true, false, "");
-                    finished.push(job.id());
-                    match job.job_error() {
-                        Some(err) => {
-                            job_log = serialize_transfer_job(job, false, false, &err);
-                            receipt = Some(
-                                stream
-                                    .send_with_receipt(&new_error(job.id(), err, job.file_num()))
-                                    .await?,
-                            );
-                        }
-                        None => {
-                            receipt = Some(
-                                stream
-                                    .send_with_receipt(&new_done(job.id(), job.file_num()))
-                                    .await?,
-                            );
-                        }
-                    }
-                } else {
-                    // waiting confirmation.
-                }
-            }
-        }
-        // Break to handle jobs one by one.
-        break;
-    }
-    for id in finished {
-        let _ = remove_job(id, jobs);
+    let (job_log, message, finished) = match job.read().await {
+        Err(err) => (
+            serialize_transfer_job(job, false, false, &err.to_string()),
+            Some(new_error(job.id(), err, job.file_num())),
+            true,
+        ),
+        Ok(Some(block)) => (String::new(), Some(new_block(block)), false),
+        Ok(None) if job.job_completed() => match job.job_error() {
+            Some(err) => (
+                serialize_transfer_job(job, false, false, &err),
+                Some(new_error(job.id(), err, job.file_num())),
+                true,
+            ),
+            None => (
+                serialize_transfer_job(job, true, false, ""),
+                Some(new_done(job.id(), job.file_num())),
+                true,
+            ),
+        },
+        Ok(None) => (String::new(), None, false),
+    };
+    let receipt = match message {
+        Some(message) => Some(stream.send_with_receipt(&message).await?),
+        None => None,
+    };
+    if finished {
+        jobs.remove(index);
     }
     Ok((job_log, receipt))
 }

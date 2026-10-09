@@ -4930,6 +4930,34 @@ package/pin identities, not requirements or progress wording. No new codec runti
 final-artifact absence or platform acceptance follows from this documentation/checker
 cleanup; broader native decoder and release obligations remain OPEN.
 
+**R-S7 clipboard decompression — source corrected; named Linux sanitizer tests PASS; platform handoff OPEN.**
+Product `7270768b2c0b7235e73764ff683a0b6f1fc9ec64` makes
+`src/clipboard.rs::clipboard_content_for_native` Result-bearing with bounded
+`try_decompress`. Supported malformed/truncated or invalid/over-limit content
+refuses the complete multi-item update; deliberate unsupported-special filtering
+and valid empty decoded content remain distinct. Native conversion diagnoses and
+drops a decoding error. Android uses the shared primitive; its duplicate decoder
+is deleted, but this run does not execute Android/JNI.
+The three unchanged regression definitions first produced two failures and one
+positive pass against unchanged production at `48dae13d`; that failed baseline
+emitted no executable digest and was not an accepted whole transaction. The corrected
+source passed all 13 production clipboard tests plus 75 existing Linux-target Rust
+authority/lifecycle tests in 14 groups. The accepted zero-NIC VM/networkless guest-only
+UID/GID-1000 transaction took 725 seconds, added no host listener, preserved all
+1,284 tracked source/index/physical identities, joined cleanup and retired its run root.
+Clipboard executable SHA-256
+`5b08b5ce6310a5e914fd06f94d549b21b68b924fc5a67206b91350f5cb52627d`
+was unchanged before/after its 13 tests; later Flutter-enabled groups use a separate
+executable, so this digest does not bind all 88 tests. Retained source/observer/receipt
+detail is in `.harness-state/verifier-vm/clipboard-48dae13d-evidence/corrected.accepted.json`;
+raw serial is `android-rust-lifecycle-tests-run.d8mcykUxeH.serial.log` in the same
+verifier root. This is real zstd/production-sanitizer unit behavior, not an OS clipboard
+write, installed peer/principal/generation, native Android/Windows/macOS/iOS, sandbox,
+release artifact, resource/latency soak, independent reproduction or external review.
+Those obligations and the separate Flutter cursor/terminal infallible-decompression
+paths remain OPEN. This 12-minute lane is noninteractive integration; a fast
+clipboard-only development profile remains OPEN.
+
 **R-B13 / Appendix C #129 — CVE-2026-1861 / CVE-2026-2447 libvpx remediation — SOURCE CLOSED; ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.**
 The advisory affects the VP9 encoder's `write_superframe_index` path, not the
 VP8/VP9 viewer decoder. The prior decoder characterization was incorrect.

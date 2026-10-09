@@ -2442,6 +2442,9 @@ run_focused_rust_tests() {
             src/direct_service.rs
             src/flutter.rs
             src/flutter_ffi.rs
+            libs/hbb_common/src/compress.rs
+            libs/compress_it/Cargo.toml
+            libs/compress_it/tests/compress.rs
             src/ipc.rs
             src/ipc/auth.rs
             src/ipc/uid_policy.rs
@@ -2544,6 +2547,17 @@ run_focused_rust_tests() {
             flutter::mobile_session_lifecycle_tests::r_s11iw_stream_replacement_rotates_rgba_and_rejects_predecessor_take
             flutter::mobile_session_lifecycle_tests::r_s11iw_stream_replacement_refusal_retires_only_its_exact_rgba_session
             flutter::mobile_session_lifecycle_tests::r_s11ex_desktop_tab_move_requires_live_source_and_preserves_peer_on_old_close
+            flutter::compressed_ui_handoff_tests::malformed_terminal_output_does_not_post_a_success_event
+            flutter::compressed_ui_handoff_tests::truncated_terminal_output_does_not_post_a_success_event
+            flutter::compressed_ui_handoff_tests::valid_terminal_output_preserves_binary_and_empty_events
+            flutter::compressed_ui_handoff_tests::cursor_decode_refuses_malformed_truncated_and_wrong_size_payloads
+            roundtrip_small_payload
+            within_cap_payload_survives
+            r_s7_rejects_a_decompression_bomb
+            garbage_input_is_an_explicit_error
+            caller_specific_limit_rejects_before_the_global_ceiling
+            valid_empty_frame_is_successful_even_at_zero_limit
+            truncated_frame_is_an_explicit_error
         )
         if [ "$RUST_TEST_PROFILE" = clipboard ]; then
             clipboard_tests=()
@@ -2934,6 +2948,32 @@ run_focused_rust_tests() {
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             client::io_loop::tests::r_s11fj_ \
                             --color never -- --test-threads=1
+                        run_decode_tests() {
+                            local label=$1 artifact_prefix=$2 filter=$3
+                            shift 3
+                            cargo test --offline --locked --no-run --color never \
+                                --message-format=json-render-diagnostics "$@" \
+                                >"/cargo-target/$label-build.json"
+                            local executable digest status=0
+                            executable="$(sed -nE \
+                                "s/.*\"executable\":\"(\/cargo-target\/debug\/deps\/$artifact_prefix-[0-9a-f]{16})\".*/\1/p" \
+                                "/cargo-target/$label-build.json")"
+                            [[ "$executable" =~ ^/cargo-target/debug/deps/$artifact_prefix-[0-9a-f]{16}$ ]] \
+                                && [ -f "$executable" ] && [ ! -L "$executable" ] && [ -x "$executable" ] \
+                                && [ "$(stat -c "%u:%g:%h" -- "$executable")" = 1000:1000:1 ] \
+                                || exit 95
+                            digest="$(sha256sum "$executable" | cut -d " " -f 1)"
+                            printf "%s_DECODE_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
+                                "$label" "$digest" "$executable"
+                            "$executable" "$filter" --color never --test-threads=1 || status=$?
+                            [ "$(sha256sum "$executable" | cut -d " " -f 1)" = "$digest" ] || exit 95
+                            printf "%s_DECODE_ARTIFACT=observed sha256=%s executable=%s status=%s unchanged=before-after\n" \
+                                "$label" "$digest" "$executable" "$status"
+                            return "$status"
+                        }
+                        run_decode_tests COMPRESS compress "" -p compress_it --test compress
+                        run_decode_tests TERMINAL librustdesk flutter::compressed_ui_handoff_tests:: \
+                            --lib --features linux-pkg-config,flutter
                         cargo test --offline --locked --lib --features linux-pkg-config,flutter \
                             r_s11iu_ --color never -- --test-threads=1
                         cargo test --offline --locked --lib --features linux-pkg-config,flutter \
@@ -3037,7 +3077,7 @@ run_focused_rust_tests() {
         [[ "$uid_test_artifact_sha" =~ ^[0-9a-f]{64}$ ]] \
             || fail 'compiled UID-policy test artifact digest is malformed'
     else
-        expected_groups=14
+        expected_groups=16
         if [ "$RUST_TEST_PROFILE" = clipboard ]; then
             expected_groups=1
         fi
@@ -3047,6 +3087,11 @@ run_focused_rust_tests() {
             && [ "$(grep -Fc 'CLIPBOARD_DECODE_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'clipboard decode test artifact receipt is absent, malformed or duplicated'
         if [ "$RUST_TEST_PROFILE" = integration ]; then
+            for label in COMPRESS TERMINAL; do
+                [ "$(grep -Ec "^${label}_DECODE_ARTIFACT=observed sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/(compress|librustdesk)-[0-9a-f]{16} status=0 unchanged=before-after$" "$output")" -eq 1 ] \
+                    && [ "$(grep -Fc "${label}_DECODE_ARTIFACT=" "$output")" -eq 1 ] \
+                    || fail 'compressed-data test artifact receipt is absent, malformed or duplicated'
+            done
             grep -Fxq 'verify-linux-service-password-ipc: ok' "$output" \
                 || { tail -n 200 "$output" >&2; fail 'password IPC source guard did not pass'; }
         fi
@@ -3132,7 +3177,9 @@ run_focused_rust_tests() {
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else
-            printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            grep -E '^(COMPRESS|TERMINAL)_DECODE_ARTIFACT(_BEFORE)?=' "$output"
+            grep -E '^test (flutter::compressed_ui_handoff_tests::|roundtrip_small_payload|within_cap_payload_survives|r_s7_rejects_a_decompression_bomb|garbage_input_is_an_explicit_error|caller_specific_limit_rejects_before_the_global_ceiling|valid_empty_frame_is_successful_even_at_zero_limit|truncated_frame_is_an_explicit_error)' "$output"
+            printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection-terminal-cursor-decode rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_PUB_CACHE_CLOSURE_V1" \

@@ -1,19 +1,13 @@
-//! R-S7 post-key decompression bound (hbb_common::compress::decompress).
-//!
-//! The inherited `zstd::decode_all` reads to EOF with no output limit, so a small
-//! compressed payload from a *keyed* peer can amplify to an unbounded allocation
-//! (a zstd bomb). `decompress` now streams through a 64 MiB-capped reader and
-//! rejects (empty) anything larger. These tests pin: a normal payload round-trips,
-//! a within-cap payload survives, and a bomb is refused rather than allocated.
+//! Real zstd decoding: bounded output and explicit failure, distinct from valid emptiness.
 
-use hbb_common::compress::{compress, decompress, decompress_with_limit};
+use hbb_common::compress::{compress, try_decompress, try_decompress_with_limit};
 
 #[test]
 fn roundtrip_small_payload() {
     let data = b"the quick brown fox jumps over the lazy dog".repeat(50);
     let c = compress(&data);
     assert!(!c.is_empty());
-    assert_eq!(decompress(&c), data);
+    assert_eq!(try_decompress(&c).unwrap(), data);
 }
 
 #[test]
@@ -21,7 +15,7 @@ fn within_cap_payload_survives() {
     // ~10 MiB decompresses fine — comfortably under the 64 MiB ceiling.
     let src = vec![7u8; 10 * 1024 * 1024];
     let c = compress(&src);
-    let out = decompress(&c);
+    let out = try_decompress(&c).unwrap();
     assert_eq!(out.len(), src.len());
     assert_eq!(out, src);
 }
@@ -29,7 +23,7 @@ fn within_cap_payload_survives() {
 #[test]
 fn r_s7_rejects_a_decompression_bomb() {
     // 80 MiB of zeros compresses to a tiny payload but would decompress ABOVE the
-    // 64 MiB cap → decompress must reject it (empty), never allocate 80 MiB.
+    // 64 MiB cap: decoding must return an error rather than the output.
     let bomb_src = vec![0u8; 80 * 1024 * 1024];
     let c = compress(&bomb_src);
     assert!(
@@ -38,21 +32,34 @@ fn r_s7_rejects_a_decompression_bomb() {
         c.len()
     );
     assert!(
-        decompress(&c).is_empty(),
+        try_decompress(&c).is_err(),
         "an over-cap (>64 MiB) decompression must be rejected, not returned"
     );
 }
 
 #[test]
-fn garbage_input_is_empty_not_a_panic() {
-    // A non-zstd blob must fail safe (empty), matching the prior unwrap_or_default.
-    assert!(decompress(b"not a zstd stream at all").is_empty());
+fn garbage_input_is_an_explicit_error() {
+    assert!(try_decompress(b"not a zstd stream at all").is_err());
 }
 
 #[test]
 fn caller_specific_limit_rejects_before_the_global_ceiling() {
     let src = vec![9u8; 4096];
     let compressed = compress(&src);
-    assert_eq!(decompress_with_limit(&compressed, src.len()), src);
-    assert!(decompress_with_limit(&compressed, src.len() - 1).is_empty());
+    assert_eq!(try_decompress_with_limit(&compressed, src.len()).unwrap(), src);
+    assert!(try_decompress_with_limit(&compressed, src.len() - 1).is_err());
+}
+
+#[test]
+fn valid_empty_frame_is_successful_even_at_zero_limit() {
+    let compressed = compress(&[]);
+    assert!(!compressed.is_empty());
+    assert_eq!(try_decompress_with_limit(&compressed, 0).unwrap(), Vec::<u8>::new());
+}
+
+#[test]
+fn truncated_frame_is_an_explicit_error() {
+    let mut compressed = compress(b"complete frame");
+    assert!(compressed.pop().is_some());
+    assert!(try_decompress(&compressed).is_err());
 }

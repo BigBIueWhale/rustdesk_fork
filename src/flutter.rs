@@ -4552,6 +4552,170 @@ pub fn retire_android_client_owner(generation: u64, session_id: &SessionID) -> (
 }
 
 #[cfg(test)]
+mod compressed_ui_handoff_tests {
+    use super::*;
+    use flutter_rust_bridge::ffi::io::{
+        ffi::{DartCObject, DartCObjectType},
+        store_dart_post_cobject,
+    };
+    use std::{cell::RefCell, ffi::CStr, sync::Once};
+
+    const TEST_PORT: i64 = 17_000_001;
+    static INSTALL_POST_CALLBACK: Once = Once::new();
+    thread_local! {
+        static POSTS: RefCell<Vec<Option<serde_json::Value>>> = RefCell::new(Vec::new());
+    }
+
+    // Borrow only the live bridge-owned graph. Both envelopes are [tag, value]:
+    // Rust2Dart success, then the generated EventToUI::Event variant.
+    unsafe fn event_from_post(mut object: *mut DartCObject) -> Option<serde_json::Value> {
+        for _ in 0..2 {
+            let envelope = object.as_ref()?;
+            if envelope.ty != DartCObjectType::DartArray {
+                return None;
+            }
+            let array = envelope.value.as_array;
+            if array.length != 2 || array.values.is_null() {
+                return None;
+            }
+            let tag = (*array.values).as_ref()?;
+            if tag.ty != DartCObjectType::DartInt32 || tag.value.as_int32 != 0 {
+                return None;
+            }
+            object = *array.values.add(1);
+        }
+        let event = object.as_ref()?;
+        if event.ty != DartCObjectType::DartString || event.value.as_string.is_null() {
+            return None;
+        }
+        serde_json::from_str(CStr::from_ptr(event.value.as_string).to_str().ok()?).ok()
+    }
+
+    unsafe extern "C" fn record_post(port: i64, object: *mut DartCObject) -> bool {
+        if port != TEST_PORT {
+            return false;
+        }
+        // No unwind crosses the native callback; no graph pointer escapes it.
+        std::panic::catch_unwind(|| {
+            let event = event_from_post(object);
+            let recognized = event.is_some();
+            POSTS.with(|posts| posts.borrow_mut().push(event));
+            recognized
+        })
+        .unwrap_or(false)
+    }
+
+    fn terminal_handler() -> FlutterHandler {
+        // This process never starts a Dart VM. Install one permanent recorder and
+        // keep observations thread-local so other tests' ports retain refusal.
+        INSTALL_POST_CALLBACK.call_once(|| unsafe { store_dart_post_cobject(record_post) });
+        POSTS.with(|posts| posts.borrow_mut().clear());
+        let handler = FlutterHandler::default();
+        handler.session_handlers.write().unwrap().insert(
+            SessionID::new_v4(),
+            SessionHandler {
+                event_stream: Some(StreamSink::new(
+                    flutter_rust_bridge::rust2dart::Rust2Dart::new(TEST_PORT),
+                )),
+                ..Default::default()
+            },
+        );
+        handler
+    }
+
+    fn terminal_data(handler: &FlutterHandler, data: Vec<u8>, compressed: bool) {
+        let mut response = TerminalResponse::new();
+        response.set_data(TerminalData {
+            terminal_id: 23,
+            data: data.into(),
+            compressed,
+            ..Default::default()
+        });
+        handler.handle_terminal_response(response);
+    }
+
+    fn assert_terminal_decode_error() {
+        POSTS.with(|posts| {
+            let mut posts = posts.borrow_mut();
+            assert_eq!(posts.len(), 1, "the owning terminal receives the decode failure");
+            let event = posts.pop().unwrap().expect("real terminal event envelope");
+            assert_eq!(event["name"], "terminal_response");
+            assert_eq!(event["type"], "error");
+            assert_eq!(event["terminal_id"], 23);
+            assert!(event["message"].as_str().is_some_and(|message| !message.is_empty()));
+            assert!(event.get("data").is_none(), "no successful output on failure");
+        });
+    }
+
+    #[test]
+    fn malformed_terminal_output_does_not_post_a_success_event() {
+        let handler = terminal_handler();
+        terminal_data(&handler, b"not a zstd frame".to_vec(), true);
+        assert_terminal_decode_error();
+    }
+
+    #[test]
+    fn truncated_terminal_output_does_not_post_a_success_event() {
+        let handler = terminal_handler();
+        let mut encoded = hbb_common::compress::compress(b"terminal output");
+        assert!(encoded.pop().is_some());
+        assert!(hbb_common::compress::try_decompress(&encoded).is_err());
+        terminal_data(&handler, encoded, true);
+        assert_terminal_decode_error();
+    }
+
+    #[test]
+    fn valid_terminal_output_preserves_binary_and_empty_events() {
+        let handler = terminal_handler();
+        for compressed in [false, true] {
+            for payload in [&b"\x00\xffterminal\r\n"[..], &b""[..]] {
+                let encoded = if compressed {
+                    hbb_common::compress::compress(payload)
+                } else {
+                    payload.to_vec()
+                };
+                terminal_data(&handler, encoded, compressed);
+                POSTS.with(|posts| {
+                    let mut posts = posts.borrow_mut();
+                    assert_eq!(posts.len(), 1, "one real bridge post per valid response");
+                    assert_eq!(
+                        posts.pop().unwrap(),
+                        Some(json!({
+                            "name": "terminal_response",
+                            "type": "data",
+                            "terminal_id": 23,
+                            "data": crate::encode64(payload),
+                        }))
+                    );
+                });
+            }
+        }
+    }
+
+    #[test]
+    fn cursor_decode_refuses_malformed_truncated_and_wrong_size_payloads() {
+        let mut cursor = CursorData {
+            width: 1,
+            height: 1,
+            colors: hbb_common::compress::compress(&[1, 2, 3, 4]).into(),
+            ..Default::default()
+        };
+        assert_eq!(remote_cursor_rgba_for_ui(&cursor), Some(vec![1, 2, 3, 4]));
+        let mut truncated = cursor.colors.to_vec();
+        assert!(truncated.pop().is_some());
+        for encoded in [
+            b"not a zstd frame".to_vec(),
+            truncated,
+            hbb_common::compress::compress(&[]),
+            hbb_common::compress::compress(&[1, 2, 3, 4, 5]),
+        ] {
+            cursor.colors = encoded.into();
+            assert!(remote_cursor_rgba_for_ui(&cursor).is_none());
+        }
+    }
+}
+
+#[cfg(test)]
 mod mobile_session_lifecycle_tests {
     use super::*;
     use crate::client::io_loop::{viewer_video_refresh_channel, ViewerVideoRefreshRequest};

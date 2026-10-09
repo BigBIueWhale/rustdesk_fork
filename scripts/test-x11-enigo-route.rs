@@ -3,16 +3,12 @@
 extern crate self as hbb_common;
 extern crate self as libxdo_sys;
 include!("/build/enigo-api.rs");
-include!("/build/xdo-key-types.rs");
 mod platform {
     #[path = "/work/libs/hbb_common/src/platform/x11_display.rs"]
     pub mod x11_display;
 }
 pub mod libc { pub use std::ffi::c_int; }
 pub mod x11 {
-    #[allow(non_upper_case_globals)]
-    #[path = "/work/xdo-vendor/x11-2.21.0/src/keysym.rs"]
-    pub mod keysym;
     pub mod xlib {
         use std::ffi::{c_char, c_int};
         #[repr(C)]
@@ -43,18 +39,13 @@ extern "C" {
     pub fn xdo_mouse_down(context: *const xdo_t, button: c_int) -> c_int;
     pub fn xdo_mouse_up(context: *const xdo_t, button: c_int) -> c_int;
     pub fn xdo_get_input_state(context: *const xdo_t) -> c_uint;
-    #[link_name = "xdo_send_key"]
-    fn native_send_key(context: *const xdo_t, kind: c_uint, value: c_ulong, action: c_uint, delay: useconds_t) -> c_int;
+    #[link_name = "xdo_enter_text_scalar"]
+    fn native_enter_text_scalar(context: *const xdo_t, scalar: c_uint, delay: useconds_t) -> c_int;
     fn __real_xdo_new_with_opened_display(display: *mut Display, name: *const c_char, close: c_int) -> *mut xdo_t;
     fn __real_xdo_free(context: *mut xdo_t);
 }
-pub unsafe fn xdo_send_key(context: *const xdo_t, key: XdoKey,
-                                  action: XdoKeyAction, delay: useconds_t) -> c_int {
-    let (kind, value) = match key {
-        XdoKey::Keysym(value) => (1, value),
-        XdoKey::Keycode(value) => (2, value as c_ulong),
-    };
-    native_send_key(context, kind, value, action as c_uint, delay)
+pub unsafe fn xdo_enter_text_scalar(context: *const xdo_t, scalar: char, delay: useconds_t) -> c_int {
+    native_enter_text_scalar(context, scalar as c_uint, delay)
 }
 #[link(name = "X11")]
 extern "C" {

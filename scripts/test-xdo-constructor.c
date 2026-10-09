@@ -205,7 +205,7 @@ static void delivered(xdo_t *context, Display *observer, Window window) {
   }
   require(key.code && upper && modifier && key.code == XKeysymToKeycode(observer, XK_a),
           "native letter/shift mapping differs");
-  require(!xdo_send_key(context, XDO_KEYSYM, XK_a, XDO_KEY_CLICK, 0),
+  require(!xdo_enter_text_scalar(context, 'a', 0),
           "constructed context cannot deliver input");
   XSync(observer, False);
   for (int i = 0; i < 2; i++) {

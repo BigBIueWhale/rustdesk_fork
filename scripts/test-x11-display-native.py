@@ -140,8 +140,7 @@ def constructor_contexts(root, environment):
     binary = Path("/build/xdo-constructor")
     command = ["/usr/bin/cc", "-std=c99", "-O1", "-g", "-fsanitize=address",
                "-fno-omit-frame-pointer", str(fixture), str(native_source / "xdo.c"),
-               "-lX11", "-lXtst",
-               "-lxkbcommon", "-o", str(binary)]
+               "-lX11", "-lXtst", "-o", str(binary)]
     for symbol in ("calloc", "free", "XOpenDisplay", "XCloseDisplay", "XTestQueryExtension", "XkbGetMap",
                    "XkbFreeKeyboard", "XGetKeyboardMapping", "XkbKeycodeToKeysym", "XGetModifierMapping"):
         command += [f"-Wl,--wrap={symbol}"]
@@ -178,7 +177,7 @@ def scratch_keys(root, environment):
                     "-Wl,--wrap=XGetModifierMapping", "-Wl,--wrap=XFreeModifiermap",
                     "-Wl,--wrap=malloc", "-Wl,--wrap=calloc", "-Wl,--wrap=realloc", "-Wl,--wrap=strdup",
                     str(scratch_source), str(native_source / "xdo.c"),
-                    "-lX11", "-lXtst", "-lxkbcommon", "-o", str(scratch_binary)],
+                    "-lX11", "-lXtst", "-o", str(scratch_binary)],
                    env=environment, check=True, timeout=30)
     print("XDO_SCRATCH_BUILD " + " ".join(
         f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
@@ -241,24 +240,6 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
     api = Path("/build/enigo-api.rs")
     with api.open("x") as output:
         output.write(declarations)
-    binding_source = root / "libs/libxdo-sys-stub/src/lib.rs"
-    bindings = binding_source.read_text()
-    start = bindings.index("#[derive(Clone, Copy)]\npub enum XdoKey {")
-    end = bindings.index("const TRUSTED_LIBXDO_PATHS:", start)
-    key_types = Path("/build/xdo-key-types.rs")
-    key_types.write_text(bindings[start:end])
-    keysym_source = root / "xdo-vendor/x11-2.21.0/src/keysym.rs"
-    keysym_manifest = root / "xdo-vendor/x11-2.21.0/.cargo-checksum.json"
-    expected_manifest = dict(line.split() for line in (root / "scripts/xdo-loader-inputs.txt").read_text().splitlines()
-                             if line and not line.startswith("#"))["x11-2.21.0"]
-    require(hashlib.sha256(keysym_manifest.read_bytes()).hexdigest() == expected_manifest
-            and hashlib.sha256(keysym_source.read_bytes()).hexdigest()
-            == json.loads(keysym_manifest.read_text())["files"]["src/keysym.rs"],
-            "native keysym declaration identity differs")
-    print(f"XDO_KEY_BINDINGS loader_source_sha256={hashlib.sha256(binding_source.read_bytes()).hexdigest()} "
-          f"types_sha256={hashlib.sha256(key_types.read_bytes()).hexdigest()} "
-          f"keysym_source_sha256={hashlib.sha256(keysym_source.read_bytes()).hexdigest()} "
-          "types=production-declarations keysyms=authenticated-input loader=direct-native-test", flush=True)
     binary = Path("/build/enigo-corrected")
     command = ["/usr/local/cargo/bin/rustc", "--edition=2021",
                str(root / "scripts/test-x11-enigo-route.rs"), "-o", str(binary),

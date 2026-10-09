@@ -32,16 +32,18 @@ display ownership transfers only on success; the display opened by xdo_new
 is retired after construction failure.
 Core-width sizing, repeated live symbol lookup and the private modifier traversal
 are removed in favor of the snapshot's types, symbols and real-modifier map.
-Keyboard input accepts one numeric keysym or raw keycode and one explicit action.
+Keyboard input accepts one validated Unicode text scalar as a matched pair.
 The compound string parser, locale-based text entry, alias table and generic
-key-list API are removed. Clicks resolve once and retain the same scratch mapping
+key-list API are removed. Text pairs resolve once and retain the same scratch mapping
 through press and release, then restore its full row and retire the query once.
-Enigo supplies numeric X11 symbols and validated Unicode scalars; unsupported
-keys and out-of-range raw codes are errors.
+Enigo supplies Rust characters. The native receiver rejects invalid scalars and
+unsupported controls before input, maps tab and line endings explicitly, and
+converts other scalars to Latin-1 or Unicode keysyms. Raw keycodes, caller-selected
+keysyms and separate press/release actions are absent. Unused per-symbol Unicode
+conversion/storage and its xkbcommon dependency are removed.
 Unused window property, class and urgency mutation APIs are removed.
 Every key request checks one XKB state snapshot before mapping or input effects;
-both keysym click legs retain its verified restoration group. Raw keycodes send
-physical key events without selecting or restoring a group. Failed queries and
+both text legs retain its verified restoration group. Failed queries and
 out-of-range returned groups are errors without scratch or input effects.
 Required modifiers resolve once into eight stack codes before input effects.
 The native modifier-map query is shape/range checked and retired before any
@@ -58,6 +60,6 @@ helpers and the unused native click helper are removed. The provider has eleven
 context, version, input and cursor/state exports and no Xinerama dependency.
 Absolute movement derives the selected root from the retained Display; its API
 has no separate caller-selected screen index or duplicate screen cache.
-The fixed fork version is 3.20160805.1-rustdesk15.
+The fixed fork version is 3.20160805.1-rustdesk16.
 The BSD redistribution notice is retained in COPYRIGHT and packaged with the
 library. Source provenance is not a claim that all native behavior is validated.

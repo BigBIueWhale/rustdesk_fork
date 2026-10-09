@@ -5,7 +5,7 @@
 //! (e.g., Wayland-only environments).
 
 use hbb_common::{
-    libc::{c_char, c_int, c_uint, c_ulong},
+    libc::{c_char, c_int, c_uint},
     libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW},
     log,
 };
@@ -26,24 +26,10 @@ pub struct xdo_t {
 
 pub type useconds_t = c_uint;
 
-#[derive(Clone, Copy)]
-pub enum XdoKey {
-    Keysym(c_ulong),
-    Keycode(c_uint),
-}
-
-#[repr(u32)]
-#[derive(Clone, Copy)]
-pub enum XdoKeyAction {
-    Down = 1,
-    Up = 2,
-    Click = 3,
-}
-
 const TRUSTED_LIBXDO_PATHS: &[&str] = &[
     "/usr/lib/rustdesk-fork/libxdo.so.3",
 ];
-const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk15";
+const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk16";
 
 fn root_owned_non_writable(mode: u32, uid: u32) -> bool {
     uid == 0 && mode & 0o022 == 0
@@ -100,8 +86,7 @@ type FnXdoVersion = unsafe extern "C" fn() -> *const c_char;
 type FnXdoNewWithOpenedDisplay =
     unsafe extern "C" fn(*mut Display, *const c_char, c_int) -> *mut xdo_t;
 type FnXdoFree = unsafe extern "C" fn(*mut xdo_t);
-type FnXdoSendKey =
-    unsafe extern "C" fn(*const xdo_t, c_uint, c_ulong, c_uint, useconds_t) -> c_int;
+type FnXdoEnterTextScalar = unsafe extern "C" fn(*const xdo_t, c_uint, useconds_t) -> c_int;
 type FnXdoMouseDown = unsafe extern "C" fn(*const xdo_t, c_int) -> c_int;
 type FnXdoMouseUp = unsafe extern "C" fn(*const xdo_t, c_int) -> c_int;
 type FnXdoMoveMouse = unsafe extern "C" fn(*const xdo_t, c_int, c_int) -> c_int;
@@ -115,7 +100,7 @@ struct XdoLib {
     xdo_new: FnXdoNew,
     xdo_new_with_opened_display: FnXdoNewWithOpenedDisplay,
     xdo_free: FnXdoFree,
-    xdo_send_key: FnXdoSendKey,
+    xdo_enter_text_scalar: FnXdoEnterTextScalar,
     xdo_mouse_down: FnXdoMouseDown,
     xdo_mouse_up: FnXdoMouseUp,
     xdo_move_mouse: FnXdoMoveMouse,
@@ -154,7 +139,7 @@ impl XdoLib {
             }
             let xdo_new = required_symbol(&lib, b"xdo_new")?;
             let xdo_free = required_symbol(&lib, b"xdo_free")?;
-            let xdo_send_key = required_symbol(&lib, b"xdo_send_key")?;
+            let xdo_enter_text_scalar = required_symbol(&lib, b"xdo_enter_text_scalar")?;
             let xdo_new_with_opened_display = required_symbol(&lib, b"xdo_new_with_opened_display")?;
             let xdo_mouse_down = required_symbol(&lib, b"xdo_mouse_down")?;
             let xdo_mouse_up = required_symbol(&lib, b"xdo_mouse_up")?;
@@ -170,7 +155,7 @@ impl XdoLib {
                 xdo_new,
                 xdo_new_with_opened_display,
                 xdo_free,
-                xdo_send_key,
+                xdo_enter_text_scalar,
                 xdo_mouse_down,
                 xdo_mouse_up,
                 xdo_move_mouse,
@@ -356,18 +341,13 @@ pub unsafe extern "C" fn xdo_free(xdo: *mut xdo_t) {
     }
 }
 
-pub unsafe fn xdo_send_key(
+pub unsafe fn xdo_enter_text_scalar(
     xdo: *const xdo_t,
-    key: XdoKey,
-    action: XdoKeyAction,
+    scalar: char,
     delay: useconds_t,
 ) -> c_int {
-    let (kind, value) = match key {
-        XdoKey::Keysym(value) => (1, value),
-        XdoKey::Keycode(value) => (2, value as c_ulong),
-    };
     get_lib().map_or(1, |lib| {
-        (lib.xdo_send_key)(xdo, kind, value, action as c_uint, delay)
+        (lib.xdo_enter_text_scalar)(xdo, scalar as c_uint, delay)
     })
 }
 

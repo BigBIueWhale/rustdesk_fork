@@ -257,54 +257,52 @@ static void modifier_admission(xdo_t *input, Display *observer, Window window,
   require(found, "native uppercase fixture absent");
   for (int round = 0; round < 4; round++) {
     for (int failure = 1; failure <= 6; failure++) {
-      for (unsigned action = XDO_KEY_DOWN; action <= XDO_KEY_CLICK; action++) {
-        XkbStateRec before = {0}, after = {0};
-        require(XkbGetState(observer, XkbUseCoreKbd, &before) == Success,
-                "observer state unavailable for modifier admission");
-        queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
-        modifier_queries = modifier_frees = 0;
-        modifier_fault = failure;
-        observe = 1;
-        int status = xdo_send_key(input, XDO_KEYSYM, XK_A, action, 0);
-        observe = 0;
-        require(status == XDO_ERROR && state_queries == 1 && modifier_queries == 1
-                && modifier_frees == (failure != 1) && owned_modifiers == NULL
-                && group_changes == 0 && input_calls == 0 && mapping_changes == 0
-                && queries == 0 && frees == 0 && owned_query == NULL,
-                "modifier admission refusal has effects or retained storage");
-        events(observer, window, 0, 0);
-        same_map(observer, low, high - low + 1, width, mapping);
-        same_modifiers(observer, map);
-        require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
-                && !memcmp(&before, &after, sizeof(before)), "modifier refusal changed state");
+      XkbStateRec before = {0}, after = {0};
+      require(XkbGetState(observer, XkbUseCoreKbd, &before) == Success,
+              "observer state unavailable for modifier admission");
+      queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+      modifier_queries = modifier_frees = 0;
+      modifier_fault = failure;
+      observe = 1;
+      int status = xdo_enter_text_scalar(input, 'A', 0);
+      observe = 0;
+      require(status == XDO_ERROR && state_queries == 1 && modifier_queries == 1
+              && modifier_frees == (failure != 1) && owned_modifiers == NULL
+              && group_changes == 0 && input_calls == 0 && mapping_changes == 0
+              && queries == 0 && frees == 0 && owned_query == NULL,
+              "modifier admission refusal has effects or retained storage");
+      events(observer, window, 0, 0);
+      same_map(observer, low, high - low + 1, width, mapping);
+      same_modifiers(observer, map);
+      require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
+              && !memcmp(&before, &after, sizeof(before)), "modifier refusal changed state");
 
-        modifier_fault = 0;
-        modifier_queries = modifier_frees = 0;
-        state_queries = group_changes = input_calls = 0;
-        observe = 1;
-        status = xdo_send_key(input, XDO_KEYSYM, XK_A, XDO_KEY_CLICK, 0);
-        observe = 0;
-        require(status == XDO_SUCCESS && state_queries == 1 && modifier_queries == 1
-                && modifier_frees == 1 && owned_modifiers == NULL && group_changes == 4
-                && input_calls == 4 && mapping_changes == 0 && queries == 0 && frees == 0,
-                "modifier recovery snapshot or ownership differs");
-        XSync(observer, False);
-        for (int index = 0; index < 4; index++) {
-          XEvent event;
-          require(XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &event),
-                  "native modifier/key event missing");
-          require(event.type == (index < 2 ? KeyPress : KeyRelease)
-                  && event.xkey.window == window && !event.xkey.send_event
-                  && event.xkey.keycode == (unsigned)(index % 2 ? code : shift)
-                  && event.xkey.state == (unsigned)(index == 1 || index == 2 ? ShiftMask : 0),
-                  "native modifier/key event differs");
-        }
-        events(observer, window, 0, 0);
-        same_map(observer, low, high - low + 1, width, mapping);
-        same_modifiers(observer, map);
-        require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
-                && !memcmp(&before, &after, sizeof(before)), "modifier recovery changed state");
+      modifier_fault = 0;
+      modifier_queries = modifier_frees = 0;
+      state_queries = group_changes = input_calls = 0;
+      observe = 1;
+      status = xdo_enter_text_scalar(input, 'A', 0);
+      observe = 0;
+      require(status == XDO_SUCCESS && state_queries == 1 && modifier_queries == 1
+              && modifier_frees == 1 && owned_modifiers == NULL && group_changes == 4
+              && input_calls == 4 && mapping_changes == 0 && queries == 0 && frees == 0,
+              "modifier recovery snapshot or ownership differs");
+      XSync(observer, False);
+      for (int index = 0; index < 4; index++) {
+        XEvent event;
+        require(XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &event),
+                "native modifier/key event missing");
+        require(event.type == (index < 2 ? KeyPress : KeyRelease)
+                && event.xkey.window == window && !event.xkey.send_event
+                && event.xkey.keycode == (unsigned)(index % 2 ? code : shift)
+                && event.xkey.state == (unsigned)(index == 1 || index == 2 ? ShiftMask : 0),
+                "native modifier/key event differs");
       }
+      events(observer, window, 0, 0);
+      same_map(observer, low, high - low + 1, width, mapping);
+      same_modifiers(observer, map);
+      require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
+              && !memcmp(&before, &after, sizeof(before)), "modifier recovery changed state");
     }
   }
   XFreeModifiermap(map);
@@ -312,108 +310,112 @@ static void modifier_admission(xdo_t *input, Display *observer, Window window,
 
 static void keyboard_state(xdo_t *input, Display *observer, Window window,
                            int low, int high, int width, const KeySym *mapping) {
-  struct request { unsigned kind; unsigned long value; int code; };
+  struct request { unsigned scalar; int code; };
   const struct request keys[] = {
-    {XDO_KEYSYM, XK_F30, low}, {XDO_KEYCODE, low + 1, low + 1},
-    {XDO_KEYSYM, 0x0101f642, high},
+    {'a', low}, {'b', low + 1}, {0x1f642, high},
   };
   fault = 0;
   for (int failure = 1; failure <= 3; failure++) {
     for (size_t index = 0; index < sizeof(keys) / sizeof(keys[0]); index++) {
-      for (unsigned action = XDO_KEY_DOWN; action <= XDO_KEY_CLICK; action++) {
-        XkbStateRec before = {0}, after = {0};
-        require(XkbGetState(observer, XkbUseCoreKbd, &before) == Success,
-                "observer keyboard state unavailable");
-        queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
-        modifier_queries = modifier_frees = 0;
-        state_fault = failure;
-        observe = 1;
-        int status = xdo_send_key(input, keys[index].kind,
-                                         keys[index].value, action, 0);
-        observe = 0;
-        require(status == XDO_ERROR && state_queries == 1 && group_changes == 0
-                && input_calls == 0 && mapping_changes == 0 && queries == 0
-                && frees == 0 && owned_query == NULL && modifier_queries == 0
-                && modifier_frees == 0, "keyboard-state refusal has effects");
-        events(observer, window, 0, 0);
-        same_map(observer, low, high - low + 1, width, mapping);
-        require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
-                && !memcmp(&before, &after, sizeof(before)), "keyboard-state refusal changed state");
+      XkbStateRec before = {0}, after = {0};
+      require(XkbGetState(observer, XkbUseCoreKbd, &before) == Success,
+              "observer keyboard state unavailable");
+      queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+      modifier_queries = modifier_frees = 0;
+      state_fault = failure;
+      observe = 1;
+      int status = xdo_enter_text_scalar(input, keys[index].scalar, 0);
+      observe = 0;
+      require(status == XDO_ERROR && state_queries == 1 && group_changes == 0
+              && input_calls == 0 && mapping_changes == 0 && queries == 0
+              && frees == 0 && owned_query == NULL && modifier_queries == 0
+              && modifier_frees == 0, "keyboard-state refusal has effects");
+      events(observer, window, 0, 0);
+      same_map(observer, low, high - low + 1, width, mapping);
+      require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
+              && !memcmp(&before, &after, sizeof(before)), "keyboard-state refusal changed state");
 
-        state_fault = 0;
-        queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
-        observe = 1;
-        status = xdo_send_key(input, keys[index].kind,
-                                     keys[index].value, XDO_KEY_CLICK, 0);
-        observe = 0;
-        int scratch = index == 2;
-        require(status == XDO_SUCCESS && state_queries == 1
-                && group_changes == (keys[index].kind == XDO_KEYSYM ? 4 : 0)
-                && input_calls == 2 && mapping_changes == 2 * scratch
-                && queries == scratch && frees == scratch && owned_query == NULL
-                && modifier_queries == 0 && modifier_frees == 0,
-                "keyboard-state recovery ownership differs");
-        events(observer, window, keys[index].code, 2);
-        same_map(observer, low, high - low + 1, width, mapping);
-        require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
-                && !memcmp(&before, &after, sizeof(before)), "keyboard-state recovery changed state");
-      }
+      state_fault = 0;
+      queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+      observe = 1;
+      status = xdo_enter_text_scalar(input, keys[index].scalar, 0);
+      observe = 0;
+      int scratch = index == 2;
+      require(status == XDO_SUCCESS && state_queries == 1
+              && group_changes == 4
+              && input_calls == 2 && mapping_changes == 2 * scratch
+              && queries == scratch && frees == scratch && owned_query == NULL
+              && modifier_queries == 0 && modifier_frees == 0,
+              "keyboard-state recovery ownership differs");
+      events(observer, window, keys[index].code, 2);
+      same_map(observer, low, high - low + 1, width, mapping);
+      require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
+              && !memcmp(&before, &after, sizeof(before)), "keyboard-state recovery changed state");
     }
   }
 }
 
 static void key_input(xdo_t *input, Display *observer, Window window, int low, int high) {
-  struct request { unsigned kind; unsigned long value; unsigned action; };
-  const struct request invalid[] = {
-    {0, XK_a, XDO_KEY_CLICK}, {3, XK_a, XDO_KEY_CLICK},
-    {XDO_KEYSYM, XK_a, 0}, {XDO_KEYSYM, XK_a, 4},
-    {XDO_KEYCODE, 0, XDO_KEY_CLICK}, {XDO_KEYCODE, 7, XDO_KEY_CLICK},
-    {XDO_KEYCODE, 256, XDO_KEY_CLICK}, {XDO_KEYCODE, 65535, XDO_KEY_CLICK},
-    {XDO_KEYCODE, ULONG_MAX, XDO_KEY_CLICK},
-    {XDO_KEYSYM, NoSymbol, XDO_KEY_CLICK}, {XDO_KEYSYM, XK_VoidSymbol, XDO_KEY_CLICK},
-    {XDO_KEYSYM, 0x20000000, XDO_KEY_CLICK}, {XDO_KEYSYM, ULONG_MAX, XDO_KEY_CLICK},
-    {XDO_KEYSYM, 0x01000000, XDO_KEY_CLICK}, {XDO_KEYSYM, 0x010000ff, XDO_KEY_CLICK},
-    {XDO_KEYSYM, 0x0100d800, XDO_KEY_CLICK}, {XDO_KEYSYM, 0x0100dfff, XDO_KEY_CLICK},
-    {XDO_KEYSYM, 0x01110000, XDO_KEY_CLICK},
+  const unsigned invalid[] = {0xd800, 0xdfff, 0x110000, UINT_MAX};
+  struct request { unsigned scalar; KeySym symbol; };
+  const struct request valid[] = {
+    {'a', XK_a}, {'b', XK_b}, {0x20, XK_space}, {0xa0, XK_nobreakspace},
+    {0xff, XK_ydiaeresis}, {0x100, 0x01000100}, {0xffe1, 0x0100ffe1},
+    {0x10ffff, 0x0110ffff}, {0x1f642, 0x0101f642},
+    {'\t', XK_Tab}, {'\n', XK_Return}, {'\r', XK_Return},
   };
-  queries = frees = fault = 0;
+  queries = frees = state_queries = group_changes = input_calls = mapping_changes = fault = 0;
   modifier_queries = modifier_frees = 0;
   observe = 1;
+  for (unsigned scalar = 0; scalar <= 0x9f; scalar++) {
+    if (scalar == '\t' || scalar == '\n' || scalar == '\r'
+        || (scalar >= 0x20 && scalar < 0x7f)) continue;
+    require(xdo_enter_text_scalar(input, scalar, 0) == XDO_ERROR,
+            "unsupported text control admitted");
+    events(observer, window, 0, 0);
+  }
   for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
-    struct request request = invalid[i];
-    require(xdo_send_key(input, request.kind, request.value, request.action, 0)
-            == XDO_ERROR, "invalid key request admitted");
+    require(xdo_enter_text_scalar(input, invalid[i], 0) == XDO_ERROR,
+            "invalid text scalar admitted");
     events(observer, window, 0, 0);
   }
   xdo_t empty = {0};
-  require(xdo_send_key(NULL, XDO_KEYSYM, XK_a, XDO_KEY_CLICK, 0) == XDO_ERROR
-          && xdo_send_key(&empty, XDO_KEYSYM, XK_a, XDO_KEY_CLICK, 0) == XDO_ERROR,
+  require(xdo_enter_text_scalar(NULL, 'a', 0) == XDO_ERROR
+          && xdo_enter_text_scalar(&empty, 'a', 0) == XDO_ERROR,
           "unavailable context admitted");
+  require(state_queries == 0 && group_changes == 0 && input_calls == 0
+          && mapping_changes == 0 && queries == 0 && frees == 0,
+          "invalid scalar admission had native effects");
   for (int field = 0; field < 3; field++) {
     xdo_t changed = *input;
     if (field == 0) changed.keycode_low = 7;
     if (field == 1) changed.keycode_high = 256;
     if (field == 2) changed.keycode_high = changed.keycode_low - 1;
-    require(xdo_send_key(&changed, XDO_KEYCODE, low, XDO_KEY_CLICK, 0) == XDO_ERROR,
+    require(xdo_enter_text_scalar(&changed, 0x1f642, 0) == XDO_ERROR,
             "invalid native range admitted");
   }
   events(observer, window, 0, 0);
-  require(queries == 0 && frees == 0, "refusal queried scratch storage");
-  require(xdo_send_key(input, XDO_KEYCODE, low, XDO_KEY_CLICK, 0) == XDO_SUCCESS,
-          "lowest raw code refused");
-  events(observer, window, low, 2);
-  require(xdo_send_key(input, XDO_KEYCODE, high, XDO_KEY_CLICK, 0) == XDO_SUCCESS,
-          "highest raw code refused");
-  events(observer, window, high, 2);
-  require(xdo_send_key(input, XDO_KEYSYM, XK_F30, XDO_KEY_CLICK, 0) == XDO_SUCCESS,
-          "mapped keysym refused");
-  events(observer, window, low, 2);
-  require(queries == 0 && frees == 0, "mapped request queried scratch storage");
-  require(xdo_send_key(input, XDO_KEYSYM, 0x0101f642, XDO_KEY_CLICK, 0) == XDO_SUCCESS,
-          "unmapped click refused");
-  events(observer, window, high, 2);
-  require(queries == 1 && frees == 1 && owned_query == NULL,
-          "click reacquired storage instead of releasing its pressed code");
+  require(queries == 0 && frees == 0 && group_changes == 0
+          && input_calls == 0 && mapping_changes == 0, "range refusal had effects");
+  for (size_t i = 0; i < sizeof(valid) / sizeof(valid[0]); i++) {
+    int scratch = i >= 2;
+    queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+    click_events = 0;
+    if (scratch) {
+      click_observer = observer;
+      click_window = window;
+      click_code = high;
+      click_symbol = valid[i].symbol;
+    }
+    require(xdo_enter_text_scalar(input, valid[i].scalar, 0) == XDO_SUCCESS,
+            "valid text scalar refused");
+    click_observer = NULL;
+    require(queries == scratch && frees == scratch && owned_query == NULL
+            && state_queries == 1 && group_changes == 4 && input_calls == 2
+            && mapping_changes == 2 * scratch && click_events == 2 * scratch,
+            "text pair mapping or storage ownership differs");
+    events(observer, window, i == 0 ? low : i == 1 ? low + 1 : high, scratch ? 0 : 2);
+  }
   require(modifier_queries == 0 && modifier_frees == 0, "unmodified key queried modifiers");
   observe = 0;
 }
@@ -450,7 +452,7 @@ static void scratch_click(xdo_t *input, Display *observer, Window window,
       queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
       modifier_queries = modifier_frees = click_events = 0;
       observe = 1;
-      int status = xdo_send_key(input, XDO_KEYSYM, click_symbol, XDO_KEY_CLICK, delayed ? 12000 : 0);
+      int status = xdo_enter_text_scalar(input, 0x1f642, delayed ? 12000 : 0);
       observe = 0;
       int accepted = fault == 0;
       require(status == (accepted ? XDO_SUCCESS : XDO_ERROR)
@@ -471,13 +473,13 @@ static void scratch_click(xdo_t *input, Display *observer, Window window,
   fault = 0;
 }
 
-static void raw_group_layout(Display *observer, Window window) {
+static void text_group_layout(Display *observer, Window window) {
   int descriptors = entries("/proc/self/fd"), tasks = entries("/proc/self/task");
   XkbStateRec baseline = {0}, restored = {0};
   require(XkbGetState(observer, XkbUseCoreKbd, &baseline) == Success
           && baseline.group == baseline.locked_group && baseline.base_group == 0
           && baseline.latched_group == 0 && baseline.mods == 0,
-          "raw-group fixture initial state differs");
+          "text-group fixture initial state differs");
   clear_keys(observer);
   XkbDescPtr original = XkbGetMap(observer, XkbAllClientInfoMask, XkbUseCoreKbd);
   /* Group resizing also examines the server's per-key action array. */
@@ -485,25 +487,25 @@ static void raw_group_layout(Display *observer, Window window) {
   require(original && original->map && original->map->key_sym_map && original->map->syms
           && original->map->modmap && changed && changed->map && changed->map->types
           && changed->map->num_types > XkbAlphabeticIndex && changed->server
-          && changed->server->key_acts, "raw-group fixture maps unavailable");
+          && changed->server->key_acts, "text-group fixture maps unavailable");
   KeyCode code = XKeysymToKeycode(observer, XK_a);
   require(code >= original->min_key_code && code <= original->max_key_code
           && original->map->modmap[code] == 0 && !XkbKeyHasActions(changed, code),
-          "raw-group fixture physical key differs");
+          "text-group fixture physical key differs");
   int types[] = {XkbAlphabeticIndex, XkbAlphabeticIndex};
   XkbMapChangesRec map_change = {0};
   require(XkbChangeTypesOfKey(changed, code, 2, XkbGroup1Mask | XkbGroup2Mask,
                              types, &map_change) == Success
           && map_change.changed == XkbKeySymsMask && map_change.first_key_sym == code
-          && map_change.num_key_syms == 1, "raw-group fixture resize failed");
+          && map_change.num_key_syms == 1, "text-group fixture resize failed");
   XkbKeySymEntry(changed, code, 0, 0) = XK_a;
   XkbKeySymEntry(changed, code, 1, 0) = XK_A;
   XkbKeySymEntry(changed, code, 0, 1) = XK_b;
   XkbKeySymEntry(changed, code, 1, 1) = XK_B;
-  require(XkbChangeMap(observer, changed, &map_change), "raw-group fixture map not sent");
+  require(XkbChangeMap(observer, changed, &map_change), "text-group fixture map not sent");
   XSync(observer, False);
   Display *reader = XOpenDisplay("unix/:98.0");
-  require(reader != NULL, "raw-group independent lookup display unavailable");
+  require(reader != NULL, "text-group independent lookup display unavailable");
   XkbDescPtr actual = XkbGetMap(reader, XkbAllClientInfoMask, XkbUseCoreKbd);
   require(actual && actual->map && XkbKeyNumGroups(actual, code) == 2
           && XkbKeyGroupsWidth(actual, code) == 2
@@ -514,7 +516,7 @@ static void raw_group_layout(Display *observer, Window window) {
           "native server did not install the two-group map");
   XkbFreeKeyboard(actual, 0, True);
   xdo_t *input = xdo_new("unix/:98.0");
-  require(input != NULL, "raw-group product context unavailable");
+  require(input != NULL, "text-group product context unavailable");
   int found = 0;
   for (int index = 0; index < input->charcodes_len; index++) {
     if (input->charcodes[index].symbol == XK_a) {
@@ -528,62 +530,44 @@ static void raw_group_layout(Display *observer, Window window) {
   product_display = input->xdpy;
   for (int round = 0; round < 4; round++) {
     for (unsigned group = 0; group < 2; group++) {
-      for (unsigned kind = XDO_KEYSYM; kind <= XDO_KEYCODE; kind++) {
-        for (int click = 0; click < 2; click++) {
-          require(XkbLockGroup(observer, XkbUseCoreKbd, group), "fixture group not sent");
-          XSync(observer, False);
-          XkbStateRec before = {0}, after = {0};
-          require(XkbGetState(observer, XkbUseCoreKbd, &before) == Success
-                  && before.group == group && before.locked_group == group
-                  && before.base_group == 0 && before.latched_group == 0 && before.mods == 0,
-                  "native server did not select the fixture group");
-          queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
-          modifier_queries = modifier_frees = 0;
-          fault = state_fault = modifier_fault = 0;
-          unsigned long value = kind == XDO_KEYCODE ? code : XK_a;
-          observe = 1;
-          int status = xdo_send_key(input, kind, value, click ? XDO_KEY_CLICK : XDO_KEY_DOWN, 0);
-          observe = 0;
-          require(status == XDO_SUCCESS, "raw-group input refused");
-          if (!click) {
-            char held[32];
-            require(XQueryKeymap(observer, held), "raw-group down state unavailable");
-            for (int byte = 0; byte < 32; byte++)
-              require((unsigned char)held[byte] == (byte == code / 8 ? 1U << (code % 8) : 0),
-                      "raw-group down did not hold exactly the physical key");
-            require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
-                    && !memcmp(&before, &after, sizeof(before)), "down changed the XKB state");
-            observe = 1;
-            status = xdo_send_key(input, kind, value, XDO_KEY_UP, 0);
-            observe = 0;
-            require(status == XDO_SUCCESS, "raw-group release refused");
-          }
-          require(state_queries == (click ? 1 : 2) && input_calls == 2
-                  && group_changes == (kind == XDO_KEYCODE ? 0 : 4)
-                  && mapping_changes == 0 && queries == 0 && frees == 0
-                  && modifier_queries == 0 && modifier_frees == 0,
-                  "raw-group product call census differs");
-          require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
-                  && !memcmp(&before, &after, sizeof(before)), "input changed the XKB state");
-          XSync(observer, False);
-          unsigned event_group = kind == XDO_KEYCODE ? group : 0;
-          for (int index = 0; index < 2; index++) {
-            XEvent event;
-            require(XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &event),
-                    "raw-group native event missing");
-            KeySym symbol = NoSymbol;
-            unsigned consumed;
-            require(event.type == (index == 0 ? KeyPress : KeyRelease)
-                    && event.xkey.window == window && !event.xkey.send_event
-                    && event.xkey.keycode == code && event.xkey.state == (event_group << 13)
-                    && XkbLookupKeySym(reader, code, event.xkey.state, &consumed, &symbol)
-                    && symbol == (event_group == 0 ? XK_a : XK_b),
-                    "raw-group native event group or symbol differs");
-          }
-          events(observer, window, 0, 0);
-          printf("XDO_RAW_GROUP_CASE=pass round=%d group=%u kind=%u click=%d events=2 group_locks=%d\n",
-                 round, group, kind, click, group_changes);
+      for (unsigned selected = 0; selected < 2; selected++) {
+        require(XkbLockGroup(observer, XkbUseCoreKbd, group), "fixture group not sent");
+        XSync(observer, False);
+        XkbStateRec before = {0}, after = {0};
+        require(XkbGetState(observer, XkbUseCoreKbd, &before) == Success
+                && before.group == group && before.locked_group == group
+                && before.base_group == 0 && before.latched_group == 0 && before.mods == 0,
+                "native server did not select the fixture group");
+        queries = frees = state_queries = group_changes = input_calls = mapping_changes = 0;
+        modifier_queries = modifier_frees = 0;
+        fault = state_fault = modifier_fault = 0;
+        observe = 1;
+        int status = xdo_enter_text_scalar(input, selected ? 'b' : 'a', 0);
+        observe = 0;
+        require(status == XDO_SUCCESS, "text-group input refused");
+        require(state_queries == 1 && input_calls == 2 && group_changes == 4
+                && mapping_changes == 0 && queries == 0 && frees == 0
+                && modifier_queries == 0 && modifier_frees == 0,
+                "text-group product call census differs");
+        require(XkbGetState(observer, XkbUseCoreKbd, &after) == Success
+                && !memcmp(&before, &after, sizeof(before)), "input changed the XKB state");
+        XSync(observer, False);
+        for (int index = 0; index < 2; index++) {
+          XEvent event;
+          require(XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &event),
+                  "text-group native event missing");
+          KeySym symbol = NoSymbol;
+          unsigned consumed;
+          require(event.type == (index == 0 ? KeyPress : KeyRelease)
+                  && event.xkey.window == window && !event.xkey.send_event
+                  && event.xkey.keycode == code && event.xkey.state == (selected << 13)
+                  && XkbLookupKeySym(reader, code, event.xkey.state, &consumed, &symbol)
+                  && symbol == (selected ? XK_b : XK_a),
+                  "text-group native event group or symbol differs");
         }
+        events(observer, window, 0, 0);
+        printf("XDO_TEXT_GROUP_CASE=pass round=%d group=%u selected=%u events=2 group_locks=%d\n",
+               round, group, selected, group_changes);
       }
     }
   }
@@ -600,8 +584,8 @@ static void raw_group_layout(Display *observer, Window window) {
   XkbFreeKeyboard(original, 0, True);
   clear_keys(observer);
   require(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks,
-          "raw-group descriptors/tasks retained");
-  puts("XDO_RAW_GROUP_NATIVE=pass groups=0,1 repeats=4 cases=32 events=64 raw_group_locks=0 symbols=group-derived keysym=resolved state=preserved mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
+          "text-group descriptors/tasks retained");
+  puts("XDO_TEXT_GROUP_NATIVE=pass groups=0,1 repeats=4 cases=16 events=32 scalars=a,b group_locks=64 symbols=resolved state=preserved mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
 }
 
 int main(void) {
@@ -623,13 +607,13 @@ int main(void) {
   XMapWindow(observer, window);
   XSetInputFocus(observer, window, RevertToParent, CurrentTime);
   XSync(observer, False);
-  raw_group_layout(observer, window);
+  text_group_layout(observer, window);
   same_map(observer, low, count, initial_width, initial);
   xdo_t *input = xdo_new("unix/:98.0");
   require(input != NULL, "product context unavailable");
   charcodemap_t key = {.code = XKeysymToKeycode(observer, XK_a), .symbol = XK_a};
   require(key.code != 0, "positive control key absent");
-  require(!xdo_send_key(input, XDO_KEYSYM, XK_a, XDO_KEY_CLICK, 0),
+  require(!xdo_enter_text_scalar(input, 'a', 0),
           "mapped positive control failed");
   events(observer, window, key.code, 2);
   product_display = input->xdpy;
@@ -643,6 +627,10 @@ int main(void) {
     KeySym *mapping = malloc(count * width * sizeof(KeySym));
     require(mapping != NULL, "fixture map allocation failed");
     for (int i = 0; i < count * width; i++) mapping[i] = XK_F30;
+    for (int i = 0; i < width; i++) {
+      mapping[i] = XK_a;
+      mapping[width + i] = XK_b;
+    }
     memset(mapping + (count - 1) * width, 0, width * sizeof(KeySym));
     XChangeKeyboardMapping(observer, low, width, mapping, count);
     XSync(observer, False);
@@ -669,22 +657,16 @@ int main(void) {
         scratch_map(mapping, count, width, 0);
         same_map(observer, low, count, width, mapping);
       }
-      key = (charcodemap_t){.code = low + 1, .symbol = XK_F30};
-      if (scenario != 1) key = (charcodemap_t){.symbol = 0x0101F642, .needs_binding = 1};
       fault = scenario == 2 ? 1 : scenario == 3 ? 2 : 0;
       queries = frees = 0;
       observe = 1;
       printf("XDO_SCRATCH_ENTER round=%d scenario=%d highest=%d\n", round, scenario, high);
-      unsigned kind = scenario == 1 ? XDO_KEYCODE : XDO_KEYSYM;
-      unsigned long value = scenario == 1 ? low + 1 : key.symbol;
-      int down = xdo_send_key(input, kind, value, XDO_KEY_DOWN, 0);
-      int up = xdo_send_key(input, kind, value, XDO_KEY_UP, 0);
+      int status = xdo_enter_text_scalar(input, scenario == 1 ? 'b' : 0x1f642, 0);
       observe = 0;
       int accepted = scenario < 2;
-      require(accepted ? down == XDO_SUCCESS && up == XDO_SUCCESS
-                       : down == XDO_ERROR && up == XDO_ERROR, "native outcome differs");
-      require(owned_query == NULL && queries == (scenario == 1 ? 0 : 2)
-              && frees == (scenario == 1 || scenario == 2 ? 0 : 2), "query ownership differs");
+      require(status == (accepted ? XDO_SUCCESS : XDO_ERROR), "native outcome differs");
+      require(owned_query == NULL && queries == (scenario != 1)
+              && frees == (scenario != 1 && scenario != 2), "query ownership differs");
       events(observer, window, scenario == 0 ? high : low + 1, accepted ? 2 : 0);
       same_map(observer, low, count, width, mapping);
       printf("XDO_SCRATCH_CASE=pass round=%d scenario=%d events=%d queries=%d frees=%d\n",
@@ -698,10 +680,10 @@ int main(void) {
   XCloseDisplay(observer);
   require(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks,
           "native descriptors/tasks retained");
-  puts("XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=32 frees=24 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false");
+  puts("XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=16 frees=12 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false");
   puts("XDO_SCRATCH_CLICK_NATIVE=pass cases=24 repeats=4 delays=0,12000 accepted=8 refused=16 events=16 binding=both-legs queries=24 frees=16 maps=restored keys=clear descriptors=retired tasks=retired sanitizer=address observer=in-request consumer=unproved whole_app=false");
-  puts("XDO_KEY_INPUT_NATIVE=pass cases=108 repeats=4 refused=92 accepted=16 events=32 raw=both-boundaries invalid=pre-input-refused key_storage=stack product_allocations=0 click_queries=4 click_frees=4 maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_heap=false whole_app=false");
-  puts("XDO_KEY_STATE_NATIVE=pass cases=108 repeats=4 faults=3 kinds=3 actions=3 refused=108 recovery=108 events=216 state_queries=216 click_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
-  puts("XDO_KEY_MODIFIER_NATIVE=pass cases=72 repeats=4 faults=6 actions=3 refused=72 recovery=72 events=288 modifier_queries=144 modifier_frees=132 click_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
+  puts("XDO_TEXT_SCALAR_NATIVE=pass cases=332 repeats=4 refused=284 accepted=48 events=96 controls=all-C0,C1 boundaries=Latin1,Unicode invalid=pre-input-refused key_storage=stack product_allocations=0 pair_queries=40 pair_frees=40 maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_heap=false whole_app=false");
+  puts("XDO_KEY_STATE_NATIVE=pass cases=36 repeats=4 faults=3 scalars=3 refused=36 recovery=36 events=72 state_queries=72 pair_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
+  puts("XDO_KEY_MODIFIER_NATIVE=pass cases=24 repeats=4 faults=6 refused=24 recovery=24 events=96 modifier_queries=48 modifier_frees=44 pair_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false");
   return 0;
 }

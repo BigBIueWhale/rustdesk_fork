@@ -4288,20 +4288,20 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'XDO_CURSOR_POSITION_NATIVE=pass selectors=3 contexts=12 moves=96 roots=0,1 starting_root=opposite selected_root=observed retained_display=unchanged callbacks=paired descriptors=retired tasks=retired scope=production-platform-component whole_app=false' \
         'actual platform cursor movement reaches the retained Display screen'
     require_exact_fixed_receipt \
-        'XDO_RAW_GROUP_NATIVE=pass groups=0,1 repeats=4 cases=32 events=64 raw_group_locks=0 symbols=group-derived keysym=resolved state=preserved mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
-        'physical raw keycodes preserve server group routing and keysym input retains explicit mapping'
+        'XDO_TEXT_GROUP_NATIVE=pass groups=0,1 repeats=4 cases=16 events=32 scalars=a,b group_locks=64 symbols=resolved state=preserved mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'text scalars resolve their native group and restore the admitted server state'
     require_exact_fixed_receipt \
-        'XDO_KEY_MODIFIER_NATIVE=pass cases=72 repeats=4 faults=6 actions=3 refused=72 recovery=72 events=288 modifier_queries=144 modifier_frees=132 click_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'XDO_KEY_MODIFIER_NATIVE=pass cases=24 repeats=4 faults=6 refused=24 recovery=24 events=96 modifier_queries=48 modifier_frees=44 pair_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
         'complete native modifier admission, same-context recovery and paired snapshot retirement'
     require_exact_fixed_receipt \
-        'XDO_KEY_STATE_NATIVE=pass cases=108 repeats=4 faults=3 kinds=3 actions=3 refused=108 recovery=108 events=216 state_queries=216 click_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'XDO_KEY_STATE_NATIVE=pass cases=36 repeats=4 faults=3 scalars=3 refused=36 recovery=36 events=72 state_queries=72 pair_snapshot=single refusal_effects=none maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
         'checked native keyboard-state admission and recovery on each retained context'
     require_exact_fixed_receipt \
-        'XDO_KEY_INPUT_NATIVE=pass cases=108 repeats=4 refused=92 accepted=16 events=32 raw=both-boundaries invalid=pre-input-refused key_storage=stack product_allocations=0 click_queries=4 click_frees=4 maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_heap=false whole_app=false' \
-        'corrected single-key API validates before input and releases the exact pressed code without parser storage'
+        'XDO_TEXT_SCALAR_NATIVE=pass cases=332 repeats=4 refused=284 accepted=48 events=96 controls=all-C0,C1 boundaries=Latin1,Unicode invalid=pre-input-refused key_storage=stack product_allocations=0 pair_queries=40 pair_frees=40 maps=unchanged keys=clear descriptors=retired tasks=retired sanitizer=address whole_heap=false whole_app=false' \
+        'text scalar admission rejects invalid controls and scalars before input and retains a matched pair'
     require_exact_fixed_receipt \
-        'XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=32 frees=24 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false' \
-        'single-key native scratch bounds, refusal and returned map ownership'
+        'XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=16 frees=12 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false' \
+        'text-pair native scratch bounds, refusal and returned map ownership'
     require_exact_fixed_receipt \
         'XDO_SCRATCH_DISPLAY=retired owner=dedicated-xvfb server=joined socket=absent lock=absent later_tests=fresh-display' \
         'owned scratch display retirement before a fresh native server'
@@ -4354,8 +4354,8 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'key-input guest completion'
 elif [ "$MODE" = x11-display-tests ]; then
     require_exact_fixed_receipt \
-        'XDO_RAW_GROUP_NATIVE=pass groups=0,1 repeats=4 cases=32 events=64 raw_group_locks=0 symbols=group-derived keysym=resolved state=preserved mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
-        'physical raw keycodes preserve server group routing and keysym input retains explicit mapping'
+        'XDO_TEXT_GROUP_NATIVE=pass groups=0,1 repeats=4 cases=16 events=32 scalars=a,b group_locks=64 symbols=resolved state=preserved mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
+        'text scalars resolve their native group and restore the admitted server state'
     require_exact_fixed_receipt \
         'MACOS_CURSOR_SNAPSHOT_STATE=pass source=complete-module tests=5 zero_seed=accepted failed_capture=not-memoized stale_image=absent same_seed=reused publication_retry=captured-image unwind=empty reset=idempotent worker=joined scope=portable-cache-state macOS_native=false' \
         'portable production macOS cursor cache commits only complete images and retires exact state; not native macOS acceptance'
@@ -4387,7 +4387,7 @@ elif [ "$MODE" = x11-display-tests ]; then
         'XDO_CONSTRUCTOR_NATIVE=pass cases=276 faults=22 paths=3 repeats=4 accepted=12 refused=264 events=24 xtest_refusal=pre-allocation snapshot=single allocations=paired maps=paired display_transfer=success-only caller_display=usable descriptors=retired tasks=retired sanitizer=address heap_scope=owned-allocations whole_app=false' \
         'private native XDO constructors validate one map, retire partial allocations, transfer display ownership only on success and deliver real key events'
     require_exact_fixed_receipt \
-        'XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=32 frees=24 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false' \
+        'XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=16 frees=12 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false' \
         'native scratch-key inclusive bounds, exact map ownership, mapped-query bypass and pre-input refusal'
     require_exact_fixed_receipt \
         'XDO_SCRATCH_DISPLAY=retired owner=dedicated-xvfb server=joined socket=absent lock=absent later_tests=fresh-display' \

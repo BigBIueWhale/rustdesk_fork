@@ -9,9 +9,8 @@ use crate::{checked_scroll_magnitude, Key, KeyboardControllable, MouseButton, Mo
 
 use hbb_common::libc::c_int;
 use hbb_common::platform::x11_display::unix_display_name;
-use hbb_common::x11::keysym::{XK_Return, XK_Tab};
 use hbb_common::x11::xlib::{Display, XCloseDisplay, XGetPointerMapping, XOpenDisplay};
-use libxdo_sys::{self, xdo_t, XdoKey, XdoKeyAction};
+use libxdo_sys::{self, xdo_t};
 use std::ffi::CString;
 
 /// Default delay per keypress in microseconds.
@@ -186,8 +185,7 @@ impl EnigoXdo {
         if self.xdo.is_null() {
             return Err("libxdo is unavailable".into());
         }
-        // Validate the complete text before emitting any prefix. Text scalars use
-        // numeric keysyms without locale-dependent native multibyte conversion.
+        // Validate the complete text before emitting any prefix.
         if let Some(character) = sequence
             .chars()
             .find(|c| c.is_control() && !matches!(*c, '\n' | '\r' | '\t'))
@@ -209,20 +207,10 @@ impl EnigoXdo {
         }
         let context = TextContext(context);
         for character in sequence.chars() {
-            let symbol = match character {
-                '\n' | '\r' => XK_Return,
-                '\t' => XK_Tab,
-                _ => {
-                    let scalar = character as u32;
-                    if scalar <= 0xff { scalar } else { 0x01000000 | scalar }
-                }
-            };
-            let key = XdoKey::Keysym(symbol.into());
             let status = unsafe {
-                libxdo_sys::xdo_send_key(
+                libxdo_sys::xdo_enter_text_scalar(
                     context.0 as *const _,
-                    key,
-                    XdoKeyAction::Click,
+                    character,
                     (self.delay / 2) as libxdo_sys::useconds_t,
                 )
             };

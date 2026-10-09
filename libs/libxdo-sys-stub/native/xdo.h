@@ -12,7 +12,6 @@
 #include <X11/Xlib.h>
 #include <X11/X.h>
 #include <unistd.h>
-#include <wchar.h>
 
 /**
  * @mainpage
@@ -31,7 +30,6 @@
  * this key (keycode, modifiers, group, etc)
  */
 typedef struct charcodemap {
-  wchar_t key; /** the letter for this key, like 'a' */
   KeyCode code; /** the keycode that this key is on */
   KeySym symbol; /** the symbol representing this key */
   int group; /** the keyboard group that has this key in it */
@@ -170,26 +168,18 @@ int xdo_mouse_up(const xdo_t *xdo, int button);
  */
 int xdo_get_mouse_location(const xdo_t *xdo, int *x, int *y, int *screen_num);
 
-#define XDO_KEYSYM 1U
-#define XDO_KEYCODE 2U
-#define XDO_KEY_DOWN 1U
-#define XDO_KEY_UP 2U
-#define XDO_KEY_CLICK 3U
-
 /**
- * Send one keysym or raw keycode with an explicit down, up, or click action.
+ * Enter one Unicode text scalar as a matched key press and release.
  *
- * Keysyms are nonzero 29-bit X11 values, excluding VoidSymbol. Unicode keysyms
- * must encode a Unicode scalar in U+0100..U+10FFFF. Raw keycodes must lie in the
- * context's inclusive native range and are validated before narrowing. They
- * send physical key events without selecting or restoring a keyboard group.
- * Invalid kinds, values, or actions return XDO_ERROR before input.
- * A click resolves once and releases the exact code pressed.
+ * Surrogates, values above U+10FFFF and C0/C1 controls other than tab, newline
+ * and carriage return return XDO_ERROR before input. Tab maps to XK_Tab;
+ * newline and carriage return map to XK_Return. Other scalars use Latin-1
+ * or Unicode keysyms. Both legs retain the same resolved code, modifiers
+ * and scratch mapping; the full scratch row is restored after release.
  *
- * @param delay Delay in microseconds; a click divides it between down and up.
+ * @param delay Delay in microseconds, divided between press and release.
  */
-int xdo_send_key(const xdo_t *xdo, unsigned int kind,
-                        unsigned long value, unsigned int action, useconds_t delay);
+int xdo_enter_text_scalar(const xdo_t *xdo, unsigned int scalar, useconds_t delay);
 
 /**
  * Get the current input state. This is a mask value containing any of the

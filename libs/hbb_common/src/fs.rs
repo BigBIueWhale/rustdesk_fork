@@ -7488,31 +7488,287 @@ mod tests {
         assert_eq!(job.total_size(), 0);
     }
 
-    // §20 post-key DoS regression: a peer FileTransferSendConfirmRequest(file_num=0, OffsetBlk>0)
-    // against a job whose file list is empty must fail without
-    // indexing files[0] or falsely confirming a seek that did not happen.
-    #[tokio::test]
-    async fn confirm_offset_blk_on_empty_files_job_fails_explicitly() {
-        let mut job = TransferJob::new_write(
-            1,
-            JobType::Generic,
-            "/fake/remote".to_string(),
-            DataSource::FilePath(PathBuf::from("/nonexistent-empty-job")),
-            0, // file_num == default self.file_num(), so confirm() takes the seek branch
-            false,
-            true,
-            false,
+    fn file_confirmation_actions() -> [(&'static str, file_transfer_send_confirm_request::Union); 4] {
+        use file_transfer_send_confirm_request::Union;
+        [
+            ("skip", Union::Skip(true)),
+            ("overwrite", Union::Skip(false)),
+            ("zero-offset", Union::OffsetBlk(0)),
+            ("nonzero-offset", Union::OffsetBlk(1)),
+        ]
+    }
+
+    async fn absent_file_confirmation_is_refused(
+        job: &mut TransferJob,
+        action: file_transfer_send_confirm_request::Union,
+    ) -> bool {
+        assert!(job.file_num() as usize >= job.files().len());
+        assert!(job.data_stream.is_none());
+        assert!(job.receive_write_claim.is_none());
+        let before = (
+            job.file_num(),
+            job.file_confirmed(),
+            job.file_is_waiting(),
+            job.file_skipped(),
+            job.finished_size(),
+            job.transferred(),
+            job.job_completed(),
         );
-        assert!(job.files.is_empty(), "precondition: empty-files job");
-        let mut r = FileTransferSendConfirmRequest::default();
-        r.id = 1;
-        r.file_num = 0;
-        r.union = Some(file_transfer_send_confirm_request::Union::OffsetBlk(1));
-        let error = job
-            .confirm(&r)
+        let request = FileTransferSendConfirmRequest {
+            id: job.id(),
+            file_num: job.file_num(),
+            union: Some(action),
+            ..Default::default()
+        };
+        match job.confirm(&request).await {
+            Ok(()) => false,
+            Err(error) => {
+                assert_err_contains(error, "out of range");
+                assert_eq!(
+                    (
+                        job.file_num(),
+                        job.file_confirmed(),
+                        job.file_is_waiting(),
+                        job.file_skipped(),
+                        job.finished_size(),
+                        job.transferred(),
+                        job.job_completed(),
+                    ),
+                    before
+                );
+                assert!(job.data_stream.is_none());
+                assert!(job.receive_write_claim.is_none());
+                true
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn confirmation_refuses_an_empty_file_list() {
+        let tmp = TestTempDir::new("rustdesk_confirm_empty_list");
+        std::fs::create_dir_all(&tmp.path).expect("create empty directory");
+        let mut admitted = Vec::new();
+        for role in ["send", "receive"] {
+            for (name, action) in file_confirmation_actions() {
+                let mut job = if role == "send" {
+                    TransferJob::new_read(
+                        185,
+                        JobType::Generic,
+                        String::new(),
+                        DataSource::FilePath(tmp.path.clone()),
+                        0,
+                        false,
+                        false,
+                        true,
+                    )
+                    .expect("admit empty send list")
+                } else {
+                    new_write_job(185, tmp.path.clone(), "unused.zip")
+                        .expect("create receive job")
+                        .with_files(Vec::new())
+                        .expect("admit empty receive list")
+                };
+                assert!(job.files().is_empty());
+                if !absent_file_confirmation_is_refused(&mut job, action).await {
+                    admitted.push(format!("{}:{}", role, name));
+                }
+                assert_eq!(
+                    std::fs::read_dir(&tmp.path)
+                        .expect("inspect empty directory")
+                        .count(),
+                    0
+                );
+            }
+        }
+        assert!(
+            admitted.is_empty(),
+            "absent entries accepted confirmation: {:?}",
+            admitted
+        );
+    }
+
+    #[tokio::test]
+    async fn confirmation_refuses_a_send_job_after_exact_eof() {
+        let tmp = TestTempDir::new("rustdesk_confirm_send_eof");
+        std::fs::create_dir_all(&tmp.path).expect("create source directory");
+        let source = tmp.join("source.zip");
+        std::fs::write(&source, b"sent").expect("create source");
+        let mut admitted = Vec::new();
+        for (name, action) in file_confirmation_actions() {
+            let mut job = TransferJob::new_read(
+                186,
+                JobType::Generic,
+                String::new(),
+                DataSource::FilePath(source.clone()),
+                0,
+                false,
+                false,
+                true,
+            )
+            .expect("admit source");
+            assert!(job
+                .init_data_stream_for_cm()
+                .await
+                .expect("open exact source")
+                .is_some());
+            job.confirm(&FileTransferSendConfirmRequest {
+                id: 186,
+                file_num: 0,
+                union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(0)),
+                ..Default::default()
+            })
             .await
-            .expect_err("an offset into an empty file list must fail");
-        assert!(error.to_string().contains("out of range"));
+            .expect("confirm active source");
+            let data = job.read().await.expect("read source").expect("source block");
+            assert!(!data.compressed);
+            assert_eq!(data.data.as_ref(), b"sent");
+            assert!(job
+                .read()
+                .await
+                .expect("read EOF")
+                .expect("EOF block")
+                .data
+                .is_empty());
+            assert_eq!(job.file_num(), 1);
+            assert_eq!(job.finished_size(), 4);
+            assert_eq!(job.transferred(), 4);
+            assert!(job.read().await.expect("read completed list").is_none());
+            assert!(job.job_completed());
+            if absent_file_confirmation_is_refused(&mut job, action).await {
+                assert!(job
+                    .read()
+                    .await
+                    .expect("completed list remains complete")
+                    .is_none());
+                assert!(job.job_completed());
+            } else {
+                admitted.push(name);
+            }
+            assert_eq!(std::fs::read(&source).expect("read unchanged source"), b"sent");
+        }
+        assert!(
+            admitted.is_empty(),
+            "completed send accepted confirmation: {:?}",
+            admitted
+        );
+    }
+
+    #[tokio::test]
+    async fn confirmation_refuses_a_receive_job_after_publication() {
+        let tmp = TestTempDir::new("rustdesk_confirm_receive_done");
+        std::fs::create_dir_all(&tmp.path).expect("create receive directory");
+        let mut admitted = Vec::new();
+        for (name, action) in file_confirmation_actions() {
+            let directory = tmp.join(name);
+            std::fs::create_dir(&directory).expect("create exact fixture directory");
+            let mut job = new_write_job(187, directory.clone(), "received.zip")
+                .expect("admit receive job");
+            job.files[0].size = 9;
+            job.write(FileTransferBlock {
+                id: 187,
+                file_num: 0,
+                data: b"published".to_vec().into(),
+                ..Default::default()
+            })
+            .await
+            .expect("write real staged file");
+            job.finalize_write(1).await.expect("publish complete file");
+            assert_eq!(job.file_num(), 1);
+            assert_eq!(job.finished_size(), 9);
+            assert_eq!(job.transferred(), 9);
+            if absent_file_confirmation_is_refused(&mut job, action).await {
+                job.finalize_write(1)
+                    .await
+                    .expect("terminal state remains complete");
+            } else {
+                admitted.push(name);
+            }
+            assert_eq!(
+                std::fs::read(directory.join("received.zip")).expect("read published file"),
+                b"published"
+            );
+            assert_eq!(
+                std::fs::read_dir(directory)
+                    .expect("inspect retired sidecars")
+                    .count(),
+                1
+            );
+        }
+        assert!(
+            admitted.is_empty(),
+            "published receive accepted confirmation: {:?}",
+            admitted
+        );
+    }
+
+    #[tokio::test]
+    async fn confirmation_preserves_active_empty_files_and_skip_actions() {
+        let tmp = TestTempDir::new("rustdesk_confirm_active_file");
+        std::fs::create_dir_all(&tmp.path).expect("create source directory");
+        for payload in [b"".as_slice(), b"data".as_slice()] {
+            for (name, action) in file_confirmation_actions() {
+                if name == "nonzero-offset" {
+                    continue;
+                }
+                let source = tmp.join(&format!("{}-{}.zip", payload.len(), name));
+                std::fs::write(&source, payload).expect("create exact source");
+                let mut job = TransferJob::new_read(
+                    188,
+                    JobType::Generic,
+                    String::new(),
+                    DataSource::FilePath(source.clone()),
+                    0,
+                    false,
+                    false,
+                    true,
+                )
+                .expect("admit present file");
+                assert_eq!(job.files().len(), 1);
+                assert!(job
+                    .init_data_stream_for_cm()
+                    .await
+                    .expect("open present source")
+                    .is_some());
+                job.confirm(&FileTransferSendConfirmRequest {
+                    id: 188,
+                    file_num: 0,
+                    union: Some(action),
+                    ..Default::default()
+                })
+                .await
+                .expect("confirm present file");
+                if name == "skip" {
+                    assert_eq!(job.finished_size(), 0);
+                    assert_eq!(job.transferred(), 0);
+                    assert!(job.file_skipped());
+                } else {
+                    let mut bytes = Vec::new();
+                    let mut eof = false;
+                    for _ in 0..2 {
+                        let block = job
+                            .read()
+                            .await
+                            .expect("read confirmed source")
+                            .expect("data or EOF");
+                        assert!(!block.compressed);
+                        if block.data.is_empty() {
+                            eof = true;
+                            break;
+                        }
+                        bytes.extend_from_slice(&block.data);
+                    }
+                    assert!(eof, "small source must reach EOF within two reads");
+                    assert_eq!(bytes, payload);
+                    assert_eq!(job.finished_size(), payload.len() as u64);
+                    assert_eq!(job.transferred(), payload.len() as u64);
+                }
+                assert_eq!(job.file_num(), 1);
+                assert!(job.read().await.expect("read completed job").is_none());
+                assert!(job.job_completed());
+                assert!(job.data_stream.is_none());
+                assert_eq!(std::fs::read(source).expect("read unchanged source"), payload);
+            }
+        }
     }
 
     fn assert_err_contains(err: anyhow::Error, expected: &str) {

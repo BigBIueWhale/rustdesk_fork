@@ -2344,6 +2344,10 @@ run_focused_rust_tests() {
             fs::tests::read_step_error_retires_selected_entry_with_a_repeated_id
             fs::tests::read_step_completion_retires_selected_entry_with_a_repeated_id
             fs::tests::read_step_open_error_preserves_paused_entry_with_a_repeated_id
+            fs::tests::confirmation_refuses_an_empty_file_list
+            fs::tests::confirmation_refuses_a_send_job_after_exact_eof
+            fs::tests::confirmation_refuses_a_receive_job_after_publication
+            fs::tests::confirmation_preserves_active_empty_files_and_skip_actions
         )
     elif [ "$MODE" = cpace-recovery-tests ]; then
         container_name=rustdesk-cpace-recovery-tests

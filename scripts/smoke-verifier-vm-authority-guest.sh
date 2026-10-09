@@ -2318,6 +2318,8 @@ run_focused_rust_tests() {
             fs::tests::new_receive_refuses_existing_sidecars_without_changing_their_bytes
             fs::tests::receive_finalize_refuses_a_real_partial_write_with_matching_staged_length
             fs::tests::send_open_failure_keeps_the_failed_file_number
+            fs::tests::send_resume_keeps_the_announced_source_after_path_replacement
+            fs::tests::send_resume_bounds_the_offset_by_the_announced_source
         )
     elif [ "$MODE" = cpace-recovery-tests ]; then
         container_name=rustdesk-cpace-recovery-tests

@@ -6477,6 +6477,125 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn send_resume_keeps_the_announced_source_after_path_replacement() {
+        let tmp = TestTempDir::new("rustdesk_send_resume_source_owner");
+        std::fs::create_dir_all(&tmp.path).expect("create send directory");
+        let source = tmp.join("source.bin");
+        let displaced = tmp.join("announced.bin");
+        std::fs::write(&source, b"original-bytes").expect("create original source");
+        let mut job = TransferJob::new_read(
+            172,
+            JobType::Generic,
+            String::new(),
+            DataSource::FilePath(source.clone()),
+            0,
+            false,
+            false,
+            true,
+        )
+        .expect("admit send job");
+        let (_, size) = job
+            .init_data_stream_for_cm()
+            .await
+            .expect("open announced source")
+            .expect("announce overwrite metadata");
+        assert_eq!(size, 14);
+        assert!(job.file_is_waiting());
+        std::fs::rename(&source, &displaced).expect("move announced source");
+        std::fs::write(&source, b"replacement").expect("install replacement source");
+        let request = FileTransferSendConfirmRequest {
+            id: 172,
+            file_num: 0,
+            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(9)),
+            ..Default::default()
+        };
+
+        job.confirm(&request)
+            .await
+            .expect("resume the announced source");
+        assert!(job.file_confirmed());
+        assert_eq!(job.finished_size(), 9);
+        assert_eq!(job.transferred(), 9);
+        let block = job
+            .read()
+            .await
+            .expect("read the retained source")
+            .expect("announced source has a suffix");
+        assert!(!block.compressed);
+        assert_eq!(block.data.as_ref(), b"bytes");
+        assert_eq!(
+            std::fs::read(&source).expect("read replacement"),
+            b"replacement"
+        );
+        assert_eq!(
+            std::fs::read(&displaced).expect("read displaced original"),
+            b"original-bytes"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn send_resume_bounds_the_offset_by_the_announced_source() {
+        let tmp = TestTempDir::new("rustdesk_send_resume_retained_length");
+        std::fs::create_dir_all(&tmp.path).expect("create send directory");
+        let source = tmp.join("source.bin");
+        std::fs::write(&source, b"short").expect("create short source");
+        let mut job = TransferJob::new_read(
+            173,
+            JobType::Generic,
+            String::new(),
+            DataSource::FilePath(source.clone()),
+            0,
+            false,
+            false,
+            true,
+        )
+        .expect("admit send job");
+        let (_, size) = job
+            .init_data_stream_for_cm()
+            .await
+            .expect("open announced source")
+            .expect("announce overwrite metadata");
+        assert_eq!(size, 5);
+        std::fs::rename(&source, tmp.join("announced.bin")).expect("move short source");
+        std::fs::write(&source, b"replacement-contents").expect("install larger replacement");
+        let mut request = FileTransferSendConfirmRequest {
+            id: 173,
+            file_num: 0,
+            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(6)),
+            ..Default::default()
+        };
+
+        let error = job
+            .confirm(&request)
+            .await
+            .expect_err("replacement length cannot authorize an offset beyond the announced file");
+        assert!(error.to_string().contains("exceeds file length 5"));
+        assert!(!job.file_confirmed());
+        assert!(job.file_is_waiting());
+        assert_eq!(job.finished_size(), 0);
+        assert_eq!(job.transferred(), 0);
+        assert!(job.data_stream.is_some());
+
+        request.union = Some(file_transfer_send_confirm_request::Union::OffsetBlk(2));
+        job.confirm(&request)
+            .await
+            .expect("a valid offset still seeks the retained source");
+        let block = job
+            .read()
+            .await
+            .expect("read the valid retained suffix")
+            .expect("short source has a suffix");
+        assert!(!block.compressed);
+        assert_eq!(block.data.as_ref(), b"ort");
+        assert_eq!(
+            std::fs::read(&source).expect("read larger replacement"),
+            b"replacement-contents"
+        );
+    }
+
     #[tokio::test]
     async fn send_open_failure_keeps_the_failed_file_number() {
         let tmp = TestTempDir::new("rustdesk_send_open_failure");

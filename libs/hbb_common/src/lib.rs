@@ -16,7 +16,6 @@ pub use tokio_util;
 /// Exact controlled-video receipt contract: keyed parse of a nonzero display/generation frame,
 /// acknowledged before decode or presentation.
 pub const VIDEO_FRAME_RECEIPT_VERSION: u32 = 1;
-pub mod address;
 pub mod cpace;
 pub mod socket_client;
 pub mod socket_surface;

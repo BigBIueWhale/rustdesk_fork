@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-3383c9d3d4fe3e30761416382f7d6d994df53f415dcc623952ba9317435ad9f0  requirements.html
+59d2245200d755e1dadba05afd1e163aee50dcd25331428d2e643427729d483d  requirements.html
 ```
 
 ## Current Verdict
@@ -1855,7 +1855,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `3383c9d3d4fe3e30761416382f7d6d994df53f415dcc623952ba9317435ad9f0  requirements.html`.
+Current normative specification SHA-256: `59d2245200d755e1dadba05afd1e163aee50dcd25331428d2e643427729d483d  requirements.html`.
 
 ### Current authority and source closure
 

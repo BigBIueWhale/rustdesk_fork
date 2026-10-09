@@ -737,7 +737,7 @@ RUN=(verifier_vm_docker run --rm --pull=never --network=none --read-only
   /bin/bash --noprofile --norc /work/scripts/verify-container-command.sh)
 
 echo "== (1-3) KAT + handshake + policy funnel + R-A4 surface + R-S7 frame/decompress (pinned 1.75) =="
-"${RUN[@]}" cargo test -p pake -p cpace_it -p config_it -p surface_it -p compress_it -p address_it --color never
+"${RUN[@]}" cargo test -p pake -p cpace_it -p config_it -p surface_it -p compress_it --color never
 
 # (3b) The complete module first runs under the ordinary non-root authority. The two foreign-owner
 # cases are then decomposed without root: one distinct numeric non-root principal creates and ACL-tags
@@ -861,12 +861,6 @@ cleanup_nonroot_ipc_fixture
 # tests in the same module are cfg-compiled out on this Linux build and simply filter out).
 echo "== (3b-i) IPC service-socket peer-uid authorization policy (R-S11a/§17) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::ipc_auth::tests --color never
-
-# (3b-i-r) R-G6/R-SV4 relay-route compatibility helper: it must be an identity
-# transform, never a suffix stripper. This pins the Rust-side defense in depth
-# for stale generated bridge or native callers.
-echo "== (3b-i-r) relay-route suffix identity test (R-G6/R-SV4) =="
-"${RUN[@]}" cargo test --lib --features linux-pkg-config ui_interface::relay_route_tests --color never
 
 # (3b-iv) R-A4/R-X4/R-S11b-3: the rendezvous trust anchor (get_key) must return the baked RS_PUB_KEY,
 # and the legacy "key" option must not persist at all. Upstream re-pointed the client via

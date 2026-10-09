@@ -4009,6 +4009,11 @@ impl TransferJob {
                 self.file_num()
             );
         }
+        if matches!(&self.data_source, DataSource::FilePath(_))
+            && (r.file_num < 0 || self.files.get(r.file_num as usize).is_none())
+        {
+            bail!("confirmation file number {} is out of range", r.file_num);
+        }
         if self.file_confirmed() {
             bail!("file {} is already confirmed", self.file_num());
         }

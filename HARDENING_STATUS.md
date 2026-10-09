@@ -982,79 +982,84 @@ between-request release failure, native event/group-lock/asynchronous errors,
 map races, concurrency, whole heap/soak, full Cargo/app/install, other platforms
 and broader authority/artifact/release evidence remain OPEN.
 
-**Physical raw-keycode group preservation — native acceptance pending.**
-The validated key kind reaches both private send helpers; only keysyms select
-and restore a group. Raw input submits the physical code without group locks.
-The public eleven-export ABI, checked state/modifier/scratch admission and
-symbol behavior are retained. Provider/helper/header/loader require version
-`3.20160805.1-rustdesk13`; wrong-version uses corrected current C stamped 12.
-The corrected-code native fixture installs and independently verifies a real
-two-group map before observing raw/symbol down-up and click events, state,
-physical keys, zero raw group locks, exact map restoration and FD/task retirement.
-No native result or broader closure is claimed before the isolated run.
+**Physical raw-keycode group preservation — focused native acceptance.**
+`native/xdo.c:180,238,400` carries the validated kind through both private
+helpers. Only keysyms select and restore an XKB group; raw keycodes submit
+physical events without group-lock calls. Checked state/modifier/scratch
+admission, symbol mapping and the eleven-export public ABI are retained.
+Provider/helper/header/loader require `3.20160805.1-rustdesk13`; wrong-version
+uses corrected current C stamped 12. This fixes the supported native/Enigo
+`Key::Raw` contract; the current remote physical rdev route is unexecuted.
 
-**Historical version-12 display-owned XTEST keyboard/button acceptance.**
-`native/xdo.c:135,238,400` and its header/loader have no caller Window input
-parameter, CURRENTWINDOW selector, directed XSendEvent branch, focus-routing
-helper or native click API. Production Enigo submits key/button input on its
-retained display; the X server owns focus, pointer and grab routing.
-Provider/helper/header/loader require `3.20160805.1-rustdesk12`; the exact
-private ELF ABI has eleven exports. Wrong-version uses corrected current C
-stamped 11. The obsolete historical Enigo route replica, cfg/wrappers,
-compile/run branches and payload entries are absent. Current Unix-route and
-changed-DISPLAY coverage remain. Constructor XTEST admission, success-only
-display transfer, checked key/state/modifier/scratch maps and context layout
-are retained. No compatibility alias or alternate input mode is present.
-
-Candidate `467eeb9f5ab176971261bb87a3966e9b7697f014`
-(tree `b403e50e30b02f011a75d6ec73edc4fe694f62f8`) passed
+Candidate `2a7268d50e6d46d85def4242a7dd3aa365110483`
+(tree `390874cf98bdbdc0ab43f3168669712e5b5cc49a`) passed
 `scripts/smoke-verifier-vm-authority.sh --x11-display-tests --key-input`
-in 128 seconds, outer exit 0. The owned-window mouse fixture passed twenty
-cases/forty actual XTEST events with 0,1,9,10,12 held modifier keys over four
-repeats. It observes physical Button1Mask pressed before release and cleared
-afterward, `send_event=False`, exact destination/coordinates/event state,
-unchanged held keys, restored maps, and retired context FD/task counts.
-Normal and staged complete-loader runs each refused all 61 retired names
-and observed actual pointer, button, Shift and focused-window a input; key
-events had the native flag and expected destination. Exact ELF inventories
-match the eleven-export allowlist on the helper and five loader fixtures,
-omitting only deliberately renamed required symbols. Complete, no-XTEST,
-missing mouse/key, wrong-version, writable, absent and native modifier-error
-scenarios passed. No-XTEST uses an independently queried real Xvfb with the
-extension disabled: three constructor paths refused, borrowed display remained
-usable, and eight full Enigo attempts returned input unavailability with
-restored FD counts. Current corrected C only was executed.
+in 133 seconds, outer exit 0. The new ASan fixture acquires checked client
+and server key-action maps, resizes one nonmodifier/non-action key to
+`a/A` and `b/B` in groups 0 and 1, and publishes/restores only that key with
+XkbChangeMap. Independent native readback proves the map and selected group
+before product calls. Thirty-two cases over four repeats deliver 64 actual
+XTEST events for raw/symbol down-up pairs and clicks in both groups.
+XkbLookupKeySym on a separately opened post-map display verifies actual
+event-state symbols: raw follows the selected group, keysym resolves `a`.
+The fixture checks native flags/destination, exactly one physically held
+key after down, clear keys after up/click, unchanged XKB state, zero raw
+group locks, preserved keysym behavior, original core map and all symbol/
+modifier rows restored, and context FD/task retirement. The two superseded
+fixture-setup failures occurred before product raw-group requests; their
+separate raw/outer receipts and reconciliation remain in the audit.
 
-Retained ASan constructor 276 cases/22 faults/three paths/four repeats
-(12 accepted, 264 refused, 24 events), numeric 108 cases, state 108 refusals
-plus recovery, modifier 72 refusals plus recovery, and scratch twenty cases
-passed. Complete backend execution retained 24 contexts, 32 constructor
-refusals, sixteen constructor unwinds, sole-display ownership, selected-root
-pointer and exact FD/task retirement. Text passed three locale conditions,
-21 pairs/42 native events; changed-layout execution passed 33 pairs/66 events
-and two mapping refusals. Staging's actual body resolved ten provider
-dependencies and 21 libraries without distribution XDO. Its CLI is unexecuted.
+Retained native regressions passed: constructor 276 cases/22 faults/three
+paths/four repeats (12 accepted, 264 refused, 24 events), numeric 108 cases,
+state 108 refusals plus 108 recoveries, modifier 72 refusals plus 72
+recoveries, and scratch twenty cases. Mouse twenty cases/forty events
+preserve 0,1,9,10,12 held modifiers and actual pressed/released Button1Mask.
+Complete backend execution retains 24 contexts, 32 constructor refusals,
+sixteen unwinds, one display and exact FD/task retirement. Text passes
+three locale conditions, 21 pairs/42 events; changed layout passes 33
+pairs/66 events and two mapping refusals. All eight loader availability/
+error scenarios pass. Normal and staged complete loaders each refuse 61
+retired symbols; helper/five fixtures satisfy the eleven-export inventory.
+Actual staging resolves ten dependencies and 21 libraries without distro
+XDO; the staging CLI is unexecuted.
 
-Helper and complete loader share the 21,016-byte version-12 ELF, SHA-256
-`0b835d2e3418df4941a240955675ff137616972ee30776335111ba01dbb1f3a9`;
-C SHA-256 `d5fed65ff4393a51b26c3bd11ef3d4d453477bc9d8c8e0c7c779cde6f54aed33`.
-Raw `.harness-state/verifier-vm/x11-display-tests-run.0hxhhl45Op.serial.log`
-is 103,577 bytes, SHA-256
-`df5f7c4d5ea0c8ca146480156ee57329f705a72cd64ead25632fa3c3c8b3a057`.
+Helper and complete loader share the 21,016-byte version-13 ELF, SHA-256
+`37e4bf5ec4715ed2f20de9bf20845bf69aabac5e4a9350cd45d484a2591ea77e`;
+C SHA-256 `cae6140fa9d4a063305ab019c9bb1c4b33b6e8ec5ae9bd4d5b4b55627ba31196`.
+Scratch fixture SHA-256 is
+`4923fe1714e8a2b05e639c6f2b96bb02c72af7d4c009a1197c2750020e14714d`.
+Raw `.harness-state/verifier-vm/x11-display-tests-run.bP1v40I66E.serial.log`
+is 106,235 bytes, SHA-256
+`95c44197e32f4d4fd86e112f4d9ad8eeeda4e3034415bd09d7aedb46df4e7fb3`.
 The explicitly nonindependent assistant-observed
-`evidence/xdo-display-owned-input-run.0hxhhl45Op.outer.receipt` under that
-same root is 17,795 bytes, SHA-256
-`3c54c995dc2c2d468cb2b174935de10543efa264847eb2629e2fdd871b0f4274`.
-It retains source/ELF/native/outer identities and ownership observations.
+`evidence/xdo-raw-group-run.bP1v40I66E.outer.receipt` under that same root
+is 23,498 bytes, SHA-256
+`f3ee690bca974834fe1933c147eac124d62ba29f18ade7480ba8fc041ab9dcc8`.
+It retains native/source/artifact/outer identities and all 32 group cases.
 Outer before/during/after endpoint-only audit reports no host additions and
-joined cleanup; the exact root/overlay is absent. Snapshots auto-retired;
-independent after-snapshot comparison is unclaimed. Four real dependencies
-were authenticated with a partial common facade. Full Cargo/app/install,
-serving-principal/privileged receiver, loader ACL/identity races and authenticated
-Xauthority (Xvfb uses `-ac`) are unproved. ASan leak detection is disabled;
-Xlib internals/whole heap, per-request XTEST/group errors, later facility
-withdrawal, partial input cleanup, global key ownership/concurrency,
-resources/soak, other platforms and broader artifact/release/review remain OPEN.
+joined cleanup; exact root/overlay is absent. Snapshots auto-retired;
+independent after-snapshot comparison is unclaimed. Four authenticated real
+dependencies use a partial common facade. Full Cargo/app/install, serving
+principals, loader ACL/identity races and authenticated Xauthority (Xvfb
+`-ac`) remain unproved. ASan leak detection is disabled. Xlib internals/
+whole heap, per-request XTEST/group errors, later facility withdrawal,
+partial input cleanup, global key ownership/concurrency, resources/soak,
+other platforms and broader artifact/release/review remain OPEN.
+
+**Historical version-12 display-owned XTEST input acceptance.** Candidate
+`467eeb9f5ab176971261bb87a3966e9b7697f014`
+(tree `b403e50e30b02f011a75d6ec73edc4fe694f62f8`) passed in 128 seconds,
+outer exit 0. It removed caller-Window/directed-event input and exposed
+eleven APIs with 61 retired-name refusals; raw-group behavior was unproved.
+Its 21,016-byte ELF SHA-256 is
+`0b835d2e3418df4941a240955675ff137616972ee30776335111ba01dbb1f3a9`.
+Raw `x11-display-tests-run.0hxhhl45Op.serial.log` under the same verifier root
+is 103,577 bytes, SHA-256
+`df5f7c4d5ea0c8ca146480156ee57329f705a72cd64ead25632fa3c3c8b3a057`;
+`evidence/xdo-display-owned-input-run.0hxhhl45Op.outer.receipt` is 17,795
+bytes, SHA-256
+`3c54c995dc2c2d468cb2b174935de10543efa264847eb2629e2fdd871b0f4274`.
+This superseded artifact is not current acceptance.
 
 **Historical version-11 constructor acceptance.** Candidate
 `874b25e208dfabc1199b67d65c51c3bfcd6ec8f3`

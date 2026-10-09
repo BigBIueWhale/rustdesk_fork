@@ -4954,8 +4954,8 @@ raw serial is `android-rust-lifecycle-tests-run.d8mcykUxeH.serial.log` in the sa
 verifier root. This is real zstd/production-sanitizer unit behavior, not an OS clipboard
 write, installed peer/principal/generation, native Android/Windows/macOS/iOS, sandbox,
 release artifact, resource/latency soak, independent reproduction or external review.
-Those obligations and the separate Flutter cursor/terminal infallible-decompression
-paths remain OPEN. The focused development command is
+Those broader obligations remain OPEN. The remaining shared infallible-decompression
+paths are dispositioned below. The focused development command is
 `scripts/smoke-verifier-vm-authority.sh --android-rust-lifecycle-tests --clipboard`.
 Harness `ea8bb4f14c0404d0259fb25b9b0c1d452d43973e` freshly compiled the complete
 Linux library in 148 seconds and passed the same 13 named tests in a 215-second
@@ -4969,6 +4969,37 @@ Both raw serial logs and `focused.accepted.json`/`integration.accepted.json` are
 under `.harness-state/verifier-vm/clipboard-profile-ea8bb4f1-evidence` and its verifier root.
 This establishes the named Linux development profile; broader native/platform acceptance,
 general performance, soak and release reproducibility remain OPEN.
+
+**R-S7 terminal/cursor decompression — shared infallible APIs deleted; Linux Rust bridge handoff PASS; native presentation OPEN.**
+Product `b77edafe385cba850165fb3f88e9225ca81e4f29` deletes the two
+`hbb_common::compress` wrappers that converted errors to empty vectors.
+`src/flutter.rs::handle_terminal_response` now reports a decode error through the
+existing terminal-ID-scoped error event before output encoding/publication; valid
+binary and empty output retain successful data events. Cursor decoding uses the
+fallible exact-size bound and diagnoses/refuses failure; it already refused the old
+empty fallback through its positive-size check. Real zstd tests retain the 64 MiB
+ceiling, caller-specific limits, malformed/truncated errors and valid zero-limit emptiness.
+
+Regression/harness `722c3fa54f7d999982fa36088b3b116706954842` observed two
+terminal rejection failures and two positive controls against unchanged production:
+the compiled handler posted `data` rather than `error`. The unchanged four-test
+module then passed on the corrected source, alongside seven decoder tests and the
+existing 88 Linux-target checks: 99 tests/16 groups in an accepted 785-second
+zero-NIC VM/networkless UID/GID-1000 guest-only transaction. The four handoff tests
+use the production handler, generated bridge and native posting callback with a
+test recorder; the seven decoder tests execute real zstd. Their respective executable
+SHA-256 values `ea916366a3f183f0ee7268ebc8be5bacea262c25222d0341fe763e7f41c41400`
+and `099ac053fa03bb0332070e618205e5e1eb7cab10326ea348eb4b239cb719dc7f`
+were unchanged before/after those groups, not asserted for all 99 tests.
+All 1,284 tracked source/index/physical records were unchanged through each owner;
+host listener audits found no addition and cleanup joined. The expected failed
+baseline's inert diagnostics are retained outside the active run roots; the accepted
+run root self-retired. Source/actor/receipt details and raw-log identities are in
+`.harness-state/verifier-vm/terminal-722c3fa5-evidence/{baseline.observed,corrected.accepted}.json`.
+No Dart VM/rendering, native cursor installation, other-platform/installed service
+or helper principal boundary, release artifact, memory/latency soak, independent
+reproduction or external review follows. Those broader obligations remain OPEN;
+R-S11b/R-S11c and the overall release remain STOP-SHIP.
 
 **R-B13 / Appendix C #129 — CVE-2026-1861 / CVE-2026-2447 libvpx remediation — SOURCE CLOSED; ARTIFACT EVIDENCE IS OWNED BY THE EXACT-COMMIT R-B2 TRANSACTION.**
 The advisory affects the VP9 encoder's `write_superframe_index` path, not the

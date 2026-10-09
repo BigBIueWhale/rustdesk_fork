@@ -30,7 +30,6 @@ unsafe fn observe(display: *mut Display, check: impl Fn((i32, i32, u32)) -> bool
 }
 fn main() {
     assert_eq!(unsafe { libc::geteuid() }, 4000);
-    assert_eq!(hbb_common::platform::linux::get_display_server(), "x11");
     let scenario = std::env::args().nth(1).unwrap();
     let baseline = descriptors();
     let display = DisplayOwner(unsafe { XOpenDisplay(ptr::null()) });

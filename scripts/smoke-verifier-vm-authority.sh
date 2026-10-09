@@ -1195,7 +1195,7 @@ android_frame_input_inventory() {
                 "$SCRIPT_DIR/stage-debian-systemd-runtime-libs.sh"
                 "$SCRIPT_DIR/verify-debian-systemd-lifecycle-authority.py"
                 "$SCRIPT_DIR/test-xdo-enigo.rs" "$REPO_ROOT/libs/enigo/src/linux/mod.rs"
-                "$REPO_ROOT/libs/enigo/src/linux/nix_impl.rs" "$REPO_ROOT/libs/hbb_common/src/platform/linux.rs"
+                "$REPO_ROOT/libs/enigo/src/linux/nix_impl.rs"
                 "$SCRIPT_DIR/fixtures/xdo-loader-common.rs" "$SCRIPT_DIR/xdo-loader-inputs.txt"
                 "$SCRIPT_DIR/fixtures/xdo-input-exports.txt"
                 "$SCRIPT_DIR/fixtures/xdo-retired-apis.txt"
@@ -3555,7 +3555,6 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
                 "repo/scripts/test-xdo-enigo.rs=$SCRIPT_DIR/test-xdo-enigo.rs"
                 "repo/libs/enigo/src/linux/mod.rs=$REPO_ROOT/libs/enigo/src/linux/mod.rs"
                 "repo/libs/enigo/src/linux/nix_impl.rs=$REPO_ROOT/libs/enigo/src/linux/nix_impl.rs"
-                "repo/libs/hbb_common/src/platform/linux.rs=$REPO_ROOT/libs/hbb_common/src/platform/linux.rs"
                 "repo/scripts/fixtures/xdo-loader-common.rs=$SCRIPT_DIR/fixtures/xdo-loader-common.rs"
                 "repo/scripts/fixtures/xdo-input-exports.txt=$SCRIPT_DIR/fixtures/xdo-input-exports.txt"
                 "repo/scripts/fixtures/xdo-retired-apis.txt=$SCRIPT_DIR/fixtures/xdo-retired-apis.txt"
@@ -4335,8 +4334,8 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=5' \
         'complete production loader and Enigo compiled with authenticated dependencies'
     require_exact_fixed_receipt \
-        'XDO_ENIGO_EMISSION_API=refused methods=4 crate=complete-linux-source compiler=rustc-1.75.0 artifact=absent runtime=unexecuted' \
-        'retired generic Enigo keyboard emission methods are absent from the compiled crate'
+        'XDO_ENIGO_RETIRED_API=refused emission_methods=4 custom_backend_methods=4 crate=complete-linux-source compiler=rustc-1.75.0 artifact=absent runtime=unexecuted' \
+        'retired Enigo emission and custom-backend methods are absent from the compiled crate'
     for key_scenario in no-xtest missing-key-input missing-mouse-up wrong-version writable absent reject-text; do
         require_exact_fixed_receipt \
             "XDO_LOADER_NATIVE=pass scenario=$key_scenario source=production network=none uid=4000 cleanup=joined" \

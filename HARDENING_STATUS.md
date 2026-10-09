@@ -190,10 +190,11 @@ retired component. Immutable canonical vendor/cache inputs are not edited or del
 `key_up` or `key_click` methods. Physical control/map/translate, temporary-modifier
 and held-key release paths in `src/server/input_service.rs` use rdev. Semantic
 `process_unicode`/`process_seq` uses Enigo's existing result-bearing XDO text path;
-mouse and state queries keep their existing XDO route. Wayland custom and native
-Windows/macOS Enigo implementations are unchanged. The generic Linux trait methods
-now select XDO directly, but their broader status/cleanup correctness is not newly
-validated. `InputWorkerCleanup` still releases owned keys/buttons and BlockInput,
+mouse and state queries use the sole Linux XDO backend. Its unused custom
+keyboard/mouse registration and hardcoded LED fallback are removed, as recorded
+under Linux Enigo XDO below. Native Windows/macOS Enigo implementations are unchanged
+by that Linux cleanup. Broader state/status/cleanup correctness remains OPEN.
+`InputWorkerCleanup` still releases owned keys/buttons and BlockInput,
 then unregisters the worker; shared ownership, cancellation, queue drain and join
 semantics are preserved. Removing a remap backend that has no application producer
 does not remove live held-input cleanup.
@@ -500,8 +501,10 @@ No Linux component result is Windows acceptance.
 ### Linux Enigo XDO — one local display for input and diagnostics; integration OPEN
 
 **Current disposition:** private provider `3.20160805.1-rustdesk16` replaces
-generic key injection with one validated text-scalar pair. The named native
-component checks below passed at their exact sources.
+generic key injection with one validated text-scalar pair. The Linux parent now
+owns one XDO backend without a runtime selector, custom injector registration or
+hardcoded keyboard LED fallback. Native verification of this parent cleanup is
+pending; the named component checks below passed at their exact earlier sources.
 Full Cargo/Flutter/app, installed-service, resources and release acceptance
 remain OPEN. The input-state getter and boolean state API still cannot
 represent uncertain queries; checked native text-request admission does not
@@ -509,6 +512,7 @@ close that separate caller contract.
 
 | Current source surface | Contract and boundary |
 | --- | --- |
+| Sole Linux backend | `libs/enigo/src/linux/nix_impl.rs` owns one `EnigoXdo` and directly forwards mouse, result-bearing text and state operations. Custom keyboard/mouse aliases, slots, setters/getters, backend selection and `/sys/class/leds/input1::*` reads are absent. Scroll bounds remain in the XDO backend. The compiled-API fixture now requires refusal of the four custom methods alongside the four retired emission methods; current native execution is pending. The boolean XDO state API remains OPEN. |
 | Display and context ownership | `libs/enigo/src/linux/xdo.rs` opens one shared validated Unix Display. Missing/non-UTF8/malformed/remote selectors refuse before native construction. `OpenedDisplay` owns it until successful close-on-free handoff; native refusal or Rust unwind closes the exact owner. Diagnostics borrow the retained Display, and the successful native owner is retained before logging. `src/platform/linux/x11_context.rs` owns platform contexts separately. Absolute movement derives `DefaultRootWindow` from its retained Display; callers supply only context and coordinates, with no screen index/cache or ambient-selector reread. |
 | Private library and construction | `libs/libxdo-sys-stub/src/lib.rs` admits only protected root-owned `/usr/lib/rustdesk-fork/libxdo.so.3`, exact version 16 and the complete required ABI before constructors are available; no distro or per-function fallback remains. The version is an ABI guard, not cryptographic authentication. Native construction requires XTEST before allocation/keymap work, validates one XKB snapshot, checks partial allocations, and transfers caller-supplied Display ownership only on success. `xdo_new` closes its own Display after inner refusal. Provenance/local modifications and BSD notices remain in `native/SOURCE.txt` and `COPYRIGHT`. The product helper retains stack protection, fortification, RELRO and immediate/internal-function binding; package ELF/no-RUNPATH validation remains a separate gate. |
 | Closed input surface | The provider exposes eleven context/version/input/cursor-state APIs. Keyboard and button input use XTEST on the retained Display, with server-owned focus/pointer/grab routing. Caller-Window/directed XSendEvent input, focus-routing helpers, modifier get/clear/restore APIs, window/desktop/property/search/termination APIs, compound parsing, alias/list/text-language APIs and Enigo DSL are absent. The sole keyboard operation is `xdo_enter_text_scalar(context, scalar, delay)`, with a Rust `char` facade. Generic `xdo_send_key`, `XdoKey`, `XdoKeyAction`, raw keycodes, caller-selected keysyms and separate Down/Up actions are deleted without aliases. Unused per-symbol Unicode storage/conversion and its xkbcommon dependency are removed. |
@@ -626,9 +630,9 @@ closure follows from these component receipts.
   must survive; exact physical left/right state must remain distinct from
   aggregate modifier-family state. The pinned libX11 physical bitmap query
   `XQueryKeymap` ignores its reply result and always returns success, so its
-  return value alone cannot admit a trustworthy snapshot. The Wayland
-  hardcoded LED/false fallback and integrated consumers require correction/
-  validation. Generic Enigo emission is retired; native request/release and
+  return value alone cannot admit a trustworthy snapshot. The hardcoded LED
+  fallback is deleted; native XDO query uncertainty and integrated consumers
+  still require correction/validation. Generic Enigo emission is retired; native request/release and
   application input ownership errors remain open below.
 - Constructor/diagnostic/request/destructor bounds, persistent startup/retry,
   exact connected peer/session/principal and authenticated Xauthority;

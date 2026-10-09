@@ -2,7 +2,7 @@
 """Build and exercise the production loader and Linux Enigo in guest-only containers.
 
 This is a component test with real pinned dependencies and a partial common facade
-with selected production display policy, not full Cargo/app, package installation,
+with the production local-display selector, not full Cargo/app, package installation,
 or a host-service test.
 """
 import hashlib
@@ -104,22 +104,6 @@ def build():
     required_exports = native.input_exports(ROOT)
     _, logging = native.logging_library(ROOT, ENV)
     logging = Path(shutil.move(str(logging), BUILD / 'liblog.rlib'))
-    policy_source = ROOT / 'libs/hbb_common/src/platform/linux.rs'
-    policy = policy_source.read_text()
-    declarations = []
-    for name in ('DISPLAY_SERVER_X11', 'DISPLAY_SERVER_WAYLAND'):
-        prefix = f'pub const {name}:'
-        lines = [line for line in policy.splitlines() if line.startswith(prefix)]
-        require(len(lines) == 1, f'production display constant differs: {name}')
-        declarations.append(lines[0])
-    for name in ('get_display_server', 'is_desktop_wayland', 'is_x11_or_headless'):
-        prefix = f'pub fn {name}('
-        require(policy.count(prefix) == 1, f'production display function differs: {name}')
-        start = policy.index(prefix)
-        end = policy.index('\n}\n', start) + 2
-        declarations.append(policy[start:end])
-    selected_policy = BUILD / 'x11-policy.rs'
-    selected_policy.write_text('\n'.join(declarations) + '\n')
     common = compile_crate('hbb_common', ROOT / 'scripts/fixtures/xdo-loader-common.rs', 2021,
                            ['--extern', f'libc={libc}', '--extern', f'libloading={loading}',
                             '--extern', f'x11={x11}', '--extern', f'log={logging}'])
@@ -135,26 +119,31 @@ def build():
     enigo = compile_crate('enigo', ROOT / 'libs/enigo/src/lib.rs', 2018,
                           ['--extern', f'hbb_common={common}', '--extern', f'libxdo_sys={loader}',
                            '--extern', f'log={logging}'])
-    retired_source = BUILD / 'retired-enigo-emission.rs'
+    retired_source = BUILD / 'retired-enigo-api.rs'
     retired_source.write_text('use enigo::{Enigo, Key, KeyboardControllable};\n'
                               'fn main() { let mut enigo = Enigo::new();\n'
                               'enigo.key_sequence("a"); enigo.key_down(Key::Shift);\n'
-                              'enigo.key_up(Key::Shift); enigo.key_click(Key::Shift); }\n')
-    retired_binary = BUILD / 'retired-enigo-emission'
+                              'enigo.key_up(Key::Shift); enigo.key_click(Key::Shift);\n'
+                              'enigo.set_custom_keyboard(Box::new(Enigo::new()));\n'
+                              'enigo.set_custom_mouse(Box::new(Enigo::new()));\n'
+                              'let _ = enigo.get_custom_keyboard(); let _ = enigo.get_custom_mouse(); }\n')
+    retired_binary = BUILD / 'retired-enigo-api'
     rejected = subprocess.run(
         [RUSTC, '--edition=2021', '--error-format=json', '-L', f'dependency={BUILD}',
          '--extern', f'enigo={enigo}', str(retired_source), '-o', str(retired_binary)],
         env=ENV, capture_output=True, text=True, timeout=30)
     require(rejected.returncode == 1 and not rejected.stdout
             and len(rejected.stderr) <= 32768 and not retired_binary.exists(),
-            'retired Enigo emission API compiled or failed without bounded diagnostics')
+            'retired Enigo API compiled or failed without bounded diagnostics')
     diagnostics = [json.loads(line) for line in rejected.stderr.splitlines()]
     errors = [item for item in diagnostics if item.get('level') == 'error' and item.get('code')]
-    require(len(errors) == 4 and all(item['code']['code'] == 'E0599' for item in errors)
+    require(len(errors) == 8 and all(item['code']['code'] == 'E0599' for item in errors)
             and all(sum(f'`{name}`' in item['message'] for item in errors) == 1
-                    for name in ('key_sequence', 'key_down', 'key_up', 'key_click')),
-            'retired Enigo emission API refusal differs')
-    print('XDO_ENIGO_EMISSION_API=refused methods=4 crate=complete-linux-source '
+                    for name in ('key_sequence', 'key_down', 'key_up', 'key_click',
+                                 'set_custom_keyboard', 'set_custom_mouse',
+                                 'get_custom_keyboard', 'get_custom_mouse')),
+            'retired Enigo API refusal differs')
+    print('XDO_ENIGO_RETIRED_API=refused emission_methods=4 custom_backend_methods=4 crate=complete-linux-source '
           'compiler=rustc-1.75.0 artifact=absent runtime=unexecuted', flush=True)
     enigo_binary = BUILD / 'test-xdo-enigo'
     command([RUSTC, '--edition=2021', '-L', f'dependency={BUILD}',
@@ -163,8 +152,7 @@ def build():
     print(f'XDO_ENIGO_BUILD=pass crate=complete-linux-source binary_sha256={sha(enigo_binary)} '
           f'backend_sha256={sha(ROOT / "libs/enigo/src/linux/xdo.rs")} '
           f'parent_sha256={sha(ROOT / "libs/enigo/src/linux/nix_impl.rs")} '
-          f'policy_parent_sha256={sha(policy_source)} selected_policy_sha256={sha(selected_policy)} '
-          'policy=production-source-extracted common=partial cargo=unexecuted', flush=True)
+          'selector=complete-production-module common=partial cargo=unexecuted', flush=True)
     native_source = ROOT / 'libs/libxdo-sys-stub/native'
     for variant in ('complete', 'missing-mouse-up', 'missing-key-input', 'wrong-version', 'reject-text'):
         source_dir = native_source

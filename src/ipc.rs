@@ -2514,7 +2514,7 @@ fn validate_desktop_url_ipc_open_url(url: &str) -> ResultType<()> {
     if address.is_empty() || address.len() > DESKTOP_URL_IPC_MAX_ADDRESS_BYTES {
         bail!("desktop URL IPC address is empty or oversized");
     }
-    if !hbb_common::is_ip_str(address) && !hbb_common::is_domain_port_str(address) {
+    if !hbb_common::is_direct_address(address) {
         bail!("desktop URL IPC address is not a direct address");
     }
     Ok(())

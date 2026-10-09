@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate bounded Flutter JSON results for the model checkpoint or queue shard."""
+"""Validate bounded Flutter JSON results for the model checkpoint or focused shards."""
 
 import argparse
 import json
@@ -60,6 +60,20 @@ FRAME_QUEUE_TESTS = {
     "recovery fails visibly at the per-display drain bound",
     "detached displays remain inside the queue-wide key bound",
 }
+DIRECT_ADDRESS_TESTS = {
+    "direct-address normalization (R-G2/R-SV5) trims only surrounding whitespace",
+    "direct-address normalization (R-G2/R-SV5) preserves malformed interior whitespace for fail-closed validation",
+    "direct-address normalization (R-G2/R-SV5) controller exposes address semantics without rewriting the target",
+    "isDirectAddress (R-G2/R-SV10 bare-ID rejection) rejects a bare numeric RustDesk ID",
+    "isDirectAddress (R-G2/R-SV10 bare-ID rejection) rejects inherited relay-route syntax on otherwise direct targets",
+    "isDirectAddress (R-G2/R-SV10 bare-ID rejection) accepts an IPv4, with or without a port",
+    "isDirectAddress (R-G2/R-SV10 bare-ID rejection) accepts domain:port, rejects a bare hostname",
+    "isDirectAddress (R-G2/R-SV10 bare-ID rejection) rejects IPv6 direct targets",
+    "isDirectAddress (R-G2/R-SV10 bare-ID rejection) requires supplied ports in the nonzero 16-bit range",
+    "isDirectAddress (R-G2/R-SV10 bare-ID rejection) rejects empty / whitespace / junk",
+    "shared Rust/Dart direct-address vectors",
+    "hostname label and complete name bounds",
+}
 MAXIMUM_BYTES = 8 * 1024 * 1024
 MAXIMUM_EVENTS = 16_384
 MAXIMUM_LINE_BYTES = 1024 * 1024
@@ -91,11 +105,16 @@ def model_test_count(path=None):
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address"}, "test profile is unknown")
     expected_suites = EXPECTED_SUITES
     if profile == "frame-queue":
         expected_suites = {"latest_frame_queue_test.dart"}
         expected_tests = len(FRAME_QUEUE_TESTS)
+        expected_names = FRAME_QUEUE_TESTS
+    elif profile == "direct-address":
+        expected_suites = {"address_validator_test.dart"}
+        expected_tests = len(DIRECT_ADDRESS_TESTS)
+        expected_names = DIRECT_ADDRESS_TESTS
     else:
         expected_tests = model_test_count()
     metadata = os.lstat(path)
@@ -161,7 +180,7 @@ def parse_result(path, profile="models"):
                 if not hidden:
                     visible_successes += 1
                     name = tests[test_id][1]
-                    if profile == "frame-queue":
+                    if profile != "models":
                         require(name not in visible_names, "visible test name is duplicated")
                         visible_names.add(name)
             elif event_type == "done":
@@ -175,26 +194,28 @@ def parse_result(path, profile="models"):
     require(len(suites) == len(expected_suites), "suite path is duplicated")
     require(completed == set(tests), "one or more started tests never completed")
     require(visible_successes == expected_tests, "executed test count differs")
-    if profile == "frame-queue":
-        require(visible_names == FRAME_QUEUE_TESTS, "executed frame-queue test names differ")
+    if profile != "models":
+        require(visible_names == expected_names, "executed focused test names differ")
     return len(suites), visible_successes
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
-    parser.add_argument("--profile", choices=("models", "frame-queue"), default="models")
+    parser.add_argument(
+        "--profile", choices=("models", "frame-queue", "direct-address"), default="models"
+    )
     arguments = parser.parse_args()
     try:
         suites, tests = parse_result(arguments.result, arguments.profile)
     except (OSError, ResultError) as error:
         print("FLUTTER MODEL TEST RESULT: FAILED — {}".format(error), file=sys.stderr)
         return 1
-    prefix = (
-        "FLUTTER_MODEL_TEST_JSON"
-        if arguments.profile == "models"
-        else "FLUTTER_FRAME_QUEUE_TEST_JSON"
-    )
+    prefix = {
+        "models": "FLUTTER_MODEL_TEST_JSON",
+        "frame-queue": "FLUTTER_FRAME_QUEUE_TEST_JSON",
+        "direct-address": "FLUTTER_DIRECT_ADDRESS_TEST_JSON",
+    }[arguments.profile]
     print("{}=pass suites={} tests={}".format(prefix, suites, tests))
     return 0
 

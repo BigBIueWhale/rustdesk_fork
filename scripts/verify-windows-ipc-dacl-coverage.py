@@ -488,7 +488,7 @@ def validate(sources: Dict[str, str]) -> None:
                 "desktop URL IPC address-length enforcement",
             ),
             (
-                "!hbb_common::is_ip_str(address) && !hbb_common::is_domain_port_str(address)",
+                "!hbb_common::is_direct_address(address)",
                 "desktop URL IPC direct-address enforcement",
             ),
         ),
@@ -772,8 +772,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "ipc",
-        "!hbb_common::is_ip_str(address) && !hbb_common::is_domain_port_str(address)",
-        "!hbb_common::is_ip_str(address)",
+        "!hbb_common::is_direct_address(address)",
+        "false",
         "desktop URL IPC direct-address semantics",
     ),
     (

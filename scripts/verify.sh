@@ -992,7 +992,7 @@ ipc_get_id_body=$(awk '/^pub fn get_id\(\) -> String \{/{flag=1} flag{print} fla
 if echo "$ipc_get_id_body" | grep -qE 'Config::set_id|set_id\(|Config::set_salt|set_salt\(|get_config\("salt"\)'; then
   r_s11="$r_s11 ipc-get-id-copies-id-or-salt"
 fi
-if awk '/if !hbb_common::is_ip_str\(&lr\.username\)/,/send_login_error/' src/server/connection.rs | grep -q 'Config::get_id'; then
+if awk '/if !hbb_common::is_direct_address\(&lr\.username\)/,/send_login_error/' src/server/connection.rs | grep -q 'Config::get_id'; then
   r_s11="$r_s11 server-login-still-accepts-numeric-id"
 fi
 ipc_start_block=$(awk '/^pub async fn start\(postfix: &str\)/,/^}/' src/ipc.rs)
@@ -8485,8 +8485,7 @@ grep -q 'DesktopUrlIpcRequest::Activate {}' src/ipc.rs || r_s11ea="$r_s11ea type
 desktop_url_validator=$(sed -n '/fn validate_desktop_url_ipc_open_url/,/^}/p' src/ipc.rs)
 for token in \
   'DESKTOP_URL_IPC_MAX_LINK_BYTES' 'url.strip_prefix(&prefix)' "remainder.split_once('/')" \
-  'DESKTOP_URL_IPC_MAX_ADDRESS_BYTES' 'hbb_common::is_ip_str(address)' \
-  'hbb_common::is_domain_port_str(address)'; do
+  'DESKTOP_URL_IPC_MAX_ADDRESS_BYTES' 'hbb_common::is_direct_address(address)'; do
   echo "$desktop_url_validator" | grep -Fq "$token" || r_s11ea="$r_s11ea validator-$token-missing"
 done
 desktop_url_receiver=$(sed -n '/pub async fn start_ipc_url_server()/,/^#\[cfg(test)\]/p' src/server.rs)

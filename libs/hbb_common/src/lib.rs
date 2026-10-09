@@ -498,43 +498,52 @@ pub fn get_time() -> i64 {
 
 #[inline]
 pub fn is_ipv4_str(id: &str) -> bool {
-    if let Ok(reg) = regex::Regex::new(
-        r"^(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(:\d+)?$",
-    ) {
-        reg.is_match(id)
-    } else {
-        false
-    }
+    let host = match id.split_once(':') {
+        Some((host, port)) if is_direct_port(port) => host,
+        Some(_) => return false,
+        None => id,
+    };
+    host.parse::<Ipv4Addr>().is_ok()
 }
 
 #[inline]
 pub fn is_ipv6_str(id: &str) -> bool {
-    if let Ok(reg) = regex::Regex::new(
-        r"^((([a-fA-F0-9]{1,4}:{1,2})+[a-fA-F0-9]{1,4})|(\[([a-fA-F0-9]{1,4}:{1,2})+[a-fA-F0-9]{1,4}\]:\d+))$",
-    ) {
-        reg.is_match(id)
-    } else {
-        false
-    }
+    id.parse::<std::net::Ipv6Addr>().is_ok() || id.parse::<std::net::SocketAddrV6>().is_ok()
 }
 
+/// The direct peer grammar; socket-formatting support does not widen admission.
 #[inline]
-pub fn is_ip_str(id: &str) -> bool {
-    is_ipv4_str(id) || is_ipv6_str(id)
+pub fn is_direct_address(address: &str) -> bool {
+    address.len() <= 260 && (is_ipv4_str(address) || is_domain_port_str(address))
+}
+
+fn is_direct_port(port: &str) -> bool {
+    !port.is_empty()
+        && port.len() <= 5
+        && port.bytes().all(|byte| byte.is_ascii_digit())
+        && port.parse::<u16>().is_ok_and(|port| port != 0)
 }
 
 #[inline]
 pub fn is_domain_port_str(id: &str) -> bool {
-    // modified regex for RFC1123 hostname. check https://stackoverflow.com/a/106223 for original version for hostname.
-    // according to [TLD List](https://data.iana.org/TLD/tlds-alpha-by-domain.txt) version 2023011700,
-    // there is no digits in TLD, and length is 2~63.
-    if let Ok(reg) = regex::Regex::new(
-        r"(?i)^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z-]{0,61}[a-z]:\d{1,5}$",
-    ) {
-        reg.is_match(id)
-    } else {
-        false
+    let Some((host, port)) = id.split_once(':') else {
+        return false;
+    };
+    let name = host.strip_suffix('.').unwrap_or(host);
+    if !is_direct_port(port) || name.len() > 253 || !name.contains('.') {
+        return false;
     }
+    name.rsplit('.').next().is_some_and(|label| {
+        label.bytes().any(|byte| byte.is_ascii_alphabetic())
+    }) && name.split('.').all(|label| {
+        let bytes = label.as_bytes();
+        bytes.len() <= 63
+            && bytes.first().is_some_and(u8::is_ascii_alphanumeric)
+            && bytes.last().is_some_and(u8::is_ascii_alphanumeric)
+            && bytes
+                .iter()
+                .all(|byte| byte.is_ascii_alphanumeric() || *byte == b'-')
+    })
 }
 
 pub fn init_log(_is_async: bool, _name: &str) -> Option<flexi_logger::LoggerHandle> {
@@ -632,14 +641,17 @@ mod test {
     }
 
     #[test]
-    fn test_ipv6() {
-        assert!(is_ipv6_str("1:2:3"));
-        assert!(is_ipv6_str("[ab:2:3]:12"));
-        assert!(is_ipv6_str("[ABEF:2a:3]:12"));
+    fn direct_address_ipv6_formatting() {
+        assert!(!is_ipv6_str("1:2:3"));
+        assert!(!is_ipv6_str("[ab:2:3]:12"));
+        assert!(!is_ipv6_str("[ABEF:2a:3]:12"));
         assert!(!is_ipv6_str("[ABEG:2a:3]:12"));
         assert!(!is_ipv6_str("1[ab:2:3]:12"));
         assert!(!is_ipv6_str("1.1.1.1"));
-        assert!(is_ip_str("1.1.1.1"));
+        assert!(is_ipv6_str("::1"));
+        assert!(is_ipv6_str("[::1]:0"));
+        assert!(is_ipv6_str("2001:db8::1"));
+        assert!(!is_ipv6_str("[::1]:65536"));
         assert!(!is_ipv6_str("1:2:"));
         assert!(is_ipv6_str("1:2::0"));
         assert!(is_ipv6_str("[1:2::0]:1"));
@@ -648,7 +660,7 @@ mod test {
     }
 
     #[test]
-    fn test_ipv4() {
+    fn direct_address_ipv4() {
         assert!(is_ipv4_str("1.2.3.4"));
         assert!(is_ipv4_str("1.2.3.4:90"));
         assert!(is_ipv4_str("192.168.0.1"));
@@ -661,12 +673,18 @@ mod test {
         assert!(!is_ipv4_str("192.168.0.1/24"));
         assert!(!is_ipv4_str("192.168.0."));
         assert!(!is_ipv4_str("192.168..1"));
+        assert!(!is_ipv4_str("010.0.0.1"));
+        assert!(!is_ipv4_str("127.1"));
+        assert!(is_ipv4_str("127.0.0.1:1"));
+        assert!(is_ipv4_str("127.0.0.1:65535"));
+        assert!(!is_ipv4_str("127.0.0.1:0"));
+        assert!(!is_ipv4_str("127.0.0.1:65536"));
     }
 
     #[test]
-    fn test_hostname_port() {
+    fn direct_address_hostname_port() {
         assert!(!is_domain_port_str("a:12"));
-        assert!(!is_domain_port_str("a.b.c:12"));
+        assert!(is_domain_port_str("a.b.c:12"));
         assert!(is_domain_port_str("test.com:12"));
         assert!(is_domain_port_str("test-UPPER.com:12"));
         assert!(is_domain_port_str("some-other.domain.com:12"));
@@ -678,10 +696,36 @@ mod test {
         assert!(!is_domain_port_str("a.b.c:123456"));
         assert!(!is_domain_port_str("---:12"));
         assert!(!is_domain_port_str(".:12"));
-        // todo: should we also check for these edge cases?
-        // out-of-range port
-        assert!(is_domain_port_str("test.com:0"));
-        assert!(is_domain_port_str("test.com:98989"));
+        assert!(!is_domain_port_str("test.com:0"));
+        assert!(!is_domain_port_str("test.com:98989"));
+        assert!(is_domain_port_str("test.com:65535"));
+        assert!(is_domain_port_str("3host.xn--p1ai.:1"));
+        assert!(!is_domain_port_str("test.123:12"));
+    }
+
+    #[test]
+    fn direct_address_hostname_bounds() {
+        let label = "a".repeat(63);
+        let name = format!("{label}.{label}.{label}.{}", "a".repeat(61));
+        assert_eq!(name.len(), 253);
+        assert!(is_direct_address(&format!("{name}:65535")));
+        assert!(is_direct_address(&format!("{name}.:65535")));
+        assert!(!is_direct_address(&format!("{name}a:65535")));
+        assert!(!is_direct_address(&format!("{}.example:1", "a".repeat(64))));
+    }
+
+    #[test]
+    fn direct_address_shared_vectors() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../flutter/test/fixtures/direct_address.json"
+        ))
+        .unwrap();
+        for (group, accepted) in [("accepted", true), ("rejected", false)] {
+            for value in vectors[group].as_array().unwrap() {
+                let address = value.as_str().unwrap();
+                assert_eq!(is_direct_address(address), accepted, "{address:?}");
+            }
+        }
     }
 
     #[test]

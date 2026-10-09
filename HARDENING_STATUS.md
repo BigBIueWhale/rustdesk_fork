@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-59d2245200d755e1dadba05afd1e163aee50dcd25331428d2e643427729d483d  requirements.html
+2569190abb6ab07768839ebb09600b3f568fb5259d533aee707efae1d727bd6d  requirements.html
 ```
 
 ## Current Verdict
@@ -1856,7 +1856,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `59d2245200d755e1dadba05afd1e163aee50dcd25331428d2e643427729d483d  requirements.html`.
+Current normative specification SHA-256: `2569190abb6ab07768839ebb09600b3f568fb5259d533aee707efae1d727bd6d  requirements.html`.
 
 ### Current authority and source closure
 
@@ -10724,12 +10724,20 @@ Debian/Android/Windows R-B2/R-B10 transaction, native Apple/device coverage wher
 reproduction, and external review remain governed by their open ledger rows. A regression or contrary runtime result
 reopens the affected claim; the removed historical “do not re-open” instruction carried no authority.
 
-**OPEN — direct-address accept-set conformance.** R-SV5/R-G2 enumerate IPv4, IPv4:port and domain:port,
-while `flutter/lib/common/formatter/direct_address.dart` also accepts IPv6 and bracketed IPv6:port. The
-closed numeric-ID/relay topology above does not establish agreement with that enumerated grammar. Resolve
-the intended address contract and verify the same exact accept set at UI and Rust admission; listener IPv4-only
-binding is a separate R-D5 property. The Section 19 documentation correction preserves the grammar and does
-not change the product or claim native acceptance.
+**SOURCE CORRECTED — direct-address grammar; focused execution PENDING, native integration OPEN.**
+`hbb_common::is_direct_address` owns the IPv4/IPv4:port/qualified-ASCII-hostname:port predicate used by
+client initiation, desktop URL IPC validation and login-name admission. Supplied ports are bounded ASCII
+decimal values 1–65535; IPv4 rejects ambiguous leading-zero and shorthand forms; DNS labels/names have
+explicit syntax and length bounds. IPv6 direct targets, numeric IDs, relay modifiers and malformed addresses
+are refused. Generic IPv6 socket formatting uses standard-library IP/socket parsing independently of this
+predicate. Dart validates the same exact target after trimming only outer whitespace; spelling is preserved.
+Shared accepted/refused vectors and hostname boundaries exercise both real predicates. The existing
+`--hbb-common-fs` lane adds the five address tests and the real socket-formatting test to its source-bound
+library artifact; `--flutter-model-tests --direct-address` selects only the twelve address/controller tests,
+with a read-only source and exact JSON completion inventory, without Rust/LLVM/FRB generation. These
+transactions are not yet accepted on this changed source. Native whole-app client/URL/login dispatch,
+rendered UI, installed/platform artifacts and independent reproduction remain OPEN; listener IPv4-only
+binding is a separate R-D5 property.
 
 ### R-S11gk/R-S11e-223 — real Windows full-peer focus/presentation transaction
 

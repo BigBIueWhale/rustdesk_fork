@@ -92,13 +92,16 @@ mod tests {
 
     #[test]
     fn test_check_port() {
-        assert_eq!(check_port("[1:2]:12", 32), "[1:2]:12");
-        assert_eq!(check_port("1:2", 32), "[1:2]:32");
+        assert_eq!(check_port("[::1]:12", 32), "[::1]:12");
+        assert_eq!(check_port("::1", 32), "[::1]:32");
+        assert_eq!(check_port("1:2", 32), "1:2");
         assert_eq!(check_port("z1:2", 32), "z1:2");
         assert_eq!(check_port("1.1.1.1", 32), "1.1.1.1:32");
         assert_eq!(check_port("1.1.1.1:32", 32), "1.1.1.1:32");
         assert_eq!(check_port("test.com:32", 0), "test.com:32");
-        assert_eq!(increase_port("[1:2]:12", 1), "[1:2]:13");
+        assert_eq!(increase_port("[::1]:12", 1), "[::1]:13");
+        assert_eq!(split_host_port("[::1]:12"), Some(("[::1]".to_owned(), 12)));
+        assert_eq!(split_host_port("[1:2]:12"), None);
         assert_eq!(increase_port("1.2.2.4:12", 1), "1.2.2.4:13");
         assert_eq!(increase_port("1.2.2.4", 1), "1.2.2.4");
         assert_eq!(increase_port("test.com", 1), "test.com");

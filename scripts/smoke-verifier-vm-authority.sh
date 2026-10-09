@@ -92,12 +92,12 @@ case "$#:${1:-}" in
         MODE=flutter-model-tests
         ;;
     2:--flutter-model-tests)
-        [ "$2" = --frame-queue ] \
+        [[ "$2" = --frame-queue || "$2" = --direct-address ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Flutter shard or input/run authority differs' >&2; exit 2; }
         MODE=flutter-model-tests
-        FLUTTER_TEST_PROFILE=frame-queue
+        FLUTTER_TEST_PROFILE=${2#--}
         ;;
     1:--android-owner-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
@@ -288,6 +288,7 @@ case "$#:${1:-}" in
         printf 'Focused macOS cursor adapter compilation: %s --apple-conform --cursor-compile\n' "${0##*/}" >&2
         printf 'Current-source CM file replay: %s --cm-file-replay\n' "${0##*/}" >&2
         printf 'Focused production frame-queue runtime: %s --flutter-model-tests --frame-queue\n' "${0##*/}" >&2
+        printf 'Focused direct-address validation: %s --flutter-model-tests --direct-address\n' "${0##*/}" >&2
         printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --linux-pa-authority-tests | --linux-service-uid-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario {peer-lifecycle|controlled-cm} --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --linux-flutter-app-build | --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCH]\n' "${0##*/}" >&2
         exit 2
         ;;
@@ -529,7 +530,7 @@ elif [ "$MODE" = linux-pa-authority-tests ]; then
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=12288
 elif [ "$MODE" = flutter-model-tests ]; then
-    if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+    if [ "$FLUTTER_TEST_PROFILE" != models ]; then
         readonly VM_TIMEOUT_SECONDS=300
         readonly OVERLAY_SIZE=12G
         readonly VM_MEMORY=4096
@@ -3766,8 +3767,8 @@ elif [ "$MODE" = apple-conform ]; then
     fi
 elif [ "$MODE" = flutter-model-tests ]; then
     guest_invocation+=" --flutter-model-tests /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_SOURCE_COMMIT $FLUTTER_SOURCE_TREE $FLUTTER_SOURCE_ARCHIVE_SHA256"
-    if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
-        guest_invocation+=" --frame-queue"
+    if [ "$FLUTTER_TEST_PROFILE" != models ]; then
+        guest_invocation+=" --$FLUTTER_TEST_PROFILE"
     fi
 elif [ "$MODE" = android-owner-tests ]; then
     guest_invocation+=" --android-owner-tests /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_OWNER_SOURCE_COMMIT $ANDROID_OWNER_SOURCE_TREE $ANDROID_OWNER_SOURCE_ARCHIVE_SHA256"
@@ -5321,6 +5322,13 @@ else
         require_exact_fixed_receipt \
             "FLUTTER_FRAME_QUEUE_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=24 flutter=$FLUTTER_VERSION queue=$queue_sha256 tests_source=$queue_tests_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-queue-tests cleanup=joined" \
             'focused Flutter frame-queue receipt'
+    elif [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
+        address_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/lib/common/formatter/direct_address.dart" | /usr/bin/awk '{print $1}')"
+        address_tests_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/address_validator_test.dart" | /usr/bin/awk '{print $1}')"
+        address_vectors_sha256="$(/usr/bin/sha256sum "$REPO_ROOT/flutter/test/fixtures/direct_address.json" | /usr/bin/awk '{print $1}')"
+        require_exact_fixed_receipt \
+            "FLUTTER_DIRECT_ADDRESS_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=12 flutter=$FLUTTER_VERSION validator=$address_sha256 tests_source=$address_tests_sha256 vectors=$address_vectors_sha256 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-address-tests cleanup=joined" \
+            'focused Flutter direct-address receipt'
     else
         require_exact_fixed_receipt \
             "FLUTTER_MODEL_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=23 tests=$FLUTTER_MODEL_TEST_COUNT flutter=$FLUTTER_VERSION rust=1.75.0 llvm=$LLVM_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined" \
@@ -5771,6 +5779,9 @@ elif [ "$MODE" = rust-audit ]; then
 else
     if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
         printf 'FLUTTER_FRAME_QUEUE_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-queue-tests cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
+        printf 'FLUTTER_DIRECT_ADDRESS_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=production-dart-address-tests cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$vm_elapsed_seconds"
     else
         printf 'FLUTTER_MODEL_TESTS_VM_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only evidence=generated-bridge-model-tests cleanup=joined elapsed_seconds=%s\n' \

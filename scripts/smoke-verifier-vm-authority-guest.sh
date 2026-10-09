@@ -70,9 +70,9 @@ case "$#:${8:-}" in
         MODE=flutter-model-tests
         ;;
     13:--flutter-model-tests)
-        [ "${13}" = --frame-queue ] || exit 2
+        [[ "${13}" = --frame-queue || "${13}" = --direct-address ]] || exit 2
         MODE=flutter-model-tests
-        FLUTTER_TEST_PROFILE=frame-queue
+        FLUTTER_TEST_PROFILE=${13#--}
         ;;
     12:--android-owner-tests)
         MODE=android-owner-tests
@@ -142,6 +142,7 @@ case "$#:${8:-}" in
         echo 'The seven base arguments also accept --android-execution-probe, --android-runtime-log-tests, --fixed-archive-tests, or --linux-flutter-artifact-tests.' >&2
         echo 'CM file integration replay accepts --cm-file-replay SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused Flutter queue shard appends --frame-queue to --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
+        echo 'The focused Flutter address shard appends --direct-address to that same source-bound invocation.' >&2
         echo 'The focused macOS cursor compiler appends --cursor-compile to --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         exit 2
         ;;
@@ -2263,12 +2264,24 @@ run_focused_rust_tests() {
         bridge_mounts=()
         source_fingerprints=(
             Cargo.lock
+            libs/hbb_common/src/lib.rs
+            libs/hbb_common/src/socket_client.rs
             libs/hbb_common/src/config.rs
             libs/hbb_common/src/fs.rs
+            flutter/test/fixtures/direct_address.json
+            src/client.rs
+            src/ipc.rs
+            src/server/connection.rs
             scripts/select-hbb-common-test-artifact.py
             scripts/test-hbb-common-test-artifact.py
         )
         required_tests=(
+            test::direct_address_ipv4
+            test::direct_address_ipv6_formatting
+            test::direct_address_hostname_port
+            test::direct_address_hostname_bounds
+            test::direct_address_shared_vectors
+            socket_client::tests::test_check_port
             config::tests::config_transaction_faults_preserve_precommit_and_make_postcommit_fatal
             config::tests::config_transaction_traverses_search_only_existing_ancestor
             config::tests::config_transaction_creates_missing_parent_components_privately
@@ -2811,6 +2824,10 @@ run_focused_rust_tests() {
                         [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                         "$test_executable" fs::tests:: --color never --test-threads=1
                         [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                        "$test_executable" test::direct_address_ --color never --test-threads=1
+                        [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                        "$test_executable" socket_client::tests:: --color never --test-threads=1
+                        [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
                         printf "HBB_COMMON_FS_ARTIFACT=pass sha256=%s executable=%s unchanged=before-between-after\n" \
                             "$artifact_sha" "$test_executable"
                         ;;
@@ -2897,8 +2914,8 @@ run_focused_rust_tests() {
         grep -E '^test result: ok\. [1-9][0-9]* passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output"
     )
     if [ "$MODE" = hbb-common-fs ]; then
-        [ "${#result_lines[@]}" -eq 2 ] \
-            || { tail -n 200 "$output" >&2; fail 'focused filesystem test summary count differs'; }
+        [ "${#result_lines[@]}" -eq 4 ] \
+            || { tail -n 200 "$output" >&2; fail 'focused shared-library test summary count differs'; }
         local -a hbb_artifact_receipts
         mapfile -t hbb_artifact_receipts < <(
             grep -E '^HBB_COMMON_FS_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/hbb_common-[0-9a-f]{16} unchanged=before-between-after$' "$output"
@@ -5481,17 +5498,26 @@ run_flutter_model_tests() {
     local source_archive_sha input_mount_options cargo_receipt pub_receipt post_pub_receipt
     local tools_freshness_line source_authority source_writable=true
     local memory=8g memory_bytes=8589934592 result_prefix=FLUTTER_MODEL_TEST_JSON
-    local expected_result queue_sha256 tests_sha256
+    local expected_result queue_sha256 tests_sha256 address_sha256 vectors_sha256
     local -a toolchain_mounts=()
     local source_mount="type=bind,source=$source_root,target=/source"
-    if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+    if [ "$FLUTTER_TEST_PROFILE" != models ]; then
         memory=2g
         memory_bytes=2147483648
-        result_prefix=FLUTTER_FRAME_QUEUE_TEST_JSON
-        expected_result='suites=1 tests=24'
+        if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+            result_prefix=FLUTTER_FRAME_QUEUE_TEST_JSON
+            expected_result='suites=1 tests=24'
+        else
+            result_prefix=FLUTTER_DIRECT_ADDRESS_TEST_JSON
+            expected_result='suites=1 tests=12'
+        fi
         source_mount+=,readonly
         source_writable=false
-        printf 'FLUTTER_FRAME_QUEUE_STAGE=verify-source-and-inputs\n'
+        if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+            printf 'FLUTTER_FRAME_QUEUE_STAGE=verify-source-and-inputs\n'
+        else
+            printf 'FLUTTER_DIRECT_ADDRESS_STAGE=verify-source-and-inputs\n'
+        fi
     else
         toolchain_mounts=(
             --mount "type=bind,source=$cargo_vendor,target=/online/cargo-vendor,readonly"
@@ -5758,7 +5784,7 @@ run_flutter_model_tests() {
                 export REAL_FLUTTER=/work/toolchain/flutter/bin/flutter
                 export PATH=/work/flutter-shim:$PATH
                 project_root=/source/flutter
-                if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+                if [ "$FLUTTER_TEST_PROFILE" != models ]; then
                     cp -a /source/flutter /work/project
                     project_root=/work/project
                 fi
@@ -5792,7 +5818,9 @@ run_flutter_model_tests() {
                 format_status=0
                 : >/work/format.diff
                 format_paths=(lib/models/latest_frame_queue.dart test/latest_frame_queue_test.dart)
-                if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+                if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
+                    format_paths=(lib/common/formatter/direct_address.dart test/address_validator_test.dart)
+                elif [ "$FLUTTER_TEST_PROFILE" = models ]; then
                     format_paths+=(
                         lib/models/android_permission_request_coordinator.dart
                         lib/models/rgba_publication_order.dart
@@ -5830,8 +5858,10 @@ run_flutter_model_tests() {
                     cat /work/format.err >&2
                     exit 1
                 fi
-                /usr/bin/python3 -I -S \
-                    /source/scripts/verify-display-selection-finality.py --repo /source
+                if [ "$FLUTTER_TEST_PROFILE" != direct-address ]; then
+                    /usr/bin/python3 -I -S \
+                        /source/scripts/verify-display-selection-finality.py --repo /source
+                fi
                 if [ "$FLUTTER_TEST_PROFILE" = models ]; then
                     codegen_log=/work/codegen.log
                     if ! (cd /source && \
@@ -5860,7 +5890,9 @@ run_flutter_model_tests() {
                 [ "$project_lock" = "$(sha256sum pubspec.lock | awk "{print \$1}")" ]
                 tests=(test/latest_frame_queue_test.dart)
                 test_budget=90s
-                if [ "$FLUTTER_TEST_PROFILE" = models ]; then
+                if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
+                    tests=(test/address_validator_test.dart)
+                elif [ "$FLUTTER_TEST_PROFILE" = models ]; then
                     tests=(
                         test/global_event_dispatcher_test.dart
                         test/server_status_refresh_loop_test.dart
@@ -5906,9 +5938,15 @@ run_flutter_model_tests() {
                 printf "FLUTTER_TEST_RESULT_PARSER=pass tests=3\n"
                 /usr/bin/python3 -I -S /authority/result.py \
                     /work/test.json --profile "$FLUTTER_TEST_PROFILE"
-                if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
-                    cmp /source/flutter/lib/models/latest_frame_queue.dart lib/models/latest_frame_queue.dart
-                    cmp /source/flutter/test/latest_frame_queue_test.dart test/latest_frame_queue_test.dart
+                if [ "$FLUTTER_TEST_PROFILE" != models ]; then
+                    if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
+                        cmp /source/flutter/lib/models/latest_frame_queue.dart lib/models/latest_frame_queue.dart
+                        cmp /source/flutter/test/latest_frame_queue_test.dart test/latest_frame_queue_test.dart
+                    else
+                        cmp /source/flutter/lib/common/formatter/direct_address.dart lib/common/formatter/direct_address.dart
+                        cmp /source/flutter/test/address_validator_test.dart test/address_validator_test.dart
+                        cmp /source/flutter/test/fixtures/direct_address.json test/fixtures/direct_address.json
+                    fi
                     [ ! -e /work/toolchain/rustinstall ]
                     [ ! -e /work/toolchain/flutter_rust_bridge_codegen ]
                     [ ! -e /inputs/rust.tar.xz ]
@@ -5938,6 +5976,8 @@ run_flutter_model_tests() {
         || fail 'focused Flutter-test source mount authority differs'
     if [ "$FLUTTER_TEST_PROFILE" = frame-queue ]; then
         printf 'FLUTTER_FRAME_QUEUE_STAGE=run-production-queue-tests\n'
+    elif [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
+        printf 'FLUTTER_DIRECT_ADDRESS_STAGE=run-production-validator-tests\n'
     fi
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
@@ -5985,6 +6025,14 @@ run_flutter_model_tests() {
         printf 'FLUTTER_FRAME_QUEUE_TESTS_VM=pass commit=%s tree=%s suites=1 tests=24 flutter=3.24.5 queue=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-queue-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$queue_sha256" "$tests_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
+            "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+    elif [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
+        address_sha256="$(sha256sum "$source_root/flutter/lib/common/formatter/direct_address.dart" | awk '{print $1}')"
+        tests_sha256="$(sha256sum "$source_root/flutter/test/address_validator_test.dart" | awk '{print $1}')"
+        vectors_sha256="$(sha256sum "$source_root/flutter/test/fixtures/direct_address.json" | awk '{print $1}')"
+        printf 'FLUTTER_DIRECT_ADDRESS_TESTS_VM=pass commit=%s tree=%s suites=1 tests=12 flutter=3.24.5 validator=%s tests_source=%s vectors=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-address-tests cleanup=joined\n' \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
+            "$address_sha256" "$tests_sha256" "$vectors_sha256" "$SHA256_PUB_CACHE_CLOSURE_V1" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     else
         printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=23 tests=%s flutter=3.24.5 rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \

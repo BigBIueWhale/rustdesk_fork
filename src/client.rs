@@ -449,22 +449,10 @@ impl Client {
         // Validate the direct-only target before doing the memory-hard credential work, but do not
         // acquire a socket yet. The responder starts its unauthenticated first-frame deadline when
         // accept(2) completes, so every local prerequisite for CPace step 1 must be ready first.
-        let target = if hbb_common::is_ip_str(peer) {
-            check_port(peer, DIRECT_PORT)
-        } else if hbb_common::is_domain_port_str(peer) {
-            // Allow connect to {domain}:{port}
-            peer.to_owned()
-        } else {
-            // R-SV4(b) / R-D / R-S13(d): the fork is DIRECT-IP ONLY. The direct branches above
-            // handle every reachable address (an IP, or host:port). Anything else is a bare
-            // rendezvous "ID", which has NO path in this fork — the responder runs no mediator
-            // (6920db9), and the rendezvous resolver is absent (R-SV4/R-SV6b), so a rendezvous
-            // attempt could only ever fail. The inherited initiator-side rendezvous/relay/NAT-punch
-            // machinery (`_start_inner`/`connect`/`request_relay`/`secure_connection`) is absent;
-            // fail CLOSED with a clear message instead of dialing a mediator that does not exist
-            // (sovereign: dial nobody).
-            bail!("Direct-IP only: '{peer}' is not a direct address (use an IP or host:port)");
-        };
+        if !hbb_common::is_direct_address(peer) {
+            bail!("Direct-IP only: '{peer}' is not a direct address (use IPv4 or domain:port)");
+        }
+        let target = check_port(peer, DIRECT_PORT);
 
         // R-S13 / R-P14 (initiator): completely prepare the single CPace credential BEFORE TCP
         // connect. Fresh plaintext requires the fixed 64-MiB Argon2id derivation, which may take

@@ -24,27 +24,56 @@ bool hasRelayRouteSyntax(String address) {
       normalized.contains('/r@');
 }
 
-// R-G2/R-SV10: the fork is direct-IP-only. These mirror hbb_common's accept-set VERBATIM
-// (`is_ipv4_str` / `is_ipv6_str` / `is_domain_port_str`, libs/hbb_common/src/lib.rs:403/414/430),
-// which the Rust choke point enforces (src/client.rs:315/331, bailing on anything else at :353). A
-// bare numeric RustDesk ID — the relay/rendezvous addressing the fork deleted — matches none.
-final _ipv4Re = RegExp(
-    r'^(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(:\d+)?$');
-final _ipv6Re = RegExp(
-    r'^((([a-fA-F0-9]{1,4}:{1,2})+[a-fA-F0-9]{1,4})|(\[([a-fA-F0-9]{1,4}:{1,2})+[a-fA-F0-9]{1,4}\]:\d+))$');
-final _domainPortRe = RegExp(
-    r'^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z-]{0,61}[a-z]:\d{1,5}$',
-    caseSensitive: false);
-
-/// R-G2/R-SV10: true iff [address] is a DIRECT address the fork can connect to —
-/// `<ipv4>[:port]`, `<ipv6>` / `[<ipv6>]:port`, or `<domain>:port`. A bare numeric RustDesk ID is
-/// REJECTED (returns false). Mirrors `hbb_common::is_ip_str || is_domain_port_str` so the connect UI
-/// and the `client.rs` choke point agree on exactly one accept-set.
+/// R-G2/R-SV10: IPv4 with an optional port, or a qualified ASCII hostname with
+/// a required port. Shared vectors exercise this and Rust's direct-peer predicate.
 bool isDirectAddress(String address) {
   final normalized = normalizeDirectAddress(address);
-  if (normalized.isEmpty) return false;
+  if (normalized.isEmpty || normalized.length > 260) return false;
   if (hasRelayRouteSyntax(normalized)) return false;
-  return _ipv4Re.hasMatch(normalized) ||
-      _ipv6Re.hasMatch(normalized) ||
-      _domainPortRe.hasMatch(normalized);
+  final parts = normalized.split(':');
+  if (parts.length == 1) return _isIpv4Host(parts[0]);
+  if (parts.length != 2 || !_isDirectPort(parts[1])) return false;
+  return _isIpv4Host(parts[0]) || _isDomainHost(parts[0]);
+}
+
+bool _isAsciiDigit(int value) => value >= 48 && value <= 57;
+
+bool _isAsciiLetter(int value) =>
+    (value >= 65 && value <= 90) || (value >= 97 && value <= 122);
+
+bool _isAsciiAlphanumeric(int value) =>
+    _isAsciiDigit(value) || _isAsciiLetter(value);
+
+bool _isDirectPort(String port) {
+  if (port.isEmpty || port.length > 5 || !port.codeUnits.every(_isAsciiDigit)) {
+    return false;
+  }
+  final value = int.tryParse(port);
+  return value != null && value >= 1 && value <= 65535;
+}
+
+bool _isIpv4Host(String host) {
+  final octets = host.split('.');
+  return octets.length == 4 &&
+      octets.every((octet) =>
+          octet.isNotEmpty &&
+          octet.length <= 3 &&
+          (octet.length == 1 || !octet.startsWith('0')) &&
+          octet.codeUnits.every(_isAsciiDigit) &&
+          int.parse(octet) <= 255);
+}
+
+bool _isDomainHost(String host) {
+  final name = host.endsWith('.') ? host.substring(0, host.length - 1) : host;
+  if (name.length > 253) return false;
+  final labels = name.split('.');
+  return labels.length >= 2 &&
+      labels.last.codeUnits.any(_isAsciiLetter) &&
+      labels.every((label) =>
+          label.isNotEmpty &&
+          label.length <= 63 &&
+          _isAsciiAlphanumeric(label.codeUnitAt(0)) &&
+          _isAsciiAlphanumeric(label.codeUnitAt(label.length - 1)) &&
+          label.codeUnits
+              .every((value) => _isAsciiAlphanumeric(value) || value == 45));
 }

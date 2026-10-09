@@ -1,16 +1,13 @@
-// R-SV10 (requirements.html:693): "a test MUST prove a bare-ID input is rejected." R-G2: the
-// direct-IP-only fork accepts only <ipv4>[:port] / <ipv6> / [<ipv6>]:port / <domain>:port at the
-// connect box, never a bare numeric RustDesk ID. This unit-tests `isDirectAddress` — the validator
-// the connect choke point (common.dart connect()) uses to fail closed on a non-address — so a
-// regression that re-admitted bare IDs (and thus a rendezvous lookup) would turn this gate red.
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_hbb/common/formatter/direct_address.dart';
 
 void main() {
   group('direct-address normalization (R-G2/R-SV5)', () {
     test('trims only surrounding whitespace', () {
-      expect(normalizeDirectAddress('  192.168.1.10:21118  '),
-          '192.168.1.10:21118');
+      expect(normalizeDirectAddress('  192.168.1.10:21118  '), '192.168.1.10:21118');
       expect(normalizeDirectAddress('  host.example.com:21118\n'),
           'host.example.com:21118');
     });
@@ -41,8 +38,8 @@ void main() {
   group('isDirectAddress (R-G2/R-SV10 bare-ID rejection)', () {
     test('rejects a bare numeric RustDesk ID', () {
       expect(isDirectAddress('123456789'), isFalse);
-      expect(isDirectAddress('123 456 789'), isFalse); // the space-grouped display form
-      expect(isDirectAddress('123456789/r'), isFalse); // a relay-suffixed ID
+      expect(isDirectAddress('123 456 789'), isFalse);
+      expect(isDirectAddress('123456789/r'), isFalse);
       expect(isDirectAddress('123456789/r@relay.example.com'), isFalse);
       expect(isDirectAddress('1234567890'), isFalse);
     });
@@ -62,10 +59,19 @@ void main() {
       expect(isDirectAddress('host.example.com:21118'), isTrue);
       expect(isDirectAddress('host.example.com'), isFalse); // port is required for a domain
     });
-    test('accepts IPv6 (bare and bracketed:port)', () {
-      expect(isDirectAddress('fe80::1'), isTrue);
-      expect(isDirectAddress('[fe80::1]:21118'), isTrue);
-      expect(isDirectAddress('2001:db8::ff00:42:8329'), isTrue);
+    test('rejects IPv6 direct targets', () {
+      expect(isDirectAddress('fe80::1'), isFalse);
+      expect(isDirectAddress('[fe80::1]:21118'), isFalse);
+      expect(isDirectAddress('2001:db8::ff00:42:8329'), isFalse);
+    });
+    test('requires supplied ports in the nonzero 16-bit range', () {
+      for (final host in ['127.0.0.1', 'host.example.com']) {
+        expect(isDirectAddress('$host:1'), isTrue);
+        expect(isDirectAddress('$host:65535'), isTrue);
+        for (final port in ['0', '65536', '+1', '-1', '١', '000001']) {
+          expect(isDirectAddress('$host:$port'), isFalse);
+        }
+      }
     });
     test('rejects empty / whitespace / junk', () {
       expect(isDirectAddress(''), isFalse);
@@ -73,5 +79,26 @@ void main() {
       expect(isDirectAddress('notanaddress'), isFalse);
       expect(isDirectAddress('999.999.999.999:1'), isFalse); // out-of-range octets
     });
+  });
+
+  test('shared Rust/Dart direct-address vectors', () {
+    final vectors = jsonDecode(
+        File('test/fixtures/direct_address.json').readAsStringSync()) as Map;
+    for (final group in ['accepted', 'rejected']) {
+      for (final address in vectors[group] as List) {
+        expect(isDirectAddress(address as String), group == 'accepted',
+            reason: address);
+      }
+    }
+  });
+
+  test('hostname label and complete name bounds', () {
+    final label = List.filled(63, 'a').join();
+    final name = '$label.$label.$label.${List.filled(61, 'a').join()}';
+    expect(name.length, 253);
+    expect(isDirectAddress('$name:65535'), isTrue);
+    expect(isDirectAddress('$name.:65535'), isTrue);
+    expect(isDirectAddress('${name}a:65535'), isFalse);
+    expect(isDirectAddress('${List.filled(64, 'a').join()}.example:1'), isFalse);
   });
 }

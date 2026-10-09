@@ -3,7 +3,7 @@ name = "compress_it"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "Unit tests for the R-S7 post-key decompression bound (hbb_common::compress::decompress). Depends on hbb_common's library only (no dev-deps ⇒ no webrtc/sdp), so it compiles + runs on the pinned 1.75 toolchain."
+description = "Unit tests for bounded, fallible zstd decoding through hbb_common's library without its dev-dependencies."
 
 [lib]
 path = "src/lib.rs"

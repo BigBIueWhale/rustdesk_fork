@@ -51,7 +51,7 @@ pub fn try_decompress_with_limit(data: &[u8], max_decompressed: usize) -> io::Re
         io::Error::new(io::ErrorKind::InvalidInput, "decompression limit overflow")
     })?;
     // take(MAX+1) so an over-cap stream is *detected* (len > MAX) and rejected
-    // rather than truncated; allocation is bounded to MAX+1.
+    // rather than truncated; at most MAX+1 decoded bytes are appended.
     let mut limited = decoder.take(read_limit);
     let mut out = Vec::new();
     limited.read_to_end(&mut out)?;
@@ -70,16 +70,8 @@ pub fn try_decompress_with_limit(data: &[u8], max_decompressed: usize) -> io::Re
     Ok(out)
 }
 
-pub fn decompress_with_limit(data: &[u8], max_decompressed: usize) -> Vec<u8> {
-    try_decompress_with_limit(data, max_decompressed).unwrap_or_default()
-}
-
 pub fn try_decompress(data: &[u8]) -> io::Result<Vec<u8>> {
     try_decompress_with_limit(data, MAX_DECOMPRESSED)
-}
-
-pub fn decompress(data: &[u8]) -> Vec<u8> {
-    try_decompress(data).unwrap_or_default()
 }
 
 #[cfg(test)]

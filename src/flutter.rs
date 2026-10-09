@@ -150,7 +150,16 @@ fn remote_cursor_rgba_for_ui(cd: &CursorData) -> Option<Vec<u8>> {
         );
         return None;
     }
-    let colors = hbb_common::compress::decompress_with_limit(&cd.colors, expected);
+    let colors = match hbb_common::compress::try_decompress_with_limit(&cd.colors, expected) {
+        Ok(colors) => colors,
+        Err(err) => {
+            log::warn!(
+                "dropping compressed remote cursor before Flutter handoff: {}",
+                err
+            );
+            return None;
+        }
+    };
     if colors.len() != expected || colors.len() > MAX_REMOTE_CURSOR_RGBA_BYTES {
         log::warn!(
             "dropping invalid remote cursor payload before Flutter handoff: width={}, height={}, bytes={}, expected={}, max={}",
@@ -2529,9 +2538,24 @@ impl InvokeUiSession for FlutterHandler {
                 self.push_event_("terminal_response", &event_data, &[], &[]);
             }
             Some(Union::Data(data)) => {
-                // Decompress data if needed
                 let output_data = if data.compressed {
-                    hbb_common::compress::decompress(&data.data)
+                    match hbb_common::compress::try_decompress(&data.data) {
+                        Ok(output) => output,
+                        Err(err) => {
+                            log::warn!(
+                                "refusing compressed output for terminal {}: {}",
+                                data.terminal_id,
+                                err
+                            );
+                            let event_data = [
+                                ("type", json!("error")),
+                                ("terminal_id", json!(data.terminal_id)),
+                                ("message", json!("Failed to decode terminal output")),
+                            ];
+                            self.push_event_("terminal_response", &event_data, &[], &[]);
+                            return;
+                        }
+                    }
                 } else {
                     data.data.to_vec()
                 };

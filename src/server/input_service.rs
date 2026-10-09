@@ -652,7 +652,10 @@ impl LockModesHandler {
             let _lock = VIRTUAL_INPUT_MTX.lock();
             VIRTUAL_INPUT_STATE
                 .as_ref()
-                .map_or(false, |input| input.capslock_down)
+                .ok_or_else(|| {
+                    hbb_common::anyhow::anyhow!("macOS virtual input state is unavailable")
+                })?
+                .capslock_down
         };
         if event_caps_enabled && !local_caps_enabled {
             press_capslock()?;

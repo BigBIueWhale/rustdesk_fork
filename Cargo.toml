@@ -198,7 +198,7 @@ foreign-types = "0.3"
 plist = "1.6.1"
 
 [target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
-tray-icon = { git = "https://github.com/tauri-apps/tray-icon", version = "0.21.3" }
+tray-icon = { git = "https://github.com/tauri-apps/tray-icon", version = "0.21.3", default-features = false }
 tao = { git = "https://github.com/rustdesk-org/tao", branch = "dev" }
 image = "0.24"
 
@@ -253,8 +253,6 @@ android-wakelock = { git = "https://github.com/rustdesk-org/android-wakelock" }
 members = ["libs/scrap", "libs/hbb_common", "libs/enigo", "libs/clipboard", "libs/portable", "libs/portable_pty", "libs/pake", "libs/cpace_it", "libs/config_it", "libs/surface_it", "libs/compress_it", "libs/address_it", "libs/libxdo-sys-stub"]
 exclude = ["vdi/host"]
 
-# Patch libxdo-sys to use a stub implementation that doesn't require libxdo
-# This allows building and running on systems without libxdo installed (e.g., Wayland-only)
 [patch.crates-io]
 libxdo-sys = { path = "libs/libxdo-sys-stub" }
 

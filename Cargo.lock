@@ -3928,15 +3928,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libxdo"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00333b8756a3d28e78def82067a377de7fa61b24909000aeaa2b446a948d14db"
-dependencies = [
- "libxdo-sys",
-]
-
-[[package]]
 name = "libxdo-sys"
 version = "0.11.0"
 dependencies = [
@@ -4198,7 +4189,6 @@ dependencies = [
  "dpi",
  "gtk",
  "keyboard-types",
- "libxdo",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "objc2-core-foundation",

@@ -142,7 +142,7 @@ def constructor_contexts(root, environment):
                "-fno-omit-frame-pointer", str(fixture), str(native_source / "xdo.c"),
                "-lX11", "-lXtst",
                "-lxkbcommon", "-o", str(binary)]
-    for symbol in ("calloc", "free", "XOpenDisplay", "XCloseDisplay", "XkbGetMap",
+    for symbol in ("calloc", "free", "XOpenDisplay", "XCloseDisplay", "XTestQueryExtension", "XkbGetMap",
                    "XkbFreeKeyboard", "XGetKeyboardMapping", "XkbKeycodeToKeysym", "XGetModifierMapping"):
         command += [f"-Wl,--wrap={symbol}"]
     subprocess.run(command, env=environment, check=True, timeout=30)
@@ -153,12 +153,13 @@ def constructor_contexts(root, environment):
     native_environment = dict(environment, ASAN_OPTIONS="detect_leaks=0:abort_on_error=0:disable_coredump=1")
     result = subprocess.run([str(binary)], env=native_environment, capture_output=True,
                             text=True, timeout=10)
-    receipt = ("XDO_CONSTRUCTOR_NATIVE=pass cases=264 faults=21 paths=3 repeats=4 accepted=12 refused=252 "
-               "events=24 snapshot=single allocations=paired maps=paired display_transfer=success-only "
+    receipt = ("XDO_CONSTRUCTOR_NATIVE=pass cases=276 faults=22 paths=3 repeats=4 accepted=12 refused=264 "
+               "events=24 xtest_refusal=pre-allocation snapshot=single allocations=paired maps=paired display_transfer=success-only "
                "caller_display=usable descriptors=retired tasks=retired sanitizer=address "
                "heap_scope=owned-allocations whole_app=false")
-    expected = [f"XDO_CONSTRUCTOR_ROUND=pass round={round} cases=66" for round in range(4)] + [receipt]
-    errors = ("xdo_new: context allocation failed\n" * 3
+    expected = [f"XDO_CONSTRUCTOR_ROUND=pass round={round} cases=69" for round in range(4)] + [receipt]
+    errors = ("xdo_new: XTEST extension unavailable on 'unix/:98.0'\n" * 3
+              + "xdo_new: context allocation failed\n" * 3
               + "xdo_new: keyboard map unavailable or invalid\n" * 60) * 4
     require(result.returncode == 0 and result.stdout.splitlines() == expected and result.stderr == errors,
             f"native constructor result differs: {result}")

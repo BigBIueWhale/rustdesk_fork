@@ -87,7 +87,7 @@ typedef struct xdo {
   /** Be extra quiet? (omits some error/message output) */
   int quiet;
 
-  /** Enable debug output? */
+  /** @internal UNUSED -- debug ABI field */
   int debug;
 
   /** @internal UNUSED -- feature-mask ABI field */
@@ -104,7 +104,8 @@ typedef struct xdo {
  * @param display the string display name, such as ":0". If null, uses the
  * environment variable DISPLAY just like XOpenDisplay(NULL).
  *
- * @return Pointer to a new xdo_t or NULL on failure
+ * @return Pointer to a complete xdo_t or NULL when XTEST or the keymap is
+ * unavailable, or another construction step fails.
  */
 xdo_t* xdo_new(const char *display);
 
@@ -116,6 +117,7 @@ xdo_t* xdo_new(const char *display);
  * @param close_display_when_freed If true, we will close the display when
  * xdo_free is called. Otherwise, we leave it open. Ownership transfers only
  * on success; the caller retains the display when construction returns NULL.
+ * XTEST availability is required before context allocation or keymap queries.
  * @return Pointer to a complete xdo_t or NULL on failure.
  */
 xdo_t* xdo_new_with_opened_display(Display *xdpy, const char *display,

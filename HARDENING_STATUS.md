@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-a9f43c042386ba8917bede671f947114db34267d92ba035a43123c70adb7e2f0  requirements.html
+676102dd13499c461818be3c91de695f77460b5669dfbad71945951db51fcc3d  requirements.html
 ```
 
 ## Current Verdict
@@ -982,7 +982,20 @@ between-request release failure, native event/group-lock/asynchronous errors,
 map races, concurrency, whole heap/soak, full Cargo/app/install, other platforms
 and broader authority/artifact/release evidence remain OPEN.
 
-**Closed private native input ABI; focused native acceptance.**
+**XTEST constructor admission — implemented; native acceptance pending.**
+The native constructor requires XTEST before context allocation or XKB acquisition.
+A failed borrowed constructor preserves caller display ownership for either close flag;
+`xdo_new` closes its own opened display on refusal. The warning-and-continue branch
+and unused feature/variadic diagnostic helpers are absent. Provider/helper/loader
+require `3.20160805.1-rustdesk11`; the wrong-version fixture is corrected current
+C stamped 10. Context layout and the twelve-export input ABI remain.
+The authored focused native cases cover preallocation query failure under ASan,
+real Xvfb XTEST absence, three loader constructor refusals, borrowed display
+usability and eight complete production Enigo key/button refusals. They have
+not yet run for this candidate. Later XTEST facility withdrawal, per-request
+native status handling and partial input cleanup remain OPEN.
+
+**Closed private native input ABI — historical version-10 native acceptance.**
 The provider/header expose only the twelve context, version, numeric-key,
 pointer/button and cursor/input-state operations in
 `scripts/fixtures/xdo-input-exports.txt`. Twenty-five unused window/property/name,
@@ -2085,7 +2098,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `f99a59ae9607711a17ab5993e5575cda5fc969a35357392fd9896c430c91178b  requirements.html`.
+Current normative specification SHA-256: `676102dd13499c461818be3c91de695f77460b5669dfbad71945951db51fcc3d  requirements.html`.
 
 ### Current authority and source closure
 

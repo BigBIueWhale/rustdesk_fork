@@ -2,6 +2,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <X11/XKBlib.h>
 #include <X11/keysym.h>
+#include <X11/extensions/XTest.h>
 #include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
@@ -10,14 +11,14 @@
 #include "../libs/libxdo-sys-stub/native/xdo.h"
 
 enum fault {
-  HEALTHY, CONTEXT_ALLOCATION, CHARACTER_ALLOCATION, NO_DESCRIPTOR,
+  HEALTHY, NO_XTEST, CONTEXT_ALLOCATION, CHARACTER_ALLOCATION, NO_DESCRIPTOR,
   NO_CLIENT_MAP, NO_TYPES, NO_SYMBOL_MAP, NO_SYMBOLS, NO_MODIFIERS,
   LOW_KEYCODE, INVERTED_RANGE, TYPE_COUNT, SYMBOL_COUNT, GROUP_COUNT,
   SYMBOL_OFFSET, ZERO_WIDTH, TYPE_INDEX, ZERO_LEVELS, LEVEL_COUNT,
   NO_TYPE_MAP, TYPE_MAP_LEVEL, EMPTY_MAP, FAULT_COUNT
 };
 static enum fault fault;
-static int observing, allocation_calls, allocations, releases, queries, maps, map_frees, closes;
+static int observing, allocation_calls, allocations, releases, queries, maps, map_frees, closes, xtest_queries;
 static void *owned[2];
 static size_t character_count;
 static Display *product_display;
@@ -32,6 +33,7 @@ extern void *__real_calloc(size_t, size_t);
 extern void __real_free(void *);
 extern Display *__real_XOpenDisplay(const char *);
 extern int __real_XCloseDisplay(Display *);
+extern Bool __real_XTestQueryExtension(Display *, int *, int *, int *, int *);
 extern XkbDescPtr __real_XkbGetMap(Display *, unsigned, unsigned);
 extern void __real_XkbFreeKeyboard(XkbDescPtr, unsigned, Bool);
 extern KeySym *__real_XGetKeyboardMapping(Display *, KeyCode, int, int *);
@@ -142,6 +144,16 @@ XkbDescPtr __wrap_XkbGetMap(Display *display, unsigned which, unsigned device) {
   return owned_map;
 }
 
+Bool __wrap_XTestQueryExtension(Display *display, int *event, int *error, int *major, int *minor) {
+  if (observing) {
+    require(display == product_display && allocation_calls == 0 && queries == 0,
+            "XTEST admission followed allocation or keymap query");
+    require(++xtest_queries == 1, "XTEST admission queried again");
+    if (fault == NO_XTEST) return False;
+  }
+  return __real_XTestQueryExtension(display, event, error, major, minor);
+}
+
 void __wrap_XkbFreeKeyboard(XkbDescPtr descriptor, unsigned which, Bool all) {
   require(descriptor == owned_map && which == 0 && all == True, "snapshot retirement differs");
   *descriptor = original_descriptor;
@@ -227,7 +239,7 @@ int main(void) {
   for (int round = 0; round < 4; round++) {
     for (fault = HEALTHY; fault < FAULT_COUNT; fault++) {
       for (int path = 0; path < 3; path++) {
-        allocation_calls = allocations = releases = queries = maps = map_frees = closes = 0;
+        allocation_calls = allocations = releases = queries = maps = map_frees = closes = xtest_queries = 0;
         character_count = 0;
         require(!owned[0] && !owned[1] && !owned_map, "prior constructor allocation retained");
         product_display = path ? __real_XOpenDisplay("unix/:98.0") : NULL;
@@ -241,8 +253,11 @@ int main(void) {
         xdo_free(context);
         int native_closed = path == 0 || (path == 1 && fault == HEALTHY);
         require(closes == native_closed, "display ownership transfer or refusal differs");
-        require(queries == (fault != CONTEXT_ALLOCATION) && maps == map_frees
-                && maps == (fault != CONTEXT_ALLOCATION && fault != NO_DESCRIPTOR)
+        int snapshot_expected = fault != NO_XTEST && fault != CONTEXT_ALLOCATION;
+        require(xtest_queries == 1 && (fault != NO_XTEST || allocation_calls == 0),
+                "failed XTEST admission allocated context storage");
+        require(queries == snapshot_expected && maps == map_frees
+                && maps == (snapshot_expected && fault != NO_DESCRIPTOR)
                 && !owned_map && allocations == releases && !owned[0] && !owned[1],
                 "partial native allocations not retired exactly once");
         if (!native_closed) {
@@ -264,6 +279,6 @@ int main(void) {
   require(__real_XCloseDisplay(observer) == 0, "observer retirement failed");
   require(entries("/proc/self/fd") == initial && entries("/proc/self/task") == tasks,
           "final native resources retained");
-  puts("XDO_CONSTRUCTOR_NATIVE=pass cases=264 faults=21 paths=3 repeats=4 accepted=12 refused=252 events=24 snapshot=single allocations=paired maps=paired display_transfer=success-only caller_display=usable descriptors=retired tasks=retired sanitizer=address heap_scope=owned-allocations whole_app=false");
+  puts("XDO_CONSTRUCTOR_NATIVE=pass cases=276 faults=22 paths=3 repeats=4 accepted=12 refused=264 events=24 xtest_refusal=pre-allocation snapshot=single allocations=paired maps=paired display_transfer=success-only caller_display=usable descriptors=retired tasks=retired sanitizer=address heap_scope=owned-allocations whole_app=false");
   return 0;
 }

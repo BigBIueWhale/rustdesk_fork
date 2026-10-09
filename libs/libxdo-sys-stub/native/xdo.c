@@ -14,7 +14,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <stdarg.h>
 
 #include <X11/Xlib.h>
 #include <X11/XKBlib.h>
@@ -29,7 +28,6 @@
 #define DEFAULT_DELAY 12
 
 static int _xdo_populate_charcode_map(xdo_t *xdo);
-static int _xdo_has_xtest(const xdo_t *xdo);
 
 static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key, KeySym keysym);
 static int _xdo_get_focused_window(const xdo_t *xdo, Window *window_ret);
@@ -41,8 +39,6 @@ static int _xdo_get_key_modifiers(const xdo_t *xdo, int modmask, KeyCode *modifi
 static int _xdo_mousebutton(const xdo_t *xdo, Window window, int button, int is_press);
 
 static int _is_success(const char *funcname, int code, const xdo_t *xdo);
-static void _xdo_debug(const xdo_t *xdo, const char *format, ...);
-static void _xdo_eprintf(const xdo_t *xdo, int hushable, const char *format, ...);
 
 /* context-free functions */
 static wchar_t _keysym_to_char(KeySym keysym);
@@ -51,7 +47,6 @@ xdo_t* xdo_new(const char *display_name) {
   Display *xdpy;
 
   if ((xdpy = XOpenDisplay(display_name)) == NULL) {
-    /* Can't use _xdo_eprintf yet ... */
     fprintf(stderr, "Error: Can't open display: %.128s\n",
             display_name != NULL ? display_name : "(default)");
     return NULL;
@@ -72,8 +67,14 @@ xdo_t* xdo_new_with_opened_display(Display *xdpy, const char *display,
   xdo_t *xdo = NULL;
 
   if (xdpy == NULL) {
-    /* Can't use _xdo_eprintf yet ... */
     fprintf(stderr, "xdo_new: xdisplay I was given is a null pointer\n");
+    return NULL;
+  }
+
+  int event_base, error_base, major, minor;
+  if (XTestQueryExtension(xdpy, &event_base, &error_base, &major, &minor) != True) {
+    fprintf(stderr, "xdo_new: XTEST extension unavailable on '%.128s'\n",
+            display != NULL ? display : "(default)");
     return NULL;
   }
 
@@ -85,20 +86,8 @@ xdo_t* xdo_new_with_opened_display(Display *xdpy, const char *display,
 
   xdo->xdpy = xdpy;
 
-  if (display == NULL) {
-    display = "unknown";
-  }
-
   if (getenv("XDO_QUIET")) {
     xdo->quiet = True;
-  }
-
-  if (_xdo_has_xtest(xdo)) {
-    _xdo_debug(xdo, "XTEST enabled.");
-  } else {
-    _xdo_eprintf(xdo, False, "Warning: XTEST extension unavailable on '%.128s'. Some"
-                " functionality may be disabled; See 'man xdotool' for more"
-                " info.", display);
   }
 
   if (_xdo_populate_charcode_map(xdo) != XDO_SUCCESS) {
@@ -385,11 +374,6 @@ static void _xdo_charcodemap_from_keysym(const xdo_t *xdo, charcodemap_t *key, K
   }
 }
 
-static int _xdo_has_xtest(const xdo_t *xdo) {
-  int dummy;
-  return (XTestQueryExtension(xdo->xdpy, &dummy, &dummy, &dummy, &dummy) == True);
-}
-
 static int _xdo_populate_charcode_map(xdo_t *xdo) {
   int keycodes_length = 0;
   int idx = 0;
@@ -584,26 +568,3 @@ unsigned int xdo_get_input_state(const xdo_t *xdo) {
 
   return mask;
 }
-
-void _xdo_debug(const xdo_t *xdo, const char *format, ...) {
-  va_list args;
-
-  va_start(args, format);
-  if (xdo->debug) {
-    vfprintf(stderr, format, args);
-    fprintf(stderr, "\n");
-  }
-} /* _xdo_debug */
-
-/* Used for printing things conditionally based on xdo->quiet */
-void _xdo_eprintf(const xdo_t *xdo, int hushable, const char *format, ...) {
-  va_list args;
-
-  va_start(args, format);
-  if (xdo->quiet == True && hushable) {
-    return;
-  }
-
-  vfprintf(stderr, format, args);
-  fprintf(stderr, "\n");
-} /* _xdo_eprintf */

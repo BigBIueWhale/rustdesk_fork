@@ -26,9 +26,10 @@ unused active-modifier collection/clear/restore APIs and mouse-event collection
 are removed. Mouse events retain the native input-state mask. Scratch-key lookup
 queries the inclusive range only for unmapped symbols, requires a wholly unused
 row, retains and restores its full mapping, and retires the query on every path.
-Context construction checks allocations and a single XKB snapshot before
-publishing the character map. Caller-supplied display ownership transfers only
-on success; the display opened by xdo_new is retired after construction failure.
+Context construction requires XTEST before allocations or a single XKB snapshot
+and checks that snapshot before publishing the character map. Caller-supplied
+display ownership transfers only on success; the display opened by xdo_new
+is retired after construction failure.
 Core-width sizing, repeated live symbol lookup and the private modifier traversal
 are removed in favor of the snapshot's types, symbols and real-modifier map.
 Keyboard input accepts one numeric keysym or raw keycode and one explicit action.
@@ -51,6 +52,6 @@ feature APIs and the entire regex window-search module are removed. Cursor
 coordinates use only the native pointer query; focus is private to key routing.
 The provider has twelve context, version, input and cursor/state exports and
 no Xinerama dependency.
-The fixed fork version is 3.20160805.1-rustdesk10.
+The fixed fork version is 3.20160805.1-rustdesk11.
 The BSD redistribution notice is retained in COPYRIGHT and packaged with the
 library. Source provenance is not a claim that all native behavior is validated.

@@ -956,7 +956,7 @@ run_android_frame_tests() {
     local loader_installed=$ROOT/xdo-loader-installed loader_variant loader_source loader_digest
     local stage_profile_output stage_profile_expected
     if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ]; then
-        phases=(prepare loader-build loader-complete loader-missing-mouse-up loader-missing-key-input loader-wrong-version loader-writable loader-absent loader-reject-key-down loader-runtime-stage native)
+        phases=(prepare loader-build loader-complete loader-no-xtest loader-missing-mouse-up loader-missing-key-input loader-wrong-version loader-writable loader-absent loader-reject-key-down loader-runtime-stage native)
     fi
     load_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -996,11 +996,13 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
         elif [ "$phase" = loader-complete ]; then
             # Preparation inside this disposable guest only. Never execute the provider as root.
             install -d -o 0 -g 0 -m 0755 "$loader_installed"
-            for loader_variant in complete missing-mouse-up missing-key-input wrong-version writable absent reject-key-down; do
+            for loader_variant in complete no-xtest missing-mouse-up missing-key-input wrong-version writable absent reject-key-down; do
                 install -d -o 0 -g 0 -m 0755 "$loader_installed/$loader_variant"
                 [ "$loader_variant" != absent ] || continue
                 loader_source="$work/loader-build/$loader_variant/libxdo.so.3"
-                [ "$loader_variant" != writable ] || loader_source="$work/loader-build/complete/libxdo.so.3"
+                if [ "$loader_variant" = writable ] || [ "$loader_variant" = no-xtest ]; then
+                    loader_source="$work/loader-build/complete/libxdo.so.3"
+                fi
                 [ -f "$loader_source" ] && [ ! -L "$loader_source" ] \
                     && [ "$(stat -c '%u:%g:%a:%h' -- "$loader_source")" = 4000:4000:644:1 ] \
                     && [ "$(stat -c '%s' -- "$loader_source")" -le 1048576 ] \

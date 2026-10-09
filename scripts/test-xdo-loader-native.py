@@ -9,6 +9,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import shlex
 import shutil
@@ -160,8 +161,8 @@ def build():
             elif variant == 'wrong-version':
                 path = source_dir / 'xdo_version.h'
                 text = path.read_text()
-                require(text.count('3.20160805.1-rustdesk10') == 1, 'fixture version source differs')
-                path.write_text(text.replace('3.20160805.1-rustdesk10', '3.20160805.1-rustdesk9'))
+                require(text.count('3.20160805.1-rustdesk11') == 1, 'fixture version source differs')
+                path.write_text(text.replace('3.20160805.1-rustdesk11', '3.20160805.1-rustdesk10'))
             else:
                 path = source_dir / 'xdo.c'
                 path.write_text('#define XGetModifierMapping rd_fixture_x_get_modifier_mapping\n' + path.read_text()
@@ -247,12 +248,24 @@ def runtime_stage():
           'native_input=delivered full_stage_cli=unexecuted cleanup=joined', flush=True)
 
 
+def xtest_refusal_diagnostics(stderr, display, count):
+    expected = f"xdo_new: XTEST extension unavailable on '{display}'"
+    lines = stderr.splitlines()
+    return (lines.count(expected) == count and len(lines) <= count * 2
+            and all(line == expected or re.fullmatch(
+                r'Xlib: +extension "XTEST" missing on display "' + re.escape(display) + r'"\.', line)
+                    for line in lines))
+
+
 def run(scenario):
-    require(scenario in ('complete', 'missing-mouse-up', 'missing-key-input', 'wrong-version', 'writable', 'absent', 'reject-key-down'),
+    require(scenario in ('complete', 'no-xtest', 'missing-mouse-up', 'missing-key-input', 'wrong-version', 'writable', 'absent', 'reject-key-down'),
             'unknown loader scenario')
     with open('/tmp/xdo-loader-xvfb.log', 'xb') as log:
-        child = subprocess.Popen(['/xvfb-root/usr/bin/Xvfb', ':98', '-screen', '0', '640x480x24',
-                                  '-nolisten', 'tcp', '-ac', '-noreset'], env=ENV,
+        arguments = ['/xvfb-root/usr/bin/Xvfb', ':98', '-screen', '0', '640x480x24',
+                     '-nolisten', 'tcp', '-ac', '-noreset']
+        if scenario == 'no-xtest':
+            arguments += ['-extension', 'XTEST']
+        child = subprocess.Popen(arguments, env=ENV,
                                  stdout=log, stderr=subprocess.STDOUT)
         try:
             deadline = time.monotonic() + 10
@@ -266,7 +279,12 @@ def run(scenario):
                             'XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative '
                             'button=pressed,released shift=pressed,released key=a,a focus=private '
                             'retired_lookups=59 retired_symbols=absent descriptors=retired')
-                require(result.stdout.splitlines() == [expected] and not result.stderr,
+                if scenario == 'no-xtest':
+                    expected = expected.replace(' descriptors=',
+                        ' extension=absent paths=3 borrowed_display=usable descriptors=')
+                diagnostics = (xtest_refusal_diagnostics(result.stderr, ':98', 3)
+                               if scenario == 'no-xtest' else not result.stderr)
+                require(result.stdout.splitlines() == [expected] and diagnostics,
                         'loader native component result differs')
                 print(expected, flush=True)
             result = command([str(BUILD / 'test-xdo-enigo'), scenario], 10)
@@ -276,7 +294,9 @@ def run(scenario):
                         f'XDO_ENIGO_COMPONENT=pass scenario={scenario} attempts=8 '
                         f'key_down={"delivered" if scenario == "complete" else "native-modifier-error"} '
                         'pointer=actual descriptors=retired')
-            require(result.stdout.splitlines() == [expected] and not result.stderr,
+            diagnostics = (xtest_refusal_diagnostics(result.stderr, 'unix/:98.0', 8)
+                           if scenario == 'no-xtest' else not result.stderr)
+            require(result.stdout.splitlines() == [expected] and diagnostics,
                     'complete Enigo/private-loader result differs')
             print(expected, flush=True)
         finally:

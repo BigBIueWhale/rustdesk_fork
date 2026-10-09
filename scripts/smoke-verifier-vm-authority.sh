@@ -4302,7 +4302,7 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'XDO_SCRATCH_DISPLAY=retired owner=dedicated-xvfb server=joined socket=absent lock=absent later_tests=fresh-display' \
         'owned scratch display retirement before a fresh native server'
     require_exact_fixed_receipt \
-        'XDO_CONSTRUCTOR_NATIVE=pass cases=264 faults=21 paths=3 repeats=4 accepted=12 refused=252 events=24 snapshot=single allocations=paired maps=paired display_transfer=success-only caller_display=usable descriptors=retired tasks=retired sanitizer=address heap_scope=owned-allocations whole_app=false' \
+        'XDO_CONSTRUCTOR_NATIVE=pass cases=276 faults=22 paths=3 repeats=4 accepted=12 refused=264 events=24 xtest_refusal=pre-allocation snapshot=single allocations=paired maps=paired display_transfer=success-only caller_display=usable descriptors=retired tasks=retired sanitizer=address heap_scope=owned-allocations whole_app=false' \
         'constructor ownership through the current public keyboard API'
     require_exact_fixed_receipt \
         'XDO_INPUT_API_NATIVE=pass providers=1 exports=12 scope=closed-private-abi' \
@@ -4327,11 +4327,14 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
         'XDO_LOADER_BUILD_PHASE=pass source=readonly compile_uid=4000 providers=5' \
         'complete production loader and Enigo compiled with authenticated dependencies'
-    for key_scenario in missing-key-input missing-mouse-up wrong-version writable absent reject-key-down; do
+    for key_scenario in no-xtest missing-key-input missing-mouse-up wrong-version writable absent reject-key-down; do
         require_exact_fixed_receipt \
             "XDO_LOADER_NATIVE=pass scenario=$key_scenario source=production network=none uid=4000 cleanup=joined" \
             'current production loader and Enigo refusal boundary'
     done
+    require_exact_fixed_receipt \
+        'XDO_LOADER_COMPONENT=pass scenario=no-xtest constructors=refused extension=absent paths=3 borrowed_display=usable descriptors=retired' \
+        'real XTEST absence refuses all constructors and preserves caller display ownership'
     require_exact_fixed_receipt \
         'XDO_KEY_INPUT_SHARD=pass source=production-components provider=current-only parser=absent real_events=observed maps=restored network=none uid=4000 cleanup=joined whole_app=false' \
         'focused current-provider key-input finality'
@@ -4368,7 +4371,7 @@ elif [ "$MODE" = x11-display-tests ]; then
         'X11_XDO_PACKAGE_ELF=pass variants=2 required=true runpath=absent full_package=unexecuted' \
         'actual built private XDO libraries satisfy the package ELF policy without an ambient runtime search path'
     require_exact_fixed_receipt \
-        'XDO_CONSTRUCTOR_NATIVE=pass cases=264 faults=21 paths=3 repeats=4 accepted=12 refused=252 events=24 snapshot=single allocations=paired maps=paired display_transfer=success-only caller_display=usable descriptors=retired tasks=retired sanitizer=address heap_scope=owned-allocations whole_app=false' \
+        'XDO_CONSTRUCTOR_NATIVE=pass cases=276 faults=22 paths=3 repeats=4 accepted=12 refused=264 events=24 xtest_refusal=pre-allocation snapshot=single allocations=paired maps=paired display_transfer=success-only caller_display=usable descriptors=retired tasks=retired sanitizer=address heap_scope=owned-allocations whole_app=false' \
         'private native XDO constructors validate one map, retire partial allocations, transfer display ownership only on success and deliver real key events'
     require_exact_fixed_receipt \
         'XDO_SCRATCH_NATIVE=pass cases=20 repeats=4 highest=delivered mapped_query=absent missing_map=refused invalid_width=refused full_map=refused events=16 maps=unchanged queries=32 frees=24 descriptors=retired tasks=retired sanitizer=address leak_scope=unclaimed whole_app=false' \

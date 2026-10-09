@@ -26,13 +26,28 @@ fn main() {
     let context = Context(unsafe { xdo_new_with_opened_display(display.0, name.as_ptr(), 0) });
     let owned = Context(unsafe { xdo_new(name.as_ptr()) });
     if scenario != "complete" {
+        if scenario == "no-xtest" {
+            unsafe {
+                let extension = CString::new("XTEST").unwrap();
+                let (mut opcode, mut event, mut error) = (0, 0, 0);
+                assert_eq!(XQueryExtension(display.0, extension.as_ptr(), &mut opcode, &mut event, &mut error), 0,
+                           "the real X server still exposes XTEST");
+                let transferring = Context(xdo_new_with_opened_display(display.0, name.as_ptr(), 1));
+                assert!(transferring.0.is_null());
+                drop(transferring);
+                let (mut focus, mut revert) = (0, 0);
+                assert_ne!(XGetInputFocus(display.0, &mut focus, &mut revert), 0,
+                           "refusal lost the caller-owned display");
+            }
+        }
         let admitted = !context.0.is_null() || !owned.0.is_null();
         drop(owned);
         drop(context);
         drop(display);
         assert_eq!(descriptors(), baseline);
         assert!(!admitted, "incomplete or unavailable provider admitted a native context");
-        println!("XDO_LOADER_COMPONENT=pass scenario={scenario} constructors=refused descriptors=retired");
+        let capability = if scenario == "no-xtest" { " extension=absent paths=3 borrowed_display=usable" } else { "" };
+        println!("XDO_LOADER_COMPONENT=pass scenario={scenario} constructors=refused{capability} descriptors=retired");
         return;
     }
     assert!(!context.0.is_null() && !owned.0.is_null());

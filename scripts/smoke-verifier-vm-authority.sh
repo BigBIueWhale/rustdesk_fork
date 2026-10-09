@@ -1149,6 +1149,7 @@ android_frame_input_inventory() {
             "$SCRIPT_DIR/test-x11-thread-context.rs"
             "$SCRIPT_DIR/fixtures/x11-thread-context-before-retry.rs"
             "$SCRIPT_DIR/test-x11-enigo-route.rs"
+            "$SCRIPT_DIR/test-x11-enigo-cleanup.c"
             "$SCRIPT_DIR/test-x11-text-observer.c"
             "$SCRIPT_DIR/test-xdo-keymap-lifetime.c"
             "$SCRIPT_DIR/test-xdo-mouse-modifiers.c"
@@ -3502,6 +3503,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
             "repo/scripts/test-x11-thread-context.rs=$SCRIPT_DIR/test-x11-thread-context.rs"
             "repo/scripts/fixtures/x11-thread-context-before-retry.rs=$SCRIPT_DIR/fixtures/x11-thread-context-before-retry.rs"
             "repo/scripts/test-x11-enigo-route.rs=$SCRIPT_DIR/test-x11-enigo-route.rs"
+            "repo/scripts/test-x11-enigo-cleanup.c=$SCRIPT_DIR/test-x11-enigo-cleanup.c"
             "repo/scripts/test-x11-text-observer.c=$SCRIPT_DIR/test-x11-text-observer.c"
             "repo/scripts/test-xdo-keymap-lifetime.c=$SCRIPT_DIR/test-xdo-keymap-lifetime.c"
             "repo/scripts/test-xdo-mouse-modifiers.c=$SCRIPT_DIR/test-xdo-mouse-modifiers.c"
@@ -4288,6 +4290,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'clipboard listener completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
+        'X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider fault=restore-submission repeats=4 cases=8 unwind=4 later_requests=64 native_calls=8 contexts=16 events=16 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false' \
+        'pending native scratch context stays owned and retires before its borrowed Display during drop and unwind'
+    require_exact_fixed_receipt \
         'XDO_TEXT_KEYMAP_NATIVE=pass faults=7 repeats=4 scalars=3 refused=84 recovery=84 events=168 snapshot=single refusal_effects=none replies=retired errors=retired mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
         'checked per-scalar keymap admission refuses before text effects and retires returned replies'
     require_exact_fixed_receipt \
@@ -4367,6 +4372,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'key-input guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'key-input guest completion'
 elif [ "$MODE" = x11-display-tests ]; then
+    require_exact_fixed_receipt \
+        'X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider fault=restore-submission repeats=4 cases=8 unwind=4 later_requests=64 native_calls=8 contexts=16 events=16 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false' \
+        'pending native scratch context stays owned and retires before its borrowed Display during drop and unwind'
     require_exact_fixed_receipt \
         'XDO_TEXT_KEYMAP_NATIVE=pass faults=7 repeats=4 scalars=3 refused=84 recovery=84 events=168 snapshot=single refusal_effects=none replies=retired errors=retired mapping=restored keys=clear descriptors=retired tasks=retired sanitizer=address whole_app=false' \
         'checked per-scalar keymap admission refuses before text effects and retires returned replies'

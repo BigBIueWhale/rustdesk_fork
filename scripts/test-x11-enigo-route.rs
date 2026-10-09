@@ -46,9 +46,17 @@ extern "C" {
     fn __real_xdo_new_with_opened_display(display: *mut Display, name: *const c_char, close: c_int) -> *mut xdo_t;
     fn __real_xdo_free(context: *mut xdo_t);
 }
+extern "C" {
+    fn enigo_cleanup_begin();
+    fn enigo_cleanup_register(context: *mut xdo_t);
+    fn enigo_cleanup_pending();
+    fn enigo_cleanup_allow_retirement();
+    fn enigo_cleanup_before_free(context: *mut xdo_t);
+    fn enigo_cleanup_after_free(context: *mut xdo_t);
+    fn enigo_cleanup_finish();
+}
 pub unsafe fn xdo_enter_text_scalar(context: *mut xdo_t, scalar: char, delay: useconds_t) -> c_int {
     TEXT_NATIVE_CALLS.fetch_add(1, Ordering::SeqCst);
-    if REFUSE_TEXT_CLEANUP.swap(false, Ordering::SeqCst) { return XDO_CLEANUP_ERROR; }
     native_enter_text_scalar(context, scalar as c_uint, delay)
 }
 #[link(name = "X11")]
@@ -74,7 +82,7 @@ static SHIFT_AFTER_OPEN: AtomicBool = AtomicBool::new(false);
 static REFUSE_NEXT_CONSTRUCT: AtomicBool = AtomicBool::new(false);
 static PANIC_AFTER_CONSTRUCT: AtomicBool = AtomicBool::new(false);
 static PANIC_NEXT_LOG: AtomicBool = AtomicBool::new(false);
-static REFUSE_TEXT_CLEANUP: AtomicBool = AtomicBool::new(false);
+static NATIVE_CLEANUP_TEST: AtomicBool = AtomicBool::new(false);
 static TEXT_NATIVE_CALLS: AtomicUsize = AtomicUsize::new(0);
 
 struct NativeLogger;
@@ -107,13 +115,16 @@ unsafe extern "C" fn __wrap_xdo_new_with_opened_display(display: *mut Display, n
     if REFUSE_NEXT_CONSTRUCT.swap(false, Ordering::SeqCst) { return std::ptr::null_mut(); }
     let context = __real_xdo_new_with_opened_display(display, name, close);
     assert!(!context.is_null());
+    if close == 0 && NATIVE_CLEANUP_TEST.load(Ordering::SeqCst) { enigo_cleanup_register(context); }
     if SHIFT_AFTER_OPEN.swap(false, Ordering::SeqCst) { std::env::set_var("DISPLAY", ":95"); }
     if PANIC_AFTER_CONSTRUCT.swap(false, Ordering::SeqCst) { PANIC_NEXT_LOG.store(true, Ordering::SeqCst); }
     context
 }
 #[no_mangle]
 unsafe extern "C" fn __wrap_xdo_free(context: *mut xdo_t) {
+    enigo_cleanup_before_free(context);
     __real_xdo_free(context);
+    enigo_cleanup_after_free(context);
     RETIREMENTS.fetch_add(1, Ordering::SeqCst);
 }
 #[no_mangle]
@@ -147,17 +158,44 @@ fn main() {
     if let Some(scenario) = std::env::args().nth(1) {
         if scenario == "cleanup-refusal" {
             std::env::set_var("DISPLAY", ":98");
-            let mut injector = backend::EnigoXdo::default();
-            REFUSE_TEXT_CLEANUP.store(true, Ordering::SeqCst);
-            assert!(injector.key_sequence_result("a").is_err());
-            assert!(!REFUSE_TEXT_CLEANUP.load(Ordering::SeqCst));
-            for _ in 0..8 { assert!(injector.key_sequence_result("a").is_err()); }
-            assert_eq!(TEXT_NATIVE_CALLS.load(Ordering::SeqCst), 1);
-            assert_eq!(TEXT_BORROWS.load(Ordering::SeqCst), 1);
-            drop(injector);
-            retired(baseline);
-            assert_eq!(RETIREMENTS.load(Ordering::SeqCst), 2);
-            println!("X11_ENIGO_CLEANUP_REFUSAL=pass status=injected later_requests=8 native_calls=1 contexts=2 descriptors=retired tasks=retired scope=backend-status-contract whole_app=false");
+            NATIVE_CLEANUP_TEST.store(true, Ordering::SeqCst);
+            for iteration in 0..8 {
+                let mut injector = backend::EnigoXdo::default();
+                unsafe { enigo_cleanup_begin(); }
+                // The real Unicode pair is delivered, then restoration submission refuses.
+                let error = injector.key_sequence_result("🙂a").unwrap_err();
+                assert_eq!(error.to_string(), "libxdo text entry failed with status 2");
+                assert_eq!(RETIREMENTS.load(Ordering::SeqCst), iteration * 2);
+                assert_eq!(descriptors(), baseline + 2);
+                unsafe { enigo_cleanup_pending(); }
+                for text in ["a", "A", "🙂", "", "a", "A", "🙂", ""] {
+                    assert_eq!(injector.key_sequence_result(text).unwrap_err().to_string(),
+                               "libxdo text mapping restoration is unconfirmed");
+                }
+                assert_eq!(TEXT_NATIVE_CALLS.load(Ordering::SeqCst), iteration + 1);
+                assert_eq!(TEXT_BORROWS.load(Ordering::SeqCst), iteration + 1);
+                assert_eq!(RETIREMENTS.load(Ordering::SeqCst), iteration * 2);
+                assert_eq!(descriptors(), baseline + 2);
+                assert_eq!(tasks(), 1);
+                unsafe { enigo_cleanup_allow_retirement(); }
+                if iteration % 2 == 0 {
+                    drop(injector);
+                } else {
+                    let hook = std::panic::take_hook();
+                    std::panic::set_hook(Box::new(|_| {}));
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                        let _owner = injector;
+                        panic!("controlled owner unwind with pending native cleanup");
+                    }));
+                    std::panic::set_hook(hook);
+                    assert!(result.is_err());
+                }
+                assert_eq!(RETIREMENTS.load(Ordering::SeqCst), (iteration + 1) * 2);
+                unsafe { enigo_cleanup_finish(); }
+                NAMES.lock().unwrap().clear();
+                retired(baseline);
+            }
+            println!("X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider fault=restore-submission repeats=4 cases=8 unwind=4 later_requests=64 native_calls=8 contexts=16 events=16 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false");
             return;
         }
         if matches!(scenario.as_str(), "layout" | "layout-repeat") {

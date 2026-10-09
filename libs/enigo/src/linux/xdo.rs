@@ -100,7 +100,7 @@ pub(super) struct EnigoXdo {
     display: *mut Display,
     display_name: Option<CString>,
     delay: u64,
-    text_cleanup_failed: bool,
+    pending_text_cleanup: Option<TextContext>,
 }
 // This is safe, we have a unique pointer.
 // TODO: use Unique<c_char> once stable.
@@ -116,7 +116,7 @@ impl Default for EnigoXdo {
             display: std::ptr::null_mut(),
             display_name: None,
             delay: DEFAULT_DELAY,
-            text_cleanup_failed: false,
+            pending_text_cleanup: None,
         };
         let display_name = match unix_display_name() {
             Ok(display_name) => display_name,
@@ -177,6 +177,8 @@ impl EnigoXdo {
 
 impl Drop for EnigoXdo {
     fn drop(&mut self) {
+        // The text context borrows the main context's Display for restoration.
+        drop(self.pending_text_cleanup.take());
         if !self.xdo.is_null() {
             unsafe {
                 libxdo_sys::xdo_free(self.xdo);
@@ -190,7 +192,7 @@ impl EnigoXdo {
         if self.xdo.is_null() {
             return Err("libxdo is unavailable".into());
         }
-        if self.text_cleanup_failed {
+        if self.pending_text_cleanup.is_some() {
             return Err("libxdo text mapping restoration is unconfirmed".into());
         }
         // Validate the complete text before emitting any prefix.
@@ -223,7 +225,8 @@ impl EnigoXdo {
                 )
             };
             if status == libxdo_sys::XDO_CLEANUP_ERROR {
-                self.text_cleanup_failed = true;
+                self.pending_text_cleanup = Some(context);
+                return xdo_result("text entry", status);
             }
             xdo_result("text entry", status)?;
         }

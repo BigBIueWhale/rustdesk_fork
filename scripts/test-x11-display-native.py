@@ -318,11 +318,18 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
     Path("/build/xdo-input-state.rs").write_text(loader[start:loader.index("\n}", start)+2])
     binary = Path("/build/enigo-corrected")
     mapping = rdev_keyboard_mapping(root, environment, Path("/build"))
+    cleanup_source = root / "scripts/test-x11-enigo-cleanup.c"
+    cleanup_helper = Path("/build/enigo-cleanup.o")
+    subprocess.run(["/usr/bin/cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-c",
+                    str(cleanup_source), "-o", str(cleanup_helper)],
+                   env=environment, check=True, timeout=15)
     command = ["/usr/local/cargo/bin/rustc", "--edition=2021",
                str(root / "scripts/test-x11-enigo-route.rs"), "-o", str(binary),
                "--extern", f"log={library}", "--extern", f"rdev={mapping}",
                "-L", f"native={providers['corrected']}",
-               "-C", f"link-arg=-Wl,-rpath,{providers['corrected']}"]
+               "-C", f"link-arg=-Wl,-rpath,{providers['corrected']}",
+               "-C", f"link-arg={cleanup_helper}", "-C", "link-arg=-ldl",
+               "-C", "link-arg=-Wl,--export-dynamic-symbol=XkbChangeMap"]
     for symbol in ("xdo_new_with_opened_display", "xdo_free", "XOpenDisplay", "XCloseDisplay"):
         command += ["-C", f"link-arg=-Wl,--wrap={symbol}"]
     subprocess.run(command, env=environment, check=True, timeout=30)
@@ -332,8 +339,11 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
             ("api_source", root / "libs/enigo/src/lib.rs"), ("api_declarations", api),
             ("selector", root / "libs/hbb_common/src/platform/x11_display.rs"),
             ("fixture", root / "scripts/test-x11-enigo-route.rs"),
+            ("cleanup_fixture", cleanup_source), ("cleanup_helper", cleanup_helper),
+            ("provider", providers["corrected"] / "libxdo.so.3"),
             ("log_manifest", checksum), ("log_library", library), ("binary", binary)))
           + " variant=corrected parent_enigo=unexecuted loader=direct-native-test whole_app=unexecuted", flush=True)
+    cleanup_helper.unlink()
     result = subprocess.run([str(binary)], env=environment, capture_output=True,
                             text=True, timeout=15)
     receipt = ("X11_ENIGO_NATIVE=pass source=complete-backend api=production-declarations "
@@ -345,8 +355,10 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
     print(receipt, flush=True)
     cleanup = subprocess.run([str(binary), "cleanup-refusal"], env=environment,
                              capture_output=True, text=True, timeout=5)
-    cleanup_receipt = ("X11_ENIGO_CLEANUP_REFUSAL=pass status=injected later_requests=8 native_calls=1 "
-                       "contexts=2 descriptors=retired tasks=retired scope=backend-status-contract whole_app=false")
+    cleanup_receipt = ("X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider "
+                       "fault=restore-submission repeats=4 cases=8 unwind=4 later_requests=64 "
+                       "native_calls=8 contexts=16 events=16 pending=retained teardown=text-before-display "
+                       "mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false")
     require(cleanup.returncode == 0 and not cleanup.stderr and cleanup.stdout.splitlines() == [cleanup_receipt],
             f"Enigo cleanup refusal differs: {cleanup}")
     print(cleanup_receipt, flush=True)

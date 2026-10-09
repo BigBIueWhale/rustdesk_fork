@@ -65,9 +65,9 @@ case "$#:${8:-}" in
         MODE=android-rust-lifecycle-tests
         ;;
     13:--android-rust-lifecycle-tests)
-        [ "${13}" = --clipboard ] || exit 2
+        [[ "${13}" = --clipboard || "${13}" = --whiteboard-presentation ]] || exit 2
         MODE=android-rust-lifecycle-tests
-        RUST_TEST_PROFILE=clipboard
+        RUST_TEST_PROFILE=${13#--}
         ;;
     12:--android-rust-target-check)
         MODE=android-rust-target-check
@@ -150,6 +150,7 @@ case "$#:${8:-}" in
         echo 'The focused Flutter queue shard appends --frame-queue to --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused Flutter address shard appends --direct-address to that same source-bound invocation.' >&2
         echo 'The focused Rust clipboard shard appends --clipboard to --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
+        echo 'The focused whiteboard state shard appends --whiteboard-presentation to that same source-bound invocation.' >&2
         echo 'The focused macOS cursor compiler appends --cursor-compile to --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         exit 2
         ;;
@@ -2477,6 +2478,7 @@ run_focused_rust_tests() {
             src/server/service.rs
             src/ui_cm_interface.rs
             src/ui_session_interface.rs
+            src/whiteboard/server.rs
         )
         required_tests=(
             clipboard::native_clipboard_limit_tests::accepts_bounded_text_payload
@@ -2589,6 +2591,11 @@ run_focused_rust_tests() {
             [ "${#clipboard_tests[@]}" -eq 13 ] \
                 || fail 'focused clipboard test inventory differs'
             required_tests=("${clipboard_tests[@]}")
+        elif [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
+            required_tests=(
+                whiteboard::server::tests::r_s11hp_whiteboard_presentation_clear_is_exact_owner_final
+                whiteboard::server::tests::r_s11hp_whiteboard_presentation_owners_and_ripples_are_bounded
+            )
         fi
     fi
 
@@ -2927,8 +2934,13 @@ run_focused_rust_tests() {
                         clipboard_build_started=$SECONDS
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             --no-run --color never
-                        printf "CLIPBOARD_DECODE_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
-                            "$((SECONDS - clipboard_build_started))"
+                        if [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
+                            printf "WHITEBOARD_PRESENTATION_STATE_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
+                                "$((SECONDS - clipboard_build_started))"
+                        else
+                            printf "CLIPBOARD_DECODE_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
+                                "$((SECONDS - clipboard_build_started))"
+                        fi
                         clipboard_executable=
                         for candidate in /cargo-target/debug/deps/librustdesk-*; do
                             [[ "$candidate" =~ ^/cargo-target/debug/deps/librustdesk-[0-9a-f]{16}$ ]] || continue
@@ -2941,6 +2953,16 @@ run_focused_rust_tests() {
                         [ -n "$clipboard_executable" ] || exit 95
                         clipboard_artifact_sha="$(sha256sum "$clipboard_executable" | cut -d " " -f 1)"
                         [[ "$clipboard_artifact_sha" =~ ^[0-9a-f]{64}$ ]]
+                        if [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
+                            printf "WHITEBOARD_PRESENTATION_STATE_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
+                                "$clipboard_artifact_sha" "$clipboard_executable"
+                            "$clipboard_executable" whiteboard::server::tests::r_s11hp_ \
+                                --color never --test-threads=1
+                            [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
+                            printf "WHITEBOARD_PRESENTATION_STATE_ARTIFACT=pass sha256=%s executable=%s tests=2 unchanged=before-after\n" \
+                                "$clipboard_artifact_sha" "$clipboard_executable"
+                            exit 0
+                        fi
                         printf "CLIPBOARD_DECODE_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
                             "$clipboard_artifact_sha" "$clipboard_executable"
                         "$clipboard_executable" clipboard::native_clipboard_limit_tests:: \
@@ -3033,6 +3055,8 @@ run_focused_rust_tests() {
         || fail "focused Rust-test container namespace/device/port authority differs: $namespace_inspect"
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
         printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=13 bridge=absent\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
+        printf 'WHITEBOARD_PRESENTATION_STATE_PROFILE=whiteboard-presentation stage=container-start tests=2 bridge=absent\n'
     fi
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
@@ -3100,14 +3124,20 @@ run_focused_rust_tests() {
             || fail 'compiled UID-policy test artifact digest is malformed'
     else
         expected_groups=16
-        if [ "$RUST_TEST_PROFILE" = clipboard ]; then
+        if [ "$RUST_TEST_PROFILE" != integration ]; then
             expected_groups=1
         fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
-        [ "$(grep -Ec '^CLIPBOARD_DECODE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=13 unchanged=before-after$' "$output")" -eq 1 ] \
-            && [ "$(grep -Fc 'CLIPBOARD_DECODE_ARTIFACT=' "$output")" -eq 1 ] \
-            || fail 'clipboard decode test artifact receipt is absent, malformed or duplicated'
+        if [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
+            [ "$(grep -Ec '^WHITEBOARD_PRESENTATION_STATE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=2 unchanged=before-after$' "$output")" -eq 1 ] \
+                && [ "$(grep -Fc 'WHITEBOARD_PRESENTATION_STATE_ARTIFACT=' "$output")" -eq 1 ] \
+                || fail 'whiteboard presentation state artifact receipt is absent, malformed or duplicated'
+        else
+            [ "$(grep -Ec '^CLIPBOARD_DECODE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=13 unchanged=before-after$' "$output")" -eq 1 ] \
+                && [ "$(grep -Fc 'CLIPBOARD_DECODE_ARTIFACT=' "$output")" -eq 1 ] \
+                || fail 'clipboard decode test artifact receipt is absent, malformed or duplicated'
+        fi
         if [ "$RUST_TEST_PROFILE" = integration ]; then
             for label in COMPRESS TERMINAL; do
                 [ "$(grep -Ec "^${label}_DECODE_ARTIFACT=observed sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/(compress|librustdesk)-[0-9a-f]{16} status=0 unchanged=before-after$" "$output")" -eq 1 ] \
@@ -3190,15 +3220,23 @@ run_focused_rust_tests() {
     else
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
-        grep -E '^CLIPBOARD_DECODE_ARTIFACT_BEFORE=sha256=' "$output"
-        grep -E '^CLIPBOARD_DECODE_ARTIFACT=pass ' "$output"
-        if [ "$RUST_TEST_PROFILE" = clipboard ]; then
+        if [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
+            grep -E '^WHITEBOARD_PRESENTATION_STATE_(ARTIFACT_BEFORE|ARTIFACT|BUILD)=' "$output"
+            grep -E '^test whiteboard::server::tests::r_s11hp_.* \.\.\. ok$' "$output"
+            printf 'WHITEBOARD_PRESENTATION_STATE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-whiteboard-presentation-state rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = clipboard ]; then
+            grep -E '^CLIPBOARD_DECODE_ARTIFACT_BEFORE=sha256=' "$output"
+            grep -E '^CLIPBOARD_DECODE_ARTIFACT=pass ' "$output"
             grep -E '^CLIPBOARD_DECODE_BUILD=pass elapsed_seconds=[0-9]+ features=linux-pkg-config$' "$output"
             grep -E '^test clipboard::native_clipboard_limit_tests::.* \.\.\. ok$' "$output"
             printf 'CLIPBOARD_DECODE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-clipboard-sanitizer rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         else
+            grep -E '^CLIPBOARD_DECODE_ARTIFACT_BEFORE=sha256=' "$output"
+            grep -E '^CLIPBOARD_DECODE_ARTIFACT=pass ' "$output"
             grep -E '^(COMPRESS|TERMINAL)_DECODE_ARTIFACT(_BEFORE)?=' "$output"
             grep -E '^test (flutter::compressed_ui_handoff_tests::|roundtrip_small_payload|within_cap_payload_survives|r_s7_rejects_a_decompression_bomb|garbage_input_is_an_explicit_error|caller_specific_limit_rejects_before_the_global_ceiling|valid_empty_frame_is_successful_even_at_zero_limit|truncated_frame_is_an_explicit_error)' "$output"
             printf 'ANDROID_RUST_LIFECYCLE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=listener-generation-child-convergence-exact-resource-owners-typed-viewer-keying-software-rgba-mailbox-cm-file-framing-and-admission-linux-service-uid-selection-terminal-cursor-decode rust=1.75.0 flutter=3.24.5 llvm=15.0.6 frb=%s vendor=%s pub_cache=%s bridge_builder=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \

@@ -516,23 +516,50 @@ mod tests {
     #[test]
     fn r_s11hp_whiteboard_presentation_owners_and_ripples_are_bounded() {
         let mut state = WhiteboardPresentationState::<i32, usize>::default();
-        for conn_id in 1..=ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS as i32 {
+        for conn_id in 1..=16 {
             assert!(state.update(conn_id, conn_id, None));
         }
-        assert!(!state.update(
-            ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS as i32 + 1,
-            99,
-            None,
-        ));
+        assert_eq!(state.cursor_values().count(), 16);
+        assert!(!state.update(0, 99, Some(99)));
+        assert!(!state.update(-1, 99, Some(99)));
+        assert!(!state.update(17, 99, Some(99)));
+        assert_eq!(state.cursor_values().count(), 16);
+        assert_eq!(state.ripple_count(), 0);
+        for conn_id in 1..=16 {
+            assert_eq!(state.cursor(conn_id), Some(&conn_id));
+        }
+        for conn_id in [0, -1, 17] {
+            assert_eq!(state.cursor(conn_id), None);
+        }
 
-        for ripple in 0..WHITEBOARD_PRESENTATION_MAX_RIPPLES_PER_OWNER + 5 {
+        for ripple in 0..64 {
             assert!(state.update(1, 1, Some(ripple)));
         }
+        assert_eq!(state.ripple_count(), 64);
         assert_eq!(
-            state.ripple_count(),
-            WHITEBOARD_PRESENTATION_MAX_RIPPLES_PER_OWNER
+            state.ripple_values().copied().collect::<Vec<_>>(),
+            (0..64).collect::<Vec<_>>()
         );
-        assert_eq!(state.ripple_values().next(), Some(&5));
+        assert!(state.update(1, 1, Some(64)));
+        assert_eq!(state.ripple_count(), 64);
+        assert_eq!(
+            state.ripple_values().copied().collect::<Vec<_>>(),
+            (1..=64).collect::<Vec<_>>()
+        );
+
+        for ripple in 100..164 {
+            assert!(state.update(2, 2, Some(ripple)));
+        }
+        assert_eq!(state.ripple_count(), 128);
+        assert!(state.update(2, 2, Some(164)));
+        assert_eq!(state.ripple_count(), 128);
+        state.clear(1);
+        assert_eq!(state.cursor_values().count(), 15);
+        assert_eq!(state.cursor(2), Some(&2));
+        assert_eq!(
+            state.ripple_values().copied().collect::<Vec<_>>(),
+            (101..=164).collect::<Vec<_>>()
+        );
     }
 }
 

@@ -12177,10 +12177,14 @@ event-loop deadline only while ripples remain. macOS also retires exact-owner te
 layouts and redraws both old and new monitor surfaces on movement.
 
 Two executable Rust tests in `src/whiteboard/server.rs` exercise exact-owner Clear,
-retention of another owner, current owner/ripple ceilings, and oldest-first
-eviction. They derive their sizes from production constants and do not independently
-pin the required 16-owner/64-ripple limits. Their shared `r_s11hp_` command and the
-real whiteboard protocol/token-authority tests remain. The 535-line
+retention of another owner, fixed owners 16/17 and ripples 64/65, independent
+per-owner ripple budgets, oldest-first eviction and refusal without retained state.
+The fixtures use literal required boundaries rather than production limit constants.
+Their shared `r_s11hp_` command and the real whiteboard protocol/token-authority
+tests remain. The source-bound VM runner also has a focused
+`--android-rust-lifecycle-tests --whiteboard-presentation` state shard; it requires
+both exact tests and the executed library-test binary digest. Execution is pending.
+The 535-line
 `scripts/verify-whiteboard-presentation-lifecycle.py` and its shared/Apple calls are
 deleted: source substring/order/count checks and 42 in-memory text replacements
 did not execute those tests, an overlay, clearing frames or idle redraw behavior.

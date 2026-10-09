@@ -2914,6 +2914,19 @@ run_focused_rust_tests() {
     elif [ "$MODE" = linux-pa-authority-tests ]; then
         [ "${#result_lines[@]}" -eq 5 ] \
             || { tail -n 200 "$output" >&2; fail 'focused Linux PulseAudio summary count differs'; }
+        local -a pa_artifact_receipts pa_retirement_receipts
+        mapfile -t pa_artifact_receipts < <(
+            grep -E '^PA_RUNTIME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} groups=5 unchanged=before-between-after execution_seconds=[0-9]+$' "$output"
+        )
+        [ "${#pa_artifact_receipts[@]}" -eq 1 ] \
+            && [ "$(grep -Fc 'PA_RUNTIME_ARTIFACT=' "$output")" -eq 1 ] \
+            || fail 'PulseAudio test artifact receipt is absent, malformed or duplicated'
+        mapfile -t pa_retirement_receipts < <(
+            grep -E '^PA_CAPTURE_RETIREMENT=pass source_outputs=0,1,0,1,1,0 old_token=refused old_guard=retired successor_nonzero_frames=[1-9][0-9]* successor=revoked$' "$output"
+        )
+        [ "${#pa_retirement_receipts[@]}" -eq 1 ] \
+            && [ "$(grep -Fc 'PA_CAPTURE_RETIREMENT=' "$output")" -eq 1 ] \
+            || fail 'native recording-stream retirement receipt is absent, malformed or duplicated'
         grep -Fxq "PA_RUNTIME_ARCHIVE=pass packages=40 base=$DEV_CHECK_IMAGE_ID sha256=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256" "$output" \
             || { tail -n 200 "$output" >&2; fail 'PulseAudio candidate admission receipt is absent'; }
         grep -Fxq 'PA_RUNTIME_MONITOR=pass source=rd_pa_test.monitor signal=sine440 probe=pacat-native' "$output" \
@@ -2996,6 +3009,8 @@ run_focused_rust_tests() {
     elif [ "$MODE" = linux-pa-authority-tests ]; then
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Linux PulseAudio authority test count differs: $tests_passed"
+        printf '%s\n' "${pa_artifact_receipts[@]}" "${pa_retirement_receipts[@]}"
+        grep -E '^PA_RUNTIME_BUILD=(started|pass) ' "$output"
         printf 'LINUX_PA_AUTHORITY_VM=pass commit=%s tree=%s tests=%s rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s pa_candidate=%s pa_native=monitor-capture-revocation-and-same-uid-peer-refusal uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config" \

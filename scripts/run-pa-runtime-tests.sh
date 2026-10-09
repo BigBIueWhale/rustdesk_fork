@@ -69,6 +69,52 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+if [ "$#" -eq 1 ]; then
+    printf 'PA_RUNTIME_BUILD=started target=linux-libtest budget_seconds=600\n'
+    build_started=$SECONDS
+    timeout --signal=TERM --kill-after=5s 600s \
+        cargo test --offline --locked --lib --features linux-pkg-config --no-run \
+        --message-format=json-render-diagnostics --color never >"$WORK/build.json"
+    test_executable="$(python3 -I -S - "$WORK/build.json" <<'PY'
+import json
+import re
+import sys
+
+with open(sys.argv[1], 'rb') as stream:
+    output = stream.read(4 * 1024 * 1024 + 1)
+if len(output) > 4 * 1024 * 1024:
+    sys.exit('PulseAudio Cargo metadata exceeds 4 MiB')
+artifacts = []
+finished = []
+for line in output.splitlines():
+    if not line.startswith(b'{'):
+        continue
+    message = json.loads(line)
+    if message.get('reason') == 'build-finished':
+        finished.append(message.get('success'))
+    if (message.get('reason') == 'compiler-artifact'
+            and message.get('manifest_path') == '/source/Cargo.toml'
+            and message.get('target', {}).get('name') == 'librustdesk'
+            and message.get('target', {}).get('src_path') == '/source/src/lib.rs'
+            and message.get('profile', {}).get('test') is True):
+        artifacts.append(message.get('executable'))
+if finished != [True] or len(artifacts) != 1 or not isinstance(artifacts[0], str):
+    sys.exit('PulseAudio build lacks one exact completed library test artifact')
+if not re.fullmatch(r'/cargo-target/debug/deps/librustdesk-[0-9a-f]{16}', artifacts[0]):
+    sys.exit('PulseAudio test artifact is outside its private target directory')
+print(artifacts[0])
+PY
+)"
+    [ -f "$test_executable" ] && [ ! -L "$test_executable" ] \
+        && [ -x "$test_executable" ] \
+        && [ "$(stat -c '%u:%g:%h' -- "$test_executable")" = 1000:1000:1 ] \
+        || { echo 'PulseAudio test artifact metadata differs' >&2; exit 1; }
+    artifact_sha="$(sha256sum "$test_executable" | cut -d ' ' -f 1)"
+    [[ "$artifact_sha" =~ ^[0-9a-f]{64}$ ]]
+    printf 'PA_RUNTIME_BUILD=pass seconds=%s artifact_sha256=%s\n' \
+        "$((SECONDS - build_started))" "$artifact_sha"
+fi
+
 "$DAEMON" -n --daemonize=no --exit-idle-time=-1 --log-target=stderr \
     --dl-search-path="$MODULES" \
     --load='module-native-protocol-unix' \
@@ -128,20 +174,25 @@ if [ "$#" -eq 2 ]; then
 else
     export RUSTDESK_PA_NATIVE_TEST=1 RUSTDESK_PA_NATIVE_PACTL="$PACTL" \
         RUSTDESK_PA_NATIVE_SINE_MODULE="$sine_module"
-    cargo test --offline --locked --lib --features linux-pkg-config \
-        r_s11iu_pa_capture_ --color never -- --test-threads=1
-    cargo test --offline --locked --lib --features linux-pkg-config \
-        ipc::test::linux_pulse_audio_channel_uses_closed_bounded_protocol \
-        --color never -- --test-threads=1
-    cargo test --offline --locked --lib --features linux-pkg-config \
-        server::service::pa_dispatch_tests:: --color never -- --test-threads=1
-    cargo test --offline --locked --lib --features linux-pkg-config \
-        ipc::pulse_audio::tests:: --color never -- \
+    execution_started=$SECONDS
+    execution_deadline=$((SECONDS + 120))
+    run_tests() {
+        [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
+        local remaining=$((execution_deadline - SECONDS))
+        [ "$remaining" -gt 0 ] || { echo 'PulseAudio scenario budget exhausted' >&2; exit 1; }
+        timeout --signal=TERM --kill-after=5s "${remaining}s" \
+            "$test_executable" "$@" --color never --test-threads=1
+        [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
+    }
+    run_tests r_s11iu_pa_capture_
+    run_tests ipc::test::linux_pulse_audio_channel_uses_closed_bounded_protocol
+    run_tests server::service::pa_dispatch_tests::
+    run_tests ipc::pulse_audio::tests:: \
         --skip real_monitor_capture_revokes_after_audio_stops \
-        --skip real_kernel_pa_admission_refuses_same_uid_child_with_token --test-threads=1
-    cargo test --offline --locked --lib --features linux-pkg-config \
-        ipc::pulse_audio::tests::real_ \
-        --color never -- --ignored --test-threads=1
+        --skip real_kernel_pa_admission_refuses_same_uid_child_with_token
+    run_tests ipc::pulse_audio::tests::real_ --ignored --show-output
+    printf 'PA_RUNTIME_ARTIFACT=pass sha256=%s executable=%s groups=5 unchanged=before-between-after execution_seconds=%s\n' \
+        "$artifact_sha" "$test_executable" "$((SECONDS - execution_started))"
 fi
 
 kill -TERM "$daemon_pid"

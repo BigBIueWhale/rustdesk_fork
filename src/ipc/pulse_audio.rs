@@ -296,6 +296,35 @@ pub async fn start_pa() {
 mod tests {
     use super::*;
 
+    async fn assert_native_record_streams(expected: usize) {
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(750);
+        loop {
+            let mut command = tokio::process::Command::new(
+                std::env::var("RUSTDESK_PA_NATIVE_PACTL").unwrap(),
+            );
+            command
+                .args(["list", "short", "source-outputs"])
+                .kill_on_drop(true);
+            let output = tokio::time::timeout(Duration::from_millis(500), command.output())
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "native recording-stream census failed"
+            );
+            let streams = std::str::from_utf8(&output.stdout).unwrap().lines().count();
+            if streams == expected {
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "native recording streams: expected={expected} actual={streams}"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
     #[test]
     fn record_fragments_preserve_frame_shape_and_bound_stale_audio() {
         let mut frames = PaCaptureFrames::default();
@@ -338,6 +367,7 @@ mod tests {
     #[ignore = "requires the private PulseAudio daemon and monitor fixture"]
     async fn real_monitor_capture_revokes_after_audio_stops() {
         assert_eq!(std::env::var("RUSTDESK_PA_NATIVE_TEST").unwrap(), "1");
+        assert_native_record_streams(0).await;
         let authority = crate::audio_service::PaCaptureNativeFixture::new().unwrap();
         let peer = current_linux_process_identity().unwrap();
         let (helper_socket, client_socket) = tokio::net::UnixStream::pair().unwrap();
@@ -370,6 +400,7 @@ mod tests {
             }
         }
 
+        assert_native_record_streams(1).await;
         let pactl = std::env::var("RUSTDESK_PA_NATIVE_PACTL").unwrap();
         let module = std::env::var("RUSTDESK_PA_NATIVE_SINE_MODULE").unwrap();
         let unload = tokio::task::spawn_blocking(move || {
@@ -406,6 +437,7 @@ mod tests {
         drop(capture);
         drop(helper);
         drop(client);
+        assert_native_record_streams(0).await;
 
         let old_token = authority.token().to_owned();
         let replacement = crate::audio_service::PaCaptureNativeFixture::new().unwrap();
@@ -449,6 +481,7 @@ mod tests {
                 break;
             }
         }
+        assert_native_record_streams(1).await;
         drop(authority);
         validate_pulse_audio_start_authority(&peer, replacement.token())
             .await
@@ -468,6 +501,7 @@ mod tests {
             }
         }
         assert!(nonzero_frames > 0, "replacement capture produced no source audio");
+        assert_native_record_streams(1).await;
         replacement.revoke();
         let result = tokio::time::timeout(Duration::from_millis(600), async {
             loop {
@@ -487,6 +521,7 @@ mod tests {
         drop(capture);
         drop(helper);
         drop(client);
+        assert_native_record_streams(0).await;
 
         let pactl = std::env::var("RUSTDESK_PA_NATIVE_PACTL").unwrap();
         let unload = tokio::task::spawn_blocking(move || {
@@ -498,6 +533,7 @@ mod tests {
         .unwrap()
         .unwrap();
         assert!(unload.success());
+        println!("PA_CAPTURE_RETIREMENT=pass source_outputs=0,1,0,1,1,0 old_token=refused old_guard=retired successor_nonzero_frames={nonzero_frames} successor=revoked");
     }
 
     #[tokio::test(flavor = "current_thread")]

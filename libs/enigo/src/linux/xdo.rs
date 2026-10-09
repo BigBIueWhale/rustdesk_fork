@@ -88,9 +88,17 @@ impl Drop for OpenedDisplay {
 
 struct TextContext(*mut xdo_t);
 
+unsafe fn retire_context(context: *mut xdo_t) {
+    // Failed retirement retains the same native owner. Drop must not return
+    // while its borrowed Display could be closed by the parent destructor.
+    if libxdo_sys::xdo_free(context) != 0 && libxdo_sys::xdo_free(context) != 0 {
+        std::process::abort();
+    }
+}
+
 impl Drop for TextContext {
     fn drop(&mut self) {
-        unsafe { libxdo_sys::xdo_free(self.0) };
+        unsafe { retire_context(self.0) };
     }
 }
 
@@ -181,7 +189,7 @@ impl Drop for EnigoXdo {
         drop(self.pending_text_cleanup.take());
         if !self.xdo.is_null() {
             unsafe {
-                libxdo_sys::xdo_free(self.xdo);
+                retire_context(self.xdo);
             }
         }
     }

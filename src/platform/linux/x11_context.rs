@@ -82,7 +82,9 @@ pub(super) fn open_xdo() -> io::Result<NativeContext<xdo_t>> {
     let name = unix_display_name()?;
     unsafe {
         NativeContext::from_raw(libxdo_sys::xdo_new(name.as_ptr()), |context| {
-            libxdo_sys::xdo_free(context);
+            if libxdo_sys::xdo_free(context) != 0 && libxdo_sys::xdo_free(context) != 0 {
+                std::process::abort();
+            }
         }).ok_or_else(|| io::Error::new(io::ErrorKind::ConnectionRefused,
                                        "local XDO context could not be opened"))
     }

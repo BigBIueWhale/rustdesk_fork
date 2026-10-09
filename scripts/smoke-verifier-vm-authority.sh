@@ -4290,6 +4290,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'clipboard listener completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
+        'X11_ENIGO_RETIREMENT_NATIVE=pass retry_cases=16 abort_cases=4 unwind_cases=10 refused_free_calls=24 failed_owners=retained retry_owners=retired servers=joined sockets=absent scope=backend-provider-retirement whole_app=false' \
+        'native retirement retains failed owners and proves retry or process termination before parent Display teardown'
+    require_exact_fixed_receipt \
         'XDO_TEXT_SUBMISSION_NATIVE=pass cases=144 mapped=136 scratch=8 mapped_repeats=2 scratch_repeats=4 delays=0,12000 held_profiles=4 submission_refusals=168 pending=84 later_refused=252 recovery=144 events=920 acquisition=checked retirement=reverse accepted_keys=retained scratch_retirement=after-keys logical_keys=each-leg symbols=live-map held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
         'text submission refusals retain accepted presses through reverse retirement before scratch restoration'
     require_exact_fixed_receipt \
@@ -4381,6 +4384,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'key-input guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'key-input guest completion'
 elif [ "$MODE" = x11-display-tests ]; then
+    require_exact_fixed_receipt \
+        'X11_ENIGO_RETIREMENT_NATIVE=pass retry_cases=16 abort_cases=4 unwind_cases=10 refused_free_calls=24 failed_owners=retained retry_owners=retired servers=joined sockets=absent scope=backend-provider-retirement whole_app=false' \
+        'native retirement retains failed owners and proves retry or process termination before parent Display teardown'
     require_exact_fixed_receipt \
         'XDO_TEXT_SUBMISSION_NATIVE=pass cases=144 mapped=136 scratch=8 mapped_repeats=2 scratch_repeats=4 delays=0,12000 held_profiles=4 submission_refusals=168 pending=84 later_refused=252 recovery=144 events=920 acquisition=checked retirement=reverse accepted_keys=retained scratch_retirement=after-keys logical_keys=each-leg symbols=live-map held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
         'text submission refusals retain accepted presses through reverse retirement before scratch restoration'

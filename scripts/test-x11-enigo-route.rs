@@ -35,7 +35,7 @@ pub const XDO_CLEANUP_ERROR: c_int = 2;
 #[link(name = "xdo")]
 extern "C" {
     pub fn xdo_new_with_opened_display(display: *mut Display, name: *const c_char, close: c_int) -> *mut xdo_t;
-    pub fn xdo_free(context: *mut xdo_t);
+    pub fn xdo_free(context: *mut xdo_t) -> c_int;
     pub fn xdo_move_mouse(context: *const xdo_t, x: c_int, y: c_int) -> c_int;
     pub fn xdo_move_mouse_relative(context: *const xdo_t, x: c_int, y: c_int) -> c_int;
     pub fn xdo_mouse_down(context: *const xdo_t, button: c_int) -> c_int;
@@ -44,15 +44,15 @@ extern "C" {
     #[link_name = "xdo_enter_text_scalar"]
     fn native_enter_text_scalar(context: *mut xdo_t, scalar: c_uint, delay: useconds_t) -> c_int;
     fn __real_xdo_new_with_opened_display(display: *mut Display, name: *const c_char, close: c_int) -> *mut xdo_t;
-    fn __real_xdo_free(context: *mut xdo_t);
+    fn __real_xdo_free(context: *mut xdo_t) -> c_int;
 }
 extern "C" {
     fn enigo_cleanup_begin(key_release: c_int);
     fn enigo_cleanup_register(context: *mut xdo_t);
     fn enigo_cleanup_pending();
-    fn enigo_cleanup_allow_retirement();
+    fn enigo_cleanup_allow_retirement(failures: c_int);
     fn enigo_cleanup_before_free(context: *mut xdo_t);
-    fn enigo_cleanup_after_free();
+    fn enigo_cleanup_free_result(status: c_int);
     fn enigo_cleanup_finish();
 }
 pub unsafe fn xdo_enter_text_scalar(context: *mut xdo_t, scalar: char, delay: useconds_t) -> c_int {
@@ -121,11 +121,12 @@ unsafe extern "C" fn __wrap_xdo_new_with_opened_display(display: *mut Display, n
     context
 }
 #[no_mangle]
-unsafe extern "C" fn __wrap_xdo_free(context: *mut xdo_t) {
+unsafe extern "C" fn __wrap_xdo_free(context: *mut xdo_t) -> c_int {
     enigo_cleanup_before_free(context);
-    __real_xdo_free(context);
-    enigo_cleanup_after_free();
-    RETIREMENTS.fetch_add(1, Ordering::SeqCst);
+    let status = __real_xdo_free(context);
+    enigo_cleanup_free_result(status);
+    if status == 0 { RETIREMENTS.fetch_add(1, Ordering::SeqCst); }
+    status
 }
 #[no_mangle]
 unsafe extern "C" fn __wrap_XOpenDisplay(name: *const c_char) -> *mut Display {
@@ -156,12 +157,19 @@ fn main() {
     log::set_max_level(log::LevelFilter::Info);
     let baseline = descriptors();
     if let Some(scenario) = std::env::args().nth(1) {
-        if scenario == "cleanup-refusal" {
-            std::env::set_var("DISPLAY", ":98");
+        if scenario == "cleanup-refusal" || scenario == "cleanup-retry" || scenario.starts_with("cleanup-abort-") {
+            let abort = scenario.starts_with("cleanup-abort-");
+            let retry = scenario == "cleanup-retry";
+            if abort {
+                assert!(matches!(scenario.as_str(), "cleanup-abort-map-drop" | "cleanup-abort-map-unwind"
+                                | "cleanup-abort-key-drop" | "cleanup-abort-key-unwind"));
+            }
+            std::env::set_var("DISPLAY", if abort { ":97" } else { ":98" });
             NATIVE_CLEANUP_TEST.store(true, Ordering::SeqCst);
-            for iteration in 0..16 {
+            for iteration in 0..if abort { 1 } else { 16 } {
                 let mut injector = backend::EnigoXdo::default();
-                unsafe { enigo_cleanup_begin((iteration / 8) as c_int); }
+                let key = if abort { scenario.contains("-key-") } else { iteration >= 8 };
+                unsafe { enigo_cleanup_begin(c_int::from(key)); }
                 // A real scratch pair meets a controlled map or key-release submission refusal.
                 let error = injector.key_sequence_result("🙂a").unwrap_err();
                 assert_eq!(error.to_string(), "libxdo text entry failed with status 2");
@@ -177,8 +185,9 @@ fn main() {
                 assert_eq!(RETIREMENTS.load(Ordering::SeqCst), iteration * 2);
                 assert_eq!(descriptors(), baseline + 2);
                 assert_eq!(tasks(), 1);
-                unsafe { enigo_cleanup_allow_retirement(); }
-                if iteration % 2 == 0 {
+                unsafe { enigo_cleanup_allow_retirement(if abort { 2 } else { c_int::from(retry) }); }
+                let unwind = if abort { scenario.ends_with("-unwind") } else { iteration % 2 != 0 };
+                if !unwind {
                     drop(injector);
                 } else {
                     let hook = std::panic::take_hook();
@@ -190,12 +199,17 @@ fn main() {
                     std::panic::set_hook(hook);
                     assert!(result.is_err());
                 }
+                assert!(!abort, "persistent retirement returned instead of aborting");
                 assert_eq!(RETIREMENTS.load(Ordering::SeqCst), (iteration + 1) * 2);
                 unsafe { enigo_cleanup_finish(); }
                 NAMES.lock().unwrap().clear();
                 retired(baseline);
             }
-            println!("X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider faults=restore-submission,key-release repeats=4 cases=16 unwind=8 later_requests=128 native_calls=16 contexts=32 events=32 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false");
+            if retry {
+                println!("X11_ENIGO_RETIREMENT_RETRY=pass source=complete-backend-and-provider faults=restore-submission,key-release cases=16 unwind=8 failed_retirements=16 same_owner=retained later_text=refused retry=successful contexts=32 events=32 teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false");
+            } else {
+                println!("X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider faults=restore-submission,key-release repeats=4 cases=16 unwind=8 later_requests=128 native_calls=16 contexts=32 events=32 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false");
+            }
             return;
         }
         if matches!(scenario.as_str(), "layout" | "layout-repeat") {

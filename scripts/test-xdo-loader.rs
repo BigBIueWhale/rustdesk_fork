@@ -17,7 +17,7 @@ impl Drop for DisplayOwner {
 }
 struct Context(*mut xdo_t);
 impl Drop for Context {
-    fn drop(&mut self) { unsafe { xdo_free(self.0) }; }
+    fn drop(&mut self) { assert_eq!(unsafe { xdo_free(self.0) }, 0); }
 }
 fn descriptors() -> usize { std::fs::read_dir("/proc/self/fd").unwrap().count() }
 unsafe fn state(context: *const xdo_t) -> XdoInputState {
@@ -133,7 +133,7 @@ fn main() {
     }
     drop(context);
     drop(display);
-    unsafe { xdo_free(ptr::null_mut()) };
+    assert_eq!(unsafe { xdo_free(ptr::null_mut()) }, 0);
     assert_eq!(descriptors(), baseline);
     assert_eq!(std::fs::read_dir("/proc/self/task").unwrap().count(), 1);
     println!("XDO_LOADER_COMPONENT=pass scenario=complete pointer=absolute,relative button=pressed,released shift=pressed,released key=a,a input=xtest retired_lookups=63 retired_symbols=absent descriptors=retired");

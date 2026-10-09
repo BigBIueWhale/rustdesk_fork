@@ -363,6 +363,7 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
     require(cleanup.returncode == 0 and not cleanup.stderr and cleanup.stdout.splitlines() == [cleanup_receipt],
             f"Enigo cleanup refusal differs: {cleanup}")
     print(cleanup_receipt, flush=True)
+    enigo_retirement(environment, binary)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 6095))
         listener.listen(1)
@@ -405,6 +406,63 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
         directory.rmdir()
     if before_source is not None:
         shutil.rmtree(before_source)
+
+
+def enigo_retirement(environment, binary):
+    retry = subprocess.run([str(binary), "cleanup-retry"], env=environment,
+                           capture_output=True, text=True, timeout=5)
+    receipt = ("X11_ENIGO_RETIREMENT_RETRY=pass source=complete-backend-and-provider "
+               "faults=restore-submission,key-release cases=16 unwind=8 failed_retirements=16 "
+               "same_owner=retained later_text=refused retry=successful contexts=32 events=32 "
+               "teardown=text-before-display mapping=restored keys=clear descriptors=retired "
+               "tasks=retired whole_app=false")
+    map_error = "xdo_free: scratch keyboard restoration unconfirmed\n"
+    key_error = "xdo_free: text key retirement unconfirmed\n"
+    require(retry.returncode == 0 and retry.stdout.splitlines() == [receipt]
+            and retry.stderr == map_error * 8 + key_error * 8,
+            f"Enigo same-owner retirement retry differs: {retry}")
+    print(receipt, flush=True)
+    # Each persistent case owns a fresh server: abort cannot promise global restoration.
+    import resource
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    ready = ("X11_ENIGO_RETIREMENT_ABORT_READY attempts=2 failures=2 owner=retained "
+             "snapshot=retained allocations=retained display=live later_text=refused parent_free=unreached")
+    socket_path, lock_path = Path("/tmp/.X11-unix/X97"), Path("/tmp/.X97-lock")
+    for fault in ("map", "key"):
+        for exit_path in ("drop", "unwind"):
+            require(not socket_path.exists() and not lock_path.exists(), "retirement display already present")
+            with open(f"/tmp/enigo-retirement-{fault}-{exit_path}.log", "xb") as log:
+                server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":97", "-screen", "0", "640x480x24",
+                                           "-nolisten", "tcp", "-ac", "-noreset"],
+                                          env=environment, stdout=log, stderr=subprocess.STDOUT)
+                try:
+                    deadline = time.monotonic() + 5
+                    while not socket_path.is_socket():
+                        require(server.poll() is None and time.monotonic() < deadline,
+                                "retirement Xvfb not ready")
+                        time.sleep(0.01)
+                    result = subprocess.run([str(binary), f"cleanup-abort-{fault}-{exit_path}"],
+                                            env=environment, capture_output=True, text=True, timeout=5)
+                    require(result.returncode == -signal.SIGABRT and result.stdout.splitlines() == [ready]
+                            and result.stderr == (map_error if fault == "map" else key_error) * 2,
+                            f"Enigo persistent retirement finality differs: {result}")
+                    require(server.poll() is None, "retirement server exited before observation")
+                    print(f"X11_ENIGO_RETIREMENT_ABORT=pass fault={fault} exit={exit_path} "
+                          "attempts=2 failures=2 signal=SIGABRT owner=retained parent_free=unreached "
+                          "display=live later_text=refused global_restoration=unproved whole_app=false", flush=True)
+                finally:
+                    if server.poll() is None:
+                        server.terminate()
+                    try:
+                        server.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        server.kill()
+                        server.wait(timeout=5)
+            require(server.returncode == 0 and not socket_path.exists() and not lock_path.exists(),
+                    "retirement Xvfb/socket/lock retirement differs")
+    print("X11_ENIGO_RETIREMENT_NATIVE=pass retry_cases=16 abort_cases=4 unwind_cases=10 "
+          "refused_free_calls=24 failed_owners=retained retry_owners=retired servers=joined "
+          "sockets=absent scope=backend-provider-retirement whole_app=false", flush=True)
 
 
 def enigo_text(root, environment, binary, before_provider):

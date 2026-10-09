@@ -44,8 +44,8 @@ extern "C" {
 extern "C" {
     pub fn xdo_new(name: *const c_char) -> *mut Xdo;
     fn __real_xdo_new(name: *const c_char) -> *mut Xdo;
-    pub fn xdo_free(context: *mut Xdo);
-    fn __real_xdo_free(context: *mut Xdo);
+    pub fn xdo_free(context: *mut Xdo) -> c_int;
+    fn __real_xdo_free(context: *mut Xdo) -> c_int;
     pub fn xdo_get_mouse_location(context: *const Xdo, x: *mut c_int, y: *mut c_int,
                                   screen: *mut c_int) -> c_int;
     pub fn xdo_move_mouse(context: *const Xdo, x: c_int, y: c_int) -> c_int;
@@ -80,9 +80,11 @@ unsafe extern "C" fn __wrap_XCloseDisplay(display: *mut c_void) -> c_int {
     status
 }
 #[no_mangle]
-unsafe extern "C" fn __wrap_xdo_free(context: *mut Xdo) {
-    __real_xdo_free(context);
+unsafe extern "C" fn __wrap_xdo_free(context: *mut Xdo) -> c_int {
+    let status = __real_xdo_free(context);
+    assert_eq!(status, 0);
     XDO_RETIREMENTS.fetch_add(1, Ordering::SeqCst);
+    status
 }
 
 thread_local! {
@@ -597,7 +599,7 @@ fn main() {
         assert_eq!(descriptors(), baseline + 2, "raw TLS contexts survive joined thread exit");
         assert_eq!(retirements(), (0, 0));
         unsafe {
-            xdo_free(pointers.1 as *mut Xdo);
+            assert_eq!(xdo_free(pointers.1 as *mut Xdo), 0);
             assert_eq!(XCloseDisplay(pointers.0 as *mut c_void), 0);
         }
         assert_eq!(descriptors(), baseline);

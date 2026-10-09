@@ -76,8 +76,12 @@ Every XTEST press is checked and recorded in a fixed nine-code context stack
 before synchronization. Refusal stops acquisition and retires only accepted
 presses in reverse order. Release refusal retains the remaining stack and
 any scratch lease, returns the cleanup-error status and blocks later text.
-Destruction retries key retirement before map restoration or Display close.
-Persistent final failure is diagnosed; native teardown cannot prove restoration.
+Retirement returns a result: failed key release or map restoration retains the
+live context, remaining keys, original scratch descriptor, allocations and Display.
+Success alone destroys the context and closes an owned Display. Rust Drop retries
+the same owner once, then aborts directly if retirement remains unconfirmed;
+the borrowed child must retire before the parent Display can close. Process
+termination cannot establish restoration of server-owned X11 state.
 Separate native reads cannot establish atomic ownership against concurrent input.
 Window-management actions, their wait and size-hint APIs, interactive pointer-grab
 selection, desktop/viewport mutation and client/window termination are removed.
@@ -98,7 +102,8 @@ must both be available. Failed collection leaves the caller's output untouched
 and performs no input or mapping mutation. The separate reads are not atomic
 against concurrent input; X11's keymap is server logical state, not a hardware
 acknowledgment. The shared connection requires libX11-xcb and libxcb.
-The fixed fork version is 3.20160805.1-rustdesk23. Character-map entries retain
+The fixed fork version is 3.20160805.1-rustdesk24. xdo_free returns an integer
+status rather than void. Character-map entries retain
 per-key group information. The private context appends scratch and accepted-press
 ownership fields; text entry takes a mutable context. Original
 upstream ABI fields remain for layout provenance, not distro compatibility.

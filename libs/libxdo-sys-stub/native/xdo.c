@@ -87,25 +87,26 @@ xdo_t* xdo_new_with_opened_display(Display *xdpy, const char *display,
 
   if (_xdo_populate_charcode_map(xdo) != XDO_SUCCESS) {
     fprintf(stderr, "xdo_new: keyboard map unavailable or invalid\n");
-    xdo_free(xdo);
+    /* Construction has not acquired keys, a scratch lease or the Display. */
+    free(xdo->charcodes);
+    free(xdo);
     return NULL;
   }
   xdo->close_display_when_freed = close_display_when_freed;
   return xdo;
 }
 
-void xdo_free(xdo_t *xdo) {
+int xdo_free(xdo_t *xdo) {
   if (xdo == NULL)
-    return;
+    return XDO_SUCCESS;
 
-  int keys_retired = _xdo_retire_text_keys(xdo) == XDO_SUCCESS;
-  if (!keys_retired)
+  if (_xdo_retire_text_keys(xdo) != XDO_SUCCESS) {
     fprintf(stderr, "xdo_free: text key retirement unconfirmed\n");
-  if (xdo->scratch_original != NULL) {
-    if (!keys_retired || _xdo_restore_scratch(xdo) != XDO_SUCCESS) {
-      fprintf(stderr, "xdo_free: scratch keyboard restoration unconfirmed\n");
-      XkbFreeKeyboard(xdo->scratch_original, 0, True);
-    }
+    return XDO_CLEANUP_ERROR;
+  }
+  if (xdo->scratch_original != NULL && _xdo_restore_scratch(xdo) != XDO_SUCCESS) {
+    fprintf(stderr, "xdo_free: scratch keyboard restoration unconfirmed\n");
+    return XDO_CLEANUP_ERROR;
   }
 
   if (xdo->display_name)
@@ -116,6 +117,7 @@ void xdo_free(xdo_t *xdo) {
     XCloseDisplay(xdo->xdpy);
 
   free(xdo);
+  return XDO_SUCCESS;
 }
 
 const char *xdo_version(void) {

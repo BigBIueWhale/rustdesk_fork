@@ -128,11 +128,14 @@ xdo_t* xdo_new_with_opened_display(Display *xdpy, const char *display,
 const char *xdo_version(void);
 
 /**
- * Free and destroy an xdo_t instance.
+ * Retire keys and the scratch lease, then destroy an xdo_t instance.
  *
- * If close_display_when_freed is set, then we will also close the Display.
+ * XDO_SUCCESS frees the context and closes an owned Display. A NULL context
+ * succeeds. XDO_CLEANUP_ERROR retains the live context, remaining keys, original
+ * scratch map, allocations and Display for another retirement attempt. The
+ * caller must not discard the owner or close its borrowed Display on failure.
  */
-void xdo_free(xdo_t *xdo);
+int xdo_free(xdo_t *xdo);
 
 /**
  * Move the mouse to a location on the context Display's selected screen.

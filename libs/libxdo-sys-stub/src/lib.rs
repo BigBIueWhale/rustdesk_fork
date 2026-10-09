@@ -41,7 +41,7 @@ pub struct XdoInputState {
 const TRUSTED_LIBXDO_PATHS: &[&str] = &[
     "/usr/lib/rustdesk-fork/libxdo.so.3",
 ];
-const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk23";
+const EXPECTED_XDO_VERSION: &[u8] = b"3.20160805.1-rustdesk24";
 
 fn root_owned_non_writable(mode: u32, uid: u32) -> bool {
     uid == 0 && mode & 0o022 == 0
@@ -97,7 +97,7 @@ type FnXdoNew = unsafe extern "C" fn(*const c_char) -> *mut xdo_t;
 type FnXdoVersion = unsafe extern "C" fn() -> *const c_char;
 type FnXdoNewWithOpenedDisplay =
     unsafe extern "C" fn(*mut Display, *const c_char, c_int) -> *mut xdo_t;
-type FnXdoFree = unsafe extern "C" fn(*mut xdo_t);
+type FnXdoFree = unsafe extern "C" fn(*mut xdo_t) -> c_int;
 type FnXdoEnterTextScalar = unsafe extern "C" fn(*mut xdo_t, c_uint, useconds_t) -> c_int;
 type FnXdoMouseDown = unsafe extern "C" fn(*const xdo_t, c_int) -> c_int;
 type FnXdoMouseUp = unsafe extern "C" fn(*const xdo_t, c_int) -> c_int;
@@ -344,13 +344,13 @@ pub unsafe extern "C" fn xdo_new_with_opened_display(
     })
 }
 
-pub unsafe extern "C" fn xdo_free(xdo: *mut xdo_t) {
+/// Success retires the pointer; failure retains its complete native ownership.
+#[must_use]
+pub unsafe extern "C" fn xdo_free(xdo: *mut xdo_t) -> c_int {
     if xdo.is_null() {
-        return;
+        return 0;
     }
-    if let Some(lib) = get_lib() {
-        (lib.xdo_free)(xdo);
-    }
+    get_lib().map_or(XDO_CLEANUP_ERROR, |lib| (lib.xdo_free)(xdo))
 }
 
 pub unsafe fn xdo_enter_text_scalar(

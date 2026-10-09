@@ -5,6 +5,8 @@
 #include <X11/extensions/XTest.h>
 #include <assert.h>
 #include <dlfcn.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 extern Display *__real_XOpenDisplay(const char *);
@@ -13,10 +15,12 @@ extern int __real_XCloseDisplay(Display *);
 static Display *observer, *borrowed_display;
 static Window window, previous_focus;
 static int previous_revert, phase, refusals, retirement_events;
+static int retirement_refusals, expected_retirement_refusals, failed_retirements, free_attempts;
 static Bool armed, key_release_fault;
 static xdo_t *pending;
 static XkbDescPtr baseline, retained_original;
 static KeyCode scratch_code;
+static charcodemap_t *retained_charcodes;
 
 static void keys_clear(void);
 static void no_events(void);
@@ -30,9 +34,11 @@ Bool XkbChangeMap(Display *display, XkbDescPtr map, XkbMapChangesPtr changes) {
     native = (change_map_fn)dlsym(RTLD_NEXT, "XkbChangeMap");
     assert(native != NULL);
   }
-  if (armed && !key_release_fault && pending != NULL && display == borrowed_display
+  if (!key_release_fault && pending != NULL && display == borrowed_display
+      && (armed || retirement_refusals > 0)
       && pending->scratch_original != NULL) {
-    assert(phase == 0);
+    assert(phase == (armed ? 0 : 1));
+    if (!armed) retirement_refusals--;
     refusals++;
     return False;
   }
@@ -49,8 +55,9 @@ Bool XTestFakeKeyEvent(Display *display, unsigned int code, Bool press, unsigned
   if (key_release_fault && pending != NULL && display == borrowed_display && !press) {
     assert(pending->scratch_original != NULL && pending->text_keys_len == 1
            && code == pending->scratch_keycode && pending->text_keys[0] == code);
-    if (armed) {
-      assert(phase == 0);
+    if (armed || retirement_refusals > 0) {
+      assert(phase == (armed ? 0 : 1));
+      if (!armed) retirement_refusals--;
       refusals++;
       return False;
     }
@@ -147,9 +154,10 @@ static void text_event(int type) {
 
 void enigo_cleanup_begin(int key_release) {
   assert(observer == NULL && pending == NULL && baseline == NULL);
-  observer = __real_XOpenDisplay("unix/:98.0");
+  observer = __real_XOpenDisplay(getenv("DISPLAY"));
   assert(observer != NULL);
   phase = refusals = retirement_events = 0;
+  retirement_refusals = expected_retirement_refusals = failed_retirements = free_attempts = 0;
   key_release_fault = key_release != 0;
   scratch_code = 0;
   retained_original = NULL;
@@ -177,6 +185,7 @@ void enigo_cleanup_pending(void) {
   assert(armed && phase == 0 && refusals == 1 && pending != NULL
          && pending->scratch_original != NULL && pending->xdpy == borrowed_display);
   retained_original = pending->scratch_original;
+  retained_charcodes = pending->charcodes;
   scratch_code = pending->scratch_keycode;
   assert(scratch_code >= baseline->min_key_code && scratch_code <= baseline->max_key_code);
   assert(pending->text_keys_len == (unsigned int)key_release_fault
@@ -190,7 +199,7 @@ void enigo_cleanup_pending(void) {
   no_events();
 }
 
-void enigo_cleanup_allow_retirement(void) {
+void enigo_cleanup_allow_retirement(int failures) {
   assert(armed && phase == 0 && refusals == 1 && pending != NULL
          && pending->scratch_original == retained_original
          && pending->scratch_keycode == scratch_code
@@ -198,17 +207,21 @@ void enigo_cleanup_allow_retirement(void) {
   XSync(borrowed_display, False);
   keys_pending();
   no_events();
+  assert(failures >= 0 && failures <= 2);
+  retirement_refusals = expected_retirement_refusals = failures;
   armed = False;
 }
 
 void enigo_cleanup_before_free(xdo_t *context) {
   if (observer == NULL) return;
   assert(!armed && context != NULL && context->xdpy == borrowed_display);
-  if (phase == 0) {
+  if (phase == 0 || phase == 1) {
     assert(context == pending && !context->close_display_when_freed
            && context->scratch_original == retained_original
            && context->scratch_keycode == scratch_code
+           && context->charcodes == retained_charcodes
            && context->text_keys_len == (unsigned int)key_release_fault);
+    free_attempts++;
     phase = 1;
   } else {
     assert(phase == 2 && pending == NULL && context->close_display_when_freed
@@ -219,8 +232,31 @@ void enigo_cleanup_before_free(xdo_t *context) {
   }
 }
 
-void enigo_cleanup_after_free(void) {
+void enigo_cleanup_free_result(int status) {
   if (observer == NULL) return;
+  if (status != XDO_SUCCESS) {
+    assert(status == XDO_CLEANUP_ERROR && phase == 1 && !armed
+           && pending != NULL && pending->xdpy == borrowed_display
+           && pending->scratch_original == retained_original
+           && pending->scratch_keycode == scratch_code
+           && pending->charcodes == retained_charcodes && pending->charcodes_len > 0
+           && pending->text_keys_len == (unsigned int)key_release_fault);
+    XSync(borrowed_display, False);
+    XkbDescPtr installed = snapshot();
+    assert(XkbKeyNumSyms(installed, scratch_code) == 1
+           && XkbKeySymsPtr(installed, scratch_code)[0] == 0x0101f642UL);
+    XkbFreeKeyboard(installed, 0, True);
+    assert(xdo_enter_text_scalar(pending, 'a', 0) == XDO_CLEANUP_ERROR);
+    keys_pending();
+    no_events();
+    failed_retirements++;
+    assert(failed_retirements == free_attempts && failed_retirements <= expected_retirement_refusals);
+    if (expected_retirement_refusals == 2 && failed_retirements == 2) {
+      puts("X11_ENIGO_RETIREMENT_ABORT_READY attempts=2 failures=2 owner=retained snapshot=retained allocations=retained display=live later_text=refused parent_free=unreached");
+      assert(fflush(stdout) == 0);
+    }
+    return;
+  }
   /* Identity was checked before free; never evaluate a retired C pointer. */
   if (phase == 1) {
     pending = NULL;
@@ -237,7 +273,10 @@ void enigo_cleanup_after_free(void) {
 }
 
 void enigo_cleanup_finish(void) {
-  assert(phase == 4 && !armed && refusals == 1 && retirement_events == key_release_fault);
+  assert(phase == 4 && !armed && refusals == 1 + expected_retirement_refusals
+         && failed_retirements == expected_retirement_refusals
+         && free_attempts == 1 + expected_retirement_refusals
+         && retirement_events == key_release_fault);
   restored_components();
   keys_clear();
   no_events();

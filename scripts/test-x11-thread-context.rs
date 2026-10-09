@@ -38,10 +38,6 @@ extern "C" {
     fn XQueryPointer(display: *mut c_void, window: c_ulong, root: *mut c_ulong, child: *mut c_ulong,
                      root_x: *mut c_int, root_y: *mut c_int, x: *mut c_int, y: *mut c_int,
                      mask: *mut c_uint) -> c_int;
-    fn XWarpPointer(display: *mut c_void, source: c_ulong, destination: c_ulong,
-                    source_x: c_int, source_y: c_int, width: c_uint, height: c_uint,
-                    x: c_int, y: c_int) -> c_int;
-    fn XSync(display: *mut c_void, discard: c_int) -> c_int;
     fn XGetInputFocus(display: *mut c_void, focus: *mut c_ulong, revert: *mut c_int) -> c_int;
 }
 #[link(name = "xdo")]

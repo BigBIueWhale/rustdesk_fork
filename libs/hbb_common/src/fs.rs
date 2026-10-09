@@ -6841,6 +6841,8 @@ mod tests {
         assert_eq!(job.transferred(), 0);
         assert!(job.data_stream.is_some());
 
+        std::fs::write(tmp.join("announced.bin"), b"short-value")
+            .expect("restore the retained object's admitted contents before valid resume");
         request.union = Some(file_transfer_send_confirm_request::Union::OffsetBlk(2));
         job.confirm(&request)
             .await
@@ -6849,13 +6851,221 @@ mod tests {
             .read()
             .await
             .expect("read the valid retained suffix")
-            .expect("short source has a suffix");
+            .expect("restored source has a suffix");
         assert!(!block.compressed);
-        assert_eq!(block.data.as_ref(), b"ort");
+        assert_eq!(block.data.as_ref(), b"ort-value");
         assert_eq!(
             std::fs::read(&source).expect("read larger replacement"),
             b"replacement-contents"
         );
+    }
+
+    async fn assert_send_read_refuses_length_change(
+        admitted_size: usize,
+        read_first_block: bool,
+        changed_size: usize,
+    ) {
+        const BLOCK_SIZE: usize = 128 * 1024;
+        let tmp = TestTempDir::new("rustdesk_send_read_length_change");
+        std::fs::create_dir_all(&tmp.path).expect("create source directory");
+        let source = tmp.join("source.zip");
+        let original = vec![0x5a; admitted_size];
+        std::fs::write(&source, &original).expect("create admitted source");
+        let mut job = TransferJob::new_read(
+            177,
+            JobType::Generic,
+            String::new(),
+            DataSource::FilePath(source.clone()),
+            0,
+            false,
+            false,
+            false,
+        )
+        .expect("admit send job");
+        job.init_data_stream_for_cm().await.expect("open source");
+        let sent = if read_first_block {
+            let block = job.read().await.expect("read prefix").expect("prefix block");
+            assert!(!block.compressed);
+            assert_eq!(block.file_num, 0);
+            assert_eq!(block.data.as_ref(), &original[..BLOCK_SIZE]);
+            BLOCK_SIZE as u64
+        } else {
+            0
+        };
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&source)
+            .expect("open source for an in-place size change")
+            .set_len(changed_size as u64)
+            .expect("change source length");
+
+        job.read()
+            .await
+            .expect_err("a changed source must not emit out-of-contract bytes or successful EOF");
+        assert_eq!(job.file_num(), 0);
+        assert_eq!(job.finished_size(), sent);
+        assert_eq!(job.transferred(), sent);
+        assert_eq!(job.total_size(), admitted_size as u64);
+        assert_eq!(job.files()[0].size, admitted_size as u64);
+        assert!(job.data_stream.is_none());
+        assert_eq!(
+            std::fs::metadata(&source)
+                .expect("read changed source metadata")
+                .len(),
+            changed_size as u64
+        );
+    }
+
+    #[tokio::test]
+    async fn send_read_refuses_short_source_before_declared_eof() {
+        assert_send_read_refuses_length_change(6, false, 3).await;
+    }
+
+    #[tokio::test]
+    async fn send_read_refuses_truncation_after_a_full_block() {
+        assert_send_read_refuses_length_change(128 * 1024 + 3, true, 128 * 1024).await;
+    }
+
+    #[tokio::test]
+    async fn send_read_refuses_growth_beyond_admitted_size() {
+        assert_send_read_refuses_length_change(3, false, 6).await;
+    }
+
+    #[tokio::test]
+    async fn send_read_refuses_growth_after_admitted_eof() {
+        assert_send_read_refuses_length_change(128 * 1024, true, 128 * 1024 + 1).await;
+    }
+
+    #[tokio::test]
+    async fn send_read_preserves_exact_lengths_and_resumed_eof() {
+        const BLOCK_SIZE: usize = 128 * 1024;
+        let tmp = TestTempDir::new("rustdesk_send_read_exact_lengths");
+        std::fs::create_dir_all(&tmp.path).expect("create source directory");
+        let source = tmp.join("source.zip");
+        for size in [
+            0,
+            1,
+            BLOCK_SIZE - 1,
+            BLOCK_SIZE,
+            BLOCK_SIZE + 1,
+            2 * BLOCK_SIZE + 3,
+        ] {
+            let expected: Vec<_> = (0..size).map(|i| (i % 251) as u8).collect();
+            for start in [0, size / 2, size] {
+                std::fs::write(&source, &expected).expect("create exact source");
+                let mut job = TransferJob::new_read(
+                    178,
+                    JobType::Generic,
+                    String::new(),
+                    DataSource::FilePath(source.clone()),
+                    0,
+                    false,
+                    false,
+                    false,
+                )
+                .expect("admit exact source");
+                job.init_data_stream_for_cm().await.expect("open exact source");
+                job.confirm(&FileTransferSendConfirmRequest {
+                    id: 178,
+                    file_num: 0,
+                    union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(
+                        start as u32,
+                    )),
+                    ..Default::default()
+                })
+                .await
+                .expect("confirm a valid initial or resumed position");
+                let mut received = Vec::new();
+                for _ in 0..5 {
+                    if job.file_num() != 0 {
+                        break;
+                    }
+                    let block = job
+                        .read()
+                        .await
+                        .expect("read exact source")
+                        .expect("file block");
+                    assert!(!block.compressed);
+                    assert_eq!(block.id, 178);
+                    assert_eq!(block.file_num, 0);
+                    assert!(block.data.len() <= BLOCK_SIZE);
+                    if block.data.is_empty() {
+                        assert_eq!(received.as_slice(), &expected[start..]);
+                    } else {
+                        received.extend_from_slice(&block.data);
+                        assert!(received.len() <= size - start);
+                    }
+                }
+                assert_eq!(job.file_num(), 1);
+                assert_eq!(received.as_slice(), &expected[start..]);
+                assert!(job.read().await.expect("finish exact list").is_none());
+                assert!(job.job_completed());
+                assert!(job.data_stream.is_none());
+                assert_eq!(job.finished_size(), size as u64);
+                assert_eq!(job.transferred(), size as u64);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn send_read_retires_skipped_progress_before_the_next_file() {
+        const BLOCK_SIZE: usize = 128 * 1024;
+        let tmp = TestTempDir::new("rustdesk_send_read_skip_position");
+        std::fs::create_dir_all(&tmp.path).expect("create source directory");
+        std::fs::write(tmp.join("a.zip"), vec![0x5a; BLOCK_SIZE + 3]).expect("create first source");
+        std::fs::write(tmp.join("b.zip"), b"next").expect("create next source");
+        std::fs::write(tmp.join("c.zip"), b"").expect("create empty source");
+        let mut job = TransferJob::new_read(
+            179,
+            JobType::Generic,
+            String::new(),
+            DataSource::FilePath(tmp.path.clone()),
+            0,
+            false,
+            false,
+            false,
+        )
+        .expect("admit multi-file source");
+        let mut files = std::mem::take(&mut job.files);
+        files.sort_by(|left, right| left.name.cmp(&right.name));
+        job.set_files(files)
+            .expect("admit a deterministic valid file order");
+        assert_eq!(job.files().len(), 3);
+        job.init_data_stream_for_cm().await.expect("open first source");
+        let first = job.read().await.expect("read first prefix").expect("prefix");
+        assert_eq!(first.data.len(), BLOCK_SIZE);
+        assert!(!first.compressed);
+        job.set_file_skipped()
+            .expect("retire the partial first source");
+        assert_eq!(job.file_num(), 1);
+        job.init_data_stream_for_cm().await.expect("open next source");
+        let next = job
+            .read()
+            .await
+            .expect("read next source")
+            .expect("next block");
+        assert_eq!(next.file_num, 1);
+        assert_eq!(next.data.as_ref(), b"next");
+        let eof = job
+            .read()
+            .await
+            .expect("complete next source")
+            .expect("next EOF");
+        assert!(eof.data.is_empty());
+        assert_eq!(job.file_num(), 2);
+        job.init_data_stream_for_cm().await.expect("open empty source");
+        let empty = job
+            .read()
+            .await
+            .expect("complete empty source")
+            .expect("empty EOF");
+        assert!(empty.data.is_empty());
+        assert_eq!(empty.file_num, 2);
+        assert_eq!(job.file_num(), 3);
+        assert!(job.read().await.expect("complete file list").is_none());
+        assert!(job.job_completed());
+        assert_eq!(job.finished_size(), BLOCK_SIZE as u64 + 4);
+        assert_eq!(job.transferred(), BLOCK_SIZE as u64 + 4);
     }
 
     async fn assert_send_resume_refuses_in_place_growth(open_before_growth: bool) {

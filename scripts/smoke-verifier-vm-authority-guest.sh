@@ -2335,6 +2335,12 @@ run_focused_rust_tests() {
             fs::tests::send_resume_bounds_the_offset_by_the_announced_source
             fs::tests::send_resume_refuses_grown_retained_source_beyond_admitted_size
             fs::tests::send_resume_refuses_grown_first_open_beyond_admitted_size
+            fs::tests::send_read_refuses_short_source_before_declared_eof
+            fs::tests::send_read_refuses_truncation_after_a_full_block
+            fs::tests::send_read_refuses_growth_beyond_admitted_size
+            fs::tests::send_read_refuses_growth_after_admitted_eof
+            fs::tests::send_read_preserves_exact_lengths_and_resumed_eof
+            fs::tests::send_read_retires_skipped_progress_before_the_next_file
         )
     elif [ "$MODE" = cpace-recovery-tests ]; then
         container_name=rustdesk-cpace-recovery-tests

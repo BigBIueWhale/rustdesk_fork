@@ -414,61 +414,6 @@ impl KeyboardControllable for Enigo {
         self
     }
 
-    fn key_sequence(&mut self, sequence: &str) {
-        // NOTE(dustin): This is a fix for issue https://github.com/enigo-rs/enigo/issues/68
-        // TODO(dustin): This could be improved by aggregating 20 bytes worth of graphemes at a time
-        // but i am unsure what would happen for grapheme clusters greater than 20 bytes ...
-        use unicode_segmentation::UnicodeSegmentation;
-        let clusters = UnicodeSegmentation::graphemes(sequence, true).collect::<Vec<&str>>();
-        for cluster in clusters {
-            if let Some(src) = self.event_source.as_ref() {
-                if let Ok(event) = CGEvent::new_keyboard_event(src.clone(), 0, true) {
-                    event.set_string(cluster);
-                    self.post(event, None);
-                }
-            }
-        }
-    }
-
-    fn key_click(&mut self, key: Key) {
-        let keycode = self.key_to_keycode(key);
-        if keycode == u16::MAX {
-            return;
-        }
-
-        if let Some(src) = self.event_source.as_ref() {
-            if let Ok(event) = CGEvent::new_keyboard_event(src.clone(), keycode, true) {
-                self.post(event, Some(keycode));
-            }
-
-            if let Ok(event) = CGEvent::new_keyboard_event(src.clone(), keycode, false) {
-                self.post(event, Some(keycode));
-            }
-        }
-    }
-
-    fn key_down(&mut self, key: Key) -> crate::ResultType {
-        let code = self.key_to_keycode(key);
-        if code == u16::MAX {
-            return Err("".into());
-        }
-        if let Some(src) = self.event_source.as_ref() {
-            if let Ok(event) = CGEvent::new_keyboard_event(src.clone(), code, true) {
-                self.post(event, Some(code));
-            }
-        }
-        Ok(())
-    }
-
-    fn key_up(&mut self, key: Key) {
-        let code = self.key_to_keycode(key);
-        if let Some(src) = self.event_source.as_ref() {
-            if let Ok(event) = CGEvent::new_keyboard_event(src.clone(), code, false) {
-                self.post(event, Some(code));
-            }
-        }
-    }
-
     fn get_key_state(&mut self, key: Key) -> bool {
         let keycode = self.key_to_keycode(key);
         unsafe { CGEventSourceKeyState(1, keycode) }

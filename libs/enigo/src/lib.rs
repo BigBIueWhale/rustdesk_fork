@@ -1,42 +1,6 @@
-//! Enigo lets you simulate mouse and keyboard input-events as if they were
-//! made by the actual hardware. The goal is to make it available on different
-//! operating systems like Linux, macOS and Windows – possibly many more but
-//! [Redox](https://redox-os.org/) and *BSD are planned. Please see the
-//! [Repo](https://github.com/enigo-rs/enigo) for the current status.
-//!
-//! Possible use cases could be for testing user interfaces on different
-//! platforms,
-//! building remote control applications or just automating tasks for user
-//! interfaces unaccessible by a public API or scripting language.
-//!
-//! For the keyboard there are currently two modes you can use. The first mode
-//! is represented by the [key_sequence]() function
-//! its purpose is to simply write unicode characters. This is independent of
-//! the keyboardlayout. Please note that
-//! you're not be able to use modifier keys like Control
-//! to influence the outcome. If you want to use modifier keys to e.g.
-//! copy/paste
-//! use the Layout variant. Please note that this is indeed layout dependent.
-
-//! # Examples
-//! ```no_run
-//! use enigo::*;
-//! let mut enigo = Enigo::new();
-//! //paste
-//! enigo.key_down(Key::Control);
-//! enigo.key_click(Key::Layout('v'));
-//! enigo.key_up(Key::Control);
-//! ```
-//!
-//! ```no_run
-//! use enigo::*;
-//! let mut enigo = Enigo::new();
-//! enigo.mouse_move_to(500, 200).unwrap();
-//! enigo.mouse_down(MouseButton::Left).unwrap();
-//! enigo.mouse_move_relative(100, 100).unwrap();
-//! enigo.mouse_up(MouseButton::Left).unwrap();
-//! enigo.key_sequence("hello world");
-//! ```
+//! RustDesk's platform input backend provides mouse operations and keyboard-state queries.
+//! Linux and macOS expose result-bearing text submission through their concrete backends.
+//! Physical keyboard input belongs to the application's owned rdev input path.
 #![deny(missing_docs)]
 
 #[cfg(target_os = "macos")]
@@ -431,8 +395,7 @@ pub enum Key {
     Raw(u16),
 }
 
-/// Representing an interface and a set of keyboard functions every
-/// operating system implementation _should_ implement.
+/// Cross-platform keyboard-state access.
 pub trait KeyboardControllable {
     // https://stackoverflow.com/a/33687996
     /// Offer the ability to confer concrete type.
@@ -441,36 +404,7 @@ pub trait KeyboardControllable {
     /// Offer the ability to confer concrete type.
     fn as_mut_any(&mut self) -> &mut dyn std::any::Any;
 
-    /// Types the string
-    ///
-    /// Emits keystrokes such that the given string is inputted.
-    ///
-    /// You can use many unicode here like: ❤️. This works
-    /// regardless of the current keyboardlayout.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use enigo::*;
-    /// let mut enigo = Enigo::new();
-    /// enigo.key_sequence("hello world ❤️");
-    /// ```
-    fn key_sequence(&mut self, sequence: &str);
-
-    /// presses a given key down
-    fn key_down(&mut self, key: Key) -> ResultType;
-
-    /// release a given key formally pressed down by
-    /// [key_down](trait.KeyboardControllable.html#tymethod.key_down)
-    fn key_up(&mut self, key: Key);
-
-    /// Much like the
-    /// [key_down](trait.KeyboardControllable.html#tymethod.key_down) and
-    /// [key_up](trait.KeyboardControllable.html#tymethod.key_up)
-    /// function they're just invoked consecutively
-    fn key_click(&mut self, key: Key);
-
-    ///
+    /// Query the platform's state for a key.
     fn get_key_state(&mut self, key: Key) -> bool;
 }
 
@@ -513,26 +447,5 @@ mod tests {
         assert!(checked_scroll_magnitude(65, 64).is_err());
         assert!(checked_scroll_magnitude(-65, 64).is_err());
         assert!(checked_scroll_magnitude(i32::MIN, 64).is_err());
-    }
-
-    #[test]
-    fn test_get_key_state() {
-        let mut enigo = Enigo::new();
-        let keys = [Key::CapsLock, Key::NumLock];
-        for k in keys.iter() {
-            enigo.key_click(k.clone());
-            let a = enigo.get_key_state(k.clone());
-            enigo.key_click(k.clone());
-            let b = enigo.get_key_state(k.clone());
-            assert!(a != b);
-        }
-        let keys = [Key::Control, Key::Alt, Key::Shift];
-        for k in keys.iter() {
-            enigo.key_down(k.clone()).ok();
-            let a = enigo.get_key_state(k.clone());
-            enigo.key_up(k.clone());
-            let b = enigo.get_key_state(k.clone());
-            assert!(a != b);
-        }
     }
 }

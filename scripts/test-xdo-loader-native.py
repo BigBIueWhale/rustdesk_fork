@@ -135,6 +135,27 @@ def build():
     enigo = compile_crate('enigo', ROOT / 'libs/enigo/src/lib.rs', 2018,
                           ['--extern', f'hbb_common={common}', '--extern', f'libxdo_sys={loader}',
                            '--extern', f'log={logging}'])
+    retired_source = BUILD / 'retired-enigo-emission.rs'
+    retired_source.write_text('use enigo::{Enigo, Key, KeyboardControllable};\n'
+                              'fn main() { let mut enigo = Enigo::new();\n'
+                              'enigo.key_sequence("a"); enigo.key_down(Key::Shift);\n'
+                              'enigo.key_up(Key::Shift); enigo.key_click(Key::Shift); }\n')
+    retired_binary = BUILD / 'retired-enigo-emission'
+    rejected = subprocess.run(
+        [RUSTC, '--edition=2021', '--error-format=json', '-L', f'dependency={BUILD}',
+         '--extern', f'enigo={enigo}', str(retired_source), '-o', str(retired_binary)],
+        env=ENV, capture_output=True, text=True, timeout=30)
+    require(rejected.returncode == 1 and not rejected.stdout
+            and len(rejected.stderr) <= 32768 and not retired_binary.exists(),
+            'retired Enigo emission API compiled or failed without bounded diagnostics')
+    diagnostics = [json.loads(line) for line in rejected.stderr.splitlines()]
+    errors = [item for item in diagnostics if item.get('level') == 'error' and item.get('code')]
+    require(len(errors) == 4 and all(item['code']['code'] == 'E0599' for item in errors)
+            and all(sum(f'`{name}`' in item['message'] for item in errors) == 1
+                    for name in ('key_sequence', 'key_down', 'key_up', 'key_click')),
+            'retired Enigo emission API refusal differs')
+    print('XDO_ENIGO_EMISSION_API=refused methods=4 crate=complete-linux-source '
+          'compiler=rustc-1.75.0 artifact=absent runtime=unexecuted', flush=True)
     enigo_binary = BUILD / 'test-xdo-enigo'
     command([RUSTC, '--edition=2021', '-L', f'dependency={BUILD}',
              '--extern', f'hbb_common={common}', '--extern', f'enigo={enigo}',
@@ -145,7 +166,7 @@ def build():
           f'policy_parent_sha256={sha(policy_source)} selected_policy_sha256={sha(selected_policy)} '
           'policy=production-source-extracted common=partial cargo=unexecuted', flush=True)
     native_source = ROOT / 'libs/libxdo-sys-stub/native'
-    for variant in ('complete', 'missing-mouse-up', 'missing-key-input', 'wrong-version', 'reject-key-down'):
+    for variant in ('complete', 'missing-mouse-up', 'missing-key-input', 'wrong-version', 'reject-text'):
         source_dir = native_source
         directory = BUILD / variant
         directory.mkdir(mode=0o700)
@@ -258,7 +279,7 @@ def xtest_refusal_diagnostics(stderr, display, count):
 
 
 def run(scenario):
-    require(scenario in ('complete', 'no-xtest', 'missing-mouse-up', 'missing-key-input', 'wrong-version', 'writable', 'absent', 'reject-key-down'),
+    require(scenario in ('complete', 'no-xtest', 'missing-mouse-up', 'missing-key-input', 'wrong-version', 'writable', 'absent', 'reject-text'),
             'unknown loader scenario')
     with open('/tmp/xdo-loader-xvfb.log', 'xb') as log:
         arguments = ['/xvfb-root/usr/bin/Xvfb', ':98', '-screen', '0', '640x480x24',
@@ -272,7 +293,7 @@ def run(scenario):
             while not Path('/tmp/.X11-unix/X98').is_socket():
                 require(child.poll() is None and time.monotonic() < deadline, 'loader Xvfb readiness failed')
                 time.sleep(0.05)
-            if scenario != 'reject-key-down':
+            if scenario != 'reject-text':
                 result = command([str(BUILD / 'test-xdo-loader'), scenario], 10)
                 expected = (f'XDO_LOADER_COMPONENT=pass scenario={scenario} constructors=refused descriptors=retired'
                             if scenario != 'complete' else
@@ -289,16 +310,21 @@ def run(scenario):
                 print(expected, flush=True)
             result = command([str(BUILD / 'test-xdo-enigo'), scenario], 10)
             expected = (f'XDO_ENIGO_COMPONENT=pass scenario={scenario} attempts=8 '
-                        'key_down=unavailable mouse=unavailable descriptors=retired'
-                        if scenario not in ('complete', 'reject-key-down') else
+                        'text=unavailable mouse=unavailable descriptors=retired'
+                        if scenario not in ('complete', 'reject-text') else
                         f'XDO_ENIGO_COMPONENT=pass scenario={scenario} attempts=8 '
-                        f'key_down={"delivered" if scenario == "complete" else "native-modifier-error"} '
+                        f'text={"delivered" if scenario == "complete" else "native-modifier-error"} '
                         'pointer=actual descriptors=retired')
             diagnostics = (xtest_refusal_diagnostics(result.stderr, 'unix/:98.0', 8)
                            if scenario == 'no-xtest' else not result.stderr)
-            require(result.stdout.splitlines() == [expected] and diagnostics,
+            expected_lines = [expected]
+            if scenario == 'complete':
+                expected_lines.insert(0, 'XDO_ENIGO_STATE=pass contexts=8 queries=120 '
+                                      'keys=Shift,Control,Alt,CapsLock,NumLock state=server-observed '
+                                      'source=complete-linux-crate uncertainty=unproved')
+            require(result.stdout.splitlines() == expected_lines and diagnostics,
                     'complete Enigo/private-loader result differs')
-            print(expected, flush=True)
+            print(result.stdout, end='', flush=True)
         finally:
             if child.poll() is None:
                 child.terminate()

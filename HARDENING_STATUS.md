@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-1aeda57ac0ccc12747f9d07fede93600b40e8035a6563dfb73f11f580033a666  requirements.html
+c882bee0e3c840e5ed5f8f938687c71258cb6d005a8f441bd91b29c66bb272ee  requirements.html
 ```
 
 ## Current Verdict
@@ -1758,10 +1758,9 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   one fixed literal `TERM` from service-owned platform policy after `env_clear`; it does not enumerate user
   processes, ingest their environment, or parse an ambient-selected terminfo database. Installed-service execution
   remains open.
-- **R-S11fr/R-S11e-205 bounded software-RGBA recovery and completion order** — **SOURCE, FOCUSED MODEL, AND CURRENT
-  ANDROID EMULATOR SCENARIO GREEN; BROADER TARGET/RELEASE EVIDENCE OPEN.** The `acc3e58a` Android schedule exposed
-  the active-view defect: uncancellable Flutter image conversion work survived task/session replacement while each
-  replacement queue minted fresh capacity. Current source retains two current conversions plus one latest pending
+- **R-S11fr/R-S11e-205 bounded software-RGBA recovery and completion order** — **SOURCE IMPLEMENTED; NAMED
+  MODEL/ANDROID PASSES; INTERMITTENT PRESENTATION AND BROADER ACCEPTANCE OPEN.** Current source retains
+  two current conversions plus one latest pending
   frame per software display, but all software queues in one Dart isolate share one hard three-conversion authority
   and at most 64 FIFO live lane waiters. Retiring a queue removes its waiter without releasing a running conversion's
   permit; completion transfers that permit to the earliest still-live waiter. Waiting retains only the lane's newest
@@ -1778,8 +1777,14 @@ exist; it does not upgrade those checks into target-native, package, latency, so
   harness `89a85f4b` then passed a 1,806-second production-peer Android 14 replay with initial, 2/6/12-second
   background, and two task-relaunch presentations. Task recovery was at most 1.20 seconds; presentation receipts
   showed active/peak conversions `2/2`, `1/1`, `1/1`, zero waiters, and fresh actual pixels in every phase. A prior
-  independent replay showed the same product pass and task recovery at most 2.44 seconds but remains failed evidence
+  separate replay showed the same product pass and task recovery at most 2.44 seconds but remains failed evidence
   because its outer parser had the old receipt schema and an unrelated external UDP listener appeared after the run.
+  Later same-APK replay at harness `855a5d52` failed the first task-relaunch pixel oracle at 8,000 ms;
+  intermittent Android presentation remains **OPEN**. The Android runtime entry below retains the failure's
+  measurements and raw-log retention limits, plus the later corrected-observer same-byte pass at `bccc02c5`.
+  That pass does not erase the failure or establish the unidentified hang's cause.
+  Unfinished engine futures retain their permits; three stalled conversions can block further work.
+  The conversion count bound does not establish sustained presentation progress.
   Physical Android, sustained resource/performance/network-transition/reconnect soak, iOS, Windows software/native
   presentation, stable release artifacts, cold equality, independently administered reproduction, and external
   review remain open.
@@ -1832,7 +1837,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `1aeda57ac0ccc12747f9d07fede93600b40e8035a6563dfb73f11f580033a666  requirements.html`.
+Current normative specification SHA-256: `c882bee0e3c840e5ed5f8f938687c71258cb6d005a8f441bd91b29c66bb272ee  requirements.html`.
 
 ### Current authority and source closure
 

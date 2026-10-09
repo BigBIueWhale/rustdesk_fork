@@ -644,6 +644,8 @@ pub struct TransferJob {
     receive_write_claim: Option<ReceiveWriteClaim>,
     #[serde(skip_serializing)]
     receive_file_offset: u64,
+    #[serde(skip)]
+    send_file_offset: u64,
     pub total_size: u64,
     finished_size: u64,
     transferred: u64,
@@ -3477,6 +3479,7 @@ impl TransferJob {
         // Close the receive handle before unlinking. Unix permits unlinking an open file, but
         // Windows does not generally permit deletion while this job still owns the handle.
         drop(self.data_stream.take());
+        self.send_file_offset = 0;
         if self.role != TransferRole::Receive {
             return Ok(());
         }
@@ -3622,6 +3625,7 @@ impl TransferJob {
                     match File::open(Self::join(p, &self.files[file_num].name)).await {
                         Ok(file) => {
                             self.data_stream = Some(DataStream::FileStream(file));
+                            self.send_file_offset = 0;
                             self.file_confirmed = false;
                             self.file_is_waiting = false;
                         }
@@ -3704,24 +3708,39 @@ impl TransferJob {
         }
 
         let file_num = self.file_num as usize;
-        let name = match &self.data_source {
+        let (name, expected_size) = match &self.data_source {
             DataSource::FilePath(p) => {
                 if file_num >= self.files.len() {
                     self.data_stream.take();
                     return Ok(None);
                 };
-                if self.files.len() == 1 && self.files[file_num].name.is_empty() {
+                let name = if self.files.len() == 1 && self.files[file_num].name.is_empty() {
                     p.file_name()
                         .map(|p| p.to_str().unwrap_or(""))
                         .unwrap_or("")
                 } else {
                     &self.files[file_num].name
-                }
+                };
+                (name, Some(self.files[file_num].size))
             }
-            DataSource::MemoryCursor(..) => "",
+            DataSource::MemoryCursor(..) => ("", None),
         };
         const BUF_SIZE: usize = 128 * 1024;
-        let mut buf: Vec<u8> = vec![0; BUF_SIZE];
+        let read_limit = match expected_size {
+            Some(size) => {
+                let remaining = size
+                    .checked_sub(self.send_file_offset)
+                    .ok_or_else(|| anyhow!("send position exceeds declared file size"))?;
+                if remaining < BUF_SIZE as u64 {
+                    // A nonempty probe distinguishes exact EOF from an oversized source.
+                    remaining as usize + 1
+                } else {
+                    BUF_SIZE
+                }
+            }
+            None => BUF_SIZE,
+        };
+        let mut buf: Vec<u8> = vec![0; read_limit];
         let mut compressed = false;
         let mut offset: usize = 0;
         loop {
@@ -3738,13 +3757,32 @@ impl TransferJob {
                 }
                 Ok(n) => {
                     offset += n;
-                    if n == 0 || offset == BUF_SIZE {
+                    if n == 0 || offset == read_limit {
                         break;
                     }
                 }
             }
         }
-        unsafe { buf.set_len(offset) };
+        let next_send_offset = match expected_size {
+            Some(size) => {
+                let next = self
+                    .send_file_offset
+                    .checked_add(offset as u64)
+                    .ok_or_else(|| anyhow!("send position overflow"))?;
+                if next > size || (offset < read_limit && next < size) {
+                    self.data_stream = None;
+                    bail!(
+                        "source length changed at file {}: read position {}, declared size {}",
+                        file_num,
+                        next,
+                        size
+                    );
+                }
+                Some(next)
+            }
+            None => None,
+        };
+        buf.truncate(offset);
         if offset == 0 {
             if matches!(self.data_source, DataSource::MemoryCursor(_)) {
                 self.data_stream.take();
@@ -3752,6 +3790,7 @@ impl TransferJob {
             }
             self.file_num += 1;
             self.data_stream = None;
+            self.send_file_offset = 0;
             self.file_confirmed = false;
             self.file_is_waiting = false;
         } else {
@@ -3772,6 +3811,9 @@ impl TransferJob {
                 .ok_or_else(|| anyhow!("transferred byte counter overflow"))?;
             self.finished_size = finished_size;
             self.transferred = transferred;
+            if let Some(next) = next_send_offset {
+                self.send_file_offset = next;
+            }
         }
         Ok(Some(FileTransferBlock {
             id: self.id,
@@ -3943,8 +3985,9 @@ impl TransferJob {
             }
             self.transferred = transferred;
             self.finished_size = finished_size;
-            if self.role == TransferRole::Receive {
-                self.receive_file_offset = offset;
+            match self.role {
+                TransferRole::Receive => self.receive_file_offset = offset,
+                TransferRole::Send => self.send_file_offset = offset,
             }
             return Ok(());
         }

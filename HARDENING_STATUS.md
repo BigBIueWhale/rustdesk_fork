@@ -13253,7 +13253,7 @@ frame and sends only to those IDs, so a later subscriber cannot receive audio
 from an earlier authority snapshot. Same-UID status or a copied token alone
 does not authorize capture.
 
-The strongest current native evidence is source `3e1466625710ad75069344c4384710b0ba730491`
+The strongest production-pair native evidence is source `3e1466625710ad75069344c4384710b0ba730491`
 (tree `828b07d340ae4bd4aa75e8aed700f455c6234edf`). In a zero-NIC VM,
 `--cm-file-replay` built the real server and keyed Remote viewer probe, then
 ran a private PulseAudio 16.1 null-sink/sine monitor and Unix-only Xvfb inside
@@ -13272,21 +13272,43 @@ release input (archive SHA-256
 manifest SHA-256
 `e09cd86e2c54ef0df9348fad5343ce051b2ee28fecc7808e50228474fd32da34`).
 
-The existing native monitor lifecycle regression now also stages a fresh
-subscriber authority after the first capture retires, rejects the predecessor
-token, restarts real source audio without restarting the private daemon,
-and requires nonzero replacement frames. It then drops the old authority guard
-while the successor capture is live, requires 500 ms of continued authorized
-capture, and independently revokes and drains that successor. This extended
-scenario uses test-owned subscriber/socket fixtures, not the installed server/CM pair.
-**INCOMPLETE; native acceptance OPEN:** the zero-NIC attempt at source
-`5273d7880898dcb581676cdfc24dd52acddadb7e` ended with VM-owner status 137
-before any test result. The termination cause is unproven; no retry was started.
+**Native capture replacement and recording-stream retirement passed** at
+`3d0ae341e7fe87f634d6cee6c91b141a4eb3d661`
+(tree `9671f2a2053202b177bc58fcde29c1215e6d1c67`). The actual capture function
+records from the private native monitor, revokes after source audio is unloaded,
+rejects the predecessor token, and starts a fresh subscriber authority without
+restarting the daemon. Dropping the old guard leaves 500 ms of authorized
+successor capture with four nonzero frames; independent successor revocation
+terminates capture within the test's 600-ms bound. Native `pactl` recording-stream
+counts are `0,1,0,1,1,0`: before/during/after the first capture, during the successor,
+after old-guard retirement, and after successor retirement. These are test-owned
+subscriber/socket fixtures, not an installed server/CM pair or real subscriber churn.
+
+The zero-NIC, guest-only networkless UID/GID 1000 Docker transaction passed all
+eleven named authority/protocol/native tests, including actual Unix kernel-peer
+same-UID wrong-principal refusal with a copied token and refusal before a silent
+wrong-principal client sends a request. One completed Cargo library test artifact,
+SHA-256 `d7223c83fbd658b34a4dbaddfd5ab461c8d19f68444d6f0ab7087ec1a7d93fd5`,
+is selected from compiler metadata and stays unchanged before, between, and after
+the five groups. The cold build took 145 seconds, behavioral execution 10 seconds,
+and the outer integration 224 seconds; separate budgets are 600/120 seconds.
+Source and authenticated input authorities stayed read-only; capabilities were
+dropped, the offline canary passed, owners joined, and the exact scratch root and
+disks retired. Independent host listener snapshots were byte-identical with no
+addition. Raw serial
+`.harness-state/verifier-vm/linux-pa-authority-tests-run.ZL954lTPIu.serial.log`
+is 71,111 bytes, SHA-256
+`5d52e40621ad3cc9dacb74e0f0507a97db04b6b24bed2574ddc191ee408eb875`;
+outer log and listener observations are retained in
+`.harness-state/verifier-vm/pa-native-3d0ae341-evidence/`.
+
+The prior zero-NIC attempt at `5273d7880898dcb581676cdfc24dd52acddadb7e`
+ended with VM-owner status 137 before any test result; its cause remains unproven.
 Raw serial `linux-pa-authority-tests-run.usJogF0Qr7.serial.log` is 55,257 bytes,
 SHA-256 `1ac47a489f9d1e6decfe85a74644bc02f2932be3d7f40a313fc42d925af9b236`;
 its bounded failure receipt is retained beside it. Owned children joined, disks
 were retired, and exact scratch root `run.usJogF0Qr7` (`66306:114341109`) was
-reconciled and removed. No executable or whole-run acceptance is claimed.
+reconciled and removed. That failed run supplies no executable or whole-run acceptance.
 
 **Still OPEN:** installed-service/root principals, wrong-UID and PID-reuse
 races, real subscriber churn and capture restart, sustained latency,

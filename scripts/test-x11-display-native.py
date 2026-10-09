@@ -299,7 +299,7 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
           "scenarios=constructor,diagnostic-display-change listener=container-loopback-only "
           "peer=closed children=joined scope=xdo-backend", flush=True)
     enigo_text(root, environment, binary, providers.get("before"))
-    for path in (binary, api, key_types):
+    for path in (binary, api):
         path.unlink()
     for directory in providers.values():
         (directory / "libxdo.so").unlink()

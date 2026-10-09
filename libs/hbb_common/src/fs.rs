@@ -167,10 +167,6 @@ impl FileEnumerationUsage {
     }
 }
 
-fn is_file_enumeration_budget_error(err: &anyhow::Error) -> bool {
-    err.to_string().contains(FILE_ENUMERATION_BUDGET_EXCEEDED)
-}
-
 pub fn get_next_job_id() -> i32 {
     NEXT_JOB_ID.fetch_add(1, Ordering::SeqCst)
 }
@@ -193,11 +189,12 @@ pub fn read_dir_with_budget(
     budget: FileEnumerationBudget,
 ) -> ResultType<FileDirectory> {
     let mut usage = FileEnumerationUsage::default();
-    read_dir_with_usage(path, include_hidden, budget, &mut usage, 0)
+    read_dir_with_usage(path, Path::new(""), include_hidden, budget, &mut usage, 0)
 }
 
 fn read_dir_with_usage(
     path: &Path,
+    prefix: &Path,
     include_hidden: bool,
     budget: FileEnumerationBudget,
     usage: &mut FileEnumerationUsage,
@@ -205,7 +202,10 @@ fn read_dir_with_usage(
 ) -> ResultType<FileDirectory> {
     usage.enter_dir(depth, budget)?;
     let mut dir = FileDirectory {
-        path: get_string(path),
+        path: path
+            .to_str()
+            .ok_or_else(|| anyhow!("directory path is not valid UTF-8"))?
+            .to_owned(),
         ..Default::default()
     };
     #[cfg(windows)]
@@ -227,23 +227,24 @@ fn read_dir_with_usage(
         }
         return Ok(dir);
     }
-    for entry in path.read_dir()?.flatten() {
+    for entry in path.read_dir()? {
+        let entry = entry?;
         let p = entry.path();
-        let name = p
-            .file_name()
-            .map(|p| p.to_str().unwrap_or(""))
-            .unwrap_or("")
-            .to_owned();
-        if name.is_empty() {
-            continue;
-        }
+        let file_name = entry.file_name();
+        let name = file_name
+            .to_str()
+            .ok_or_else(|| anyhow!("file name is not valid UTF-8"))?;
+        let relative_name = prefix.join(name);
+        // The budget bounds scan work even when this entry is excluded from the result. Recursive
+        // callers charge the complete relative name before it can enter the returned file list.
+        usage.push_entry(
+            relative_name
+                .to_str()
+                .ok_or_else(|| anyhow!("relative file path is not valid UTF-8"))?,
+            budget,
+        )?;
         let mut is_hidden = false;
-        let meta;
-        if let Ok(tmp) = std::fs::symlink_metadata(&p) {
-            meta = tmp;
-        } else {
-            continue;
-        }
+        let meta = std::fs::symlink_metadata(&p)?;
         // docs.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants
         #[cfg(windows)]
         if meta.file_attributes() & 0x2 != 0 {
@@ -270,18 +271,9 @@ fn read_dir_with_usage(
                 (FileType::File.into(), meta.len())
             }
         };
-        let modified_time = meta
-            .modified()
-            .map(|x| {
-                x.duration_since(std::time::SystemTime::UNIX_EPOCH)
-                    .map(|x| x.as_secs())
-                    .unwrap_or(0)
-            })
-            .unwrap_or(0);
-        let name = get_file_name(&p);
-        usage.push_entry(&name, budget)?;
+        let modified_time = meta.modified()?.duration_since(UNIX_EPOCH)?.as_secs();
         dir.entries.push(FileEntry {
-            name,
+            name: name.to_owned(),
             entry_type,
             is_hidden,
             size,
@@ -339,70 +331,44 @@ fn read_dir_recursive_with_budget(
     depth: usize,
 ) -> ResultType<Vec<FileEntry>> {
     let mut files = Vec::new();
-    if path.is_dir() {
-        // to-do: symbol link handling, cp the link rather than the content
-        // to-do: file mode, for unix
-        let fd = read_dir_with_usage(path, include_hidden, budget, usage, depth)?;
-        for entry in fd.entries.iter() {
+    let meta = std::fs::metadata(path)?;
+    if meta.is_dir() {
+        let fd = read_dir_with_usage(path, prefix, include_hidden, budget, usage, depth)?;
+        for mut entry in fd.entries {
             match entry.entry_type.enum_value() {
                 Ok(FileType::File) => {
-                    let mut entry = entry.clone();
-                    entry.name = get_string(&prefix.join(entry.name));
+                    entry.name = get_string(&prefix.join(&entry.name));
                     files.push(entry);
                 }
                 Ok(FileType::Dir) => {
                     let child_depth = depth
                         .checked_add(1)
                         .ok_or_else(|| anyhow!("file enumeration depth counter overflow"))?;
-                    match read_dir_recursive_with_budget(
+                    files.extend(read_dir_recursive_with_budget(
                         &path.join(&entry.name),
                         &prefix.join(&entry.name),
                         include_hidden,
                         budget,
                         usage,
                         child_depth,
-                    ) {
-                        Ok(mut tmp) => {
-                            for entry in tmp.drain(0..) {
-                                files.push(entry);
-                            }
-                        }
-                        Err(err) => {
-                            if is_file_enumeration_budget_error(&err) {
-                                return Err(err);
-                            }
-                        }
-                    }
+                    )?);
                 }
                 _ => {}
             }
         }
         Ok(files)
-    } else if path.is_file() {
+    } else if meta.is_file() {
         usage.push_entry(&get_file_name(path), budget)?;
-        let (size, modified_time) = if let Ok(meta) = std::fs::metadata(path) {
-            (
-                meta.len(),
-                meta.modified()
-                    .map(|x| {
-                        x.duration_since(std::time::SystemTime::UNIX_EPOCH)
-                            .map(|x| x.as_secs())
-                            .unwrap_or(0)
-                    })
-                    .unwrap_or(0),
-            )
-        } else {
-            (0, 0)
-        };
+        let modified_time = meta.modified()?.duration_since(UNIX_EPOCH)?.as_secs();
         files.push(FileEntry {
             entry_type: FileType::File.into(),
-            size,
+            size: meta.len(),
             modified_time,
             ..Default::default()
         });
         Ok(files)
     } else {
-        bail!("Not exists");
+        bail!("unsupported file type");
     }
 }
 
@@ -450,48 +416,36 @@ fn read_empty_dirs_recursive_with_budget(
     depth: usize,
 ) -> ResultType<Vec<FileDirectory>> {
     let mut dirs = Vec::new();
-    if path.is_dir() {
-        // to-do: symbol link handling, cp the link rather than the content
-        // to-do: file mode, for unix
-        let fd = read_dir_with_usage(path, include_hidden, budget, usage, depth)?;
+    let meta = std::fs::metadata(path)?;
+    if meta.is_dir() {
+        let fd = read_dir_with_usage(path, prefix, include_hidden, budget, usage, depth)?;
         if fd.entries.is_empty() {
             dirs.push(fd);
         } else {
-            for entry in fd.entries.iter() {
+            for entry in fd.entries {
                 match entry.entry_type.enum_value() {
                     Ok(FileType::Dir) => {
                         let child_depth = depth
                             .checked_add(1)
                             .ok_or_else(|| anyhow!("file enumeration depth counter overflow"))?;
-                        match read_empty_dirs_recursive_with_budget(
+                        dirs.extend(read_empty_dirs_recursive_with_budget(
                             &path.join(&entry.name),
                             &prefix.join(&entry.name),
                             include_hidden,
                             budget,
                             usage,
                             child_depth,
-                        ) {
-                            Ok(mut tmp) => {
-                                for entry in tmp.drain(0..) {
-                                    dirs.push(entry);
-                                }
-                            }
-                            Err(err) => {
-                                if is_file_enumeration_budget_error(&err) {
-                                    return Err(err);
-                                }
-                            }
-                        }
+                        )?);
                     }
                     _ => {}
                 }
             }
         }
         Ok(dirs)
-    } else if path.is_file() {
+    } else if meta.is_file() {
         Ok(dirs)
     } else {
-        bail!("Not exists");
+        bail!("unsupported file type");
     }
 }
 
@@ -6839,6 +6793,31 @@ mod tests {
         )
         .expect_err("relative path prefixes must contribute to the byte bound");
         assert_err_contains(error, "approx serialized bytes 435 exceed limit 434");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn file_enumeration_refuses_unrepresentable_modification_times() {
+        let tmp = TestTempDir::new("rustdesk_enum_timestamp");
+        std::fs::create_dir_all(&tmp.path).expect("create directory");
+        let file = tmp.join("before_epoch.txt");
+        std::fs::write(&file, b"unchanged").expect("create file");
+        filetime::set_file_mtime(&file, filetime::FileTime::from_unix_time(-1, 0))
+            .expect("set a real pre-epoch modification time");
+        std::fs::metadata(&file)
+            .expect("read fixture metadata")
+            .modified()
+            .expect("read fixture modification time")
+            .duration_since(UNIX_EPOCH)
+            .expect_err("the native filesystem must retain the pre-epoch time");
+        let budget = FileEnumerationBudget::for_max_entries(8);
+        let directory = read_dir_with_budget(&tmp.path, true, budget);
+        let single_file = get_recursive_files_with_budget(&get_string(&file), true, budget);
+        for result in [directory.map(|_| ()), single_file.map(|_| ())] {
+            let error = result.expect_err("an unrepresentable time must not become epoch zero");
+            assert!(error.downcast_ref::<std::time::SystemTimeError>().is_some());
+        }
+        assert_eq!(std::fs::read(file).expect("read unchanged file"), b"unchanged");
     }
 
     #[test]

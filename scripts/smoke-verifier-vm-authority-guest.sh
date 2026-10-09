@@ -2287,6 +2287,7 @@ run_focused_rust_tests() {
             fs::tests::directory_enumeration_refuses_unrepresentable_file_names
             fs::tests::directory_enumeration_budgets_excluded_hidden_entries
             fs::tests::recursive_enumeration_budgets_complete_relative_paths
+            fs::tests::file_enumeration_refuses_unrepresentable_modification_times
             config::tests::config_transaction_faults_preserve_precommit_and_make_postcommit_fatal
             config::tests::config_transaction_traverses_search_only_existing_ancestor
             config::tests::config_transaction_creates_missing_parent_components_privately

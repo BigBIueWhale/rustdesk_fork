@@ -2333,6 +2333,8 @@ run_focused_rust_tests() {
             fs::tests::send_file_job_preserves_valid_start_resume_and_exact_end
             fs::tests::send_resume_keeps_the_announced_source_after_path_replacement
             fs::tests::send_resume_bounds_the_offset_by_the_announced_source
+            fs::tests::send_resume_refuses_grown_retained_source_beyond_admitted_size
+            fs::tests::send_resume_refuses_grown_first_open_beyond_admitted_size
         )
     elif [ "$MODE" = cpace-recovery-tests ]; then
         container_name=rustdesk-cpace-recovery-tests

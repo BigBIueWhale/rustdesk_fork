@@ -6797,7 +6797,7 @@ mod tests {
         let tmp = TestTempDir::new("rustdesk_send_resume_retained_length");
         std::fs::create_dir_all(&tmp.path).expect("create send directory");
         let source = tmp.join("source.bin");
-        std::fs::write(&source, b"short").expect("create short source");
+        std::fs::write(&source, b"short-value").expect("create source");
         let mut job = TransferJob::new_read(
             173,
             JobType::Generic,
@@ -6814,7 +6814,13 @@ mod tests {
             .await
             .expect("open announced source")
             .expect("announce overwrite metadata");
-        assert_eq!(size, 5);
+        assert_eq!(size, 11);
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&source)
+            .expect("open retained source for truncation")
+            .set_len(5)
+            .expect("shrink the retained source below its admitted size");
         std::fs::rename(&source, tmp.join("announced.bin")).expect("move short source");
         std::fs::write(&source, b"replacement-contents").expect("install larger replacement");
         let mut request = FileTransferSendConfirmRequest {
@@ -6850,6 +6856,106 @@ mod tests {
             std::fs::read(&source).expect("read larger replacement"),
             b"replacement-contents"
         );
+    }
+
+    async fn assert_send_resume_refuses_in_place_growth(open_before_growth: bool) {
+        use std::io::Write;
+
+        let tmp = TestTempDir::new("rustdesk_send_resume_admitted_size");
+        std::fs::create_dir_all(&tmp.path).expect("create send directory");
+        let source = tmp.join("source.bin");
+        std::fs::write(&source, b"short").expect("create source");
+        let mut job = TransferJob::new_read(
+            176,
+            JobType::Generic,
+            String::new(),
+            DataSource::FilePath(source.clone()),
+            0,
+            false,
+            false,
+            true,
+        )
+        .expect("admit five source bytes");
+        assert_eq!(job.files()[0].size, 5);
+        assert_eq!(job.total_size(), 5);
+        if open_before_growth {
+            let (_, size) = job
+                .init_data_stream_for_cm()
+                .await
+                .expect("open source")
+                .expect("announce source digest");
+            assert_eq!(size, 5);
+        }
+        let mut writer = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&source)
+            .expect("open the same source for growth");
+        writer
+            .write_all(b"-growth")
+            .expect("grow the source in place");
+        assert_eq!(writer.metadata().expect("read grown length").len(), 12);
+        let mut request = FileTransferSendConfirmRequest {
+            id: 176,
+            file_num: 0,
+            union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(6)),
+            ..Default::default()
+        };
+
+        let error = job
+            .confirm(&request)
+            .await
+            .expect_err("source growth must not admit an offset beyond the file-list size");
+        assert!(error.to_string().contains("exceeds declared file size 5"));
+        assert_eq!(job.data_stream.is_some(), open_before_growth);
+        assert!(!job.file_confirmed());
+        assert_eq!(job.file_is_waiting(), open_before_growth);
+        assert_eq!(job.file_num(), 0);
+        assert_eq!(job.finished_size(), 0);
+        assert_eq!(job.transferred(), 0);
+        assert_eq!(job.total_size(), 5);
+        assert_eq!(job.files()[0].size, 5);
+        assert!(job.receive_write_claim.is_none());
+        if let Some(DataStream::FileStream(file)) = job.data_stream.as_mut() {
+            assert_eq!(
+                file.stream_position().await.expect("read retained position"),
+                0
+            );
+        }
+
+        writer
+            .set_len(5)
+            .expect("restore the same source's admitted length");
+        request.union = Some(file_transfer_send_confirm_request::Union::OffsetBlk(2));
+        job.confirm(&request).await.expect("admit a valid resume");
+        assert!(job.file_confirmed());
+        assert_eq!(job.finished_size(), 2);
+        assert_eq!(job.transferred(), 2);
+        let block = job
+            .read()
+            .await
+            .expect("read resumed source")
+            .expect("source suffix");
+        assert!(!block.compressed);
+        assert_eq!(block.file_num, 0);
+        assert_eq!(block.data.as_ref(), b"ort");
+        let eof = job.read().await.expect("read exact EOF").expect("EOF block");
+        assert!(eof.data.is_empty());
+        assert_eq!(eof.file_num, 0);
+        assert_eq!(job.file_num(), 1);
+        assert!(job.data_stream.is_none());
+        assert!(job.job_completed());
+        assert_eq!(job.finished_size(), 5);
+        assert_eq!(job.transferred(), 5);
+    }
+
+    #[tokio::test]
+    async fn send_resume_refuses_grown_retained_source_beyond_admitted_size() {
+        assert_send_resume_refuses_in_place_growth(true).await;
+    }
+
+    #[tokio::test]
+    async fn send_resume_refuses_grown_first_open_beyond_admitted_size() {
+        assert_send_resume_refuses_in_place_growth(false).await;
     }
 
     #[tokio::test]

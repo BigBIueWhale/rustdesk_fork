@@ -4290,6 +4290,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'clipboard listener completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
+        'XDO_TEXT_MODIFIER_ORDER_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=128 main_legs=64 order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
+        'temporary text modifiers remain live through main release and retire in reverse order'
+    require_exact_fixed_receipt \
         'X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider fault=restore-submission repeats=4 cases=8 unwind=4 later_requests=64 native_calls=8 contexts=16 events=16 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false' \
         'pending native scratch context stays owned and retires before its borrowed Display during drop and unwind'
     require_exact_fixed_receipt \
@@ -4372,6 +4375,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
         'key-input guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'key-input guest completion'
 elif [ "$MODE" = x11-display-tests ]; then
+    require_exact_fixed_receipt \
+        'XDO_TEXT_MODIFIER_ORDER_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=128 main_legs=64 order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false' \
+        'temporary text modifiers remain live through main release and retire in reverse order'
     require_exact_fixed_receipt \
         'X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider fault=restore-submission repeats=4 cases=8 unwind=4 later_requests=64 native_calls=8 contexts=16 events=16 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false' \
         'pending native scratch context stays owned and retires before its borrowed Display during drop and unwind'

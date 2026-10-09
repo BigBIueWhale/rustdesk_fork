@@ -550,14 +550,24 @@ int _is_success(const char *funcname, int code, const xdo_t *xdo) {
 
 void _xdo_text_event(const xdo_t *xdo, charcodemap_t *key,
                           const KeyCode *modifiers, int is_press, useconds_t delay) {
-  for (int i = ShiftMapIndex; i <= Mod5MapIndex; i++) {
-    if (modifiers[i] != 0) {
-      XTestFakeKeyEvent(xdo->xdpy, modifiers[i], is_press, CurrentTime);
-      XSync(xdo->xdpy, False);
+  if (is_press) {
+    for (int i = ShiftMapIndex; i <= Mod5MapIndex; i++) {
+      if (modifiers[i] != 0) {
+        XTestFakeKeyEvent(xdo->xdpy, modifiers[i], True, CurrentTime);
+        XSync(xdo->xdpy, False);
+      }
     }
   }
   XTestFakeKeyEvent(xdo->xdpy, key->code, is_press, CurrentTime);
   XSync(xdo->xdpy, False);
+  if (!is_press) {
+    for (int i = Mod5MapIndex; i >= ShiftMapIndex; i--) {
+      if (modifiers[i] != 0) {
+        XTestFakeKeyEvent(xdo->xdpy, modifiers[i], False, CurrentTime);
+        XSync(xdo->xdpy, False);
+      }
+    }
+  }
 
   /* Skipping the usleep if delay is 0 is much faster than calling usleep(0) */
   XFlush(xdo->xdpy);

@@ -31,6 +31,14 @@ static KeyCode group_code;
 static KeySym group_symbol;
 static unsigned group_current, group_locked;
 static int group_events, group_latched;
+static Display *modifier_observer;
+static Window modifier_window;
+static KeyCode modifier_main;
+static KeySym modifier_symbol;
+static unsigned modifier_mask;
+static unsigned char modifier_keys[32];
+static struct { KeyCode code; unsigned mask; Bool pressed; } modifier_steps[6];
+static int modifier_step, modifier_step_count;
 static XModifierKeymap *owned_modifiers;
 static KeyCode *modifier_codes;
 static int key_fault, key_queries, key_checks, key_replies, key_retirements;
@@ -144,6 +152,40 @@ int __wrap_XTestFakeKeyEvent(Display *display, unsigned int code, Bool pressed, 
     input_calls++;
   }
   int status = __real_XTestFakeKeyEvent(display, code, pressed, delay);
+  if (observe && display == product_display && modifier_observer != NULL) {
+    require(status && modifier_step < modifier_step_count
+            && code == modifier_steps[modifier_step].code
+            && pressed == modifier_steps[modifier_step].pressed,
+            "temporary modifier dependency order differs");
+    XSync(display, False);
+    XEvent event;
+    require(XCheckWindowEvent(modifier_observer, modifier_window,
+                             KeyPressMask | KeyReleaseMask, &event)
+            && event.type == (pressed ? KeyPress : KeyRelease)
+            && event.xkey.window == modifier_window && !event.xkey.send_event
+            && event.xkey.keycode == code && event.xkey.state == modifier_mask,
+            "temporary modifier native event or lookup state differs");
+    if (code == modifier_main) {
+      XkbDescPtr map = XkbGetMap(modifier_observer, XkbAllClientInfoMask, XkbUseCoreKbd);
+      KeySym symbol = NoSymbol;
+      unsigned consumed;
+      require(map && XkbTranslateKeyCode(map, code, event.xkey.state, &consumed, &symbol)
+              && symbol == modifier_symbol, "text main leg lost its required modifiers");
+      XkbFreeKeyboard(map, 0, True);
+    }
+    unsigned mask = modifier_steps[modifier_step].mask;
+    if (pressed) {
+      modifier_mask |= mask;
+      modifier_keys[code / 8] |= 1U << (code % 8);
+    } else {
+      modifier_mask &= ~mask;
+      modifier_keys[code / 8] &= ~(1U << (code % 8));
+    }
+    char keys[32];
+    require(XQueryKeymap(modifier_observer, keys) && !memcmp(keys, modifier_keys, 32),
+            "text modifier leg changed unowned logical keys");
+    modifier_step++;
+  }
   if (observe && display == product_display && group_observer != NULL) {
     require(status && group_events < 2 && pressed == (group_events == 0),
             "text-group native submission differs");
@@ -452,16 +494,25 @@ static void modifier_admission(xdo_t *input, Display *observer, Window window,
               && input_calls == 4 && mapping_changes == 0 && queries == 0 && frees == 0,
               "modifier recovery snapshot or ownership differs");
       XSync(observer, False);
+      XkbDescPtr installed = XkbGetMap(observer, XkbAllClientInfoMask, XkbUseCoreKbd);
+      require(installed != NULL, "modifier recovery native map unavailable");
       for (int index = 0; index < 4; index++) {
         XEvent event;
         require(XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &event),
                 "native modifier/key event missing");
         require(event.type == (index < 2 ? KeyPress : KeyRelease)
                 && event.xkey.window == window && !event.xkey.send_event
-                && event.xkey.keycode == (unsigned)(index % 2 ? code : shift)
-                && event.xkey.state == (unsigned)(index == 1 || index == 2 ? ShiftMask : 0),
+                && event.xkey.keycode == (unsigned)(index == 1 || index == 2 ? code : shift)
+                && event.xkey.state == (unsigned)(index == 0 ? 0 : ShiftMask),
                 "native modifier/key event differs");
+        if (event.xkey.keycode == (unsigned)code) {
+          KeySym symbol = NoSymbol;
+          unsigned consumed;
+          require(XkbTranslateKeyCode(installed, code, event.xkey.state, &consumed, &symbol)
+                  && symbol == XK_A, "uppercase main leg lost Shift");
+        }
       }
+      XkbFreeKeyboard(installed, 0, True);
       events(observer, window, 0, 0);
       same_map(observer, low, high - low + 1, width, mapping);
       same_modifiers(observer, map);
@@ -768,7 +819,7 @@ static void held_modifiers(xdo_t *input, Display *observer, Window window) {
       XSync(observer, False);
       for (int i = 0; i < expected; i++) {
         XEvent event;
-        int modifier = profile == 3 && (i == 0 || i == 2);
+        int modifier = profile == 3 && (i == 0 || i == 3);
         require(XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &event)
                 && event.type == (i < expected / 2 ? KeyPress : KeyRelease)
                 && !event.xkey.send_event && event.xkey.keycode == (unsigned)(modifier ? shift : code)
@@ -811,6 +862,140 @@ static void held_modifiers(xdo_t *input, Display *observer, Window window) {
   reset_key_query();
   XkbFreeKeyboard(baseline, 0, True);
   XFreeModifiermap(map);
+}
+
+static void modifier_pair_order(Display *observer, Window window) {
+  int descriptors = entries("/proc/self/fd"), tasks = entries("/proc/self/task");
+  clear_keys(observer);
+  XkbDescPtr original = component_snapshot(observer), changed = component_snapshot(observer);
+  KeyCode code = XKeysymToKeycode(observer, XK_a), shift = 0, control = 0;
+  XModifierKeymap *modifiers = XGetModifierMapping(observer);
+  require(code && original->map->modmap[code] == 0 && !XkbKeyHasActions(original, code)
+          && modifiers && modifiers->modifiermap && modifiers->max_keypermod > 0,
+          "modifier order fixture native codes unavailable");
+  for (int i = 0; i < modifiers->max_keypermod; i++) {
+    if (!shift) shift = modifiers->modifiermap[ShiftMapIndex * modifiers->max_keypermod + i];
+    if (!control) control = modifiers->modifiermap[ControlMapIndex * modifiers->max_keypermod + i];
+  }
+  require(shift && control && shift != control && code != shift && code != control,
+          "modifier order fixture codes overlap");
+  /* Reuse a noncanonical two-level type without changing any key's width. */
+  int type_index = XkbNumRequiredTypes;
+  while (type_index < changed->map->num_types && changed->map->types[type_index].num_levels != 2)
+    type_index++;
+  require(type_index < changed->map->num_types
+          && XkbResizeKeyType(changed, type_index, 1, False, 2) == Success,
+          "modifier order fixture type unavailable");
+  XkbKeyTypePtr type = &changed->map->types[type_index];
+  type->mods = (XkbModsRec){.mask = ShiftMask | ControlMask, .real_mods = ShiftMask | ControlMask};
+  type->map[0] = (XkbKTMapEntryRec){.active = True, .level = 1, .mods = type->mods};
+  int types[] = {type_index};
+  XkbMapChangesRec changes = {0};
+  require(XkbChangeTypesOfKey(changed, code, 1, XkbGroup1Mask, types, &changes) == Success,
+          "modifier order fixture row unavailable");
+  XkbKeySymEntry(changed, code, 0, 0) = XK_F30;
+  XkbKeySymEntry(changed, code, 1, 0) = 0x0101f602UL;
+  changed->server->explicit[code] = XkbAllExplicitMask;
+  changes.changed |= XkbKeyTypesMask | XkbExplicitComponentsMask;
+  changes.first_type = type_index;
+  changes.num_types = 1;
+  changes.first_key_explicit = code;
+  changes.num_key_explicit = 1;
+  require(XkbChangeMap(observer, changed, &changes), "modifier order fixture map not sent");
+  XSync(observer, False);
+  XkbDescPtr configured = component_snapshot(observer);
+  require(XkbKeyNumGroups(configured, code) == 1 && XkbKeyGroupsWidth(configured, code) == 2
+          && XkbKeyKeyType(configured, code, 0)->mods.mask == (ShiftMask | ControlMask)
+          && XkbKeySymEntry(configured, code, 1, 0) == 0x0101f602UL
+          && !XkbKeyHasActions(configured, code), "native modifier order layout differs");
+  xdo_t *input = xdo_new("unix/:98.0");
+  require(input != NULL, "modifier order product context unavailable");
+  int found = 0;
+  for (int i = 0; i < input->charcodes_len; i++) {
+    if (input->charcodes[i].symbol != 0x0101f602UL) continue;
+    require(input->charcodes[i].code == code && input->charcodes[i].group == 0
+            && input->charcodes[i].modmask == (ShiftMask | ControlMask),
+            "modifier order product resolution differs");
+    found++;
+  }
+  require(found == 1, "modifier order unique symbol absent or duplicated");
+  product_display = input->xdpy;
+  modifier_main = code;
+  modifier_symbol = 0x0101f602UL;
+  modifier_window = window;
+  int total_events = 0;
+  for (int round = 0; round < 4; round++) {
+    for (int delayed = 0; delayed < 2; delayed++) {
+      for (int profile = 0; profile < 4; profile++) {
+        if (profile & 1) fixture_key(observer, window, shift, 1);
+        if (profile & 2) fixture_key(observer, window, control, 1);
+        char keys[32];
+        XkbStateRec state = {0};
+        held_state(observer, keys, &state);
+        modifier_mask = (profile & 1 ? ShiftMask : 0) | (profile & 2 ? ControlMask : 0);
+        require(state.mods == modifier_mask && state.group == 0,
+                "modifier order preheld state differs");
+        memcpy(modifier_keys, keys, 32);
+        int presses = 0;
+        if (!(profile & 1)) {
+          modifier_steps[presses].code = shift;
+          modifier_steps[presses].mask = ShiftMask;
+          modifier_steps[presses++].pressed = True;
+        }
+        if (!(profile & 2)) {
+          modifier_steps[presses].code = control;
+          modifier_steps[presses].mask = ControlMask;
+          modifier_steps[presses++].pressed = True;
+        }
+        modifier_steps[presses].code = code;
+        modifier_steps[presses].mask = 0;
+        modifier_steps[presses++].pressed = True;
+        for (int i = 0; i < presses; i++) {
+          modifier_steps[presses + i] = modifier_steps[presses - 1 - i];
+          modifier_steps[presses + i].pressed = False;
+        }
+        modifier_step = 0;
+        modifier_step_count = 2 * presses;
+        reset_text_query();
+        modifier_observer = observer;
+        observe = 1;
+        int status = xdo_enter_text_scalar(input, 0x1f602, delayed ? 12000 : 0);
+        observe = 0;
+        modifier_observer = NULL;
+        require(status == XDO_SUCCESS && modifier_step == modifier_step_count
+                && input_calls == modifier_step_count && state_queries == 1
+                && key_queries == 1 && key_replies == 1 && key_retirements == 1
+                && modifier_queries == 1 && modifier_frees == 1 && group_changes == 0
+                && mapping_changes == 0 && queries == 0 && frees == 0,
+                "modifier order native pair or ownership census differs");
+        XEvent extra;
+        require(!XCheckWindowEvent(observer, window, KeyPressMask | KeyReleaseMask, &extra),
+                "modifier order pair delivered extra input");
+        same_held_state(observer, keys, &state);
+        same_components(observer, configured);
+        same_modifiers(observer, modifiers);
+        if (profile & 2) fixture_key(observer, window, control, 0);
+        if (profile & 1) fixture_key(observer, window, shift, 0);
+        clear_keys(observer);
+        total_events += modifier_step_count;
+      }
+    }
+  }
+  require(total_events == 128, "modifier order event coverage differs");
+  product_display = NULL;
+  xdo_free(input);
+  require(XkbChangeMap(observer, original, &changes), "modifier order original map not sent");
+  XSync(observer, False);
+  same_components(observer, original);
+  XkbFreeKeyboard(configured, 0, True);
+  XkbFreeKeyboard(changed, 0, True);
+  XkbFreeKeyboard(original, 0, True);
+  XFreeModifiermap(modifiers);
+  reset_key_query();
+  clear_keys(observer);
+  require(entries("/proc/self/fd") == descriptors && entries("/proc/self/task") == tasks,
+          "modifier order descriptors/tasks retained");
+  puts("XDO_TEXT_MODIFIER_ORDER_NATIVE=pass repeats=4 delays=0,12000 held_profiles=4 pairs=32 events=128 main_legs=64 order=dependency-reversed symbols=both-legs logical_keys=each-leg held=preserved mapping=restored descriptors=retired tasks=retired sanitizer=address provider=current-only whole_app=false");
 }
 
 static void held_scratch(xdo_t *input, Display *observer, Window window,
@@ -1214,6 +1399,7 @@ int main(void) {
   XSetInputFocus(observer, window, RevertToParent, CurrentTime);
   XSync(observer, False);
   text_group_layout(observer, window);
+  modifier_pair_order(observer, window);
   same_map(observer, low, count, initial_width, initial);
   xdo_t *input = xdo_new("unix/:98.0");
   require(input != NULL, "product context unavailable");

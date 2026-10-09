@@ -68,8 +68,9 @@ Each scalar also admits one checked logical-key snapshot from the retained
 Display's XCB connection before effects. Reply errors, shape or connection
 failure refuse. Mapped text keys already held refuse, scratch selection excludes
 held rows, and required modifier codes already held receive no press or release.
-Both legs use the same filtered plan. Separate native reads cannot establish
-atomic ownership against concurrent input.
+Both legs use the same filtered plan. Temporary modifiers press before the
+main key, remain live through its release and retire in reverse press order.
+Separate native reads cannot establish atomic ownership against concurrent input.
 Window-management actions, their wait and size-hint APIs, interactive pointer-grab
 selection, desktop/viewport mutation and client/window termination are removed.
 Unused window/desktop/property/name/client queries, polling, repeated-click and
@@ -89,7 +90,7 @@ must both be available. Failed collection leaves the caller's output untouched
 and performs no input or mapping mutation. The separate reads are not atomic
 against concurrent input; X11's keymap is server logical state, not a hardware
 acknowledgment. The shared connection requires libX11-xcb and libxcb.
-The fixed fork version is 3.20160805.1-rustdesk20. Character-map entries retain
+The fixed fork version is 3.20160805.1-rustdesk21. Character-map entries retain
 per-key group information. The private context appends scratch-lease ownership
 fields; text entry takes a mutable context. Original
 upstream ABI fields remain for layout provenance, not distro compatibility.

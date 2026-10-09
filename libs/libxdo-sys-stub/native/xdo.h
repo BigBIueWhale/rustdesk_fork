@@ -180,10 +180,12 @@ int xdo_get_mouse_location(const xdo_t *xdo, int *x, int *y, int *screen_num);
  * and carriage return return XDO_ERROR before input. Tab maps to XK_Tab;
  * newline and carriage return map to XK_Return. Other scalars use Latin-1
  * or Unicode keysyms. Both legs retain the same resolved code, modifiers
- * and scratch mapping. Resolution uses the current effective group and each
- * key's group normalization; text never writes the global group lock. Scratch
- * selection excludes keys held in a checked logical-key snapshot. A mapped
- * text key already held refuses; required modifiers already held are preserved.
+ * and scratch mapping. Temporary modifiers press before the main key and
+ * release in reverse order after its release. Resolution uses the current
+ * effective group and each key's group normalization; text never writes the
+ * global group lock. Scratch selection excludes keys held in a checked
+ * logical-key snapshot. A mapped text key already held refuses; required
+ * modifiers already held are preserved.
  * Separate state queries are not atomic against concurrent input. Scratch
  * rows must have neutral XKB semantics; their original symbols, types, groups,
  * actions and explicit controls are restored

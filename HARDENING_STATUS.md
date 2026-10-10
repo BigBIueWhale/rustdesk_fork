@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-c7f39dd3a9ef9fbc564e7503398b79f50cbf2b9d89b41cbd6b92215f335ab423  requirements.html
+a2fbb44b321ced28a1e88ff509c188e47496c6ddfc50dae6efb053e493751d25  requirements.html
 ```
 
 ## Current Verdict
@@ -1949,7 +1949,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `c7f39dd3a9ef9fbc564e7503398b79f50cbf2b9d89b41cbd6b92215f335ab423  requirements.html`.
+Current normative specification SHA-256: `a2fbb44b321ced28a1e88ff509c188e47496c6ddfc50dae6efb053e493751d25  requirements.html`.
 
 ### Current authority and source closure
 
@@ -4770,7 +4770,7 @@ exists only to make the current source disposition discoverable.
   `326645d86ccb16583d7ad82d1749da2234ccf3a3cb89892de90b378b4b467edb`.
   The gate ran as UID 4000 and records `native_windows=unexecuted`; no production
   Rust/Windows test, product artifact or installed Windows boundary ran in this slice.
-- R-S11e-64 — smoke container image, network, and dependency authority
+- R-S11ax/R-S11e-64 — smoke image/network/input confinement; full runtime acceptance OPEN (R-S11dd/R-S11e-122 below)
 - R-S11e-65 — Windows token-switched child environment finality
 - R-S11e-66 — macOS administrator-script environment finality
 - R-S11e-67 — Linux clipboard fusermount process-context finality
@@ -8450,11 +8450,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   then execute exact-current Windows builds, artifacts and install/upgrade/uninstall/service
   lifecycle. Cold R-B2/R-B10 equality, independent certification/release reproduction, every
   maintenance-image distribution, target-native/device acceptance and R-V3 review remain OPEN.
-- **R-S11dd/R-S11e-122 — runtime-smoke VM entry and exact-source authority implemented;
+- **R-S11ax/R-S11dd/R-S11e-64/R-S11e-122 — runtime-smoke VM entry and exact-source authority implemented;
   privileged-container mode/callers retired and native guest CLI refusal verified;
   canonical input selection corrected with guest filesystem/mount acceptance;
   full current product, installed/native and release acceptance OPEN.**
-  R-S11dd and Appendix C #257 define authority. `scripts/smoke-server.sh` refuses numeric
+  R-S11ax/R-S11dd and Appendix C #172/#257 define authority. `scripts/smoke-server.sh` refuses numeric
   UID/primary GID zero before product inputs, authenticates the R-S11dh entry, and uses one
   fixed guest Docker Unix socket/client/root-read-only empty configuration in an empty
   environment with pre/post authority proof. The build uses the invoking nonroot UID:GID,

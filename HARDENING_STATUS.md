@@ -806,7 +806,11 @@ closure follows from these component receipts.
   Full worker/server shutdown, pending text-map composition, global injector
   retirement and native Windows/macOS remain OPEN. The last worker still uses
   a no-op retirement callback, and server exit still collects state to release
-  device modifiers. Windows virtual-key up/repeat still resolves the foreground
+  device modifiers. The focused `--android-rust-lifecycle-tests --input-lifetime`
+  profile now targets two actual workers, the protected production loader,
+  pending native text key/map restoration and descriptor/task retirement;
+  native execution and the application owner correction are pending.
+  Windows virtual-key up/repeat still resolves the foreground
   mapping before lease lookup; layout/desktop identity retention remains required.
 - Broader unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;
   native events and an in-request lease observer do not prove text consumption.

@@ -3124,6 +3124,10 @@ struct InputKeyOwnership {
 #[path = "input_release_native_tests.rs"]
 mod input_release_native_tests;
 
+#[cfg(all(test, target_os = "linux"))]
+#[path = "input_lifetime_native_tests.rs"]
+mod input_lifetime_native_tests;
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl InputKeyOwnership {
     fn new(registry: Arc<InputKeyOwnerRegistry>) -> Self {

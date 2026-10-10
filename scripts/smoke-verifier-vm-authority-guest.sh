@@ -67,7 +67,7 @@ case "$#:${8:-}" in
     13:--android-rust-lifecycle-tests)
         [[ "${13}" = --clipboard || "${13}" = --whiteboard-presentation \
             || "${13}" = --whiteboard-display-lifetime || "${13}" = --whiteboard-client \
-            || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-release ]] || exit 2
+            || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-release || "${13}" = --input-lifetime ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
         ;;
@@ -2256,6 +2256,9 @@ run_focused_rust_tests() {
     local source_archive_sha source_before input_mount_options pub_receipt post_pub_receipt
     local path remainder size digest test_name expected_groups helper_case
     local uid_test_artifact_sha hbb_test_artifact_sha
+    local input_provider_build=$ROOT/input-provider-build
+    local input_provider_installed=$ROOT/input-provider-installed
+    local input_provider_sha
     local -a required_tests result_lines toolchain_mount bridge_mounts bridge_inputs clipboard_tests
     local -a pa_mounts=() pa_env=() dependency_mounts=() whiteboard_mounts=()
 
@@ -2595,6 +2598,20 @@ run_focused_rust_tests() {
             [ "${#clipboard_tests[@]}" -eq 13 ] \
                 || fail 'focused clipboard test inventory differs'
             required_tests=("${clipboard_tests[@]}")
+        elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
+            source_fingerprints+=(
+                src/server/input_service.rs src/server/connection.rs
+                src/server/input_lifetime_native_tests.rs
+                scripts/run-input-lifetime-test.py scripts/test-input-lifetime-provider.c
+                libs/enigo/src/linux/xdo.rs libs/libxdo-sys-stub/src/lib.rs
+                libs/libxdo-sys-stub/native/xdo.c libs/libxdo-sys-stub/native/xdo.h
+                libs/libxdo-sys-stub/native/xdo_version.h
+                scripts/smoke-xvfb-prepare.sh scripts/smoke-xvfb-packages.tsv scripts/smoke-xvfb-files.tsv
+            )
+            required_tests=(
+                server::connection::input_lifetime_native_tests::input_workers_retire_pending_text_before_the_global_display
+                server::connection::input_lifetime_native_tests::input_workers_retire_pending_text_before_the_global_display
+            )
         elif [ "$RUST_TEST_PROFILE" = input-release ]; then
             source_fingerprints+=(
                 src/server/input_service.rs src/server/connection.rs
@@ -2874,12 +2891,59 @@ run_focused_rust_tests() {
     fi
 
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-       && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release ]]; then
+       && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime ]]; then
         prepare_engine_xvfb "$inputs/xvfb-debs" "$source_root/scripts"
         whiteboard_mounts=(
             --mount "type=bind,source=$ROOT/engine-xvfb/root,target=/xvfb-root,readonly,bind-recursive=disabled"
             --mount "type=bind,source=$ROOT/engine-xvfb/root/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly"
         )
+    fi
+
+    if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
+        install -d -o 1000 -g 1000 -m 0700 "$input_provider_build"
+        CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
+            --name rustdesk-input-provider-build --pull=never --network=none --read-only \
+            --user 1000:1000 --cap-drop=ALL --security-opt=no-new-privileges \
+            --security-opt=apparmor=docker-default --pids-limit=128 \
+            --memory=512m --memory-swap=512m --cpus=2 --ulimit core=0:0 \
+            --mount "type=bind,source=$source_root,target=/source,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$input_provider_build,target=/provider-build,bind-recursive=disabled" \
+            --tmpfs /tmp:rw,nosuid,nodev,size=64m,mode=700,uid=1000,gid=1000 \
+            "$image_config" /usr/bin/python3 -I -S /source/scripts/run-input-lifetime-test.py build)" \
+            || fail 'cannot create the owned nonroot input provider compiler'
+        [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'provider compiler container identity differs'
+        inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+            '{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.Config.User}}|{{.HostConfig.Privileged}}|{{.HostConfig.PidMode}}|{{.HostConfig.IpcMode}}|{{.HostConfig.CgroupnsMode}}|{{json .HostConfig.Devices}}|{{json .HostConfig.PortBindings}}|{{json .HostConfig.CapDrop}}|{{json .HostConfig.SecurityOpt}}' "$CONTAINER_ID")"
+        [ "$inspect" = 'none|true|1000:1000|false||private|private|[]|{}|["ALL"]|["no-new-privileges","apparmor=docker-default"]' ] \
+            || fail 'provider compiler authority differs'
+        inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
+            '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" | LC_ALL=C sort)"
+        [ "$inspect" = "$(printf '%s\n' "bind|$source_root|/source|false" \
+            "bind|$input_provider_build|/provider-build|true" | LC_ALL=C sort)" ] \
+            || fail 'provider compiler mounts differ'
+        "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
+            >"$ROOT/input-provider-build.out" 2>&1 \
+            || { cat "$ROOT/input-provider-build.out" >&2; fail 'input provider compilation failed'; }
+        [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
+            || fail 'provider compiler did not exit cleanly'
+        "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
+        CONTAINER_ID=
+        [ -f "$input_provider_build/libxdo.so.3" ] && [ ! -L "$input_provider_build/libxdo.so.3" ] \
+            && [ "$(stat -c '%u:%g:%a:%h' "$input_provider_build/libxdo.so.3")" = 1000:1000:644:1 ] \
+            && [ "$(stat -c '%s' "$input_provider_build/libxdo.so.3")" -le 1048576 ] \
+            || fail 'compiled input provider authority differs'
+        input_provider_sha="$(sha256sum <"$input_provider_build/libxdo.so.3")"
+        input_provider_sha=${input_provider_sha%% *}
+        grep -Fxq "INPUT_LIFETIME_PROVIDER_BUILD=pass sha256=$input_provider_sha source=checked-in-with-observation-hooks execution=nonroot" \
+            "$ROOT/input-provider-build.out" || fail 'compiled input provider receipt differs'
+        # Only fixed-path OS preparation runs as the disposable guest supervisor.
+        install -d -o 0 -g 0 -m 0755 "$input_provider_installed"
+        install -o 0 -g 0 -m 0644 "$input_provider_build/libxdo.so.3" "$input_provider_installed/libxdo.so.3"
+        [ "$(stat -c '%u:%g:%a:%h' "$input_provider_installed/libxdo.so.3")" = 0:0:644:1 ] \
+            && [ "$(sha256sum <"$input_provider_installed/libxdo.so.3")" = "$input_provider_sha  -" ] \
+            || fail 'protected input provider preparation differs'
+        whiteboard_mounts+=(--mount "type=bind,source=$input_provider_installed,target=/usr/lib/rustdesk-fork,readonly,bind-recursive=disabled")
+        printf 'INPUT_LIFETIME_PROVIDER_PREPARED=pass sha256=%s root=disposable-guest-only execution=nonroot fixed_path=/usr/lib/rustdesk-fork/libxdo.so.3\n' "$input_provider_sha"
     fi
 
     CONTAINER_ID="$(
@@ -3031,6 +3095,9 @@ run_focused_rust_tests() {
                         elif [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
                             printf "WHITEBOARD_PRESENTATION_STATE_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
                                 "$((SECONDS - clipboard_build_started))"
+                        elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
+                            printf "INPUT_LIFETIME_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
+                                "$((SECONDS - clipboard_build_started))"
                         elif [ "$RUST_TEST_PROFILE" = input-release ]; then
                             printf "INPUT_RELEASE_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
                                 "$((SECONDS - clipboard_build_started))"
@@ -3053,6 +3120,15 @@ run_focused_rust_tests() {
                         [ -n "$clipboard_executable" ] || exit 95
                         clipboard_artifact_sha="$(sha256sum "$clipboard_executable" | cut -d " " -f 1)"
                         [[ "$clipboard_artifact_sha" =~ ^[0-9a-f]{64}$ ]]
+                        if [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
+                            printf "INPUT_LIFETIME_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
+                                "$clipboard_artifact_sha" "$clipboard_executable"
+                            python3 -I -S /source/scripts/run-input-lifetime-test.py "$clipboard_executable"
+                            [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
+                            printf "INPUT_LIFETIME_ARTIFACT=pass sha256=%s executable=%s tests=2 unchanged=before-after\n" \
+                                "$clipboard_artifact_sha" "$clipboard_executable"
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = input-release ]; then
                             printf "INPUT_RELEASE_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
                                 "$clipboard_artifact_sha" "$clipboard_executable"
@@ -3183,14 +3259,18 @@ run_focused_rust_tests() {
     [ "$namespace_inspect" = 'false||private||private|[]|{}' ] \
         || fail "focused Rust-test container namespace/device/port authority differs: $namespace_inspect"
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-       && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release ]]; then
+       && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime ]]; then
         inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
             '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" | LC_ALL=C sort)"
-        [ "$inspect" = "$(printf '%s\n' \
+        [ "$inspect" = "$( { printf '%s\n' \
             "bind|$source_root|/source|false" "bind|$target_root|/cargo-target|true" \
             "bind|$vendor|/vendor|false" "bind|$vendor_config|/inputs/config.toml|false" \
             "bind|$ROOT/engine-xvfb/root|/xvfb-root|false" \
-            "bind|$ROOT/engine-xvfb/root/usr/bin/xkbcomp|/usr/bin/xkbcomp|false" | LC_ALL=C sort)" ] \
+            "bind|$ROOT/engine-xvfb/root/usr/bin/xkbcomp|/usr/bin/xkbcomp|false"
+            if [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
+                printf '%s\n' "bind|$input_provider_installed|/usr/lib/rustdesk-fork|false"
+            fi
+            } | LC_ALL=C sort)" ] \
             || fail 'native whiteboard container mount authority differs'
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
@@ -3335,7 +3415,7 @@ run_focused_rust_tests() {
         expected_groups=16
         if [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
             expected_groups=4
-        elif [ "$RUST_TEST_PROFILE" = input-release ]; then
+        elif [[ "$RUST_TEST_PROFILE" = input-release || "$RUST_TEST_PROFILE" = input-lifetime ]]; then
             expected_groups=2
         elif [ "$RUST_TEST_PROFILE" != integration ]; then
             expected_groups=1
@@ -3352,6 +3432,17 @@ run_focused_rust_tests() {
             [ "$(grep -Fxc 'WHITEBOARD_LISTENER_CANCEL=pass transport=unix-abstract readiness=kernel-connect unauthorized=preproof-eof worker=joined reconnect=refused address=rebindable filesystem=absent generations=32 fd_delta=0' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'WHITEBOARD_LISTENER_CANCEL=' "$output")" -eq 1 ] \
                 || fail 'native whiteboard listener cancellation receipt differs'
+        elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
+            [ "$(grep -Ec '^INPUT_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=2 unchanged=before-after$' "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc "INPUT_LIFETIME_PROVIDER=observed sha256=$input_provider_sha unchanged=before-after path=/usr/lib/rustdesk-fork/libxdo.so.3" "$output")" -eq 1 ] \
+                && [ "$(sha256sum <"$input_provider_installed/libxdo.so.3")" = "$input_provider_sha  -" ] \
+                && [ "$(grep -Fxc 'INPUT_LIFETIME_X11=pass server=owned network=none endpoint=absent cleanup=joined' "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc 'test server::connection::input_lifetime_native_tests::input_workers_retire_pending_text_before_the_global_display ... ok' "$output")" -eq 2 ] \
+                || fail 'native input-lifetime artifact/provider/cleanup observations differ'
+            for input_lifetime_fault in map key; do
+                [ "$(grep -Fxc "INPUT_LIFETIME_NATIVE=pass fault=$input_lifetime_fault generations=16 workers=2 producer=typed-queue worker=production loader=protected keys=exact-owner foreign=preserved pending=retired mapping=restored child_before_display=true descriptors=retired tasks=retired network_auth=false" "$output")" -eq 1 ] \
+                    || fail 'native input-lifetime behavior receipt differs'
+            done
         elif [ "$RUST_TEST_PROFILE" = input-release ]; then
             [ "$(grep -Ec '^INPUT_RELEASE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fxc 'INPUT_RELEASE_NATIVE=pass cases=16 shared_owners=2 prior_owner_retirement=no-events final_owner_release=exact-key foreign_key=preserved keyboard_state=unavailable ordinary_admission=refused registry=retired descriptors=retired whole_app=false' "$output")" -eq 1 ] \
@@ -3476,6 +3567,12 @@ run_focused_rust_tests() {
             grep -E '^WHITEBOARD_PRESENTATION_STATE_(ARTIFACT_BEFORE|ARTIFACT|BUILD)=' "$output"
             grep -E '^test whiteboard::server::tests::r_s11hp_.* \.\.\. ok$' "$output"
             printf 'WHITEBOARD_PRESENTATION_STATE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-whiteboard-presentation-state rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
+            grep -E '^INPUT_LIFETIME_(ARTIFACT_BEFORE|ARTIFACT|BUILD|PROVIDER|NATIVE|X11)=' "$output"
+            grep -E '^test server::connection::input_lifetime_native_tests::' "$output"
+            printf 'INPUT_LIFETIME_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-input-worker-global-text-lifetime rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = input-release ]; then

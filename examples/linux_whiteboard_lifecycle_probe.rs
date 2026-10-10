@@ -15,7 +15,11 @@ fn main() {
                     let name = std::fs::read_to_string(task?.path().join("comm"))?;
                     ensure!(name.trim_end() != "rustdesk-whiteb", "whiteboard IPC worker survived core CLI return");
                 }
-                std::io::stdout().write_all(b"returned\n")?;
+                if std::env::var_os("WHITEBOARD_PROBE_PARENT_EXIT").is_some() {
+                    println!("WHITEBOARD_HELPER_RETURNED case=parent-exit pid={} alive=true worker=absent stream=retired", std::process::id());
+                } else {
+                    std::io::stdout().write_all(b"returned\n")?;
+                }
                 std::io::stdout().flush()?;
                 let mut acknowledgement = [0; 7];
                 std::io::stdin().read_exact(&mut acknowledgement)?;

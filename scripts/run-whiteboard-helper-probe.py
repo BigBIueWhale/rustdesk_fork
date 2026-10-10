@@ -7,13 +7,15 @@ import os
 from pathlib import Path
 import re
 import selectors
+import select
+import signal
 import socket
 import stat
 import subprocess
 import sys
 import time
 
-CASES = ("shutdown", "bad-proof", "proof-timeout", "proof-close", "stream-close", "window-close")
+CASES = ("creator-thread", "shutdown", "bad-proof", "proof-timeout", "proof-close", "stream-close", "window-close")
 
 
 def require(condition, message):
@@ -185,15 +187,35 @@ def artifact_digest(executable):
     return digest.hexdigest()
 
 
-def observe_owner(executable, environment, display, server):
-    with open("/tmp/whiteboard-helper.log", "xb") as log:
+def observe_owner(executable, environment, display, server, parent_exit=False):
+    cases = ("parent-exit",) if parent_exit else CASES
+    environment = dict(environment)
+    if parent_exit:
+        environment["WHITEBOARD_PROBE_PARENT_EXIT"] = "1"
+    log_path = Path("/tmp/whiteboard-parent-exit.log" if parent_exit else "/tmp/whiteboard-helper.log")
+    with log_path.open("xb") as log:
         owner = subprocess.Popen([str(executable), "--server"], env=environment,
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
         selector = selectors.DefaultSelector()
         selector.register(owner.stdout, selectors.EVENT_READ)
         os.set_blocking(owner.stdout.fileno(), False)
         pending, active, completed, wrong_parent = b"", None, [], 0
-        returned, phases = False, []
+        returned, phases, creator = False, {"creator-thread": [], "window-close": []}, 0
+        helper_fd, helper_pid, helper_reaped = None, None, False
+
+        def helper_alive():
+            poller = select.poll()
+            poller.register(helper_fd, select.POLLIN)
+            return not poller.poll(0)
+
+        def reap_helper():
+            reap_deadline = time.monotonic() + 5
+            while True:
+                pid, status = os.waitpid(helper_pid, os.WNOHANG)
+                if pid:
+                    return status
+                require(time.monotonic() < reap_deadline, "adopted helper did not exit")
+                time.sleep(0.01)
         deadline = time.monotonic() + 25
         try:
             while True:
@@ -201,7 +223,8 @@ def observe_owner(executable, environment, display, server):
                         "native helper deadline or Xvfb lifetime failed")
                 events = selector.select(0.1)
                 if not events:
-                    require(owner.poll() is None, "owner exited without final output")
+                    require(owner.poll() is None or (parent_exit and active is not None and helper_alive()),
+                            "owner/helper exited without final output")
                     continue
                 chunk = os.read(owner.stdout.fileno(), 4096)
                 if not chunk:
@@ -218,8 +241,8 @@ def observe_owner(executable, environment, display, server):
                     overlay = re.fullmatch(r"WHITEBOARD_HELPER_OVERLAY phase=(draw|clear|cancel)", text)
                     if ready:
                         case, pid_text, address_hex = ready.groups()
-                        require(active is None and len(completed) < len(CASES)
-                                and case == CASES[len(completed)], "native cases differ")
+                        require(active is None and len(completed) < len(cases)
+                                and case == cases[len(completed)], "native cases differ")
                         pid, address = int(pid_text), bytes.fromhex(address_hex)
                         require(address.startswith(b"\0") and len(address) <= 108,
                                 "native endpoint address differs")
@@ -232,12 +255,22 @@ def observe_owner(executable, environment, display, server):
                             if window is None:
                                 time.sleep(0.01)
                         active = (case, pid, address, window)
+                        if parent_exit:
+                            helper_pid = pid
+                            helper_fd = os.pidfd_open(pid, 0)
+                            require(helper_alive(), "helper exited before parent retirement")
                         owner.stdin.write(b"go\n")
                         owner.stdin.flush()
+                        if parent_exit:
+                            require(owner.wait(timeout=5) == 0 and helper_alive(),
+                                    "parent did not exit normally while its helper remained observable")
                     elif cli_return:
                         require(active is not None and not returned
                                 and cli_return.groups() == (active[0], str(active[1])),
                                 "native CLI return differs from its owned live helper")
+                        if parent_exit:
+                            require(owner.poll() == 0 and helper_alive(),
+                                    "parent death or live helper CLI return was not observed")
                         display.require_destroyed(active[3])
                         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
                             peer.settimeout(1)
@@ -250,8 +283,17 @@ def observe_owner(executable, environment, display, server):
                         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
                             listener.bind(active[2])
                         returned = True
-                        owner.stdin.write(b"retired\n")
+                        owner.stdin.write(b"finish\n" if parent_exit else b"retired\n")
                         owner.stdin.flush()
+                        if parent_exit:
+                            status = reap_helper()
+                            helper_reaped = True
+                            require(os.waitstatus_to_exitcode(status) == 0 and not helper_alive(),
+                                    "adopted helper did not retire normally")
+                            print(f"WHITEBOARD_HELPER_DONE case=parent-exit pid={helper_pid} status=0", flush=True)
+                            print("WHITEBOARD_HELPER_PARENT=pass owner=normal-exit helper=alive-at-cli-return worker=joined child=adopted-reaped", flush=True)
+                            completed.append(active[0])
+                            active, returned = None, False
                     elif done:
                         require(active is not None and returned
                                 and done.groups() == (active[0], str(active[1])),
@@ -260,8 +302,12 @@ def observe_owner(executable, environment, display, server):
                         active, returned = None, False
                     elif overlay:
                         phase = overlay.group(1)
-                        require(active is not None and active[0] == "window-close" and not returned
-                                and len(phases) < 3 and phase == ("draw", "clear", "cancel")[len(phases)],
+                        require(active is not None and active[0] in phases and not returned,
+                                "authenticated overlay case differs")
+                        observed_phases = phases[active[0]]
+                        expected_phases = ("draw", "clear", "cancel") if active[0] == "window-close" else ("draw", "clear")
+                        require(len(observed_phases) < len(expected_phases)
+                                and phase == expected_phases[len(observed_phases)],
                                 "authenticated overlay observation order differs")
                         if phase == "draw":
                             display.wait_pixels(active[3], (0x00ff00, 0x0000ff), owner, server)
@@ -272,7 +318,7 @@ def observe_owner(executable, environment, display, server):
                         else:
                             display.request_close(active[3])
                             acknowledgement = b"cancelled\n"
-                        phases.append(phase)
+                        observed_phases.append(phase)
                         owner.stdin.write(acknowledgement)
                         owner.stdin.flush()
                     elif text == ("WHITEBOARD_HELPER_WRONG_PARENT=pass same_image=true role=server "
@@ -280,10 +326,16 @@ def observe_owner(executable, environment, display, server):
                         require(active is not None and active[0] == "shutdown" and wrong_parent == 0,
                                 "wrong-parent observation differs")
                         wrong_parent += 1
+                    elif text == "WHITEBOARD_HELPER_CREATOR=pass thread=joined owner=alive helper=live proof=mutual pixels=two-owner-clear":
+                        require(active is not None and active[0] == "creator-thread" and creator == 0
+                                and phases["creator-thread"] == ["draw", "clear"] and owner.poll() is None,
+                                "creator-thread retirement was not observed with live authenticated rendering")
+                        creator += 1
                     else:
                         raise RuntimeError("unexpected native control output")
-            require(not pending and active is None and tuple(completed) == CASES and wrong_parent == 1
-                    and phases == ["draw", "clear", "cancel"],
+            require(not pending and active is None and tuple(completed) == cases
+                    and (parent_exit or (wrong_parent == 1 and creator == 1
+                         and phases == {"creator-thread": ["draw", "clear"], "window-close": ["draw", "clear", "cancel"]})),
                     "native cases did not complete")
             require(owner.wait(timeout=5) == 0, "native owner did not exit normally")
         finally:
@@ -297,12 +349,24 @@ def observe_owner(executable, environment, display, server):
                 except subprocess.TimeoutExpired:
                     owner.kill()
                     owner.wait()
+            if helper_fd is not None:
+                try:
+                    if not helper_reaped:
+                        if helper_alive():
+                            signal.pidfd_send_signal(helper_fd, signal.SIGKILL)
+                        reap_helper()
+                finally:
+                    os.close(helper_fd)
             if owner.returncode != 0:
-                sys.stderr.write(Path("/tmp/whiteboard-helper.log").read_text())
+                sys.stderr.write(log_path.read_text())
 
 
 def main():
     require(os.getuid() == 1000 and os.getgid() == 1000, "native test principal differs")
+    libc = c.CDLL(None, use_errno=True)
+    libc.prctl.argtypes = [c.c_int, c.c_ulong, c.c_ulong, c.c_ulong, c.c_ulong]
+    libc.prctl.restype = c.c_int
+    require(libc.prctl(36, 1, 0, 0, 0) == 0, "owned observer could not become a child subreaper")
     require(len(sys.argv) == 2 and sys.argv[1] == "/cargo-target/whiteboard-helper-probe",
             "compiled helper probe path differs")
     executable = Path(sys.argv[1])
@@ -329,6 +393,7 @@ def main():
                 time.sleep(0.05)
             display = Display()
             observe_owner(executable, environment, display, server)
+            observe_owner(executable, environment, display, server, parent_exit=True)
             require(artifact_digest(executable) == digest and server.poll() is None,
                     "compiled helper artifact or Xvfb changed during execution")
         finally:
@@ -346,10 +411,10 @@ def main():
                 sys.stderr.write(Path("/tmp/whiteboard-xvfb.log").read_text())
             require(server.returncode == 0 and not os.path.lexists(x_socket) and not os.path.lexists(lock),
                     "Xvfb did not retire normally with its endpoints")
-    print("WHITEBOARD_HELPER_NATIVE=pass cases=6 cli=core-main parent=kernel-admitted "
+    print("WHITEBOARD_HELPER_NATIVE=pass cases=8 cli=core-main parent=kernel-admitted "
           "wrong_parent=preproof-eof listener=retired-before-proof helper=normal-exit "
           "worker=absent-before-exit window=badwindow-before-exit reconnect=refused address=rebindable "
-          "overlay=two-owner-clear window_close=authenticated-cancel xvfb=joined", flush=True)
+          "overlay=two-owner-clear window_close=authenticated-cancel creator_thread=joined-live parent_exit=preproof-retired xvfb=joined", flush=True)
 
 
 if __name__ == "__main__":

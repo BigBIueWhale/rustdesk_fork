@@ -4852,19 +4852,25 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
     mapfile -t whiteboard_helper_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'WHITEBOARD_HELPER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/whiteboard-helper-probe cases=6 unchanged=before-after$'
+            'WHITEBOARD_HELPER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/whiteboard-helper-probe cases=8 unchanged=before-after$'
     )
     [ "${#whiteboard_helper_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'WHITEBOARD_HELPER_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'native helper artifact receipt is absent, malformed or duplicated'
     whiteboard_helper_before=${whiteboard_helper_artifacts[0]/WHITEBOARD_HELPER_ARTIFACT=pass /WHITEBOARD_HELPER_ARTIFACT_BEFORE=}
-    whiteboard_helper_before=${whiteboard_helper_before% cases=6 unchanged=before-after}
+    whiteboard_helper_before=${whiteboard_helper_before% cases=8 unchanged=before-after}
     require_exact_fixed_receipt "$whiteboard_helper_before" 'native helper artifact before execution'
     require_exact_fixed_receipt \
-        'WHITEBOARD_HELPER_NATIVE=pass cases=6 cli=core-main parent=kernel-admitted wrong_parent=preproof-eof listener=retired-before-proof helper=normal-exit worker=absent-before-exit window=badwindow-before-exit reconnect=refused address=rebindable overlay=two-owner-clear window_close=authenticated-cancel xvfb=joined' \
+        'WHITEBOARD_HELPER_NATIVE=pass cases=8 cli=core-main parent=kernel-admitted wrong_parent=preproof-eof listener=retired-before-proof helper=normal-exit worker=absent-before-exit window=badwindow-before-exit reconnect=refused address=rebindable overlay=two-owner-clear window_close=authenticated-cancel creator_thread=joined-live parent_exit=preproof-retired xvfb=joined' \
         'native helper process/window/endpoint cleanup receipt'
     require_exact_fixed_receipt \
-        "WHITEBOARD_HELPER_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE cases=6 target=linux-x86_64 scope=production-whiteboard-core-cli-authenticated-overlay-and-finality rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'WHITEBOARD_HELPER_CREATOR=pass thread=joined owner=alive helper=live proof=mutual pixels=two-owner-clear' \
+        'native creator-thread retirement with a live parent and authenticated rendering'
+    require_exact_fixed_receipt \
+        'WHITEBOARD_HELPER_PARENT=pass owner=normal-exit helper=alive-at-cli-return worker=joined child=adopted-reaped' \
+        'native actual-parent exit and observed helper retirement'
+    require_exact_fixed_receipt \
+        "WHITEBOARD_HELPER_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE cases=8 target=linux-x86_64 scope=production-whiteboard-core-cli-authenticated-overlay-and-finality rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'native helper source-bound execution receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'native helper cloud-init completion marker'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then

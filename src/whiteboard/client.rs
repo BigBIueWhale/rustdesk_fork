@@ -514,6 +514,15 @@ fn whiteboard_launch_env(launch_token: &str) -> Vec<(&'static str, String)> {
     ]
 }
 
+#[cfg(target_os = "linux")]
+pub(crate) fn whiteboard_helper_command(launch_token: &str) -> ResultType<std::process::Command> {
+    let mut command = std::process::Command::new(std::env::current_exe()?);
+    command.arg("--whiteboard").envs(whiteboard_launch_env(launch_token));
+    crate::platform::linux::configure_command_kill_on_parent_death(&mut command)?;
+    hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut command)?;
+    Ok(command)
+}
+
 async fn connect_whiteboard_endpoint(
     ms_timeout: u64,
     postfix: &str,
@@ -537,6 +546,7 @@ async fn start_whiteboard_(generation: u64) -> ResultType<()> {
     let mut stream = None;
     let launch_token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     let postfix = ipc::whiteboard_endpoint_postfix(&launch_token)?;
+    #[cfg(not(target_os = "linux"))]
     let args = vec!["--whiteboard"];
 
     if crate::platform::is_root() && !headless_service_user {
@@ -567,10 +577,7 @@ async fn start_whiteboard_(generation: u64) -> ResultType<()> {
     } else {
         log::debug!("Start whiteboard");
         #[cfg(target_os = "linux")]
-        let child = crate::common::run_me_with_env_and_parent_death(
-            args,
-            whiteboard_launch_env(&launch_token),
-        )?;
+        let child = whiteboard_helper_command(&launch_token)?.spawn()?;
         #[cfg(not(target_os = "linux"))]
         let child = crate::run_me_with_env(args, whiteboard_launch_env(&launch_token))?;
         CHILD_PROCESS.lock().unwrap().push(child);

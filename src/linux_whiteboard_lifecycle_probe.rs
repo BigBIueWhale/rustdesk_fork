@@ -3,20 +3,42 @@ use crate::ipc::{self, WhiteboardHelperHandshake, WhiteboardIpcCommand, Whiteboa
 use hbb_common::{anyhow::{bail, ensure}, tokio, ResultType};
 use std::{io::{Read, Write}, process::{Child, Command, Stdio}, time::Duration};
 
-async fn spawn_role(role: &'static str, envs: Vec<(&'static str, String)>) -> ResultType<Child> {
-    tokio::task::spawn_blocking(move || -> ResultType<Child> {
+fn spawn_role_command(role: &'static str, envs: Vec<(&'static str, String)>, inherited_io: bool) -> ResultType<Child> {
+    let mut command = if role == "--whiteboard" {
+        let token = envs.iter().find(|(key, _)| *key == crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV)
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("fixture launch token is absent"))?;
+        crate::whiteboard::whiteboard_helper_command(&token.1)?
+    } else {
         let mut command = Command::new(std::env::current_exe()?);
-        command.env_clear().arg(role).stdin(Stdio::null()).stdout(Stdio::null());
-        if role == "--whiteboard" {
-            command.stdin(Stdio::piped()).stdout(Stdio::piped());
-        }
-        for key in ["PATH", "LC_ALL", "HOME", "DISPLAY", "XDG_SESSION_TYPE", "XKB_CONFIG_ROOT", "LD_LIBRARY_PATH"] {
-            command.env(key, std::env::var_os(key).ok_or_else(|| hbb_common::anyhow::anyhow!("fixture environment lacks {key}"))?);
-        }
-        command.envs(envs);
+        command.arg(role);
         crate::platform::linux::configure_command_kill_on_parent_death(&mut command)?;
         hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut command)?;
-        Ok(command.spawn()?)
+        command
+    };
+    command.env_clear().stdin(Stdio::null()).stdout(Stdio::null());
+    if role == "--whiteboard" {
+        if inherited_io {
+            command.stdin(Stdio::inherit()).stdout(Stdio::inherit());
+        } else {
+            command.stdin(Stdio::piped()).stdout(Stdio::piped());
+        }
+    }
+    for key in ["PATH", "LC_ALL", "HOME", "DISPLAY", "XDG_SESSION_TYPE", "XKB_CONFIG_ROOT", "LD_LIBRARY_PATH"] {
+        command.env(key, std::env::var_os(key).ok_or_else(|| hbb_common::anyhow::anyhow!("fixture environment lacks {key}"))?);
+    }
+    command.envs(envs);
+    Ok(command.spawn()?)
+}
+
+async fn spawn_role(role: &'static str, envs: Vec<(&'static str, String)>) -> ResultType<Child> {
+    tokio::task::spawn_blocking(move || spawn_role_command(role, envs, false)).await?
+}
+
+async fn spawn_from_retired_thread(envs: Vec<(&'static str, String)>) -> ResultType<Child> {
+    tokio::task::spawn_blocking(move || -> ResultType<Child> {
+        let creator = std::thread::Builder::new().name("whiteboard-probe-creator".to_owned())
+            .spawn(move || spawn_role_command("--whiteboard", envs, false))?;
+        creator.join().map_err(|_| hbb_common::anyhow::anyhow!("fixture creator thread panicked"))?
     }).await?
 }
 
@@ -108,6 +130,9 @@ async fn overlay_phase(phase: &str, acknowledgement: &'static [u8]) -> ResultTyp
 }
 
 async fn exercise(child: &mut Child, case: &str, token: &str, postfix: &str, address: &str) -> ResultType<()> {
+    if let Some(status) = child.try_wait()? {
+        bail!("helper exited after its creating thread joined: {status}");
+    }
     println!("WHITEBOARD_HELPER_READY case={case} pid={} address_hex={}", child.id(), hex::encode(address));
     std::io::stdout().flush()?;
     observer_ack(b"go\n").await?;
@@ -126,12 +151,12 @@ async fn exercise(child: &mut Child, case: &str, token: &str, postfix: &str, add
     let mut stream = ipc::connect(1000, postfix).await?;
     ensure!(stream.peer_pid() == Some(child.id()), "owner reached another helper");
     match case {
-        "shutdown" | "stream-close" | "window-close" => {
+        "shutdown" | "stream-close" | "window-close" | "creator-thread" => {
             ipc::authenticate_whiteboard_endpoint_launch_proof(&mut stream, token).await?;
             require_listener_refused(address).await?;
             if case == "shutdown" {
                 stream.send_whiteboard_command_timeout(&WhiteboardIpcCommand::Shutdown, 1000).await?;
-            } else if case == "window-close" {
+            } else if matches!(case, "window-close" | "creator-thread") {
                 for (conn_id, x, y, argb) in [(7, 32.0, 32.0, 0xff00ff00), (8, 128.0, 96.0, 0xff0000ff)] {
                     let token = crate::encode64(&[conn_id as u8; 32]);
                     stream.send_whiteboard_command_timeout(&WhiteboardIpcCommand::Bind {
@@ -148,7 +173,16 @@ async fn exercise(child: &mut Child, case: &str, token: &str, postfix: &str, add
                     conn_id: 7, token: crate::encode64(&[7; 32]),
                 }, 1000).await?;
                 overlay_phase("clear", b"cleared\n").await?;
-                overlay_phase("cancel", b"cancelled\n").await?;
+                if case == "window-close" {
+                    overlay_phase("cancel", b"cancelled\n").await?;
+                } else {
+                    ensure!(child.try_wait()?.is_none(), "helper died after creator retirement and authenticated drawing");
+                    println!("WHITEBOARD_HELPER_CREATOR=pass thread=joined owner=alive helper=live proof=mutual pixels=two-owner-clear");
+                    stream.send_whiteboard_command_timeout(&WhiteboardIpcCommand::Close {
+                        conn_id: 8, token: crate::encode64(&[8; 32]),
+                    }, 1000).await?;
+                    stream.send_whiteboard_command_timeout(&WhiteboardIpcCommand::Shutdown, 1000).await?;
+                }
             }
         }
         "bad-proof" | "proof-timeout" | "proof-close" => {
@@ -189,15 +223,40 @@ pub async fn run() -> ResultType<()> {
     if std::env::var_os("WHITEBOARD_PROBE_HELPER_PID").is_some() {
         return wrong_parent().await;
     }
-    for (index, case) in ["shutdown", "bad-proof", "proof-timeout", "proof-close", "stream-close", "window-close"].into_iter().enumerate() {
+    if std::env::var_os("WHITEBOARD_PROBE_PARENT_EXIT").is_some() {
+        let token = crate::encode64(&[8; 32]);
+        let postfix = ipc::whiteboard_endpoint_postfix(&token)?;
+        let address = ipc::linux_whiteboard_endpoint_address(&postfix)?;
+        let mut child = tokio::task::spawn_blocking(move || spawn_role_command("--whiteboard", vec![
+            (crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV, token),
+            (crate::common::WHITEBOARD_LAUNCH_PARENT_ENV, std::process::id().to_string()),
+            ("WHITEBOARD_PROBE_PARENT_EXIT", "1".to_owned()),
+        ], true)).await??;
+        println!("WHITEBOARD_HELPER_READY case=parent-exit pid={} address_hex={}", child.id(), hex::encode(address));
+        std::io::stdout().flush()?;
+        if let Err(err) = observer_ack(b"go\n").await {
+            return reap(child, Err(err)).await;
+        }
+        if child.try_wait()?.is_some() {
+            return reap(child, Err(hbb_common::anyhow::anyhow!("helper exited before its parent"))).await;
+        }
+        // Deliberate fixture parent-process exit. The observer becomes this child's subreaper.
+        return Ok(());
+    }
+    for (index, case) in ["creator-thread", "shutdown", "bad-proof", "proof-timeout", "proof-close", "stream-close", "window-close"].into_iter().enumerate() {
         // Public fixture data, unique to each launch; this is never a product credential.
         let token = crate::encode64(&[index as u8 + 1; 32]);
         let postfix = ipc::whiteboard_endpoint_postfix(&token)?;
         let address = ipc::linux_whiteboard_endpoint_address(&postfix)?;
-        let mut child = spawn_role("--whiteboard", vec![
+        let envs = vec![
             (crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV, token.clone()),
             (crate::common::WHITEBOARD_LAUNCH_PARENT_ENV, std::process::id().to_string()),
-        ]).await?;
+        ];
+        let mut child = if case == "creator-thread" {
+            spawn_from_retired_thread(envs).await?
+        } else {
+            spawn_role("--whiteboard", envs).await?
+        };
         let pid = child.id();
         let result = exercise(&mut child, case, &token, &postfix, &address).await;
         reap(child, result).await?;

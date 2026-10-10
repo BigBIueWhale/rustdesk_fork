@@ -391,7 +391,7 @@ def observe_owner(executable, environment, display, server, parent_exit=False):
 def observe_client_generation(executable, environment, display, server, case):
     environment = dict(environment, WHITEBOARD_PROBE_CLIENT_GENERATION=case)
     log_path = Path(f"/tmp/whiteboard-client-{case}.log")
-    generations = 1 if case in ("shutdown", "root-shutdown") else 2
+    generations = 1 if case in ("shutdown", "root-shutdown", "parent-loss") else 2
     needs_idle = case in ("withdrawal", "helper-close", "root-shutdown")
     idle_connections = 2 if case == "helper-close" else 0
     with log_path.open("xb") as log:
@@ -399,7 +399,7 @@ def observe_client_generation(executable, environment, display, server, case):
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
         owner_fd, selector = None, None
         pending, helpers, active = b"", [], None
-        cleaned, idle_seen, root_joined = False, False, False
+        cleaned, idle_seen, root_joined, parent_killed = False, False, False, False
 
         def helper_alive(helper):
             poller = select.poll()
@@ -416,7 +416,8 @@ def observe_client_generation(executable, environment, display, server, case):
                 require(time.monotonic() < deadline and server.poll() is None,
                         "global client scenario deadline or Xvfb lifetime failed")
                 if not selector.select(0.1):
-                    require(owner.poll() is None, "global client owner exited without final output")
+                    require(owner.poll() is None or (parent_killed and active is not None and helper_alive(active)),
+                            "global client owner exited without final output")
                     continue
                 chunk = os.read(owner.stdout.fileno(), 4096)
                 if not chunk:
@@ -434,6 +435,7 @@ def observe_client_generation(executable, environment, display, server, case):
                     cleanup = re.fullmatch(rf"WHITEBOARD_CLIENT_CLEANUP case={case} generation=([1-9][0-9]*) pid=([1-9][0-9]*) status=0 owner=production child=normal-exit-reaped task=joined", text)
                     window_close = re.fullmatch(r"WHITEBOARD_CLIENT_WINDOW_CLOSE case=helper-close generation=1 pid=([1-9][0-9]*)", text)
                     root_stop = re.fullmatch(r"WHITEBOARD_CLIENT_ROOT_STOP case=root-shutdown generation=1 pid=([1-9][0-9]*)", text)
+                    parent_loss = re.fullmatch(r"WHITEBOARD_CLIENT_PARENT_LOSS_READY generation=1 pid=([1-9][0-9]*) address_hex=([0-9a-f]+)", text)
                     if ready:
                         generation, pid = map(int, ready.groups())
                         require(not cleaned and len(helpers) < generations
@@ -481,16 +483,63 @@ def observe_client_generation(executable, environment, display, server, case):
                                 and helper_alive(active) and owner.poll() is None,
                                 "root shutdown did not follow live two-owner presentation")
                         active["phases"].append("stop")
+                    elif parent_loss:
+                        require(case == "parent-loss" and not parent_killed and active is not None
+                                and parent_loss.group(1) == str(active["pid"])
+                                and active["phases"] == ["draw"] and not active["returned"]
+                                and helper_alive(active) and owner.poll() is None,
+                                "parent loss did not follow live two-owner presentation")
+                        address = bytes.fromhex(parent_loss.group(2))
+                        require(address.startswith(b"\0") and len(address) <= 108,
+                                "global helper endpoint address differs")
+                        active["address"] = address
+                        signal.pidfd_send_signal(owner_fd, signal.SIGKILL)
+                        require(owner.wait(timeout=5) == -signal.SIGKILL and helper_alive(active),
+                                "exact parent was not killed with its helper still observable")
+                        parent_killed = True
+                        active["phases"].append("kill")
                     elif text == "returned":
-                        expected_phases = (["draw", "stop"] if case == "root-shutdown" else
+                        expected_phases = (["draw", "kill"] if case == "parent-loss" else
+                                           ["draw", "stop"] if case == "root-shutdown" else
                                            ["draw", "cancel"] if case == "helper-close" and len(helpers) == 1
                                            else ["draw", "clear"])
                         require(active is not None and active["phases"] == expected_phases
                                 and not active["returned"] and helper_alive(active)
-                                and owner.poll() is None, "global client helper did not return while alive")
+                                and (owner.poll() == -signal.SIGKILL if case == "parent-loss" else owner.poll() is None),
+                                "global client helper did not return while alive")
                         display.require_destroyed(active["window"])
                         active["returned"] = True
-                        signal.pidfd_send_signal(owner_fd, signal.SIGUSR1)
+                        if case == "parent-loss":
+                            require(parent_killed, "helper retirement preceded parent loss")
+                            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                                peer.settimeout(1)
+                                try:
+                                    peer.connect(active["address"])
+                                except OSError as error:
+                                    require(error.errno == errno.ECONNREFUSED,
+                                            "orphan helper endpoint refusal differs")
+                                else:
+                                    raise RuntimeError("orphan helper retained its endpoint")
+                            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                                listener.bind(active["address"])
+                            print(f"WHITEBOARD_CLIENT_PARENT_LOSS_OBSERVED generation=1 pid={active['pid']} parent=sigkill helper=alive worker=joined window=badwindow endpoint=refused-rebindable", flush=True)
+                            owner.stdin.write(b"finish\n")
+                            owner.stdin.flush()
+                            reap_deadline = time.monotonic() + 5
+                            while True:
+                                pid, status = os.waitpid(active["pid"], os.WNOHANG)
+                                if pid:
+                                    active["reaped"] = True
+                                    require(pid == active["pid"] and os.waitstatus_to_exitcode(status) == 0
+                                            and not helper_alive(active) and not Path(f"/proc/{pid}").exists(),
+                                            "adopted global helper did not exit normally and reap")
+                                    break
+                                require(time.monotonic() < reap_deadline, "adopted global helper did not exit")
+                                time.sleep(0.01)
+                            print(f"WHITEBOARD_CLIENT_PARENT_LOSS_REAPED generation=1 pid={pid} status=0 owner=subreaper", flush=True)
+                            cleaned = True
+                        else:
+                            signal.pidfd_send_signal(owner_fd, signal.SIGUSR1)
                     elif snapshot:
                         require(active is not None and active["returned"] and not active["state"]
                                 and helper_alive(active) and owner.poll() is None,
@@ -534,7 +583,7 @@ def observe_client_generation(executable, environment, display, server, case):
                     else:
                         raise RuntimeError("unexpected global client control output")
             require(not pending and cleaned and (not needs_idle or idle_seen)
-                    and owner.wait(timeout=5) == 0,
+                    and owner.wait(timeout=5) == (-signal.SIGKILL if case == "parent-loss" else 0),
                     "global client fixture did not complete normal cleanup")
         finally:
             if selector is not None:
@@ -563,7 +612,7 @@ def observe_client_generation(executable, environment, display, server, case):
                         os.waitpid(helper["pid"], 0)
                 finally:
                     os.close(helper["fd"])
-            if owner.returncode != 0:
+            if owner.returncode != (-signal.SIGKILL if case == "parent-loss" else 0):
                 sys.stderr.write(log_path.read_text())
     if case == "shutdown":
         print("WHITEBOARD_CLIENT_PHASE=pass generation=retained-before-helper-exit producer=global-registration pixels=two-owner-clear cleanup=production-reap task=joined", flush=True)
@@ -575,6 +624,8 @@ def observe_client_generation(executable, environment, display, server, case):
         print("WHITEBOARD_CLIENT_HELPER_CLOSE=pass failure=native-window-close demand=retained old=joined-before-process-exit idle_observation_ms=500 retry=later-explicit-registration generations=2 pixels=both-generations cleanup=production-reap", flush=True)
     elif case == "root-shutdown":
         print("WHITEBOARD_CLIENT_ROOT_SHUTDOWN=pass admission=closed-during-and-after-drain old=retained-before-helper-exit root=joined-after-production-reap idle_observation_ms=500 generations=1 pixels=two-owner cleanup=production-reap", flush=True)
+    elif case == "parent-loss":
+        print("WHITEBOARD_CLIENT_PARENT_LOSS=pass parent=pidfd-sigkill precondition=running-two-owner-pixels helper=alive-at-cli-return worker=joined window=badwindow endpoint=refused-rebindable child=normal-exit-subreaper-reaped generations=1", flush=True)
     else:
         raise RuntimeError("unknown global client scenario")
 
@@ -612,7 +663,7 @@ def main():
             display = Display()
             observe_owner(executable, environment, display, server)
             observe_owner(executable, environment, display, server, parent_exit=True)
-            for case in ("shutdown", "replacement", "withdrawal", "helper-close", "root-shutdown"):
+            for case in ("shutdown", "replacement", "withdrawal", "helper-close", "root-shutdown", "parent-loss"):
                 observe_client_generation(executable, environment, display, server, case)
             require(artifact_digest(executable) == digest and server.poll() is None,
                     "compiled helper artifact or Xvfb changed during execution")

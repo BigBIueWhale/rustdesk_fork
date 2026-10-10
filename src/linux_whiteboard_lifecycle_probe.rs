@@ -219,11 +219,11 @@ async fn exercise(child: &mut Child, case: &str, token: &str, postfix: &str, add
 }
 
 async fn client_generation() -> ResultType<()> {
-    use crate::whiteboard::{probe_whiteboard_client_state, probe_whiteboard_helper, probe_whiteboard_helper_exit,
+    use crate::whiteboard::{probe_whiteboard_client_state, probe_whiteboard_helper, probe_whiteboard_helper_exit, probe_whiteboard_helper_endpoint,
         register_whiteboard, unregister_whiteboard, update_whiteboard_cursor, WhiteboardClientOwner, Cursor};
     let case = std::env::var("WHITEBOARD_PROBE_CLIENT_GENERATION")?;
-    ensure!(matches!(case.as_str(), "shutdown" | "replacement" | "withdrawal" | "helper-close" | "root-shutdown"), "invalid client case");
-    let generations = if matches!(case.as_str(), "shutdown" | "root-shutdown") { 1 } else { 2 };
+    ensure!(matches!(case.as_str(), "shutdown" | "replacement" | "withdrawal" | "helper-close" | "root-shutdown" | "parent-loss"), "invalid client case");
+    let generations = if matches!(case.as_str(), "shutdown" | "root-shutdown" | "parent-loss") { 1 } else { 2 };
     ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)
         && probe_whiteboard_helper() == (None, false), "client fixture is not initially empty");
     let mut owner = WhiteboardClientOwner::new()?;
@@ -262,7 +262,16 @@ async fn client_generation() -> ResultType<()> {
                 }
             }
             overlay_phase("draw", b"drawn\n").await?;
-            if expected_generation == 1 && case == "helper-close" {
+            if case == "parent-loss" {
+                ensure!(probe_whiteboard_client_state() == ("Running", expected_generation, true, 2)
+                    && probe_whiteboard_helper() == (Some(pid), false),
+                    "parent loss missed its active Running generation");
+                println!("WHITEBOARD_CLIENT_PARENT_LOSS_READY generation=1 pid={pid} address_hex={}",
+                    hex::encode(probe_whiteboard_helper_endpoint()?));
+                std::io::stdout().flush()?;
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                bail!("observer did not terminate the exact active parent");
+            } else if expected_generation == 1 && case == "helper-close" {
                 // Four moves above leave no pending cursor; observe transport loss without another write.
                 tokio::time::sleep(Duration::from_millis(350)).await;
                 println!("WHITEBOARD_CLIENT_WINDOW_CLOSE case=helper-close generation=1 pid={pid}");

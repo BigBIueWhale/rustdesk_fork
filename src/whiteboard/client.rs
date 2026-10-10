@@ -59,6 +59,13 @@ pub(crate) fn probe_whiteboard_helper_exit() -> Option<(u64, bool)> {
     WHITEBOARD_CLIENT.lock().unwrap().last_reaped_helper
 }
 
+#[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+pub(crate) fn probe_whiteboard_helper_endpoint() -> ResultType<String> {
+    let state = WHITEBOARD_CLIENT.lock().unwrap();
+    let owner = state.generation.as_ref().ok_or_else(|| anyhow!("whiteboard probe has no generation"))?;
+    ipc::linux_whiteboard_endpoint_address(&owner.postfix)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WhiteboardWorkerPhase {
     Idle,

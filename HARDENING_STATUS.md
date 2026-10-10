@@ -12187,6 +12187,12 @@ the named active whiteboard owner drain; whole controlled-server listener/IPC fi
 Remote/PAKE admission, other phases/abrupt root loss and installed/platform/resource acceptance
 remain OPEN.
 
+**Abrupt authenticated-parent-loss case: native execution pending.** The same helper-lifetime
+profile now observes production Running state and two-owner pixels before exact parent pidfd
+SIGKILL. It requires helper CLI return with joined worker, destroyed window and refused/rebindable
+endpoint while the helper stays alive, then normal exit and subreaper reap. Fixture or forced
+cleanup cannot pass. This does not prove live-process root drop, late launch or whole-server cleanup.
+
 **Accepted executable state/handle subset:** source `df9daec4cc261bfec574afa0c4f33536b6d99438`,
 `--android-rust-lifecycle-tests --whiteboard-client`
 passed 9 tests, 0 failed/ignored, 598 filtered, 0.00s execution; probe feature disabled.

@@ -12081,7 +12081,7 @@ external review, and the global connection-flow correctness/performance obligati
 
 ### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership
 
-**Current disposition: SOURCE IMPLEMENTED; focused Linux startup/rendering and CLI/proof retirement passed;
+**Current disposition: SOURCE IMPLEMENTED; focused Linux startup/rendering and authenticated CLI/finality passed;
 complete helper and target-native finality evidence OPEN.** `src/whiteboard/event_lifecycle.rs`
 owns the proxy and terminal latch. `src/whiteboard/server.rs` installs the terminal guard
 before runtime/startup work, serializes proxy installation and termination, and delivers
@@ -12098,29 +12098,28 @@ returning to accept. Unauthorized peers remain refused before proof without reti
 the permitted parent's listener.
 
 **Accepted Linux CLI subset:** `--android-rust-lifecycle-tests --whiteboard-helper-lifetime`
-passed at source `f64d25cca0ca07564415e93d7b29e78ce7555bb3`, tree
-`3f304afed0614b8fcc572ba1b6a14201d8eb82e4`, in 221s / 154s build.
+passed at source `b6ffc77164ff32a04105b1864bcf0067e1b04243`, tree
+`f1da3ad39753c774234df3db8d6249b37ae7a083`, in 262s / 178s build.
 One same-image probe dispatched the real `core_main --whiteboard` helper under an
-exact `--server` parent. Five cases passed: authorized empty-state Shutdown,
-bad proof, stalled proof, proof EOF and authenticated EOF. A same-image server-role
-wrong-parent peer carrying the public fixture token received pre-proof EOF, followed
-by the permitted parent's successful mutual proof/Shutdown. Each case required a
-unique PID-bound native X11 window before proceeding and normal child exit/reap,
-then immediate BadWindow, connection refusal and address reuse. The observer acknowledged
-retirement before the next generation. In the proof-failure cases, another connection
-was refused while the helper/admitted stream remained alive before the owner proof reply.
-Artifact SHA-256 `0156e9f14a0150cd1f9bf74129ccc9663fe556b71167748e637a7a7c2fd6baf7`
-was unchanged before/after; pinned zero-NIC/nonroot network-none/source-RO execution,
-full host endpoint invariance and Xvfb/container/VM joined cleanup passed.
-Serial `android-rust-lifecycle-tests-run.3rogo3sDbA.serial.log` SHA-256
-`809074a40b242b883478e5ccd359dd9495f27c3d02643ccfa0f4a4576ed83a9f`.
-This nonrelease probe establishes post-process window absence, not independent
-window retirement before process death, installed authority, cross-UID coverage or soak.
-
-**Extension pending:** six cases hold helpers alive after real CLI return for worker,
-stream, window and endpoint retirement checks. The new authenticated case reads back
-two owners' pixels, closes one and requests native window-close with the other active.
-The five-case binding above remains accepted until the new transaction joins.
+exact `--server` parent. Six cases passed: empty-state Shutdown, bad/stalled proof,
+proof EOF, authenticated EOF and native window-close with an owner still registered.
+A same-image server-role wrong parent carrying the public fixture token received
+pre-proof EOF before permitted-parent mutual proof/Shutdown. Proof-failure cases
+refused another connection before the owner proof reply while the admitted stream lived.
+Each case required a unique PID-bound X11 window before proceeding. After real CLI
+return, the helper remained alive behind an acknowledgment barrier: its named worker
+was absent, retained streams returned true EOF, and the observer required immediate
+BadWindow, connection refusal and address reuse before permitting normal exit/reap.
+The sixth case sent production tokenized Bind/Cursor commands, read back two owners'
+green/blue pixels, sent exact-token Close for one and observed only its pixels clear,
+then requested WM_DELETE_WINDOW with the other owner and authenticated stream retained.
+Artifact SHA-256 `e1444cf9fd67151aa73af0e2ff119c70f8be452f39b85dfbd162c6ec89ab2bce`
+was unchanged before/after. Pinned zero-NIC/nonroot network-none/source-RO execution,
+full host endpoint invariance and Xvfb/container/VM joined cleanup passed. Serial
+`android-rust-lifecycle-tests-run.zw8T7HsMgo.serial.log` SHA-256
+`9cbed4c8f7f70a8f4a870fc77101f45fe77b6a0aa67621542a7a78e373800f04`.
+This nonrelease probe excludes installed authority, real Remote producer admission,
+cross-UID/platform coverage, compositor/animation and sustained resource/soak acceptance.
 
 Linux rendering now retains Winit's `OwnedDisplayHandle` in its softbuffer context
 and surfaces. The borrowed-display `transmute` to `'static`, optional context and
@@ -12163,7 +12162,7 @@ the listener remained bound, exact worker join, refusal and immediate address re
 All 32 additional factory generations retired with no socket/PID entries or FD growth
 after each cycle. No fixture unlink or process death supplied cleanup. This bounded
 factory/worker observation does not prove a complete helper or soak. macOS pathname retirement,
-native allowed/forbidden principal coverage, authenticated stream/overlay cancellation,
+native allowed/forbidden principal coverage, remaining stream/overlay cancellation branches,
 complete helper and sustained resource/soak acceptance remain OPEN.
 
 **Lifecycle state evidence:** the e655e193 root-crate executable passed three production
@@ -12178,7 +12177,7 @@ remain supplementary to required native runs.
 
 **Still required:** remaining full-root suites and isolated Windows/macOS/Linux
 helper runs covering launch-identity refusal, listener construction/end/error, remaining proof and
-transport failures, cancellation, authenticated overlay close, both proxy-publication
+transport failures, remaining cancellation/authenticated-close branches, both proxy-publication
 orders, every returning event-loop path, and permitted spawn/join failure injection.
 Observe one terminal outcome, no surviving helper/thread/listener/handle, and bounded
 resources through startup, failure, replacement, and owner loss. Installed artifacts,

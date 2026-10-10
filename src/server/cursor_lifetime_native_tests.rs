@@ -20,6 +20,10 @@ impl IntoStartReceipt for ResultType<()> {
     }
 }
 
+impl IntoStartReceipt for () {
+    fn into_start_receipt(self) -> ResultType<StartReceipt> { Ok(StartReceipt(None)) }
+}
+
 async fn owner(id: i32, kind: AuthConnType) -> ResultType<raii::AuthedConnID> {
     raii::AuthedConnID::new(id, kind, SessionKey {
         peer_id: "cursor-fixture".into(), name: "owner".into(), session_id: id as u64,
@@ -37,7 +41,7 @@ async fn wait_for(mut condition: impl FnMut() -> bool) -> ResultType<()> {
 
 async fn reap(receipts: Vec<StartReceipt>) {
     tokio::task::spawn_blocking(move || {
-        try_stop_record_cursor_pos();
+        try_stop_record_cursor_pos().into_start_receipt().unwrap();
         for receipt in receipts {
             if let Some(join) = receipt.0 { join.join().unwrap(); }
         }

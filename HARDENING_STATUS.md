@@ -824,7 +824,8 @@ closure follows from these component receipts.
   Cursor-recorder ownership remains OPEN: Remote subscription drops its thread
   handle and a shared stop flag permits overlapping generations. A native X11
   fixture now covers shared Remote resource admission, blocked retirement and
-  successor exclusion; it has not yet executed. Full shutdown/network/installed
+  successor exclusion; before code exposed two live contexts after cleanup finality.
+  Corrected ownership and native regression remain pending. Full shutdown/network/installed
   acceptance remains OPEN. Before/regression receipts are in the audit.
   Windows virtual-key up/repeat still resolves the foreground
   mapping before lease lookup; layout/desktop identity retention remains required.

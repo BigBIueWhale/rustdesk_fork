@@ -828,8 +828,18 @@ closure follows from these component receipts.
   `os_inhibitor=false`. Native wake inhibition remains OPEN.
   Registry reservations now precede await; cancellation owns exact retirement.
   Root stop closes all five session types under the same admission latch.
-  At `6a666fef`, native reservation/collision and four-type stop cases failed;
-  corrected native acceptance is pending.
+  The unchanged fixture at `6a666fef` observed missing waiting reservations,
+  accepted same-ID collisions and four late non-Remote admissions.
+  On `f1f92b8c`, 32 native barrier generations passed reservation accounting,
+  collision refusal, exact abort/join retirement, useful ID reuse and unpublished
+  CM refusal, with cursor TLS/cache/FD/task retirement preserved. Real process exit
+  observed all five types refused, both captured worker TIDs absent and cursor retired.
+  The canonical isolated transaction passed in 254 seconds with unchanged artifact/
+  provider, joined X11/container/VM and no host listener additions. Raw evidence:
+  `android-rust-lifecycle-tests-run.a2ec9Ewv8j.serial.log`, SHA-256
+  `12f98c4005597c50e7a0ddab66987bff2e652e208666822a08186c602aac082c`.
+  This is Linux resource-factory/finalizer evidence; full network and installed
+  shutdown, native Windows/macOS and Android concurrent lifecycle remain OPEN.
   The earlier physical regression at `6a675303` passed; macOS recorded CapsLock
   retirement is source-corrected. Three Apple anchors compiled at `c5d0984a`;
   application checks stopped at SDK/header boundaries and the outer transaction rejected

@@ -349,6 +349,7 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
     print("X11_ENIGO_BUILD " + " ".join(
         f"{name}_sha256={hashlib.sha256(path.read_bytes()).hexdigest()}" for name, path in (
             ("backend", root / "libs/enigo/src/linux/xdo.rs"),
+            ("parent", root / "libs/enigo/src/linux/nix_impl.rs"),
             ("api_source", root / "libs/enigo/src/lib.rs"), ("api_declarations", api),
             ("selector", root / "libs/hbb_common/src/platform/x11_display.rs"),
             ("fixture", root / "scripts/test-x11-enigo-route.rs"),
@@ -356,7 +357,7 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
             ("service_source", service_source), ("lease_source", lease_source),
             ("provider", providers["corrected"] / "libxdo.so.3"),
             ("log_manifest", checksum), ("log_library", library), ("binary", binary)))
-          + " variant=corrected parent_enigo=unexecuted loader=direct-native-test whole_app=unexecuted", flush=True)
+          + " variant=corrected parent_enigo=compiled loader=direct-native-test whole_app=unexecuted", flush=True)
     cleanup_helper.unlink()
     result = subprocess.run([str(binary)], env=environment, capture_output=True,
                             text=True, timeout=15)
@@ -386,6 +387,17 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
     require(cleanup.returncode == 0 and not cleanup.stderr and cleanup.stdout.splitlines() == [cleanup_receipt],
             f"Enigo cleanup refusal differs: {cleanup}")
     print(cleanup_receipt, flush=True)
+    input_admission = subprocess.run([str(binary), "cleanup-input-admission"], env=environment,
+                                     capture_output=True, text=True, timeout=5)
+    input_receipt = ("X11_ENIGO_PENDING_INPUT=pass source=complete-linux-enigo-and-provider "
+                     "faults=restore-submission,key-release cases=16 unwind=8 ordinary_refusals=176 "
+                     "text_refusals=128 owned_button_releases=16 ordinary_output=none pending_keys=preserved "
+                     "mapping=retained teardown=text-before-display mapping_final=restored keys_final=clear "
+                     "descriptors=retired tasks=retired whole_app=false")
+    require(input_admission.returncode == 0 and not input_admission.stderr
+            and input_admission.stdout.splitlines() == [input_receipt],
+            f"pending Enigo input admission differs: {input_admission}")
+    print(input_receipt, flush=True)
     enigo_retirement(environment, binary)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", 6095))

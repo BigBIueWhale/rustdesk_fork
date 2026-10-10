@@ -4332,6 +4332,9 @@ elif [ "$MODE" = x11-display-tests ] && [ "$X11_CLIPBOARD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'clipboard listener completion'
 elif [ "$MODE" = x11-display-tests ] && [ "$X11_KEY_INPUT_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt \
+        'X11_ENIGO_PENDING_INPUT=pass source=complete-linux-enigo-and-provider faults=restore-submission,key-release cases=16 unwind=8 ordinary_refusals=176 text_refusals=128 owned_button_releases=16 ordinary_output=none pending_keys=preserved mapping=retained teardown=text-before-display mapping_final=restored keys_final=clear descriptors=retired tasks=retired whole_app=false' \
+        'pending text cleanup refuses ordinary pointer and keyboard-state admission while permitting owned button retirement'
+    require_exact_fixed_receipt \
         'X11_ENIGO_RETIREMENT_NATIVE=pass retry_cases=16 abort_cases=4 unwind_cases=10 refused_free_calls=24 failed_owners=retained retry_owners=retired servers=joined sockets=absent scope=backend-provider-retirement whole_app=false' \
         'native retirement retains failed owners and proves retry or process termination before parent Display teardown'
     require_exact_fixed_receipt \

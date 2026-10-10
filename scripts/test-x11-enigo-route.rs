@@ -1,5 +1,5 @@
 //! Complete production XDO backend with source-extracted production API declarations.
-//! ABI bindings call the real libraries; this does not exercise the protected loader or parent Enigo.
+//! ABI bindings call the real libraries; this does not exercise the protected loader or application.
 extern crate self as hbb_common;
 extern crate self as libxdo_sys;
 include!("/build/enigo-api.rs");
@@ -50,6 +50,8 @@ extern "C" {
     fn enigo_cleanup_begin(key_release: c_int);
     fn enigo_cleanup_register(context: *mut xdo_t);
     fn enigo_cleanup_pending();
+    fn enigo_cleanup_input_begin();
+    fn enigo_cleanup_input_end() -> c_int;
     fn enigo_cleanup_allow_retirement(failures: c_int);
     fn enigo_cleanup_before_free(context: *mut xdo_t);
     fn enigo_cleanup_free_result(status: c_int);
@@ -72,6 +74,11 @@ extern "C" {
 }
 #[path = "/work/libs/enigo/src/linux/xdo.rs"]
 mod backend;
+mod xdo {
+    pub(super) use super::backend::EnigoXdo;
+}
+#[path = "/work/libs/enigo/src/linux/nix_impl.rs"]
+mod nix_impl;
 
 static NAMES: Mutex<Vec<(bool, Option<String>)>> = Mutex::new(Vec::new());
 static RETIREMENTS: AtomicUsize = AtomicUsize::new(0);
@@ -250,9 +257,11 @@ fn main() {
             lock_modes::run(baseline);
             return;
         }
-        if scenario == "cleanup-refusal" || scenario == "cleanup-retry" || scenario.starts_with("cleanup-abort-") {
+        if scenario == "cleanup-refusal" || scenario == "cleanup-input-admission"
+            || scenario == "cleanup-retry" || scenario.starts_with("cleanup-abort-") {
             let abort = scenario.starts_with("cleanup-abort-");
             let retry = scenario == "cleanup-retry";
+            let input_admission = scenario == "cleanup-input-admission";
             if abort {
                 assert!(matches!(scenario.as_str(), "cleanup-abort-map-drop" | "cleanup-abort-map-unwind"
                                 | "cleanup-abort-key-drop" | "cleanup-abort-key-unwind"));
@@ -260,7 +269,7 @@ fn main() {
             std::env::set_var("DISPLAY", if abort { ":97" } else { ":98" });
             NATIVE_CLEANUP_TEST.store(true, Ordering::SeqCst);
             for iteration in 0..if abort { 1 } else { 16 } {
-                let mut injector = backend::EnigoXdo::default();
+                let mut injector = nix_impl::Enigo::default();
                 let key = if abort { scenario.contains("-key-") } else { iteration >= 8 };
                 unsafe { enigo_cleanup_begin(c_int::from(key)); }
                 // A real scratch pair meets a controlled map or key-release submission refusal.
@@ -269,6 +278,26 @@ fn main() {
                 assert_eq!(RETIREMENTS.load(Ordering::SeqCst), iteration * 2);
                 assert_eq!(descriptors(), baseline + 2);
                 unsafe { enigo_cleanup_pending(); }
+                let mut input_refused = true;
+                if input_admission {
+                    unsafe { enigo_cleanup_input_begin(); }
+                    let refusals = [
+                        injector.mouse_move_to(65, 55).is_err(),
+                        injector.mouse_move_relative(1, 1).is_err(),
+                        injector.mouse_down(MouseButton::Right).is_err(),
+                        injector.mouse_click(MouseButton::Middle).is_err(),
+                        injector.mouse_scroll_x(-1).is_err(),
+                        injector.mouse_scroll_x(0).is_err(),
+                        injector.mouse_scroll_x(1).is_err(),
+                        injector.mouse_scroll_y(-1).is_err(),
+                        injector.mouse_scroll_y(0).is_err(),
+                        injector.mouse_scroll_y(1).is_err(),
+                        injector.keyboard_state().is_err(),
+                    ];
+                    let released = injector.mouse_up(MouseButton::Left).is_ok();
+                    let unchanged = unsafe { enigo_cleanup_input_end() } == 1;
+                    input_refused = refusals.iter().all(|refused| *refused) && released && unchanged;
+                }
                 for text in ["a", "A", "🙂", "", "a", "A", "🙂", ""] {
                     assert_eq!(injector.key_sequence_result(text).unwrap_err().to_string(),
                                "libxdo text cleanup is unconfirmed");
@@ -297,8 +326,11 @@ fn main() {
                 unsafe { enigo_cleanup_finish(); }
                 NAMES.lock().unwrap().clear();
                 retired(baseline);
+                assert!(input_refused, "pending text cleanup admitted ordinary input or prevented owned button retirement");
             }
-            if retry {
+            if input_admission {
+                println!("X11_ENIGO_PENDING_INPUT=pass source=complete-linux-enigo-and-provider faults=restore-submission,key-release cases=16 unwind=8 ordinary_refusals=176 text_refusals=128 owned_button_releases=16 ordinary_output=none pending_keys=preserved mapping=retained teardown=text-before-display mapping_final=restored keys_final=clear descriptors=retired tasks=retired whole_app=false");
+            } else if retry {
                 println!("X11_ENIGO_RETIREMENT_RETRY=pass source=complete-backend-and-provider faults=restore-submission,key-release cases=16 unwind=8 failed_retirements=16 same_owner=retained later_text=refused retry=successful contexts=32 events=32 teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false");
             } else {
                 println!("X11_ENIGO_CLEANUP_REFUSAL=pass source=complete-backend-and-provider faults=restore-submission,key-release repeats=4 cases=16 unwind=8 later_requests=128 native_calls=16 contexts=32 events=32 pending=retained teardown=text-before-display mapping=restored keys=clear descriptors=retired tasks=retired whole_app=false");

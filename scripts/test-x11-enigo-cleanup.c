@@ -22,6 +22,7 @@ static xdo_t *pending;
 static XkbDescPtr baseline, retained_original;
 static KeyCode scratch_code;
 static charcodemap_t *retained_charcodes;
+static int input_original_x, input_original_y;
 
 static void keys_clear(void);
 static void no_events(void);
@@ -198,6 +199,69 @@ void enigo_cleanup_pending(void) {
   if (!key_release_fault) text_event(KeyRelease);
   keys_pending();
   no_events();
+}
+
+void enigo_cleanup_input_begin(void) {
+  Window root, child;
+  int root_x, root_y, x, y;
+  unsigned int mask;
+  XEvent event;
+  assert(armed && phase == 0 && pending != NULL);
+  assert(XQueryPointer(observer, window, &root, &child,
+                       &input_original_x, &input_original_y, &x, &y, &mask));
+  assert(!(mask & (Button1Mask | Button2Mask | Button3Mask | Button4Mask | Button5Mask)));
+  XSelectInput(observer, window, KeyPressMask | KeyReleaseMask | ButtonPressMask
+               | ButtonReleaseMask | PointerMotionMask);
+  XWarpPointer(observer, None, window, 0, 0, 0, 0, 30, 30);
+  XSync(observer, False);
+  while (XCheckWindowEvent(observer, window, PointerMotionMask, &event)) {}
+  assert(XTestFakeButtonEvent(observer, 1, True, CurrentTime));
+  XSync(observer, False);
+  assert(XCheckWindowEvent(observer, window, ButtonPressMask, &event)
+         && event.type == ButtonPress && event.xbutton.button == 1
+         && event.xbutton.window == window && !event.xbutton.send_event);
+  assert(XQueryPointer(observer, window, &root, &child,
+                       &root_x, &root_y, &x, &y, &mask)
+         && x == 30 && y == 30 && mask == Button1Mask);
+  keys_pending();
+}
+
+int enigo_cleanup_input_end(void) {
+  Window root, child;
+  int root_x, root_y, x, y;
+  unsigned int mask, releases = 0, unexpected = 0;
+  XEvent event;
+  assert(armed && phase == 0 && pending != NULL);
+  XSync(borrowed_display, False);
+  XSync(observer, False);
+  assert(XQueryPointer(observer, window, &root, &child, &root_x, &root_y, &x, &y, &mask));
+  while (XCheckWindowEvent(observer, window,
+                          PointerMotionMask | ButtonPressMask | ButtonReleaseMask, &event)) {
+    if (event.type == ButtonRelease && event.xbutton.button == 1
+        && event.xbutton.window == window && !event.xbutton.send_event
+        && event.xbutton.state == Button1Mask) {
+      releases++;
+    } else {
+      unexpected++;
+    }
+  }
+  int unchanged = x == 30 && y == 30 && mask == 0 && releases == 1 && unexpected == 0;
+  if (!unchanged) {
+    printf("X11_ENIGO_PENDING_INPUT_OBSERVED x=%d y=%d mask=%u owned_releases=%u unexpected_events=%u\n",
+           x, y, mask, releases, unexpected);
+    assert(fflush(stdout) == 0);
+  }
+  keys_pending();
+  /* Retire only buttons introduced by this private fixture, after observation. */
+  for (unsigned int button = 1; button <= 3; button++)
+    assert(XTestFakeButtonEvent(observer, button, False, CurrentTime));
+  XSync(observer, False);
+  while (XCheckWindowEvent(observer, window,
+                          PointerMotionMask | ButtonPressMask | ButtonReleaseMask, &event)) {}
+  XSelectInput(observer, window, KeyPressMask | KeyReleaseMask);
+  XWarpPointer(observer, None, root, 0, 0, 0, 0, input_original_x, input_original_y);
+  XSync(observer, False);
+  return unchanged;
 }
 
 void enigo_cleanup_allow_retirement(int failures) {

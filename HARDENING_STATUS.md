@@ -12084,7 +12084,7 @@ or fix for that defect.
 
 **Current disposition: root-owned launch/task/helper correction implemented; named Linux
 healthy retirement, committed-stop replacement/withdrawal, quiet helper closure, active root drain and nine executable regressions
-passed; full lifecycle acceptance OPEN.**
+passed, as did the named abrupt authenticated-parent-loss case; full lifecycle acceptance OPEN.**
 `src/whiteboard/client.rs` uses one mutex-owned `WhiteboardClientState`
 containing registrations, the exact-generation sender, retained launch/task handles and helper, and
 Idle/Starting/Running/Stopping phase. Checked generation reservation prevents wraparound;
@@ -12116,8 +12116,8 @@ Root shutdown closes registration authority and cancels work before listener dra
 then observes/joins whiteboard before final process shutdown. The three-second retirement
 deadline initiates cancellation/owned termination; handles and Stopping remain until
 positive retirement. Uncertain creation panic or process observation retains ownership
-and refuses replacement. Unexpected root drop likewise refuses replacement; complete
-abrupt-root-loss/native failure cleanup remains unproved.
+and refuses replacement. Unexpected live-process root drop likewise refuses replacement;
+late-launch and complete native failure cleanup remain unproved.
 
 **Native failing baseline:** source `7e437223dd367191719e322989db7297b8fcfbf7`,
 tree `1213b9b0e2ff0198450460a7f2edc4b68a4c8752` drew two owners through production
@@ -12187,11 +12187,24 @@ the named active whiteboard owner drain; whole controlled-server listener/IPC fi
 Remote/PAKE admission, other phases/abrupt root loss and installed/platform/resource acceptance
 remain OPEN.
 
-**Abrupt authenticated-parent-loss case: native execution pending.** The same helper-lifetime
-profile now observes production Running state and two-owner pixels before exact parent pidfd
-SIGKILL. It requires helper CLI return with joined worker, destroyed window and refused/rebindable
-endpoint while the helper stays alive, then normal exit and subreaper reap. Fixture or forced
-cleanup cannot pass. This does not prove live-process root drop, late launch or whole-server cleanup.
+**Accepted abrupt authenticated-parent-loss subset:** source `6b04316b3766cd46577337c659c053ef3d0da9de`,
+tree `ad0b506ebf929560ea856ff316a4be83ba03cb3e`, same pinned helper-lifetime command233s/build155s.
+Production Running/generation1/task retained/connections2/exact helper20271 followed independently
+acknowledged two-owner pixels. The observer then SIGKILLed the exact retained parent pidfd and
+required parent status-9 while the helper stayed alive. Helper CLI return followed IPC-worker join;
+independent X11 BadWindow and endpoint ECONNREFUSED/rebind success preceded release of the inherited
+CLI barrier. Exact adopted-helper waitpid proved normal status0/reap, dead pidfd and proc absence.
+Forced cleanup cannot pass. Eight receiver and six global cases/nine global generations passed
+on one unchanged before/after artifact:
+`bd09ca400bee41ecef445da595249860746e09fec0aa19e6f7dd90cc5b1102c3`.
+Serial `android-rust-lifecycle-tests-run.oBy5wzoY7o.serial.log`,84345bytes, SHA-256
+`24cdf45d20ccd7028cd82e92d5529be5dc615bd2b4c5086388e2c1e2e2d26dff`.
+Source/input/canary, UID/GID1000 network-none container, zero-NIC VM, before/during/after host
+endpoint no-addition audits and joined owned cleanup passed. Production behavior is unchanged;
+the new endpoint getter exists only under the Linux probe feature. Authenticated EOF and parent
+pidfd readiness may race; this establishes terminal cleanup without attributing it uniquely to
+either branch. Live-process root drop, late blocking launch, whole controlled-server finalization,
+Remote/PAKE admission and installed/platform/resource acceptance remain OPEN.
 
 **Accepted executable state/handle subset:** source `df9daec4cc261bfec574afa0c4f33536b6d99438`,
 `--android-rust-lifecycle-tests --whiteboard-client`

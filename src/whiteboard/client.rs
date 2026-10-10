@@ -341,7 +341,7 @@ impl WhiteboardHelperProcess {
     }
 }
 
-/// Retained and polled by the desktop IPC worker through exact generation retirement.
+/// Retained and polled by the controlled-server lifecycle owner through generation retirement.
 pub(crate) struct WhiteboardClientRoot {
     timer: Interval,
     retirement: Arc<CancellationToken>,
@@ -380,13 +380,20 @@ impl WhiteboardClientRoot {
         }).await
     }
 
-    pub(crate) async fn run(&mut self) {
+    async fn run(&mut self) -> std::convert::Infallible {
         loop {
             let active = self.observe().await;
             tokio::select! {
                 _ = WHITEBOARD_OWNER_WAKE.notified() => {},
                 _ = self.timer.tick(), if active => {},
             }
+        }
+    }
+
+    pub(crate) async fn drive_until<F: Future>(&mut self, operation: F) -> F::Output {
+        tokio::select! {
+            outcome = operation => outcome,
+            never = self.run() => match never {},
         }
     }
 
@@ -431,7 +438,7 @@ impl Drop for WhiteboardClientController {
         if state.owner == WhiteboardOwnerAdmission::Serving
             && state.retirement.as_ref().is_some_and(|retirement| Arc::ptr_eq(retirement, &self.retirement)) {
             close_whiteboard_admission(&mut state, WhiteboardOwnerAdmission::Orphaned);
-            log::error!("whiteboard controller was lost; the desktop IPC owner will retire its generation");
+            log::error!("whiteboard controller was lost; the controlled-server owner will retire its generation");
         }
     }
 }

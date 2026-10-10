@@ -861,7 +861,7 @@ def observe_client_generation(executable, environment, display, server, case):
     elif case == "helper-crash":
         print("WHITEBOARD_CLIENT_HELPER_LOSS=pass helper=pidfd-sigkill parent=alive old=production-reaped task=joined window=badwindow endpoint=refused-rebindable idle_observation_ms=500 demand=retained retry=later-explicit-same-id generations=2 pixels=both-generations", flush=True)
     elif case == "owner-loss":
-        print("WHITEBOARD_CLIENT_OWNER_LOSS=pass boundary=running-published-helper controller=dropped process-root=desktop-ipc-retained parent=alive task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused", flush=True)
+        print("WHITEBOARD_CLIENT_OWNER_LOSS=pass boundary=running-published-helper controller=dropped process-root=controlled-server-retained parent=alive task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused", flush=True)
     elif case == "ipc-worker-panic":
         print("WHITEBOARD_CLIENT_IPC_PANIC=pass boundary=native-worker-unwind parent=alive worker=absent thread=joined outcome=failed task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused", flush=True)
     else:
@@ -990,7 +990,7 @@ def observe_launch_owner_loss(executable, environment, display, server):
                     os.close(helper_fd)
             if owner.returncode != 0:
                 sys.stderr.write(log_path.read_text())
-    print("WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS=pass boundary=created-before-handoff controller=dropped process-root=desktop-ipc-retained parent=alive launch=joined helper=exited-reaped window=badwindow endpoint=refused-rebindable replacement=refused", flush=True)
+    print("WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS=pass boundary=created-before-handoff controller=dropped process-root=controlled-server-retained parent=alive launch=joined helper=exited-reaped window=badwindow endpoint=refused-rebindable replacement=refused", flush=True)
 
 
 def main():
@@ -1031,7 +1031,7 @@ def main():
             observe_launch_owner_loss(executable, environment, display, server)
             observe_client_generation(executable, environment, display, server, "owner-loss")
             observe_client_generation(executable, environment, display, server, "ipc-worker-panic")
-            print("WHITEBOARD_CLIENT_PROCESS_ROOT=pass owner=desktop-ipc ready=10 joined=8 panicked-joined=1 parent-loss=kernel-exit helper-retirement=before-parent-exit", flush=True)
+            print("WHITEBOARD_CLIENT_PROCESS_ROOT=pass owner=controlled-server ready=10 joined=8 panicked-joined=1 parent-loss=kernel-exit helper-retirement=before-parent-exit", flush=True)
             require(artifact_digest(executable) == digest and server.poll() is None,
                     "compiled helper artifact or Xvfb changed during execution")
         finally:

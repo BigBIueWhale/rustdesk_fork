@@ -476,12 +476,13 @@ impl WindowsShareRdpClientOwner {
 
 /// The desktop controlled-server's one native local-IPC worker. The worker owns its
 /// current-thread Tokio runtime; the async controlled-server owner retains readiness,
-/// completion, and the exact native thread until shutdown is complete.
+/// completion, the exact native thread, and whiteboard resources on its own runtime.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) struct DesktopIpcWorker {
     readiness: oneshot::Receiver<Result<crate::whiteboard::WhiteboardClientController, String>>,
     completion: oneshot::Receiver<Result<(), String>>,
     thread: Option<std::thread::JoinHandle<()>>,
+    whiteboard: crate::whiteboard::WhiteboardClientRoot,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -496,12 +497,16 @@ impl DesktopIpcWorker {
     }
 
     pub(crate) async fn wait_for_completion(&mut self) -> Result<(), String> {
-        (&mut self.completion)
-            .await
+        self.whiteboard.drive_until(&mut self.completion).await
             .map_err(|_| "desktop IPC worker ended without reporting an outcome".to_owned())?
     }
 
+    pub(crate) async fn drive_whiteboard_until<F: std::future::Future>(&mut self, operation: F) -> F::Output {
+        self.whiteboard.drive_until(operation).await
+    }
+
     pub(crate) async fn join(mut self) -> Result<(), String> {
+        self.whiteboard.stop_and_join().await;
         let thread = self
             .thread
             .take()
@@ -515,12 +520,13 @@ impl DesktopIpcWorker {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) fn spawn_desktop_ipc_worker() -> ResultType<DesktopIpcWorker> {
+    let (whiteboard, controller) = crate::whiteboard::WhiteboardClientRoot::new()?;
     let (readiness_tx, readiness) = oneshot::channel();
     let (completion_tx, completion) = oneshot::channel();
     let thread = std::thread::Builder::new()
         .name("rustdesk-desktop-ipc".to_owned())
         .spawn(move || {
-            let outcome = run_desktop_ipc(readiness_tx).map_err(|err| err.to_string());
+            let outcome = run_desktop_ipc(readiness_tx, controller).map_err(|err| err.to_string());
             if completion_tx.send(outcome).is_err() {
                 log::error!("Desktop IPC worker completed after its lifecycle owner was lost");
             }
@@ -530,6 +536,7 @@ pub(crate) fn spawn_desktop_ipc_worker() -> ResultType<DesktopIpcWorker> {
         readiness,
         completion,
         thread: Some(thread),
+        whiteboard,
     })
 }
 
@@ -3489,6 +3496,7 @@ pub async fn start(postfix: &str) -> ResultType<()> {
 #[tokio::main(flavor = "current_thread")]
 async fn run_desktop_ipc(
     readiness: oneshot::Sender<Result<crate::whiteboard::WhiteboardClientController, String>>,
+    controller: crate::whiteboard::WhiteboardClientController,
 ) -> ResultType<()> {
     #[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
     crate::linux_whiteboard_lifecycle_probe::report_desktop_ipc_thread()?;
@@ -3513,15 +3521,7 @@ async fn run_desktop_ipc(
         None
     };
 
-    let (mut whiteboard, controller) = match crate::whiteboard::WhiteboardClientRoot::new() {
-        Ok(owners) => owners,
-        Err(err) => {
-            let _ = readiness.send(Err(err.to_string()));
-            return Err(err);
-        }
-    };
     if readiness.send(Ok(controller)).is_err() {
-        whiteboard.stop_and_join().await;
         bail!("desktop IPC lifecycle owner stopped before readiness");
     }
 
@@ -3539,12 +3539,7 @@ async fn run_desktop_ipc(
     };
     #[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
     let listeners = crate::linux_whiteboard_lifecycle_probe::with_requested_ipc_panic(listeners);
-    let outcome = tokio::select! {
-        outcome = listeners => outcome,
-        _ = whiteboard.run() => Err(hbb_common::anyhow::anyhow!("whiteboard process owner ended unexpectedly")),
-    };
-    whiteboard.stop_and_join().await;
-    outcome
+    listeners.await
 }
 
 #[cfg(target_os = "linux")]

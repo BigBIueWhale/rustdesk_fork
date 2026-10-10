@@ -3180,8 +3180,14 @@ run_focused_rust_tests() {
     fi
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
-    [ "$container_status" -eq 0 ] \
-        || { tail -n 200 "$output" >&2; fail "focused Rust tests exited with status $container_status"; }
+    if [ "$container_status" -ne 0 ]; then
+        if [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
+            awk '/^WHITEBOARD_HELPER_(BUILD|ARTIFACT_BEFORE)=/ { print }' "$output" >&2 \
+                || printf 'Whiteboard failure metadata could not be read\n' >&2
+        fi
+        tail -n 200 "$output" >&2
+        fail "focused Rust tests exited with status $container_status"
+    fi
     [ "$(stat -c '%s' -- "$output")" -le 4194304 ] \
         || fail 'focused Rust-test output exceeds its bound'
     if [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -3271,16 +3277,16 @@ run_focused_rust_tests() {
         [ "$(grep -Fxc 'WHITEBOARD_CLIENT_HELPER_LOSS=pass helper=pidfd-sigkill parent=alive old=production-reaped task=joined window=badwindow endpoint=refused-rebindable idle_observation_ms=500 demand=retained retry=later-explicit-same-id generations=2 pixels=both-generations' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'WHITEBOARD_CLIENT_HELPER_LOSS=' "$output")" -eq 1 ] \
             || fail 'native global client abrupt-helper-loss receipt differs'
-        [ "$(grep -Fxc 'WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS=pass boundary=created-before-handoff controller=dropped process-root=desktop-ipc-retained parent=alive launch=joined helper=exited-reaped window=badwindow endpoint=refused-rebindable replacement=refused' "$output")" -eq 1 ] \
+        [ "$(grep -Fxc 'WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS=pass boundary=created-before-handoff controller=dropped process-root=controlled-server-retained parent=alive launch=joined helper=exited-reaped window=badwindow endpoint=refused-rebindable replacement=refused' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS=' "$output")" -eq 1 ] \
             || fail 'native global client late-launch owner-loss receipt differs'
-        [ "$(grep -Fxc 'WHITEBOARD_CLIENT_OWNER_LOSS=pass boundary=running-published-helper controller=dropped process-root=desktop-ipc-retained parent=alive task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused' "$output")" -eq 1 ] \
+        [ "$(grep -Fxc 'WHITEBOARD_CLIENT_OWNER_LOSS=pass boundary=running-published-helper controller=dropped process-root=controlled-server-retained parent=alive task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'WHITEBOARD_CLIENT_OWNER_LOSS=' "$output")" -eq 1 ] \
             || fail 'native global client published-helper owner-loss receipt differs'
         [ "$(grep -Fxc 'WHITEBOARD_CLIENT_IPC_PANIC=pass boundary=native-worker-unwind parent=alive worker=absent thread=joined outcome=failed task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'WHITEBOARD_CLIENT_IPC_PANIC=' "$output")" -eq 1 ] \
             || fail 'native IPC worker unwind retirement receipt differs'
-        [ "$(grep -Fxc 'WHITEBOARD_CLIENT_PROCESS_ROOT=pass owner=desktop-ipc ready=10 joined=8 panicked-joined=1 parent-loss=kernel-exit helper-retirement=before-parent-exit' "$output")" -eq 1 ] \
+        [ "$(grep -Fxc 'WHITEBOARD_CLIENT_PROCESS_ROOT=pass owner=controlled-server ready=10 joined=8 panicked-joined=1 parent-loss=kernel-exit helper-retirement=before-parent-exit' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'WHITEBOARD_CLIENT_PROCESS_ROOT=' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^WHITEBOARD_CLIENT_PROCESS_ROOT_THREAD tid=[1-9][0-9]*$' "$output")" -eq 10 ] \
             && [ "$(grep -Fxc 'WHITEBOARD_CLIENT_PROCESS_ROOT_READY worker=desktop-ipc controller=retained' "$output")" -eq 10 ] \

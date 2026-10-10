@@ -4491,8 +4491,8 @@ invariant and signal setup before admission, create one fallible named native IP
 required local-listener readiness before starting the public listener, observe cancellation/signal/public-
 listener/IPC completion in one owner, and join the exact listener and IPC thread before the sole non-returning
 desktop finalizer. Protected Linux/macOS service IPC instead drains and returns its outcome to its foreground
-owner. IPC readiness now transfers the whiteboard admission controller while that worker retains its
-resource driver through exact generation retirement. The 416-line/22-mutation lifecycle wording checker
+owner. IPC readiness transfers the whiteboard admission controller; the controlled-server owner retains
+its resource driver through generation retirement, even after IPC unwind. The 416-line/22-mutation lifecycle wording checker
 and duplicate shared/Apple calls are deleted; source ordering did not execute any task/thread or OS drain.
 R-S11e-58's executable returned-outcome regression remains. Current native setup/failure/stop/restart,
 accepted-transaction drain, sole finalizer, installed and resource acceptance remain OPEN.
@@ -12085,9 +12085,9 @@ or fix for that defect.
 
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
-**Disposition: controller/resource ownership split passed the current native Linux controller-loss
-profile and default-feature nine-test shard. Published-helper Drop failed on the retained old
-source. Full-root failure, installed/platform and resource acceptance remain OPEN.**
+**Disposition: native IPC unwind exposed lost cleanup; the resource root now belongs to the
+surviving controlled-server runtime. Current native/default execution is pending. Earlier
+controller-loss evidence passed. Full-root, installed/platform and resource acceptance remain OPEN.**
 
 **Current source:** `src/whiteboard/client.rs` locks registrations, sender, retained launch/task
 handles, helper and Idle/Starting/Running/Stopping in one `WhiteboardClientState`. Checked
@@ -12105,11 +12105,12 @@ hot path uses fixed storage and a borrowed sender. Token/parent proof, parent-de
 deadline writes remain; split globals, detached workers, nested runtimes, `CHILD_PROCESS` and
 tray launching are absent.
 
-The existing desktop IPC worker polls `WhiteboardClientRoot`; its readiness transfers a
-`WhiteboardClientController` admission lease to `direct_service.rs`. One retained Arc identity
-binds that controller and its terminal signal to the exact resource root; stale controllers
-cannot close a later owner. Controller Drop closes registration/clears demand/cancels, while
-the IPC worker retains the driver through reap/join. Registration reserves;
+The controlled-server lifecycle retains `WhiteboardClientRoot` in `DesktopIpcWorker` and polls
+it on its existing outer runtime while awaiting IPC completion and public-listener drain.
+IPC readiness transfers a `WhiteboardClientController` admission lease. One Arc identity
+binds the controller/terminal signal to that root; stale controllers cannot close a later owner.
+Controller Drop closes registration/clears demand/cancels; the outer owner retains reap/join.
+Registration reserves;
 one retained `spawn_blocking` job creates/publishes under the admission/generation lock.
 Refused handoff retains and retires the helper before returning a process-free status.
 Unix `Child::try_wait` reaps; Windows retains its creation-time kill-on-close job/process
@@ -12117,17 +12118,21 @@ through process exit and zero-job accounting. The command task cannot discard it
 release its generation or start a successor. Root shutdown closes registration/cancels before
 listener drain and joins whiteboard before final shutdown. The 3s deadline initiates cancellation
 or exact termination; uncertainty retains handles/Stopping and refuses replacement.
-Controller shutdown awaits that root's completion signal. Unexpected resource-root loss
-retains uncertainty/refuses replacement. If the IPC worker unwinds with a live generation,
-the controller can await retirement without a surviving resource driver; this full-root
-failure path remains unresolved. Runtime destruction may also wait for started blocking work.
-Neither that path nor release-abort cleanup is covered by controller-loss acceptance.
-The extended native profile now injects an actual IPC-thread unwind only after Running/
-two-owner pixels. It independently requires native thread absence with parent alive,
-then production helper reap/command join and exact failed-thread join. Probe-only fault
-injection cannot enter default builds. Its first current-source run is pending; no
-full-root correction or acceptance is claimed. Earlier accepted receipts below cover nine
-global cases and do not establish the added tenth case.
+Controller shutdown awaits the root's completion signal. Native join first drains whiteboard
+on the outer runtime; no resource migration, new runtime, detached cleanup or failure fallback.
+Unexpected outer-root loss retains uncertainty/refuses replacement; release-abort cleanup
+and started-blocking-work runtime destruction remain OPEN.
+
+**Native IPC-unwind baseline FAIL:** source `8c22bea8154d814b393556b080bf925550f8a3f9`,
+tree `e66589ae67a2d30b8b779f575aa45a8e80be1b94`, same command below, status1.
+After Running/two-owner pixels and exact IPC TID absence with parent alive, helper20349 was
+dead/unreaped and the command task finished/unjoined. Serial `nbCZOtOGwn`,93345bytes, SHA-256
+`8cf3f243eef286b3ce22fc68dbd8f3af7cd7008e98724d2c42187c3dc66360f1`;
+archive `failed-whiteboard-ipc-panic-8c22bea8-nbCZOtOGwn` retains source/diagnostics.
+Failure-tail truncation lost the baseline artifact digest; no artifact-identical A/B claim.
+The added tenth case requires production helper reap/task join and exact failed-thread join
+after native unwind; probe-only injection cannot enter default builds. Corrected execution
+is pending. Earlier accepted receipts cover only nine global cases.
 
 **Latest accepted native Linux profile:** source `1bb67917bacbf64dfb967782c627ca07016ec33a`,
 tree `2bc9436259305b67a3b2f14f61042400f7021bf7`. Command:

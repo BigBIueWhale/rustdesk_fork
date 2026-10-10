@@ -616,11 +616,11 @@ async fn client_generation() -> ResultType<()> {
     };
     let result = match startup {
         Ok(controller) => {
-            async {
+            worker.drive_whiteboard_until(async {
                 println!("WHITEBOARD_CLIENT_PROCESS_ROOT_READY worker=desktop-ipc controller=retained");
                 std::io::stdout().flush()?;
                 exercise_client_generation(controller, case).await
-            }.await
+            }).await
         }
         Err(err) => Err(hbb_common::anyhow::anyhow!(err)),
     };

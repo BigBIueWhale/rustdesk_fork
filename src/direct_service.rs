@@ -657,19 +657,23 @@ async fn finish_owned_controlled_server_lifecycle(
     mut whiteboard: Option<crate::whiteboard::WhiteboardClientController>,
 ) -> ! {
     if let Some(owner) = whiteboard.as_mut() { owner.begin_shutdown(); }
-    let direct_listener_outcome = match direct_listener_outcome {
-        Some(outcome) => Some(outcome),
-        None => match direct_listener.take() {
-            Some(task) => Some(task.await),
-            None => None,
-        },
+    let listener_drain = async {
+        match direct_listener_outcome {
+            Some(outcome) => Some(outcome),
+            None => match direct_listener.take() {
+                Some(task) => Some(task.await),
+                None => None,
+            },
+        }
+    };
+    let direct_listener_outcome = match ipc_worker.as_mut() {
+        Some(worker) => worker.drive_whiteboard_until(listener_drain).await,
+        None => listener_drain.await,
     };
     if let Some(Err(err)) = direct_listener_outcome {
         log::error!("Controlled-server direct listener task failed during shutdown: {err}");
         crate::server::request_graceful_shutdown_after_listener_failure();
     }
-
-    if let Some(owner) = whiteboard.as_mut() { owner.stop_and_join().await; }
 
     if let Some(worker) = ipc_worker.as_mut() {
         let ipc_outcome = match ipc_outcome {

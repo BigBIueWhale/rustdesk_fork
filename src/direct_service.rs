@@ -757,7 +757,7 @@ async fn own_controlled_server_lifecycle(
         Err(err) => {
             log::error!("Controlled-server whiteboard ownership failed: {err}");
             crate::server::request_graceful_shutdown_after_listener_failure();
-            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None, None).await;
+            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None, None).await
         }
     };
     let mut direct_listener = server.map(|server| {
@@ -867,7 +867,7 @@ pub async fn start_direct_only(
             Err(err) => {
                 log::error!("Controlled-server IPC worker spawn failed: {err}");
                 crate::server::request_graceful_shutdown_after_listener_failure();
-                finish_owned_controlled_server_lifecycle(None, None, None, None).await
+                finish_owned_controlled_server_lifecycle(None, None, None, None, None).await
             }
         };
         own_controlled_server_lifecycle(server, ipc_worker, shutdown_signals).await;

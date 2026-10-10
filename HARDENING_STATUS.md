@@ -12085,9 +12085,9 @@ or fix for that defect.
 
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
-**Disposition: native IPC unwind exposed lost cleanup; the resource root now belongs to the
-surviving controlled-server runtime. Current native/default execution is pending. Earlier
-controller-loss evidence passed. Full-root, installed/platform and resource acceptance remain OPEN.**
+**Disposition: native IPC unwind exposed lost cleanup; surviving controlled-server ownership
+passed the corrected Linux profile and default nine-test shard. Other full-root failures,
+installed/platform and resource acceptance remain OPEN.**
 
 **Current source:** `src/whiteboard/client.rs` locks registrations, sender, retained launch/task
 handles, helper and Idle/Starting/Running/Stopping in one `WhiteboardClientState`. Checked
@@ -12130,17 +12130,17 @@ dead/unreaped and the command task finished/unjoined. Serial `nbCZOtOGwn`,93345b
 `8cf3f243eef286b3ce22fc68dbd8f3af7cd7008e98724d2c42187c3dc66360f1`;
 archive `failed-whiteboard-ipc-panic-8c22bea8-nbCZOtOGwn` retains source/diagnostics.
 Failure-tail truncation lost the baseline artifact digest; no artifact-identical A/B claim.
-The added tenth case requires production helper reap/task join and exact failed-thread join
-after native unwind; probe-only injection cannot enter default builds. Corrected execution
-is pending. Earlier accepted receipts cover only nine global cases.
+The added tenth case passed production helper reap/task join and exact failed-thread join
+after native unwind; probe-only injection cannot enter default builds. Prior nine-case
+acceptance remains in `3f673d986f4d42c3086182927b53bc7fe399d36b:HARDENING_STATUS.md`.
 
-**Latest accepted native Linux profile:** source `1bb67917bacbf64dfb967782c627ca07016ec33a`,
-tree `2bc9436259305b67a3b2f14f61042400f7021bf7`. Command:
+**Latest accepted native Linux profile:** source `6c928880c867c4d255f48fbccea9dc724754b5ab`,
+tree `9ecd4d40a78f683c2825549b4609c4843e8d9c24`. Command:
 `env -i PATH=/usr/bin:/bin LC_ALL=C bash --noprofile --norc scripts/smoke-verifier-vm-authority.sh --android-rust-lifecycle-tests --whiteboard-helper-lifetime`.
-The profile passed 8 receiver/9 global cases in 236s/build155s on pinned Rust1.75/vendor/devcheck.
+The profile passed 8 receiver/10 global cases in 242s/build154s on pinned Rust1.75/vendor/devcheck.
 It drives production registration/cursor APIs and the real core CLI/helper, not Remote/PAKE
-or installed privileged admission. The actual production desktop IPC worker retains cleanup;
-the fixture receives its controller through readiness and never drives generation retirement.
+or installed privileged admission. The fixture receives the readiness controller and uses
+the production outer resource-driver API; its fault body requests controller shutdown and reads state.
 
 | Global case | Observed boundary in this profile |
 | --- | --- |
@@ -12150,9 +12150,10 @@ the fixture receives its controller through readiness and never drives generatio
 | helper-close | Quiet native window close joins the task; retained registrations leave 500ms Idle without retry before explicit same-ID demand. |
 | root-shutdown | Active controller `stop_and_join`; registration refused during/after drain; return requires production reap. |
 | parent-loss | Authenticated parent pidfd SIGKILL/status -9 with helper still alive; joined-worker CLI return/window removal/endpoint refusal before barrier release; exact adopted helper waitpid status 0/reap. EOF/pidfd readiness may race: no unique-branch attribution. |
-| helper-crash | Exact helper20313 pidfd SIGKILL with parent alive; production failed-exit reap/task join, independent dead pidfd/proc absence, X11 BadWindow/endpoint refusal/rebind. Retained registrations remain Idle for 500ms; explicit duplicate same-ID requests create helper20317, which renders/clears/normally reaps. |
-| launch-owner-loss | Real helper20327 paused before handoff; controller Drop closes admission/refuses replacement. Existing creation job terminates/reaps and is externally joined before FINISHED; independent dead pidfd/proc absence, X11 BadWindow/endpoint refusal/rebind while parent and IPC root stay alive. Native IPC thread then joins before normal parent exit. |
-| owner-loss | Running helper20338/two-owner pixels; controller Drop closes admission/refuses replacement. Production deadline termination, exact failed-exit reap and external command join precede independent `helper_dead=true helper_reaped=true task_joined=true` observation while parent and IPC root stay alive. Native IPC thread then joins before normal parent exit. |
+| helper-crash | Exact helper20310 pidfd SIGKILL with parent alive; production failed-exit reap/task join, independent dead pidfd/proc absence, X11 BadWindow/endpoint refusal/rebind. Retained registrations remain Idle for 500ms; explicit duplicate same-ID requests create helper20313, which renders/clears/normally reaps. |
+| launch-owner-loss | Real helper20323 paused before handoff; controller Drop closes admission/refuses replacement. Existing creation job terminates/reaps and is externally joined before FINISHED; independent dead pidfd/proc absence, X11 BadWindow/endpoint refusal/rebind while parent and IPC thread stay alive. Native IPC thread then joins before normal parent exit. |
+| owner-loss | Running helper20334/two-owner pixels; controller Drop closes admission/refuses replacement. Production deadline termination, exact failed-exit reap and external command join precede independent `helper_dead=true helper_reaped=true task_joined=true` observation while parent and IPC thread stay alive. Native IPC thread then joins before normal parent exit. |
+| ipc-worker-panic | Running helper20344/two-owner pixels; actual IPC unwind/TID absence with parent alive. Outer production owner joins command/reaps failed helper before X11 BadWindow/endpoint refusal-rebind and exact failed native-thread join; replacement remains refused. |
 
 Receiver cases are creator-thread, shutdown, bad-proof, proof-timeout, proof-close,
 stream-close, window-close and pre-proof parent-exit. Same-image/copied-token wrong-parent
@@ -12162,24 +12163,24 @@ after worker join/window removal/endpoint refusal, and normal helper reap. Force
 cleanup cannot pass.
 
 One artifact stayed identical before/after:
-`84c31a868353f83bb3150451f2d209c580b028eb12cb4877cb3f8e343cfa13ae`.
-Serial `android-rust-lifecycle-tests-run.WZ9DzYefnQ.serial.log`,92545bytes, SHA-256
-`311fdb13a45202a8c040ea9b44d431ff8d1c1ab2183bfe08154b5c883a24f9ee`.
+`e17863b2355e337d0cc1233643986c023274d043f9ea8dfec6e72af37d4880c0`.
+Serial `android-rust-lifecycle-tests-run.Vmi3rpV1Tn.serial.log`,93747bytes, SHA-256
+`738b4f1f2a2c3c6183bdcd3a3f233224b69d25141f865febb952fd1de2d722aa`.
 Guest/host unique receipts, source/input/offline-canary checks, UID/GID1000 network-none
 container in a zero-NIC VM, readonly source/root, dropped caps/NNP, unchanged before/during/
 after host endpoints and joined cleanup passed. This is development-example native evidence;
 release, installed service and complete controlled-server finalization remain unproved.
 
-**Latest executable state/handle shard:** same source `1bb67917bacbf64dfb967782c627ca07016ec33a`,
+**Latest executable state/handle shard:** same source `6c928880c867c4d255f48fbccea9dc724754b5ab`,
 `--android-rust-lifecycle-tests --whiteboard-client`: 9 passed, 0 failed/ignored, 598 filtered,
-0.00s; VM215s/build150s. Probe disabled; no OS helper. Seven state/channel cases cover duplicate
+0.00s; VM216s/build150s. Probe disabled; no OS helper. Seven state/channel cases cover duplicate
 demand, successor/withdrawal, failure without self-retry/later explicit retry, stale finalization,
 64/65 cursor-only loss/required-command retirement, closed sender and generation exhaustion.
 Two real Tokio-handle cases cover external join after cancellation and retention of started
 blocking work through abort. Artifact
-`674ce5abbb1fa16a27f4474dbd61b3b32c397497e256f62f88bea50f39802db7`;
-serial `android-rust-lifecycle-tests-run.kJNf75QanU.serial.log`,69172bytes, SHA-256
-`291d9f83eb88525b0bf3e94b8671976c366a57ba4aaf948f3464b1bdcedd671e`.
+`0222ebac6bac27233050d0f6c494d0bfba5e715b4dc1ceccda09e3304da59472`;
+serial `android-rust-lifecycle-tests-run.sWOTMwB4Yb.serial.log`,68743bytes, SHA-256
+`99fab100904c2a7ed24f97c123d576459acb9ad8849b1df878ed4d65fa055134`.
 The source-bound outer run passed with no added host endpoint and joined cleanup.
 
 **Retained published-helper baseline: native regression FAIL.** Source
@@ -12198,10 +12199,10 @@ and the external audit. This is a lifetime defect, not a demonstrated privilege 
 **Native IPC-root observation:** probe-only instrumentation reports gettid from inside the
 actual worker; independent observation verifies its owned parent/Tgid and kernel start time,
 requires it alive through controller-loss retirement, then requires thread absence after exact
-join before normal parent exit. Nine readiness/identity and eight normal join receipts passed;
-parent SIGKILL has separate kernel-exit semantics. Guest/host require unique behavioral receipts;
-forced observer cleanup cannot pass. The setup uses the production process root; no
-byte-identical-fixture A/B claim or full-root/platform closure.
+join before normal parent exit. Ten readiness/identity, eight normal joins and one failed-thread
+join passed; parent SIGKILL has separate kernel-exit semantics. Guest/host require unique receipts;
+forced observer cleanup cannot pass. Other outer-root/platform failures and installed finalizer/
+admitted irreversible-transaction drain remain OPEN; no artifact-identical A/B claim.
 
 Intermediate Rust1.75 E0308 (`1f719799`) and unique-comm observer failure (`728018cf`) are
 preserved with exact source/serial receipts in the respective private diagnostic archives and

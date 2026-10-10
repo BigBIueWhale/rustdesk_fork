@@ -1477,7 +1477,8 @@ def exercise_owned_tree_removal(scratch):
             payload = os.path.join(nested, "payload")
             with open(payload, "wb") as output:
                 output.write(b"preserved payload\n")
-            os.chmod(nested, 0o500)
+            directory_mode = 0o700 if change == "directory" else 0o500
+            os.chmod(nested, directory_mode)
             authority = OwnedTreeAuthority(root, identity(os.lstat(root)))
             added = os.path.join(root, "added")
             parked = os.path.join(temporary, "parked")
@@ -1491,7 +1492,7 @@ def exercise_owned_tree_removal(scratch):
                     os.mkdir(nested, 0o700)
                     with open(payload, "wb") as output:
                         output.write(b"replacement payload\n")
-                    os.chmod(nested, 0o500)
+                    os.chmod(nested, directory_mode)
                 elif change == "mode":
                     os.chmod(payload, 0o400)
                 else:
@@ -1500,7 +1501,7 @@ def exercise_owned_tree_removal(scratch):
                 require_rejection(authority.remove_contents)
                 if retained_state(authority) != state:
                     raise ClosureError(f"{change} handoff refusal mutated retained state")
-                if stat.S_IMODE(os.lstat(nested).st_mode) != 0o500:
+                if stat.S_IMODE(os.lstat(nested).st_mode) != directory_mode:
                     raise ClosureError(f"{change} handoff refusal restored directory access")
                 with open(payload, "rb") as source:
                     expected = (

@@ -38,6 +38,11 @@ fi
 source "$SCRIPT_DIR/lib.sh"
 load_pins
 
+# R-B2 release targets use the exact committed epoch.
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH-$SOURCE_DATE_EPOCH_PIN}"
+[ "$SOURCE_DATE_EPOCH" = "$SOURCE_DATE_EPOCH_PIN" ] \
+    || die "SOURCE_DATE_EPOCH must equal the pinned canonical value $SOURCE_DATE_EPOCH_PIN (found '$SOURCE_DATE_EPOCH')"
+
 SELF_TEST_VM_AUTHORITY=0
 PROBE_IMAGE_ID=""
 case "$#:${1:-}" in
@@ -93,10 +98,6 @@ OUT_DESTINATION=""
 OUT_PARENT_ID=""
 # The §3.2 x64-linux software-codec feature set: CPU-only VP8/VP9.
 FEATURES="--flutter --unix-file-copy-paste"
-# Determinism (R-B2): SOURCE_DATE_EPOCH is a FIXED pinned epoch (SOURCE_DATE_EPOCH_PIN in pins.env),
-# NOT a commit date — so the .deb depends only on the source tree; build.rs honours it. (An
-# operator override, `export SOURCE_DATE_EPOCH=...`, still wins.)
-export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 # The pinned .deb build image: the digest-pinned ubuntu:18.04 baseline + the system
 # build-deps, baked by online-fetch.sh (the ONE networked step) via Dockerfile.deb-builder.
 # The compile then runs inside it with --network=none.

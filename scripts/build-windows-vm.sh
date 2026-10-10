@@ -15,6 +15,12 @@ readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/b
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
+
+# R-B2 release targets use the exact committed epoch.
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH-$SOURCE_DATE_EPOCH_PIN}"
+[ "$SOURCE_DATE_EPOCH" = "$SOURCE_DATE_EPOCH_PIN" ] \
+    || die "SOURCE_DATE_EPOCH must equal the pinned canonical value $SOURCE_DATE_EPOCH_PIN (found '$SOURCE_DATE_EPOCH')"
+
 # shellcheck source=scripts/windows-helper-runtime.sh
 source "$SCRIPT_DIR/windows-helper-runtime.sh"
 # shellcheck source=scripts/windows-libvirt-storage-pools.sh
@@ -25,8 +31,6 @@ GOLDEN="${WINDOWS_GOLDEN_IMAGE:-$REPO_ROOT/.harness-state/win11-golden.qcow2}"
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 WINDOWS_BUILD_SOURCE="${WINDOWS_BUILD_SOURCE:-head}"
 RELEASE_SRC_COMMIT="${RELEASE_SRC_COMMIT:-$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || printf invalid)}"
-SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
-export SOURCE_DATE_EPOCH
 
 DOMAIN_PREFIX="${HARNESS_PREFIX:-rustdesk-fork-harness}"
 VM_TIMEOUT_SECONDS=7200
@@ -945,8 +949,6 @@ preflight() {
     local planned_state planned_output
     require_cmd qemu-img virt-install virsh xorriso git python3 realpath sha256sum sha512sum timeout setsid awk find
     assert_no_build_host_network_residual
-    [ "$SOURCE_DATE_EPOCH" = "$SOURCE_DATE_EPOCH_PIN" ] \
-        || die "SOURCE_DATE_EPOCH must equal the pinned canonical value $SOURCE_DATE_EPOCH_PIN"
     [[ "$SOURCE_DATE_EPOCH" =~ ^[0-9]+$ ]] || die "SOURCE_DATE_EPOCH is malformed"
     case "$WINDOWS_BUILD_SOURCE" in
         head) assert_head_source ;;

@@ -35,6 +35,11 @@ readonly VERIFIER_VM_ENTRY_PREFLIGHT=$SCRIPT_DIR/verify-vm-entry-preflight.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
 
+# R-B2 release targets use the exact committed epoch.
+export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH-$SOURCE_DATE_EPOCH_PIN}"
+[ "$SOURCE_DATE_EPOCH" = "$SOURCE_DATE_EPOCH_PIN" ] \
+    || die "SOURCE_DATE_EPOCH must equal the pinned canonical value $SOURCE_DATE_EPOCH_PIN (found '$SOURCE_DATE_EPOCH')"
+
 readonly VERIFIER_VM_AUTHORITY_ROOT=/run/rustdesk-verifier-vm
 readonly VERIFIER_VM_DOCKER_CLIENT=/usr/bin/docker
 readonly VERIFIER_VM_DOCKER_SOCKET=$VERIFIER_VM_AUTHORITY_ROOT/docker.sock
@@ -108,8 +113,6 @@ OUT_PARENT_ID=""
 # (build_android_builder_image) via Dockerfile.android-builder. The compile runs inside
 # it with --network=none; the rust/flutter/NDK toolchains come from ./online.
 IMAGE_ID="${ANDROID_BUILDER_CONFIG_ID:-}"
-# R-B2: fixed pinned reproducible epoch (pins.env SOURCE_DATE_EPOCH_PIN), not a commit date.
-export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 
 # R-B2: the ONE stable RSA-4096 keystore (SHA256withRSA, validity >= 10000 days,
 # fixed alias) generated once and reused for every release — Android ties app

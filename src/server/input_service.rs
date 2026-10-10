@@ -433,14 +433,18 @@ fn initialize_native_input() -> ResultType<()> {
 }
 
 fn drop_native_input() -> ResultType<()> {
-    drop(lock_input_state(&ENIGO, "native injector retirement").take());
     #[cfg(target_os = "macos")]
     VIRTUAL_INPUT_STATE.with(|state| {
-        drop(state.try_borrow_mut().map_err(|_| {
+        let mut state = state.try_borrow_mut().map_err(|_| {
             hbb_common::anyhow::anyhow!("macOS virtual input is borrowed during retirement")
-        })?.take());
+        })?;
+        if let Some(input) = state.as_mut() {
+            input.retire()?;
+        }
+        drop(state.take());
         Ok::<(), hbb_common::anyhow::Error>(())
     })?;
+    drop(lock_input_state(&ENIGO, "native injector retirement").take());
     Ok(())
 }
 
@@ -1299,6 +1303,26 @@ impl VirtualInputState {
     #[inline]
     fn simulate(&self, event_type: &EventType) -> ResultType<()> {
         Ok(self.virtual_input.simulate(&event_type)?)
+    }
+
+    fn release_capslock(&mut self) -> ResultType<()> {
+        let caps_key = RdevKey::RawKey(rdev::RawKey::MacVirtualKeycode(rdev::kVK_CapsLock));
+        self.simulate(&EventType::KeyRelease(caps_key))?;
+        self.capslock_down = false;
+        key_sleep();
+        Ok(())
+    }
+
+    fn retire(&mut self) -> ResultType<()> {
+        if self.capslock_down {
+            if let Err(first_err) = self.release_capslock() {
+                if let Err(retry_err) = self.release_capslock() {
+                    bail!("macOS owned CapsLock release failed twice: first={first_err}, retry={retry_err}");
+                }
+                log::warn!("macOS owned CapsLock release required a retry: {first_err}");
+            }
+        }
+        Ok(())
     }
 }
 
@@ -2282,8 +2306,11 @@ fn simulate_(event_type: &EventType) -> ResultType<()> {
 fn press_capslock() -> ResultType<()> {
     let caps_key = RdevKey::RawKey(rdev::RawKey::MacVirtualKeycode(rdev::kVK_CapsLock));
     with_virtual_input(|input| {
-        input.simulate(&EventType::KeyPress(caps_key))?;
         input.capslock_down = true;
+        if let Err(err) = input.simulate(&EventType::KeyPress(caps_key)) {
+            input.capslock_down = false;
+            return Err(err);
+        }
         key_sleep();
         Ok(())
     })
@@ -2292,13 +2319,7 @@ fn press_capslock() -> ResultType<()> {
 #[cfg(target_os = "macos")]
 #[inline]
 fn release_capslock() -> ResultType<()> {
-    let caps_key = RdevKey::RawKey(rdev::RawKey::MacVirtualKeycode(rdev::kVK_CapsLock));
-    with_virtual_input(|input| {
-        input.simulate(&EventType::KeyRelease(caps_key))?;
-        input.capslock_down = false;
-        key_sleep();
-        Ok(())
-    })
+    with_virtual_input(VirtualInputState::release_capslock)
 }
 
 #[cfg(not(target_os = "macos"))]

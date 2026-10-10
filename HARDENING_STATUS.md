@@ -764,7 +764,7 @@ closure follows from these component receipts.
   snapshot. Rust owners retry once, then terminate directly rather than returning
   false finality. The named native Drop/unwind schedule passes controlled refusal;
   global restoration after termination and fatal transport bounds remain OPEN.
-  Application retirement is source-corrected, with native acceptance pending:
+  Application retirement now passes the named Linux worker/native schedule:
   `input_service::InputDispatchLease` retains explicit native state through owned
   key/button cleanup. Its final Drop retires pending text before the main Display;
   the Windows executor is joined and macOS state stays on the main queue.
@@ -806,19 +806,17 @@ closure follows from these component receipts.
   Worker supervisors retain admission through exact join; server shutdown closes
   admission atomically and waits for native/final-Remote retirement. Remote startup
   awaits native readiness; Windows wake and post-session lock use owned workers.
-  Corrected native composition is unexecuted. The focused
-  `--android-rust-lifecycle-tests --input-lifetime`
-  profile executed the complete Linux application library at `748892f5`.
-  Two actual typed-queue workers joined in both key/map-refusal cases, but
-  neither native text nor main owner retired, the scratch map remained changed,
-  and one Display descriptor remained. The map case passed exact owned key/button
-  releases and foreign-key preservation. The protected production loader and
-  actual native provider ran; each failure followed fixture-only X11 restoration.
-  Raw `android-rust-lifecycle-tests-run.4bnLbftFE2.serial.log`, SHA-256
-  `12c1ce9d0df169afb8feeb0fe8fd2cbdf3c846d473e51516aad4e8b37bab2f88`.
-  X11/container/zero-NIC VM cleanup joined with no host listener addition.
-  This proves the before failure; the application owner correction, repeated
-  generations, full shutdown and network/installed lifecycle acceptance remain OPEN.
+  The unchanged `--android-rust-lifecycle-tests --input-lifetime` fixture failed
+  at `748892f5`: actual worker joins left text/main owners, changed map and one FD.
+  At `6a675303`, both refusal cases passed16 generations each, exact owned releases,
+  foreign-key preservation, full map restoration, child-before-Display and FD/task
+  retirement. Full Linux library build and physical regression also passed.
+  Raw `android-rust-lifecycle-tests-run.0tuiRC1ea9.serial.log`, SHA-256
+  `01b5afd5454eeef3d84b48a1471d3dbd2ebe27e59d661aa87af6e40688de69f8`.
+  Both isolated transactions joined cleanup without added host listeners.
+  macOS recorded CapsLock retirement is source-corrected; native behavior and
+  current Apple cross-check are pending. Full shutdown/network/installed acceptance
+  remains OPEN. Exact before and regression receipts are retained in the audit.
   Windows virtual-key up/repeat still resolves the foreground
   mapping before lease lookup; layout/desktop identity retention remains required.
 - Broader unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;

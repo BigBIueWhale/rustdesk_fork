@@ -264,7 +264,7 @@ pub(crate) fn dispatch_windows_owned_input<T: Send + 'static>(
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum OwnedPhysicalKey {
     Key(RdevKey),
 }
@@ -309,28 +309,95 @@ fn enigo_mouse_button(button: OwnedMouseButton) -> MouseButton {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn physical_key_from_code(code: KeyCode) -> OwnedPhysicalKey {
+    #[cfg(target_os = "linux")]
+    let key = RawKey::LinuxXorgKeycode(code);
+    #[cfg(target_os = "windows")]
+    let key = RawKey::ScanCode(code);
+    #[cfg(target_os = "macos")]
+    let key = RawKey::MacVirtualKeycode(code);
+    OwnedPhysicalKey::Key(RdevKey::RawKey(key))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn physical_control_key(value: i32) -> Option<OwnedPhysicalKey> {
+    let key = control_key_to_rdev_key(value)?;
+    #[cfg(target_os = "linux")]
+    let code = rdev::linux_keycode_from_key(key)?;
+    #[cfg(target_os = "macos")]
+    let code = rdev::macos_keycode_from_key(key)?;
+    #[cfg(target_os = "windows")]
+    let code = {
+        let (virtual_key, scan) = rdev::get_win_codes(key)?;
+        if scan == 0 {
+            return Some(OwnedPhysicalKey::Key(RdevKey::RawKey(
+                RawKey::WinVirtualKeycode(virtual_key),
+            )));
+        }
+        scan
+    };
+    Some(physical_key_from_code(code as KeyCode))
+}
+
+#[cfg(target_os = "windows")]
+pub fn pin_owned_key_event(event: &mut KeyEvent) -> ResultType<()> {
+    if event.mode.enum_value_or(KeyboardMode::Legacy) == KeyboardMode::Translate {
+        if let Some(key_event::Union::Chr(code)) = &event.union {
+            if code >> 16 != 0 {
+                let scan = rdev::vk_to_scancode(code >> 16);
+                if scan == 0 {
+                    bail!("Translate physical key has no Windows scan code");
+                }
+                event.set_chr(scan);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub fn validate_owned_key_event(event: &KeyEvent) -> ResultType<()> {
+    let mode = event.mode.enum_value_or(KeyboardMode::Legacy);
+    if matches!(mode, KeyboardMode::Map | KeyboardMode::Translate) {
+        if let Some(key_event::Union::Chr(code)) = &event.union {
+            #[cfg(target_os = "linux")]
+            if !(8..=255).contains(code) {
+                bail!("physical key exceeds the X11 keycode range");
+            }
+            #[cfg(target_os = "macos")]
+            if *code > u16::MAX as u32 {
+                bail!("physical key exceeds the macOS keycode range");
+            }
+            #[cfg(target_os = "windows")]
+            if mode == KeyboardMode::Translate && code >> 16 != 0 {
+                if code >> 16 > 254 {
+                    bail!("Translate physical key exceeds the Windows virtual-key range");
+                }
+            } else if *code == 0 || *code > u16::MAX as u32 {
+                bail!("physical key exceeds the Windows scan-code range");
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn owned_physical_key(event: &KeyEvent) -> Option<OwnedPhysicalKey> {
     match event.mode.enum_value_or(KeyboardMode::Legacy) {
         KeyboardMode::Map => match &event.union {
-            Some(key_event::Union::Chr(code)) => Some(OwnedPhysicalKey::Key(
-                crate::keyboard::keycode_to_rdev_key(*code),
-            )),
+            Some(key_event::Union::Chr(code)) => Some(physical_key_from_code(*code as KeyCode)),
             _ => None,
         },
         KeyboardMode::Translate => match &event.union {
             Some(key_event::Union::Chr(code)) => {
                 #[cfg(target_os = "windows")]
-                let key = if code >> 16 == 0 {
-                    crate::keyboard::keycode_to_rdev_key(*code)
-                } else {
-                    rdev::win_key_from_scancode(rdev::vk_to_scancode(code >> 16))
-                };
-                #[cfg(not(target_os = "windows"))]
-                let key = crate::keyboard::keycode_to_rdev_key(*code);
-                Some(OwnedPhysicalKey::Key(key))
+                if code >> 16 != 0 {
+                    return None;
+                }
+                Some(physical_key_from_code(*code as KeyCode))
             }
             Some(key_event::Union::ControlKey(key)) => {
-                control_key_to_rdev_key(key.value()).map(OwnedPhysicalKey::Key)
+                physical_control_key(key.value())
             }
             #[cfg(target_os = "windows")]
             Some(key_event::Union::Win2winHotkey(_)) => None,
@@ -338,7 +405,7 @@ pub fn owned_physical_key(event: &KeyEvent) -> Option<OwnedPhysicalKey> {
         },
         _ => match &event.union {
             Some(key_event::Union::ControlKey(key)) => {
-                control_key_to_rdev_key(key.value()).map(OwnedPhysicalKey::Key)
+                physical_control_key(key.value())
             }
             _ => None,
         },
@@ -347,15 +414,32 @@ pub fn owned_physical_key(event: &KeyEvent) -> Option<OwnedPhysicalKey> {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn owned_physical_modifier(key: &OwnedPhysicalKey) -> Option<ControlKey> {
+    let OwnedPhysicalKey::Key(key) = *key;
+    #[cfg(target_os = "linux")]
+    let key = match key {
+        RdevKey::RawKey(RawKey::LinuxXorgKeycode(code)) => rdev::linux_key_from_code(code),
+        _ => return None,
+    };
+    #[cfg(target_os = "windows")]
+    let key = match key {
+        RdevKey::RawKey(RawKey::ScanCode(code)) => rdev::win_key_from_scancode(code),
+        RdevKey::RawKey(RawKey::WinVirtualKeycode(code)) => rdev::win_key_from_keycode(code),
+        _ => return None,
+    };
+    #[cfg(target_os = "macos")]
+    let key = match key {
+        RdevKey::RawKey(RawKey::MacVirtualKeycode(code)) => rdev::macos_key_from_code(code),
+        _ => return None,
+    };
     match key {
-        OwnedPhysicalKey::Key(RdevKey::Alt) => Some(ControlKey::Alt),
-        OwnedPhysicalKey::Key(RdevKey::AltGr) => Some(ControlKey::RAlt),
-        OwnedPhysicalKey::Key(RdevKey::ControlLeft) => Some(ControlKey::Control),
-        OwnedPhysicalKey::Key(RdevKey::ControlRight) => Some(ControlKey::RControl),
-        OwnedPhysicalKey::Key(RdevKey::MetaLeft) => Some(ControlKey::Meta),
-        OwnedPhysicalKey::Key(RdevKey::MetaRight) => Some(ControlKey::RWin),
-        OwnedPhysicalKey::Key(RdevKey::ShiftLeft) => Some(ControlKey::Shift),
-        OwnedPhysicalKey::Key(RdevKey::ShiftRight) => Some(ControlKey::RShift),
+        RdevKey::Alt => Some(ControlKey::Alt),
+        RdevKey::AltGr => Some(ControlKey::RAlt),
+        RdevKey::ControlLeft => Some(ControlKey::Control),
+        RdevKey::ControlRight => Some(ControlKey::RControl),
+        RdevKey::MetaLeft => Some(ControlKey::Meta),
+        RdevKey::MetaRight => Some(ControlKey::RWin),
+        RdevKey::ShiftLeft => Some(ControlKey::Shift),
+        RdevKey::ShiftRight => Some(ControlKey::RShift),
         _ => None,
     }
 }
@@ -2009,6 +2093,31 @@ pub fn handle_owned_pointer(evt: &PointerDeviceEvent, conn: i32) -> ResultType<(
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+pub fn release_owned_physical_key(key: &OwnedPhysicalKey) -> ResultType<()> {
+    simulate_physical_key(*key, false)
+}
+
+#[cfg(target_os = "windows")]
+pub fn release_owned_physical_key(key: &OwnedPhysicalKey) -> ResultType<()> {
+    let key = *key;
+    dispatch_windows_owned_input(move || {
+        crate::platform::windows::try_change_desktop();
+        simulate_physical_key(key, false)
+    })
+}
+
+#[cfg(target_os = "macos")]
+pub fn release_owned_physical_key(key: &OwnedPhysicalKey) -> ResultType<()> {
+    let key = *key;
+    let result = QUEUE.exec_sync(move || {
+        initialize_macos_rdev_metadata();
+        simulate_physical_key(key, false)
+    });
+    key_sleep();
+    result
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub fn handle_owned_key(evt: &KeyEvent, preserve_modifiers: &[ControlKey]) -> ResultType<()> {
     handle_key_with_preserved_modifiers(evt, preserve_modifiers)
 }
@@ -2076,31 +2185,22 @@ pub fn initialize_owned_input_dispatch() {
 pub fn initialize_owned_input_dispatch() {}
 
 fn sim_rdev_rawkey_position(code: KeyCode, keydown: bool) -> ResultType<()> {
-    #[cfg(target_os = "windows")]
-    let rawkey = RawKey::ScanCode(code);
-    #[cfg(target_os = "linux")]
-    let rawkey = RawKey::LinuxXorgKeycode(code);
-    // // to-do: test android
-    // #[cfg(target_os = "android")]
-    // let rawkey = RawKey::LinuxConsoleKeycode(code);
-    #[cfg(target_os = "macos")]
-    let rawkey = RawKey::MacVirtualKeycode(code);
-
-    let event_type = if keydown {
-        EventType::KeyPress(RdevKey::RawKey(rawkey))
-    } else {
-        EventType::KeyRelease(RdevKey::RawKey(rawkey))
-    };
-    simulate_(&event_type)
+    simulate_physical_key(physical_key_from_code(code), keydown)
 }
 
-#[cfg(target_os = "windows")]
-fn sim_rdev_rawkey_virtual(code: u32, keydown: bool) -> ResultType<()> {
-    let rawkey = RawKey::WinVirtualKeycode(code);
+fn simulate_physical_key(key: OwnedPhysicalKey, keydown: bool) -> ResultType<()> {
+    let OwnedPhysicalKey::Key(key) = key;
+    #[cfg(target_os = "windows")]
+    if let RdevKey::RawKey(RawKey::WinVirtualKeycode(code)) = key {
+        let code = u16::try_from(code)
+            .map_err(|_| hbb_common::anyhow::anyhow!("owned virtual key exceeds Windows range"))?;
+        return rdev::simulate_code(Some(code), None, keydown)
+            .map_err(|err| hbb_common::anyhow::anyhow!("input dispatch failed: {err:?}"));
+    }
     let event_type = if keydown {
-        EventType::KeyPress(RdevKey::RawKey(rawkey))
+        EventType::KeyPress(key)
     } else {
-        EventType::KeyRelease(RdevKey::RawKey(rawkey))
+        EventType::KeyRelease(key)
     };
     simulate_(&event_type)
 }
@@ -2304,13 +2404,10 @@ fn sync_modifiers(
 }
 
 fn process_control_key(ck: &EnumOrUnknown<ControlKey>, down: bool) -> ResultType<()> {
-    if let Some(key) = control_key_to_rdev_key(ck.value()) {
-        let event = if down {
-            EventType::KeyPress(key)
-        } else {
-            EventType::KeyRelease(key)
-        };
-        simulate_(&event)?;
+    if control_key_to_rdev_key(ck.value()).is_some() {
+        let key = physical_control_key(ck.value())
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("control key has no native input mapping"))?;
+        simulate_physical_key(key, down)?;
     }
     Ok(())
 }
@@ -2695,10 +2792,10 @@ fn windows_semantic_keys(
 
 #[cfg(target_os = "windows")]
 fn translate_process_code(code: u32, down: bool) -> ResultType<()> {
-    match code >> 16 {
-        0 => sim_rdev_rawkey_position(code as _, down),
-        vk_code => sim_rdev_rawkey_virtual(vk_code, down),
+    if code >> 16 != 0 {
+        bail!("Translate physical key was not resolved before ownership registration");
     }
+    sim_rdev_rawkey_position(code as _, down)
 }
 
 fn translate_keyboard_mode(

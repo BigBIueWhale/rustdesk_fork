@@ -3117,7 +3117,7 @@ lazy_static::lazy_static! {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct InputKeyOwnership {
     registry: Arc<InputKeyOwnerRegistry>,
-    held: HashMap<OwnedPhysicalKey, KeyEvent>,
+    held: HashSet<OwnedPhysicalKey>,
     held_mouse_buttons: HashSet<OwnedMouseButton>,
 }
 
@@ -3135,7 +3135,7 @@ impl InputKeyOwnership {
     fn unregistered(registry: Arc<InputKeyOwnerRegistry>) -> Self {
         Self {
             registry,
-            held: HashMap::new(),
+            held: HashSet::new(),
             held_mouse_buttons: HashSet::new(),
         }
     }
@@ -3147,10 +3147,17 @@ impl InputKeyOwnership {
     ) -> ResultType<bool> {
         let registry = Arc::clone(&self.registry);
         let mut owners = registry.lock();
+        validate_owned_key_event(event)?;
+        #[cfg(target_os = "windows")]
+        let mut pinned_event = event.clone();
+        #[cfg(target_os = "windows")]
+        pin_owned_key_event(&mut pinned_event)?;
+        #[cfg(target_os = "windows")]
+        let event = &pinned_event;
         let key = owned_physical_key(event);
         let releasing_uncertain_key = key.as_ref().map_or(false, |key| {
             !event.down
-                && self.held.contains_key(key)
+                && self.held.contains(key)
                 && owners
                     .get(key)
                     .map_or(false, |state| state.transition_uncertain)
@@ -3170,7 +3177,7 @@ impl InputKeyOwnership {
             return Ok(true);
         };
         if event.down {
-            if self.held.contains_key(&key) {
+            if self.held.contains(&key) {
                 if owners
                     .get(&key)
                     .map_or(true, |state| state.transition_uncertain)
@@ -3187,8 +3194,8 @@ impl InputKeyOwnership {
                 bail!("physical key transition is uncertain");
             }
             let first_owner = !owners.contains_key(&key);
-            self.held.insert(key.clone(), event.clone());
-            let state = owners.entry(key.clone()).or_default();
+            self.held.insert(key);
+            let state = owners.entry(key).or_default();
             state.count += 1;
             if first_owner {
                 state.transition_uncertain = true;
@@ -3200,7 +3207,7 @@ impl InputKeyOwnership {
             }
             return Ok(first_owner);
         }
-        if !self.held.contains_key(&key) {
+        if !self.held.contains(&key) {
             return Ok(false);
         }
         let final_owner = owners.get(&key).map(|state| state.count) == Some(1);
@@ -3223,6 +3230,7 @@ impl InputKeyOwnership {
     ) -> ResultType<()> {
         let registry = Arc::clone(&self.registry);
         let mut owners = registry.lock();
+        validate_owned_key_event(event)?;
         if owners.values().any(|state| state.transition_uncertain) {
             bail!("an aggregate physical key transition is uncertain");
         }
@@ -3234,17 +3242,19 @@ impl InputKeyOwnership {
             bail!("an aggregate mouse-button transition is uncertain");
         }
         let mut event = event.clone();
+        #[cfg(target_os = "windows")]
+        pin_owned_key_event(&mut event)?;
         event.press = false;
         event.down = true;
         let Some(key) = owned_physical_key(&event) else {
             return self.dispatch_action(&event, &owners, &mut action);
         };
-        if self.held.contains_key(&key) || owners.contains_key(&key) {
+        if self.held.contains(&key) || owners.contains_key(&key) {
             bail!("physical press is ambiguous while the key is already owned");
         }
-        self.held.insert(key.clone(), event.clone());
+        self.held.insert(key);
         owners.insert(
-            key.clone(),
+            key,
             InputOwnerState {
                 count: 1,
                 transition_uncertain: true,
@@ -3404,29 +3414,22 @@ impl InputKeyOwnership {
 
     fn release_all(
         &mut self,
-        mut action: impl FnMut(&KeyEvent, &[ControlKey]) -> ResultType<()>,
+        mut action: impl FnMut(&OwnedPhysicalKey) -> ResultType<()>,
     ) -> ResultType<()> {
         let registry = Arc::clone(&self.registry);
         let mut owners = registry.lock();
-        let held_keys = self.held.keys().cloned().collect::<Vec<_>>();
+        let held_keys = self.held.iter().copied().collect::<Vec<_>>();
         for key in held_keys {
-            let final_owner = owners.get(&key).map(|state| state.count) == Some(1);
-            if final_owner {
-                let Some(mut event) = self.held.get(&key).cloned() else {
-                    bail!("remote input key disappeared during teardown");
-                };
-                event.press = false;
-                event.down = false;
-                let preserve_modifiers = owners
-                    .keys()
-                    .filter(|owned| *owned != &key)
-                    .filter_map(owned_physical_modifier)
-                    .collect::<Vec<_>>();
-                // A failure or unwind leaves both maps intact so cleanup can retry or fail fatal.
-                if let Some(state) = owners.get_mut(&key) {
-                    state.transition_uncertain = true;
-                }
-                action(&event, &preserve_modifiers)?;
+            let Some(state) = owners.get_mut(&key) else {
+                bail!("remote input key has no aggregate owner during teardown");
+            };
+            if state.count == 0 {
+                bail!("remote input key has an empty aggregate lease during teardown");
+            }
+            if state.count == 1 {
+                // Retain both leases on failure or unwind, including uncertain presses.
+                state.transition_uncertain = true;
+                action(&key)?;
             }
             self.held.remove(&key);
             Self::release_owner(&mut owners, &key);
@@ -3459,7 +3462,7 @@ impl InputKeyOwnership {
     }
 
     fn release_remaining(&mut self) -> ResultType<()> {
-        self.release_all(handle_owned_key)?;
+        self.release_all(release_owned_physical_key)?;
         self.release_all_mouse_buttons(|button| {
             if let Err(first_err) = release_owned_mouse_button(button) {
                 if let Err(retry_err) = release_owned_mouse_button(button) {
@@ -3973,25 +3976,38 @@ mod desktop_input_queue_tests {
         assert!(!second.dispatch(&down, |_, _| Ok(())).unwrap());
         let mut releases = Vec::new();
         first
-            .release_all(|event, _| {
-                releases.push(event.clone());
+            .release_all(|key| {
+                releases.push(*key);
                 Ok(())
             })
             .unwrap();
         assert!(releases.is_empty());
         second
-            .release_all(|event, _| {
-                releases.push(event.clone());
+            .release_all(|key| {
+                releases.push(*key);
                 Ok(())
             })
             .unwrap();
         assert_eq!(releases.len(), 1);
-        assert!(!releases[0].down);
+        assert_eq!(releases, vec![owned_physical_key(&down).unwrap()]);
         assert!(registry.lock().is_empty());
 
         let mut stray_up = down;
         stray_up.down = false;
         assert!(!first.dispatch(&stray_up, |_, _| Ok(())).unwrap());
+
+        let mut invalid = KeyEvent::new();
+        invalid.mode = KeyboardMode::Map.into();
+        invalid.set_chr(0x1_002a);
+        invalid.down = true;
+        assert!(first
+            .dispatch(&invalid, |_, _| panic!("invalid native key dispatched"))
+            .is_err());
+        assert!(first
+            .dispatch_press(&invalid, |_, _| panic!("invalid native key clicked"))
+            .is_err());
+        assert!(first.held.is_empty());
+        assert!(registry.lock().is_empty());
     }
 
     #[test]
@@ -4061,8 +4077,8 @@ mod desktop_input_queue_tests {
                 Ok(())
             })
             .unwrap());
-        first.release_all(|_, _| Ok(())).unwrap();
-        second.release_all(|_, _| Ok(())).unwrap();
+        first.release_all(|_| Ok(())).unwrap();
+        second.release_all(|_| Ok(())).unwrap();
         assert!(registry.lock().is_empty());
     }
 
@@ -4103,8 +4119,8 @@ mod desktop_input_queue_tests {
                 Ok(())
             })
             .unwrap();
-        owner.release_all(|_, _| Ok(())).unwrap();
-        other.release_all(|_, _| Ok(())).unwrap();
+        owner.release_all(|_| Ok(())).unwrap();
+        other.release_all(|_| Ok(())).unwrap();
         assert!(registry.lock().is_empty());
     }
 
@@ -4147,7 +4163,7 @@ mod desktop_input_queue_tests {
         owner.dispatch(&event, |_, _| Ok(())).unwrap();
 
         assert!(owner
-            .release_all(|_, _| bail!("injected teardown release failure"))
+            .release_all(|_| bail!("injected teardown release failure"))
             .is_err());
         assert_eq!(owner.held.len(), 1);
         let owners = registry.lock();
@@ -4155,7 +4171,7 @@ mod desktop_input_queue_tests {
         assert!(owners.values().all(|state| state.transition_uncertain));
         drop(owners);
 
-        owner.release_all(|_, _| Ok(())).unwrap();
+        owner.release_all(|_| Ok(())).unwrap();
         assert!(owner.held.is_empty());
         assert!(registry.lock().is_empty());
     }
@@ -4293,13 +4309,13 @@ mod desktop_input_queue_tests {
 
         let mut releases = Vec::new();
         owner
-            .release_all(|event, _| {
-                releases.push(event.clone());
+            .release_all(|key| {
+                releases.push(*key);
                 Ok(())
             })
             .unwrap();
         assert_eq!(releases.len(), 1);
-        assert!(!releases[0].down);
+        assert_eq!(releases, vec![owned_physical_key(&down).unwrap()]);
         assert!(registry.lock().is_empty());
 
         let mut owner = InputKeyOwnership::new(Arc::clone(&registry));
@@ -4317,8 +4333,8 @@ mod desktop_input_queue_tests {
             .all(|state| state.transition_uncertain));
         let mut releases = Vec::new();
         owner
-            .release_all(|event, _| {
-                releases.push(event.clone());
+            .release_all(|key| {
+                releases.push(*key);
                 Ok(())
             })
             .unwrap();
@@ -4565,8 +4581,8 @@ mod desktop_input_queue_tests {
         assert!(first.held.is_empty());
         let mut final_releases = Vec::new();
         second
-            .release_all(|event, _| {
-                final_releases.push(event.clone());
+            .release_all(|key| {
+                final_releases.push(*key);
                 Ok(())
             })
             .unwrap();

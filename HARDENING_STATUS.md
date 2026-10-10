@@ -12196,6 +12196,15 @@ use tail expressions. Exact build diagnostics are retained in
 `.harness-state/verifier-vm/failed-whiteboard-ipc-build-1f719799-rYUhMh5vps`;
 serial SHA-256 `27fba90cc8230395422295945e1e3fb2e2772dd1f7bfd597cb336f1f52e80b6a`.
 
+The typed candidate `728018cf` compiled and passed all eight receiver cases plus the first
+global shutdown case/native IPC join, then failed the observer's unique-thread-name check
+before the replacement case. Status1; no complete native acceptance. Serial84574bytes,
+SHA-256 `1ff191e600d553d0bc1b45972c4422f4059eee9cff765349ff70ea52b529a716`, retained
+with source in `.harness-state/verifier-vm/failed-whiteboard-thread-observer-728018cf-gSfaeHsXyN`.
+Probe-only instrumentation now reports the worker's own kernel TID; the observer verifies
+its owned parent and retains its kernel start time, without assuming a unique mutable comm.
+The corrected native profile and default-feature nine-test shard remain pending.
+
 **Retained provenance:** full A/B failures, corrected runs, old artifacts and intermediate
 receipts are archived in the exact HO section of
 `git show 2b235618b9c8d5cd53e41b25cd072231edb4950c:HARDENING_STATUS.md`

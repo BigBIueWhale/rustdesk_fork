@@ -3490,6 +3490,8 @@ pub async fn start(postfix: &str) -> ResultType<()> {
 async fn run_desktop_ipc(
     readiness: oneshot::Sender<Result<crate::whiteboard::WhiteboardClientController, String>>,
 ) -> ResultType<()> {
+    #[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+    crate::linux_whiteboard_lifecycle_probe::report_desktop_ipc_thread()?;
     Config::ensure_loaded();
     let main = match prepare_main_ipc().await {
         Ok(main) => main,

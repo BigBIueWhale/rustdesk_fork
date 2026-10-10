@@ -402,16 +402,15 @@ def observe_owner(executable, environment, display, server, parent_exit=False):
                 sys.stderr.write(log_path.read_text())
 
 
-def desktop_ipc_thread(owner):
-    matches = []
-    for task in Path(f"/proc/{owner.pid}/task").iterdir():
-        try:
-            if task.joinpath("comm").read_bytes().rstrip(b"\n") == b"rustdesk-desktop-ipc"[:15]:
-                matches.append(task)
-        except FileNotFoundError:
-            continue  # Another owned auxiliary thread may finish during enumeration.
-    require(len(matches) == 1 and owner.poll() is None, "fixture has no unique live desktop IPC worker")
-    task = matches[0]
+def desktop_ipc_thread(owner, tid):
+    require(0 < tid <= 2**31 - 1 and tid != owner.pid and owner.poll() is None,
+            "desktop IPC thread receipt has no live owned parent")
+    task = Path(f"/proc/{owner.pid}/task/{tid}")
+    status = task.joinpath("status").read_text()
+    require(re.search(rf"^Tgid:\s+{owner.pid}$", status, re.MULTILINE) is not None,
+            "desktop IPC thread is outside the owned parent")
+    comm = task.joinpath("comm").read_bytes().rstrip(b"\n")
+    print(f"WHITEBOARD_CLIENT_PROCESS_ROOT_IDENTITY tid={tid} comm_hex={comm.hex()}", flush=True)
     return task, task.joinpath("stat").read_text().rsplit(")", 1)[1].split()[19]
 
 
@@ -435,7 +434,7 @@ def observe_client_generation(executable, environment, display, server, case):
         owner_fd, selector = None, None
         pending, helpers, active = b"", [], None
         cleaned, idle_seen, root_joined, parent_killed = False, False, False, False
-        process_root, ipc_joined = None, False
+        process_root, root_ready, ipc_joined = None, False, False
 
         def helper_alive(helper):
             poller = select.poll()
@@ -478,9 +477,14 @@ def observe_client_generation(executable, environment, display, server, case):
                     owner_dropped = re.fullmatch(r"WHITEBOARD_CLIENT_OWNER_LOSS_DROPPED generation=1 pid=([1-9][0-9]*) admission=refused replacement=refused", text)
                     owner_finished = re.fullmatch(r"WHITEBOARD_CLIENT_OWNER_LOSS_FINISHED generation=1 pid=([1-9][0-9]*) task_finished=true task_joined=(true|false)", text)
                     owner_done = re.fullmatch(r"WHITEBOARD_CLIENT_OWNER_LOSS_DONE generation=1 pid=([1-9][0-9]*) parent=alive admission=refused replacement=refused", text)
-                    if text == "WHITEBOARD_CLIENT_PROCESS_ROOT_READY worker=desktop-ipc controller=retained":
-                        require(process_root is None and not helpers, "process-root readiness repeated or followed helper startup")
-                        process_root = desktop_ipc_thread(owner)
+                    root_thread = re.fullmatch(r"WHITEBOARD_CLIENT_PROCESS_ROOT_THREAD tid=([1-9][0-9]*)", text)
+                    if root_thread:
+                        require(process_root is None and not helpers, "process-root thread identity repeated or followed helper startup")
+                        process_root = desktop_ipc_thread(owner, int(root_thread.group(1)))
+                    elif text == "WHITEBOARD_CLIENT_PROCESS_ROOT_READY worker=desktop-ipc controller=retained":
+                        require(process_root is not None and not root_ready and not helpers
+                                and desktop_ipc_thread_alive(process_root), "process-root readiness has no exact live thread")
+                        root_ready = True
                         print(f"WHITEBOARD_CLIENT_PROCESS_ROOT_OBSERVED tid={process_root[0].name} worker=desktop-ipc state=live", flush=True)
                     elif text == "WHITEBOARD_CLIENT_PROCESS_ROOT_JOINED worker=desktop-ipc outcome=ok thread=joined":
                         require(case != "parent-loss" and process_root is not None and not ipc_joined
@@ -490,7 +494,7 @@ def observe_client_generation(executable, environment, display, server, case):
                         owner.stdin.write(b"ipc-joined\n")
                         owner.stdin.flush()
                     elif ready:
-                        require(process_root is not None and desktop_ipc_thread_alive(process_root),
+                        require(root_ready and desktop_ipc_thread_alive(process_root),
                                 "helper startup has no retained native process root")
                         generation, pid = map(int, ready.groups())
                         require(not cleaned and len(helpers) < generations
@@ -800,7 +804,7 @@ def observe_launch_owner_loss(executable, environment, display, server):
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
         helper_fd, pid, window, address = None, None, None, None
         pending, stage = b"", 0
-        process_root = None
+        process_root, root_ready = None, False
 
         def helper_alive():
             poller = select.poll()
@@ -828,9 +832,14 @@ def observe_launch_owner_loss(executable, environment, display, server):
                         text = line.decode("ascii")
                         print(text, flush=True)
                         blocked = re.fullmatch(r"WHITEBOARD_CLIENT_LAUNCH_BLOCKED generation=1 pid=([1-9][0-9]*) address_hex=([0-9a-f]+)", text)
-                        if text == "WHITEBOARD_CLIENT_PROCESS_ROOT_READY worker=desktop-ipc controller=retained":
-                            require(process_root is None and stage == 0, "late launch process-root readiness differs")
-                            process_root = desktop_ipc_thread(owner)
+                        root_thread = re.fullmatch(r"WHITEBOARD_CLIENT_PROCESS_ROOT_THREAD tid=([1-9][0-9]*)", text)
+                        if root_thread:
+                            require(process_root is None and stage == 0, "late launch process-root thread identity repeated")
+                            process_root = desktop_ipc_thread(owner, int(root_thread.group(1)))
+                        elif text == "WHITEBOARD_CLIENT_PROCESS_ROOT_READY worker=desktop-ipc controller=retained":
+                            require(process_root is not None and not root_ready and stage == 0
+                                    and desktop_ipc_thread_alive(process_root), "late launch process-root readiness has no exact live thread")
+                            root_ready = True
                             print(f"WHITEBOARD_CLIENT_PROCESS_ROOT_OBSERVED tid={process_root[0].name} worker=desktop-ipc state=live", flush=True)
                         elif text == "WHITEBOARD_CLIENT_PROCESS_ROOT_JOINED worker=desktop-ipc outcome=ok thread=joined":
                             require(stage == 4 and process_root is not None and not process_root[0].exists()
@@ -838,7 +847,7 @@ def observe_launch_owner_loss(executable, environment, display, server):
                             owner.stdin.write(b"ipc-joined\n")
                             stage = 5
                         elif blocked:
-                            require(stage == 0 and process_root is not None and desktop_ipc_thread_alive(process_root)
+                            require(stage == 0 and root_ready and desktop_ipc_thread_alive(process_root)
                                     and owner.poll() is None, "late launch barrier repeated or parent exited")
                             pid = int(blocked.group(1))
                             address = bytes.fromhex(blocked.group(2))

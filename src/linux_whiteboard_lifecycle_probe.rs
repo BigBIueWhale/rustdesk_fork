@@ -3,6 +3,14 @@ use crate::ipc::{self, WhiteboardHelperHandshake, WhiteboardIpcCommand, Whiteboa
 use hbb_common::{anyhow::{bail, ensure}, tokio, ResultType};
 use std::{io::{Read, Write}, process::{Child, Command, Stdio}, time::Duration};
 
+pub(crate) fn report_desktop_ipc_thread() -> ResultType<()> {
+    let tid = unsafe { hbb_common::libc::syscall(hbb_common::libc::SYS_gettid) };
+    ensure!(tid > 0, "desktop IPC kernel thread identity is unavailable");
+    writeln!(std::io::stdout(), "WHITEBOARD_CLIENT_PROCESS_ROOT_THREAD tid={tid}")?;
+    std::io::stdout().flush()?;
+    Ok(())
+}
+
 fn spawn_role_command(role: &'static str, envs: Vec<(&'static str, String)>, inherited_io: bool) -> ResultType<Child> {
     let mut command = if role == "--whiteboard" {
         let token = envs.iter().find(|(key, _)| *key == crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV)

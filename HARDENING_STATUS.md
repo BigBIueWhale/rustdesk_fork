@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-0b3677322e476cc252c3a10edd794d049ba99cbdb29fc475ac13ed548f44720b  requirements.html
+8c21ec2537c72a020ebcf836768c9d8222f969913f939101b7fb6383abb004ef  requirements.html
 ```
 
 ## Current Verdict
@@ -67,6 +67,18 @@ integration/release checkpoint.
 Git history and `/tmp/privilege_securiry_deep_audit.md` archive changes, failed attempts and detailed receipts.
 Inherited upstream disclosure policies are deleted; Android/deployment guides link directly to the threat
 model. Whole-document and test classification remains OPEN.
+
+Windows §12.2 now states R-S11dh's verifier-VM execution boundary and R-S11cj's sole acquisition
+authority. The historical host-listener inventory and direct-host QEMU/preflight/cleanup recipe are
+deleted; pinned toolchains, immutable golden identity, offline media, independent passes, artifact
+integrity and exact joined retirement remain normative. This is specification correction only.
+**Windows provisioning and native acceptance remain OPEN:** the build and provision wrappers admit
+the verifier VM before repository helpers (`build-windows-vm.sh:14`, `provision-windows-vm.sh:32`),
+but provisioning still requires/launches a user-mode NIC (`provision-windows-vm.sh:411,677`) and
+`win-guest-setup.ps1:72` runs `pip install brotli` without a pinned offline input. Those paths need
+reconciliation with the complete offline closure; no golden preparation or Windows execution ran for
+this documentation change. R-B8's inherited direct-host wording and R-B10's host-provision/scrub
+run order also await separate classification. Cold equality and whole-document restoration remain OPEN.
 
 A source/model check is supplementary unless it executes the behavior it claims to establish. Gates must not treat
 exact requirement, ledger, README, comment, test-name, other-verifier, or historical-receipt wording as product
@@ -1949,7 +1961,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `0b3677322e476cc252c3a10edd794d049ba99cbdb29fc475ac13ed548f44720b  requirements.html`.
+Current normative specification SHA-256: `8c21ec2537c72a020ebcf836768c9d8222f969913f939101b7fb6383abb004ef  requirements.html`.
 
 ### Current authority and source closure
 

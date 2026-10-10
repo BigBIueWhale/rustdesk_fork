@@ -3,7 +3,7 @@
 This guide is for the case where the **Android phone is the machine being viewed /
 controlled**. For the unattended Debian/Ubuntu host, see [`DEPLOYMENT.md`](./DEPLOYMENT.md);
 the wire protocol and threat model are in [`TRANSPORT-SECURITY.md`](./TRANSPORT-SECURITY.md)
-and [`SECURITY.md`](./SECURITY.md).
+and the [normative threat model](../requirements.html#threat).
 
 ## The short version: an Android phone is *not* an unattended server
 

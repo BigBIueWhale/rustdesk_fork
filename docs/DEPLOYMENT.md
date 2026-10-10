@@ -17,7 +17,7 @@ does not claim installed-service, packet-capture, native GUI/device, or release-
 validation.
 
 Related: [`TRANSPORT-SECURITY.md`](./TRANSPORT-SECURITY.md) (the wire protocol),
-[`SECURITY.md`](./SECURITY.md).
+the [normative threat model](../requirements.html#threat).
 
 ---
 

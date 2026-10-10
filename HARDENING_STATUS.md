@@ -63,9 +63,10 @@ integration/release checkpoint.
 
 ## Documentation and verification architecture
 
-`requirements.html` is the timeless normative specification. This file records only current implementation,
-retained evidence, and open obligations. Git history and `/tmp/privilege_securiry_deep_audit.md` retain change
-history, failed attempts, run identities, and detailed receipts; they are not copied into either live document.
+`requirements.html` owns the normative contract; this ledger owns current state and open obligations.
+Git history and `/tmp/privilege_securiry_deep_audit.md` archive changes, failed attempts and detailed receipts.
+Inherited upstream disclosure policies are deleted; Android/deployment guides link directly to the threat
+model. Whole-document and test classification remains OPEN.
 
 A source/model check is supplementary unless it executes the behavior it claims to establish. Gates must not treat
 exact requirement, ledger, README, comment, test-name, other-verifier, or historical-receipt wording as product

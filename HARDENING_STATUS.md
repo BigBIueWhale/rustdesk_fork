@@ -12084,7 +12084,7 @@ or fix for that defect.
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
 **Current disposition: root-owned launch/task/helper implemented; named Linux healthy,
-replacement/withdrawal, quiet EOF, active root drain, authenticated parent loss, late
+replacement/withdrawal, quiet EOF, active root drain, parent/helper loss, late
 unpublished-helper retirement and nine regressions passed. Full lifecycle OPEN.**
 `src/whiteboard/client.rs` locks registrations, sender, launch/task handles, helper and
 Idle/Starting/Running/Stopping in one `WhiteboardClientState`. Checked reservation prevents
@@ -12110,51 +12110,46 @@ refuses replacement. Unexpected Drop refuses replacement; known-helper Drop and 
 failure cleanup remain unproved.
 
 **Native failing baseline:** source `7e437223dd367191719e322989db7297b8fcfbf7`,
-tree `1213b9b0e2ff0198450460a7f2edc4b68a4c8752` drew two owners through production
-register/cursor/unregister and cleared only the removed owner. At final unregister, a live
-pidfd-observed helper/X11 BadWindow accompanied parent generation0/Idle/task=false before
-exit/reap. Profile exited1 despite eight receiver completions; fixture cleanup supplied no
-production-retirement acceptance. Rust1.75 build163s; before artifact
+tree `1213b9b0e2ff0198450460a7f2edc4b68a4c8752`: production register/cursor/unregister
+drew two owners/cleared only the removed owner. Final unregister published generation0/Idle/
+task=false with a live helper/X11 BadWindow before reap. Profile exited1 after eight receiver
+completions; fixture cleanup cannot pass. Rust1.75 build163s; before artifact
 `c48c61904851c764fd7eb3ace3057b6ef13bf792583e1bca33bc9a7876aae3af`;
-after-artifact/input acceptance was not reached. Serial
+no after-artifact/input acceptance. Serial
 `android-rust-lifecycle-tests-run.tPqhqKH7FF.serial.log` SHA-256
 `6449dbc4d98dda94dfea0e1b695eb1c64ea05f026430bbf3cb81066e3fb152e0`.
-Source/archive, unchanged host endpoints and joined owned cleanup verified; diagnostics remain
-at `failed-whiteboard-client-7e437223-tPqhqKH7FF`. Parent-lifetime subsets are in R-S11hn.
+Source/archive, unchanged host endpoints and joined cleanup checked; retained
+`failed-whiteboard-client-7e437223-tPqhqKH7FF`. Parent-lifetime subsets: R-S11hn.
 
 **Quiet helper transport loss, failing baseline:** source
 `d84089331777718deb7920f4050d24923ce72403`, tree `cc93b06c1450e091c5aa86f000f2c2b591ad6f41`.
-Two-owner pixels and350ms quiet preceded native window close with both registrations retained.
-At helper20256 CLI return, live pidfd/X11 BadWindow accompanied parent Running/generation1/
-task=true/connections2/task_joined=false; the one-second external-join deadline failed.
-Eight receiver and three prior global cases completed; full profile exited1 without after-artifact/
-input acceptance. Build156s; before artifact
+After two-owner pixels/350ms quiet, native window close retained both registrations.
+Helper20256 CLI return left live pidfd/X11 BadWindow and Running/gen1/task=true/conns2/
+unjoined;1s external-join deadline failed. Eight receiver/three prior global cases completed;
+profile exited1, no after-artifact/input acceptance. Build156s; before artifact
 `3f85bd58a139e23d914481a170e6e398477f9aa1f17ecd746cdfe48c41720bac`.
 Serial `android-rust-lifecycle-tests-run.BoWX6mzMhL.serial.log`,88097bytes, SHA-256
 `02a1493b453f5686d037ad6352260edd0a02a8856f0ae2ee3ebf2c585eb3541d`.
-Source/unchanged-host-endpoint and joined cleanup checks passed; reconciled diagnostics remain
-at `failed-whiteboard-eof-d8408933-BoWX6mzMhL`.
+Source/unchanged endpoints/joined cleanup checked; retained `failed-whiteboard-eof-d8408933-BoWX6mzMhL`.
 
 **Accepted quiet-helper correction:** source `4fe21ebea12aff6cc34909613aafa876a5ea257e`,
 tree `baaa0728f0bf8632ff2121af49b90f31fc79cdaa`, pinned Rust1.75/vendor/devcheck.
 `--android-rust-lifecycle-tests --whiteboard-helper-lifetime` passed in233s/build155s.
-The command task selects helper EOF/error and rejects unexpected payload. Its guard retires
-admission; the root joins/reaps before generation release. The unchanged failing fixture passed:
-helper20255 remained live after window close with Stopping/task=false/connections2/task joined.
-Normal reap preceded500ms Idle/no self-retry; explicit same-ID registration started helper20258
-and rendered/cleared/reaped. Replacement followed old reap; withdrawal required later demand.
-Eight receiver/four global cases passed. All seven global generations rendered two owners;
-six cleared exactly the removed owner, while helper-close generation1 closed its window with
-both registered. Each required external task join, live parent/helper and X11 BadWindow before
-release, then production normal reap and independent pidfd death/proc absence.
+Task EOF/error/unexpected-payload retirement now leads to root join/reap before release.
+Unchanged failing fixture passed: live helper20255 after window close, Stopping/task=false/
+connections2/joined. Normal reap preceded500ms Idle/no retry; explicit same-ID registration
+started helper20258 and rendered/cleared/reaped. Replacement followed reap; withdrawal
+required later demand. Eight receiver/four global cases passed: seven two-owner generations,
+six exact-owner clears and helper-close gen1 window closure with both registered. Each required
+external task join/live parent/helper/X11 BadWindow before release, production normal reap
+and independent dead pidfd/proc absence.
 One artifact was unchanged before/after:
 `fef8cd4deb2f34478e5262d1b4b52043146d78232b2213743a1f988324a87771`.
 Serial `android-rust-lifecycle-tests-run.wsx6gJY5cu.serial.log`,81586bytes, SHA-256
 `ee75569695fde34c0a73895773d0c4749828a54c803990d611659af9327faed1`.
-All accepted VM profiles here passed source/input/canary checks, UID/GID1000 network-none
-container execution in a zero-NIC VM, before/during/after host endpoint no-addition audits and
-joined owned cleanup. This quiet-helper subset leaves Remote/PAKE, crash, other failures,
-abrupt root loss and remaining native/installed/resource acceptance OPEN.
+Accepted VM profiles passed source/input/canary checks, UID/GID1000 network-none containers
+in zero-NIC VMs, before/during/after host endpoint invariance and joined cleanup. Quiet-helper
+acceptance leaves Remote/PAKE, crash/other failures, root loss and native/installed/resources OPEN.
 
 **Accepted active-root shutdown subset:** source `a62d2ddc013a6e4bd6c333302dcbd7ddbe5a43a3`,
 tree `577030e2880274a1d21e965954fa750110eac794`, same pinned helper-lifetime command230s/build154s.
@@ -12228,15 +12223,24 @@ Unchanged artifact `c0819074157d14c015174da766f97cdc43e2e9c5e320bae0013c7b04830f
 serial `android-rust-lifecycle-tests-run.7GY33ktZnE.serial.log`,69782bytes, SHA-256
 `b0480246664a5845966bc993c006fa341e0e56ee6699dbb3b287ead9734a8124`.
 
-Deleted the526-line `scripts/verify-whiteboard-client-lifecycle.py` and shared/Apple calls:
-wording/count assertions and42 substitutions exercised no task, admission, helper, OS principal
-or cleanup. The executable `r_s11ho_` command remains; source receipts prove no native acceptance.
-Review/history: Git `043a6aa6` and R-S11ho in `/tmp/privilege_securiry_deep_audit.md`.
+Deleted `scripts/verify-whiteboard-client-lifecycle.py` (526 lines/42 mutations) and shared/Apple
+calls: wording checks exercised no task, admission, helper, principal or cleanup. Executable
+`r_s11ho_` remains. History: Git `043a6aa6`, `/tmp/privilege_securiry_deep_audit.md` R-S11ho.
 
-**Pending abrupt-helper-loss subset:** the Linux-only fixture/observer now requests exact
-helper-pidfd SIGKILL after two-owner pixels, then requires live-parent production reap/join,
-native window/endpoint removal,500ms Idle with retained demand and explicit same-ID retry.
-Guest/host receipt gates are mandatory. No native result yet; owner Drop remains OPEN.
+**Accepted abrupt-helper-loss subset:** source `064ea8eb5f3abbeb980123cd3ad8880481a288e9`,
+tree `b1933b285320c3c5dd9b2495ba4d4e271c586b96`; same helper-lifetime command233s/build155s.
+Running/gen1/task retained/conns2 and two-owner pixels preceded exact helper20276 pidfd
+SIGKILL. Live-parent production failed-exit reap/external task join preceded Idle; observer
+required dead pidfd/proc absence, X11 BadWindow and endpoint ECONNREFUSED/rebind. Both
+registrations remained Idle500ms without self-retry. Explicit duplicate same-ID requests
+started gen2/helper20279, which rendered/cleared and normally reaped after task join.
+Eight receiver/eight global cases passed, including late launch, on unchanged before/after artifact
+`955f050c4e3a7e59178993c7e7284cf3811ffdf6f84327d3db092113a79b7a6a`.
+Serial `android-rust-lifecycle-tests-run.knWPWkqfUQ.serial.log`,86265bytes, SHA-256
+`c6f9de47c30f2029cad2c7e09d3a6cf10dbec32f5dfb435b16eab0257afc935f`.
+Guest/host unique crash receipts, source/input/canary/isolation, unchanged host endpoints and
+joined cleanup passed. Production behavior was unchanged; this is helper-death acceptance
+with its root retained. Root Drop, Remote/PAKE, installed/platform/resource work remain OPEN.
 
 **Still required:** complete current full-root/task/helper suites and native Windows/macOS/Linux
 multi-connection, repeated-enable, every-phase demand, committed-stop stress/races, explicit

@@ -12117,7 +12117,8 @@ tree `b1933b285320c3c5dd9b2495ba4d4e271c586b96`. Command:
 `env -i PATH=/usr/bin:/bin LC_ALL=C bash --noprofile --norc scripts/smoke-verifier-vm-authority.sh --android-rust-lifecycle-tests --whiteboard-helper-lifetime`.
 The profile passed 8 receiver/8 global cases in 233s/build155s on pinned Rust1.75/vendor/devcheck.
 It drives production registration/cursor APIs and the real core CLI/helper, not Remote/PAKE
-or installed privileged admission. Current source/fixtures remain byte-equal to that candidate.
+or installed privileged admission. This receipt applies to its named source/fixtures;
+the extended current profile also requires published-helper owner-loss acceptance below.
 
 | Global case | Observed boundary in this profile |
 | --- | --- |
@@ -12157,6 +12158,14 @@ blocking work through abort. Artifact
 serial `android-rust-lifecycle-tests-run.7GY33ktZnE.serial.log`,69782bytes, SHA-256
 `b0480246664a5845966bc993c006fa341e0e56ee6699dbb3b287ead9734a8124`.
 The newer native profile does not rerun this shard; its production client bytes are unchanged.
+
+**Published-helper owner-loss acceptance pending:** the new Linux-only fixture drops the actual
+controller after Running/two-owner pixels and retains its process. It observes admission refusal
+and task completion without polling/joining generation handles. The independent observer requires
+task join, exact helper death/reap, native window/endpoint retirement and refused replacement
+before normal fixture exit. Guest/host require one unique final receipt; forced observer cleanup
+cannot pass. No native result or correction yet. This extends the profile's required coverage;
+the eight-case historical pass above does not validate this boundary.
 
 **Retained provenance:** full A/B failures, corrected runs, old artifacts and intermediate
 receipts are archived in the exact HO section of

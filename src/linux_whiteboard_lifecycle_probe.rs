@@ -287,11 +287,71 @@ async fn launch_owner_loss() -> ResultType<()> {
     Ok(())
 }
 
+async fn published_owner_loss() -> ResultType<()> {
+    use crate::whiteboard::{probe_whiteboard_client_state, probe_whiteboard_helper,
+        probe_whiteboard_helper_endpoint, probe_whiteboard_owner_loss, register_whiteboard,
+        update_whiteboard_cursor, Cursor, WhiteboardClientOwner};
+    let mut owner = WhiteboardClientOwner::new()?;
+    register_whiteboard(7);
+    register_whiteboard(8);
+    let exercise = async {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while probe_whiteboard_client_state() != ("Running", 1, true, 2) {
+            ensure!(tokio::time::Instant::now() < deadline, "published owner-loss helper did not start");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let pid = probe_whiteboard_helper().0
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("published owner-loss helper is absent"))?;
+        println!("WHITEBOARD_CLIENT_READY case=owner-loss generation=1 pid={pid} connections=2 task=retained");
+        std::io::stdout().flush()?;
+        observer_ack(b"go\n").await?;
+        for (conn_id, x, y, argb) in [(7, 32.0, 32.0, 0xff00ff00), (8, 128.0, 96.0, 0xff0000ff)] {
+            update_whiteboard_cursor(conn_id, Cursor { x, y, argb, btns: 0, text: String::new() });
+        }
+        overlay_phase("draw", b"drawn\n").await?;
+        ensure!(probe_whiteboard_client_state() == ("Running", 1, true, 2)
+            && probe_whiteboard_helper() == (Some(pid), false), "owner loss missed its published Running helper");
+        println!("WHITEBOARD_CLIENT_OWNER_LOSS_READY generation=1 pid={pid} address_hex={}",
+            hex::encode(probe_whiteboard_helper_endpoint()?));
+        std::io::stdout().flush()?;
+        observer_ack(b"drop\n").await?;
+        Ok::<u32, hbb_common::anyhow::Error>(pid)
+    };
+    let result = tokio::select! {
+        result = exercise => result,
+        _ = owner.run() => Err(hbb_common::anyhow::anyhow!("published owner-loss root ended unexpectedly")),
+    };
+    if result.is_err() { owner.stop_and_join().await; }
+    let pid = result?;
+    drop(owner);
+    register_whiteboard(9);
+    register_whiteboard(10);
+    ensure!(probe_whiteboard_owner_loss().2 && WhiteboardClientOwner::new().is_err(),
+        "dropped owner admitted registrations or a replacement controller");
+    println!("WHITEBOARD_CLIENT_OWNER_LOSS_DROPPED generation=1 pid={pid} admission=refused replacement=refused");
+    std::io::stdout().flush()?;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while !probe_whiteboard_owner_loss().0 {
+        ensure!(tokio::time::Instant::now() < deadline, "dropped owner's command task did not finish");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let (_, joined, refused) = probe_whiteboard_owner_loss();
+    ensure!(refused && WhiteboardClientOwner::new().is_err(), "owner-loss completion reopened admission");
+    println!("WHITEBOARD_CLIENT_OWNER_LOSS_FINISHED generation=1 pid={pid} task_finished=true task_joined={joined}");
+    std::io::stdout().flush()?;
+    observer_ack(b"observed\n").await?;
+    println!("WHITEBOARD_CLIENT_OWNER_LOSS_DONE generation=1 pid={pid} parent=alive admission=refused replacement=refused");
+    std::io::stdout().flush()?;
+    observer_ack(b"done\n").await?;
+    Ok(())
+}
+
 async fn client_generation() -> ResultType<()> {
     use crate::whiteboard::{probe_whiteboard_client_state, probe_whiteboard_helper, probe_whiteboard_helper_exit, probe_whiteboard_helper_endpoint,
         register_whiteboard, unregister_whiteboard, update_whiteboard_cursor, WhiteboardClientOwner, Cursor};
     let case = std::env::var("WHITEBOARD_PROBE_CLIENT_GENERATION")?;
     if case == "launch-owner-loss" { return launch_owner_loss().await; }
+    if case == "owner-loss" { return published_owner_loss().await; }
     ensure!(matches!(case.as_str(), "shutdown" | "replacement" | "withdrawal" | "helper-close" | "helper-crash" | "root-shutdown" | "parent-loss"), "invalid client case");
     let generations = if matches!(case.as_str(), "shutdown" | "root-shutdown" | "parent-loss") { 1 } else { 2 };
     ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)

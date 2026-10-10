@@ -60,6 +60,17 @@ pub(crate) fn probe_whiteboard_helper_exit() -> Option<(u64, bool)> {
 }
 
 #[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+pub(crate) fn probe_whiteboard_owner_loss() -> (bool, bool, bool) {
+    let state = WHITEBOARD_CLIENT.lock().unwrap();
+    let (finished, joined) = match state.generation.as_ref() {
+        Some(owner) => (owner.worker.as_ref().map_or(true, |task| task.is_finished()), owner.worker_joined),
+        None => (true, state.lifecycle.phase == WhiteboardWorkerPhase::Idle),
+    };
+    (finished, joined, state.owner != WhiteboardOwnerAdmission::Serving
+        && !state.conns.contains_key(&9) && !state.conns.contains_key(&10))
+}
+
+#[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
 pub(crate) fn probe_whiteboard_helper_endpoint() -> ResultType<String> {
     let state = WHITEBOARD_CLIENT.lock().unwrap();
     let owner = state.generation.as_ref().ok_or_else(|| anyhow!("whiteboard probe has no generation"))?;

@@ -405,7 +405,7 @@ def observe_owner(executable, environment, display, server, parent_exit=False):
 def observe_client_generation(executable, environment, display, server, case):
     environment = dict(environment, WHITEBOARD_PROBE_CLIENT_GENERATION=case)
     log_path = Path(f"/tmp/whiteboard-client-{case}.log")
-    generations = 1 if case in ("shutdown", "root-shutdown", "parent-loss") else 2
+    generations = 1 if case in ("shutdown", "root-shutdown", "parent-loss", "owner-loss") else 2
     needs_idle = case in ("withdrawal", "helper-close", "helper-crash", "root-shutdown")
     idle_connections = 2 if case in ("helper-close", "helper-crash") else 0
     with log_path.open("xb") as log:
@@ -452,6 +452,10 @@ def observe_client_generation(executable, environment, display, server, case):
                     parent_loss = re.fullmatch(r"WHITEBOARD_CLIENT_PARENT_LOSS_READY generation=1 pid=([1-9][0-9]*) address_hex=([0-9a-f]+)", text)
                     helper_loss = re.fullmatch(r"WHITEBOARD_CLIENT_HELPER_LOSS_READY generation=1 pid=([1-9][0-9]*) address_hex=([0-9a-f]+)", text)
                     crash_reaped = re.fullmatch(r"WHITEBOARD_CLIENT_CRASH_REAPED generation=1 pid=([1-9][0-9]*) status=failed owner=production phase=Idle task=joined connections=2", text)
+                    owner_loss = re.fullmatch(r"WHITEBOARD_CLIENT_OWNER_LOSS_READY generation=1 pid=([1-9][0-9]*) address_hex=([0-9a-f]+)", text)
+                    owner_dropped = re.fullmatch(r"WHITEBOARD_CLIENT_OWNER_LOSS_DROPPED generation=1 pid=([1-9][0-9]*) admission=refused replacement=refused", text)
+                    owner_finished = re.fullmatch(r"WHITEBOARD_CLIENT_OWNER_LOSS_FINISHED generation=1 pid=([1-9][0-9]*) task_finished=true task_joined=(true|false)", text)
+                    owner_done = re.fullmatch(r"WHITEBOARD_CLIENT_OWNER_LOSS_DONE generation=1 pid=([1-9][0-9]*) parent=alive admission=refused replacement=refused", text)
                     if ready:
                         generation, pid = map(int, ready.groups())
                         require(not cleaned and len(helpers) < generations
@@ -553,6 +557,60 @@ def observe_client_generation(executable, environment, display, server, case):
                         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
                             listener.bind(active["address"])
                         active["reaped"] = True
+                    elif owner_loss:
+                        require(case == "owner-loss" and active is not None
+                                and owner_loss.group(1) == str(active["pid"])
+                                and active["phases"] == ["draw"] and helper_alive(active)
+                                and owner.poll() is None, "owner loss missed live two-owner presentation")
+                        address = bytes.fromhex(owner_loss.group(2))
+                        require(address.startswith(b"\0") and len(address) <= 108, "owner-loss endpoint differs")
+                        active["address"] = address
+                        active["phases"].append("drop-requested")
+                        owner.stdin.write(b"drop\n")
+                        owner.stdin.flush()
+                    elif owner_dropped:
+                        require(case == "owner-loss" and active is not None
+                                and owner_dropped.group(1) == str(active["pid"])
+                                and active["phases"] == ["draw", "drop-requested"]
+                                and owner.poll() is None, "controller drop did not retain the parent")
+                        active["phases"].append("dropped")
+                    elif owner_finished:
+                        require(case == "owner-loss" and active is not None
+                                and owner_finished.group(1) == str(active["pid"])
+                                and active["phases"] == ["draw", "drop-requested", "dropped"]
+                                and owner.poll() is None, "owner-loss task completion order differs")
+                        death_deadline = time.monotonic() + 1
+                        while helper_alive(active) and time.monotonic() < death_deadline:
+                            require(owner.poll() is None and server.poll() is None, "owner-loss parent/display exited")
+                            time.sleep(0.01)
+                        dead = not helper_alive(active)
+                        reaped = not Path(f"/proc/{active['pid']}").exists()
+                        joined = owner_finished.group(2) == "true"
+                        print(f"WHITEBOARD_CLIENT_OWNER_LOSS_OBSERVED generation=1 pid={active['pid']} parent=alive helper_dead={str(dead).lower()} helper_reaped={str(reaped).lower()} task_joined={str(joined).lower()}", flush=True)
+                        require(dead and reaped and joined and owner.poll() is None,
+                                "dropped controller retained an unreaped helper or unjoined task while parent stayed alive")
+                        display.wait_destroyed(active["window"], owner, server)
+                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                            peer.settimeout(1)
+                            try:
+                                peer.connect(active["address"])
+                            except OSError as error:
+                                require(error.errno == errno.ECONNREFUSED, "owner-loss endpoint refusal differs")
+                            else:
+                                raise RuntimeError("owner-loss helper retained its endpoint")
+                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                            listener.bind(active["address"])
+                        active["reaped"] = True
+                        owner.stdin.write(b"observed\n")
+                        owner.stdin.flush()
+                    elif owner_done:
+                        require(case == "owner-loss" and active is not None and not cleaned
+                                and owner_done.group(1) == str(active["pid"]) and active["reaped"]
+                                and not helper_alive(active) and owner.poll() is None,
+                                "owner-loss final observation lost exact retirement")
+                        cleaned = True
+                        owner.stdin.write(b"done\n")
+                        owner.stdin.flush()
                     elif text == "returned":
                         expected_phases = (["draw", "kill"] if case == "parent-loss" else
                                            ["draw", "stop"] if case == "root-shutdown" else
@@ -683,6 +741,8 @@ def observe_client_generation(executable, environment, display, server, case):
         print("WHITEBOARD_CLIENT_PARENT_LOSS=pass parent=pidfd-sigkill precondition=running-two-owner-pixels helper=alive-at-cli-return worker=joined window=badwindow endpoint=refused-rebindable child=normal-exit-subreaper-reaped generations=1", flush=True)
     elif case == "helper-crash":
         print("WHITEBOARD_CLIENT_HELPER_LOSS=pass helper=pidfd-sigkill parent=alive old=production-reaped task=joined window=badwindow endpoint=refused-rebindable idle_observation_ms=500 demand=retained retry=later-explicit-same-id generations=2 pixels=both-generations", flush=True)
+    elif case == "owner-loss":
+        print("WHITEBOARD_CLIENT_OWNER_LOSS=pass boundary=running-published-helper root=dropped parent=alive task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused", flush=True)
     else:
         raise RuntimeError("unknown global client scenario")
 
@@ -831,6 +891,7 @@ def main():
             for case in ("shutdown", "replacement", "withdrawal", "helper-close", "root-shutdown", "parent-loss", "helper-crash"):
                 observe_client_generation(executable, environment, display, server, case)
             observe_launch_owner_loss(executable, environment, display, server)
+            observe_client_generation(executable, environment, display, server, "owner-loss")
             require(artifact_digest(executable) == digest and server.poll() is None,
                     "compiled helper artifact or Xvfb changed during execution")
         finally:

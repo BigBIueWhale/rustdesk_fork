@@ -4888,6 +4888,9 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whit
         'WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS=pass boundary=created-before-handoff root=dropped parent=alive launch=finished helper=exited-reaped window=badwindow endpoint=refused-rebindable replacement=refused' \
         'native global client owner loss retires the real late-created helper before parent exit'
     require_exact_fixed_receipt \
+        'WHITEBOARD_CLIENT_OWNER_LOSS=pass boundary=running-published-helper root=dropped parent=alive task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused' \
+        'native global client owner loss joins and reaps its published helper with parent retained'
+    require_exact_fixed_receipt \
         'WHITEBOARD_HELPER_CREATOR=pass thread=joined owner=alive helper=live proof=mutual pixels=two-owner-clear' \
         'native creator-thread retirement with a live parent and authenticated rendering'
     require_exact_fixed_receipt \

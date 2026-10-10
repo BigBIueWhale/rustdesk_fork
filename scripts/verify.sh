@@ -6963,6 +6963,10 @@ grep -qF -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' <<<
   || r_s11e64="$r_s11e64 build-read-only-exact-source-missing"
 grep -qF -- '--mount "type=bind,source=$SMOKE_ONLINE_ROOT,target=/online,readonly"' <<<"$smoke_build_run" \
   || r_s11e64="$r_s11e64 build-read-only-online-input-missing"
+grep -qF 'readonly SMOKE_ONLINE_ROOT=$SMOKE_REPO_ROOT/online/inputs' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 canonical-online-input-selection-missing"
+grep -qF '[ "$(realpath -e -- "$SMOKE_ONLINE_ROOT")" = "$SMOKE_ONLINE_ROOT" ]' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 physical-online-input-root-check-missing"
 grep -qF -- '-v "$SMOKE_BUILD_TARGET:/smoke-target:rw"' <<<"$smoke_build_run" \
   || r_s11e64="$r_s11e64 private-build-target-missing"
 for smoke_rootless_token in \

@@ -264,11 +264,12 @@ print(digest.hexdigest())
 PY
 }
 
-readonly SMOKE_ONLINE_ROOT="$(realpath -e -- "$SMOKE_REPO_ROOT/online")"
+readonly SMOKE_ONLINE_ROOT=$SMOKE_REPO_ROOT/online/inputs
 case "$SMOKE_ONLINE_ROOT" in
   *','*|*':'*) echo "smoke: online input path contains a Docker mount delimiter" >&2; exit 1 ;;
 esac
-[ -d "$SMOKE_ONLINE_ROOT" ] && [ ! -L "$SMOKE_ONLINE_ROOT" ] || {
+[ -d "$SMOKE_ONLINE_ROOT" ] && [ ! -L "$SMOKE_ONLINE_ROOT" ] \
+  && [ "$(realpath -e -- "$SMOKE_ONLINE_ROOT")" = "$SMOKE_ONLINE_ROOT" ] || {
   echo "smoke: canonical online input root is unavailable" >&2
   exit 1
 }

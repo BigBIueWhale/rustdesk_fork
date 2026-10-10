@@ -340,7 +340,7 @@ def enigo_route(root, environment, checksum, library, providers, before_source):
                "--extern", f"log={library}", "--extern", f"rdev={mapping}",
                "-L", f"native={providers['corrected']}",
                "-C", f"link-arg=-Wl,-rpath,{providers['corrected']}",
-               "-C", f"link-arg={cleanup_helper}", "-C", "link-arg=-ldl",
+               "-C", f"link-arg={cleanup_helper}", "-C", "link-arg=-lXtst", "-C", "link-arg=-ldl",
                "-C", "link-arg=-Wl,--export-dynamic-symbol=XkbChangeMap",
                "-C", "link-arg=-Wl,--export-dynamic-symbol=XTestFakeKeyEvent"]
     for symbol in ("xdo_new_with_opened_display", "xdo_free", "XOpenDisplay", "XCloseDisplay"):

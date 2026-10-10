@@ -840,12 +840,17 @@ closure follows from these component receipts.
   `12f98c4005597c50e7a0ddab66987bff2e652e208666822a08186c602aac082c`.
   This is Linux resource-factory/finalizer evidence; full network and installed
   shutdown, native Windows/macOS and Android concurrent lifecycle remain OPEN.
-  Empty-process shutdown has a separate fresh-process fixture: actual worker
-  OnceLock state, native own-process thread/context observations and all five
-  factory refusals at the production process-exit boundary. The canonical profile
-  retains its warm worker-retirement control and now requires two distinct exit
-  receipts from one artifact/provider. Native empty-process acceptance is pending;
-  no product defect, forced spawn failure/panic or OS inhibitor evidence is claimed.
+  At `d9d7060a`, a fresh process with no sessions reached the real finalizer/exit
+  with both actual worker OnceLocks still empty, no named cleanup/wake/cursor
+  threads or native cursor contexts, and all five session factories refused.
+  The same artifact passed the warm retirement control and existing map/key/cursor
+  cases: three libtests plus two separately observed process exits. The canonical
+  isolated transaction passed in 231 seconds; artifact/provider unchanged,
+  X11/container/VM joined, no host listener additions. Retained raw evidence:
+  `android-rust-lifecycle-tests-run.rgJJi68kW2.serial.log`, SHA-256
+  `039396d28230b8cccb89911dda44c3cd792cd06aade5bddacf7aa77ca3e78630`.
+  This adds Linux empty-process coverage without a production correction.
+  Forced spawn failure/panic, OS inhibition and broader shutdown remain OPEN.
   The earlier physical regression at `6a675303` passed; macOS recorded CapsLock
   retirement is source-corrected. Three Apple anchors compiled at `c5d0984a`;
   application checks stopped at SDK/header boundaries and the outer transaction rejected

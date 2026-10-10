@@ -67,7 +67,7 @@ case "$#:${8:-}" in
     13:--android-rust-lifecycle-tests)
         [[ "${13}" = --clipboard || "${13}" = --whiteboard-presentation \
             || "${13}" = --whiteboard-display-lifetime || "${13}" = --whiteboard-client \
-            || "${13}" = --whiteboard-helper-lifetime ]] || exit 2
+            || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-release ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
         ;;
@@ -2595,6 +2595,20 @@ run_focused_rust_tests() {
             [ "${#clipboard_tests[@]}" -eq 13 ] \
                 || fail 'focused clipboard test inventory differs'
             required_tests=("${clipboard_tests[@]}")
+        elif [ "$RUST_TEST_PROFILE" = input-release ]; then
+            source_fingerprints+=(
+                src/server/input_service.rs src/server/connection.rs
+                src/server/input_release_native_tests.rs scripts/run-input-release-test.py
+                scripts/smoke-xvfb-prepare.sh scripts/smoke-xvfb-packages.tsv scripts/smoke-xvfb-files.tsv
+            )
+            required_tests=(
+                server::connection::desktop_input_queue_tests::desktop_key_teardown_releases_only_the_last_connection_owner
+                server::connection::desktop_input_queue_tests::desktop_key_failure_retains_ownership_until_release_succeeds
+                server::connection::desktop_input_queue_tests::desktop_key_teardown_failure_keeps_registry_for_fail_stop
+                server::connection::desktop_input_queue_tests::desktop_key_state_survives_unwind_until_cleanup_release
+                server::connection::desktop_input_queue_tests::desktop_key_owner_transition_is_linearized_with_physical_dispatch
+                server::connection::input_release_native_tests::physical_lease_retirement_survives_unavailable_keyboard_state
+            )
         elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
             source_fingerprints+=(src/whiteboard/client.rs)
             required_tests=(
@@ -2860,7 +2874,7 @@ run_focused_rust_tests() {
     fi
 
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-       && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]]; then
+       && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release ]]; then
         prepare_engine_xvfb "$inputs/xvfb-debs" "$source_root/scripts"
         whiteboard_mounts=(
             --mount "type=bind,source=$ROOT/engine-xvfb/root,target=/xvfb-root,readonly,bind-recursive=disabled"
@@ -3017,6 +3031,9 @@ run_focused_rust_tests() {
                         elif [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
                             printf "WHITEBOARD_PRESENTATION_STATE_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
                                 "$((SECONDS - clipboard_build_started))"
+                        elif [ "$RUST_TEST_PROFILE" = input-release ]; then
+                            printf "INPUT_RELEASE_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
+                                "$((SECONDS - clipboard_build_started))"
                         elif [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
                             printf "WHITEBOARD_DISPLAY_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
                                 "$((SECONDS - clipboard_build_started))"
@@ -3036,6 +3053,15 @@ run_focused_rust_tests() {
                         [ -n "$clipboard_executable" ] || exit 95
                         clipboard_artifact_sha="$(sha256sum "$clipboard_executable" | cut -d " " -f 1)"
                         [[ "$clipboard_artifact_sha" =~ ^[0-9a-f]{64}$ ]]
+                        if [ "$RUST_TEST_PROFILE" = input-release ]; then
+                            printf "INPUT_RELEASE_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
+                                "$clipboard_artifact_sha" "$clipboard_executable"
+                            python3 -I -S /source/scripts/run-input-release-test.py "$clipboard_executable"
+                            [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
+                            printf "INPUT_RELEASE_ARTIFACT=pass sha256=%s executable=%s tests=6 unchanged=before-after\n" \
+                                "$clipboard_artifact_sha" "$clipboard_executable"
+                            exit 0
+                        fi
                         if [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
                             printf "WHITEBOARD_DISPLAY_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
                                 "$clipboard_artifact_sha" "$clipboard_executable"
@@ -3157,7 +3183,7 @@ run_focused_rust_tests() {
     [ "$namespace_inspect" = 'false||private||private|[]|{}' ] \
         || fail "focused Rust-test container namespace/device/port authority differs: $namespace_inspect"
     if [ "$MODE" = android-rust-lifecycle-tests ] \
-       && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]]; then
+       && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime || "$RUST_TEST_PROFILE" = input-release ]]; then
         inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
             '{{range $i, $m := .Mounts}}{{if $i}}{{println}}{{end}}{{$m.Type}}|{{$m.Source}}|{{$m.Destination}}|{{$m.RW}}{{end}}' "$CONTAINER_ID" | LC_ALL=C sort)"
         [ "$inspect" = "$(printf '%s\n' \
@@ -3309,6 +3335,8 @@ run_focused_rust_tests() {
         expected_groups=16
         if [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
             expected_groups=4
+        elif [ "$RUST_TEST_PROFILE" = input-release ]; then
+            expected_groups=2
         elif [ "$RUST_TEST_PROFILE" != integration ]; then
             expected_groups=1
         fi
@@ -3324,6 +3352,11 @@ run_focused_rust_tests() {
             [ "$(grep -Fxc 'WHITEBOARD_LISTENER_CANCEL=pass transport=unix-abstract readiness=kernel-connect unauthorized=preproof-eof worker=joined reconnect=refused address=rebindable filesystem=absent generations=32 fd_delta=0' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'WHITEBOARD_LISTENER_CANCEL=' "$output")" -eq 1 ] \
                 || fail 'native whiteboard listener cancellation receipt differs'
+        elif [ "$RUST_TEST_PROFILE" = input-release ]; then
+            [ "$(grep -Ec '^INPUT_RELEASE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=6 unchanged=before-after$' "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc 'INPUT_RELEASE_NATIVE=pass cases=16 shared_owners=2 prior_owner_retirement=no-events final_owner_release=exact-key foreign_key=preserved keyboard_state=unavailable ordinary_admission=refused registry=retired descriptors=retired whole_app=false' "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc 'INPUT_RELEASE_X11=pass server=owned network=none endpoint=absent cleanup=joined' "$output")" -eq 1 ] \
+                || fail 'native input-release observations differ'
         elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
             [ "$(grep -Ec '^WHITEBOARD_CLIENT_STATE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=9 unchanged=before-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'WHITEBOARD_CLIENT_STATE_ARTIFACT=' "$output")" -eq 1 ] \
@@ -3443,6 +3476,12 @@ run_focused_rust_tests() {
             grep -E '^WHITEBOARD_PRESENTATION_STATE_(ARTIFACT_BEFORE|ARTIFACT|BUILD)=' "$output"
             grep -E '^test whiteboard::server::tests::r_s11hp_.* \.\.\. ok$' "$output"
             printf 'WHITEBOARD_PRESENTATION_STATE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-whiteboard-presentation-state rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = input-release ]; then
+            grep -E '^INPUT_RELEASE_(ARTIFACT_BEFORE|ARTIFACT|BUILD|NATIVE|X11)=' "$output"
+            grep -E '^test server::connection::(desktop_input_queue_tests::desktop_key_|input_release_native_tests::)' "$output"
+            printf 'INPUT_RELEASE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-key-lease-teardown rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = clipboard ]; then

@@ -142,7 +142,6 @@ class PrivateTreeRoot:
             self.owner = os.geteuid()
             self.group = os.getegid()
             self.require_uniform_owner = True
-            self.allow_retained_contents = False
             self.removed = False
             self.cleanup_started = False
             return
@@ -216,56 +215,8 @@ class PrivateTreeRoot:
         self.owner = os.geteuid()
         self.group = os.getegid()
         self.require_uniform_owner = True
-        self.allow_retained_contents = False
         self.removed = False
         self.cleanup_started = False
-
-    @classmethod
-    def for_owned_tree_contents(cls, path, expected_identity):
-        require_current_non_root_principal()
-        owner = os.geteuid()
-        group = os.getegid()
-        require_real_directory(path)
-        descriptor = os.open(
-            path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-        )
-        try:
-            metadata = os.fstat(descriptor)
-            edge = os.stat(path, follow_symlinks=False)
-            if (
-                identity(metadata) != expected_identity
-                or identity(edge) != expected_identity
-                or not stat.S_ISDIR(metadata.st_mode)
-                or metadata.st_uid != owner
-                or metadata.st_gid != group
-                or stat.S_IMODE(metadata.st_mode) != 0o700
-            ):
-                raise ClosureError("tree-contents root is not the exact private authority")
-            mount_id = descriptor_mount_id(descriptor)
-        except BaseException:
-            close_descriptors(
-                (descriptor,),
-                "tree-contents root descriptor close",
-                sys.exc_info()[1],
-            )
-            raise
-        authority = cls.__new__(cls)
-        authority.parent_fd = None
-        authority.fd = descriptor
-        authority.basename = None
-        authority.identity = identity(metadata)
-        authority.device = metadata.st_dev
-        authority.mount_id = mount_id
-        authority.parent_identity = None
-        authority.parent_mount_id = None
-        authority.parent_metadata = None
-        authority.owner = owner
-        authority.group = group
-        authority.require_uniform_owner = True
-        authority.allow_retained_contents = True
-        authority.removed = False
-        authority.cleanup_started = False
-        return authority
 
     def assert_bound(self):
         metadata = os.fstat(self.fd)
@@ -603,11 +554,7 @@ class PrivateTreeRoot:
     def close(self, primary=None):
         failures = []
         try:
-            if (
-                not self.removed
-                and not self.cleanup_started
-                and not self.allow_retained_contents
-            ):
+            if not self.removed and not self.cleanup_started:
                 self.assert_bound()
                 if not directory_is_empty(self.fd):
                     raise ClosureError("self-test scratch retained fixture state")
@@ -659,21 +606,6 @@ class PrivateTreeRoot:
             raise ClosureError("empty private-root removal did not consume its authenticated edge")
         os.fsync(self.parent_fd)
         self.removed = True
-
-    def remove_owned_tree_contents(self, expected_identity):
-        self.assert_bound()
-        if self.identity != expected_identity or self.parent_fd is not None:
-            raise ClosureError("tree-contents removal authority is invalid")
-        self.cleanup_started = True
-        authorities = self.acquire_inode_closure(self.fd)
-        try:
-            self.remove_contents(self.fd, [TREE_ENTRY_LIMIT], authorities)
-            self.require_inode_authorities_consumed(authorities)
-        finally:
-            self.close_inode_authorities(authorities, sys.exc_info()[1])
-        if not directory_is_empty(self.fd):
-            raise ClosureError("tree-contents root remains nonempty after cleanup")
-        self.assert_bound()
 
 
 PROTECTED_HARDLINKS = "/proc/sys/fs/protected_hardlinks"
@@ -741,7 +673,7 @@ def require_retained_descriptor_budget(exact_hard_limit=False):
         raise ClosureError("process has too many pre-existing descriptors for retained authority")
 
 
-class TreeNormalizationAuthority:
+class OwnedTreeAuthority:
     def __init__(self, path, expected_identity):
         require_current_non_root_principal()
         require_retained_descriptor_budget()
@@ -755,6 +687,7 @@ class TreeNormalizationAuthority:
         self.directories = []
         self.inodes = {}
         self.edges = []
+        self.mutation_started = False
         try:
             root = os.fstat(self.root_fd)
             edge = os.stat(path, follow_symlinks=False)
@@ -764,8 +697,9 @@ class TreeNormalizationAuthority:
                 or not stat.S_ISDIR(root.st_mode)
                 or root.st_uid != self.owner
                 or root.st_gid != self.group
+                or stat.S_IMODE(root.st_mode) != 0o700
             ):
-                raise ClosureError("normalization root identity or ownership is invalid")
+                raise ClosureError("owned-tree root identity, ownership, or mode is invalid")
             self.device = root.st_dev
             self.mount_id = descriptor_mount_id(self.root_fd)
             self.directories.append(
@@ -791,7 +725,7 @@ class TreeNormalizationAuthority:
             for authority in self.inodes.values():
                 if authority["internal"] != authority["nlink"]:
                     raise ClosureError(
-                        "normalization tree contains a non-directory inode linked outside its boundary"
+                        "owned tree contains a non-directory inode linked outside its boundary"
                     )
         except BaseException as error:
             self.close(error)
@@ -803,12 +737,12 @@ class TreeNormalizationAuthority:
         for name in names:
             remaining[0] -= 1
             if remaining[0] < 0:
-                raise ClosureError("normalization tree exceeds its entry bound")
+                raise ClosureError("owned tree exceeds its entry bound")
             metadata = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
             if metadata.st_dev != self.device:
-                raise ClosureError("normalization tree crosses a filesystem boundary")
+                raise ClosureError("owned tree crosses a filesystem boundary")
             if metadata.st_uid != self.owner or metadata.st_gid != self.group:
-                raise ClosureError("normalization tree contains foreign ownership")
+                raise ClosureError("owned tree contains foreign ownership")
             authority_fd = os.open(
                 name, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent_fd
             )
@@ -821,7 +755,7 @@ class TreeNormalizationAuthority:
                     or current.st_uid != self.owner
                     or current.st_gid != self.group
                 ):
-                    raise ClosureError("normalization tree crosses a mount boundary")
+                    raise ClosureError("owned tree crosses a mount boundary")
                 if stat.S_ISDIR(metadata.st_mode):
                     if depth >= MAX_DIRECTORY_DEPTH:
                         raise ClosureError("tree exceeds its directory-depth bound")
@@ -840,7 +774,7 @@ class TreeNormalizationAuthority:
                             or opened.st_gid != self.group
                         ):
                             raise ClosureError(
-                                "normalization directory authority changed during acquisition"
+                                "owned-tree directory authority changed during acquisition"
                             )
                         child_directory = {
                             "fd": child,
@@ -860,7 +794,7 @@ class TreeNormalizationAuthority:
                         if not child_retained:
                             close_descriptors(
                                 (child,),
-                                "normalization child descriptor close",
+                                "owned-tree child descriptor close",
                                 sys.exc_info()[1],
                             )
                 elif stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
@@ -883,17 +817,17 @@ class TreeNormalizationAuthority:
                         or inode["uid"] != metadata.st_uid
                         or inode["gid"] != metadata.st_gid
                     ):
-                        raise ClosureError("normalization inode authority changed during acquisition")
+                        raise ClosureError("owned-tree inode authority changed during acquisition")
                     else:
                         inode["internal"] += 1
                     self.edges.append((parent_fd, name, key))
                 else:
-                    raise ClosureError("normalization tree contains a special filesystem object")
+                    raise ClosureError("owned tree contains a special filesystem object")
             finally:
                 if not retained:
                     close_descriptors(
                         (authority_fd,),
-                        "normalization entry descriptor close",
+                        "owned-tree entry descriptor close",
                         sys.exc_info()[1],
                     )
 
@@ -927,12 +861,12 @@ class TreeNormalizationAuthority:
             or (root.st_mode, root.st_uid, root.st_gid, root.st_nlink) != root_expected
             or (edge.st_mode, edge.st_uid, edge.st_gid, edge.st_nlink) != root_expected
         ):
-            raise ClosureError("normalization root authority changed")
+            raise ClosureError("owned-tree root authority changed")
         for directory in self.directories:
             if tuple(
                 bounded_directory_names(directory["fd"], len(directory["names"]) + 1)
             ) != directory["names"]:
-                raise ClosureError("normalization directory inventory changed")
+                raise ClosureError("owned-tree directory inventory changed")
         for index, directory in enumerate(self.directories[1:], 1):
             current = os.fstat(directory["fd"])
             edge = os.stat(
@@ -947,7 +881,7 @@ class TreeNormalizationAuthority:
                 != expected
                 or (edge.st_mode, edge.st_uid, edge.st_gid, edge.st_nlink) != expected
             ):
-                raise ClosureError("normalization directory authority changed")
+                raise ClosureError("owned-tree directory authority changed")
         observed = {key: 0 for key in self.inodes}
         for parent_fd, name, key in self.edges:
             edge = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
@@ -956,7 +890,7 @@ class TreeNormalizationAuthority:
                 identity(edge) != key
                 or (edge.st_mode, edge.st_uid, edge.st_gid, edge.st_nlink) != expected
             ):
-                raise ClosureError("normalization inode edge changed")
+                raise ClosureError("owned-tree inode edge changed")
             observed[key] += 1
         for key, authority in self.inodes.items():
             current = os.fstat(authority["fd"])
@@ -968,9 +902,12 @@ class TreeNormalizationAuthority:
                 or observed[key] != authority["internal"]
                 or descriptor_mount_id(authority["fd"]) != self.mount_id
             ):
-                raise ClosureError("normalization inode authority changed")
+                raise ClosureError("owned-tree inode authority changed")
 
     def normalize(self):
+        if self.mutation_started:
+            raise ClosureError("owned-tree mutation authority was already consumed")
+        self.mutation_started = True
         self.assert_bound()
         for index, directory in enumerate(self.directories):
             os.fchmod(
@@ -1004,6 +941,82 @@ class TreeNormalizationAuthority:
             ) != normalized_mode(authority["mode"]):
                 raise ClosureError("normalization inode mode postcondition differs")
 
+    def _assert_removal_directory(self, directory):
+        current = os.fstat(directory["fd"])
+        if directory["parent"] is None:
+            edge = os.stat(self.path, follow_symlinks=False)
+        else:
+            edge = os.stat(
+                directory["name"], dir_fd=directory["parent"], follow_symlinks=False
+            )
+        expected = (stat.S_IFDIR | 0o700, self.owner, self.group)
+        if (
+            identity(current) != directory["identity"]
+            or identity(edge) != directory["identity"]
+            or descriptor_mount_id(directory["fd"]) != self.mount_id
+            or (current.st_mode, current.st_uid, current.st_gid) != expected
+            or (edge.st_mode, edge.st_uid, edge.st_gid) != expected
+            or current.st_nlink < 1
+            or edge.st_nlink != current.st_nlink
+        ):
+            raise ClosureError("owned-tree directory authority changed during removal")
+
+    def _require_edge_absent(self, parent_fd, name):
+        try:
+            os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        raise ClosureError("owned-tree entry was replaced during removal")
+
+    def remove_contents(self):
+        if self.mutation_started:
+            raise ClosureError("owned-tree mutation authority was already consumed")
+        self.mutation_started = True
+        self.assert_bound()
+        directories = {directory["fd"]: directory for directory in self.directories}
+        remaining = {key: authority["nlink"] for key, authority in self.inodes.items()}
+        for directory in self.directories:
+            os.fchmod(directory["fd"], 0o700)
+            self._assert_removal_directory(directory)
+        for parent_fd, name, key in self.edges:
+            self._assert_removal_directory(directories[parent_fd])
+            authority = self.inodes[key]
+            current = os.fstat(authority["fd"])
+            edge = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+            expected = (
+                authority["mode"], self.owner, self.group, remaining[key]
+            )
+            if (
+                remaining[key] < 1
+                or identity(current) != key
+                or identity(edge) != key
+                or descriptor_mount_id(authority["fd"]) != self.mount_id
+                or (current.st_mode, current.st_uid, current.st_gid, current.st_nlink)
+                != expected
+                or (edge.st_mode, edge.st_uid, edge.st_gid, edge.st_nlink) != expected
+            ):
+                raise ClosureError("owned-tree inode authority changed before removal")
+            os.unlink(name, dir_fd=parent_fd)
+            remaining[key] -= 1
+            if os.fstat(authority["fd"]).st_nlink != remaining[key]:
+                raise ClosureError("owned-tree unlink did not consume its captured edge")
+            self._require_edge_absent(parent_fd, name)
+        for directory in reversed(self.directories[1:]):
+            self._assert_removal_directory(directories[directory["parent"]])
+            self._assert_removal_directory(directory)
+            if not directory_is_empty(directory["fd"]):
+                raise ClosureError("owned-tree directory remains nonempty during removal")
+            os.rmdir(directory["name"], dir_fd=directory["parent"])
+            if os.fstat(directory["fd"]).st_nlink != 0:
+                raise ClosureError("owned-tree directory removal did not consume its edge")
+            self._require_edge_absent(directory["parent"], directory["name"])
+        for key, authority in self.inodes.items():
+            if remaining[key] != 0 or os.fstat(authority["fd"]).st_nlink != 0:
+                raise ClosureError("owned-tree removal retained an inode edge")
+        self._assert_removal_directory(self.directories[0])
+        if not directory_is_empty(self.root_fd):
+            raise ClosureError("owned-tree root remains nonempty after removal")
+
     def close(self, primary=None):
         descriptors = [authority["fd"] for authority in self.inodes.values()]
         descriptors.extend(directory["fd"] for directory in reversed(self.directories))
@@ -1012,14 +1025,15 @@ class TreeNormalizationAuthority:
         self.root_fd = None
         self.directories = []
         self.inodes = {}
-        close_descriptors(descriptors, "normalization authority close", primary)
+        self.edges = []
+        close_descriptors(descriptors, "owned-tree authority close", primary)
 
 
 def normalize_tree(path, expected_identity):
     require_current_non_root_principal()
     require_retained_descriptor_budget()
     require_protected_hardlinks()
-    authority = TreeNormalizationAuthority(path, expected_identity)
+    authority = OwnedTreeAuthority(path, expected_identity)
     try:
         authority.normalize()
     finally:
@@ -1199,12 +1213,7 @@ def exercise_authority_bounds(scratch):
         try:
             os.geteuid = lambda: original_geteuid() + 1
             os.getegid = lambda: original_getegid() + 1
-            require_rejection(
-                PrivateTreeRoot.for_owned_tree_contents,
-                root,
-                expected,
-            )
-            require_rejection(TreeNormalizationAuthority, root, expected)
+            require_rejection(OwnedTreeAuthority, root, expected)
         finally:
             os.geteuid = original_geteuid
             os.getegid = original_getegid
@@ -1212,21 +1221,14 @@ def exercise_authority_bounds(scratch):
         original_depth = MAX_DIRECTORY_DEPTH
         try:
             MAX_DIRECTORY_DEPTH = 1
-            require_rejection(TreeNormalizationAuthority, root, expected)
-            authority = PrivateTreeRoot.for_owned_tree_contents(
-                root, expected
-            )
-            try:
-                require_rejection(authority.acquire_inode_closure, authority.fd)
-            finally:
-                authority.close(sys.exc_info()[1])
+            require_rejection(OwnedTreeAuthority, root, expected)
         finally:
             MAX_DIRECTORY_DEPTH = original_depth
 
         original_entries = TREE_ENTRY_LIMIT
         try:
             TREE_ENTRY_LIMIT = 1
-            require_rejection(TreeNormalizationAuthority, root, expected)
+            require_rejection(OwnedTreeAuthority, root, expected)
         finally:
             TREE_ENTRY_LIMIT = original_entries
 
@@ -1327,7 +1329,7 @@ def exercise_normalization_authority(scratch):
         globals()["descriptor_mount_id"] = reject_child_directory_mount
         try:
             require_rejection(
-                TreeNormalizationAuthority,
+                OwnedTreeAuthority,
                 root,
                 identity(os.stat(root, follow_symlinks=False)),
             )
@@ -1336,7 +1338,7 @@ def exercise_normalization_authority(scratch):
         if live_descriptor_inventory() != before:
             raise ClosureError("normalization constructor leaked a directory descriptor")
 
-        authority = TreeNormalizationAuthority(
+        authority = OwnedTreeAuthority(
             root, identity(os.stat(root, follow_symlinks=False))
         )
         external_name = "normalization-external-" + os.urandom(16).hex()
@@ -1372,11 +1374,13 @@ def exercise_normalization_authority(scratch):
 
         os.chmod(nested, 0o500)
         os.chmod(payload, 0o000)
-        authority = TreeNormalizationAuthority(
+        authority = OwnedTreeAuthority(
             root, identity(os.stat(root, follow_symlinks=False))
         )
         try:
             authority.normalize()
+            require_rejection(authority.normalize)
+            require_rejection(authority.remove_contents)
         finally:
             authority.close(sys.exc_info()[1])
         for path, expected_mode in ((root, 0o700), (nested, 0o700), (payload, 0o600)):
@@ -1389,6 +1393,177 @@ def exercise_normalization_authority(scratch):
                 raise ClosureError("owner-only normalization postcondition differs")
         if normalized_mode(0o6755) != 0o755 or normalized_mode(0o3777, True) != 0o755:
             raise ClosureError("normalization mode policy retained a special permission bit")
+    scratch.assert_bound()
+
+
+def exercise_owned_tree_removal(scratch):
+    before = live_descriptor_inventory()
+    with scratch.directory("owned-tree-removal-") as directory:
+        temporary = os.path.realpath(directory)
+        canary = os.path.join(temporary, "canary")
+        with open(canary, "wb") as output:
+            output.write(b"outside target\n")
+        canary_before = os.lstat(canary)
+        root = os.path.join(temporary, "tree")
+        os.mkdir(root, 0o700)
+        locked = os.path.join(root, "locked")
+        os.mkdir(locked, 0o700)
+        nested = os.path.join(locked, "nested")
+        os.mkdir(nested, 0o700)
+        payload = os.path.join(nested, "payload")
+        with open(payload, "wb") as output:
+            output.write(b"owned payload\n")
+        os.link(payload, os.path.join(root, "payload-link"))
+        link = os.path.join(nested, "symlink")
+        os.symlink(canary, link)
+        os.link(link, os.path.join(root, "symlink-link"), follow_symlinks=False)
+        os.chmod(payload, 0o000)
+        os.chmod(locked, 0o500)
+        root_identity = identity(os.lstat(root))
+        authority = OwnedTreeAuthority(root, root_identity)
+        try:
+            if len(authority.directories) != 3 or len(authority.edges) != 4:
+                raise ClosureError("removal fixture did not retain its complete tree")
+            if any(record["names"] is None for record in authority.directories):
+                raise ClosureError("removal fixture lacks a retained directory inventory")
+            authority.remove_contents()
+            if os.listdir(root) or identity(os.lstat(root)) != root_identity:
+                raise ClosureError("removal fixture did not preserve the empty original root")
+            for record in authority.directories[1:]:
+                if os.fstat(record["fd"]).st_nlink != 0:
+                    raise ClosureError("removal fixture released a live directory edge")
+            for record in authority.inodes.values():
+                if os.fstat(record["fd"]).st_nlink != 0:
+                    raise ClosureError("removal fixture released a live inode edge")
+            require_rejection(authority.remove_contents)
+            require_rejection(authority.normalize)
+        finally:
+            authority.close(sys.exc_info()[1])
+        canary_after = os.lstat(canary)
+        if (
+            identity(canary_after) != identity(canary_before)
+            or canary_after.st_mode != canary_before.st_mode
+            or canary_after.st_nlink != canary_before.st_nlink
+            or canary_after.st_ctime_ns != canary_before.st_ctime_ns
+        ):
+            raise ClosureError("removal fixture changed its symlink target")
+        with open(canary, "rb") as source:
+            if source.read() != b"outside target\n":
+                raise ClosureError("removal fixture changed outside target bytes")
+
+    def retained_state(authority):
+        records = authority.directories + list(authority.inodes.values())
+        inventories = tuple(
+            tuple(bounded_directory_names(record["fd"], TREE_ENTRY_LIMIT))
+            for record in authority.directories
+        )
+        metadata = []
+        for record in records:
+            current = os.fstat(record["fd"])
+            metadata.append((
+                identity(current), current.st_mode, current.st_uid, current.st_gid,
+                current.st_nlink, current.st_size, current.st_ctime_ns,
+                current.st_mtime_ns,
+            ))
+        return inventories, tuple(metadata)
+
+    for change in ("inventory", "directory", "mode", "hardlink"):
+        with scratch.directory("owned-tree-handoff-") as directory:
+            temporary = os.path.realpath(directory)
+            root = os.path.join(temporary, "tree")
+            os.mkdir(root, 0o700)
+            nested = os.path.join(root, "nested")
+            os.mkdir(nested, 0o700)
+            payload = os.path.join(nested, "payload")
+            with open(payload, "wb") as output:
+                output.write(b"preserved payload\n")
+            os.chmod(nested, 0o500)
+            authority = OwnedTreeAuthority(root, identity(os.lstat(root)))
+            added = os.path.join(root, "added")
+            parked = os.path.join(temporary, "parked")
+            external = os.path.join(temporary, "external-link")
+            try:
+                if change == "inventory":
+                    with open(added, "wb") as output:
+                        output.write(b"new inventory\n")
+                elif change == "directory":
+                    os.rename(nested, parked)
+                    os.mkdir(nested, 0o700)
+                    with open(payload, "wb") as output:
+                        output.write(b"replacement payload\n")
+                    os.chmod(nested, 0o500)
+                elif change == "mode":
+                    os.chmod(payload, 0o400)
+                else:
+                    os.link(payload, external)
+                state = retained_state(authority)
+                require_rejection(authority.remove_contents)
+                if retained_state(authority) != state:
+                    raise ClosureError(f"{change} handoff refusal mutated retained state")
+                if stat.S_IMODE(os.lstat(nested).st_mode) != 0o500:
+                    raise ClosureError(f"{change} handoff refusal restored directory access")
+                with open(payload, "rb") as source:
+                    expected = (
+                        b"replacement payload\n" if change == "directory"
+                        else b"preserved payload\n"
+                    )
+                    if source.read() != expected:
+                        raise ClosureError(f"{change} handoff refusal changed payload bytes")
+                require_rejection(authority.remove_contents)
+                require_rejection(authority.normalize)
+            finally:
+                authority.close(sys.exc_info()[1])
+                if change == "hardlink":
+                    os.unlink(external)
+
+    with scratch.directory("owned-tree-acquisition-") as directory:
+        temporary = os.path.realpath(directory)
+        root = os.path.join(temporary, "tree")
+        os.mkdir(root, 0o700)
+        nested = os.path.join(root, "nested")
+        os.mkdir(nested, 0o700)
+        payload = os.path.join(nested, "payload")
+        with open(payload, "wb") as output:
+            output.write(b"acquisition payload\n")
+        os.chmod(nested, 0o500)
+        expected = identity(os.lstat(root))
+        require_rejection(OwnedTreeAuthority, root, (expected[0], expected[1] + 1))
+        external = os.path.join(temporary, "external-link")
+        os.link(payload, external)
+        current = os.lstat(payload)
+        descriptors = live_descriptor_inventory()
+        try:
+            require_rejection(OwnedTreeAuthority, root, expected)
+            if os.lstat(payload) != current or stat.S_IMODE(os.lstat(nested).st_mode) != 0o500:
+                raise ClosureError("external-link acquisition refusal changed its tree")
+            if live_descriptor_inventory() != descriptors:
+                raise ClosureError("external-link acquisition refusal leaked descriptors")
+        finally:
+            os.unlink(external)
+        os.chmod(root, 0o500)
+        try:
+            require_rejection(OwnedTreeAuthority, root, expected)
+        finally:
+            os.chmod(root, 0o700)
+        os.chmod(nested, 0o000)
+        unexpected_authority = None
+        try:
+            try:
+                unexpected_authority = OwnedTreeAuthority(root, expected)
+            except PermissionError:
+                pass
+            else:
+                raise ClosureError("acquisition accepted a non-traversable directory")
+            if stat.S_IMODE(os.lstat(nested).st_mode) != 0o000:
+                raise ClosureError("acquisition repaired a non-traversable directory")
+            if live_descriptor_inventory() != descriptors:
+                raise ClosureError("non-traversable acquisition leaked descriptors")
+        finally:
+            if unexpected_authority is not None:
+                unexpected_authority.close(sys.exc_info()[1])
+            os.chmod(nested, 0o700)
+    if live_descriptor_inventory() != before:
+        raise ClosureError("owned-tree removal fixtures leaked descriptors")
     scratch.assert_bound()
 
 
@@ -1682,12 +1857,14 @@ def main():
                 exercise_authority_bounds(scratch)
                 exercise_scratch_acquisition_failures(scratch)
                 exercise_normalization_authority(scratch)
+                exercise_owned_tree_removal(scratch)
                 exercise_scratch_external_link_rejection(scratch)
                 exercise_retained_inode_authority(scratch)
                 exercise_scratch_root_removal(scratch)
                 run_self_test(scratch)
             finally:
                 scratch.close(sys.exc_info()[1])
+            print("OWNED_TREE_REMOVAL=pass retained=complete handoff=refused links=consumed symlink_target=preserved descriptors=closed")
         elif arguments.remove_private_root is not None:
             if (
                 arguments.scratch_fd is not None
@@ -1733,14 +1910,14 @@ def main():
             if match is None:
                 raise ClosureError("tree-contents removal identity is malformed")
             expected = (int(match.group(1)), int(match.group(2)))
-            scratch = PrivateTreeRoot.for_owned_tree_contents(
+            authority = OwnedTreeAuthority(
                 arguments.remove_owned_tree_contents,
                 expected,
             )
             try:
-                scratch.remove_owned_tree_contents(expected)
+                authority.remove_contents()
             finally:
-                scratch.close(sys.exc_info()[1])
+                authority.close(sys.exc_info()[1])
         elif arguments.check_descriptor_budget or arguments.check_exact_descriptor_budget:
             if (
                 arguments.scratch_fd is not None

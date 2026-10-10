@@ -10424,8 +10424,8 @@ Windows VM therefore remain mandatory runtime evidence; source and focused non-V
 
 ### R-B9/R-S11gm/R-S11e-225 — release-parent workspace principal and retained authority
 
-**Principal boundary source-corrected; focused reset/terminal-cleanup fixtures pass;
-complete directory retention and cold release remain OPEN.** The release parent has
+**Principal and complete-tree retention source-corrected; current native acceptance
+pending; cold release remains OPEN.** The release parent has
 no container launches, Docker socket, image
 provenance request, capability grant, root fixture, or ownership-conversion
 path. Every persistent release-workspace object must remain owned by the
@@ -10438,13 +10438,21 @@ descendant mounts are preserved for explicit reconciliation.
 
 R-B9 requires the same nonroot, owner-only helper authority as R-S11dm/R-S11gm;
 its retired root/capability-based normalization and cleanup clauses are removed.
-The normalizer retains directory descriptors and inventories through mutation.
-Terminal cleanup currently retains non-directory inode authorities, releases directory
-descriptors during acquisition, and walks directory edges again during removal
-(`PrivateTreeRoot.collect_inode_links/remove_contents`). Full pre-mutation directory
-inventory/metadata retention is not established by that path or the existing fixtures.
-This source gap requires correction and isolated behavioral acceptance; the specification
-keeps the invariant. Same-UID quiescence does not prove its implementation.
+`OwnedTreeAuthority` now serves normalization and terminal removal. It retains every
+directory descriptor, inventory, inode descriptor, edge and metadata through mutation,
+re-proves the complete baseline before changing modes, and permits one mutation attempt.
+Removal uses captured parent/name edges, consumes internal hardlinks and directory links,
+and preserves the exact empty mode-0700 root. The production
+`PrivateTreeRoot.for_owned_tree_contents/remove_owned_tree_contents` path is deleted;
+recursive scratch cleanup remains confined to independent fixture authorities.
+New real-filesystem helper fixtures cover retained descriptors, nested mode-0500
+directories and mode-0000 files, internal regular/symlink hardlinks, an unchanged external
+symlink target, and pre-mutation refusal of inventory, directory identity, mode and
+hardlink changes. Acquisition rejects wrong root identity/mode, external links and a
+non-traversable directory; descriptor inventories must close exactly. The VM runtime
+requires the helper's exact successful receipt before its joined-cleanup result. These
+candidate fixtures have not yet executed; same-UID quiescence remains a prerequisite,
+not hostile same-UID race containment.
 
 The current ordinary-user reset fixture behaviorally rejected an external
 hardlink without changing its target, handled internal hardlinks plus

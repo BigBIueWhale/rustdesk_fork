@@ -6,6 +6,7 @@ readonly SAFE_PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 readonly ENV_MARKER_VALUE=rustdesk-release-workspace-runtime-v1
 readonly UID_NOW="$(/usr/bin/id -u)"
 readonly GID_NOW="$(/usr/bin/id -g)"
+readonly TREE_REMOVAL_RECEIPT='OWNED_TREE_REMOVAL=pass retained=complete handoff=refused links=consumed symlink_target=preserved descriptors=closed'
 
 fail() {
     printf 'release-workspace-runtime: %s\n' "$*" >&2
@@ -72,6 +73,7 @@ cleanup() {
     fi
     [ "$cleanup_status" -eq 0 ] || status=1
     if [ "$status" -eq 0 ] && [ "$SUCCESS" -eq 1 ]; then
+        printf '%s\n' "$TREE_REMOVAL_RECEIPT" >&2
         printf 'RELEASE_WORKSPACE_RUNTIME=pass uid=4000 gid=4000 network=none release=actual reset=actual publisher=actual closure=actual cleanup=joined\n'
     fi
     exit "$status"
@@ -113,11 +115,14 @@ fi
 [ -z "$(/usr/bin/find "$ROOT" -mindepth 1 -maxdepth 1 -print -quit)" ] \
     || fail 'wrong-identity descriptor fixture created scratch state'
 
-run_stage 'private-tree descriptor fixture' '' \
+tree_output="$(
     /usr/bin/timeout --foreground --signal=TERM --kill-after=5s 120s \
     /usr/bin/python3 -I -S "$TREE_HELPER" --self-test --scratch-fd 9 \
-    --expected-identity "$ROOT_ID" \
-    9<"$ROOT"
+    --expected-identity "$ROOT_ID" 9<"$ROOT"
+)" || fail 'private-tree descriptor fixture failed'
+[ "$tree_output" = "$TREE_REMOVAL_RECEIPT" ] \
+    || fail 'private-tree descriptor fixture receipt differs'
+unset tree_output
 
 run_stage 'release transaction fixture' 'build-release self-test: OK' \
     /usr/bin/timeout --foreground --signal=TERM --kill-after=5s 180s \

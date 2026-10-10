@@ -60,9 +60,7 @@ flutter/web/
 # The android JNI .so copies — build-android.sh / ndk_arm64.sh stage librustdesk.so
 # + libc++_shared.so into jniLibs at build time (mkdir -p'd, never committed).
 /flutter/android/app/src/main/jniLibs/
-# Build STATE (not cache): what host-provision.sh installed, so cleanup.sh can
-# reverse exactly that (R-B11). Lives outside ./online so a cache wipe cannot
-# strand the reversal.
+# Private VM/build lifecycle state and retained evidence, separate from input caches.
 /.harness-state/
 # Loop-local Claude Code working state (not part of the fork itself).
 .claude/

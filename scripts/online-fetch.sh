@@ -18,8 +18,8 @@
 # Run order (R-B10): acquire the authenticated VM bootstrap inputs once, then
 # online-fetch.sh launches the sole networked transaction in a disposable
 # ordinary-user QEMU VM. Only that guest owns a NIC and its Docker/BuildKit
-# daemons; build-* remains networkless and cleanup.sh retires operator-owned
-# build state.
+# daemons; build-* remains networkless and each creating transaction owns
+# its exact terminal cleanup.
 #
 # R-B12 requires each first pin be established by an audited, dual-sourced
 # bootstrap (publisher hash/signature cross-checked) and recorded in pins.env

@@ -11,10 +11,9 @@
 # ("cattle, not pets") — so every Windows build starts from the byte-identical
 # baseline and the recorded SHA-256 (R-B2) is reproducible.
 #
-# Run order (R-B10): host-provision.sh (qemu-system-x86 + session libvirt
-# client/driver pieces + swtpm/ovmf; never system libvirt default networking) ->
-# online-fetch.sh (stages the Win11 ISO + VS Build Tools offline layout) ->
-# provision-windows-vm.sh (once) -> build-windows.ps1 (per build) -> cleanup.sh.
+# R-B10 stages the authenticated inputs through online-fetch.sh. Golden
+# preparation and each build are admitted verifier-VM transactions, with
+# guest-local session libvirt and exact creator-owned terminal cleanup.
 #
 # NOT run as part of "fork creation" — a checked-in build artifact.
 set -euo pipefail
@@ -85,7 +84,7 @@ preflight() {
     [[ "$DOMAIN" =~ ^[A-Za-z0-9._-]+$ ]] \
         || die "HARNESS_PREFIX contains an invalid domain-name character"
     [ "${#DOMAIN}" -le 63 ] || die "golden domain name is too long"
-    [ -d /usr/share/OVMF ] || die "OVMF (UEFI firmware) not found — run host-provision.sh first (R-B11)"
+    [ -d /usr/share/OVMF ] || die "OVMF (UEFI firmware) is missing from the admitted verifier VM"
     [ -e /dev/kvm ] || die "/dev/kvm absent — Windows helper libguestfs inspection needs it"
     require_online_complete
     windows_helper_runtime_resolve "$ONLINE_DIR/build-images/win-helper.docker.tar.gz"

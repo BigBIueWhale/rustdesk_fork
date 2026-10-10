@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-8c21ec2537c72a020ebcf836768c9d8222f969913f939101b7fb6383abb004ef  requirements.html
+6e0f9d835a9a29e43ccd1afee673ae22e858a65a7b01a1106af0db71840b3b4d  requirements.html
 ```
 
 ## Current Verdict
@@ -68,17 +68,16 @@ Git history and `/tmp/privilege_securiry_deep_audit.md` archive changes, failed 
 Inherited upstream disclosure policies are deleted; Android/deployment guides link directly to the threat
 model. Whole-document and test classification remains OPEN.
 
-Windows §12.2 now states R-S11dh's verifier-VM execution boundary and R-S11cj's sole acquisition
-authority. The historical host-listener inventory and direct-host QEMU/preflight/cleanup recipe are
-deleted; pinned toolchains, immutable golden identity, offline media, independent passes, artifact
-integrity and exact joined retirement remain normative. This is specification correction only.
-**Windows provisioning and native acceptance remain OPEN:** the build and provision wrappers admit
-the verifier VM before repository helpers (`build-windows-vm.sh:14`, `provision-windows-vm.sh:32`),
-but provisioning still requires/launches a user-mode NIC (`provision-windows-vm.sh:411,677`) and
+Windows §12.2 and R-B8/R-B10/R-B11/R-B11a/§12.3 state the admitted verifier-VM boundary,
+sole acquisition authority, immutable host baseline and exact creator-owned retirement. Historical
+host inventories, direct-host recipes and package/network reversal exceptions are deleted.
+Pinned toolchains, golden identity, offline media, independent passes and artifact integrity remain.
+**Windows provisioning and native acceptance remain OPEN:** both wrappers admit the verifier VM
+before repository helpers (`build-windows-vm.sh:14`, `provision-windows-vm.sh:30`), but provisioning
+still requires/launches a user-mode NIC (`provision-windows-vm.sh:410,676`) and
 `win-guest-setup.ps1:72` runs `pip install brotli` without a pinned offline input. Those paths need
-reconciliation with the complete offline closure; no golden preparation or Windows execution ran for
-this documentation change. R-B8's inherited direct-host wording and R-B10's host-provision/scrub
-run order also await separate classification. Cold equality and whole-document restoration remain OPEN.
+reconciliation with the complete offline closure and native acceptance. Cold equality,
+whole-document restoration and the Windows harness replay below remain OPEN.
 
 A source/model check is supplementary unless it executes the behavior it claims to establish. Gates must not treat
 exact requirement, ledger, README, comment, test-name, other-verifier, or historical-receipt wording as product
@@ -1961,7 +1960,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `8c21ec2537c72a020ebcf836768c9d8222f969913f939101b7fb6383abb004ef  requirements.html`.
+Current normative specification SHA-256: `6e0f9d835a9a29e43ccd1afee673ae22e858a65a7b01a1106af0db71840b3b4d  requirements.html`.
 
 ### Current authority and source closure
 
@@ -9122,45 +9121,31 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   provenance, kernel extraction, KVM/libguestfs, golden inspection, Windows provisioning/building, cold artifacts,
   native behavior, independent reproduction, and external review remain open. The broader Ralph-loop goal remains
   active.
-- **R-S11dp/R-S11e-134 — generic cleanup Docker authority: SOURCE-ONLY CLOSURE.**
-  Default `scripts/cleanup.sh` has no Docker client token or daemon operation and does not
-  infer container/image ownership from a mutable name, tag, label, or prefix. Its no-argument
-  mode only reports that exact creating transactions own ephemeral cleanup; deliberately retained
-  acquisition/certification candidates require explicit owner reconciliation. The Docker branch
-  was deleted in `941f62b5`; R-S11dp and Appendix C #269 retain the binding threat and rule.
-  `scripts/verify-cleanup-authority.py` checks this source absence, and the earlier confined
-  source transaction did not invoke generic cleanup or a live Docker daemon. This is not a
-  native destructive-action test, proof about unrelated host state, or release-artifact evidence.
-  R-S11dq and R-B11/R-B11a govern the separate process/domain/path and explicit manifest-backed
-  cleanup surfaces; cold artifacts, installed/device behavior, independent reproduction, and
-  external review remain open.
-- **R-S11dq/R-S11e-135 — generic cleanup process/domain/path ownership: SOURCE
-  IMPLEMENTED; ISOLATED DEFAULT-PATH BEHAVIOR ACCEPTED.**
-  The former no-argument path acted on caller-writable PID files, a shared
-  session-libvirt domain-name prefix, and a symlinkable overlay pathname.
-  Those values did not prove process generation, domain creator, or file
-  identity and could have signaled or deleted another owner's state. Git
-  retains the removed branch and its attribution at `1960644e`.
-  This is an authority-risk finding, not evidence that such damage occurred
-  or that host RustDesk, firewall, or network state changed.
+- **R-S11dp/R-S11e-134 — generic cleanup Docker authority: retired endpoint;
+  real creator/native release obligations OPEN.**
+  `scripts/host-provision.sh` and `scripts/cleanup.sh` are deleted in full:
+  host package installation/reversal, ambient host-Docker queries and
+  system-libvirt network control have no supported authority. A plain package
+  manifest cannot prove current process, network, package or filesystem ownership.
+  Exact admitted VM transactions retain and retire their own resources.
+  R-S11dp/R-S11dq, R-B8/R-B10/R-B11/R-B11a, §12.3 and Appendix C #269–#270 now
+  preserve that boundary without a host execution or reversal exception.
 
-  Current `scripts/cleanup.sh` routes no arguments to a report-only function.
-  It contains no Docker client, guessed PID/process signal, session-libvirt
-  enumeration/control, or generic overlay deletion. Exact creating
-  transactions own ephemeral retirement; ambiguous legacy residue requires
-  operator reconciliation. Explicit manifest-backed network and package
-  reversal remain separate, and R-S11dr governs golden-domain ownership.
-  `scripts/verify-cleanup-authority.py` retains a focused source invariant
-  but no longer treats requirement/README/ledger wording or its own in-memory
-  mutations as behavioral proof. Clean pushed `16e61ad4` passed the 82-second
-  no-NIC VM authority smoke: UID 4000 ran the real no-argument script against
-  a live decoy process, legacy PID/socket files, and a symlink-targeted overlay;
-  all survived. The outer listener audit found no harness addition or process
-  drift, cleanup joined, and no `run.*`/overlay remains. Retained serial SHA-256:
-  `303be206cc7bfa2a83c8808876814032625a9358797a1ce277b32dd68a47a282`.
-  This fixture is not native session-libvirt/Windows lifecycle, a destructive
-  host-cleanup test, cold artifacts, independent reproduction, or external review;
-  those obligations remain open.
+- **R-S11dq/R-S11e-135 — process/domain/path retirement: exact creators retained;
+  focused current VM integration pending, broader native/release OPEN.**
+  The retired reporter's `verify-cleanup-authority.py`, verifier wiring,
+  payload admission/hash entries and decoy default-path fixture are deleted.
+  Its checker required explicit host-mutation modes and the fixture exercised
+  only a report-only endpoint; neither establishes current creator retirement.
+  Historical default-path evidence remains in Git and the audit.
+  Current creating transactions and their real admission, publication,
+  workspace deletion, cancellation, listener and terminal-cleanup tests remain.
+  The existing no-NIC authority smoke checks modified shell syntax inside the
+  VM as numeric UID/GID 4000, then exercises those actual supported boundaries.
+  No host package, service, network, RustDesk or legacy manifest is touched.
+  Native Windows/session-libvirt and installed service behavior, complete
+  canonical/signing/golden inputs, cold artifacts, independent reproduction
+  and external review remain OPEN.
 - **R-S11dr/R-S11e-136 — Windows golden exact libvirt-domain lifecycle — SOURCE
   IMPLEMENTED; CURRENT NATIVE SESSION-LIBVIRT/WINDOWS-VM EVIDENCE OPEN.**
   `scripts/provision-windows-vm.sh` validates its fixed name and kernel-random

@@ -286,11 +286,8 @@ assert_offline() {
     log "offline guard OK"
 }
 
-# assert_no_build_host_network_residual: the Windows VM harness must not run on
-# a host where the old system-libvirt default NAT network is still present. That
-# network creates virbr0, host DNS/DHCP listeners, and usually enables IPv4
-# forwarding. The cleanup path is manifest-gated in cleanup.sh; this check is the
-# artifact/provision preflight that refuses to build from a dirty host.
+# Windows callers prove verifier-VM admission before loading this helper. Check
+# that VM's nested-build environment; residue is failure, never cleanup authority.
 assert_no_build_host_network_residual() {
     require_cmd ip ss
     local dirty=()
@@ -332,7 +329,7 @@ assert_no_build_host_network_residual() {
 
     if [ "${#dirty[@]}" -ne 0 ]; then
         [ -z "$listeners" ] || printf '%s\n' "$listeners" >&2
-        die "dirty build-host network state (${dirty[*]}); run scripts/cleanup.sh --build-host-network with privileges if harness-created, or reconcile manually before Windows VM artifact work (R-B11a/§12.2)"
+        die "unexpected networking inside the admitted Windows verifier VM (${dirty[*]}); refusing artifact work (R-B11a/§12.2)"
     fi
 
     log "build-host network preflight OK (no virbr0, no libvirt default-network DNS/DHCP listener, no harness-attributable ip_forward)"

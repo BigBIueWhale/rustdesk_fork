@@ -7137,7 +7137,7 @@ done
     || fail 'Docker bundle is not one regular payload file'
 [ -f "$ENTRY_PREFLIGHT" ] && [ ! -L "$ENTRY_PREFLIGHT" ] \
     || fail 'verifier-entry preflight is not one regular payload file'
-for verify_source in verify.sh cleanup.sh verify-cleanup-authority.py \
+for verify_source in verify.sh \
     verify-release.sh build-release.sh \
     publish-github-release.sh finalize-release-set.py \
     verify-release-workspace-runtime.sh apple-conform-check.sh \
@@ -7586,6 +7586,12 @@ if [ "$MODE" = flutter-peer-presentation ]; then
 fi
 
 if [ "$MODE" = authority-smoke ]; then
+    for syntax_source in verify.sh lib.sh online-fetch.sh provision-windows-vm.sh; do
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+                /bin/bash -n "$VERIFY_REPO/scripts/$syntax_source" \
+            || fail "admitted shell source has invalid syntax: $syntax_source"
+    done
     publication_output="$(
         setpriv --reuid=4000 --regid=4000 --clear-groups \
             env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
@@ -7595,74 +7601,6 @@ if [ "$MODE" = authority-smoke ]; then
     [ "$publication_output" = 'publish-artifact-result self-test: ok' ] \
         || fail "artifact publication result differs: $publication_output"
     printf 'VERIFIER_VM_ARTIFACT_PUBLICATION=pass android_pair=atomic checksums=both tamper=refused cleanup=joined\n'
-    cleanup_source_output="$(
-        setpriv --reuid=4000 --regid=4000 --clear-groups \
-            /usr/bin/python3 -I -S \
-                "$VERIFY_REPO/scripts/verify-cleanup-authority.py" --repo "$VERIFY_REPO"
-    )" || fail 'numeric-nonroot cleanup source invariant failed'
-    [ "$cleanup_source_output" = 'verify-cleanup-authority: ok (source only)' ] \
-        || fail "cleanup source result differs: $cleanup_source_output"
-    cleanup_runtime_output="$(
-        setpriv --reuid=4000 --regid=4000 --clear-groups \
-            /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
-            /usr/bin/python3 -I -S - "$VERIFY_REPO" <<'PY'
-import pathlib
-import shutil
-import subprocess
-import sys
-import tempfile
-
-source = pathlib.Path(sys.argv[1])
-with tempfile.TemporaryDirectory(prefix="rustdesk-cleanup-", dir="/tmp") as root_name:
-    root = pathlib.Path(root_name)
-    scripts = root / "scripts"
-    scripts.mkdir(mode=0o700)
-    for name in ("cleanup.sh", "lib.sh"):
-        shutil.copyfile(source / "scripts" / name, scripts / name)
-    state = root / ".harness-state"
-    winvm = state / "winvm"
-    winvm.mkdir(parents=True)
-    protected = root / "protected"
-    protected.mkdir()
-    sentinel = protected / "sentinel.qcow2"
-    sentinel.write_bytes(b"retained")
-    (state / "overlays").symlink_to(protected, target_is_directory=True)
-    monitor = winvm / "monitor.sock"
-    monitor.write_bytes(b"retained")
-    child = subprocess.Popen(("/bin/sleep", "30"), stdin=subprocess.DEVNULL)
-    try:
-        pid_file = winvm / "old.pid"
-        pid_file.write_text(str(child.pid) + "\n", encoding="ascii")
-        result = subprocess.run(
-            ("/bin/bash", str(scripts / "cleanup.sh")),
-            cwd=root,
-            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C", "HOME": "/nonexistent"},
-            capture_output=True,
-            timeout=8,
-        )
-        if result.returncode or result.stdout or b"no generic ephemeral cleanup performed" not in result.stderr:
-            raise RuntimeError("default cleanup did not return its report-only result")
-        try:
-            child.wait(timeout=0.2)
-        except subprocess.TimeoutExpired:
-            pass
-        else:
-            raise RuntimeError("default cleanup signaled the decoy process")
-        if not pid_file.is_file() or not monitor.is_file():
-            raise RuntimeError("default cleanup deleted decoy PID/socket state")
-        if sentinel.read_bytes() != b"retained":
-            raise RuntimeError("default cleanup deleted the symlink-target overlay")
-        print("CLEANUP_DEFAULT_VM=pass uid=4000 process=preserved pidfile=preserved overlay=preserved source=checked cleanup=joined")
-    finally:
-        if child.poll() is None:
-            child.terminate()
-        child.wait(timeout=5)
-PY
-    )" || fail 'numeric-nonroot default cleanup decoy-state test failed'
-    [ "$cleanup_runtime_output" = \
-      'CLEANUP_DEFAULT_VM=pass uid=4000 process=preserved pidfile=preserved overlay=preserved source=checked cleanup=joined' ] \
-        || fail "cleanup default-path result differs: $cleanup_runtime_output"
-    printf '%s\n' "$cleanup_runtime_output"
 fi
 
 run_admission_output="$(

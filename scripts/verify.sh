@@ -291,18 +291,6 @@ else
   echo "  ok  R-S11ch/R-S11do all Windows helpers refuse root before repository code and use one exact fixed local-Docker authority, immutable non-root/no-pull/networkless/read-only-root/capability-free/resource-bounded execution, recursively-disabled narrow binds, descriptor-safe cleanup, a pinned derived libguestfs kernel, and exact read/write-only KVM golden inspection"
 fi
 
-echo "== (0f1) generic cleanup has no guessed process/domain/path ownership (R-S11dq/R-S11e-135) =="
-r_s11dq=
-if ! python3 scripts/verify-cleanup-authority.py --repo .; then
-  r_s11dq="$r_s11dq source-invariant-failed"
-fi
-if [ -n "$r_s11dq" ]; then
-  echo "  FAIL R-S11dq generic cleanup authority:$r_s11dq"
-  rc=1
-else
-  echo "  ok  R-S11dq source invariant: no generic process/domain/path teardown; VM runtime evidence is separate"
-fi
-
 echo "== (0f2) Windows golden exact libvirt-domain ownership (R-S11dr/R-S11e-136) =="
 r_s11dr=
 if ! python3 scripts/verify-windows-golden-domain-authority.py --repo .; then
@@ -14245,9 +14233,7 @@ fi
 # any build script / CI job / driver that ENABLES them: a `--features …hwcodec/vram…`, a
 # `--hwcodec`/`--vram` flag, a RUSTDESK_FEATURES/extra_features carrying them, or a
 # features.append('hwcodec'). Full-line comments (the R-R2b "dropped" notes) are exempt;
-# `nvram` (a libvirt term in cleanup.sh) is not a match. The desktop scripts dropped it
-# early, but the flutter mobile scripts + the CI matrix + build.py's own flags still
-# selected it until 575859a's follow-on — this locks the universal drop in tree-wide.
+# Word matching excludes unrelated identifiers such as `nvram`.
 #
 # The repository's ignored .harness-state/ root contains retained exact-source evidence
 # trees, not release inputs; scanning those copies makes the live verdict depend on
@@ -15446,13 +15432,6 @@ for f in scripts/build-windows-vm.sh scripts/provision-windows-vm.sh scripts/ver
 done
 grep -qF -- 'local_docker run --rm --pull=never --network=none --read-only' scripts/windows-helper-runtime.sh \
   || rb_struct="$rb_struct windows:shared-helper-not-immutable-offline"
-if grep -Eq 'provision_pkg[[:space:]]+libvirt-daemon-system' scripts/host-provision.sh; then
-  rb_struct="$rb_struct host-provision:installs-system-libvirt"
-fi
-grep -qF 'assert_no_system_libvirt_network' scripts/host-provision.sh || rb_struct="$rb_struct host-provision:no-libvirt-network-audit"
-grep -qF 'forbid_system_libvirt_package' scripts/host-provision.sh    || rb_struct="$rb_struct host-provision:no-system-libvirt-package-guard"
-grep -qF 'non_loopback_listeners' scripts/host-provision.sh           || rb_struct="$rb_struct host-provision:no-new-listener-audit"
-grep -qF 'require_cmd ip ss' scripts/host-provision.sh                || rb_struct="$rb_struct host-provision:no-ip-ss-preflight"
 grep -qF 'assert_no_build_host_network_residual' scripts/lib.sh       || rb_struct="$rb_struct lib:no-build-host-network-residual-helper"
 grep -qF 'virbr0 exists' scripts/lib.sh                               || rb_struct="$rb_struct lib:no-virbr0-residual-check"
 grep -qF '192[.]168[.]122[.]1:53|0[.]0[.]0[.]0%virbr0:67' scripts/lib.sh || rb_struct="$rb_struct lib:no-libvirt-listener-residual-check"
@@ -15460,11 +15439,6 @@ grep -qF 'net.ipv4.ip_forward=1' scripts/lib.sh                       || rb_stru
 for f in scripts/build-windows-vm.sh scripts/provision-windows-vm.sh scripts/verify-windows-golden.sh; do
   grep -qF 'assert_no_build_host_network_residual' "$f" || rb_struct="$rb_struct ${f##*/}:no-build-host-network-preflight"
 done
-grep -qF 'provision_pkg libvirt-daemon-driver-qemu' scripts/host-provision.sh || rb_struct="$rb_struct host-provision:no-session-qemu-driver"
-grep -qF 'provision_pkg libvirt-daemon ' scripts/host-provision.sh           || rb_struct="$rb_struct host-provision:no-session-libvirt-daemon"
-grep -qF 'cleanup_build_host_network' scripts/cleanup.sh              || rb_struct="$rb_struct cleanup:no-build-host-network-cleanup"
-grep -qF 'harness_installed_pkg libvirt-daemon-system' scripts/cleanup.sh || rb_struct="$rb_struct cleanup:no-manifest-gated-system-libvirt-cleanup"
-grep -qF -- '--build-host-network' scripts/cleanup.sh                 || rb_struct="$rb_struct cleanup:no-build-host-network-flag"
 if grep -qF 'apt-get' scripts/build-windows-vm.sh scripts/provision-windows-vm.sh scripts/verify-windows-golden.sh; then
   rb_struct="$rb_struct windows:networked-helper-apt-get-present"
 fi

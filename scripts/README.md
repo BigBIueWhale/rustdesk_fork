@@ -1,9 +1,10 @@
 # Build harness (`scripts/`)
 
 The checked-in, offline-by-construction build harness for the hardened fork
-(requirements.html §12, R-B8–R-B12). It reproduces upstream 1.4.7's official build
-for each target (R-B7) with **exactly two deltas and no others**: no code-signing,
-and the build runs off GitHub-hosted runners on one Linux x86_64 box (R-B2).
+(requirements.html §12, R-B8–R-B12). An ordinary-user Linux x86_64 host launches
+authenticated disposable VMs; build tools and container daemons execute only
+inside them. Target recipes use the pinned toolchains and require R-B2's
+independent cold artifact comparisons without GitHub-hosted runners.
 
 ## Discipline (R-B9 — "one mode, the good one")
 
@@ -24,16 +25,14 @@ Every script is held to the same bar as the rest of the spec:
 
 ## Run order (R-B10)
 
-```
-host-provision.sh   # once  — additive host runtimes only (R-B11)
-online-fetch.sh --verifier-vm-inputs # once — authenticate inert VM/bootstrap bytes; no Docker
-online-fetch.sh     # once, or on pins change — outbound-only disposable VM; no host Docker/listener
-smoke-verifier-vm-authority.sh     # ordinary-user, -nic none; all build/container execution is inside
-build-release.sh    # VM-internal transaction; direct host production invocation refuses (full transport open)
-build-debian.sh / build-android.sh # admitted VM workloads only
-provision-windows-vm.sh + build-windows.ps1   # nested zero-interface KVM Win11 workload (§12.2)
-cleanup.sh          # explicit manifest-backed host reversal (R-B11)
-```
+Authenticate inert bootstrap bytes with `online-fetch.sh --verifier-vm-inputs`,
+then acquire the complete canonical inputs through `online-fetch.sh` in its
+outbound-only VM. Build execution requires the separate no-NIC verifier VM.
+`build-release.sh`, Debian/Android builders, and Windows golden/build wrappers
+are admitted VM workloads; they refuse direct host invocation. The default
+`smoke-verifier-vm-authority.sh` exercises authority mechanics and fixtures,
+not a production release. Full release transport, canonical inputs and cold
+artifact acceptance remain tracked in [HARDENING_STATUS.md](../HARDENING_STATUS.md).
 
 Build environments are **ephemeral instances of an immutable, pinned template**
 (digest-pinned Docker image / golden VM image): spin up a throwaway instance, run
@@ -41,16 +40,12 @@ the validated flow, copy out the artifact + its SHA-256, destroy it. No state
 carries between builds (§12.1) — that is what makes "one mode, no drift"
 structural, not aspirational.
 
-Container processes and images are owned by the exact transaction that creates
-them. `cleanup.sh` does not enumerate or remove daemon-global containers or
-images by a shared name prefix; intentionally retained maintenance candidates
-remain explicit acquisition state rather than guessed cleanup targets.
-The same rule applies to processes, session-libvirt domains, and filesystem
-paths: the default cleanup mode does not infer ownership from a PID file, a
-domain-name prefix, or a directory pathname. Current build transactions close
-their exact retained process/domain/state identities themselves. Legacy
-unowned leftovers require explicit operator reconciliation rather than a
-best-effort destructive sweep.
+Each creating transaction retains and retires its exact process, container,
+domain UUID, filesystem and channel identities before success. Names, labels,
+PID files, prefixes and package lists confer no cleanup authority. Unowned
+leftovers remain unresolved; repository tooling cannot adopt them or alter
+host packages, services or networking. Intentionally retained maintenance
+candidates remain explicit acquisition state owned by their exact producer.
 
 ## Files
 
@@ -61,8 +56,6 @@ best-effort destructive sweep.
 | `online-fetch.sh` + `online-fetch-vm.sh` | The one networked acquisition entry → git-ignored `./online/inputs`, every artifact SHA-256-checked (R-B10). The sibling `./online/retired` root shares one rootless Landlock/seccomp-confined virtiofs cache-state mount so the required flagged replacements remain atomic; explicitly requested trial artifacts are isolated under `./online/candidates` and are never part of the canonical build-input closure. Systemd-image cache and bounded results use two narrow 9p exports. The bootstrap mode authenticates the pinned VM/base, guest Docker, and uninstalled virtiofsd-package bytes. Every other mode refuses root and dirty/non-master source, enters ordinary-user seccomp-sandboxed QEMU with outbound-only user networking and no host forwarding/listener, reconstructs the exact Git bundle, and gives VM-local Docker no other host filesystem authority. The focused mode executes real `RENAME_NOREPLACE`/`RENAME_EXCHANGE` operations and a non-root guest-bridge HTTPS container; it does not substitute for the complete cache transaction. | **VM source implemented; focused runtime and complete cache execution pending** |
 | `build-release.sh` | Non-root release transaction admitted only inside the common no-NIC verifier VM. The parent performs no Docker/image-provenance/container operation; it passes commit-bound content IDs to independently authenticating VM children and uses the retained-descriptor helper directly for its exact current-principal workspace. The executable A/B/publication and hostile-mode cleanup fixtures pass. | **Parent authority done; full VM input/output transport and cold release open** |
 | `apple-conform-check.sh` | Fixed macOS-arm64, macOS-x86_64, and iOS-arm64 source-conformance transaction admitted only as the designated nonroot principal inside the authenticated no-NIC verifier VM. Every immutable-image provenance/launch operation uses the guest-private Unix Docker channel with pre/post daemon-generation replay; there is no host-Docker fallback. The authority-only entry test touches no source/vendor/output input and is not the Apple workload. | **VM authority entry green; current full source transaction and native Apple evidence open** |
-| `host-provision.sh` | Additive, idempotent host runtimes (docker pre-existing; qemu-system-x86 plus session-libvirt client/driver pieces, swtpm, and OVMF for the Win VM). It refuses system libvirt default networking, audits for virbr0/dnsmasq/IP-forwarding, installs only what's absent, and records to `.harness-state/provisioned` (outside `./online`, per R-B11's parenthetical). | **Done** |
-| `cleanup.sh` | Explicit manifest-backed host teardown — default performs no mutation because ephemeral process/domain/path state belongs to its creating transaction; `--build-host-network` manifest-gates old harness-created system-libvirt default-network teardown; `--reverse-host` removes only recorded packages, fail-closed if the manifest is absent (R-B11/R-B11a/R-S11dp/R-S11dq). | **Done** |
 | `stage-debian-systemd-runtime-libs.sh` + `smoke-verifier-vm-authority.sh --debian-systemd-lifecycle` | The common no-NIC verifier VM verifies the exact devcheck archive, exercises one numeric-nonroot resource-bounded two-mount library-staging profile, joins VM-root Docker, then runs the final A==B `.deb` under real Debian systemd. The fast authority smoke uses the same launch function with a private fixture and truthfully reports `workload=unexecuted`; the exact artifact scenario is mandatory before release publication. | **VM profile exercised; current final artifact run open** |
 | `test-android-owner-state.sh` + `smoke-verifier-vm-authority.sh --android-owner-tests` | The focused no-NIC VM loads the certified Android builder into guest-only Docker and compiles seven exact production Kotlin state classes together with standard-source-set executable tests using a VM-local read-only copy of the digest-pinned Kotlin 2.0.21 compiler closure already present in the sealed Gradle seed. The copy is required because this Kotlin compiler memory-maps classpath JARs while the authenticated virtiofs share does not support that operation; every source and copied JAR is verified before execution and the sealed authority is re-inventoried afterward. Fifteen scenarios and 305 assertions cover closed connection types, capture/input ABA, bounded FIFO retirement, status/startup generations and exhaustion, controlled/outgoing voice ownership, cross-domain teardown, and Activity invalidation in seconds. This is real production-state-machine execution, not source-string evidence; it does not exercise Android framework, Activity/service, MediaProjection, AudioRecord, packaging, or device behavior. | **Focused pure-Kotlin behavior wired; packaged native/device evidence open** |
 | `smoke-flutter-peer-presentation.sh` | Exact-commit full Linux/X11 peer-presentation transaction: admitted only as the designated nonroot principal inside the authenticated no-NIC verifier VM, with every image query, container launch/inspection/log/cleanup operation routed through its fixed guest-only Docker client, private Unix socket, and root-owned read-only configuration. It constructs a minimal digest-bound AT-SPI runtime from two exact offline Debian packages without installation or maintainer scripts and proves real private D-Bus/AT-SPI activation before the expensive build. The real workload builds the release Rust core/Flutter runner offline, isolates controlled peer/viewer state on one owned `--network=none` loopback namespace, authenticates through the real prompt, correlates capture/encode/TCP/decode/Flutter-texture/X11 pixels, requires bounded focus recovery on the same socket, and joins exact teardown. It publishes no host port and proves only one Linux/X11 peer cycle—not Android/Windows/Apple, installed service, cross-version/soak, or release artifacts. | **VM-only entry wired; current full workload/input transport open** |
@@ -70,12 +63,8 @@ best-effort destructive sweep.
 | `build-android.sh` | Android aarch64 app `.apk` in digest-pinned `ubuntu:24.04`, offline: cargo-ndk (ndk_arm64.sh, features flutter — software codec) + `flutter build apk`, then apksigner v2/v3 with the stable RSA-4096 local key (password via file, R-B2). It runs only as an admitted no-NIC verifier-VM workload; direct passes use independent coexisting exact-commit trees, each signed APK/checksum pair is privately validated and compared, and exact workspace retirement precedes descriptor-bound no-clobber publication. No `androidTest` APK is currently built or published by this path. | **VM authority source done; certified workload/release and Android instrumentation evidence open** |
 | `gen-android-keystore.sh` | One-time creation of the permanent local Android signing identity. It admits only the authenticated no-NIC verifier VM (no host-Docker fallback), refuses root, alias/image overrides, existing output, and non-private/symlinked paths; uses the immutable Android builder for separately bounded non-root/networkless password generation, key generation, and inspection; passes passwords only by read-only file; and synchronizes atomic no-clobber publication from a private same-filesystem stage. Its authority self-test exits before any signing path or identity access. | **Source done; one-time run open** |
 | `windows-helper-runtime.sh` | One least-authority runtime shared by Windows build, golden provision, and golden inspection. All three callers first authenticate the no-NIC verifier VM; helper provenance and launches use only its exact guest client, private Unix socket, and root-owned read-only configuration with pre/post generation proof. The runtime fixes the immutable helper image/archive/kernel, confines every operation to numeric-nonroot no-pull/network/read-only-root/capability-free/resource-bounded execution with canonical nonrecursive binds, and gives only exact-golden inspection one `/dev/kvm:rw` grant. | **VM authority and actual small-profile probe done; certified archive/KVM/Windows artifact runs open** |
-| `provision-windows-vm.sh` | Golden Win11 KVM template (R-B8/§12.2): swtpm vTPM 2.0 + OVMF UEFI, unattended install to the pinned toolchain, evergreen ISO/VS-BuildTools SHA-pinned offline layout (R-B12c). Per-build = CoW overlay. | **Done** |
+| `provision-windows-vm.sh` | Verifier-VM-admitted Windows golden preparation with guest-local session libvirt, UEFI and captured pinned installers. Per-build guests use fresh CoW overlays. Provisioning's remaining user-mode NIC and unpinned Brotli acquisition must be reconciled with the offline contract. | **Offline provisioning and native acceptance open** |
 | `build-windows.ps1` | Windows x86_64 `.exe`/`.msi` inside the KVM guest (PowerShell, $ErrorActionPreference=Stop): asserts pinned versions, vendored-offline, wraps `build.py --flutter` (software codec, R-R2b) + WiX v4 MSI, unsigned + SHA-256 (R-B2). | **Done** |
-
-The build-script *bodies* encode upstream's exact 1.4.7 build commands (taken
-verbatim from `build.py` / `flutter-build.yml`, R-B7) and are authored in a
-dedicated step — faithful reproduction, no independent version choices.
 
 ## Pin Provenance (R-B12)
 

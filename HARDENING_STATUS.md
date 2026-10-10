@@ -850,14 +850,22 @@ closure follows from these component receipts.
   `android-rust-lifecycle-tests-run.rgJJi68kW2.serial.log`, SHA-256
   `039396d28230b8cccb89911dda44c3cd792cd06aade5bddacf7aa77ca3e78630`.
   This adds Linux empty-process coverage without a production correction.
-  A separate fresh-process case now exercises final-cleanup worker creation under
-  a real Linux soft thread limit: kernel EAGAIN, factory error, exact reservation
-  retirement, same-ID reuse, explicit remembered failure, restored limit and
-  joined recovery thread before production shutdown. Its first run reached the
-  expected exit observations, but aggregate acceptance failed in the existing map
-  control's native retirement assertion. The fixture now fences the producer's
-  actual X11 connection before effect checks and retains raw failure diagnostics;
-  corrected aggregate acceptance and attribution of that abort remain pending.
+  At `6a8a3113`, real Linux kernel EAGAIN refused final-cleanup worker startup.
+  The Remote factory returned an error and retired its exact reservation; the
+  same ID was reservable for FileTransfer, and Remote retry preserved the error.
+  Exact limit restoration and a joined recovery thread preceded production exit,
+  where the failed dispatcher remained explicit, wake/cursor stayed unstarted
+  and all five late factories refused. The same-artifact canonical transaction
+  passed three libtests and three actual exits in 242 seconds, with joined cleanup
+  and no host listener additions. Raw `android-rust-lifecycle-tests-run.QNHlfeaaHh.serial.log`,
+  SHA-256 `33bd6f32727bf5615872452881b544ba5fa8f3049d59bb42d37a1d28601dc5b1`.
+  The first `2d798188` transaction aborted in the existing map control. Its raw
+  `android-rust-lifecycle-tests-run.CXJUNVBUnn.serial.log` remains retained;
+  SHA-256 `2c07ad85643aff502bebd10d181daabf6a2174bbc9fc5252b5f4fd7bb536125f`.
+  The fixture now fences its actual producer Display before effect observations
+  and retains failure diagnostics, with all retirement assertions unchanged.
+  That original abort's exact phase/cause remains OPEN; one corrected pass does
+  not establish attribution or exhaustive control reliability.
   Other worker spawn failures/panic, OS inhibition and broader shutdown remain OPEN.
   The earlier physical regression at `6a675303` passed; macOS recorded CapsLock
   retirement is source-corrected. Three Apple anchors compiled at `c5d0984a`;

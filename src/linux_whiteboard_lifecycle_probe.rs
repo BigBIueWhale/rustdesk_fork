@@ -292,7 +292,7 @@ async fn client_generation() -> ResultType<()> {
         register_whiteboard, unregister_whiteboard, update_whiteboard_cursor, WhiteboardClientOwner, Cursor};
     let case = std::env::var("WHITEBOARD_PROBE_CLIENT_GENERATION")?;
     if case == "launch-owner-loss" { return launch_owner_loss().await; }
-    ensure!(matches!(case.as_str(), "shutdown" | "replacement" | "withdrawal" | "helper-close" | "root-shutdown" | "parent-loss"), "invalid client case");
+    ensure!(matches!(case.as_str(), "shutdown" | "replacement" | "withdrawal" | "helper-close" | "helper-crash" | "root-shutdown" | "parent-loss"), "invalid client case");
     let generations = if matches!(case.as_str(), "shutdown" | "root-shutdown" | "parent-loss") { 1 } else { 2 };
     ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)
         && probe_whiteboard_helper() == (None, false), "client fixture is not initially empty");
@@ -305,7 +305,7 @@ async fn client_generation() -> ResultType<()> {
     let exercise = async {
         let mut last_pid = 0;
         for expected_generation in 1..=generations {
-            let ids = if expected_generation == 1 || case == "helper-close" { [7, 8] }
+            let ids = if expected_generation == 1 || matches!(case.as_str(), "helper-close" | "helper-crash") { [7, 8] }
                 else if case == "replacement" { [9, 10] } else { [11, 12] };
             let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
             loop {
@@ -341,6 +341,38 @@ async fn client_generation() -> ResultType<()> {
                 std::io::stdout().flush()?;
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 bail!("observer did not terminate the exact active parent");
+            } else if expected_generation == 1 && case == "helper-crash" {
+                ensure!(probe_whiteboard_client_state() == ("Running", expected_generation, true, 2)
+                    && probe_whiteboard_helper() == (Some(pid), false),
+                    "helper crash missed its active Running generation");
+                println!("WHITEBOARD_CLIENT_HELPER_LOSS_READY generation=1 pid={pid} address_hex={}",
+                    hex::encode(probe_whiteboard_helper_endpoint()?));
+                std::io::stdout().flush()?;
+                observer_ack(b"killed\n").await?;
+                let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+                loop {
+                    if probe_whiteboard_client_state() == ("Idle", 0, false, 2)
+                        && probe_whiteboard_helper() == (None, false)
+                        && probe_whiteboard_helper_exit() == Some((expected_generation, false)) { break; }
+                    ensure!(tokio::time::Instant::now() < deadline,
+                        "production owner did not join/reap its failed helper: state={:?} helper={:?}",
+                        probe_whiteboard_client_state(), probe_whiteboard_helper());
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+                println!("WHITEBOARD_CLIENT_CRASH_REAPED generation=1 pid={pid} status=failed owner=production phase=Idle task=joined connections=2");
+                std::io::stdout().flush()?;
+                let deadline = tokio::time::Instant::now() + Duration::from_millis(500);
+                while tokio::time::Instant::now() < deadline {
+                    ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 2)
+                        && probe_whiteboard_helper() == (None, false),
+                        "retained crash demand started an unsolicited successor");
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+                println!("WHITEBOARD_CLIENT_IDLE case=helper-crash retired_generation=1 observation_ms=500 connections=2");
+                std::io::stdout().flush()?;
+                observer_ack(b"idle\n").await?;
+                for id in ids { register_whiteboard(id); register_whiteboard(id); }
+                continue;
             } else if expected_generation == 1 && case == "helper-close" {
                 // Four moves above leave no pending cursor; observe transport loss without another write.
                 tokio::time::sleep(Duration::from_millis(350)).await;

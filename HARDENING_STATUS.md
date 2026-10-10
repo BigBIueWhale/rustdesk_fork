@@ -12086,31 +12086,27 @@ or fix for that defect.
 **Current disposition: root-owned launch/task/helper implemented; named Linux healthy,
 replacement/withdrawal, quiet EOF, active root drain, authenticated parent loss, late
 unpublished-helper retirement and nine regressions passed. Full lifecycle OPEN.**
-`src/whiteboard/client.rs` uses one mutex-owned `WhiteboardClientState`
-containing registrations, the generation sender, launch/task handles, helper and
-Idle/Starting/Running/Stopping phase. Checked reservation prevents wraparound; duplicate
-Starting/Running demand shares one task. Sender and initial registrations publish under
-that lock. The existing-runtime task installs its terminal guard first, diagnoses error/panic
-and ignores stale finalizers. The guard retires admission; the root joins and releases generations.
+`src/whiteboard/client.rs` locks registrations, sender, launch/task handles, helper and
+Idle/Starting/Running/Stopping in one `WhiteboardClientState`. Checked reservation prevents
+wraparound; duplicate Starting/Running demand shares one task. Sender/snapshot publication is
+atomic. The existing-runtime task installs its guard first, diagnoses error/panic and rejects
+stale finalizers. The guard retires admission; the root joins/releases generations.
 
-Idle stop proves no locked registrations and retires the exact Running sender. Explicit demand
-crossing committed stop, including refused Bind, latches one successor only while demand remains.
-Startup/transport/sender/task/helper failure and retained registrations never self-retry. The
-nonblocking queue caps commands at 64 and registrations at 16; only cursor overflow is lossy.
-Required-command refusal retires sender/phase. The two-command hot path uses fixed storage
-and a borrowed sender. Token endpoints, launch/parent proof, parent-death binding and deadline
-writes remain; split globals, detached threads, nested runtimes and automatic retry are absent.
+Idle stop proves empty locked demand. Demand crossing committed stop, including refused Bind,
+latches one successor only while demand remains. Failures and retained registrations never
+self-retry. Nonblocking caps:64 commands/16 registrations; only cursor overflow is lossy.
+Required-command refusal retires sender/phase; the two-command hot path uses fixed storage and
+a borrowed sender. Token/parent proof, parent-death binding and deadline writes remain.
+Split globals, detached threads, nested runtimes, `CHILD_PROCESS` and tray launching are absent.
 
-**Ownership topology:** registration reserves rather than spawns. The existing
-`direct_service.rs` root polls `WhiteboardClientOwner`; one retained `spawn_blocking`
-job creates off the executor and publishes its helper under the same admission/generation lock.
-Refused handoff retains and retires the helper inside that job before returning a process-free status.
-Unix `Child::try_wait` reaps; Windows retains the creation-time kill-on-close job/process
-through process exit and zero-job accounting. `CHILD_PROCESS` and the tray launcher are absent.
-Task finalization cannot clear its handle or start a successor. Root shutdown closes registration
-and cancels before listener drain, then joins whiteboard before final shutdown. The three-second
-deadline initiates cancellation/termination; uncertainty retains handles/Stopping and refuses
-replacement. Unexpected root drop refuses replacement; known-helper drop and full native
+**Ownership:** registration reserves; `direct_service.rs` polls `WhiteboardClientOwner`.
+One retained `spawn_blocking` job creates/publishes under the admission/generation lock;
+refused handoff retires its helper before returning a process-free status. Unix `try_wait`
+reaps; Windows retains its creation-time kill-on-close job/process through exit and zero-job
+accounting. Finalization cannot clear its handle or start a successor. Root shutdown closes
+registration/cancels before listener drain and joins whiteboard before final shutdown.
+The3s deadline initiates cancellation/termination; uncertainty retains handles/Stopping and
+refuses replacement. Unexpected Drop refuses replacement; known-helper Drop and full native
 failure cleanup remain unproved.
 
 **Native failing baseline:** source `7e437223dd367191719e322989db7297b8fcfbf7`,
@@ -12217,28 +12213,30 @@ exit or complete controller join. Known-helper root Drop, other phases/platforms
 Remote/PAKE and resource acceptance remain OPEN.
 
 **Accepted executable state/handle subset:** source `df9daec4cc261bfec574afa0c4f33536b6d99438`,
-`--android-rust-lifecycle-tests --whiteboard-client`
-passed 9 tests, 0 failed/ignored, 598 filtered, 0.00s execution; probe feature disabled.
-Seven state/real-channel cases cover duplicate demand, successor/withdrawal, failure without
-self-retry/later explicit retry, stale finalization, fixed64/65 cursor-only loss/required-command
-retirement, closed sender and generation exhaustion. Two actual Tokio-handle cases prove external
-join after task cancellation and retention of started blocking work through abort until observed.
-No OS helper is launched. Library-test build152s / VM225s; unchanged artifact
+`--android-rust-lifecycle-tests --whiteboard-client`: 9 passed, 0 failed/ignored,
+598 filtered, 0.00s; probe disabled, no OS helper. Seven state/channel cases cover duplicate
+demand, successor/withdrawal, failure without self-retry/later explicit retry, stale finalization,
+64/65 cursor-only loss/required-command retirement, closed sender and generation exhaustion.
+Two real Tokio-handle cases cover external join after cancellation and started blocking-work
+retention through abort. Build152s / VM225s; unchanged artifact
 `eaedf4653366f2e038ded44dc0175575f12926f21f5579a5c85bd4adb6cee566`.
 Serial `android-rust-lifecycle-tests-run.nasGHxZcO2.serial.log` SHA-256
 `e8d3c27965aaa137747f797ba360b9db1689f36cbc4202d0ac40cac96142e779`.
-Current `ce2f07acf07beb0e4ff89fae315f8fd7cdfb8d15` reran this unchanged nine-test shard with
-the probe feature disabled: 9 passed, 0 failed/ignored, 598 filtered, 0.00s execution; VM215s/build150s.
+`ce2f07acf07beb0e4ff89fae315f8fd7cdfb8d15` reran the unchanged shard: same counts,
+0.00s, probe disabled; VM215s/build150s.
 Unchanged artifact `c0819074157d14c015174da766f97cdc43e2e9c5e320bae0013c7b04830fc49c`;
 serial `android-rust-lifecycle-tests-run.7GY33ktZnE.serial.log`,69782bytes, SHA-256
 `b0480246664a5845966bc993c006fa341e0e56ee6699dbb3b287ead9734a8124`.
 
-The 526-line `scripts/verify-whiteboard-client-lifecycle.py` and its shared/Apple calls
-are deleted. Its source substring/order/count assertions and 42 in-memory substitutions
-did not execute a task, channel admission, helper, OS principal or cleanup. The full-root
-`r_s11ho_` Rust test command remains. Historical source-only receipts establish no native
-acceptance. Original review and intermediate incidents remain in Git history at `043a6aa6`
-and the R-S11ho audit entry in `/tmp/privilege_securiry_deep_audit.md`.
+Deleted the526-line `scripts/verify-whiteboard-client-lifecycle.py` and shared/Apple calls:
+wording/count assertions and42 substitutions exercised no task, admission, helper, OS principal
+or cleanup. The executable `r_s11ho_` command remains; source receipts prove no native acceptance.
+Review/history: Git `043a6aa6` and R-S11ho in `/tmp/privilege_securiry_deep_audit.md`.
+
+**Pending abrupt-helper-loss subset:** the Linux-only fixture/observer now requests exact
+helper-pidfd SIGKILL after two-owner pixels, then requires live-parent production reap/join,
+native window/endpoint removal,500ms Idle with retained demand and explicit same-ID retry.
+Guest/host receipt gates are mandatory. No native result yet; owner Drop remains OPEN.
 
 **Still required:** complete current full-root/task/helper suites and native Windows/macOS/Linux
 multi-connection, repeated-enable, every-phase demand, committed-stop stress/races, explicit

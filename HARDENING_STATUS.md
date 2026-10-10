@@ -10424,8 +10424,8 @@ Windows VM therefore remain mandatory runtime evidence; source and focused non-V
 
 ### R-B9/R-S11gm/R-S11e-225 — release-parent workspace principal and retained authority
 
-**Principal and complete-tree retention source-corrected; current native acceptance
-pending; cold release remains OPEN.** The release parent has
+**Principal and complete-tree retention corrected; isolated native helper/reset/
+terminal-cleanup fixtures pass; cold release remains OPEN.** The release parent has
 no container launches, Docker socket, image
 provenance request, capability grant, root fixture, or ownership-conversion
 path. Every persistent release-workspace object must remain owned by the
@@ -10450,9 +10450,18 @@ directories and mode-0000 files, internal regular/symlink hardlinks, an unchange
 symlink target, and pre-mutation refusal of inventory, directory identity, mode and
 hardlink changes. Acquisition rejects wrong root identity/mode, external links and a
 non-traversable directory; descriptor inventories must close exactly. The VM runtime
-requires the helper's exact successful receipt before its joined-cleanup result. These
-candidate fixtures have not yet executed; same-UID quiescence remains a prerequisite,
-not hostile same-UID race containment.
+requires the helper's exact successful receipt before its joined-cleanup result.
+Same-UID quiescence remains a prerequisite, not hostile same-UID race containment.
+
+Candidate `da0c0d699cf195da23a43b0d523327be641e032e` (tree
+`789ae54c69e1b0d762b36d6e0d87fa985a033fd4`) passed the actual helper fixtures twice
+and the actual release/reset/publisher transactions as UID/GID4000 in the authenticated
+no-NIC Debian VM. The 104-second whole transaction exited0, kept all23 frozen inputs
+unchanged, added no host listener and joined cleanup with no run/PID/socket residue.
+Raw evidence: `.harness-state/verifier-vm/authority-smoke-run.lyIrqHPwBB.serial.log`,
+86271B, SHA-256 `582dccccf4b26124b8b335550ec8d3fd2d044bb23edda5fd5309ec98f18c0ce5`.
+The preceding run failed only the directory-handoff setup permissions and is retained
+under `.harness-state/verifier-vm/retained-owned-removal-y6klmlP0U4`; it is not acceptance.
 
 The current ordinary-user reset fixture behaviorally rejected an external
 hardlink without changing its target, handled internal hardlinks plus

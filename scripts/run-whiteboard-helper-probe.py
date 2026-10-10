@@ -185,6 +185,8 @@ def observe_owner(executable, environment, display, server):
                             listener.bind(active[2])
                         completed.append(active[0])
                         active = None
+                        owner.stdin.write(b"retired\n")
+                        owner.stdin.flush()
                     elif text == ("WHITEBOARD_HELPER_WRONG_PARENT=pass same_image=true role=server "
                                   "copied_token=true outcome=preproof-eof child=joined"):
                         require(active is not None and active[0] == "shutdown" and wrong_parent == 0,

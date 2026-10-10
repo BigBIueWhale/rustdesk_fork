@@ -67,15 +67,20 @@ async fn wrong_parent() -> ResultType<()> {
     Ok(())
 }
 
+async fn observer_ack(expected: &'static [u8]) -> ResultType<()> {
+    tokio::task::spawn_blocking(move || -> ResultType<()> {
+        let mut bytes = vec![0; expected.len()];
+        std::io::stdin().read_exact(&mut bytes)?;
+        ensure!(bytes == expected, "native window observer acknowledgment differs");
+        Ok(())
+    }).await??;
+    Ok(())
+}
+
 async fn exercise(child: &mut Child, case: &str, token: &str, postfix: &str, address: &str) -> ResultType<()> {
     println!("WHITEBOARD_HELPER_READY case={case} pid={} address_hex={}", child.id(), hex::encode(address));
     std::io::stdout().flush()?;
-    let acknowledgement = tokio::task::spawn_blocking(|| -> std::io::Result<[u8; 3]> {
-        let mut bytes = [0; 3];
-        std::io::stdin().read_exact(&mut bytes)?;
-        Ok(bytes)
-    }).await??;
-    ensure!(&acknowledgement == b"go\n", "native window observer did not acknowledge readiness");
+    observer_ack(b"go\n").await?;
 
     if case == "shutdown" {
         let mut peer = spawn_role("--server", vec![
@@ -138,6 +143,8 @@ pub async fn run() -> ResultType<()> {
         require_listener_refused(&address).await?;
         println!("WHITEBOARD_HELPER_DONE case={case} pid={pid} status=0");
         std::io::stdout().flush()?;
+        // Do not let the next X11 client reuse a window ID before absence is observed.
+        observer_ack(b"retired\n").await?;
     }
     Ok(())
 }

@@ -11,6 +11,7 @@ import select
 import signal
 import socket
 import stat
+import struct
 import subprocess
 import sys
 import time
@@ -259,6 +260,32 @@ def observe_owner(executable, environment, display, server, parent_exit=False):
                             helper_pid = pid
                             helper_fd = os.pidfd_open(pid, 0)
                             require(helper_alive(), "helper exited before parent retirement")
+                            listener_deadline = time.monotonic() + 1
+                            while True:
+                                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                                    probe.settimeout(1)
+                                    try:
+                                        probe.connect(address)
+                                    except OSError as error:
+                                        require(error.errno == errno.ECONNREFUSED and helper_alive()
+                                                and owner.poll() is None and time.monotonic() < listener_deadline,
+                                                "parent-exit helper listener never became ready")
+                                    else:
+                                        peer_pid, peer_uid, peer_gid = struct.unpack("3i", probe.getsockopt(
+                                            socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                                        require((peer_pid, peer_uid, peer_gid) == (pid, 1000, 1000)
+                                                and probe.recv(1) == b"",
+                                                "observer was not refused by its exact helper before proof")
+                                        break
+                                time.sleep(0.01)
+                            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as duplicate:
+                                try:
+                                    duplicate.bind(address)
+                                except OSError as error:
+                                    require(error.errno == errno.EADDRINUSE,
+                                            "pre-proof helper listener ownership differs")
+                                else:
+                                    raise RuntimeError("helper listener retired before its parent")
                         owner.stdin.write(b"go\n")
                         owner.stdin.flush()
                         if parent_exit:

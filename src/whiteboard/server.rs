@@ -136,13 +136,101 @@ async fn start_ipc(mut stop_requested: oneshot::Receiver<()>) {
         }
     };
     #[cfg(target_os = "linux")]
-    let incoming = ipc::LinuxWhiteboardListener::bind(&postfix);
+    {
+        let parent = match pin_whiteboard_launch_parent(expected_parent_pid) {
+            Ok(parent) => parent,
+            Err(err) => {
+                log::error!("Failed to retain whiteboard launch parent: {err}");
+                return;
+            }
+        };
+        tokio::select! {
+            biased;
+            result = wait_whiteboard_launch_parent_exit(&parent) => {
+                match result {
+                    Ok(()) => log::info!("Whiteboard launch parent exited"),
+                    Err(err) => log::error!("Whiteboard launch parent watch failed: {err}"),
+                }
+            }
+            _ = serve_whiteboard_owner(&postfix, expected_parent_pid, &mut stop_requested) => {}
+        }
+    }
     #[cfg(not(target_os = "linux"))]
-    let incoming = new_listener(&postfix).await;
+    serve_whiteboard_owner(&postfix, expected_parent_pid, &mut stop_requested).await;
+}
+
+#[cfg(target_os = "linux")]
+fn pin_whiteboard_launch_parent(
+    expected_parent_pid: u32,
+) -> ResultType<tokio::io::unix::AsyncFd<std::os::fd::OwnedFd>> {
+    use hbb_common::libc;
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+
+    let expected_parent = libc::pid_t::try_from(expected_parent_pid)?;
+    if expected_parent <= 0 || unsafe { libc::getppid() } != expected_parent {
+        return Err(anyhow!("whiteboard launch parent is not the actual parent"));
+    }
+    // Flags zero pins the process, rather than the thread that created this helper.
+    let raw = unsafe { libc::syscall(libc::SYS_pidfd_open, expected_parent, 0) };
+    if raw < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    // A successful pidfd_open returns an int descriptor with FD_CLOEXEC set.
+    let parent = unsafe { OwnedFd::from_raw_fd(raw as libc::c_int) };
+    // Reparenting after the open rejects an already-dead or recycled launch PID.
+    if unsafe { libc::getppid() } != expected_parent {
+        return Err(anyhow!("whiteboard launch parent exited during startup"));
+    }
+    let flags = unsafe { libc::fcntl(parent.as_raw_fd(), libc::F_GETFL) };
+    if flags < 0
+        || unsafe { libc::fcntl(parent.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0
+    {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(tokio::io::unix::AsyncFd::with_interest(parent, tokio::io::Interest::READABLE)?)
+}
+
+#[cfg(target_os = "linux")]
+async fn wait_whiteboard_launch_parent_exit(
+    parent: &tokio::io::unix::AsyncFd<std::os::fd::OwnedFd>,
+) -> ResultType<()> {
+    use hbb_common::libc;
+    use std::os::fd::AsRawFd;
+
+    loop {
+        let mut ready = parent.readable().await?;
+        let mut state = libc::pollfd {
+            fd: parent.get_ref().as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        // Confirm reactor readiness without a blocking wait or periodic polling task.
+        if unsafe { libc::poll(&mut state, 1, 0) } < 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        if state.revents & (libc::POLLERR | libc::POLLNVAL) != 0 {
+            return Err(anyhow!("whiteboard launch parent descriptor failed"));
+        }
+        if state.revents & (libc::POLLIN | libc::POLLHUP) != 0 {
+            return Ok(());
+        }
+        ready.clear_ready();
+    }
+}
+
+async fn serve_whiteboard_owner(
+    postfix: &str,
+    expected_parent_pid: u32,
+    stop_requested: &mut oneshot::Receiver<()>,
+) {
+    #[cfg(target_os = "linux")]
+    let incoming = ipc::LinuxWhiteboardListener::bind(postfix);
+    #[cfg(not(target_os = "linux"))]
+    let incoming = new_listener(postfix).await;
     match incoming {
         Ok(mut incoming) => loop {
             tokio::select! {
-                _ = &mut stop_requested => {
+                _ = &mut *stop_requested => {
                     log::info!("Exiting IPC");
                     break;
                 }
@@ -162,7 +250,7 @@ async fn start_ipc(mut stop_requested: oneshot::Receiver<()>) {
                                 );
                                 break;
                             }
-                            handle_new_stream(stream, &mut stop_requested).await;
+                            handle_new_stream(stream, stop_requested).await;
                             break;
                         }
                         Err(err) => {

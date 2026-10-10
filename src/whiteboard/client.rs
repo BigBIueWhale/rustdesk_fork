@@ -518,7 +518,6 @@ fn whiteboard_launch_env(launch_token: &str) -> Vec<(&'static str, String)> {
 pub(crate) fn whiteboard_helper_command(launch_token: &str) -> ResultType<std::process::Command> {
     let mut command = std::process::Command::new(std::env::current_exe()?);
     command.arg("--whiteboard").envs(whiteboard_launch_env(launch_token));
-    crate::platform::linux::configure_command_kill_on_parent_death(&mut command)?;
     hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut command)?;
     Ok(command)
 }

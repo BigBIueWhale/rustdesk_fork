@@ -1847,7 +1847,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `c882bee0e3c840e5ed5f8f938687c71258cb6d005a8f441bd91b29c66bb272ee  requirements.html`.
+Current normative specification SHA-256: `2cb902a0b52b3b989b20fa876d7927beff42397fee4a0f9ac03ddf67a89aebd7  requirements.html`.
 
 ### Current authority and source closure
 
@@ -11994,6 +11994,19 @@ Windows/macOS owner joins whenever its event loop returns. Spawn/join failure is
 Handler-only termination, unbounded exit channels, detached threads, and direct platform
 proxy mutation are absent from this source topology.
 
+**Linux parent-process lifetime corrected in source; native acceptance pending:**
+the shared production/fixture launch constructor no longer arms creating-thread
+`PR_SET_PDEATHSIG`. Before listener creation, the existing IPC worker opens an
+owned parent pidfd, checks actual parent before/after open, registers readable
+readiness and retains it through admission/proof/commands. Actual process exit
+or observation failure cancels that owned transport and reaches the terminal guard;
+unsupported/refused pidfd support fails whiteboard closed, without a polling task
+or another runtime. This feature needs Linux process-descriptor support and does
+not change ordinary no-record service startup. Baseline `937c2c0f` reproduced
+SIGKILL after creator-thread join while the server process remained alive.
+Corrected eight-case CLI/X11 execution, unavailable-support injection and broader
+native/installed/resource acceptance remain unproved at this source checkpoint.
+
 Exact kernel-parent admission now closes the listener before launch proof. Proof failure
 and listener accept error retire the generation through its terminal guard instead of
 returning to accept. Unauthorized peers remain refused before proof without retiring
@@ -12121,10 +12134,12 @@ Thus state finalization and a successful shutdown write do not prove process cle
 The retained task handle is also dropped by its own finalizer rather than joined by
 an external owner. The seven tests below exercise neither boundary.
 
-Linux's `PR_SET_PDEATHSIG` follows the creating thread, not whole-process lifetime;
-the launch path does not retain that thread as part of the helper owner. Creator-thread
-retirement and true owner-process death need distinct native tests. Moving launch to
-`spawn_blocking` or relying on kill-on-drop without exact reaping cannot close this gap.
+Linux whiteboard now observes whole-parent exit through the helper's owned pidfd,
+and its shared launch constructor removes creating-thread `PR_SET_PDEATHSIG`.
+The baseline reproduced SIGKILL after creator join; corrected creator-thread and
+true parent-process-death native acceptance is pending. The production client still
+spawns synchronously inside its async task and uses the global child registry;
+off-executor launch, cancellation ownership and exact reaping remain required.
 Required correction: retain the exact helper and task through startup, shutdown,
 failure, panic and cancellation; release the generation/permit replacement only after
 positive retirement. Timeout initiates cancellation while ownership remains retained.

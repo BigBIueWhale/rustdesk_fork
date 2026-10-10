@@ -12111,8 +12111,8 @@ or fix for that defect.
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
 **Current disposition: root-owned launch/task/helper correction implemented; named Linux
-native retirement and nine executable regressions passed; committed-stop native extension
-pending and full lifecycle acceptance OPEN.**
+healthy retirement, committed-stop replacement/withdrawal and nine executable regressions
+passed; full lifecycle acceptance OPEN.**
 `src/whiteboard/client.rs` uses one mutex-owned `WhiteboardClientState`
 containing registrations, the exact-generation sender, retained launch/task handles and helper, and
 Idle/Starting/Running/Stopping phase. Checked generation reservation prevents wraparound;
@@ -12179,17 +12179,30 @@ observed. No fixture-owned Child/reap substituted for production ownership. Arti
 `5d9c210729737757f3723b3d834b9c93276a67abd4da19925bb878bfa236bc85`
 was unchanged before/after. Serial `android-rust-lifecycle-tests-run.2Cyu0vIJky.serial.log`
 SHA-256 `a9793d89b1f77453ec526ff3abb13f77d6aa0b5c5b16c6f1c2ee0a0efb260962`.
-This proves the healthy global-client delayed-retirement correction; actual Remote/PAKE
-producer admission, demanded successor, complete root/failure/cancellation and soak remain open.
+That receipt proves healthy global-client delayed retirement; it alone does not prove
+replacement, actual Remote/PAKE admission, complete root/failure/cancellation or soak.
 
-**Committed-stop native extension: pending.** The same-image global-client fixture now
-holds the old helper at CLI return while duplicate replacement demand is registered.
-It requires the original Stopping generation/helper and external task join, then production
-normal reap before one generation2 can render. A separate withdrawal case removes that demand,
-observes Idle/no owned helper for 500ms, and gates later explicit demand before generation2.
-The observer retains every helper pidfd, reads two-owner/exact-clear pixels in each generation,
-and cannot accept failure cleanup as production reap. These new cases have not yet run;
-the named healthy receipt above remains their predecessor, not their acceptance evidence.
+**Accepted committed-stop native subset:** source `6489c7c6c6ce768967155f19a5c3db03370175f0`,
+tree `cfd4a3de9779b6779d684459d86e01c215c6c45c`, passed the same helper-lifetime command
+in 230s / build 157s using the same pinned Rust1.75/vendor/devcheck inputs. Eight receiver cases
+and three global-client cases reused artifact
+`0606774377a32b994df1532d6598b63d96490e5a7fc6bd717d6289a2767078e4`, unchanged before/after.
+Duplicate replacement demand retained generation 1 in Stopping with two connections and
+helper 20239 alive after external task join; production normal reap preceded generation 2 /
+helper 20242 readiness. Withdrawal retained generation 1 in Stopping with no connections and
+helper 20247 alive, then production normal reap and 500ms Idle/no retained helper before
+observer-gated later explicit demand launched generation 2 / helper 20250. Healthy helper
+20234 also normally reaped.
+All five global generations drew two owners and cleared only the removed owner; live parent,
+retained helper pidfd and X11 BadWindow preceded release, independent pidfd death and /proc
+absence corroborated each production normal reap. Fixture cleanup could not satisfy success.
+Serial `android-rust-lifecycle-tests-run.MpGv5OtIAL.serial.log`,79001bytes, SHA-256
+`aad828a3c94bdb9bde57c5eef1fb369410186a7fc4fc1b006e5a1bc70af31daa`.
+Source/input/offline-canary, UID/GID1000 network-none container, zero-NIC VM, complete
+before/during/after host endpoint no-addition audits and joined helper/Xvfb/container/VM/
+capture/filesystem cleanup passed. This finite global-registration subset proves the named
+committed-stop demand cases; actual Remote/PAKE producer admission, other phase/failure/race
+paths, abrupt root loss, complete OS-resource bounds/soak and Windows/macOS remain OPEN.
 
 **Accepted executable state/handle subset:** `--android-rust-lifecycle-tests --whiteboard-client`
 passed 9 tests, 0 failed/ignored, 598 filtered, 0.00s execution; probe feature disabled.
@@ -12213,7 +12226,7 @@ acceptance. Original review and intermediate incidents remain in Git history at 
 and the R-S11ho audit entry in `/tmp/privilege_securiry_deep_audit.md`.
 
 **Still required:** complete current full-root/task/helper suites and native Windows/macOS/Linux
-multi-connection, repeated-enable, every-phase demand, committed-stop replacement, explicit
+multi-connection, repeated-enable, every-phase demand, committed-stop stress/races, explicit
 later retry, sender/transport/helper failure, queue/registration saturation, abrupt owner
 loss, and cleanup runs. Observe one live generation, at most one demanded successor, and
 bounded task/thread/queue/CPU/memory/latency state. Installed artifacts, sustained soak,

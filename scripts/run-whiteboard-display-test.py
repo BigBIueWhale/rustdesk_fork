@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Execute the compiled whiteboard display-owner regression in a private X11 server."""
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -31,6 +32,20 @@ def main():
                    "DISPLAY": ":98", "XDG_SESSION_TYPE": "x11",
                    "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
                    "LD_LIBRARY_PATH": "/xvfb-root/usr/lib/x86_64-linux-gnu"}
+
+    def artifact_digest():
+        digest = hashlib.sha256()
+        with executable.open("rb") as artifact:
+            for chunk in iter(lambda: artifact.read(65536), b""):
+                digest.update(chunk)
+        return digest.digest()
+
+    artifact_sha = artifact_digest()
+    subprocess.run(
+        [str(executable), "whiteboard::event_lifecycle::tests::",
+         "--color", "never", "--test-threads=1"],
+        env=environment, check=True, timeout=25)
+    require(artifact_digest() == artifact_sha, "artifact changed during lifecycle state tests")
     with open("/tmp/whiteboard-xvfb.log", "xb") as log:
         server = subprocess.Popen(
             ["/xvfb-root/usr/bin/Xvfb", ":98", "-screen", "0", "320x240x24",
@@ -42,12 +57,16 @@ def main():
                 require(server.poll() is None and time.monotonic() < deadline,
                         "owned Xvfb did not become ready")
                 time.sleep(0.05)
-            subprocess.run(
-                [str(executable),
-                 "whiteboard::linux::tests::r_s11hn_linux_whiteboard_retires_windows_before_event_loop_return",
-                 "--exact", "--ignored", "--color", "never", "--test-threads=1"],
-                env=environment, check=True, timeout=25)
-            require(server.poll() is None, "owned Xvfb exited during the native test")
+            for test_name in (
+                "r_s11hn_linux_whiteboard_retires_windows_before_event_loop_return",
+                "r_s11hn_linux_whiteboard_worker_after_proxy_retires_windows_before_return",
+            ):
+                subprocess.run(
+                    [str(executable), "whiteboard::linux::tests::" + test_name,
+                     "--exact", "--ignored", "--color", "never", "--test-threads=1"],
+                    env=environment, check=True, timeout=25)
+                require(artifact_digest() == artifact_sha, "artifact changed during native test")
+                require(server.poll() is None, "owned Xvfb exited during the native test")
         finally:
             if server.poll() is None:
                 server.terminate()
@@ -62,8 +81,9 @@ def main():
             require(server.returncode == 0, "owned Xvfb terminal status differs")
             require(not socket.exists() and not lock.exists(), "Xvfb endpoint was not retired")
     print("WHITEBOARD_DISPLAY_NATIVE=pass backend=x11 pixels=server-readback owners=2 "
-          "clear=exact-owner startup=missing-launch worker=joined terminal=before-proxy-once "
-          "event_loop=retired window=destroyed-before-return xvfb=joined", flush=True)
+          "clear=exact-owner startup=missing-launch worker=joined terminal=before-and-after-proxy-once "
+          "event_loop=retired window=destroyed-before-return state_tests=3 native_tests=2 xvfb=joined",
+          flush=True)
 
 
 if __name__ == "__main__":

@@ -2620,7 +2620,11 @@ run_focused_rust_tests() {
                 scripts/smoke-xvfb-files.tsv
             )
             required_tests=(
+                whiteboard::event_lifecycle::tests::r_s11hn_whiteboard_ipc_termination_before_proxy_is_delivered_once
+                whiteboard::event_lifecycle::tests::r_s11hn_whiteboard_ipc_termination_takes_exact_installed_proxy_once
+                whiteboard::event_lifecycle::tests::r_s11hn_whiteboard_event_loop_retirement_preserves_terminal_latch
                 whiteboard::linux::tests::r_s11hn_linux_whiteboard_retires_windows_before_event_loop_return
+                whiteboard::linux::tests::r_s11hn_linux_whiteboard_worker_after_proxy_retires_windows_before_return
             )
         fi
     fi
@@ -2999,7 +3003,7 @@ run_focused_rust_tests() {
                                 "$clipboard_artifact_sha" "$clipboard_executable"
                             python3 -I -S /source/scripts/run-whiteboard-display-test.py "$clipboard_executable"
                             [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
-                            printf "WHITEBOARD_DISPLAY_ARTIFACT=pass sha256=%s executable=%s tests=1 unchanged=before-after\n" \
+                            printf "WHITEBOARD_DISPLAY_ARTIFACT=pass sha256=%s executable=%s tests=5 unchanged=before-between-after\n" \
                                 "$clipboard_artifact_sha" "$clipboard_executable"
                             exit 0
                         fi
@@ -3131,7 +3135,7 @@ run_focused_rust_tests() {
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
         printf 'WHITEBOARD_PRESENTATION_STATE_PROFILE=whiteboard-presentation stage=container-start tests=2 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
-        printf 'WHITEBOARD_DISPLAY_PROFILE=whiteboard-display-lifetime stage=container-start tests=1 bridge=absent backend=x11\n'
+        printf 'WHITEBOARD_DISPLAY_PROFILE=whiteboard-display-lifetime stage=container-start tests=5 bridge=absent backend=x11\n'
     fi
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
@@ -3199,16 +3203,18 @@ run_focused_rust_tests() {
             || fail 'compiled UID-policy test artifact digest is malformed'
     else
         expected_groups=16
-        if [ "$RUST_TEST_PROFILE" != integration ]; then
+        if [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
+            expected_groups=3
+        elif [ "$RUST_TEST_PROFILE" != integration ]; then
             expected_groups=1
         fi
         [ "${#result_lines[@]}" -eq "$expected_groups" ] \
             || { tail -n 200 "$output" >&2; fail 'Android Rust-lifecycle summary count differs'; }
         if [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
-            [ "$(grep -Ec '^WHITEBOARD_DISPLAY_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=1 unchanged=before-after$' "$output")" -eq 1 ] \
+            [ "$(grep -Ec '^WHITEBOARD_DISPLAY_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=5 unchanged=before-between-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'WHITEBOARD_DISPLAY_ARTIFACT=' "$output")" -eq 1 ] \
                 || fail 'native whiteboard artifact receipt is absent, malformed or duplicated'
-            [ "$(grep -Fxc 'WHITEBOARD_DISPLAY_NATIVE=pass backend=x11 pixels=server-readback owners=2 clear=exact-owner startup=missing-launch worker=joined terminal=before-proxy-once event_loop=retired window=destroyed-before-return xvfb=joined' "$output")" -eq 1 ] \
+            [ "$(grep -Fxc 'WHITEBOARD_DISPLAY_NATIVE=pass backend=x11 pixels=server-readback owners=2 clear=exact-owner startup=missing-launch worker=joined terminal=before-and-after-proxy-once event_loop=retired window=destroyed-before-return state_tests=3 native_tests=2 xvfb=joined' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'WHITEBOARD_DISPLAY_NATIVE=' "$output")" -eq 1 ] \
                 || fail 'native whiteboard behavior/cleanup receipt differs'
         elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
@@ -3308,8 +3314,8 @@ run_focused_rust_tests() {
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
         if [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
             grep -E '^WHITEBOARD_DISPLAY_(ARTIFACT_BEFORE|ARTIFACT|BUILD|NATIVE)=' "$output"
-            grep -E '^test whiteboard::linux::tests::r_s11hn_.* \.\.\. ok$' "$output"
-            printf 'WHITEBOARD_DISPLAY_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-x11-whiteboard-display-owner-and-window-pixels rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            grep -E '^test whiteboard::(event_lifecycle|linux)::tests::r_s11hn_.* \.\.\. ok$' "$output"
+            printf 'WHITEBOARD_DISPLAY_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-whiteboard-lifecycle-and-x11-pixels rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then

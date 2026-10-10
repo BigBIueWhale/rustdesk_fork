@@ -481,22 +481,34 @@ mod tests {
         protocol::{xproto::ConnectionExt, ErrorKind},
     };
 
-    struct NativeApplication(WhiteboardApplication, Option<u32>, usize);
+    struct NativeApplication {
+        application: WhiteboardApplication,
+        window_id: Option<u32>,
+        exits: usize,
+        worker_after_proxy: bool,
+        worker: Option<WhiteboardIpcWorker>,
+    }
 
     impl ApplicationHandler<(i32, CustomEvent)> for NativeApplication {
         fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-            self.0.resumed(event_loop);
-            assert!(!self.0.close_requested);
-            assert_eq!(self.0.windows.len(), 1);
-            self.1 = Some(assert_presented_owners(&mut self.0));
+            assert!(self.window_id.is_none());
+            self.application.resumed(event_loop);
+            assert!(!self.application.close_requested);
+            assert_eq!(self.application.windows.len(), 1);
+            self.window_id = Some(assert_presented_owners(&mut self.application));
+            if self.worker_after_proxy {
+                assert!(self.worker.is_none());
+                self.worker = Some(WhiteboardIpcWorker::spawn().unwrap());
+            }
         }
 
         fn user_event(&mut self, event_loop: &ActiveEventLoop, event: (i32, CustomEvent)) {
             assert_eq!(event.0, 0);
             assert!(matches!(&event.1, CustomEvent::Exit));
-            self.2 += 1;
-            assert_eq!(self.2, 1);
-            self.0.user_event(event_loop, event);
+            assert!(self.window_id.is_some());
+            self.exits += 1;
+            assert_eq!(self.exits, 1);
+            self.application.user_event(event_loop, event);
         }
 
         fn window_event(
@@ -505,15 +517,15 @@ mod tests {
             window_id: WindowId,
             event: WindowEvent,
         ) {
-            self.0.window_event(event_loop, window_id, event);
+            self.application.window_event(event_loop, window_id, event);
         }
 
         fn exiting(&mut self, event_loop: &ActiveEventLoop) {
-            self.0.exiting(event_loop);
+            self.application.exiting(event_loop);
         }
 
         fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-            self.0.about_to_wait(event_loop);
+            self.application.about_to_wait(event_loop);
         }
     }
 
@@ -556,31 +568,57 @@ mod tests {
     #[test]
     #[ignore = "requires an isolated X11 display"]
     fn r_s11hn_linux_whiteboard_retires_windows_before_event_loop_return() {
+        assert_native_whiteboard_retirement(false);
+    }
+
+    #[test]
+    #[ignore = "requires an isolated X11 display"]
+    fn r_s11hn_linux_whiteboard_worker_after_proxy_retires_windows_before_return() {
+        assert_native_whiteboard_retirement(true);
+    }
+
+    fn assert_native_whiteboard_retirement(worker_after_proxy: bool) {
         assert!(std::env::var_os(crate::common::WHITEBOARD_LAUNCH_TOKEN_ENV).is_none());
         assert!(std::env::var_os(crate::common::WHITEBOARD_LAUNCH_PARENT_ENV).is_none());
-        let worker = WhiteboardIpcWorker::spawn().unwrap();
-        worker.stop_and_join().unwrap();
+        if !worker_after_proxy {
+            let worker = WhiteboardIpcWorker::spawn().unwrap();
+            worker.stop_and_join().unwrap();
+        }
 
         let mut builder = EventLoop::<(i32, CustomEvent)>::with_user_event();
         builder.with_x11().with_any_thread(true);
         let event_loop = builder.build().unwrap();
         let _event_proxy = install_whiteboard_event_proxy(event_loop.create_proxy());
-        let mut app = NativeApplication(
-            WhiteboardApplication::new(&event_loop).unwrap(),
-            None,
-            0,
-        );
+        let mut app = NativeApplication {
+            application: WhiteboardApplication::new(&event_loop).unwrap(),
+            window_id: None,
+            exits: 0,
+            worker_after_proxy,
+            worker: None,
+        };
         let (observer, _) = x11rb_listener::connect(None).unwrap();
 
-        event_loop.run_app(&mut app).unwrap();
-        let _: &Context<OwnedDisplayHandle> = &app.0.context;
-        let window_id = app.1.expect("native whiteboard window was never created");
+        let loop_result = event_loop.run_app(&mut app);
+        if worker_after_proxy {
+            app.worker
+                .take()
+                .expect("native whiteboard worker was never started")
+                .stop_and_join()
+                .unwrap();
+        } else {
+            assert!(app.worker.is_none());
+        }
+        loop_result.unwrap();
+        let _: &Context<OwnedDisplayHandle> = &app.application.context;
+        let window_id = app
+            .window_id
+            .expect("native whiteboard window was never created");
         match observer.get_window_attributes(window_id).unwrap().reply() {
             Err(ReplyError::X11Error(error)) if error.error_kind == ErrorKind::Window => (),
             result => panic!("whiteboard window survived event-loop return: {result:?}"),
         }
-        assert!(app.0.windows.is_empty());
-        assert!(app.0.close_requested);
-        assert_eq!(app.2, 1);
+        assert!(app.application.windows.is_empty());
+        assert!(app.application.close_requested);
+        assert_eq!(app.exits, 1);
     }
 }

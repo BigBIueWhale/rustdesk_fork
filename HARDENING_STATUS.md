@@ -12122,6 +12122,14 @@ CLI/complete helper, listener construction or authenticated IPC, later worker fa
 or cancellation paths, a compositor, animation/occlusion, resource/soak bounds,
 other platforms, or installed Debian acceptance.
 
+The focused fixture now also starts the real worker after proxy publication from
+the running loop's resumed callback, retains it through loop return and joins it.
+Each publication order runs in a separate process against the same artifact; both
+must observe one Exit, exact-owner pixels/clear and immediate window destruction.
+The same profile now executes all three production lifecycle state tests and binds
+five named passes to unchanged artifact bytes. This extension is pending execution;
+the accepted receipt above covers only the earlier before-proxy native test.
+
 **Retained evidence:** the independently compilable exact production lifecycle module
 passed three state tests under Rust 1.75.0 in builder
 `sha256:304b251e77fafe03192e035cc22479e0909d688035fbd30b1ac685e878ae9646`.

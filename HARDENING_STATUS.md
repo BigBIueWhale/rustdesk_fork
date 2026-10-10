@@ -12169,14 +12169,23 @@ sender/phase. The at-most-two-command hot path uses fixed storage and a borrowed
 Token-derived endpoints, exact launch/parent proof, parent-death binding, and deadline writes
 remain. Split globals, detached OS threads, nested runtimes, and automatic retry are absent.
 
-Four authored Rust state regressions cover duplicate demand, one successor across committed
-stop, startup/sender failure without self-retry, and stale finalization. Historical confined
-Python/source-mutation receipts did not execute those Rust tests or the native helper. The
-focused checker now loads only source/gate inputs; requirement/ledger wording and document
-hashes are not evidence. The full-root Rust test commands and shared/Apple source-gate wiring
-remain. Original review, source-only receipts, intermediate verification failures, and
-operational incidents remain in Git history at `043a6aa6` and the R-S11ho audit entry in
-`/tmp/privilege_securiry_deep_audit.md`.
+Seven Rust regressions exercise the production lifecycle and command-admission methods:
+duplicate demand; one successor across committed stop and none after demand withdrawal;
+failure without self-retry and explicit later retry; stale finalization in every live phase;
+fixed 64/65-command saturation with cursor-only loss, preservation of queued data, and
+retirement on refused Bind/Close/Shutdown; closed-channel retirement for every command
+type; and generation exhaustion without wraparound. They use real Tokio channels, without
+starting a task or helper. The old capacity test only exercised Tokio at a limit derived
+from the same production constant and is replaced. Execution is pending in the source-bound
+`--android-rust-lifecycle-tests --whiteboard-client` shard; a pass requires all seven named
+tests, zero failed/ignored results, unchanged executable/source/inputs and joined cleanup.
+
+The 526-line `scripts/verify-whiteboard-client-lifecycle.py` and its shared/Apple calls
+are deleted. Its source substring/order/count assertions and 42 in-memory substitutions
+did not execute a task, channel admission, helper, OS principal or cleanup. The full-root
+`r_s11ho_` Rust test command remains. Historical source-only receipts establish no native
+acceptance. Original review and intermediate incidents remain in Git history at `043a6aa6`
+and the R-S11ho audit entry in `/tmp/privilege_securiry_deep_audit.md`.
 
 **Still required:** exact-current executable regressions and native Windows/macOS/Linux
 multi-connection, repeated-enable, every-phase demand, committed-stop replacement, explicit

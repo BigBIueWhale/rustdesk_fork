@@ -737,6 +737,12 @@ mod tests {
             WhiteboardWorkerPhase::Starting { generation: second }
         );
         assert_eq!(lifecycle.request_worker().unwrap(), None);
+
+        assert!(lifecycle.publish(second));
+        assert!(lifecycle.begin_stop(second));
+        assert_eq!(lifecycle.request_worker().unwrap(), None);
+        assert_eq!(lifecycle.finish(second, false).unwrap(), None);
+        assert_eq!(lifecycle.phase, WhiteboardWorkerPhase::Idle);
     }
 
     #[test]
@@ -760,26 +766,166 @@ mod tests {
     #[test]
     fn r_s11ho_stale_finalizer_cannot_retire_current_generation() {
         let mut lifecycle = WhiteboardWorkerLifecycle::default();
+        let retired = lifecycle.request_worker().unwrap().unwrap();
+        assert_eq!(lifecycle.finish(retired, false).unwrap(), None);
         let generation = lifecycle.request_worker().unwrap().unwrap();
-        assert_eq!(lifecycle.finish(generation + 1, true).unwrap(), None);
+        for phase in [
+            WhiteboardWorkerPhase::Starting { generation },
+            WhiteboardWorkerPhase::Running { generation },
+            WhiteboardWorkerPhase::Stopping {
+                generation,
+                restart_requested: true,
+            },
+        ] {
+            lifecycle.phase = phase;
+            for stale in [retired, generation + 1] {
+                assert_eq!(lifecycle.finish(stale, true).unwrap(), None);
+                assert_eq!(lifecycle.phase, phase);
+                assert_eq!(lifecycle.last_generation, generation);
+            }
+        }
         assert_eq!(
-            lifecycle.phase,
-            WhiteboardWorkerPhase::Starting { generation }
+            lifecycle.finish(generation, true).unwrap(),
+            Some(generation + 1)
         );
-        assert!(lifecycle.publish(generation));
+    }
+
+    fn running_client() -> (
+        WhiteboardClientState,
+        tokio::sync::mpsc::Receiver<WhiteboardIpcCommand>,
+        u64,
+    ) {
+        let mut state = WhiteboardClientState::default();
+        let generation = state.lifecycle.request_worker().unwrap().unwrap();
+        assert!(state.lifecycle.publish(generation));
+        let (sender, receiver) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);
+        state.sender = Some((generation, sender));
+        (state, receiver, generation)
+    }
+
+    fn cursor_command(index: i32) -> WhiteboardIpcCommand {
+        WhiteboardIpcCommand::Cursor {
+            conn_id: 1,
+            token: "queued".to_owned(),
+            cursor: Cursor {
+                x: index as f32,
+                y: 0.0,
+                argb: 0xff00ff00,
+                btns: 0,
+                text: String::new(),
+            },
+        }
+    }
+
+    fn required_commands() -> [WhiteboardIpcCommand; 3] {
+        [
+            WhiteboardIpcCommand::Bind {
+                conn_id: 1,
+                token: "required".to_owned(),
+            },
+            WhiteboardIpcCommand::Close {
+                conn_id: 1,
+                token: "required".to_owned(),
+            },
+            WhiteboardIpcCommand::Shutdown,
+        ]
     }
 
     #[test]
-    fn whiteboard_command_queue_has_a_hard_capacity() {
-        let (sender, _receiver) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);
-        for _ in 0..ipc::WHITEBOARD_IPC_COMMAND_CAPACITY {
-            sender
-                .try_send(WhiteboardIpcCommand::Shutdown)
-                .unwrap();
+    fn r_s11ho_saturation_drops_only_cursor_and_retires_required_commands() {
+        for command in required_commands() {
+            let (mut state, mut receiver, generation) = running_client();
+            for index in 0..64 {
+                assert_eq!(
+                    state.send_command(cursor_command(index)),
+                    WhiteboardCommandAdmission::Accepted
+                );
+            }
+            assert_eq!(
+                state.send_command(cursor_command(64)),
+                WhiteboardCommandAdmission::CursorDropped
+            );
+            assert_eq!(
+                state.lifecycle.phase,
+                WhiteboardWorkerPhase::Running { generation }
+            );
+            assert_eq!(
+                state.sender.as_ref().map(|(owner, _)| *owner),
+                Some(generation)
+            );
+
+            assert_eq!(
+                state.send_command(command),
+                WhiteboardCommandAdmission::WorkerRetiredAfterSaturation
+            );
+            assert!(state.sender.is_none());
+            assert_eq!(
+                state.lifecycle.phase,
+                WhiteboardWorkerPhase::Stopping {
+                    generation,
+                    restart_requested: false,
+                }
+            );
+            for index in 0..64 {
+                match receiver.try_recv().unwrap() {
+                    WhiteboardIpcCommand::Cursor {
+                        conn_id,
+                        token,
+                        cursor,
+                    } => {
+                        assert_eq!(conn_id, 1);
+                        assert_eq!(token, "queued");
+                        assert_eq!(cursor.x, index as f32);
+                    }
+                    command => panic!("queued cursor was replaced: {command:?}"),
+                }
+            }
+            assert!(matches!(
+                receiver.try_recv(),
+                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected)
+            ));
+            assert_eq!(state.lifecycle.finish(generation, true).unwrap(), None);
+            assert_eq!(state.lifecycle.phase, WhiteboardWorkerPhase::Idle);
         }
-        assert!(matches!(
-            sender.try_send(WhiteboardIpcCommand::Shutdown),
-            Err(TrySendError::Full(WhiteboardIpcCommand::Shutdown))
-        ));
+    }
+
+    #[test]
+    fn r_s11ho_closed_sender_retires_every_command_without_retry() {
+        for command in required_commands().into_iter().chain([cursor_command(0)]) {
+            let (mut state, receiver, generation) = running_client();
+            drop(receiver);
+            assert_eq!(
+                state.send_command(command),
+                WhiteboardCommandAdmission::WorkerRetiredAfterClosure
+            );
+            assert!(state.sender.is_none());
+            assert_eq!(
+                state.lifecycle.phase,
+                WhiteboardWorkerPhase::Stopping {
+                    generation,
+                    restart_requested: false,
+                }
+            );
+            assert_eq!(state.lifecycle.finish(generation, true).unwrap(), None);
+            assert_eq!(state.lifecycle.phase, WhiteboardWorkerPhase::Idle);
+        }
+    }
+
+    #[test]
+    fn r_s11ho_exhausted_generation_cannot_wrap_or_start_a_successor() {
+        let mut lifecycle = WhiteboardWorkerLifecycle {
+            phase: WhiteboardWorkerPhase::Idle,
+            last_generation: u64::MAX,
+        };
+        assert!(lifecycle.request_worker().is_err());
+        assert_eq!(lifecycle.phase, WhiteboardWorkerPhase::Idle);
+        assert_eq!(lifecycle.last_generation, u64::MAX);
+        lifecycle.phase = WhiteboardWorkerPhase::Stopping {
+            generation: u64::MAX,
+            restart_requested: true,
+        };
+        assert!(lifecycle.finish(u64::MAX, true).is_err());
+        assert_eq!(lifecycle.phase, WhiteboardWorkerPhase::Idle);
+        assert_eq!(lifecycle.last_generation, u64::MAX);
     }
 }

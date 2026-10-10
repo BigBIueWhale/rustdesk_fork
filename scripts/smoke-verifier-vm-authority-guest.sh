@@ -66,7 +66,7 @@ case "$#:${8:-}" in
         ;;
     13:--android-rust-lifecycle-tests)
         [[ "${13}" = --clipboard || "${13}" = --whiteboard-presentation \
-            || "${13}" = --whiteboard-display-lifetime ]] || exit 2
+            || "${13}" = --whiteboard-display-lifetime || "${13}" = --whiteboard-client ]] || exit 2
         MODE=android-rust-lifecycle-tests
         RUST_TEST_PROFILE=${13#--}
         ;;
@@ -152,6 +152,7 @@ case "$#:${8:-}" in
         echo 'The focused Flutter address shard appends --direct-address to that same source-bound invocation.' >&2
         echo 'The focused Rust clipboard shard appends --clipboard to --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused whiteboard state shard appends --whiteboard-presentation to that same source-bound invocation.' >&2
+        echo 'The focused whiteboard client state shard appends --whiteboard-client to that same source-bound invocation.' >&2
         echo 'The native Linux whiteboard display shard appends --whiteboard-display-lifetime to that same source-bound invocation.' >&2
         echo 'The focused macOS cursor compiler appends --cursor-compile to --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         exit 2
@@ -2593,6 +2594,17 @@ run_focused_rust_tests() {
             [ "${#clipboard_tests[@]}" -eq 13 ] \
                 || fail 'focused clipboard test inventory differs'
             required_tests=("${clipboard_tests[@]}")
+        elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
+            source_fingerprints+=(src/whiteboard/client.rs)
+            required_tests=(
+                whiteboard::client::tests::r_s11ho_duplicate_whiteboard_demand_owns_one_generation
+                whiteboard::client::tests::r_s11ho_demand_during_committed_stop_starts_one_successor
+                whiteboard::client::tests::r_s11ho_unexpected_worker_failure_does_not_self_retry
+                whiteboard::client::tests::r_s11ho_stale_finalizer_cannot_retire_current_generation
+                whiteboard::client::tests::r_s11ho_saturation_drops_only_cursor_and_retires_required_commands
+                whiteboard::client::tests::r_s11ho_closed_sender_retires_every_command_without_retry
+                whiteboard::client::tests::r_s11ho_exhausted_generation_cannot_wrap_or_start_a_successor
+            )
         elif [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
             required_tests=(
                 whiteboard::server::tests::r_s11hp_whiteboard_presentation_clear_is_exact_owner_final
@@ -2956,7 +2968,10 @@ run_focused_rust_tests() {
                         clipboard_build_started=$SECONDS
                         cargo test --offline --locked --lib --features linux-pkg-config \
                             --no-run --color never
-                        if [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
+                        if [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
+                            printf "WHITEBOARD_CLIENT_STATE_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
+                                "$((SECONDS - clipboard_build_started))"
+                        elif [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
                             printf "WHITEBOARD_PRESENTATION_STATE_BUILD=pass elapsed_seconds=%s features=linux-pkg-config\n" \
                                 "$((SECONDS - clipboard_build_started))"
                         elif [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
@@ -2984,6 +2999,17 @@ run_focused_rust_tests() {
                             python3 -I -S /source/scripts/run-whiteboard-display-test.py "$clipboard_executable"
                             [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
                             printf "WHITEBOARD_DISPLAY_ARTIFACT=pass sha256=%s executable=%s tests=1 unchanged=before-after\n" \
+                                "$clipboard_artifact_sha" "$clipboard_executable"
+                            exit 0
+                        fi
+                        if [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
+                            printf "WHITEBOARD_CLIENT_STATE_ARTIFACT_BEFORE=sha256=%s executable=%s\n" \
+                                "$clipboard_artifact_sha" "$clipboard_executable"
+                            /usr/bin/timeout --signal=TERM --kill-after=5s 25s \
+                                "$clipboard_executable" whiteboard::client::tests::r_s11ho_ \
+                                --color never --test-threads=1
+                            [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
+                            printf "WHITEBOARD_CLIENT_STATE_ARTIFACT=pass sha256=%s executable=%s tests=7 unchanged=before-after\n" \
                                 "$clipboard_artifact_sha" "$clipboard_executable"
                             exit 0
                         fi
@@ -3099,6 +3125,8 @@ run_focused_rust_tests() {
     fi
     if [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clipboard ]; then
         printf 'CLIPBOARD_DECODE_PROFILE=clipboard stage=container-start tests=13 bridge=absent\n'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
+        printf 'WHITEBOARD_CLIENT_STATE_PROFILE=whiteboard-client stage=container-start tests=7 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
         printf 'WHITEBOARD_PRESENTATION_STATE_PROFILE=whiteboard-presentation stage=container-start tests=2 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
@@ -3182,6 +3210,10 @@ run_focused_rust_tests() {
             [ "$(grep -Fxc 'WHITEBOARD_DISPLAY_NATIVE=pass backend=x11 pixels=server-readback owners=2 clear=exact-owner event_loop=retired window=destroyed-before-return xvfb=joined' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'WHITEBOARD_DISPLAY_NATIVE=' "$output")" -eq 1 ] \
                 || fail 'native whiteboard behavior/cleanup receipt differs'
+        elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
+            [ "$(grep -Ec '^WHITEBOARD_CLIENT_STATE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=7 unchanged=before-after$' "$output")" -eq 1 ] \
+                && [ "$(grep -Fc 'WHITEBOARD_CLIENT_STATE_ARTIFACT=' "$output")" -eq 1 ] \
+                || fail 'whiteboard client state artifact receipt is absent, malformed or duplicated'
         elif [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then
             [ "$(grep -Ec '^WHITEBOARD_PRESENTATION_STATE_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=2 unchanged=before-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'WHITEBOARD_PRESENTATION_STATE_ARTIFACT=' "$output")" -eq 1 ] \
@@ -3277,6 +3309,12 @@ run_focused_rust_tests() {
             grep -E '^WHITEBOARD_DISPLAY_(ARTIFACT_BEFORE|ARTIFACT|BUILD|NATIVE)=' "$output"
             grep -E '^test whiteboard::linux::tests::r_s11hn_.* \.\.\. ok$' "$output"
             printf 'WHITEBOARD_DISPLAY_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-x11-whiteboard-display-owner-and-window-pixels rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = whiteboard-client ]; then
+            grep -E '^WHITEBOARD_CLIENT_STATE_(ARTIFACT_BEFORE|ARTIFACT|BUILD)=' "$output"
+            grep -E '^test whiteboard::client::tests::r_s11ho_.* \.\.\. ok$' "$output"
+            printf 'WHITEBOARD_CLIENT_STATE_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-whiteboard-client-state-and-command-admission rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = whiteboard-presentation ]; then

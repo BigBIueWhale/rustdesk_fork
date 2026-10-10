@@ -4602,14 +4602,6 @@ else
   rc=1
 fi
 
-echo "== (2g-c2adaaa) R-S11ho exact-generation whiteboard client worker ownership =="
-if python3 scripts/verify-whiteboard-client-lifecycle.py --repo . --self-test; then
-  note "ok  R-S11ho Apple/shared whiteboard client demand, task, sender, and shutdown use one exact-generation lifecycle owner"
-else
-  echo "  FAIL R-S11ho Apple/shared whiteboard client lifecycle regained duplicate launch, nested runtime, lost stop-window demand, automatic failure retry, or stale finalization"
-  rc=1
-fi
-
 echo "== (2g-c2b) R-S11go exact-owner ordered display-selection finality =="
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
   note "ok  R-S11go Apple/shared display selection is exact-owner, typed, ordered, bounded, and failure-visible"

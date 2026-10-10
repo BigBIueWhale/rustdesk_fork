@@ -12111,7 +12111,7 @@ or fix for that defect.
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
 **Current disposition: state/admission source implemented and focused Linux execution passed;
-exact task/helper retirement has a source ownership gap; native lifecycle evidence OPEN.**
+actual global-client retirement fails natively; complete task/helper lifecycle evidence OPEN.**
 `src/whiteboard/client.rs` uses one mutex-owned `WhiteboardClientState`
 containing registrations, the exact-generation sender, retained Tokio task handle, and
 Idle/Starting/Running/Stopping phase. Checked generation reservation prevents wraparound;
@@ -12141,16 +12141,26 @@ Thus state finalization and a successful shutdown write do not prove process cle
 The retained task handle is also dropped by its own finalizer rather than joined by
 an external owner. The seven tests below exercise neither boundary.
 
-**Actual global-client native regression prepared; execution pending:** the same-image
-Linux CLI/X11 probe now calls production register/cursor/unregister APIs with duplicate
-enable and two connections. After pixel readback and exact-owner clearing it holds the
-helper alive at real CLI return, then reads the actual locked client phase through a
-feature-only diagnostic. The generation must still be Stopping. Owned pidfds identify
-the live helper and fixture parent; signal inspection avoids racing their inherited
-stdin. Fixture cleanup is explicitly labeled and cannot prove production task join or
-child reaping. The existing eight receiver cases remain; the expanded profile also
-requires this client-phase result. Neither its implementation nor syntax checks close
-the product ownership gap or establish native acceptance.
+**Actual global-client defect reproduced; expanded profile FAILS:** at source
+`7e437223dd367191719e322989db7297b8fcfbf7`, tree
+`1213b9b0e2ff0198450460a7f2edc4b68a4c8752`, the same-image Linux CLI/X11 probe
+called production register/cursor/unregister with duplicate enable and two connections.
+Real two-owner pixel readback and exact-owner clearing preceded final unregister.
+At real helper CLI return, its retained pidfd proved it still alive and X11 returned
+BadWindow; the live parent reported generation 0, Idle, task=false. The generation
+was released before helper exit/reap. Only then did fixture-owned cleanup permit
+normal helper exit and exact child reap; it is not production retirement evidence.
+This is a native lifetime defect, not an LPE reproduction or accepted client suite.
+The eight prior receiver-case completion receipts were emitted, but the expanded
+`--whiteboard-helper-lifetime` profile exits 1 on the new client-phase assertion.
+Rust1.75 build took 163s; before-execution artifact SHA-256
+`c48c61904851c764fd7eb3ace3057b6ef13bf792583e1bca33bc9a7876aae3af`.
+After-artifact/input acceptance gates were not reached. Retained serial
+`android-rust-lifecycle-tests-run.tPqhqKH7FF.serial.log` SHA-256
+`6449dbc4d98dda94dfea0e1b695eb1c64ea05f026430bbf3cb81066e3fb152e0`.
+Source archive matches the named commit; host endpoint inventories were identical,
+owned VM/capture/filesystem helpers were joined, and failed diagnostics are preserved
+at `failed-whiteboard-client-7e437223-tPqhqKH7FF`. Production ownership remains OPEN.
 
 Linux whiteboard now observes whole-parent exit through the helper's owned pidfd,
 and its shared launch constructor removes creating-thread `PR_SET_PDEATHSIG`.
@@ -12159,6 +12169,10 @@ true parent-process-death CLI/helper subsets passed as detailed in R-S11hn.
 The production client still
 spawns synchronously inside its async task and uses the global child registry;
 off-executor launch, cancellation ownership and exact reaping remain required.
+Windows root launch additionally closes its returned process handle and reports
+`Ok(None)` in `run_current_exe_in_current_session_with_env`; a `Child`-only generation
+owner cannot retain that process through the existing API. The launch surface must
+return an exact owned process object. Native Windows acceptance remains missing.
 Required correction: retain the exact helper and task through startup, shutdown,
 failure, panic and cancellation; release the generation/permit replacement only after
 positive retirement. Timeout initiates cancellation while ownership remains retained.

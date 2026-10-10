@@ -4763,6 +4763,13 @@ exists only to make the current source disposition discoverable.
   active-session, unrelated and system principals, read-only duplex access, invalid
   postfixes, system-only endpoints, session replacement, exact artifacts and cleanup
   remains required. Linux source execution or a pure classifier test cannot close it.
+  Candidate `a677dbc74cb6423a1145e84019347dce7775c21e` passed the default no-NIC
+  Linux authority VM (terminal 0, 98 seconds): focused supplementary DACL source gate
+  and shell syntax, frozen inputs, unchanged host listeners and joined cleanup.
+  Receipt: `authority-smoke-run.9LJhkeBtOj.serial.log`, SHA-256
+  `326645d86ccb16583d7ad82d1749da2234ccf3a3cb89892de90b378b4b467edb`.
+  The gate ran as UID 4000 and records `native_windows=unexecuted`; no production
+  Rust/Windows test, product artifact or installed Windows boundary ran in this slice.
 - R-S11e-64 — smoke container image, network, and dependency authority
 - R-S11e-65 — Windows token-switched child environment finality
 - R-S11e-66 — macOS administrator-script environment finality

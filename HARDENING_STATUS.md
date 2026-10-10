@@ -12150,8 +12150,8 @@ or fix for that defect.
 
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
-**Current disposition: SOURCE IMPLEMENTED; focused executable and target-native lifecycle
-evidence OPEN.** `src/whiteboard/client.rs` uses one mutex-owned `WhiteboardClientState`
+**Current disposition: SOURCE IMPLEMENTED; focused Linux state/admission execution passed;
+complete task/helper and target-native lifecycle evidence OPEN.** `src/whiteboard/client.rs` uses one mutex-owned `WhiteboardClientState`
 containing registrations, the exact-generation sender, retained Tokio task handle, and
 Idle/Starting/Running/Stopping phase. Checked generation reservation prevents wraparound;
 duplicate Starting/Running demand does not launch another task. Sender publication and the
@@ -12176,9 +12176,23 @@ fixed 64/65-command saturation with cursor-only loss, preservation of queued dat
 retirement on refused Bind/Close/Shutdown; closed-channel retirement for every command
 type; and generation exhaustion without wraparound. They use real Tokio channels, without
 starting a task or helper. The old capacity test only exercised Tokio at a limit derived
-from the same production constant and is replaced. Execution is pending in the source-bound
-`--android-rust-lifecycle-tests --whiteboard-client` shard; a pass requires all seven named
-tests, zero failed/ignored results, unchanged executable/source/inputs and joined cleanup.
+from the same production constant and is replaced.
+
+**Accepted executable subset:** the source-bound
+`--android-rust-lifecycle-tests --whiteboard-client` shard passed all seven named tests
+from commit `45b309c5aeec2d752aa93b822bfad9647c505803`, tree
+`1769bb5efcb2bc874b886408ce93c161e201fd33`: 7 passed, 0 failed/ignored,
+596 filtered out. Rust 1.75.0 compiled the real Linux library-test binary in 148s;
+VM runtime was 215s and test execution reported 0.00s. Executable SHA-256
+`14890efb4db890ade17df9157b821f97224ad01a9800bf9fec79ce986e2bb6d3`
+was unchanged before/after execution. Source/inputs, offline canary, zero-NIC VM,
+nonroot network-none container, full host endpoint audit with no additions and
+joined cleanup passed. Retained serial
+`.harness-state/verifier-vm/android-rust-lifecycle-tests-run.IILs5QXiTn.serial.log`
+SHA-256 `1b5343e88eb83eeaeb1f8aa875ba5ee10b851ca6abb91065ad5ff5a150b1b4b0`.
+This exercises production state methods and real in-process queue admission;
+global task finalization, helper startup, authenticated IPC, installed principals,
+multi-connection native lifecycles and resource bounds remain unproved.
 
 The 526-line `scripts/verify-whiteboard-client-lifecycle.py` and its shared/Apple calls
 are deleted. Its source substring/order/count assertions and 42 in-memory substitutions
@@ -12187,7 +12201,7 @@ did not execute a task, channel admission, helper, OS principal or cleanup. The 
 acceptance. Original review and intermediate incidents remain in Git history at `043a6aa6`
 and the R-S11ho audit entry in `/tmp/privilege_securiry_deep_audit.md`.
 
-**Still required:** exact-current executable regressions and native Windows/macOS/Linux
+**Still required:** complete current full-root/task/helper suites and native Windows/macOS/Linux
 multi-connection, repeated-enable, every-phase demand, committed-stop replacement, explicit
 later retry, sender/transport/helper failure, queue/registration saturation, abrupt owner
 loss, and cleanup runs. Observe one live generation, at most one demanded successor, and

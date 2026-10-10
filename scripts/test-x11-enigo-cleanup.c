@@ -23,6 +23,7 @@ static XkbDescPtr baseline, retained_original;
 static KeyCode scratch_code;
 static charcodemap_t *retained_charcodes;
 static int input_original_x, input_original_y;
+static Window input_original_root;
 
 static void keys_clear(void);
 static void no_events(void);
@@ -207,8 +208,11 @@ void enigo_cleanup_input_begin(void) {
   unsigned int mask;
   XEvent event;
   assert(armed && phase == 0 && pending != NULL);
-  assert(XQueryPointer(observer, window, &root, &child,
-                       &input_original_x, &input_original_y, &x, &y, &mask));
+  /* False means another screen; the returned root and root coordinates remain valid. */
+  XQueryPointer(observer, window, &input_original_root, &child,
+                &input_original_x, &input_original_y, &x, &y, &mask);
+  assert(input_original_root == RootWindow(observer, 0)
+         || input_original_root == RootWindow(observer, 1));
   assert(!(mask & (Button1Mask | Button2Mask | Button3Mask | Button4Mask | Button5Mask)));
   XSelectInput(observer, window, KeyPressMask | KeyReleaseMask | ButtonPressMask
                | ButtonReleaseMask | PointerMotionMask);
@@ -259,7 +263,7 @@ int enigo_cleanup_input_end(void) {
   while (XCheckWindowEvent(observer, window,
                           PointerMotionMask | ButtonPressMask | ButtonReleaseMask, &event)) {}
   XSelectInput(observer, window, KeyPressMask | KeyReleaseMask);
-  XWarpPointer(observer, None, root, 0, 0, 0, 0, input_original_x, input_original_y);
+  XWarpPointer(observer, None, input_original_root, 0, 0, 0, 0, input_original_x, input_original_y);
   XSync(observer, False);
   return unchanged;
 }

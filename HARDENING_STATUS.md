@@ -784,16 +784,30 @@ closure follows from these component receipts.
   `108038a3919e2c4230090aaaea4244074d391ec5d0f8cbaa01d1ca9a1f7daa9a`.
   The full Linux Rust library compiled on the same source; the 13-test clipboard
   shard passed but provides no input-dispatch evidence. Both isolated transactions
-  passed listener invariance and joined cleanup. Actual application/rdev and
-  global retirement remain OPEN. Connection key-lease teardown now uses
+  passed listener invariance and joined cleanup. Whole application input
+  lifecycle and global retirement remain OPEN. Connection key-lease teardown uses
   `release_owned_physical_key`: retained native identities replace saved peer
   events, and only the final aggregate owner submits release. State collection,
   modifier/lock planning and text submission are absent from that operation;
   failed or unwound releases retain ownership. The unchanged native fixture at
   `46d207a0` compiled and passed five ownership models, then reproduced the old
-  teardown failure with an unavailable state collector. Corrected native
-  execution remains pending. Full worker/server shutdown, pending text-map
-  composition, global injector retirement and native Windows/macOS remain OPEN.
+  teardown failure with an unavailable state collector. The identical fixture
+  passed on `8694c5a4`: the complete Linux library built, five ownership tests
+  passed, and 16 native cases covered eight sided modifiers in Control and Map
+  forms with two owners. Earlier-owner retirement emitted no event; the final
+  owner emitted exactly its physical release and preserved an independently
+  held key. Ordinary admission still refused, registry ownership retired, and
+  descriptors returned to baseline. The fixture supplies real rdev presses to
+  the production registry; this is teardown-function/native-sink evidence.
+  Raw evidence: `android-rust-lifecycle-tests-run.c8P8M9hb7O.serial.log`, SHA-256
+  `adc9d5de17f61fe28e272be6f57d2018c4f843d232fa3031e2194bb5f6a9509a`.
+  The zero-NIC VM and networkless guest container completed in 240 seconds,
+  with no host listener addition and joined X11/container/VM cleanup.
+  Full worker/server shutdown, pending text-map composition, global injector
+  retirement and native Windows/macOS remain OPEN. The last worker still uses
+  a no-op retirement callback, and server exit still collects state to release
+  device modifiers. Windows virtual-key up/repeat still resolves the foreground
+  mapping before lease lookup; layout/desktop identity retention remains required.
 - Broader unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;
   native events and an in-request lease observer do not prove text consumption.
 - Loader identity/ACL/path races, native application consumers, full

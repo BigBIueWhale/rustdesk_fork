@@ -3100,7 +3100,6 @@ impl InputKeyOwnerRegistry {
         }
         *workers -= 1;
         if *workers == 0 {
-            // Keep registration excluded until process-global injector state has been retired.
             on_last_worker();
             true
         } else {

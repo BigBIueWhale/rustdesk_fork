@@ -206,7 +206,7 @@ async fn exercise(child: &mut Child, case: &str, token: &str, postfix: &str, add
     };
     wait_cli_return(child).await?;
     if let Some(stream) = stream.as_mut() {
-        tokio::time::timeout(Duration::from_secs(1), stream.probe_whiteboard_eof()).await??;
+        tokio::time::timeout(Duration::from_secs(1), stream.wait_whiteboard_helper_eof()).await??;
     }
     require_listener_refused(address).await?;
     println!("WHITEBOARD_HELPER_RETURNED case={case} pid={} alive=true worker=absent stream=retired", child.id());

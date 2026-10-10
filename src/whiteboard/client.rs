@@ -895,6 +895,10 @@ async fn start_whiteboard_(generation: u64, launch_token: &str, postfix: &str, h
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         tokio::select! {
+            result = stream.wait_whiteboard_helper_eof() => {
+                result?;
+                bail!("whiteboard helper closed its command stream");
+            }
             res = rx.recv() => {
                 match res {
                     Some(command @ WhiteboardIpcCommand::Bind { .. }) => {

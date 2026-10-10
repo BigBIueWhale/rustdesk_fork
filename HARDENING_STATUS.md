@@ -12182,30 +12182,35 @@ tree `cfd4a3de9779b6779d684459d86e01c215c6c45c`, passed the same helper-lifetime
 in 230s / build 157s using the same pinned Rust1.75/vendor/devcheck inputs. Eight receiver cases
 and three global-client cases reused artifact
 `0606774377a32b994df1532d6598b63d96490e5a7fc6bd717d6289a2767078e4`, unchanged before/after.
-Duplicate replacement demand retained generation 1 in Stopping with two connections and
-helper 20239 alive after external task join; production normal reap preceded generation 2 /
-helper 20242 readiness. Withdrawal retained generation 1 in Stopping with no connections and
-helper 20247 alive, then production normal reap and 500ms Idle/no retained helper before
-observer-gated later explicit demand launched generation 2 / helper 20250. Healthy helper
-20234 also normally reaped.
-All five global generations drew two owners and cleared only the removed owner; live parent,
-retained helper pidfd and X11 BadWindow preceded release, independent pidfd death and /proc
-absence corroborated each production normal reap. Fixture cleanup could not satisfy success.
+Replacement retained the old Stopping generation/helper with two connections until production
+normal reap, then rendered generation2. Withdrawal retained the old helper with no connections,
+then normal reap and500ms Idle preceded later explicit demand/generation2. Five global generations
+passed two-owner/exact-clear pixels, live-parent/helper pidfd and X11 BadWindow before release,
+production normal reap and independent pidfd death/proc absence afterward.
 Serial `android-rust-lifecycle-tests-run.MpGv5OtIAL.serial.log`,79001bytes, SHA-256
 `aad828a3c94bdb9bde57c5eef1fb369410186a7fc4fc1b006e5a1bc70af31daa`.
-Source/input/offline-canary, UID/GID1000 network-none container, zero-NIC VM, complete
-before/during/after host endpoint no-addition audits and joined helper/Xvfb/container/VM/
-capture/filesystem cleanup passed. This finite global-registration subset proves the named
-committed-stop demand cases; actual Remote/PAKE producer admission, other phase/failure/race
-paths, abrupt root loss, complete OS-resource bounds/soak and Windows/macOS remain OPEN.
+Source/input/canary, UID/GID1000 network-none container, zero-NIC VM, full host endpoint
+no-addition audits and joined owned cleanup passed. This finite global-registration subset
+does not prove actual Remote/PAKE admission or the remaining native/installed/resource matrix.
 
-**Quiet helper transport loss: native test pending.** The command worker currently selects
-only outgoing commands and a timer; it does not observe incoming EOF. The new global-client
-case closes the real X11 helper window after two-owner pixels and four moves per owner leave
-no pending cursor, retaining both registrations and the live helper at CLI return. It requires
-external task join before process exit, production normal reap, 500ms Idle with retained
-demand and no self-retry, then later explicit same-ID registration and generation2 rendering.
-Native falsification/correction remains pending; crash, other failures and root loss stay OPEN.
+**Quiet helper transport loss: native failure reproduced; source correction pending acceptance.**
+At `d84089331777718deb7920f4050d24923ce72403`, tree
+`cc93b06c1450e091c5aa86f000f2c2b591ad6f41`, real two-owner pixels and350ms quiet preceded
+native X11 window close with both registrations retained. At helper20256 CLI return, the observer
+proved it alive with X11 BadWindow; the parent still reported Running/generation1/task=true/
+connections2/helper_owned/task_joined=false and failed the one-second external-join deadline.
+Eight receiver and three earlier global cases completed, but the full profile exited1;
+after-artifact/input acceptance was not reached. Before artifact
+`3f85bd58a139e23d914481a170e6e398477f9aa1f17ecd746cdfe48c41720bac`, Rust1.75 build156s.
+Serial `android-rust-lifecycle-tests-run.BoWX6mzMhL.serial.log`,88097bytes, SHA-256
+`02a1493b453f5686d037ad6352260edd0a02a8856f0ae2ee3ebf2c585eb3541d`.
+Named source bytes and identical host endpoints verified; owned VM/capture/filesystem cleanup
+joined. Diagnostics retained at `failed-whiteboard-eof-d8408933-BoWX6mzMhL` after exact-root
+reconciliation. The command worker now selects bounded helper EOF/error in its existing task;
+unexpected payload fails closed. Its existing terminal guard retires admission and the root
+retains helper/reaps before release. Same native fixture must prove normal reap,500ms Idle
+with retained demand/no self-retry, then explicit same-ID retry and generation2 pixels.
+Correction has not run; crash, other failures and abrupt root loss remain OPEN.
 
 **Accepted executable state/handle subset:** `--android-rust-lifecycle-tests --whiteboard-client`
 passed 9 tests, 0 failed/ignored, 598 filtered, 0.00s execution; probe feature disabled.

@@ -7904,12 +7904,12 @@ where
         }
     }
 
-    #[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
-    pub(crate) async fn probe_whiteboard_eof(&mut self) -> ResultType<()> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) async fn wait_whiteboard_helper_eof(&mut self) -> ResultType<()> {
         match self.inner.next().await {
             None => Ok(()),
             Some(Err(err)) => Err(err.into()),
-            Some(Ok(_)) => bail!("whiteboard helper sent unexpected bytes after CLI return"),
+            Some(Ok(_)) => bail!("whiteboard helper sent unexpected bytes instead of retiring"),
         }
     }
 }

@@ -6821,9 +6821,10 @@ impl Connection {
             };
             drop(join_tx);
             if let Err(err) = tokio::task::spawn_blocking(move || {
-                let result = join.join();
+                if join.join().is_err() {
+                    log::error!("Undelivered remote input worker panicked before exact join");
+                }
                 drop(admission);
-                result
             }).await {
                 log::error!("Failed to join undelivered remote input worker: {err}");
             }
@@ -10923,9 +10924,10 @@ impl Connection {
                     };
                     drop(join_tx);
                     if let Err(err) = tokio::task::spawn_blocking(move || {
-                        let result = join.join();
+                        if join.join().is_err() {
+                            log::error!("Undelivered lock-screen worker panicked before exact join");
+                        }
                         drop(admission);
-                        result
                     }).await {
                         log::error!("Could not join undelivered lock-screen worker: {err}");
                     }

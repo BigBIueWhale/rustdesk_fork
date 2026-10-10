@@ -808,15 +808,22 @@ closure follows from these component receipts.
   awaits native readiness; Windows wake and post-session lock use owned workers.
   The unchanged `--android-rust-lifecycle-tests --input-lifetime` fixture failed
   at `748892f5`: actual worker joins left text/main owners, changed map and one FD.
-  At `6a675303`, both refusal cases passed16 generations each, exact owned releases,
+  At `c5d0984a`, both refusal cases passed 16 generations each, exact owned releases,
   foreign-key preservation, full map restoration, child-before-Display and FD/task
-  retirement. Full Linux library build and physical regression also passed.
-  Raw `android-rust-lifecycle-tests-run.0tuiRC1ea9.serial.log`, SHA-256
-  `01b5afd5454eeef3d84b48a1471d3dbd2ebe27e59d661aa87af6e40688de69f8`.
-  Both isolated transactions joined cleanup without added host listeners.
-  macOS recorded CapsLock retirement is source-corrected; native behavior and
-  current Apple cross-check are pending. Full shutdown/network/installed acceptance
-  remains OPEN. Exact before and regression receipts are retained in the audit.
+  retirement. The complete Linux library built; the physical regression at
+  `6a675303` also passed. Current raw evidence:
+  `android-rust-lifecycle-tests-run.66vtBPpHYe.serial.log`, SHA-256
+  `cb578035502f040d9d9feb6be8270edec829181c35d7eebbd94ad67e0c5f3490`.
+  The 236-second isolated transaction joined cleanup without added host listeners.
+  macOS recorded CapsLock retirement is source-corrected. The three Apple shared
+  workspace anchors compiled; application checks stopped at expected SDK/header
+  boundaries. The outer transaction rejected an unattributed new loopback listener
+  on `127.0.0.1:9444`; Apple integration, full builds and native behavior remain OPEN.
+  Raw `apple-conform-run.U7DV8gknyH.serial.log`, SHA-256
+  `e56e433d52e7e50ad26621e336c2220b93457475bae54b7aed1fb6e7b5c5c722`.
+  Remote admission still drops the cursor-recorder thread handle; a shared stop
+  flag without exact join permits overlapping generations. Full shutdown/network/
+  installed acceptance remains OPEN. Before/regression receipts are in the audit.
   Windows virtual-key up/repeat still resolves the foreground
   mapping before lease lookup; layout/desktop identity retention remains required.
 - Broader unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;

@@ -388,6 +388,122 @@ def observe_owner(executable, environment, display, server, parent_exit=False):
                 sys.stderr.write(log_path.read_text())
 
 
+def observe_client_generation(executable, environment, display, server):
+    environment = dict(environment, WHITEBOARD_PROBE_CLIENT_GENERATION="1")
+    log_path = Path("/tmp/whiteboard-client-generation.log")
+    with log_path.open("xb") as log:
+        owner = subprocess.Popen([str(executable), "--server"], env=environment,
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
+        owner_fd = os.pidfd_open(owner.pid, 0)
+        selector = selectors.DefaultSelector()
+        selector.register(owner.stdout, selectors.EVENT_READ)
+        os.set_blocking(owner.stdout.fileno(), False)
+        pending, pid, helper_fd, window = b"", None, None, None
+        phases, returned, state, cleaned = [], False, None, False
+
+        def helper_alive():
+            poller = select.poll()
+            poller.register(helper_fd, select.POLLIN)
+            return not poller.poll(0)
+
+        deadline = time.monotonic() + 25
+        try:
+            while True:
+                require(time.monotonic() < deadline and server.poll() is None,
+                        "global client scenario deadline or Xvfb lifetime failed")
+                if not selector.select(0.1):
+                    require(owner.poll() is None, "global client owner exited without final output")
+                    continue
+                chunk = os.read(owner.stdout.fileno(), 4096)
+                if not chunk:
+                    break
+                pending += chunk
+                require(len(pending) <= 8192, "global client output exceeds its bound")
+                while b"\n" in pending:
+                    line, pending = pending.split(b"\n", 1)
+                    text = line.decode("ascii")
+                    print(text, flush=True)
+                    ready = re.fullmatch(r"WHITEBOARD_CLIENT_READY generation=1 pid=([1-9][0-9]*) connections=2 task=retained", text)
+                    overlay = re.fullmatch(r"WHITEBOARD_HELPER_OVERLAY phase=(draw|clear)", text)
+                    snapshot = re.fullmatch(r"WHITEBOARD_CLIENT_STATE generation=([0-9]+) phase=(Idle|Starting|Running|Stopping) task=(true|false) connections=0 expected_generation=1 pid=([1-9][0-9]*)", text)
+                    cleanup = re.fullmatch(r"WHITEBOARD_CLIENT_CLEANUP pid=([1-9][0-9]*) status=0 owner=fixture child=normal-exit-reaped", text)
+                    if ready:
+                        require(pid is None, "global client published more than one generation")
+                        pid = int(ready.group(1))
+                        helper_fd = os.pidfd_open(pid, 0)
+                        window_deadline = time.monotonic() + 3
+                        while window is None:
+                            require(helper_alive() and owner.poll() is None and server.poll() is None
+                                    and time.monotonic() < window_deadline,
+                                    "global client's live native window never appeared")
+                            window = display.helper_window(pid)
+                            if window is None:
+                                time.sleep(0.01)
+                        owner.stdin.write(b"go\n")
+                        owner.stdin.flush()
+                    elif overlay:
+                        phase = overlay.group(1)
+                        require(window is not None and not returned and helper_alive()
+                                and len(phases) < 2 and phase == ("draw", "clear")[len(phases)],
+                                "global client overlay order differs")
+                        display.wait_pixels(window, (0x00ff00, 0x0000ff) if phase == "draw"
+                                            else (0, 0x0000ff), owner, server)
+                        phases.append(phase)
+                        owner.stdin.write(b"drawn\n" if phase == "draw" else b"cleared\n")
+                        owner.stdin.flush()
+                    elif text == "returned":
+                        require(phases == ["draw", "clear"] and not returned and helper_alive()
+                                and owner.poll() is None, "global client helper did not return while alive")
+                        display.require_destroyed(window)
+                        returned = True
+                        signal.pidfd_send_signal(owner_fd, signal.SIGUSR1)
+                    elif snapshot:
+                        require(returned and state is None and helper_alive() and owner.poll() is None
+                                and snapshot.group(4) == str(pid), "client snapshot missed its live helper")
+                        state = snapshot.groups()[:3]
+                        print(f"WHITEBOARD_CLIENT_OBSERVED generation={state[0]} phase={state[1]} task={state[2]} helper=alive window=badwindow owner=alive", flush=True)
+                        # Finish and reap even when the production phase assertion fails.
+                        owner.stdin.write(b"finish\n")
+                        owner.stdin.flush()
+                        signal.pidfd_send_signal(owner_fd, signal.SIGUSR1)
+                    elif cleanup:
+                        require(state is not None and not cleaned and cleanup.group(1) == str(pid)
+                                and not helper_alive() and not Path(f"/proc/{pid}").exists(),
+                                "fixture did not normally reap its exact helper")
+                        cleaned = True
+                    else:
+                        raise RuntimeError("unexpected global client control output")
+            require(not pending and cleaned and owner.wait(timeout=5) == 0,
+                    "global client fixture did not complete normal cleanup")
+            require(state is not None and state[0] == "1" and state[1] == "Stopping",
+                    f"client released its generation before helper exit/reap: generation={state[0]} phase={state[1]} task={state[2]} helper_was_alive=true")
+        finally:
+            selector.close()
+            owner.stdin.close()
+            owner.stdout.close()
+            if owner.poll() is None:
+                owner.terminate()
+                try:
+                    owner.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    owner.kill()
+                    owner.wait()
+            os.close(owner_fd)
+            if helper_fd is not None:
+                try:
+                    if helper_alive():
+                        signal.pidfd_send_signal(helper_fd, signal.SIGKILL)
+                    # Normal cleanup was performed by the retained parent Child;
+                    # on fixture failure the subreaper owns any orphan instead.
+                    if not cleaned and Path(f"/proc/{pid}").exists():
+                        os.waitpid(pid, 0)
+                finally:
+                    os.close(helper_fd)
+            if owner.returncode != 0:
+                sys.stderr.write(log_path.read_text())
+    print("WHITEBOARD_CLIENT_PHASE=pass generation=retained-before-helper-exit producer=global-registration pixels=two-owner-clear cleanup=fixture-reap", flush=True)
+
+
 def main():
     require(os.getuid() == 1000 and os.getgid() == 1000, "native test principal differs")
     libc = c.CDLL(None, use_errno=True)
@@ -421,6 +537,7 @@ def main():
             display = Display()
             observe_owner(executable, environment, display, server)
             observe_owner(executable, environment, display, server, parent_exit=True)
+            observe_client_generation(executable, environment, display, server)
             require(artifact_digest(executable) == digest and server.poll() is None,
                     "compiled helper artifact or Xvfb changed during execution")
         finally:
@@ -441,7 +558,7 @@ def main():
     print("WHITEBOARD_HELPER_NATIVE=pass cases=8 cli=core-main parent=kernel-admitted "
           "wrong_parent=preproof-eof listener=retired-before-proof helper=normal-exit "
           "worker=absent-before-exit window=badwindow-before-exit reconnect=refused address=rebindable "
-          "overlay=two-owner-clear window_close=authenticated-cancel creator_thread=joined-live parent_exit=preproof-retired xvfb=joined", flush=True)
+          "overlay=two-owner-clear window_close=authenticated-cancel creator_thread=joined-live parent_exit=preproof-retired client_phase=retained-before-exit xvfb=joined", flush=True)
 
 
 if __name__ == "__main__":

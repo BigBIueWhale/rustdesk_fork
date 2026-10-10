@@ -12141,6 +12141,17 @@ Thus state finalization and a successful shutdown write do not prove process cle
 The retained task handle is also dropped by its own finalizer rather than joined by
 an external owner. The seven tests below exercise neither boundary.
 
+**Actual global-client native regression prepared; execution pending:** the same-image
+Linux CLI/X11 probe now calls production register/cursor/unregister APIs with duplicate
+enable and two connections. After pixel readback and exact-owner clearing it holds the
+helper alive at real CLI return, then reads the actual locked client phase through a
+feature-only diagnostic. The generation must still be Stopping. Owned pidfds identify
+the live helper and fixture parent; signal inspection avoids racing their inherited
+stdin. Fixture cleanup is explicitly labeled and cannot prove production task join or
+child reaping. The existing eight receiver cases remain; the expanded profile also
+requires this client-phase result. Neither its implementation nor syntax checks close
+the product ownership gap or establish native acceptance.
+
 Linux whiteboard now observes whole-parent exit through the helper's owned pidfd,
 and its shared launch constructor removes creating-thread `PR_SET_PDEATHSIG`.
 The baseline reproduced SIGKILL after creator join; corrected creator-thread and

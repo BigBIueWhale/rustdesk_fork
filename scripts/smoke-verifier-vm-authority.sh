@@ -4861,8 +4861,11 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whit
     whiteboard_helper_before=${whiteboard_helper_before% cases=8 unchanged=before-after}
     require_exact_fixed_receipt "$whiteboard_helper_before" 'native helper artifact before execution'
     require_exact_fixed_receipt \
-        'WHITEBOARD_HELPER_NATIVE=pass cases=8 cli=core-main parent=kernel-admitted wrong_parent=preproof-eof listener=retired-before-proof helper=normal-exit worker=absent-before-exit window=badwindow-before-exit reconnect=refused address=rebindable overlay=two-owner-clear window_close=authenticated-cancel creator_thread=joined-live parent_exit=preproof-retired xvfb=joined' \
+        'WHITEBOARD_HELPER_NATIVE=pass cases=8 cli=core-main parent=kernel-admitted wrong_parent=preproof-eof listener=retired-before-proof helper=normal-exit worker=absent-before-exit window=badwindow-before-exit reconnect=refused address=rebindable overlay=two-owner-clear window_close=authenticated-cancel creator_thread=joined-live parent_exit=preproof-retired client_phase=retained-before-exit xvfb=joined' \
         'native helper process/window/endpoint cleanup receipt'
+    require_exact_fixed_receipt \
+        'WHITEBOARD_CLIENT_PHASE=pass generation=retained-before-helper-exit producer=global-registration pixels=two-owner-clear cleanup=fixture-reap' \
+        'native global client generation retained while its helper remains alive'
     require_exact_fixed_receipt \
         'WHITEBOARD_HELPER_CREATOR=pass thread=joined owner=alive helper=live proof=mutual pixels=two-owner-clear' \
         'native creator-thread retirement with a live parent and authenticated rendering'

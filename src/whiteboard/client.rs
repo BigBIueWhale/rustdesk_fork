@@ -28,6 +28,18 @@ lazy_static! {
         Mutex::new(WhiteboardClientState::default());
 }
 
+#[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+pub(crate) fn probe_whiteboard_client_state() -> (&'static str, u64, bool, usize) {
+    let state = WHITEBOARD_CLIENT.lock().unwrap();
+    let (phase, generation) = match state.lifecycle.phase {
+        WhiteboardWorkerPhase::Idle => ("Idle", 0),
+        WhiteboardWorkerPhase::Starting { generation } => ("Starting", generation),
+        WhiteboardWorkerPhase::Running { generation } => ("Running", generation),
+        WhiteboardWorkerPhase::Stopping { generation, .. } => ("Stopping", generation),
+    };
+    (phase, generation, state.worker.is_some(), state.conns.len())
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WhiteboardWorkerPhase {
     Idle,

@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-6d799ea40c9b2a1dfa040bac23fdf11c12a984d1abccdceade3f1dfe1233966e  requirements.html
+b8915ab63b410ed7f54f264c3855be4c88a4078983f0bfcdbe522365e5879f5b  requirements.html
 ```
 
 ## Current Verdict
@@ -1949,7 +1949,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `6d799ea40c9b2a1dfa040bac23fdf11c12a984d1abccdceade3f1dfe1233966e  requirements.html`.
+Current normative specification SHA-256: `b8915ab63b410ed7f54f264c3855be4c88a4078983f0bfcdbe522365e5879f5b  requirements.html`.
 
 ### Current authority and source closure
 
@@ -8052,161 +8052,68 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   reproduction/image distribution and R-V3 review remain OPEN. WiX acquisition and
   maintenance-image distribution retain their separate ledger items and acceptance duties.
 
-- **R-S11cz/R-S11e-118 — exact signed WiX package acquisition and locked offline restore
-  authority — SOURCE, TRANSACTION, SCOPED COLD ACQUISITION, LEGACY RETIREMENT, SIGNATURE,
-  LOCKED-RESTORE, MUTATION, AND NETWORKLESS NATIVE MSI BUILD VERIFIED; CLEAN DOUBLE-BUILD,
-  NATIVE MSI TABLE, AND INSTALLED LIFECYCLE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux
-  acquisition host, manifest-bound offline UDF media, and networkless ephemeral Windows build
-  guest. Endpoint/action: `scripts/online-fetch.sh::stage_windows_wix_nuget`, Linux-side
-  `build_offline_media`, and the WiX restore in `scripts/build-windows.ps1`. Boundary:
-  publisher-signed NuGet package bytes ↔ durable offline input, derived global-package cache,
-  and the Windows MSI build.
+- **R-S11cz/R-S11e-118 — signed WiX inputs and locked offline restore; source implemented,
+  historical acquisition/retirement/signature/restore/native MSI evidence retained;
+  exact-current cold builds, MSI tables, installed lifecycle, and release acceptance OPEN.**
+  The durable authority is the six exact signed WixToolset 4.0.5 packages. The package inventory,
+  lengths, SHA-256 values, signer fingerprints, and retirement identities are in `scripts/pins.env`;
+  the normative contract is R-S11cz and Appendix C #253. Current source uses
+  `scripts/online-fetch.sh::stage_windows_wix_nuget`, the common fixed-archive transaction,
+  `scripts/online-wix-nuget-retire.py`, direct read-only UDF mapping in
+  `scripts/build-windows-vm.sh` / `scripts/windows-offline-manifest.py`, and
+  `scripts/build-windows.ps1`'s signed local-source restore. The expanded-cache producer,
+  tar extraction/copy consumer, mutable .NET tag, and unlocked restore path are absent.
 
-  Before this slice, `online/wix-nuget.tar.gz` was an opaque archived NuGet global-packages
-  tree. Its retired producer selected mutable `mcr.microsoft.com/dotnet/sdk:8.0`; the Linux
-  harness extracted the tar into writable run state, mapped the expanded tree into UDF media,
-  and the Windows guest copied it to `C:\wix-nuget` before an unlocked restore. The extant
-  71,249,853-byte historical archive at SHA-256
-  `0f76c469cd2171f3bf7913828851a2cb22c10a7e0be8bf73ef99a791a6cd1190`
-  contained eight package roots, including the already removed DUtil and WcaUtil native custom-
-  action build dependencies. A separately derived six-root archive at exact size 54,038,393 and
-  SHA-256 `62afa1543d52461ee0b80334c4c3a1d6bf1b54d94f3cd745869102ed613f3b58`
-  removed those two roots, but it still made mutable derived package-manager state—including
-  extraction results and completion metadata—the durable authority. This was acquisition,
-  cache-state, package-signature, lock, and stale-lifecycle authority debt. It is not evidence
-  that the historical package bytes changed, WiX/NuGet was malicious, host root was acquired,
-  Docker escaped, a listener or public port was exposed, host RustDesk/service/configuration/
-  firewall/network state changed, exploitation occurred, or the host was compromised.
+  The Windows guest creates a fresh run-ID-scoped global cache under its validated temporary
+  directory and exclusively creates `res\msi\NuGet.Config` in its disposable source copy.
+  The fixed solution-root name governs SDK resolution before the ordinary restore target;
+  an occupied cache/configuration path is preserved and refused. The configuration clears
+  ambient feeds, maps `WixToolset.*` to the read-only package source, requires the two pinned
+  trusted signers, and uses offline revocation with no VM NIC. The project pins SDK 4.0.5,
+  five exact `[4.0.5]` references and `win;win-arm64;win-x64;win-x86`; the committed lock retains
+  all five direct package content hashes and four empty runtime graphs. Locked/no-cache restore
+  with audit disabled must preserve source/configuration/lock bytes and produce six complete,
+  source-identical cache roots before MSI compilation.
 
-  The durable authority is now exactly six publisher `.nupkg` files at version 4.0.5:
-  Firewall 330,923 bytes / SHA-256
-  `d722cd6d5d262736fc9220fa1d287147c244fd5c2b21065bf192935d8e45d8e3`;
-  Heat 5,018,595 /
-  `6c137c6a7d6b724169ff47832d080bf75009f24cda656d5644585031ebbe66d8`;
-  Netfx 1,577,895 /
-  `e09e0e121c482cba3e77521f83f9820f232dd0ab65199f66398efdef3f7b2e46`;
-  SDK 18,626,823 /
-  `917009bef10f430ee72c4401f70ffcb36562a53f41ea027b8dcacba5e9886a6f`;
-  UI 793,813 /
-  `313cc0a9b2c2e90661a6ab56f46a08ce551ed64673cbef95ceab6508690147a1`;
-  and Util 891,963 /
-  `b63e40584d3b5ceb23607586ad720ae0288bad2c8699a0a07cd3260591d1292e`.
-  The exact lower-case flat-container URLs admit only `api.nuget.org`. Independent signature
-  verification binds WiX author certificate SHA-256
-  `0DB368BC1A5A9E19CC9E036B490B7C4A4D3DFB941C0781B4F22F218BE0B54986`
-  and NuGet.org repository certificate SHA-256
-  `5A2901D6ADA3D18260B9C6DFE2133C95D74B9EEF6AE0E5DC334C8454D1477DF4`.
-
-  Acquisition reuses the R-S11cs fixed-archive helper under its new exact six-entry profile.
-  The already verified immutable Android builder runs with numeric UID:GID, `--pull=never`,
-  isolated bridge egress, read-only root, all capabilities dropped, no-new-privileges, bounded
-  resources, and only exact helper/state read-only mounts plus one private output writable. It
-  receives no online root or final name. Independent host validation proves exact response
-  framing, length/digest, ownership, mode, link count, mount, xattr, and six-file inventory
-  before descriptor-relative no-clobber publication. The explicit
-  `--wix-nuget-packages` mode invokes only this transaction and retirement. No .NET SDK image,
-  host `dotnet`, cache producer, compatibility tag, broad writable online bind, or direct final
-  writer remains.
-
-  `scripts/online-wix-nuget-retire.py` runs only after all six exact finals are durable. It
-  refuses UID/GID zero, exclusively locks and revalidates the current-owner mode-0700 xattr-free
-  online root, revalidates the mode-0700 six-package directory and every mode-0400 single-link
-  current-owner package through stable no-follow descriptors, proves same filesystem/mount and
-  no xattrs, and recognizes only a current-owner mode-0644 archive with one of the two exact
-  historical size/digest identities above. An unknown or unsafe archive is preserved. A
-  recognized archive moves by descriptor-relative
-  `renameat2(RENAME_NOREPLACE)` into unpredictable same-parent private staging; both namespaces
-  are synchronized, the staged exact bytes are revalidated, and only that exact leaf is
-  unlinked. Restart recovery admits only empty private staging or one exact known archive.
-  Adversarial self-tests cover exact retirement, idempotent absence, unknown-input
-  preservation, and interrupted exact-staging recovery. A separate disposable replay used the
-  real historical 71,249,853-byte archive plus all six source-identical package files and
-  returned `retired`, then idempotent `absent`, without changing any mounted source.
-
-  The Linux Windows harness no longer defines `WIX_NUGET_ROOT`, extracts the archive, or gives
-  a helper writable WiX output. Preflight proves the exact six names, sizes, and hashes.
-  `windows-offline-manifest.py` records the direct `wix-nuget-packages` mapping; the complete
-  online tree is read-only to media creation; genisoimage grafts that directory directly; and
-  before/after manifest equality proves input stability. The Windows guest revalidates all six
-  source files, validates its ephemeral temporary directory, requires the run-ID-scoped cache
-  and configuration names to be absent, atomically creates both without deleting or overwriting
-  occupied state, and never copies expanded source state. `NUGET_PACKAGES` points at that fresh
-  directory; the no-clobber configuration is synchronized and hashed across restore; and the
-  guest disables online revocation lookup, requires signature verification, clears ambient
-  sources, maps only `WixToolset.*` to the read-only UDF source, and names both pinned signer
-  fingerprints.
-
-  `Package.wixproj` now pins `WixToolset.Sdk/4.0.5`, expresses every direct extension as exact
-  `[4.0.5]`, and requires locked restore. The committed `packages.lock.json` binds exactly the
-  five direct PackageReferences and their signed-package content hashes; the SDK remains exact
-  in the project SDK declaration and in the six-file source inventory. MSBuild restore passes
-  `RestoreLockedMode=true`, `RestorePackagesWithLockFile=true`, `RestoreNoCache=true`, and
-  `NuGetAudit=false`. It must leave source package, temporary configuration, and lock bytes
-  unchanged and produce exactly six `4.0.5` global-package roots with nonempty
-  `.nupkg.metadata`, nuspec, `.nupkg.sha512`, and source-identical cached `.nupkg` bytes before
-  MSI compilation.
-
-  The scoped real acquisition used exact Android-builder image
-  `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`
-  as numeric non-root with bridge egress and no port/host namespace. It acquired, independently
-  verified, and no-clobber published all six packages, then retired the exact eight-package
-  archive. Persistent postconditions are current-user mode 0700 for the package directory and
-  mode 0400, one link, exact length/digest for every file. The canonical self-excluding online
-  closure was deliberately regenerated to SHA-256
-  `29dc7e958ef7d78c02723d15601fcfe360915d8328cc319a20484513187ecad3`:
-  145,715 files, 42,856 directories, 41 symlinks, 25,679,486,815 content bytes, 16 hardlink
-  groups, and nine case collisions.
-
-  A separate no-network semantic replay used the already present exact .NET 8.0.422 SDK image
+  **Retained historical evidence.** The complete pre-compression receipt is retained in
+  `a04b1e19c8d4609fea80dad5781dbec7e5abc18d`. Acquisition/retirement implementation and receipts are
+  archived in `f2b1b9dbbc8ffebe8ee3a458647c32d6d36ef566`. Its numeric-nonroot confined transaction
+  used Android-builder image
+  `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`,
+  published all six exact files, and retired the known eight-package archive; a disposable
+  real-archive replay returned `retired` then `absent`. The live retirement allowlist remains
+  six-root 54,038,393 bytes / SHA-256
+  `62afa1543d52461ee0b80334c4c3a1d6bf1b54d94f3cd745869102ed613f3b58` and eight-root
+  71,249,853 / `0f76c469cd2171f3bf7913828851a2cb22c10a7e0be8bf73ef99a791a6cd1190`;
+  these are removal identities, never accepted build inputs. A networkless UID:GID-1000
+  .NET 8.0.422 replay using image
   `sha256:d80fdd84f7e18eea12f8e45c52914f1353395009c95c41197178ea19944e6d48`
-  as UID:GID 1000 with read-only root/source, zero capabilities, no-new-privileges, bounded
-  resources, and tmpfs-only writes. Starting from a blank global cache, it independently
-  verified every exact package SHA-256, both signatures on all six packages, the same cleared
-  local-source/package-mapping/trusted-signer configuration used by Windows, and the actual
-  updated project plus committed lock. `dotnet restore --locked-mode --no-cache` completed in
-  217 ms with the lock unchanged and exactly six complete cache roots. The certificate validity
-  dates printed by verification are historical, but the packages carry signed timestamp
-  evidence and the offline restore under the pinned exact bytes/signers passed; no live network
-  or moving publisher state participated.
+  verified all six package hashes and both signatures, then restored from a blank cache in
+  217 ms with lock bytes unchanged and six complete roots. These receipts do not establish
+  present input or image availability, a current complete closure, or current-source acceptance.
 
-  Native Windows diagnosis and correction (2026-08-11) remained fail-closed across successive fresh guest
-  attempts. One run established that bare `cmake` was absent from the Windows PATH; the build now resolves the exact
-  Visual Studio CMake executable. A second run showed that building the isolated callback target still traversed a
-  phony Flutter assembly dependency; the native target now explicitly disables project-reference rebuilding. A
-  third run passed the callback test but proved a temporary-directory `NuGet.Config` was not SDK-resolver authority:
-  restore attempted `nuget.org` and was rejected. Moving the already locked, signer-pinned configuration to the
-  solution directory made source discovery exact. The next networkless guest used only the offline UDF feed but
-  correctly failed locked restore with `NU1004`: the evaluated project requested `win`, `win-arm64`, `win-x64`, and
-  `win-x86`, while the lock had no runtime target graphs. The project now names that exact `RuntimeIdentifiers` set,
-  and the lock adds exactly four empty `native,Version=v0.0/<rid>` graphs. All five direct package identities and
-  content hashes are unchanged. A network-disabled, numeric-UID, read-only-root .NET SDK replay independently
-  generated and then restored that exact lock with only the pre-existing signed local packages. The focused WiX
-  verifier passes and rejects all 27 deliberate mutations, including project/lock runtime-graph and SDK-resolver
-  configuration mutations; the independent workspace binding passes.
+  Native Windows failures exposed the temporary-directory configuration's ineffective SDK
+  source authority and missing runtime graphs (`NU1004`); the source correction is retained in
+  `739e481c6784f9c916973d5acd1070efc64b5216`. The historical zero-NIC Windows build at tree
+  `58c3125332b13a00950cee990d4f16be5d9d4a24` restored only through
+  `C:\rustdesk-build\source\res\msi\NuGet.Config` and `F:\wix-nuget-packages`, with zero
+  restore warnings/errors. Native MSI compilation succeeded with ten WiX/ICE warnings and
+  zero errors; setup packaging succeeded. MSI: 18,308,615 bytes, SHA-256
+  `6692c36a11489d1ba1c79f87044970b3926a3067b09f9bbdb28226b3b9ec4b39`, package code
+  `{6D52FC07-14FE-543E-A63D-6A6449DD7FA8}`. This single worktree build is historical native
+  evidence, not an exact committed R-B2 double build or installed-lifecycle proof.
 
-  The final fresh Windows guest at tree `58c3125332b13a00950cee990d4f16be5d9d4a24` had zero network interfaces and
-  restored with only `C:\rustdesk-build\source\res\msi\NuGet.Config` and feed `F:\wix-nuget-packages`.
-  The log records all five direct 4.0.5 packages installed from that feed, restore success with zero warnings/errors,
-  the native MSI build succeeding with ten documented WiX/ICE warnings and zero errors, canonical MSI package code
-  `{6D52FC07-14FE-543E-A63D-6A6449DD7FA8}`, and successful setup packaging. The finally published MSI is
-  18,308,615 bytes at SHA-256 `6692c36a11489d1ba1c79f87044970b3926a3067b09f9bbdb28226b3b9ec4b39`.
-  This is real networkless WiX restore/compile/package evidence, but it is one worktree build rather than the exact
-  committed R-B2 double build. It does not inspect every native MSI table against policy or exercise
-  install/repair/upgrade/uninstall and service lifecycle; those remain open.
-
-  Confined Bash/Python checks, the fixed-archive and retirement executable fixtures, offline
-  manifest fixture, fixed-archive 63-mutation gate, online-container 39-mutation gate, Windows
-  helper 42-mutation gate, Windows harness contract plus 139 mutations and four bounded
-  behavioral suites, focused WiX 24-mutation gate, shared source gate, and independent workspace
-  mutation matrix bind the producer, consumer, lock, signer, legacy retirement, requirements,
-  Appendix C #253, and this ledger. The synchronized requirements identity is recorded below.
-  No root process,
-  privilege escalation, image pull/build/tag, port, Docker-socket mount, host namespace/device,
-  host firewall/network mutation, or host RustDesk process/service/listener/configuration
-  inspection or change occurred. This slice does not build an MSI or Windows release artifact,
-  inspect native MSI tables, exercise install/repair/major-upgrade/uninstall, complete cross-
-  target R-B2 double-builds, close maintenance-image distribution, prove installed/native/device
-  behavior, independently distribute build images, or complete R-V3 external review.
+  **Current scope and next work.** Filesystem transaction/retirement fixtures and the offline
+  manifest fixture remain; `scripts/verify-wix-nuget-authority.py` and shared wiring are
+  supplementary source checks. Their obsolete requirement/ledger wording checks were deleted
+  in `d61779851794a05991031a136c39f311c5f1fc9d`. No helper, fixture, signature verification,
+  restore, MSI build, or native scenario ran for this documentation correction. A read-only
+  current-state check found both canonical and retired package/cache paths absent, including
+  `online/inputs/wix-nuget-packages`, and `.harness-state/win11-golden.qcow2` absent. Restore
+  authenticated inputs and the exact golden environment through their designated authorities,
+  then execute exact-current clean Windows builds and inspect native MSI tables and
+  install/repair/upgrade/uninstall/service behavior. Complete R-B2/R-B10 cold equality,
+  authenticated image distribution, independent reproduction, and R-V3 review remain OPEN.
 - **R-S11da/R-S11db/R-S11dc bootstrap-candidate refresh — ANDROID REAL ACQUISITION-VM
   CANDIDATE, REVIEWED PROMOTION, AND NETWORKLESS CERTIFICATION COMPLETE; DEBIAN/WINDOWS REFRESH
   AND PRODUCT PRODUCERS OPEN.** The corrected transaction installs packages once inside one disposable

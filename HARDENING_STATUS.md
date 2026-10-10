@@ -12100,11 +12100,11 @@ synchronization; late app-drop destruction previously missed that flush. Debian
 Depends declares the existing `libxkbcommon-x11-0` runtime requirement; the pinned
 X11 fixture includes it and `libxcb-xkb1`. No privilege escalation was reproduced.
 
-**Accepted previous Linux subset:** `--android-rust-lifecycle-tests --whiteboard-display-lifetime`
-passed at source `04eab95beb27ec6222a6cb349fa10edfb533afff`, tree
-`ba2d6e09bf4240c12ca99083080fd02418be7f3e`: six actual tests, zero failed/ignored,
-221s VM / 155s build / 0.00s state tests / 0.01s listener cancellation /
-0.02s and 0.01s X11 cases.
+**Accepted Linux subset:** `--android-rust-lifecycle-tests --whiteboard-display-lifetime`
+passed at source `e655e193a93ece5469c56d73b078a2c07bacaf0c`, tree
+`bfe15621ec43127b90e63a38fc7d921c87dfd764`: six actual tests, zero failed/ignored,
+236s VM / 166s build / 0.00s state tests / 0.01s listener cancellation /
+0.02s each X11 case.
 With both launch variables absent, one fixture spawned/joined the real worker before
 creating its real Winit proxy; the other installed the proxy and started the worker
 from the running loop after rendering, retained it through loop return and joined it.
@@ -12114,32 +12114,32 @@ Both production constructor/draw paths created real X11 windows, read back two o
 pixels, cleared only one owner,
 and returned immediate GetWindowAttributes BadWindow after event-loop return while
 the application/context remained alive. Executable SHA-256
-`a19fb5b15e3eacc0b3e4b4b960c2453544a7dfbabfbe83482523d7ece72023d9`
+`254420e2d372f12ca940395004d7f8300406037235936a8cc3038c84196f5548`
 was unchanged before/between/after all four test processes. The zero-NIC VM/nonroot network-none container
 transaction preserved source/inputs, joined Xvfb/container/VM cleanup and passed
 the full host endpoint audit with no additions. Retained serial
-`android-rust-lifecycle-tests-run.xtEOrVE8vq.serial.log` SHA-256
-`3318575ae0e8bbfaeda81cfdf2c7c1de399711b6a3d9c93e615c44f642e40c9f`.
+`android-rust-lifecycle-tests-run.ffv8m5nPLu.serial.log` SHA-256
+`f1502434f1d0e3f090fceb5743d17aa790fa2783419046655cf1c4c717bbf9d4`.
 Earlier accepted renderer/startup runs, 42s acquisition/publication checks and three failed
 native attempts remain in the audit/Git history. This subset does not execute the
 CLI/complete helper or authenticated IPC, other listener/startup/worker failure
-or cancellation paths, a compositor, animation/occlusion, resource/soak bounds,
+or cancellation paths, a compositor, animation/occlusion, sustained resource/soak bounds,
 other platforms, or installed Debian acceptance.
 
-**Linux listener lifetime SOURCE CORRECTED; native execution pending:** the accepted previous
-run observed both original socket/PID inodes after join, establishing a resource finding,
-not a surviving listener or LPE. Linux now uses one kernel-owned abstract Unix address
+**Linux listener lifetime corrected; focused native checks passed:** the earlier
+`04eab95b` run retained socket/PID inodes after join, establishing a resource finding,
+not a surviving listener or LPE. Linux uses one kernel-owned abstract Unix address
 derived from the same UID/token-scoped name. `LinuxWhiteboardListener` owns its socket;
 the ordinary filesystem factory rejects whiteboard, and connecting uses only that
 abstract address. No socket/PID file, stale-path scrub, unlink or filesystem fallback
 exists on this route. Kernel peer/process/parent admission, mutual launch proof and
 the pre-proof frame ceiling remain required; abstract names and their UID component
 are not authority, and filesystem permissions do not restrict abstract reachability.
-The revised fixture requires a real connection, wrong-parent EOF before proof while
-the listener remains bound, exact worker join, refusal and immediate address reuse;
-32 distinct factory generations must also retire with no filesystem entries or FD growth.
-No fixture unlink or process death supplies cleanup. Execution is pending; the old
-receipt above does not validate this source change. macOS pathname retirement,
+The accepted fixture observed a real connection, wrong-parent EOF before proof while
+the listener remained bound, exact worker join, refusal and immediate address reuse.
+All 32 additional factory generations retired with no socket/PID entries or FD growth
+after each cycle. No fixture unlink or process death supplied cleanup. This bounded
+factory/worker observation does not prove a complete helper or soak. macOS pathname retirement,
 native allowed/forbidden principal coverage, authenticated stream/overlay cancellation,
 complete helper and sustained resource/soak acceptance remain OPEN.
 

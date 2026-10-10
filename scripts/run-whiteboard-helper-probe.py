@@ -630,6 +630,114 @@ def observe_client_generation(executable, environment, display, server, case):
         raise RuntimeError("unknown global client scenario")
 
 
+def observe_launch_owner_loss(executable, environment, display, server):
+    environment = dict(environment, WHITEBOARD_PROBE_CLIENT_GENERATION="launch-owner-loss")
+    log_path = Path("/tmp/whiteboard-client-launch-owner-loss.log")
+    with log_path.open("xb") as log:
+        owner = subprocess.Popen([str(executable), "--server"], env=environment,
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
+        helper_fd, pid, window, address = None, None, None, None
+        pending, stage = b"", 0
+
+        def helper_alive():
+            poller = select.poll()
+            poller.register(helper_fd, select.POLLIN)
+            return not poller.poll(0)
+
+        try:
+            with selectors.DefaultSelector() as selector:
+                selector.register(owner.stdout, selectors.EVENT_READ)
+                os.set_blocking(owner.stdout.fileno(), False)
+                deadline = time.monotonic() + 20
+                while True:
+                    require(time.monotonic() < deadline and server.poll() is None,
+                            "late launch owner-loss deadline or Xvfb lifetime failed")
+                    if not selector.select(0.1):
+                        require(owner.poll() is None, "late launch parent exited before observation")
+                        continue
+                    chunk = os.read(owner.stdout.fileno(), 4096)
+                    if not chunk:
+                        break
+                    pending += chunk
+                    require(len(pending) <= 8192, "late launch control output exceeds its bound")
+                    while b"\n" in pending:
+                        line, pending = pending.split(b"\n", 1)
+                        text = line.decode("ascii")
+                        print(text, flush=True)
+                        blocked = re.fullmatch(r"WHITEBOARD_CLIENT_LAUNCH_BLOCKED generation=1 pid=([1-9][0-9]*) address_hex=([0-9a-f]+)", text)
+                        if blocked:
+                            require(stage == 0 and owner.poll() is None, "late launch barrier repeated or parent exited")
+                            pid = int(blocked.group(1))
+                            address = bytes.fromhex(blocked.group(2))
+                            require(address.startswith(b"\0") and len(address) <= 108, "late helper address differs")
+                            helper_fd = os.pidfd_open(pid, 0)
+                            window_deadline = time.monotonic() + 3
+                            while window is None:
+                                require(helper_alive() and owner.poll() is None and server.poll() is None
+                                        and time.monotonic() < window_deadline, "created late helper has no live native window")
+                                window = display.helper_window(pid)
+                                if window is None:
+                                    time.sleep(0.01)
+                            owner.stdin.write(b"drop\n")
+                            stage = 1
+                        elif text == f"WHITEBOARD_CLIENT_LAUNCH_DROPPED generation=1 pid={pid} phase=Stopping launch=retained helper=unpublished replacement=refused":
+                            require(stage == 1 and owner.poll() is None and helper_alive(),
+                                    "owner drop did not leave the real creation operation retained")
+                            owner.stdin.write(b"release\n")
+                            stage = 2
+                        elif text == f"WHITEBOARD_CLIENT_LAUNCH_FINISHED generation=1 pid={pid} phase=Stopping task=false helper=unpublished replacement=refused":
+                            require(stage == 2 and owner.poll() is None and not helper_alive()
+                                    and not Path(f"/proc/{pid}").exists(),
+                                    "finished cancelled launch retained a live or unreaped helper while parent stayed alive")
+                            display.require_destroyed(window)
+                            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                                peer.settimeout(1)
+                                try:
+                                    peer.connect(address)
+                                except OSError as error:
+                                    require(error.errno == errno.ECONNREFUSED, "late helper endpoint refusal differs")
+                                else:
+                                    raise RuntimeError("late helper endpoint survived retirement")
+                            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                                listener.bind(address)
+                            owner.stdin.write(b"observed\n")
+                            stage = 3
+                        elif text == f"WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS_DONE generation=1 pid={pid} parent=alive launch=finished admission=refused":
+                            require(stage == 3 and owner.poll() is None and not helper_alive(),
+                                    "late launch final observation lost parent or child identity")
+                            owner.stdin.write(b"done\n")
+                            stage = 4
+                        else:
+                            raise RuntimeError("unexpected late launch control output")
+                        owner.stdin.flush()
+                require(not pending and stage == 4 and owner.wait(timeout=5) == 0,
+                        "late launch fixture did not finish normally after independent retirement")
+        finally:
+            owner.stdin.close()
+            owner.stdout.close()
+            if owner.poll() is None:
+                owner.terminate()
+                try:
+                    owner.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    owner.kill()
+                    owner.wait()
+            if helper_fd is not None:
+                try:
+                    if helper_alive():
+                        try:
+                            signal.pidfd_send_signal(helper_fd, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass  # The retained helper exited between observation and signal.
+                    if Path(f"/proc/{pid}").exists():
+                        os.waitpid(pid, 0)
+                finally:
+                    os.close(helper_fd)
+            if owner.returncode != 0:
+                sys.stderr.write(log_path.read_text())
+    print("WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS=pass boundary=created-before-handoff root=dropped parent=alive launch=finished helper=exited-reaped window=badwindow endpoint=refused-rebindable replacement=refused", flush=True)
+
+
 def main():
     require(os.getuid() == 1000 and os.getgid() == 1000, "native test principal differs")
     libc = c.CDLL(None, use_errno=True)
@@ -665,6 +773,7 @@ def main():
             observe_owner(executable, environment, display, server, parent_exit=True)
             for case in ("shutdown", "replacement", "withdrawal", "helper-close", "root-shutdown", "parent-loss"):
                 observe_client_generation(executable, environment, display, server, case)
+            observe_launch_owner_loss(executable, environment, display, server)
             require(artifact_digest(executable) == digest and server.poll() is None,
                     "compiled helper artifact or Xvfb changed during execution")
         finally:

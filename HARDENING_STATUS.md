@@ -12206,6 +12206,11 @@ pidfd readiness may race; this establishes terminal cleanup without attributing 
 either branch. Live-process root drop, late blocking launch, whole controlled-server finalization,
 Remote/PAKE admission and installed/platform/resource acceptance remain OPEN.
 
+**Late-launch owner-loss case: native execution pending.** The feature fixture pauses a real
+created child before launch handoff, drops the controller owner while its process stays alive,
+then releases the existing blocking job. Native acceptance requires exact child exit/reap,
+destroyed window and retired endpoint before parent exit; replacement must remain refused.
+
 **Accepted executable state/handle subset:** source `df9daec4cc261bfec574afa0c4f33536b6d99438`,
 `--android-rust-lifecycle-tests --whiteboard-client`
 passed 9 tests, 0 failed/ignored, 598 filtered, 0.00s execution; probe feature disabled.

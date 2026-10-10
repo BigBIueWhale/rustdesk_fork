@@ -66,6 +66,36 @@ pub(crate) fn probe_whiteboard_helper_endpoint() -> ResultType<String> {
     ipc::linux_whiteboard_endpoint_address(&owner.postfix)
 }
 
+#[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+lazy_static! {
+    static ref WHITEBOARD_LAUNCH_GATE: (Mutex<(Option<u32>, bool)>, std::sync::Condvar) =
+        (Mutex::new((None, false)), std::sync::Condvar::new());
+}
+
+#[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+pub(crate) fn probe_whiteboard_launch_state() -> (Option<u32>, bool) {
+    let pid = WHITEBOARD_LAUNCH_GATE.0.lock().unwrap().0;
+    let state = WHITEBOARD_CLIENT.lock().unwrap();
+    (pid, state.generation.as_ref().and_then(|owner| owner.launch.as_ref())
+        .is_some_and(|launch| launch.is_finished()))
+}
+
+#[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+pub(crate) fn probe_release_whiteboard_launch() {
+    WHITEBOARD_LAUNCH_GATE.0.lock().unwrap().1 = true;
+    WHITEBOARD_LAUNCH_GATE.1.notify_one();
+}
+
+#[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+fn probe_hold_whiteboard_launch(pid: u32) {
+    if std::env::var("WHITEBOARD_PROBE_CLIENT_GENERATION").as_deref() != Ok("launch-owner-loss") {
+        return;
+    }
+    let mut gate = WHITEBOARD_LAUNCH_GATE.0.lock().unwrap();
+    gate.0 = Some(pid);
+    while !gate.1 { gate = WHITEBOARD_LAUNCH_GATE.1.wait(gate).unwrap(); }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WhiteboardWorkerPhase {
     Idle,
@@ -847,6 +877,8 @@ fn launch_whiteboard_helper(launch_token: &str) -> ResultType<WhiteboardLaunch> 
     }
     #[cfg(target_os = "linux")]
     let child = whiteboard_helper_command(launch_token)?.spawn()?;
+    #[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+    probe_hold_whiteboard_launch(child.id());
     #[cfg(not(target_os = "linux"))]
     let child = crate::run_me_with_env(vec!["--whiteboard"], whiteboard_launch_env(launch_token))?;
     Ok(WhiteboardLaunch::Spawned(WhiteboardHelperProcess { child, exit_success: None }))

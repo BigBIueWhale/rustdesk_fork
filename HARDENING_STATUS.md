@@ -8434,7 +8434,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   maintenance-image distribution, target-native/device acceptance and R-V3 review remain OPEN.
 - **R-S11dd/R-S11e-122 — runtime-smoke VM entry and exact-source authority implemented;
   privileged-container mode/callers retired and native guest CLI refusal verified;
-  canonical input selection OPEN/STOP-SHIP;
+  canonical input selection corrected with guest filesystem/mount acceptance;
   full current product, installed/native and release acceptance OPEN.**
   R-S11dd and Appendix C #257 define authority. `scripts/smoke-server.sh` refuses numeric
   UID/primary GID zero before product inputs, authenticates the R-S11dh entry, and uses one
@@ -8472,7 +8472,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   checker and its calls, retaining small confinement invariants and all genuine video
   probes, viewer tests, fixtures, manifests and runtime assertions unchanged.
 
-  **Current input state and separate path gap.** Read-only stable no-follow checks found
+  **Canonical input selection and current input state.** Read-only stable no-follow checks found
   current-owner mode-0400 single-link devcheck archive bytes matching the current pins:
   681,163,937 bytes / SHA-256
   `7fdb435c7fd6323fef3e5b54d410c4c5df85ea6a3636aa836359a18deec0abd7`.
@@ -8481,10 +8481,30 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `a83d604b007513c6aecfa4a34a0f0cc6c0cdde9218417a7a2e01dd194645620c`.
   The vendor directory is present; its complete content/provenance closure was not reverified.
   These are byte/basic-metadata checks, not archive/package semantics or a loaded runtime.
-  The smoke still mounts `online/` as `/online` (`smoke-server.sh:267`) and expects
-  `online/cargo-vendor`, `online/cargo-vendor-config.toml` and `online/xvfb-debs`; those
-  legacy locations are absent. Correct canonical input selection and source-bound execution
-  remain OPEN. Present subsets do not establish the complete R-B2/R-B10 offline closure.
+  `90f10a2f13f9b9e46d1245556195f33411a69120` corrects `smoke-server.sh:267` to select
+  only the literal `online/inputs` directory, require its physical existing resolution to
+  equal that path, and retain delimiter/Xvfb checks. Missing/file/symlink roots cannot fall
+  back to legacy `online/` contents. All four confined launch arrays, image pins and the
+  vendor/config/provenance pre/post checks remain unchanged.
+
+  **Native selector/mount evidence.** The unchanged production selector at
+  `354a19b040ac75fe7f8b4598cdc2984a55c3f6cb` failed the real guest positive fixture:
+  it selected `good/online` rather than `good/online/inputs`. Corrected candidate
+  `127d58031655ec1ae5047b97867ac0c5850d4f4c` passed the no-NIC authority run in
+  136 seconds. UID:GID-4000 executed the production Bash selection block in ten real
+  filesystem cases: portable/video positives, legacy-only and regular-file refusal,
+  leaf/parent symlink refusal, comma/colon refusal, and missing/symlinked Xvfb refusal.
+  A confined guest authority-fixture container mounted the selected path read-only at
+  `/online`, observed canonical canaries directly, refused a write, preserved their bytes,
+  and joined container/fixture cleanup. Root/foreign VM admission refusal, exact guest
+  Docker authority, focused supplementary source/syntax checks, source/input postconditions,
+  bounded evidence, unchanged host listeners and VM/channel cleanup passed. Receipt
+  `authority-smoke-run.mMMacTnx3i.serial.log`: 84,012 bytes / SHA-256
+  `950eb3f4a9d7d74b2a9589c844121452de58e9fc593a65a0878d88281977877f`.
+  Earlier harness stdin and fixture-parent cleanup failures are retained as failed runs.
+  This executes the selector and mount boundary, not the full launcher, pinned devcheck
+  product build, real vendor closure or installed service. Concurrent input replacement
+  races, complete R-B2/R-B10 closure and full current-source runtime acceptance remain OPEN.
 
   **Retained evidence and limits.** The full pre-compression item is retained at
   `dffc5abb57f26ded47896ea2169867a6198cdd44`; original host/build-authority correction is
@@ -8502,7 +8522,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   record repeated actual KVM entry tests in 16–17 seconds: VM root/UID:GID-4001 refusal,
   authorized UID:GID-4000 admission, real Docker-27.5.1 request, no NIC, unchanged host
   listeners and joined cleanup. Entry/request evidence does not execute the product.
-  Focused source checks are supplementary. Canonical-input repair, exact-current full
+  Focused source checks are supplementary. Complete canonical-input provenance, exact-current full
   portable/video smoke, privileged VM scenarios,
   native/device/installed lifecycle, performance/soak, cold R-B2/R-B10 artifacts/equality,
   independent reproduction and R-V3 review remain OPEN.

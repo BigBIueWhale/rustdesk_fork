@@ -35,6 +35,7 @@ static int cursor_mode, cursor_blocked, cursor_live, cursor_created, cursor_dest
 static int cursor_inflight, cursor_queries, cursor_positions, cursor_order;
 static int cursor_x, cursor_y;
 static int root_exit_armed, root_late_admitted;
+static int root_publication_refused;
 static long root_cleanup_tid, root_wakelock_tid;
 static int (*root_owners_valid)(void);
 
@@ -274,6 +275,14 @@ void connection_workers_arm_failed_start(int (*cleanup_failed)(void)) {
   connection_workers_arm_unstarted(cleanup_failed, 3);
 }
 
+void connection_workers_arm_failed_wakelock(int (*wakelock_failed)(void), int publication_refused) {
+  assert(publication_refused == 0 || publication_refused == 1);
+  connection_workers_arm_unstarted(wakelock_failed, 4);
+  hook_acquire();
+  root_publication_refused = publication_refused;
+  hook_release();
+}
+
 void connection_workers_late_admission(int admitted) {
   hook_acquire();
   assert(root_exit_armed);
@@ -302,8 +311,29 @@ __attribute__((destructor)) static void connection_workers_at_exit(void) {
       && !cursor_created && !cursor_destroyed && !observer && !main_owner && !pending_owner;
   int (*owners_valid)(void) = root_owners_valid;
   int late_admitted = root_late_admitted;
+  int publication_refused = root_publication_refused;
   hook_release();
   if (!armed_exit) return;
+  if (armed_exit == 4) {
+    assert(owners_valid);
+    int owners_expected = owners_valid() == 1;
+    long cleanup = named_worker("rustdesk-final-");
+    long wakelock = named_worker("rustdesk-wakelo");
+    long cursor = named_worker("cursor-recorder");
+    printf("CONNECTION_WAKELOCK_FAILED_START_OBSERVED wakelock_failed=%d publication_refused=%d cleanup_tid=%ld wakelock_tid=%ld cursor_tid=%ld cursor_unstarted=%d late_admitted=%d\n",
+           owners_expected, publication_refused, cleanup, wakelock, cursor, cursor_unstarted, late_admitted);
+    assert(fflush(stdout) == 0);
+    const char *receipt = owners_expected && publication_refused == 1 && !cleanup
+        && !wakelock && !cursor && cursor_unstarted && late_admitted == 0
+        ? "CONNECTION_WAKELOCK_FAILED_START_NATIVE=pass boundary=graceful-process-exit publication=refused wakelock=failed-start final_remote=uninitialized named_workers=absent cursor=unstarted late_sessions=refused types=all-five producer=resource-factory network_auth=false os_inhibitor=false\n"
+        : "CONNECTION_WAKELOCK_FAILED_START_NATIVE=observed publication-or-retirement=incomplete\n";
+    int fd = open("/tmp/input-lifetime-failed-wakelock.receipt", O_WRONLY | O_CREAT | O_EXCL, 0600);
+    assert(fd >= 0);
+    size_t length = strlen(receipt);
+    assert(write(fd, receipt, length) == (ssize_t)length);
+    assert(close(fd) == 0);
+    return;
+  }
   if (armed_exit == 2 || armed_exit == 3) {
     assert(owners_valid);
     int owners_expected = owners_valid() == 1;

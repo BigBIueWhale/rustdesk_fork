@@ -82,10 +82,12 @@ def run(executable):
             while not socket.is_socket():
                 require(server.poll() is None and time.monotonic() < deadline, "Xvfb readiness failed")
                 time.sleep(0.05)
-            for fault in ["map", "key", "cursor", "shutdown", "empty-shutdown", "failed-start"]:
+            for fault in ["map", "key", "cursor", "shutdown", "empty-shutdown", "failed-start", "failed-wakelock"]:
                 receipt_path = Path(f"/tmp/input-lifetime-{fault}.receipt")
                 require(not os.path.lexists(receipt_path), "native receipt exists")
                 test = (
+                    "server::connection::connection_workers_native_tests::graceful_process_exit_preserves_failed_wakelock_publication"
+                    if fault == "failed-wakelock" else
                     "server::connection::connection_workers_native_tests::graceful_process_exit_preserves_failed_cleanup_worker_start"
                     if fault == "failed-start" else
                     "server::connection::connection_workers_native_tests::graceful_empty_process_exit_leaves_connection_workers_uninitialized"
@@ -100,7 +102,7 @@ def run(executable):
                     str(executable), test,
                     "--exact", "--ignored", "--color", "never", "--test-threads=1",
                 ]
-                if fault in ("shutdown", "empty-shutdown", "failed-start"):
+                if fault in ("shutdown", "empty-shutdown", "failed-start", "failed-wakelock"):
                     arguments.append("--nocapture")
                 result = subprocess.run(arguments, env={**environment, "INPUT_LIFETIME_FAULT": fault},
                     text=True, capture_output=True, timeout=25)
@@ -110,10 +112,12 @@ def run(executable):
                 if result.returncode != 0:
                     failures.append(f"{fault}: status={result.returncode}")
                     continue
-                if fault in ("shutdown", "empty-shutdown", "failed-start"):
-                    prefix = ("CONNECTION_WORKERS_FAILED_START" if fault == "failed-start" else
+                if fault in ("shutdown", "empty-shutdown", "failed-start", "failed-wakelock"):
+                    prefix = ("CONNECTION_WAKELOCK_FAILED_START" if fault == "failed-wakelock" else
+                              "CONNECTION_WORKERS_FAILED_START" if fault == "failed-start" else
                               "CONNECTION_WORKERS_EMPTY" if fault == "empty-shutdown" else "CONNECTION_WORKERS")
-                    admission_prefix = ("CONNECTION_FAILED_START_ADMISSION" if fault == "failed-start" else
+                    admission_prefix = ("CONNECTION_WAKELOCK_FAILED_START_ADMISSION" if fault == "failed-wakelock" else
+                                        "CONNECTION_FAILED_START_ADMISSION" if fault == "failed-start" else
                                         "CONNECTION_EMPTY_ADMISSION" if fault == "empty-shutdown" else "CONNECTION_ADMISSION")
                     require(result.stdout.count(f"{prefix}_ENTERED boundary=graceful-process-exit network_auth=false") == 1,
                             "production process-exit case did not execute")
@@ -135,6 +139,10 @@ def run(executable):
                             "native receipt authority differs")
                     observation = receipt.read(513)
                 expected = (
+                    "CONNECTION_WAKELOCK_FAILED_START_NATIVE=pass boundary=graceful-process-exit publication=refused "
+                    "wakelock=failed-start final_remote=uninitialized named_workers=absent cursor=unstarted "
+                    "late_sessions=refused types=all-five producer=resource-factory network_auth=false os_inhibitor=false\n"
+                    if fault == "failed-wakelock" else
                     "CONNECTION_WORKERS_FAILED_START_NATIVE=pass boundary=graceful-process-exit cleanup=failed-start "
                     "wakelock=uninitialized named_workers=absent cursor=unstarted late_sessions=refused "
                     "types=all-five producer=resource-factory network_auth=false os_inhibitor=false\n"
@@ -160,6 +168,9 @@ def run(executable):
                 if observation != expected:
                     failures.append(f"{fault}: native retirement observation differs")
                     continue
+                if fault == "failed-wakelock":
+                    require(result.stdout.count("WAKELOCK_START_FAILURE_OBSERVED kernel=EAGAIN publication_refused=true retry_refused=true owner=retired reuse=reserved limit=restored recovery=joined") == 1,
+                            "native wake-worker publication refusal/recovery case did not execute")
                 require(server.poll() is None, "Xvfb exited during the test")
         finally:
             if server.poll() is None:

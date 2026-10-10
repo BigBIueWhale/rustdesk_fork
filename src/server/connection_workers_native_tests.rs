@@ -177,3 +177,86 @@ async fn graceful_process_exit_preserves_failed_cleanup_worker_start() {
     println!("\nCONNECTION_WORKERS_FAILED_START_ENTERED boundary=graceful-process-exit network_auth=false");
     crate::server::finish_graceful_shutdown().await
 }
+
+extern "C" fn connection_wakelock_start_failed() -> i32 {
+    i32::from(FINAL_REMOTE_CLEANUP_DISPATCHER.get().is_none()
+        && matches!(WAKELOCK_WORKER.get(), Some(Err(_))))
+}
+
+#[tokio::test]
+#[ignore = "requires the isolated protected-provider input-lifetime profile"]
+async fn graceful_process_exit_preserves_failed_wakelock_publication() {
+    assert_eq!(unsafe { libc::getuid() }, 1000);
+    assert_eq!(std::env::var("DISPLAY").unwrap(), ":97");
+    let provider = unsafe { Library::new("/usr/lib/rustdesk-fork/libxdo.so.3").unwrap() };
+    let arm = unsafe {
+        *provider.get::<unsafe extern "C" fn(extern "C" fn() -> i32, i32)>(b"connection_workers_arm_failed_wakelock").unwrap()
+    };
+    let admission = unsafe { *provider.get::<unsafe extern "C" fn(i32)>(b"connection_workers_late_admission").unwrap() };
+    assert_eq!(authenticated_connection_reservation_count(), 0);
+    assert_eq!(connection_workers_uninitialized(), 1);
+    let mut owner = session_owner(38000, AuthConnType::FileTransfer).await.unwrap();
+    owner.commit_publication().unwrap();
+    assert_eq!(authenticated_connection_reservation_count(), 1);
+    struct ThreadLimit(libc::rlimit);
+    impl Drop for ThreadLimit {
+        fn drop(&mut self) {
+            assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NPROC, &self.0) }, 0);
+        }
+    }
+    let mut original = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_NPROC, &mut original) }, 0);
+    let limited = libc::rlimit { rlim_cur: 0, rlim_max: original.rlim_max };
+    assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_NPROC, &limited) }, 0);
+    let limit = ThreadLimit(original);
+    let refusal = std::thread::Builder::new().spawn(|| ()).unwrap_err();
+    assert_eq!(refusal.raw_os_error(), Some(libc::EAGAIN));
+    let publication = owner.publish_resources();
+    let publication_refused = publication.is_err();
+    let failure = match WAKELOCK_WORKER.get() {
+        Some(Err(error)) => error.clone(),
+        _ => panic!("real wake-worker startup failure was not retained"),
+    };
+    if let Err(error) = publication {
+        assert_eq!(error.to_string(), failure);
+    }
+    assert_eq!(connection_wakelock_start_failed(), 1);
+    drop(limit);
+    let mut restored = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+    assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_NPROC, &mut restored) }, 0);
+    assert_eq!((restored.rlim_cur, restored.rlim_max), (original.rlim_cur, original.rlim_max));
+    let recovered = tokio::task::spawn_blocking(|| {
+        std::thread::Builder::new().spawn(|| 42).unwrap().join().unwrap()
+    }).await.unwrap();
+    assert_eq!(recovered, 42);
+    let retry = owner.publish_resources();
+    let retry_refused = retry.is_err();
+    if let Err(error) = retry {
+        assert_eq!(error.to_string(), failure);
+    }
+    drop(owner);
+    assert_eq!(authenticated_connection_reservation_count(), 0);
+    let reused = session_owner(38000, AuthConnType::FileTransfer).await.unwrap();
+    assert_eq!(authenticated_connection_reservation_count(), 1);
+    drop(reused);
+    assert_eq!(authenticated_connection_reservation_count(), 0);
+    assert_eq!(connection_wakelock_start_failed(), 1);
+    println!("\nWAKELOCK_START_FAILURE_OBSERVED kernel=EAGAIN publication_refused={publication_refused} retry_refused={retry_refused} owner=retired reuse=reserved limit=restored recovery=joined");
+    unsafe { arm(connection_wakelock_start_failed, i32::from(publication_refused && retry_refused)); }
+    crate::server::request_graceful_shutdown();
+    let mut late_admitted = false;
+    for (offset, kind) in [AuthConnType::Remote, AuthConnType::FileTransfer,
+        AuthConnType::ViewCamera, AuthConnType::Terminal, AuthConnType::PortForward]
+        .into_iter().enumerate()
+    {
+        let late = session_owner(38001 + offset as i32, kind).await;
+        let accepted = late.is_ok();
+        println!("\nCONNECTION_WAKELOCK_FAILED_START_ADMISSION_OBSERVED type={kind:?} accepted={accepted}");
+        late_admitted |= accepted;
+        drop(late);
+    }
+    unsafe { admission(i32::from(late_admitted)); }
+    assert_eq!(authenticated_connection_reservation_count(), 0);
+    println!("\nCONNECTION_WAKELOCK_FAILED_START_ENTERED boundary=graceful-process-exit network_auth=false");
+    crate::server::finish_graceful_shutdown().await
+}

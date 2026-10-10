@@ -11365,8 +11365,9 @@ connection flow remaining correct and performant.
 
 ### R-S11hd/R-S11e-242 — coherent latest-state wakelock snapshot ownership (2026-08-21)
 
-**SOURCE IMPLEMENTED; FOUR EXECUTABLE RUST REGRESSIONS AUTHORED AND WIRED; EXACT
-CURRENT NATIVE/DEVICE/PERFORMANCE/ARTIFACT EVIDENCE OPEN.** The inherited controlled-side
+**SOURCE STATE MACHINE IMPLEMENTED; AUTHENTICATED PUBLICATION ERROR CORRECTION PENDING;
+FOUR EXECUTABLE RUST REGRESSIONS AUTHORED AND WIRED; EXACT CURRENT
+NATIVE/DEVICE/PERFORMANCE/ARTIFACT EVIDENCE OPEN.** The inherited controlled-side
 path sent every `(connection_count, remote_count)` reevaluation through an unbounded
 standard-library channel, assembled the counts under two separate `AUTHED_CONNS` locks,
 ignored publication failure, and detached the worker handle. Blame attributes that old path
@@ -11379,8 +11380,10 @@ variable latest-state cell: one zero-initialized typed snapshot, one pending bit
 publisher/receiver liveness. Each reevaluation derives both counts under one connection
 guard, publishes the full snapshot before releasing the guard, and coalesces arbitrary
 intermediate revisions. Identical snapshots still wake the worker so a keep-awake setting
-change is observed. Publisher/receiver retirement and worker-start/publication failure are
-visible. Existing platform wakelock/display behavior is preserved; no queue, retry,
+change is observed. Publisher/receiver retirement is explicit. The current resource-publication
+caller still reports success after worker-start/publication failure: the error is logged but
+not returned to admission. Result propagation and native before/after evidence are PENDING.
+Existing platform wakelock/display behavior is preserved; no queue, retry,
 reconnect, timer, poller, additional worker/thread/runtime, listener, port, dependency,
 privilege transition, service restart, network route, or Android persistent-service change
 was introduced.
@@ -11390,6 +11393,16 @@ reevaluation, receiver-retirement refusal, and publisher-retirement observation.
 runner retains its focused
 `cargo test --lib --features linux-pkg-config,flutter server::connection::wakelock_snapshot_tests:: --color never`
 invocation.
+
+The protected-provider `connection_workers_native_tests` fixture now observes real Linux
+kernel EAGAIN during wake-worker startup through a published FileTransfer resource owner,
+the actual publication/retry Results and remembered failed worker, exact limit restoration,
+joined recovery, exact reservation retirement/reuse, and real process-exit finality with all
+five late factories refused. The canonical isolated `--input-lifetime` profile retains its
+three ordinary native tests and adds this as a fourth separately observed process exit.
+Baseline execution is PENDING and must reject the current successful-publication behavior;
+no production correction or native acceptance is recorded yet. OS wake inhibition, full
+login/network/CM and installed/other-platform behavior remain OPEN.
 
 Exact target-runtime admission/removal/setting changes, worker and power-state lifecycle,
 latency and bounded-resource finality remain OPEN. Physical Android task-swipe/reopen/Force-Stop

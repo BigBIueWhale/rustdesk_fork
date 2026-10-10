@@ -11994,7 +11994,7 @@ Windows/macOS owner joins whenever its event loop returns. Spawn/join failure is
 Handler-only termination, unbounded exit channels, detached threads, and direct platform
 proxy mutation are absent from this source topology.
 
-**Linux parent-process lifetime corrected in source; native acceptance pending:**
+**Linux parent-process lifetime corrected; focused native acceptance passed:**
 the shared production/fixture launch constructor no longer arms creating-thread
 `PR_SET_PDEATHSIG`. Before listener creation, the existing IPC worker opens an
 owned parent pidfd, checks actual parent before/after open, registers readable
@@ -12004,8 +12004,8 @@ unsupported/refused pidfd support fails whiteboard closed, without a polling tas
 or another runtime. This feature needs Linux process-descriptor support and does
 not change ordinary no-record service startup. Baseline `937c2c0f` reproduced
 SIGKILL after creator-thread join while the server process remained alive.
-Corrected eight-case CLI/X11 execution, unavailable-support injection and broader
-native/installed/resource acceptance remain unproved at this source checkpoint.
+The eight-case CLI/X11 subset below passed. Unavailable/denied-support and watch-failure
+injection, broader native/installed/resource acceptance remain OPEN.
 
 Exact kernel-parent admission now closes the listener before launch proof. Proof failure
 and listener accept error retire the generation through its terminal guard instead of
@@ -12013,11 +12013,12 @@ returning to accept. Unauthorized peers remain refused before proof without reti
 the permitted parent's listener.
 
 **Accepted Linux CLI subset:** `--android-rust-lifecycle-tests --whiteboard-helper-lifetime`
-passed at source `b6ffc77164ff32a04105b1864bcf0067e1b04243`, tree
-`f1da3ad39753c774234df3db8d6249b37ae7a083`, in 262s / 178s build.
+passed at source `ddd1010a46f9fd950b4a922a1e00e097d03df0d8`, tree
+`536b1f8fd5ab2d4c140546a4feec1aa458f144e9`, in 251s / 170s build.
 One same-image probe dispatched the real `core_main --whiteboard` helper under an
-exact `--server` parent. Six cases passed: empty-state Shutdown, bad/stalled proof,
-proof EOF, authenticated EOF and native window-close with an owner still registered.
+exact `--server` parent. Eight cases passed: creator-thread retirement, empty-state
+Shutdown, bad/stalled proof, proof EOF, authenticated EOF, native window-close
+with an owner still registered, and actual parent-process exit before proof.
 A same-image server-role wrong parent carrying the public fixture token received
 pre-proof EOF before permitted-parent mutual proof/Shutdown. Proof-failure cases
 refused another connection before the owner proof reply while the admitted stream lived.
@@ -12025,14 +12026,21 @@ Each case required a unique PID-bound X11 window before proceeding. After real C
 return, the helper remained alive behind an acknowledgment barrier: its named worker
 was absent, retained streams returned true EOF, and the observer required immediate
 BadWindow, connection refusal and address reuse before permitting normal exit/reap.
-The sixth case sent production tokenized Bind/Cursor commands, read back two owners'
-green/blue pixels, sent exact-token Close for one and observed only its pixels clear,
-then requested WM_DELETE_WINDOW with the other owner and authenticated stream retained.
-Artifact SHA-256 `e1444cf9fd67151aa73af0e2ff119c70f8be452f39b85dfbd162c6ec89ab2bce`
+Creator-thread and window-close cases sent production tokenized Bind/Cursor commands,
+read back two owners' green/blue pixels, sent exact-token Close for one and observed
+only its pixels clear.
+The creator thread was already joined while its live parent completed mutual proof
+and drawing; that case closed the remaining owner and sent Shutdown. Window-close
+requested WM_DELETE_WINDOW with the other owner and authenticated stream retained.
+The parent-exit case proved a bound listener and observer pre-proof EOF before
+allowing normal parent exit, then observed helper CLI return while the observer's
+retained helper pidfd still reported it alive. After retirement observation, the subreaper
+permitted normal helper exit and reaped that exact adopted child.
+Artifact SHA-256 `dbe088dd3310a7f677f4804437b3bd68315c37e1f6e315f7e0ed385eea1e369c`
 was unchanged before/after. Pinned zero-NIC/nonroot network-none/source-RO execution,
 full host endpoint invariance and Xvfb/container/VM joined cleanup passed. Serial
-`android-rust-lifecycle-tests-run.zw8T7HsMgo.serial.log` SHA-256
-`9cbed4c8f7f70a8f4a870fc77101f45fe77b6a0aa67621542a7a78e373800f04`.
+`android-rust-lifecycle-tests-run.0PH1gZJsoM.serial.log` SHA-256
+`7977ef47ae661b8d74d39006c63a63682adcbc98c861180c2099056caf1d3292`.
 This nonrelease probe excludes installed authority, real Remote producer admission,
 cross-UID/platform coverage, compositor/animation and sustained resource/soak acceptance.
 
@@ -12045,27 +12053,26 @@ Depends declares the existing `libxkbcommon-x11-0` runtime requirement; the pinn
 X11 fixture includes it and `libxcb-xkb1`. No privilege escalation was reproduced.
 
 **Accepted Linux subset:** `--android-rust-lifecycle-tests --whiteboard-display-lifetime`
-passed at source `e655e193a93ece5469c56d73b078a2c07bacaf0c`, tree
-`bfe15621ec43127b90e63a38fc7d921c87dfd764`: six tests, zero failed/ignored,
-236s VM / 166s build. With launch variables absent, separate native cases
+passed at the same `ddd1010a` source/tree above with the probe feature disabled:
+six tests in four processes, zero failed/ignored, 267s VM / 197s build.
+With launch variables absent, separate native cases
 spawned/joined the real worker before proxy publication or retained it from the
 running loop after proxy publication through loop return. Both delivered one Exit
 through production user-event/idle-exit, with no fixture-originated loop exit.
 Production constructors/draws created X11 windows, read back two owners' pixels,
 cleared one owner and immediately received BadWindow after loop return while the
 application/context remained alive. Executable SHA-256
-`254420e2d372f12ca940395004d7f8300406037235936a8cc3038c84196f5548`
+`1935bf8f5e82717ccfb7ff3fa45407c502b57871555c5fbf82046fed58f49c8c`
 was unchanged across four processes. Zero-NIC/nonroot network-none execution,
 source/input preservation, Xvfb/container/VM joined cleanup and the full host
 endpoint audit passed. Serial
-`android-rust-lifecycle-tests-run.ffv8m5nPLu.serial.log` SHA-256
-`f1502434f1d0e3f090fceb5743d17aa790fa2783419046655cf1c4c717bbf9d4`.
+`android-rust-lifecycle-tests-run.KvPPksudjq.serial.log` SHA-256
+`62d1d37ec42a53a3219dc10ab95b4da9fc20723cb99772a40215704b4e999407`.
 That renderer/listener subset excludes CLI/proof, other failure/cancellation,
 compositor/occlusion/animation, soak, other platforms and installed acceptance.
 
-**Linux listener lifetime corrected; focused native checks passed:** the earlier
-`04eab95b` run retained socket/PID inodes after join, establishing a resource finding,
-not a surviving listener or LPE. Linux uses one kernel-owned abstract Unix address
+**Linux listener lifetime corrected; focused native checks passed:** Linux uses one
+kernel-owned abstract Unix address
 derived from the same UID/token-scoped name. `LinuxWhiteboardListener` owns its socket;
 the ordinary filesystem factory rejects whiteboard, and connecting uses only that
 abstract address. No socket/PID file, stale-path scrub, unlink or filesystem fallback
@@ -12080,7 +12087,7 @@ factory/worker observation does not prove a complete helper or soak. macOS pathn
 native allowed/forbidden principal coverage, remaining stream/overlay cancellation branches,
 complete helper and sustained resource/soak acceptance remain OPEN.
 
-**Lifecycle state evidence:** the e655e193 root-crate executable passed three production
+**Lifecycle state evidence:** the ddd1010a root-crate executable passed three production
 module tests: termination before proxy publication, exact installed-proxy take with
 repeated-finalization refusal, and proxy retirement preserving the terminal latch.
 These state tests are distinct from its real worker/listener and two native X11 cases.
@@ -12137,7 +12144,8 @@ an external owner. The seven tests below exercise neither boundary.
 Linux whiteboard now observes whole-parent exit through the helper's owned pidfd,
 and its shared launch constructor removes creating-thread `PR_SET_PDEATHSIG`.
 The baseline reproduced SIGKILL after creator join; corrected creator-thread and
-true parent-process-death native acceptance is pending. The production client still
+true parent-process-death CLI/helper subsets passed as detailed in R-S11hn.
+The production client still
 spawns synchronously inside its async task and uses the global child registry;
 off-executor launch, cancellation ownership and exact reaping remain required.
 Required correction: retain the exact helper and task through startup, shutdown,

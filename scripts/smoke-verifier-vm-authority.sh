@@ -4883,10 +4883,10 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = inpu
             'native input-worker and text ownership retirement'
     done
     require_exact_fixed_receipt \
-        'CURSOR_RECORDER_NATIVE=pass generations=32 producer=authenticated-resource-admission query=native-x11 sharing=one-worker retirement=exact-join successor=blocked-until-tls-drop position=observed invalidation=before-finality descriptors=retired tasks=retired network_auth=false' \
+        'CURSOR_RECORDER_NATIVE=pass generations=32 producer=authenticated-resource-admission query=native-x11 sharing=one-worker retirement=exact-join successor=blocked-until-tls-drop position=observed invalidation=before-finality admission=reserved-before-await collision=refused cancel=joined reuse=current cm=unpublished descriptors=retired tasks=retired network_auth=false' \
         'native cursor-recorder ownership retirement'
     require_exact_fixed_receipt \
-        'CONNECTION_WORKERS_NATIVE=pass boundary=graceful-process-exit final_remote=joined wakelock=joined cursor=retired late_remote=refused producer=resource-factory network_auth=false os_inhibitor=false' \
+        'CONNECTION_WORKERS_NATIVE=pass boundary=graceful-process-exit final_remote=joined wakelock=joined cursor=retired late_sessions=refused types=all-five producer=resource-factory network_auth=false os_inhibitor=false' \
         'native connection workers at graceful process exit'
     require_exact_fixed_receipt 'INPUT_LIFETIME_X11=pass server=owned network=none endpoint=absent cleanup=joined' \
         'native input-lifetime X11 retirement'

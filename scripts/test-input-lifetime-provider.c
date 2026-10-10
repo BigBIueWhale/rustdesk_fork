@@ -278,7 +278,7 @@ __attribute__((destructor)) static void connection_workers_at_exit(void) {
   assert(fflush(stdout) == 0);
   if (cursor_retired) cursor_recorder_finish();
   const char *receipt = !cleanup_alive && !wakelock_alive && cursor_retired && !late_admitted
-      ? "CONNECTION_WORKERS_NATIVE=pass boundary=graceful-process-exit final_remote=joined wakelock=joined cursor=retired late_remote=refused producer=resource-factory network_auth=false os_inhibitor=false\n"
+      ? "CONNECTION_WORKERS_NATIVE=pass boundary=graceful-process-exit final_remote=joined wakelock=joined cursor=retired late_sessions=refused types=all-five producer=resource-factory network_auth=false os_inhibitor=false\n"
       : "CONNECTION_WORKERS_NATIVE=observed retirement=incomplete\n";
   int fd = open("/tmp/input-lifetime-shutdown.receipt", O_WRONLY | O_CREAT | O_EXCL, 0600);
   assert(fd >= 0);

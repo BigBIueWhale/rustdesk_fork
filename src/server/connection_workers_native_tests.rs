@@ -1,10 +1,10 @@
 use super::*;
 use hbb_common::libloading::Library;
 
-async fn remote_owner(id: i32) -> ResultType<raii::AuthedConnID> {
+async fn session_owner(id: i32, kind: AuthConnType) -> ResultType<raii::AuthedConnID> {
     raii::AuthedConnID::new(
         id,
-        AuthConnType::Remote,
+        kind,
         SessionKey {
             peer_id: "shutdown-fixture".into(),
             name: "owner".into(),
@@ -40,16 +40,25 @@ async fn graceful_process_exit_retires_connection_workers() {
     // Exercise worker ownership without claiming an OS wake-inhibition facility.
     Config::set_option(keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS.into(), "N".into());
     assert!(!Config::get_bool_option(keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS));
-    let mut owner = remote_owner(35000).await.unwrap();
+    let mut owner = session_owner(35000, AuthConnType::Remote).await.unwrap();
     owner.commit_publication().unwrap();
     owner.publish_resources().unwrap();
     wait_for(|| unsafe { probe(6) > 0 && ready() == 1 }).await;
     unsafe { arm(); }
     wait_for(|| unsafe { probe(3) == 1 }).await;
     crate::server::request_graceful_shutdown();
-    let late = remote_owner(35001).await;
-    unsafe { admission(i32::from(late.is_ok())); }
-    drop(late);
+    let mut late_admitted = false;
+    for (offset, kind) in [AuthConnType::Remote, AuthConnType::FileTransfer,
+        AuthConnType::ViewCamera, AuthConnType::Terminal, AuthConnType::PortForward]
+        .into_iter().enumerate()
+    {
+        let late = session_owner(35001 + offset as i32, kind).await;
+        let accepted = late.is_ok();
+        println!("\nCONNECTION_ADMISSION_OBSERVED type={kind:?} accepted={accepted}");
+        late_admitted |= accepted;
+        drop(late);
+    }
+    unsafe { admission(i32::from(late_admitted)); }
     drop(owner);
     println!("\nCONNECTION_WORKERS_ENTERED boundary=graceful-process-exit network_auth=false");
     let retirement = crate::server::finish_graceful_shutdown();

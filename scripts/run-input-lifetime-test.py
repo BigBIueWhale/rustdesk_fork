@@ -109,6 +109,9 @@ def run(executable):
                 if fault == "shutdown":
                     require(result.stdout.count("CONNECTION_WORKERS_ENTERED boundary=graceful-process-exit network_auth=false") == 1,
                             "production process-exit case did not execute")
+                    for kind in ("Remote", "FileTransfer", "ViewCamera", "Terminal", "PortForward"):
+                        require(result.stdout.count(f"CONNECTION_ADMISSION_OBSERVED type={kind} accepted=") == 1,
+                                "production session admission case did not execute")
                 else:
                     require("test result: ok. 1 passed; 0 failed; 0 ignored;" in result.stdout,
                             "exact native test did not execute")
@@ -122,12 +125,12 @@ def run(executable):
                     observation = receipt.read(513)
                 expected = (
                     "CONNECTION_WORKERS_NATIVE=pass boundary=graceful-process-exit final_remote=joined "
-                    "wakelock=joined cursor=retired late_remote=refused producer=resource-factory "
+                    "wakelock=joined cursor=retired late_sessions=refused types=all-five producer=resource-factory "
                     "network_auth=false os_inhibitor=false\n"
                     if fault == "shutdown" else
                     "CURSOR_RECORDER_NATIVE=pass generations=32 producer=authenticated-resource-admission "
                     "query=native-x11 sharing=one-worker retirement=exact-join successor=blocked-until-tls-drop "
-                    "position=observed invalidation=before-finality descriptors=retired tasks=retired network_auth=false\n"
+                    "position=observed invalidation=before-finality admission=reserved-before-await collision=refused cancel=joined reuse=current cm=unpublished descriptors=retired tasks=retired network_auth=false\n"
                     if fault == "cursor" else
                     f"INPUT_LIFETIME_NATIVE=pass fault={fault} generations=16 "
                     "workers=2 producer=typed-queue worker=production loader=protected keys=exact-owner "

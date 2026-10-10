@@ -554,7 +554,7 @@ mod tests {
         event_loop.run_app(&mut app).unwrap();
         let _: &Context<OwnedDisplayHandle> = &app.0.context;
         let window_id = app.1.expect("native whiteboard window was never created");
-        match observer.get_geometry(window_id).unwrap().reply() {
+        match observer.get_window_attributes(window_id).unwrap().reply() {
             Err(ReplyError::X11Error(error)) if error.error_kind == ErrorKind::Window => (),
             result => panic!("whiteboard window survived event-loop return: {result:?}"),
         }

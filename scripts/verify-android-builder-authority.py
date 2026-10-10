@@ -69,13 +69,13 @@ def validate(repo: pathlib.Path) -> None:
             '/usr/bin/bash "$VERIFIER_VM_ENTRY_PREFLIGHT"',
             'source "$SCRIPT_DIR/lib.sh"',
             "load_pins",
-            "if [ \"$#\" -eq 1 ] && [ \"$1\" = --self-test-vm-authority ]; then",
-            "ANDROID_BUILDER_VM_AUTHORITY=pass",
-            "exit 0",
             'OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"',
             'KEYSTORE="${ANDROID_KEYSTORE:-$DEFAULT_ANDROID_KEYSTORE}"',
+            "SELF_TEST_VM_AUTHORITY=0",
+            "2:--self-test-vm-authority)",
+            "PROBE_IMAGE_ID=$2",
         ),
-        "root refusal, VM admission, authority-only exit, and sensitive defaults",
+        "root refusal, VM admission, defaults, and profile-probe selection",
     )
     for token, label in (
         ("set -euo pipefail\numask 077", "private-state shell mode"),
@@ -141,7 +141,7 @@ def validate(repo: pathlib.Path) -> None:
     provenance = section(
         builder,
         "require_verifier_vm_android_builder() {",
-        "\n}\n\nif [ \"$#\" -eq 1 ]",
+        "\n}\n\nOUT_DIR=",
         "Android builder provenance",
     )
     for token, label in (
@@ -169,27 +169,26 @@ def validate(repo: pathlib.Path) -> None:
 
     self_test = section(
         builder,
-        "if [ \"$#\" -eq 1 ] && [ \"$1\" = --self-test-vm-authority ]; then",
-        "\nfi\n\nOUT_DIR=",
+        "run_vm_authority_self_test() {",
+        "\n}\n\nmain() {",
         "VM-authority self-test",
     )
     for token, label in (
         ("verifier_vm_docker version", "real guest Docker request"),
         ("{{.Client.Version}}|{{.Server.Version}}", "client/server version proof"),
         ("ANDROID_BUILDER_VM_AUTHORITY=pass", "authority receipt"),
-        ("source=untouched", "source non-access receipt"),
+        ("source=private-fixture-only", "private source fixture receipt"),
         ("signing=untouched", "signing non-access receipt"),
         ("output=untouched", "output non-access receipt"),
-        ("exit 0", "authority-only completion"),
+        ('android_compiler_run "$PROBE_IMAGE_ID"', "actual compiler profile"),
+        ("remove_owned_workspace_exact", "joined fixture removal"),
     ):
         require(self_test, token, label)
     for token, label in (
         ("OUT_DIR", "output default access"),
         ("KEYSTORE", "signing default access"),
-        ("mktemp", "scratch creation"),
         ("git ", "source access"),
         ("verify-local", "image inspection"),
-        (" run ", "container launch"),
     ):
         forbid(self_test, token, label)
 
@@ -296,13 +295,13 @@ def validate(repo: pathlib.Path) -> None:
         ),
         (
             "verify_apk_artifact() {",
-            "\n}\n\nbuild_apk() {",
+            "\n}\n\nandroid_compiler_run() {",
             "artifact verification",
             ("source=$resolved,target=/verify/app.apk,readonly", "source=$ONLINE_DIR,target=/online,readonly"),
         ),
         (
-            "build_apk() {",
-            "\n}\n\nsign_apk() {",
+            "android_compiler_run() {",
+            "\n}\n\nbuild_apk() {",
             "compilation",
             ("source=$BUILD_SOURCE_ROOT,target=/src", "source=$ONLINE_DIR,target=/online,readonly"),
         ),
@@ -321,14 +320,14 @@ def validate(repo: pathlib.Path) -> None:
         require(operation, "--memory-swap=", f"{label} swap bound")
         require(operation, "--cpus=", f"{label} CPU bound")
         require(operation, "--tmpfs /tmp:", f"{label} bounded scratch")
-        require(operation, '"$IMAGE_ID"', f"{label} immutable image")
+        require(operation, '"$image"' if label == "compilation" else '"$IMAGE_ID"', f"{label} immutable image")
         for mount in mounts:
             require(operation, mount, f"{label} least-authority mount")
 
     compilation = section(
         builder,
-        "build_apk() {",
-        "\n}\n\nsign_apk() {",
+        "android_compiler_run() {",
+        "\n}\n\nbuild_apk() {",
         "compilation",
     )
     for token, label in (
@@ -339,6 +338,14 @@ def validate(repo: pathlib.Path) -> None:
         ),
     ):
         require(compilation, token, f"compilation {label}")
+    build_apk = section(builder, "build_apk() {", "\n}\n\nsign_apk() {", "APK build")
+    require(build_apk, 'android_compiler_run "$IMAGE_ID"', "shared production compiler profile")
+    main = section(builder, "main() {", "\n}\n\nmain\n", "main dispatch")
+    require_order(
+        main,
+        ('if [ "$SELF_TEST_VM_AUTHORITY" -eq 1 ]; then', "run_vm_authority_self_test", "return 0", "preflight"),
+        "profile-only completion before release preflight",
+    )
     require_order(
         apk_builder,
         (

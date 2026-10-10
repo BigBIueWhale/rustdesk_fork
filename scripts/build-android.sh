@@ -92,18 +92,6 @@ require_verifier_vm_android_builder() {
         || die "pinned Android builder image provenance verification failed"
 }
 
-if [ "$#" -eq 1 ] && [ "$1" = --self-test-vm-authority ]; then
-    authority_version="$(verifier_vm_docker version \
-        --format '{{.Client.Version}}|{{.Server.Version}}')" \
-        || die "verifier-VM Docker authority self-test failed"
-    [ "$authority_version" = \
-      "$VERIFIER_VM_DOCKER_VERSION|$VERIFIER_VM_DOCKER_VERSION" ] \
-        || die "verifier-VM Docker authority version differs: $authority_version"
-    printf 'ANDROID_BUILDER_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed source=untouched signing=untouched output=untouched\n' \
-        "$BUILD_UID" "$BUILD_GID" "$VERIFIER_VM_DOCKER_VERSION"
-    exit 0
-fi
-
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 OUT_PARENT=""
 OUT_DESTINATION=""
@@ -146,11 +134,17 @@ case "${ANDROID_KEY_ALIAS:-rustdesk-fork}" in
     rustdesk-fork) ;;
     *) die "ANDROID_KEY_ALIAS is fixed to rustdesk-fork" ;;
 esac
-if [ "$#" -gt 0 ]; then
-    [ "$#" -eq 2 ] && [ "$1" = --verify-apk ] \
-        || die "usage: build-android.sh [--verify-apk APK]"
-    VERIFY_APK="$2"
-fi
+SELF_TEST_VM_AUTHORITY=0
+PROBE_IMAGE_ID=""
+case "$#:${1:-}" in
+    0:) ;;
+    2:--self-test-vm-authority)
+        SELF_TEST_VM_AUTHORITY=1
+        PROBE_IMAGE_ID=$2
+        ;;
+    2:--verify-apk) VERIFY_APK=$2 ;;
+    *) die "usage: build-android.sh [--verify-apk APK|--self-test-vm-authority PROBE_IMAGE_ID]" ;;
+esac
 
 cleanup_owned_workspace() {
     local status=$?
@@ -560,13 +554,11 @@ verify_apk_artifact() {
     verify_active_online_snapshot
 }
 
-build_apk() {
-    local pass_output="$1" pass="$2"
-    log "building unsigned aarch64 .apk (features flutter — software codec, §3.2 arm64-android)"
-    verify_active_online_snapshot
-    prepare_build_source "$pass"
-    verify_build_source_unchanged "$BUILD_SOURCE_ROOT" "$pass"
-    if ! android_docker_run \
+android_compiler_run() {
+    [ "$#" -ge 2 ] || die "Android compiler launch requires IMAGE COMMAND [ARG...]"
+    local image=$1
+    shift
+    android_docker_run \
         --pids-limit=512 --memory=12g --memory-swap=12g --cpus=4 \
         --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g \
         --env SOURCE_DATE_EPOCH \
@@ -578,7 +570,16 @@ build_apk() {
         --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly" \
         --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
         --workdir /src \
-        "$IMAGE_ID" \
+        "$image" "$@"
+}
+
+build_apk() {
+    local pass_output="$1" pass="$2"
+    log "building unsigned aarch64 .apk (features flutter — software codec, §3.2 arm64-android)"
+    verify_active_online_snapshot
+    prepare_build_source "$pass"
+    verify_build_source_unchanged "$BUILD_SOURCE_ROOT" "$pass"
+    if ! android_compiler_run "$IMAGE_ID" \
         /bin/bash /authority/android-apk-build.sh; then
         verify_active_online_snapshot
         die "Android build container failed"
@@ -819,7 +820,65 @@ publish_result() {
             --destination "$OUT_DESTINATION"
 }
 
+run_vm_authority_self_test() {
+    [[ "$PROBE_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+        || die "Android builder verifier-VM probe image ID is malformed"
+    local authority_version containers_before containers_after profile_output profile_probe
+    authority_version="$(verifier_vm_docker version \
+        --format '{{.Client.Version}}|{{.Server.Version}}')" \
+        || die "verifier-VM Docker authority self-test failed"
+    [ "$authority_version" = \
+      "$VERIFIER_VM_DOCKER_VERSION|$VERIFIER_VM_DOCKER_VERSION" ] \
+        || die "verifier-VM Docker authority version differs: $authority_version"
+    OWNED_WORKSPACE="$(umask 077 && /usr/bin/mktemp -d /tmp/rustdesk-android-profile.XXXXXXXXXX)" \
+        || die "cannot create private Android profile workspace"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$OWNED_WORKSPACE")" = \
+      "$BUILD_UID:$BUILD_GID:700" ] \
+        || die "Android profile workspace is not current-principal mode 0700"
+    OWNED_WORKSPACE_ID="$(/usr/bin/stat -c '%d:%i' -- "$OWNED_WORKSPACE")" \
+        || die "cannot record private Android profile workspace identity"
+    BUILD_SOURCE_ROOT=$OWNED_WORKSPACE/source
+    ONLINE_DIR=$OWNED_WORKSPACE/online
+    SOURCE_AUTHORITY_ROOT=$REPO_ROOT
+    /usr/bin/mkdir -m 0700 "$BUILD_SOURCE_ROOT" "$ONLINE_DIR"
+    containers_before="$(verifier_vm_docker ps --all --quiet --no-trunc | /usr/bin/sort)" \
+        || die "cannot record the initial guest container inventory"
+    profile_probe='
+        observed_epoch="${SOURCE_DATE_EPOCH-<unset>}"
+        [ "$observed_epoch" = "$1" ] || {
+            printf "Android compiler epoch differs: expected=%s observed=%s\n" "$1" "$observed_epoch" >&2
+            exit 1
+        }
+        [ "$RUSTDESK_CANARY_OFFLINE" = 1 ]
+        [ "$APK_MODE" = offline ]
+        [ "$RUSTDESK_FLUTTER_VERSION" = "$2" ]
+        [ "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" = "$3" ]
+        [ -r /authority/android-apk-build.sh ]
+        [ -d /src ] && [ -d /online ]
+        printf "epoch=%s canary=1 mode=offline flutter=%s tools_lock=%s\n" "$SOURCE_DATE_EPOCH" "$2" "$3"
+    '
+    profile_output="$(android_compiler_run "$PROBE_IMAGE_ID" \
+        -euc "$profile_probe" android-compiler "$SOURCE_DATE_EPOCH_PIN" \
+        "$FLUTTER_VERSION" "$SHA256_FLUTTER_TOOLS_LOCK")" \
+        || die "Android compiler production environment failed"
+    [ "$profile_output" = \
+      "epoch=$SOURCE_DATE_EPOCH_PIN canary=1 mode=offline flutter=$FLUTTER_VERSION tools_lock=$SHA256_FLUTTER_TOOLS_LOCK" ] \
+        || die "Android compiler environment receipt differs: $profile_output"
+    containers_after="$(verifier_vm_docker ps --all --quiet --no-trunc | /usr/bin/sort)" \
+        || die "cannot record the final guest container inventory"
+    [ "$containers_after" = "$containers_before" ] \
+        || die "Android compiler profile left a guest container behind"
+    remove_owned_workspace_exact \
+        || die "Android compiler profile workspace cleanup failed"
+    printf 'ANDROID_BUILDER_VM_AUTHORITY=pass uid=%s gid=%s docker=%s channel=guest-unix prepost=replayed profile=android-compiler runtime=real epoch=%s source=private-fixture-only signing=untouched output=untouched workload=unexecuted cleanup=joined\n' \
+        "$BUILD_UID" "$BUILD_GID" "$VERIFIER_VM_DOCKER_VERSION" "$SOURCE_DATE_EPOCH_PIN"
+}
+
 main() {
+    if [ "$SELF_TEST_VM_AUTHORITY" -eq 1 ]; then
+        run_vm_authority_self_test
+        return 0
+    fi
     if [ -n "$VERIFY_APK" ]; then
         require_cmd cmp git find grep install readlink sha256sum stat tar
         [ -x "$PYTHON_BIN" ] || die "trusted Python interpreter is unavailable at $PYTHON_BIN"

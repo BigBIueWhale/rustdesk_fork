@@ -4744,12 +4744,11 @@ printf 'VERIFIER_VM_ANDROID_KEYSTORE_ENTRY=pass uid=4000 gid=4000 root=refused f
 /usr/bin/grep -Fq 'VERIFIER_VM_ANDROID_KEYSTORE_SOURCE_GATE=pass' "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'Android-keystore compact source-gate marker is absent'; }
 printf 'VERIFIER_VM_ANDROID_KEYSTORE_SOURCE_GATE=pass\n'
-/usr/bin/grep -Fq \
-    "VERIFIER_VM_ANDROID_BUILDER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=$VERIFIER_VM_DOCKER_VERSION prepost=replayed source=untouched signing=untouched output=untouched" \
-    "$SERIAL_LOG" \
-    || { tail -n 240 "$SERIAL_LOG" >&2; fail 'Android-builder verifier-VM entry marker is absent'; }
-printf 'VERIFIER_VM_ANDROID_BUILDER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s prepost=replayed source=untouched signing=untouched output=untouched\n' \
-    "$VERIFIER_VM_DOCKER_VERSION"
+require_exact_fixed_receipt \
+    "VERIFIER_VM_ANDROID_BUILDER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=$VERIFIER_VM_DOCKER_VERSION prepost=replayed profile=android-compiler runtime=real epoch=$SOURCE_DATE_EPOCH_PIN source=private-fixture-only signing=untouched output=untouched workload=unexecuted cleanup=joined" \
+    'Android compiler production environment'
+printf 'VERIFIER_VM_ANDROID_BUILDER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s prepost=replayed profile=android-compiler runtime=real epoch=%s source=private-fixture-only signing=untouched output=untouched workload=unexecuted cleanup=joined\n' \
+    "$VERIFIER_VM_DOCKER_VERSION" "$SOURCE_DATE_EPOCH_PIN"
 /usr/bin/grep -Fq 'VERIFIER_VM_ANDROID_BUILDER_SOURCE_GATE=pass' "$SERIAL_LOG" \
     || { tail -n 240 "$SERIAL_LOG" >&2; fail 'Android-builder compact source-gate marker is absent'; }
 printf 'VERIFIER_VM_ANDROID_BUILDER_SOURCE_GATE=pass\n'

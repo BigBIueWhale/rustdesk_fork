@@ -8199,7 +8199,9 @@ android_keystore_source_gate_output="$(
 printf '%s\n' "$android_keystore_source_gate_output"
 printf 'VERIFIER_VM_ANDROID_KEYSTORE_SOURCE_GATE=pass\n'
 
-if /bin/bash "$ANDROID_BUILDER_SCRIPT" --self-test-vm-authority \
+prepare_authority_probe_image
+
+if /bin/bash "$ANDROID_BUILDER_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \
     >"$ROOT/root-android-builder-entry.out" 2>"$ROOT/root-android-builder-entry.err"; then
     fail 'VM root passed the Android-builder verifier entry'
 fi
@@ -8210,7 +8212,7 @@ fi
     || fail 'root Android-builder refusal diagnostic differs'
 
 if setpriv --reuid=4001 --regid=4001 --clear-groups \
-    /bin/bash "$ANDROID_BUILDER_SCRIPT" --self-test-vm-authority \
+    /bin/bash "$ANDROID_BUILDER_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \
     >"$ROOT/foreign-android-builder-entry.out" 2>"$ROOT/foreign-android-builder-entry.err"; then
     fail 'foreign numeric principal passed the Android-builder verifier-VM entry'
 fi
@@ -8228,15 +8230,15 @@ fi
 android_builder_entry_output="$(
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
-            /bin/bash "$ANDROID_BUILDER_SCRIPT" --self-test-vm-authority
+            /bin/bash "$ANDROID_BUILDER_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")"
 )" || fail 'numeric-nonroot Android-builder verifier-VM entry failed'
 expected_android_builder_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
-ANDROID_BUILDER_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION channel=guest-unix prepost=replayed source=untouched signing=untouched output=untouched"
+ANDROID_BUILDER_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION channel=guest-unix prepost=replayed profile=android-compiler runtime=real epoch=$SOURCE_DATE_EPOCH_PIN source=private-fixture-only signing=untouched output=untouched workload=unexecuted cleanup=joined"
 [ "$android_builder_entry_output" = "$expected_android_builder_entry_output" ] \
     || fail "Android-builder verifier-VM entry result differs: $android_builder_entry_output"
 printf '%s\n' "$android_builder_entry_output"
-printf 'VERIFIER_VM_ANDROID_BUILDER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s prepost=replayed source=untouched signing=untouched output=untouched\n' \
-    "$EXPECTED_VERSION"
+printf 'VERIFIER_VM_ANDROID_BUILDER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s prepost=replayed profile=android-compiler runtime=real epoch=%s source=private-fixture-only signing=untouched output=untouched workload=unexecuted cleanup=joined\n' \
+    "$EXPECTED_VERSION" "$SOURCE_DATE_EPOCH_PIN"
 
 android_builder_source_gate_output="$(
     setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -8525,8 +8527,6 @@ fi
 printf '%s\n' "$dart_frb_source_gate_output"
 printf 'VERIFIER_VM_DART_FRB_SOURCE_GATE=pass mutations=%s\n' "$dart_frb_source_gate_mutations"
 
-prepare_authority_probe_image
-
 smoke_selected_input="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
     /bin/bash "$smoke_input_work/select.sh" "$smoke_input_work/good" portable-rootless)" \
     || fail 'cannot replay the production smoke selector before mounting'
@@ -8594,7 +8594,7 @@ if [ "$MODE" = authority-smoke ]; then
         "$VERIFY_REPO/scripts/build-windows-vm.sh"; do
         epoch_args=()
         case "${epoch_script##*/}" in
-            build-android.sh) epoch_args=(--self-test-vm-authority) ;;
+            build-android.sh) epoch_args=(--self-test-vm-authority "$(<"$ROOT/image-id")") ;;
             build-debian.sh) epoch_args=(--self-test-vm-authority "$(<"$ROOT/image-id")") ;;
         esac
         for epoch_value in '' "$((SOURCE_DATE_EPOCH_PIN + 1))" invalid-epoch "0$SOURCE_DATE_EPOCH_PIN"; do
@@ -8617,7 +8617,7 @@ if [ "$MODE" = authority-smoke ]; then
         setpriv --reuid=4000 --regid=4000 --clear-groups \
             env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
                 SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN" \
-                /bin/bash "$ANDROID_BUILDER_SCRIPT" --self-test-vm-authority
+                /bin/bash "$ANDROID_BUILDER_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")"
     )" || fail 'Android builder rejected the exact pinned epoch'
     [ "$android_pinned_epoch_output" = "$expected_android_builder_entry_output" ] \
         || fail "Android pinned-epoch entry differs: $android_pinned_epoch_output"

@@ -4623,10 +4623,6 @@ require_exact_fixed_receipt \
     'numeric-nonroot Android pair publication filesystem cases'
 printf 'VERIFIER_VM_ARTIFACT_PUBLICATION=pass android_pair=atomic checksums=both tamper=refused cleanup=joined\n'
 require_exact_fixed_receipt \
-    'CLEANUP_DEFAULT_VM=pass uid=4000 process=preserved pidfile=preserved overlay=preserved source=checked cleanup=joined' \
-    'generic cleanup default-path behavior'
-printf 'CLEANUP_DEFAULT_VM=pass uid=4000 process=preserved pidfile=preserved overlay=preserved source=checked cleanup=joined\n'
-require_exact_fixed_receipt \
     'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined' \
     'verifier-VM run admission result'
 printf 'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined\n'

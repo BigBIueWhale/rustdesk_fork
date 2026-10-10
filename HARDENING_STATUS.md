@@ -807,9 +807,17 @@ closure follows from these component receipts.
   retirement and native Windows/macOS remain OPEN. The last worker still uses
   a no-op retirement callback, and server exit still collects state to release
   device modifiers. The focused `--android-rust-lifecycle-tests --input-lifetime`
-  profile now targets two actual workers, the protected production loader,
-  pending native text key/map restoration and descriptor/task retirement;
-  native execution and the application owner correction are pending.
+  profile executed the complete Linux application library at `748892f5`.
+  Two actual typed-queue workers joined in both key/map-refusal cases, but
+  neither native text nor main owner retired, the scratch map remained changed,
+  and one Display descriptor remained. The map case passed exact owned key/button
+  releases and foreign-key preservation. The protected production loader and
+  actual native provider ran; each failure followed fixture-only X11 restoration.
+  Raw `android-rust-lifecycle-tests-run.4bnLbftFE2.serial.log`, SHA-256
+  `12c1ce9d0df169afb8feeb0fe8fd2cbdf3c846d473e51516aad4e8b37bab2f88`.
+  X11/container/zero-NIC VM cleanup joined with no host listener addition.
+  This proves the before failure; the application owner correction, repeated
+  generations, full shutdown and network/installed lifecycle acceptance remain OPEN.
   Windows virtual-key up/repeat still resolves the foreground
   mapping before lease lookup; layout/desktop identity retention remains required.
 - Broader unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;

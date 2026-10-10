@@ -850,7 +850,11 @@ closure follows from these component receipts.
   `android-rust-lifecycle-tests-run.rgJJi68kW2.serial.log`, SHA-256
   `039396d28230b8cccb89911dda44c3cd792cd06aade5bddacf7aa77ca3e78630`.
   This adds Linux empty-process coverage without a production correction.
-  Forced spawn failure/panic, OS inhibition and broader shutdown remain OPEN.
+  A separate fresh-process case now exercises final-cleanup worker creation under
+  a real Linux soft thread limit: kernel EAGAIN, factory error, exact reservation
+  retirement, same-ID reuse, explicit remembered failure, restored limit and
+  joined recovery thread before production shutdown. Native acceptance is pending.
+  Other worker spawn failures/panic, OS inhibition and broader shutdown remain OPEN.
   The earlier physical regression at `6a675303` passed; macOS recorded CapsLock
   retirement is source-corrected. Three Apple anchors compiled at `c5d0984a`;
   application checks stopped at SDK/header boundaries and the outer transaction rejected

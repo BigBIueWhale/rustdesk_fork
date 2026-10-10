@@ -24,6 +24,11 @@ name = "windows_cm_lifecycle_probe"
 path = "examples/windows_cm_lifecycle_probe.rs"
 required-features = ["windows-cm-lifecycle-probe"]
 
+[[example]]
+name = "linux_whiteboard_lifecycle_probe"
+path = "examples/linux_whiteboard_lifecycle_probe.rs"
+required-features = ["linux-whiteboard-lifecycle-probe"]
+
 [features]
 inline = []
 cli = []
@@ -34,6 +39,8 @@ flutter = ["flutter_rust_bridge", "dart-sys"]
 # Native Windows-only integration probe. The pre-build gate enables it for a same-image
 # `--server`/`--cm` pair; artifact compilation never enables it.
 windows-cm-lifecycle-probe = []
+# Native same-image parent/helper fixture; release artifacts never enable it.
+linux-whiteboard-lifecycle-probe = []
 # Native Windows full-peer presentation probe. The release-artifact build never enables this
 # feature; its sole effect is to constrain the probe server's direct listener to 127.0.0.1 inside
 # the disposable zero-interface VM while the real Flutter viewer/server media path is exercised.

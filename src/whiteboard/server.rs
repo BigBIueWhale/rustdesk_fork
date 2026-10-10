@@ -154,18 +154,20 @@ async fn start_ipc(mut stop_requested: oneshot::Receiver<()>) {
                             if !ipc::authorize_whiteboard_ipc_connection(&stream, expected_parent_pid) {
                                 continue;
                             }
+                            drop(incoming);
                             if let Err(err) = ipc::answer_whiteboard_endpoint_challenge(&mut stream).await {
                                 log::warn!(
                                     "Rejected _whiteboard IPC peer without launch-bound endpoint proof: {}",
                                     err
                                 );
-                                continue;
+                                break;
                             }
                             handle_new_stream(stream, &mut stop_requested).await;
                             break;
                         }
                         Err(err) => {
                             log::error!("Couldn't get whiteboard client: {:?}", err);
+                            break;
                         }
                     },
                     None => {

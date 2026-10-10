@@ -12092,6 +12092,17 @@ Windows/macOS owner joins whenever its event loop returns. Spawn/join failure is
 Handler-only termination, unbounded exit channels, detached threads, and direct platform
 proxy mutation are absent from this source topology.
 
+Exact kernel-parent admission now closes the listener before launch proof. Proof failure
+and listener accept error retire the generation through its terminal guard instead of
+returning to accept. Unauthorized peers remain refused before proof without retiring
+the permitted parent's listener. Native execution of this correction is pending.
+The focused `--whiteboard-helper-lifetime` VM profile builds one same-image probe that
+dispatches the real `core_main --whiteboard` helper. Five cases require a real PID-bound
+X11 window before proof/commands, normal helper exit, window removal, endpoint refusal
+and immediate address reuse; shutdown also requires copied-token wrong-parent refusal.
+This fixture is not an installed or release artifact and supplies no acceptance until
+the exact source-bound transaction and all cleanup complete.
+
 Linux rendering now retains Winit's `OwnedDisplayHandle` in its softbuffer context
 and surfaces. The borrowed-display `transmute` to `'static`, optional context and
 exit-time context reset are removed; surfaces retire before their window owner.
@@ -12120,11 +12131,10 @@ transaction preserved source/inputs, joined Xvfb/container/VM cleanup and passed
 the full host endpoint audit with no additions. Retained serial
 `android-rust-lifecycle-tests-run.ffv8m5nPLu.serial.log` SHA-256
 `f1502434f1d0e3f090fceb5743d17aa790fa2783419046655cf1c4c717bbf9d4`.
-Earlier accepted renderer/startup runs, 42s acquisition/publication checks and three failed
-native attempts remain in the audit/Git history. This subset does not execute the
-CLI/complete helper or authenticated IPC, other listener/startup/worker failure
-or cancellation paths, a compositor, animation/occlusion, sustained resource/soak bounds,
-other platforms, or installed Debian acceptance.
+Earlier renderer/startup runs and failed attempts remain in the audit/Git history.
+This subset does not execute CLI/proof, remaining failure/cancellation paths,
+a compositor, animation/occlusion, sustained resource/soak bounds, other platforms,
+or installed Debian acceptance.
 
 **Linux listener lifetime corrected; focused native checks passed:** the earlier
 `04eab95b` run retained socket/PID inodes after join, establishing a resource finding,

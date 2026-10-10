@@ -79,3 +79,7 @@ pub mod virtual_display_manager;
 #[cfg(all(target_os = "windows", feature = "windows-cm-lifecycle-probe"))]
 #[doc(hidden)]
 pub mod windows_cm_lifecycle_probe;
+
+#[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
+#[doc(hidden)]
+pub mod linux_whiteboard_lifecycle_probe;

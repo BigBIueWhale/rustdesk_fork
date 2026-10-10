@@ -82,7 +82,8 @@ case "$#:${1:-}" in
         ;;
     2:--android-rust-lifecycle-tests)
         [[ "$2" = --clipboard || "$2" = --whiteboard-presentation \
-            || "$2" = --whiteboard-display-lifetime || "$2" = --whiteboard-client ]] \
+            || "$2" = --whiteboard-display-lifetime || "$2" = --whiteboard-client \
+            || "$2" = --whiteboard-helper-lifetime ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'focused Rust shard or input/run authority differs' >&2; exit 2; }
@@ -303,6 +304,7 @@ case "$#:${1:-}" in
         printf 'Focused whiteboard presentation state tests: %s --android-rust-lifecycle-tests --whiteboard-presentation\n' "${0##*/}" >&2
         printf 'Focused whiteboard client state tests: %s --android-rust-lifecycle-tests --whiteboard-client\n' "${0##*/}" >&2
         printf 'Native Linux whiteboard display ownership: %s --android-rust-lifecycle-tests --whiteboard-display-lifetime\n' "${0##*/}" >&2
+        printf 'Native Linux whiteboard CLI/helper lifetime: %s --android-rust-lifecycle-tests --whiteboard-helper-lifetime\n' "${0##*/}" >&2
         printf 'usage: %s [--hbb-common-fs | --cpace-recovery-tests | --linux-pa-authority-tests | --linux-service-uid-tests | --android-rust-lifecycle-tests | --android-rust-target-check | --flutter-model-tests | --android-owner-tests | --android-execution-probe | --android-peer-build | --android-emulator-boot | --android-emulator-app | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario recents | --android-emulator-runtime --artifact-commit COMMIT --apk-sha256 SHA256 --test-apk-sha256 SHA256 --scenario {peer-lifecycle|controlled-cm} --peer-commit COMMIT --peer-manifest-sha256 SHA256 | --apple-conform | --linux-flutter-app-build | --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 | --dart-audit | --rust-audit | --debian-systemd-lifecycle --release-deb ABSOLUTE_DEB --sha256 SHA256 --commit COMMIT --devcheck-archive ABSOLUTE_ARCH]\n' "${0##*/}" >&2
         exit 2
         ;;
@@ -1894,7 +1896,8 @@ FOCUSED_TEST_TREE=
 if [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
    || [ "$MODE" = fixed-archive-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
-   || { [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; }; then
+   || { [ "$MODE" = android-rust-lifecycle-tests ] \
+        && [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]]; }; then
     [ "$(git_closed -C "$REPO_ROOT" symbolic-ref --quiet HEAD)" = refs/heads/master ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'focused native tests require clean committed master'
@@ -3222,7 +3225,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
             "${rust_lifecycle_files[@]}"
         /usr/bin/sha256sum -- "${rust_lifecycle_files[@]}"
-        if [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
+        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]]; then
             engine_xvfb_input_inventory
         fi
     )"
@@ -4846,6 +4849,24 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
         'focused Linux UID-policy receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' \
         'focused Linux UID-policy cloud-init completion marker'
+elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
+    mapfile -t whiteboard_helper_artifacts < <(
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
+            'WHITEBOARD_HELPER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/whiteboard-helper-probe cases=5 unchanged=before-after$'
+    )
+    [ "${#whiteboard_helper_artifacts[@]}" -eq 1 ] \
+        && [ "$(/usr/bin/grep -Fc 'WHITEBOARD_HELPER_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
+        || fail 'native helper artifact receipt is absent, malformed or duplicated'
+    whiteboard_helper_before=${whiteboard_helper_artifacts[0]/WHITEBOARD_HELPER_ARTIFACT=pass /WHITEBOARD_HELPER_ARTIFACT_BEFORE=}
+    whiteboard_helper_before=${whiteboard_helper_before% cases=5 unchanged=before-after}
+    require_exact_fixed_receipt "$whiteboard_helper_before" 'native helper artifact before execution'
+    require_exact_fixed_receipt \
+        'WHITEBOARD_HELPER_NATIVE=pass cases=5 cli=core-main parent=kernel-admitted wrong_parent=preproof-eof listener=retired-before-proof helper=normal-exit window=badwindow-after-exit reconnect=refused address=rebindable xvfb=joined' \
+        'native helper process/window/endpoint cleanup receipt'
+    require_exact_fixed_receipt \
+        "WHITEBOARD_HELPER_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE cases=5 target=linux-x86_64 scope=production-whiteboard-core-cli-proof-and-process-finality rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        'native helper source-bound execution receipt'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'native helper cloud-init completion marker'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
     mapfile -t whiteboard_display_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
@@ -5555,7 +5576,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- \
             "${rust_lifecycle_files[@]}"
         /usr/bin/sha256sum -- "${rust_lifecycle_files[@]}"
-        if [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
+        if [[ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime || "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]]; then
             engine_xvfb_input_inventory
         fi
     )"
@@ -5824,7 +5845,10 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
         "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
         "$UID_POLICY_ARTIFACT_SHA256" "$vm_elapsed_seconds"
 elif [ "$MODE" = android-rust-lifecycle-tests ]; then
-    if [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
+    if [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
+        printf 'WHITEBOARD_HELPER_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-whiteboard-core-cli-proof-and-process-finality network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
+    elif [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
         printf 'WHITEBOARD_DISPLAY_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-whiteboard-lifecycle-listener-and-x11-pixels network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
             "$vm_elapsed_seconds"

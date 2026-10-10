@@ -12202,6 +12202,14 @@ endpoint no-addition audits and joined owned cleanup passed. This closes the nam
 transport failure; actual Remote/PAKE admission, crash, other failures, abrupt root loss and the
 remaining native/installed/resource matrix remain OPEN.
 
+**Active root-shutdown native case: acceptance pending.** After real two-owner pixels, the fixture
+requests production `stop_and_join` while the helper is Running. It requires external task join
+and retained Stopping/helper ownership before normal reap, refuses new registration during drain,
+observes the root return only after helper death/reap, then tries old/new IDs during500ms Idle
+with admission still closed. The existing observer uses exact pidfds/window outcomes; fixture
+cleanup cannot satisfy success. Production code is unchanged; other phases, abrupt root loss,
+installed/platform/resource acceptance remain OPEN.
+
 **Accepted executable state/handle subset:** source `df9daec4cc261bfec574afa0c4f33536b6d99438`,
 `--android-rust-lifecycle-tests --whiteboard-client`
 passed 9 tests, 0 failed/ignored, 598 filtered, 0.00s execution; probe feature disabled.

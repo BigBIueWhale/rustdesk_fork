@@ -222,12 +222,13 @@ async fn client_generation() -> ResultType<()> {
     use crate::whiteboard::{probe_whiteboard_client_state, probe_whiteboard_helper, probe_whiteboard_helper_exit,
         register_whiteboard, unregister_whiteboard, update_whiteboard_cursor, WhiteboardClientOwner, Cursor};
     let case = std::env::var("WHITEBOARD_PROBE_CLIENT_GENERATION")?;
-    ensure!(matches!(case.as_str(), "shutdown" | "replacement" | "withdrawal" | "helper-close"), "invalid client case");
-    let generations = if case == "shutdown" { 1 } else { 2 };
+    ensure!(matches!(case.as_str(), "shutdown" | "replacement" | "withdrawal" | "helper-close" | "root-shutdown"), "invalid client case");
+    let generations = if matches!(case.as_str(), "shutdown" | "root-shutdown") { 1 } else { 2 };
     ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)
         && probe_whiteboard_helper() == (None, false), "client fixture is not initially empty");
     let mut owner = WhiteboardClientOwner::new()?;
     let mut inspect = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::user_defined1())?;
+    let root_shutdown = tokio::sync::Notify::new();
     register_whiteboard(7);
     register_whiteboard(7);
     register_whiteboard(8);
@@ -266,6 +267,10 @@ async fn client_generation() -> ResultType<()> {
                 tokio::time::sleep(Duration::from_millis(350)).await;
                 println!("WHITEBOARD_CLIENT_WINDOW_CLOSE case=helper-close generation=1 pid={pid}");
                 std::io::stdout().flush()?;
+            } else if case == "root-shutdown" {
+                println!("WHITEBOARD_CLIENT_ROOT_STOP case=root-shutdown generation=1 pid={pid}");
+                std::io::stdout().flush()?;
+                root_shutdown.notify_one();
             } else {
                 unregister_whiteboard(ids[0]);
                 overlay_phase("clear", b"cleared\n").await?;
@@ -309,8 +314,11 @@ async fn client_generation() -> ResultType<()> {
             }
             println!("WHITEBOARD_CLIENT_REAPED case={case} generation={expected_generation} pid={pid} status=0 owner=production task=joined");
             std::io::stdout().flush()?;
-            if expected_generation == 1 && matches!(case.as_str(), "withdrawal" | "helper-close") {
+            if expected_generation == 1 && matches!(case.as_str(), "withdrawal" | "helper-close" | "root-shutdown") {
                 let idle_connections = if case == "helper-close" { 2 } else { 0 };
+                if case == "root-shutdown" {
+                    for id in [7, 8, 11, 12] { register_whiteboard(id); }
+                }
                 let deadline = tokio::time::Instant::now() + Duration::from_millis(500);
                 while tokio::time::Instant::now() < deadline {
                     ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, idle_connections)
@@ -320,15 +328,41 @@ async fn client_generation() -> ResultType<()> {
                 println!("WHITEBOARD_CLIENT_IDLE case={case} retired_generation=1 observation_ms=500 connections={idle_connections}");
                 std::io::stdout().flush()?;
                 observer_ack(b"idle\n").await?;
-                let ids = if case == "helper-close" { [7, 8] } else { [11, 12] };
-                for id in ids { register_whiteboard(id); register_whiteboard(id); }
+                if case != "root-shutdown" {
+                    let ids = if case == "helper-close" { [7, 8] } else { [11, 12] };
+                    for id in ids { register_whiteboard(id); register_whiteboard(id); }
+                }
             }
         }
         Ok(last_pid)
     };
-    let result = tokio::select! {
-        result = exercise => result,
-        _ = owner.run() => Err(hbb_common::anyhow::anyhow!("production whiteboard root ended unexpectedly")),
+    let result = if case == "root-shutdown" {
+        let (result, root_result) = tokio::join!(
+            async {
+                let result = exercise.await;
+                // Error paths also request production drain; neither branch may be detached.
+                root_shutdown.notify_one();
+                result
+            },
+            async {
+                tokio::select! {
+                    _ = root_shutdown.notified() => {},
+                    _ = owner.run() => bail!("production whiteboard root ended unexpectedly"),
+                }
+                owner.stop_and_join().await;
+                ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)
+                    && probe_whiteboard_helper() == (None, false), "production root drain returned before retirement");
+                println!("WHITEBOARD_CLIENT_ROOT_JOIN case=root-shutdown generation=1 phase=Idle connections=0 task=joined helper=reaped");
+                std::io::stdout().flush()?;
+                Ok::<(), hbb_common::anyhow::Error>(())
+            },
+        );
+        root_result.and(result)
+    } else {
+        tokio::select! {
+            result = exercise => result,
+            _ = owner.run() => Err(hbb_common::anyhow::anyhow!("production whiteboard root ended unexpectedly")),
+        }
     };
     for id in [7, 8, 9, 10, 11, 12] { unregister_whiteboard(id); }
     owner.stop_and_join().await;

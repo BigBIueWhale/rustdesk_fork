@@ -391,15 +391,15 @@ def observe_owner(executable, environment, display, server, parent_exit=False):
 def observe_client_generation(executable, environment, display, server, case):
     environment = dict(environment, WHITEBOARD_PROBE_CLIENT_GENERATION=case)
     log_path = Path(f"/tmp/whiteboard-client-{case}.log")
-    generations = 1 if case == "shutdown" else 2
-    needs_idle = case in ("withdrawal", "helper-close")
+    generations = 1 if case in ("shutdown", "root-shutdown") else 2
+    needs_idle = case in ("withdrawal", "helper-close", "root-shutdown")
     idle_connections = 2 if case == "helper-close" else 0
     with log_path.open("xb") as log:
         owner = subprocess.Popen([str(executable), "--server"], env=environment,
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
         owner_fd, selector = None, None
         pending, helpers, active = b"", [], None
-        cleaned, idle_seen = False, False
+        cleaned, idle_seen, root_joined = False, False, False
 
         def helper_alive(helper):
             poller = select.poll()
@@ -433,6 +433,7 @@ def observe_client_generation(executable, environment, display, server, case):
                     reaped = re.fullmatch(rf"WHITEBOARD_CLIENT_REAPED case={case} generation=([1-9][0-9]*) pid=([1-9][0-9]*) status=0 owner=production task=joined", text)
                     cleanup = re.fullmatch(rf"WHITEBOARD_CLIENT_CLEANUP case={case} generation=([1-9][0-9]*) pid=([1-9][0-9]*) status=0 owner=production child=normal-exit-reaped task=joined", text)
                     window_close = re.fullmatch(r"WHITEBOARD_CLIENT_WINDOW_CLOSE case=helper-close generation=1 pid=([1-9][0-9]*)", text)
+                    root_stop = re.fullmatch(r"WHITEBOARD_CLIENT_ROOT_STOP case=root-shutdown generation=1 pid=([1-9][0-9]*)", text)
                     if ready:
                         generation, pid = map(int, ready.groups())
                         require(not cleaned and len(helpers) < generations
@@ -473,8 +474,17 @@ def observe_client_generation(executable, environment, display, server, case):
                                 "global helper close did not follow live two-owner presentation")
                         display.request_close(active["window"])
                         active["phases"].append("cancel")
+                    elif root_stop:
+                        require(case == "root-shutdown" and active is not None
+                                and root_stop.group(1) == str(active["pid"])
+                                and active["phases"] == ["draw"] and not active["returned"]
+                                and helper_alive(active) and owner.poll() is None,
+                                "root shutdown did not follow live two-owner presentation")
+                        active["phases"].append("stop")
                     elif text == "returned":
-                        expected_phases = ["draw", "cancel"] if case == "helper-close" and len(helpers) == 1 else ["draw", "clear"]
+                        expected_phases = (["draw", "stop"] if case == "root-shutdown" else
+                                           ["draw", "cancel"] if case == "helper-close" and len(helpers) == 1
+                                           else ["draw", "clear"])
                         require(active is not None and active["phases"] == expected_phases
                                 and not active["returned"] and helper_alive(active)
                                 and owner.poll() is None, "global client helper did not return while alive")
@@ -501,6 +511,12 @@ def observe_client_generation(executable, environment, display, server, case):
                                 and not helper_alive(active) and not Path(f"/proc/{active['pid']}").exists(),
                                 "production owner did not normally reap its exact old helper")
                         active["reaped"] = True
+                    elif text == "WHITEBOARD_CLIENT_ROOT_JOIN case=root-shutdown generation=1 phase=Idle connections=0 task=joined helper=reaped":
+                        require(case == "root-shutdown" and not root_joined and active is not None
+                                and active["state"] and not helper_alive(active)
+                                and not Path(f"/proc/{active['pid']}").exists() and owner.poll() is None,
+                                "root drain returned before exact helper retirement")
+                        root_joined = True
                     elif text == f"WHITEBOARD_CLIENT_IDLE case={case} retired_generation=1 observation_ms=500 connections={idle_connections}":
                         require(needs_idle and not idle_seen and len(helpers) == 1
                                 and active["reaped"] and not helper_alive(active) and owner.poll() is None,
@@ -511,7 +527,8 @@ def observe_client_generation(executable, environment, display, server, case):
                     elif cleanup:
                         require(active is not None and not cleaned and len(helpers) == generations
                                 and cleanup.groups() == (str(generations), str(active["pid"]))
-                                and all(helper["reaped"] and not helper_alive(helper) for helper in helpers),
+                                and all(helper["reaped"] and not helper_alive(helper) for helper in helpers)
+                                and (case != "root-shutdown" or root_joined),
                                 "production owner did not reap its exact helper")
                         cleaned = True
                     else:
@@ -554,8 +571,12 @@ def observe_client_generation(executable, environment, display, server, case):
         print("WHITEBOARD_CLIENT_REPLACEMENT=pass old=retained-through-demand successor=after-normal-reap generations=2 duplicate=shared pixels=both-generations cleanup=production-reap task=joined", flush=True)
     elif case == "withdrawal":
         print("WHITEBOARD_CLIENT_WITHDRAWAL=pass old=retained-through-withdrawal idle_observation_ms=500 successor=later-explicit-demand generations=2 pixels=both-generations cleanup=production-reap task=joined", flush=True)
-    else:
+    elif case == "helper-close":
         print("WHITEBOARD_CLIENT_HELPER_CLOSE=pass failure=native-window-close demand=retained old=joined-before-process-exit idle_observation_ms=500 retry=later-explicit-registration generations=2 pixels=both-generations cleanup=production-reap", flush=True)
+    elif case == "root-shutdown":
+        print("WHITEBOARD_CLIENT_ROOT_SHUTDOWN=pass admission=closed-during-and-after-drain old=retained-before-helper-exit root=joined-after-production-reap idle_observation_ms=500 generations=1 pixels=two-owner cleanup=production-reap", flush=True)
+    else:
+        raise RuntimeError("unknown global client scenario")
 
 
 def main():
@@ -591,7 +612,7 @@ def main():
             display = Display()
             observe_owner(executable, environment, display, server)
             observe_owner(executable, environment, display, server, parent_exit=True)
-            for case in ("shutdown", "replacement", "withdrawal", "helper-close"):
+            for case in ("shutdown", "replacement", "withdrawal", "helper-close", "root-shutdown"):
                 observe_client_generation(executable, environment, display, server, case)
             require(artifact_digest(executable) == digest and server.poll() is None,
                     "compiled helper artifact or Xvfb changed during execution")

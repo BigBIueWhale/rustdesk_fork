@@ -3262,6 +3262,9 @@ run_focused_rust_tests() {
         [ "$(grep -Fxc 'WHITEBOARD_CLIENT_HELPER_CLOSE=pass failure=native-window-close demand=retained old=joined-before-process-exit idle_observation_ms=500 retry=later-explicit-registration generations=2 pixels=both-generations cleanup=production-reap' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'WHITEBOARD_CLIENT_HELPER_CLOSE=' "$output")" -eq 1 ] \
             || fail 'native global client helper-close/no-retry receipt differs'
+        [ "$(grep -Fxc 'WHITEBOARD_CLIENT_ROOT_SHUTDOWN=pass admission=closed-during-and-after-drain old=retained-before-helper-exit root=joined-after-production-reap idle_observation_ms=500 generations=1 pixels=two-owner cleanup=production-reap' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'WHITEBOARD_CLIENT_ROOT_SHUTDOWN=' "$output")" -eq 1 ] \
+            || fail 'native global client root-shutdown/admission receipt differs'
         for helper_case in creator-thread shutdown bad-proof proof-timeout proof-close stream-close window-close parent-exit; do
             [ "$(grep -Ec "^WHITEBOARD_HELPER_DONE case=$helper_case pid=[1-9][0-9]* status=0$" "$output")" -eq 1 ] \
                 || fail "native helper case did not complete: $helper_case"
@@ -3390,7 +3393,7 @@ run_focused_rust_tests() {
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
         if [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
             grep -E '^WHITEBOARD_HELPER_(ARTIFACT_BEFORE|ARTIFACT|BUILD|NATIVE|READY|RETURNED|DONE|OVERLAY|WRONG_PARENT|CREATOR|PARENT)[= ]' "$output"
-            grep -E '^WHITEBOARD_CLIENT_(READY|STATE|OBSERVED|REAPED|IDLE|CLEANUP|PHASE|REPLACEMENT|WITHDRAWAL|WINDOW_CLOSE|HELPER_CLOSE)[= ]' "$output"
+            grep -E '^WHITEBOARD_CLIENT_(READY|STATE|OBSERVED|REAPED|IDLE|CLEANUP|PHASE|REPLACEMENT|WITHDRAWAL|WINDOW_CLOSE|HELPER_CLOSE|ROOT_STOP|ROOT_JOIN|ROOT_SHUTDOWN)[= ]' "$output"
             printf 'WHITEBOARD_HELPER_VM=pass commit=%s tree=%s cases=8 target=linux-x86_64 scope=production-whiteboard-core-cli-authenticated-overlay-and-finality rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

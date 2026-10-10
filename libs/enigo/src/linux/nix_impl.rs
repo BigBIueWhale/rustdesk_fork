@@ -8,6 +8,10 @@ pub struct Enigo {
 }
 
 impl Enigo {
+    pub fn ensure_input_ready(&self) -> crate::ResultType {
+        self.xdo.ensure_input_ready()
+    }
+
     /// Get delay of xdo implementation.
     pub fn delay(&self) -> u64 {
         self.xdo.delay()

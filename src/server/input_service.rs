@@ -1597,6 +1597,9 @@ fn handle_mouse_simulation_(
     crate::platform::windows::try_change_desktop();
     let evt_type = evt.mask & MOUSE_TYPE_MASK;
     let mut en = lock_input_state(&ENIGO, "Enigo state while handling mouse input");
+    #[cfg(target_os = "linux")]
+    en.ensure_input_ready()
+        .map_err(|err| hbb_common::anyhow::anyhow!(err.to_string()))?;
     #[cfg(target_os = "macos")]
     en.set_ignore_flags(enigo_ignore_flags());
     #[cfg(not(target_os = "macos"))]

@@ -771,9 +771,13 @@ closure follows from these component receipts.
   provide no automatic destructor at process exit. Component Drop tests therefore
   do not establish cleanup on disconnect, service stop or process exit; explicit
   application retirement and native lifecycle acceptance remain required.
-  Pending cleanup currently closes only text admission. The Enigo mouse methods
-  and application physical-rdev path have separate admission; whether a pending
-  held text modifier can affect subsequent application input remains OPEN.
+  Pending text cleanup now closes ordinary Linux text/pointer admission and
+  keyboard-state collection before application physical-key planning. Mouse
+  dispatch checks the same pure readiness before modifier or relative-mode
+  changes; release-only button cleanup remains available. The isolated before
+  fixture at `8c075737` observed movement, a retained Button3 mask and fourteen
+  unexpected events while cleanup was pending. Corrected native acceptance is
+  pending; actual application/rdev and global retirement remain OPEN.
 - Broader unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;
   native events and an in-request lease observer do not prove text consumption.
 - Loader identity/ACL/path races, native application consumers, full

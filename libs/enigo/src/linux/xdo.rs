@@ -196,13 +196,18 @@ impl Drop for EnigoXdo {
 }
 
 impl EnigoXdo {
-    pub(crate) fn key_sequence_result(&mut self, sequence: &str) -> crate::ResultType {
+    pub(super) fn ensure_input_ready(&self) -> crate::ResultType {
         if self.xdo.is_null() {
             return Err("libxdo is unavailable".into());
         }
         if self.pending_text_cleanup.is_some() {
             return Err("libxdo text cleanup is unconfirmed".into());
         }
+        Ok(())
+    }
+
+    pub(crate) fn key_sequence_result(&mut self, sequence: &str) -> crate::ResultType {
+        self.ensure_input_ready()?;
         // Validate the complete text before emitting any prefix.
         if let Some(character) = sequence
             .chars()
@@ -252,25 +257,19 @@ impl MouseControllable for EnigoXdo {
     }
 
     fn mouse_move_to(&mut self, x: i32, y: i32) -> crate::ResultType {
-        if self.xdo.is_null() {
-            return Err("libxdo is unavailable".into());
-        }
+        self.ensure_input_ready()?;
         let status = unsafe { libxdo_sys::xdo_move_mouse(self.xdo as *const _, x, y) };
         xdo_result("mouse move", status)
     }
 
     fn mouse_move_relative(&mut self, x: i32, y: i32) -> crate::ResultType {
-        if self.xdo.is_null() {
-            return Err("libxdo is unavailable".into());
-        }
+        self.ensure_input_ready()?;
         let status = unsafe { libxdo_sys::xdo_move_mouse_relative(self.xdo as *const _, x, y) };
         xdo_result("relative mouse move", status)
     }
 
     fn mouse_down(&mut self, button: MouseButton) -> crate::ResultType {
-        if self.xdo.is_null() {
-            return Err("libxdo is unavailable".into());
-        }
+        self.ensure_input_ready()?;
         let status = unsafe {
             libxdo_sys::xdo_mouse_down(self.xdo as *const _, mousebutton(button))
         };
@@ -278,6 +277,7 @@ impl MouseControllable for EnigoXdo {
     }
 
     fn mouse_up(&mut self, button: MouseButton) -> crate::ResultType {
+        // Release-only cleanup remains available after ordinary admission closes.
         if self.xdo.is_null() {
             return Err("libxdo is unavailable".into());
         }
@@ -302,6 +302,7 @@ impl MouseControllable for EnigoXdo {
     }
 
     fn mouse_scroll_x(&mut self, length: i32) -> crate::ResultType {
+        self.ensure_input_ready()?;
         let button = if length < 0 {
             MouseButton::ScrollLeft
         } else {
@@ -316,6 +317,7 @@ impl MouseControllable for EnigoXdo {
     }
 
     fn mouse_scroll_y(&mut self, length: i32) -> crate::ResultType {
+        self.ensure_input_ready()?;
         let button = if length < 0 {
             MouseButton::ScrollUp
         } else {
@@ -340,9 +342,7 @@ impl KeyboardControllable for EnigoXdo {
     }
 
     fn keyboard_state(&mut self) -> Result<KeyboardState, Box<dyn std::error::Error>> {
-        if self.xdo.is_null() {
-            return Err("X11 keyboard state is unavailable".into());
-        }
+        self.ensure_input_ready()?;
         let mut state = libxdo_sys::XdoInputState::default();
         let status = unsafe { libxdo_sys::xdo_query_input_state(self.xdo, &mut state) };
         xdo_result("keyboard state", status)?;

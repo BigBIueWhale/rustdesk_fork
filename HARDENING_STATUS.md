@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-65134c8d531a647054763363caee234cb45459e751804a7e1e8c53ae082eb034  requirements.html
+9eed8ae61ff8330c59432feacdc88c2d8c545bf779dd326731a617982f744286  requirements.html
 ```
 
 ## Current Verdict
@@ -1908,7 +1908,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `65134c8d531a647054763363caee234cb45459e751804a7e1e8c53ae082eb034  requirements.html`.
+Current normative specification SHA-256: `9eed8ae61ff8330c59432feacdc88c2d8c545bf779dd326731a617982f744286  requirements.html`.
 
 ### Current authority and source closure
 
@@ -6592,78 +6592,43 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   R-V3 review remain open. No online acquisition, image pull/build/tag, release build, root command,
   or host RustDesk process/service/config/listener/firewall/network operation was executed for this
   slice.
-- **R-S11cp/R-S11e-108 — networked vcpkg native output authority — SOURCE AND REAL
-  FILESYSTEM TRANSACTION HARDENING IMPLEMENTED 2026-09-12; COLD NETWORK REBUILD, RELEASE
-  ARTIFACTS, NATIVE/DEVICE EVIDENCE, AND EXTERNAL REVIEW REMAIN OPEN.** Platform: the
-  unprivileged Linux acquisition host and immutable Debian/Android builder containers.
-  Boundary: networked vcpkg execution ↔ pinned offline inputs and durable
-  `online/vcpkg/installed/{x64-linux,arm64-android}` consumer trees.
+- **R-S11cp/R-S11e-108 — native vcpkg output authority: source and historical filesystem
+  transaction evidence; current cold rebuild/release/platform acceptance OPEN.** The
+  release triplets are `x64-linux` and `arm64-android`. Their immutable numeric-nonroot
+  producers receive read-only nonrecursive inputs and one private writable output;
+  only consumed headers, five x86-64 or six AArch64 archives, and exact receipts publish.
+  Complete keys bind ports, builder, vcpkg, libvpx/libyuv, every overlay entry and byte,
+  and the Android NDK. Production owners are `scripts/online-fetch.sh`,
+  `scripts/build-vcpkg-native-output.sh`, and `scripts/online-vcpkg-native-output.py`.
 
-  The original builders mounted the complete online cache read-write, could replace either
-  architecture's final tree, presence-trusted a libvpx-only marker, and retained unconsumed vcpkg
-  output. The hardened lifecycle instead keys the complete triplet/port/builder/vcpkg/libvpx/
-  libyuv/overlay/NDK input closure; reverifies the archives; locks and reconciles kind-scoped
-  staging; and gives each immutable numeric-nonroot producer read-only nonrecursive online/overlay
-  mounts plus exactly one private writable `/outputs/native` tree. Disposable source, build,
-  download, home, and binary-cache state stays in bounded container scratch. Publication contains
-  only the exact consumed headers, five x86-64 archives or six AArch64 archives, and both receipts.
+  The publisher validates bounded owner/mount/link/type/mode/xattr/path closure,
+  exact inventories and receipts, stable bytes, archive framing and relocatable ELF ABI.
+  Files/directories seal to 0400/0500. Its v2 journal begins unselected, durably selects
+  the exact inode/full-tree digest after validation, and revalidates before no-clobber
+  publication, root sealing and postcheck. Failure rolls back that inode. Recovery
+  refuses moved v1/unselected or changed state; selected interrupted publication must
+  match its recorded digest before and after descriptor-bound sealing. Uncertain state
+  is preserved, and acquisition rejects UID/GID zero. The normative historical-output profile
+  additionally requires no caller write authority and an independently admitted current-key/
+  tree receipt; the source allowlist remains empty, so root-owned final trees are refused.
 
-  The host helper independently enforces canonical same-filesystem mount-closed bounded traversal,
-  current ownership, stable full reads, portable paths, exact inventories/receipts, and refusal of
-  symlinks, special files, external hardlinks, set-id/sticky bits, xattrs, or group/world writes.
-  Every archive is parsed with bounded framing and must contain canonical 64-bit little-endian
-  relocatable ELF objects for exactly x86-64 or AArch64. Files and directories are sealed 0400/0500
-  and synchronized.
+  Historical filesystem fixtures in immutable image
+  `sha256:e064e6c140869235533eb855191f9ac0f4be112e690012a15d4e80413589c518`
+  cover both release triplets, metadata/inventory/ABI refusal, no-clobber, interrupted
+  selection/publication, moved unselected/v1 preservation, changed selected bytes and
+  exact rollback. They exercise actual filesystem operations with fixture archives;
+  they do not prove a native codec build. The executable helper self-test and focused
+  source gate remain wired in `scripts/verify.sh`; deleted mutation/workspace duplicates
+  stay deleted. Current-source execution was not rerun for this documentation change.
 
-  The prior v1 journal recorded the candidate inode and input recipe but not whether validated
-  output had been selected or what bytes were selected. Recovery could therefore accept a
-  changed-but-still-structurally-valid tree after its inode reached the final path. The v2 journal
-  starts explicitly `unselected` with no digest. After sealing and synchronization, the helper
-  derives and revalidates a domain-separated, path/type/content-framed full-tree SHA-256, atomically
-  records `selected` plus that digest, reloads the durable state, and revalidates the same inode
-  and digest before descriptor-relative `renameat2(RENAME_NOREPLACE)`. An identity-bound directory
-  descriptor changes only the exact root from private 0700 to final 0500; output and both namespace
-  directories are synchronized and the exact bytes, identity, shape, ownership, modes, receipts,
-  archive framing, and ABI are postchecked. Later failure restores the exact root to 0700 and
-  rolls that inode back without clobber.
-
-  Recovery safely retires still-private legacy/unselected candidates but refuses and preserves a
-  moved v1 or unselected inode because neither state selected produced bytes. A selected private
-  candidate must match its recorded digest. A selected inode moved before its root was sealed must
-  match the digest while still mode 0700, is then descriptor-sealed to 0500 and synchronized, and
-  must match again before classification as published. Changed, ambiguous, wrong-mode, or
-  wrong-topology state is preserved. A bounded interrupted state replacement beside an unchanged
-  unselected private candidate is classified for safe retirement. The helper rejects UID or GID 0.
-
-  Historical root-owned final trees remain non-mutatingly admissible only through the exact legacy
-  owner/mode/mount/link/xattr/type/path/size/archive checks and a frozen pair of current output key
-  plus legacy full-tree digest. The allowlist remains empty. The observed x64 and Android trees
-  carry stale libvpx receipt
-  `2f1a0d9ec38bec3b32c2154a752119c3240c9944ab0ce1c4dfaf91e6a4bfac23`; their measured legacy
-  digests `4fbb47ef3e8cdd79f96697e9650fc3a31e368dd38a54aa3af372bb5e59b0fa46` and
-  `913588e8746761275c3115279789e1590bff9af614072882c09e5fc827e4ad55` remain denial evidence,
-  not provenance. Acquisition rejects them without chmod, deletion, or replacement.
-
-  The executable helper self-test and the 282-line focused source-contract gate pass in immutable
-  image `sha256:e064e6c140869235533eb855191f9ac0f4be112e690012a15d4e80413589c518` under
-  `--network=none`, no ports, numeric nonroot, read-only root/repository, zero capabilities,
-  no-new-privileges, bounded CPU/PIDs/memory, and private noexec scratch. Actual filesystem cases
-  cover both triplets, exact 0400/0500 publication, owner-writable refusal, wrong ABI/malformed ELF,
-  inventory/symlink/hardlink/xattr refusal, no-clobber, unprepared and interrupted-state recovery,
-  moved-unselected and moved-v1 preservation, selected pre/post-rename recovery, semantically
-  admissible byte change after selection at the final path, and injected postpublication failure
-  with exact rollback.
-  The redundant 895-line focused mutation harness and 405 lines of duplicated workspace
-  vcpkg checks/mutations/loaders were deleted; the real filesystem test remains primary and the
-  focused gate retains only load-bearing source wiring. The ordinary workspace gate correctly
-  rejected the intentionally stale requirements hash after the normative edit, then passed after
-  the new hash was synchronized. Python AST, Bash syntax, requirements HTML parsing, exact hash
-  binding, `git diff --check`, and the status-size gate pass below its 400,000-token budget.
-
-  No cold/networked vcpkg build, image pull/build/tag, release build, root command, host RustDesk
-  process/service/config/listener/firewall/network action, or cache mutation occurred. Android NDK
-  extraction is tracked by R-S11cq immediately below. Other acquisition producers, exact cold
-  R-B2 artifacts, native/device evidence, and external R-V3 review remain open.
+  R-S11cp and Appendix C #243 now contain timeless requirements and required disposition.
+  Original finding/recovery provenance is retained in commits `d95bf846` and `94a21439`;
+  superseded cache measurements and per-run narration remain in Git and the deep audit.
+  The historical mode profile cannot infer provenance from primary GID alone or a
+  measured tree digest. Cold networked builds, exact-current filesystem acceptance,
+  canonical offline closure, Android NDK's separate R-S11cq boundary, other producers,
+  final R-B2/R-B10 artifacts, supported-platform behavior, reproduction and R-V3 review
+  remain OPEN; this document cleanup closes no execution or privilege boundary.
 - **R-S11cq/R-S11e-109 — Android NDK extraction and output authority — SOURCE AND
   ADVERSARIAL FILESYSTEM TRANSACTION IMPLEMENTED; EXACT-CURRENT FULL PINNED-ARCHIVE, COLD
   ACQUISITION, RELEASE, AND DEVICE EVIDENCE OPEN.** Platform: the unprivileged Linux acquisition

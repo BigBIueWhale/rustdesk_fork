@@ -806,27 +806,26 @@ closure follows from these component receipts.
   Worker supervisors retain admission through exact join; server shutdown closes
   admission atomically and waits for native/final-Remote retirement. Remote startup
   awaits native readiness; Windows wake and post-session lock use owned workers.
-  The unchanged `--android-rust-lifecycle-tests --input-lifetime` fixture failed
-  at `748892f5`: actual worker joins left text/main owners, changed map and one FD.
-  At `e9527a2b`, both refusal cases passed 16 generations each, exact owned releases,
-  foreign-key preservation, full map restoration, child-before-Display and FD/task
-  retirement. The complete Linux library built; the physical regression at
-  `6a675303` also passed. Current raw evidence:
-  `android-rust-lifecycle-tests-run.sjTMllKXVY.serial.log`, SHA-256
-  `c94a451a1f0cba5aa0ea1676e3fbe61f00074bb870ddbfb40e9f2a0823209fb6`.
-  The 224-second isolated transaction joined cleanup without added host listeners.
-  macOS recorded CapsLock retirement is source-corrected. At `c5d0984a`, three
-  Apple workspace anchors compiled; application checks stopped at expected SDK/header
-  boundaries. The outer transaction rejected an unattributed new loopback listener
-  on `127.0.0.1:9444`; Apple integration, full builds and native behavior remain OPEN.
-  Raw `apple-conform-run.U7DV8gknyH.serial.log`, SHA-256
-  `e56e433d52e7e50ad26621e336c2220b93457475bae54b7aed1fb6e7b5c5c722`.
   Cursor startup now shares a retained worker from Remote resource admission.
   Final cleanup disconnects its channel, joins native TLS and invalidates the cache.
   The reusable flag, detached subscription startup and ambient registry guard are
   deleted. Before code at `1871f8b1` exposed two live native contexts after cleanup
-  finality; identical native regression is pending. Full shutdown/network/installed
-  acceptance remains OPEN. Before/regression receipts are in the audit.
+  finality. At `f8b7b923`, the identical native fixture passed 32 cursor generations:
+  shared ownership, unrelated-type exclusion, successor blocked through TLS destruction,
+  actual positions/cache invalidation and FD/task retirement. The same complete Linux
+  library artifact passed both input-refusal cases, 16 generations each: exact owned
+  releases, foreign-key preservation, full map restoration and child-before-Display.
+  `--android-rust-lifecycle-tests --input-lifetime` completed in 221 seconds with
+  joined X11/container/VM cleanup and no added host listeners. Current raw evidence:
+  `android-rust-lifecycle-tests-run.TVo5mzkSMM.serial.log`, SHA-256
+  `c2382b3010a98b0a7cb5e2a8f7c48833b5912c064146645572bc74c0790d1e68`.
+  This exercises resource admission/native X11, with `network_auth=false`.
+  The earlier physical regression at `6a675303` also passed. macOS recorded CapsLock
+  retirement is source-corrected. Three Apple workspace anchors compiled at `c5d0984a`;
+  application checks stopped at SDK/header boundaries and the outer transaction rejected
+  a new unattributed `127.0.0.1:9444` listener. Current Apple builds/native behavior,
+  Windows, full shutdown/network/installed acceptance remain OPEN. Exact before and
+  historical input/Apple receipts are retained in the audit and Git.
   Windows virtual-key up/repeat still resolves the foreground
   mapping before lease lookup; layout/desktop identity retention remains required.
 - Broader unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;

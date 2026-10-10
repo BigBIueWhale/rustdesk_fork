@@ -12117,6 +12117,11 @@ Serial `android-rust-lifecycle-tests-run.3rogo3sDbA.serial.log` SHA-256
 This nonrelease probe establishes post-process window absence, not independent
 window retirement before process death, installed authority, cross-UID coverage or soak.
 
+**Extension pending:** six cases hold helpers alive after real CLI return for worker,
+stream, window and endpoint retirement checks. The new authenticated case reads back
+two owners' pixels, closes one and requests native window-close with the other active.
+The five-case binding above remains accepted until the new transaction joins.
+
 Linux rendering now retains Winit's `OwnedDisplayHandle` in its softbuffer context
 and surfaces. The borrowed-display `transmute` to `'static`, optional context and
 exit-time context reset are removed; surfaces retire before their window owner.
@@ -12127,22 +12132,18 @@ X11 fixture includes it and `libxcb-xkb1`. No privilege escalation was reproduce
 
 **Accepted Linux subset:** `--android-rust-lifecycle-tests --whiteboard-display-lifetime`
 passed at source `e655e193a93ece5469c56d73b078a2c07bacaf0c`, tree
-`bfe15621ec43127b90e63a38fc7d921c87dfd764`: six actual tests, zero failed/ignored,
-236s VM / 166s build / 0.00s state tests / 0.01s listener cancellation /
-0.02s each X11 case.
-With both launch variables absent, one fixture spawned/joined the real worker before
-creating its real Winit proxy; the other installed the proxy and started the worker
-from the running loop after rendering, retained it through loop return and joined it.
-Each native case ran in its own process, delivered exactly one Exit through the
-production user-event/idle-exit path and used no fixture-originated loop exit.
-Both production constructor/draw paths created real X11 windows, read back two owners'
-pixels, cleared only one owner,
-and returned immediate GetWindowAttributes BadWindow after event-loop return while
-the application/context remained alive. Executable SHA-256
+`bfe15621ec43127b90e63a38fc7d921c87dfd764`: six tests, zero failed/ignored,
+236s VM / 166s build. With launch variables absent, separate native cases
+spawned/joined the real worker before proxy publication or retained it from the
+running loop after proxy publication through loop return. Both delivered one Exit
+through production user-event/idle-exit, with no fixture-originated loop exit.
+Production constructors/draws created X11 windows, read back two owners' pixels,
+cleared one owner and immediately received BadWindow after loop return while the
+application/context remained alive. Executable SHA-256
 `254420e2d372f12ca940395004d7f8300406037235936a8cc3038c84196f5548`
-was unchanged before/between/after all four test processes. The zero-NIC VM/nonroot network-none container
-transaction preserved source/inputs, joined Xvfb/container/VM cleanup and passed
-the full host endpoint audit with no additions. Retained serial
+was unchanged across four processes. Zero-NIC/nonroot network-none execution,
+source/input preservation, Xvfb/container/VM joined cleanup and the full host
+endpoint audit passed. Serial
 `android-rust-lifecycle-tests-run.ffv8m5nPLu.serial.log` SHA-256
 `f1502434f1d0e3f090fceb5743d17aa790fa2783419046655cf1c4c717bbf9d4`.
 That renderer/listener subset excludes CLI/proof, other failure/cancellation,

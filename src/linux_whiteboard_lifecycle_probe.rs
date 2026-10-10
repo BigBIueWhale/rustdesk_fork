@@ -7,6 +7,9 @@ async fn spawn_role(role: &'static str, envs: Vec<(&'static str, String)>) -> Re
     tokio::task::spawn_blocking(move || -> ResultType<Child> {
         let mut command = Command::new(std::env::current_exe()?);
         command.env_clear().arg(role).stdin(Stdio::null()).stdout(Stdio::null());
+        if role == "--whiteboard" {
+            command.stdin(Stdio::piped()).stdout(Stdio::piped());
+        }
         for key in ["PATH", "LC_ALL", "HOME", "DISPLAY", "XDG_SESSION_TYPE", "XKB_CONFIG_ROOT", "LD_LIBRARY_PATH"] {
             command.env(key, std::env::var_os(key).ok_or_else(|| hbb_common::anyhow::anyhow!("fixture environment lacks {key}"))?);
         }
@@ -77,6 +80,33 @@ async fn observer_ack(expected: &'static [u8]) -> ResultType<()> {
     Ok(())
 }
 
+async fn wait_cli_return(child: &mut Child) -> ResultType<()> {
+    let mut output = child.stdout.take().ok_or_else(|| hbb_common::anyhow::anyhow!("helper output pipe is absent"))?;
+    let mut reader = tokio::task::spawn_blocking(move || -> ResultType<()> {
+        let mut bytes = [0; 9];
+        output.read_exact(&mut bytes)?;
+        ensure!(&bytes == b"returned\n", "helper did not report core CLI return");
+        Ok(())
+    });
+    match tokio::time::timeout(Duration::from_secs(5), &mut reader).await {
+        Ok(result) => result??,
+        Err(_) => {
+            let termination = child.kill();
+            let joined = reader.await;
+            termination?;
+            bail!("helper CLI return timed out; joined reader: {joined:?}");
+        }
+    }
+    ensure!(child.try_wait()?.is_none(), "helper died before its resources were observed");
+    Ok(())
+}
+
+async fn overlay_phase(phase: &str, acknowledgement: &'static [u8]) -> ResultType<()> {
+    println!("WHITEBOARD_HELPER_OVERLAY phase={phase}");
+    std::io::stdout().flush()?;
+    observer_ack(acknowledgement).await
+}
+
 async fn exercise(child: &mut Child, case: &str, token: &str, postfix: &str, address: &str) -> ResultType<()> {
     println!("WHITEBOARD_HELPER_READY case={case} pid={} address_hex={}", child.id(), hex::encode(address));
     std::io::stdout().flush()?;
@@ -96,13 +126,29 @@ async fn exercise(child: &mut Child, case: &str, token: &str, postfix: &str, add
     let mut stream = ipc::connect(1000, postfix).await?;
     ensure!(stream.peer_pid() == Some(child.id()), "owner reached another helper");
     match case {
-        "shutdown" | "stream-close" => {
+        "shutdown" | "stream-close" | "window-close" => {
             ipc::authenticate_whiteboard_endpoint_launch_proof(&mut stream, token).await?;
             require_listener_refused(address).await?;
             if case == "shutdown" {
                 stream.send_whiteboard_command_timeout(&WhiteboardIpcCommand::Shutdown, 1000).await?;
-            } else {
-                drop(stream);
+            } else if case == "window-close" {
+                for (conn_id, x, y, argb) in [(7, 32.0, 32.0, 0xff00ff00), (8, 128.0, 96.0, 0xff0000ff)] {
+                    let token = crate::encode64(&[conn_id as u8; 32]);
+                    stream.send_whiteboard_command_timeout(&WhiteboardIpcCommand::Bind {
+                        conn_id, token: token.clone(),
+                    }, 1000).await?;
+                    stream.send_whiteboard_command_timeout(&WhiteboardIpcCommand::Cursor {
+                        conn_id, token, cursor: crate::whiteboard::Cursor {
+                            x, y, argb, btns: 0, text: String::new(),
+                        },
+                    }, 1000).await?;
+                }
+                overlay_phase("draw", b"drawn\n").await?;
+                stream.send_whiteboard_command_timeout(&WhiteboardIpcCommand::Close {
+                    conn_id: 7, token: crate::encode64(&[7; 32]),
+                }, 1000).await?;
+                overlay_phase("clear", b"cleared\n").await?;
+                overlay_phase("cancel", b"cancelled\n").await?;
             }
         }
         "bad-proof" | "proof-timeout" | "proof-close" => {
@@ -113,13 +159,28 @@ async fn exercise(child: &mut Child, case: &str, token: &str, postfix: &str, add
                 stream.send_whiteboard_owner_handshake_timeout(&WhiteboardOwnerHandshake::ServerProof {
                     proof: crate::encode64(&[0; 32]),
                 }, 1000).await?;
-            } else if case == "proof-close" {
-                drop(stream);
             }
         }
         _ => bail!("unknown whiteboard lifecycle case"),
     }
-    // Keep a stalled proof stream alive through its deadline; EOF is a separate case.
+    // Keep proof-timeout and window-close streams alive until the real helper returns.
+    let mut stream = if matches!(case, "proof-close" | "stream-close") {
+        drop(stream);
+        None
+    } else {
+        Some(stream)
+    };
+    wait_cli_return(child).await?;
+    if let Some(stream) = stream.as_mut() {
+        tokio::time::timeout(Duration::from_secs(1), stream.probe_whiteboard_eof()).await??;
+    }
+    require_listener_refused(address).await?;
+    println!("WHITEBOARD_HELPER_RETURNED case={case} pid={} alive=true worker=absent stream=retired", child.id());
+    std::io::stdout().flush()?;
+    observer_ack(b"retired\n").await?;
+    ensure!(child.try_wait()?.is_none(), "helper died before resource retirement acknowledgment");
+    let mut input = child.stdin.take().ok_or_else(|| hbb_common::anyhow::anyhow!("helper input pipe is absent"))?;
+    tokio::task::spawn_blocking(move || input.write_all(b"finish\n")).await??;
     wait_normal_exit(child).await
 }
 
@@ -128,7 +189,7 @@ pub async fn run() -> ResultType<()> {
     if std::env::var_os("WHITEBOARD_PROBE_HELPER_PID").is_some() {
         return wrong_parent().await;
     }
-    for (index, case) in ["shutdown", "bad-proof", "proof-timeout", "proof-close", "stream-close"].into_iter().enumerate() {
+    for (index, case) in ["shutdown", "bad-proof", "proof-timeout", "proof-close", "stream-close", "window-close"].into_iter().enumerate() {
         // Public fixture data, unique to each launch; this is never a product credential.
         let token = crate::encode64(&[index as u8 + 1; 32]);
         let postfix = ipc::whiteboard_endpoint_postfix(&token)?;
@@ -143,8 +204,6 @@ pub async fn run() -> ResultType<()> {
         require_listener_refused(&address).await?;
         println!("WHITEBOARD_HELPER_DONE case={case} pid={pid} status=0");
         std::io::stdout().flush()?;
-        // Do not let the next X11 client reuse a window ID before absence is observed.
-        observer_ack(b"retired\n").await?;
     }
     Ok(())
 }

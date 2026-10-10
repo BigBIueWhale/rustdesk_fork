@@ -1,6 +1,7 @@
 #[cfg(target_os = "linux")]
 fn main() {
-    use hbb_common::{anyhow::bail, tokio, ResultType};
+    use hbb_common::{anyhow::{bail, ensure}, tokio, ResultType};
+    use std::io::{Read, Write};
 
     let result = (|| -> ResultType<()> {
         let args = std::env::args().skip(1).collect::<Vec<_>>();
@@ -10,6 +11,15 @@ fn main() {
                     bail!("whiteboard core CLI did not dispatch the helper");
                 }
                 librustdesk::common::global_clean();
+                for task in std::fs::read_dir("/proc/self/task")? {
+                    let name = std::fs::read_to_string(task?.path().join("comm"))?;
+                    ensure!(name.trim_end() != "rustdesk-whiteb", "whiteboard IPC worker survived core CLI return");
+                }
+                std::io::stdout().write_all(b"returned\n")?;
+                std::io::stdout().flush()?;
+                let mut acknowledgement = [0; 7];
+                std::io::stdin().read_exact(&mut acknowledgement)?;
+                ensure!(&acknowledgement == b"finish\n", "helper retirement acknowledgment differs");
                 Ok(())
             }
             [role] if role == "--server" => {

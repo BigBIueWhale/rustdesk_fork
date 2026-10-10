@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 
-CASES = ("shutdown", "bad-proof", "proof-timeout", "proof-close", "stream-close")
+CASES = ("shutdown", "bad-proof", "proof-timeout", "proof-close", "stream-close", "window-close")
 
 
 def require(condition, message):
@@ -25,6 +25,20 @@ class XError(c.Structure):
     _fields_ = [("type", c.c_int), ("display", c.c_void_p), ("resourceid", c.c_ulong),
                 ("serial", c.c_ulong), ("error_code", c.c_ubyte),
                 ("request_code", c.c_ubyte), ("minor_code", c.c_ubyte)]
+
+
+class ClientData(c.Union):
+    _fields_ = [("bytes", c.c_char * 20), ("shorts", c.c_short * 10), ("longs", c.c_long * 5)]
+
+
+class ClientMessage(c.Structure):
+    _fields_ = [("type", c.c_int), ("serial", c.c_ulong), ("send_event", c.c_int),
+                ("display", c.c_void_p), ("window", c.c_ulong), ("message_type", c.c_ulong),
+                ("format", c.c_int), ("data", ClientData)]
+
+
+class Event(c.Union):
+    _fields_ = [("client", ClientMessage), ("padding", c.c_long * 24)]
 
 
 class Display:
@@ -43,6 +57,13 @@ class Display:
                                     c.POINTER(c.c_int), c.POINTER(c.c_ulong),
                                     c.POINTER(c.c_ulong), c.POINTER(c.c_void_p)], c.c_int),
             "XGetWindowAttributes": ([c.c_void_p, c.c_ulong, c.c_void_p], c.c_int),
+            "XGetImage": ([c.c_void_p, c.c_ulong, c.c_int, c.c_int, c.c_uint,
+                           c.c_uint, c.c_ulong, c.c_int], c.c_void_p),
+            "XGetPixel": ([c.c_void_p, c.c_int, c.c_int], c.c_ulong),
+            "XDestroyImage": ([c.c_void_p], c.c_int),
+            "XGetWMProtocols": ([c.c_void_p, c.c_ulong, c.POINTER(c.POINTER(c.c_ulong)),
+                                 c.POINTER(c.c_int)], c.c_int),
+            "XSendEvent": ([c.c_void_p, c.c_ulong, c.c_int, c.c_long, c.POINTER(Event)], c.c_int),
             "XSync": ([c.c_void_p, c.c_int], c.c_int),
             "XFree": ([c.c_void_p], c.c_int),
             "XCloseDisplay": ([c.c_void_p], c.c_int),
@@ -108,8 +129,49 @@ class Display:
         status = self.x.XGetWindowAttributes(self.display, window, attributes)
         self.x.XSync(self.display, 0)
         require(status == 0 and self.errors == [(3, window)],
-                "helper window survived normal completion or X11 evidence differed")
+                "helper window survived core CLI return or X11 evidence differed")
         self.errors.clear()
+
+    def wait_pixels(self, window, expected, owner, server):
+        deadline = time.monotonic() + 3
+        while True:
+            require(time.monotonic() < deadline and owner.poll() is None and server.poll() is None,
+                    "authenticated overlay pixels did not converge")
+            image = self.x.XGetImage(self.display, window, 0, 0, 160, 128, c.c_ulong(-1).value, 2)
+            require(image and not self.errors, "native overlay readback failed")
+            try:
+                pixels = (self.x.XGetPixel(image, 35, 42) & 0xffffff,
+                          self.x.XGetPixel(image, 131, 106) & 0xffffff)
+            finally:
+                self.x.XDestroyImage(image)
+            if pixels == expected:
+                return
+            time.sleep(0.01)
+
+    def request_close(self, window):
+        protocol = self.x.XInternAtom(self.display, b"WM_PROTOCOLS", 0)
+        close = self.x.XInternAtom(self.display, b"WM_DELETE_WINDOW", 0)
+        protocols, count = c.POINTER(c.c_ulong)(), c.c_int()
+        require(self.x.XGetWMProtocols(self.display, window, c.byref(protocols), c.byref(count)),
+                "actual helper did not publish native window protocols")
+        try:
+            require(close in [protocols[index] for index in range(count.value)],
+                    "actual helper does not support a native window close request")
+        finally:
+            if protocols:
+                self.x.XFree(protocols)
+        event = Event()
+        event.client.type = 33  # ClientMessage
+        event.client.display = self.display
+        event.client.window = window
+        event.client.message_type = protocol
+        event.client.format = 32
+        event.client.data.longs[0] = close
+        event.client.data.longs[1] = 0  # CurrentTime
+        require(self.x.XSendEvent(self.display, window, 0, 0, c.byref(event)),
+                "owned native window close request failed")
+        self.x.XSync(self.display, 0)
+        require(not self.errors, "owned window close produced X11 errors")
 
     def close(self):
         self.x.XCloseDisplay(self.display)
@@ -131,6 +193,7 @@ def observe_owner(executable, environment, display, server):
         selector.register(owner.stdout, selectors.EVENT_READ)
         os.set_blocking(owner.stdout.fileno(), False)
         pending, active, completed, wrong_parent = b"", None, [], 0
+        returned, phases = False, []
         deadline = time.monotonic() + 25
         try:
             while True:
@@ -151,6 +214,8 @@ def observe_owner(executable, environment, display, server):
                     print(text, flush=True)
                     ready = re.fullmatch(r"WHITEBOARD_HELPER_READY case=([a-z-]+) pid=([1-9][0-9]*) address_hex=([0-9a-f]+)", text)
                     done = re.fullmatch(r"WHITEBOARD_HELPER_DONE case=([a-z-]+) pid=([1-9][0-9]*) status=0", text)
+                    cli_return = re.fullmatch(r"WHITEBOARD_HELPER_RETURNED case=([a-z-]+) pid=([1-9][0-9]*) alive=true worker=absent stream=retired", text)
+                    overlay = re.fullmatch(r"WHITEBOARD_HELPER_OVERLAY phase=(draw|clear|cancel)", text)
                     if ready:
                         case, pid_text, address_hex = ready.groups()
                         require(active is None and len(completed) < len(CASES)
@@ -169,9 +234,10 @@ def observe_owner(executable, environment, display, server):
                         active = (case, pid, address, window)
                         owner.stdin.write(b"go\n")
                         owner.stdin.flush()
-                    elif done:
-                        require(active is not None and done.groups() == (active[0], str(active[1])),
-                                "native completion differs from its owned helper")
+                    elif cli_return:
+                        require(active is not None and not returned
+                                and cli_return.groups() == (active[0], str(active[1])),
+                                "native CLI return differs from its owned live helper")
                         display.require_destroyed(active[3])
                         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
                             peer.settimeout(1)
@@ -183,9 +249,31 @@ def observe_owner(executable, environment, display, server):
                                 raise RuntimeError("helper endpoint survived normal completion")
                         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
                             listener.bind(active[2])
-                        completed.append(active[0])
-                        active = None
+                        returned = True
                         owner.stdin.write(b"retired\n")
+                        owner.stdin.flush()
+                    elif done:
+                        require(active is not None and returned
+                                and done.groups() == (active[0], str(active[1])),
+                                "native completion preceded resource retirement")
+                        completed.append(active[0])
+                        active, returned = None, False
+                    elif overlay:
+                        phase = overlay.group(1)
+                        require(active is not None and active[0] == "window-close" and not returned
+                                and len(phases) < 3 and phase == ("draw", "clear", "cancel")[len(phases)],
+                                "authenticated overlay observation order differs")
+                        if phase == "draw":
+                            display.wait_pixels(active[3], (0x00ff00, 0x0000ff), owner, server)
+                            acknowledgement = b"drawn\n"
+                        elif phase == "clear":
+                            display.wait_pixels(active[3], (0, 0x0000ff), owner, server)
+                            acknowledgement = b"cleared\n"
+                        else:
+                            display.request_close(active[3])
+                            acknowledgement = b"cancelled\n"
+                        phases.append(phase)
+                        owner.stdin.write(acknowledgement)
                         owner.stdin.flush()
                     elif text == ("WHITEBOARD_HELPER_WRONG_PARENT=pass same_image=true role=server "
                                   "copied_token=true outcome=preproof-eof child=joined"):
@@ -194,7 +282,8 @@ def observe_owner(executable, environment, display, server):
                         wrong_parent += 1
                     else:
                         raise RuntimeError("unexpected native control output")
-            require(not pending and active is None and tuple(completed) == CASES and wrong_parent == 1,
+            require(not pending and active is None and tuple(completed) == CASES and wrong_parent == 1
+                    and phases == ["draw", "clear", "cancel"],
                     "native cases did not complete")
             require(owner.wait(timeout=5) == 0, "native owner did not exit normally")
         finally:
@@ -257,9 +346,10 @@ def main():
                 sys.stderr.write(Path("/tmp/whiteboard-xvfb.log").read_text())
             require(server.returncode == 0 and not os.path.lexists(x_socket) and not os.path.lexists(lock),
                     "Xvfb did not retire normally with its endpoints")
-    print("WHITEBOARD_HELPER_NATIVE=pass cases=5 cli=core-main parent=kernel-admitted "
+    print("WHITEBOARD_HELPER_NATIVE=pass cases=6 cli=core-main parent=kernel-admitted "
           "wrong_parent=preproof-eof listener=retired-before-proof helper=normal-exit "
-          "window=badwindow-after-exit reconnect=refused address=rebindable xvfb=joined", flush=True)
+          "worker=absent-before-exit window=badwindow-before-exit reconnect=refused address=rebindable "
+          "overlay=two-owner-clear window_close=authenticated-cancel xvfb=joined", flush=True)
 
 
 if __name__ == "__main__":

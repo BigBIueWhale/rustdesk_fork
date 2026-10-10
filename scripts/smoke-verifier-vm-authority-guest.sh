@@ -3002,7 +3002,7 @@ run_focused_rust_tests() {
                                 "$helper_artifact_sha" "$helper_executable"
                             python3 -I -S /source/scripts/run-whiteboard-helper-probe.py "$helper_executable"
                             [ "$(sha256sum "$helper_executable" | cut -d " " -f 1)" = "$helper_artifact_sha" ]
-                            printf "WHITEBOARD_HELPER_ARTIFACT=pass sha256=%s executable=%s cases=5 unchanged=before-after\n" \
+                            printf "WHITEBOARD_HELPER_ARTIFACT=pass sha256=%s executable=%s cases=6 unchanged=before-after\n" \
                                 "$helper_artifact_sha" "$helper_executable"
                             exit 0
                         fi
@@ -3173,7 +3173,7 @@ run_focused_rust_tests() {
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then
         printf 'WHITEBOARD_DISPLAY_PROFILE=whiteboard-display-lifetime stage=container-start tests=6 bridge=absent backend=x11\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
-        printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=5 bridge=absent backend=x11\n'
+        printf 'WHITEBOARD_HELPER_PROFILE=whiteboard-helper-lifetime stage=container-start cases=6 bridge=absent backend=x11\n'
     fi
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" \
         >"$output" 2>&1 || container_status=$?
@@ -3241,17 +3241,20 @@ run_focused_rust_tests() {
             || fail 'compiled UID-policy test artifact digest is malformed'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
         [ "${#result_lines[@]}" -eq 0 ] || fail 'helper probe unexpectedly reported Rust unit tests'
-        [ "$(grep -Ec '^WHITEBOARD_HELPER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/whiteboard-helper-probe cases=5 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^WHITEBOARD_HELPER_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/whiteboard-helper-probe cases=6 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'WHITEBOARD_HELPER_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'native helper artifact receipt is absent, malformed or duplicated'
-        [ "$(grep -Fxc 'WHITEBOARD_HELPER_NATIVE=pass cases=5 cli=core-main parent=kernel-admitted wrong_parent=preproof-eof listener=retired-before-proof helper=normal-exit window=badwindow-after-exit reconnect=refused address=rebindable xvfb=joined' "$output")" -eq 1 ] \
+        [ "$(grep -Fxc 'WHITEBOARD_HELPER_NATIVE=pass cases=6 cli=core-main parent=kernel-admitted wrong_parent=preproof-eof listener=retired-before-proof helper=normal-exit worker=absent-before-exit window=badwindow-before-exit reconnect=refused address=rebindable overlay=two-owner-clear window_close=authenticated-cancel xvfb=joined' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'WHITEBOARD_HELPER_NATIVE=' "$output")" -eq 1 ] \
             || fail 'native helper behavior/cleanup receipt differs'
-        for helper_case in shutdown bad-proof proof-timeout proof-close stream-close; do
+        for helper_case in shutdown bad-proof proof-timeout proof-close stream-close window-close; do
             [ "$(grep -Ec "^WHITEBOARD_HELPER_DONE case=$helper_case pid=[1-9][0-9]* status=0$" "$output")" -eq 1 ] \
                 || fail "native helper case did not complete: $helper_case"
+            [ "$(grep -Ec "^WHITEBOARD_HELPER_RETURNED case=$helper_case pid=[1-9][0-9]* alive=true worker=absent stream=retired$" "$output")" -eq 1 ] \
+                || fail "native helper resources were not observed before exit: $helper_case"
         done
-        [ "$(grep -Fc 'WHITEBOARD_HELPER_DONE ' "$output")" -eq 5 ] \
+        [ "$(grep -Fc 'WHITEBOARD_HELPER_DONE ' "$output")" -eq 6 ] \
+            && [ "$(grep -Fc 'WHITEBOARD_HELPER_RETURNED ' "$output")" -eq 6 ] \
             || fail 'native helper completion count differs'
     else
         expected_groups=16
@@ -3368,8 +3371,8 @@ run_focused_rust_tests() {
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Android Rust-lifecycle test count differs: $tests_passed"
         if [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
-            grep -E '^WHITEBOARD_HELPER_(ARTIFACT_BEFORE|ARTIFACT|BUILD|NATIVE|READY|DONE|WRONG_PARENT)[= ]' "$output"
-            printf 'WHITEBOARD_HELPER_VM=pass commit=%s tree=%s cases=5 target=linux-x86_64 scope=production-whiteboard-core-cli-proof-and-process-finality rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            grep -E '^WHITEBOARD_HELPER_(ARTIFACT_BEFORE|ARTIFACT|BUILD|NATIVE|READY|RETURNED|DONE|OVERLAY|WRONG_PARENT)[= ]' "$output"
+            printf 'WHITEBOARD_HELPER_VM=pass commit=%s tree=%s cases=6 target=linux-x86_64 scope=production-whiteboard-core-cli-authenticated-overlay-and-finality rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = whiteboard-display-lifetime ]; then

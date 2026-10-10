@@ -806,29 +806,32 @@ closure follows from these component receipts.
   Worker supervisors retain admission through exact join; server shutdown closes
   admission atomically and waits for native/final-Remote retirement. Remote startup
   awaits native readiness; Windows wake and post-session lock use owned workers.
-  Cursor startup now shares a retained worker from Remote resource admission.
+  Cursor startup shares a retained worker from Remote resource admission.
   Final cleanup disconnects its channel, joins native TLS and invalidates the cache.
-  The reusable flag, detached subscription startup and ambient registry guard are
-  deleted. Before code at `1871f8b1` exposed two live native contexts after cleanup
-  finality. At `f8b7b923`, the identical native fixture passed 32 cursor generations:
-  shared ownership, unrelated-type exclusion, successor blocked through TLS destruction,
-  actual positions/cache invalidation and FD/task retirement. The same complete Linux
-  library artifact passed both input-refusal cases, 16 generations each: exact owned
-  releases, foreign-key preservation, full map restoration and child-before-Display.
-  `--android-rust-lifecycle-tests --input-lifetime` completed in 221 seconds with
-  joined X11/container/VM cleanup and no added host listeners. Current raw evidence:
-  `android-rust-lifecycle-tests-run.TVo5mzkSMM.serial.log`, SHA-256
-  `c2382b3010a98b0a7cb5e2a8f7c48833b5912c064146645572bc74c0790d1e68`.
-  This exercises resource admission/native X11, with `network_auth=false`.
-  The earlier physical regression at `6a675303` also passed. macOS recorded CapsLock
-  retirement is source-corrected. Three Apple workspace anchors compiled at `c5d0984a`;
+  The reusable flag and detached/ambient startup are deleted. Cursor A/B receipts
+  (`1871f8b1` / `f8b7b923`) remain in the audit and Git.
+  Root stop closes Remote/worker admission. Finalization disconnects and joins
+  both retained threads off-runtime without initializing unused workers.
+  At `8c793ac3`, native process exit observed both captured TIDs still alive and
+  late Remote admission accepted. With identical fixture/provider/harness bytes,
+  `34d769f9` observed both threads absent, cursor retired and late admission refused.
+  The same library passed map/key refusal, 16 generations each, and 32 cursor
+  generations: exact owned releases, foreign-key preservation,
+  full map restoration, child-before-Display, shared cursor ownership, unrelated-type
+  exclusion, successor blocked through TLS destruction, positions/cache invalidation
+  and FD/task retirement. The canonical `--android-rust-lifecycle-tests --input-lifetime`
+  transaction passed in 223 seconds; X11/container/VM joined, no host listener additions.
+  Raw evidence:
+  `android-rust-lifecycle-tests-run.jl28k2AcFg.serial.log`, SHA-256
+  `4b04d3dfde0241c1496c26370db3dbffb429db36ca89d14f4dd49f016efc14e6`.
+  Resource admission, real finalizer/native X11; `network_auth=false`,
+  `os_inhibitor=false`. Native wake inhibition remains OPEN.
+  The earlier physical regression at `6a675303` passed; macOS recorded CapsLock
+  retirement is source-corrected. Three Apple anchors compiled at `c5d0984a`;
   application checks stopped at SDK/header boundaries and the outer transaction rejected
   a new unattributed `127.0.0.1:9444` listener. Current Apple builds/native behavior,
   Windows, full shutdown/network/installed acceptance remain OPEN. Exact before and
   historical input/Apple receipts are retained in the audit and Git.
-  Root stop now closes Remote/worker admission; finalization disconnects and
-  joins both retained threads off-runtime. Native baseline observed both TIDs
-  live at exit and late admission accepted; corrected native evidence is pending.
   Windows virtual-key up/repeat still resolves the foreground
   mapping before lease lookup; layout/desktop identity retention remains required.
 - Broader unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;

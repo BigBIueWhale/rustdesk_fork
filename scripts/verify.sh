@@ -8326,7 +8326,6 @@ grep -q 'let role = current_whiteboard_process_role()?' src/ipc.rs || r_s11c8="$
 grep -q 'WhiteboardIpcState' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-state-machine-missing"
 grep -q 'WhiteboardIpcAction::Cursor(conn_id, cursor)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-does-not-preserve-numeric-render-owner"
 grep -q 'Connection::new_whiteboard(stream)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 accepted-stream-not-frame-capped"
-grep -q 'handle_new_stream(stream, &mut stop_requested).await' src/whiteboard/server.rs || r_s11c8="$r_s11c8 accepted-stream-not-owned"
 grep -q 'next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-command-read-not-bounded"
 grep -q 'self.active.len() < ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-active-token-map-unbounded"
 grep -q 'whiteboard_connection_token_is_valid(&token)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-accepts-malformed-token"

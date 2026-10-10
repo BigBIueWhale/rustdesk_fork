@@ -12086,38 +12086,31 @@ or fix for that defect.
 healthy retirement, committed-stop replacement/withdrawal, quiet helper closure, active root drain and nine executable regressions
 passed, as did the named abrupt authenticated-parent-loss case; full lifecycle acceptance OPEN.**
 `src/whiteboard/client.rs` uses one mutex-owned `WhiteboardClientState`
-containing registrations, the exact-generation sender, retained launch/task handles and helper, and
-Idle/Starting/Running/Stopping phase. Checked generation reservation prevents wraparound;
-duplicate Starting/Running demand does not launch another task. Sender publication and the
-initial registration snapshot share the same lock. The task runs on the existing runtime,
-installs its exact-generation terminal guard first, diagnoses error/panic, and makes stale
-finalizers inert. Its guard retires admission; only the existing controlled-server root
-observes completed launch/task results, reaps the exact helper and releases the generation.
+containing registrations, the generation sender, launch/task handles, helper and
+Idle/Starting/Running/Stopping phase. Checked reservation prevents wraparound; duplicate
+Starting/Running demand shares one task. Sender and initial registrations publish under
+that lock. The existing-runtime task installs its terminal guard first, diagnoses error/panic
+and ignores stale finalizers. The guard retires admission; the root joins and releases generations.
 
-Idle stop proves the locked registration set empty and retires only that Running generation's
-sender. Explicit demand crossing committed stop latches at most one successor; finalization
-starts it only while demand remains. Failed Bind admission may record that same explicit
-demand, but startup/transport/sender/task/helper failure or retained registrations alone do
-not self-retry. The queue remains nonblocking and bounded to 64 commands, registrations to
-16 connections; only cursor overflow is lossy, while required-command refusal retires the
-sender/phase. The at-most-two-command hot path uses fixed storage and a borrowed sender.
-Token-derived endpoints, exact launch/parent proof, parent-death binding, and deadline writes
-remain. The client state/queue path has no split registration/sender globals, detached
-OS threads, nested runtimes or automatic generation retry.
+Idle stop proves no locked registrations and retires the exact Running sender. Explicit demand
+crossing committed stop, including refused Bind, latches one successor only while demand remains.
+Startup/transport/sender/task/helper failure and retained registrations never self-retry. The
+nonblocking queue caps commands at 64 and registrations at 16; only cursor overflow is lossy.
+Required-command refusal retires sender/phase. The two-command hot path uses fixed storage
+and a borrowed sender. Token endpoints, launch/parent proof, parent-death binding and deadline
+writes remain; split globals, detached threads, nested runtimes and automatic retry are absent.
 
 **Ownership topology:** registration reserves rather than spawns. The existing
 `direct_service.rs` root polls `WhiteboardClientOwner`; one retained `spawn_blocking`
-job performs creation off the executor and returns an exact generation-owned helper.
-Unix uses retained `Child::try_wait`/reap; Windows `WindowsWhiteboardProcess` retains
-the creation-time unnamed kill-on-close job and process object through process exit
-and zero-job accounting. Whiteboard no longer uses `CHILD_PROCESS` or the handle-closing
-tray launcher. Command-task finalization cannot clear its own handle or start a successor.
-Root shutdown closes registration authority and cancels work before listener drain,
-then observes/joins whiteboard before final process shutdown. The three-second retirement
-deadline initiates cancellation/owned termination; handles and Stopping remain until
-positive retirement. Uncertain creation panic or process observation retains ownership
-and refuses replacement. Unexpected live-process root drop likewise refuses replacement;
-late-launch and complete native failure cleanup remain unproved.
+job creates off the executor and publishes its helper under the same admission/generation lock.
+Refused handoff retains and retires the helper inside that job before returning a process-free status.
+Unix `Child::try_wait` reaps; Windows retains the creation-time kill-on-close job/process
+through process exit and zero-job accounting. `CHILD_PROCESS` and the tray launcher are absent.
+Task finalization cannot clear its handle or start a successor. Root shutdown closes registration
+and cancels before listener drain, then joins whiteboard before final shutdown. The three-second
+deadline initiates cancellation/termination; uncertainty retains handles/Stopping and refuses
+replacement. Unexpected root drop refuses replacement; known-helper drop and full native
+failure cleanup remain unproved. Late unpublished-helper correction awaits native acceptance below.
 
 **Native failing baseline:** source `7e437223dd367191719e322989db7297b8fcfbf7`,
 tree `1213b9b0e2ff0198450460a7f2edc4b68a4c8752` drew two owners through production
@@ -12206,10 +12199,20 @@ pidfd readiness may race; this establishes terminal cleanup without attributing 
 either branch. Live-process root drop, late blocking launch, whole controlled-server finalization,
 Remote/PAKE admission and installed/platform/resource acceptance remain OPEN.
 
-**Late-launch owner-loss case: native execution pending.** The feature fixture pauses a real
-created child before launch handoff, drops the controller owner while its process stays alive,
-then releases the existing blocking job. Native acceptance requires exact child exit/reap,
-destroyed window and retired endpoint before parent exit; replacement must remain refused.
+**Late-launch owner-loss failing baseline:** source `5db5a7f73eaf8e05624f0aee29abb6bcc13b550f`,
+tree `b40bf493e298e1eb678e7e4f2f9934a9ebec5d3a`, same helper-lifetime command, build155s.
+Helper20277 had a PID-matched native window while its creation job paused before handoff.
+Actual root Drop kept parent alive and refused replacement. After release, the job finished
+with Stopping/task=false/helper unpublished, but independent death/reap observation failed.
+Eight receiver/six prior global cases completed; full profile exited1, without after-artifact/input
+acceptance. Before artifact `8fac3d0348f606517929467d8cd726119ee1556d8dbef32a64d0047347999cb4`.
+Serial `android-rust-lifecycle-tests-run.UDmDHVuV3t.serial.log`,89762bytes, SHA-256
+`85bbb7d824112bee9bcf97d8b7df5cc134e4ff5a0b2afb0bb1d04bfc900dfcb4`.
+Source binding, unchanged host endpoints and joined cleanup checked; diagnostics retained at
+`failed-whiteboard-launch-5db5a7f7-UDmDHVuV3t`. Observer cleanup cannot pass.
+The process-free launch result and locked handoff/creation-job retirement correction uses the
+unchanged fixture/observer; current native acceptance is pending. Known-helper root Drop,
+complete root join, other phases/platforms/installed/resource acceptance remain OPEN.
 
 **Accepted executable state/handle subset:** source `df9daec4cc261bfec574afa0c4f33536b6d99438`,
 `--android-rust-lifecycle-tests --whiteboard-client`

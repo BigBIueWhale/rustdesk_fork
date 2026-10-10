@@ -293,7 +293,8 @@ struct WhiteboardGeneration {
 
 enum WhiteboardLaunch {
     WaitingForUser,
-    Spawned(WhiteboardHelperProcess),
+    Spawned,
+    Retired,
 }
 
 #[cfg(target_os = "windows")]
@@ -424,7 +425,8 @@ fn poll_whiteboard_generation(state: &mut WhiteboardClientState, cx: &mut Contex
         if let Poll::Ready(result) = Pin::new(launch).poll(cx) {
             owner.launch.take();
             match result {
-                Ok(Ok(WhiteboardLaunch::Spawned(helper))) => owner.helper = Some(helper),
+                Ok(Ok(WhiteboardLaunch::Spawned)) => {},
+                Ok(Ok(WhiteboardLaunch::Retired)) => state.lifecycle.retire_generation(generation),
                 Ok(Ok(WhiteboardLaunch::WaitingForUser)) => owner.launch_not_before = now + Duration::from_secs(1),
                 Ok(Err(err)) => {
                     state.lifecycle.retire_generation(generation);
@@ -465,8 +467,8 @@ fn poll_whiteboard_generation(state: &mut WhiteboardClientState, cx: &mut Contex
     if state.lifecycle.phase == (WhiteboardWorkerPhase::Starting { generation }) {
         if owner.helper.is_none() && owner.launch.is_none() && now >= owner.launch_not_before {
             let launch_token = owner.launch_token.clone();
-            owner.launch = Some(tokio::task::spawn_blocking(move || launch_whiteboard_helper(&launch_token)));
-        } else if let Some(helper) = owner.helper.as_ref() {
+            owner.launch = Some(tokio::task::spawn_blocking(move || launch_whiteboard_helper(generation, &launch_token)));
+        } else if let Some(helper) = owner.helper.as_ref().filter(|_| owner.launch.is_none()) {
             if owner.worker.is_none() {
                 match helper.id() {
                     Ok(pid) => {
@@ -860,15 +862,15 @@ async fn connect_whiteboard_endpoint(
     Ok(stream)
 }
 
-fn launch_whiteboard_helper(launch_token: &str) -> ResultType<WhiteboardLaunch> {
+fn launch_whiteboard_helper(generation: u64, launch_token: &str) -> ResultType<WhiteboardLaunch> {
     let headless_service_user = crate::platform::is_headless_no_console_user();
     if !headless_service_user && crate::platform::is_prelogin() {
         return Ok(WhiteboardLaunch::WaitingForUser);
     }
     #[cfg(target_os = "windows")]
-    return crate::platform::launch_whiteboard_user_helper(launch_token).map(WhiteboardLaunch::Spawned);
+    let mut helper = crate::platform::launch_whiteboard_user_helper(launch_token)?;
     #[cfg(not(target_os = "windows"))]
-    {
+    let mut helper = {
     if crate::platform::is_root() && !headless_service_user {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         bail!("Refusing root-to-user whiteboard launch; the user-context service must own it");
@@ -881,7 +883,48 @@ fn launch_whiteboard_helper(launch_token: &str) -> ResultType<WhiteboardLaunch> 
     probe_hold_whiteboard_launch(child.id());
     #[cfg(not(target_os = "linux"))]
     let child = crate::run_me_with_env(vec!["--whiteboard"], whiteboard_launch_env(launch_token))?;
-    Ok(WhiteboardLaunch::Spawned(WhiteboardHelperProcess { child, exit_success: None }))
+    WhiteboardHelperProcess { child, exit_success: None }
+    };
+    match WHITEBOARD_CLIENT.lock() {
+        Ok(mut state) => {
+            if matches!(state.owner, WhiteboardOwnerAdmission::Serving | WhiteboardOwnerAdmission::Draining) {
+                if let Some(owner) = state.generation.as_mut().filter(|owner|
+                    owner.generation == generation && owner.helper.is_none()) {
+                    owner.helper = Some(helper);
+                    return Ok(WhiteboardLaunch::Spawned);
+                }
+            }
+        }
+        Err(err) => log::error!("whiteboard generation {generation} helper handoff failed; creation job retains ownership: {err}"),
+    }
+    // A finished launch result must never hide a live helper from a dropped root.
+    let mut termination_requested = false;
+    let mut observation_error_logged = false;
+    let mut termination_error_logged = false;
+    loop {
+        match helper.try_reap_exited() {
+            Ok(true) => return Ok(WhiteboardLaunch::Retired),
+            Ok(false) => {
+                if !termination_requested {
+                    match helper.terminate() {
+                        Ok(()) => termination_requested = true,
+                        Err(err) => {
+                            if !termination_error_logged {
+                                log::error!("whiteboard generation {generation} unpublished helper termination failed; ownership retained: {err}");
+                                termination_error_logged = true;
+                            }
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                if !observation_error_logged {
+                    log::error!("whiteboard generation {generation} unpublished helper observation failed; ownership retained: {err}");
+                    observation_error_logged = true;
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
     }
 }
 

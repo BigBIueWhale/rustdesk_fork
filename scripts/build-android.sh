@@ -561,7 +561,7 @@ android_compiler_run() {
     android_docker_run \
         --pids-limit=512 --memory=12g --memory-swap=12g --cpus=4 \
         --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g \
-        --env SOURCE_DATE_EPOCH \
+        --env "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" \
         --env RUSTDESK_CANARY_OFFLINE=1 \
         --env APK_MODE=offline \
         --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \

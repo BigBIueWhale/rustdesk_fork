@@ -11365,9 +11365,9 @@ connection flow remaining correct and performant.
 
 ### R-S11hd/R-S11e-242 — coherent latest-state wakelock snapshot ownership (2026-08-21)
 
-**SOURCE STATE MACHINE IMPLEMENTED; AUTHENTICATED PUBLICATION ERROR SOURCE-CORRECTED;
-FOUR EXECUTABLE RUST REGRESSIONS AUTHORED AND WIRED; EXACT CURRENT
-NATIVE/DEVICE/PERFORMANCE/ARTIFACT EVIDENCE OPEN.** The inherited controlled-side
+**SOURCE STATE MACHINE IMPLEMENTED; AUTHENTICATED PUBLICATION FAILURE CORRECTED AND
+LINUX NATIVE BEFORE/AFTER VERIFIED; FOUR SNAPSHOT REGRESSIONS AUTHORED AND WIRED;
+BROADER NATIVE/POWER/DEVICE/PERFORMANCE/ARTIFACT EVIDENCE OPEN.** The inherited controlled-side
 path sent every `(connection_count, remote_count)` reevaluation through an unbounded
 standard-library channel, assembled the counts under two separate `AUTHED_CONNS` locks,
 ignored publication failure, and detached the worker handle. Blame attributes that old path
@@ -11385,7 +11385,7 @@ publication now returns snapshot/startup failure through its result-bearing priv
 `publish_wakelock_state` operation. The existing login caller clears authorization and
 returns its resource-unavailable error; option reevaluation and retirement log explicit
 errors. Counts and publication retain the same connection guard. No successful resource
-publication may hide a failed worker; corrected native acceptance is PENDING.
+publication may hide a failed worker.
 Existing platform wakelock/display behavior is preserved; no queue, retry,
 reconnect, timer, poller, additional worker/thread/runtime, listener, port, dependency,
 privilege transition, service restart, network route, or Android persistent-service change
@@ -11407,10 +11407,20 @@ At `62eafb56`, actual kernel EAGAIN left the wake worker failed while publicatio
 both returned success. The independent native receipt rejected that behavior; existing
 controls passed. Baseline raw `android-rust-lifecycle-tests-run.hXY5hNzN6S.serial.log`, SHA-256
 `7649c041b78cfffd9d3af56663882da4311a307031b4d96f0f4c47ac87e3d42e`, remains retained with
-joined Xvfb/VM cleanup and no host-listener additions. The minimal production Result
-correction is applied; the identical fixture/provider/runner/harness must now pass.
-Corrected native execution remains PENDING. OS wake inhibition, full login/network/CM
-and installed/other-platform behavior remain OPEN.
+joined Xvfb/VM cleanup and no host-listener additions. At product `14e2c5d`, with identical
+fixture/provider/runner/harness bytes, publication and retry returned the retained error.
+Exact limit restoration, joined recovery, owner retirement and ID reuse passed. At production
+exit the native observer confirmed final dispatcher uninitialized, wake-worker failure
+retained, all cleanup/wake/cursor TIDs absent, no cursor contexts, and all five late
+factories refused. The same source-bound artifact passed three libtests and four actual
+exits in 243 seconds; artifact/provider unchanged and Xvfb/container/VM joined, with no
+host-listener additions. Corrected raw `android-rust-lifecycle-tests-run.OP9cKdIOm8.serial.log`,
+SHA-256 `fab2899de381374800c76cd2bad9c5da56266f4676f302d816e18e489145011d`;
+artifact SHA-256 `7906963ca5a269f4f8466ec1bac388fe9f4690708c4a4c818c2b1f6b6a68230d`.
+The provider digest `91cef8da8d78bb8894291b4559eecd79e2ee90ab5e6ee0cb013b7dacbf86efe6`
+matches the baseline. This is actual Linux resource-factory/publication/finalizer evidence;
+`network_auth=false`, `os_inhibitor=false`. OS wake inhibition, other worker failures/panic,
+full login/network/CM and installed/other-platform behavior remain OPEN.
 
 Exact target-runtime admission/removal/setting changes, worker and power-state lifecycle,
 latency and bounded-resource finality remain OPEN. Physical Android task-swipe/reopen/Force-Stop

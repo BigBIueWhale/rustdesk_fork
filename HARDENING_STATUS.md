@@ -808,15 +808,15 @@ closure follows from these component receipts.
   awaits native readiness; Windows wake and post-session lock use owned workers.
   The unchanged `--android-rust-lifecycle-tests --input-lifetime` fixture failed
   at `748892f5`: actual worker joins left text/main owners, changed map and one FD.
-  At `c5d0984a`, both refusal cases passed 16 generations each, exact owned releases,
+  At `e9527a2b`, both refusal cases passed 16 generations each, exact owned releases,
   foreign-key preservation, full map restoration, child-before-Display and FD/task
   retirement. The complete Linux library built; the physical regression at
   `6a675303` also passed. Current raw evidence:
-  `android-rust-lifecycle-tests-run.66vtBPpHYe.serial.log`, SHA-256
-  `cb578035502f040d9d9feb6be8270edec829181c35d7eebbd94ad67e0c5f3490`.
-  The 236-second isolated transaction joined cleanup without added host listeners.
-  macOS recorded CapsLock retirement is source-corrected. The three Apple shared
-  workspace anchors compiled; application checks stopped at expected SDK/header
+  `android-rust-lifecycle-tests-run.sjTMllKXVY.serial.log`, SHA-256
+  `c94a451a1f0cba5aa0ea1676e3fbe61f00074bb870ddbfb40e9f2a0823209fb6`.
+  The 224-second isolated transaction joined cleanup without added host listeners.
+  macOS recorded CapsLock retirement is source-corrected. At `c5d0984a`, three
+  Apple workspace anchors compiled; application checks stopped at expected SDK/header
   boundaries. The outer transaction rejected an unattributed new loopback listener
   on `127.0.0.1:9444`; Apple integration, full builds and native behavior remain OPEN.
   Raw `apple-conform-run.U7DV8gknyH.serial.log`, SHA-256

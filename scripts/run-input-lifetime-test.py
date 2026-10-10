@@ -82,12 +82,16 @@ def run(executable):
             while not socket.is_socket():
                 require(server.poll() is None and time.monotonic() < deadline, "Xvfb readiness failed")
                 time.sleep(0.05)
-            for fault in ["map", "key"]:
+            for fault in ["map", "key", "cursor"]:
                 receipt_path = Path(f"/tmp/input-lifetime-{fault}.receipt")
                 require(not os.path.lexists(receipt_path), "native receipt exists")
+                test = (
+                    "server::connection::cursor_lifetime_native_tests::remote_cursor_retirement_waits_for_native_query_and_thread_context"
+                    if fault == "cursor" else
+                    "server::connection::input_lifetime_native_tests::input_workers_retire_pending_text_before_the_global_display"
+                )
                 result = subprocess.run([
-                    str(executable),
-                    "server::connection::input_lifetime_native_tests::input_workers_retire_pending_text_before_the_global_display",
+                    str(executable), test,
                     "--exact", "--ignored", "--color", "never", "--test-threads=1",
                 ], env={**environment, "INPUT_LIFETIME_FAULT": fault},
                     text=True, capture_output=True, timeout=25)
@@ -107,10 +111,17 @@ def run(executable):
                             and stat.S_IMODE(metadata.st_mode) == 0o600 and metadata.st_size < 512,
                             "native receipt authority differs")
                     observation = receipt.read(513)
-                require(observation == f"INPUT_LIFETIME_NATIVE=pass fault={fault} generations=16 "
-                        "workers=2 producer=typed-queue worker=production loader=protected keys=exact-owner "
-                        "foreign=preserved pending=retired mapping=restored child_before_display=true "
-                        "descriptors=retired tasks=retired network_auth=false\n",
+                expected = (
+                    "CURSOR_RECORDER_NATIVE=pass generations=32 producer=authenticated-resource-admission "
+                    "query=native-x11 sharing=one-worker retirement=exact-join successor=blocked-until-tls-drop "
+                    "position=observed invalidation=before-finality descriptors=retired tasks=retired network_auth=false\n"
+                    if fault == "cursor" else
+                    f"INPUT_LIFETIME_NATIVE=pass fault={fault} generations=16 "
+                    "workers=2 producer=typed-queue worker=production loader=protected keys=exact-owner "
+                    "foreign=preserved pending=retired mapping=restored child_before_display=true "
+                    "descriptors=retired tasks=retired network_auth=false\n"
+                )
+                require(observation == expected,
                         "native observation differs")
                 print(observation, end="", flush=True)
                 require(server.poll() is None, "Xvfb exited during the test")

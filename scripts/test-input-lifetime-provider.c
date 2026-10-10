@@ -4,11 +4,13 @@
 #define xdo_new_with_opened_display test_native_xdo_new_with_opened_display
 #define xdo_free test_native_xdo_free
 #define xdo_enter_text_scalar test_native_xdo_enter_text_scalar
+#define xdo_get_mouse_location test_native_xdo_get_mouse_location
 #include "../libs/libxdo-sys-stub/native/xdo.c"
 #undef xdo_new
 #undef xdo_new_with_opened_display
 #undef xdo_free
 #undef xdo_enter_text_scalar
+#undef xdo_get_mouse_location
 #include <assert.h>
 #include <dlfcn.h>
 #include <pthread.h>
@@ -23,6 +25,10 @@ static KeyCode a_code, b_code, control_code, scratch_code;
 static int fault_key, armed, refusals, main_frees, child_frees;
 static Bool (*native_change_map)(Display *, XkbDescPtr, XkbMapChangesPtr);
 static Bool (*native_key_event)(Display *, unsigned int, Bool, unsigned long);
+static pthread_cond_t cursor_changed = PTHREAD_COND_INITIALIZER;
+static int cursor_mode, cursor_blocked, cursor_live, cursor_created, cursor_destroyed;
+static int cursor_inflight, cursor_queries, cursor_positions, cursor_order;
+static int cursor_x, cursor_y;
 
 static void hook_acquire(void) { assert(pthread_mutex_lock(&hook_lock) == 0); }
 static void hook_release(void) { assert(pthread_mutex_unlock(&hook_lock) == 0); }
@@ -50,7 +56,12 @@ xdo_t *xdo_new_with_opened_display(Display *display, const char *name, int close
   xdo_t *context = test_native_xdo_new_with_opened_display(display, name, close_display);
   assert(context);
   hook_acquire();
-  if (close_display) {
+  if (cursor_mode) {
+    assert(close_display);
+    cursor_live++;
+    cursor_created++;
+    if (cursor_created == 2) cursor_order = cursor_destroyed == 1;
+  } else if (close_display) {
     assert(observer && !main_owner && !pending_owner && !armed);
     main_owner = context;
   } else {
@@ -87,6 +98,15 @@ int xdo_enter_text_scalar(xdo_t *context, unsigned int scalar, useconds_t delay)
 
 int xdo_free(xdo_t *context) {
   hook_acquire();
+  if (cursor_mode) {
+    assert(context && context->close_display_when_freed && cursor_live > 0);
+    hook_release();
+    int status = test_native_xdo_free(context);
+    hook_acquire();
+    if (status == XDO_SUCCESS) { cursor_live--; cursor_destroyed++; }
+    hook_release();
+    return status;
+  }
   assert(context && (context == pending_owner || context == main_owner));
   int child = context == pending_owner;
   if (!child) assert(!pending_owner && child_frees == 1 && !armed);
@@ -99,6 +119,82 @@ int xdo_free(xdo_t *context) {
   }
   hook_release();
   return status;
+}
+
+int xdo_get_mouse_location(const xdo_t *context, int *x, int *y, int *screen) {
+  hook_acquire();
+  int observe = cursor_mode;
+  if (observe) {
+    cursor_inflight++;
+    while (cursor_blocked)
+      assert(pthread_cond_wait(&cursor_changed, &hook_lock) == 0);
+  }
+  hook_release();
+  int status = test_native_xdo_get_mouse_location(context, x, y, screen);
+  if (observe) {
+    hook_acquire();
+    cursor_inflight--;
+    if (status == XDO_SUCCESS) {
+      cursor_queries++;
+      if (*x == cursor_x && *y == cursor_y) cursor_positions++;
+    }
+    hook_release();
+  }
+  return status;
+}
+
+void cursor_recorder_init(void) {
+  assert(XInitThreads());
+  assert(!observer && !main_owner && !pending_owner);
+  observer = XOpenDisplay(NULL);
+  assert(observer);
+  Window child;
+  int x, y;
+  unsigned int mask;
+  assert(XQueryPointer(observer, DefaultRootWindow(observer), &pointer_root, &child,
+                       &pointer_x, &pointer_y, &x, &y, &mask));
+  cursor_x = 21; cursor_y = 45;
+  XWarpPointer(observer, None, DefaultRootWindow(observer), 0, 0, 0, 0, cursor_x, cursor_y);
+  XSync(observer, False);
+  cursor_mode = 1;
+}
+
+void cursor_recorder_begin(int generation) {
+  hook_acquire();
+  assert(cursor_mode && !cursor_live && !cursor_inflight);
+  cursor_created = cursor_destroyed = cursor_queries = cursor_positions = cursor_order = 0;
+  cursor_blocked = 1;
+  cursor_x = 21 + generation; cursor_y = 45 + generation;
+  hook_release();
+  XWarpPointer(observer, None, DefaultRootWindow(observer), 0, 0, 0, 0, cursor_x, cursor_y);
+  XSync(observer, False);
+}
+
+void cursor_recorder_allow(void) {
+  hook_acquire();
+  cursor_blocked = 0;
+  assert(pthread_cond_broadcast(&cursor_changed) == 0);
+  hook_release();
+}
+
+int cursor_recorder_probe(int field) {
+  hook_acquire();
+  int values[] = {cursor_live, cursor_created, cursor_destroyed, cursor_inflight,
+                  cursor_queries, cursor_order, cursor_positions};
+  assert(field >= 0 && field < 7);
+  int value = values[field];
+  hook_release();
+  return value;
+}
+
+void cursor_recorder_finish(void) {
+  hook_acquire();
+  assert(cursor_mode && !cursor_live && !cursor_inflight);
+  hook_release();
+  XWarpPointer(observer, None, pointer_root, 0, 0, 0, 0, pointer_x, pointer_y);
+  XSync(observer, False);
+  assert(XCloseDisplay(observer) == 0);
+  observer = NULL;
 }
 
 static XkbDescPtr snapshot(void) {

@@ -1046,6 +1046,11 @@ fn update_last_cursor_pos(x: i32, y: i32) {
     }
 }
 
+#[cfg(all(test, target_os = "linux"))]
+pub(super) fn recorded_cursor_pos_for_test() -> (i32, i32) {
+    LATEST_SYS_CURSOR_POS.lock().unwrap().1
+}
+
 fn run_pos(sp: EmptyExtraFieldService, state: &mut StatePos) -> ResultType<()> {
     let (_, (x, y)) = *LATEST_SYS_CURSOR_POS.lock().unwrap();
     if x == INVALID_CURSOR_POS || y == INVALID_CURSOR_POS {

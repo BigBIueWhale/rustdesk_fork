@@ -69,3 +69,39 @@ async fn graceful_process_exit_retires_connection_workers() {
     }
     retirement.await
 }
+
+extern "C" fn connection_workers_uninitialized() -> i32 {
+    i32::from(FINAL_REMOTE_CLEANUP_DISPATCHER.get().is_none()
+        && WAKELOCK_WORKER.get().is_none())
+}
+
+#[tokio::test]
+#[ignore = "requires the isolated protected-provider input-lifetime profile"]
+async fn graceful_empty_process_exit_leaves_connection_workers_uninitialized() {
+    assert_eq!(std::env::var("DISPLAY").unwrap(), ":97");
+    let provider = unsafe { Library::new("/usr/lib/rustdesk-fork/libxdo.so.3").unwrap() };
+    let arm = unsafe {
+        *provider.get::<unsafe extern "C" fn(extern "C" fn() -> i32)>(b"connection_workers_arm_empty").unwrap()
+    };
+    let admission = unsafe { *provider.get::<unsafe extern "C" fn(i32)>(b"connection_workers_late_admission").unwrap() };
+    assert_eq!(authenticated_connection_reservation_count(), 0);
+    assert_eq!(connection_workers_uninitialized(), 1);
+    unsafe { arm(connection_workers_uninitialized); }
+    crate::server::request_graceful_shutdown();
+    let mut late_admitted = false;
+    for (offset, kind) in [AuthConnType::Remote, AuthConnType::FileTransfer,
+        AuthConnType::ViewCamera, AuthConnType::Terminal, AuthConnType::PortForward]
+        .into_iter().enumerate()
+    {
+        let late = session_owner(36000 + offset as i32, kind).await;
+        let accepted = late.is_ok();
+        println!("\nCONNECTION_EMPTY_ADMISSION_OBSERVED type={kind:?} accepted={accepted}");
+        late_admitted |= accepted;
+        drop(late);
+    }
+    unsafe { admission(i32::from(late_admitted)); }
+    assert_eq!(authenticated_connection_reservation_count(), 0);
+    assert_eq!(connection_workers_uninitialized(), 1);
+    println!("\nCONNECTION_WORKERS_EMPTY_ENTERED boundary=graceful-process-exit network_auth=false");
+    crate::server::finish_graceful_shutdown().await
+}

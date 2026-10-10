@@ -840,6 +840,12 @@ closure follows from these component receipts.
   `12f98c4005597c50e7a0ddab66987bff2e652e208666822a08186c602aac082c`.
   This is Linux resource-factory/finalizer evidence; full network and installed
   shutdown, native Windows/macOS and Android concurrent lifecycle remain OPEN.
+  Empty-process shutdown has a separate fresh-process fixture: actual worker
+  OnceLock state, native own-process thread/context observations and all five
+  factory refusals at the production process-exit boundary. The canonical profile
+  retains its warm worker-retirement control and now requires two distinct exit
+  receipts from one artifact/provider. Native empty-process acceptance is pending;
+  no product defect, forced spawn failure/panic or OS inhibitor evidence is claimed.
   The earlier physical regression at `6a675303` passed; macOS recorded CapsLock
   retirement is source-corrected. Three Apple anchors compiled at `c5d0984a`;
   application checks stopped at SDK/header boundaries and the outer transaction rejected

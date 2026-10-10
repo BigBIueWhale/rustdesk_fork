@@ -36,6 +36,7 @@ static int cursor_inflight, cursor_queries, cursor_positions, cursor_order;
 static int cursor_x, cursor_y;
 static int root_exit_armed, root_late_admitted;
 static long root_cleanup_tid, root_wakelock_tid;
+static int (*root_owners_uninitialized)(void);
 
 static void hook_acquire(void) { assert(pthread_mutex_lock(&hook_lock) == 0); }
 static void hook_release(void) { assert(pthread_mutex_unlock(&hook_lock) == 0); }
@@ -243,6 +244,20 @@ void connection_workers_arm(void) {
   hook_release();
 }
 
+void connection_workers_arm_empty(int (*owners_uninitialized)(void)) {
+  assert(owners_uninitialized && owners_uninitialized() == 1);
+  assert(!named_worker("rustdesk-final-") && !named_worker("rustdesk-wakelo")
+         && !named_worker("cursor-recorder"));
+  hook_acquire();
+  assert(!root_exit_armed && !observer && !main_owner && !pending_owner
+         && !cursor_mode && !cursor_live && !cursor_created && !cursor_destroyed
+         && !cursor_inflight);
+  root_owners_uninitialized = owners_uninitialized;
+  root_late_admitted = -1;
+  root_exit_armed = 2;
+  hook_release();
+}
+
 void connection_workers_late_admission(int admitted) {
   hook_acquire();
   assert(root_exit_armed);
@@ -267,9 +282,32 @@ __attribute__((destructor)) static void connection_workers_at_exit(void) {
   int armed_exit = root_exit_armed;
   int cursor_retired = cursor_live == 0 && cursor_inflight == 0
       && cursor_created == 1 && cursor_destroyed == 1 && cursor_positions > 0;
+  int cursor_unstarted = !cursor_mode && !cursor_live && !cursor_inflight
+      && !cursor_created && !cursor_destroyed && !observer && !main_owner && !pending_owner;
+  int (*owners_uninitialized)(void) = root_owners_uninitialized;
   int late_admitted = root_late_admitted;
   hook_release();
   if (!armed_exit) return;
+  if (armed_exit == 2) {
+    assert(owners_uninitialized);
+    int owners_empty = owners_uninitialized() == 1;
+    long cleanup = named_worker("rustdesk-final-");
+    long wakelock = named_worker("rustdesk-wakelo");
+    long cursor = named_worker("cursor-recorder");
+    printf("CONNECTION_WORKERS_EMPTY_OBSERVED owners_uninitialized=%d cleanup_tid=%ld wakelock_tid=%ld cursor_tid=%ld cursor_unstarted=%d late_admitted=%d\n",
+           owners_empty, cleanup, wakelock, cursor, cursor_unstarted, late_admitted);
+    assert(fflush(stdout) == 0);
+    const char *receipt = owners_empty && !cleanup && !wakelock && !cursor
+        && cursor_unstarted && late_admitted == 0
+        ? "CONNECTION_WORKERS_EMPTY_NATIVE=pass boundary=graceful-process-exit owners=uninitialized named_workers=absent cursor=unstarted late_sessions=refused types=all-five producer=resource-factory network_auth=false os_inhibitor=false\n"
+        : "CONNECTION_WORKERS_EMPTY_NATIVE=observed retirement=incomplete\n";
+    int fd = open("/tmp/input-lifetime-empty-shutdown.receipt", O_WRONLY | O_CREAT | O_EXCL, 0600);
+    assert(fd >= 0);
+    size_t length = strlen(receipt);
+    assert(write(fd, receipt, length) == (ssize_t)length);
+    assert(close(fd) == 0);
+    return;
+  }
   int cleanup_alive = task_exists(root_cleanup_tid);
   int wakelock_alive = task_exists(root_wakelock_tid);
   printf("CONNECTION_WORKERS_OBSERVED cleanup_tid=%ld cleanup_alive=%d wakelock_tid=%ld wakelock_alive=%d cursor_retired=%d late_admitted=%d\n",

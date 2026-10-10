@@ -4857,13 +4857,13 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
     mapfile -t input_lifetime_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'INPUT_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 process_exit_cases=1 unchanged=before-after$'
+            'INPUT_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 process_exit_cases=2 unchanged=before-after$'
     )
     [ "${#input_lifetime_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'INPUT_LIFETIME_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'native input-lifetime artifact receipt differs'
     input_lifetime_before=${input_lifetime_artifacts[0]/INPUT_LIFETIME_ARTIFACT=pass /INPUT_LIFETIME_ARTIFACT_BEFORE=}
-    input_lifetime_before=${input_lifetime_before% tests=3 process_exit_cases=1 unchanged=before-after}
+    input_lifetime_before=${input_lifetime_before% tests=3 process_exit_cases=2 unchanged=before-after}
     require_exact_fixed_receipt "$input_lifetime_before" 'input-lifetime artifact before execution'
     mapfile -t input_lifetime_providers < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
@@ -4888,10 +4888,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = inpu
     require_exact_fixed_receipt \
         'CONNECTION_WORKERS_NATIVE=pass boundary=graceful-process-exit final_remote=joined wakelock=joined cursor=retired late_sessions=refused types=all-five producer=resource-factory network_auth=false os_inhibitor=false' \
         'native connection workers at graceful process exit'
+    require_exact_fixed_receipt \
+        'CONNECTION_WORKERS_EMPTY_NATIVE=pass boundary=graceful-process-exit owners=uninitialized named_workers=absent cursor=unstarted late_sessions=refused types=all-five producer=resource-factory network_auth=false os_inhibitor=false' \
+        'unused native connection workers at graceful process exit'
     require_exact_fixed_receipt 'INPUT_LIFETIME_X11=pass server=owned network=none endpoint=absent cleanup=joined' \
         'native input-lifetime X11 retirement'
     require_exact_fixed_receipt \
-        "INPUT_LIFETIME_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=3 process_exit_cases=1 target=linux-x86_64 scope=production-input-worker-global-text-lifetime rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "INPUT_LIFETIME_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=3 process_exit_cases=2 target=linux-x86_64 scope=production-input-worker-global-text-lifetime rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'native input-lifetime guest finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'native input-lifetime completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = input-release ]; then

@@ -82,10 +82,12 @@ def run(executable):
             while not socket.is_socket():
                 require(server.poll() is None and time.monotonic() < deadline, "Xvfb readiness failed")
                 time.sleep(0.05)
-            for fault in ["map", "key", "cursor", "shutdown"]:
+            for fault in ["map", "key", "cursor", "shutdown", "empty-shutdown"]:
                 receipt_path = Path(f"/tmp/input-lifetime-{fault}.receipt")
                 require(not os.path.lexists(receipt_path), "native receipt exists")
                 test = (
+                    "server::connection::connection_workers_native_tests::graceful_empty_process_exit_leaves_connection_workers_uninitialized"
+                    if fault == "empty-shutdown" else
                     "server::connection::connection_workers_native_tests::graceful_process_exit_retires_connection_workers"
                     if fault == "shutdown" else
                     "server::connection::cursor_lifetime_native_tests::remote_cursor_retirement_waits_for_native_query_and_thread_context"
@@ -96,7 +98,7 @@ def run(executable):
                     str(executable), test,
                     "--exact", "--ignored", "--color", "never", "--test-threads=1",
                 ]
-                if fault == "shutdown":
+                if fault in ("shutdown", "empty-shutdown"):
                     arguments.append("--nocapture")
                 result = subprocess.run(arguments, env={**environment, "INPUT_LIFETIME_FAULT": fault},
                     text=True, capture_output=True, timeout=25)
@@ -106,11 +108,13 @@ def run(executable):
                 if result.returncode != 0:
                     failures.append(f"{fault}: status={result.returncode}")
                     continue
-                if fault == "shutdown":
-                    require(result.stdout.count("CONNECTION_WORKERS_ENTERED boundary=graceful-process-exit network_auth=false") == 1,
+                if fault in ("shutdown", "empty-shutdown"):
+                    prefix = "CONNECTION_WORKERS_EMPTY" if fault == "empty-shutdown" else "CONNECTION_WORKERS"
+                    admission_prefix = "CONNECTION_EMPTY_ADMISSION" if fault == "empty-shutdown" else "CONNECTION_ADMISSION"
+                    require(result.stdout.count(f"{prefix}_ENTERED boundary=graceful-process-exit network_auth=false") == 1,
                             "production process-exit case did not execute")
                     for kind in ("Remote", "FileTransfer", "ViewCamera", "Terminal", "PortForward"):
-                        require(result.stdout.count(f"CONNECTION_ADMISSION_OBSERVED type={kind} accepted=") == 1,
+                        require(result.stdout.count(f"{admission_prefix}_OBSERVED type={kind} accepted=") == 1,
                                 "production session admission case did not execute")
                 else:
                     require("test result: ok. 1 passed; 0 failed; 0 ignored;" in result.stdout,
@@ -124,6 +128,10 @@ def run(executable):
                             "native receipt authority differs")
                     observation = receipt.read(513)
                 expected = (
+                    "CONNECTION_WORKERS_EMPTY_NATIVE=pass boundary=graceful-process-exit owners=uninitialized "
+                    "named_workers=absent cursor=unstarted late_sessions=refused types=all-five "
+                    "producer=resource-factory network_auth=false os_inhibitor=false\n"
+                    if fault == "empty-shutdown" else
                     "CONNECTION_WORKERS_NATIVE=pass boundary=graceful-process-exit final_remote=joined "
                     "wakelock=joined cursor=retired late_sessions=refused types=all-five producer=resource-factory "
                     "network_auth=false os_inhibitor=false\n"

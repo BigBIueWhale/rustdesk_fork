@@ -720,11 +720,11 @@ if [ "$SMOKE_MODE" = video-pipeline-rootless ]; then
   printf '%s\n' "$xvfb_prepare_out"
   record_stage_status Xvfb-test-infrastructure
   [ "$STAGE_STATUS" -eq 0 ] || exit 1
-  [ "$(grep -c '^XVFB_PACKAGE_OK ' <<<"$xvfb_prepare_out")" -eq 5 ] \
-    || { echo '  FAIL video pipeline: the exact five-package offline Xvfb closure was not prepared'; exit 1; }
+  [ "$(grep -c '^XVFB_PACKAGE_OK ' <<<"$xvfb_prepare_out")" -eq 7 ] \
+    || { echo '  FAIL video pipeline: the exact seven-package offline Xvfb closure was not prepared'; exit 1; }
   grep -q '^XVFB_OFFLINE_INPUT_SURFACE=tcp-listen:0 udp:0$' <<<"$xvfb_prepare_out" \
     || { echo '  FAIL video pipeline: the offline preparation container retained a listener or UDP socket'; exit 1; }
-  grep -Eq '^XVFB_TOOL_CLOSURE_OK packages=5 xvfb_sha256=[0-9a-f]{64} xkbcomp_sha256=[0-9a-f]{64}$' <<<"$xvfb_prepare_out" \
+  grep -Eq '^XVFB_TOOL_CLOSURE_OK packages=7 xvfb_sha256=[0-9a-f]{64} xkbcomp_sha256=[0-9a-f]{64}$' <<<"$xvfb_prepare_out" \
     || { echo '  FAIL video pipeline: the extracted Xvfb closure did not match its file manifest'; exit 1; }
   verify_smoke_source_snapshot || exit 1
 

@@ -862,8 +862,8 @@ engine_xvfb_input_inventory() {
         files+=("$file")
         count=$((count + 1))
     done <"$SCRIPT_DIR/smoke-xvfb-packages.tsv"
-    [ "$count" -eq 5 ] \
-        && [ "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -printf x)" = xxxxx ] \
+    [ "$count" -eq 7 ] \
+        && [ "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -printf x)" = xxxxxxx ] \
         || fail 'engine Xvfb package closure differs'
     /usr/bin/stat -c '%n:%d:%i:%u:%g:%a' -- "$root"
     /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "${files[@]}"
@@ -1262,8 +1262,8 @@ android_frame_input_inventory() {
         files+=("$file")
         count=$((count + 1))
     done <"$SCRIPT_DIR/smoke-xvfb-packages.tsv"
-    [ "$count" -eq 5 ] \
-        && [ "$(/usr/bin/find "$ONLINE_INPUTS/xvfb-debs" -mindepth 1 -maxdepth 1 -printf x)" = xxxxx ] \
+    [ "$count" -eq 7 ] \
+        && [ "$(/usr/bin/find "$ONLINE_INPUTS/xvfb-debs" -mindepth 1 -maxdepth 1 -printf x)" = xxxxxxx ] \
         || fail 'Android frame-test package closure differs'
     for file in "${files[@]}"; do
         [ -f "$file" ] && [ ! -L "$file" ] \
@@ -1668,8 +1668,8 @@ cm_pa_input_inventory() {
         /usr/bin/sha256sum -- "$file"
         count=$((count + 1))
     done <"$SCRIPT_DIR/smoke-xvfb-packages.tsv"
-    [ "$count" -eq 5 ] \
-        && [ "$(/usr/bin/find "$ONLINE_INPUTS/xvfb-debs" -mindepth 1 -maxdepth 1 -printf x)" = xxxxx ] \
+    [ "$count" -eq 7 ] \
+        && [ "$(/usr/bin/find "$ONLINE_INPUTS/xvfb-debs" -mindepth 1 -maxdepth 1 -printf x)" = xxxxxxx ] \
         || fail 'CM PulseAudio Xvfb package closure differs'
 }
 

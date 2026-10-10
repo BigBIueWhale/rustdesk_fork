@@ -23,6 +23,10 @@ case "$#:${1:-}" in
         MODE=authority-smoke
         REQUEST=__authority_smoke__
         ;;
+    # Only the fixed full-peer archives; no native dependency build.
+    1:--flutter-peer-archives)
+        REQUEST=$1
+        ;;
     1:--fixed-archives|\
     1:--rust-test-inputs|1:--flutter-test-inputs|1:--flutter-peer-inputs|1:--android-build-inputs|1:--libvpx-distfiles|1:--wix-nuget-packages|1:--dart-audit-inputs|1:--maintenance-discover-osv-pub-database|1:--maintenance-discover-android-emulator-inputs|1:--maintenance-discover-rust-android-x86-input|1:--maintenance-discover-flutter-android-maven|1:--maintenance-stage-android-emulator-inputs|1:--maintenance-stage-rust-android-x86-input|1:--maintenance-stage-vcpkg-x64-android|1:--maintenance-stage-flutter-presentation-candidate|1:--maintenance-discover-flutter-presentation-pub|\
     1:--maintenance-build-deb-builder-bootstrap-candidate|\
@@ -92,6 +96,10 @@ if [ "$MODE" = authority-smoke ]; then
     readonly VM_TIMEOUT_SECONDS=180
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
+elif [ "$REQUEST" = --flutter-peer-archives ]; then
+    readonly VM_TIMEOUT_SECONDS=300
+    readonly OVERLAY_SIZE=8G
+    readonly VM_MEMORY=4096
 elif [ "$REQUEST" = --fixed-archives ]; then
     readonly VM_TIMEOUT_SECONDS=1800
     readonly OVERLAY_SIZE=8G

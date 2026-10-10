@@ -277,7 +277,7 @@ for identity in "$ACQUISITION_UID" "$ACQUISITION_GID"; do
         || fail 'acquisition principal is malformed or root'
 done
 case "$REQUEST" in
-    --fixed-archives|\
+    --flutter-peer-archives|--fixed-archives|\
     __full__|--rust-test-inputs|--flutter-test-inputs|--flutter-peer-inputs|--android-build-inputs|--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-discover-osv-pub-database|--maintenance-discover-android-emulator-inputs|--maintenance-discover-rust-android-x86-input|--maintenance-discover-flutter-android-maven|--maintenance-stage-android-emulator-inputs|--maintenance-stage-rust-android-x86-input|--maintenance-stage-vcpkg-x64-android|--maintenance-stage-flutter-presentation-candidate|--maintenance-discover-flutter-presentation-pub|\
     --maintenance-build-deb-builder-bootstrap-candidate|\
     --maintenance-discover-flutter-linux-engine-bootstrap|\

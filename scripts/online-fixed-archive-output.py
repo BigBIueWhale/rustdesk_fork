@@ -284,20 +284,22 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
                 "runtime/Maven source nor the exact WiX source"
             )
         return
-    if len(specs) == 8:
+    if len(specs) == 10:
         expected_flutter_peer = (
             "atspi-debs/at-spi2-core.deb",
             "atspi-debs/gsettings-desktop-schemas.deb",
             "vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz",
             "xvfb-debs/libfontenc1.deb",
+            "xvfb-debs/libxcb-xkb1.deb",
             "xvfb-debs/libxfont2.deb",
+            "xvfb-debs/libxkbcommon-x11-0.deb",
             "xvfb-debs/libxkbfile1.deb",
             "xvfb-debs/x11-xkb-utils.deb",
             "xvfb-debs/xvfb.deb",
         )
         if names != expected_flutter_peer:
             fail(
-                "the eight-entry manifest is not the exact Linux full-peer "
+                "the ten-entry manifest is not the exact Linux full-peer "
                 "vcpkg/Xvfb/AT-SPI source"
             )
         return
@@ -327,7 +329,7 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
         "an admitted two-entry Dart-audit or Android-emulator source, "
         "three Flutter model-test toolchain entries, "
         "an admitted six-entry Android-emulator or WiX source, seven Android build entries, "
-        "an admitted eight-entry Linux full-peer source, "
+        "an admitted ten-entry Linux full-peer source, "
         "14 toolchain entries, "
         "or 33 vcpkg distfile entries, "
         f"got {len(specs)}"
@@ -1502,7 +1504,9 @@ def test_flutter_peer_specs() -> tuple[ArchiveSpec, ...]:
         "atspi-debs/gsettings-desktop-schemas.deb",
         "vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz",
         "xvfb-debs/libfontenc1.deb",
+        "xvfb-debs/libxcb-xkb1.deb",
         "xvfb-debs/libxfont2.deb",
+        "xvfb-debs/libxkbcommon-x11-0.deb",
         "xvfb-debs/libxkbfile1.deb",
         "xvfb-debs/x11-xkb-utils.deb",
         "xvfb-debs/xvfb.deb",
@@ -1820,7 +1824,7 @@ def self_test() -> None:
 
         wix_specs = test_wix_specs()
         flutter_peer_specs = test_flutter_peer_specs()
-        if len(flutter_peer_specs) != 8:
+        if len(flutter_peer_specs) != 10:
             fail("Flutter-peer self-test lost its exact fixed-input manifest")
         substituted_flutter_peer_specs = [
             [

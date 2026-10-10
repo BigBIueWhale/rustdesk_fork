@@ -3854,7 +3854,7 @@ run_cm_file_replay() {
         install -o 1000 -g 1000 -m 0400 -- "$package" "$xvfb_inputs/$name.deb"
         count=$((count + 1))
     done <"$source_root/scripts/smoke-xvfb-packages.tsv"
-    [ "$count" -eq 5 ] || fail 'CM product-pair Xvfb package count differs'
+    [ "$count" -eq 7 ] || fail 'CM product-pair Xvfb package count differs'
     prepare_engine_xvfb "$xvfb_inputs" "$source_root/scripts"
 
     install -d -o 1000 -g 1000 -m 0700 "$work" "$target"

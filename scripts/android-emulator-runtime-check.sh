@@ -678,8 +678,8 @@ xvfb_status=0
 vm_docker start --attach "$XVFB_CONTAINER" >"$XVFB_LOG" 2>&1 || xvfb_status=$?
 [ "$xvfb_status" -eq 0 ] \
     || { tail -n 160 "$XVFB_LOG" >&2; die "Android peer Xvfb preparation exited with status $xvfb_status"; }
-[ "$(grep -c '^XVFB_PACKAGE_OK ' "$XVFB_LOG" || true)" -eq 5 ] \
-    && grep -Eq '^XVFB_TOOL_CLOSURE_OK packages=5 xvfb_sha256=[0-9a-f]{64} xkbcomp_sha256=[0-9a-f]{64}$' \
+[ "$(grep -c '^XVFB_PACKAGE_OK ' "$XVFB_LOG" || true)" -eq 7 ] \
+    && grep -Eq '^XVFB_TOOL_CLOSURE_OK packages=7 xvfb_sha256=[0-9a-f]{64} xkbcomp_sha256=[0-9a-f]{64}$' \
         "$XVFB_LOG" \
     || { tail -n 160 "$XVFB_LOG" >&2; die 'Android peer Xvfb preparation receipt differs'; }
 [ "$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' \

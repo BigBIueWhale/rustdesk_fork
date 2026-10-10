@@ -1876,7 +1876,7 @@ vendor_cargo() {
 load_flutter_peer_fixed_archive_manifest() {
     local name size digest url extra host manifest_sha256 count=0
     local atspi_manifest_sha256 atspi_count=0
-    local -a expected_names=(libfontenc1 libxfont2 libxkbfile1 x11-xkb-utils xvfb)
+    local -a expected_names=(libfontenc1 libxcb-xkb1 libxfont2 libxkbcommon-x11-0 libxkbfile1 x11-xkb-utils xvfb)
     local -a expected_atspi_names=(at-spi2-core gsettings-desktop-schemas)
     local -a atspi_fixed_archive_args=() xvfb_fixed_archive_args=()
     [ "${#FLUTTER_PEER_FIXED_ARCHIVE_ARGS[@]}" -eq 0 ] \
@@ -1908,7 +1908,7 @@ load_flutter_peer_fixed_archive_manifest() {
         count=$((count + 1))
     done <"$FLUTTER_PEER_PACKAGE_MANIFEST"
     [ "$count" -eq "${#expected_names[@]}" ] \
-        || die "Flutter-peer package manifest must contain exactly five packages"
+        || die "Flutter-peer package manifest must contain exactly seven packages"
     [ "$(/usr/bin/sha256sum "$FLUTTER_PEER_PACKAGE_MANIFEST" \
         | /usr/bin/awk '{print $1}')" = "$manifest_sha256" ] \
         || die "Flutter-peer package manifest changed while loading"
@@ -2693,12 +2693,16 @@ maintenance_discover_flutter_presentation_pub() {
         "$FLUTTER_PRESENTATION_CANDIDATE_VERSION" "$lock_sha256" "$first_digest" "$publication"
 }
 
-stage_flutter_peer_inputs() {
+stage_flutter_peer_archives() {
     load_flutter_peer_fixed_archive_manifest
     stage_archive_bundle flutter-peer "$ONLINE_DIR" \
         .rustdesk-flutter-peer-archives \
         "pinned Linux full-peer vcpkg/Xvfb/AT-SPI inputs" \
         "$ANDROID_BUILDER_CONFIG_ID" android-builder
+}
+
+stage_flutter_peer_inputs() {
+    stage_flutter_peer_archives
     verify_or_load_deb_builder_image
     stage_vcpkg_distfiles
     stage_vcpkg_natives
@@ -8448,6 +8452,12 @@ main() {
         --flutter-test-inputs)
             [ "$#" -eq 1 ] || die "--flutter-test-inputs takes no arguments"
             stage_flutter_test_inputs
+            return 0
+            ;;
+        --flutter-peer-archives)
+            [ "$#" -eq 1 ] || die "--flutter-peer-archives takes no arguments"
+            /usr/bin/python3 -I -S "$FIXED_ARCHIVE_HELPER" self-test
+            stage_flutter_peer_archives
             return 0
             ;;
         --flutter-peer-inputs)

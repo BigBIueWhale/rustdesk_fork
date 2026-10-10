@@ -12098,8 +12098,11 @@ exit-time context reset are removed; surfaces retire before their window owner.
 The focused `--android-rust-lifecycle-tests --whiteboard-display-lifetime` shard
 uses a real private X11 display to test the production window after event-loop
 retirement, two owners' pixel readback, exact-owner clearing and window destruction.
-Execution is pending; no native failure or privilege escalation is claimed from
-the previous borrowed-handle form alone.
+The first run compiled but failed before rendering because the pinned container
+lacked `libxkbcommon-x11.so.0`; it supplied no native presentation result.
+Debian Depends now declares `libxkbcommon-x11-0`, and the pinned X11 fixture adds
+that package and its `libxcb-xkb1` dependency. Native execution remains pending;
+no privilege escalation is claimed from the previous borrowed-handle form alone.
 
 **Retained evidence:** the independently compilable exact production lifecycle module
 passed three state tests under Rust 1.75.0 in builder

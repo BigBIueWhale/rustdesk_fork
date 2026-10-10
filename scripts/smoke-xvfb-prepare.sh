@@ -10,7 +10,7 @@ readonly FILE_MANIFEST=/work/scripts/smoke-xvfb-files.tsv
 readonly INPUT_ROOT=/xvfb-inputs
 readonly DEB_ROOT=/xvfb-debs
 readonly TOOL_ROOT=/xvfb-root
-readonly EXPECTED_PACKAGES=5
+readonly EXPECTED_PACKAGES=7
 
 fail() {
   echo "Xvfb offline preparation: $*" >&2

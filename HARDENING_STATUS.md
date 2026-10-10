@@ -12083,8 +12083,9 @@ or fix for that defect.
 
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
-**Disposition: source ownership implemented; named Linux native subsets and nine executable
-regressions passed. Full lifecycle, installed/platform and resource acceptance remain OPEN.**
+**Disposition: named Linux native subsets and nine executable regressions passed.
+Published-helper controller Drop leaves unreaped/unjoined resources; correction and full
+lifecycle, installed/platform and resource acceptance remain OPEN.**
 
 **Current source:** `src/whiteboard/client.rs` locks registrations, sender, retained launch/task
 handles, helper and Idle/Starting/Running/Stopping in one `WhiteboardClientState`. Checked
@@ -12110,7 +12111,8 @@ through process exit and zero-job accounting. The command task cannot discard it
 release its generation or start a successor. Root shutdown closes registration/cancels before
 listener drain and joins whiteboard before final shutdown. The 3s deadline initiates cancellation
 or exact termination; uncertainty retains handles/Stopping and refuses replacement.
-Unexpected Drop refuses replacement; published-helper Drop cleanup remains unproved.
+Unexpected Drop refuses replacement; published-helper Drop leaves a dead helper unreaped
+and a completed command task unjoined while the parent remains alive.
 
 **Latest accepted native Linux profile:** source `064ea8eb5f3abbeb980123cd3ad8880481a288e9`,
 tree `b1933b285320c3c5dd9b2495ba4d4e271c586b96`. Command:
@@ -12159,13 +12161,27 @@ serial `android-rust-lifecycle-tests-run.7GY33ktZnE.serial.log`,69782bytes, SHA-
 `b0480246664a5845966bc993c006fa341e0e56ee6699dbb3b287ead9734a8124`.
 The newer native profile does not rerun this shard; its production client bytes are unchanged.
 
-**Published-helper owner-loss acceptance pending:** the new Linux-only fixture drops the actual
-controller after Running/two-owner pixels and retains its process. It observes admission refusal
-and task completion without polling/joining generation handles. The independent observer requires
-task join, exact helper death/reap, native window/endpoint retirement and refused replacement
-before normal fixture exit. Guest/host require one unique final receipt; forced observer cleanup
-cannot pass. No native result or correction yet. This extends the profile's required coverage;
-the eight-case historical pass above does not validate this boundary.
+**Published-helper controller Drop: native regression FAIL.** Source
+`af6326f8238a37f577cafdcd7da4efe390ae8ef0`, tree
+`87b25c5703814597fd5d65c2c7cedb2a7b348bf8`, same command above, build155s.
+All eight receiver/eight prior global cases completed before the new case. After authenticated
+Running/two-owner pixels, actual controller Drop refused registration/replacement and retained
+the parent. Helper20290's exact pidfd was dead but `/proc/20290` remained; the command task
+was finished but its retained handle was unjoined. The read-only probe neither drove cleanup
+nor polled a JoinHandle. Independent observation reported
+`helper_dead=true helper_reaped=false task_joined=false`; the observer and guest failed,
+and the exact harness handle returned status1. Forced observer cleanup cannot pass.
+No correction, full-profile pass, post-run artifact equality or final input receipt is claimed.
+
+Pre-run artifact `e5ef3c21113179ef0d8f96be7db66cebc628f44712ee98fc8b67353e780ab083`;
+serial `android-rust-lifecycle-tests-run.ygwwUldm9J.serial.log`,92114bytes, SHA-256
+`069825f0535a04f369957b104f9d5f8c974fa5ee2cfd07cf5e9f0919e3958d82`.
+Retained archive `.harness-state/verifier-vm/failed-whiteboard-owner-af6326f8-ygwwUldm9J`
+contains the exact candidate source tar and diagnostics. Zero-NIC VM/guest-only network-none
+execution, unchanged host endpoint inventories and joined owned-harness cleanup are recorded;
+disposable disks/sockets are absent. This establishes a lifetime defect, not a demonstrated
+privilege escalation. The original root owns the only cleanup driver; actual Drop removes it.
+The correction must provide retained ownership through native reap and external task join.
 
 **Retained provenance:** full A/B failures, corrected runs, old artifacts and intermediate
 receipts are archived in the exact HO section of

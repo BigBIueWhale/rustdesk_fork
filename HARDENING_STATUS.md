@@ -12081,7 +12081,7 @@ external review, and the global connection-flow correctness/performance obligati
 
 ### R-S11hn/R-S11e-251 — lossless whiteboard IPC/event-loop lifecycle ownership
 
-**Current disposition: SOURCE IMPLEMENTED; historical production-state execution retained;
+**Current disposition: SOURCE IMPLEMENTED; focused Linux rendering/retirement passed;
 complete helper and target-native finality evidence OPEN.** `src/whiteboard/event_lifecycle.rs`
 owns the proxy and terminal latch. `src/whiteboard/server.rs` installs the terminal guard
 before runtime/startup work, serializes proxy installation and termination, and delivers
@@ -12095,18 +12095,28 @@ proxy mutation are absent from this source topology.
 Linux rendering now retains Winit's `OwnedDisplayHandle` in its softbuffer context
 and surfaces. The borrowed-display `transmute` to `'static`, optional context and
 exit-time context reset are removed; surfaces retire before their window owner.
-The focused `--android-rust-lifecycle-tests --whiteboard-display-lifetime` shard
-uses a real private X11 display to test two owners' production pixel readback,
-exact-owner clearing and window destruction before event-loop return.
-The first run compiled but failed before rendering because the pinned container
-lacked `libxkbcommon-x11.so.0`; it supplied no native presentation result.
-Debian Depends now declares `libxkbcommon-x11-0`, and the pinned X11 fixture adds
-that package and its `libxcb-xkb1` dependency. With those inputs, pixels and Clear
-passed, but the window survived app drop: destruction missed Winit's final flush.
-Production `exiting` now retires surfaces/windows before that synchronization.
-The test renders while active and requires immediate X11 BadWindow on return,
-with the owned display context still retained. Corrected execution is pending;
-no privilege escalation is claimed from the previous borrowed-handle form alone.
+Production `exiting` retires all surfaces/windows before Winit's final X11 server
+synchronization; late app-drop destruction previously missed that flush. Debian
+Depends declares the existing `libxkbcommon-x11-0` runtime requirement; the pinned
+X11 fixture includes it and `libxcb-xkb1`. No privilege escalation was reproduced.
+
+**Accepted Linux subset:** `--android-rust-lifecycle-tests --whiteboard-display-lifetime`
+passed at source `011780e1a124118e24bca4cabbd2fa2191a0fc26`, tree
+`c00f46f86b96e2df70e209c18cf2fa1d6f120638`: one actual test, zero failed/ignored,
+215s VM / 149s build / 0.02s native execution. The production constructor/draw path
+created a real X11 window, read back two owners' pixels, cleared only one owner,
+and returned immediate GetWindowAttributes BadWindow after event-loop return while
+the application/context remained alive. Executable SHA-256
+`9ded5707e7455c906f6c3bc4f7bb5aad29cdd68c6a669167ac12d43b20522060`
+was unchanged before/after execution. The zero-NIC VM/nonroot network-none container
+transaction preserved source/inputs, joined Xvfb/container/VM cleanup and passed
+the full host endpoint audit with no additions. Retained serial
+`android-rust-lifecycle-tests-run.z6Uy7QdzH2.serial.log` SHA-256
+`47202aff092f9dc8bf827ec936b2874e14ed3e5de1eb2a144949d2bbe76f3486`.
+Acquisition/publication self-test and publisher-pin checks passed separately in
+42s; its retained receipt and three failed native attempts are recorded in the audit.
+This does not execute authenticated helper IPC/worker finality, a compositor,
+animation/occlusion, resource/soak bounds, or installed Debian acceptance.
 
 **Retained evidence:** the independently compilable exact production lifecycle module
 passed three state tests under Rust 1.75.0 in builder
@@ -12127,7 +12137,7 @@ wording or document-hash dependency. Shared fast module execution, full root-cra
 commands, and Apple source-gate wiring remain; neither their presence nor old mutation
 counts prove that an exact-current native workload ran.
 
-**Still required:** exact-current focused/full-root tests and isolated Windows/macOS/Linux
+**Still required:** complete current lifecycle/full-root suites and isolated Windows/macOS/Linux
 helper runs covering launch-identity refusal, listener construction/end/error, proof and
 transport failure, cancellation, authenticated close/shutdown, both proxy-publication
 orders, every returning event-loop path, and permitted spawn/join failure injection.

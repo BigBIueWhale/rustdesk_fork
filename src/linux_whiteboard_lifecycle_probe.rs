@@ -219,8 +219,11 @@ async fn exercise(child: &mut Child, case: &str, token: &str, postfix: &str, add
 }
 
 async fn client_generation() -> ResultType<()> {
-    use crate::whiteboard::{probe_whiteboard_client_state, probe_whiteboard_helper, probe_whiteboard_helper_exit, register_whiteboard,
-        unregister_whiteboard, update_whiteboard_cursor, WhiteboardClientOwner, Cursor};
+    use crate::whiteboard::{probe_whiteboard_client_state, probe_whiteboard_helper, probe_whiteboard_helper_exit,
+        register_whiteboard, unregister_whiteboard, update_whiteboard_cursor, WhiteboardClientOwner, Cursor};
+    let case = std::env::var("WHITEBOARD_PROBE_CLIENT_GENERATION")?;
+    ensure!(matches!(case.as_str(), "shutdown" | "replacement" | "withdrawal"), "invalid client case");
+    let generations = if case == "shutdown" { 1 } else { 2 };
     ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)
         && probe_whiteboard_helper() == (None, false), "client fixture is not initially empty");
     let mut owner = WhiteboardClientOwner::new()?;
@@ -229,61 +232,98 @@ async fn client_generation() -> ResultType<()> {
     register_whiteboard(7);
     register_whiteboard(8);
     let exercise = async {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
-        let generation = loop {
-            let (phase, generation, task, connections) = probe_whiteboard_client_state();
-            if phase == "Running" {
-                ensure!(generation == 1 && task && connections == 2,
-                    "duplicate client demand did not retain one task/two connections");
-                break generation;
+        let mut last_pid = 0;
+        for expected_generation in 1..=generations {
+            let ids = if expected_generation == 1 { [7, 8] }
+                else if case == "replacement" { [9, 10] } else { [11, 12] };
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+            loop {
+                let (phase, generation, task, connections) = probe_whiteboard_client_state();
+                if phase == "Running" {
+                    ensure!(generation == expected_generation && task && connections == 2,
+                        "duplicate client demand did not retain one task/two connections");
+                    break;
+                }
+                ensure!(phase == "Starting" && generation == expected_generation
+                    && tokio::time::Instant::now() < deadline, "global client failed startup: {phase}/{generation}");
+                tokio::time::sleep(Duration::from_millis(10)).await;
             }
-            ensure!(phase == "Starting" && tokio::time::Instant::now() < deadline,
-                "global whiteboard client failed startup: phase={phase} generation={generation}");
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        };
-        let pid = probe_whiteboard_helper().0
-            .ok_or_else(|| hbb_common::anyhow::anyhow!("global client lost its retained helper"))?;
-        println!("WHITEBOARD_CLIENT_READY generation={generation} pid={pid} connections=2 task=retained");
-        std::io::stdout().flush()?;
-        observer_ack(b"go\n").await?;
-        for (conn_id, x, y, argb) in [(7, 32.0, 32.0, 0xff00ff00), (8, 128.0, 96.0, 0xff0000ff)] {
-            for _ in 0..4 {
-                update_whiteboard_cursor(conn_id, Cursor { x, y, argb, btns: 0, text: String::new() });
+            let pid = probe_whiteboard_helper().0
+                .ok_or_else(|| hbb_common::anyhow::anyhow!("global client lost its retained helper"))?;
+            last_pid = pid;
+            for id in ids { register_whiteboard(id); register_whiteboard(id); }
+            println!("WHITEBOARD_CLIENT_READY case={case} generation={expected_generation} pid={pid} connections=2 task=retained");
+            std::io::stdout().flush()?;
+            observer_ack(b"go\n").await?;
+            for (conn_id, x, y, argb) in [(ids[0], 32.0, 32.0, 0xff00ff00), (ids[1], 128.0, 96.0, 0xff0000ff)] {
+                for _ in 0..4 {
+                    update_whiteboard_cursor(conn_id, Cursor { x, y, argb, btns: 0, text: String::new() });
+                }
+            }
+            overlay_phase("draw", b"drawn\n").await?;
+            unregister_whiteboard(ids[0]);
+            overlay_phase("clear", b"cleared\n").await?;
+            unregister_whiteboard(ids[1]);
+            // The helper owns inherited stdin until its CLI-return barrier is released.
+            ensure!(tokio::time::timeout(Duration::from_secs(5), inspect.recv()).await?.is_some(),
+                "client inspection signal ended");
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+            while !probe_whiteboard_helper().1 {
+                ensure!(tokio::time::Instant::now() < deadline, "production owner did not join its command task");
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            if expected_generation == 1 && case != "shutdown" {
+                for id in [9, 10] { register_whiteboard(id); register_whiteboard(id); }
+                if case == "withdrawal" {
+                    unregister_whiteboard(9);
+                    unregister_whiteboard(10);
+                }
+                // Let the real owner run while the old helper remains behind its barrier.
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            let (phase, current, task, connections) = probe_whiteboard_client_state();
+            let (helper, task_joined) = probe_whiteboard_helper();
+            let expected_connections = if expected_generation == 1 && case == "replacement" { 2 } else { 0 };
+            ensure!(phase == "Stopping" && current == expected_generation && !task
+                && connections == expected_connections && helper == Some(pid) && task_joined,
+                "committed stop lost its exact generation/helper or latched demand");
+            println!("WHITEBOARD_CLIENT_STATE case={case} generation={current} phase={phase} task={task} connections={connections} expected_generation={expected_generation} pid={pid} task_joined={task_joined} helper_owned=true");
+            std::io::stdout().flush()?;
+            ensure!(tokio::time::timeout(Duration::from_secs(5), inspect.recv()).await?.is_some(),
+                "client cleanup signal ended");
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+            while probe_whiteboard_helper_exit() != Some((expected_generation, true)) {
+                ensure!(tokio::time::Instant::now() < deadline, "production helper normal reap did not complete");
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            println!("WHITEBOARD_CLIENT_REAPED case={case} generation={expected_generation} pid={pid} status=0 owner=production task=joined");
+            std::io::stdout().flush()?;
+            if expected_generation == 1 && case == "withdrawal" {
+                let deadline = tokio::time::Instant::now() + Duration::from_millis(500);
+                while tokio::time::Instant::now() < deadline {
+                    ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)
+                        && probe_whiteboard_helper() == (None, false), "withdrawn demand started a successor");
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+                println!("WHITEBOARD_CLIENT_IDLE case=withdrawal retired_generation=1 observation_ms=500");
+                std::io::stdout().flush()?;
+                observer_ack(b"idle\n").await?;
+                for id in [11, 12] { register_whiteboard(id); register_whiteboard(id); }
             }
         }
-        overlay_phase("draw", b"drawn\n").await?;
-        unregister_whiteboard(7);
-        overlay_phase("clear", b"cleared\n").await?;
-        unregister_whiteboard(8);
-        // No parent stdin read may race the helper's inherited CLI-return barrier.
-        ensure!(tokio::time::timeout(Duration::from_secs(5), inspect.recv()).await?.is_some(),
-            "client inspection signal ended");
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
-        while !probe_whiteboard_helper().1 {
-            ensure!(tokio::time::Instant::now() < deadline, "production owner did not join its command task");
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        let (phase, current, task, connections) = probe_whiteboard_client_state();
-        let (helper, task_joined) = probe_whiteboard_helper();
-        ensure!(helper == Some(pid), "production owner released its helper before exit");
-        println!("WHITEBOARD_CLIENT_STATE generation={current} phase={phase} task={task} connections={connections} expected_generation={generation} pid={pid} task_joined={task_joined} helper_owned=true");
-        std::io::stdout().flush()?;
-        ensure!(tokio::time::timeout(Duration::from_secs(5), inspect.recv()).await?.is_some(),
-            "client cleanup signal ended");
-        Ok(pid)
+        Ok(last_pid)
     };
     let result = tokio::select! {
         result = exercise => result,
         _ = owner.run() => Err(hbb_common::anyhow::anyhow!("production whiteboard root ended unexpectedly")),
     };
-    unregister_whiteboard(7);
-    unregister_whiteboard(8);
+    for id in [7, 8, 9, 10, 11, 12] { unregister_whiteboard(id); }
     owner.stop_and_join().await;
     let pid = result?;
     ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)
         && probe_whiteboard_helper() == (None, false)
-        && probe_whiteboard_helper_exit() == Some((1, true)), "production owner did not normally reap its helper");
-    println!("WHITEBOARD_CLIENT_CLEANUP pid={pid} status=0 owner=production child=normal-exit-reaped task=joined");
+        && probe_whiteboard_helper_exit() == Some((generations, true)), "production owner did not normally reap its helper");
+    println!("WHITEBOARD_CLIENT_CLEANUP case={case} generation={generations} pid={pid} status=0 owner=production child=normal-exit-reaped task=joined");
     std::io::stdout().flush()?;
     Ok(())
 }

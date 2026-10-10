@@ -4867,6 +4867,12 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whit
         'WHITEBOARD_CLIENT_PHASE=pass generation=retained-before-helper-exit producer=global-registration pixels=two-owner-clear cleanup=production-reap task=joined' \
         'native global client generation retained while its helper remains alive'
     require_exact_fixed_receipt \
+        'WHITEBOARD_CLIENT_REPLACEMENT=pass old=retained-through-demand successor=after-normal-reap generations=2 duplicate=shared pixels=both-generations cleanup=production-reap task=joined' \
+        'native global client demanded successor after production helper reap'
+    require_exact_fixed_receipt \
+        'WHITEBOARD_CLIENT_WITHDRAWAL=pass old=retained-through-withdrawal idle_observation_ms=500 successor=later-explicit-demand generations=2 pixels=both-generations cleanup=production-reap task=joined' \
+        'native global client withdrawn demand and later explicit retry'
+    require_exact_fixed_receipt \
         'WHITEBOARD_HELPER_CREATOR=pass thread=joined owner=alive helper=live proof=mutual pixels=two-owner-clear' \
         'native creator-thread retirement with a live parent and authenticated rendering'
     require_exact_fixed_receipt \

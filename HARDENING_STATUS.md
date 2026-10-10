@@ -12110,8 +12110,9 @@ or fix for that defect.
 
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
-**Current disposition: root-owned launch/task/helper correction implemented; focused Linux
-native retirement and nine executable regressions passed; full lifecycle acceptance OPEN.**
+**Current disposition: root-owned launch/task/helper correction implemented; named Linux
+native retirement and nine executable regressions passed; committed-stop native extension
+pending and full lifecycle acceptance OPEN.**
 `src/whiteboard/client.rs` uses one mutex-owned `WhiteboardClientState`
 containing registrations, the exact-generation sender, retained launch/task handles and helper, and
 Idle/Starting/Running/Stopping phase. Checked generation reservation prevents wraparound;
@@ -12146,39 +12147,23 @@ positive retirement. Uncertain creation panic or process observation retains own
 and refuses replacement. Unexpected root drop likewise refuses replacement; complete
 abrupt-root-loss/native failure cleanup remains unproved.
 
-**Native failing baseline:** at source
-`7e437223dd367191719e322989db7297b8fcfbf7`, tree
-`1213b9b0e2ff0198450460a7f2edc4b68a4c8752`, the same-image Linux CLI/X11 probe
-called production register/cursor/unregister with duplicate enable and two connections.
-Real two-owner pixel readback and exact-owner clearing preceded final unregister.
-At real helper CLI return, its retained pidfd proved it still alive and X11 returned
-BadWindow; the live parent reported generation 0, Idle, task=false. The generation
-was released before helper exit/reap. Only then did fixture-owned cleanup permit
-normal helper exit and exact child reap; it is not production retirement evidence.
-This is a native lifetime defect, not an LPE reproduction or accepted client suite.
-The eight prior receiver-case completion receipts were emitted, but the expanded
-`--whiteboard-helper-lifetime` profile exits 1 on the new client-phase assertion.
-Rust1.75 build took 163s; before-execution artifact SHA-256
-`c48c61904851c764fd7eb3ace3057b6ef13bf792583e1bca33bc9a7876aae3af`.
-After-artifact/input acceptance gates were not reached. Retained serial
+**Native failing baseline:** source `7e437223dd367191719e322989db7297b8fcfbf7`,
+tree `1213b9b0e2ff0198450460a7f2edc4b68a4c8752` drew two owners through production
+register/cursor/unregister and cleared only the removed owner. At final unregister,
+the real CLI-return barrier retained a live pidfd-observed helper with X11 BadWindow,
+but the parent reported generation0/Idle/task=false before exit/reap. Subsequent
+fixture cleanup was not production retirement. The profile exited1 despite eight
+receiver-case completions; this is a native lifetime failure, not accepted client/LPE
+evidence. Rust1.75 build163s; before artifact
+`c48c61904851c764fd7eb3ace3057b6ef13bf792583e1bca33bc9a7876aae3af`;
+after-artifact/input acceptance was not reached. Serial
 `android-rust-lifecycle-tests-run.tPqhqKH7FF.serial.log` SHA-256
 `6449dbc4d98dda94dfea0e1b695eb1c64ea05f026430bbf3cb81066e3fb152e0`.
-Source archive matches the named commit; host endpoint inventories were identical,
-owned VM/capture/filesystem helpers were joined, and failed diagnostics are preserved
-at `failed-whiteboard-client-7e437223-tPqhqKH7FF`. Full acceptance remains OPEN.
-
-Linux whiteboard now observes whole-parent exit through the helper's owned pidfd,
-and its shared launch constructor removes creating-thread `PR_SET_PDEATHSIG`.
-The baseline reproduced SIGKILL after creator join; corrected creator-thread and
-true parent-process-death CLI/helper subsets passed as detailed in R-S11hn.
-The corrected fixture now polls the actual production root, observes external task join
-while the helper stays alive behind its CLI-return barrier, and requires production
-normal-exit reap; fixture cleanup cannot substitute for that result. Existing eight
-receiver cases remain required. Two added real-Tokio tests retain a cancelled command
-handle until external join and a started blocking launch through abort/cancellation
-until its result is observed. Both focused shards below passed. Windows/macOS native
-acceptance, every-phase demanded replacement,
-launch/transport/helper failure, abrupt owner loss and sustained resource bounds remain OPEN.
+Named source/archive, identical host endpoint inventories and joined VM/capture/filesystem
+cleanup were recorded; diagnostics remain at `failed-whiteboard-client-7e437223-tPqhqKH7FF`.
+Linux whole-parent pidfd lifetime and the creator-thread/actual-parent native subsets are
+recorded in R-S11hn. The corrected client fixture polls the production root and requires
+external task join plus production normal reap while preserving the eight receiver cases.
 
 **Accepted Linux native correction:** both commands below used source
 `df9daec4cc261bfec574afa0c4f33536b6d99438`, tree
@@ -12196,6 +12181,15 @@ was unchanged before/after. Serial `android-rust-lifecycle-tests-run.2Cyu0vIJky.
 SHA-256 `a9793d89b1f77453ec526ff3abb13f77d6aa0b5c5b16c6f1c2ee0a0efb260962`.
 This proves the healthy global-client delayed-retirement correction; actual Remote/PAKE
 producer admission, demanded successor, complete root/failure/cancellation and soak remain open.
+
+**Committed-stop native extension: pending.** The same-image global-client fixture now
+holds the old helper at CLI return while duplicate replacement demand is registered.
+It requires the original Stopping generation/helper and external task join, then production
+normal reap before one generation2 can render. A separate withdrawal case removes that demand,
+observes Idle/no owned helper for 500ms, and gates later explicit demand before generation2.
+The observer retains every helper pidfd, reads two-owner/exact-clear pixels in each generation,
+and cannot accept failure cleanup as production reap. These new cases have not yet run;
+the named healthy receipt above remains their predecessor, not their acceptance evidence.
 
 **Accepted executable state/handle subset:** `--android-rust-lifecycle-tests --whiteboard-client`
 passed 9 tests, 0 failed/ignored, 598 filtered, 0.00s execution; probe feature disabled.

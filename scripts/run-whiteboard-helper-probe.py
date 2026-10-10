@@ -388,25 +388,26 @@ def observe_owner(executable, environment, display, server, parent_exit=False):
                 sys.stderr.write(log_path.read_text())
 
 
-def observe_client_generation(executable, environment, display, server):
-    environment = dict(environment, WHITEBOARD_PROBE_CLIENT_GENERATION="1")
-    log_path = Path("/tmp/whiteboard-client-generation.log")
+def observe_client_generation(executable, environment, display, server, case):
+    environment = dict(environment, WHITEBOARD_PROBE_CLIENT_GENERATION=case)
+    log_path = Path(f"/tmp/whiteboard-client-{case}.log")
+    generations = 1 if case == "shutdown" else 2
     with log_path.open("xb") as log:
         owner = subprocess.Popen([str(executable), "--server"], env=environment,
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
-        owner_fd = None
-        selector = selectors.DefaultSelector()
-        pending, pid, helper_fd, window = b"", None, None, None
-        phases, returned, state, cleaned = [], False, None, False
+        owner_fd, selector = None, None
+        pending, helpers, active = b"", [], None
+        cleaned, idle_seen = False, False
 
-        def helper_alive():
+        def helper_alive(helper):
             poller = select.poll()
-            poller.register(helper_fd, select.POLLIN)
+            poller.register(helper["fd"], select.POLLIN)
             return not poller.poll(0)
 
         deadline = time.monotonic() + 25
         try:
             owner_fd = os.pidfd_open(owner.pid, 0)
+            selector = selectors.DefaultSelector()
             selector.register(owner.stdout, selectors.EVENT_READ)
             os.set_blocking(owner.stdout.fileno(), False)
             while True:
@@ -424,62 +425,91 @@ def observe_client_generation(executable, environment, display, server):
                     line, pending = pending.split(b"\n", 1)
                     text = line.decode("ascii")
                     print(text, flush=True)
-                    ready = re.fullmatch(r"WHITEBOARD_CLIENT_READY generation=1 pid=([1-9][0-9]*) connections=2 task=retained", text)
+                    ready = re.fullmatch(rf"WHITEBOARD_CLIENT_READY case={case} generation=([1-9][0-9]*) pid=([1-9][0-9]*) connections=2 task=retained", text)
                     overlay = re.fullmatch(r"WHITEBOARD_HELPER_OVERLAY phase=(draw|clear)", text)
-                    snapshot = re.fullmatch(r"WHITEBOARD_CLIENT_STATE generation=([0-9]+) phase=(Idle|Starting|Running|Stopping) task=(true|false) connections=0 expected_generation=1 pid=([1-9][0-9]*) task_joined=true helper_owned=true", text)
-                    cleanup = re.fullmatch(r"WHITEBOARD_CLIENT_CLEANUP pid=([1-9][0-9]*) status=0 owner=production child=normal-exit-reaped task=joined", text)
+                    snapshot = re.fullmatch(rf"WHITEBOARD_CLIENT_STATE case={case} generation=([0-9]+) phase=(Idle|Starting|Running|Stopping) task=(true|false) connections=([0-9]+) expected_generation=([1-9][0-9]*) pid=([1-9][0-9]*) task_joined=true helper_owned=true", text)
+                    reaped = re.fullmatch(rf"WHITEBOARD_CLIENT_REAPED case={case} generation=([1-9][0-9]*) pid=([1-9][0-9]*) status=0 owner=production task=joined", text)
+                    cleanup = re.fullmatch(rf"WHITEBOARD_CLIENT_CLEANUP case={case} generation=([1-9][0-9]*) pid=([1-9][0-9]*) status=0 owner=production child=normal-exit-reaped task=joined", text)
                     if ready:
-                        require(pid is None, "global client published more than one generation")
-                        pid = int(ready.group(1))
-                        helper_fd = os.pidfd_open(pid, 0)
+                        generation, pid = map(int, ready.groups())
+                        require(not cleaned and len(helpers) < generations
+                                and generation == len(helpers) + 1
+                                and all(helper["reaped"] and not helper_alive(helper) for helper in helpers)
+                                and (case != "withdrawal" or generation == 1 or idle_seen),
+                                "successor preceded old helper reap or explicit later demand")
+                        active = {"generation": generation, "pid": pid, "fd": os.pidfd_open(pid, 0),
+                                  "window": None, "phases": [], "returned": False,
+                                  "state": False, "reaped": False}
+                        helpers.append(active)
                         window_deadline = time.monotonic() + 3
-                        while window is None:
-                            require(helper_alive() and owner.poll() is None and server.poll() is None
+                        while active["window"] is None:
+                            require(helper_alive(active) and owner.poll() is None and server.poll() is None
                                     and time.monotonic() < window_deadline,
                                     "global client's live native window never appeared")
-                            window = display.helper_window(pid)
-                            if window is None:
+                            active["window"] = display.helper_window(pid)
+                            if active["window"] is None:
                                 time.sleep(0.01)
                         owner.stdin.write(b"go\n")
                         owner.stdin.flush()
                     elif overlay:
                         phase = overlay.group(1)
-                        require(window is not None and not returned and helper_alive()
-                                and len(phases) < 2 and phase == ("draw", "clear")[len(phases)],
+                        require(active is not None and not active["returned"] and helper_alive(active)
+                                and len(active["phases"]) < 2
+                                and phase == ("draw", "clear")[len(active["phases"])],
                                 "global client overlay order differs")
-                        display.wait_pixels(window, (0x00ff00, 0x0000ff) if phase == "draw"
+                        display.wait_pixels(active["window"], (0x00ff00, 0x0000ff) if phase == "draw"
                                             else (0, 0x0000ff), owner, server)
-                        phases.append(phase)
+                        active["phases"].append(phase)
                         owner.stdin.write(b"drawn\n" if phase == "draw" else b"cleared\n")
                         owner.stdin.flush()
                     elif text == "returned":
-                        require(phases == ["draw", "clear"] and not returned and helper_alive()
+                        require(active is not None and active["phases"] == ["draw", "clear"]
+                                and not active["returned"] and helper_alive(active)
                                 and owner.poll() is None, "global client helper did not return while alive")
-                        display.require_destroyed(window)
-                        returned = True
+                        display.require_destroyed(active["window"])
+                        active["returned"] = True
                         signal.pidfd_send_signal(owner_fd, signal.SIGUSR1)
                     elif snapshot:
-                        require(returned and state is None and helper_alive() and owner.poll() is None
-                                and snapshot.group(4) == str(pid), "client snapshot missed its live helper")
-                        state = snapshot.groups()[:3]
-                        print(f"WHITEBOARD_CLIENT_OBSERVED generation={state[0]} phase={state[1]} task={state[2]} helper=alive window=badwindow owner=alive", flush=True)
-                        # Finish and reap even when the production phase assertion fails.
+                        require(active is not None and active["returned"] and not active["state"]
+                                and helper_alive(active) and owner.poll() is None,
+                                "client snapshot missed its live helper")
+                        expected_connections = "2" if case == "replacement" and active["generation"] == 1 else "0"
+                        generation = str(active["generation"])
+                        require(snapshot.groups() == (generation, "Stopping", "false", expected_connections,
+                                                      generation, str(active["pid"])),
+                                "committed stop lost its exact generation or demand before helper reap")
+                        active["state"] = True
+                        print(f"WHITEBOARD_CLIENT_OBSERVED case={case} generation={generation} phase=Stopping task=false connections={expected_connections} helper=alive window=badwindow owner=alive", flush=True)
                         owner.stdin.write(b"finish\n")
                         owner.stdin.flush()
                         signal.pidfd_send_signal(owner_fd, signal.SIGUSR1)
+                    elif reaped:
+                        require(active is not None and active["state"] and not active["reaped"]
+                                and reaped.groups() == (str(active["generation"]), str(active["pid"]))
+                                and not helper_alive(active) and not Path(f"/proc/{active['pid']}").exists(),
+                                "production owner did not normally reap its exact old helper")
+                        active["reaped"] = True
+                    elif text == "WHITEBOARD_CLIENT_IDLE case=withdrawal retired_generation=1 observation_ms=500":
+                        require(case == "withdrawal" and not idle_seen and len(helpers) == 1
+                                and active["reaped"] and not helper_alive(active) and owner.poll() is None,
+                                "withdrawn demand did not leave the retired generation idle")
+                        idle_seen = True
+                        owner.stdin.write(b"idle\n")
+                        owner.stdin.flush()
                     elif cleanup:
-                        require(state is not None and not cleaned and cleanup.group(1) == str(pid)
-                                and not helper_alive() and not Path(f"/proc/{pid}").exists(),
+                        require(active is not None and not cleaned and len(helpers) == generations
+                                and cleanup.groups() == (str(generations), str(active["pid"]))
+                                and all(helper["reaped"] and not helper_alive(helper) for helper in helpers),
                                 "production owner did not reap its exact helper")
                         cleaned = True
                     else:
                         raise RuntimeError("unexpected global client control output")
-            require(not pending and cleaned and owner.wait(timeout=5) == 0,
+            require(not pending and cleaned and (case != "withdrawal" or idle_seen)
+                    and owner.wait(timeout=5) == 0,
                     "global client fixture did not complete normal cleanup")
-            require(state is not None and state[0] == "1" and state[1] == "Stopping",
-                    f"client released its generation before helper exit/reap: generation={state[0]} phase={state[1]} task={state[2]} helper_was_alive=true")
         finally:
-            selector.close()
+            if selector is not None:
+                selector.close()
             owner.stdin.close()
             owner.stdout.close()
             if owner.poll() is None:
@@ -491,22 +521,27 @@ def observe_client_generation(executable, environment, display, server):
                     owner.wait()
             if owner_fd is not None:
                 os.close(owner_fd)
-            if helper_fd is not None:
+            for helper in helpers:
                 try:
-                    if helper_alive():
+                    if helper_alive(helper):
                         try:
-                            signal.pidfd_send_signal(helper_fd, signal.SIGKILL)
+                            signal.pidfd_send_signal(helper["fd"], signal.SIGKILL)
                         except ProcessLookupError:
                             pass  # The retained process exited between observation and signal.
                     # Normal cleanup was performed by the production generation owner;
                     # on fixture failure the subreaper owns any orphan instead.
-                    if not cleaned and Path(f"/proc/{pid}").exists():
-                        os.waitpid(pid, 0)
+                    if not helper["reaped"] and Path(f"/proc/{helper['pid']}").exists():
+                        os.waitpid(helper["pid"], 0)
                 finally:
-                    os.close(helper_fd)
+                    os.close(helper["fd"])
             if owner.returncode != 0:
                 sys.stderr.write(log_path.read_text())
-    print("WHITEBOARD_CLIENT_PHASE=pass generation=retained-before-helper-exit producer=global-registration pixels=two-owner-clear cleanup=production-reap task=joined", flush=True)
+    if case == "shutdown":
+        print("WHITEBOARD_CLIENT_PHASE=pass generation=retained-before-helper-exit producer=global-registration pixels=two-owner-clear cleanup=production-reap task=joined", flush=True)
+    elif case == "replacement":
+        print("WHITEBOARD_CLIENT_REPLACEMENT=pass old=retained-through-demand successor=after-normal-reap generations=2 duplicate=shared pixels=both-generations cleanup=production-reap task=joined", flush=True)
+    else:
+        print("WHITEBOARD_CLIENT_WITHDRAWAL=pass old=retained-through-withdrawal idle_observation_ms=500 successor=later-explicit-demand generations=2 pixels=both-generations cleanup=production-reap task=joined", flush=True)
 
 
 def main():
@@ -542,7 +577,8 @@ def main():
             display = Display()
             observe_owner(executable, environment, display, server)
             observe_owner(executable, environment, display, server, parent_exit=True)
-            observe_client_generation(executable, environment, display, server)
+            for case in ("shutdown", "replacement", "withdrawal"):
+                observe_client_generation(executable, environment, display, server, case)
             require(artifact_digest(executable) == digest and server.poll() is None,
                     "compiled helper artifact or Xvfb changed during execution")
         finally:

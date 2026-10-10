@@ -8227,7 +8227,8 @@ if [ "$foreign_android_builder_error" != \
 fi
 android_builder_entry_output="$(
     setpriv --reuid=4000 --regid=4000 --clear-groups \
-        /bin/bash "$ANDROID_BUILDER_SCRIPT" --self-test-vm-authority
+        env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            /bin/bash "$ANDROID_BUILDER_SCRIPT" --self-test-vm-authority
 )" || fail 'numeric-nonroot Android-builder verifier-VM entry failed'
 expected_android_builder_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
 ANDROID_BUILDER_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION channel=guest-unix prepost=replayed source=untouched signing=untouched output=untouched"
@@ -8577,7 +8578,8 @@ fi
     || fail 'foreign Debian builder refusal diagnostic differs'
 debian_builder_entry_output="$(
     setpriv --reuid=4000 --regid=4000 --clear-groups \
-        /bin/bash "$DEBIAN_BUILDER_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")"
+        env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+            /bin/bash "$DEBIAN_BUILDER_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")"
 )" || fail 'authorized Debian builder verifier entry failed'
 expected_debian_builder_entry_output="VERIFIER_VM_ENTRY_AUTHORITY=pass uid=4000 gid=4000 network=none docker=$EXPECTED_VERSION channel=guest-unix peer=pid-bound config=root-readonly daemon=vm-root
 DEBIAN_BUILDER_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION profile=debian-compiler runtime=real source=private-fixture-only online=unchanged workload=unexecuted cleanup=joined"
@@ -8586,6 +8588,49 @@ DEBIAN_BUILDER_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED_VERSION prof
 printf '%s\n' "$debian_builder_entry_output"
 printf 'VERIFIER_VM_DEBIAN_BUILDER_ENTRY=pass uid=4000 gid=4000 root=refused foreign=refused docker=%s profile=debian-compiler runtime=real source=private-fixture-only online=unchanged workload=unexecuted cleanup=joined\n' \
     "$EXPECTED_VERSION"
+
+if [ "$MODE" = authority-smoke ]; then
+    for epoch_script in "$ANDROID_BUILDER_SCRIPT" "$DEBIAN_BUILDER_SCRIPT" \
+        "$VERIFY_REPO/scripts/build-windows-vm.sh"; do
+        epoch_args=()
+        case "${epoch_script##*/}" in
+            build-android.sh) epoch_args=(--self-test-vm-authority) ;;
+            build-debian.sh) epoch_args=(--self-test-vm-authority "$(<"$ROOT/image-id")") ;;
+        esac
+        for epoch_value in '' "$((SOURCE_DATE_EPOCH_PIN + 1))" invalid-epoch "0$SOURCE_DATE_EPOCH_PIN"; do
+            epoch_status=0
+            epoch_output="$(
+                setpriv --reuid=4000 --regid=4000 --clear-groups \
+                    env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+                        SOURCE_DATE_EPOCH="$epoch_value" \
+                        /bin/bash "$epoch_script" "${epoch_args[@]}" 2>&1
+            )" || epoch_status=$?
+            [ "$epoch_status" -eq 1 ] \
+                || fail "${epoch_script##*/} did not reject explicit epoch '$epoch_value': status=$epoch_status"
+            case "$epoch_output" in
+                *"SOURCE_DATE_EPOCH must equal the pinned canonical value $SOURCE_DATE_EPOCH_PIN (found '$epoch_value')"*) ;;
+                *) fail "${epoch_script##*/} rejected the epoch for an unrelated reason: $epoch_output" ;;
+            esac
+        done
+    done
+    android_pinned_epoch_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+                SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN" \
+                /bin/bash "$ANDROID_BUILDER_SCRIPT" --self-test-vm-authority
+    )" || fail 'Android builder rejected the exact pinned epoch'
+    [ "$android_pinned_epoch_output" = "$expected_android_builder_entry_output" ] \
+        || fail "Android pinned-epoch entry differs: $android_pinned_epoch_output"
+    debian_pinned_epoch_output="$(
+        setpriv --reuid=4000 --regid=4000 --clear-groups \
+            env -i PATH=/usr/bin:/bin LC_ALL=C HOME=/nonexistent \
+                SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN" \
+                /bin/bash "$DEBIAN_BUILDER_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")"
+    )" || fail 'Debian builder rejected the exact pinned epoch'
+    [ "$debian_pinned_epoch_output" = "$expected_debian_builder_entry_output" ] \
+        || fail "Debian pinned-epoch entry differs: $debian_pinned_epoch_output"
+    printf 'RELEASE_TARGET_EPOCH_VM=pass uid=4000 targets=3 refusals=12 unset=android,debian exact=android,debian windows_build=unexecuted artifact=unexecuted\n'
+fi
 
 if /bin/bash "$SYSTEMD_RUNTIME_LIBS_SCRIPT" --self-test-vm-authority "$(<"$ROOT/image-id")" \
     >"$ROOT/root-systemd-libs-entry.out" 2>"$ROOT/root-systemd-libs-entry.err"; then

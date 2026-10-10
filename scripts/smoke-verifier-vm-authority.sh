@@ -4619,6 +4619,10 @@ elif [ "$MODE" = android-frame-tests ]; then
     printf 'ANDROID_FRAME_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
 elif [ "$MODE" = authority-smoke ]; then
 require_exact_fixed_receipt \
+    'RELEASE_TARGET_EPOCH_VM=pass uid=4000 targets=3 refusals=12 unset=android,debian exact=android,debian windows_build=unexecuted artifact=unexecuted' \
+    'release target epoch admission'
+printf 'RELEASE_TARGET_EPOCH_VM=pass uid=4000 targets=3 refusals=12 unset=android,debian exact=android,debian windows_build=unexecuted artifact=unexecuted\n'
+require_exact_fixed_receipt \
     'VERIFIER_VM_ARTIFACT_PUBLICATION=pass android_pair=atomic checksums=both tamper=refused cleanup=joined' \
     'numeric-nonroot Android pair publication filesystem cases'
 printf 'VERIFIER_VM_ARTIFACT_PUBLICATION=pass android_pair=atomic checksums=both tamper=refused cleanup=joined\n'

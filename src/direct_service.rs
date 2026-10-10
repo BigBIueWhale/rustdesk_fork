@@ -635,14 +635,13 @@ enum ControlledServerLifecycleEvent {
     Signal(ResultType<&'static str>),
     DirectListener(Result<(), tokio::task::JoinError>),
     DesktopIpc(Result<(), String>),
-    WhiteboardEnded,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 enum ControlledServerStartupEvent {
     ShutdownRequested,
     Signal(ResultType<&'static str>),
-    DesktopIpcReady(Result<(), String>),
+    DesktopIpcReady(Result<crate::whiteboard::WhiteboardClientController, String>),
     DesktopIpc(Result<(), String>),
 }
 
@@ -655,7 +654,7 @@ async fn finish_owned_controlled_server_lifecycle(
     direct_listener_outcome: Option<Result<(), tokio::task::JoinError>>,
     mut ipc_worker: Option<crate::ipc::DesktopIpcWorker>,
     ipc_outcome: Option<Result<(), String>>,
-    mut whiteboard: Option<crate::whiteboard::WhiteboardClientOwner>,
+    mut whiteboard: Option<crate::whiteboard::WhiteboardClientController>,
 ) -> ! {
     if let Some(owner) = whiteboard.as_mut() { owner.begin_shutdown(); }
     let direct_listener_outcome = match direct_listener_outcome {
@@ -719,8 +718,8 @@ async fn own_controlled_server_lifecycle(
         }
     };
 
-    match startup_event {
-        ControlledServerStartupEvent::DesktopIpcReady(Ok(())) => {}
+    let mut whiteboard = match startup_event {
+        ControlledServerStartupEvent::DesktopIpcReady(Ok(controller)) => controller,
         ControlledServerStartupEvent::ShutdownRequested => {
             finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None, None).await;
         }
@@ -750,15 +749,6 @@ async fn own_controlled_server_lifecycle(
             finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), Some(outcome), None)
                 .await;
         }
-    }
-
-    let mut whiteboard = match crate::whiteboard::WhiteboardClientOwner::new() {
-        Ok(owner) => owner,
-        Err(err) => {
-            log::error!("Controlled-server whiteboard ownership failed: {err}");
-            crate::server::request_graceful_shutdown_after_listener_failure();
-            finish_owned_controlled_server_lifecycle(None, None, Some(ipc_worker), None, None).await
-        }
     };
     let mut direct_listener = server.map(|server| {
         let listener_cancellation = shutdown.clone();
@@ -782,7 +772,6 @@ async fn own_controlled_server_lifecycle(
         outcome = ipc_worker.wait_for_completion() => {
             ControlledServerLifecycleEvent::DesktopIpc(outcome)
         }
-        _ = whiteboard.run() => ControlledServerLifecycleEvent::WhiteboardEnded,
     };
 
     let mut direct_listener_outcome = None;
@@ -805,10 +794,6 @@ async fn own_controlled_server_lifecycle(
         ControlledServerLifecycleEvent::DesktopIpc(outcome) => {
             ipc_outcome = Some(outcome);
             log::error!("Controlled-server IPC worker completed without a shutdown request");
-            crate::server::request_graceful_shutdown_after_listener_failure();
-        }
-        ControlledServerLifecycleEvent::WhiteboardEnded => {
-            log::error!("Controlled-server whiteboard owner completed unexpectedly");
             crate::server::request_graceful_shutdown_after_listener_failure();
         }
     }

@@ -479,7 +479,7 @@ impl WindowsShareRdpClientOwner {
 /// completion, and the exact native thread until shutdown is complete.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) struct DesktopIpcWorker {
-    readiness: oneshot::Receiver<Result<(), String>>,
+    readiness: oneshot::Receiver<Result<crate::whiteboard::WhiteboardClientController, String>>,
     completion: oneshot::Receiver<Result<(), String>>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -489,7 +489,7 @@ impl DesktopIpcWorker {
     pub(crate) fn startup_receivers(
         &mut self,
     ) -> (
-        &mut oneshot::Receiver<Result<(), String>>,
+        &mut oneshot::Receiver<Result<crate::whiteboard::WhiteboardClientController, String>>,
         &mut oneshot::Receiver<Result<(), String>>,
     ) {
         (&mut self.readiness, &mut self.completion)
@@ -3487,7 +3487,9 @@ pub async fn start(postfix: &str) -> ResultType<()> {
 /// current-thread runtime is never nested inside the server's existing Tokio runtime.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
-async fn run_desktop_ipc(readiness: oneshot::Sender<Result<(), String>>) -> ResultType<()> {
+async fn run_desktop_ipc(
+    readiness: oneshot::Sender<Result<crate::whiteboard::WhiteboardClientController, String>>,
+) -> ResultType<()> {
     Config::ensure_loaded();
     let main = match prepare_main_ipc().await {
         Ok(main) => main,
@@ -3509,20 +3511,36 @@ async fn run_desktop_ipc(readiness: oneshot::Sender<Result<(), String>>) -> Resu
         None
     };
 
-    readiness.send(Ok(())).map_err(|_| {
-        hbb_common::anyhow::anyhow!("desktop IPC lifecycle owner stopped before readiness")
-    })?;
-
-    #[cfg(target_os = "windows")]
-    if let Some(service_main) = service_main {
-        let (main_outcome, service_main_outcome) = tokio::join!(
-            run_main_ipc(main),
-            run_windows_service_main_ipc(service_main),
-        );
-        main_outcome?;
-        return service_main_outcome;
+    let (mut whiteboard, controller) = match crate::whiteboard::WhiteboardClientRoot::new() {
+        Ok(owners) => owners,
+        Err(err) => {
+            let _ = readiness.send(Err(err.to_string()));
+            return Err(err);
+        }
+    };
+    if readiness.send(Ok(controller)).is_err() {
+        whiteboard.stop_and_join().await;
+        bail!("desktop IPC lifecycle owner stopped before readiness");
     }
-    run_main_ipc(main).await
+
+    let listeners = async {
+        #[cfg(target_os = "windows")]
+        if let Some(service_main) = service_main {
+            let (main_outcome, service_main_outcome) = tokio::join!(
+                run_main_ipc(main),
+                run_windows_service_main_ipc(service_main),
+            );
+            main_outcome?;
+            return service_main_outcome;
+        }
+        run_main_ipc(main).await
+    };
+    let outcome = tokio::select! {
+        outcome = listeners => outcome,
+        _ = whiteboard.run() => Err(hbb_common::anyhow::anyhow!("whiteboard process owner ended unexpectedly")),
+    };
+    whiteboard.stop_and_join().await;
+    outcome
 }
 
 #[cfg(target_os = "linux")]

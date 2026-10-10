@@ -6827,58 +6827,10 @@ grep -qF 'macOS LaunchDaemon protected IPC signal drain (R-S11ao/R-S11e-55)' scr
 if [ -n "$r_s11e55" ]; then echo "  FAIL R-S11e-55 macOS protected IPC signal drain:$r_s11e55"; rc=1; else
   echo "  ok  R-S11e-55 every macOS root service entry installs fallible cancellation-only termination handling before protected listeners, whose existing owner drains accepted work and password state"; fi
 
-# (3b-iii-d9cf) R-S11ap/R-S11e-56: signal receipt and the public listener remain
-# part of the one retained desktop lifecycle owner refined by R-S11as.
-echo "== (3b-iii-d9cf) desktop controlled-server signal/listener lifecycle ownership (R-S11ap/R-S11e-56) =="
-r_s11e56=
-python3 scripts/verify-desktop-ipc-lifecycle.py --repo . \
-  || r_s11e56="$r_s11e56 controlled-server-lifecycle-ownership-invalid"
-grep -qF 'desktop controlled-server signal/listener lifecycle ownership (R-S11ap/R-S11e-56)' scripts/apple-conform-check.sh \
-  || r_s11e56="$r_s11e56 apple-source-conformance-gate-missing"
-if [ -n "$r_s11e56" ]; then echo "  FAIL R-S11e-56 desktop controlled-server signal/listener lifecycle:$r_s11e56"; rc=1; else
-  echo "  ok  R-S11e-56 desktop controlled servers install signals before admission and retain the public listener under the R-S11as owner"; fi
-
-# (3b-iii-d9cg) R-S11aq/R-S11e-57: the non-returning finalizer now has one
-# retained desktop caller after exact public-task and native-IPC-worker joins.
-echo "== (3b-iii-d9cg) non-returning graceful-shutdown finalizer ownership (R-S11aq/R-S11e-57) =="
-r_s11e57=
-python3 scripts/verify-desktop-ipc-lifecycle.py --repo . \
-  || r_s11e57="$r_s11e57 shutdown-finalizer-ownership-invalid"
-grep -qF 'non-returning graceful-shutdown finalizer ownership (R-S11aq/R-S11e-57)' scripts/apple-conform-check.sh \
-  || r_s11e57="$r_s11e57 apple-source-conformance-gate-missing"
-if [ -n "$r_s11e57" ]; then echo "  FAIL R-S11e-57 graceful-shutdown finalizer ownership:$r_s11e57"; rc=1; else
-  echo "  ok  R-S11e-57 the crate-private non-returning finalizer has one post-join desktop caller and no obsolete election/follower path"; fi
-
 # (3b-iii-d9ch) R-S11ar/R-S11e-58: protected Unix service IPC remains
 # result-returning and excluded from the sole desktop process finalizer.
 echo "== (3b-iii-d9ch) protected Unix service IPC foreground lifecycle ownership (R-S11ar/R-S11e-58) =="
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e58_ --color never
-r_s11e58=
-python3 scripts/verify-desktop-ipc-lifecycle.py --repo . \
-  || r_s11e58="$r_s11e58 protected-service-outcome-ownership-invalid"
-grep -qF 'fn r_s11e58_protected_service_ipc_returns_listener_failure_to_its_owner()' src/ipc.rs \
-  || r_s11e58="$r_s11e58 focused-regression-missing"
-grep -qF 'protected Unix service IPC foreground lifecycle ownership (R-S11ar/R-S11e-58)' scripts/apple-conform-check.sh \
-  || r_s11e58="$r_s11e58 apple-source-conformance-gate-missing"
-if [ -n "$r_s11e58" ]; then echo "  FAIL R-S11e-58 protected service IPC lifecycle ownership:$r_s11e58"; rc=1; else
-  echo "  ok  R-S11e-58 protected Unix IPC drains and returns to its foreground owner, outside the desktop finalizer"; fi
-
-# (3b-iii-d9ci) R-S11as/R-S11e-59: desktop local IPC has pre-admission
-# readiness, retained completion, exact native join, and sole finalizer ownership.
-echo "== (3b-iii-d9ci) desktop local-IPC readiness and retained native-worker ownership (R-S11as/R-S11e-59) =="
-r_s11e59=
-python3 scripts/verify-desktop-ipc-lifecycle.py --repo . \
-  || r_s11e59="$r_s11e59 desktop-ipc-lifecycle-semantic-invalid"
-python3 scripts/verify-desktop-ipc-lifecycle.py --repo . --self-test \
-  || r_s11e59="$r_s11e59 desktop-ipc-lifecycle-mutations-invalid"
-python3 -I -S -c 'import pathlib, sys; p = pathlib.Path(sys.argv[1]); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
-  scripts/verify-desktop-ipc-lifecycle.py \
-  || r_s11e59="$r_s11e59 validator-python-syntax-invalid"
-grep -qF 'desktop local-IPC readiness and retained native-worker ownership (R-S11as/R-S11e-59)' scripts/apple-conform-check.sh \
-  || r_s11e59="$r_s11e59 apple-source-conformance-gate-missing"
-if [ -n "$r_s11e59" ]; then echo "  FAIL R-S11e-59 desktop IPC lifecycle ownership:$r_s11e59"; rc=1; else
-  echo "  ok  R-S11e-59 all desktop IPC is ready before public admission and returns through one retained, exactly joined native worker before the sole finalizer"; fi
-
 # (3b-iii-d9cj) R-S11at/R-S11e-60: executable cached-UID policy regression.
 # This pure policy test does not prove receiver wiring or installed IPC behavior.
 echo "== (3b-iii-d9cj) Linux service cached-UID negative-prefilter policy (R-S11at/R-S11e-60) =="

@@ -218,16 +218,15 @@ async fn exercise(child: &mut Child, case: &str, token: &str, postfix: &str, add
     wait_normal_exit(child).await
 }
 
-async fn launch_owner_loss() -> ResultType<()> {
+async fn launch_owner_loss(mut owner: crate::whiteboard::WhiteboardClientController) -> ResultType<()> {
     use crate::whiteboard::{probe_whiteboard_client_state, probe_whiteboard_helper,
         probe_whiteboard_helper_endpoint, probe_whiteboard_launch_state, probe_release_whiteboard_launch,
-        register_whiteboard, WhiteboardClientOwner};
+        probe_whiteboard_owner_loss, register_whiteboard, WhiteboardClientRoot};
     struct LaunchGate;
     impl Drop for LaunchGate {
         fn drop(&mut self) { probe_release_whiteboard_launch(); }
     }
     let _release = LaunchGate;
-    let mut owner = WhiteboardClientOwner::new()?;
     register_whiteboard(7);
     register_whiteboard(8);
     let waiting = async {
@@ -238,10 +237,7 @@ async fn launch_owner_loss() -> ResultType<()> {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     };
-    let result: ResultType<u32> = tokio::select! {
-        result = waiting => result,
-        _ = owner.run() => Err(hbb_common::anyhow::anyhow!("production launch owner ended unexpectedly")),
-    };
+    let result: ResultType<u32> = waiting.await;
     if result.is_err() {
         probe_release_whiteboard_launch();
         owner.stop_and_join().await;
@@ -261,37 +257,36 @@ async fn launch_owner_loss() -> ResultType<()> {
     drop(owner);
     register_whiteboard(9);
     register_whiteboard(10);
-    ensure!(probe_whiteboard_client_state() == ("Stopping", 1, false, 2)
+    ensure!(probe_whiteboard_client_state() == ("Stopping", 1, false, 0)
         && probe_whiteboard_helper() == (None, false)
         && probe_whiteboard_launch_state() == (Some(pid), false)
-        && WhiteboardClientOwner::new().is_err(), "dropped launch owner admitted replacement or lost its job");
+        && WhiteboardClientRoot::new().is_err(), "dropped launch owner admitted replacement or lost its job");
     println!("WHITEBOARD_CLIENT_LAUNCH_DROPPED generation=1 pid={pid} phase=Stopping launch=retained helper=unpublished replacement=refused");
     std::io::stdout().flush()?;
     let result = observer_ack(b"release\n").await;
     probe_release_whiteboard_launch();
     result?;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    while !probe_whiteboard_launch_state().1 {
+    while probe_whiteboard_client_state() != ("Idle", 0, false, 0) {
         ensure!(tokio::time::Instant::now() < deadline, "cancelled real launch did not finish retirement");
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    ensure!(probe_whiteboard_client_state() == ("Stopping", 1, false, 2)
-        && probe_whiteboard_helper() == (None, false) && WhiteboardClientOwner::new().is_err(),
+    ensure!(probe_whiteboard_owner_loss().1
+        && probe_whiteboard_helper() == (None, false) && WhiteboardClientRoot::new().is_err(),
         "late launch publication escaped orphaned ownership");
-    println!("WHITEBOARD_CLIENT_LAUNCH_FINISHED generation=1 pid={pid} phase=Stopping task=false helper=unpublished replacement=refused");
+    println!("WHITEBOARD_CLIENT_LAUNCH_FINISHED generation=1 pid={pid} phase=Idle task=false launch=joined helper=unpublished replacement=refused");
     std::io::stdout().flush()?;
     observer_ack(b"observed\n").await?;
-    println!("WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS_DONE generation=1 pid={pid} parent=alive launch=finished admission=refused");
+    println!("WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS_DONE generation=1 pid={pid} parent=alive launch=joined admission=refused");
     std::io::stdout().flush()?;
     observer_ack(b"done\n").await?;
     Ok(())
 }
 
-async fn published_owner_loss() -> ResultType<()> {
+async fn published_owner_loss(mut owner: crate::whiteboard::WhiteboardClientController) -> ResultType<()> {
     use crate::whiteboard::{probe_whiteboard_client_state, probe_whiteboard_helper,
         probe_whiteboard_helper_endpoint, probe_whiteboard_owner_loss, register_whiteboard,
-        update_whiteboard_cursor, Cursor, WhiteboardClientOwner};
-    let mut owner = WhiteboardClientOwner::new()?;
+        probe_whiteboard_helper_exit, update_whiteboard_cursor, Cursor, WhiteboardClientRoot};
     register_whiteboard(7);
     register_whiteboard(8);
     let exercise = async {
@@ -317,26 +312,24 @@ async fn published_owner_loss() -> ResultType<()> {
         observer_ack(b"drop\n").await?;
         Ok::<u32, hbb_common::anyhow::Error>(pid)
     };
-    let result = tokio::select! {
-        result = exercise => result,
-        _ = owner.run() => Err(hbb_common::anyhow::anyhow!("published owner-loss root ended unexpectedly")),
-    };
+    let result = exercise.await;
     if result.is_err() { owner.stop_and_join().await; }
     let pid = result?;
     drop(owner);
     register_whiteboard(9);
     register_whiteboard(10);
-    ensure!(probe_whiteboard_owner_loss().2 && WhiteboardClientOwner::new().is_err(),
+    ensure!(probe_whiteboard_owner_loss().2 && WhiteboardClientRoot::new().is_err(),
         "dropped owner admitted registrations or a replacement controller");
     println!("WHITEBOARD_CLIENT_OWNER_LOSS_DROPPED generation=1 pid={pid} admission=refused replacement=refused");
     std::io::stdout().flush()?;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    while !probe_whiteboard_owner_loss().0 {
-        ensure!(tokio::time::Instant::now() < deadline, "dropped owner's command task did not finish");
+    while probe_whiteboard_client_state() != ("Idle", 0, false, 0) {
+        ensure!(tokio::time::Instant::now() < deadline, "retained process owner did not join/reap after controller loss");
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     let (_, joined, refused) = probe_whiteboard_owner_loss();
-    ensure!(refused && WhiteboardClientOwner::new().is_err(), "owner-loss completion reopened admission");
+    ensure!(joined && refused && WhiteboardClientRoot::new().is_err()
+        && probe_whiteboard_helper_exit() == Some((1, false)), "owner-loss completion lost retirement or reopened admission");
     println!("WHITEBOARD_CLIENT_OWNER_LOSS_FINISHED generation=1 pid={pid} task_finished=true task_joined={joined}");
     std::io::stdout().flush()?;
     observer_ack(b"observed\n").await?;
@@ -346,17 +339,15 @@ async fn published_owner_loss() -> ResultType<()> {
     Ok(())
 }
 
-async fn client_generation() -> ResultType<()> {
+async fn exercise_client_generation(mut owner: crate::whiteboard::WhiteboardClientController, case: String) -> ResultType<()> {
     use crate::whiteboard::{probe_whiteboard_client_state, probe_whiteboard_helper, probe_whiteboard_helper_exit, probe_whiteboard_helper_endpoint,
-        register_whiteboard, unregister_whiteboard, update_whiteboard_cursor, WhiteboardClientOwner, Cursor};
-    let case = std::env::var("WHITEBOARD_PROBE_CLIENT_GENERATION")?;
-    if case == "launch-owner-loss" { return launch_owner_loss().await; }
-    if case == "owner-loss" { return published_owner_loss().await; }
+        register_whiteboard, unregister_whiteboard, update_whiteboard_cursor, Cursor};
+    if case == "launch-owner-loss" { return launch_owner_loss(owner).await; }
+    if case == "owner-loss" { return published_owner_loss(owner).await; }
     ensure!(matches!(case.as_str(), "shutdown" | "replacement" | "withdrawal" | "helper-close" | "helper-crash" | "root-shutdown" | "parent-loss"), "invalid client case");
     let generations = if matches!(case.as_str(), "shutdown" | "root-shutdown" | "parent-loss") { 1 } else { 2 };
     ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)
         && probe_whiteboard_helper() == (None, false), "client fixture is not initially empty");
-    let mut owner = WhiteboardClientOwner::new()?;
     let mut inspect = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::user_defined1())?;
     let root_shutdown = tokio::sync::Notify::new();
     register_whiteboard(7);
@@ -519,10 +510,7 @@ async fn client_generation() -> ResultType<()> {
                 result
             },
             async {
-                tokio::select! {
-                    _ = root_shutdown.notified() => {},
-                    _ = owner.run() => bail!("production whiteboard root ended unexpectedly"),
-                }
+                root_shutdown.notified().await;
                 owner.stop_and_join().await;
                 ensure!(probe_whiteboard_client_state() == ("Idle", 0, false, 0)
                     && probe_whiteboard_helper() == (None, false), "production root drain returned before retirement");
@@ -533,10 +521,7 @@ async fn client_generation() -> ResultType<()> {
         );
         root_result.and(result)
     } else {
-        tokio::select! {
-            result = exercise => result,
-            _ = owner.run() => Err(hbb_common::anyhow::anyhow!("production whiteboard root ended unexpectedly")),
-        }
+        exercise.await
     };
     for id in [7, 8, 9, 10, 11, 12] { unregister_whiteboard(id); }
     owner.stop_and_join().await;
@@ -547,6 +532,40 @@ async fn client_generation() -> ResultType<()> {
     println!("WHITEBOARD_CLIENT_CLEANUP case={case} generation={generations} pid={pid} status=0 owner=production child=normal-exit-reaped task=joined");
     std::io::stdout().flush()?;
     Ok(())
+}
+
+async fn client_generation() -> ResultType<()> {
+    let case = std::env::var("WHITEBOARD_PROBE_CLIENT_GENERATION")?;
+    let mut worker = crate::ipc::spawn_desktop_ipc_worker()?;
+    let (readiness, completion) = worker.startup_receivers();
+    let (startup, completed) = tokio::select! {
+        ready = readiness => (ready.map_err(|_| "desktop IPC readiness disappeared".to_owned())
+            .and_then(|ready| ready), None),
+        outcome = completion => (Err("desktop IPC ended before fixture readiness".to_owned()),
+            Some(outcome.unwrap_or_else(|_| Err("desktop IPC outcome disappeared".to_owned())))),
+    };
+    let result = match startup {
+        Ok(controller) => {
+            async {
+                println!("WHITEBOARD_CLIENT_PROCESS_ROOT_READY worker=desktop-ipc controller=retained");
+                std::io::stdout().flush()?;
+                exercise_client_generation(controller, case).await
+            }.await
+        }
+        Err(err) => Err(hbb_common::anyhow::anyhow!(err)),
+    };
+    crate::server::request_graceful_shutdown();
+    let completion = match completed {
+        Some(outcome) => outcome,
+        None => worker.wait_for_completion().await,
+    };
+    let joined = worker.join().await;
+    result?;
+    completion.map_err(|err| hbb_common::anyhow::anyhow!(err))?;
+    joined.map_err(|err| hbb_common::anyhow::anyhow!(err))?;
+    println!("WHITEBOARD_CLIENT_PROCESS_ROOT_JOINED worker=desktop-ipc outcome=ok thread=joined");
+    std::io::stdout().flush()?;
+    observer_ack(b"ipc-joined\n").await
 }
 
 pub async fn run() -> ResultType<()> {

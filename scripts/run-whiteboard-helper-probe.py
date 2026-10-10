@@ -402,6 +402,27 @@ def observe_owner(executable, environment, display, server, parent_exit=False):
                 sys.stderr.write(log_path.read_text())
 
 
+def desktop_ipc_thread(owner):
+    matches = []
+    for task in Path(f"/proc/{owner.pid}/task").iterdir():
+        try:
+            if task.joinpath("comm").read_bytes().rstrip(b"\n") == b"rustdesk-desktop-ipc"[:15]:
+                matches.append(task)
+        except FileNotFoundError:
+            continue  # Another owned auxiliary thread may finish during enumeration.
+    require(len(matches) == 1 and owner.poll() is None, "fixture has no unique live desktop IPC worker")
+    task = matches[0]
+    return task, task.joinpath("stat").read_text().rsplit(")", 1)[1].split()[19]
+
+
+def desktop_ipc_thread_alive(identity):
+    task, started = identity
+    try:
+        return task.joinpath("stat").read_text().rsplit(")", 1)[1].split()[19] == started
+    except FileNotFoundError:
+        return False
+
+
 def observe_client_generation(executable, environment, display, server, case):
     environment = dict(environment, WHITEBOARD_PROBE_CLIENT_GENERATION=case)
     log_path = Path(f"/tmp/whiteboard-client-{case}.log")
@@ -414,6 +435,7 @@ def observe_client_generation(executable, environment, display, server, case):
         owner_fd, selector = None, None
         pending, helpers, active = b"", [], None
         cleaned, idle_seen, root_joined, parent_killed = False, False, False, False
+        process_root, ipc_joined = None, False
 
         def helper_alive(helper):
             poller = select.poll()
@@ -456,7 +478,20 @@ def observe_client_generation(executable, environment, display, server, case):
                     owner_dropped = re.fullmatch(r"WHITEBOARD_CLIENT_OWNER_LOSS_DROPPED generation=1 pid=([1-9][0-9]*) admission=refused replacement=refused", text)
                     owner_finished = re.fullmatch(r"WHITEBOARD_CLIENT_OWNER_LOSS_FINISHED generation=1 pid=([1-9][0-9]*) task_finished=true task_joined=(true|false)", text)
                     owner_done = re.fullmatch(r"WHITEBOARD_CLIENT_OWNER_LOSS_DONE generation=1 pid=([1-9][0-9]*) parent=alive admission=refused replacement=refused", text)
-                    if ready:
+                    if text == "WHITEBOARD_CLIENT_PROCESS_ROOT_READY worker=desktop-ipc controller=retained":
+                        require(process_root is None and not helpers, "process-root readiness repeated or followed helper startup")
+                        process_root = desktop_ipc_thread(owner)
+                        print(f"WHITEBOARD_CLIENT_PROCESS_ROOT_OBSERVED tid={process_root[0].name} worker=desktop-ipc state=live", flush=True)
+                    elif text == "WHITEBOARD_CLIENT_PROCESS_ROOT_JOINED worker=desktop-ipc outcome=ok thread=joined":
+                        require(case != "parent-loss" and process_root is not None and not ipc_joined
+                                and cleaned and not process_root[0].exists() and owner.poll() is None,
+                                "desktop IPC join missed retired helpers or exact native thread absence")
+                        ipc_joined = True
+                        owner.stdin.write(b"ipc-joined\n")
+                        owner.stdin.flush()
+                    elif ready:
+                        require(process_root is not None and desktop_ipc_thread_alive(process_root),
+                                "helper startup has no retained native process root")
                         generation, pid = map(int, ready.groups())
                         require(not cleaned and len(helpers) < generations
                                 and generation == len(helpers) + 1
@@ -578,6 +613,7 @@ def observe_client_generation(executable, environment, display, server, case):
                         require(case == "owner-loss" and active is not None
                                 and owner_finished.group(1) == str(active["pid"])
                                 and active["phases"] == ["draw", "drop-requested", "dropped"]
+                                and active["returned"] and desktop_ipc_thread_alive(process_root)
                                 and owner.poll() is None, "owner-loss task completion order differs")
                         death_deadline = time.monotonic() + 1
                         while helper_alive(active) and time.monotonic() < death_deadline:
@@ -606,11 +642,19 @@ def observe_client_generation(executable, environment, display, server, case):
                     elif owner_done:
                         require(case == "owner-loss" and active is not None and not cleaned
                                 and owner_done.group(1) == str(active["pid"]) and active["reaped"]
-                                and not helper_alive(active) and owner.poll() is None,
+                                and not helper_alive(active) and desktop_ipc_thread_alive(process_root)
+                                and owner.poll() is None,
                                 "owner-loss final observation lost exact retirement")
                         cleaned = True
                         owner.stdin.write(b"done\n")
                         owner.stdin.flush()
+                    elif text == "returned" and case == "owner-loss":
+                        require(active is not None and active["phases"] == ["draw", "drop-requested", "dropped"]
+                                and not active["returned"] and helper_alive(active) and owner.poll() is None
+                                and desktop_ipc_thread_alive(process_root), "controller loss missed joined-helper CLI return")
+                        display.require_destroyed(active["window"])
+                        active["returned"] = True
+                        # Retain the native CLI barrier so production owns the deadline termination/reap.
                     elif text == "returned":
                         expected_phases = (["draw", "kill"] if case == "parent-loss" else
                                            ["draw", "stop"] if case == "root-shutdown" else
@@ -695,7 +739,8 @@ def observe_client_generation(executable, environment, display, server, case):
                         cleaned = True
                     else:
                         raise RuntimeError("unexpected global client control output")
-            require(not pending and cleaned and (not needs_idle or idle_seen)
+            require(not pending and cleaned and process_root is not None and (ipc_joined or case == "parent-loss")
+                    and (not needs_idle or idle_seen)
                     and owner.wait(timeout=5) == (-signal.SIGKILL if case == "parent-loss" else 0),
                     "global client fixture did not complete normal cleanup")
         finally:
@@ -742,7 +787,7 @@ def observe_client_generation(executable, environment, display, server, case):
     elif case == "helper-crash":
         print("WHITEBOARD_CLIENT_HELPER_LOSS=pass helper=pidfd-sigkill parent=alive old=production-reaped task=joined window=badwindow endpoint=refused-rebindable idle_observation_ms=500 demand=retained retry=later-explicit-same-id generations=2 pixels=both-generations", flush=True)
     elif case == "owner-loss":
-        print("WHITEBOARD_CLIENT_OWNER_LOSS=pass boundary=running-published-helper root=dropped parent=alive task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused", flush=True)
+        print("WHITEBOARD_CLIENT_OWNER_LOSS=pass boundary=running-published-helper controller=dropped process-root=desktop-ipc-retained parent=alive task=joined helper=terminated-reaped window=badwindow endpoint=refused-rebindable replacement=refused", flush=True)
     else:
         raise RuntimeError("unknown global client scenario")
 
@@ -755,6 +800,7 @@ def observe_launch_owner_loss(executable, environment, display, server):
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log)
         helper_fd, pid, window, address = None, None, None, None
         pending, stage = b"", 0
+        process_root = None
 
         def helper_alive():
             poller = select.poll()
@@ -782,8 +828,18 @@ def observe_launch_owner_loss(executable, environment, display, server):
                         text = line.decode("ascii")
                         print(text, flush=True)
                         blocked = re.fullmatch(r"WHITEBOARD_CLIENT_LAUNCH_BLOCKED generation=1 pid=([1-9][0-9]*) address_hex=([0-9a-f]+)", text)
-                        if blocked:
-                            require(stage == 0 and owner.poll() is None, "late launch barrier repeated or parent exited")
+                        if text == "WHITEBOARD_CLIENT_PROCESS_ROOT_READY worker=desktop-ipc controller=retained":
+                            require(process_root is None and stage == 0, "late launch process-root readiness differs")
+                            process_root = desktop_ipc_thread(owner)
+                            print(f"WHITEBOARD_CLIENT_PROCESS_ROOT_OBSERVED tid={process_root[0].name} worker=desktop-ipc state=live", flush=True)
+                        elif text == "WHITEBOARD_CLIENT_PROCESS_ROOT_JOINED worker=desktop-ipc outcome=ok thread=joined":
+                            require(stage == 4 and process_root is not None and not process_root[0].exists()
+                                    and owner.poll() is None and not helper_alive(), "late launch process root did not join")
+                            owner.stdin.write(b"ipc-joined\n")
+                            stage = 5
+                        elif blocked:
+                            require(stage == 0 and process_root is not None and desktop_ipc_thread_alive(process_root)
+                                    and owner.poll() is None, "late launch barrier repeated or parent exited")
                             pid = int(blocked.group(1))
                             address = bytes.fromhex(blocked.group(2))
                             require(address.startswith(b"\0") and len(address) <= 108, "late helper address differs")
@@ -802,7 +858,7 @@ def observe_launch_owner_loss(executable, environment, display, server):
                                     "owner drop did not leave the real creation operation retained")
                             owner.stdin.write(b"release\n")
                             stage = 2
-                        elif text == f"WHITEBOARD_CLIENT_LAUNCH_FINISHED generation=1 pid={pid} phase=Stopping task=false helper=unpublished replacement=refused":
+                        elif text == f"WHITEBOARD_CLIENT_LAUNCH_FINISHED generation=1 pid={pid} phase=Idle task=false launch=joined helper=unpublished replacement=refused":
                             require(stage == 2 and owner.poll() is None and not helper_alive()
                                     and not Path(f"/proc/{pid}").exists(),
                                     "finished cancelled launch retained a live or unreaped helper while parent stayed alive")
@@ -819,15 +875,16 @@ def observe_launch_owner_loss(executable, environment, display, server):
                                 listener.bind(address)
                             owner.stdin.write(b"observed\n")
                             stage = 3
-                        elif text == f"WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS_DONE generation=1 pid={pid} parent=alive launch=finished admission=refused":
-                            require(stage == 3 and owner.poll() is None and not helper_alive(),
+                        elif text == f"WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS_DONE generation=1 pid={pid} parent=alive launch=joined admission=refused":
+                            require(stage == 3 and owner.poll() is None and not helper_alive()
+                                    and desktop_ipc_thread_alive(process_root),
                                     "late launch final observation lost parent or child identity")
                             owner.stdin.write(b"done\n")
                             stage = 4
                         else:
                             raise RuntimeError("unexpected late launch control output")
                         owner.stdin.flush()
-                require(not pending and stage == 4 and owner.wait(timeout=5) == 0,
+                require(not pending and stage == 5 and owner.wait(timeout=5) == 0,
                         "late launch fixture did not finish normally after independent retirement")
         finally:
             owner.stdin.close()
@@ -852,7 +909,7 @@ def observe_launch_owner_loss(executable, environment, display, server):
                     os.close(helper_fd)
             if owner.returncode != 0:
                 sys.stderr.write(log_path.read_text())
-    print("WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS=pass boundary=created-before-handoff root=dropped parent=alive launch=finished helper=exited-reaped window=badwindow endpoint=refused-rebindable replacement=refused", flush=True)
+    print("WHITEBOARD_CLIENT_LAUNCH_OWNER_LOSS=pass boundary=created-before-handoff controller=dropped process-root=desktop-ipc-retained parent=alive launch=joined helper=exited-reaped window=badwindow endpoint=refused-rebindable replacement=refused", flush=True)
 
 
 def main():
@@ -892,6 +949,7 @@ def main():
                 observe_client_generation(executable, environment, display, server, case)
             observe_launch_owner_loss(executable, environment, display, server)
             observe_client_generation(executable, environment, display, server, "owner-loss")
+            print("WHITEBOARD_CLIENT_PROCESS_ROOT=pass owner=desktop-ipc ready=9 joined=8 parent-loss=kernel-exit helper-retirement=before-thread-join", flush=True)
             require(artifact_digest(executable) == digest and server.poll() is None,
                     "compiled helper artifact or Xvfb changed during execution")
         finally:

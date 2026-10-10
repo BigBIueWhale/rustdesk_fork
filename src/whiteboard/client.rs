@@ -22,7 +22,7 @@ use std::{
     future::{poll_fn, Future},
     panic::AssertUnwindSafe,
     pin::Pin,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     task::{Context, Poll},
     time::{Duration, Instant},
 };
@@ -259,6 +259,7 @@ struct WhiteboardClientState {
     lifecycle: WhiteboardWorkerLifecycle,
     sender: Option<(u64, Sender<WhiteboardIpcCommand>)>,
     owner: WhiteboardOwnerAdmission,
+    retirement: Option<Arc<CancellationToken>>,
     generation: Option<WhiteboardGeneration>,
     #[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
     last_reaped_helper: Option<(u64, bool)>,
@@ -271,6 +272,7 @@ impl Default for WhiteboardClientState {
             lifecycle: WhiteboardWorkerLifecycle::default(),
             sender: None,
             owner: WhiteboardOwnerAdmission::Absent,
+            retirement: None,
             generation: None,
             #[cfg(all(target_os = "linux", feature = "linux-whiteboard-lifecycle-probe"))]
             last_reaped_helper: None,
@@ -339,29 +341,41 @@ impl WhiteboardHelperProcess {
     }
 }
 
-/// Polled inline by the existing controlled-server root, never by the command task it joins.
-pub(crate) struct WhiteboardClientOwner {
+/// Retained and polled by the desktop IPC worker through exact generation retirement.
+pub(crate) struct WhiteboardClientRoot {
     timer: Interval,
+    retirement: Arc<CancellationToken>,
 }
 
-impl WhiteboardClientOwner {
-    pub(crate) fn new() -> ResultType<Self> {
+/// The controlled server's admission lease; losing it does not lose the resource owner.
+pub(crate) struct WhiteboardClientController {
+    retirement: Arc<CancellationToken>,
+}
+
+impl WhiteboardClientRoot {
+    pub(crate) fn new() -> ResultType<(Self, WhiteboardClientController)> {
         tokio::runtime::Handle::try_current()?;
         let mut state = WHITEBOARD_CLIENT.lock().unwrap();
-        if state.owner != WhiteboardOwnerAdmission::Absent || state.generation.is_some()
+        if state.owner != WhiteboardOwnerAdmission::Absent || state.retirement.is_some() || state.generation.is_some()
             || state.lifecycle.phase != WhiteboardWorkerPhase::Idle {
             bail!("whiteboard client already has an owner or unreconciled generation");
         }
+        let retirement = Arc::new(CancellationToken::new());
+        state.retirement = Some(retirement.clone());
         state.owner = WhiteboardOwnerAdmission::Serving;
         let mut timer = tokio::time::interval(Duration::from_millis(100));
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        Ok(Self { timer })
+        let controller = WhiteboardClientController { retirement: retirement.clone() };
+        Ok((Self { timer, retirement }, controller))
     }
 
     async fn observe(&mut self) -> bool {
         poll_fn(|cx| {
             let mut state = WHITEBOARD_CLIENT.lock().unwrap();
             poll_whiteboard_generation(&mut state, cx);
+            if state.generation.is_none() && state.owner != WhiteboardOwnerAdmission::Serving {
+                self.retirement.cancel();
+            }
             Poll::Ready(state.generation.is_some())
         }).await
     }
@@ -376,36 +390,63 @@ impl WhiteboardClientOwner {
         }
     }
 
-    pub(crate) fn begin_shutdown(&mut self) {
-        let mut state = WHITEBOARD_CLIENT.lock().unwrap();
-        state.owner = WhiteboardOwnerAdmission::Draining;
-        state.sender.take();
-        state.conns.clear();
-        if let Some(owner) = state.generation.as_ref() {
-            let generation = owner.generation;
-            owner.cancellation.cancel();
-            state.lifecycle.retire_generation(generation);
-        }
-        WHITEBOARD_OWNER_WAKE.notify_one();
-    }
-
     pub(crate) async fn stop_and_join(&mut self) {
-        self.begin_shutdown();
+        {
+            let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+            close_whiteboard_admission(&mut state, WhiteboardOwnerAdmission::Draining);
+        }
         while self.observe().await { self.timer.tick().await; }
     }
 }
 
-impl Drop for WhiteboardClientOwner {
+fn close_whiteboard_admission(state: &mut WhiteboardClientState, admission: WhiteboardOwnerAdmission) {
+    state.owner = admission;
+    state.sender.take();
+    state.conns.clear();
+    if let Some(owner) = state.generation.as_ref() {
+        let generation = owner.generation;
+        owner.cancellation.cancel();
+        state.lifecycle.retire_generation(generation);
+    }
+    WHITEBOARD_OWNER_WAKE.notify_one();
+}
+
+impl WhiteboardClientController {
+    pub(crate) fn begin_shutdown(&mut self) {
+        let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+        if state.retirement.as_ref().is_some_and(|retirement| Arc::ptr_eq(retirement, &self.retirement)) {
+            close_whiteboard_admission(&mut state, WhiteboardOwnerAdmission::Draining);
+        }
+    }
+
+    pub(crate) async fn stop_and_join(&mut self) {
+        self.begin_shutdown();
+        self.retirement.cancelled().await;
+    }
+}
+
+impl Drop for WhiteboardClientController {
+    fn drop(&mut self) {
+        let mut state = WHITEBOARD_CLIENT.lock().unwrap();
+        if state.owner == WhiteboardOwnerAdmission::Serving
+            && state.retirement.as_ref().is_some_and(|retirement| Arc::ptr_eq(retirement, &self.retirement)) {
+            close_whiteboard_admission(&mut state, WhiteboardOwnerAdmission::Orphaned);
+            log::error!("whiteboard controller was lost; the desktop IPC owner will retire its generation");
+        }
+    }
+}
+
+impl Drop for WhiteboardClientRoot {
     fn drop(&mut self) {
         let mut state = WHITEBOARD_CLIENT.lock().unwrap();
         if state.generation.is_none() {
             state.owner = WhiteboardOwnerAdmission::Absent;
+            state.retirement.take();
+            self.retirement.cancel();
             return;
         }
-        state.owner = WhiteboardOwnerAdmission::Orphaned;
-        state.sender.take();
+        close_whiteboard_admission(&mut state, WhiteboardOwnerAdmission::Orphaned);
         if let Some(owner) = state.generation.as_mut() {
-            owner.cancellation.cancel();
             if let Some(helper) = owner.helper.as_mut() {
                 match helper.try_reap_exited() {
                     Ok(false) => if let Err(err) = helper.terminate() {
@@ -415,8 +456,6 @@ impl Drop for WhiteboardClientOwner {
                     Err(err) => log::error!("whiteboard owner cancellation could not observe its helper: {err}"),
                 }
             }
-            let generation = owner.generation;
-            state.lifecycle.retire_generation(generation);
         }
         // Retain all handles in the locked owner; uncertainty can never admit a replacement.
         log::error!("whiteboard root was dropped without joining its generation; replacement is refused");

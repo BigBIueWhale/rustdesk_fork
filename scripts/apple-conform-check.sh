@@ -3851,53 +3851,6 @@ else
   note "ok  R-S11e-55 macOS installs fallible cancellation-only termination handling after root proof and before protected listener admission; the existing listener owner drains all accepted service/password work"
 fi
 
-echo "== (2b-iv-a-0e) desktop controlled-server signal/listener lifecycle ownership (R-S11ap/R-S11e-56) =="
-r_s11e56=
-python3 "$REPO/scripts/verify-desktop-ipc-lifecycle.py" --repo "$REPO" \
-  || r_s11e56="$r_s11e56 controlled-server-lifecycle-ownership-invalid"
-if [ -n "$r_s11e56" ]; then
-  echo "  FAIL R-S11e-56 desktop controlled-server signal/listener lifecycle:$r_s11e56"
-  rc=1
-else
-  note "ok  R-S11e-56 macOS/shared desktop installs signals before admission and retains the public listener under the R-S11as owner"
-fi
-
-echo "== (2b-iv-a-0f) non-returning graceful-shutdown finalizer ownership (R-S11aq/R-S11e-57) =="
-r_s11e57=
-python3 "$REPO/scripts/verify-desktop-ipc-lifecycle.py" --repo "$REPO" \
-  || r_s11e57="$r_s11e57 shutdown-finalizer-ownership-invalid"
-if [ -n "$r_s11e57" ]; then
-  echo "  FAIL R-S11e-57 graceful-shutdown finalizer ownership:$r_s11e57"
-  rc=1
-else
-  note "ok  R-S11e-57 the macOS/shared finalizer is non-returning and has one post-join retained owner"
-fi
-
-echo "== (2b-iv-a-0g) protected Unix service IPC foreground lifecycle ownership (R-S11ar/R-S11e-58) =="
-r_s11e58=
-python3 "$REPO/scripts/verify-desktop-ipc-lifecycle.py" --repo "$REPO" \
-  || r_s11e58="$r_s11e58 protected-service-outcome-ownership-invalid"
-grep -qF 'fn r_s11e58_protected_service_ipc_returns_listener_failure_to_its_owner()' "$REPO/src/ipc.rs" \
-  || r_s11e58="$r_s11e58 focused-regression-missing"
-if [ -n "$r_s11e58" ]; then
-  echo "  FAIL R-S11e-58 protected service IPC lifecycle ownership:$r_s11e58"
-  rc=1
-else
-  note "ok  R-S11e-58 macOS protected IPC returns its complete post-drain outcome to the synchronous service entry"
-fi
-
-echo "== (2b-iv-a-0h) desktop local-IPC readiness and retained native-worker ownership (R-S11as/R-S11e-59) =="
-r_s11e59=
-python3 "$REPO/scripts/verify-desktop-ipc-lifecycle.py" --repo "$REPO" \
-  || r_s11e59="$r_s11e59 desktop-ipc-lifecycle-semantic-invalid"
-python3 "$REPO/scripts/verify-desktop-ipc-lifecycle.py" --repo "$REPO" --self-test \
-  || r_s11e59="$r_s11e59 desktop-ipc-lifecycle-mutations-invalid"
-if [ -n "$r_s11e59" ]; then
-  echo "  FAIL R-S11e-59 desktop IPC lifecycle ownership:$r_s11e59"
-  rc=1
-else
-  note "ok  R-S11e-59 macOS/shared desktop local IPC is ready before public admission and exactly joined before the sole finalizer"
-fi
 echo "== (2b-iv-a-1) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="
 r_s11e34=
 hbb_macos_descriptor_policy=$(awk '/const MAX_MACOS_DESCRIPTOR_LIMIT/,/#\[cfg\(test\)\]/' "$REPO/libs/hbb_common/src/platform/macos.rs")

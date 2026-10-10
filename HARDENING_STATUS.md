@@ -4491,9 +4491,11 @@ invariant and signal setup before admission, create one fallible named native IP
 required local-listener readiness before starting the public listener, observe cancellation/signal/public-
 listener/IPC completion in one owner, and join the exact listener and IPC thread before the sole non-returning
 desktop finalizer. Protected Linux/macOS service IPC instead drains and returns its outcome to its foreground
-owner. The focused source invariant guards that topology and R-S11e-58 has a pure returned-outcome regression;
-neither proves the installed setup/failure/stop/restart/drain/exit/resource scenarios required by the OPEN
-matrix.
+owner. IPC readiness now transfers the whiteboard admission controller while that worker retains its
+resource driver through exact generation retirement. The 416-line/22-mutation lifecycle wording checker
+and duplicate shared/Apple calls are deleted; source ordering did not execute any task/thread or OS drain.
+R-S11e-58's executable returned-outcome regression remains. Current native setup/failure/stop/restart,
+accepted-transaction drain, sole finalizer, installed and resource acceptance remain OPEN.
 
 ### Source closure and supersession index
 
@@ -12083,9 +12085,9 @@ or fix for that defect.
 
 ### R-S11ho/R-S11e-252 — exact-generation whiteboard client worker ownership
 
-**Disposition: named Linux native subsets and nine executable regressions passed.
-Published-helper controller Drop leaves unreaped/unjoined resources; correction and full
-lifecycle, installed/platform and resource acceptance remain OPEN.**
+**Disposition: controller/resource ownership split implemented; current native correction
+acceptance pending. Earlier named subsets passed; published-helper Drop failed on the old
+source. Full lifecycle, installed/platform and resource acceptance remain OPEN.**
 
 **Current source:** `src/whiteboard/client.rs` locks registrations, sender, retained launch/task
 handles, helper and Idle/Starting/Running/Stopping in one `WhiteboardClientState`. Checked
@@ -12103,7 +12105,11 @@ hot path uses fixed storage and a borrowed sender. Token/parent proof, parent-de
 deadline writes remain; split globals, detached workers, nested runtimes, `CHILD_PROCESS` and
 tray launching are absent.
 
-The existing `direct_service.rs` root polls `WhiteboardClientOwner`. Registration reserves;
+The existing desktop IPC worker polls `WhiteboardClientRoot`; its readiness transfers a
+`WhiteboardClientController` admission lease to `direct_service.rs`. One retained Arc identity
+binds that controller and its terminal signal to the exact resource root; stale controllers
+cannot close a later owner. Controller Drop closes registration/clears demand/cancels, while
+the IPC worker retains the driver through reap/join. Registration reserves;
 one retained `spawn_blocking` job creates/publishes under the admission/generation lock.
 Refused handoff retains and retires the helper before returning a process-free status.
 Unix `Child::try_wait` reaps; Windows retains its creation-time kill-on-close job/process
@@ -12111,8 +12117,8 @@ through process exit and zero-job accounting. The command task cannot discard it
 release its generation or start a successor. Root shutdown closes registration/cancels before
 listener drain and joins whiteboard before final shutdown. The 3s deadline initiates cancellation
 or exact termination; uncertainty retains handles/Stopping and refuses replacement.
-Unexpected Drop refuses replacement; published-helper Drop leaves a dead helper unreaped
-and a completed command task unjoined while the parent remains alive.
+Controller shutdown awaits that root's completion signal. Unexpected resource-root loss
+retains uncertainty/refuses replacement; full-root panic/release-abort acceptance remains OPEN.
 
 **Latest accepted native Linux profile:** source `064ea8eb5f3abbeb980123cd3ad8880481a288e9`,
 tree `b1933b285320c3c5dd9b2495ba4d4e271c586b96`. Command:
@@ -12159,29 +12165,31 @@ blocking work through abort. Artifact
 `c0819074157d14c015174da766f97cdc43e2e9c5e320bae0013c7b04830fc49c`;
 serial `android-rust-lifecycle-tests-run.7GY33ktZnE.serial.log`,69782bytes, SHA-256
 `b0480246664a5845966bc993c006fa341e0e56ee6699dbb3b287ead9734a8124`.
-The newer native profile does not rerun this shard; its production client bytes are unchanged.
+This shard predates the current ownership split and must be rerun for it.
 
-**Published-helper controller Drop: native regression FAIL.** Source
+**Retained published-helper baseline: native regression FAIL.** Source
 `af6326f8238a37f577cafdcd7da4efe390ae8ef0`, tree
-`87b25c5703814597fd5d65c2c7cedb2a7b348bf8`, same command above, build155s.
-All eight receiver/eight prior global cases completed before the new case. After authenticated
-Running/two-owner pixels, actual controller Drop refused registration/replacement and retained
-the parent. Helper20290's exact pidfd was dead but `/proc/20290` remained; the command task
-was finished but its retained handle was unjoined. The read-only probe neither drove cleanup
-nor polled a JoinHandle. Independent observation reported
-`helper_dead=true helper_reaped=false task_joined=false`; the observer and guest failed,
-and the exact harness handle returned status1. Forced observer cleanup cannot pass.
-No correction, full-profile pass, post-run artifact equality or final input receipt is claimed.
-
-Pre-run artifact `e5ef3c21113179ef0d8f96be7db66cebc628f44712ee98fc8b67353e780ab083`;
+`87b25c5703814597fd5d65c2c7cedb2a7b348bf8`. After Running/two-owner pixels, actual Drop
+refused admission/replacement and retained the parent, but helper20290 was dead/unreaped
+and its command task finished/unjoined. Independent observation reported
+`helper_dead=true helper_reaped=false task_joined=false`; exact harness status1.
 serial `android-rust-lifecycle-tests-run.ygwwUldm9J.serial.log`,92114bytes, SHA-256
 `069825f0535a04f369957b104f9d5f8c974fa5ee2cfd07cf5e9f0919e3958d82`.
 Retained archive `.harness-state/verifier-vm/failed-whiteboard-owner-af6326f8-ygwwUldm9J`
-contains the exact candidate source tar and diagnostics. Zero-NIC VM/guest-only network-none
-execution, unchanged host endpoint inventories and joined owned-harness cleanup are recorded;
-disposable disks/sockets are absent. This establishes a lifetime defect, not a demonstrated
-privilege escalation. The original root owns the only cleanup driver; actual Drop removes it.
-The correction must provide retained ownership through native reap and external task join.
+preserves source/diagnostics; full receipt is in published
+`7cb6ed61baaa9711e21aa48db10e82f0291d3d2d:HARDENING_STATUS.md`
+and the external audit. This is a lifetime defect, not a demonstrated privilege escalation.
+
+**Current correction acceptance pending:** all nine global fixtures now retain the actual
+production desktop IPC worker and receive their controller through its readiness channel.
+No fixture drives generation cleanup. Independent observation pins that worker's native TID/
+start time, requires it alive through controller-loss retirement, then requires native thread
+absence after exact join before normal parent exit. Eight normal cases join it; parent SIGKILL
+has separate kernel-exit semantics. Late creation now requires external creation-job join,
+and published Drop requires command join/exact helper reap while parent/root stay alive.
+Guest/host demand strengthened unique receipts; forced observer cleanup cannot pass.
+No corrected native result or default-feature test rerun yet. Fixture setup now uses the
+production process root; no byte-identical-fixture A/B claim or full-root/platform closure.
 
 **Retained provenance:** full A/B failures, corrected runs, old artifacts and intermediate
 receipts are archived in the exact HO section of

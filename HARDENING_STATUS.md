@@ -853,7 +853,11 @@ closure follows from these component receipts.
   A separate fresh-process case now exercises final-cleanup worker creation under
   a real Linux soft thread limit: kernel EAGAIN, factory error, exact reservation
   retirement, same-ID reuse, explicit remembered failure, restored limit and
-  joined recovery thread before production shutdown. Native acceptance is pending.
+  joined recovery thread before production shutdown. Its first run reached the
+  expected exit observations, but aggregate acceptance failed in the existing map
+  control's native retirement assertion. The fixture now fences the producer's
+  actual X11 connection before effect checks and retains raw failure diagnostics;
+  corrected aggregate acceptance and attribution of that abort remain pending.
   Other worker spawn failures/panic, OS inhibition and broader shutdown remain OPEN.
   The earlier physical regression at `6a675303` passed; macOS recorded CapsLock
   retirement is source-corrected. Three Apple anchors compiled at `c5d0984a`;

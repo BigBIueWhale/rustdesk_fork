@@ -27,7 +27,7 @@ static int previous_revert, pointer_x, pointer_y;
 static XkbDescPtr baseline;
 static xdo_t *main_owner, *pending_owner;
 static KeyCode a_code, b_code, control_code, scratch_code;
-static int fault_key, armed, refusals, main_frees, child_frees;
+static int fault_key, armed, refusals, main_frees, child_frees, main_retiring;
 static Bool (*native_change_map)(Display *, XkbDescPtr, XkbMapChangesPtr);
 static Bool (*native_key_event)(Display *, unsigned int, Bool, unsigned long);
 static pthread_cond_t cursor_changed = PTHREAD_COND_INITIALIZER;
@@ -117,7 +117,15 @@ int xdo_free(xdo_t *context) {
   }
   assert(context && (context == pending_owner || context == main_owner));
   int child = context == pending_owner;
-  if (!child) assert(!pending_owner && child_frees == 1 && !armed);
+  if (!child) {
+    if (pending_owner || child_frees != 1 || armed) {
+      fprintf(stderr, "INPUT_LIFETIME_RETIREMENT_FAILURE pending=%d child_frees=%d main_frees=%d armed=%d\n",
+              pending_owner != NULL, child_frees, main_frees, armed);
+      assert(fflush(stderr) == 0);
+    }
+    assert(!pending_owner && child_frees == 1 && !armed);
+    main_retiring = 1;
+  }
   hook_release();
   int status = test_native_xdo_free(context);
   hook_acquire();
@@ -453,9 +461,18 @@ void input_lifetime_begin(int key_fault) {
   XWarpPointer(observer, None, window, 0, 0, 0, 0, 30, 30);
   XSync(observer, False);
   fault_key = key_fault != 0;
-  armed = refusals = main_frees = child_frees = 0;
+  armed = refusals = main_frees = child_frees = main_retiring = 0;
   scratch_code = 0;
   assert(no_events() && buttons(0));
+}
+
+void input_lifetime_sync(void) {
+  /* The queue has drained, but XFlush alone does not establish server completion.
+   * Fence the producer's retained Display without discarding any observed event. */
+  hook_acquire();
+  assert(main_owner && !main_retiring && !pending_owner && !armed);
+  XSync(main_owner->xdpy, False);
+  hook_release();
 }
 
 unsigned int input_lifetime_observe(int stage) {

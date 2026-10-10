@@ -1,6 +1,7 @@
 use super::*;
 use crate::input::{MOUSE_BUTTON_LEFT, MOUSE_TYPE_DOWN};
 use hbb_common::libloading::Library;
+use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 
 struct Worker {
@@ -91,10 +92,16 @@ fn input_workers_retire_pending_text_before_the_global_display() {
     assert_eq!(std::env::var("DISPLAY").unwrap(), ":97");
     let fault = std::env::var("INPUT_LIFETIME_FAULT").unwrap();
     assert!(fault == "map" || fault == "key");
+    let panic_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        writeln!(std::io::stderr(), "INPUT_LIFETIME_PANIC {info}").unwrap();
+        panic_hook(info);
+    }));
     // Only observation/fault hooks come from this handle. Production input opens
     // the same fixed protected provider through the ordinary libxdo-sys loader.
     let provider = unsafe { Library::new("/usr/lib/rustdesk-fork/libxdo.so.3").unwrap() };
     let begin = unsafe { *provider.get::<unsafe extern "C" fn(i32)>(b"input_lifetime_begin").unwrap() };
+    let sync = unsafe { *provider.get::<unsafe extern "C" fn()>(b"input_lifetime_sync").unwrap() };
     let observe = unsafe { *provider.get::<unsafe extern "C" fn(i32) -> u32>(b"input_lifetime_observe").unwrap() };
     let foreign = unsafe { *provider.get::<unsafe extern "C" fn()>(b"input_lifetime_foreign").unwrap() };
     let allow = unsafe { *provider.get::<unsafe extern "C" fn()>(b"input_lifetime_allow_retirement").unwrap() };
@@ -107,11 +114,14 @@ fn input_workers_retire_pending_text_before_the_global_display() {
             let mut first = Worker::new(9001);
             let mut second = Worker::new(9002);
             first.enqueue(key_a());
+            unsafe { sync(); }
             assert_eq!(unsafe { observe(0) }, 1);
             first.enqueue(button(9001));
+            unsafe { sync(); }
             assert_eq!(unsafe { observe(1) }, 1);
             second.enqueue(key_a());
             second.enqueue(button(9002));
+            unsafe { sync(); }
             assert_eq!(unsafe { observe(2) }, 1);
             let mut text = KeyEvent::new();
             text.mode = KeyboardMode::Legacy.into();
@@ -146,7 +156,6 @@ fn input_workers_retire_pending_text_before_the_global_display() {
         assert_eq!(tasks, baseline_tasks, "input worker was retained");
         assert_eq!(resources("/proc/self/fd"), baseline_fds);
     }
-    use std::io::Write;
     let mut receipt = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600)
         .open(format!("/tmp/input-lifetime-{fault}.receipt")).unwrap();
     writeln!(receipt, "INPUT_LIFETIME_NATIVE=pass fault={fault} generations=16 workers=2 producer=typed-queue worker=production loader=protected keys=exact-owner foreign=preserved pending=retired mapping=restored child_before_display=true descriptors=retired tasks=retired network_auth=false").unwrap();

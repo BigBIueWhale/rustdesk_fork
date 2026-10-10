@@ -12,8 +12,13 @@
 #undef xdo_enter_text_scalar
 #undef xdo_get_mouse_location
 #include <assert.h>
+#include <dirent.h>
 #include <dlfcn.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
 #include <pthread.h>
+#include <sys/stat.h>
 
 static pthread_mutex_t hook_lock = PTHREAD_MUTEX_INITIALIZER;
 static Display *observer;
@@ -29,6 +34,8 @@ static pthread_cond_t cursor_changed = PTHREAD_COND_INITIALIZER;
 static int cursor_mode, cursor_blocked, cursor_live, cursor_created, cursor_destroyed;
 static int cursor_inflight, cursor_queries, cursor_positions, cursor_order;
 static int cursor_x, cursor_y;
+static int root_exit_armed, root_late_admitted;
+static long root_cleanup_tid, root_wakelock_tid;
 
 static void hook_acquire(void) { assert(pthread_mutex_lock(&hook_lock) == 0); }
 static void hook_release(void) { assert(pthread_mutex_unlock(&hook_lock) == 0); }
@@ -195,6 +202,89 @@ void cursor_recorder_finish(void) {
   XSync(observer, False);
   assert(XCloseDisplay(observer) == 0);
   observer = NULL;
+}
+
+static long named_worker(const char *expected) {
+  DIR *tasks = opendir("/proc/self/task");
+  assert(tasks);
+  struct dirent *entry;
+  long found = 0;
+  while ((entry = readdir(tasks))) {
+    char *end;
+    long tid = strtol(entry->d_name, &end, 10);
+    if (*end || tid <= 0 || tid > INT_MAX) continue;
+    char path[128], name[64];
+    int length = snprintf(path, sizeof(path), "/proc/self/task/%ld/comm", tid);
+    assert(length > 0 && length < (int)sizeof(path));
+    FILE *file = fopen(path, "r");
+    if (!file) { assert(errno == ENOENT); continue; }
+    assert(fgets(name, sizeof(name), file));
+    assert(fclose(file) == 0);
+    name[strcspn(name, "\n")] = 0;
+    if (!strcmp(name, expected)) { assert(!found); found = tid; }
+  }
+  assert(closedir(tasks) == 0);
+  return found;
+}
+
+int connection_workers_ready(void) {
+  return named_worker("rustdesk-final-") > 0 && named_worker("rustdesk-wakelo") > 0;
+}
+
+void connection_workers_arm(void) {
+  long cleanup = named_worker("rustdesk-final-");
+  long wakelock = named_worker("rustdesk-wakelo");
+  assert(cleanup > 0 && wakelock > 0 && cleanup != wakelock);
+  hook_acquire();
+  assert(cursor_mode && cursor_live == 1 && cursor_positions > 0 && !root_exit_armed);
+  root_cleanup_tid = cleanup; root_wakelock_tid = wakelock;
+  cursor_blocked = 1;
+  root_exit_armed = 1;
+  hook_release();
+}
+
+void connection_workers_late_admission(int admitted) {
+  hook_acquire();
+  assert(root_exit_armed);
+  root_late_admitted = admitted != 0;
+  hook_release();
+}
+
+static int task_exists(long tid) {
+  char path[128];
+  int length = snprintf(path, sizeof(path), "/proc/self/task/%ld", tid);
+  assert(length > 0 && length < (int)sizeof(path));
+  struct stat metadata;
+  if (stat(path, &metadata) == 0) return 1;
+  assert(errno == ENOENT);
+  return 0;
+}
+
+/* Observe the real production process::exit boundary before the kernel kills other threads.
+ * Other cases leave this observer unarmed. This hook never reaps a Rust-owned resource. */
+__attribute__((destructor)) static void connection_workers_at_exit(void) {
+  hook_acquire();
+  int armed_exit = root_exit_armed;
+  int cursor_retired = cursor_live == 0 && cursor_inflight == 0
+      && cursor_created == 1 && cursor_destroyed == 1 && cursor_positions > 0;
+  int late_admitted = root_late_admitted;
+  hook_release();
+  if (!armed_exit) return;
+  int cleanup_alive = task_exists(root_cleanup_tid);
+  int wakelock_alive = task_exists(root_wakelock_tid);
+  printf("CONNECTION_WORKERS_OBSERVED cleanup_tid=%ld cleanup_alive=%d wakelock_tid=%ld wakelock_alive=%d cursor_retired=%d late_admitted=%d\n",
+         root_cleanup_tid, cleanup_alive, root_wakelock_tid, wakelock_alive,
+         cursor_retired, late_admitted);
+  assert(fflush(stdout) == 0);
+  if (cursor_retired) cursor_recorder_finish();
+  const char *receipt = !cleanup_alive && !wakelock_alive && cursor_retired && !late_admitted
+      ? "CONNECTION_WORKERS_NATIVE=pass boundary=graceful-process-exit final_remote=joined wakelock=joined cursor=retired late_remote=refused producer=resource-factory network_auth=false os_inhibitor=false\n"
+      : "CONNECTION_WORKERS_NATIVE=observed retirement=incomplete\n";
+  int fd = open("/tmp/input-lifetime-shutdown.receipt", O_WRONLY | O_CREAT | O_EXCL, 0600);
+  assert(fd >= 0);
+  size_t length = strlen(receipt);
+  assert(write(fd, receipt, length) == (ssize_t)length);
+  assert(close(fd) == 0);
 }
 
 static XkbDescPtr snapshot(void) {

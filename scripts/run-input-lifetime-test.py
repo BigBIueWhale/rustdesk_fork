@@ -82,18 +82,23 @@ def run(executable):
             while not socket.is_socket():
                 require(server.poll() is None and time.monotonic() < deadline, "Xvfb readiness failed")
                 time.sleep(0.05)
-            for fault in ["map", "key", "cursor"]:
+            for fault in ["map", "key", "cursor", "shutdown"]:
                 receipt_path = Path(f"/tmp/input-lifetime-{fault}.receipt")
                 require(not os.path.lexists(receipt_path), "native receipt exists")
                 test = (
+                    "server::connection::connection_workers_native_tests::graceful_process_exit_retires_connection_workers"
+                    if fault == "shutdown" else
                     "server::connection::cursor_lifetime_native_tests::remote_cursor_retirement_waits_for_native_query_and_thread_context"
                     if fault == "cursor" else
                     "server::connection::input_lifetime_native_tests::input_workers_retire_pending_text_before_the_global_display"
                 )
-                result = subprocess.run([
+                arguments = [
                     str(executable), test,
                     "--exact", "--ignored", "--color", "never", "--test-threads=1",
-                ], env={**environment, "INPUT_LIFETIME_FAULT": fault},
+                ]
+                if fault == "shutdown":
+                    arguments.append("--nocapture")
+                result = subprocess.run(arguments, env={**environment, "INPUT_LIFETIME_FAULT": fault},
                     text=True, capture_output=True, timeout=25)
                 print(result.stdout, end="", flush=True)
                 if result.stderr:
@@ -101,8 +106,12 @@ def run(executable):
                 if result.returncode != 0:
                     failures.append(f"{fault}: status={result.returncode}")
                     continue
-                require("test result: ok. 1 passed; 0 failed; 0 ignored;" in result.stdout,
-                        "exact native test did not execute")
+                if fault == "shutdown":
+                    require(result.stdout.count("CONNECTION_WORKERS_ENTERED boundary=graceful-process-exit network_auth=false") == 1,
+                            "production process-exit case did not execute")
+                else:
+                    require("test result: ok. 1 passed; 0 failed; 0 ignored;" in result.stdout,
+                            "exact native test did not execute")
                 fd = os.open(receipt_path, os.O_RDONLY | os.O_NOFOLLOW)
                 with os.fdopen(fd, "r") as receipt:
                     metadata = os.fstat(receipt.fileno())
@@ -112,6 +121,10 @@ def run(executable):
                             "native receipt authority differs")
                     observation = receipt.read(513)
                 expected = (
+                    "CONNECTION_WORKERS_NATIVE=pass boundary=graceful-process-exit final_remote=joined "
+                    "wakelock=joined cursor=retired late_remote=refused producer=resource-factory "
+                    "network_auth=false os_inhibitor=false\n"
+                    if fault == "shutdown" else
                     "CURSOR_RECORDER_NATIVE=pass generations=32 producer=authenticated-resource-admission "
                     "query=native-x11 sharing=one-worker retirement=exact-join successor=blocked-until-tls-drop "
                     "position=observed invalidation=before-finality descriptors=retired tasks=retired network_auth=false\n"
@@ -121,9 +134,10 @@ def run(executable):
                     "foreign=preserved pending=retired mapping=restored child_before_display=true "
                     "descriptors=retired tasks=retired network_auth=false\n"
                 )
-                require(observation == expected,
-                        "native observation differs")
                 print(observation, end="", flush=True)
+                if observation != expected:
+                    failures.append(f"{fault}: native retirement observation differs")
+                    continue
                 require(server.poll() is None, "Xvfb exited during the test")
         finally:
             if server.poll() is None:

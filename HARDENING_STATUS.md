@@ -826,6 +826,9 @@ closure follows from these component receipts.
   a new unattributed `127.0.0.1:9444` listener. Current Apple builds/native behavior,
   Windows, full shutdown/network/installed acceptance remain OPEN. Exact before and
   historical input/Apple receipts are retained in the audit and Git.
+  Root-worker retirement remains OPEN: graceful exit never joins the retained
+  final-Remote and wakelock threads, and Remote admission can reopen after stop.
+  A native process-exit fixture is prepared; before/after evidence is pending.
   Windows virtual-key up/repeat still resolves the foreground
   mapping before lease lookup; layout/desktop identity retention remains required.
 - Broader unmapped Unicode, native layouts/IMEs/widget text and delayed consumers;

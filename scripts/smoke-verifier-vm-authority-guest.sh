@@ -2603,6 +2603,7 @@ run_focused_rust_tests() {
                 src/server/input_service.rs src/server/connection.rs
                 src/server/input_lifetime_native_tests.rs
                 src/server/cursor_lifetime_native_tests.rs
+                src/server.rs src/server/connection_workers_native_tests.rs
                 scripts/run-input-lifetime-test.py scripts/test-input-lifetime-provider.c
                 libs/enigo/src/linux/xdo.rs libs/libxdo-sys-stub/src/lib.rs
                 libs/libxdo-sys-stub/native/xdo.c libs/libxdo-sys-stub/native/xdo.h
@@ -3127,7 +3128,7 @@ run_focused_rust_tests() {
                                 "$clipboard_artifact_sha" "$clipboard_executable"
                             python3 -I -S /source/scripts/run-input-lifetime-test.py "$clipboard_executable"
                             [ "$(sha256sum "$clipboard_executable" | cut -d " " -f 1)" = "$clipboard_artifact_sha" ]
-                            printf "INPUT_LIFETIME_ARTIFACT=pass sha256=%s executable=%s tests=3 unchanged=before-after\n" \
+                            printf "INPUT_LIFETIME_ARTIFACT=pass sha256=%s executable=%s tests=3 process_exit_cases=1 unchanged=before-after\n" \
                                 "$clipboard_artifact_sha" "$clipboard_executable"
                             exit 0
                         fi
@@ -3437,13 +3438,14 @@ run_focused_rust_tests() {
                 && [ "$(grep -Fc 'WHITEBOARD_LISTENER_CANCEL=' "$output")" -eq 1 ] \
                 || fail 'native whiteboard listener cancellation receipt differs'
         elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
-            [ "$(grep -Ec '^INPUT_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 unchanged=before-after$' "$output")" -eq 1 ] \
+            [ "$(grep -Ec '^INPUT_LIFETIME_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=3 process_exit_cases=1 unchanged=before-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fxc "INPUT_LIFETIME_PROVIDER=observed sha256=$input_provider_sha unchanged=before-after path=/usr/lib/rustdesk-fork/libxdo.so.3" "$output")" -eq 1 ] \
                 && [ "$(sha256sum <"$input_provider_installed/libxdo.so.3")" = "$input_provider_sha  -" ] \
                 && [ "$(grep -Fxc 'INPUT_LIFETIME_X11=pass server=owned network=none endpoint=absent cleanup=joined' "$output")" -eq 1 ] \
                 && [ "$(grep -Fxc 'test server::connection::input_lifetime_native_tests::input_workers_retire_pending_text_before_the_global_display ... ok' "$output")" -eq 2 ] \
                 && [ "$(grep -Fxc 'test server::connection::cursor_lifetime_native_tests::remote_cursor_retirement_waits_for_native_query_and_thread_context ... ok' "$output")" -eq 1 ] \
                 && [ "$(grep -Fxc 'CURSOR_RECORDER_NATIVE=pass generations=32 producer=authenticated-resource-admission query=native-x11 sharing=one-worker retirement=exact-join successor=blocked-until-tls-drop position=observed invalidation=before-finality descriptors=retired tasks=retired network_auth=false' "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc 'CONNECTION_WORKERS_NATIVE=pass boundary=graceful-process-exit final_remote=joined wakelock=joined cursor=retired late_remote=refused producer=resource-factory network_auth=false os_inhibitor=false' "$output")" -eq 1 ] \
                 || fail 'native input-lifetime artifact/provider/cleanup observations differ'
             for input_lifetime_fault in map key; do
                 [ "$(grep -Fxc "INPUT_LIFETIME_NATIVE=pass fault=$input_lifetime_fault generations=16 workers=2 producer=typed-queue worker=production loader=protected keys=exact-owner foreign=preserved pending=retired mapping=restored child_before_display=true descriptors=retired tasks=retired network_auth=false" "$output")" -eq 1 ] \
@@ -3580,7 +3582,8 @@ run_focused_rust_tests() {
             grep -E '^test server::connection::input_lifetime_native_tests::' "$output"
             grep -E '^CURSOR_RECORDER_NATIVE=' "$output"
             grep -E '^test server::connection::cursor_lifetime_native_tests::' "$output"
-            printf 'INPUT_LIFETIME_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-input-worker-global-text-lifetime rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            grep -E '^CONNECTION_WORKERS_(ENTERED|OBSERVED|NATIVE)[= ]' "$output"
+            printf 'INPUT_LIFETIME_VM=pass commit=%s tree=%s tests=%s process_exit_cases=1 target=linux-x86_64 scope=production-input-worker-global-text-lifetime rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = input-release ]; then

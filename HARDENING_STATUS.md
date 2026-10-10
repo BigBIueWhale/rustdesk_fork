@@ -15,7 +15,7 @@ estimate is the project metric; `--check` fails while the ledger exceeds it.
 Current normative specification identity:
 
 ```text
-4de43df21bb9c5070c8ca4fba8057ec5de4bbc7e833dac88057c7a5e8ec7ee6e  requirements.html
+c7f39dd3a9ef9fbc564e7503398b79f50cbf2b9d89b41cbd6b92215f335ab423  requirements.html
 ```
 
 ## Current Verdict
@@ -1949,7 +1949,7 @@ counts, per-run hashes, and superseded designs remain in Git history beginning w
 `57bcb529e0fa7477bb8a5ed542e013dfbb7bb56f`. Normative behavior is in R-S11, R-S11a, R-S11b, R-S11c,
 R-S11i, R-S16, R-S19, and Appendix C #25-#29 of `requirements.html`. The index below is retained for
 requirement and verifier traceability; it does not upgrade source evidence into native behavior.
-Current normative specification SHA-256: `4de43df21bb9c5070c8ca4fba8057ec5de4bbc7e833dac88057c7a5e8ec7ee6e  requirements.html`.
+Current normative specification SHA-256: `c7f39dd3a9ef9fbc564e7503398b79f50cbf2b9d89b41cbd6b92215f335ab423  requirements.html`.
 
 ### Current authority and source closure
 
@@ -4751,7 +4751,18 @@ exists only to make the current source disposition discoverable.
 - R-S11e-60 — permit-owned Linux service admission; raw-password UID lookup contract OPEN (R-S11at above)
 - R-S11e-61 — macOS privileged helper current-build binding
 - R-S11e-62 — macOS variadic file-creation ABI
-- R-S11e-63 — complete Windows production-listener DACL coverage
+- **R-S11aw/R-S11e-63 — explicit Windows listener DACL source policy;
+  native pipe admission OPEN.** The 893-line
+  `scripts/verify-windows-ipc-dacl-coverage.py` checker and its 30 in-memory substitutions
+  are deleted. Source-string inventories, ordering, debug text and verifier headings did
+  not exercise a Windows pipe, effective descriptor, token access check or cleanup.
+  The existing R-S11c-6 supplementary source gate retains explicit SDDL, narrow masks,
+  peer verification and unknown-postfix refusal. Production policy and the real Rust
+  classifier/unknown-listener/system-only/SDDL tests are unchanged, as are the desktop
+  URL wire test and separate shared/Apple URL gates. Windows kernel admission for owning,
+  active-session, unrelated and system principals, read-only duplex access, invalid
+  postfixes, system-only endpoints, session replacement, exact artifacts and cleanup
+  remains required. Linux source execution or a pure classifier test cannot close it.
 - R-S11e-64 — smoke container image, network, and dependency authority
 - R-S11e-65 — Windows token-switched child environment finality
 - R-S11e-66 — macOS administrator-script environment finality

@@ -8116,6 +8116,12 @@ smoke_source_gate=$ROOT/smoke-source-gate.sh
 {
     printf 'set -uo pipefail\ncd %q\nrc=0\n' "$VERIFY_REPO"
     awk '
+        /^echo "== [(]3b-iii-a3[)]/ { inside=1; starts++ }
+        /^echo "== [(]3b-iii-a4[)]/ { if (inside) { inside=0; ends++ } }
+        inside { print }
+        END { if (starts != 1 || ends != 1) exit 1 }
+    ' "$VERIFY_SCRIPT" || fail 'cannot extract the focused Windows pipe source gate'
+    awk '
         /^# [(]3b-iii-d9cn[)]/ { inside=1; starts++ }
         /^# [(]3b-iii-d9co[)]/ { if (inside) { inside=0; ends++ } }
         inside { print }
@@ -8144,6 +8150,7 @@ setpriv --reuid=4000 --regid=4000 --clear-groups \
     /bin/bash "$smoke_source_gate" \
     || fail 'focused smoke or release-dispatch source invariant failed'
 printf 'VERIFIER_VM_SMOKE_SOURCE_GATE=pass uid=4000 gate=focused native_acceptance=separate\n'
+printf 'VERIFIER_VM_WINDOWS_DACL_SOURCE_GATE=pass uid=4000 scope=supplementary native_windows=unexecuted\n'
 
 if /bin/bash "$RUST_AUDIT_SCRIPT" --self-test-vm-authority \
     >"$ROOT/root-rust-audit-entry.out" 2>"$ROOT/root-rust-audit-entry.err"; then

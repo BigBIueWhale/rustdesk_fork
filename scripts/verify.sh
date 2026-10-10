@@ -1445,13 +1445,18 @@ if grep -Eq 'psimple::Simple|Simple::read' src/ipc/pulse_audio.rs; then
 fi
 echo "  R-S11c-7/R-S11dy: focused authority and closed-wire tests ran; native capture and production-pair outcomes require their separate isolated runtime receipts"
 
-echo "== (3b-iii-a3) Windows named-pipe endpoints are DACL-bound (R-S11c-6) =="
+echo "== (3b-iii-a3) Supplementary Windows named-pipe source invariants (R-S11c-6/R-S11aw) =="
 r_s11c6=
 grep -q 'windows_ipc_listener_security_attributes(postfix)' src/ipc.rs              || r_s11c6="$r_s11c6 listener-not-dacl-routed"
 grep -q 'SecurityAttributes::from_sddl' src/ipc/auth.rs                            || r_s11c6="$r_s11c6 no-sddl-security-attributes"
 if awk '/pub\(crate\) fn windows_ipc_listener_security_attributes\(/,/^}/' src/ipc/auth.rs | grep -q 'SecurityAttributes::empty'; then
   r_s11c6="$r_s11c6 default-windows-listener-security-present"
 fi
+windows_listener_sddl=$(awk '/^pub\(crate\) fn windows_ipc_listener_sddl\(/,/^}/' src/ipc/auth.rs)
+grep -qF 'if !windows_ipc_postfix_uses_restricted_dacl(postfix)' <<<"$windows_listener_sddl" \
+  || r_s11c6="$r_s11c6 unknown-postfix-policy-gate-missing"
+grep -qF 'bail!("Unsupported Windows IPC endpoint has no explicit DACL policy")' <<<"$windows_listener_sddl" \
+  || r_s11c6="$r_s11c6 unknown-postfix-refusal-missing"
 grep -q 'WINDOWS_NAMED_PIPE_FULL_ACCESS_MASK: u32 = 0x001f_01ff' src/ipc/auth.rs  || r_s11c6="$r_s11c6 object-specific-full-access-mask-missing"
 grep -q '"D:P(D;;0x{:08x};;;NU)(A;;0x{:08x};;;SY)"' src/ipc/auth.rs             || r_s11c6="$r_s11c6 base-dacl-not-system-only"
 grep -q 'WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_019b' src/ipc/auth.rs || r_s11c6="$r_s11c6 narrow-client-mask-missing"
@@ -1468,7 +1473,7 @@ if grep -q 'String::from("D:P(A;;GA;;;SY)(A;;GA;;;BA)' src/ipc/auth.rs; then
   r_s11c6="$r_s11c6 administrators-in-base-dacl"
 fi
 if [ -n "$r_s11c6" ]; then echo "  FAIL R-S11c-6 Windows named-pipe DACL hardening:$r_s11c6"; rc=1; else
-  echo "  ok  R-S11c-6 Windows production named pipes use explicit SDDL DACLs, narrow client opens, server PID verification, and session-refreshed _service listeners"
+  echo "  ok  R-S11c-6/R-S11aw supplementary source invariants: explicit SDDL, unknown-postfix refusal, narrow client opens and peer checks retained; native Windows pipe admission remains OPEN"
 fi
 
 echo "== (3b-iii-a4) Windows terminal helper pipes bind to launched helper PID (R-S11c-12) =="
@@ -6864,19 +6869,6 @@ grep -qF 'macOS variadic file-creation ABI (R-S11av/R-S11e-62)' scripts/apple-co
   || r_s11e62="$r_s11e62 apple-source-conformance-gate-missing"
 if [ -n "$r_s11e62" ]; then echo "  FAIL R-S11e-62 macOS variadic file-creation ABI:$r_s11e62"; rc=1; else
   echo "  ok  R-S11e-62 macOS-reachable variadic creation modes are ABI-promoted while fixed-prototype mode_t calls remain exact"; fi
-
-# (3b-iii-d9cm) R-S11aw/R-S11e-63: every production Windows IPC
-# listener receives an explicit local DACL; unknown postfixes fail closed.
-echo "== (3b-iii-d9cm) Windows production-listener DACL coverage (R-S11aw/R-S11e-63) =="
-r_s11e63=
-python3 scripts/verify-windows-ipc-dacl-coverage.py --repo . \
-  || r_s11e63="$r_s11e63 windows-ipc-dacl-coverage-semantic-invalid"
-python3 scripts/verify-windows-ipc-dacl-coverage.py --repo . --self-test \
-  || r_s11e63="$r_s11e63 windows-ipc-dacl-coverage-mutations-invalid"
-python3 -c 'from pathlib import Path; p = Path("scripts/verify-windows-ipc-dacl-coverage.py"); compile(p.read_text(encoding="utf-8"), str(p), "exec")' \
-  || r_s11e63="$r_s11e63 validator-python-syntax-invalid"
-if [ -n "$r_s11e63" ]; then echo "  FAIL R-S11e-63 Windows production-listener DACL coverage:$r_s11e63"; rc=1; else
-  echo "  ok  R-S11e-63 every production Windows IPC listener uses explicit local SDDL and unknown postfixes fail closed"; fi
 
 # (3b-iii-d9cn) R-S11ax/R-S11dd/R-S11e-64/R-S11e-122 runtime smoke.
 # Supplementary source invariants bind the sole verifier-VM Docker authority,

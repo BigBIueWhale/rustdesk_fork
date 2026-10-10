@@ -10537,12 +10537,6 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter server::connection::wakelock_snapshot_tests:: --color never
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib r_s11it_ --color never -- --test-threads=1
-if python3 scripts/verify-whiteboard-ipc-lifecycle.py --repo . --self-test; then
-  echo "  ok  R-S11hn/R-S11e-251 whiteboard IPC startup and event-loop termination have one lossless exact-generation owner"
-else
-  echo "  FAIL R-S11hn/R-S11e-251: whiteboard IPC/event-loop finality regained a lost startup edge, detached worker, unbounded stop channel, or incomplete join"
-  rc=1
-fi
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
   echo "  ok  R-S11go native Flutter display selection is exact-owner, typed, ordered, bounded, and failure-visible"
 else

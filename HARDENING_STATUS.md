@@ -12118,6 +12118,12 @@ Acquisition/publication self-test and publisher-pin checks passed separately in
 This does not execute authenticated helper IPC/worker finality, a compositor,
 animation/occlusion, resource/soak bounds, or installed Debian acceptance.
 
+The current fixture also spawns and joins the real IPC worker with launch identity
+absent before publishing its real Winit proxy. It requires exactly one latched Exit
+to reach the production user-event/idle-exit path; the fixture no longer exits the
+loop itself. Execution of that extension is pending; the receipt above covers only
+the earlier renderer test.
+
 **Retained evidence:** the independently compilable exact production lifecycle module
 passed three state tests under Rust 1.75.0 in builder
 `sha256:304b251e77fafe03192e035cc22479e0909d688035fbd30b1ac685e878ae9646`.
@@ -12132,10 +12138,11 @@ Original correction, module extraction, failures, and detailed receipts remain i
 at `8d2af913`/`8d794d41` and the R-S11hn audit entry in
 `/tmp/privilege_securiry_deep_audit.md`.
 
-The focused Python checker is supplementary source coverage with no requirement/ledger
-wording or document-hash dependency. Shared fast module execution, full root-crate test
-commands, and Apple source-gate wiring remain; neither their presence nor old mutation
-counts prove that an exact-current native workload ran.
+The 414-line `scripts/verify-whiteboard-ipc-lifecycle.py` and its shared/Apple calls
+are deleted. Its source substring/order/count checks and 36 in-memory substitutions
+did not execute a worker, proxy, native loop, IPC peer or cleanup. Shared fast module
+execution and full root-crate Rust commands remain; their presence and historical
+state results do not establish complete helper or platform acceptance.
 
 **Still required:** complete current lifecycle/full-root suites and isolated Windows/macOS/Linux
 helper runs covering launch-identity refusal, listener construction/end/error, proof and

@@ -12101,56 +12101,45 @@ Depends declares the existing `libxkbcommon-x11-0` runtime requirement; the pinn
 X11 fixture includes it and `libxcb-xkb1`. No privilege escalation was reproduced.
 
 **Accepted Linux subset:** `--android-rust-lifecycle-tests --whiteboard-display-lifetime`
-passed at source `c5f2417251627ff9beae41ce0d52f53cbd2e866c`, tree
-`fe9d98ebecb54d25b745b25b122032eafdd8d3e9`: one actual test, zero failed/ignored,
-216s VM / 149s build / 0.02s native execution. With both launch variables absent,
-the fixture spawned and joined the real IPC worker before creating/publishing its
-real Winit proxy. Exactly one latched Exit reached the production user-event and
-idle-exit path; the fixture did not exit the loop itself. The production constructor/draw
-path created a real X11 window, read back two owners' pixels, cleared only one owner,
+passed at source `346c0e3c177b92c93da380d06a4d5e9b59e7dfd3`, tree
+`748f592c40a769b0371b2d5353efd7a72a4467cb`: five actual tests, zero failed/ignored,
+216s VM / 149s build / 0.00s state tests / 0.02s and 0.03s native cases.
+With both launch variables absent, one fixture spawned/joined the real worker before
+creating its real Winit proxy; the other installed the proxy and started the worker
+from the running loop after rendering, retained it through loop return and joined it.
+Each native case ran in its own process, delivered exactly one Exit through the
+production user-event/idle-exit path and used no fixture-originated loop exit.
+Both production constructor/draw paths created real X11 windows, read back two owners'
+pixels, cleared only one owner,
 and returned immediate GetWindowAttributes BadWindow after event-loop return while
 the application/context remained alive. Executable SHA-256
-`6febcb8d65eb3d64886afe30df1c55e92bb8fc24540301f4bb44832f0d0f1e5f`
-was unchanged before/after execution. The zero-NIC VM/nonroot network-none container
+`a729dd8c13e9dcd4b439960de92a1c1b7157c6b765596f0d887a8021555d35d7`
+was unchanged before/between/after all three test processes. The zero-NIC VM/nonroot network-none container
 transaction preserved source/inputs, joined Xvfb/container/VM cleanup and passed
 the full host endpoint audit with no additions. Retained serial
-`android-rust-lifecycle-tests-run.7qfhAfHe3z.serial.log` SHA-256
-`9ada49ec7539c6466b18e7323dd2be41826ece6c05f58544713d7d7ed6514120`.
-The earlier accepted renderer run, 42s acquisition/publication checks and three failed
+`android-rust-lifecycle-tests-run.xUopFs05R3.serial.log` SHA-256
+`62fa713deb00142e4f38ff8da3927b814b8cd95af45b517aa1244f10a30e1ea5`.
+Earlier accepted renderer/startup runs, 42s acquisition/publication checks and three failed
 native attempts remain in the audit/Git history. This subset does not execute the
 CLI/complete helper, listener construction or authenticated IPC, later worker failure
 or cancellation paths, a compositor, animation/occlusion, resource/soak bounds,
 other platforms, or installed Debian acceptance.
 
-The focused fixture now also starts the real worker after proxy publication from
-the running loop's resumed callback, retains it through loop return and joins it.
-Each publication order runs in a separate process against the same artifact; both
-must observe one Exit, exact-owner pixels/clear and immediate window destruction.
-The same profile now executes all three production lifecycle state tests and binds
-five named passes to unchanged artifact bytes. This extension is pending execution;
-the accepted receipt above covers only the earlier before-proxy native test.
-
-**Retained evidence:** the independently compilable exact production lifecycle module
-passed three state tests under Rust 1.75.0 in builder
-`sha256:304b251e77fafe03192e035cc22479e0909d688035fbd30b1ac685e878ae9646`.
-That historical zero-NIC VM/networkless nonroot guest-container transaction preserved
-candidate bytes and host listeners and joined its transient owners. The tests cover
-termination before proxy publication, exact installed-proxy take with repeated-finalization
-refusal, and proxy retirement with preserved terminal state. They do not execute the native
-event loop, real IPC, worker construction/join, or complete helper. The associated full
-root-crate Cargo attempt stopped at dependency discovery because that builder lacked
-`libyuv.pc`; it supplied no test result and is not a statement about current input availability.
-Original correction, module extraction, failures, and detailed receipts remain in Git history
-at `8d2af913`/`8d794d41` and the R-S11hn audit entry in
-`/tmp/privilege_securiry_deep_audit.md`.
+**Lifecycle state evidence:** the same root-crate test executable passed all three
+current production module tests: termination before proxy publication, exact installed-proxy
+take with repeated-finalization refusal, and proxy retirement with preserved terminal state.
+These are state tests; only the two X11 cases execute real workers/proxies/native loops.
+Earlier standalone-module results, dependency-discovery failure and original correction
+remain in Git history at `8d2af913`/`8d794d41` and the R-S11hn audit entries in
+`/tmp/privilege_securiry_deep_audit.md`; they are superseded as current module evidence.
 
 The 414-line `scripts/verify-whiteboard-ipc-lifecycle.py` and its shared/Apple calls
 are deleted. Its source substring/order/count checks and 36 in-memory substitutions
 did not execute a worker, proxy, native loop, IPC peer or cleanup. Shared fast module
-execution and full root-crate Rust commands remain; their presence and historical
+execution and full root-crate Rust commands remain; their presence and
 state results do not establish complete helper or platform acceptance.
 
-**Still required:** complete current lifecycle/full-root suites and isolated Windows/macOS/Linux
+**Still required:** remaining full-root suites and isolated Windows/macOS/Linux
 helper runs covering launch-identity refusal, listener construction/end/error, proof and
 transport failure, cancellation, authenticated close/shutdown, both proxy-publication
 orders, every returning event-loop path, and permitted spawn/join failure injection.
